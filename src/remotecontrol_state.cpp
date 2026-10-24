@@ -458,11 +458,6 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
 
 namespace rcdetail {
 
-// ANTS-1576 — forward declaration of the runGit helper defined further
-// down in this file (used by the live-git fallback in cmdLastAuditSummary).
-// Definition lives near collectGitSnapshot at the bottom of the file.
-QByteArray runGit(const QString &root, const QStringList &argv);
-
 QJsonObject lasErr(const QString &code, const QString &msg) {
     QJsonObject o;
     o["ok"]    = false;
@@ -799,8 +794,7 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // path so a cppcheck-xml read can't collide with a sarif read.
     // ANTS-1540 — when rule_ids is set, the parser ran with the
     // expanded budget (50), so the cache slot is keyed off that
-    // budget; subsequent calls without rule_ids re-parse only if the
-    // earlier slot used a smaller cap.
+    // budget; a call with any other cap re-parses.
     const qint64 mtimeMs =
         QFileInfo(reportPath).lastModified().toMSecsSinceEpoch();
     const bool hit = (reportPath == m_auditSummaryPath
@@ -940,10 +934,9 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
 
     // ANTS-1576 — scope classifier. Always tag the response so the
     // caller can distinguish a project-wide sweep from a single-file
-    // rerun. The classifier walks the post-rule_ids topFindings (so
-    // a narrow rule_ids filter doesn't masquerade as a single_file
-    // rerun: classifying after applyRuleIdsFilter would lie — apply
-    // the classifier to the original summary instead).
+    // rerun. The classifier walks the UNFILTERED summary: classifying
+    // after applyRuleIdsFilter would make a narrow rule_ids filter read
+    // as a single_file rerun.
     {
         AuditEngine::AuditSummary preFilter = m_auditSummaryCache;
         const ScopeClassification sc = classifyAuditScope(preFilter, reportPath);

@@ -163,6 +163,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **workspace_search's count_only, files_only and matches_only replies now echo match_wrapped, as the row reply already did.** (ANTS-6131)
+
 - **The Claude Code session-start cheat-sheet points at trace for "who calls X / where is it defined", in most languages, ahead of the C/C++-only find_sources.** (ANTS-6169)
   Sessions in other projects now learn of trace when they connect. The
   cheat-sheet updates on the next terminal start, or by switching

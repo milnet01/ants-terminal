@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6251 -->
+<!-- ants-roadmap-id-high-water: ANTS=6259 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95542,6 +95542,12 @@ worked after these.
   file, which ANTS-2160 INV-5 says is unset. Test
   McpInvariantCheck.Ants6131SpecsDirNamingAFileFallsBack, red before the
   fix. Medium and low findings still open.
+  2026-10-24: MEDIUMs F3, F7, F8, F9, F11, F12 fixed. F3 one
+  echoEffectiveArgs for workspace_search's four replies, so the lean
+  modes now echo match_wrapped too. F7 and F9 dropped local
+  declarations that remotecontrol_internal.h already makes. Queued F4
+  ANTS-6252, F2 ANTS-6253, F5 ANTS-6254, F6 ANTS-6255, F15 ANTS-6256,
+  F16 ANTS-6257, F20 ANTS-6258, F21 ANTS-6259. LOWs open.
   **Layman:** Tidy the project and search tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96855,6 +96861,103 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L21-F18).
   Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6252] **workspace_search with both files_only and matches_only returns an empty matches_only reply.**
+  From ANTS-6131. The parse lambda checks files_only first and skips
+  the distinct-match harvest; the reply ladder checks matches_only
+  first, so it reports zero distinct matches. Its comment ("before it
+  in precedence only where both are absent") contradicts itself. Fix:
+  state one order (files_only, as count_only already wins over both)
+  and enforce it in the reply ladder; add a test with both flags.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** Asking code search for two summary modes at once gives an empty answer, because two parts of the code disagree on which mode wins.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L22-F4).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6253] **One root-resolution helper for the six workspace verbs that repeat the ~global, resolveRootCanonical and no-focused-project steps.**
+  From ANTS-6131. src/remotecontrol_workspace.cpp repeats the
+  expandGlobalConfigSentinel -> resolveRootCanonical -> "no focused
+  project" refusal six times; other verbs do it differently and no
+  comment says whether on purpose. Check each refusal text against
+  tests before merging. Feeds ANTS-5796.
+  Hot reload: none needed.
+  **Layman:** Six search tools each repeat the steps for finding which project they work on.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L22-F2).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6254] **Split workspace_search's 160-line onLine lambda into one capture and one reply builder per mode.**
+  From ANTS-6131. The onLine lambda in cmdWorkspaceSearch serves
+  context, files_only, matches_only, offset and rows; its early-return
+  order is the mode precedence, mirrored by hand in the reply ladder.
+  Do after the files_only/matches_only precedence fix (L22-F4).
+  Hot reload: none needed.
+  **Layman:** One block of the code search serves five output modes, and the order of its early exits silently decides which mode wins.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L22-F5).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6255] **One shared reader for ripgrep's JSON events in workspace_search, cited_by and co_change_family.**
+  From ANTS-6131. The parse-time budget guard exists three times
+  (onLine in cmdWorkspaceSearch, cmdCitedBy, cmdCoChangeFamily), the
+  third written differently (% 2048, its own parseClock, a fixed
+  budget); the rootCanonical path trim is copied five times. Fix: one
+  reader. Feeds ANTS-5796.
+  Hot reload: none needed.
+  **Layman:** Three search tools each carry their own copy of the code that reads the search program's output, and the copies differ.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L22-F6).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6256] **task_priors recognises only ANTS- ids, so its id boosts never fire on other projects.**
+  From ANTS-6131. cmdTaskPriors extracts ids with "ANTS-[0-9]+" in
+  src/remotecontrol_state.cpp, so the +5 id boosts never fire for
+  DOOM-, LOTTO- and other prefixes. Fix: the prefix-agnostic shape
+  isValidSpecId uses. Behaviour change; needs a test on a non-ANTS
+  project.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** A tool that gathers context for a task only recognises this project's item numbers, so it ranks worse on every other project.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L22-F15).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6257] **focused_test's three run-failed refusals drift: the ctest ones omit output_tail and use different codes.**
+  From ANTS-6131. focusedRunRefusal, the ctest first run and the
+  ctest re-run in src/remotecontrol_state.cpp build the refusal
+  separately; the non-ctest unrecognised_output attaches output_tail,
+  the ctest one does not, and the codes differ (ctest_* vs runner_*).
+  Fix: one builder taking the code names; decide whether the ctest
+  codes are a promise to callers first.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** The test-runner tool reports a failed run three different ways, and one of them leaves out the output that explains the failure.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L22-F16).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6258] **invariant_check's scan lambdas write captured state, so the near-miss pass must save and restore matched.**
+  From ANTS-6131. scanOneDir and runScan in cmdInvariantCheck write
+  matched, specsScanned, phasesScanned and activeNeedles; the near-miss
+  pass saves and restores matched, and tryTier depends on runScan's
+  leftovers. Fix: return a result struct.
+  Hot reload: none needed.
+  **Layman:** A spec-checking tool's scan steps overwrite each other's results unless each later step remembers to save and restore them.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L22-F20).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6259] **resolveFeedbackPath's configured-root redirect skips the normalised-sibling match and never sets derivedReasonOut.**
+  From ANTS-6131. In src/remotecontrol_workspace.cpp the no-path
+  branch nests five fallbacks; its configured-root redirect repeats the
+  conventional-names loop but skips the ANTS-3439 normalised-sibling
+  match and never sets derivedReasonOut. Fix: one "pick a feedback
+  name in this directory" helper for both paths, with a test for the
+  redirect case.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** One way of finding a project's feedback file skips a matching step the other way uses, so the two can pick different files.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L22-F21).
+  Lanes: mcp-state-workspace.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

@@ -880,6 +880,22 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         hardKilled || parseBudgetExceeded)
         truncated = true;
 
+    // The echoes every ok:true reply ends with, in every mode, so a field
+    // added here cannot reach one reply and miss the rest.
+    const auto echoEffectiveArgs = [&](QJsonObject &out) {
+        // ANTS-1452-INV-4: echo effective filter values so callers can tell
+        // a filter-induced 0-match result from a genuinely clean tree.
+        out["respect_gitignore"] = respect_gitignore;
+        out["include_hidden"]    = include_hidden;
+        // ANTS-4547 — activation-gated: a caller reading zero matches needs
+        // to know whether the wrapped rule was in force.
+        if (matchWrapped) out["match_wrapped"] = true;
+        // ANTS-1565-INV-4: echo effective wall-clock budget so a caller can
+        // see whether they got their requested timeout_sec or the default.
+        out["timeout_sec"] = budgetSec;
+        out["elapsed_ms"]  = static_cast<int>(wall.elapsed());
+    };
+
     // ANTS-3537 — count_only: return the totals with no row bodies. Placed
     // after the genuine-error guards above (rg crash / exit≥2 / hard-kill or
     // parse-budget with zero results already returned rg_failed) but before
@@ -933,10 +949,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             rcStampTruncatedReason(out, scanCutReason, budgetSec);
         else if (distinctOrder.size() > emitCount)
             rcStampTruncatedReason(out, QStringLiteral("max_results"), budgetSec);
-        out["respect_gitignore"] = respect_gitignore;
-        out["include_hidden"]    = include_hidden;
-        out["timeout_sec"]       = budgetSec;
-        out["elapsed_ms"]        = static_cast<int>(wall.elapsed());
+        echoEffectiveArgs(out);
         return QJsonDocument(out);
     }
 
@@ -954,10 +967,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         }
         if (!scanCutReason.isEmpty())
             rcStampTruncatedReason(out, scanCutReason, budgetSec);
-        out["respect_gitignore"] = respect_gitignore;
-        out["include_hidden"]    = include_hidden;
-        out["timeout_sec"]       = budgetSec;
-        out["elapsed_ms"]        = static_cast<int>(wall.elapsed());
+        echoEffectiveArgs(out);
         return QJsonDocument(out);
     }
 
@@ -992,10 +1002,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         }
         if (!scanCutReason.isEmpty())
             rcStampTruncatedReason(out, scanCutReason, budgetSec);
-        out["respect_gitignore"] = respect_gitignore;
-        out["include_hidden"]    = include_hidden;
-        out["timeout_sec"]       = budgetSec;
-        out["elapsed_ms"]        = static_cast<int>(wall.elapsed());
+        echoEffectiveArgs(out);
         return QJsonDocument(out);
     }
 
@@ -1215,17 +1222,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                          shortTerms.first());
         }
     }
-    // ANTS-1452-INV-4: echo effective filter values so callers can tell
-    // a filter-induced 0-match result from a genuinely clean tree.
-    out["respect_gitignore"] = respect_gitignore;
-    out["include_hidden"]    = include_hidden;
-    // ANTS-4547 — activation-gated: a caller reading zero matches needs to
-    // know whether the wrapped rule was in force.
-    if (matchWrapped) out["match_wrapped"] = true;
-    // ANTS-1565-INV-4: echo effective wall-clock budget so a caller can
-    // see whether they got their requested timeout_sec or the default.
-    out["timeout_sec"] = budgetSec;
-    out["elapsed_ms"] = static_cast<int>(wall.elapsed());
+    echoEffectiveArgs(out);
     // ANTS-1876 / ANTS-3548 — activation-gated echo (INV-6). The clip
     // echoes iff its EFFECTIVE value > 0. Since ANTS-3548 made the
     // default 512 (> 0), a default call now echoes `max_match_bytes:512`
@@ -3175,14 +3172,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 
 namespace rcdetail {
 
-// Forward decl — isValidSpecId is defined in the spec-tools anonymous
-// namespace block further down (it predates these verbs). cmdSpecLog
-// reuses it for <PREFIX>-NNNN / phase_* id routing parity with cmdSpecQuery.
-bool isValidSpecId(const QString &id);
-// ANTS-3356 — forward decl (defined alongside isValidSpecId). cmdSpecLog
-// and cmdSpecQuery share it to resolve `<id>.md` then a `<id>-*.md` glob.
-QString resolveSpecRelForId(const QString &rootCanonical,
-                            const QString &dirRel, const QString &id);
+// cmdSpecLog reuses isValidSpecId and resolveSpecRelForId (ANTS-3356) from
+// remotecontrol_state.cpp, declared in remotecontrol_internal.h, for id
+// routing parity with cmdSpecQuery.
 
 QJsonObject fbErr(const QString &code, const QString &message) {
     QJsonObject o;
@@ -3408,12 +3400,6 @@ QJsonObject fbNotFound(const QString &message, const QString &resolved,
     return e;
 }
 
-// Resolve + validate the feedback-file `path` arg. On reject, fills
-// `err` and returns false. On success, `resolvedOut` is the absolute
-// path to read/write (which may not yet exist when `mustExist` is
-// false), and `existsOut` says whether it currently exists. When
-// `derivedOut` is non-null it reports whether the path was auto-derived
-// from caller_cwd (ANTS-3376) rather than supplied by the caller.
 // ANTS-5500 — the repository name from `<root>/.git/config`'s origin URL
 // (`https://github.com/milnet01/claude-config.git` -> `claude-config`).
 // Read from the file rather than by running git: this is on every
@@ -3440,6 +3426,12 @@ static QString feedbackOriginRepoName(const QString &root) {
     return QString();
 }
 
+// Resolve + validate the feedback-file `path` arg. On reject, fills
+// `err` and returns false. On success, `resolvedOut` is the absolute
+// path to read/write (which may not yet exist when `mustExist` is
+// false), and `existsOut` says whether it currently exists. When
+// `derivedOut` is non-null it reports whether the path was auto-derived
+// from caller_cwd (ANTS-3376) rather than supplied by the caller.
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                          QString &resolvedOut, bool &existsOut,
                          QJsonObject &err, bool *derivedOut,
