@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6269 -->
+<!-- ants-roadmap-id-high-water: ANTS=6270 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88495,6 +88495,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
+
+- 📋 [ANTS-6270] **workspace_search times out on a three-name regex in Vestige and returns only docs hits, missing every source hit.**
+  Repro (Vestige session): caller_cwd /mnt/Games/Scripts/Linux/Vestige,
+  pattern 'MAX_POINT_LIGHTS|u_pointLightCount|createPointLight',
+  regex:true, max_results 80. Reply: truncated_reason timeout, hits in
+  docs/, tests/ and ROADMAP.md only; engine/ and assets/shaders/ hits
+  missing, though grep found them at once. Investigate first: what the
+  scan spends its 5 s on (build/ or external/ trees?), and in what order
+  it walks. Candidate fixes from the reporter: search source roots before
+  docs, skip build/ and external/ by default, and say loudly when a
+  timed-out reply holds no source-file hit. Related shipped: ANTS-1565,
+  ANTS-5323.
+  **Layman:** A code search in a larger project gives up early and shows only documents, so the caller misses the code.
+  Kind: fix.
+  Source: Vestige_Ants_MCP_Feedback.md 2026-10-24.
+  Lanes: mcp-workspace.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
