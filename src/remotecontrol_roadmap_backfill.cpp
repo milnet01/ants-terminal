@@ -1,9 +1,7 @@
 // ANTS-4501 TU 15/23 — roadmap_log op:"backfill_dates": the one-off git walk
 // that dates the rows predating § 2.2's forward stamping.
 //
-// Its own TU because remotecontrol_roadmap_log.cpp reached ANTS-3833 INV-6's
-// 6000-line cap with it inside, and § 2.2 of that spec asks for a new TU at a
-// member boundary rather than a smaller one. Appended LAST in
+// Its own TU at a member boundary (ANTS-3833 § 2.2). Appended LAST in
 // ANTS_RC_SOURCES_REL for remotecontrol_roadmap_migrate.cpp's reason: it is not
 // a slice of the pre-split file but a member that never existed there, so no
 // pre-split relative order can be violated by it.

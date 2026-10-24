@@ -100,9 +100,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogRender(const QJsonObject &req) {
         QJsonObject env = refusal.object();
         if (env.value(QStringLiteral("code")).toString()
                 == QLatin1String("op_unsupported")) {
-            // ANTS-4802 — ASK the store before saying what it holds. Only the
-            // ants-v1 dialect is store-served (RoadmapSource::migratedProject)
-            // while roadmap_migrate reads all three, so a project can be
+            // ANTS-4802 — ASK the store before saying what it holds. Only
+            // RoadmapSource::storeServedDialects() are store-served, while
+            // roadmap_migrate reads every dialect, so a project can be
             // registered, carry hundreds of rows, and still land here. Told
             // "the store holds no row", the reader re-runs the migration — the
             // one action that cannot help, and the one that writes a second
@@ -613,8 +613,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     int matchedCount = 0;
     for (const auto &pid : plannedIds)
         if (pid.match.matched) ++matchedCount;
-    // ANTS-5329 — the load's own count; plannedIds is capped at the echo
-    // budget, so counting it undercounted past the cap.
+    // ANTS-5329 — the load's own count, which is authoritative: the loader
+    // decides what counts as an ambiguous rematch.
     const int ambiguousCount = ambiguousRematches;
     ids[QStringLiteral("matched")]           = matchedCount;
     ids[QStringLiteral("ambiguous_rematch")] = ambiguousCount;

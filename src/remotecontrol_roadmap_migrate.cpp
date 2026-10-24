@@ -1,8 +1,14 @@
 // ANTS-3833 TU 14/23 — ANTS-3855's `roadmap_migrate` handler.
 // Contract: docs/specs/ANTS-3855-roadmap-migrate-verb.md § 2.1.1.
 //
-// Deliberately thin, and this is the whole of it: resolve the caller's root,
-// derive the two defaults, read the clock ONCE, name the store. Everything that
+// The file holds two things. First, the handler, which also dispatches the
+// init skeleton writer, deregister and reroot. Second, the in-process and
+// cross-process roadmap lock (RoadmapWriteHold and the tryHoldRoadmap*
+// members): roadmap_log holds it shared and a migration exclusive, so a
+// migration never reads a roadmap mid-write (ANTS-5086).
+//
+// The migrate path is deliberately thin: resolve the caller's root, derive
+// the two defaults, read the clock ONCE, name the store. Everything that
 // happens to a store is RoadmapMigrateVerb::run(), in its own translation unit
 // (src/roadmapmigrateverb.cpp) so a test can link the seam without dragging
 // RemoteControl and MainWindow in behind it — see roadmapmigrateverb.h for why

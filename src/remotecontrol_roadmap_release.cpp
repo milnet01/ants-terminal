@@ -575,7 +575,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         QVector<int> h2;   // positions in `layout`
         for (int p = 0; p < layout.size(); ++p)
             if (entryLive2(layout.at(p))) h2 << p;
-        int lowerAt = -1, higherAt = -1;
+        int lowerLayoutPos = -1, higherH2Index = -1;
         RlVerKey lowerKey{}, higherKey{};
         int lastH2 = -1;
         for (int k = 0; k < h2.size(); ++k) {
@@ -584,17 +584,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
             if (hv.isEmpty()) continue;
             const RlVerKey key = rlPlacementKey(hv);
             if (key < want) {
-                if (lowerAt < 0 || lowerKey < key) { lowerAt = h2.at(k); lowerKey = key; }
-            } else if (higherAt < 0 || key < higherKey) {
-                higherAt = k; higherKey = key;
+                if (lowerLayoutPos < 0 || lowerKey < key) { lowerLayoutPos = h2.at(k); lowerKey = key; }
+            } else if (higherH2Index < 0 || key < higherKey) {
+                higherH2Index = k; higherKey = key;
             }
         }
         Created c{v, title, slug, QString(), QString()};
         int afterPos = -1, beforePos = -1;
-        if (lowerAt >= 0)          afterPos  = lowerAt;
-        else if (higherAt > 0)     afterPos  = h2.at(higherAt - 1);
-        else if (higherAt == 0)    beforePos = h2.first();
-        else if (lastH2 >= 0)      afterPos  = lastH2;   // no version-led section: the end
+        if (lowerLayoutPos >= 0)        afterPos  = lowerLayoutPos;
+        else if (higherH2Index > 0)     afterPos  = h2.at(higherH2Index - 1);
+        else if (higherH2Index == 0)    beforePos = h2.first();
+        else if (lastH2 >= 0)           afterPos  = lastH2;   // no version-led section: the end
         int insertAt = int(layout.size());
         if (beforePos >= 0) {
             insertAt   = beforePos;

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6245 -->
+<!-- ants-roadmap-id-high-water: ANTS=6251 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95518,6 +95518,11 @@ worked after these.
   2026-10-22: HIGH F1, F2, F3 done. F4 (split append_batch) open.
   2026-10-23: HIGH F4 queued as ANTS-6176 (19 test files name the
   function, several scrape its body). No HIGH left here.
+  2026-10-24: MEDIUMs F6, F8-F10, F11 (comment), F12-F14, F16
+  fixed. F6 two inline copies now call rcSectionNotFound; F14 one
+  rlNothingResolved for flip_batch's two no-resolve refusals. Queued
+  F5 ANTS-6246, F7 ANTS-6247, F11 move ANTS-6248, F15 ANTS-6249, F17
+  ANTS-6250, F18 ANTS-6251. LOWs F19-F28 open.
   **Layman:** Tidy the bulk roadmap tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96771,6 +96776,85 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F14).
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6246] **Move flip_batch's store path out of cmdRoadmapLogFlipBatch into its own member.**
+  From ANTS-6130. A complete store implementation sits between file
+  step 6 and step 6.5 of cmdRoadmapLogFlipBatch
+  (src/remotecontrol_roadmap_log_batch.cpp). Fix: a member that receives
+  the resolved targets. Queued: a large move inside a function tests
+  exercise heavily; one commit of its own.
+  Hot reload: none needed.
+  **Layman:** One roadmap tool's main function holds a whole second implementation in its middle, so a reader loses the numbered steps.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L21-F5).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6247] **Fold the four op_unsupported remap blocks into one helper, and read the store error they drop.**
+  From ANTS-6130. backfill, publish (render), release
+  (place_by_release) and repair each remap op_unsupported through
+  rlNotStoreServedRefusal, passing a `storeErr` to roadmapStoreOrNull
+  and never reading it. Fix: one helper (an option on
+  roadmapSectionOpTarget, or a member next to it). Queued: needs a
+  header declaration, and the dropped storeErr is a behaviour question:
+  say what a failed store open should report.
+  Hot reload: none needed.
+  **Layman:** Four roadmap tools repeat the same error-translation block, and each throws away an error message it collects.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L21-F7).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6248] **Move the workspace_search constants and rcRunRg block out of the roadmap batch file into remotecontrol_workspace.cpp.**
+  From ANTS-6130. The workspace_search block (kWorkspaceSearch*
+  constants, resolveRootCanonical declarations) sits in
+  src/remotecontrol_roadmap_log_batch.cpp. Its false forward-declaration
+  comment was fixed in ANTS-6130; the move was not. Hazard: tests pin
+  the constants through slurpRemoteControl() (order-independent), but
+  McpWorkspaceSearch.WiringContract and two-anchor scrape windows may
+  be order-dependent; check before moving.
+  Hot reload: none needed.
+  **Layman:** The time limits for code search live in a file about roadmap writes, where nobody would look for them.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L21-F11).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6249] **flip_batch's Target::firstLine holds -itemPk-1 for store targets; split it into a dedup key and a line field.**
+  From ANTS-6130. Target::firstLine and claimedFirstLines hold
+  -itemPk-1 for store-located targets; the sort claims firstLine-
+  ascending (document) order, but store targets sort by descending item
+  number. Fix: rename to a dedup key and add a line field the store
+  path leaves unset. Queued: the sort order is observable in the reply,
+  so say which order store targets should come back in first.
+  Hot reload: none needed.
+  **Layman:** A field named as a line number sometimes holds a database row number, so the sort order is not what its comment says.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L21-F15).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6250] **One § 2.3a release-placement function for create_section and place_by_release.**
+  From ANTS-6130. The placement key and lower/higher search exist in
+  src/remotecontrol_roadmap_release.cpp (rlPlacementKey and the
+  placement loop) and in create_section in
+  src/remotecontrol_roadmap_log_batch.cpp. They differ: release falls
+  back to the end when no version-led section exists; create_section
+  refuses missing_field. Needs a decision: is the difference wanted?
+  Then one function with the fallback as a parameter.
+  Hot reload: none needed.
+  **Layman:** Two roadmap tools decide where a version section goes with two copies of the same rule, and the copies already differ.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L21-F17).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6251] **One caller_cwd-to-roadmap resolver for flip_batch, create_section, bundle_row, append_batch, roadmapSectionOpTarget and convert.**
+  From ANTS-6130. The caller_cwd -> canonical -> findRoadmapUnder ->
+  read opening is copied six times; append_batch differs (passes
+  &projectRootDir, ANTS-4882) and opens the roadmap up to four times.
+  Fix: one resolver returning root, path and text. Queued: six call
+  sites across two files, with a known divergence; feeds ANTS-5796.
+  Hot reload: none needed.
+  **Layman:** Six roadmap tools each repeat the steps for finding a project's roadmap, and two past fixes had to find all six.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L21-F18).
+  Lanes: mcp-roadmap-batch.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

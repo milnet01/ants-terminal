@@ -42,6 +42,43 @@ bool rlResolveBatchStatus(const QString &s, QString *emoji, QString *word) {
     return false;
 }
 
+// ANTS-4109, ANTS-5094/5095 — flip_batch's reply when no locator resolved,
+// shared by the markdown and store paths. Nothing resolved is a refusal, not
+// a partial success: ok:true read as "flipped three bullets" to a caller that
+// did not also check flipped_count. The code is the one every locator failed
+// with, else bullet_not_found; skipped[] has the per-locator truth. With
+// nothing skipped there was nothing to refuse, so the reply is ok:true.
+// `where` lands after "failed to resolve", e.g. " in the store".
+QJsonDocument rlNothingResolved(const QString &opName, bool annotateMode,
+                                const QJsonArray &skipped,
+                                const QString &format, const QString &where) {
+    QJsonObject out;
+    out["ok"] = skipped.isEmpty();
+    if (!skipped.isEmpty()) {
+        QString code = skipped.first().toObject()
+                           .value(QStringLiteral("code")).toString();
+        for (const QJsonValue &v : skipped) {
+            if (v.toObject().value(QStringLiteral("code")).toString() != code) {
+                code = QStringLiteral("bullet_not_found");
+                break;
+            }
+        }
+        out["code"]  = code;
+        out["error"] = QStringLiteral("roadmap_log op:\"%1\": all "
+            "%2 locator(s) failed to resolve%3 — nothing was %4")
+                .arg(opName).arg(skipped.size()).arg(where)
+                .arg(annotateMode ? QStringLiteral("annotated")
+                                  : QStringLiteral("flipped"));
+    }
+    out["op"]            = opName;
+    out["format"]        = format;
+    out["file"]          = QStringLiteral("ROADMAP.md");
+    out["flipped"]       = QJsonArray();
+    out["flipped_count"] = 0;
+    rcSetAllRefusedSkipped(out, skipped);
+    return QJsonDocument(out);
+}
+
 }  // namespace
 
 // ANTS-4383 — say WHY the id sequence jumped.
@@ -53,27 +90,19 @@ bool rlResolveBatchStatus(const QString &s, QString *emoji, QString *word) {
 // arithmetic, and ANTS-2078 already skips the counter write under
 // stable_prefix). What moves the floor is ANTS-2179/ANTS-3450 reconciliation:
 // `effCounter` is max(counter, corpus high-water), and corpusHighWater scans
-// ROADMAP.md + CHANGELOG.md + docs/roadmap/*.md for `\bPFX-NNNN\b` in the
-// WHOLE TEXT — bodies and prose included. So a bullet whose body merely
-// MENTIONS a higher id ("superseded by CFG-0026") raises the floor past it,
-// and the next batch legitimately starts above.
+// ROADMAP.md + CHANGELOG.md + docs/roadmap/*.md for lines that DECLARE a
+// `\bPFX-NNNN\b` id — a top-level list item outside a fence. A mention in
+// prose does not count (ANTS-4631: a sample `ANTS-9999` in a body once
+// burned ~5,370 ids). So a declared higher id raises the floor past it, and
+// the next batch legitimately starts above.
 //
-// That is the safety property working: an id that appears anywhere in the
-// corpus must never be reissued, because a gap is free and a collision is
-// not. It is also invisible — the envelope reported `counter_advanced_to`
-// and nothing about what moved it, so a contiguous-ids assumption broke with
-// no way to find out why. Which is ANTS-4374's invariant on the write side:
-// a number the caller did not ask for has to say where it came from.
-//
-// ANTS-4631 REVISED the mechanism above and kept the explanation. "Anywhere
-// in the text" was too wide: a roadmap documenting its own id format writes
-// id-shaped sample text, and one deliberately-absurd `ANTS-9999` in a body
-// was read as an allocation, issuing 10000 next and burning ~5,370 ids. The
-// scan now counts only lines that DECLARE an id — a top-level list item
-// outside a fence — so a mention in prose is text again. A gap is still free
-// and a collision still is not; what changed is that a sample id is no longer
-// evidence of an allocation. On a MIGRATED project none of this runs at all:
-// the store's id columns answer directly.
+// That is the safety property working: a declared id must never be
+// reissued, because a gap is free and a collision is not. It is also
+// invisible — the envelope reported `counter_advanced_to` and nothing about
+// what moved it, so a contiguous-ids assumption broke with no way to find
+// out why. Which is ANTS-4374's invariant on the write side: a number the
+// caller did not ask for has to say where it came from. On a MIGRATED
+// project none of this runs at all: the store's id columns answer directly.
 static void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
                                   qint64 corpusMax) {
     out[QStringLiteral("counter_floor")]        = corpusMax;
@@ -609,44 +638,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         }
     }
 
-    if (targets.isEmpty()) {
-        QJsonObject out;
-        // ANTS-4109 — nothing resolved is a refusal, not a partial success.
-        // Partial success is the documented shape when SOME locators apply;
-        // with none applied there is no rest to still apply, and ok:true read
-        // as "flipped three bullets" to a caller that did not also check
-        // flipped_count — so a bundle close reported items shipped that were
-        // still planned. skipped[] keeps carrying the per-locator detail.
-        const bool allSkipped = !skipped.isEmpty();
-        out["ok"]            = !allSkipped;
-        if (allSkipped) {
-            // The shared code when every locator failed the same way, else
-            // the generic locate failure; skipped[] has the per-locator truth.
-            QString code = skipped.first().toObject()
-                               .value(QStringLiteral("code")).toString();
-            for (const QJsonValue &v : std::as_const(skipped)) {
-                if (v.toObject().value(QStringLiteral("code")).toString()
-                        != code) {
-                    code = QStringLiteral("bullet_not_found");
-                    break;
-                }
-            }
-            out["code"]  = code;
-            out["error"] = QStringLiteral("roadmap_log op:\"%1\": all "
-                "%2 locator(s) failed to resolve — nothing was %3")
-                    .arg(opName).arg(skipped.size())
-                    .arg(annotateMode ? QStringLiteral("annotated")
-                                      : QStringLiteral("flipped"));
-        }
-        out["op"]            = opName;
-        out["format"]        = isGfm ? QStringLiteral("gfm")
-                                     : QStringLiteral("ants-v1");
-        out["file"]          = QStringLiteral("ROADMAP.md");
-        out["flipped"]       = QJsonArray();
-        out["flipped_count"] = 0;
-        rcSetAllRefusedSkipped(out, skipped);
-        return QJsonDocument(out);
-    }
+    if (targets.isEmpty())
+        return rlNothingResolved(opName, annotateMode, skipped,
+                                 isGfm ? QStringLiteral("gfm")
+                                       : QStringLiteral("ants-v1"),
+                                 QString());
 
     // ANTS-3809 § 2.2 — the store path: N × flip in ONE transaction. It sits
     // after phase 1 because § 2.4 requires every per-locator FORMAT refusal to
@@ -751,39 +747,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         }
 
         if (resolved.isEmpty()) {
-            // Every locator was skipped at the store. Same no-write envelope the
-            // markdown path returns when phase 1 resolved nothing — no render
-            // ran, so no files_written / items_rendered.
-            //
-            // ANTS-5094/5095 — and the same REFUSAL: this returned ok:true and
-            // op "flip_batch" for every op, the false success ANTS-4109 removed
-            // from the markdown path.
-            QJsonObject out;
-            out["ok"]            = false;
-            {
-                QString code = skipped.isEmpty()
-                    ? QStringLiteral("bullet_not_found")
-                    : skipped.first().toObject().value(QStringLiteral("code")).toString();
-                for (const QJsonValue &v : std::as_const(skipped)) {
-                    if (v.toObject().value(QStringLiteral("code")).toString() != code) {
-                        code = QStringLiteral("bullet_not_found");
-                        break;
-                    }
-                }
-                out["code"]  = code;
-                out["error"] = QStringLiteral("roadmap_log op:\"%1\": all "
-                    "%2 locator(s) failed to resolve in the store — nothing was %3")
-                        .arg(opName).arg(skipped.size())
-                        .arg(annotateMode ? QStringLiteral("annotated")
-                                          : QStringLiteral("flipped"));
-            }
-            out["op"]            = opName;
-            out["format"]        = QStringLiteral("ants-v1");
-            out["file"]          = QStringLiteral("ROADMAP.md");
-            out["flipped"]       = QJsonArray();
-            out["flipped_count"] = 0;
-            rcSetAllRefusedSkipped(out, skipped);
-            return QJsonDocument(out);
+            // Every locator was skipped at the store: the markdown path's
+            // no-write refusal. No render ran, so no files_written or
+            // items_rendered.
+            return rlNothingResolved(opName, annotateMode, skipped,
+                                     QStringLiteral("ants-v1"),
+                                     QStringLiteral(" in the store"));
         }
 
         // `flipped` is returned in firstLine-ascending order on the markdown
@@ -3305,6 +3274,23 @@ QJsonDocument rcSectionOpErr(const QString &code, const QString &message) {
     return QJsonDocument(env);
 }
 
+// The section_not_found refusal, with ranked slug candidates.
+QJsonDocument rcSectionNotFound(RoadmapStore &store, qint64 projectId,
+                                const QString &slug) {
+    QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
+        QStringLiteral("roadmap_log: section \"%1\" is not in the store")
+            .arg(slug)).object();
+    if (const auto sections = store.listSectionsOrdered(projectId)) {
+        QStringList slugs;
+        for (const RoadmapStore::SectionRow &sr : *sections)
+            if (!sr.slug.isEmpty()) slugs << sr.slug;
+        env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
+            ReadRegion::rankSectionCandidates(slug, slugs));
+        env[QStringLiteral("sections_total")] = int(slugs.size());
+    }
+    return QJsonDocument(env);
+}
+
 }  // namespace
 
 std::optional<RemoteControl::RoadmapWriteTarget>
@@ -3856,20 +3842,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
         return rcSectionOpErr(QStringLiteral("section_not_found"),
             QStringLiteral("roadmap_log: this project's store holds no root "
                            "section, so it has no preamble to replace"));
-    if (!sectionId) {
-        QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
-            QStringLiteral("roadmap_log: section \"%1\" is not in the store")
-                .arg(slug)).object();
-        if (const auto sections = store.listSectionsOrdered(projectId)) {
-            QStringList slugs;
-            for (const RoadmapStore::SectionRow &sr : *sections)
-                if (!sr.slug.isEmpty()) slugs << sr.slug;
-            env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
-                ReadRegion::rankSectionCandidates(slug, slugs));
-            env[QStringLiteral("sections_total")] = int(slugs.size());
-        }
-        return QJsonDocument(env);
-    }
+    if (!sectionId) return rcSectionNotFound(store, projectId, slug);
     const auto row = store.readSection(*sectionId, &err);
     if (!row)
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
@@ -4064,22 +4037,6 @@ int rcIndexOfSlug(const QVector<RoadmapStore::SectionRow> &ordered, const QStrin
     for (int i = 0; i < ordered.size(); ++i)
         if (ordered.at(i).slug == slug) return i;
     return -1;
-}
-
-QJsonDocument rcSectionNotFound(RoadmapStore &store, qint64 projectId,
-                                const QString &slug) {
-    QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
-        QStringLiteral("roadmap_log: section \"%1\" is not in the store")
-            .arg(slug)).object();
-    if (const auto sections = store.listSectionsOrdered(projectId)) {
-        QStringList slugs;
-        for (const RoadmapStore::SectionRow &sr : *sections)
-            if (!sr.slug.isEmpty()) slugs << sr.slug;
-        env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
-            ReadRegion::rankSectionCandidates(slug, slugs));
-        env[QStringLiteral("sections_total")] = int(slugs.size());
-    }
-    return QJsonDocument(env);
 }
 
 }  // namespace
@@ -4420,11 +4377,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogLink(const QJsonObject &req) {
 // Stderr capped at 4 KiB and surfaced only in the ok:false branch
 // to avoid path enumeration on the ok:true path (INV-8).
 namespace rcdetail {
-// Forward decl — definition in the second anonymous namespace below
-// (it lives next to the rest of the git_state helpers). Both
-// unnamed-namespace blocks in this TU share linkage.
+// Declarations only; both overloads are defined in remotecontrol_feedback.cpp,
+// next to the rest of the git_state helpers.
 QString resolveRootCanonical(const ants::RootProvider *roots);
-// ANTS-1391 — read-verb overload (see top-of-file forward decl).
+// ANTS-1391 — read-verb overload.
 QString resolveRootCanonical(const ants::RootProvider *roots, const QJsonObject &req);
 // ANTS-1565: default budget raised from 2 s (ANTS-1248) to 5 s — the
 // pre-rg setup (gitignore parse, glob expansion, ANTS-1501 dedup
@@ -4596,20 +4552,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogElement(const QJsonObject &req) {
     const auto sectionId = store.findSection(projectId, slug, &err);
     if (!sectionId && !err.isEmpty())
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
-    if (!sectionId) {
-        QJsonObject env = rcSectionOpErr(QStringLiteral("section_not_found"),
-            QStringLiteral("roadmap_log: section \"%1\" is not in the store")
-                .arg(slug)).object();
-        if (const auto sections = store.listSectionsOrdered(projectId)) {
-            QStringList slugs;
-            for (const RoadmapStore::SectionRow &sr : *sections)
-                if (!sr.slug.isEmpty()) slugs << sr.slug;
-            env[QStringLiteral("candidates")] = QJsonArray::fromStringList(
-                ReadRegion::rankSectionCandidates(slug, slugs));
-            env[QStringLiteral("sections_total")] = int(slugs.size());
-        }
-        return QJsonDocument(env);
-    }
+    if (!sectionId) return rcSectionNotFound(store, projectId, slug);
     const auto elems = store.listElements(*sectionId, &err);
     if (!elems)
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
