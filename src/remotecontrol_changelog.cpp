@@ -270,11 +270,93 @@ RoadmapCitation citeRoadmapBullet(const RoadmapParse::BulletRecord &match,
     return c;
 }
 
+// The refusal envelope, the one read and the one atomic write behind every
+// changelog_log op. The read and write return the refusal to send, or a
+// null document on success.
+QJsonDocument clErr(const QString &code, const QString &message) {
+    QJsonObject env;
+    env["ok"]    = false;
+    env["code"]  = code;
+    env["error"] = message;
+    return QJsonDocument(env);
+}
+
+QJsonDocument clReadFile(const QString &path, QString *content) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return clErr(QStringLiteral("changelog_read_failed"),
+            QStringLiteral("changelog_log: could not read \"%1\"").arg(path));
+    }
+    *content = QString::fromUtf8(f.readAll());
+    return {};
+}
+
+QJsonDocument clAtomicWrite(const QString &path, const QByteArray &utf8) {
+    QSaveFile cw(path);
+    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return clErr(QStringLiteral("changelog_write_failed"),
+            QStringLiteral("changelog_log: could not open \"%1\" for "
+                           "writing").arg(path));
+    }
+    if (cw.write(utf8) != utf8.size() || !cw.commit()) {
+        return clErr(QStringLiteral("changelog_write_failed"),
+            QStringLiteral("changelog_log: atomic write of \"%1\" failed")
+                .arg(path));
+    }
+    return {};
+}
+
+// Every changelog_log op's opening: caller_cwd to a canonical root, then
+// the CHANGELOG.md to write, or the refusal to send (a null document on
+// success). An explicit `path` reaches a nested changelog (ANTS-4812).
+QJsonDocument clFindChangelog(const QJsonObject &req, const QString &callerRaw,
+                              QString *callerCanonical, QString *clPath) {
+    *callerCanonical = QFileInfo(callerRaw).canonicalFilePath();
+    if (callerCanonical->isEmpty()) {
+        return clErr(QStringLiteral("no_changelog"),
+            QStringLiteral("changelog_log: caller_cwd \"%1\" does not "
+                           "canonicalise to an existing directory")
+                .arg(callerRaw));
+    }
+    const auto clTarget = resolveChangelogTarget(
+        req, *callerCanonical, QStringLiteral("changelog_log"));
+    if (clTarget.bad) return QJsonDocument(clTarget.err);
+    *clPath = clTarget.path;
+    if (clPath->isEmpty()) {
+        // ANTS-2040 — distinguish "no changelog at all" from "found a
+        // YAML changelog the Keep-a-Changelog writer can't append to".
+        // project_layout discovers data/changelog.yaml &c (ANTS-1574),
+        // so a bare no_changelog would mislead a caller whose reader
+        // already saw the file. Refuse with format_mismatch + an Edit
+        // fallback so they don't chase a phantom-missing changelog.
+        const QString yamlPath = findYamlChangelogUnder(*callerCanonical);
+        if (!yamlPath.isEmpty()) {
+            QJsonObject env;
+            env["ok"]     = false;
+            env["code"]   = QStringLiteral("format_mismatch");
+            env["error"]  = QStringLiteral(
+                "changelog_log: \"%1\" is a YAML changelog; the writer "
+                "only appends to Keep-a-Changelog Markdown (CHANGELOG.md) "
+                "and can't emit this format yet")
+                    .arg(yamlPath);
+            env["path"]   = yamlPath;
+            env["format"] = QStringLiteral("yaml");
+            env["hint"]   = QStringLiteral(
+                "Edit the YAML changelog directly — append a "
+                "`- version:/date:/tags:/body:` block in its schema. "
+                "YAML-changelog writes aren't supported by changelog_log "
+                "yet (ANTS-2040).");
+            return QJsonDocument(env);
+        }
+        return clErr(QStringLiteral("no_changelog"),
+            QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
+                .arg(*callerCanonical));
+    }
+    return {};
+}
+
 }  // namespace
 
-// ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
-// splices it under the right category in `## [Unreleased]`. m_main-
-// independent (caller_cwd + filesystem only), same as the flip path.
 // ANTS-3533 — changelog_query: read-only structured CHANGELOG.md reader,
 // the symmetric read side of changelog_log. Mirrors cmdRoadmapQuery's
 // arg/mode/refusal discipline. See docs/specs/ANTS-3533.md.
@@ -725,15 +807,10 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+// ANTS-1548 — changelog_log. Renders one Keep-a-Changelog bullet and
+// splices it under the right category in `## [Unreleased]`. m_main-
+// independent (caller_cwd + filesystem only), same as the flip path.
 QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
-    auto clErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
-
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     if (callerRaw.isEmpty()) {
@@ -774,49 +851,11 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 .arg(op));
     }
 
-    const QString callerCanonical =
-        QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty()) {
-        return clErr(QStringLiteral("no_changelog"),
-            QStringLiteral("changelog_log: caller_cwd \"%1\" does not "
-                           "canonicalise to an existing directory")
-                .arg(callerRaw));
-    }
-    // ANTS-4812 — an explicit `path` reaches a nested component changelog.
-    const auto clTarget = resolveChangelogTarget(
-        req, callerCanonical, QStringLiteral("changelog_log"));
-    if (clTarget.bad) return QJsonDocument(clTarget.err);
-    const QString clPath = clTarget.path;
-    if (clPath.isEmpty()) {
-        // ANTS-2040 — distinguish "no changelog at all" from "found a
-        // YAML changelog the Keep-a-Changelog writer can't append to".
-        // project_layout discovers data/changelog.yaml &c (ANTS-1574),
-        // so a bare no_changelog would mislead a caller whose reader
-        // already saw the file. Refuse with format_mismatch + an Edit
-        // fallback so they don't chase a phantom-missing changelog.
-        const QString yamlPath = findYamlChangelogUnder(callerCanonical);
-        if (!yamlPath.isEmpty()) {
-            QJsonObject env;
-            env["ok"]     = false;
-            env["code"]   = QStringLiteral("format_mismatch");
-            env["error"]  = QStringLiteral(
-                "changelog_log: \"%1\" is a YAML changelog; the writer "
-                "only appends to Keep-a-Changelog Markdown (CHANGELOG.md) "
-                "and can't emit this format yet")
-                    .arg(yamlPath);
-            env["path"]   = yamlPath;
-            env["format"] = QStringLiteral("yaml");
-            env["hint"]   = QStringLiteral(
-                "Edit the YAML changelog directly — append a "
-                "`- version:/date:/tags:/body:` block in its schema. "
-                "YAML-changelog writes aren't supported by changelog_log "
-                "yet (ANTS-2040).");
-            return QJsonDocument(env);
-        }
-        return clErr(QStringLiteral("no_changelog"),
-            QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
-                .arg(callerCanonical));
-    }
+    QString callerCanonical, clPath;
+    if (const QJsonDocument e =
+            clFindChangelog(req, callerRaw, &callerCanonical, &clPath);
+        !e.isNull())
+        return e;
 
     // ANTS-3495 — op:"normalize": reorder the `### <category>` blocks in
     // `## [Unreleased]` into canonical Keep-a-Changelog order. No summary/
@@ -825,14 +864,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     // relocating stray interleaved prose, now runs in the same atomic
     // write and is previewed line by line in `moves[]`.
     if (op == QStringLiteral("normalize")) {
-        QFile cf(clPath);
-        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_read_failed"),
-                QStringLiteral("changelog_log: could not read \"%1\"")
-                    .arg(clPath));
-        }
-        const QString clMarkdown = QString::fromUtf8(cf.readAll());
-        cf.close();
+        QString clMarkdown;
+        if (const QJsonDocument e = clReadFile(clPath, &clMarkdown); !e.isNull())
+            return e;
 
         const auto res = ChangelogLog::normalizeUnreleased(clMarkdown);
         if (!res.ok) {
@@ -896,18 +930,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         }
 
         const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
-        QSaveFile cw(clPath);
-        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: could not open \"%1\" for "
-                               "writing").arg(clPath));
-        }
         const QByteArray utf8 = res.markdown.toUtf8();
-        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
-                    .arg(clPath));
-        }
+        if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
+            return e;
 
         QJsonObject out;
         out["ok"]            = true;
@@ -940,14 +965,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         const QString version = req.value(QStringLiteral("version")).toString();
         const QString relDate = req.value(QStringLiteral("date")).toString();
 
-        QFile cf(clPath);
-        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_read_failed"),
-                QStringLiteral("changelog_log: could not read \"%1\"")
-                    .arg(clPath));
-        }
-        const QString clMarkdown = QString::fromUtf8(cf.readAll());
-        cf.close();
+        QString clMarkdown;
+        if (const QJsonDocument e = clReadFile(clPath, &clMarkdown); !e.isNull())
+            return e;
 
         // ANTS-5484 — `dated:true` closes under `## <date>` for a project
         // with no versions. It names no version, so passing one is a
@@ -1045,18 +1065,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         }
 
         const qint64 clBefore = QFileInfo(clPath).size();
-        QSaveFile cw(clPath);
-        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: could not open \"%1\" for "
-                               "writing").arg(clPath));
-        }
         const QByteArray utf8 = res.markdown.toUtf8();
-        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
-                    .arg(clPath));
-        }
+        if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
+            return e;
         out["written"]       = true;
         out["bytes_written"] =
             static_cast<qint64>(QFileInfo(clPath).size() - clBefore);
@@ -1126,14 +1137,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         rcScrubLeakedToolXml(headline, scrubbed);
         rcScrubLeakedToolXml(subBody, scrubbed);
 
-        QFile cf(clPath);
-        if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_read_failed"),
-                QStringLiteral("changelog_log: could not read \"%1\"")
-                    .arg(clPath));
-        }
-        const QString clMarkdown = QString::fromUtf8(cf.readAll());
-        cf.close();
+        QString clMarkdown;
+        if (const QJsonDocument e = clReadFile(clPath, &clMarkdown); !e.isNull())
+            return e;
 
         const auto res = ChangelogLog::insertUnreleasedSubsection(
             clMarkdown, date, category, headline, subBody, bulletBlocks);
@@ -1160,18 +1166,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         }
 
         const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
-        QSaveFile cw(clPath);
-        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: could not open \"%1\" for "
-                               "writing").arg(clPath));
-        }
         const QByteArray utf8 = res.markdown.toUtf8();
-        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
-                    .arg(clPath));
-        }
+        if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
+            return e;
 
         QJsonObject out;
         out["ok"]            = true;
@@ -1309,14 +1306,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
 
     const QString bullet = ChangelogLog::formatBullet(summary, body, id);
 
-    QFile cf(clPath);
-    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return clErr(QStringLiteral("changelog_read_failed"),
-            QStringLiteral("changelog_log: could not read \"%1\"")
-                .arg(clPath));
-    }
-    const QString clMarkdown = QString::fromUtf8(cf.readAll());
-    cf.close();
+    QString clMarkdown;
+    if (const QJsonDocument e = clReadFile(clPath, &clMarkdown); !e.isNull())
+        return e;
 
     // ANTS-4563 — a mixed section routes to the dated-topic form at the top;
     // routeOrInsertUnreleased holds the decision and its reasons.
@@ -1365,18 +1357,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
     }
 
     const qint64 clBefore = QFileInfo(clPath).size();   // ANTS-3723
-    QSaveFile cw(clPath);
-    if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return clErr(QStringLiteral("changelog_write_failed"),
-            QStringLiteral("changelog_log: could not open \"%1\" for "
-                           "writing").arg(clPath));
-    }
     const QByteArray utf8 = res.markdown.toUtf8();
-    if (cw.write(utf8) != utf8.size() || !cw.commit()) {
-        return clErr(QStringLiteral("changelog_write_failed"),
-            QStringLiteral("changelog_log: atomic write of \"%1\" failed")
-                .arg(clPath));
-    }
+    if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
+        return e;
 
     QJsonObject out;
     out["ok"]               = true;
@@ -1531,14 +1514,6 @@ ClBatchEntryResult resolveClBatchEntry(
 // Each entry routes or inserts exactly as op:"add" would (ANTS-5098), and
 // the file reads in input order (ANTS-4854). m_main-independent.
 QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
-    auto clErr = [](const QString &code, const QString &message) {
-        QJsonObject env;
-        env["ok"]    = false;
-        env["code"]  = code;
-        env["error"] = message;
-        return QJsonDocument(env);
-    };
-
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
     if (callerRaw.isEmpty()) {
@@ -1565,45 +1540,11 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     // ANTS-2136 — dry_run preview, parity with the single op.
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
-    const QString callerCanonical =
-        QFileInfo(callerRaw).canonicalFilePath();
-    if (callerCanonical.isEmpty()) {
-        return clErr(QStringLiteral("no_changelog"),
-            QStringLiteral("changelog_log: caller_cwd \"%1\" does not "
-                           "canonicalise to an existing directory")
-                .arg(callerRaw));
-    }
-    // Resolve the changelog with the same Markdown/YAML split as the
-    // single op (ANTS-2040 format_mismatch reused verbatim), and the same
-    // optional `path` (ANTS-4812).
-    const auto clTarget = resolveChangelogTarget(
-        req, callerCanonical, QStringLiteral("changelog_log"));
-    if (clTarget.bad) return QJsonDocument(clTarget.err);
-    const QString clPath = clTarget.path;
-    if (clPath.isEmpty()) {
-        const QString yamlPath = findYamlChangelogUnder(callerCanonical);
-        if (!yamlPath.isEmpty()) {
-            QJsonObject env;
-            env["ok"]     = false;
-            env["code"]   = QStringLiteral("format_mismatch");
-            env["error"]  = QStringLiteral(
-                "changelog_log: \"%1\" is a YAML changelog; the writer "
-                "only appends to Keep-a-Changelog Markdown (CHANGELOG.md) "
-                "and can't emit this format yet")
-                    .arg(yamlPath);
-            env["path"]   = yamlPath;
-            env["format"] = QStringLiteral("yaml");
-            env["hint"]   = QStringLiteral(
-                "Edit the YAML changelog directly — append a "
-                "`- version:/date:/tags:/body:` block in its schema. "
-                "YAML-changelog writes aren't supported by changelog_log "
-                "yet (ANTS-2040).");
-            return QJsonDocument(env);
-        }
-        return clErr(QStringLiteral("no_changelog"),
-            QStringLiteral("changelog_log: no CHANGELOG.md under \"%1\"")
-                .arg(callerCanonical));
-    }
+    QString callerCanonical, clPath;
+    if (const QJsonDocument e =
+            clFindChangelog(req, callerRaw, &callerCanonical, &clPath);
+        !e.isNull())
+        return e;
 
     // Parse ROADMAP once, only if any entry is id-only (add_from_roadmap).
     QVector<RoadmapParse::BulletRecord> roadmapBullets;
@@ -1642,14 +1583,9 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
         }
     }
 
-    QFile cf(clPath);
-    if (!cf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return clErr(QStringLiteral("changelog_read_failed"),
-            QStringLiteral("changelog_log: could not read \"%1\"")
-                .arg(clPath));
-    }
-    QString markdown = QString::fromUtf8(cf.readAll());
-    cf.close();
+    QString markdown;
+    if (const QJsonDocument e = clReadFile(clPath, &markdown); !e.isNull())
+        return e;
 
     QJsonArray applied;   // [{index, id?, category, line}]
     QJsonArray skipped;   // [{index, code, error}]
@@ -1811,18 +1747,9 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     qint64 fileBytes = QFileInfo(clPath).size();        // ANTS-3723
     if (!applied.isEmpty()) {
         const qint64 clBefore = fileBytes;
-        QSaveFile cw(clPath);
-        if (!cw.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: could not open \"%1\" for "
-                               "writing").arg(clPath));
-        }
         const QByteArray utf8 = markdown.toUtf8();
-        if (cw.write(utf8) != utf8.size() || !cw.commit()) {
-            return clErr(QStringLiteral("changelog_write_failed"),
-                QStringLiteral("changelog_log: atomic write of \"%1\" failed")
-                    .arg(clPath));
-        }
+        if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
+            return e;
         fileBytes    = utf8.size();
         bytesWritten = fileBytes - clBefore;            // ANTS-3723 — delta
     }

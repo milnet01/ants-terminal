@@ -22,6 +22,15 @@
 
 using namespace rcdetail;  // ANTS-3833
 
+// How the feedback verbs read a roadmap's ids: the ✅ status mark, and an
+// id's prefix ("ANTS" of "ANTS-12").
+static QString fbShippedMark() { return QString::fromUtf8("\xE2\x9C\x85"); }
+
+static QString fbIdPrefix(const QString &id) {
+    const int dash = id.lastIndexOf(QLatin1Char('-'));
+    return dash > 0 ? id.left(dash) : id;
+}
+
 // ANTS-3802 — the cross-repo id resolver, lifted out of cmdFeedbackQuery so
 // compact_resolved uses the SAME one. Extracting it is the fix, not a tidy-up:
 // a *_Ants_MCP_Feedback.md file is by construction written from one project
@@ -55,17 +64,11 @@ QHash<QString, QJsonObject> RemoteControl::rlResolveForeignFeedbackIds(
     // roadmap, every id another project's, nothing resolved.
     QHash<QString, QJsonObject> foreignResolved;
 
-    static const QString kCheckF = QString::fromUtf8("\xE2\x9C\x85");  // ✅
-    const auto idPrefixOf = [](const QString &id) {
-        const int dash = id.lastIndexOf(QLatin1Char('-'));
-        return dash > 0 ? id.left(dash) : id;
-    };
-
     QSet<QString> neededForeignIds;
     QSet<QString> foreignPrefixes;
     for (const QString &id : wantedIds) {
         if (alreadyResolved.contains(id)) continue;
-        const QString pfx = idPrefixOf(id);
+        const QString pfx = fbIdPrefix(id);
         if (!callerPrefixes.contains(pfx)) {
             neededForeignIds.insert(id);
             foreignPrefixes.insert(pfx);
@@ -146,7 +149,7 @@ QHash<QString, QJsonObject> RemoteControl::rlResolveForeignFeedbackIds(
             QJsonObject fr;
             fr[QStringLiteral("status")]        = b.status;
             fr[QStringLiteral("resolved_from")] = sibLeaf;
-            if (b.status == kCheckF) {
+            if (b.status == fbShippedMark()) {
                 const QString d = FeedbackFile::shipDateFromRoadmapBody(b.body);
                 if (!d.isEmpty())
                     fr[QStringLiteral("shipped_date")] = d;
@@ -270,17 +273,12 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     // absent/unreadable roadmap leaves every id "unknown" rather than failing
     // the read.
     if (!pr.mappedIds.isEmpty()) {
-        static const QString kCheckQ = QString::fromUtf8("\xE2\x9C\x85");  // ✅
         QHash<QString, QString> idToStatus;
         QHash<QString, QString> idToShipDate;   // ANTS-3504 — ✅ ids' ship-date
         // ANTS-3518 — the caller roadmap's own id-prefixes, so a mapped id
         // whose prefix is absent here can be flagged cross-repo ("foreign_repo")
         // rather than the ambiguous "unknown".
         QSet<QString> callerPrefixes;
-        const auto idPrefix = [](const QString &id) {
-            const int dash = id.lastIndexOf(QLatin1Char('-'));
-            return dash > 0 ? id.left(dash) : id;
-        };
         const QString callerRaw =
             req.value(QStringLiteral("caller_cwd")).toString();
         const QString callerCanonical = callerRaw.isEmpty()
@@ -307,11 +305,11 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id))
                         continue;
                     idToStatus.insert(b.id, b.status);  // later wins (live row)
-                    callerPrefixes.insert(idPrefix(b.id));  // ANTS-3518
+                    callerPrefixes.insert(fbIdPrefix(b.id));  // ANTS-3518
                     // ANTS-3504 — capture the ship-date for ✅ ids (shared
                     // extractor with compact_resolved) so a contributor can
                     // compare it against their server_build.build_date.
-                    if (b.status == kCheckQ) {
+                    if (b.status == fbShippedMark()) {
                         const QString d =
                             FeedbackFile::shipDateFromRoadmapBody(b.body);
                         if (!d.isEmpty()) idToShipDate.insert(b.id, d);
@@ -359,7 +357,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                     status = foreignResolved.value(id)
                                  .value(QStringLiteral("status")).toString();
                 } else if (!callerPrefixes.isEmpty() &&
-                    !callerPrefixes.contains(idPrefix(id))) {
+                    !callerPrefixes.contains(fbIdPrefix(id))) {
                     status = QStringLiteral("foreign_repo");
                     anyForeign = true;
                 } else {
@@ -379,7 +377,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                 if (fr.contains(QStringLiteral("shipped_date")))
                     o[QStringLiteral("shipped_date")] =
                         fr.value(QStringLiteral("shipped_date"));
-            } else if (status == kCheckQ && idToShipDate.contains(id)) {
+            } else if (status == fbShippedMark() && idToShipDate.contains(id)) {
                 o[QStringLiteral("shipped_date")] = idToShipDate.value(id);
             }
             statusArr.append(o);
@@ -411,7 +409,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
             // flag silent where a session most needed it. Flag it, and name
             // why, so it reads differently from a dated same-day ship.
             if (shipped.isEmpty() && !buildDate.isEmpty()
-                && o.value(QStringLiteral("status")).toString() == kCheckQ) {
+                && o.value(QStringLiteral("status")).toString() == fbShippedMark()) {
                 o[QStringLiteral("possibly_stale_binary")] = true;
                 o[QStringLiteral("stale_check")] = QStringLiteral("no_shipped_date");
                 anyStale = true;
@@ -563,6 +561,53 @@ void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
     g_forceFeedbackWriteFail = on;
 }
 
+// The ids these ops write are the ones the Ants MCP maintainer assigns at
+// triage, from this project's roadmap, so only an ANTS id is accepted.
+// Another project's ids are only ever read (rlResolveForeignFeedbackIds).
+static bool fbIsAntsId(const QString &id) {
+    static const QRegularExpression re(QStringLiteral("^ANTS-[0-9]+$"));
+    return re.match(id).hasMatch();
+}
+
+// The one read and the one atomic write behind every feedback_log op. Each
+// returns the refusal to send, or an empty object on success; the write
+// owns the test seam above, so every op's write is covered by it.
+static QJsonObject fbReadFile(const QString &path, QString *content) {
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return fbErr(QStringLiteral("read_failed"),
+                     QStringLiteral("feedback_log: cannot open \"%1\"")
+                         .arg(path));
+    }
+    *content = QString::fromUtf8(f.readAll());
+    return {};
+}
+
+static QJsonObject fbAtomicWrite(const QString &path, const QString &content) {
+    const QByteArray utf8 = content.toUtf8();
+    QSaveFile sf(path);
+    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return fbErr(QStringLiteral("write_failed"),
+                     QStringLiteral("feedback_log: cannot open \"%1\" for "
+                                    "writing").arg(path));
+    }
+    bool committed = (sf.write(utf8) == utf8.size());
+    if (committed) {
+        if (g_forceFeedbackWriteFail) {
+            sf.cancelWriting();
+            committed = false;
+        } else {
+            committed = sf.commit();
+        }
+    }
+    if (!committed) {
+        return fbErr(QStringLiteral("write_failed"),
+                     QStringLiteral("feedback_log: atomic write of \"%1\" "
+                                    "failed").arg(path));
+    }
+    return {};
+}
+
 // ANTS-1962 — feedback_log: append a contributor or maintainer block.
 // ANTS-4671 — the disposition composition, extracted so op:"assign_id" and
 // op:"assign_id_batch" cannot answer one assignment differently. Every rule
@@ -595,11 +640,10 @@ static bool fbComposeAssignValue(const QJsonObject &a, QString *value,
     }
 
     if (hasIds) {
-        static const QRegularExpression idOkRe(QStringLiteral("^ANTS-[0-9]+$"));
         QStringList idList;   // de-duplicated, keeping first occurrence
         for (const QJsonValue &v : idsArr) {
             const QString id = v.toString().trimmed();
-            if (!idOkRe.match(id).hasMatch()) {
+            if (!fbIsAntsId(id)) {
                 *err = fbErr(
                     QStringLiteral("bad_args"),
                     QStringLiteral("feedback_log: assign_id \"ids\" entries "
@@ -696,8 +740,6 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         projectToken.chop(static_cast<int>(qstrlen(kFeedbackSuffix)));
         const QString today =
             QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-        static const QRegularExpression compactIdRe(
-            QStringLiteral("^ANTS-[0-9]+$"));
         static const QRegularExpression compactDateRe(
             QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
         QVector<FeedbackFile::CompactTarget> targets;
@@ -712,7 +754,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                    "non-empty \"heading\"")));
             }
             tg.id = to.value(QStringLiteral("id")).toString();
-            if (!compactIdRe.match(tg.id).hasMatch()) {
+            if (!fbIsAntsId(tg.id)) {
                 return QJsonDocument(fbErr(
                     QStringLiteral("bad_args"),
                     QStringLiteral("feedback_log: each target \"id\" must "
@@ -735,15 +777,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             targets.append(tg);
         }
 
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         const FeedbackFile::CompactResult cr =
             FeedbackFile::compactShipped(content, targets);
@@ -783,29 +819,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
 
         // Only write when something applied and this is not a dry run.
         if (!dryRunC && appliedCount > 0) {
-            const QByteArray utf8 = cr.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, cr.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
 
         QJsonObject out;
@@ -834,8 +849,6 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 resolved, feedbackCallerLeaf(req)));
         }
         FeedbackFile::PruneOptions opts;
-        static const QRegularExpression pruneIdRe(
-            QStringLiteral("^ANTS-[0-9]+$"));
         if (req.contains(QStringLiteral("scope_ids"))) {
             const QJsonArray sc =
                 req.value(QStringLiteral("scope_ids")).toArray();
@@ -848,7 +861,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             }
             for (const QJsonValue &v : sc) {
                 const QString id = v.toString();
-                if (!pruneIdRe.match(id).hasMatch()) {
+                if (!fbIsAntsId(id)) {
                     return QJsonDocument(fbErr(
                         QStringLiteral("bad_args"),
                         QStringLiteral("feedback_log: prune_tracking scope_ids "
@@ -859,15 +872,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             }
         }
 
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         const FeedbackFile::PruneResult prn =
             FeedbackFile::pruneTracking(content, opts);
@@ -886,29 +893,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const int rowsRemoved = static_cast<int>(prn.removed.size());
 
         if (!dryRunP && rowsRemoved > 0) {
-            const QByteArray utf8 = prn.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, prn.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
 
         QJsonObject out;
@@ -943,21 +929,15 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "file (nothing to compact)"),
                 resolved, feedbackCallerLeaf(req)));
         }
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         // Version gate — v2 or later (spec § 2.4). A v1 file's findings predate
         // the structural `**Proposed ID:**` line, so none would be recognised as
         // a finding; refuse and direct the caller to op:migrate_v2.
         // ANTS-3621 — the floor is `< 2`, NOT `!= 2`. The parser gates on
-        // `formatVersion >= 2` (feedbackfile.cpp:142), so a future v3+ file is
+        // `formatVersion >= 2` (FeedbackFile::parse), so a future v3+ file is
         // read with v2 inline-ID semantics; an `!= 2` gate here refused it as
         // `not_v2` and told the caller to run migrate_v2 — which is a no-op on
         // an already-migrated file, leaving no way forward. Keep the two
@@ -986,15 +966,10 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QString roadmapPath = callerCanonical.isEmpty()
             ? QString() : findRoadmapUnder(callerCanonical);
         FeedbackFile::ResolveOptions ropts;
-        static const QString kCheck = QString::fromUtf8("\xE2\x9C\x85");  // ✅
         // ANTS-4977 — 🚫 is closed too: its write-up collapses like a ✅'s.
         // `shippedIds` is the resolver's CLOSED set; only ✅ carries a date.
         static const QString kDropped = QString::fromUtf8("\xF0\x9F\x9A\xAB");  // 🚫
         QSet<QString> callerPrefixes;
-        const auto idPrefixOfC = [](const QString &id) {
-            const int dash = id.lastIndexOf(QLatin1Char('-'));
-            return dash > 0 ? id.left(dash) : id;
-        };
 
         // The caller's own roadmap, when it has one. ANTS-3802 — an ABSENT one
         // is no longer fatal: this file's ids are by construction another
@@ -1019,9 +994,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 for (const auto &b : rmBullets) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
                     ropts.roadmapIds.insert(b.id);
-                    callerPrefixes.insert(idPrefixOfC(b.id));
+                    callerPrefixes.insert(fbIdPrefix(b.id));
                     if (b.status == kDropped) ropts.shippedIds.insert(b.id);
-                    if (b.status == kCheck) {
+                    if (b.status == fbShippedMark()) {
                         ropts.shippedIds.insert(b.id);
                         // ANTS-3504 — capture the ship-date from the same pass so
                         // the collapse stub can carry it (shared extractor with
@@ -1046,7 +1021,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             ropts.roadmapIds.insert(it.key());
             if (it.value().value(QStringLiteral("status")).toString() == kDropped)
                 ropts.shippedIds.insert(it.key());
-            if (it.value().value(QStringLiteral("status")).toString() == kCheck) {
+            if (it.value().value(QStringLiteral("status")).toString() == fbShippedMark()) {
                 ropts.shippedIds.insert(it.key());
                 const QString d =
                     it.value().value(QStringLiteral("shipped_date")).toString();
@@ -1129,29 +1104,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         }
 
         if (!dryRunR && (collapsedCount > 0 || retiredCount > 0)) {
-            const QByteArray utf8 = retire.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, retire.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
 
         QJsonObject out;
@@ -1172,11 +1126,6 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
-    // ANTS-4646(b) — set_title: rewrite the H1's project name. The FILENAME is
-    // derived from caller_cwd's leaf and is always right; the H1 was writable
-    // by no op, so a rename left the title contradicting the filename and the
-    // only route was a hand edit — against the file's own instruction, at the
-    // moment a session is most likely to get it wrong.
     // ANTS-4707 — correct the format-version marker. The only route before this
     // was the hand edit the assign-id pipeline exists to avoid, and a real file
     // declares a version that has never been defined.
@@ -1194,15 +1143,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("feedback_log: set_format_version requires an "
                                "integer \"version\"")));
         }
-        QFile vf(resolved);
-        if (!vf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString vcontent = QString::fromUtf8(vf.readAll());
-        vf.close();
+        QString vcontent;
+        if (const QJsonObject e = fbReadFile(resolved, &vcontent); !e.isEmpty())
+            return QJsonDocument(e);
 
         const FeedbackFile::SetFormatVersionResult vr =
             FeedbackFile::setFormatVersion(vcontent, vv.toInt());
@@ -1217,29 +1160,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         }
         const bool dryRunV = req.value(QStringLiteral("dry_run")).toBool();
         if (vr.changed && !dryRunV) {
-            const QByteArray utf8 = vr.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, vr.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
         QJsonObject out;
         out[QStringLiteral("ok")]          = true;
@@ -1255,6 +1177,11 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
+    // ANTS-4646(b) — set_title: rewrite the H1's project name. The FILENAME is
+    // derived from caller_cwd's leaf and is always right; the H1 was writable
+    // by no op, so a rename left the title contradicting the filename and the
+    // only route was a hand edit — against the file's own instruction, at the
+    // moment a session is most likely to get it wrong.
     if (op == QStringLiteral("set_title")) {
         if (!exists) {
             return QJsonDocument(fbNotFound(
@@ -1271,15 +1198,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "\"title\" (the project name, not the whole "
                                "heading)")));
         }
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         const FeedbackFile::SetTitleResult tr =
             FeedbackFile::setTitle(content, wanted);
@@ -1293,29 +1214,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         }
         const bool dryRunT = req.value(QStringLiteral("dry_run")).toBool();
         if (tr.changed && !dryRunT) {
-            const QByteArray utf8 = tr.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, tr.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
         QJsonObject out;
         out[QStringLiteral("ok")]        = true;
@@ -1343,15 +1243,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "(nothing to migrate)"),
                 resolved, feedbackCallerLeaf(req)));
         }
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         // ANTS-3474 — opt-in: backfill inline Proposed-IDs from the file's own
         // v1 tracking tables (confidence-gated; blank on any uncertainty).
@@ -1393,29 +1287,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         // Write only when there is something to change (marker bump and/or a
         // stamp). An already-v2 file is a clean no-op — never re-written.
         if (!dryRunM && !mr.alreadyV2) {
-            const QByteArray utf8 = mr.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, mr.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
 
         QJsonObject out;
@@ -1469,14 +1342,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("feedback_log: assign_id_batch on an absent file"),
                 resolved, feedbackCallerLeaf(req)));
         }
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"").arg(resolved)));
-        }
-        QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         const bool dryRunB = req.value(QStringLiteral("dry_run")).toBool();
         QJsonArray applied, skipped;
@@ -1565,29 +1433,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         }
 
         if (!dryRunB && anyChange) {
-            const QByteArray utf8 = content.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, content); !e.isEmpty())
+                return QJsonDocument(e);
         }
 
         QJsonObject out;
@@ -1632,15 +1479,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("feedback_log: assign_id on an absent file"),
                 resolved, feedbackCallerLeaf(req)));
         }
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        const QString content = QString::fromUtf8(rf.readAll());
-        rf.close();
+        QString content;
+        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
+            return QJsonDocument(e);
 
         FeedbackFile::AssignTarget tgt;
         tgt.heading     = heading;
@@ -1673,29 +1514,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         // Write only on a real change (skip the byte-identical no-op so the
         // mtime/ETag is untouched — INV-8).
         if (!dryRunA && ar.changed) {
-            const QByteArray utf8 = ar.newContent.toUtf8();
-            QSaveFile sf(resolved);
-            if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                   "writing").arg(resolved)));
-            }
-            bool committed = (sf.write(utf8) == utf8.size());
-            if (committed) {
-                if (g_forceFeedbackWriteFail) {
-                    sf.cancelWriting();
-                    committed = false;
-                } else {
-                    committed = sf.commit();
-                }
-            }
-            if (!committed) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("write_failed"),
-                    QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                   "failed").arg(resolved)));
-            }
+            if (const QJsonObject e = fbAtomicWrite(resolved, ar.newContent); !e.isEmpty())
+                return QJsonDocument(e);
         }
 
         QJsonObject out;
@@ -1831,8 +1651,6 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             QString::fromUtf8("\xF0\x9F\x94\x84"),  // 🔄
             QString::fromUtf8("\xE2\x9D\x93"),      // ❓
         };
-        static const QRegularExpression idRe(
-            QStringLiteral("^ANTS-[0-9]+$"));
         QVector<FeedbackFile::TrackingRow> rows;
         for (const QJsonValue &v : rowsArr) {
             const QJsonObject ro = v.toObject();
@@ -1854,7 +1672,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             for (const QJsonValue &iv :
                      ro.value(QStringLiteral("ids")).toArray()) {
                 const QString idv = iv.toString();
-                if (!idRe.match(idv).hasMatch()) {
+                if (!fbIsAntsId(idv)) {
                     return QJsonDocument(fbErr(
                         QStringLiteral("bad_args"),
                         QStringLiteral("feedback_log: each id must match "
@@ -1881,15 +1699,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     // ensuring a blank-line separator before the new block.
     QString existing;
     if (exists) {
-        QFile rf(resolved);
-        if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("read_failed"),
-                QStringLiteral("feedback_log: cannot open \"%1\"")
-                    .arg(resolved)));
-        }
-        existing = QString::fromUtf8(rf.readAll());
-        rf.close();
+        if (const QJsonObject e = fbReadFile(resolved, &existing); !e.isEmpty())
+            return QJsonDocument(e);
     }
 
     QString full = existing;
@@ -1902,7 +1713,6 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     }
     full += rendered;
 
-    const QByteArray utf8 = full.toUtf8();
     const QByteArray addedUtf8 = rendered.toUtf8();
 
     if (dryRun) {
@@ -1918,28 +1728,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         return QJsonDocument(out);
     }
 
-    QSaveFile sf(resolved);
-    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return QJsonDocument(fbErr(
-            QStringLiteral("write_failed"),
-            QStringLiteral("feedback_log: cannot open \"%1\" for writing")
-                .arg(resolved)));
-    }
-    bool committed = (sf.write(utf8) == utf8.size());
-    if (committed) {
-        if (g_forceFeedbackWriteFail) {
-            sf.cancelWriting();
-            committed = false;
-        } else {
-            committed = sf.commit();
-        }
-    }
-    if (!committed) {
-        return QJsonDocument(fbErr(
-            QStringLiteral("write_failed"),
-            QStringLiteral("feedback_log: atomic write of \"%1\" failed")
-                .arg(resolved)));
-    }
+    if (const QJsonObject e = fbAtomicWrite(resolved, full); !e.isEmpty())
+        return QJsonDocument(e);
 
     QJsonObject out;
     out["ok"]             = true;
@@ -2206,6 +1996,50 @@ QJsonObject gitErr(const char *code, const QString &message,
     return o;
 }
 
+// How every git_state op sorts a failed git run into a refusal. `sub` names
+// the git subcommand in the message. `badRange` holds the stderr phrases that
+// mean an unknown revision, which each subcommand words its own way. Under
+// `exit1IsNoMatch` (git grep), exit 1 with empty stderr is a success.
+// Returns an empty object when git succeeded.
+QJsonObject gitFailure(const GitWrap::Result &g, const QString &sub,
+                       const QStringList &badRange = {},
+                       bool exit1IsNoMatch = false) {
+    if (!g.started) {
+        return gitErr("git_missing",
+            QStringLiteral("git_state: git binary not found on PATH"));
+    }
+    if (g.hardKilled) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git %1 exceeded %2 s wall budget")
+                .arg(sub).arg(GitWrap::kHardKillMs / 1000),
+            g.stderrTail);
+    }
+    if (g.crashed) {
+        return gitErr("git_failed",
+            QStringLiteral("git_state: git %1 crashed").arg(sub), g.stderrTail);
+    }
+    if (g.exitCode == 0 ||
+        (exit1IsNoMatch && g.exitCode == 1 && g.stderrTail.isEmpty())) {
+        return {};
+    }
+    // ANTS-1250-INV-11: not-a-git-repo → distinct code.
+    const QString s = QString::fromUtf8(g.stderrTail);
+    if (s.contains(QStringLiteral("not a git repository"), Qt::CaseInsensitive)) {
+        return gitErr("not_git_repo",
+            QStringLiteral("git_state: not a git repository"));
+    }
+    for (const QString &needle : badRange) {
+        if (s.contains(needle, Qt::CaseInsensitive)) {
+            return gitErr("bad_range",
+                QStringLiteral("git_state: range refers to unknown revision"),
+                g.stderrTail);
+        }
+    }
+    return gitErr("git_failed",
+        QStringLiteral("git_state: git %1 exit %2").arg(sub).arg(g.exitCode),
+        g.stderrTail);
+}
+
 // ANTS-1250-INV-4: stricter range regex — first char of each
 // rev-component MUST NOT be `-` (closes leading-flag injection).
 // Subsequent chars allow `-` so `HEAD~3..HEAD-1` style is still valid.
@@ -2422,32 +2256,9 @@ QJsonObject runStatusOp(const ants::RootProvider *roots, const QJsonObject &req)
          << QStringLiteral("--porcelain=v1")
          << QStringLiteral("-b");
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
-    if (!g.started) {
-        return gitErr("git_missing",
-            QStringLiteral("git_state: git binary not found on PATH"));
-    }
-    if (g.hardKilled) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git status exceeded 5 s wall budget"),
-            g.stderrTail);
-    }
-    if (g.crashed) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git status crashed"),
-            g.stderrTail);
-    }
-    if (g.exitCode != 0) {
-        // ANTS-1250-INV-11: not-a-git-repo → distinct code.
-        const QString s = QString::fromUtf8(g.stderrTail);
-        if (s.contains(QStringLiteral("not a git repository"),
-                       Qt::CaseInsensitive)) {
-            return gitErr("not_git_repo",
-                QStringLiteral("git_state: not a git repository"));
-        }
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git status exit %1").arg(g.exitCode),
-            g.stderrTail);
-    }
+    if (const QJsonObject e = gitFailure(g, QStringLiteral("status"));
+        !e.isEmpty())
+        return e;
 
     QJsonObject out;
     out["ok"]   = true;
@@ -2589,31 +2400,9 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
     argv << pathArgv;
 
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
-    if (!g.started) {
-        return gitErr("git_missing",
-            QStringLiteral("git_state: git binary not found on PATH"));
-    }
-    if (g.hardKilled) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git log exceeded 5 s wall budget"),
-            g.stderrTail);
-    }
-    if (g.crashed) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git log crashed"),
-            g.stderrTail);
-    }
-    if (g.exitCode != 0) {
-        const QString s = QString::fromUtf8(g.stderrTail);
-        if (s.contains(QStringLiteral("not a git repository"),
-                       Qt::CaseInsensitive)) {
-            return gitErr("not_git_repo",
-                QStringLiteral("git_state: not a git repository"));
-        }
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git log exit %1").arg(g.exitCode),
-            g.stderrTail);
-    }
+    if (const QJsonObject e = gitFailure(g, QStringLiteral("log"));
+        !e.isEmpty())
+        return e;
 
     // Parse: split on 0x1e, then per record split on 0x1f.
     QVector<GitWrap::LogRecord> records;
@@ -2745,39 +2534,10 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req) {
     argv << pathArgv;
 
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
-    if (!g.started) {
-        return gitErr("git_missing",
-            QStringLiteral("git_state: git binary not found on PATH"));
-    }
-    if (g.hardKilled) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git diff exceeded 5 s wall budget"),
-            g.stderrTail);
-    }
-    if (g.crashed) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git diff crashed"),
-            g.stderrTail);
-    }
-    if (g.exitCode != 0) {
-        const QString s = QString::fromUtf8(g.stderrTail);
-        if (s.contains(QStringLiteral("not a git repository"),
-                       Qt::CaseInsensitive)) {
-            return gitErr("not_git_repo",
-                QStringLiteral("git_state: not a git repository"));
-        }
-        if (s.contains(QStringLiteral("unknown revision"),
-                       Qt::CaseInsensitive) ||
-            s.contains(QStringLiteral("bad revision"),
-                       Qt::CaseInsensitive)) {
-            return gitErr("bad_range",
-                QStringLiteral("git_state: range refers to unknown revision"),
-                g.stderrTail);
-        }
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git diff exit %1").arg(g.exitCode),
-            g.stderrTail);
-    }
+    if (const QJsonObject e = gitFailure(g, QStringLiteral("diff"),
+            {QStringLiteral("unknown revision"), QStringLiteral("bad revision")});
+        !e.isEmpty())
+        return e;
 
     // The envelope flags which diff the caller received.
     auto stampKind = [&](QJsonObject &out) {
@@ -2948,37 +2708,10 @@ QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
     argv << QStringLiteral("--") << pathArgv;
 
     GitWrap::Result g = GitWrap::run(rootCanonical, argv);
-    if (!g.started) {
-        return gitErr("git_missing",
-            QStringLiteral("git_state: git binary not found on PATH"));
-    }
-    if (g.hardKilled) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git grep exceeded 5 s wall budget"),
-            g.stderrTail);
-    }
-    if (g.crashed) {
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git grep crashed"), g.stderrTail);
-    }
-    // git grep exits 1 when nothing matched.
-    if (g.exitCode != 0 && !(g.exitCode == 1 && g.stderrTail.isEmpty())) {
-        const QString s = QString::fromUtf8(g.stderrTail);
-        if (s.contains(QStringLiteral("not a git repository"),
-                       Qt::CaseInsensitive)) {
-            return gitErr("not_git_repo",
-                QStringLiteral("git_state: not a git repository"));
-        }
-        if (s.contains(QStringLiteral("unable to resolve revision"),
-                       Qt::CaseInsensitive)) {
-            return gitErr("bad_range",
-                QStringLiteral("git_state: range refers to unknown revision"),
-                g.stderrTail);
-        }
-        return gitErr("git_failed",
-            QStringLiteral("git_state: git grep exit %1").arg(g.exitCode),
-            g.stderrTail);
-    }
+    if (const QJsonObject e = gitFailure(g, QStringLiteral("grep"),
+            {QStringLiteral("unable to resolve revision")}, true);
+        !e.isEmpty())
+        return e;
 
     QByteArray bytes = g.stdoutBytes;
     if (g.stdoutTruncated) {   // drop a hit cut mid-line

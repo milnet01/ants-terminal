@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6263 -->
+<!-- ants-roadmap-id-high-water: ANTS=6269 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95593,6 +95593,16 @@ worked after these.
   plain add. Left open: for an unreadable roadmap the batch still says
   "no ROADMAP.md is present" per entry, where the single op refuses
   roadmap_read_failed. Medium and low findings still open.
+  2026-10-24: MEDIUMs done. F3 (fbReadFile/fbAtomicWrite and
+  clReadFile/clAtomicWrite replace nine and five copies; the write-fail
+  test seam lives in the helper), F8 (clFindChangelog and one clErr
+  replace the two copied openings), F9 (gitFailure for the four git_state
+  ops, timeout text from kHardKillMs), F11 and F12 (headers moved to their
+  blocks) fixed. F5: stale line citation fixed. F6: fbIdPrefix and
+  fbShippedMark fold the shared copies. F7: fbIsAntsId is the one id
+  check. Queued ANTS-6264 (F4), 6265 (F5 merge), 6266 (F6 drift), 6267
+  (F7 wording), 6268 (F9 githooksreport), 6269 (F10 UTF-8 cut). LOWs
+  left.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97026,6 +97036,71 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L23-F6 sweep).
   Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6264] **changelog_log op:"release" reports bytes_written by hand and omits file_bytes.**
+  L24-F4. Every other changelog write calls rcSetWriteBytes, which sets
+  bytes_written and file_bytes (ANTS-3723). The release write computes
+  bytes_written itself and never sets file_bytes. Fix: call
+  rcSetWriteBytes there. Queued, not fixed in ANTS-6133: it adds a reply
+  field, so it is a behaviour change with its own test.
+  **Layman:** One changelog action leaves out a size figure every other one reports.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6265] **feedback_log compact_resolved reads the format marker with its own regex, not FeedbackFile::markerVersion.**
+  L24-F5. compact_resolved matches `[0-9]+` over the whole file;
+  markerVersion matches `[0-9]*` line by line and stops at the first
+  marker. They disagree on an empty marker before a real one, and on a
+  marker split over lines. Fix: call FeedbackFile::markerVersion. Queued:
+  it changes which files compact_resolved refuses.
+  **Layman:** One feedback tool checks a file's version its own way, so it can disagree with the reader.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6266] **feedback_query and compact_resolved scan the caller's roadmap with two copies that have drifted.**
+  L24-F6. compact_resolved treats 🚫 as closed (ANTS-4977); feedback_query
+  does not. Only feedback_query drops a stale ship date. ANTS-6133 folded
+  the shared id-prefix and ✅ copies (fbIdPrefix, fbShippedMark). Left:
+  one "caller roadmap → status, prefix and ship-date maps" helper for
+  both, with a test for the 🚫 rule. Behaviour change for one of them.
+  **Layman:** Two feedback tools judge a roadmap item's state differently.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6267] **feedback_log's id check refuses in two wordings: "must match ^ANTS-[0-9]+$" and "must match ANTS-NNNN".**
+  L24-F7. ANTS-6133 made fbIsAntsId the one check. The four refusal
+  messages still use two wordings. Pick one; check tests that pin the
+  text first.
+  **Layman:** The same mistake gets two differently worded error messages.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6268] **githooksreport sorts a failed git run by hand and folds timeout and crash into "rev-parse failed".**
+  L24-F9. ANTS-6133 added gitFailure() for the four git_state ops,
+  building the timeout text from GitWrap::kHardKillMs. githooksreport.cpp
+  has a fifth copy with its own refuse(), which duplicates gitErr, and
+  reports a timeout or crash as "rev-parse failed". Fix: reuse
+  gitFailure, or name the timeout and crash. Changes its refusal text.
+  **Layman:** The git-hooks report gives a vaguer error than the git tool when git times out or crashes.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6269] **git_state op:"log" cuts a commit body mid-character; three UTF-8 truncations differ.**
+  L24-F10. runLogOp truncates the body at kGitLogBodyCapBytes - 1 with no
+  back-off over continuation bytes, so it can split a character.
+  changelog release backs off then also drops the lead byte, losing a
+  whole character. feedback_query backs off correctly, as do
+  cochangefamily.cpp and readregion.cpp. Fix: one shared
+  truncateUtf8(bytes, cap), with a test on a multi-byte body.
+  **Layman:** A long commit message can end in a broken character in the git tool's reply.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
