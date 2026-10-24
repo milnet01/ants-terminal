@@ -2160,6 +2160,21 @@ ResolvedRoot resolveCallerCwdRoot(const RootProvider *roots,
     return rr;
 }
 
+QString requiredCallerCwd(const RootProvider *roots, const QJsonObject &req,
+                          const QString &verb, QJsonObject *refusal) {
+    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
+    const ResolvedRoot rr = resolveCallerCwdRoot(roots, callerRaw);
+    if (rr.source != ResolvedRoot::Source::Unresolvable && !rr.cwd.isEmpty())
+        return rr.cwd;
+    *refusal = QJsonObject{
+        {QStringLiteral("ok"), false},
+        {QStringLiteral("code"), QStringLiteral("no_project")},
+        {QStringLiteral("error"),
+         QStringLiteral("%1: caller_cwd \"%2\" does not resolve to a directory")
+             .arg(verb, callerRaw)}};
+    return QString();
+}
+
 // ANTS-4932 § 2.4 — ants-mcpd's fallback is its process cwd, and its roadmap
 // is the one a caller_cwd naming that directory would get.
 QString ServerCwdRootProvider::fallbackRoot() const {

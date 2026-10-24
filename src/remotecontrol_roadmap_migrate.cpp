@@ -61,25 +61,19 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // one case here is Unresolvable — the path was given and does not exist.
     // NoMatch (it resolves, but no open tab sits there) is not a refusal:
     // migrating a project you have no terminal open in is legitimate.
-    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
-    if (rr.source == ants::ResolvedRoot::Source::Unresolvable) {
-        QJsonObject e;
-        e[QStringLiteral("ok")]    = false;
-        e[QStringLiteral("code")]  = QStringLiteral("no_project");
-        e[QStringLiteral("error")] =
-            QStringLiteral("roadmap_migrate: caller_cwd \"%1\" does not resolve "
-                           "to a directory").arg(callerRaw);
-        return QJsonDocument(e);
-    }
+    QJsonObject refusal;
+    const QString cwd =
+        ants::requiredCallerCwd(m_roots, req, QStringLiteral("roadmap_migrate"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
 
-    // rr.cwd is canonical, and three later steps rest on that: it is the same
+    // cwd is canonical, and three later steps rest on that: it is the same
     // QFileInfo::canonicalFilePath() form registerProject() stores and
     // RoadmapSource::migratedProject() later looks up by. Were the forms to
     // diverge, step 6's re-run detection would miss, every re-run would attempt
     // a new project row, and INV-7's idempotency would fail. One canonicaliser,
     // named — run() takes an already-canonical root and does not redo it.
-    const QString root = rr.cwd;
+    const QString root = cwd;
     const QString leaf = QDir(root).dirName();
 
     // 0b — ANTS-4600. The store is MACHINE-GLOBAL, so a root registered from
@@ -95,7 +89,7 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
     // and its own fixtures legitimately migrate temp roots into temp stores.
     // What is refused is registering one into the shared store, which is this
     // handler's decision alone — the same reason INV-4 puts `no_project` here.
-    if (RoadmapMigrateVerb::isTransientRoot(rr.cwd)) {
+    if (RoadmapMigrateVerb::isTransientRoot(cwd)) {
         QJsonObject e;
         e[QStringLiteral("ok")]    = false;
         e[QStringLiteral("code")]  = QStringLiteral("transient_root");
@@ -104,7 +98,7 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
                            "directory \"%2\" — a session scratchpad, not a "
                            "durable project. Migrate the real project root "
                            "instead.")
-                .arg(rr.cwd, QDir::tempPath());
+                .arg(cwd, QDir::tempPath());
         return QJsonDocument(e);
     }
 

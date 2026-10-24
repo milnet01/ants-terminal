@@ -677,16 +677,9 @@ TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
     const QString h = readSrc("remotecontrol_session_message.cpp");
     ASSERT_FALSE(h.isEmpty());
 
-    // ANTS-5741 — the single-slug send and the broadcast each have a preview
-    // branch, so every one is checked rather than the first found.
-    int branches = 0;
-    for (int at = h.indexOf(QStringLiteral("if (dryRun) {")); at >= 0;
-         at = h.indexOf(QStringLiteral("if (dryRun) {"), at + 1)) {
-        const int end = h.indexOf(QStringLiteral("return QJsonDocument(out);"), at);
-        ASSERT_GT(end, at);
-        const QString branch = codeOnly(h.mid(at, end - at));
-        ++branches;
-
+    // ANTS-5741 — the single-slug send and the broadcast each have a preview:
+    // the broadcast's dry-run branch and sendPreview(). Both are checked.
+    const auto checkPreview = [](const QString &branch) {
         EXPECT_TRUE(branch.contains(QStringLiteral("would_send")))
             << "ANTS-4463: a preview carries a would-be field, never message_id";
         EXPECT_FALSE(branch.contains(QStringLiteral("message_id")))
@@ -694,17 +687,34 @@ TEST(SessionMessage, Inv10DryRunNeitherWritesNorClaimsPastTense) {
                "as a completed write";
         EXPECT_FALSE(branch.contains(QStringLiteral("sendMessage(")))
             << "the preview must stop SHORT of the writer, not write and roll back";
-    }
-    EXPECT_EQ(branches, 2) << "expected the single-slug and the broadcast preview";
+    };
+    const auto upToReturn = [&h](int at) {
+        const int end = h.indexOf(QStringLiteral("return QJsonDocument(c.out);"), at);
+        return end > at ? codeOnly(h.mid(at, end - at)) : QString();
+    };
+    const int broadcastAt = h.indexOf(QStringLiteral("if (c.dryRun) {"));
+    ASSERT_GE(broadcastAt, 0) << "the broadcast's dry-run branch moved";
+    checkPreview(upToReturn(broadcastAt));
+    const int previewAt = h.indexOf(QStringLiteral("QJsonDocument sendPreview("));
+    ASSERT_GE(previewAt, 0) << "sendPreview moved";
+    checkPreview(upToReturn(previewAt));
+
+    // The single-slug send reaches the preview BEFORE the writer.
+    const int sendAt = h.indexOf(QStringLiteral("QJsonDocument opSend("));
+    ASSERT_GE(sendAt, 0);
+    const QString send = codeOnly(h.mid(sendAt));
+    const int toPreview = send.indexOf(QStringLiteral("return sendPreview("));
+    ASSERT_GE(toPreview, 0);
+    EXPECT_LT(toPreview, send.indexOf(QStringLiteral("sendMessage(")));
 
     // § 2.6 — the prune is a write, so a dry run must not trigger it either.
     // Against an empty inbox a pruning preview is indistinguishable from a
     // clean one, which is why this is asserted here rather than by fixture.
-    const int pruneAt = h.indexOf(QStringLiteral("pruneIfWriting = [&]"));
+    const int pruneAt = h.indexOf(QStringLiteral("void pruneAfterWrite() const {"));
     ASSERT_GE(pruneAt, 0);
     const QString guard = codeOnly(h.mid(pruneAt, 220));
     EXPECT_TRUE(guard.contains(QStringLiteral("dryRun")))
-        << "pruneIfWriting must exclude a dry run — a preview that prunes "
+        << "pruneAfterWrite must exclude a dry run — a preview that prunes "
            "destroys aged mail to measure itself";
 }
 
@@ -733,7 +743,7 @@ TEST(SessionMessage, Ants5594SubdirectoryCallerFindsItsProject) {
     const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
     ASSERT_FALSE(h.isEmpty());
     EXPECT_TRUE(h.contains(QStringLiteral(
-        "store.projectIdContaining(ProjectSettings::repoRootOf(rr.cwd)")))
+        "store.projectIdContaining(ProjectSettings::repoRootOf(cwd)")))
         << "the caller's project must be found by walking up from caller_cwd";
     EXPECT_FALSE(h.contains(QStringLiteral("projectIdForRoot(")))
         << "an exact-root lookup refuses no_project from a subdirectory";

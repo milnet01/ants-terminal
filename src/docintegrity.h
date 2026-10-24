@@ -56,6 +56,11 @@ enum class Kind {
     ListCount,
 };
 
+// Every Kind, in declaration order. A new Kind joins this list and kindName().
+const QList<Kind> &allKinds();
+// A Kind's wire string (snake_case); the CamelCase enum never reaches the wire.
+QString kindName(Kind k);
+
 struct Finding {
     // Value-initialised for determinism (ANTS-3850). Note the zero enumerator
     // is DeadAnchor, a real classification — so this makes an unset `kind`

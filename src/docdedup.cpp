@@ -117,6 +117,14 @@ bool isPointerLine(const QString &raw) {
     return re.match(raw.trimmed()).hasMatch();
 }
 
+const QStringList &generatedPathGlobs() {
+    static const QStringList globs{
+        QStringLiteral("*AUTOMATED_AUDIT_REPORT*"),
+        QStringLiteral("*superpowers/*"),
+    };
+    return globs;
+}
+
 bool isExcludedPath(const QString &relPath, const Options &opts) {
     // Deliberately NOT QRegularExpression::wildcardToRegularExpression: its `*`
     // stops at a path separator (that is what makes it a *glob*), so

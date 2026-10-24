@@ -18,6 +18,7 @@
 #include "pathvalidation.h"
 #include "resolvedroot.h"
 #include "runtraceverb.h"
+#include "sessioncostverb.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -34,27 +35,14 @@ QJsonDocument refuse(const char *code, const QString &message) {
     return QJsonDocument(e);
 }
 
-// Where the harness keeps transcripts. CLAUDE_CONFIG_DIR moves it, so both
-// are allowed; nothing outside them is.
-QStringList projectsDirs() {
-    QStringList out;
-    const QString cfg = qEnvironmentVariable("CLAUDE_CONFIG_DIR");
-    if (!cfg.isEmpty())
-        out << QDir(cfg).filePath(QStringLiteral("projects"));
-    out << QDir::home().filePath(QStringLiteral(".claude/projects"));
-    return out;
-}
-
 }  // namespace
 
 QJsonDocument RemoteControl::cmdRunTrace(const QJsonObject &req) {
     // caller_cwd absent is the dispatcher's refusal (CallerCwdContract::Required).
-    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
-    if (rr.source == ants::ResolvedRoot::Source::Unresolvable || rr.cwd.isEmpty())
-        return refuse("no_project",
-                      QStringLiteral("run_trace: caller_cwd \"%1\" does not resolve to a "
-                                     "directory").arg(callerRaw));
+    QJsonObject refusal;
+    const QString cwd = ants::requiredCallerCwd(m_roots, req, QStringLiteral("run_trace"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
 
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QStringLiteral("start") && op != QStringLiteral("finish")
@@ -64,7 +52,7 @@ QJsonDocument RemoteControl::cmdRunTrace(const QJsonObject &req) {
                           .arg(op));
 
     RunTraceVerb::Paths paths;
-    paths.root = RunTraceVerb::projectRootFor(rr.cwd);
+    paths.root = RunTraceVerb::projectRootFor(cwd);
     QString warning, cfgError;
     paths.indexRel = RunTraceVerb::resolveIndex(paths.root, &warning, &cfgError);
     if (paths.indexRel.isEmpty())
@@ -102,18 +90,19 @@ QJsonDocument RemoteControl::cmdRunTrace(const QJsonObject &req) {
         const QString transcript = req.value(QStringLiteral("transcript")).toString();
         const QString sessionId = req.value(QStringLiteral("session_id")).toString();
         if (!transcript.isEmpty() || !sessionId.isEmpty()) {
+            // A transcript outside the harness's folders is refused.
+            const QStringList dirs = SessionCost::projectsDirs();
             const QString path = !transcript.isEmpty()
                 ? transcript
-                : RunTraceVerb::transcriptForSession(projectsDirs().constLast(),
-                                                     rr.cwd, sessionId);
+                : RunTraceVerb::transcriptForSession(dirs.constLast(), cwd, sessionId);
             if (path.isEmpty())
                 return refuse("bad_args", QStringLiteral("run_trace: session_id \"%1\" is "
                                                          "not a session id").arg(sessionId));
-            if (!RunTraceVerb::transcriptAllowed(path, projectsDirs()))
+            if (!RunTraceVerb::transcriptAllowed(path, dirs))
                 return refuse("bad_path",
                               QStringLiteral("run_trace: transcript \"%1\" is not a .jsonl "
                                              "file under %2")
-                                  .arg(path, projectsDirs().join(QStringLiteral(" or "))));
+                                  .arg(path, dirs.join(QStringLiteral(" or "))));
             fr.transcriptPath = path;
         }
         out = RunTraceVerb::finish(paths, fr);

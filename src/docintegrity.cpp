@@ -1000,4 +1000,23 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
     return findings;
 }
 
+const QList<Kind> &allKinds() {
+    static const QList<Kind> kinds{Kind::DeadAnchor, Kind::BrokenLink,
+                                   Kind::TocGap, Kind::HeadingSequence,
+                                   Kind::UngrantedTool, Kind::ListCount};
+    return kinds;
+}
+
+QString kindName(Kind k) {
+    switch (k) {
+    case Kind::DeadAnchor:      return QStringLiteral("dead_anchor");
+    case Kind::BrokenLink:      return QStringLiteral("broken_link");
+    case Kind::TocGap:          return QStringLiteral("toc_gap");
+    case Kind::HeadingSequence: return QStringLiteral("heading_sequence");  // ANTS-3700
+    case Kind::UngrantedTool:   return QStringLiteral("ungranted_tool");    // ANTS-3719
+    case Kind::ListCount:       return QStringLiteral("list_count");        // ANTS-5295
+    }
+    return QString();
+}
+
 }  // namespace DocIntegrity

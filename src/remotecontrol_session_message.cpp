@@ -27,6 +27,8 @@
 #include <QDir>
 #include <QJsonArray>
 
+#include <optional>
+
 namespace {
 
 QJsonDocument refuse(const char *code, const QString &message) {
@@ -61,18 +63,203 @@ QJsonObject messageToJson(const RoadmapStore::Message &m) {
     return o;
 }
 
+
+QJsonDocument refuseStore(const QString &code, const QString &err) {
+    return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
+                  QStringLiteral("session_message: %1").arg(err));
+}
+
+// What every op shares, read once by cmdSessionMessage.
+struct MailCall {
+    RoadmapStore &store;
+    qint64 self;             // the caller's project
+    const QJsonObject &req;
+    QString now;             // read once, so every stamp this call writes agrees
+    bool dryRun;
+    QJsonObject out;         // {ok, op}; each op adds its fields
+
+    // § 2.6 — the prune fires on ops that ALREADY write, never on a read and
+    // never on a dry run. A dry_run send is an op too, and INV-10 forbids a
+    // preview from writing anything.
+    void pruneAfterWrite() const {
+        if (dryRun)
+            return;
+        const QString cutoff =
+            QDateTime::currentDateTimeUtc()
+                .addDays(-RoadmapStore::kMailAckedTtlDays)
+                .toString(QStringLiteral("yyyy-MM-ddTHH:mm:ssZ"));
+        QString ignored;
+        store.pruneAckedMail(self, cutoff, &ignored);
+    }
+};
+
+// ANTS-5741 (§ 2.7) — `to:"*"` addresses every registered project. The store
+// owns the walk, the cap split and the dry-run split; this only shapes the
+// reply.
+QJsonDocument sendBroadcast(MailCall &c, const QString &body, const QString &from) {
+    const bool includeSelf = c.req.value(QStringLiteral("include_self")).toBool(false);
+    QVector<RoadmapStore::BroadcastOutcome> outcomes;
+    QString code, err;
+    if (!c.store.broadcastMessage(c.self, body, from, c.now, includeSelf, c.dryRun,
+                                  &outcomes, &code, &err))
+        return refuseStore(code, err);
+    QJsonArray went, refused;
+    for (const auto &o : outcomes) {
+        if (!o.code.isEmpty()) {
+            QJsonObject r;
+            r[QStringLiteral("to")]   = o.toSlug;
+            r[QStringLiteral("code")] = o.code;
+            refused.append(r);
+        } else if (!c.dryRun) {
+            QJsonObject s;
+            s[QStringLiteral("to")]         = o.toSlug;
+            s[QStringLiteral("message_id")] = double(o.messageId);
+            went.append(s);
+        } else {
+            went.append(o.toSlug);
+        }
+    }
+    c.out[QStringLiteral("to")] = QStringLiteral("*");
+    if (c.dryRun) {
+        c.out[QStringLiteral("dry_run")]       = true;
+        c.out[QStringLiteral("would_send_to")] = went;
+        c.out[QStringLiteral("would_refuse")]  = refused;
+        return QJsonDocument(c.out);
+    }
+    c.pruneAfterWrite();
+    c.out[QStringLiteral("sent")]       = went;
+    c.out[QStringLiteral("refused")]    = refused;
+    c.out[QStringLiteral("created_at")] = c.now;
+    return QJsonDocument(c.out);
+}
+
+// ANTS-4463 — a preview carries NO past-tense field: `would_send` rather than
+// `message_id`, so a caller branching on either cannot read a preview as a
+// completed write.
+//
+// It runs the same two validations the real call runs — resolve the
+// recipient, then RoadmapStore::mailArgsError() — and stops before the
+// insert. Nothing here writes, and § 2.6's prune is skipped for the same
+// reason, so a preview cannot destroy aged mail to measure itself.
+QJsonDocument sendPreview(MailCall &c, const QString &to, const QString &body,
+                          const QString &from) {
+    if (!c.store.projectIdForSlug(to))
+        return refuseUnknownProject(c.store, to,
+                      QStringLiteral("no project is registered under "
+                                     "export_slug \"%1\", so mail to it "
+                                     "could never be delivered").arg(to));
+    if (const QString bad = RoadmapStore::mailArgsError(body, from); !bad.isEmpty())
+        return refuse("bad_args", bad);
+    c.out[QStringLiteral("dry_run")]    = true;
+    c.out[QStringLiteral("would_send")] = true;
+    c.out[QStringLiteral("to")]         = to;
+    return QJsonDocument(c.out);
+}
+
+QJsonDocument opSend(MailCall &c) {
+    const QString to   = c.req.value(QStringLiteral("to")).toString();
+    const QString body = c.req.value(QStringLiteral("body")).toString();
+    const QString from = c.req.value(QStringLiteral("from_session")).toString();
+    if (to.isEmpty())
+        return refuse("bad_args",
+                      QStringLiteral("session_message: op:\"send\" needs a "
+                                     "`to` export_slug"));
+    if (to == QLatin1String("*"))
+        return sendBroadcast(c, body, from);
+    if (c.dryRun)
+        return sendPreview(c, to, body, from);
+
+    qint64 id = 0;
+    QString code, err;
+    if (!c.store.sendMessage(c.self, to, body, from, c.now, &id, &code, &err)) {
+        if (code == QLatin1String("unknown_project"))
+            return refuseUnknownProject(c.store, to,
+                                        QStringLiteral("session_message: %1").arg(err));
+        return refuseStore(code, err);
+    }
+    c.pruneAfterWrite();
+    c.out[QStringLiteral("message_id")] = double(id);
+    c.out[QStringLiteral("to")]         = to;
+    c.out[QStringLiteral("created_at")] = c.now;
+    return QJsonDocument(c.out);
+}
+
+// ANTS-5098 — range-checked before the cast. A fractional, negative or
+// out-of-range double cast to qint64 is undefined behaviour or names a
+// different row. Shared by ack and by inbox's single-message read. 0 when
+// absent; nullopt when present and bad.
+std::optional<qint64> messageIdArg(const QJsonObject &req) {
+    if (!req.contains(QStringLiteral("message_id")))
+        return 0;
+    const double raw = req.value(QStringLiteral("message_id")).toDouble(-1);
+    if (!(raw >= 1.0 && raw <= 9007199254740992.0) || raw != std::floor(raw))
+        return std::nullopt;
+    return qint64(raw);
+}
+
+QJsonDocument opAck(MailCall &c, qint64 id) {
+    if (id == 0)
+        return refuse("bad_args",
+                      QStringLiteral("session_message: op:\"ack\" needs a "
+                                     "`message_id`"));
+    bool already = false;
+    QString code, err;
+    if (!c.store.ackMessage(c.self, id, c.now, &already, &code, &err))
+        return refuseStore(code, err);
+    c.pruneAfterWrite();
+    c.out[QStringLiteral("message_id")]    = double(id);
+    c.out[QStringLiteral("already_acked")] = already;
+    if (!already)
+        c.out[QStringLiteral("acked_at")] = c.now;
+    return QJsonDocument(c.out);
+}
+
+// `id` 0 reads a page of the inbox; otherwise that one message.
+QJsonDocument opInbox(MailCall &c, qint64 id) {
+    QVector<RoadmapStore::Message> rows;
+    int unacked = 0;
+    QString err;
+    if (id != 0) {
+        // ANTS-5601 — one message by id, acked or not, so a note citing
+        // "mailbox 295" costs one read rather than a paged scan.
+        RoadmapStore::Message m;
+        QString code;
+        if (!c.store.messageFor(c.self, id, &m, &code, &err))
+            return refuseStore(code, err);
+        rows.append(m);
+        if (!c.store.inboxFor(c.self, false, 0, 0, nullptr, &unacked, &err))
+            return refuseStore(QString(), err);
+    } else {
+        const bool includeAcked =
+            c.req.value(QStringLiteral("include_acked")).toBool(false);
+        // ANTS-5098 bounds the page; ANTS-5591 maps 0 or less to that bound.
+        const int limit = RoadmapStore::inboxPageLimit(
+            c.req.value(QStringLiteral("limit")).toInt(20));
+        const int offset = qMax(0, c.req.value(QStringLiteral("offset")).toInt(0));
+        if (!c.store.inboxFor(c.self, includeAcked, limit, offset, &rows, &unacked, &err))
+            return refuseStore(QString(), err);
+    }
+
+    QJsonArray arr;
+    for (const auto &m : rows)
+        arr.append(messageToJson(m));
+    c.out[QStringLiteral("messages")]      = arr;
+    c.out[QStringLiteral("unacked_count")] = unacked;
+    c.out[QStringLiteral("count")]         = arr.size();
+    return QJsonDocument(c.out);
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     // caller_cwd absent is the dispatcher's refusal (CallerCwdContract::
     // Required, ANTS-1404), so the only case here is a path that does not
     // resolve to a directory.
-    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
-    if (rr.source == ants::ResolvedRoot::Source::Unresolvable)
-        return refuse("no_project",
-                      QStringLiteral("session_message: caller_cwd \"%1\" does "
-                                     "not resolve to a directory").arg(callerRaw));
+    QJsonObject refusal;
+    const QString cwd =
+        ants::requiredCallerCwd(m_roots, req, QStringLiteral("session_message"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
 
     const QString op = req.value(QStringLiteral("op")).toString(
         QStringLiteral("inbox"));
@@ -98,189 +285,25 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     // session in a project's subdirectory still reaches that project's mail.
     // ANTS-5667 — an outer folder declaring `repo_root` asks for its clone.
     const auto self =
-        store.projectIdContaining(ProjectSettings::repoRootOf(rr.cwd), &err);
+        store.projectIdContaining(ProjectSettings::repoRootOf(cwd), &err);
     if (!self)
         return refuse("no_project",
                       QStringLiteral("session_message: \"%1\" is not inside a "
                                      "project registered in the roadmap store, "
                                      "so it has no mailbox. Run roadmap_migrate "
                                      "first.")
-                          .arg(rr.cwd));
+                          .arg(cwd));
 
-    // Read once, so every stamp this call writes agrees.
-    const QString now = QDateTime::currentDateTimeUtc()
-                            .toString(QStringLiteral("yyyy-MM-ddTHH:mm:ssZ"));
-
-    // § 2.6 — the prune fires on ops that ALREADY write, never on a read and
-    // never on a dry run. A dry_run send is an op too, and INV-10 forbids a
-    // preview from writing anything.
-    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool(false);
-    const auto pruneIfWriting = [&] {
-        if (op == QStringLiteral("inbox") || dryRun)
-            return;
-        const QString cutoff =
-            QDateTime::currentDateTimeUtc()
-                .addDays(-RoadmapStore::kMailAckedTtlDays)
-                .toString(QStringLiteral("yyyy-MM-ddTHH:mm:ssZ"));
-        QString ignored;
-        store.pruneAckedMail(*self, cutoff, &ignored);
-    };
-
-    QJsonObject out;
-    out[QStringLiteral("ok")] = true;
-    out[QStringLiteral("op")] = op;
-
-    if (op == QStringLiteral("send")) {
-        const QString to   = req.value(QStringLiteral("to")).toString();
-        const QString body = req.value(QStringLiteral("body")).toString();
-        const QString from = req.value(QStringLiteral("from_session")).toString();
-        if (to.isEmpty())
-            return refuse("bad_args",
-                          QStringLiteral("session_message: op:\"send\" needs a "
-                                         "`to` export_slug"));
-
-        // ANTS-5741 (§ 2.7) — `to:"*"` addresses every registered project.
-        // The store owns the walk, the cap split and the dry-run split; this
-        // only shapes the reply.
-        if (to == QLatin1String("*")) {
-            const bool includeSelf =
-                req.value(QStringLiteral("include_self")).toBool(false);
-            QVector<RoadmapStore::BroadcastOutcome> outcomes;
-            QString code;
-            if (!store.broadcastMessage(*self, body, from, now, includeSelf,
-                                        dryRun, &outcomes, &code, &err))
-                return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
-                              QStringLiteral("session_message: %1").arg(err));
-            QJsonArray went, refused;
-            for (const auto &o : outcomes) {
-                if (!o.code.isEmpty()) {
-                    QJsonObject r;
-                    r[QStringLiteral("to")]   = o.toSlug;
-                    r[QStringLiteral("code")] = o.code;
-                    refused.append(r);
-                } else if (!dryRun) {
-                    QJsonObject s;
-                    s[QStringLiteral("to")]         = o.toSlug;
-                    s[QStringLiteral("message_id")] = double(o.messageId);
-                    went.append(s);
-                } else {
-                    went.append(o.toSlug);
-                }
-            }
-            out[QStringLiteral("to")] = to;
-            if (dryRun) {
-                out[QStringLiteral("dry_run")]       = true;
-                out[QStringLiteral("would_send_to")] = went;
-                out[QStringLiteral("would_refuse")]  = refused;
-                return QJsonDocument(out);
-            }
-            pruneIfWriting();
-            out[QStringLiteral("sent")]       = went;
-            out[QStringLiteral("refused")]    = refused;
-            out[QStringLiteral("created_at")] = now;
-            return QJsonDocument(out);
-        }
-
-        if (dryRun) {
-            // ANTS-4463 — a preview carries NO past-tense field: `would_send`
-            // rather than `message_id`, so a caller branching on either cannot
-            // read a preview as a completed write.
-            //
-            // It runs the same two validations the real call runs — resolve the
-            // recipient, then RoadmapStore::mailArgsError() — and stops
-            // before the insert. Nothing here writes, and § 2.6's prune is
-            // skipped for the same reason (see pruneIfWriting above), so a
-            // preview cannot destroy aged mail to measure itself.
-            if (!store.projectIdForSlug(to))
-                return refuseUnknownProject(store, to,
-                              QStringLiteral("no project is registered under "
-                                             "export_slug \"%1\", so mail to it "
-                                             "could never be delivered").arg(to));
-            if (const QString bad = RoadmapStore::mailArgsError(body, from);
-                !bad.isEmpty())
-                return refuse("bad_args", bad);
-            out[QStringLiteral("dry_run")]    = true;
-            out[QStringLiteral("would_send")] = true;
-            out[QStringLiteral("to")]         = to;
-            return QJsonDocument(out);
-        }
-
-        qint64 id = 0;
-        QString code;
-        if (!store.sendMessage(*self, to, body, from, now, &id, &code, &err)) {
-            const QString msg = QStringLiteral("session_message: %1").arg(err);
-            if (code == QLatin1String("unknown_project"))
-                return refuseUnknownProject(store, to, msg);
-            return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(), msg);
-        }
-        pruneIfWriting();
-        out[QStringLiteral("message_id")] = double(id);
-        out[QStringLiteral("to")]         = to;
-        out[QStringLiteral("created_at")] = now;
-        return QJsonDocument(out);
-    }
-
-    // ANTS-5098 — range-checked before the cast. A fractional, negative or
-    // out-of-range double cast to qint64 is undefined behaviour or names a
-    // different row. Shared by ack and by inbox's single-message read.
-    const bool hasId = req.contains(QStringLiteral("message_id"));
-    const double rawId = req.value(QStringLiteral("message_id")).toDouble(-1);
-    if (hasId && (!(rawId >= 1.0 && rawId <= 9007199254740992.0)
-                  || rawId != std::floor(rawId)))
+    MailCall c{store, *self, req,
+               QDateTime::currentDateTimeUtc().toString(QStringLiteral("yyyy-MM-ddTHH:mm:ssZ")),
+               req.value(QStringLiteral("dry_run")).toBool(false),
+               QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("op"), op}}};
+    if (op == QStringLiteral("send"))
+        return opSend(c);
+    const std::optional<qint64> id = messageIdArg(req);
+    if (!id)
         return refuse("bad_args",
                       QStringLiteral("session_message: `message_id` must be a "
                                      "positive integer"));
-    const qint64 id = hasId ? qint64(rawId) : 0;
-
-    if (op == QStringLiteral("ack")) {
-        if (!hasId)
-            return refuse("bad_args",
-                          QStringLiteral("session_message: op:\"ack\" needs a "
-                                         "`message_id`"));
-        bool already = false;
-        QString code;
-        if (!store.ackMessage(*self, id, now, &already, &code, &err))
-            return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
-                          QStringLiteral("session_message: %1").arg(err));
-        pruneIfWriting();
-        out[QStringLiteral("message_id")]    = double(id);
-        out[QStringLiteral("already_acked")] = already;
-        if (!already)
-            out[QStringLiteral("acked_at")] = now;
-        return QJsonDocument(out);
-    }
-
-    // op == "inbox"
-    QVector<RoadmapStore::Message> rows;
-    int unacked = 0;
-    if (hasId) {
-        // ANTS-5601 — one message by id, acked or not, so a note citing
-        // "mailbox 295" costs one read rather than a paged scan.
-        RoadmapStore::Message m;
-        QString code;
-        if (!store.messageFor(*self, id, &m, &code, &err))
-            return refuse(code.isEmpty() ? "io_error" : code.toLatin1().constData(),
-                          QStringLiteral("session_message: %1").arg(err));
-        rows.append(m);
-        if (!store.inboxFor(*self, false, 0, 0, nullptr, &unacked, &err))
-            return refuse("io_error", QStringLiteral("session_message: %1").arg(err));
-    } else {
-        const bool includeAcked =
-            req.value(QStringLiteral("include_acked")).toBool(false);
-        // ANTS-5098 bounds the page; ANTS-5591 maps 0 or less to that bound.
-        const int limit = RoadmapStore::inboxPageLimit(
-            req.value(QStringLiteral("limit")).toInt(20));
-        const int offset = qMax(0, req.value(QStringLiteral("offset")).toInt(0));
-        if (!store.inboxFor(*self, includeAcked, limit, offset, &rows, &unacked,
-                            &err))
-            return refuse("io_error", QStringLiteral("session_message: %1").arg(err));
-    }
-
-    QJsonArray arr;
-    for (const auto &m : rows)
-        arr.append(messageToJson(m));
-    out[QStringLiteral("messages")]      = arr;
-    out[QStringLiteral("unacked_count")] = unacked;
-    out[QStringLiteral("count")]         = arr.size();
-    return QJsonDocument(out);
+    return op == QStringLiteral("ack") ? opAck(c, *id) : opInbox(c, *id);
 }

@@ -176,38 +176,28 @@ void testWiring() {
                 + std::to_string(count)).c_str());
     }
 
-    // WI-4 — allow_outside_root appears in cmdLaunch + cmdNewTab
-    // bodies. The brace-matched slurp keeps this robust to future
-    // body growth.
+    // WI-4 / WI-5 — both verbs check `cwd` through the one shared helper,
+    // and that helper honours allow_outside_root and calls
+    // PathValidation::validatePath. The brace-matched slurp keeps this
+    // robust to future body growth.
     {
         const std::string launchBody =
             ants_test::slurpFunctionBody(rc, "RemoteControl::cmdLaunch");
         const std::string newTabBody =
             ants_test::slurpFunctionBody(rc, "RemoteControl::cmdNewTab");
-        expect(!launchBody.empty(),
-               "WI-4 anchor: cmdLaunch body slurped");
-        expect(!newTabBody.empty(),
-               "WI-4 anchor: cmdNewTab body slurped");
-        expect(launchBody.find("\"allow_outside_root\"") != std::string::npos,
-               "WI-4a cmdLaunch references \"allow_outside_root\"");
-        expect(newTabBody.find("\"allow_outside_root\"") != std::string::npos,
-               "WI-4b cmdNewTab references \"allow_outside_root\"");
-    }
-
-    // WI-5 — both verbs call PathValidation::validatePath inside
-    // their bodies (the two new call-sites that bring the total to
-    // 10 per WI-3).
-    {
-        const std::string launchBody =
-            ants_test::slurpFunctionBody(rc, "RemoteControl::cmdLaunch");
-        const std::string newTabBody =
-            ants_test::slurpFunctionBody(rc, "RemoteControl::cmdNewTab");
-        expect(launchBody.find("PathValidation::validatePath(")
-                   != std::string::npos,
-               "WI-5a cmdLaunch calls PathValidation::validatePath");
-        expect(newTabBody.find("PathValidation::validatePath(")
-                   != std::string::npos,
-               "WI-5b cmdNewTab calls PathValidation::validatePath");
+        const std::string helperBody =
+            ants_test::slurpFunctionBody(rc, "QJsonObject newTabCwdRefusal(");
+        expect(!launchBody.empty(), "WI-4 anchor: cmdLaunch body slurped");
+        expect(!newTabBody.empty(), "WI-4 anchor: cmdNewTab body slurped");
+        expect(!helperBody.empty(), "WI-4 anchor: newTabCwdRefusal body slurped");
+        expect(launchBody.find("newTabCwdRefusal(") != std::string::npos,
+               "WI-4a cmdLaunch checks cwd through newTabCwdRefusal");
+        expect(newTabBody.find("newTabCwdRefusal(") != std::string::npos,
+               "WI-4b cmdNewTab checks cwd through newTabCwdRefusal");
+        expect(helperBody.find("\"allow_outside_root\"") != std::string::npos,
+               "WI-4c newTabCwdRefusal references \"allow_outside_root\"");
+        expect(helperBody.find("PathValidation::validatePath(") != std::string::npos,
+               "WI-5 newTabCwdRefusal calls PathValidation::validatePath");
     }
 }
 

@@ -91,6 +91,15 @@ QString folderNameFor(const QString &cwd) {
     return out;
 }
 
+QStringList projectsDirs() {
+    QStringList out;
+    const QString cfg = qEnvironmentVariable("CLAUDE_CONFIG_DIR");
+    if (!cfg.isEmpty())
+        out << QDir(cfg).filePath(QStringLiteral("projects"));
+    out << QDir::home().filePath(QStringLiteral(".claude/projects"));
+    return out;
+}
+
 QJsonObject analyse(const QString &transcriptPath, int top) {
     QFile f(transcriptPath);
     if (!f.open(QIODevice::ReadOnly))

@@ -96,21 +96,6 @@ bool eligible(const QString &verb, const QString &rel, const Options &o,
     return rel.startsWith(dir);
 }
 
-// The wire strings docIntegrityBuildResponse already uses — one vocabulary, so
-// a caller filtering doc_lint findings by a kind it learned from doc_integrity
-// cannot miss.
-QString integrityKind(DocIntegrity::Kind k) {
-    switch (k) {
-    case DocIntegrity::Kind::DeadAnchor:      return QStringLiteral("dead_anchor");
-    case DocIntegrity::Kind::BrokenLink:      return QStringLiteral("broken_link");
-    case DocIntegrity::Kind::TocGap:          return QStringLiteral("toc_gap");
-    case DocIntegrity::Kind::HeadingSequence: return QStringLiteral("heading_sequence");
-    case DocIntegrity::Kind::UngrantedTool:   return QStringLiteral("ungranted_tool");
-    case DocIntegrity::Kind::ListCount:       return QStringLiteral("list_count");
-    }
-    return QString();
-}
-
 // Spec § 2.2's reading convention: the adapter sets autoFixable from a small
 // per-adapter kind list, because DocIntegrity::Finding predates the flag.
 bool integrityAutoFixable(DocIntegrity::Kind k) {
@@ -532,7 +517,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
         for (const DocIntegrity::Finding &g : got) {
             DocFinding::Finding f;
             f.verb          = kIntegrity;
-            f.kind          = integrityKind(g.kind);
+            f.kind          = DocIntegrity::kindName(g.kind);
             f.file          = g.file;
             f.line          = g.line;
             f.message       = g.message;
@@ -690,7 +675,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
         // still the same gap, and § 2.3 requires it to repair.
         QSet<QString> current;
         for (const DocIntegrity::Finding &g : now)
-            current.insert(integrityKind(g.kind) + QLatin1Char('\n') + g.message);
+            current.insert(DocIntegrity::kindName(g.kind) + QLatin1Char('\n') + g.message);
         bool stale = false;
         for (const DocFinding::Finding &g : gaps) {
             if (!current.contains(g.kind + QLatin1Char('\n') + g.message)) { stale = true; break; }

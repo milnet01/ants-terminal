@@ -29,6 +29,7 @@
 
 class QLocalServer;
 class QLocalSocket;
+class QTimer;
 class QWidget;                 // ANTS-2049 — e2eResolveTarget return type
 class MainWindow;
 namespace ants { class RootProvider; }
@@ -1299,6 +1300,9 @@ private:
     // moc in ants_mcpcore_lib would name it, and it is defined GUI-side with
     // the rest of the --remote socket (ANTS-4932 § 2.2).
     void onNewConnection();
+    // One readyRead on a --remote connection: buffer, and once a whole line
+    // is in, parse it and reply, inline or through the dispatch worker.
+    void handleSocketLine(QLocalSocket *socket, QTimer *idleTimer);
 
     // ANTS-3661 — see setMcpVerbVocabularyProvider.
     std::function<QStringList()> m_mcpVerbVocabularyProvider;

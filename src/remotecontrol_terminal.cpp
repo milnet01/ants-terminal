@@ -38,6 +38,66 @@
 
 using namespace rcdetail;  // ANTS-3833
 
+namespace {
+
+// ANTS-1347 — launch's and new-tab's `cwd` hygiene + anchor. An empty object
+// when `cwd` may be used, else the refusal, prefixed `verb`.
+//
+// Byte hygiene (always): the shared cwdHasBadByte helper rejects C0
+// (U+0000..U+001F), backslash, and C1 (U+0080..U+009F). The C1 leg is the
+// path-side counterpart to ANTS-1335's byte-strip on text payloads — same
+// threat (rc/MCP seam delivering untrusted bytes), different semantics
+// (reject-not-strip for paths, where silent mutation would mislead the
+// caller).
+//
+// Anchor (default-on): a non-empty cwd routes through
+// PathValidation::validatePath against the focused project root, matching
+// every other path-typed rc/MCP verb post-ANTS-1295. The optional
+// `allow_outside_root: true` opt-out skips the anchor while keeping byte
+// hygiene — for callers (Lua plugins, ants @ launch CLI) that legitimately
+// need to chdir outside any project root.
+QJsonObject newTabCwdRefusal(const ants::RootProvider *roots, const QJsonObject &req,
+                             const QString &verb, const QString &cwd) {
+    if (cwd.isEmpty())
+        return {};
+    const auto refusal = [&](const char *code, const QString &what) {
+        return QJsonObject{{"ok", false},
+                           {"error", QStringLiteral("%1: %2").arg(verb, what)},
+                           {"code", QString::fromLatin1(code)}};
+    };
+    if (RemoteControl::cwdHasBadByte(cwd))
+        return refusal("bad_cwd", QStringLiteral("cwd contains control or backslash "
+                                                 "characters"));
+    if (req.value("allow_outside_root").toBool(false))
+        return {};
+    const QString root = resolveRootCanonical(roots);
+    if (root.isEmpty())
+        return refusal("no_project",
+                       QStringLiteral("no focused project root (set allow_outside_root:true "
+                                      "to chdir outside any project)"));
+    const auto check = PathValidation::validatePath(cwd, root, verb, QStringLiteral("cwd"));
+    return check.bad ? check.err : QJsonObject{};
+}
+
+// The reply once newTabForRemote has run.
+QJsonDocument newTabReply(int idx, bool started, bool rawBypass, int stripped) {
+    QJsonObject out;
+    out["index"] = idx;
+    if (!started) {
+        // The tab exists but holds no shell; a follow-up send-text to it
+        // would go nowhere, so this is not a success.
+        out["ok"] = false;
+        out["code"] = QStringLiteral("shell_failed");
+        out["error"] = QStringLiteral("the new tab's shell did not start");
+        return QJsonDocument(out);
+    }
+    out["ok"] = true;
+    if (!rawBypass && stripped > 0) out["stripped"] = stripped;
+    return QJsonDocument(out);
+}
+
+}  // namespace
+
 // ANTS-4932 § 2.2 — the --remote socket and dispatch(), moved here from TU 1:
 // dispatch() routes to this TU's terminal verbs, so it cannot join the
 // window-free ants_mcpcore_lib that TU 1 now compiles into.
@@ -196,106 +256,108 @@ void RemoteControl::onNewConnection() {
         // from re-dispatching buffered bytes.
         socket->setProperty("_handled", false);
         connect(socket, &QLocalSocket::readyRead, this,
-                [this, socket, idleTimer]() {
-            if (socket->property("_handled").toBool()) return;
-            QByteArray buf = socket->property("_buf").toByteArray();
-            buf += socket->readAll();
-            // Bound the in-memory buffer for defence-in-depth against
-            // a malicious client on the same machine. 1 MB is far
-            // more than any realistic Kitty rc_protocol envelope.
-            if (buf.size() > 1 * 1024 * 1024) {
-                socket->disconnectFromServer();
-                return;
-            }
-            socket->setProperty("_buf", buf);
-
-            int nlIdx = buf.indexOf('\n');
-            if (nlIdx < 0) return;  // partial line, wait for more
-
-            // ANTS-2202 — a complete line is in hand. Latch _handled and drop the
-            // consumed line from _buf so a re-entrant readyRead (should a future
-            // RC verb pump a nested event loop) can't re-dispatch it.
-            socket->setProperty("_handled", true);
-            socket->setProperty("_buf", buf.mid(nlIdx + 1));
-
-            // ANTS-2026 — stop the slow-loris idle timer BEFORE dispatching. No
-            // current RC verb runs a nested event loop, but if one is added a
-            // still-armed timer could fire timeout -> socket->abort() ->
-            // disconnected -> deleteLater(), and that deleteLater would be
-            // processed by the nested loop, freeing this socket before the write
-            // below. Defensive, and parity with the MCP path (ANTS-2101).
-            idleTimer->stop();
-
-            const QByteArray line = buf.left(nlIdx);
-            QJsonParseError err;
-            QJsonDocument req = QJsonDocument::fromJson(line, &err);
-            QJsonDocument resp;
-            // ANTS-2026 — defence in depth: the peer can still disconnect during
-            // a nested-loop dispatch, freeing the socket via the disconnected ->
-            // deleteLater chain. A QPointer lets the post-dispatch write bail
-            // instead of touching a dangling pointer.
-            QPointer<QLocalSocket> guard(socket);
-            // ANTS-2132 § 2.7 — the reply write, shared by the inline path and
-            // a worker route's deferred one. Both run it on the GUI thread.
-            const auto writeReply = [](const QPointer<QLocalSocket> &sock,
-                                       const QJsonDocument &doc) {
-                if (!sock || sock->state() != QLocalSocket::ConnectedState)
-                    return;
-                sock->write(doc.toJson(QJsonDocument::Compact) + '\n');
-                sock->flush();
-                sock->disconnectFromServer();
-                // ANTS-5093 — a peer that never reads the reply must not pin
-                // the socket and its write buffer.
-                RemoteControl::armReplyDrainGuard(sock.data(), kReplyDrainIdleMs);
-            };
-            if (err.error != QJsonParseError::NoError || !req.isObject()) {
-                QJsonObject e;
-                e["ok"] = false;
-                e["error"] = QStringLiteral("invalid JSON: %1")
-                    .arg(err.errorString());
-                resp = QJsonDocument(e);
-            } else {
-                const QJsonObject reqObj = req.object();
-                const QString cmd = reqObj.value(QStringLiteral("cmd")).toString();
-                if (m_dispatchWorkerPoster && routeRunsOnDispatchWorker(cmd)) {
-                    // dispatch() runs on the worker and the write is queued
-                    // back here. The job carries `guard` but never tests it: a
-                    // QPointer may only be dereferenced on the socket's thread.
-                    const bool posted = m_dispatchWorkerPoster(
-                        [this, guard, reqObj, writeReply]() {
-                            const QJsonDocument out = dispatch(reqObj);
-                            // ANTS-5087 — the worker's parse memo is dead the
-                            // moment this call returns, and it retains the last
-                            // document parsed here: text and records both. Held
-                            // ACROSS the dispatch, so a call that parses the
-                            // same roadmap twice still hits it, and dropped
-                            // between calls, which is the retention the finding
-                            // is about. The GUI thread never reaches this and
-                            // keeps its memo, which is what it is for.
-                            RoadmapParse::releaseParseMemo();
-                            QMetaObject::invokeMethod(this,
-                                [guard, out, writeReply]() {
-                                    writeReply(guard, out);
-                                }, Qt::QueuedConnection);
-                        });
-                    if (posted) return;  // the reply follows from the worker
-                    QJsonObject e;
-                    e["ok"]             = false;
-                    e["code"]           = QStringLiteral("dispatch_queue_full");
-                    e["error"]          = QStringLiteral(
-                        "%1: too many MCP calls are already in flight; retry "
-                        "shortly").arg(cmd);
-                    e["retry_after_ms"] = 250;
-                    resp = QJsonDocument(e);
-                } else {
-                    resp = dispatch(reqObj);
-                }
-            }
-            writeReply(guard, resp);
-        });
+                [this, socket, idleTimer]() { handleSocketLine(socket, idleTimer); });
         connect(socket, &QLocalSocket::disconnected,
                 socket, &QLocalSocket::deleteLater);
     }
+}
+
+void RemoteControl::handleSocketLine(QLocalSocket *socket, QTimer *idleTimer) {
+    if (socket->property("_handled").toBool()) return;
+    QByteArray buf = socket->property("_buf").toByteArray();
+    buf += socket->readAll();
+    // Bound the in-memory buffer for defence-in-depth against
+    // a malicious client on the same machine. 1 MB is far
+    // more than any realistic Kitty rc_protocol envelope.
+    if (buf.size() > 1 * 1024 * 1024) {
+        socket->disconnectFromServer();
+        return;
+    }
+    socket->setProperty("_buf", buf);
+
+    int nlIdx = buf.indexOf('\n');
+    if (nlIdx < 0) return;  // partial line, wait for more
+
+    // ANTS-2202 — a complete line is in hand. Latch _handled and drop the
+    // consumed line from _buf so a re-entrant readyRead (should a future
+    // RC verb pump a nested event loop) can't re-dispatch it.
+    socket->setProperty("_handled", true);
+    socket->setProperty("_buf", buf.mid(nlIdx + 1));
+
+    // ANTS-2026 — stop the slow-loris idle timer BEFORE dispatching. No
+    // current RC verb runs a nested event loop, but if one is added a
+    // still-armed timer could fire timeout -> socket->abort() ->
+    // disconnected -> deleteLater(), and that deleteLater would be
+    // processed by the nested loop, freeing this socket before the write
+    // below. Defensive, and parity with the MCP path (ANTS-2101).
+    idleTimer->stop();
+
+    const QByteArray line = buf.left(nlIdx);
+    QJsonParseError err;
+    QJsonDocument req = QJsonDocument::fromJson(line, &err);
+    QJsonDocument resp;
+    // ANTS-2026 — defence in depth: the peer can still disconnect during
+    // a nested-loop dispatch, freeing the socket via the disconnected ->
+    // deleteLater chain. A QPointer lets the post-dispatch write bail
+    // instead of touching a dangling pointer.
+    QPointer<QLocalSocket> guard(socket);
+    // ANTS-2132 § 2.7 — the reply write, shared by the inline path and
+    // a worker route's deferred one. Both run it on the GUI thread.
+    const auto writeReply = [](const QPointer<QLocalSocket> &sock,
+                               const QJsonDocument &doc) {
+        if (!sock || sock->state() != QLocalSocket::ConnectedState)
+            return;
+        sock->write(doc.toJson(QJsonDocument::Compact) + '\n');
+        sock->flush();
+        sock->disconnectFromServer();
+        // ANTS-5093 — a peer that never reads the reply must not pin
+        // the socket and its write buffer.
+        RemoteControl::armReplyDrainGuard(sock.data(), kReplyDrainIdleMs);
+    };
+    if (err.error != QJsonParseError::NoError || !req.isObject()) {
+        QJsonObject e;
+        e["ok"] = false;
+        e["error"] = QStringLiteral("invalid JSON: %1")
+            .arg(err.errorString());
+        resp = QJsonDocument(e);
+    } else {
+        const QJsonObject reqObj = req.object();
+        const QString cmd = reqObj.value(QStringLiteral("cmd")).toString();
+        if (m_dispatchWorkerPoster && routeRunsOnDispatchWorker(cmd)) {
+            // dispatch() runs on the worker and the write is queued
+            // back here. The job carries `guard` but never tests it: a
+            // QPointer may only be dereferenced on the socket's thread.
+            const bool posted = m_dispatchWorkerPoster(
+                [this, guard, reqObj, writeReply]() {
+                    const QJsonDocument out = dispatch(reqObj);
+                    // ANTS-5087 — the worker's parse memo is dead the
+                    // moment this call returns, and it retains the last
+                    // document parsed here: text and records both. Held
+                    // ACROSS the dispatch, so a call that parses the
+                    // same roadmap twice still hits it, and dropped
+                    // between calls, which is the retention the finding
+                    // is about. The GUI thread never reaches this and
+                    // keeps its memo, which is what it is for.
+                    RoadmapParse::releaseParseMemo();
+                    QMetaObject::invokeMethod(this,
+                        [guard, out, writeReply]() {
+                            writeReply(guard, out);
+                        }, Qt::QueuedConnection);
+                });
+            if (posted) return;  // the reply follows from the worker
+            QJsonObject e;
+            e["ok"]             = false;
+            e["code"]           = QStringLiteral("dispatch_queue_full");
+            e["error"]          = QStringLiteral(
+                "%1: too many MCP calls are already in flight; retry "
+                "shortly").arg(cmd);
+            e["retry_after_ms"] = 250;
+            resp = QJsonDocument(e);
+        } else {
+            resp = dispatch(reqObj);
+        }
+    }
+    writeReply(guard, resp);
 }
 
 bool RemoteControl::routeRunsOnDispatchWorker(const QString &cmd) {
@@ -819,64 +881,12 @@ QJsonDocument RemoteControl::cmdLaunch(const QJsonObject &req) {
     const QString filteredCommand = QString::fromUtf8(payload);
 
     const QString cwd = req.value("cwd").toString();
-    // ANTS-1347 — `cwd` hygiene + anchor.
-    //
-    // Byte hygiene (always): the shared cwdHasBadByte helper rejects
-    // C0 (U+0000..U+001F), backslash, and C1 (U+0080..U+009F). The
-    // C1 leg is the path-side counterpart to ANTS-1335's byte-strip
-    // on text payloads — same threat (rc/MCP seam delivering
-    // untrusted bytes), different semantics (reject-not-strip for
-    // paths, where silent mutation would mislead the caller).
-    //
-    // Anchor (default-on): non-empty cwd routes through
-    // PathValidation::validatePath against the focused project root,
-    // matching every other path-typed rc/MCP verb post-ANTS-1295.
-    // The optional `allow_outside_root: true` opt-out skips the
-    // anchor while keeping byte hygiene — for callers (Lua plugins,
-    // ants @ launch CLI) that legitimately need to chdir outside any
-    // project root.
-    if (!cwd.isEmpty()) {
-        if (RemoteControl::cwdHasBadByte(cwd)) {
-            QJsonObject errOut;
-            errOut["ok"] = false;
-            errOut["error"] = QStringLiteral(
-                "launch: cwd contains control or backslash characters");
-            errOut["code"] = QStringLiteral("bad_cwd");
-            return QJsonDocument(errOut);
-        }
-        const bool allowOutside =
-            req.value("allow_outside_root").toBool(false);
-        if (!allowOutside) {
-            const QString root = resolveRootCanonical(m_roots);
-            if (root.isEmpty()) {
-                QJsonObject errOut;
-                errOut["ok"] = false;
-                errOut["error"] = QStringLiteral(
-                    "launch: no focused project root (set "
-                    "allow_outside_root:true to chdir outside any project)");
-                errOut["code"] = QStringLiteral("no_project");
-                return QJsonDocument(errOut);
-            }
-            const auto check = PathValidation::validatePath(
-                cwd, root, QStringLiteral("launch"),
-                QStringLiteral("cwd"));
-            if (check.bad) return QJsonDocument(check.err);
-        }
-    }
+    if (const QJsonObject bad = newTabCwdRefusal(m_roots, req, QStringLiteral("launch"), cwd);
+        !bad.isEmpty())
+        return QJsonDocument(bad);
     bool started = false;
     const int idx = m_main->newTabForRemote(cwd, filteredCommand, &started);
-    out["index"] = idx;
-    if (!started) {
-        // The tab exists but holds no shell; a follow-up send-text to it
-        // would go nowhere, so this is not a success.
-        out["ok"] = false;
-        out["code"] = QStringLiteral("shell_failed");
-        out["error"] = QStringLiteral("the new tab's shell did not start");
-        return QJsonDocument(out);
-    }
-    out["ok"] = true;
-    if (!rawBypass && stripped > 0) out["stripped"] = stripped;
-    return QJsonDocument(out);
+    return newTabReply(idx, started, rawBypass, stripped);
 }
 
 QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
@@ -895,7 +905,6 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
     //
     // 0.7.52 (2026-04-27 indie-review HIGH) — `command` is routed
     // through filterControlChars by default, identical to send-text.
-    QJsonObject out;
     const QString cwd     = req.value("cwd").toString();
     const QString command = req.value("command").toString();
     const bool rawBypass  = req.value("raw").toBool(false);
@@ -908,50 +917,12 @@ QJsonDocument RemoteControl::cmdNewTab(const QJsonObject &req) {
         filteredCommand = QString::fromUtf8(payload);
     }
 
-    // ANTS-1347 — `cwd` hygiene + anchor. See cmdLaunch for the
-    // full rationale; this verb mirrors the same flow.
-    if (!cwd.isEmpty()) {
-        if (RemoteControl::cwdHasBadByte(cwd)) {
-            QJsonObject errOut;
-            errOut["ok"] = false;
-            errOut["error"] = QStringLiteral(
-                "new-tab: cwd contains control or backslash characters");
-            errOut["code"] = QStringLiteral("bad_cwd");
-            return QJsonDocument(errOut);
-        }
-        const bool allowOutside =
-            req.value("allow_outside_root").toBool(false);
-        if (!allowOutside) {
-            const QString root = resolveRootCanonical(m_roots);
-            if (root.isEmpty()) {
-                QJsonObject errOut;
-                errOut["ok"] = false;
-                errOut["error"] = QStringLiteral(
-                    "new-tab: no focused project root (set "
-                    "allow_outside_root:true to chdir outside any project)");
-                errOut["code"] = QStringLiteral("no_project");
-                return QJsonDocument(errOut);
-            }
-            const auto check = PathValidation::validatePath(
-                cwd, root, QStringLiteral("new-tab"),
-                QStringLiteral("cwd"));
-            if (check.bad) return QJsonDocument(check.err);
-        }
-    }
+    if (const QJsonObject bad = newTabCwdRefusal(m_roots, req, QStringLiteral("new-tab"), cwd);
+        !bad.isEmpty())
+        return QJsonDocument(bad);
     bool started = false;
     const int idx = m_main->newTabForRemote(cwd, filteredCommand, &started);
-    out["index"] = idx;
-    if (!started) {
-        // The tab exists but holds no shell; a follow-up send-text to it
-        // would go nowhere, so this is not a success.
-        out["ok"] = false;
-        out["code"] = QStringLiteral("shell_failed");
-        out["error"] = QStringLiteral("the new tab's shell did not start");
-        return QJsonDocument(out);
-    }
-    out["ok"] = true;
-    if (!rawBypass && stripped > 0) out["stripped"] = stripped;
-    return QJsonDocument(out);
+    return newTabReply(idx, started, rawBypass, stripped);
 }
 
 // ANTS-1117 v1: tab-list — richer per-tab snapshot than `ls`.

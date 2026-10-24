@@ -17,17 +17,10 @@
 
 QJsonDocument RemoteControl::cmdQuotationCheck(const QJsonObject &req) {
     // caller_cwd absent is the dispatcher's refusal (CallerCwdContract::Required).
-    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
-    if (rr.source == ants::ResolvedRoot::Source::Unresolvable || rr.cwd.isEmpty()) {
-        QJsonObject e;
-        e[QStringLiteral("ok")]    = false;
-        e[QStringLiteral("code")]  = QStringLiteral("no_project");
-        e[QStringLiteral("error")] =
-            QStringLiteral("quotation_check: caller_cwd \"%1\" does not resolve to a "
-                           "directory").arg(callerRaw);
-        return QJsonDocument(e);
-    }
+    QJsonObject refusal;
+    const QString cwd = ants::requiredCallerCwd(m_roots, req, QStringLiteral("quotation_check"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
 
     // Forwarded only when present: the seam tells an absent `allowed` from an
     // empty one.
@@ -40,5 +33,5 @@ QJsonDocument RemoteControl::cmdQuotationCheck(const QJsonObject &req) {
         args[QStringLiteral("max_bytes")] = req.value(QStringLiteral("max_bytes"));
     if (req.contains(QStringLiteral("tolerance")))  // ANTS-5732
         args[QStringLiteral("tolerance")] = req.value(QStringLiteral("tolerance"));
-    return QJsonDocument(QuotationCheck::run(rr.cwd, args));
+    return QJsonDocument(QuotationCheck::run(cwd, args));
 }

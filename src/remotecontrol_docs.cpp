@@ -267,30 +267,18 @@ QStringList RemoteControl::docIntegrityEnumerateMany(
 QJsonObject RemoteControl::docIntegrityBuildResponse(
     const QList<DocIntegrity::Finding> &findings, const QSet<QString> &kinds,
     const QStringList &checkedDocs) {
-    // Kind wire strings (snake_case) — the CamelCase enum never reaches the wire.
-    const auto kindStr = [](DocIntegrity::Kind k) -> QString {
-        switch (k) {
-        case DocIntegrity::Kind::DeadAnchor: return QStringLiteral("dead_anchor");
-        case DocIntegrity::Kind::BrokenLink: return QStringLiteral("broken_link");
-        case DocIntegrity::Kind::TocGap:     return QStringLiteral("toc_gap");
-        case DocIntegrity::Kind::HeadingSequence:   // ANTS-3700
-            return QStringLiteral("heading_sequence");
-        case DocIntegrity::Kind::UngrantedTool:     // ANTS-3719
-            return QStringLiteral("ungranted_tool");
-        case DocIntegrity::Kind::ListCount:         // ANTS-5295
-            return QStringLiteral("list_count");
-        }
-        return QString();
-    };
     const auto wanted = [&](const QString &k) {
         return kinds.isEmpty() || kinds.contains(k);
     };
 
+    // Every wanted kind has a count, zero included.
+    QJsonObject counts;
+    for (DocIntegrity::Kind k : DocIntegrity::allKinds())
+        if (wanted(DocIntegrity::kindName(k)))
+            counts[DocIntegrity::kindName(k)] = 0;
     QJsonArray findingsArr;
-    int deadAnchor = 0, brokenLink = 0, tocGap = 0, headingSeq = 0, ungranted = 0,
-        listCount = 0;
     for (const DocIntegrity::Finding &f : findings) {
-        const QString ks = kindStr(f.kind);
+        const QString ks = DocIntegrity::kindName(f.kind);
         if (!wanted(ks)) continue;
         QJsonObject fo;
         fo[QStringLiteral("kind")]    = ks;
@@ -298,28 +286,8 @@ QJsonObject RemoteControl::docIntegrityBuildResponse(
         fo[QStringLiteral("line")]    = f.line;
         fo[QStringLiteral("message")] = f.message;
         findingsArr.append(fo);
-        // ANTS-3700 — switch, not an if/else chain ending in `else ++tocGap`:
-        // the old shape counted any future kind as a toc_gap, silently.
-        switch (f.kind) {
-        case DocIntegrity::Kind::DeadAnchor:      ++deadAnchor; break;
-        case DocIntegrity::Kind::BrokenLink:      ++brokenLink; break;
-        case DocIntegrity::Kind::TocGap:          ++tocGap;     break;
-        case DocIntegrity::Kind::HeadingSequence: ++headingSeq; break;
-        case DocIntegrity::Kind::UngrantedTool:   ++ungranted;  break;
-        case DocIntegrity::Kind::ListCount:       ++listCount;  break;
-        }
+        counts[ks] = counts.value(ks).toInt() + 1;
     }
-
-    QJsonObject counts;
-    if (wanted(QStringLiteral("dead_anchor"))) counts[QStringLiteral("dead_anchor")] = deadAnchor;
-    if (wanted(QStringLiteral("broken_link"))) counts[QStringLiteral("broken_link")] = brokenLink;
-    if (wanted(QStringLiteral("toc_gap")))     counts[QStringLiteral("toc_gap")]     = tocGap;
-    if (wanted(QStringLiteral("heading_sequence")))
-        counts[QStringLiteral("heading_sequence")] = headingSeq;
-    if (wanted(QStringLiteral("ungranted_tool")))
-        counts[QStringLiteral("ungranted_tool")] = ungranted;
-    if (wanted(QStringLiteral("list_count")))
-        counts[QStringLiteral("list_count")] = listCount;
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;
@@ -624,43 +592,11 @@ QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
     return o;
 }
 
-// ANTS-3662 — the required-section list, read from the project's OWN format
-// standard and never assumed. The resolution ORDER is ANTS-4895's, stated in
-// its own block below; it is deliberately not restated here, because the claim
-// that used to sit on this line survived the change that reversed it.
-//
-// NO `_shared` FALLBACK. The canonical ~/.claude/skills/_shared/spec-format.md
-// lives outside the project root, which this verb's own bad_path contract
-// forbids it from reading — and because that file always exists, a _shared tier
-// would mean the skip arm never fires (spec § 2.1). In-project or skipped.
-// ANTS-4390 — the candidate list, in resolution order. The `standards/`
-// entries are NOT a guess at a second convention: the global standards repo
-// (~/.claude) has no `docs/standards/` because it IS the standards set, so
-// every candidate missed and `sections_checked` came back false on the one
-// repository that owns the canonical block. One extra stat makes it
-// self-checkable.
-//
-// ANTS-4373 — `whichOut` reports the path that was actually consulted. A
-// boolean says a check did not run; it does not say what to fix, so without
-// this every caller re-derives the cause.
-//
-// ANTS-4895 — a project's OWN standard comes first, within each layout.
-// `spec-format.md` § 3 states the intent: "A project that ships its own spec
-// standard is checked against *that*, not this." The original order put the
-// spec-format name first and defeated it wherever a project keeps a verbatim
-// MIRROR of the global standard beside its own — the mirror carries a
-// `required-sections` block, resolution below returns at the first block
-// found, and the project's own list is never read. That is not a rare shape:
-// a public repository cannot cite a path inside a private home directory, so
-// mirroring is how it makes the global standard readable at all.
-//
-// Measured on Ants Terminal before this change: `sections_source` came back
-// `docs/standards/spec-format.md`, and a whole-corpus run returned 3814
-// findings — mostly `missing_section` demanding the global's twelve numbered
-// sections from specs written to that project's own five.
-//
-// A project shipping no standard of its own is unaffected: its own name
-// misses and the mirror answers, one candidate later.
+// ANTS-3662 — the candidate files for spec_lint's required-section list, in
+// order. A project's own standard comes before its mirror of the global one
+// (ANTS-4895: the mirror answered first and demanded the global's sections).
+// The `standards/` entries cover the global standards repo, which has no
+// `docs/` (ANTS-4390).
 static const QStringList &specLintStandardCandidates() {
     static const QStringList v = {
         QStringLiteral("docs/standards/specs.md"),
@@ -671,24 +607,14 @@ static const QStringList &specLintStandardCandidates() {
     return v;
 }
 
-// ANTS-4080 — the GLOBAL tier, and it is not the `_shared` fallback the two
-// paragraphs above reject. That one resolved
-// `~/.claude/skills/_shared/spec-format.md`, a file which always exists, so the
-// skip arm could never fire and INV-1's second half was untestable. Three
-// things are different here. The path is `~/.claude/standards/`, which became
-// the authoritative home of the spec-format standard on 2026-08-08 with
-// projects carrying deltas — so a project with no local copy is currently
-// linted against NOTHING, which is the defect. It resolves through
-// `expandGlobalConfigSentinel`, the same `~global` re-rooting ANTS-3719 gave
-// doc_integrity: one well-known read-only root, every path still validated, no
-// widening of `bad_path`. And it is testable BY CONSTRUCTION rather than by
-// argument — `QDir::homePath()` follows `$HOME`, so a fixture pointing HOME at
-// a directory with no `.claude/` still exercises the skip arm. `none` therefore
-// stays a real outcome, which is the whole reason the old tier was refused.
+// The resolution order: specLintStandardCandidates() under the project root,
+// then the same names under `~global` (expandGlobalConfigSentinel, ANTS-4080),
+// else none and the section check is skipped. `whichOut` gets the path
+// consulted, `~global/`-prefixed for the second tier (ANTS-4373).
 //
-// `whichOut` gets a `~global/` prefix rather than a `project|global|none`
-// enum: ANTS-4373 already made this field the PATH consulted, which answers the
-// enum's question and the next one too.
+// There is no `_shared` skills tier: that file always exists, so the skip arm
+// could never fire. `~global` follows $HOME, so a fixture HOME with no
+// `.claude/` still reaches `none`.
 static QStringList specLintRequiredSections(const QString &rootCanonical,
                                             QString *whichOut = nullptr,
                                             bool *prefixMatch = nullptr) {
@@ -802,10 +728,6 @@ static QSet<QString> specLintWiredTestDirs(const QString &rootCanonical,
     return wired;
 }
 
-// ANTS-3662 — spec_lint: the deterministic half of /cold-eyes § 1e's spec
-// pre-pass. caller_cwd Required. `path` routes through PathValidation and then
-// the SAME enumeration doc_integrity uses, defaulted to `specs_dir` rather than
-// `docs_dir`. ETag-304 is applied centrally (isEtagSupportedTool). Engine:
 // ANTS-5537 — what a `since` / `staged` run read from git (spec § 2.4). Either
 // `err` is set and the call refuses, or every walked document has a scope.
 namespace {
@@ -816,6 +738,47 @@ struct SpecLintScope {
     QHash<QString, SpecLint::DiffScope> byDoc;     // absent: unchanged document
     QHash<QString, QString> indexText;             // staged: the index copy
 };
+
+// ANTS-4110 — the project's INV NUMBERING SCHEME, decided once per run: the
+// invariant numbers its specs own when numbering is project-global, else empty.
+// The discriminator is ownership, not contiguity: under per-document numbering
+// nearly every spec opens at INV-1, so numbers are shared; under project-global
+// numbering each number belongs to exactly one document. Requiring that NO
+// number is shared (across at least two specs that have any) is what makes a
+// sibling lookup mean anything, and it fails toward the old behaviour — a
+// corpus that shares even one number keeps every gap finding. Anchored on the
+// specs dir alone, and independent of `path`, so linting one file answers the
+// same way linting the tree does. Sets `*walkCut` when the walk was cut.
+QSet<int> specLintSiblingInvNumbers(const QString &rootCanonical, const QString &specsDir,
+                                    const DocIntegrity::Options &walk, bool *walkCut) {
+    bool corpusCut = false;
+    QStringList corpus = RemoteControl::docIntegrityEnumerate(rootCanonical, QString(),
+                                                              specsDir, &corpusCut);
+    if (corpusCut) *walkCut = true;
+    if (corpus.size() > walk.maxDocsPerRun)
+        corpus = corpus.mid(0, walk.maxDocsPerRun);
+    QHash<int, int> ownersByNumber;
+    int specsWithInvariants = 0;
+    for (const QString &rel : std::as_const(corpus)) {
+        if (!rel.startsWith(specsDir)) continue;
+        QFile sf(QDir(rootCanonical).filePath(rel));
+        if (sf.size() > walk.maxDocBytes) continue;
+        if (!sf.open(QIODevice::ReadOnly)) continue;
+        const QSet<int> ns =
+            SpecLint::invariantNumbers(QString::fromUtf8(sf.readAll()));
+        sf.close();
+        if (ns.isEmpty()) continue;
+        ++specsWithInvariants;
+        for (const int n : ns) ownersByNumber[n]++;
+    }
+    bool projectGlobal = specsWithInvariants >= 2;
+    for (auto it = ownersByNumber.constBegin();
+         projectGlobal && it != ownersByNumber.constEnd(); ++it)
+        if (it.value() > 1) projectGlobal = false;
+    if (!projectGlobal)
+        return {};
+    return QSet<int>(ownersByNumber.keyBegin(), ownersByNumber.keyEnd());
+}
 
 bool specLintGitBroken(const GitWrap::Result &g) {
     return !g.started || g.crashed || g.hardKilled;
@@ -946,6 +909,10 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
 
 }  // namespace
 
+// ANTS-3662 — spec_lint: the deterministic half of /cold-eyes § 1e's spec
+// pre-pass. caller_cwd Required. `path` routes through PathValidation and then
+// the SAME enumeration doc_integrity uses, defaulted to `specs_dir` rather than
+// `docs_dir`. ETag-304 is applied centrally (isEtagSupportedTool). Engine:
 // SpecLint::check. See docs/specs/ANTS-3662.md.
 QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
@@ -1010,45 +977,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     opts.testClauseCoverage =
         ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
 
-    // ANTS-4110 — decide the project's INV NUMBERING SCHEME once per run, then
-    // hand the engine the numbers its siblings own. The discriminator is
-    // ownership, not contiguity: under per-document numbering nearly every spec
-    // opens at INV-1, so numbers are shared; under project-global numbering each
-    // number belongs to exactly one document. Requiring that NO number is shared
-    // (across at least two specs that have any) is therefore the property that
-    // makes a sibling lookup mean anything, and it fails toward the old
-    // behaviour — a corpus that shares even one number keeps every gap finding.
-    // Anchored on the specs dir alone, and independent of `path`, so linting one
-    // file answers the same way linting the tree does.
-    {
-        bool corpusCut = false;
-        QStringList corpus =
-            docIntegrityEnumerate(rootCanonical, QString(), specsDir, &corpusCut);
-        if (corpusCut) walkCut = true;
-        if (corpus.size() > walk.maxDocsPerRun)
-            corpus = corpus.mid(0, walk.maxDocsPerRun);
-        QHash<int, int> ownersByNumber;
-        int specsWithInvariants = 0;
-        for (const QString &rel : std::as_const(corpus)) {
-            if (!rel.startsWith(specsDir)) continue;
-            QFile sf(QDir(rootCanonical).filePath(rel));
-            if (sf.size() > walk.maxDocBytes) continue;
-            if (!sf.open(QIODevice::ReadOnly)) continue;
-            const QSet<int> ns =
-                SpecLint::invariantNumbers(QString::fromUtf8(sf.readAll()));
-            sf.close();
-            if (ns.isEmpty()) continue;
-            ++specsWithInvariants;
-            for (const int n : ns) ownersByNumber[n]++;
-        }
-        bool projectGlobal = specsWithInvariants >= 2;
-        for (auto it = ownersByNumber.constBegin();
-             projectGlobal && it != ownersByNumber.constEnd(); ++it)
-            if (it.value() > 1) projectGlobal = false;
-        if (projectGlobal)
-            opts.siblingInvNumbers =
-                QSet<int>(ownersByNumber.keyBegin(), ownersByNumber.keyEnd());
-    }
+    opts.siblingInvNumbers =
+        specLintSiblingInvNumbers(rootCanonical, specsDir, walk, &walkCut);
 
     QList<DocFinding::Finding> findings;
     QJsonObject lineCounts;
@@ -1067,24 +997,10 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     int  invariantsFound  = 0;   // ANTS-4894
     int  statusMissing    = 0;   // ANTS-4413
     bool surfacesChecked  = !opts.existingTestDirs.isEmpty();
-    // ANTS-4737 — the walk scans EVERYTHING and the cap is applied at the end.
-    //
-    // Measured over one unchanged corpus: uncapped reported 81, max_findings:40
-    // reported 39, max_findings:5 reported 5. The cap was choosing the count,
-    // because a document reached after the budget ran out was skipped whole and
-    // its findings were never counted. `truncated` was set, so the run was not
-    // silent — but a caller reading `counts` to ask "how much is there" got a
-    // number that was a function of its own argument, and a before/after
-    // comparison taken at two different caps was silently meaningless. It bit a
-    // real measurement: 39 reported where the true figure was 81, making a fix
-    // look twice as effective as it was.
-    //
-    // workspace_search's `count_only` already documents `count` as the TRUE
-    // total, uncapped by max_results. Two verbs disagreeing about what a count
-    // means is the defect underneath this one, so this one now matches.
-    //
-    // The scan cost is unchanged — the engine reads each document either way;
-    // only the finding list grows, and the ceiling bounds that.
+    // ANTS-4737 — the walk scans EVERYTHING; the caller's cap is applied only
+    // to what is emitted (specLintBuildResponse), so `counts` and
+    // `findings_total` are true totals whatever max_findings says. The scan
+    // ceiling bounds the finding list.
     const int callerCap = opts.maxFindings;
     constexpr int kScanCeiling = 10000;
     opts.maxFindings = kScanCeiling;
@@ -1229,9 +1145,9 @@ QJsonObject RemoteControl::specLintBuildResponse(
     } else {
         o[QStringLiteral("findings")] = DocFinding::toJson(findings);
     }
-    // Counts over the list this builder is HANDED (ANTS-3664). ANTS-4737: for
-    // spec_lint that list is capped, so cmdSpecLint overwrites this key with
-    // counts taken over the full scan.
+    // Counts over the whole list this builder is handed, before the cap above
+    // (ANTS-3664, ANTS-4737). A scoped run is handed its in-diff findings only,
+    // so cmdSpecLint then overwrites this key with counts over the full scan.
     o[QStringLiteral("counts")] =
         DocFinding::countsByVerbAndKind(findings)
             .value(QStringLiteral("spec_lint")).toObject();
@@ -1509,10 +1425,7 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     // Spec § 2.4: generated and templated artifacts. Measured, not chosen —
     // they supply more than half of this corpus's exact-duplicate pairs, which
     // is what those files ARE.
-    opts.excludedPathGlobs = QStringList{
-        QStringLiteral("*AUTOMATED_AUDIT_REPORT*"),
-        QStringLiteral("*superpowers/*"),
-    };
+    opts.excludedPathGlobs = DocDedup::generatedPathGlobs();
 
     DocDedup::Accumulator acc;
     QStringList checked;
@@ -1739,10 +1652,6 @@ QJsonObject RemoteControl::docCitationsValidate(const QString &rootCanonical,
     return {};
 }
 
-// ANTS-3636 — pure: request args → Options. Out-of-domain values coerce rather
-// than refuse, and a wrong-typed numeric falls back to its DEFAULT rather than
-// to a clamp endpoint — a caller who sends a string got the argument wrong, and
-// the default is the answer they would have had by omitting it.
 // ANTS-4728 — see the declaration for why this is a static rather than inline
 // in the handler. Bounded because doc_citations is a READ verb: markdown only,
 // and a file cap that is a backstop rather than a budget — markdown files are
@@ -1788,6 +1697,10 @@ int RemoteControl::docCitationsMdScan(const QString &rootCanonical,
     return seen;
 }
 
+// ANTS-3636 — pure: request args → Options. Out-of-domain values coerce rather
+// than refuse, and a wrong-typed numeric falls back to its DEFAULT rather than
+// to a clamp endpoint — a caller who sends a string got the argument wrong, and
+// the default is the answer they would have had by omitting it.
 DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject &req) {
     DocCitations::Options o;
     const auto clamped = [&req](const char *key, int def, int lo, int hi) {
@@ -1815,8 +1728,209 @@ DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject 
     return o;
 }
 
+namespace {
+
+// The layout keys: paths detect can find on disk and init proposes.
+const QStringList &psLayoutKeys() {
+    static const QStringList k = {
+        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
+        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
+        QStringLiteral("roadmap"), QStringLiteral("changelog")};
+    return k;
+}
+
+// The set-only keys: a declaration, not a path detect can find, so detect and
+// init never propose them and `undeclared` never lists them. applyWrite()
+// validates each:
+// - id_format (ANTS-3771) — refused `bad_args` when malformed (§ 2.5, INV-9);
+// - repo_root (ANTS-5667) — the user's decision that this folder stands for a
+//   child repository; must be a directory;
+// - spec_test_clause_coverage (ANTS-4890) — a project's spec convention; bool;
+// - claude_chrome (ANTS-5728) — whether the project uses Claude in Chrome; bool.
+const QStringList &psSetOnlyKeys() {
+    static const QStringList k = {
+        QStringLiteral("id_format"), QStringLiteral("repo_root"),
+        QStringLiteral("spec_test_clause_coverage"), QStringLiteral("claude_chrome")};
+    return k;
+}
+
+QJsonDocument psErr(const QString &code, const QString &msg) {
+    QJsonObject o;
+    o[QStringLiteral("ok")]    = false;
+    o[QStringLiteral("code")]  = code;
+    o[QStringLiteral("error")] = msg;
+    return QJsonDocument(o);
+}
+
+// The layout keys detect proposed, as project.json would hold them. The aux
+// keys ride along a source_roots suggestion (ANTS-3588, INV-19), so one init
+// writes the whole block.
+QJsonObject psProposedLayout(const ProjectSettings::Suggestion &sug) {
+    QJsonObject o;
+    if (sug.sourceRoots)
+        o[QStringLiteral("source_roots")] = QJsonArray::fromStringList(*sug.sourceRoots);
+    if (sug.testRoots)
+        o[QStringLiteral("test_roots")] = QJsonArray::fromStringList(*sug.testRoots);
+    if (sug.docsDir)   o[QStringLiteral("docs_dir")]  = *sug.docsDir;
+    if (sug.specsDir)  o[QStringLiteral("specs_dir")] = *sug.specsDir;
+    if (sug.roadmap)   o[QStringLiteral("roadmap")]   = *sug.roadmap;
+    if (sug.changelog) o[QStringLiteral("changelog")] = *sug.changelog;
+    return o;
+}
+
+// op:get and op:detect. ANTS-4903 — get is detect WITHOUT the proposal: detect
+// asks "what should this project declare?", get asks "what does it declare?",
+// which is what a session asks at orientation. One function, so the two
+// answers to "what is declared" cannot drift.
+QJsonDocument psDescribe(const QString &rootCanonical, const QString &settingsPath,
+                         const QString &op) {
+    const bool readOnlyGet = (op == QLatin1String("get"));
+    const ProjectSettings::Suggestion sug = ProjectSettings::detect(rootCanonical);
+    const QStringList &kKeys = psLayoutKeys();
+    QJsonObject s = psProposedLayout(sug);
+    s[QStringLiteral("reason")] = sug.reason;
+    // ANTS-4648 — the present:true short-circuit returns before the walk
+    // (INV-2), so both counts are still their initialiser. Emitting 0 there
+    // reads as a measurement: a ~3000-line project was reported as holding
+    // no source at all. Omit them instead — absent reads as not-computed,
+    // which is what compact:true already does for an empty — and state
+    // which shape this is, so absence is never ambiguous.
+    s[QStringLiteral("counts_computed")] = sug.countsComputed;
+    if (sug.countsComputed) {
+        s[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
+        s[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
+    }
+    // ANTS-3369 — echo what's already in effect / what was discounted,
+    // emitted only when non-empty (1:1 snake_case mapping like above).
+    if (sug.wouldUseRoots)
+        s[QStringLiteral("would_use_roots")] =
+            QJsonArray::fromStringList(*sug.wouldUseRoots);
+    if (!sug.excluded.isEmpty())
+        s[QStringLiteral("excluded")] =
+            QJsonArray::fromStringList(sug.excluded);
+    // ANTS-3705 — echo the CURRENT declaration alongside the suggestion, so
+    // "which layout keys are declared, and are they still correct?" is
+    // one call instead of a native Read of .ants/project.json. Reads the
+    // stored file rather than ProjectSettings::load(), because load()
+    // silently DROPS an entry whose path no longer resolves — which is
+    // precisely the state worth surfacing: to every consumer a dropped key
+    // is indistinguishable from an absent one. Each such entry is named in
+    // `declared_missing`.
+    QJsonObject declared;
+    QJsonArray  declaredMissing;
+    QFile sf(settingsPath);
+    if (sf.open(QIODevice::ReadOnly)) {
+        const QJsonObject stored =
+            QJsonDocument::fromJson(sf.readAll()).object();
+        sf.close();
+        // ANTS-5667 — repo_root is echoed and checked like a path key,
+        // but stays out of kKeys so it never lands in `undeclared`.
+        QStringList echoed = kKeys;
+        echoed << QStringLiteral("repo_root");
+        for (const QString &k : echoed) {
+            if (!stored.contains(k)) continue;
+            const QJsonValue v = stored.value(k);
+            declared[k] = v;
+            QStringList vals;
+            if (v.isString()) {
+                vals << v.toString();
+            } else if (v.isArray()) {
+                const QJsonArray arr = v.toArray();
+                for (const QJsonValue &e : arr)
+                    if (e.isString()) vals << e.toString();
+            }
+            for (int vi = 0; vi < vals.size(); ++vi) {
+                const QString rel = vals.at(vi).trimmed();
+                const QString abs =
+                    rootCanonical + QLatin1Char('/') + rel;
+                if (rel.isEmpty()
+                    || !PathValidation::isInsideProject(rootCanonical, abs))
+                    declaredMissing.append(
+                        QStringLiteral("%1: %2").arg(k, vals.at(vi)));
+            }
+        }
+    }
+    // ANTS-4093 — name the keys that are NOT declared, always. `declared`
+    // alone answers "what is set"; the question a caller actually acts on
+    // is "what is still unset", and reading a reply that says only
+    // "no override needed" as "nothing to configure" is how a project
+    // stays unconfigured. Derived from the same kKeys set, so the two
+    // fields can't disagree about what the recognised keys are.
+    //
+    // ANTS-4815 — but split by whether the caller can ACT on it. op:set
+    // refuses a path that is not on disk, so a key with no candidate can
+    // never leave this array: a project that legitimately keeps no specs
+    // had a permanently non-empty `undeclared`, and could not tell "not
+    // configured yet" from "deliberately has none". What that trains is
+    // ignoring the array, which costs the cases where it IS a to-do list.
+    const ProjectSettings::UndeclaredSplit split =
+        ProjectSettings::splitUndeclared(rootCanonical, sug, kKeys,
+                                         declared.keys());
+    const QJsonArray undeclared =
+        QJsonArray::fromStringList(split.undeclared);
+    const QJsonArray unavailable =
+        QJsonArray::fromStringList(split.unavailable);
+
+    QJsonObject o;
+    o[QStringLiteral("ok")]         = true;
+    o[QStringLiteral("present")]    = sug.present;
+    // ANTS-4903 — name the op that answered, so a reply cannot be read as
+    // the other one's; and withhold the proposal on the read.
+    if (readOnlyGet) o[QStringLiteral("op")] = op;
+    else             o[QStringLiteral("suggestion")] = s;
+    if (!declared.isEmpty())
+        o[QStringLiteral("declared")] = declared;
+    // ANTS-5562 — always present, empty when nothing applies: a caller
+    // told to check declared_missing cannot read "absent" as "clean".
+    // compact:true still drops the empty ones for a caller who wants that.
+    o[QStringLiteral("undeclared")]       = undeclared;
+    o[QStringLiteral("unavailable")]      = unavailable;
+    o[QStringLiteral("declared_missing")] = declaredMissing;
+    return QJsonDocument(o);
+}
+
+// The shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
+// ANTS-2227 — under dry_run, return the would-be settings and landing path
+// without creating .ants/ or writing the file (shares the merged `obj` the
+// real write would persist, so the preview can't drift).
+QJsonDocument psWrite(const QString &rootCanonical, const QString &settingsPath,
+                      const QJsonObject &obj, bool dryRun) {
+    if (dryRun) {
+        QJsonObject o;
+        o[QStringLiteral("ok")]          = true;
+        o[QStringLiteral("dry_run")]     = true;
+        o[QStringLiteral("written")]     = false;
+        o[QStringLiteral("would_write")] = true;
+        o[QStringLiteral("path")]        = settingsPath;
+        o[QStringLiteral("settings")]    = obj;
+        return QJsonDocument(o);
+    }
+    QDir().mkpath(rootCanonical + QStringLiteral("/.ants"));
+    QSaveFile sf(settingsPath);
+    if (!sf.open(QIODevice::WriteOnly))
+        return psErr(QStringLiteral("write_failed"),
+                     QStringLiteral("project_settings: cannot open %1").arg(settingsPath));
+    sf.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
+    if (!sf.commit())
+        return psErr(QStringLiteral("write_failed"),
+                     QStringLiteral("project_settings: commit failed for %1")
+                         .arg(settingsPath));
+    QFile::setPermissions(settingsPath,
+                          QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                              | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+    fsyncParentDir(settingsPath);
+    QJsonObject o;
+    o[QStringLiteral("ok")]       = true;
+    o[QStringLiteral("written")]  = true;
+    o[QStringLiteral("path")]     = settingsPath;
+    o[QStringLiteral("settings")] = obj;
+    return QJsonDocument(o);
+}
+
+}  // namespace
+
 // ANTS-2161 — project_settings: detect a misplaced layout + create/update
-// <root>/.ants/project.json. Ops detect (read-only preview) / init (write
+// <root>/.ants/project.json. Ops get / detect (read-only) / init (write
 // the detected or explicit block, refuse settings_exists, no clobber) / set
 // (create-or-update; raw-JSON merge preserving unknown keys). caller_cwd
 // Required. The file is written world-readable (0644) by design — it holds
@@ -1824,237 +1938,30 @@ DocCitations::Options RemoteControl::docCitationsClampOptions(const QJsonObject 
 // docs/specs/ANTS-2161.md.
 QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
-    const auto err = [](const QString &code, const QString &msg) {
-        QJsonObject o;
-        o[QStringLiteral("ok")]    = false;
-        o[QStringLiteral("code")]  = code;
-        o[QStringLiteral("error")] = msg;
-        return QJsonDocument(o);
-    };
     if (rootCanonical.isEmpty())
-        return err(QStringLiteral("bad_path"),
-                   QStringLiteral("project_settings: no focused project"));
+        return psErr(QStringLiteral("bad_path"),
+                     QStringLiteral("project_settings: no focused project"));
 
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QLatin1String("detect") && op != QLatin1String("init")
         && op != QLatin1String("set") && op != QLatin1String("get"))
-        return err(QStringLiteral("bad_args"),
-                   QStringLiteral(
-                       "project_settings: op must be get|detect|init|set"));
+        return psErr(QStringLiteral("bad_args"),
+                     QStringLiteral("project_settings: op must be get|detect|init|set"));
 
-    const QString settingsPath =
-        rootCanonical + QStringLiteral("/.ants/project.json");
+    const QString settingsPath = rootCanonical + QStringLiteral("/.ants/project.json");
+    if (op == QLatin1String("detect") || op == QLatin1String("get"))
+        return psDescribe(rootCanonical, settingsPath, op);
 
-    // ANTS-2227 — dry_run preview for the write ops (init/set). `detect` is
-    // already read-only, so the flag is a no-op there.
+    // ANTS-2227 — dry_run preview for the write ops (init/set).
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
-    // The six recognised layout keys. Declared here (ahead of op:detect)
-    // because detect's ANTS-3705 `declared` echo walks the same set that
-    // op:set turns into a `changes` object below.
-    static const QStringList kKeys = {
-        QStringLiteral("source_roots"), QStringLiteral("test_roots"),
-        QStringLiteral("docs_dir"), QStringLiteral("specs_dir"),
-        QStringLiteral("roadmap"), QStringLiteral("changelog")};
-
-    // ---- get / detect (read-only) ----
-    // ANTS-4903 — op:"get" is this branch WITHOUT the proposal. The two
-    // questions are different: detect asks "what should this project
-    // declare?", get asks "what does it declare?". Only the second is what
-    // the standing project-layout instruction sends a session to ask at
-    // orientation, and routing it through a verb whose name and documented
-    // purpose are to PROPOSE made every session reason about whether the call
-    // was safe — with a `suggestion` block on an already-declared project as
-    // its reward. Sharing the branch rather than copying it is deliberate:
-    // two implementations of "what is declared" would drift.
-    if (op == QLatin1String("detect") || op == QLatin1String("get")) {
-        const bool readOnlyGet = (op == QLatin1String("get"));
-        const ProjectSettings::Suggestion sug =
-            ProjectSettings::detect(rootCanonical);
-        QJsonObject s;
-        if (sug.sourceRoots)
-            s[QStringLiteral("source_roots")] =
-                QJsonArray::fromStringList(*sug.sourceRoots);
-        s[QStringLiteral("reason")]               = sug.reason;
-        // ANTS-4648 — the present:true short-circuit returns before the walk
-        // (INV-2), so both counts are still their initialiser. Emitting 0 there
-        // reads as a measurement: a ~3000-line project was reported as holding
-        // no source at all. Omit them instead — absent reads as not-computed,
-        // which is what compact:true already does for an empty — and state
-        // which shape this is, so absence is never ambiguous.
-        s[QStringLiteral("counts_computed")] = sug.countsComputed;
-        if (sug.countsComputed) {
-            s[QStringLiteral("default_source_count")] = sug.defaultSourceCount;
-            s[QStringLiteral("total_source_count")]   = sug.totalSourceCount;
-        }
-        // ANTS-3369 — echo what's already in effect / what was discounted,
-        // emitted only when non-empty (1:1 snake_case mapping like above).
-        if (sug.wouldUseRoots)
-            s[QStringLiteral("would_use_roots")] =
-                QJsonArray::fromStringList(*sug.wouldUseRoots);
-        if (!sug.excluded.isEmpty())
-            s[QStringLiteral("excluded")] =
-                QJsonArray::fromStringList(sug.excluded);
-        // ANTS-3588 (INV-19) — conventional aux layout keys, emitted only when
-        // detect proposed them (i.e. alongside a source_roots suggestion).
-        if (sug.testRoots)
-            s[QStringLiteral("test_roots")] =
-                QJsonArray::fromStringList(*sug.testRoots);
-        if (sug.docsDir)   s[QStringLiteral("docs_dir")]  = *sug.docsDir;
-        if (sug.specsDir)  s[QStringLiteral("specs_dir")] = *sug.specsDir;
-        if (sug.roadmap)   s[QStringLiteral("roadmap")]   = *sug.roadmap;
-        if (sug.changelog) s[QStringLiteral("changelog")] = *sug.changelog;
-        // ANTS-3705 — echo the CURRENT declaration alongside the suggestion, so
-        // "which of the six keys are declared, and are they still correct?" is
-        // one call instead of a native Read of .ants/project.json. Reads the
-        // stored file rather than ProjectSettings::load(), because load()
-        // silently DROPS an entry whose path no longer resolves — which is
-        // precisely the state worth surfacing: to every consumer a dropped key
-        // is indistinguishable from an absent one. Each such entry is named in
-        // `declared_missing`.
-        QJsonObject declared;
-        QJsonArray  declaredMissing;
-        QFile sf(settingsPath);
-        if (sf.open(QIODevice::ReadOnly)) {
-            const QJsonObject stored =
-                QJsonDocument::fromJson(sf.readAll()).object();
-            sf.close();
-            // ANTS-5667 — repo_root is echoed and checked like a path key,
-            // but stays out of kKeys so it never lands in `undeclared`.
-            QStringList echoed = kKeys;
-            echoed << QStringLiteral("repo_root");
-            for (const QString &k : echoed) {
-                if (!stored.contains(k)) continue;
-                const QJsonValue v = stored.value(k);
-                declared[k] = v;
-                QStringList vals;
-                if (v.isString()) {
-                    vals << v.toString();
-                } else if (v.isArray()) {
-                    const QJsonArray arr = v.toArray();
-                    for (const QJsonValue &e : arr)
-                        if (e.isString()) vals << e.toString();
-                }
-                for (int vi = 0; vi < vals.size(); ++vi) {
-                    const QString rel = vals.at(vi).trimmed();
-                    const QString abs =
-                        rootCanonical + QLatin1Char('/') + rel;
-                    if (rel.isEmpty()
-                        || !PathValidation::isInsideProject(rootCanonical, abs))
-                        declaredMissing.append(
-                            QStringLiteral("%1: %2").arg(k, vals.at(vi)));
-                }
-            }
-        }
-        // ANTS-4093 — name the keys that are NOT declared, always. `declared`
-        // alone answers "what is set"; the question a caller actually acts on
-        // is "what is still unset", and reading a reply that says only
-        // "no override needed" as "nothing to configure" is how a project
-        // stays unconfigured. Derived from the same kKeys set, so the two
-        // fields can't disagree about what the recognised keys are.
-        //
-        // ANTS-4815 — but split by whether the caller can ACT on it. op:set
-        // refuses a path that is not on disk, so a key with no candidate can
-        // never leave this array: a project that legitimately keeps no specs
-        // had a permanently non-empty `undeclared`, and could not tell "not
-        // configured yet" from "deliberately has none". What that trains is
-        // ignoring the array, which costs the cases where it IS a to-do list.
-        const ProjectSettings::UndeclaredSplit split =
-            ProjectSettings::splitUndeclared(rootCanonical, sug, kKeys,
-                                             declared.keys());
-        const QJsonArray undeclared =
-            QJsonArray::fromStringList(split.undeclared);
-        const QJsonArray unavailable =
-            QJsonArray::fromStringList(split.unavailable);
-
-        QJsonObject o;
-        o[QStringLiteral("ok")]         = true;
-        o[QStringLiteral("present")]    = sug.present;
-        // ANTS-4903 — name the op that answered, so a reply cannot be read as
-        // the other one's; and withhold the proposal on the read.
-        if (readOnlyGet) o[QStringLiteral("op")] = op;
-        else             o[QStringLiteral("suggestion")] = s;
-        if (!declared.isEmpty())
-            o[QStringLiteral("declared")] = declared;
-        // ANTS-5562 — always present, empty when nothing applies: a caller
-        // told to check declared_missing cannot read "absent" as "clean".
-        // compact:true still drops the empty ones for a caller who wants that.
-        o[QStringLiteral("undeclared")]       = undeclared;
-        o[QStringLiteral("unavailable")]      = unavailable;
-        o[QStringLiteral("declared_missing")] = declaredMissing;
-        return QJsonDocument(o);
-    }
-
-    // Recognised flat keys → a `changes` object (a present JSON-null is
-    // retained so set can clear a key — INV-8).
+    // Recognised keys → a `changes` object (a present JSON-null is retained so
+    // set can clear a key — INV-8). Without the set-only keys here they would
+    // fall into applyWrite()'s unknown-key passthrough, never validated.
+    const QStringList accepted = psLayoutKeys() + psSetOnlyKeys();
     QJsonObject changes;
-    for (const QString &k : kKeys)
+    for (const QString &k : accepted)
         if (req.contains(k)) changes[k] = req.value(k);
-    // ANTS-3771 — `id_format` is a set-only recognised key, deliberately NOT in
-    // kKeys. That set drives op:detect's layout suggestion and its
-    // declared/undeclared echo, and a declaration is not a path this verb can
-    // find on disk: detect covers the six PATH keys and cannot detect this one.
-    // applyWrite() validates it and refuses `bad_args` (§ 2.5, INV-9); without
-    // this line it would fall into that function's unknown-key passthrough
-    // having never been offered to it.
-    if (req.contains(QStringLiteral("id_format")))
-        changes[QStringLiteral("id_format")] =
-            req.value(QStringLiteral("id_format"));
-    // ANTS-5667 — `repo_root` is set-only for the same reason: it is the
-    // user's decision that this folder stands for a child repository, so
-    // detect and init never propose it, and it is not a layout gap for
-    // `undeclared` to report. applyWrite() validates it as a directory.
-    if (req.contains(QStringLiteral("repo_root")))
-        changes[QStringLiteral("repo_root")] =
-            req.value(QStringLiteral("repo_root"));
-    // ANTS-4890 — set-only for the same reason: a project's spec convention,
-    // not something detect can find on disk. applyWrite() wants a bool.
-    if (req.contains(QStringLiteral("spec_test_clause_coverage")))
-        changes[QStringLiteral("spec_test_clause_coverage")] =
-            req.value(QStringLiteral("spec_test_clause_coverage"));
-    // ANTS-5728 — set-only too: whether the project uses Claude in Chrome is
-    // the user's choice, not a layout fact. applyWrite() wants a bool.
-    if (req.contains(QStringLiteral("claude_chrome")))
-        changes[QStringLiteral("claude_chrome")] = req.value(QStringLiteral("claude_chrome"));
-
-    // Shared atomic writer: world-readable 0644 (NOT setOwnerOnlyPerms).
-    // ANTS-2227 — under dry_run, return the would-be settings + landing path
-    // without creating .ants/ or writing the file (shares the merged `obj` the
-    // real write would persist, so the preview can't drift).
-    const auto writeOut = [&](const QJsonObject &obj) -> QJsonDocument {
-        if (dryRun) {
-            QJsonObject o;
-            o[QStringLiteral("ok")]          = true;
-            o[QStringLiteral("dry_run")]     = true;
-            o[QStringLiteral("written")]     = false;
-            o[QStringLiteral("would_write")] = true;
-            o[QStringLiteral("path")]        = settingsPath;
-            o[QStringLiteral("settings")]    = obj;
-            return QJsonDocument(o);
-        }
-        QDir().mkpath(rootCanonical + QStringLiteral("/.ants"));
-        QSaveFile sf(settingsPath);
-        if (!sf.open(QIODevice::WriteOnly))
-            return err(QStringLiteral("write_failed"),
-                       QStringLiteral("project_settings: cannot open %1")
-                           .arg(settingsPath));
-        sf.write(QJsonDocument(obj).toJson(QJsonDocument::Indented));
-        if (!sf.commit())
-            return err(QStringLiteral("write_failed"),
-                       QStringLiteral("project_settings: commit failed for %1")
-                           .arg(settingsPath));
-        QFile::setPermissions(settingsPath,
-                              QFileDevice::ReadOwner | QFileDevice::WriteOwner
-                                  | QFileDevice::ReadGroup
-                                  | QFileDevice::ReadOther);
-        fsyncParentDir(settingsPath);
-        QJsonObject o;
-        o[QStringLiteral("ok")]       = true;
-        o[QStringLiteral("written")]  = true;
-        o[QStringLiteral("path")]     = settingsPath;
-        o[QStringLiteral("settings")] = obj;
-        return QJsonDocument(o);
-    };
 
     // ---- init (create only, no clobber) ----
     if (op == QLatin1String("init")) {
@@ -2067,32 +1974,15 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             o[QStringLiteral("path")]  = settingsPath;
             return QJsonDocument(o);
         }
-        QJsonObject toWrite;
-        if (!changes.isEmpty()) {                 // explicit keys suppress the detector
-            QString ec, ek, ev;
-            const auto merged = ProjectSettings::applyWrite(
-                QJsonObject{}, changes, rootCanonical, &ec, &ek, &ev);
-            if (!merged)
-                return err(ec, QStringLiteral("project_settings: invalid %1=%2")
-                                   .arg(ek, ev));
-            toWrite = *merged;
-        } else {
-            const ProjectSettings::Suggestion sug =
-                ProjectSettings::detect(rootCanonical);
-            QJsonObject detected;
-            if (sug.sourceRoots)
-                detected[QStringLiteral("source_roots")] =
-                    QJsonArray::fromStringList(*sug.sourceRoots);
-            // ANTS-3588 (INV-19) — the conventional aux layout keys ride along a
-            // source_roots suggestion, so one init writes the whole block.
-            if (sug.testRoots)
-                detected[QStringLiteral("test_roots")] =
-                    QJsonArray::fromStringList(*sug.testRoots);
-            if (sug.docsDir)   detected[QStringLiteral("docs_dir")]  = *sug.docsDir;
-            if (sug.specsDir)  detected[QStringLiteral("specs_dir")] = *sug.specsDir;
-            if (sug.roadmap)   detected[QStringLiteral("roadmap")]   = *sug.roadmap;
-            if (sug.changelog) detected[QStringLiteral("changelog")] = *sug.changelog;
-            if (detected.isEmpty()) {             // nothing to do is not an error
+        // Explicit keys suppress the detector. A detected block is validated
+        // exactly as explicit keys are (ANTS-3588, § 2.3): detect existence-
+        // checked each path, so this is a formality unless one vanished
+        // (TOCTOU) → bad_path.
+        QJsonObject toApply = changes;
+        if (toApply.isEmpty()) {
+            const ProjectSettings::Suggestion sug = ProjectSettings::detect(rootCanonical);
+            toApply = psProposedLayout(sug);
+            if (toApply.isEmpty()) {             // nothing to do is not an error
                 QJsonObject o;
                 o[QStringLiteral("ok")]       = true;
                 o[QStringLiteral("written")]  = false;
@@ -2101,18 +1991,13 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
                     : sug.reason;
                 return QJsonDocument(o);
             }
-            // ANTS-3588 — validate the detector-derived block exactly as explicit
-            // keys (§2.3): each path was existence-checked in detect, so this is a
-            // formality unless a path vanished (TOCTOU) → bad_path.
-            QString ec, ek, ev;
-            const auto merged = ProjectSettings::applyWrite(
-                QJsonObject{}, detected, rootCanonical, &ec, &ek, &ev);
-            if (!merged)
-                return err(ec, QStringLiteral("project_settings: invalid %1=%2")
-                                   .arg(ek, ev));
-            toWrite = *merged;
         }
-        return writeOut(toWrite);
+        QString ec, ek, ev;
+        const auto merged = ProjectSettings::applyWrite(
+            QJsonObject{}, toApply, rootCanonical, &ec, &ek, &ev);
+        if (!merged)
+            return psErr(ec, QStringLiteral("project_settings: invalid %1=%2").arg(ek, ev));
+        return psWrite(rootCanonical, settingsPath, *merged, dryRun);
     }
 
     // ---- set (create-or-update; merge preserves unknown keys) ----
@@ -2120,9 +2005,9 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     if (QFileInfo::exists(settingsPath)) {
         QFile f(settingsPath);
         if (!f.open(QIODevice::ReadOnly))
-            return err(QStringLiteral("read_failed"),
-                       QStringLiteral("project_settings: cannot read %1")
-                           .arg(settingsPath));
+            return psErr(QStringLiteral("read_failed"),
+                         QStringLiteral("project_settings: cannot read %1")
+                             .arg(settingsPath));
         const QByteArray raw = f.readAll();
         f.close();
         QJsonParseError pe{};
@@ -2142,33 +2027,18 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
         existing = d.object();
     }
     if (changes.isEmpty())
-        return err(QStringLiteral("bad_args"), QStringLiteral(
-            "project_settings set: supply at least one of "
-            "source_roots/test_roots/docs_dir/specs_dir/roadmap/changelog"
-            "/id_format/repo_root/spec_test_clause_coverage/claude_chrome"));
+        return psErr(QStringLiteral("bad_args"),
+                     QStringLiteral("project_settings set: supply at least one of %1")
+                         .arg(accepted.join(QLatin1Char('/'))));
     QString ec, ek, ev;
     const auto merged = ProjectSettings::applyWrite(
         existing, changes, rootCanonical, &ec, &ek, &ev);
     if (!merged)
-        return err(ec,
-                   QStringLiteral("project_settings: invalid %1=%2").arg(ek, ev));
-    return writeOut(*merged);
+        return psErr(ec, QStringLiteral("project_settings: invalid %1=%2").arg(ek, ev));
+    return psWrite(rootCanonical, settingsPath, *merged, dryRun);
 }
 
 
-// ANTS-3663 — doc_lint: the five deterministic doc checkers in ONE call, over
-// one enumeration and one shared read, so a review pre-pass costs one call
-// rather than five that each re-walk the same tree. caller_cwd Required. `path`
-// routes through PathValidation and then the SAME enumeration doc_integrity
-// uses. Engine: DocLint::run. See docs/specs/ANTS-3663.md.
-//
-// DELIBERATELY ABSENT FROM isEtagSupportedTool, and this is not an oversight to
-// be tidied up by symmetry with the five siblings (INV-13). The short-circuit
-// runs AFTER the handler and hashes what it produced, so once ANTS-3669 adds the
-// write path a matching etag_match would report a COMPLETED repair as
-// "unchanged" — files moved on disk and the envelope says nothing did. There is
-// one registration entry, so the exclusion cannot be phased in later; it ships
-// unconditional from the first version. No `etag_match` property either.
 // ANTS-5506 — doc_facts' version truth (spec § 2.6). `.claude/bump.json` wins
 // because it is the recipe the release tooling bumps from; the root
 // CMakeLists.txt's project(... VERSION ...) is the fallback. Neither → empty,
@@ -2260,6 +2130,21 @@ static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel
     return {};
 }
 
+// ANTS-3663 — doc_lint: the deterministic doc checkers (DocLint::checkNames())
+// in ONE call, over one enumeration and one shared read, so a review pre-pass
+// costs one call rather than one per checker, each re-walking the same tree.
+// caller_cwd Required. `path` routes through PathValidation and then the SAME
+// enumeration doc_integrity uses. Engine: DocLint::run. See
+// docs/specs/ANTS-3663.md.
+//
+// DELIBERATELY ABSENT FROM isEtagSupportedTool, and this is not an oversight to
+// be tidied up by symmetry with the checker verbs it bundles (INV-13). The
+// short-circuit runs AFTER the handler and hashes what it produced, so once
+// ANTS-3669 adds the write path a matching etag_match would report a COMPLETED
+// repair as "unchanged" — files moved on disk and the envelope says nothing
+// did. There is one registration entry, so the exclusion cannot be phased in
+// later; it ships unconditional from the first version. No `etag_match`
+// property either.
 QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
@@ -2285,9 +2170,9 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         if (pathRel == QLatin1String(".")) pathRel.clear();
     }
 
-    // An unknown name REFUSES rather than reading as "all five". Silently
-    // running four checks for a caller who asked for a fifth returns a clean
-    // report about a question nobody answered.
+    // An unknown name REFUSES rather than reading as "all of them". Silently
+    // running the other checks for a caller who asked for a missing one
+    // returns a clean report about a question nobody answered.
     QSet<QString> checks;
     for (const QJsonValue &v : req.value(QStringLiteral("checks")).toArray()) {
         const QString n = v.toString();
@@ -2380,12 +2265,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     opts.spec.wiredTestDirs =
         specLintWiredTestDirs(rootCanonical, opts.spec.existingTestDirs);
 
-    // Generated and templated artifacts — the same set doc_dedup's own verb
-    // injects, and measured rather than chosen.
-    opts.dedup.excludedPathGlobs = QStringList{
-        QStringLiteral("*AUTOMATED_AUDIT_REPORT*"),
-        QStringLiteral("*superpowers/*"),
-    };
+    opts.dedup.excludedPathGlobs = DocDedup::generatedPathGlobs();
 
     // ANTS-5506 — doc_facts' two inputs. The provider returns a COPY the
     // tools/list handler published under a mutex: this runs on a worker, and

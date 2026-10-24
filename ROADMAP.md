@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6270 -->
+<!-- ants-roadmap-id-high-water: ANTS=6273 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95635,6 +95635,14 @@ worked after these.
   2026-10-23: HIGH F1 done (one transcript-folder rule,
   SessionCost::folderNameFor; closes ANTS-5952) and F2 done (validId's
   pattern and start's refusal built from kKinds). No HIGH left here.
+  2026-10-24: MEDIUMs done except as queued. F6 requiredCallerCwd (seven
+  copies), F4 SessionCost::projectsDirs, F19 buildCostRow, F20 one
+  function per session_message op, F7 DocIntegrity::kindName/allKinds
+  (four copies), F8 DocDedup::generatedPathGlobs, F9+F16 project_settings
+  helpers (psDescribe, psWrite, psProposedLayout, key lists), F17
+  specLintSiblingInvNumbers, F10 newTabCwdRefusal/newTabReply, F21
+  handleSocketLine, F22-F26 comments. Queued: ANTS-6271 (F4 rest),
+  6272 (F5), 6273 (F11). LOWs open.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97116,6 +97124,39 @@ worked after these.
   **Layman:** A long commit message can end in a broken character in the git tool's reply.
   Kind: fix.
   Source: review-readability-2026-10-22 L24.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6271] **run_trace finds a session_id's transcript under ~/.claude/projects only, while session_cost tries every transcript folder.**
+  L25-F4. Both handlers now share SessionCost::projectsDirs() (ANTS-6134).
+  Left: cmdRunTrace resolves session_id against projectsDirs().constLast()
+  and does not walk up to a parent folder, so with CLAUDE_CONFIG_DIR set,
+  or from a subdirectory, it misses a transcript session_cost finds. Make
+  it resolve as SessionCost::run does. Behaviour change; needs a test.
+  **Layman:** Two cost tools look for a session's log in different places, so one can miss a log the other finds.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L25.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6272] **run_trace's usage sum and session_cost's count tokens differently.**
+  L25-F5. sumUsage (runtraceverb.cpp) counts isSidechain lines and counts
+  every line with no message id again; SessionCost::analyse skips both.
+  One shared sum, with a test pinning which rule is right. Behaviour
+  change for one of the two verbs.
+  **Layman:** Two tools that add up a session's tokens disagree on what to count.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L25.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6273] **send-text and set-title pick their default tab differently from the read verbs.**
+  L25-F11. With no `tab`, get-text, recent_errors and last_selection use
+  the caller_cwd tab (terminalForCaller); send-text uses the focused tab
+  and set-title currentTabIndexForRemote(). Decide whether the two write
+  verbs should follow caller_cwd. A shared lookup helper must keep its
+  MainWindow reads inside each verb body: mcp_verb_offthread_guard INV-6
+  flags a free function that reads MainWindow (seen 2026-10-24).
+  **Layman:** Some terminal commands pick a different default tab than others when you don't name one.
+  Kind: ux.
+  Source: review-readability-2026-10-22 L25.
   Lanes: mcp-content-verbs.
 
 ## Readability review 2026-10-22 — possible bugs to investigate

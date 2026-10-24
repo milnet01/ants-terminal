@@ -139,7 +139,7 @@ TEST(RcReplyDrainGuard, Inv3ReplyWriteArmsTheGuard) {
     const std::string src = ants_test::slurpRemoteControl();
     ASSERT_FALSE(src.empty());
     const std::string body =
-        ants_test::slurpFunctionBody(src, "void RemoteControl::onNewConnection(");
+        ants_test::slurpFunctionBody(src, "void RemoteControl::handleSocketLine(");
     ASSERT_FALSE(body.empty());
     const auto disc = body.find("sock->disconnectFromServer();");
     const auto arm = body.find(

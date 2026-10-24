@@ -21,6 +21,11 @@ inline constexpr qint64 kActiveWindowMs = 10LL * 60 * 1000;
 // letters and digits becomes '-'.
 QString folderNameFor(const QString &cwd);
 
+// Where the harness keeps transcripts: $CLAUDE_CONFIG_DIR/projects when that
+// is set, then ~/.claude/projects. Read by the handlers, not by run(), so a
+// test passes its own list.
+QStringList projectsDirs();
+
 // The whole report for one transcript (INV-1 to INV-3). `top` caps each list.
 QJsonObject analyse(const QString &transcriptPath, int top);
 

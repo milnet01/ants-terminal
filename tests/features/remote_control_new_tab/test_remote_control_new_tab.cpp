@@ -59,7 +59,11 @@ static int runMain() {
         if (body.find("newTabForRemote") == std::string::npos) {
             fail("INV-3a: cmdNewTab must delegate to MainWindow::newTabForRemote");
         }
-        if (body.find("\"index\"") == std::string::npos) {
+        // The reply is built by newTabReply, shared with cmdLaunch.
+        const std::string reply = ants_test::slurpFunctionBody(
+            rc, "QJsonDocument newTabReply(");
+        if (body.find("newTabReply(") == std::string::npos
+            || reply.find("\"index\"") == std::string::npos) {
             fail("INV-3b: cmdNewTab must return the tab index under the \"index\" key");
         }
         // INV-3c (added 0.7.52): command must be routed through

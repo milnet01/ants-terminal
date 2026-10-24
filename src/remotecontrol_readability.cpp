@@ -22,23 +22,6 @@
 
 namespace {
 
-// The resolved root, or a no_project refusal in `*refusal`.
-QString resolveRoot(const ants::RootProvider *roots, const QJsonObject &req,
-                    const QString &verb, QJsonObject *refusal) {
-    // caller_cwd absent is the dispatcher's refusal (CallerCwdContract::Required).
-    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(roots, callerRaw);
-    if (rr.source == ants::ResolvedRoot::Source::Unresolvable || rr.cwd.isEmpty()) {
-        (*refusal)[QStringLiteral("ok")] = false;
-        (*refusal)[QStringLiteral("code")] = QStringLiteral("no_project");
-        (*refusal)[QStringLiteral("error")] =
-            QStringLiteral("%1: caller_cwd \"%2\" does not resolve to a directory")
-                .arg(verb, callerRaw);
-        return QString();
-    }
-    return rr.cwd;
-}
-
 // Copies the named arguments that are present.
 QJsonObject forward(const QJsonObject &req, std::initializer_list<const char *> names) {
     QJsonObject args;
@@ -54,7 +37,7 @@ QJsonObject forward(const QJsonObject &req, std::initializer_list<const char *> 
 QJsonDocument RemoteControl::cmdFunctionSizes(const QJsonObject &req) {
     QJsonObject refusal;
     const QString root =
-        resolveRoot(m_roots, req, QStringLiteral("function_sizes"), &refusal);
+        ants::requiredCallerCwd(m_roots, req, QStringLiteral("function_sizes"), &refusal);
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(FunctionSizes::run(
         root, forward(req, {"paths", "top", "include_tests", "include_generated"})));
@@ -63,7 +46,7 @@ QJsonDocument RemoteControl::cmdFunctionSizes(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdSourceScrapes(const QJsonObject &req) {
     QJsonObject refusal;
     const QString root =
-        resolveRoot(m_roots, req, QStringLiteral("source_scrapes"), &refusal);
+        ants::requiredCallerCwd(m_roots, req, QStringLiteral("source_scrapes"), &refusal);
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(SourceScrapes::run(root, forward(req, {"path", "paths", "limit"})));
 }
@@ -71,7 +54,7 @@ QJsonDocument RemoteControl::cmdSourceScrapes(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdCommentClaims(const QJsonObject &req) {
     QJsonObject refusal;
     const QString root =
-        resolveRoot(m_roots, req, QStringLiteral("comment_claims"), &refusal);
+        ants::requiredCallerCwd(m_roots, req, QStringLiteral("comment_claims"), &refusal);
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(CommentClaims::run(
         root, forward(req, {"paths", "limit", "include_tests", "include_generated"})));
@@ -80,7 +63,7 @@ QJsonDocument RemoteControl::cmdCommentClaims(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdDuplicateBlocks(const QJsonObject &req) {
     QJsonObject refusal;
     const QString root =
-        resolveRoot(m_roots, req, QStringLiteral("duplicate_blocks"), &refusal);
+        ants::requiredCallerCwd(m_roots, req, QStringLiteral("duplicate_blocks"), &refusal);
     if (root.isEmpty()) return QJsonDocument(refusal);
     return QJsonDocument(DuplicateBlocks::run(
         root, forward(req, {"paths", "min_lines", "similarity", "normalise_names", "top",

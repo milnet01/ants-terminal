@@ -273,6 +273,103 @@ bool sumUsage(const QString &path, const QDateTime &since, Usage *u, QString *er
     return true;
 }
 
+// What finish() writes for a `cost` argument (ANTS-5298's record half).
+struct CostRow {
+    QString path;      // run-costs.tsv, absolute
+    QString line;      // the new row
+    QString fileText;  // the whole file with the row appended
+    QJsonObject reply; // finish's `cost_row`
+};
+
+// Validates `c`, checks the table's header and sums the transcript since
+// `startedAt`. Fills `*out` and returns an empty object, or returns the
+// refusal and writes nothing.
+QJsonObject buildCostRow(const Paths &p, const QJsonObject &c, qint64 lanes,
+                         const QString &transcriptPath, const QDateTime &startedAt,
+                         const QString &date, const QString &subject, CostRow *out) {
+    if (!c.contains(QStringLiteral("verified")))
+        return refuse("coverage_required",
+                      QStringLiteral("cost.verified is required: a cost with no coverage "
+                                     "figure cannot tell a cheaper review from a "
+                                     "weaker one"));
+    const auto verified = asInt(c.value(QStringLiteral("verified")));
+    const auto dismissed = c.contains(QStringLiteral("dismissed"))
+                               ? asInt(c.value(QStringLiteral("dismissed")))
+                               : std::optional<qint64>(0);
+    const auto loop = asInt(c.value(QStringLiteral("loop")));
+    if (!verified || *verified < 0 || !dismissed || *dismissed < 0 || !loop || *loop < 1)
+        return refuse("bad_args", QStringLiteral("cost.verified and cost.dismissed must be "
+                                                 "integers >= 0, cost.loop >= 1"));
+    if (lanes < 1)
+        return refuse("bad_args", QStringLiteral("a cost row needs lanes >= 1; a run that "
+                                                 "dispatched nobody records no cost"));
+    const QString executed = c.value(QStringLiteral("executed")).toString();
+    const QString costOutcome = c.value(QStringLiteral("outcome")).toString(
+        QStringLiteral("open"));
+    const QString arm = c.value(QStringLiteral("arm")).toString();
+    const QString costKind = c.value(QStringLiteral("kind")).toString();
+    static const QStringList kExecuted{QStringLiteral("yes"), QStringLiteral("no"),
+                                       QStringLiteral("partial")};
+    static const QStringList kOutcomes{QStringLiteral("complete"),
+                                       QStringLiteral("stopped-early"),
+                                       QStringLiteral("open")};
+    static const QStringList kArms{QStringLiteral("live"), QStringLiteral("draft")};
+    if (!kExecuted.contains(executed) || !kOutcomes.contains(costOutcome)
+        || !kArms.contains(arm) || costKind.isEmpty() || hasNewline(costKind)
+        || costKind.contains(QLatin1Char('\t')))
+        return refuse("bad_args",
+                      QStringLiteral("cost needs kind, executed (yes|no|partial), arm "
+                                     "(live|draft); outcome is complete|stopped-early|"
+                                     "open"));
+    if (transcriptPath.isEmpty())
+        return refuse("missing_field", QStringLiteral("a cost row needs `transcript` or "
+                                                      "`session_id`"));
+    if (!startedAt.isValid())
+        return refuse("bad_args", QStringLiteral("the pending record has no valid "
+                                                 "started_at"));
+
+    out->path = QDir(p.root).filePath(QString::fromLatin1(kCostTsv));
+    const QString header = costColumns().join(QLatin1Char('\t'));
+    if (QFileInfo::exists(out->path)) {
+        out->fileText = readText(out->path);
+        const QString first = out->fileText.section(QLatin1Char('\n'), 0, 0);
+        if (!first.isEmpty() && first != header) {
+            QJsonObject r = refuse("format_mismatch",
+                QStringLiteral("%1 has columns \"%2\"; this writes \"%3\". Migrate the "
+                               "rows first; nothing was written")
+                    .arg(QString::fromLatin1(kCostTsv), first, header));
+            r[QStringLiteral("format")] = QStringLiteral("run-costs.tsv");
+            r[QStringLiteral("path")] = QString::fromLatin1(kCostTsv);
+            return r;
+        }
+    }
+    Usage u;
+    QString err;
+    if (!sumUsage(transcriptPath, startedAt, &u, &err))
+        return refuse("read_failed", err);
+    if (u.newTokens == 0)
+        return refuse("bad_args",
+                      QStringLiteral("the transcript shows no usage since %1; wrong "
+                                     "transcript?").arg(startedAt.toString(Qt::ISODate)));
+    const QStringList cells{date, arm, subject, costKind, QString::number(*loop),
+                            QString::number(lanes), QString::number(u.newTokens),
+                            QString::number(u.cacheReads), QString::number(*verified),
+                            QString::number(*dismissed), executed, costOutcome};
+    out->line = cells.join(QLatin1Char('\t'));
+    if (out->fileText.isEmpty())
+        out->fileText = header + QLatin1Char('\n');
+    else if (!out->fileText.endsWith(QLatin1Char('\n')))
+        out->fileText += QLatin1Char('\n');
+    out->fileText += out->line + QLatin1Char('\n');
+    out->reply = QJsonObject{{QStringLiteral("path"), QString::fromLatin1(kCostTsv)},
+                             {QStringLiteral("row"), out->line},
+                             {QStringLiteral("new_tokens"), double(u.newTokens)},
+                             {QStringLiteral("cache_reads"), double(u.cacheReads)},
+                             {QStringLiteral("messages_counted"), u.messages},
+                             {QStringLiteral("duplicate_lines_skipped"), u.duplicates}};
+    return {};
+}
+
 }  // namespace
 
 QString projectRootFor(const QString &cwd) {
@@ -437,92 +534,13 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
                           .arg(QDir(p.root).relativeFilePath(dPath)));
     }
 
-    // --- cost (ANTS-5298's record half)
-    QString costLine, costPath;
-    QString costFileText;
-    QJsonObject costOut;
+    // --- cost
+    CostRow cost;
     if (a.contains(QStringLiteral("cost"))) {
-        const QJsonObject c = a.value(QStringLiteral("cost")).toObject();
-        if (!c.contains(QStringLiteral("verified")))
-            return refuse("coverage_required",
-                          QStringLiteral("cost.verified is required: a cost with no coverage "
-                                         "figure cannot tell a cheaper review from a "
-                                         "weaker one"));
-        const auto verified = asInt(c.value(QStringLiteral("verified")));
-        const auto dismissed = c.contains(QStringLiteral("dismissed"))
-                                   ? asInt(c.value(QStringLiteral("dismissed")))
-                                   : std::optional<qint64>(0);
-        const auto loop = asInt(c.value(QStringLiteral("loop")));
-        if (!verified || *verified < 0 || !dismissed || *dismissed < 0 || !loop || *loop < 1)
-            return refuse("bad_args", QStringLiteral("cost.verified and cost.dismissed must be "
-                                                     "integers >= 0, cost.loop >= 1"));
-        if (*lanes < 1)
-            return refuse("bad_args", QStringLiteral("a cost row needs lanes >= 1; a run that "
-                                                     "dispatched nobody records no cost"));
-        const QString executed = c.value(QStringLiteral("executed")).toString();
-        const QString costOutcome = c.value(QStringLiteral("outcome")).toString(
-            QStringLiteral("open"));
-        const QString arm = c.value(QStringLiteral("arm")).toString();
-        const QString costKind = c.value(QStringLiteral("kind")).toString();
-        static const QStringList kExecuted{QStringLiteral("yes"), QStringLiteral("no"),
-                                           QStringLiteral("partial")};
-        static const QStringList kOutcomes{QStringLiteral("complete"),
-                                           QStringLiteral("stopped-early"),
-                                           QStringLiteral("open")};
-        static const QStringList kArms{QStringLiteral("live"), QStringLiteral("draft")};
-        if (!kExecuted.contains(executed) || !kOutcomes.contains(costOutcome)
-            || !kArms.contains(arm) || costKind.isEmpty() || hasNewline(costKind)
-            || costKind.contains(QLatin1Char('\t')))
-            return refuse("bad_args",
-                          QStringLiteral("cost needs kind, executed (yes|no|partial), arm "
-                                         "(live|draft); outcome is complete|stopped-early|"
-                                         "open"));
-        if (req.transcriptPath.isEmpty())
-            return refuse("missing_field", QStringLiteral("a cost row needs `transcript` or "
-                                                          "`session_id`"));
-        if (!startedAt.isValid())
-            return refuse("bad_args", QStringLiteral("the pending record has no valid "
-                                                     "started_at"));
-
-        costPath = QDir(p.root).filePath(QString::fromLatin1(kCostTsv));
-        const QString header = costColumns().join(QLatin1Char('\t'));
-        if (QFileInfo::exists(costPath)) {
-            costFileText = readText(costPath);
-            const QString first = costFileText.section(QLatin1Char('\n'), 0, 0);
-            if (!first.isEmpty() && first != header) {
-                QJsonObject r = refuse("format_mismatch",
-                    QStringLiteral("%1 has columns \"%2\"; this writes \"%3\". Migrate the "
-                                   "rows first; nothing was written")
-                        .arg(QString::fromLatin1(kCostTsv), first, header));
-                r[QStringLiteral("format")] = QStringLiteral("run-costs.tsv");
-                r[QStringLiteral("path")] = QString::fromLatin1(kCostTsv);
-                return r;
-            }
-        }
-        Usage u;
-        QString err;
-        if (!sumUsage(req.transcriptPath, startedAt, &u, &err))
-            return refuse("read_failed", err);
-        if (u.newTokens == 0)
-            return refuse("bad_args",
-                          QStringLiteral("the transcript shows no usage since %1; wrong "
-                                         "transcript?").arg(startedAt.toString(Qt::ISODate)));
-        const QStringList row{date, arm, subject, costKind, QString::number(*loop),
-                              QString::number(*lanes), QString::number(u.newTokens),
-                              QString::number(u.cacheReads), QString::number(*verified),
-                              QString::number(*dismissed), executed, costOutcome};
-        costLine = row.join(QLatin1Char('\t'));
-        if (costFileText.isEmpty())
-            costFileText = header + QLatin1Char('\n');
-        else if (!costFileText.endsWith(QLatin1Char('\n')))
-            costFileText += QLatin1Char('\n');
-        costFileText += costLine + QLatin1Char('\n');
-        costOut = QJsonObject{{QStringLiteral("path"), QString::fromLatin1(kCostTsv)},
-                              {QStringLiteral("row"), costLine},
-                              {QStringLiteral("new_tokens"), double(u.newTokens)},
-                              {QStringLiteral("cache_reads"), double(u.cacheReads)},
-                              {QStringLiteral("messages_counted"), u.messages},
-                              {QStringLiteral("duplicate_lines_skipped"), u.duplicates}};
+        const QJsonObject r = buildCostRow(p, a.value(QStringLiteral("cost")).toObject(), *lanes,
+                                           req.transcriptPath, startedAt, date, subject, &cost);
+        if (!r.isEmpty())
+            return r;
     }
 
     // --- index row
@@ -552,8 +570,8 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
                 return refuse("write_failed", err);
             written.append(QDir(p.root).relativeFilePath(dPath));
         }
-        if (!costLine.isEmpty()) {
-            if (!writeText(costPath, costFileText, &err))
+        if (!cost.line.isEmpty()) {
+            if (!writeText(cost.path, cost.fileText, &err))
                 return refuse("write_failed", err);
             written.append(QString::fromLatin1(kCostTsv));
         }
@@ -572,8 +590,8 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
                     {QStringLiteral("detail_written"), haveDetail && !req.dryRun},
                     {QStringLiteral("detail_header_added"), detailHeaderAdded},
                     {QStringLiteral("files_written"), written}};
-    if (!costOut.isEmpty())
-        out[QStringLiteral("cost_row")] = costOut;
+    if (!cost.reply.isEmpty())
+        out[QStringLiteral("cost_row")] = cost.reply;
     if (req.dryRun)
         out[QStringLiteral("dry_run")] = true;
     return out;

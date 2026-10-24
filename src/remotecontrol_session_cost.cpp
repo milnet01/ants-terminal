@@ -16,28 +16,13 @@
 #include "sessioncostverb.h"
 
 #include <QDateTime>
-#include <QDir>
 
 QJsonDocument RemoteControl::cmdSessionCost(const QJsonObject &req) {
     // caller_cwd absent is the dispatcher's refusal (CallerCwdContract::Required).
-    const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
-    const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(m_roots, callerRaw);
-    if (rr.source == ants::ResolvedRoot::Source::Unresolvable || rr.cwd.isEmpty()) {
-        QJsonObject e;
-        e[QStringLiteral("ok")]    = false;
-        e[QStringLiteral("code")]  = QStringLiteral("no_project");
-        e[QStringLiteral("error")] =
-            QStringLiteral("session_cost: caller_cwd \"%1\" does not resolve to a "
-                           "directory").arg(callerRaw);
-        return QJsonDocument(e);
-    }
-
-    // Where the harness keeps transcripts; CLAUDE_CONFIG_DIR moves it.
-    QStringList projectsDirs;
-    const QString cfg = qEnvironmentVariable("CLAUDE_CONFIG_DIR");
-    if (!cfg.isEmpty())
-        projectsDirs << QDir(cfg).filePath(QStringLiteral("projects"));
-    projectsDirs << QDir::home().filePath(QStringLiteral(".claude/projects"));
+    QJsonObject refusal;
+    const QString cwd = ants::requiredCallerCwd(m_roots, req, QStringLiteral("session_cost"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
 
     QJsonObject args;
     for (const char *k : {"session_id", "top"}) {
@@ -45,6 +30,6 @@ QJsonDocument RemoteControl::cmdSessionCost(const QJsonObject &req) {
         if (req.contains(key))
             args[key] = req.value(key);
     }
-    return QJsonDocument(SessionCost::run(projectsDirs, rr.cwd, args,
+    return QJsonDocument(SessionCost::run(SessionCost::projectsDirs(), cwd, args,
                                           QDateTime::currentMSecsSinceEpoch()));
 }

@@ -2,7 +2,7 @@
 
 ## Problem
 
-`RemoteControl::onNewConnection` stops the 5 s idle timer before it
+`RemoteControl::handleSocketLine` stops the 5 s idle timer before it
 dispatches a request. The reply write then runs `write`, `flush` and
 `disconnectFromServer`. `disconnectFromServer` waits for the write
 buffer to drain before it closes. A peer that never reads a large reply
@@ -17,7 +17,7 @@ Progress is measured by `bytesWritten`: each one restarts the window, so
 a slow reader that keeps reading is never cut.
 
 `RemoteControl::armReplyDrainGuard(socket, idleMs)` implements the rule.
-The reply write in `onNewConnection` calls it after
+The reply write in `handleSocketLine` calls it after
 `disconnectFromServer`. It does nothing to a socket that has already
 closed.
 
@@ -33,7 +33,7 @@ that reads the reply in small chunks, each sooner than the window, MUST
 receive every byte.
 
 **INV-3 — the reply write arms the guard.** Source-grep: the reply
-write in `RemoteControl::onNewConnection` calls
+write in `RemoteControl::handleSocketLine` calls
 `armReplyDrainGuard(` with `kReplyDrainIdleMs` after
 `disconnectFromServer()`.
 

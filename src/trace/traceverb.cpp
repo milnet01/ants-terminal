@@ -16,18 +16,10 @@ void registerMcpdOnlyVerbs(ToolSink &sink, const RegistryHost &host, trace::Env 
     handler.lane = DispatchLane::Bulk;
     handler.fn = [roots = host.roots, env = std::move(env)](const QJsonObject &args) -> QString {
         // An empty caller_cwd is the dispatcher's refusal (Required).
-        const QString callerRaw = args.value(QStringLiteral("caller_cwd")).toString();
-        const ants::ResolvedRoot rr = ants::resolveCallerCwdRoot(roots, callerRaw);
         QJsonObject reply;
-        if (rr.source == ants::ResolvedRoot::Source::Unresolvable || rr.cwd.isEmpty()) {
-            reply = {{QStringLiteral("ok"), false},
-                     {QStringLiteral("code"), QStringLiteral("no_project")},
-                     {QStringLiteral("error"),
-                      QStringLiteral("trace: caller_cwd \"%1\" does not resolve to a directory")
-                          .arg(callerRaw)}};
-        } else {
-            reply = trace::serve(args, RunTraceVerb::projectRootFor(rr.cwd), env);
-        }
+        const QString cwd = ants::requiredCallerCwd(roots, args, QStringLiteral("trace"), &reply);
+        if (!cwd.isEmpty())
+            reply = trace::serve(args, RunTraceVerb::projectRootFor(cwd), env);
         return QString::fromUtf8(QJsonDocument(reply).toJson(QJsonDocument::Compact));
     };
     // A plain literal, as mcptoolregistry.cpp writes its names:

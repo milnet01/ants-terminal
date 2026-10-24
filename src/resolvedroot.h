@@ -17,6 +17,7 @@
 
 #include <optional>
 
+#include <QJsonObject>
 #include <QString>
 
 namespace ants {
@@ -65,6 +66,12 @@ struct ResolvedRoot {
 // fallback and the tab match. A null `roots` has no fallback and no tabs.
 ResolvedRoot resolveCallerCwdRoot(const RootProvider *roots,
                                   const QString &callerCwd);
+
+// For a verb whose caller_cwd is CallerCwdContract::Required (so the
+// dispatcher has already refused an absent one): the canonical cwd, or an
+// empty string with the `no_project` refusal in `*refusal`, prefixed `verb`.
+QString requiredCallerCwd(const RootProvider *roots, const QJsonObject &req,
+                          const QString &verb, QJsonObject *refusal);
 
 // ANTS-1390 — global Claude config sentinel. Returns canonical
 // `~/.claude/` when `callerCwd` is the `~global` or `~claude-config`

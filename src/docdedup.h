@@ -176,4 +176,8 @@ bool isPointerLine(const QString &raw);
 // True when `relPath` matches any of `opts.excludedPathGlobs`.
 bool isExcludedPath(const QString &relPath, const Options &opts);
 
+// The generated and templated artifacts doc_dedup and doc_lint exclude
+// (spec § 2.4): dated audit reports and stamped plan files.
+const QStringList &generatedPathGlobs();
+
 }  // namespace DocDedup
