@@ -16,10 +16,11 @@
 
 namespace SpecLog {
 
-// Result of a pure transform. `code`/`error` carry only the STRUCTURAL
-// refusals computed from the content string (`unrecognised_format` for a
-// missing section/line, `bad_args` for a duplicate INV-N); the handler
-// owns all arg/cwd/path/file refusals. On success, `content` is the new
+// Result of a pure transform. `code`/`error` carry only the refusals
+// computed from the content and arguments: `unrecognised_format`,
+// `bad_args`, and append_loop's `format_mismatch` and `column_mismatch`
+// (each op's comment below says when). The handler owns the rest: missing
+// arguments, cwd, path and file. On success, `content` is the new
 // full file text.
 struct EditResult {
     bool    ok = false;
@@ -60,13 +61,18 @@ EditResult setStatus(const QString &content, const QString &newStatus,
 // op:"append_loop" — append a `- **<label>** — <body>` bullet at the end
 // of the `## …` section whose heading contains "Cold-eyes loop log"
 // (case-insensitive); two such sections refuse `unrecognised_format`.
-// Creates the section at EOF when absent (repaired, not refused).
+// Creates the section at EOF when absent (repaired, not refused), unless
+// the file holds a markdown table anywhere: then the log is taken to be
+// under a heading this verb does not recognise, and the call refuses
+// `unrecognised_format` (ANTS-4886).
 // ANTS-4364 — `cells` is the TABLE form: one string per column, ordered to
 // match the table's own header. Where the section holds a table and `cells`
-// is empty the call REFUSES rather than writing a bullet into it — writing
+// is empty the call REFUSES (`format_mismatch`; a wrong cell count is
+// `column_mismatch`) rather than writing a bullet into it — writing
 // bullet form into a table was the original defect, and it is silent.
 // Where the section holds bullets, `label` + `body` render the bullet, and
-// `cells` supplied anyway refuses rather than being dropped.
+// `cells` supplied anyway refuses `bad_args` rather than being dropped, as
+// do an empty `label` and `body` together.
 //
 // The empty-section case deliberately still writes a BULLET rather than
 // synthesising a table: the column set belongs to the project's format

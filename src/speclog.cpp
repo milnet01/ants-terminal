@@ -76,6 +76,23 @@ int sectionEnd(const QStringList &lines, int hdrIdx) {
     return lines.size();
 }
 
+// Split into lines for editing; remember whether the source ended in a
+// trailing newline so we can restore it exactly (byte-fidelity outside
+// the edit).
+QStringList toLines(const QString &content, bool &endedWithNewline) {
+    endedWithNewline = content.endsWith(QLatin1Char('\n'));
+    QString body = content;
+    if (endedWithNewline) body.chop(1);  // drop the single trailing \n
+    return body.split(QLatin1Char('\n'));
+}
+
+// The inverse of toLines: rejoin, restoring the trailing newline.
+QString fromLines(const QStringList &lines, bool endedWithNewline) {
+    QString content = lines.join(QLatin1Char('\n'));
+    if (endedWithNewline) content += QLatin1Char('\n');
+    return content;
+}
+
 // Insert `bullet` (a single rendered line, no trailing newline) at the
 // end of the section that starts at `hdrIdx`, i.e. after the section's
 // last non-blank content line and before the next `## ` boundary.
@@ -97,19 +114,8 @@ InsertResult insertAtSectionEnd(QStringList lines, int hdrIdx,
     lines.insert(pos, bullet);
     InsertResult r;
     r.line = pos + 1;  // 1-based
-    r.content = lines.join(QLatin1Char('\n'));
-    if (fileEndedWithNewline) r.content += QLatin1Char('\n');
+    r.content = fromLines(lines, fileEndedWithNewline);
     return r;
-}
-
-// Split into lines for editing; remember whether the source ended in a
-// trailing newline so we can restore it exactly (byte-fidelity outside
-// the edit).
-QStringList toLines(const QString &content, bool &endedWithNewline) {
-    endedWithNewline = content.endsWith(QLatin1Char('\n'));
-    QString body = content;
-    if (endedWithNewline) body.chop(1);  // drop the single trailing \n
-    return body.split(QLatin1Char('\n'));
 }
 
 }  // namespace
@@ -151,8 +157,7 @@ EditResult setStatus(const QString &content, const QString &newStatus,
         // shapes that do not share a grammar. The value already in the file is
         // the one project-agnostic evidence of that vocabulary, so hand it back.
         r.previousValue = e.value;
-        r.content = lines.join(QLatin1Char('\n'));
-        if (ewn) r.content += QLatin1Char('\n');
+        r.content = fromLines(lines, ewn);
         // 1-based line of the rewritten Status line (ANTS-1963 INV-10's shape;
         // FieldExtent::line is 0-based).
         r.line = e.line + 1;
@@ -230,212 +235,175 @@ static int slBulletOrder(const QString &a, const QString &b) {
     return 0;
 }
 
-EditResult appendLoop(const QString &content, const QString &label,
-                      const QString &body, const QStringList &cells) {
-    bool ewn = false;
-    QStringList lines = toLines(content, ewn);
-    const QString bullet = QStringLiteral("- **") + label +
-                           QStringLiteral("** — ") + body;
-
-    // ANTS-3651 — refuse an ambiguous file rather than guessing at it. Two
-    // loop-log sections means an earlier write already went wrong (that is
-    // how ANTS-3636 ended up with loops ordered 1-6, 8, 9, then 7 under a
-    // duplicate heading), and appending to whichever comes first buries the
-    // problem one row deeper. The author has to see it to repair it.
-    if (countSectionHeadings(lines,
-                             QStringLiteral("Cold-eyes loop log")) > 1) {
-        return fail(QStringLiteral("unrecognised_format"),
-                    QStringLiteral(
-                        "spec_log: this file holds more than one "
-                        "\"## Cold-eyes loop log\" section, so append_loop "
-                        "cannot tell which one the row belongs in. Merge them "
-                        "into a single section (keeping the loops in order) "
-                        "and retry — appending to one of them would leave the "
-                        "log split and out of order."));
+// The loop log is a table: insert `cells` as a row at the end the existing
+// rows run towards. `headerLine`/`sepLine` are the table's header and
+// separator; `loopEnd` bounds the section.
+static EditResult appendTableRow(QStringList lines, int headerLine, int sepLine,
+                                 int loopEnd, const QStringList &cells,
+                                 bool ewn) {
+    const QStringList header = slRowCells(lines.at(headerLine));
+    if (cells.isEmpty()) {
+        EditResult r;
+        r.code = QStringLiteral("format_mismatch");
+        r.error = QStringLiteral(
+            "spec_log: this spec's loop log is a TABLE (columns: %1), "
+            "so append_loop needs `cells` — one string per column, in "
+            "that order. `loop_label`/`body` render a BULLET, which "
+            "would corrupt the table. Refusing rather than writing it.")
+                .arg(header.join(QStringLiteral(" | ")));
+        return r;
+    }
+    if (cells.size() != header.size()) {
+        EditResult r;
+        r.code = QStringLiteral("column_mismatch");
+        r.error = QStringLiteral(
+            "spec_log: the loop log has %1 columns (%2) but `cells` "
+            "carries %3")
+                .arg(header.size())
+                .arg(header.join(QStringLiteral(" | ")))
+                .arg(cells.size());
+        return r;
     }
 
-    const int hdr = findSectionHeading(
-        lines, QStringLiteral("Cold-eyes loop log"));
-    if (hdr >= 0) {
-        // ANTS-4364 — does this section hold a TABLE? The shipped spec
-        // skeleton's loop log is one, while this verb only ever wrote a
-        // bullet — so on a conforming spec the verb was unusable, and
-        // `review-contract` tells sessions outright not to reach for it.
-        // That is self-reinforcing: a verb the governing skill says to avoid
-        // gets no usage, so the mismatch never becomes pressure to fix.
-        // ANTS-5100 — fence-aware, like findSectionHeading: a `## ` line or
-        // a `|` row inside a fenced example is not the section's end or its
-        // table.
-        const QVector<bool> fence = MarkdownScan::fenceMask(lines);
-        const auto fenced = [&fence](int i) {
-            return i < fence.size() && fence.at(i);
-        };
-        const int loopEnd = sectionEnd(lines, hdr);
-        int headerLine = -1, sepLine = -1;
-        for (int i = hdr + 1; i + 1 < loopEnd && i + 1 < lines.size(); ++i) {
-            if (fenced(i)) continue;
-            if (lines.at(i).trimmed().startsWith(QLatin1Char('|')) &&
-                slIsTableSeparator(lines.at(i + 1))) {
-                headerLine = i;
-                sepLine    = i + 1;
-                break;
+    // Bound the data rows below the separator. ANTS-5476 — a blank
+    // line inside the log does not end it: rows after the gap with the
+    // header's column count continue it, unless they open a table of
+    // their own (a row followed by a separator). Stopping at the gap
+    // put the new row between loop 1 and loop 2.
+    int firstData = -1, lastData = -1;
+    const auto isRow = [&](int i) {
+        return lines.at(i).trimmed().startsWith(QLatin1Char('|'));
+    };
+    for (int i = sepLine + 1; i < loopEnd && i < lines.size(); ++i) {
+        if (isRow(i)) {
+            if (firstData < 0) firstData = i;
+            lastData = i;
+            continue;
+        }
+        if (!lines.at(i).trimmed().isEmpty()) break;   // prose ends it
+        int next = i;
+        while (next < loopEnd && next < lines.size() &&
+               lines.at(next).trimmed().isEmpty())
+            ++next;
+        const bool continues =
+            next < loopEnd && next < lines.size() && isRow(next) &&
+            slRowCells(lines.at(next)).size() == header.size() &&
+            !(next + 1 < lines.size() && slIsTableSeparator(lines.at(next + 1)));
+        if (!continues) break;   // the table ended
+        i = next - 1;
+    }
+
+    // ANTS-4353 — INFER the direction rather than assuming it. Loop
+    // logs run in opposite orders across specs in one corpus (this
+    // project has both), so "append at the end" means opposite ends
+    // in different files. A row at the wrong end reads as a different
+    // loop's result, and a checker that only balances per-row tallies
+    // passes the corruption.
+    QString rowOrder = QStringLiteral("ambiguous");
+    int insertAt = (lastData >= 0) ? lastData + 1 : sepLine + 1;
+    if (firstData >= 0 && lastData > firstData) {
+        const int a = slRowLoopNumber(lines.at(firstData));
+        const int b = slRowLoopNumber(lines.at(lastData));
+        if (a >= 0 && b >= 0 && a != b) {
+            if (a < b) {
+                rowOrder = QStringLiteral("oldest_first");
+                insertAt = lastData + 1;
+            } else {
+                rowOrder = QStringLiteral("newest_first");
+                insertAt = firstData;
             }
         }
+    }
 
-        if (headerLine >= 0) {
-            const QStringList header = slRowCells(lines.at(headerLine));
-            if (cells.isEmpty()) {
-                EditResult r;
-                r.code = QStringLiteral("format_mismatch");
-                r.error = QStringLiteral(
-                    "spec_log: this spec's loop log is a TABLE (columns: %1), "
-                    "so append_loop needs `cells` — one string per column, in "
-                    "that order. `loop_label`/`body` render a BULLET, which "
-                    "would corrupt the table. Refusing rather than writing it.")
-                        .arg(header.join(QStringLiteral(" | ")));
-                return r;
-            }
-            if (cells.size() != header.size()) {
-                EditResult r;
-                r.code = QStringLiteral("column_mismatch");
-                r.error = QStringLiteral(
-                    "spec_log: the loop log has %1 columns (%2) but `cells` "
-                    "carries %3")
-                        .arg(header.size())
-                        .arg(header.join(QStringLiteral(" | ")))
-                        .arg(cells.size());
-                return r;
-            }
+    QStringList escaped;
+    for (const QString &c : cells) {
+        QString e = c;
+        e.replace(QLatin1Char('|'), QStringLiteral("\\|"));
+        e.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
+        escaped.append(e);
+    }
+    const QString row = QStringLiteral("| ") +
+                        escaped.join(QStringLiteral(" | ")) +
+                        QStringLiteral(" |");
+    lines.insert(insertAt, row);
 
-            // Bound the data rows below the separator. ANTS-5476 — a blank
-            // line inside the log does not end it: rows after the gap with the
-            // header's column count continue it, unless they open a table of
-            // their own (a row followed by a separator). Stopping at the gap
-            // put the new row between loop 1 and loop 2.
-            int firstData = -1, lastData = -1;
-            const auto isRow = [&](int i) {
-                return lines.at(i).trimmed().startsWith(QLatin1Char('|'));
-            };
-            for (int i = sepLine + 1; i < loopEnd && i < lines.size(); ++i) {
-                if (isRow(i)) {
-                    if (firstData < 0) firstData = i;
-                    lastData = i;
-                    continue;
-                }
-                if (!lines.at(i).trimmed().isEmpty()) break;   // prose ends it
-                int next = i;
-                while (next < loopEnd && next < lines.size() &&
-                       lines.at(next).trimmed().isEmpty())
-                    ++next;
-                const bool continues =
-                    next < loopEnd && next < lines.size() && isRow(next) &&
-                    slRowCells(lines.at(next)).size() == header.size() &&
-                    !(next + 1 < lines.size() && slIsTableSeparator(lines.at(next + 1)));
-                if (!continues) break;   // the table ended
-                i = next - 1;
-            }
+    EditResult r;
+    r.ok       = true;
+    r.content  = fromLines(lines, ewn);
+    r.line     = insertAt + 1;   // 1-based
+    r.rowShape = QStringLiteral("table");
+    r.rowOrder = rowOrder;
+    return r;
+}
 
-            // ANTS-4353 — INFER the direction rather than assuming it. Loop
-            // logs run in opposite orders across specs in one corpus (this
-            // project has both), so "append at the end" means opposite ends
-            // in different files. A row at the wrong end reads as a different
-            // loop's result, and a checker that only balances per-row tallies
-            // passes the corruption.
-            QString rowOrder = QStringLiteral("ambiguous");
-            int insertAt = (lastData >= 0) ? lastData + 1 : sepLine + 1;
-            if (firstData >= 0 && lastData > firstData) {
-                const int a = slRowLoopNumber(lines.at(firstData));
-                const int b = slRowLoopNumber(lines.at(lastData));
-                if (a >= 0 && b >= 0 && a != b) {
-                    if (a < b) {
-                        rowOrder = QStringLiteral("oldest_first");
-                        insertAt = lastData + 1;
-                    } else {
-                        rowOrder = QStringLiteral("newest_first");
-                        insertAt = firstData;
-                    }
-                }
-            }
+// The loop log is bullet-shaped: insert `bullet` at the end the existing rows
+// run towards. `fence` is the file's fence mask.
+static EditResult appendBulletRow(QStringList lines, int hdr, int loopEnd,
+                                  const QVector<bool> &fence,
+                                  const QString &label, const QString &body,
+                                  const QStringList &cells,
+                                  const QString &bullet, bool ewn) {
+    // ANTS-4886 — `cells` is the caller asserting a TABLE. This section is
+    // bullet-shaped, so rendering the bullet would drop every cell and
+    // report success: the reported live call lost ~3.5 KB of composed prose
+    // behind bytes_written:36, with ok:true and no other signal.
+    if (!cells.isEmpty())
+        return fail(QStringLiteral("bad_args"),
+                    QStringLiteral(
+                        "spec_log: `cells` was supplied but this file's "
+                        "loop log is bullet-shaped, so the cells cannot be "
+                        "rendered — pass `label` and `body` for a bullet "
+                        "log, or convert the section to a table first. "
+                        "Nothing was written."));
+    if (label.trimmed().isEmpty() && body.trimmed().isEmpty())
+        return fail(QStringLiteral("bad_args"),
+                    QStringLiteral(
+                        "spec_log: a bullet row needs `label` or `body`; "
+                        "both are empty, which renders the empty row "
+                        "`- **` `** — `. Nothing was written."));
 
-            QStringList escaped;
-            for (const QString &c : cells) {
-                QString e = c;
-                e.replace(QLatin1Char('|'), QStringLiteral("\\|"));
-                e.replace(QLatin1Char('\n'), QStringLiteral("<br>"));
-                escaped.append(e);
-            }
-            const QString row = QStringLiteral("| ") +
-                                escaped.join(QStringLiteral(" | ")) +
-                                QStringLiteral(" |");
-            lines.insert(insertAt, row);
-
-            EditResult r;
-            r.ok       = true;
-            r.content  = lines.join(QLatin1Char('\n'));
-            if (ewn) r.content += QLatin1Char('\n');
-            r.line     = insertAt + 1;   // 1-based
-            r.rowShape = QStringLiteral("table");
-            r.rowOrder = rowOrder;
-            return r;
-        }
-
-        // ANTS-4886 — `cells` is the caller asserting a TABLE. This section is
-        // bullet-shaped, so rendering the bullet would drop every cell and
-        // report success: the reported live call lost ~3.5 KB of composed prose
-        // behind bytes_written:36, with ok:true and no other signal.
-        if (!cells.isEmpty())
-            return fail(QStringLiteral("bad_args"),
-                        QStringLiteral(
-                            "spec_log: `cells` was supplied but this file's "
-                            "loop log is bullet-shaped, so the cells cannot be "
-                            "rendered — pass `label` and `body` for a bullet "
-                            "log, or convert the section to a table first. "
-                            "Nothing was written."));
-        if (label.trimmed().isEmpty() && body.trimmed().isEmpty())
-            return fail(QStringLiteral("bad_args"),
-                        QStringLiteral(
-                            "spec_log: a bullet row needs `label` or `body`; "
-                            "both are empty, which renders the empty row "
-                            "`- **` `** — `. Nothing was written."));
-
-        // ANTS-5769 — a bullet log runs in either direction too, so infer it
-        // as the table arm does. The first and last rows decide: by loop
-        // number where both labels lead with one, else by date.
-        int firstRow = -1, lastRow = -1;
-        for (int i = hdr + 1; i < loopEnd; ++i) {
-            if (fenced(i) || !lines.at(i).startsWith(QStringLiteral("- **")))
-                continue;
-            if (firstRow < 0) firstRow = i;
-            lastRow = i;
-        }
-        QString rowOrder = QStringLiteral("ambiguous");
-        if (firstRow >= 0 && lastRow > firstRow) {
-            const int c = slBulletOrder(lines.at(firstRow), lines.at(lastRow));
-            if (c != 0)
-                rowOrder = c < 0 ? QStringLiteral("oldest_first")
-                                 : QStringLiteral("newest_first");
-        }
-        if (rowOrder == QStringLiteral("newest_first")) {
-            lines.insert(firstRow, bullet);
-            EditResult r;
-            r.ok = true;
-            r.content = lines.join(QLatin1Char('\n'));
-            if (ewn) r.content += QLatin1Char('\n');
-            r.line = firstRow + 1;   // 1-based
-            r.rowShape = QStringLiteral("bullet");
-            r.rowOrder = rowOrder;
-            return r;
-        }
-
-        const auto ins = insertAtSectionEnd(lines, hdr, bullet, ewn);
+    // ANTS-5769 — a bullet log runs in either direction too, so infer it
+    // as the table arm does. The first and last rows decide: by loop
+    // number where both labels lead with one, else by date.
+    int firstRow = -1, lastRow = -1;
+    for (int i = hdr + 1; i < loopEnd; ++i) {
+        if (fence.at(i) || !lines.at(i).startsWith(QStringLiteral("- **")))
+            continue;
+        if (firstRow < 0) firstRow = i;
+        lastRow = i;
+    }
+    QString rowOrder = QStringLiteral("ambiguous");
+    if (firstRow >= 0 && lastRow > firstRow) {
+        const int c = slBulletOrder(lines.at(firstRow), lines.at(lastRow));
+        if (c != 0)
+            rowOrder = c < 0 ? QStringLiteral("oldest_first")
+                             : QStringLiteral("newest_first");
+    }
+    if (rowOrder == QStringLiteral("newest_first")) {
+        lines.insert(firstRow, bullet);
         EditResult r;
         r.ok = true;
-        r.content = ins.content;
-        r.line = ins.line;
+        r.content = fromLines(lines, ewn);
+        r.line = firstRow + 1;   // 1-based
         r.rowShape = QStringLiteral("bullet");
         r.rowOrder = rowOrder;
         return r;
     }
+
+    const auto ins = insertAtSectionEnd(lines, hdr, bullet, ewn);
+    EditResult r;
+    r.ok = true;
+    r.content = ins.content;
+    r.line = ins.line;
+    r.rowShape = QStringLiteral("bullet");
+    r.rowOrder = rowOrder;
+    return r;
+}
+
+// The file has no loop log heading.
+static EditResult createLoopLog(QStringList lines, const QString &label,
+                                const QString &body, const QStringList &cells,
+                                const QString &bullet, bool ewn) {
     // ANTS-4886 — creating the heading is right for a spec that has no loop
     // log yet, and wrong for one whose log is simply under a heading this
     // verb does not recognise. A markdown table it did not select separates
@@ -469,20 +437,74 @@ EditResult appendLoop(const QString &content, const QString &label,
 
     // No section and no table — append a new `## Cold-eyes loop log` heading +
     // the bullet at EOF (repaired, not refused). `line` is the bullet line.
-    QStringList out = lines;
     // Ensure a blank-line separator before the new heading.
-    if (!out.isEmpty() && !out.last().trimmed().isEmpty())
-        out.append(QString());
-    out.append(QStringLiteral("## Cold-eyes loop log"));
-    out.append(QString());
-    out.append(bullet);
+    if (!lines.isEmpty() && !lines.last().trimmed().isEmpty())
+        lines.append(QString());
+    lines.append(QStringLiteral("## Cold-eyes loop log"));
+    lines.append(QString());
+    lines.append(bullet);
     EditResult r;
     r.ok = true;
-    r.content = out.join(QLatin1Char('\n'));
-    if (ewn) r.content += QLatin1Char('\n');
-    r.line = out.size();  // bullet is the last line
+    r.content = fromLines(lines, ewn);
+    r.line = lines.size();  // bullet is the last line
     r.rowShape = QStringLiteral("bullet");
     return r;
+}
+
+EditResult appendLoop(const QString &content, const QString &label,
+                      const QString &body, const QStringList &cells) {
+    bool ewn = false;
+    QStringList lines = toLines(content, ewn);
+    const QString bullet = QStringLiteral("- **") + label +
+                           QStringLiteral("** — ") + body;
+
+    // ANTS-3651 — refuse an ambiguous file rather than guessing at it. Two
+    // loop-log sections means an earlier write already went wrong (that is
+    // how ANTS-3636 ended up with loops ordered 1-6, 8, 9, then 7 under a
+    // duplicate heading), and appending to whichever comes first buries the
+    // problem one row deeper. The author has to see it to repair it.
+    if (countSectionHeadings(lines,
+                             QStringLiteral("Cold-eyes loop log")) > 1) {
+        return fail(QStringLiteral("unrecognised_format"),
+                    QStringLiteral(
+                        "spec_log: this file holds more than one "
+                        "\"## Cold-eyes loop log\" section, so append_loop "
+                        "cannot tell which one the row belongs in. Merge them "
+                        "into a single section (keeping the loops in order) "
+                        "and retry — appending to one of them would leave the "
+                        "log split and out of order."));
+    }
+
+    const int hdr = findSectionHeading(
+        lines, QStringLiteral("Cold-eyes loop log"));
+    if (hdr < 0) return createLoopLog(std::move(lines), label, body, cells, bullet, ewn);
+
+    // ANTS-4364 — does this section hold a TABLE? The shipped spec
+    // skeleton's loop log is one, while this verb only ever wrote a
+    // bullet — so on a conforming spec the verb was unusable, and
+    // `review-contract` tells sessions outright not to reach for it.
+    // That is self-reinforcing: a verb the governing skill says to avoid
+    // gets no usage, so the mismatch never becomes pressure to fix.
+    // ANTS-5100 — fence-aware, like findSectionHeading: a `## ` line or
+    // a `|` row inside a fenced example is not the section's end or its
+    // table.
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    const int loopEnd = sectionEnd(lines, hdr);
+    int headerLine = -1, sepLine = -1;
+    for (int i = hdr + 1; i + 1 < loopEnd && i + 1 < lines.size(); ++i) {
+        if (fence.at(i)) continue;
+        if (lines.at(i).trimmed().startsWith(QLatin1Char('|')) &&
+            slIsTableSeparator(lines.at(i + 1))) {
+            headerLine = i;
+            sepLine    = i + 1;
+            break;
+        }
+    }
+
+    if (headerLine >= 0)
+        return appendTableRow(std::move(lines), headerLine, sepLine, loopEnd, cells, ewn);
+    return appendBulletRow(std::move(lines), hdr, loopEnd, fence, label, body, cells,
+                           bullet, ewn);
 }
 
 EditResult appendInv(const QString &content, const QString &invId,
@@ -508,7 +530,9 @@ EditResult appendInv(const QString &content, const QString &invId,
         return fail(QStringLiteral("unrecognised_format"),
                     QStringLiteral("spec_log: no Invariants section found"));
     }
-    // Duplicate guard: refuse if `invId` is already an invariant.
+    // Duplicate guard: refuse if `invId` is already an invariant. Note the
+    // two definitions: the bullet is INSERTED under findSectionHeading's
+    // section above, while duplicates are counted in invariantsSection's.
     // ANTS-5100 — "an invariant" means what the parser reads, in the section
     // SpecParse::invariantsSection defines (user decision 2026-09-14), plus
     // any table-row anchor there: a row with an empty test cell is still an

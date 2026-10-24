@@ -9,7 +9,7 @@
 //
 //   Lane 1 — spec ↔ code drift. For each `tests/features/*/spec.md`,
 //   extract backtick-fenced identifier-shaped tokens; the caller
-//   verifies each still exists somewhere under `src/`. Catches the
+//   verifies each still exists anywhere in the project tree. Catches the
 //   common case where a rename obsoletes the spec prose silently.
 //
 //   Lane 2 — CHANGELOG ↔ feature-test coverage. Parse the top
@@ -55,7 +55,7 @@ QList<SpecToken> extractSpecTokens(const QString &specText);
 // Drive `extractSpecTokens` and filter through the caller-supplied
 // `existsInSource` predicate. Returns only the tokens for which the
 // predicate returned false — i.e. the "drifted" references that the
-// spec still talks about but `src/` no longer contains.
+// spec still talks about but the project no longer contains.
 QList<SpecToken> findDriftTokens(
     const QString &specText,
     const std::function<bool(const QString &)> &existsInSource);

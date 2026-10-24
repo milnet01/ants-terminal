@@ -483,23 +483,21 @@ QStringList parseRequiredSections(const QString &standardText,
     return out;
 }
 
-Result check(const QString &text, const QString &relPath,
-             const Options &opts) {
-    Result r;
-    const QStringList lines = text.split(QLatin1Char('\n'));
-    r.lineCount = lines.size();
-    if (r.lineCount > 0 && lines.last().isEmpty()) --r.lineCount;
+// The per-kind check blocks of check(), each writing through `add`.
+namespace {
 
-    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+// ANTS-4127 — `extra` carries the per-kind detail (`invariant`, `surface`,
+// `spec_status`); it is empty for every kind that predates it, and
+// DocFinding::toJson emits nothing for an empty one.
+struct Sink {
+    Result        &r;
+    const QString &relPath;
+    int            maxFindings;
+    int            emitted = 0;
 
-    int emitted = 0;
-    // ANTS-4127 — `extra` carries the per-kind detail (`invariant`, `surface`,
-    // `spec_status`); it is empty for every kind that predates it, and
-    // DocFinding::toJson emits nothing for an empty one.
-    const auto add = [&](const QString &kind, int line, const QString &msg,
-                         bool autoFixable = false,
-                         const QJsonObject &extra = {}) {
-        if (r.findings.size() >= opts.maxFindings) {
+    void operator()(const QString &kind, int line, const QString &msg,
+                    bool autoFixable = false, const QJsonObject &extra = {}) {
+        if (r.findings.size() >= maxFindings) {
             r.truncated = true;
             return;
         }
@@ -513,150 +511,79 @@ Result check(const QString &text, const QString &relPath,
         f.extra         = extra;
         f.emissionIndex = emitted++;
         r.findings.append(f);
-    };
+    }
+};
 
-    // --- headings (fence-aware) ------------------------------------------
-    QStringList headingLines;   // normalised `## N. Name`
+struct InvId {
+    int n = 0;
+    QString letter;
+    QString id;
+};
+
+// --- missing_section (gated on an injected list) ----------------------
+// `line:0` is document scope per ANTS-3664 § 2.1, which is exactly what
+// "this document lacks a section" means — the heading scan has no entry for
+// a heading that is absent.
+void checkMissingSections(const QStringList &lines, const QVector<bool> &fence,
+                          const Options &opts, Result &r, Sink &add) {
+    if (opts.requiredSections.isEmpty()) return;
+
+    // The headings outside fenced code, normalised to `## N. Name`.
+    QStringList headingLines;
     for (int i = 0; i < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
         const QString h = normalisedHeading(lines[i]);
         if (!h.isEmpty()) headingLines.append(h);
     }
 
-    // The Invariants section's line range. The anchor scan below is confined
-    // to it: an `- **INV-4**` written in § 7 as an EXAMPLE is prose, and
-    // counting it would invent both an invariant and an id gap.
+    r.sectionsChecked = true;
+    // ANTS-4739 — a document may exempt itself, mirroring the
+    // `invariant-id-base` opt-out in checkIdGaps and doc_integrity's
+    // suppressed-heading case. A mixed corpus otherwise reports the same
+    // permanent rows forever: specs written before the project adopted its
+    // section run, plus build plans and ledgers that are not specs at all
+    // but live in the specs dir. A reader re-triages that residue on every
+    // run to find the few rows that are new, which is the failure the check
+    // exists to prevent — noise is where a real finding hides.
     //
-    // ANTS-5100 — taken from SpecParse::invariantsSection, the one definition
-    // (user decision 2026-09-14), rather than a mirror of it. The mirror had
-    // drifted: it skipped fenced lines and allowed indentation, so the lint
-    // filed invariant_no_test against invariants the parser never read.
-    const SpecParse::InvariantsSection invSec = SpecParse::invariantsSection(text);
-    int invStart = -1;
-    int invEnd   = static_cast<int>(lines.size());
-    if (invSec.start >= 0) {
-        invStart = static_cast<int>(text.left(invSec.start).count(QLatin1Char('\n'))) + 1;
-        if (invSec.end < text.size())
-            invEnd = static_cast<int>(text.left(invSec.end).count(QLatin1Char('\n')));
+    // Outside fenced code, so an example quoted in prose cannot exempt the
+    // document quoting it.
+    static const QRegularExpression exemptRe(
+        QStringLiteral(R"(^ {0,3}<!--\s*spec-lint:\s*no-required-sections\s*-->\s*$)"));
+    for (int i = 0; i < lines.size(); ++i) {
+        if (i < fence.size() && fence[i]) continue;
+        if (exemptRe.match(lines[i]).hasMatch()) { r.sectionsExempt = true; break; }
     }
-
-    // --- missing_section (gated on an injected list) ----------------------
-    // `line:0` is document scope per ANTS-3664 § 2.1, which is exactly what
-    // "this document lacks a section" means — the heading scan has no entry for
-    // a heading that is absent.
-    if (!opts.requiredSections.isEmpty()) {
-        r.sectionsChecked = true;
-        // ANTS-4739 — a document may exempt itself, mirroring the
-        // `invariant-id-base` opt-out above and doc_integrity's
-        // suppressed-heading case. A mixed corpus otherwise reports the same
-        // permanent rows forever: specs written before the project adopted its
-        // section run, plus build plans and ledgers that are not specs at all
-        // but live in the specs dir. A reader re-triages that residue on every
-        // run to find the few rows that are new, which is the failure the check
-        // exists to prevent — noise is where a real finding hides.
-        //
-        // Outside fenced code, so an example quoted in prose cannot exempt the
-        // document quoting it.
-        static const QRegularExpression exemptRe(
-            QStringLiteral(R"(^ {0,3}<!--\s*spec-lint:\s*no-required-sections\s*-->\s*$)"));
-        for (int i = 0; i < lines.size(); ++i) {
-            if (i < fence.size() && fence[i]) continue;
-            if (exemptRe.match(lines[i]).hasMatch()) { r.sectionsExempt = true; break; }
-        }
-        // ANTS-4345 / ANTS-4738 — headingSatisfies() is the one matcher, so
-        // the scope rule for a removed heading (ANTS-5537) cannot disagree
-        // with this check about what satisfies an entry.
-        for (const QString &req : opts.requiredSections) {
-            const QString want = collapseWs(req);
-            const bool found = std::any_of(
-                headingLines.cbegin(), headingLines.cend(),
-                [&](const QString &h) {
-                    return headingSatisfies(h, want, opts.sectionsPrefixMatch);
-                });
-            if (!found && !r.sectionsExempt)
-                add(QStringLiteral("missing_section"), 0,
-                    QStringLiteral("required section is absent: %1").arg(want),
-                    false,
-                    opts.diff.active
-                        ? QJsonObject{{QStringLiteral("section"), want}}
-                        : QJsonObject{});
-        }
+    // ANTS-4345 / ANTS-4738 — headingSatisfies() is the one matcher, so
+    // the scope rule for a removed heading (ANTS-5537) cannot disagree
+    // with this check about what satisfies an entry.
+    for (const QString &req : opts.requiredSections) {
+        const QString want = collapseWs(req);
+        const bool found = std::any_of(
+            headingLines.cbegin(), headingLines.cend(),
+            [&](const QString &h) {
+                return headingSatisfies(h, want, opts.sectionsPrefixMatch);
+            });
+        if (!found && !r.sectionsExempt)
+            add(QStringLiteral("missing_section"), 0,
+                QStringLiteral("required section is absent: %1").arg(want),
+                false,
+                opts.diff.active
+                    ? QJsonObject{{QStringLiteral("section"), want}}
+                    : QJsonObject{});
     }
+}
 
-    // --- INV-N anchor lines ----------------------------------------------
-    // parseSpecBody supplies neither line numbers nor sections nor loop-log
-    // rows, so every `line` on this verb's findings comes from this scan.
-    // ANTS-5100 — the parser's anchor shapes: no indentation, and fenced lines
-    // are not skipped, since the parser reads neither way. The row anchor stays
-    // looser than the parser's three-cell row on purpose (see the next block).
-    static const QRegularExpression sectionBulletRe(
-        QLatin1Char('^') + SpecParse::invBulletAnchorPattern());
-    static const QRegularExpression sectionRowRe(
-        QLatin1Char('^') + SpecParse::invRowAnchorPattern());
-    QHash<QString, int> anchorLine;   // id -> 1-based line, first occurrence
-    for (int i = qMax(invStart, 0); invStart >= 0 && i < invEnd; ++i) {
-        auto am = sectionBulletRe.match(lines[i]);
-        if (!am.hasMatch()) am = sectionRowRe.match(lines[i]);
-        const QString id = am.hasMatch() ? am.captured(1) : QString();
-        if (!id.isEmpty() && !anchorLine.contains(id))
-            anchorLine.insert(id, i + 1);
-    }
-
-    // --- invariant_no_test / command_test_no_expectation -------------------
-    // The ANCHOR SCAN is the authority on which invariants EXIST; the parser is
-    // the authority on what each one says. They are separate because the
-    // parser's table branch requires three non-empty cells, so a row whose
-    // test-surface cell is empty — the exact defect `invariant_no_test` names —
-    // does not match and is returned by nothing. Trusting the parser's list
-    // alone would therefore make the check blind in the table form AND invent an
-    // id gap where the dropped row was (INV-2, INV-3).
-    const QJsonObject parsed = SpecParse::parseSpecBody(text);
-    QHash<QString, QJsonObject> parsedById;
-    for (const auto &v : parsed.value(QStringLiteral("invariants")).toArray()) {
-        const QJsonObject o = v.toObject();
-        parsedById.insert(o.value(QStringLiteral("id")).toString(), o);
-    }
-
-    QSet<QString> allIds;
-    for (auto it = anchorLine.constBegin(); it != anchorLine.constEnd(); ++it)
-        allIds.insert(it.key());
-    for (auto it = parsedById.constBegin(); it != parsedById.constEnd(); ++it)
-        allIds.insert(it.key());
-
-    // ANTS-4894 — the denominator every per-invariant check below runs over.
-    // Reported by the verb layer so a zero is visible: a document whose
-    // invariants are in a form § 3.7 does not define parses to none, and the
-    // envelope is otherwise identical to one that checked all of them.
-    r.invariantsFound = allIds.size();
-
-    // ANTS-4107 — the checks below walk the ID STRINGS; only the gap scan
-    // reduces them to numbers. Rebuilding `INV-%1` from an int silently dropped
-    // every sub-lettered invariant from every check, so one could ship with no
-    // test surface at all and pass the lint — and a /cold-eyes split into 3 and
-    // 3b is exactly how a sub-lettered id comes to exist, which put the blind
-    // spot precisely where a contract had just been divided in two.
-    struct InvId {
-        int n = 0;
-        QString letter;
-        QString id;
-    };
-    static const QRegularExpression invIdRe(
-        QStringLiteral(R"(^INV-([0-9]+)([a-z]?)$)"));
-    QVector<InvId> ids;
-    for (const QString &id : allIds) {
-        const auto m = invIdRe.match(id);
-        if (!m.hasMatch()) continue;
-        ids.append({m.captured(1).toInt(), m.captured(2), id});
-    }
-    std::sort(ids.begin(), ids.end(), [](const InvId &a, const InvId &b) {
-        return a.n != b.n ? a.n < b.n : a.letter < b.letter;
-    });
-
-    // --- ANTS-4127: test-surface resolution --------------------------------
-    // The same absent directory is a defect or a forward reference depending on
-    // whether the spec claims to have shipped, so the bucket is chosen by the
-    // document's OWN Status — a claim it makes about itself, which is why only a
-    // confidently-shipped word yields a FINDING (spec § 2.5).
+// --- ANTS-4127: test-surface resolution --------------------------------
+// The same absent directory is a defect or a forward reference depending on
+// whether the spec claims to have shipped, so the bucket is chosen by the
+// document's OWN Status — a claim it makes about itself, which is why only a
+// confidently-shipped word yields a FINDING (spec § 2.5).
+void checkTestSurfaces(const QVector<InvId> &ids,
+                       const QHash<QString, QJsonObject> &parsedById,
+                       const QHash<QString, int> &anchorLine,
+                       const QJsonObject &parsed, const Options &opts,
+                       Result &r, Sink &add) {
     const QString rawStatus = parsed.value(QStringLiteral("status")).toString();
     const QString docStatus = statusWord(rawStatus);
     // ANTS-4413 — whether the document carries a `**Status:**` line AT ALL,
@@ -785,11 +712,16 @@ Result check(const QString &text, const QString &relPath,
                     false, extra);
         }
     }
+}
 
-    // --- invariant_id_gap --------------------------------------------------
-    // The id set includes tombstones. Excluding them first is the mistake this
-    // check guards against: it would report every moved or withdrawn invariant
-    // as a gap (INV-3).
+// --- invariant_id_gap --------------------------------------------------
+// The id set includes tombstones. Excluding them first is the mistake this
+// check guards against: it would report every moved or withdrawn invariant
+// as a gap (INV-3).
+void checkIdGaps(const QStringList &lines, const QVector<bool> &fence,
+                 const QVector<InvId> &ids,
+                 const QHash<QString, int> &anchorLine,
+                 const Options &opts, Result &r, Sink &add) {
     if (!ids.isEmpty()) {
         QSet<int> have;
         for (const InvId &e : ids) have.insert(e.n);
@@ -888,6 +820,9 @@ Result check(const QString &text, const QString &relPath,
                 for (int n = a + 1; n < b; ++n) reportGap(n);
                 continue;
             }
+            // A long run is reported as a probable typo in `b`, not as missing
+            // invariants, so only the floor applies: numbers a sibling spec
+            // owns are not suppressed here as reportGap suppresses them.
             int from = a + 1;
             if (b - 1 < idBase) { r.idGapsSuppressed += int(run); continue; }
             if (from < idBase) { r.idGapsSuppressed += idBase - from; from = idBase; }
@@ -904,13 +839,16 @@ Result check(const QString &text, const QString &relPath,
                     : QJsonObject{});
         }
     }
+}
 
-    // --- loop_row_no_outcome ----------------------------------------------
-    // A loop log is a GFM table whose FIRST HEADER CELL is exactly `Loop`; the
-    // outcome is the row's LAST cell. `specs.md` § 5.7 fixes the columns for
-    // new logs, but many earlier shapes are in use across this corpus and stay
-    // (a landed row is never edited). The prose column is last in all of them,
-    // so position matches every shape where a column NAME would match one.
+// --- loop_row_no_outcome ----------------------------------------------
+// A loop log is a GFM table whose FIRST HEADER CELL is exactly `Loop`; the
+// outcome is the row's LAST cell. `specs.md` § 5.7 fixes the columns for
+// new logs, but many earlier shapes are in use across this corpus and stay
+// (a landed row is never edited). The prose column is last in all of them,
+// so position matches every shape where a column NAME would match one.
+void checkLoopRowOutcomes(const QStringList &lines, const QVector<bool> &fence,
+                          Sink &add) {
     for (int i = 0; i + 1 < lines.size(); ++i) {
         if (i < fence.size() && fence[i]) continue;
         if (!isTableRow(lines[i]) || isDelimiterRow(lines[i])) continue;
@@ -928,14 +866,20 @@ Result check(const QString &text, const QString &relPath,
                     .arg(cells.first()));
         }
     }
+}
 
-    // --- ANTS-4623: § Invariants <-> § Tests parity -----------------------
-    // The two invariant checks above ask whether an invariant declares a test.
-    // Neither asks the other direction: whether the ids the Tests section
-    // claims to cover are the ids § Invariants declares. The two sections
-    // restate one set in different words and share no token to grep for, so
-    // they can disagree indefinitely — which is why a citation search cannot
-    // find this class and a check has to.
+// --- ANTS-4623: § Invariants <-> § Tests parity -----------------------
+// The two invariant checks above ask whether an invariant declares a test.
+// Neither asks the other direction: whether the ids the Tests section
+// claims to cover are the ids § Invariants declares. The two sections
+// restate one set in different words and share no token to grep for, so
+// they can disagree indefinitely — which is why a citation search cannot
+// find this class and a check has to.
+void checkTestCoverage(const QStringList &lines, const QVector<bool> &fence,
+                       const QVector<InvId> &ids,
+                       const QHash<QString, QJsonObject> &parsedById,
+                       const QHash<QString, int> &anchorLine,
+                       const Options &opts, Result &r, Sink &add) {
     {
         // testsSectionRange() is shared with the ANTS-5537 scope rule, so the
         // section a coverage finding is scoped by is the one it was read from.
@@ -1009,7 +953,8 @@ Result check(const QString &text, const QString &relPath,
                 // names SOME ids and misses others.
                 if (named.isEmpty()) {
                     r.testCoverageChecked = false;
-                } else
+                    return;
+                }
                 for (const InvId &e : ids) {
                     if (named.contains(e.id)) continue;
                     // A withdrawn or moved invariant has nothing left to
@@ -1049,6 +994,108 @@ Result check(const QString &text, const QString &relPath,
             }
         }
     }
+}
+
+}  // namespace
+
+Result check(const QString &text, const QString &relPath,
+             const Options &opts) {
+    Result r;
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    r.lineCount = lines.size();
+    if (r.lineCount > 0 && lines.last().isEmpty()) --r.lineCount;
+
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+
+    Sink add{r, relPath, opts.maxFindings};
+
+    // The Invariants section's line range. The anchor scan below is confined
+    // to it: an `- **INV-4**` written in § 7 as an EXAMPLE is prose, and
+    // counting it would invent both an invariant and an id gap.
+    //
+    // ANTS-5100 — taken from SpecParse::invariantsSection, the one definition
+    // (user decision 2026-09-14), rather than a mirror of it. The mirror had
+    // drifted: it skipped fenced lines and allowed indentation, so the lint
+    // filed invariant_no_test against invariants the parser never read.
+    const SpecParse::InvariantsSection invSec = SpecParse::invariantsSection(text);
+    int invStart = -1;
+    int invEnd   = static_cast<int>(lines.size());
+    if (invSec.start >= 0) {
+        invStart = static_cast<int>(text.left(invSec.start).count(QLatin1Char('\n'))) + 1;
+        if (invSec.end < text.size())
+            invEnd = static_cast<int>(text.left(invSec.end).count(QLatin1Char('\n')));
+    }
+
+    checkMissingSections(lines, fence, opts, r, add);
+
+    // --- INV-N anchor lines ----------------------------------------------
+    // parseSpecBody supplies neither line numbers nor sections nor loop-log
+    // rows, so every `line` on this verb's findings comes from this scan.
+    // ANTS-5100 — the parser's anchor shapes: no indentation, and fenced lines
+    // are not skipped, since the parser reads neither way. The row anchor stays
+    // looser than the parser's three-cell row on purpose (see the next block).
+    static const QRegularExpression sectionBulletRe(
+        QLatin1Char('^') + SpecParse::invBulletAnchorPattern());
+    static const QRegularExpression sectionRowRe(
+        QLatin1Char('^') + SpecParse::invRowAnchorPattern());
+    QHash<QString, int> anchorLine;   // id -> 1-based line, first occurrence
+    for (int i = qMax(invStart, 0); invStart >= 0 && i < invEnd; ++i) {
+        auto am = sectionBulletRe.match(lines[i]);
+        if (!am.hasMatch()) am = sectionRowRe.match(lines[i]);
+        const QString id = am.hasMatch() ? am.captured(1) : QString();
+        if (!id.isEmpty() && !anchorLine.contains(id))
+            anchorLine.insert(id, i + 1);
+    }
+
+    // --- invariant_no_test / command_test_no_expectation -------------------
+    // The ANCHOR SCAN is the authority on which invariants EXIST; the parser is
+    // the authority on what each one says. They are separate because the
+    // parser's table branch requires three non-empty cells, so a row whose
+    // test-surface cell is empty — the exact defect `invariant_no_test` names —
+    // does not match and is returned by nothing. Trusting the parser's list
+    // alone would therefore make the check blind in the table form AND invent an
+    // id gap where the dropped row was (INV-2, INV-3).
+    const QJsonObject parsed = SpecParse::parseSpecBody(text);
+    QHash<QString, QJsonObject> parsedById;
+    for (const auto &v : parsed.value(QStringLiteral("invariants")).toArray()) {
+        const QJsonObject o = v.toObject();
+        parsedById.insert(o.value(QStringLiteral("id")).toString(), o);
+    }
+
+    QSet<QString> allIds;
+    for (auto it = anchorLine.constBegin(); it != anchorLine.constEnd(); ++it)
+        allIds.insert(it.key());
+    for (auto it = parsedById.constBegin(); it != parsedById.constEnd(); ++it)
+        allIds.insert(it.key());
+
+    // ANTS-4894 — the denominator every per-invariant check below runs over.
+    // Reported by the verb layer so a zero is visible: a document whose
+    // invariants are in a form § 3.7 does not define parses to none, and the
+    // envelope is otherwise identical to one that checked all of them.
+    r.invariantsFound = allIds.size();
+
+    // ANTS-4107 — the checks below walk the ID STRINGS; only the gap scan
+    // reduces them to numbers. Rebuilding `INV-%1` from an int silently dropped
+    // every sub-lettered invariant from every check, so one could ship with no
+    // test surface at all and pass the lint — and a /cold-eyes split into 3 and
+    // 3b is exactly how a sub-lettered id comes to exist, which put the blind
+    // spot precisely where a contract had just been divided in two.
+    static const QRegularExpression invIdRe(
+        QStringLiteral(R"(^INV-([0-9]+)([a-z]?)$)"));
+    QVector<InvId> ids;
+    for (const QString &id : allIds) {
+        const auto m = invIdRe.match(id);
+        if (!m.hasMatch()) continue;
+        ids.append({m.captured(1).toInt(), m.captured(2), id});
+    }
+    std::sort(ids.begin(), ids.end(), [](const InvId &a, const InvId &b) {
+        return a.n != b.n ? a.n < b.n : a.letter < b.letter;
+    });
+
+    checkTestSurfaces(ids, parsedById, anchorLine, parsed, opts, r, add);
+    checkIdGaps(lines, fence, ids, anchorLine, opts, r, add);
+    checkLoopRowOutcomes(lines, fence, add);
+    checkTestCoverage(lines, fence, ids, parsedById, anchorLine, opts, r, add);
 
     // ANTS-5537 — the stamp is read on every run; `in_diff` only on a scoped
     // one, where every finding carries it, true or false.

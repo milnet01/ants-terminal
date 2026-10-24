@@ -573,8 +573,12 @@ QString buildProjectSourceBlob(const QString &projectPath,
     return sourceBlob;
 }
 
-bool existsInSource(const QString &blob, const QString &token) {
-    if (blob.contains(token, Qt::CaseSensitive)) return true;
+// The three tests every existsInSource form runs, in this order; `contains`
+// is the form's own containment test. The drift lanes' findings are the
+// difference between the forms, so they differ in `contains` alone.
+template <typename Contains>
+static bool containsWithTailFallback(const QString &token, Contains contains) {
+    if (contains(token)) return true;
     // Scoped fallback — `ClassName::method` and `file.cpp::member`
     // are documentation shorthand. The compound string rarely
     // appears literally (the declaration puts the class at the
@@ -584,8 +588,7 @@ bool existsInSource(const QString &blob, const QString &token) {
     const int scopeIdx = token.lastIndexOf(QStringLiteral("::"));
     if (scopeIdx > 0) {
         const QString tail = token.mid(scopeIdx + 2);
-        if (tail.size() >= 3 && blob.contains(tail, Qt::CaseSensitive))
-            return true;
+        if (tail.size() >= 3 && contains(tail)) return true;
     }
     const int dotIdx = token.lastIndexOf('.');
     if (dotIdx > 0 && dotIdx < token.size() - 1) {
@@ -594,11 +597,16 @@ bool existsInSource(const QString &blob, const QString &token) {
         // identifier-shaped (4+ alpha chars) — otherwise we'd
         // match file extensions (`*.cpp` → `cpp`) and get false
         // non-drift passes on literal filename tokens.
-        if (tail.size() >= 4 && tail[0].isLetter() &&
-            blob.contains(tail, Qt::CaseSensitive))
+        if (tail.size() >= 4 && tail[0].isLetter() && contains(tail))
             return true;
     }
     return false;
+}
+
+bool existsInSource(const QString &blob, const QString &token) {
+    return containsWithTailFallback(token, [&blob](const QString &s) {
+        return blob.contains(s, Qt::CaseSensitive);
+    });
 }
 
 // ANTS-5067 — index construction. The two character classes below are the
@@ -698,46 +706,16 @@ SourceIndex buildSourceIndex(const QString &blob) {
 }
 
 bool existsInSource(const SourceIndex &ix, const QString &token) {
-    // Same three tests, in the same order, as the two-argument form above —
-    // primary containment, then the `::` tail, then the identifier-shaped `.`
-    // tail. Keep the two in step: the drift lanes' findings are the difference
-    // between them.
-    if (indexContains(ix, token.toUtf8())) return true;
-
-    const int scopeIdx = token.lastIndexOf(QStringLiteral("::"));
-    if (scopeIdx > 0) {
-        const QString tail = token.mid(scopeIdx + 2);
-        if (tail.size() >= 3 && indexContains(ix, tail.toUtf8()))
-            return true;
-    }
-    const int dotIdx = token.lastIndexOf('.');
-    if (dotIdx > 0 && dotIdx < token.size() - 1) {
-        const QString tail = token.mid(dotIdx + 1);
-        if (tail.size() >= 4 && tail[0].isLetter()
-            && indexContains(ix, tail.toUtf8()))
-            return true;
-    }
-    return false;
+    return containsWithTailFallback(token, [&ix](const QString &s) {
+        return indexContains(ix, s.toUtf8());
+    });
 }
 
+// The same three tests, each as a whole word.
 static bool existsInSourceAsWord(const SourceIndex &ix, const QString &token) {
-    // The same three tests as existsInSource, each as a whole word.
-    if (indexContainsWord(ix, token.toUtf8())) return true;
-
-    const int scopeIdx = token.lastIndexOf(QStringLiteral("::"));
-    if (scopeIdx > 0) {
-        const QString tail = token.mid(scopeIdx + 2);
-        if (tail.size() >= 3 && indexContainsWord(ix, tail.toUtf8()))
-            return true;
-    }
-    const int dotIdx = token.lastIndexOf('.');
-    if (dotIdx > 0 && dotIdx < token.size() - 1) {
-        const QString tail = token.mid(dotIdx + 1);
-        if (tail.size() >= 4 && tail[0].isLetter()
-            && indexContainsWord(ix, tail.toUtf8()))
-            return true;
-    }
-    return false;
+    return containsWithTailFallback(token, [&ix](const QString &s) {
+        return indexContainsWord(ix, s.toUtf8());
+    });
 }
 
 const QSet<QString> &specStopwords() {
@@ -795,9 +773,8 @@ QString runSpecDriftCheck(const QString &projectPath) {
             // lied about that scope. Empirically, excluding tests/ to make the
             // "src/" claim true floods the lane with false drift on every
             // spec-cited test-case name, so whole-tree is the correct design —
-            // the message is what gets fixed. (ANTS-2113 H2, identifier-
-            // boundary matching, deferred: it surfaces imprecise-but-harmless
-            // spec wording, not real drift — see ROADMAP.)
+            // the message is what gets fixed. Matching is by whole word
+            // (ANTS-2122, `resolves` above).
             out += QString("%1:%2: spec references `%3` but no match in "
                            "project sources\n")
                        .arg(relPath, QString::number(d.line)).arg(d.token);

@@ -219,8 +219,9 @@ QJsonObject parseSpecBody(const QString &body) {
             byPosition.append({static_cast<int>(m.capturedStart()), inv});
         }
 
-        // (b) Bullet-form: `- **INV-N** — body...` (multi-line until
-        // next `- **INV-` or blank-line-plus-non-indent).
+        // (b) Bullet-form: `- **INV-N** — body...`, multi-line until the
+        // next `- **INV-` bullet or ATX heading. A blank line does not end
+        // it: later paragraphs stay in `body` (see the *Test:* note below).
         {
             // Split on the bullet anchor — capture group keeps the
             // INV-N marker, then accumulate body lines until the
@@ -237,13 +238,11 @@ QJsonObject parseSpecBody(const QString &body) {
             }
             for (int i = 0; i < starts.size(); ++i) {
                 const int from = starts[i].second;
+                // The body ends at the newline before the next bullet.
                 const int to = (i + 1 < starts.size())
-                                   ? starts[i + 1].first.startsWith(
-                                         QStringLiteral("INV-"))
-                                         ? section.lastIndexOf(
-                                               QStringLiteral("\n- **INV-"),
-                                               starts[i + 1].second - 1)
-                                         : section.size()
+                                   ? section.lastIndexOf(
+                                         QStringLiteral("\n- **INV-"),
+                                         starts[i + 1].second - 1)
                                    : section.size();
                 const int end = to > from ? to : section.size();
                 // ANTS-3697 — a bullet-form body also ends at the next ATX

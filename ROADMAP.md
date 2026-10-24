@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6277 -->
+<!-- ants-roadmap-id-high-water: ANTS=6278 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95706,6 +95706,15 @@ worked after these.
   docfacts (a sixth copy) build on them, each keeping its own indent
   rule. invariantNumbers keeps its looser shape, as speclint.h says.
   Mediums and lows remain.
+  2026-10-24: MEDIUMs done except as queued. F5 one
+  containsWithTailFallback behind the three existsInSource forms, F7
+  fromLines, F8 appendLoop split into appendTableRow/appendBulletRow/
+  createLoopLog, F9 speclint check() blocks are checkMissingSections,
+  checkTestSurfaces, checkIdGaps, checkLoopRowOutcomes and
+  checkTestCoverage (the dangling else is gone), F12 dead ternary arm
+  removed, F11 F13 F14 F15 F16 F17 F18 comments. Queued: F4 on
+  ANTS-5966/5967, F6 on ANTS-5964, F12's two-space-bullet defect as
+  ANTS-6278. LOWs open.
   **Layman:** Tidy the spec checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97219,6 +97228,19 @@ worked after these.
   **Layman:** One timing test failed once while every test ran at the same time, then passed three times on its own.
   Kind: test.
   Source: ctest-run-2026-10-24.
+
+- 📋 [ANTS-6278] **An invariant bullet written with two spaces after its dash swallows the bullet before it.**
+  L27-F12 remainder. specparse.cpp's bullet branch matches anchors with
+  invBulletAnchorPattern (`-\s+\*\*`), but ends each body by searching
+  back for the literal "\n- **INV-" (one space). For `-  **INV-3**` the
+  search finds an earlier bullet, `to` falls before `from`, and the
+  previous body runs on to the next heading or the section end. Fix:
+  keep each match's capturedStart and end the body there. Write the red
+  test first (a two-space bullet after a one-space one).
+  **Layman:** If a spec's invariant line has an extra space after the dash, the reader merges it into the invariant above.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L27.
+  Lanes: spec-engines.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -99053,6 +99075,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-24: L27-F6 widens this. Four GFM cell splitters disagree:
+  speclint tableCells honours `\|`; specconformance cellsOf, speclog
+  slRowCells and roadmapmigrate tableCells split naively. The separator
+  tests differ too (specconformance, speclint, speclog). Fix as one
+  escape-aware splitter and separator test in MarkdownScan. That changes
+  cell counts on rows holding `\|`, so check each caller's tests.
   **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99083,6 +99111,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-24: L27-F4 (readability) has the same root cause: appendInv
+  inserts under findSectionHeading's section but counts duplicates in
+  SpecParse::invariantsSection. Fix with ANTS-5967 by taking both from
+  invariantsSection. A comment in appendInv now names the two
+  definitions.
   **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99095,6 +99128,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-24: same root cause as ANTS-5966 and L27-F4; fix the three
+  together.
   **Layman:** A possible bug in the spec checkers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

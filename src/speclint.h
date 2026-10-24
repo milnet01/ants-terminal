@@ -14,9 +14,8 @@
 // TWO CHECKS SHIP GATED, and that is deliberate rather than unfinished:
 //
 //   * `missing_section` runs only when the project's format standard carries a
-//     machine-readable `<!-- required-sections -->` block. No standard in this
-//     project has one yet, so the shipping default is skipped
-//     (`sectionsChecked == false`). A check against a guessed list manufactures
+//     machine-readable `<!-- required-sections -->` block; without one it is
+//     skipped (`sectionsChecked == false`). A check against a guessed list manufactures
 //     findings against every conforming spec in the corpus, which is worse than
 //     not running — spec § 2.1.
 //   * § 1e's loop-log BALANCE check (enumerated findings vs the row's severity
