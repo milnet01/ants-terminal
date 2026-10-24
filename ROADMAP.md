@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6274 -->
+<!-- ants-roadmap-id-high-water: ANTS=6277 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95678,6 +95678,13 @@ worked after these.
   before on both halves. HIGH L26-F1 queued on ANTS-5958 (same root
   cause; the fix changes ANTS-3663 INV-22, so it needs a spec amendment
   first). Mediums and lows still open.
+  2026-10-24: MEDIUMs done except as queued. F5 DocsIndex fillIndex
+  (one cap/budget loop; refreshWith takes walkCut, so no caller patches
+  ANTS-5623 by hand), F6 hint built from dcDocExtensions, F9 Unparsed
+  used for both (PendingUnparsed gone), F10 dcQuotationPass and
+  dcPathTokenPass split out of check(), F4 floor shared via
+  Options::quoteMinChars and the comment corrected, F7 and F8 comments.
+  Queued: ANTS-6275 (F3 heading rules), 6276 (F4 rest). LOWs open.
   **Layman:** Tidy the document checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97174,6 +97181,44 @@ worked after these.
   Kind: ux.
   Source: review-readability-2026-10-22 L25.
   Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6275] **Five doc checkers recognise a markdown heading line by five different rules.**
+  L26-F3. doclint headingsOf allows 0-3 leading spaces and keeps
+  closing hashes; docintegrity atxRe takes no leading space and strips
+  them; docsindex headingRx is `\s+(.+)`; MarkdownScan::headings reads
+  blockquotes and counts a bare `#` (docfacts uses it). Merging them
+  changes what each verb reports as a heading, so pick one rule (likely
+  MarkdownScan::headings) and check each spec that names a heading rule
+  before moving the others onto it. docsindex headingRx is exempt by
+  ANTS-3786 INV-7's test; reconsider that exemption with the merge.
+  **Layman:** The document checkers disagree about what counts as a heading, so one can flag a heading another ignores.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L26.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6276] **docintegrity and doc_citations find the start and end of a quotation differently.**
+  L26-F4 rest. The length floor is now shared
+  (DocCitations::Options::quoteMinChars, 2026-10-24). Still different:
+  docintegrity quotedSpans toggles on any of " “ ”, so a closing ” can
+  open a quotation, and measures simplified text; doc_citations quoteRe
+  pairs only “…” or "…" and measures text with blockquote markers
+  stripped. Aligning them changes which links docintegrity skips as
+  quoted, so it is a behaviour change, not a tidy-up.
+  **Layman:** Two document checkers can disagree about where a quoted sentence begins and ends.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L26.
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6277] **LedgerWriteSafety.Ants5105HeldLockDelaysWritesOnlyBriefly failed once under the full suite.**
+  Seen 2026-10-24 in `ctest --preset=default` (-j4) during the L26
+  readability run, which touched no ledger code. Passed 3/3 alone
+  (--repeat until-fail:3). The log kept only the summary, so which of
+  the three 1000 ms bounds failed is unknown. Next time it fails, keep
+  --output-on-failure, then decide whether the bound measures wall time
+  the suite's load can exceed.
+  **Layman:** One timing test failed once while every test ran at the same time, then passed three times on its own.
+  Kind: test.
+  Source: ctest-run-2026-10-24.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

@@ -24,10 +24,13 @@
 
 namespace DocCitations {
 
-// `only` — the filter over citations[]. Stale keeps every non-ok citation, and
-// (ANTS-3654) an ok one whose anchor no longer matches — the drift the verb
-// exists to surface. An ok citation with no anchor was never judged, so it is
-// `unchecked` rather than stale, and Stale drops it.
+// `only` — the filter over citations[] and path_tokens[]. Stale keeps every
+// non-ok citation, and (ANTS-3654) an ok one whose anchor no longer matches —
+// the drift the verb exists to surface. An ok citation with no anchor was never
+// judged, so it is `unchecked` rather than stale, and Stale drops it. Stale
+// also drops a `foreign_path` citation (ANTS-4085), every citation on a
+// loop-log row whatever its status (ANTS-4918), and every path token that
+// resolved.
 enum class Only { All, Stale };
 
 // Test-only counters. INV-6 asserts "zero filesystem calls" and INV-20 "one

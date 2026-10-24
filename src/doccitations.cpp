@@ -795,13 +795,6 @@ struct Antecedent {
     bool        unresolvedSince = false;
 };
 
-struct PendingUnparsed {
-    int     docLine = 0;
-    int     docCol  = 0;
-    QString raw;
-    bool    rawClipped = false;
-    QString reason;
-};
 
 QString relativeTo(const QString &root, const QString &abs) {
     if (abs.startsWith(root + QLatin1Char('/'))) return abs.mid(root.size() + 1);
@@ -905,14 +898,18 @@ static QString dcFoldWhitespace(const QString &in) {
 //  * Resolution tries the scanned document's OWN directory first
 //    (ANTS-4639 (1)). A sibling cite is the commonest form a cross-reference
 //    takes inside a standards directory.
-static bool dcIsDocumentToken(const QString &tok) {
+static const QStringList &dcDocExtensions() {
     static const QStringList kDocExt{
         QStringLiteral("md"), QStringLiteral("markdown"), QStringLiteral("txt"),
         QStringLiteral("rst"), QStringLiteral("adoc"), QStringLiteral("org")};
+    return kDocExt;
+}
+
+static bool dcIsDocumentToken(const QString &tok) {
     const QString base = tok.section(QLatin1Char('/'), -1);
     const int dot = base.lastIndexOf(QLatin1Char('.'));
     if (dot <= 0) return false;
-    return kDocExt.contains(base.mid(dot + 1).toLower());
+    return dcDocExtensions().contains(base.mid(dot + 1).toLower());
 }
 
 // ANTS-4696 — a backticked token that is SHAPED like a document path but was
@@ -1074,6 +1071,381 @@ static Target dcResolveAttribution(const QString &root, const QString &docDirRel
     return resolvePath(root, attr, opts);
 }
 
+// ANTS-4386 — opt-in quotation pass. Runs over the same `prefix` lines and
+// the same fence mask, so a quotation inside a fenced block (a specimen)
+// is invisible here exactly as a citation is.
+static void dcQuotationPass(QJsonObject &out, const QString &rootCanonical,
+                            const QString &docDirRel, const QStringList &prefix,
+                            const QVector<bool> &fence, TargetReader &reader,
+                            const Options &opts) {
+    static const QRegularExpression quoteRe(
+        QStringLiteral("\u201C([^\u201D]{2,})\u201D|\"([^\"]{2,})\""));
+    QJsonArray quotesOut;
+    QHash<QString, int> qTally;
+    // ANTS-5054 — each attributed document is read and folded once per
+    // call: resolved path → {read ok, folded body}.
+    QHash<QString, QPair<bool, QString>> foldedByPath;
+    int harvested = 0;
+    int skipped   = 0;
+
+    // ANTS-4638 — the blank-line-delimited paragraph above this line,
+    // nearest first. A blank line ends the scope: without that bound the
+    // rule reaches back across the document and produces a confident wrong
+    // attribution, which is worse than the silence it replaces. A fenced
+    // line stops it for the same reason the citation antecedent resets.
+    // ANTS-4696 — `rejected` reports the nearest path-shaped token that
+    // was NOT accepted as a document, so the caller can say why nothing
+    // was attributed instead of attributing something else.
+    auto paragraphAttribution = [&](int i, QString *rejected = nullptr)
+            -> QStringList {
+        for (int j = i - 1; j >= 0; --j) {
+            if (prefix.at(j).trimmed().isEmpty()) break;
+            if (j < fence.size() && fence.at(j)) break;
+            const QStringList c = dcDocTokensIn(prefix.at(j));
+            if (!c.isEmpty()) return c;
+            const QStringList bad = dcRejectedPathTokensIn(prefix.at(j));
+            if (!bad.isEmpty()) {
+                // Nearest wins. This line names a path and meant it as the
+                // source; an older line in the same paragraph did not.
+                if (rejected) *rejected = bad.last();
+                return {};
+            }
+        }
+        return {};
+    };
+
+    for (int i = 0; i < prefix.size() && harvested < opts.maxQuotes; ++i) {
+        if (i < fence.size() && fence.at(i)) continue;   // specimen
+        const QString &line = prefix.at(i);
+        // ANTS-4697 — a blank line DELIMITS a block; it can never begin
+        // one. `fenceMask` marks the fence DELIMITERS, so the blank line
+        // after a closing fence satisfied the fence exemption below and
+        // opened a window of its own, which then absorbed the paragraph
+        // underneath — and that paragraph's first line opened a second
+        // window over the same text. Every quotation in the first
+        // paragraph after a fenced block was harvested twice.
+        if (line.trimmed().isEmpty()) continue;
+        const bool tableRow = dcIsTableRow(line);
+        const QVector<QPair<int, int>> cells =
+            tableRow ? dcTableCells(line) : QVector<QPair<int, int>>{};
+        const bool loopLog = tableRow && dcIsLoopLogRow(line, cells);
+
+        // ANTS-4664 — detect the span over the newline-folded block, the
+        // same normalisation the MATCHER has applied since ANTS-4386.
+        // Detection stayed line-scoped, so a hard-wrapped quotation was
+        // never handed to the matcher at all: it entered NO bucket, and a
+        // document whose quotations all wrap returned quotes_checked:0 —
+        // byte-identical to a document that quotes nothing. This corpus
+        // wraps at ~70 columns, so that is most quotations longer than a
+        // few words.
+        //
+        // The window stops at the block — a blank line, a fence, or a
+        // table row ends it. That is ANTS-4638's paragraph bound, here for
+        // the same reason: an unpaired `"` must not reach across the
+        // document and manufacture an enormous quotation. A table row
+        // cannot wrap, so it keeps the line-scoped window and the cell
+        // arithmetic below (which indexes into `line`) stays valid.
+        // Only a block's FIRST line opens a window, and that one window
+        // yields every quotation in the block. A window opened on a
+        // CONTINUATION line would begin inside the quotation still in
+        // progress, pair that quotation's CLOSING delimiter with the next
+        // one's OPENING delimiter, and manufacture a span out of the prose
+        // between two real quotations. Measured over this repo's 317
+        // documents while building this: scanning every line produced 2078
+        // quotations against 745 before, and the surplus was full of such
+        // fragments; opening one window per block gives the real number.
+        if (!tableRow && i > 0 && !prefix.at(i - 1).trimmed().isEmpty()
+            && !(i - 1 < fence.size() && fence.at(i - 1))
+            && !dcIsTableRow(prefix.at(i - 1)))
+            continue;
+
+        // `lineStarts[k]` is the window offset at which line `i + k`
+        // begins, so a match resolves back to the line it really starts
+        // on — which is what the caller is told and what the attribution
+        // rules below are scoped to.
+        QVector<int> lineStarts;
+        lineStarts.append(0);
+        QString window = line;
+        if (!tableRow) {
+            for (int j = i + 1; j < prefix.size(); ++j) {
+                if (prefix.at(j).trimmed().isEmpty()) break;
+                if (j < fence.size() && fence.at(j)) break;
+                if (dcIsTableRow(prefix.at(j))) break;
+                window += QLatin1Char('\n');
+                lineStarts.append(window.size());
+                window += prefix.at(j);
+            }
+        }
+
+        auto it = quoteRe.globalMatch(window);
+        while (it.hasNext() && harvested < opts.maxQuotes) {
+            const auto m = it.next();
+            const QString text = dcFoldWhitespace(
+                m.captured(1).isEmpty() ? m.captured(2) : m.captured(1));
+            if (text.size() < opts.quoteMinChars) continue;  // ordinary prose
+
+            // Resolve the match back to its own line before attributing:
+            // a quotation three lines into the block is introduced by the
+            // text beside IT, not by the block's first line.
+            int k = 0;
+            while (k + 1 < lineStarts.size()
+                   && lineStarts.at(k + 1) <= m.capturedStart(0))
+                ++k;
+            const int qLineIdx  = i + k;
+            const QString qLine = prefix.at(qLineIdx);
+
+            // ANTS-4637 — historical by design. Counted rather than
+            // silently dropped: a suppressed quotation that is merely
+            // absent cannot be told from one nobody found.
+            if (loopLog) { ++skipped; continue; }
+
+            QJsonObject q;
+            q[QStringLiteral("line")] = qLineIdx + 1;
+            q[QStringLiteral("text")] = text;
+
+            // Attribution candidates, most local scope first.
+            QStringList cand;
+            // ANTS-4696 — set when a path-shaped token was found and
+            // rejected, so `no_target` can say which one.
+            QString rejectedTarget;
+            if (tableRow) {
+                // ANTS-4640 — the quotation's OWN cell, then the row's
+                // first cell, which is the row's subject by convention.
+                // The scope stops at the row: a preceding row is a
+                // different subject, not a preceding paragraph.
+                const int at = m.capturedStart(0);
+                for (const QPair<int, int> &c : cells) {
+                    if (at < c.first || at >= c.second) continue;
+                    cand = dcDocTokensIn(line.mid(c.first, c.second - c.first));
+                    break;
+                }
+                if (cand.isEmpty() && !cells.isEmpty()) {
+                    const QPair<int, int> &c0 = cells.first();
+                    cand = dcDocTokensIn(line.mid(c0.first, c0.second - c0.first));
+                }
+                if (cand.isEmpty()) {
+                    // …and only then the rest of the row. Measured over
+                    // this machine's config corpus: the subject is not
+                    // always cell 0. A definitions table runs
+                    // `| genre | …the quotation… | the file defining it |`,
+                    // so stopping at the first cell drops an attribution
+                    // the old line-scoped rule found. Several distinct
+                    // documents here is an ambiguity, not a guess.
+                    cand = dcDocTokensIn(line);
+                }
+            } else {
+                // Same line first — today's rule, kept as the tie-break —
+                // then the paragraph. Last on a line wins either way: the
+                // attribution sits closest to the quote it introduces.
+                // Scoped to the quotation's OWN line (ANTS-4664), not the
+                // window's first, so a wrapped quotation is attributed
+                // exactly as the line-scoped rule attributed it.
+                cand = dcDocTokensIn(qLine);
+                if (cand.isEmpty()) {
+                    // The quotation's own line first: a rejected token
+                    // there outranks anything earlier in the paragraph.
+                    const QStringList badHere =
+                        dcRejectedPathTokensIn(qLine);
+                    if (!badHere.isEmpty()) rejectedTarget = badHere.last();
+                    else cand = paragraphAttribution(qLineIdx,
+                                                     &rejectedTarget);
+                }
+                if (cand.size() > 1) cand = QStringList{cand.last()};
+            }
+
+            if (cand.isEmpty()) {
+                // No document named. NOT a finding: the verb cannot know
+                // what a bare quotation is from, and guessing is how a
+                // check like this starts producing confident wrong answers.
+                // ANTS-4696 — when a path-shaped token WAS there and was
+                // rejected, name it. The repair is usually one character
+                // (add the extension), and without the name the caller
+                // cannot tell this from a quotation nobody attributed.
+                if (!rejectedTarget.isEmpty()) {
+                    q[QStringLiteral("rejected_target")] = rejectedTarget;
+                    q[QStringLiteral("hint")] = QStringLiteral(
+                        "`%1` is path-shaped but names no document "
+                        "extension (.%2), so it was not used as the target "
+                        "and no older token in the paragraph was used either.")
+                            .arg(rejectedTarget,
+                                 dcDocExtensions().join(QStringLiteral(", .")));
+                }
+                q[QStringLiteral("status")] = QStringLiteral("no_target");
+                ++qTally[QStringLiteral("no_target")];
+                quotesOut.append(q);
+                ++harvested;
+                continue;
+            }
+            if (cand.size() >= 2) {
+                // ANTS-4640 — one cell naming several documents. The
+                // envelope already carries this status for an ambiguous
+                // basename; reporting the candidates beats guessing.
+                q[QStringLiteral("status")] = QStringLiteral("ambiguous");
+                dcEmitCandidates(q, cand, opts.maxCandidates);
+                ++qTally[QStringLiteral("ambiguous")];
+                quotesOut.append(q);
+                ++harvested;
+                continue;
+            }
+
+            const QString attr = cand.first();
+            q[QStringLiteral("target")] = attr;
+
+            const Target t =
+                dcResolveAttribution(rootCanonical, docDirRel, attr, opts);
+            if (t.kind == Target::Ambiguous) {
+                q[QStringLiteral("status")] = QStringLiteral("ambiguous");
+                dcEmitCandidates(q, t.candidates, opts.maxCandidates);
+                ++qTally[QStringLiteral("ambiguous")];
+            } else if (t.kind != Target::Resolved) {
+                // ANTS-4639 (3) — the attribution PARSED and did not
+                // resolve. `no_target` is the other answer entirely — the
+                // check did not run, versus the check ran and the
+                // quotation is stale — and conflating the two is what hid
+                // the sibling-directory and config-key defects above.
+                q[QStringLiteral("status")] = QStringLiteral("target_unresolved");
+                ++qTally[QStringLiteral("target_unresolved")];
+            } else {
+                auto folded = foldedByPath.constFind(t.absPath);
+                if (folded == foldedByPath.constEnd()) {
+                    // ANTS-5054 — one read per document per call, inside
+                    // the reader's read budget and size cap.
+                    QPair<bool, QString> entry{false, QString()};
+                    if (reader.admitWholeRead(t.absPath)) {
+                        QFile tf(t.absPath);
+                        QString body;
+                        if (tf.open(QIODevice::ReadOnly) &&
+                            decodeChecked(tf.readAll(), &body))
+                            entry = {true, dcFoldWhitespace(body)};
+                    }
+                    folded = foldedByPath.insert(t.absPath, entry);
+                }
+                if (folded->first) {
+                    // Fold whitespace on BOTH sides. Without this a
+                    // hard-wrapped target reports not_found for a phrase
+                    // that is present, which is the false negative that
+                    // makes the hand-rolled version unsafe.
+                    const bool found =
+                        folded->second.contains(dcFoldWhitespace(text));
+                    q[QStringLiteral("status")] = found
+                        ? QStringLiteral("ok")
+                        : QStringLiteral("not_found");
+                    ++qTally[found ? QStringLiteral("ok")
+                                   : QStringLiteral("not_found")];
+                } else {
+                    // Resolved but unreadable — the check did not run.
+                    q[QStringLiteral("status")] =
+                        QStringLiteral("target_unresolved");
+                    ++qTally[QStringLiteral("target_unresolved")];
+                }
+            }
+            quotesOut.append(q);
+            ++harvested;
+        }
+    }
+    out.insert(QStringLiteral("quotes"), quotesOut);
+    QJsonObject qCounts;
+    for (const char *k : {"ok", "not_found", "ambiguous", "no_target",
+                          "target_unresolved"})
+        qCounts[QLatin1String(k)] = qTally.value(QLatin1String(k), 0);
+    // ANTS-4637 — `skipped` counts quotations the loop-log rule suppressed.
+    // They were never checked, so they are outside the status partition and
+    // outside `quotes_checked`; the overlay list says so, exactly as
+    // `counts_overlay_keys` does for the citation tally (ANTS-4087).
+    qCounts[QStringLiteral("skipped")] = skipped;
+    out.insert(QStringLiteral("quote_counts"), qCounts);
+    out.insert(QStringLiteral("quote_counts_overlay_keys"),
+               QJsonArray{QStringLiteral("skipped")});
+    // ANTS-4374 — say what was looked at, so `quotes:[]` cannot read as
+    // "every quotation checks out".
+    out.insert(QStringLiteral("quotes_checked"), harvested);
+    if (harvested >= opts.maxQuotes)
+        out.insert(QStringLiteral("quotes_truncated"), true);
+}
+
+// ANTS-5296 — opt-in path-token pass. Only words inside single-line code
+// spans: unbackticked prose is full of slashes ("and/or", "A/B") and a
+// path a document means as one is backticked by this corpus's convention.
+// Fenced and doc-examples lines are specimens and carry no spans to judge.
+// Existence is a stat, never an open, so the read budget is untouched.
+static void dcPathTokenPass(QJsonObject &out, const QString &rootCanonical,
+                            const QString &docDirRel, const QStringList &prefix,
+                            const QVector<bool> &examples,
+                            const QVector<MarkdownScan::CodeSpan> &spans,
+                            const Options &opts) {
+    QStringList bases{QString()};
+    if (!docDirRel.isEmpty()) bases.append(docDirRel);
+    auto absOf = [&](const QString &base, const QString &rel) {
+        return base.isEmpty() ? rootCanonical + QLatin1Char('/') + rel
+                              : rootCanonical + QLatin1Char('/') + base
+                                    + QLatin1Char('/') + rel;
+    };
+
+    static const QRegularExpression space(QStringLiteral("\\s+"));
+    QJsonArray tokensOut;
+    int ok = 0, missing = 0, foreign = 0, skipped = 0;
+    bool dropped = false;
+    int lastLine = -1;
+    QStringList seenOnLine;
+    for (const MarkdownScan::CodeSpan &sp : spans) {
+        if (sp.startLine != sp.endLine) continue;
+        const int i = sp.startLine;
+        if (i < examples.size() && examples.at(i)) continue;
+        const QString &line = prefix.at(i);
+        if (i != lastLine) { lastLine = i; seenOnLine.clear(); }
+        const bool loopLog = dcIsTableRow(line)
+                             && dcIsLoopLogRow(line, dcTableCells(line));
+        const QStringList words =
+            line.mid(sp.startCol, sp.endCol - sp.startCol)
+                .split(space, Qt::SkipEmptyParts);
+        for (const QString &word : words) {
+            const QString tok = dcPathTokenOf(word);
+            if (tok.isEmpty() || seenOnLine.contains(tok)) continue;
+            seenOnLine.append(tok);
+            // A loop-log row names a path as it was then (ANTS-4637).
+            if (loopLog) { ++skipped; continue; }
+
+            // The containment qualifier: judged against each base whose
+            // copy of the leading segment is a real directory.
+            const QString lead = tok.section(QLatin1Char('/'), 0, 0);
+            QString found;
+            bool judged = false;
+            for (const QString &base : bases) {
+                if (!QFileInfo(absOf(base, lead)).isDir()) continue;
+                judged = true;
+                if (QFileInfo::exists(absOf(base, tok))) {
+                    found = base.isEmpty() ? tok : base + QLatin1Char('/') + tok;
+                    break;
+                }
+            }
+            if (!judged) { ++foreign; continue; }
+            if (found.isEmpty()) ++missing; else ++ok;
+            if (opts.only == Only::Stale && !found.isEmpty()) continue;
+            if (tokensOut.size() >= opts.maxPathTokens) { dropped = true; continue; }
+            QJsonObject t{{QStringLiteral("line"), i + 1},
+                          {QStringLiteral("token"), tok},
+                          {QStringLiteral("status"),
+                           found.isEmpty() ? QStringLiteral("missing")
+                                           : QStringLiteral("ok")}};
+            if (!found.isEmpty()) t[QStringLiteral("path")] = found;
+            tokensOut.append(t);
+        }
+    }
+    out.insert(QStringLiteral("path_tokens"), tokensOut);
+    // `foreign` and `skipped` were never judged, so they sit outside the
+    // status partition and outside `path_tokens_checked`, as `skipped`
+    // does in `quote_counts`.
+    out.insert(QStringLiteral("path_token_counts"),
+               QJsonObject{{QStringLiteral("ok"), ok},
+                           {QStringLiteral("missing"), missing},
+                           {QStringLiteral("foreign"), foreign},
+                           {QStringLiteral("skipped"), skipped}});
+    out.insert(QStringLiteral("path_token_counts_overlay_keys"),
+               QJsonArray{QStringLiteral("foreign"), QStringLiteral("skipped")});
+    out.insert(QStringLiteral("path_tokens_checked"), ok + missing);
+    if (dropped) out.insert(QStringLiteral("path_tokens_truncated"), true);
+}
+
 QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts) {
     QStringList lines;
@@ -1162,7 +1534,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
 
     TargetReader           reader(opts);
     QVector<QJsonObject>   entries;
-    QVector<PendingUnparsed> unparsedRows;
+    QVector<Unparsed> unparsedRows;
     QHash<QString, int>    tally;
     Antecedent             ante;
     int                    fenceCursor = 0;
@@ -1227,7 +1599,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         }
 
         if (t.kind == Target::OutOfRoot || t.kind == Target::Unresolvable) {
-            PendingUnparsed u;
+            Unparsed u;
             u.docLine    = tok.docLine;
             u.docCol     = tok.docCol;
             u.raw        = tok.raw.left(opts.maxRawChars);
@@ -1393,10 +1765,9 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         }
     }
 
-    for (const Unparsed &u : sc.unparsed)
-        unparsedRows.append({u.docLine, u.docCol, u.raw, u.rawClipped, u.reason});
+    unparsedRows += sc.unparsed;
     std::stable_sort(unparsedRows.begin(), unparsedRows.end(),
-                     [](const PendingUnparsed &a, const PendingUnparsed &b) {
+                     [](const Unparsed &a, const Unparsed &b) {
                          return a.docLine != b.docLine ? a.docLine < b.docLine
                                                        : a.docCol < b.docCol;
                      });
@@ -1433,7 +1804,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
 
     QJsonArray unparsedOut;
     for (int i = 0; i < unparsedRows.size() && i < opts.maxUnparsed; ++i) {
-        const PendingUnparsed &u = unparsedRows.at(i);
+        const Unparsed &u = unparsedRows.at(i);
         QJsonObject o{{QStringLiteral("doc_line"), u.docLine},
                       {QStringLiteral("raw"), u.raw},
                       {QStringLiteral("reason"), u.reason}};
@@ -1488,373 +1859,11 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     QString docDirRel = relativeTo(rootCanonical, docInfo.path());
     if (docDirRel == docInfo.path()) docDirRel.clear();
 
-    // ANTS-4386 — opt-in quotation pass. Runs over the same `prefix` lines and
-    // the same fence mask, so a quotation inside a fenced block (a specimen)
-    // is invisible here exactly as a citation is.
-    if (opts.quotes) {
-        static const QRegularExpression quoteRe(
-            QStringLiteral("\u201C([^\u201D]{2,})\u201D|\"([^\"]{2,})\""));
-        QJsonArray quotesOut;
-        QHash<QString, int> qTally;
-        // ANTS-5054 — each attributed document is read and folded once per
-        // call: resolved path → {read ok, folded body}.
-        QHash<QString, QPair<bool, QString>> foldedByPath;
-        int harvested = 0;
-        int skipped   = 0;
+    if (opts.quotes)
+        dcQuotationPass(out, rootCanonical, docDirRel, prefix, fence, reader, opts);
 
-        // ANTS-4638 — the blank-line-delimited paragraph above this line,
-        // nearest first. A blank line ends the scope: without that bound the
-        // rule reaches back across the document and produces a confident wrong
-        // attribution, which is worse than the silence it replaces. A fenced
-        // line stops it for the same reason the citation antecedent resets.
-        // ANTS-4696 — `rejected` reports the nearest path-shaped token that
-        // was NOT accepted as a document, so the caller can say why nothing
-        // was attributed instead of attributing something else.
-        auto paragraphAttribution = [&](int i, QString *rejected = nullptr)
-                -> QStringList {
-            for (int j = i - 1; j >= 0; --j) {
-                if (prefix.at(j).trimmed().isEmpty()) break;
-                if (j < fence.size() && fence.at(j)) break;
-                const QStringList c = dcDocTokensIn(prefix.at(j));
-                if (!c.isEmpty()) return c;
-                const QStringList bad = dcRejectedPathTokensIn(prefix.at(j));
-                if (!bad.isEmpty()) {
-                    // Nearest wins. This line names a path and meant it as the
-                    // source; an older line in the same paragraph did not.
-                    if (rejected) *rejected = bad.last();
-                    return {};
-                }
-            }
-            return {};
-        };
-
-        for (int i = 0; i < prefix.size() && harvested < opts.maxQuotes; ++i) {
-            if (i < fence.size() && fence.at(i)) continue;   // specimen
-            const QString &line = prefix.at(i);
-            // ANTS-4697 — a blank line DELIMITS a block; it can never begin
-            // one. `fenceMask` marks the fence DELIMITERS, so the blank line
-            // after a closing fence satisfied the fence exemption below and
-            // opened a window of its own, which then absorbed the paragraph
-            // underneath — and that paragraph's first line opened a second
-            // window over the same text. Every quotation in the first
-            // paragraph after a fenced block was harvested twice.
-            if (line.trimmed().isEmpty()) continue;
-            const bool tableRow = dcIsTableRow(line);
-            const QVector<QPair<int, int>> cells =
-                tableRow ? dcTableCells(line) : QVector<QPair<int, int>>{};
-            const bool loopLog = tableRow && dcIsLoopLogRow(line, cells);
-
-            // ANTS-4664 — detect the span over the newline-folded block, the
-            // same normalisation the MATCHER has applied since ANTS-4386.
-            // Detection stayed line-scoped, so a hard-wrapped quotation was
-            // never handed to the matcher at all: it entered NO bucket, and a
-            // document whose quotations all wrap returned quotes_checked:0 —
-            // byte-identical to a document that quotes nothing. This corpus
-            // wraps at ~70 columns, so that is most quotations longer than a
-            // few words.
-            //
-            // The window stops at the block — a blank line, a fence, or a
-            // table row ends it. That is ANTS-4638's paragraph bound, here for
-            // the same reason: an unpaired `"` must not reach across the
-            // document and manufacture an enormous quotation. A table row
-            // cannot wrap, so it keeps the line-scoped window and the cell
-            // arithmetic below (which indexes into `line`) stays valid.
-            // Only a block's FIRST line opens a window, and that one window
-            // yields every quotation in the block. A window opened on a
-            // CONTINUATION line would begin inside the quotation still in
-            // progress, pair that quotation's CLOSING delimiter with the next
-            // one's OPENING delimiter, and manufacture a span out of the prose
-            // between two real quotations. Measured over this repo's 317
-            // documents while building this: scanning every line produced 2078
-            // quotations against 745 before, and the surplus was full of such
-            // fragments; opening one window per block gives the real number.
-            if (!tableRow && i > 0 && !prefix.at(i - 1).trimmed().isEmpty()
-                && !(i - 1 < fence.size() && fence.at(i - 1))
-                && !dcIsTableRow(prefix.at(i - 1)))
-                continue;
-
-            // `lineStarts[k]` is the window offset at which line `i + k`
-            // begins, so a match resolves back to the line it really starts
-            // on — which is what the caller is told and what the attribution
-            // rules below are scoped to.
-            QVector<int> lineStarts;
-            lineStarts.append(0);
-            QString window = line;
-            if (!tableRow) {
-                for (int j = i + 1; j < prefix.size(); ++j) {
-                    if (prefix.at(j).trimmed().isEmpty()) break;
-                    if (j < fence.size() && fence.at(j)) break;
-                    if (dcIsTableRow(prefix.at(j))) break;
-                    window += QLatin1Char('\n');
-                    lineStarts.append(window.size());
-                    window += prefix.at(j);
-                }
-            }
-
-            auto it = quoteRe.globalMatch(window);
-            while (it.hasNext() && harvested < opts.maxQuotes) {
-                const auto m = it.next();
-                const QString text = dcFoldWhitespace(
-                    m.captured(1).isEmpty() ? m.captured(2) : m.captured(1));
-                if (text.size() < opts.quoteMinChars) continue;  // ordinary prose
-
-                // Resolve the match back to its own line before attributing:
-                // a quotation three lines into the block is introduced by the
-                // text beside IT, not by the block's first line.
-                int k = 0;
-                while (k + 1 < lineStarts.size()
-                       && lineStarts.at(k + 1) <= m.capturedStart(0))
-                    ++k;
-                const int qLineIdx  = i + k;
-                const QString qLine = prefix.at(qLineIdx);
-
-                // ANTS-4637 — historical by design. Counted rather than
-                // silently dropped: a suppressed quotation that is merely
-                // absent cannot be told from one nobody found.
-                if (loopLog) { ++skipped; continue; }
-
-                QJsonObject q;
-                q[QStringLiteral("line")] = qLineIdx + 1;
-                q[QStringLiteral("text")] = text;
-
-                // Attribution candidates, most local scope first.
-                QStringList cand;
-                // ANTS-4696 — set when a path-shaped token was found and
-                // rejected, so `no_target` can say which one.
-                QString rejectedTarget;
-                if (tableRow) {
-                    // ANTS-4640 — the quotation's OWN cell, then the row's
-                    // first cell, which is the row's subject by convention.
-                    // The scope stops at the row: a preceding row is a
-                    // different subject, not a preceding paragraph.
-                    const int at = m.capturedStart(0);
-                    for (const QPair<int, int> &c : cells) {
-                        if (at < c.first || at >= c.second) continue;
-                        cand = dcDocTokensIn(line.mid(c.first, c.second - c.first));
-                        break;
-                    }
-                    if (cand.isEmpty() && !cells.isEmpty()) {
-                        const QPair<int, int> &c0 = cells.first();
-                        cand = dcDocTokensIn(line.mid(c0.first, c0.second - c0.first));
-                    }
-                    if (cand.isEmpty()) {
-                        // …and only then the rest of the row. Measured over
-                        // this machine's config corpus: the subject is not
-                        // always cell 0. A definitions table runs
-                        // `| genre | …the quotation… | the file defining it |`,
-                        // so stopping at the first cell drops an attribution
-                        // the old line-scoped rule found. Several distinct
-                        // documents here is an ambiguity, not a guess.
-                        cand = dcDocTokensIn(line);
-                    }
-                } else {
-                    // Same line first — today's rule, kept as the tie-break —
-                    // then the paragraph. Last on a line wins either way: the
-                    // attribution sits closest to the quote it introduces.
-                    // Scoped to the quotation's OWN line (ANTS-4664), not the
-                    // window's first, so a wrapped quotation is attributed
-                    // exactly as the line-scoped rule attributed it.
-                    cand = dcDocTokensIn(qLine);
-                    if (cand.isEmpty()) {
-                        // The quotation's own line first: a rejected token
-                        // there outranks anything earlier in the paragraph.
-                        const QStringList badHere =
-                            dcRejectedPathTokensIn(qLine);
-                        if (!badHere.isEmpty()) rejectedTarget = badHere.last();
-                        else cand = paragraphAttribution(qLineIdx,
-                                                         &rejectedTarget);
-                    }
-                    if (cand.size() > 1) cand = QStringList{cand.last()};
-                }
-
-                if (cand.isEmpty()) {
-                    // No document named. NOT a finding: the verb cannot know
-                    // what a bare quotation is from, and guessing is how a
-                    // check like this starts producing confident wrong answers.
-                    // ANTS-4696 — when a path-shaped token WAS there and was
-                    // rejected, name it. The repair is usually one character
-                    // (add the extension), and without the name the caller
-                    // cannot tell this from a quotation nobody attributed.
-                    if (!rejectedTarget.isEmpty()) {
-                        q[QStringLiteral("rejected_target")] = rejectedTarget;
-                        q[QStringLiteral("hint")] = QStringLiteral(
-                            "`%1` is path-shaped but names no document "
-                            "extension (.md, .markdown, .txt, .rst, .adoc, "
-                            ".org), so it was not used as the target and no "
-                            "older token in the paragraph was used either.")
-                                .arg(rejectedTarget);
-                    }
-                    q[QStringLiteral("status")] = QStringLiteral("no_target");
-                    ++qTally[QStringLiteral("no_target")];
-                    quotesOut.append(q);
-                    ++harvested;
-                    continue;
-                }
-                if (cand.size() >= 2) {
-                    // ANTS-4640 — one cell naming several documents. The
-                    // envelope already carries this status for an ambiguous
-                    // basename; reporting the candidates beats guessing.
-                    q[QStringLiteral("status")] = QStringLiteral("ambiguous");
-                    dcEmitCandidates(q, cand, opts.maxCandidates);
-                    ++qTally[QStringLiteral("ambiguous")];
-                    quotesOut.append(q);
-                    ++harvested;
-                    continue;
-                }
-
-                const QString attr = cand.first();
-                q[QStringLiteral("target")] = attr;
-
-                const Target t =
-                    dcResolveAttribution(rootCanonical, docDirRel, attr, opts);
-                if (t.kind == Target::Ambiguous) {
-                    q[QStringLiteral("status")] = QStringLiteral("ambiguous");
-                    dcEmitCandidates(q, t.candidates, opts.maxCandidates);
-                    ++qTally[QStringLiteral("ambiguous")];
-                } else if (t.kind != Target::Resolved) {
-                    // ANTS-4639 (3) — the attribution PARSED and did not
-                    // resolve. `no_target` is the other answer entirely — the
-                    // check did not run, versus the check ran and the
-                    // quotation is stale — and conflating the two is what hid
-                    // the sibling-directory and config-key defects above.
-                    q[QStringLiteral("status")] = QStringLiteral("target_unresolved");
-                    ++qTally[QStringLiteral("target_unresolved")];
-                } else {
-                    auto folded = foldedByPath.constFind(t.absPath);
-                    if (folded == foldedByPath.constEnd()) {
-                        // ANTS-5054 — one read per document per call, inside
-                        // the reader's read budget and size cap.
-                        QPair<bool, QString> entry{false, QString()};
-                        if (reader.admitWholeRead(t.absPath)) {
-                            QFile tf(t.absPath);
-                            QString body;
-                            if (tf.open(QIODevice::ReadOnly) &&
-                                decodeChecked(tf.readAll(), &body))
-                                entry = {true, dcFoldWhitespace(body)};
-                        }
-                        folded = foldedByPath.insert(t.absPath, entry);
-                    }
-                    if (folded->first) {
-                        // Fold whitespace on BOTH sides. Without this a
-                        // hard-wrapped target reports not_found for a phrase
-                        // that is present, which is the false negative that
-                        // makes the hand-rolled version unsafe.
-                        const bool found =
-                            folded->second.contains(dcFoldWhitespace(text));
-                        q[QStringLiteral("status")] = found
-                            ? QStringLiteral("ok")
-                            : QStringLiteral("not_found");
-                        ++qTally[found ? QStringLiteral("ok")
-                                       : QStringLiteral("not_found")];
-                    } else {
-                        // Resolved but unreadable — the check did not run.
-                        q[QStringLiteral("status")] =
-                            QStringLiteral("target_unresolved");
-                        ++qTally[QStringLiteral("target_unresolved")];
-                    }
-                }
-                quotesOut.append(q);
-                ++harvested;
-            }
-        }
-        out.insert(QStringLiteral("quotes"), quotesOut);
-        QJsonObject qCounts;
-        for (const char *k : {"ok", "not_found", "ambiguous", "no_target",
-                              "target_unresolved"})
-            qCounts[QLatin1String(k)] = qTally.value(QLatin1String(k), 0);
-        // ANTS-4637 — `skipped` counts quotations the loop-log rule suppressed.
-        // They were never checked, so they are outside the status partition and
-        // outside `quotes_checked`; the overlay list says so, exactly as
-        // `counts_overlay_keys` does for the citation tally (ANTS-4087).
-        qCounts[QStringLiteral("skipped")] = skipped;
-        out.insert(QStringLiteral("quote_counts"), qCounts);
-        out.insert(QStringLiteral("quote_counts_overlay_keys"),
-                   QJsonArray{QStringLiteral("skipped")});
-        // ANTS-4374 — say what was looked at, so `quotes:[]` cannot read as
-        // "every quotation checks out".
-        out.insert(QStringLiteral("quotes_checked"), harvested);
-        if (harvested >= opts.maxQuotes)
-            out.insert(QStringLiteral("quotes_truncated"), true);
-    }
-
-    // ANTS-5296 — opt-in path-token pass. Only words inside single-line code
-    // spans: unbackticked prose is full of slashes ("and/or", "A/B") and a
-    // path a document means as one is backticked by this corpus's convention.
-    // Fenced and doc-examples lines are specimens and carry no spans to judge.
-    // Existence is a stat, never an open, so the read budget is untouched.
-    if (opts.paths) {
-        QStringList bases{QString()};
-        if (!docDirRel.isEmpty()) bases.append(docDirRel);
-        auto absOf = [&](const QString &base, const QString &rel) {
-            return base.isEmpty() ? rootCanonical + QLatin1Char('/') + rel
-                                  : rootCanonical + QLatin1Char('/') + base
-                                        + QLatin1Char('/') + rel;
-        };
-
-        static const QRegularExpression space(QStringLiteral("\\s+"));
-        QJsonArray tokensOut;
-        int ok = 0, missing = 0, foreign = 0, skipped = 0;
-        bool dropped = false;
-        int lastLine = -1;
-        QStringList seenOnLine;
-        for (const MarkdownScan::CodeSpan &sp : spans) {
-            if (sp.startLine != sp.endLine) continue;
-            const int i = sp.startLine;
-            if (i < examples.size() && examples.at(i)) continue;
-            const QString &line = prefix.at(i);
-            if (i != lastLine) { lastLine = i; seenOnLine.clear(); }
-            const bool loopLog = dcIsTableRow(line)
-                                 && dcIsLoopLogRow(line, dcTableCells(line));
-            const QStringList words =
-                line.mid(sp.startCol, sp.endCol - sp.startCol)
-                    .split(space, Qt::SkipEmptyParts);
-            for (const QString &word : words) {
-                const QString tok = dcPathTokenOf(word);
-                if (tok.isEmpty() || seenOnLine.contains(tok)) continue;
-                seenOnLine.append(tok);
-                // A loop-log row names a path as it was then (ANTS-4637).
-                if (loopLog) { ++skipped; continue; }
-
-                // The containment qualifier: judged against each base whose
-                // copy of the leading segment is a real directory.
-                const QString lead = tok.section(QLatin1Char('/'), 0, 0);
-                QString found;
-                bool judged = false;
-                for (const QString &base : bases) {
-                    if (!QFileInfo(absOf(base, lead)).isDir()) continue;
-                    judged = true;
-                    if (QFileInfo::exists(absOf(base, tok))) {
-                        found = base.isEmpty() ? tok : base + QLatin1Char('/') + tok;
-                        break;
-                    }
-                }
-                if (!judged) { ++foreign; continue; }
-                if (found.isEmpty()) ++missing; else ++ok;
-                if (opts.only == Only::Stale && !found.isEmpty()) continue;
-                if (tokensOut.size() >= opts.maxPathTokens) { dropped = true; continue; }
-                QJsonObject t{{QStringLiteral("line"), i + 1},
-                              {QStringLiteral("token"), tok},
-                              {QStringLiteral("status"),
-                               found.isEmpty() ? QStringLiteral("missing")
-                                               : QStringLiteral("ok")}};
-                if (!found.isEmpty()) t[QStringLiteral("path")] = found;
-                tokensOut.append(t);
-            }
-        }
-        out.insert(QStringLiteral("path_tokens"), tokensOut);
-        // `foreign` and `skipped` were never judged, so they sit outside the
-        // status partition and outside `path_tokens_checked`, as `skipped`
-        // does in `quote_counts`.
-        out.insert(QStringLiteral("path_token_counts"),
-                   QJsonObject{{QStringLiteral("ok"), ok},
-                               {QStringLiteral("missing"), missing},
-                               {QStringLiteral("foreign"), foreign},
-                               {QStringLiteral("skipped"), skipped}});
-        out.insert(QStringLiteral("path_token_counts_overlay_keys"),
-                   QJsonArray{QStringLiteral("foreign"), QStringLiteral("skipped")});
-        out.insert(QStringLiteral("path_tokens_checked"), ok + missing);
-        if (dropped) out.insert(QStringLiteral("path_tokens_truncated"), true);
-    }
+    if (opts.paths)
+        dcPathTokenPass(out, rootCanonical, docDirRel, prefix, examples, spans, opts);
     if (reader.budgetHit()) out.insert(QStringLiteral("read_budget_exhausted"), true);
     if (sc.unterminatedFence >= 0)
         out.insert(QStringLiteral("unterminated_fence"), sc.unterminatedFence);
@@ -1891,7 +1900,8 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     }
 
     // The budget is what is left after everything that is never trimmed —
-    // unparsed[] above all, which max_bytes must not touch.
+    // unparsed[] above all, which max_bytes must not touch, and the blocks
+    // the quotation and path-token passes have already written into `out`.
     const qint64 baseBytes = QJsonDocument(out).toJson(QJsonDocument::Compact).size();
     const qint64 budget    = qMax<qint64>(0, opts.maxBytes - baseBytes);
     QJsonArray page;

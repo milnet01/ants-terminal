@@ -309,23 +309,23 @@ QJsonArray headingsJson(const QVector<Heading> &hs) {
     return a;
 }
 
-}  // namespace
-
-Index build(const QString &rootCanonical, qint64 generatedAtMs,
-            const Options &opts) {
+// The cap and budget loop build and refreshWith share. entryFor(rel) yields
+// each doc's entry. A walk the entry cap cut short (walkCut) is reported as
+// truncated too (ANTS-5623).
+template <typename EntryFor>
+Index fillIndex(const QString &rootCanonical, qint64 generatedAtMs,
+                const Options &opts, const QStringList &docs, bool walkCut,
+                EntryFor entryFor) {
     Index idx;
     idx.version       = kIndexVersion;
     idx.rootCanonical = rootCanonical;
     idx.generatedAtMs = generatedAtMs;
-
-    bool walkCut = false;
-    const QStringList docs =
-        walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
     idx.docsTruncated = walkCut;
+
     qint64 budget = 0;
     for (const QString &rel : docs) {
         if (idx.docs.size() >= opts.maxIndexDocs) { idx.docsTruncated = true; break; }
-        DocEntry de = scanToEntry(rootCanonical, rel, opts);
+        DocEntry de = entryFor(rel);
         const qint64 est = estimateEntryBytes(de);
         if (!idx.docs.isEmpty() && budget + est > opts.maxCacheBytes) {
             idx.docsTruncated = true; break;
@@ -334,6 +334,19 @@ Index build(const QString &rootCanonical, qint64 generatedAtMs,
         idx.docs << de;
     }
     return idx;
+}
+
+}  // namespace
+
+Index build(const QString &rootCanonical, qint64 generatedAtMs,
+            const Options &opts) {
+    bool walkCut = false;
+    const QStringList docs =
+        walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
+    return fillIndex(rootCanonical, generatedAtMs, opts, docs, walkCut,
+                     [&](const QString &rel) {
+                         return scanToEntry(rootCanonical, rel, opts);
+                     });
 }
 
 // ANTS-2198 — internal worker accepting a precomputed doc list so the hot
@@ -385,7 +398,7 @@ StaleSet staleDocs(const Index &prev, const QString &rootCanonical) {
 static Index refreshWith(const Index &prev, const QString &rootCanonical,
                          qint64 generatedAtMs, const Options &opts,
                          int *refreshedOut, const StaleSet &ss,
-                         const QStringList &docs) {
+                         const QStringList &docs, bool walkCut) {
     QSet<QString> rescan;
     for (const QString &p : ss.changed) rescan.insert(p);
     for (const QString &p : ss.added)   rescan.insert(p);
@@ -393,26 +406,13 @@ static Index refreshWith(const Index &prev, const QString &rootCanonical,
     QMap<QString, DocEntry> byPath;
     for (const DocEntry &de : prev.docs) byPath.insert(de.path, de);
 
-    Index idx;
-    idx.version       = kIndexVersion;
-    idx.rootCanonical = rootCanonical;
-    idx.generatedAtMs = generatedAtMs;
-
-    qint64 budget = 0;
-    for (const QString &rel : docs) {
-        if (idx.docs.size() >= opts.maxIndexDocs) { idx.docsTruncated = true; break; }
-        DocEntry de = (rescan.contains(rel) || !byPath.contains(rel))
-                          ? scanToEntry(rootCanonical, rel, opts)
-                          : byPath.value(rel);
-        const qint64 est = estimateEntryBytes(de);
-        if (!idx.docs.isEmpty() && budget + est > opts.maxCacheBytes) {
-            idx.docsTruncated = true; break;
-        }
-        budget += est;
-        idx.docs << de;
-    }
     if (refreshedOut) *refreshedOut = ss.changed.size() + ss.added.size();
-    return idx;
+    return fillIndex(rootCanonical, generatedAtMs, opts, docs, walkCut,
+                     [&](const QString &rel) {
+                         return (rescan.contains(rel) || !byPath.contains(rel))
+                                    ? scanToEntry(rootCanonical, rel, opts)
+                                    : byPath.value(rel);
+                     });
 }
 
 Index refresh(const Index &prev, const QString &rootCanonical,
@@ -424,10 +424,8 @@ Index refresh(const Index &prev, const QString &rootCanonical,
     const QStringList docs =
         walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
     const StaleSet ss = staleDocsWith(prev, rootCanonical, docs);
-    Index idx = refreshWith(prev, rootCanonical, generatedAtMs, opts,
-                       refreshedOut, ss, docs);
-    if (walkCut) idx.docsTruncated = true;  // ANTS-5623
-    return idx;
+    return refreshWith(prev, rootCanonical, generatedAtMs, opts,
+                       refreshedOut, ss, docs, walkCut);
 }
 
 QJsonObject query(const Index &idx, const QueryParams &params,
@@ -694,8 +692,8 @@ QJsonObject serve(const QString &rootCanonical, qint64 nowMs,
             walkDocs(rootCanonical, opts.maxWalkEntries, &walkCut);
         const StaleSet ss = staleDocsWith(prev, rootCanonical, docs);
         if (ss.any()) {
-            idx = refreshWith(prev, rootCanonical, nowMs, opts, &refreshed, ss, docs);
-            if (walkCut) idx.docsTruncated = true;  // ANTS-5623
+            idx = refreshWith(prev, rootCanonical, nowMs, opts, &refreshed, ss,
+                              docs, walkCut);
             needWrite = true;
         } else {
             idx = prev;  // fully warm — no write, generated_at_ms preserved

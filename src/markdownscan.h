@@ -13,11 +13,6 @@
 // paragraph and not an opener (ANTS-3655). A fence is closed only by a line
 // opening with the SAME fence character.
 //
-// Consumers: feedbackfile.cpp (scanBoundaries), speclog.cpp (findSectionHeading),
-// featurecoverage.cpp (ANTS-3600 doc-literal scan), docsindex.cpp (ANTS-3604
-// fence-aware link scan), docintegrity.cpp (ANTS-3601), doccitations.cpp
-// (ANTS-3653).
-//
 // ANTS-3649 also hoisted the inline-code-span scanner here from
 // docintegrity.cpp, where it was an anonymous-namespace static: two verbs now
 // need the span boundaries and they must not diverge.
@@ -33,8 +28,8 @@ class QRegularExpression;
 
 namespace MarkdownScan {
 
-// The shared fence-opener regex: `^ {0,3}(```|~~~)`. Capture group 1 is the
-// fence run, so the opener character can be recovered to match the closer.
+// The shared fence-opener regex, the rule stated at the top of this file.
+// Capture group 1 is the fence run, so the opener character can be recovered to match the closer.
 const QRegularExpression &fenceRe();
 
 // The fence character (` or ~) that a fence opened on `line` would close on,
@@ -114,8 +109,7 @@ struct CodeSpan {
 };
 
 // Every inline code span in the document, in document order — hoisted out of
-// `DocIntegrity::maskInlineCode`, which is still the only masking consumer but
-// is no longer the only one that needs the boundaries.
+// `DocIntegrity::maskInlineCode`.
 //
 // Whole-document, not line by line: a CommonMark span may cross a newline
 // (§ 6.1), and a per-line pass leaves such a span's tail exposed — the defect

@@ -2,6 +2,7 @@
 
 #include "docintegrity.h"
 
+#include "doccitations.h"
 #include "markdownscan.h"
 
 #include <QDir>
@@ -249,9 +250,11 @@ QList<Link> extractLinks(const QStringList &lines,
                          const QVector<bool> &fence, int cap,
                          int *quotedSkipped = nullptr) {
     const QStringList scan = maskInlineCode(lines, fence);
-    // 30 characters — the same floor doc_citations puts on a quotation, so the
-    // two verbs agree about what counts as one.
-    const QList<QuotedSpan> quotes = quotedSpans(scan, fence, 30);
+    // doc_citations' length floor for a quotation. Only the floor is shared:
+    // quotedSpans pairs any of " “ ” and measures simplified text, so the two
+    // verbs can still disagree about where a quotation starts and ends.
+    const QList<QuotedSpan> quotes =
+        quotedSpans(scan, fence, DocCitations::Options{}.quoteMinChars);
     QList<Link> out;
     for (int i = 0; i < scan.size() && out.size() < cap; ++i) {
         if (fence.value(i)) continue;
