@@ -292,6 +292,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **workspace_search says why a reply is partial: `truncated_reason` is timeout, output_cap, max_results or bytes, and a timeout carries a hint naming timeout_sec.** (ANTS-5323)
+
 - **The tab list names the "background work still running" Claude state in words, in its tooltip and screen-reader text.** (ANTS-6114)
 
 - **trace's document rows follow the project's one Markdown fence rule** (ANTS-6002)

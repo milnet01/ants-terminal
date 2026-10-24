@@ -4798,8 +4798,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "this project. The query is ONE pattern, not "
                     "AND-combined words — a multi-word query that hits 0 "
                     "matches returns an advisory `hint` (a single token, "
-                    "or regex:true with .* between terms). Hard-kill returns "
-                    "rg_failed with a hint.");
+                    "or regex:true with .* between terms). A partial reply "
+                    "says why in truncated_reason.");
                 // ANTS-2079 — full per-arg reference in `detail` (stripped
                 // from the tools/list wire; served by tool_info
                 // {name:"workspace_search"}).
@@ -4877,7 +4877,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "existence/frequency mode; `count` is the true "
                     "total (uncapped by max_results). On hard-kill the "
                     "rg_failed envelope carries a `hint` field with "
-                    "the three viable next steps. ANTS-3549: "
+                    "the three viable next steps. ANTS-5323: a partial "
+                    "reply in any mode names why in `truncated_reason` — "
+                    "timeout (wall budget; a `hint` names timeout_sec), "
+                    "output_cap, max_results or bytes. ANTS-3549: "
                     "`files_only:true` returns {files:[{file,count}], "
                     "files_count} with no match rows — the distinct "
                     "matched-file set for \"which files reference X?\". "

@@ -195,7 +195,7 @@ TEST(McpEagerLoad, Ants5694EagerDescriptionsAreShort) {
         R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"workspace_search"}}})");
     const QString text = info.value(QStringLiteral("content")).toArray()
         .at(0).toObject().value(QStringLiteral("text")).toString();
-    EXPECT_TRUE(text.contains(QStringLiteral("Hard-kill returns rg_failed")))
+    EXPECT_TRUE(text.contains(QStringLiteral("says why in truncated_reason")))
         << "tool_info no longer carries workspace_search's full description";
 }
 

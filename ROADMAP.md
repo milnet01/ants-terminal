@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6244 -->
+<!-- ants-roadmap-id-high-water: ANTS=6245 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86128,7 +86128,7 @@ parse, not that file.
   Source: vestige-via-claude-config-2026-09-21.
   Duplicate-of: ANTS-4500.
 
-- 📋 [ANTS-5323] **workspace_search that hits its time budget returns partial rows flagged only truncated:true, indistinguishable from the row cap.**
+- ✅ [ANTS-5323] **workspace_search that hits its time budget returns partial rows flagged only truncated:true, indistinguishable from the row cap.**
   Measured 2026-09-25: pattern ANTS-4392, default timeout_sec 5,
   max_results 30. Reply: 6 matches, truncated:true, elapsed_ms 5066, no
   next_offset, no hint, no reason field. Re-run with count_only and
@@ -86177,6 +86177,14 @@ parse, not that file.
   truncated_reason (timeout | max_results | bytes) and files_scanned /
   files_total, and adds one idea: on a tracked git tree, back the regex
   with git grep, or raise the default timeout for a whole-tree regex.
+  Shipped 2026-10-24: every truncated reply (rows, count_only,
+  files_only, matches_only) carries truncated_reason: timeout (wall
+  or parse budget), output_cap, max_results or bytes. A scan cutoff
+  adds a hint naming timeout_sec unless a hint is set. Tests:
+  Ants5323* in workspace_search_payload_knobs (timeout itself is not
+  forceable in a test; it shares the stamping helper). Speed ideas
+  from the reports (git grep backing, longer default, files walked)
+  filed separately.
   **Layman:** A code search that runs out of time quietly returns only some results, and nothing says the rest were lost to the time limit.
   Kind: fix.
   Source: in-session-2026-09-25.
@@ -86239,6 +86247,21 @@ parse, not that file.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-6245] **workspace_search whole-tree regexes routinely outlast the 5 s default budget that git grep beats in under 1 s.**
+  Split from ANTS-5323, which now names a timeout but does not
+  prevent one. Measured in the reports: a whole-tree regex took
+  5017 ms and stopped (git grep -nE: 0.94 s); a three-term
+  alternation took 23 s; a literal on this repo stopped at 5006 ms
+  on 2026-10-24. Ideas from five peer reports: back a regex on a
+  tracked tree with git grep; serve a worktree of an indexed repo
+  from the index; raise the default for a whole-tree regex; report
+  files walked vs total (complete:false). Profile first: why a
+  26 ms scan sometimes takes 5 s (cold cache, rg --json parse cost).
+  **Layman:** Some code searches are slow enough to hit their time limit, even where a plain git search finishes in under a second.
+  Kind: perf.
+  Source: ANTS-5323 follow-up 2026-10-24.
+  Lanes: mcp.
 
 ## Ants MCP feedback from CC sessions — 2026-09-25 triage
 

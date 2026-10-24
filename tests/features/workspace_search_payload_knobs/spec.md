@@ -64,3 +64,21 @@ current tree.
 **Out of scope for this section**, filed separately: line-by-line
 parsing of rg's stdout, `rg --count` for the counting modes, and
 `co_change_family`'s bounded min-heap.
+
+## ANTS-5323 — why a reply is partial
+
+`truncated:true` alone could not tell a scan cut off by the wall budget
+from a row cap, so a caller read 6 of 14 rows as the whole answer. Every
+truncated reply now carries `truncated_reason`: `timeout` (wall or parse
+budget), `output_cap`, `max_results` or `bytes`. A scan cutoff also
+carries a `hint` unless the reply already has one.
+
+| Test | What it checks |
+|---|---|
+| `Ants5323OutputCapNamesItsReason` | Default, `count_only` and `files_only` replies stopped at the output ceiling say `truncated_reason:"output_cap"` and carry a `hint`. |
+| `Ants5323RowCapNamesItsReason` | A reply cut at `max_results` says `truncated_reason:"max_results"`. |
+| `Ants5323CompleteReplyHasNoReason` | Guard: a complete reply has no `truncated_reason`. |
+
+**Not tested:** the `timeout` reason. The smallest budget is 1 s, and
+no fixture makes rg reliably outlast it. It shares the stamping helper
+with `output_cap`.

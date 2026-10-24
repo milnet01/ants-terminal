@@ -701,3 +701,64 @@ TEST(workspace_search_payload_knobs, Ants5052GuardNoOverrideReturnsEverything) {
         << countResp.value(QStringLiteral("count")).toInt();
     EXPECT_FALSE(countResp.value(QStringLiteral("truncated")).toBool());
 }
+
+// ---------------------------------------------------------------------------
+// ANTS-5323 — a truncated reply says why. Reuses the ANTS-5052 fixture.
+
+TEST(workspace_search_payload_knobs, Ants5323OutputCapNamesItsReason) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    for (const char *mode : {"", "count_only", "files_only"}) {
+        RemoteControl rc(nullptr);
+        rc.setRgStdoutCapOverride(kAnts5052SmallCapBytes);
+        QJsonObject req = ants5052Req(root);
+        if (*mode) req[QString::fromLatin1(mode)] = true;
+        const QJsonObject resp = rc.cmdWorkspaceSearch(req).object();
+        const std::string env =
+            QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << env;
+        EXPECT_EQ(resp.value(QStringLiteral("truncated_reason")).toString(),
+                  QStringLiteral("output_cap"))
+            << "mode=" << mode << " " << env;
+        EXPECT_FALSE(resp.value(QStringLiteral("hint")).toString().isEmpty())
+            << "mode=" << mode << " " << env;
+    }
+}
+
+TEST(workspace_search_payload_knobs, Ants5323RowCapNamesItsReason) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req = ants5052Req(root);
+    req[QStringLiteral("dedup")]       = false;
+    req[QStringLiteral("max_results")] = 5;
+    const QJsonObject resp = rc.cmdWorkspaceSearch(req).object();
+    const std::string env =
+        QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    ASSERT_TRUE(resp.value(QStringLiteral("truncated")).toBool()) << env;
+    EXPECT_EQ(resp.value(QStringLiteral("truncated_reason")).toString(),
+              QStringLiteral("max_results")) << env;
+}
+
+TEST(workspace_search_payload_knobs, Ants5323CompleteReplyHasNoReason) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeAnts5052Fixture(root));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdWorkspaceSearch(ants5052Req(root)).object();
+    const std::string env =
+        QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    ASSERT_FALSE(resp.value(QStringLiteral("truncated")).toBool()) << env;
+    EXPECT_FALSE(resp.contains(QStringLiteral("truncated_reason"))) << env;
+}

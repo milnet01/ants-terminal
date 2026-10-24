@@ -205,6 +205,26 @@ QString rcHiddenGlobHint() {
         "include_hidden:true.");
 }
 
+// ANTS-5323 — say WHY a reply is partial. `truncated` alone left a scan cut
+// off by the wall budget indistinguishable from a row cap, so callers read
+// 6 of 14 rows as the whole answer. Reasons: timeout, output_cap,
+// max_results, bytes. A scan cutoff also gets a hint unless one is set.
+void rcStampTruncatedReason(QJsonObject &out, const QString &reason,
+                            int budgetSec) {
+    out["truncated_reason"] = reason;
+    if (out.contains("hint")) return;
+    if (reason == QLatin1String("timeout")) {
+        out["hint"] = QStringLiteral(
+            "the scan stopped at the %1 s wall budget, so the results are "
+            "partial; raise timeout_sec (max 30) or narrow with lane= / glob=")
+                .arg(budgetSec);
+    } else if (reason == QLatin1String("output_cap")) {
+        out["hint"] = QStringLiteral(
+            "the match stream passed the output ceiling, so the results are "
+            "partial; narrow with lane= / glob= or a more specific pattern");
+    }
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
@@ -792,6 +812,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // reported as a hard-killed one is: truncated, in every mode.
     const bool hardKilled        = run.hardKilled || run.outputCapped;
     const QByteArray &stderrTail = run.stderrTail;
+    // ANTS-5323 — the parse budget is time too, so it reports as timeout.
+    const QString scanCutReason =
+        (run.hardKilled || parseBudgetExceeded) ? QStringLiteral("timeout")
+        : run.outputCapped ? QStringLiteral("output_cap") : QString();
 
     if (run.crashed) {
         QJsonObject o = wsErr("rg_failed",
@@ -905,6 +929,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             out["hidden_paths_skipped"] = true;
             out["hint"] = rcHiddenGlobHint();
         }
+        if (!scanCutReason.isEmpty())
+            rcStampTruncatedReason(out, scanCutReason, budgetSec);
+        else if (distinctOrder.size() > emitCount)
+            rcStampTruncatedReason(out, QStringLiteral("max_results"), budgetSec);
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;
@@ -924,6 +952,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             out["hidden_paths_skipped"] = true;
             out["hint"] = rcHiddenGlobHint();
         }
+        if (!scanCutReason.isEmpty())
+            rcStampTruncatedReason(out, scanCutReason, budgetSec);
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;
@@ -960,6 +990,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             out["hidden_paths_skipped"] = true;
             out["hint"] = rcHiddenGlobHint();
         }
+        if (!scanCutReason.isEmpty())
+            rcStampTruncatedReason(out, scanCutReason, budgetSec);
         out["respect_gitignore"] = respect_gitignore;
         out["include_hidden"]    = include_hidden;
         out["timeout_sec"]       = budgetSec;
@@ -1223,6 +1255,15 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         RemoteControl::downshiftMatches(out, headlineOnly, scanTruncated,
                                         req.value("max_bytes").toInt(0),
                                         rcApplyHeadlineOnly);
+    }
+    // ANTS-5323 — a scan cutoff outranks the caps: it is the one where
+    // paging on cannot recover the rest.
+    if (out.value("truncated").toBool()) {
+        rcStampTruncatedReason(out,
+            !scanCutReason.isEmpty() ? scanCutReason
+            : out.contains("results_dropped") ? QStringLiteral("bytes")
+                                              : QStringLiteral("max_results"),
+            budgetSec);
     }
     // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
     // ANTS-1248-INV-10: reachability gated by the existing UDS +
