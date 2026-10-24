@@ -1,14 +1,20 @@
 // ANTS-1435 — session_memory + project_layout read-op tenancy split.
 // Source-scrape against remotecontrol.cpp + claudeintegration.cpp
-// for the asymmetric-routing anchors. The corresponding rewritten
+// for the asymmetric-routing anchors; ReadRefusalsRun runs the read
+// refusals. The corresponding rewritten
 // behavioural REG-3b (RcGateOnWriteOpsOnly) lives in
 // tests/features/mcp_session_memory/test_mcp_session_memory.cpp.
 
 #include "../../_support/expect.h"
+#include "remotecontrol.h"
+#include "rootprovider.h"
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QFile>
+#include <QJsonObject>
+#include <QTemporaryDir>
 #include <string>
 
 ANTS_TEST_SCOPE();
@@ -94,9 +100,53 @@ TEST(session_memory_read_caller_cwd, Inv3_4_4bReadRefusalCodes) {
            "INV-4: cwd_bad literal in read branch");
     expect(contains(body, "is not a directory"),
            "INV-4b: 'is not a directory' message present");
-    expect(contains(body, "QFileInfo(canon).isDir()"),
-           "INV-4b: isDir() check on canonicalised path");
+    expect(contains(body, "canonicalCallerDir(rawCaller"),
+           "INV-4b: read branch uses the shared canonicalise+isDir check");
     EXPECT_EQ(0, expect_failures());
+}
+
+// INV-4b / INV-5 — the shared check, and every refusal it drives, run
+// for real: a missing path and a file both refuse cwd_bad, each verb
+// in its own words.
+TEST(session_memory_read_caller_cwd, ReadRefusalsRun) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString missing = tmp.filePath(QStringLiteral("nope"));
+    const QString file = tmp.filePath(QStringLiteral("f.txt"));
+    QFile f(file);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.close();
+
+    ants::ServerCwdRootProvider roots;
+    RemoteControl rc(nullptr, nullptr, &roots);
+    auto call = [&](const char *verb, const QString &cwd) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = cwd;
+        req[QStringLiteral("op")] = QStringLiteral("get");
+        req[QStringLiteral("key")] = QStringLiteral("k");
+        req[QStringLiteral("skill")] = QStringLiteral("s");
+        const std::string v = verb;
+        if (v == "session_memory") return rc.cmdSessionMemory(req).object();
+        if (v == "workflow_state") return rc.cmdWorkflowState(req).object();
+        return rc.cmdProjectLayout(req).object();
+    };
+    const auto expectBad = [](const QJsonObject &env, const QString &error) {
+        EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("cwd_bad"));
+        EXPECT_EQ(env.value(QStringLiteral("error")).toString(), error);
+    };
+
+    expectBad(call("session_memory", missing),
+              QStringLiteral("session_memory: caller_cwd \"%1\" does not exist")
+                  .arg(missing));
+    expectBad(call("session_memory", file),
+              QStringLiteral("session_memory: caller_cwd \"%1\" is not a directory")
+                  .arg(file));
+    expectBad(call("workflow_state", file),
+              QStringLiteral("workflow_state: caller_cwd unresolvable"));
+    expectBad(call("project_layout", file),
+              QStringLiteral("project_layout: caller_cwd \"%1\" is not a directory")
+                  .arg(file));
 }
 
 // INV-5 — project_layout follows the same canonicalise+isDir path.
@@ -111,8 +161,8 @@ TEST(session_memory_read_caller_cwd, Inv5ProjectLayoutSamePattern) {
         << "cmdProjectLayout body not bounded";
     expect(contains(body, "ANTS-1404 + ANTS-1435"),
            "INV-5: anchor present in cmdProjectLayout");
-    expect(contains(body, "QFileInfo(cwd).isDir()"),
-           "INV-5: isDir check on canonicalised cwd");
+    expect(contains(body, "canonicalCallerDir(rawCaller"),
+           "INV-5: the shared canonicalise+isDir check");
     expect(!contains(body, "RcGate::checkCallerCwd"),
            "INV-5: RcGate body call removed from cmdProjectLayout");
     expect(contains(body, "cwd_bad"),

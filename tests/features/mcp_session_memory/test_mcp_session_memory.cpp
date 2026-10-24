@@ -147,8 +147,9 @@ TEST(McpSessionMemory, RcGateOnWriteOpsOnly) {
            "delegates to gate)";
 
     // isDir() check on the read branch — INV-4b prevents /etc/passwd
-    // from hashing to a real bucket file.
-    EXPECT_NE(body.find("isDir()"), std::string::npos)
+    // from hashing to a real bucket file. The check is the shared
+    // canonicalCallerDir; session_memory_read_caller_cwd runs it.
+    EXPECT_NE(body.find("canonicalCallerDir("), std::string::npos)
         << "ANTS-1435 INV-4b: read branch must isDir-check caller_cwd";
 }
 

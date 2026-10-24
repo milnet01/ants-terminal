@@ -325,6 +325,29 @@ TEST(VerifyChangesBuildCache, NonGitNotCached) {
 // so no behavioural test for it; the exclusion is structurally correct
 // in the code path.
 
+// INV-4 timeout-killed: a gate killed by its per-gate budget is not
+// cached, and the reply names the gate and its budget (ANTS-1525,
+// ANTS-1647). timeout_sec's floor is 10 s, so this case takes ~12 s.
+TEST(VerifyChangesBuildCache, TimeoutKilledNotCached) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), R"({
+        "build": {"command": "sleep 30", "format": "plain"}
+    })");
+
+    RemoteControl rc(nullptr);
+    QJsonObject extra;
+    extra[QStringLiteral("timeout_sec")] = 10;
+    const QJsonObject env = runVerify(rc, tmp.path(), extra);
+    EXPECT_TRUE(env.value(QStringLiteral("tool_timed_out")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("timed_out_gate")).toString(),
+              QStringLiteral("build"));
+    EXPECT_EQ(env.value(QStringLiteral("per_gate_timeout_sec")).toInt(), 10);
+    EXPECT_EQ(rc.verifyCacheSizeForTest(), 0)
+        << "a timed-out gate is not a deterministic result";
+}
+
 // INV-1: failing tests over identical inputs ARE cached.
 TEST(VerifyChangesBuildCache, TestFailureIsCached) {
     QTemporaryDir tmp;

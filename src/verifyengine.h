@@ -43,6 +43,7 @@ struct GateResult {
     int         exitCode = 0;
     double      durationSec = 0.0;
     QString     skippedReason;
+    int         timedOutAfterSec = -1;  // the per-gate budget that killed it; -1: did not time out
     QString     logTail;
     bool        logTruncated = false;
     int         logTotalLines = 0;

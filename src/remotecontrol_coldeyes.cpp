@@ -358,16 +358,18 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
 
 namespace rcdetail {
 
-QString smSanitiseEcho(const QString &raw) {
-    QString verbatim = raw;
-    verbatim.truncate(64);
-    QString out;
-    out.reserve(verbatim.size());
-    for (int i = 0; i < verbatim.size(); ++i) {
-        out.append(verbatim.at(i).unicode() < 0x20 ? QChar('?')
-                                                  : verbatim.at(i));
-    }
-    return out;
+// ANTS-1435 INV-4b — the read-only verbs anchor to caller_cwd itself, so
+// it must canonicalise AND be a directory: canonicalFilePath accepts any
+// existing path (file, FIFO, device), and a read against /etc/passwd
+// would hash to a real bucket file and silently return empty. Shared by
+// session_memory, workflow_state and project_layout; each words its own
+// refusal.
+enum class CallerDir { Ok, Missing, NotDir };
+CallerDir canonicalCallerDir(const QString &raw, QString *canon) {
+    *canon = QFileInfo(raw).canonicalFilePath();
+    if (canon->isEmpty()) return CallerDir::Missing;
+    if (!QFileInfo(*canon).isDir()) return CallerDir::NotDir;
+    return CallerDir::Ok;
 }
 
 QJsonObject smErr(const QString &code, const QString &msg,
@@ -377,7 +379,7 @@ QJsonObject smErr(const QString &code, const QString &msg,
     o["code"]  = code;
     o["error"] = msg;
     if (!opStr.isEmpty())   o["op"]   = opStr;
-    if (!keyEcho.isEmpty()) o["echo"] = smSanitiseEcho(keyEcho);
+    if (!keyEcho.isEmpty()) o["echo"] = ceSanitiseEcho(keyEcho);
     return o;
 }
 
@@ -412,10 +414,6 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
     //     H1 / spec sign-off.
     //   * Write ops (set, delete): keep RcGate flow. Prevents the
     //     confused-deputy "session in /A writes to /B's bucket" attack.
-    // ANTS-1435 INV-4b — read ops require caller_cwd to canonicalise
-    // AND be a directory; QFileInfo::canonicalFilePath accepts any
-    // existing path (file, FIFO, device). A read against /etc/passwd
-    // would hash to a real bucket file and silently return empty.
     QString cwd;
     const bool isReadOp = (op == SessionMemoryEngine::Op::Get ||
                            op == SessionMemoryEngine::Op::List);
@@ -451,27 +449,18 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
             env["example"] = smExample();
             return QJsonDocument(env);
         }
-        const QFileInfo fi(rawCaller);
-        const QString canon = fi.canonicalFilePath();
-        if (canon.isEmpty()) {
+        const CallerDir dir = canonicalCallerDir(rawCaller, &cwd);
+        if (dir != CallerDir::Ok) {
             QJsonObject env = smErr(
                 QStringLiteral("cwd_bad"),
-                QStringLiteral("session_memory: caller_cwd \"%1\" "
-                    "does not exist").arg(rawCaller),
+                QStringLiteral("session_memory: caller_cwd \"%1\" %2")
+                    .arg(rawCaller, dir == CallerDir::Missing
+                        ? QStringLiteral("does not exist")
+                        : QStringLiteral("is not a directory")),
                 opRaw, QString());
             env["example"] = smExample();
             return QJsonDocument(env);
         }
-        if (!QFileInfo(canon).isDir()) {
-            QJsonObject env = smErr(
-                QStringLiteral("cwd_bad"),
-                QStringLiteral("session_memory: caller_cwd \"%1\" "
-                    "is not a directory").arg(rawCaller),
-                opRaw, QString());
-            env["example"] = smExample();
-            return QJsonDocument(env);
-        }
-        cwd = canon;
     } else {
         const auto gate = RcGate::checkCallerCwd(
             resolveRootCanonical(m_roots), req,
@@ -603,9 +592,8 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
             return QJsonDocument(csErr(QStringLiteral("cwd_missing"),
                 QStringLiteral("workflow_state: caller_cwd required")));
         }
-        const QFileInfo fi(rawCaller);
-        const QString canon = fi.canonicalFilePath();
-        if (canon.isEmpty() || !QFileInfo(canon).isDir()) {
+        QString canon;
+        if (canonicalCallerDir(rawCaller, &canon) != CallerDir::Ok) {
             return QJsonDocument(csErr(QStringLiteral("cwd_bad"),
                 QStringLiteral("workflow_state: caller_cwd unresolvable")));
         }
@@ -745,9 +733,8 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
     // bucket, same trade-off as session_memory read ops). Cold-eyes
     // H2 / M3: isDir gate prevents /etc/passwd-style false hits.
     const QString rawCaller = req.value(QStringLiteral("caller_cwd")).toString();
-    const QFileInfo plFi(rawCaller);
-    const QString cwd = plFi.canonicalFilePath();
-    if (cwd.isEmpty() || !QFileInfo(cwd).isDir()) {
+    QString cwd;
+    if (canonicalCallerDir(rawCaller, &cwd) != CallerDir::Ok) {
         QJsonObject env;
         env["ok"]    = false;
         env["error"] = QStringLiteral(

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6259 -->
+<!-- ants-roadmap-id-high-water: ANTS=6263 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95564,6 +95564,14 @@ worked after these.
   2026-10-23: HIGH F2 done. verify_changes' cache key is built from the
   parsed VerifyOptions, so the key and the run share one list. No HIGH
   left here.
+  2026-10-24: MEDIUMs done. F4 (smSanitiseEcho folded into
+  ceSanitiseEcho), F5 (GateResult::timedOutAfterSec replaces three
+  string matchers; TimeoutKilledNotCached test added), F6
+  (canonicalCallerDir shared by the three read verbs; ReadRefusalsRun
+  test added), F7 (orphan token_usage banner moved to cmdTokenUsage)
+  fixed. F3: vcErr commented; queued ANTS-6260 (wire shape) and
+  ANTS-6261 (fold ten builders). Queued ANTS-6262 (inline roadmap
+  sanitisers), ANTS-6263 (caller_cwd check beyond this lane). LOWs left.
   **Layman:** Tidy the review tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96958,6 +96966,66 @@ worked after these.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F21).
   Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6260] **verify_changes refusals swap error and code against mcp-error-codes.md.**
+  From ANTS-6132. vcErr (src/remotecontrol_review.cpp) writes the code
+  into `error` and the text into `message`; mcp-error-codes.md says
+  `error` is text and `code` is the code, as every other verb does.
+  test_verify_changes_build_cache pins the swapped shape (reads
+  `error` == "verify_in_flight"). Not fixed in the readability pass
+  because it changes the wire. Fix: build the envelope as the others
+  do, move the test to `code`, add a CHANGELOG line.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** When the code-check tool refuses a request, it puts the short error code where every other tool puts the human message, so a caller reading the message gets a code instead.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L23-F3).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6261] **Fold the ten identical refusal-envelope builders into one shared helper.**
+  From ANTS-6132. ceErr, btErr, csErr, irErr, fbErr, sqErr, tpErr,
+  lasErr, subsystemErr and rmErr each build {ok:false, error:<text>,
+  code:<code>} (remotecontrol_review.cpp, remotecontrol_coldeyes.cpp,
+  remotecontrol_state.cpp, remotecontrol_workspace.cpp,
+  roadmapmigrateverb.cpp). smErr extends the shape. Not done in one
+  lane because the copies span four lanes. Watch:
+  test_indie_review_dispatch counts `irErr` calls in its handler.
+  Feeds ANTS-5796.
+  Hot reload: none needed.
+  **Layman:** Ten small pieces of code build the same error reply; keeping one means a change to the reply is made once.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L23-F3).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6262] **Fold the four inline echo sanitisers in the roadmap verbs into ceSanitiseEcho.**
+  From ANTS-6132, which folded smSanitiseEcho into ceSanitiseEcho.
+  Inline copies of the same cut-to-64 / control-to-? loop remain in
+  remotecontrol_roadmap_query.cpp (bad_section),
+  remotecontrol_roadmap_query_verb.cpp (bad_status, bad_mode) and
+  remotecontrol_roadmap_log.cpp (bad_section). Scrape tests pin the
+  inline text: test_roadmap_query_section_index and
+  test_mcp_roadmap_section_slice; move them to the helper. Consider a
+  neutral name; test_mcp_cold_eyes pins `ceSanitiseEcho`.
+  Feeds ANTS-5796.
+  Hot reload: none needed.
+  **Layman:** Four places clean up user text before echoing it in an error, each with its own copy of the same code.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L23-F4).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6263] **Share the caller_cwd canonicalise-and-is-a-directory check beyond the three cold-eyes verbs.**
+  Found by ANTS-6132's sweep, which folded session_memory, workflow_state
+  and project_layout onto rcdetail::canonicalCallerDir
+  (remotecontrol_coldeyes.cpp). The same check is copied in
+  mcptoolregistry.cpp (resolveInflightCallerCwd) and four times in
+  testauditengine.cpp. Their refusal codes differ: cwd_bad, bad_cwd,
+  bad_path. Fix: move the helper to a shared header and call it from
+  each site. Unifying the codes is a wire change; decide it separately.
+  Feeds ANTS-5796.
+  Hot reload: none needed.
+  **Layman:** Several tools each check "is this folder real?" with their own copy of the code, and they answer a bad folder with three different error codes.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L23-F6 sweep).
+  Lanes: mcp-review-verbs.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

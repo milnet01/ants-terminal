@@ -326,6 +326,7 @@ GateResult runOneGate(const QString &projectPath,
         r.ran = true;
         r.passed = false;
         r.exitCode = -1;
+        r.timedOutAfterSec = perGateTimeoutSec;
         r.skippedReason =
             QStringLiteral("timeout after %1s").arg(perGateTimeoutSec);
     } else {

@@ -868,6 +868,9 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
 
 namespace rcdetail {
 
+// Not the shared refusal shape: `error` holds the code and `message` the
+// text, against mcp-error-codes.md. test_verify_changes_build_cache reads
+// `error` as the code. The fix is a wire change, queued as ANTS-6260.
 QJsonObject vcErr(const QString &code, const QString &msg) {
     QJsonObject o;
     o["ok"]    = false;
@@ -1042,9 +1045,8 @@ QString verifyCacheKey(const QString &root,
 
 bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
     for (const auto &g : rep.gates) {
-        const QString &reason = g.skippedReason;
-        if (reason == QLatin1String("command not resolvable")) return true;
-        if (reason.startsWith(QLatin1String("timeout after "))) return true;
+        if (g.skippedReason == QLatin1String("command not resolvable")) return true;
+        if (g.timedOutAfterSec >= 0) return true;
     }
     return false;
 }
@@ -1258,26 +1260,20 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     // "the MCP transport closed the connection before the tool
     // replied". The transport-side kill arrives as
     // `MCP error -32000: transport: timed out` outside the response
-    // envelope; the tool-side case lands here with skipped_reason
-    // starting "timeout after Ns".
+    // envelope; the tool-side case lands here as a gate whose
+    // timedOutAfterSec is set.
     bool toolTimedOut = false;
     QString timedOutGateName;
     int     timedOutSec = 0;
     for (const auto &g : rep.gates) {
         gates[VerifyEngine::gateKey(g.name)] = vcGateToJson(g);
-        if (!toolTimedOut && g.ran && !g.passed && g.exitCode == -1
-            && g.skippedReason.startsWith(QStringLiteral("timeout"))) {
+        if (!toolTimedOut && g.timedOutAfterSec >= 0) {
             toolTimedOut = true;
             timedOutGateName = VerifyEngine::gateKey(g.name);
-            // Salvage the per-gate budget from the skippedReason
-            // ("timeout after %1s") — opts.timeoutSec is the total
-            // budget; the gate ran with timeoutTotal / configured-size
-            // per ANTS-1492. Surfacing the actual elapsed cap helps
-            // the caller decide whether bumping timeout_sec helps.
-            static const QRegularExpression rx(  // ANTS-1647
-                QStringLiteral("timeout after (\\d+)s"));
-            const auto m = rx.match(g.skippedReason);
-            if (m.hasMatch()) timedOutSec = m.captured(1).toInt();
+            // ANTS-1647 — the per-gate budget, not opts.timeoutSec: the
+            // gate ran with timeoutTotal / configured-size (ANTS-1492),
+            // which tells the caller whether bumping timeout_sec helps.
+            timedOutSec = g.timedOutAfterSec;
         }
     }
     env[QStringLiteral("gates")] = gates;
@@ -1353,23 +1349,6 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     return QJsonDocument(env);
 }
 
-// =============================================================
-// ANTS-1284 — token_usage
-// =============================================================
-//
-// Reads the in-process TokenUsageEngine::Tracker on
-// ClaudeIntegration; returns the per-tool dispatch report
-// (sorted by est_tokens_saved desc) + total_saved. Optional
-// reset:true clears counters AFTER building the snapshot, so a
-// caller can read-and-clear in one round-trip.
-// See docs/specs/ANTS-1284.md.
-
-// ANTS-1422 pull 3 — diagnostic envelope + m_main fallback retired
-// (the only call site is the MCP lambda which always passes
-// explicitCi; the indirection was unreachable in practice and
-// observed null on a live build with no static-analysis path).
-
-
 // ---------------------------------------------------------------------------
 // ANTS-1319 — cold_eyes_* MCP tools
 // ---------------------------------------------------------------------------
@@ -1385,8 +1364,8 @@ QJsonObject ceErr(const QString &code, const QString &msg) {
 }
 
 // ANTS-1319 INV-11: cap user-supplied echo at 64 bytes + substitute
-// control characters with '?'. Matches the cmdRoadmapQuery hygiene
-// block used for the bad_section error code.
+// control characters with '?'. Also session_memory's echo (ANTS-1283
+// INV-12). The roadmap verbs still inline the same loop (ANTS-6262).
 QString ceSanitiseEcho(const QString &raw) {
     QString verbatim = raw;
     verbatim.truncate(64);
