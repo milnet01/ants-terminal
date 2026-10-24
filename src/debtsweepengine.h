@@ -85,9 +85,8 @@ QList<Finding> detectStaleTypeComments(
     const QString &projectPath, const ScanOptions &opt);
 
 // Code drift (c) — TODO / FIXME markers added in scope. Diffs
-// <sinceRef>..HEAD; reports any new line containing
-// `\b(TODO|FIXME|XXX|HACK)\b:`. Excludes NOTE: + the file's own
-// copyright block.
+// <sinceRef>..HEAD; reports any new line matching
+// `\b(TODO|FIXME|XXX|HACK)\b\s*[:(]`, so NOTE: is not a marker.
 QList<Finding> detectAddedTodos(
     const QString &projectPath, const ScanOptions &opt);
 

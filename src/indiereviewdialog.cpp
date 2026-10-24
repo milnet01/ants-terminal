@@ -157,13 +157,7 @@ QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) const {
 }
 
 LlmRequest IndieReviewDialog::composeBrief(const ReviewLane &laneRef) {
-    LlmRequest req;
-    if (config()) {
-        req.endpoint = config()->aiEndpoint();
-        req.apiKey   = config()->aiApiKey();
-        req.model    = config()->aiModel();
-    }
-    req.maxTokens    = 2048;
+    LlmRequest req = aiRequest();
     req.systemPrompt = indieReviewSystemPrompt();
 
     const IndieReviewEngine::Lane *lane = laneByName(laneRef.id);
@@ -207,12 +201,7 @@ void IndieReviewDialog::dispatchSynthesis() {
         IndieReviewEngine::assembleThreatModelExtras(projectCwd());
     LlmJob job;
     job.id = QStringLiteral("synthesis");
-    if (config()) {
-        job.request.endpoint = config()->aiEndpoint();
-        job.request.apiKey   = config()->aiApiKey();
-        job.request.model    = config()->aiModel();
-    }
-    job.request.maxTokens    = 2048;
+    job.request = aiRequest();
     job.request.systemPrompt = synthSystemPrompt();
     job.request.userPrompt   =
         IndieReviewEngine::synthesisPrompt(m_lastReports, extras);

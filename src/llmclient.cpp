@@ -204,6 +204,16 @@ bool LlmClient::accumulateCapped(QString &acc, qint64 &accBytes,
     return true;
 }
 
+QUrl LlmClient::chatCompletionsUrl(const QString &endpoint) {
+    QUrl u(endpoint);
+    if (!u.path().contains(QStringLiteral("chat/completions"))) {
+        const QString p = u.path();
+        u.setPath((p.endsWith(QChar('/')) ? p : p + QChar('/'))
+                  + QStringLiteral("v1/chat/completions"));
+    }
+    return u;
+}
+
 QString LlmClient::endpointEgressError(const QString &endpoint,
                                        const QString &apiKey) {
     QString scheme;

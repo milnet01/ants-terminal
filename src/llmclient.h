@@ -15,6 +15,7 @@
 #include <QTimer>
 #include <QObject>
 #include <QString>
+#include <QUrl>
 
 class QNetworkReply;
 
@@ -99,6 +100,13 @@ public:
     // not a validation) to close the redirect-into-metadata hole (ANTS-1798).
     static QString endpointEgressError(const QString &endpoint,
                                        const QString &apiKey);
+
+    // `endpoint` with `/v1/chat/completions` appended when its path does not
+    // already contain `chat/completions`, so a bare host works. Used by the
+    // POSTs that build their own request: the AI triage and
+    // indie_review_dispatch (ANTS-1352 INV-16). send() posts to `endpoint`
+    // as given.
+    static QUrl chatCompletionsUrl(const QString &endpoint);
 
     // ANTS-5010 — non-empty when a request to `endpoint` would carry its
     // prompt unencrypted: no API key, plain http, a non-loopback host, and

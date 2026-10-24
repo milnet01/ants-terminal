@@ -73,6 +73,10 @@ protected:
     // ---- base services ----
     const QString &projectCwd() const { return m_projectCwd; }
     Config *config() const { return m_config; }
+    // A request carrying the configured endpoint, API key and model (empty
+    // without a Config) and the family's 2048-token reply budget. Every
+    // lane brief and synthesis job starts from it.
+    LlmRequest aiRequest() const;
     void    setResultsWidget(QWidget *w);
     void    runPartition();                                    // derivePartition() → setLanes()
     void    setLanes(const QList<ReviewLane> &lanes);          // (re)partition; keeps reports of surviving lanes, drops the rest

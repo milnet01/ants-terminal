@@ -367,6 +367,8 @@ struct SpecLaneCandidate {
 // `*.md` under `docs/specs/` regardless of filename shape. For
 // `ANTS-NNNN.md` shapes, gates on the ROADMAP active set (preserves
 // the legacy Ants behaviour: shipped specs don't surface as lanes).
+// An EMPTY active set (no ROADMAP.md, or nothing 📋/🚧 in it) cannot
+// tell shipped from active, so every `ANTS-NNNN.md` becomes a lane.
 // For other shapes (e.g. MAME Curator's `DS01.md`, `FP05.md`,
 // `P04.md`), include all — projects without an ANTS-style ROADMAP
 // get every spec file as a candidate. mtime + relative-path pairs;
@@ -423,6 +425,7 @@ QList<SpecLaneCandidate> listSpecLaneCandidates(
             QDir::Name);
         for (const QString &e : entries) {
             const auto am = rxAntsId.match(e);
+            // An empty active set filters nothing (see above).
             if (am.hasMatch() && !activeAntsIds.isEmpty()) {
                 const int id = am.captured(1).toInt();
                 if (!activeAntsIds.contains(id)) continue;
@@ -797,8 +800,9 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     // Active-spec lanes. ANTS-1411: scanner walks every `*.md` under
     // `docs/specs/` regardless of filename shape. For `ANTS-NNNN.md`
     // files we keep the legacy active-only filter (drops shipped ✅
-    // specs from the lane set). For other naming conventions
-    // (DS01.md, FP05.md, generic.md) every file is a candidate.
+    // specs from the lane set, unless the active set is empty). For
+    // other naming conventions (DS01.md, FP05.md, generic.md) every
+    // file is a candidate.
     // ANTS-1631: walks every spec-dir candidate (docs/specs +
     // docs/private/specs + docs/internal/specs + docs/fork/specs) and
     // App-Build per-feature shapes (docs/engine/<sub>/spec.md,
@@ -1208,11 +1212,13 @@ QString templateColdEyesFoldInBlock(
     const QList<int> &allocatedIds,
     const QString &dateIso,
     const QString &idPrefix) {
+    if (actionable.isEmpty() || actionable.size() != allocatedIds.size()) {
+        return {};
+    }
     QString out;
     out += QStringLiteral("### 📝 Cold-eyes ") + dateIso + QChar('\n');
     out += QChar('\n');
-    const int n = std::min(actionable.size(), allocatedIds.size());
-    for (int i = 0; i < n; ++i) {
+    for (qsizetype i = 0; i < actionable.size(); ++i) {
         const auto &f = actionable[i];
         const int   id = allocatedIds[i];
         QString lanesJoined;

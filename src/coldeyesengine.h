@@ -37,8 +37,10 @@
 //
 //   templateColdEyesFoldInBlock(actionable, allocatedIds, dateIso)
 //       `### 📝 Cold-eyes <YYYY-MM-DD>` block with one bullet per
-//       finding (ANTS-1319 INV-7). Mirrors
-//       IndieReviewEngine::templateIndieReviewFoldInBlock.
+//       finding (ANTS-1319 INV-7). Like
+//       IndieReviewEngine::templateIndieReviewFoldInBlock it returns empty
+//       when there are no findings or the id count differs; unlike it, a
+//       bullet carries no Cited-by: or Lanes: line.
 
 #pragma once
 

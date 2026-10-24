@@ -18,9 +18,8 @@
 //
 //   extractFileLineCitations(projectPath, report)
 //       Regex pass over a single review report; returns Citation
-//       structs whose path resolves under projectPath. Reports
-//       larger than 64 KiB are truncated (defensive, matches
-//       MAX_TOOL_OUTPUT_BYTES convention).
+//       structs whose path resolves under projectPath. Only the
+//       first kMaxScanBytes of a report are scanned.
 //
 //   corroboratedFindings(projectPath, reports, minLanes=2)
 //       Cross-lane corroboration: every (file, line) cited by
@@ -46,11 +45,9 @@
 
 namespace IndieReviewEngine {
 
-// ANTS-1344 — public sibling of the file-local kMaxScanBytes constants
-// used by extractFileLineCitations + corroboratedFindingsFromDir. The
-// MCP handler reads this to detect "report was truncated before scan"
-// and surface the signal in the response envelope. Keep in lockstep
-// with the file-local copies (INV-1 source-grep guards the pairing).
+// ANTS-1344 — how much of each report extractFileLineCitations and
+// corroboratedFindingsFromDir scan. The MCP handler reads it to report
+// "report was truncated before scan" in the response envelope.
 constexpr int kMaxScanBytes = 64 * 1024;
 
 struct Lane {
@@ -429,9 +426,8 @@ QString templateIndieReviewFoldInBlock(
 
 // MCP-handler-side helper: read CLAUDE.md + SECURITY.md + .semgrep.yml
 // from `projectPath` and concatenate with separator markers per the
-// spec § 3.5 contract. Missing files contribute their header line +
-// empty body. Returns empty string if all three are missing or
-// unreadable.
+// spec § 3.5 contract. A missing file contributes its header line and
+// an empty body, so the result always holds the three header lines.
 QString assembleThreatModelExtras(const QString &projectPath);
 
 }  // namespace IndieReviewEngine

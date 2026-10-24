@@ -254,13 +254,7 @@ QString ColdEyesDialog::assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
 }
 
 LlmRequest ColdEyesDialog::composeBrief(const ReviewLane &laneRef) {
-    LlmRequest req;
-    if (config()) {
-        req.endpoint = config()->aiEndpoint();
-        req.apiKey   = config()->aiApiKey();
-        req.model    = config()->aiModel();
-    }
-    req.maxTokens    = 2048;
+    LlmRequest req = aiRequest();
     req.systemPrompt = coldEyesSystemPrompt();
 
     const ColdEyesEngine::Lane *lane = laneByName(laneRef.id);

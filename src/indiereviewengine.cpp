@@ -654,7 +654,10 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
                                      const QList<Lane> &lanes,
                                      QStringList *sample) {
     constexpr int kSampleCap     = 20;
-    constexpr int kMaxFilesTotal = 4000;   // same backstop as the computed walk
+    // Counts every non-generated file the walk reaches, whatever its suffix,
+    // so on a tree heavy with non-source files it stops sooner than
+    // deriveComputedPartition, which counts only indexable files.
+    constexpr int kMaxFilesTotal = 4000;
 
     UnassignedSources out;
     const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
@@ -963,8 +966,9 @@ QString assembleBriefForDispatch(const QString &projectPath,
 
 
 QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
-    // Same walk shape and caps as deriveComputedPartition: indexable
-    // suffixes, no generated output, no noise directories, bounded total.
+    // The same filters as deriveComputedPartition (indexable suffixes, no
+    // generated output, no noise directories), with its own, larger cap on
+    // the files it indexes.
     constexpr int kMaxFilesTotal = 20000;
     QHash<QString, QString> out;
     const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
@@ -999,9 +1003,7 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
     QList<Citation> out;
     if (report.isEmpty()) return out;
 
-    // 64 KiB defensive truncation (matches MAX_TOOL_OUTPUT_BYTES
-    // convention; report longer than that scans only the first 64K).
-    static constexpr int kMaxScanBytes = 64 * 1024;
+    // A report longer than kMaxScanBytes is scanned only up to it.
     QString scope = report;
     if (scope.size() > kMaxScanBytes) scope = scope.left(kMaxScanBytes);
 
@@ -1331,8 +1333,6 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
         QStringList{QStringLiteral("*.md")},
         QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
 
-    static constexpr int kMaxScanBytes = 64 * 1024;  // INV-8
-
     for (const QString &name : entries) {
         // INV-5: hidden files (.foo.md) skipped — entryList without
         // QDir::Hidden already does this, but be defensive.
@@ -1342,7 +1342,7 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
         const QString full = dir.filePath(name);
         QFile f(full);
         if (!f.open(QIODevice::ReadOnly)) continue;
-        QByteArray bytes = f.read(kMaxScanBytes);
+        QByteArray bytes = f.read(kMaxScanBytes);  // INV-8
         f.close();
         reports.insert(lane, QString::fromUtf8(bytes));
         if (reportsRead) (*reportsRead)++;
@@ -1394,8 +1394,8 @@ QString synthesisPrompt(const QHash<QString, QString> &reports,
     if (threatModelExtras.isEmpty()) {
         out += QStringLiteral("(none provided)\n\n");
     } else {
-        // Threat-model extras come from project-controlled docs
-        // (CLAUDE.md, docs/standards/security.md, docs/decisions/),
+        // Threat-model extras come from project-controlled files
+        // (CLAUDE.md, SECURITY.md, .semgrep.yml),
         // but fence them too to keep the synth prompt's quote-don't-
         // narrate contract uniform across all third-party content.
         QString extras = threatModelExtras;

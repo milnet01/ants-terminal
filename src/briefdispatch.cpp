@@ -54,6 +54,19 @@ bool isSectionHeading(const QString &line) {
     return re.match(line).hasMatch();
 }
 
+// `text` clipped to `capBytes` of UTF-8, with a "[truncated at N bytes]"
+// line; unchanged when it fits or capBytes is 0 or less. ANTS-1991: the cap
+// is in bytes, and QString::size() counts UTF-16 code units, so the
+// encoding is measured. A trailing partial character becomes U+FFFD,
+// harmless inside the data fence. ANTS-2014: qsizetype, not int, so a cap
+// over 2 GB does not overflow.
+QString clipToByteCap(const QString &text, qint64 capBytes) {
+    const QByteArray u = text.toUtf8();
+    if (capBytes <= 0 || u.size() <= capBytes) return text;
+    return QString::fromUtf8(u.left(static_cast<qsizetype>(capBytes)))
+         + QStringLiteral("\n[truncated at %1 bytes]").arg(capBytes);
+}
+
 }  // namespace
 
 QString fenceBody(const QString &relPath, const QString &body,
@@ -96,20 +109,7 @@ QString inlineBodies(const QString &projectPath, const QStringList &relPaths,
             if (skippedOut) *skippedOut << rel;
             continue;
         }
-        QString body = slurpUtf8(canon);
-        // ANTS-1991 — cap is in BYTES; QString::size() counts UTF-16 code
-        // units, so the old check let a multi-byte doc through at up to ~3-4×
-        // the budget. Measure + clip the UTF-8 encoding (a trailing partial
-        // char becomes U+FFFD, harmless inside the data fence).
-        if (const QByteArray u = body.toUtf8();
-            perFileCapBytes > 0 && u.size() > perFileCapBytes) {
-            // ANTS-2014 — qsizetype (64-bit), not int: a > 2 GB cap would
-            // overflow the int cast (left() then mis-clipped the body).
-            body = QString::fromUtf8(
-                u.left(static_cast<qsizetype>(perFileCapBytes)));
-            body += QStringLiteral("\n[truncated at %1 bytes]")
-                        .arg(perFileCapBytes);
-        }
+        const QString body = clipToByteCap(slurpUtf8(canon), perFileCapBytes);
         out += fenceBody(displayLabel(rootCanon, rel, canon), body);
     }
     return out;
@@ -194,16 +194,8 @@ QString inlineRelevantSections(const QString &projectPath,
             i = j;
         }
 
-        QString slice = matched.isEmpty() ? leading : matched;
-        // ANTS-1991 — byte-accurate cap (see inlineBodies); QString::size() is
-        // UTF-16 code units, not bytes.
-        if (const QByteArray u = slice.toUtf8();
-            perDocCapBytes > 0 && u.size() > perDocCapBytes) {
-            slice = QString::fromUtf8(  // ANTS-2014 — qsizetype, not int
-                u.left(static_cast<qsizetype>(perDocCapBytes)));
-            slice += QStringLiteral("\n[truncated at %1 bytes]")
-                         .arg(perDocCapBytes);
-        }
+        const QString slice = clipToByteCap(
+            matched.isEmpty() ? leading : matched, perDocCapBytes);
         out += fenceBody(displayLabel(rootCanon, rel, canon), slice);
     }
     return out;

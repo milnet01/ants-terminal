@@ -176,12 +176,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
 
     const QJsonObject body = triageRequestBody(model, sys, scrubbedUser.text);
 
-    QUrl endpointUrl(endpoint);
-    // Append /v1/chat/completions if the user gave a bare host.
-    if (!endpointUrl.path().contains("chat/completions")) {
-        const QString p = endpointUrl.path();
-        endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
-    }
+    const QUrl endpointUrl = LlmClient::chatCompletionsUrl(endpoint);
     // ANTS-2121 — enforce the FULL LlmClient egress policy (scheme, URL
     // userinfo, SSRF host-block, cleartext-remote Bearer) via the shared
     // validator instead of the partial scheme+cleartext check this raw-QNAM
@@ -458,11 +453,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
 
     const QJsonObject body = triageRequestBody(model, sys, scrubbedUser.text);
 
-    QUrl endpointUrl(endpoint);
-    if (!endpointUrl.path().contains("chat/completions")) {
-        const QString p = endpointUrl.path();
-        endpointUrl.setPath((p.endsWith('/') ? p : p + "/") + "v1/chat/completions");
-    }
+    const QUrl endpointUrl = LlmClient::chatCompletionsUrl(endpoint);
     // ANTS-2108/2121 — the batch path uses a raw QNetworkAccessManager (not
     // LlmClient::send), so it enforces the SAME egress policy via the shared
     // validator: scheme, URL userinfo, SSRF host-block, and cleartext-remote

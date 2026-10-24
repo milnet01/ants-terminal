@@ -100,18 +100,6 @@ void extractUsage(const QJsonObject &usage,
     *outputTokens = 0;
 }
 
-// ANTS-1352 INV-16 — append /v1/chat/completions if absent.
-// Mirrors auditdialog.cpp:4673.
-QUrl resolveEndpoint(const QString &raw) {
-    QUrl u(raw);
-    if (!u.path().contains(QStringLiteral("chat/completions"))) {
-        const QString p = u.path();
-        u.setPath((p.endsWith(QChar('/')) ? p : p + QChar('/'))
-                  + QStringLiteral("v1/chat/completions"));
-    }
-    return u;
-}
-
 }  // namespace
 
 QByteArray buildRequestBody(const LaneRequest &lr, const DispatchRequest &dr,
@@ -152,6 +140,85 @@ QString extractAssistantText(const QJsonObject &root) {
                   .value(QStringLiteral("content")).toString();
 }
 
+// The assistant's report when `reply` finished with a usable answer, with
+// its token usage recorded on `lr`. Otherwise empty, with lr.status and
+// lr.error saying why.
+QString classifyReply(QNetworkReply *reply, const QByteArray &body,
+                      const DispatchRequest &req, LaneResult &lr) {
+    const QNetworkReply::NetworkError err = reply->error();
+    const int httpStatus = reply->attribute(
+        QNetworkRequest::HttpStatusCodeAttribute).toInt();
+
+    if (reply->property("antsTooLarge").toBool()) {
+        lr.status = QStringLiteral("network_error");
+        lr.error  = QStringLiteral("reply larger than %1 MiB")
+                        .arg(LlmClient::kMaxBytes / (1024 * 1024));
+        return {};
+    }
+    if (err == QNetworkReply::OperationCanceledError) {
+        // setTransferTimeout or the ANTS-5101 deadline fires this.
+        lr.status = QStringLiteral("timeout");
+        lr.error  = QStringLiteral("transfer timeout after %1 ms")
+                        .arg(req.perLaneTimeoutMs);
+        return {};
+    }
+    if (err != QNetworkReply::NoError && httpStatus == 0) {
+        lr.status = QStringLiteral("network_error");
+        lr.error  = reply->errorString();
+        return {};
+    }
+    if (httpStatus >= 400) {
+        lr.status = QStringLiteral("http_error");
+        lr.error  = QStringLiteral("HTTP %1: %2")
+                        .arg(httpStatus)
+                        .arg(redactAndTruncate(body, req.apiKey, 4 * 1024));
+        return {};
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(body);
+    if (!doc.isObject()) {
+        lr.status = QStringLiteral("http_error");
+        lr.error  = QStringLiteral("response not a JSON object: %1")
+                        .arg(redactAndTruncate(body, req.apiKey, 1024));
+        return {};
+    }
+    const QJsonObject root = doc.object();
+    const QString assistantText = extractAssistantText(root);
+    if (assistantText.isEmpty()) {
+        lr.status = QStringLiteral("http_error");
+        lr.error  = QStringLiteral("no choices[0].message.content in response");
+        return {};
+    }
+    extractUsage(root.value(QStringLiteral("usage")).toObject(),
+                 &lr.inputTokens, &lr.outputTokens);
+    return assistantText;
+}
+
+// INV-6 — writes the lane's report to <reports_dir>/<lane>.md through
+// QSaveFile, so a failed write leaves no partial file. Sets lr.status to
+// "ok" with its path and size, or to "write_failed".
+void writeLaneReport(const QString &absReportsDir, const DispatchRequest &req,
+                     const QString &assistantText, LaneResult &lr) {
+    const QString fileName = lr.name + QStringLiteral(".md");
+    const QString outPath = absReportsDir + QChar('/') + fileName;
+    QSaveFile f(outPath);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        lr.status = QStringLiteral("write_failed");
+        lr.error  = QStringLiteral("open(%1): %2").arg(outPath, f.errorString());
+        return;
+    }
+    const QByteArray utf8 = assistantText.toUtf8();
+    if (f.write(utf8) != utf8.size() || !f.commit()) {
+        lr.status = QStringLiteral("write_failed");
+        lr.error  = QStringLiteral("write/commit failed: %1")
+                        .arg(redactAndTruncate(utf8, req.apiKey, 4 * 1024));
+        return;
+    }
+    lr.status = QStringLiteral("ok");
+    lr.path   = req.reportsDir + QChar('/') + fileName;
+    lr.bytes  = utf8.size();
+}
+
 }  // namespace
 
 int inFlightCountForTest() {
@@ -178,7 +245,8 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
             "indie_review_dispatch: AI endpoint rejected — ") + egressErr;
         return r;
     }
-    const QUrl endpointUrl = resolveEndpoint(req.endpoint);
+    // ANTS-1352 INV-16.
+    const QUrl endpointUrl = LlmClient::chatCompletionsUrl(req.endpoint);
 
     if (req.lanes.isEmpty()) {
         // INV-18 — empty lanes is permitted by the spec (caller
@@ -336,81 +404,11 @@ DispatchResult dispatchLanes(const DispatchRequest &req) {
         LaneResult &lr = r.reports[idx];
         lr.elapsedMs = elapsedMs;
 
-        const QNetworkReply::NetworkError err = reply->error();
-        const int httpStatus = reply->attribute(
-            QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        QByteArray body = reply->readAll();
+        const QByteArray body = reply->readAll();
+        const QString assistantText = classifyReply(reply, body, req, lr);
         reply->deleteLater();
-
-        if (reply->property("antsTooLarge").toBool()) {
-            lr.status = QStringLiteral("network_error");
-            lr.error  = QStringLiteral("reply larger than %1 MiB")
-                            .arg(LlmClient::kMaxBytes / (1024 * 1024));
-        } else if (err == QNetworkReply::OperationCanceledError) {
-            // setTransferTimeout or the ANTS-5101 deadline fires this.
-            lr.status = QStringLiteral("timeout");
-            lr.error  = QStringLiteral("transfer timeout after %1 ms")
-                            .arg(req.perLaneTimeoutMs);
-        } else if (err != QNetworkReply::NoError && httpStatus == 0) {
-            lr.status = QStringLiteral("network_error");
-            lr.error  = reply->errorString();
-        } else if (httpStatus >= 400) {
-            lr.status = QStringLiteral("http_error");
-            lr.error  = QStringLiteral("HTTP %1: %2")
-                            .arg(httpStatus)
-                            .arg(redactAndTruncate(
-                                body, req.apiKey, 4 * 1024));
-        } else {
-            // Parse the response.
-            const QJsonDocument doc = QJsonDocument::fromJson(body);
-            if (!doc.isObject()) {
-                lr.status = QStringLiteral("http_error");
-                lr.error  = QStringLiteral(
-                    "response not a JSON object: %1")
-                        .arg(redactAndTruncate(
-                            body, req.apiKey, 1024));
-            } else {
-                const QJsonObject root = doc.object();
-                const QString assistantText = extractAssistantText(root);
-                if (assistantText.isEmpty()) {
-                    lr.status = QStringLiteral("http_error");
-                    lr.error  = QStringLiteral(
-                        "no choices[0].message.content in response");
-                } else {
-                    extractUsage(root.value(QStringLiteral("usage"))
-                                     .toObject(),
-                                 &lr.inputTokens, &lr.outputTokens);
-                    // INV-6 — atomic write via QSaveFile.
-                    const QString outPath = absReportsDir + QChar('/')
-                                            + lr.name
-                                            + QStringLiteral(".md");
-                    QSaveFile f(outPath);
-                    if (!f.open(QIODevice::WriteOnly
-                                | QIODevice::Truncate)) {
-                        lr.status = QStringLiteral("write_failed");
-                        lr.error  = QStringLiteral(
-                            "open(%1): %2").arg(outPath, f.errorString());
-                    } else {
-                        const QByteArray utf8 = assistantText.toUtf8();
-                        if (f.write(utf8) != utf8.size()
-                            || !f.commit()) {
-                            lr.status = QStringLiteral("write_failed");
-                            lr.error  = QStringLiteral(
-                                "write/commit failed: %1")
-                                    .arg(redactAndTruncate(
-                                        assistantText.toUtf8(),
-                                        req.apiKey, 4 * 1024));
-                        } else {
-                            lr.status = QStringLiteral("ok");
-                            lr.path   = req.reportsDir + QChar('/')
-                                        + lr.name
-                                        + QStringLiteral(".md");
-                            lr.bytes  = utf8.size();
-                        }
-                    }
-                }
-            }
-        }
+        if (!assistantText.isEmpty())
+            writeLaneReport(absReportsDir, req, assistantText, lr);
 
         // Pump the next-in-queue, or quit if drained.
         pumpQueue();

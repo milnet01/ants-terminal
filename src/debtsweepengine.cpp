@@ -409,12 +409,10 @@ QList<Finding> detectOrphanQUnused(
             //   - `<typeword> <varname>` (auto/int/bool/.../typename Foo)
             //   - typed param/decl: `Foo &varname`, `Foo *varname`, etc.
             //   - lambda capture: `[..., varname, ...]` between `[` `]`
-            // The check is conservative — we only need to confirm SOME
-            // declaration exists; false negatives (missed declaration
-            // shape) are acceptable since they'd just suppress a
-            // legitimate orphan. False positives (claiming declared
-            // when not) would be wrong, so we err on the side of
-            // matching too much.
+            // Only SOME declaration has to match. A declaration shape these
+            // patterns miss is the dangerous mistake: it emits an
+            // auto-fixable finding whose fix deletes a valid marker. Matching
+            // too much only hides a real orphan, so the patterns err broad.
             const QString &v = mk.varname;
             const QRegularExpression typedDecl(
                 QStringLiteral(R"(\b(?:auto|int|bool|float|double|char|short|long|size_t|int32_t|int64_t|uint32_t|uint64_t|qint8|qint16|qint32|qint64|quint8|quint16|quint32|quint64|qlonglong|qulonglong|qreal|qsizetype|uchar|ushort|uint|ulong|const|volatile|unsigned|signed|void)\b[^;{=,)]*\b%1\b)").arg(QRegularExpression::escape(v)));

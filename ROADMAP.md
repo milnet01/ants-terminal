@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6278 -->
+<!-- ants-roadmap-id-high-water: ANTS=6281 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88507,6 +88507,9 @@ measured Ants adding about 5,250 tokens to every request.
   docs, skip build/ and external/ by default, and say loudly when a
   timed-out reply holds no source-file hit. Related shipped: ANTS-1565,
   ANTS-5323.
+  2026-10-24, seen again from this repo: a regex of ten alternatives
+  with exclude_glob build/** and .indie-review/** hit the 5 s budget;
+  lane tests also did. Lanes src and docs each answered in about 2 s.
   **Layman:** A code search in a larger project gives up early and shows only documents, so the caller misses the code.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-10-24.
@@ -95731,6 +95734,15 @@ worked after these.
   their own extension list; they defer to
   CodebaseIndex::isIndexableSuffix, plus the cited-not-indexed
   yaml, yml, json and md. Closes ANTS-5973. Mediums and lows remain.
+  2026-10-24: MEDIUMs done except as queued. F2 F3 one kMaxScanBytes
+  (the two file-local copies are gone; ANTS-1344 says so), F4 threat
+  extras comments, F5 LlmClient::chatCompletionsUrl for the three
+  endpoint fixups, F6 dispatchLanes' reply handler is classifyReply +
+  writeLaneReport, F7 F8 debt-sweep comments, F13 clipToByteCap, F14
+  cold-eyes fold-in returns empty on a size mismatch like its two
+  siblings, F16 ReviewDialogBase::aiRequest for the five request
+  fills, F18 F24 comments. Queued: F11 on ANTS-5974, F16 rest as
+  ANTS-6279. LOWs open.
   **Layman:** Tidy the review helpers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96130,6 +96142,10 @@ worked after these.
   spec says both functions call it and set ManualRedirectPolicy. Amend
   and gate those specs first, so they say "every triage request goes
   through one builder that does X".
+  2026-10-24: the /v1/chat/completions path fixup is shared now,
+  LlmClient::chatCompletionsUrl, used by both triage POSTs and
+  indie_review_dispatch (L28-F5, ANTS-6137). The egress check,
+  headers, timeouts and redirect policy are still per path.
   **Layman:** The two AI-triage paths still each set up their network request by hand; make that one piece of code once the tests allow it.
   Kind: refactor.
   Source: review-readability-2026-10-22 L07.
@@ -97241,6 +97257,51 @@ worked after these.
   Kind: fix.
   Source: review-readability-2026-10-22 L27.
   Lanes: spec-engines.
+
+- 📋 [ANTS-6279] **Move the review dialogs' copied fold-in panel, lane list and fold-in flow into ReviewDialogBase (L28-F16 rest).**
+  Queued from ANTS-6137 on 2026-10-24. The request fill is shared
+  since then (ReviewDialogBase::aiRequest). duplicate_blocks
+  (normalise_names) still finds, in coldeyesdialog.cpp,
+  indiereviewdialog.cpp and testauditdialog.cpp: the fold-in mode
+  panel (dup:8310bcf403f0, three dialogs; test-audit defaults to
+  Narrative and lists it first, and its label reads "prose" not
+  "free-text prose"); selectedReviewLanes / setLaneSelected /
+  isLaneSelected / laneByName (dup:8cac349b3a5d); onReReviewClicked,
+  performFoldIn and rebuildPartitionPanel (dup:0ce78fb90154). The two
+  lane dialogs differ in "docs" vs "files" and in the engine's Lane
+  type. FoldInMode, m_perFindingRadio and m_narrativeEdit are
+  per-dialog members today, so the move takes them into the base.
+  **Layman:** The three review windows still each build the same fold-in controls and lane list by hand; make that one piece of code.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L28.
+  Lanes: review-engines.
+
+- 📋 [ANTS-6280] **Ants MCP: source_scrapes cannot say which anchors an uncommitted edit removed, and charges a source-list test's anchors to every listed file.**
+  Measured on the ANTS-6137 edit (16 files). The reply was 94 KB,
+  over the client cap. Of 313 rows, 233 anchors were absent from the
+  row's own `path`: tests that read ANTS_AUDITDIALOG_SOURCES (and
+  other lists) get every anchor charged to each listed file. The
+  question a pre-build check asks is "which anchor that HEAD's file
+  held does the working tree no longer hold"; a script comparing
+  `git show HEAD:<path>` with the tree answered it (0 lost). Proposed:
+  a `lost_since:<ref>` option returning only those rows, and rows from
+  a list-reading test attributed to the list member that holds the
+  anchor.
+  **Layman:** Before each build the session checks that no test's pinned text was deleted; the tool should do that check itself.
+  Kind: enhancement.
+  Source: self-found 2026-10-24 (ANTS-6137 lane).
+  Lanes: mcp.
+
+- 📋 [ANTS-6281] **Ants MCP: roadmap_query with regex:true takes a leading "regex:" in query literally and silently matches nothing for that alternative.**
+  Seen 2026-10-24: query "regex:mcp|readability" with regex:true
+  returned only the readability sections; "mcp" alone returned 61.
+  The reply carried no hint. workspace_search already hints when a
+  regex holds literal spaces; the same kind of hint fits here, when a
+  query starts with "regex:".
+  **Layman:** A search typed the wrong way quietly found less than it should; the tool should warn.
+  Kind: enhancement.
+  Source: self-found 2026-10-24 (ANTS-6137 lane).
+  Lanes: mcp.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -99221,6 +99282,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-24: L28-F11 (ANTS-6137) is this item's readability half: the
+  fix-time recheck keeps its own include regex and earlier-line loop.
+  Fix both at once by re-running detail::scanDuplicateIncludes on the
+  current body and requiring a finding on the same line.
   **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

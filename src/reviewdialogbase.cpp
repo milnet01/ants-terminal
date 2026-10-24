@@ -152,6 +152,17 @@ bool ReviewDialogBase::endpointDispatchable(const QString &endpoint) {
     return !endpoint.isEmpty() && LlmClient::isEndpointAllowed(endpoint);
 }
 
+LlmRequest ReviewDialogBase::aiRequest() const {
+    LlmRequest req;
+    if (m_config) {
+        req.endpoint = m_config->aiEndpoint();
+        req.apiKey   = m_config->aiApiKey();
+        req.model    = m_config->aiModel();
+    }
+    req.maxTokens = 2048;
+    return req;
+}
+
 void ReviewDialogBase::setJobRunner(LlmDispatcher::JobRunner runner) {
     m_runner = std::move(runner);
 }

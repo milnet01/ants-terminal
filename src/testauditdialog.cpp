@@ -317,13 +317,7 @@ QString TestAuditDialog::assembleCappedPrompt(
 }
 
 LlmRequest TestAuditDialog::composeBrief(const ReviewLane &laneRef) {
-    LlmRequest req;
-    if (config()) {
-        req.endpoint = config()->aiEndpoint();
-        req.apiKey   = config()->aiApiKey();
-        req.model    = config()->aiModel();
-    }
-    req.maxTokens    = 2048;
+    LlmRequest req = aiRequest();
     req.systemPrompt = testAuditSystemPrompt(m_dimensionsActive);
 
     const auto b = briefFor(laneRef.id);
@@ -387,10 +381,7 @@ void TestAuditDialog::onAllReportsCollected(
         && endpointDispatchable(config()->aiEndpoint())) {
         LlmJob job;
         job.id = QStringLiteral("synthesis");
-        job.request.endpoint     = config()->aiEndpoint();
-        job.request.apiKey       = config()->aiApiKey();
-        job.request.model        = config()->aiModel();
-        job.request.maxTokens    = 2048;
+        job.request = aiRequest();
         job.request.systemPrompt = QStringLiteral(
             "You are a test-audit synthesiser. Write a concise cross-chunk "
             "summary grouped by dimension and severity from the per-chunk "
