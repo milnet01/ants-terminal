@@ -354,10 +354,9 @@ GateResult runOneGate(const QString &projectPath,
 
     if (gc.format == QStringLiteral("ctest")) {
         parseCtest(lines, &r);
-        // INV-5: if the parser found a summary, override `passed` to
-        // reflect the parsed test result rather than ctest's exit code
-        // alone — keeps the gate honest when ctest exits 0 with no
-        // tests run.
+        // INV-5: if the parser found a summary, a parsed failure count
+        // overrides ctest's exit 0. A run of zero tests prints no summary
+        // and stays passed (ANTS-5981).
         if (r.totalCount >= 0 && r.passedCount >= 0) {
             r.passed = r.passed && (r.passedCount == r.totalCount);
         }

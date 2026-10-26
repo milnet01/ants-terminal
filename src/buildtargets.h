@@ -48,9 +48,10 @@ struct Target {
 // falls back to `found:false` — which is the honest answer this file exists to
 // replace a wrong guess with.
 //
-// Not resolved: a source named through a variable, a generator expression, or
-// `target_sources()`. None appears in this project's lists; a file reached only
-// that way is reported unowned rather than attributed to the wrong target.
+// A generator expression wrapping a literal path is peeled to that path. Not
+// resolved: a source named through a variable (a `$` left after peeling) or
+// `target_sources()`. A file reached only that way is reported unowned rather
+// than attributed to the wrong target.
 [[nodiscard]] QList<Target> parse(const QString &cmakeText);
 
 // The targets whose SOURCES name `relPath`, in declaration order. A list

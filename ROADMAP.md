@@ -95769,6 +95769,16 @@ worked after these.
   (ids L29-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-26: MEDIUMs done. F1 one exclusion helper
+  (pathIsExcluded/isExcludedDir) for the walk and partition's probe;
+  partition's .git entry was dead (neither walk lists hidden dirs).
+  testrunners.cpp's pytest walk keeps its own rule (every dot-dir,
+  exactly build), which differs on purpose. F3/F6 kSeverityTags,
+  severityKeys, canonicalSeverity, dimensionInHeader shared;
+  synthesize's report scan is scanChunkReport + countJsonFindings +
+  countInlineSeverityTags. F8-F12 comments now state the code. F2 queued
+  onto ANTS-5983; F9's missing zero-tests check is ANTS-5981. LOWs
+  remain.
   **Layman:** Tidy the test-audit and verification tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -99408,6 +99418,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-26, from L29-F2 (ANTS-6138): the fix is to derive
+  MutationProbe::parseCounts from TestRunners::sniff/parse (keeping -1
+  for unrecognised output) rather than patch its own pytest regex.
+  TestRunners already counts error(s) as failed and xpassed as passed;
+  parseCounts is called from remotecontrol_workspace.cpp only. Queued,
+  not done in the lane, because it changes mutation_probe's counts.
   **Layman:** A possible bug in the test-audit and verification tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

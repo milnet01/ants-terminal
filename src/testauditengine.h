@@ -4,14 +4,16 @@
 //   partition → brief → synthesis_prompt → fold_in
 //
 // v1 scope (this implementation):
-//   * Framework detection (pytest / jest / ctest / cargo / go).
+//   * Framework detection (pytest / vitest / jest / libcheck / ctest /
+//     cargo / go).
 //   * File-tree walk + glob match.
 //   * Hardcoded pre-pass pattern set (no project-internal JSON yet;
 //     v2 ships docs/standards/test-audit-grep-patterns.json).
 //   * Chunk packing depth-first, size [4, 30] (default 12).
 //   * partition_token via qHash (NOT SHA-256 — staleness only, per
-//     user decision 2026-05-17). Bounded shallow recheck in brief
-//     and synth with 5 s rate-limit (INV-15).
+//     user decision 2026-05-17). Brief stamps a 5 s recheck
+//     rate-limit per token (INV-15) but runs no recheck yet;
+//     synthesis has none.
 //   * Brief returns structured fields ONLY (no `brief` string;
 //     caller composes from structured siblings).
 //   * Synthesis reads `<project>/<reports_dir>/*.md`; each report

@@ -80,9 +80,9 @@ struct Counts {
 };
 
 // Recognises the pytest summary line ("3 failed, 5 passed in 1.2s"), ctest's
-// ("100% tests passed, 0 tests failed out of 42"), and gtest's
-// ("[  PASSED  ] 5 tests." / "[  FAILED  ] 2 tests"). Anything else leaves
-// both at -1 rather than guessing.
+// ("100% tests passed, 0 tests failed out of 42"), jest's and vitest's
+// "Tests" line, and gtest's ("[  PASSED  ] 5 tests." / "[  FAILED  ] 2
+// tests"). Anything else leaves both at -1 rather than guessing.
 [[nodiscard]] Counts parseCounts(const QString &output);
 
 // ANTS-4401 — what `require_green_baseline` decides, as a pure function of

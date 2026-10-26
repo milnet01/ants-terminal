@@ -430,6 +430,20 @@ QString globPathPrefix(const QString &glob) {
     return glob.left(lastSlash + 1);
 }
 
+// ANTS-1451: single source of truth for build-tree + tooling exclusions,
+// used by walkTestFiles and by partition's framework probe. `path` is
+// "/"-led, so a whole directory name between slashes is what matches.
+bool pathIsExcluded(const QString &path) {
+    static const QRegularExpression excludeRx(QStringLiteral(
+        "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
+        "|CMakeFiles|autogen)/"));
+    return excludeRx.match(path).hasMatch();
+}
+
+bool isExcludedDir(const QString &name) {
+    return pathIsExcluded(QLatin1Char('/') + name + QLatin1Char('/'));
+}
+
 // Walk the project tree honouring the test_globs.
 QStringList walkTestFiles(const QString &projectRoot,
                           const QStringList &testGlobs,
@@ -451,12 +465,6 @@ QStringList walkTestFiles(const QString &projectRoot,
         return result;
     }
 
-    // ANTS-1451: single source of truth for build-tree + tooling
-    // exclusions.
-    static const QRegularExpression excludeRx(QStringLiteral(
-        "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
-        "|CMakeFiles|autogen)/"));
-
     // ANTS-1455: path-prefix optimisation + full-glob re-filter.
     // ANTS-5062 — one walk per distinct walk root, testing every glob that
     // roots there, and an excluded directory is never descended into. The
@@ -476,17 +484,14 @@ QStringList walkTestFiles(const QString &projectRoot,
         if (!QFileInfo(walkRoot).isDir()) continue;
         byWalkRoot[walkRoot].append({glob.contains(QLatin1Char('/')), globToRegex(glob)});
     }
-    const auto excludedDir = [](const QString &name) {
-        return excludeRx.match(QLatin1Char('/') + name + QLatin1Char('/')).hasMatch();
-    };
     QSet<QString> seen;
     for (auto w = byWalkRoot.constBegin(); w != byWalkRoot.constEnd(); ++w) {
-        PrunedWalk::walkFiles(w.key(), excludedDir, [&](const QString &p) {
+        PrunedWalk::walkFiles(w.key(), isExcludedDir, [&](const QString &p) {
             if (seen.contains(p)) return true;
             // "/<path under scopeRoot>", or empty when p is not under it.
             const QString rel = p.startsWith(scopeRoot + QLatin1Char('/'))
                 ? p.mid(scopeRoot.size()) : QString();
-            if (excludeRx.match(rel).hasMatch()) return true;
+            if (pathIsExcluded(rel)) return true;
             for (const GlobMatcher &g : w.value()) {
                 // For bare-basename globs (no `/`), match against the
                 // candidate's basename. For path-bearing globs, match
@@ -964,6 +969,184 @@ QJsonArray prePassFile(const QString &path,
     return out;
 }
 
+// The severity tags a chunk report may write, as a regex group. Every finding
+// matcher below, and parseActionableFindings, reads this one list.
+constexpr char kSeverityTags[] = "(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)";
+
+// The five histogram keys a tag canonicalises to, in envelope order.
+const QStringList &severityKeys() {
+    static const QStringList k = {
+        QStringLiteral("crit"), QStringLiteral("high"), QStringLiteral("med"),
+        QStringLiteral("low"),  QStringLiteral("info"),
+    };
+    return k;
+}
+
+// A severity tag as its histogram key: lowercased, CRITICAL → crit and
+// MEDIUM → med.
+QString canonicalSeverity(QString sev) {
+    sev = sev.toLower();
+    if (sev == QLatin1String("critical")) return QStringLiteral("crit");
+    if (sev == QLatin1String("medium"))   return QStringLiteral("med");
+    return sev;
+}
+
+// The dimension a report header names, matched case-insensitively against
+// g_kDimensions() so "Performance" and "performance" count together; "" when
+// it names none.
+QString dimensionInHeader(const QString &header) {
+    for (const QString &d : g_kDimensions())
+        if (header.contains(d, Qt::CaseInsensitive)) return d;
+    return QString();
+}
+
+// A `##` or `###` line, which opens a dimension section.
+bool isSectionHeader(const QString &line) {
+    static const QRegularExpression headerRx(QStringLiteral("^#{2,3}\\s+"));
+    return headerRx.match(line).hasMatch();
+}
+
+// Per-dimension, per-severity finding counts (ANTS-1488).
+using SeverityHistogram = QHash<QString, QHash<QString, int>>;
+
+void countSeverity(SeverityHistogram &hist, const QString &dim, const QString &sev) {
+    if (!dim.isEmpty() && g_kDimensions().contains(dim) && severityKeys().contains(sev))
+        ++hist[dim][sev];
+}
+
+// ANTS-1617 — a `## Findings (JSON)` block's body: an array of objects with
+// `severity` and an optional `dimension`, which falls back to `curDim`.
+// Returns the number of findings it holds.
+int countJsonFindings(const QString &buf, const QString &curDim, SeverityHistogram &hist) {
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(buf.toUtf8(), &err);
+    if (err.error != QJsonParseError::NoError || !doc.isArray()) return 0;
+    int n = 0;
+    const QJsonArray arr = doc.array();
+    for (const auto &v : arr) {
+        if (!v.isObject()) continue;
+        const QJsonObject obj = v.toObject();
+        ++n;
+        QString dim = obj.value(QStringLiteral("dimension")).toString().toLower();
+        if (dim.isEmpty()) dim = curDim;
+        countSeverity(hist, dim,
+                      canonicalSeverity(obj.value(QStringLiteral("severity")).toString()));
+    }
+    return n;
+}
+
+// ANTS-1689 — last resort for a report holding none of the structured shapes:
+// count every inline `[SEV]` tag (e.g. `**[HIGH]** weak assertion at
+// foo.py:42`), each under the section header above it. Uppercase tags only,
+// as the structured matchers, so prose like "the [info] section" does not
+// register.
+int countInlineSeverityTags(const QStringList &lines, SeverityHistogram &hist) {
+    static const QRegularExpression inlineSevRx(
+        QStringLiteral("\\[") + QLatin1String(kSeverityTags) + QStringLiteral("\\]"));
+    int n = 0;
+    QString dim;
+    for (const QString &line : lines) {
+        if (isSectionHeader(line)) {
+            dim = dimensionInHeader(line);
+            continue;
+        }
+        for (auto it = inlineSevRx.globalMatch(line); it.hasNext();) {
+            ++n;
+            countSeverity(hist, dim, canonicalSeverity(it.next().captured(1)));
+        }
+    }
+    return n;
+}
+
+// Count one chunk report's findings and add each one's severity to `hist`
+// under its dimension. Three structured shapes are read line by line:
+//   - `- [SEV] …` bullets, under the current `##`/`###` dimension header;
+//   - ANTS-1617 `### [SEV] dimension: <name>` headings (RetroDB), whose
+//     `dimension:` tail wins over the current header;
+//   - ANTS-1617 `## Findings (JSON)` followed by a fenced JSON array.
+// A report with none of them falls back to countInlineSeverityTags.
+// Returns the finding count.
+int scanChunkReport(const QString &contents, SeverityHistogram &hist) {
+    static const QRegularExpression findingRx(
+        QStringLiteral("^\\s*-\\s*\\[") + QLatin1String(kSeverityTags) + QStringLiteral("\\]"));
+    static const QRegularExpression headingFindingRx(
+        QStringLiteral("^#{3}\\s+\\[") + QLatin1String(kSeverityTags) + QStringLiteral("\\]"));
+    static const QRegularExpression headingDimensionRx(QStringLiteral(
+        "dimension:\\s*([\\w_]+)"));
+    static const QRegularExpression findingsJsonOpenerRx(QStringLiteral(
+        "^#{2}\\s+Findings\\s*\\(JSON\\)\\s*$"));
+
+    QString curDim;
+    int findings = 0;
+    // The Findings(JSON) block: Outside it, AwaitingFence after its header,
+    // InFence while its body accumulates.
+    enum class JsonBlock : quint8 { Outside, AwaitingFence, InFence } json = JsonBlock::Outside;
+    // ANTS-4404 — the fence this block opened, so its closer is matched by
+    // CommonMark's rule rather than by "any line starting with three
+    // backticks". A finding that quotes fenced markdown puts such a line
+    // inside the JSON; the old test closed the block there and lost every
+    // finding in it silently.
+    QChar jsonFenceChar;
+    int   jsonFenceRun = 0;
+    QString jsonBuf;
+    const QStringList lines = contents.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (json == JsonBlock::InFence) {
+            if (MarkdownScan::fenceCloses(line, jsonFenceChar, jsonFenceRun)) {
+                findings += countJsonFindings(jsonBuf, curDim, hist);
+                json = JsonBlock::Outside;
+                jsonBuf.clear();
+            } else {
+                jsonBuf += line + QLatin1Char('\n');
+            }
+            continue;
+        }
+        if (json == JsonBlock::AwaitingFence) {
+            int openRun = 0;
+            const QChar openCh = MarkdownScan::fenceOpenerChar(line, 3, &openRun);
+            if (!openCh.isNull()) {
+                // The opener line is not part of the body. The closer must
+                // match its character and run length (CommonMark § 4.5).
+                jsonFenceChar = openCh;
+                jsonFenceRun  = openRun;
+                json = JsonBlock::InFence;
+                continue;
+            }
+            // Blank lines may sit between header and opener; any other line
+            // abandons the block and is read as an ordinary line below.
+            if (line.trimmed().isEmpty()) continue;
+            json = JsonBlock::Outside;
+        }
+        if (findingsJsonOpenerRx.match(line).hasMatch()) {
+            json = JsonBlock::AwaitingFence;
+            jsonBuf.clear();
+            continue;
+        }
+        if (const auto hfm = headingFindingRx.match(line); hfm.hasMatch()) {
+            ++findings;
+            const auto dimMatch = headingDimensionRx.match(line);
+            countSeverity(hist, dimMatch.hasMatch() ? dimMatch.captured(1).toLower() : curDim,
+                          canonicalSeverity(hfm.captured(1)));
+            continue;
+        }
+        if (isSectionHeader(line)) {
+            curDim = dimensionInHeader(line);
+            continue;
+        }
+        if (const auto fm = findingRx.match(line); fm.hasMatch()) {
+            ++findings;
+            countSeverity(hist, curDim, canonicalSeverity(fm.captured(1)));
+        }
+    }
+    // A Findings(JSON) block that was never closed still counts.
+    if (json == JsonBlock::InFence && !jsonBuf.trimmed().isEmpty())
+        findings += countJsonFindings(jsonBuf, curDim, hist);
+    // The fallback never double-counts: it runs only when no structured
+    // shape fired.
+    if (findings == 0) findings = countInlineSeverityTags(lines, hist);
+    return findings;
+}
+
 }  // namespace
 
 const QStringList &kDimensions() { return g_kDimensions(); }
@@ -1136,16 +1319,8 @@ PartitionResult partition(const PartitionRequest &req) {
         const QFileInfoList children = dirIter.entryInfoList(
             QDir::Dirs | QDir::NoDotAndDotDot);
         for (const QFileInfo &child : children) {
-            // Skip the build-tree + tooling exclusions used in
-            // walkTestFiles so probes don't fire on `build/` etc.
-            static const QSet<QString> kSkip = {
-                QStringLiteral("node_modules"), QStringLiteral(".venv"),
-                QStringLiteral("__pycache__"),  QStringLiteral("dist"),
-                QStringLiteral("_deps"),        QStringLiteral("CMakeFiles"),
-                QStringLiteral("autogen"),      QStringLiteral(".git"),
-            };
-            if (kSkip.contains(child.fileName())) continue;
-            if (child.fileName().startsWith(QStringLiteral("build"))) continue;
+            // The walk's exclusions, so probes don't fire on `build/` etc.
+            if (isExcludedDir(child.fileName())) continue;
             for (const QString &name : detectAllFrameworks(
                      child.absoluteFilePath())) {
                 if (seenNames.contains(name)) continue;
@@ -1537,43 +1712,13 @@ SynthResult synthesize(const SynthRequest &req) {
     static const QRegularExpression fileRefRx(QStringLiteral(
         "([\\w./-]+\\.(?:py|cpp|h|hpp|cc|js|ts|tsx|go|rs|rb|java)):"
         "(\\d+)"));
-    // ANTS-1488 — per-dimension severity histograms. Pre-seed every
-    // dimension to {0,0,0,0,0} so callers see the full lane list even
-    // when a dimension surfaced no findings (orchestrator can iterate
-    // without null-checks).
-    QHash<QString, QHash<QString, int>> sevHist;
-    static const QStringList kSevs = {
-        QStringLiteral("crit"), QStringLiteral("high"),
-        QStringLiteral("med"),  QStringLiteral("low"),
-        QStringLiteral("info"),
-    };
+    // ANTS-1488 — per-dimension severity histograms, every dimension
+    // pre-seeded to zero. The envelope below drops a dimension whose
+    // total stays zero.
+    SeverityHistogram sevHist;
     for (const QString &d : g_kDimensions()) {
-        for (const QString &s : kSevs) sevHist[d][s] = 0;
+        for (const QString &sev : severityKeys()) sevHist[d][sev] = 0;
     }
-    // Header pattern: `## <emoji>? <Dimension Name> (N)` — the leading
-    // `##` (or `###`) plus the dimension keyword anywhere in the
-    // header line. We canonicalise by lowercasing + comparing against
-    // kDimensions so cosmetic differences in skill prose ("Performance"
-    // vs "performance") don't fragment counts.
-    static const QRegularExpression headerRx(QStringLiteral(
-        "^#{2,3}\\s+"));
-    // Finding bullet shape: `- [SEV] …` or `- [SEV-tag] …`. Match the
-    // canonical 5 severities and the "MEDIUM" full-word form too.
-    static const QRegularExpression findingRx(QStringLiteral(
-        "^\\s*-\\s*\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
-    // ANTS-1617 — alternative finding shape: `### [SEV] dimension: <name>`
-    // (RetroDB convention). The `###` doubles as a per-finding header
-    // (not a section header); count once and read the dimension out of
-    // the `dimension: <name>` tail if present.
-    static const QRegularExpression headingFindingRx(QStringLiteral(
-        "^#{3}\\s+\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
-    static const QRegularExpression headingDimensionRx(QStringLiteral(
-        "dimension:\\s*([\\w_]+)"));
-    // ANTS-1617 — `## Findings (JSON)` block opener (3D Engine
-    // convention). The next fenced code block is parsed as a JSON
-    // array of finding objects with `severity` + optional `dimension`.
-    static const QRegularExpression findingsJsonOpenerRx(QStringLiteral(
-        "^#{2}\\s+Findings\\s*\\(JSON\\)\\s*$"));
     // ANTS-1486 — per-chunk total finding count, for hybrid mode's
     // "top-N by max-finding-count" pick. Computed during pass 1 so we
     // don't re-scan.
@@ -1609,184 +1754,7 @@ SynthResult synthesize(const SynthRequest &req) {
             const QRegularExpressionMatch m2 = it.next();
             ++fileRefCount[m2.captured(1)];
         }
-        // ANTS-1488 — walk lines, track current dimension header,
-        // attribute each finding's severity to that dimension. Lines
-        // outside a recognised dimension header still count toward the
-        // dimension's bucket if the dimension keyword appears in the
-        // header line, even if the prose styled it differently.
-        // ANTS-1617 — also recognise `### [SEV] dimension: <name>`
-        // (heading-finding form) and `## Findings (JSON)` blocks.
-        auto sevCanonical = [](QString sev) -> QString {
-            sev = sev.toLower();
-            if (sev == QLatin1String("critical")) return QStringLiteral("crit");
-            if (sev == QLatin1String("medium"))   return QStringLiteral("med");
-            return sev;
-        };
-        QString curDim;
-        int chunkFindings = 0;
-        // 0 = normal; 1 = saw `## Findings (JSON)` header, awaiting
-        // ``` fence opener; 2 = inside fence, accumulating body.
-        int jsonFenceState = 0;
-        // ANTS-4404 — the fence this state machine opened, so its CLOSER can
-        // be matched by CommonMark's rule rather than by "any line starting
-        // with three backticks". A Findings(JSON) body is JSON, and a finding
-        // that quotes fenced markdown puts such a line inside it; the old test
-        // closed the block there, truncating the JSON and losing every finding
-        // in it silently.
-        QChar jsonFenceChar;
-        int   jsonFenceRun = 0;
-        QString findingsJsonBuf;
-        auto parseFindingsJson = [&](const QString &buf) {
-            QJsonParseError err{};
-            const QJsonDocument doc = QJsonDocument::fromJson(
-                buf.toUtf8(), &err);
-            if (err.error != QJsonParseError::NoError || !doc.isArray()) return;
-            const QJsonArray arr = doc.array();
-            for (const QJsonValue &v : arr) {
-                if (!v.isObject()) continue;
-                const QJsonObject obj = v.toObject();
-                ++chunkFindings;
-                const QString sev = sevCanonical(
-                    obj.value(QStringLiteral("severity")).toString());
-                QString dim = obj.value(QStringLiteral("dimension"))
-                                .toString().toLower();
-                if (dim.isEmpty()) dim = curDim;
-                if (!dim.isEmpty() && !sev.isEmpty()
-                    && g_kDimensions().contains(dim)
-                    && kSevs.contains(sev)) {
-                    ++sevHist[dim][sev];
-                }
-            }
-        };
-        const QStringList lines = contents.split(QLatin1Char('\n'));
-        for (const QString &line : lines) {
-            // — Findings(JSON) fenced-block state machine.
-            if (jsonFenceState == 2) {
-                if (MarkdownScan::fenceCloses(line, jsonFenceChar, jsonFenceRun)) {
-                    parseFindingsJson(findingsJsonBuf);
-                    jsonFenceState = 0;
-                    findingsJsonBuf.clear();
-                } else {
-                    findingsJsonBuf += line + QLatin1Char('\n');
-                }
-                continue;
-            }
-            if (jsonFenceState == 1) {
-                int openRun = 0;
-                const QChar openCh =
-                    MarkdownScan::fenceOpenerChar(line, 3, &openRun);
-                if (!openCh.isNull()) {
-                    // Fence opener — flip into accumulation mode. The
-                    // opener line itself isn't part of the JSON body.
-                    // Remember the character and run length: the closer must
-                    // match both (CommonMark § 4.5), so a shorter run inside
-                    // the JSON no longer ends the block.
-                    jsonFenceChar = openCh;
-                    jsonFenceRun  = openRun;
-                    jsonFenceState = 2;
-                    continue;
-                }
-                // Non-blank non-fence line before opener — abandon the
-                // pending Findings(JSON) state; treat the line normally
-                // by falling through into the regular handlers below.
-                if (!line.trimmed().isEmpty()) {
-                    jsonFenceState = 0;
-                }
-                // (else: blank lines between header and opener are fine)
-                if (jsonFenceState == 1) continue;
-            }
-            // — `## Findings (JSON)` opener → expect a ```json fence next.
-            if (findingsJsonOpenerRx.match(line).hasMatch()) {
-                jsonFenceState = 1;
-                findingsJsonBuf.clear();
-                continue;
-            }
-            // — Heading-finding form: `### [SEV] dimension: <name> — ...`
-            {
-                const auto hfm = headingFindingRx.match(line);
-                if (hfm.hasMatch()) {
-                    ++chunkFindings;
-                    const QString sev = sevCanonical(hfm.captured(1));
-                    QString dim;
-                    const auto dimMatch = headingDimensionRx.match(line);
-                    if (dimMatch.hasMatch()) {
-                        dim = dimMatch.captured(1).toLower();
-                    } else {
-                        // Fall back to current section's dimension.
-                        dim = curDim;
-                    }
-                    if (!dim.isEmpty() && g_kDimensions().contains(dim)
-                        && kSevs.contains(sev)) {
-                        ++sevHist[dim][sev];
-                    }
-                    continue;
-                }
-            }
-            if (headerRx.match(line).hasMatch()) {
-                curDim.clear();
-                for (const QString &d : g_kDimensions()) {
-                    if (line.contains(d, Qt::CaseInsensitive)) {
-                        curDim = d;
-                        break;
-                    }
-                }
-                continue;
-            }
-            const auto fm = findingRx.match(line);
-            if (fm.hasMatch()) {
-                ++chunkFindings;
-                if (!curDim.isEmpty()) {
-                    const QString sev = sevCanonical(fm.captured(1));
-                    ++sevHist[curDim][sev];
-                }
-            }
-        }
-        // Trailing-buffer flush if a Findings(JSON) block was never closed.
-        if (jsonFenceState == 2 && !findingsJsonBuf.trimmed().isEmpty()) {
-            parseFindingsJson(findingsJsonBuf);
-        }
-        // ANTS-1689 — last-resort inline `[SEVERITY]` fallback. The
-        // structured passes above recognise `- [SEV]` bullets,
-        // `### [SEV] dimension:` headings, and `## Findings (JSON)`
-        // blocks. The default /test-audit chunk agent often emits
-        // prose markdown instead — `[HIGH]` / `[MEDIUM]` tags inline
-        // on a line that is neither a dash-bullet nor a heading (e.g.
-        // `**[HIGH]** weak assertion at foo.py:42`). Those reports came
-        // back as `0 findings` + empty severity_histograms even though
-        // the data was right there (cross-session-report 2026-05-19,
-        // Music_Production). Gate on chunkFindings==0 so this never
-        // double-counts the structured shapes (which are line-anchored
-        // and would already have fired). Re-track the current dimension
-        // header so inline tags attribute to the right bucket; uppercase
-        // severity tokens only (matches the structured regexes) to keep
-        // narrative prose like "the [info] section" from registering.
-        if (chunkFindings == 0) {
-            static const QRegularExpression inlineSevRx(QStringLiteral(
-                "\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]"));
-            QString fbDim;
-            for (const QString &line : lines) {
-                if (headerRx.match(line).hasMatch()) {
-                    fbDim.clear();
-                    for (const QString &d : g_kDimensions()) {
-                        if (line.contains(d, Qt::CaseInsensitive)) {
-                            fbDim = d;
-                            break;
-                        }
-                    }
-                    continue;
-                }
-                auto sevIt = inlineSevRx.globalMatch(line);
-                while (sevIt.hasNext()) {
-                    const QRegularExpressionMatch sm = sevIt.next();
-                    ++chunkFindings;
-                    if (!fbDim.isEmpty()) {
-                        const QString sev = sevCanonical(sm.captured(1));
-                        if (kSevs.contains(sev)) ++sevHist[fbDim][sev];
-                    }
-                }
-            }
-        }
-        findingCountByChunk.append(chunkFindings);
+        findingCountByChunk.append(scanChunkReport(contents, sevHist));
     }
 
     // Dimension summaries (legacy field) + top_dimensions envelope.
@@ -1865,10 +1833,10 @@ SynthResult synthesize(const SynthRequest &req) {
     QJsonObject sevEnv;
     for (auto it = sevHist.constBegin(); it != sevHist.constEnd(); ++it) {
         int total = 0;
-        for (const QString &s : kSevs) total += it.value().value(s);
+        for (const QString &s : severityKeys()) total += it.value().value(s);
         if (total == 0) continue;
         QJsonObject row;
-        for (const QString &s : kSevs) row[s] = it.value().value(s);
+        for (const QString &s : severityKeys()) row[s] = it.value().value(s);
         sevEnv[it.key()] = row;
     }
     r.severityHistograms = sevEnv;
@@ -2275,21 +2243,14 @@ QJsonArray parseActionableFindings(const QStringList &reports) {
     //
     // `\S+` before the colon is greedy, so a path that itself contains a
     // colon keeps all of it and only the trailing :<digits> is the line.
-    static const QRegularExpression findingRx(QStringLiteral(
-        "^\\s*-\\s*\\[(CRIT|CRITICAL|HIGH|MED|MEDIUM|LOW|INFO)\\]\\s*"
-        "(\\S+):(\\d+)\\s*(?:—|–|--|-)\\s*(.+?)\\s*$"));
+    static const QRegularExpression findingRx(
+        QStringLiteral("^\\s*-\\s*\\[") + QLatin1String(kSeverityTags) +
+        QStringLiteral("\\]\\s*(\\S+):(\\d+)\\s*(?:—|–|--|-)\\s*(.+?)\\s*$"));
     static const QRegularExpression headerRx(
         QStringLiteral("^#{2,3}\\s+(.+?)\\s*$"));
     // Trailing `(N)` count and any leading emoji in `## \U0001F9EA Naming (7)`.
     static const QRegularExpression trailingCountRx(
         QStringLiteral("\\s*\\(\\d+\\)\\s*$"));
-
-    auto sevCanonical = [](QString sev) -> QString {
-        sev = sev.toLower();
-        if (sev == QLatin1String("critical")) return QStringLiteral("crit");
-        if (sev == QLatin1String("medium"))   return QStringLiteral("med");
-        return sev;
-    };
 
     QJsonArray out;
     for (const QString &report : reports) {
@@ -2300,12 +2261,9 @@ QJsonArray parseActionableFindings(const QStringList &reports) {
             if (h.hasMatch()) {
                 QString text = h.captured(1);
                 text.remove(trailingCountRx);
-                // Canonicalise against the known dimensions so cosmetic
-                // differences in skill prose do not fragment the field.
-                QString canon;
-                for (const QString &d : g_kDimensions()) {
-                    if (text.contains(d, Qt::CaseInsensitive)) { canon = d; break; }
-                }
+                // A header naming no known dimension keeps its own text, so
+                // a finding under it still carries a dimension.
+                const QString canon = dimensionInHeader(text);
                 curDim = canon.isEmpty() ? text.trimmed() : canon;
                 continue;
             }
@@ -2315,7 +2273,7 @@ QJsonArray parseActionableFindings(const QStringList &reports) {
             if (summary.isEmpty()) continue;   // no headline -> foldIn refuses
             QJsonObject f;
             f[QStringLiteral("dimension")] = curDim;
-            f[QStringLiteral("severity")]  = sevCanonical(m.captured(1));
+            f[QStringLiteral("severity")]  = canonicalSeverity(m.captured(1));
             f[QStringLiteral("file")]      = m.captured(2);
             f[QStringLiteral("line")]      = m.captured(3).toInt();
             f[QStringLiteral("summary")]   = summary;
