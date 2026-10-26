@@ -95869,6 +95869,17 @@ worked after these.
   (ids L32-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-26: MEDIUMs done. F1 mcporientation.h says ok=true does not
+  mean the hook works (the behaviour is ANTS-6007). F2-F4 mcpprojection
+  comments: the three always-exempt args, isProtectedCompactKey instead
+  of a key list, compaction on by default, fields_available and the
+  diagnostic floor. F5 mcpspill.h names the result_too_large refusal and
+  the not-smaller fail-open. F6 offloadBody: spillHint picks the hint
+  once; addHeadRows and addRowsPreview hold the previews; history trimmed
+  (mcpspill.cpp 794 -> 698 lines). F7 kCounterCount bounds both counter
+  loops, ToolCounter names every list of its fields. F8 kKeepMonths and
+  kKeepProjects shared by both fold paths; kMaxTokenProjects defined from
+  kMaxPeerProjects. LOWs remain.
   **Layman:** Tidy the shared tool plumbing so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96504,13 +96515,16 @@ worked after these.
   Source: review-readability-2026-10-22 (L08-F8).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6201] **Rename the loop variable in remotecontrol_changelog.cpp's releaseLint append so it no longer shadows an outer f (-Wshadow=local).**
+- ✅ [ANTS-6201] **Rename the loop variable in remotecontrol_changelog.cpp's releaseLint append so it no longer shadows an outer f (-Wshadow=local).**
   Seen in the 2026-10-23 full build: remotecontrol_changelog.cpp, the
   `for (DocFinding::Finding f : rf)` loop that appends releaseLint
   findings, warns `declaration of 'f' shadows a previous local`. Not
   introduced by the lane-08 commit (that file was only rebuilt because
   auditengine.h changed).
   Hot reload: none needed; no new running state.
+  2026-10-26: the releaseLint append loop's variable is `finding`; the
+  -Wshadow=local warning at remotecontrol_changelog.cpp is gone from the
+  build (0 shadow warnings in the l32 build log).
   **Layman:** A compiler warning: one variable name in the changelog tool hides another of the same name.
   Kind: fix.
   Source: build-warning-2026-10-23.

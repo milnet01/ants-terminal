@@ -14,11 +14,13 @@
 namespace ants {
 namespace mcp_orientation {
 
-// Result of an install/uninstall operation. `ok=true` means the
-// requested state was achieved (script + settings entry present, OR
-// both absent if disabled). `warning` is non-empty when a non-fatal
-// issue was logged (e.g. user-owned script preserved per INV-2,
-// settings.json parse failure per INV-13).
+// Result of an install/uninstall operation. `ok=false` means the
+// settings.json merge failed. `ok=true` does NOT mean the hook works:
+// a failed script write leaves only `warning` set (the settings entry is
+// still merged, ANTS-6007), and the ANTS-3562 split-tree skip installs
+// nothing. `warning` is non-empty when a non-fatal issue was logged
+// (e.g. user-owned script preserved per INV-2, a failed script write,
+// the split-tree skip).
 struct Result {
     bool ok = false;
     QString warning;     // non-fatal note for the caller / status chip

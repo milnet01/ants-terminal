@@ -282,6 +282,196 @@ QString narrowedHint(const QStringList &applied, const QString &toolName,
 
 }  // namespace
 
+namespace {
+
+// The offload envelope's `hint`, chosen in one place. `domKey` is the
+// row-pageable array, or empty when the body has none.
+// ANTS-4850 — the cheaper route first: re-asking the verb narrower costs one
+// ordinary envelope and no handle. Argument names are offered as alternatives
+// because verbs do not agree on them (`limit`, `max_results`, `max_symbols`).
+// ANTS-5272 — for an array body, `fields` comes first: it drops whole arrays,
+// which paging cannot. ANTS-5266 — a caller that already narrowed gets
+// narrowedHint instead.
+QString spillHint(const QString &toolName, const QString &handle,
+                  const QString &domKey, const QStringList &applied) {
+    if (domKey.isEmpty()) {
+        if (!applied.isEmpty())
+            return narrowedHint(applied, toolName,
+                QStringLiteral("read the full body via read_spill {handle:\"%1\"} "
+                               "(optional offset/max_bytes to page).").arg(handle));
+        return QStringLiteral(
+            "Large result spilled. Re-read the full body via read_spill "
+            "{handle:\"%1\"} (optional offset/max_bytes to page). Often cheaper: "
+            "re-ask %2 for LESS instead — most verbs take a size cap (`limit`, "
+            "`max_results` or `max_bytes`), and a narrower request comes back as "
+            "an ordinary envelope with no handle to page.").arg(handle, toolName);
+    }
+    if (!applied.isEmpty())
+        return narrowedHint(applied, toolName,
+            QStringLiteral("read the full body via read_spill "
+                           "{handle:\"%1\"}, row-paged "
+                           "(row_offset/row_count) over the \"%2\" "
+                           "array.").arg(handle, domKey));
+    return QStringLiteral(
+        "Large result spilled. The cheaper fix, first: re-ask %3 with "
+        "`fields:[...]` naming only the top-level fields you need — "
+        "that drops whole arrays from the envelope, which paging "
+        "cannot do, and a summary object (counts, totals) usually "
+        "comes back small enough to need no handle at all. Then, if "
+        "you do need the rows, narrow them: most list verbs take a "
+        "page size (`limit`, or `max_results`) plus `offset`. "
+        "Failing both, read the full body via read_spill "
+        "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
+        "row-paged (row_offset/row_count) over the \"%2\" array.")
+        .arg(handle, domKey, toolName);
+}
+
+// ANTS-3538 — `head_rows`: the first complete rows of the dominant array that
+// fit. S0 is the envelope with the preview fields at their WIDEST
+// (head_rows_truncated:false, 5 B) and an empty head_rows, so the finished
+// envelope can only be smaller. The preview is capped at offloadHeadBytes()
+// (a preview, not a near-copy) and at total - S0 - 1, which keeps the
+// envelope strictly smaller than the body (INV-9). Returns the rows added.
+int addHeadRows(QJsonObject &o, const QJsonArray &fullArr, const QString &domKey,
+                int domCount, qint64 total) {
+    QJsonObject probe = o;
+    probe[QStringLiteral("head_rows_key")]       = domKey;
+    probe[QStringLiteral("row_count")]           = domCount;
+    probe[QStringLiteral("head_rows_truncated")] = false;
+    probe[QStringLiteral("head_rows")]           = QJsonArray();
+    const qint64 s0 = QJsonDocument(probe).toJson(QJsonDocument::Compact).size();
+    const qint64 budget = qMin<qint64>(offloadHeadBytes(), total - s0 - 1);
+    // Greedily append complete elements while the head_rows content (its
+    // serialized array literal minus the empty "[]") stays within budget and
+    // the count stays under kHeadRowsMax.
+    QJsonArray headRows;
+    for (const QJsonValue &el : fullArr) {
+        if (headRows.size() >= kHeadRowsMax) break;
+        QJsonArray probeArr = headRows;
+        probeArr.append(el);
+        const qint64 arrLen = QJsonDocument(probeArr)
+            .toJson(QJsonDocument::Compact).size();
+        if (arrLen - 2 > budget) break;   // "[]" == 2 bytes
+        headRows = probeArr;
+    }
+    if (!headRows.isEmpty()) {
+        o[QStringLiteral("head_rows_key")] = domKey;
+        o[QStringLiteral("head_rows")]     = headRows;
+        o[QStringLiteral("head_rows_truncated")] = headRows.size() < domCount;
+    }
+    return int(headRows.size());
+}
+
+// ANTS-4397 — when the row BODIES do not all fit, `rows_preview` gives one
+// shape row per row, {index, bytes, head}, so a caller can see which rows are
+// large and pick what to page. It must cover EVERY row: a summary of some
+// rows hides the same thing a prefix does. So the head narrows down a ladder
+// before it is dropped (ANTS-4474: a row's identity lives in its first ~40
+// characters), and a shape that covers every row only with no heads at all is
+// omitted, with a hint, because a list of row lengths says no more than
+// `row_count` + `bytes` (ANTS-4519).
+void addRowsPreview(QJsonObject &o, const QJsonArray &fullArr, const QString &domKey,
+                    int domCount, qint64 total) {
+    const qint64 usedSoFar = QJsonDocument(o).toJson(QJsonDocument::Compact).size();
+    const qint64 shapeBudget =
+        qMin<qint64>(offloadHeadBytes() * 2, total - usedSoFar - 1);
+    // ANTS-5104 — each row's JSON is built once for every rung, and a rung
+    // sums row lengths instead of re-serialising the growing array for each
+    // row, which made every rung quadratic in the row count. Compact JSON puts
+    // only a comma between elements, so the array is 2 + rows + (rows - 1)
+    // bytes long.
+    QList<QByteArray> elBytesByRow;
+    if (shapeBudget > 0) {
+        elBytesByRow.reserve(fullArr.size());
+        for (int i = 0; i < fullArr.size(); ++i)
+            elBytesByRow.append(QJsonDocument(QJsonObject{
+                {QStringLiteral("v"), fullArr.at(i)}})
+                .toJson(QJsonDocument::Compact));
+    }
+    // `headChars` 0 means no head; that rung only decides the omission.
+    const auto buildShape = [&](int headChars) {
+        QJsonArray acc;
+        if (shapeBudget <= 0) return acc;
+        qint64 contentLen = 0;   // the array's length minus "[]"
+        for (int i = 0; i < fullArr.size(); ++i) {
+            const QByteArray &elBytes = elBytesByRow.at(i);
+            QJsonObject r;
+            r[QStringLiteral("index")] = i;
+            r[QStringLiteral("bytes")] = static_cast<int>(elBytes.size());
+            if (headChars > 0) {
+                // ANTS-5153 — elBytes is the {"v":row} wrapper built for
+                // sizing, so sample the row's own JSON.
+                QString firstChars =
+                    fullArr.at(i).isString()
+                        ? fullArr.at(i).toString()
+                        : QString::fromUtf8(elBytes.mid(5, elBytes.size() - 6));
+                if (firstChars.size() > headChars) {
+                    firstChars.truncate(headChars);
+                    firstChars += QChar(0x2026);
+                }
+                r[QStringLiteral("head")] = firstChars;
+            }
+            const qint64 next = contentLen
+                + (acc.isEmpty() ? 0 : 1)
+                + QJsonDocument(r).toJson(QJsonDocument::Compact).size();
+            if (next > shapeBudget) break;
+            contentLen = next;
+            acc.append(r);
+        }
+        return acc;
+    };
+    // The ladder. Each rung is tried only because the one above it could not
+    // cover every row, and the walk stops the moment coverage is complete.
+    static constexpr int kHeadLadder[] = { 60, 40, 24, 12 };
+    QJsonArray shape = buildShape(kHeadLadder[0]);
+    int headChars = kHeadLadder[0];
+    for (size_t li = 1;
+         li < std::size(kHeadLadder) && shape.size() < fullArr.size(); ++li) {
+        const QJsonArray narrower = buildShape(kHeadLadder[li]);
+        // Strictly more rows: a narrower head that buys no extra row is a
+        // worse preview of the same set.
+        if (narrower.size() > shape.size()) {
+            shape     = narrower;
+            headChars = kHeadLadder[li];
+        }
+    }
+    bool headsDropped = false;
+    if (shape.size() < fullArr.size()) {
+        const QJsonArray lean = buildShape(0);
+        if (lean.size() > shape.size()) {
+            shape = lean;
+            headsDropped = true;
+        }
+    }
+    if (headsDropped) {
+        o[QStringLiteral("rows_preview_omitted")] = true;
+        o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
+            "no per-row preview: the row bodies do not fit and "
+            "neither do per-row text samples, and a bare list "
+            "of row LENGTHS says no more than `row_count` + "
+            "`bytes` already do. Page the \"%1\" array with "
+            "read_spill row_offset/row_count.").arg(domKey);
+    } else if (!shape.isEmpty()) {
+        o[QStringLiteral("rows_preview_key")] = domKey;
+        o[QStringLiteral("rows_preview")]     = shape;
+        o[QStringLiteral("rows_preview_truncated")] = shape.size() < domCount;
+        // ANTS-4474 — only on the narrowed arm, where it explains why a head
+        // is shorter than usual.
+        if (headChars < kHeadLadder[0])
+            o[QStringLiteral("rows_preview_head_chars")] = headChars;
+        o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
+            "one SHAPE row per row — {index, bytes, head} — "
+            "because the row BODIES do not all fit. Use "
+            "`bytes` to pick which rows to fetch with "
+            "read_spill row_offset/row_count; a prefix of "
+            "bodies would show you the first row (possibly "
+            "cut off, and duplicating `head`) and say nothing "
+            "about the rest.");
+    }
+}
+
+}  // namespace
+
 QString offloadBody(const QString &toolName, const QString &body,
                     const QJsonObject &args) {
     const QStringList applied = appliedNarrowing(args);
@@ -339,320 +529,34 @@ QString offloadBody(const QString &toolName, const QString &body,
     o[QStringLiteral("bytes")]         = total;
     o[QStringLiteral("head")]          = QString::fromUtf8(utf8.left(static_cast<int>(hlen)));
     o[QStringLiteral("head_truncated")] = true;
-    o[QStringLiteral("hint")] = QStringLiteral(
-        // ANTS-4850 — see the array arm below for why the paging arguments are
-        // offered as alternatives rather than named outright.
-        "Large result spilled. Re-read the full body via read_spill "
-        "{handle:\"%1\"} (optional offset/max_bytes to page). Often cheaper: "
-        "re-ask %2 for LESS instead — most verbs take a size cap (`limit`, "
-        "`max_results` or `max_bytes`), and a narrower request comes back as "
-        "an ordinary envelope with no handle to page.").arg(handle, toolName);
-    if (!applied.isEmpty())
-        o[QStringLiteral("hint")] = narrowedHint(applied, toolName,
-            QStringLiteral("read the full body via read_spill {handle:\"%1\"} "
-                           "(optional offset/max_bytes to page).").arg(handle));
 
-    // ANTS-3538 — additive structured preview for array-shaped bodies
-    // (§ 2.3.1 / INV-13). Purely additive: the pre-3538 fields above are
-    // untouched (INV-2). For a JSON-object body carrying a dominant array
-    // member, append the first K complete rows + the total count so a caller
-    // that needs only the head rows or the count answers without a read_spill
-    // round-trip. INV-9 is airtight by construction: the row budget is
-    // measured against the actual serialized envelope (S0) and capped at
-    // offloadHeadBytes(), so the envelope always stays strictly < total.
+    // ANTS-3538 — for a JSON-object body, its dominant array (the direct
+    // non-empty array member with the most elements; ANTS-3545's shared
+    // helper, so the preview and read_spill row-paging agree) and its other
+    // top-level fields (ANTS-4692, before the row budget so S0 counts them).
+    QJsonObject root;
+    QString domKey;
+    int domCount = 0;
     if (total <= kStructuredParseMaxBytes) {   // parse cap (§ 4 RAM bound)
         QJsonParseError perr{};
         const QJsonDocument doc = QJsonDocument::fromJson(utf8, &perr);
         if (perr.error == QJsonParseError::NoError && doc.isObject()) {
-            const QJsonObject root = doc.object();
-            // Dominant array = the root's own direct non-empty array member
-            // with the most elements (shared helper — ANTS-3545 — so the
-            // head_rows preview and read_spill row-paging always agree).
-            int domCount = 0;
-            const QString domKey = dominantArrayKey(root, &domCount);
-
-            // ANTS-4692 — before the row budget below, so S0 counts these.
+            root = doc.object();
+            domKey = dominantArrayKey(root, &domCount);
             preserveTopLevelFields(o, root, domKey);
-
-            if (domCount > 0) {
-                // ANTS-3545 — advertise row paging on the very envelope where
-                // the agent decides how to continue (discoverability). Gated on
-                // a dominant array EXISTING, not on the head_rows preview
-                // fitting below — a large-first-row body omits the preview yet
-                // is still row-pageable, and is exactly where byte paging lands
-                // mid-row. A > 1 MiB body never reaches here (row mode refuses
-                // too_large) and a non-array body has domCount == 0.
-                // ANTS-4850 — name the CHEAPER route first. The hint named
-                // read_spill and nothing else, so a caller whose survey
-                // spilled paged the handle: one oversized reply, then N reads
-                // of it. Re-asking the verb narrower costs one ordinary
-                // envelope and no handle at all, and the call that spills is
-                // most often a session-start survey deciding what to work on.
-                //
-                // The argument NAMES are given as alternatives rather than
-                // asserted, because this layer serves every verb and they do
-                // not agree: `limit` here, `max_results` there,
-                // `max_symbols` elsewhere. A single literal would be wrong for
-                // most callers, and a wrong argument name is worse than none.
-                // ANTS-5272 — `fields` is named FIRST among the narrowings.
-                // It was absent entirely, and it is the one that most often
-                // turns a refusal into an answer, because it cuts a dimension
-                // the paging arguments cannot reach: `limit` narrows ROWS and
-                // `offset` moves the window, and neither touches how WIDE a
-                // row is or how many arrays the envelope carries.
-                //
-                // Measured by two projects on the same day. UT_Ants:
-                // doc_symbols over 85 documents returned 66,605 characters and
-                // was REFUSED over the ceiling, while the same call with
-                // `fields:["counts"]` returned 130 characters — the whole
-                // answer, 512x smaller. UT_MonsterHunt hit the identical shape
-                // at 106,500 characters on a different tree. Both wanted one
-                // already-computed object; the hint offered them grep, a spill
-                // file and a subagent, and not the one-word argument.
-                //
-                // `fields` is documented per verb as "return only these
-                // top-level response fields", which reads as a convenience. On
-                // a verb whose default reply can exceed the ceiling it is
-                // load-bearing, and nothing said so from where a caller reads.
-                o[QStringLiteral("hint")] = QStringLiteral(
-                    "Large result spilled. The cheaper fix, first: re-ask %3 with "
-                    "`fields:[...]` naming only the top-level fields you need — "
-                    "that drops whole arrays from the envelope, which paging "
-                    "cannot do, and a summary object (counts, totals) usually "
-                    "comes back small enough to need no handle at all. Then, if "
-                    "you do need the rows, narrow them: most list verbs take a "
-                    "page size (`limit`, or `max_results`) plus `offset`. "
-                    "Failing both, read the full body via read_spill "
-                    "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
-                    "row-paged (row_offset/row_count) over the \"%2\" array.")
-                    .arg(handle, domKey, toolName);
-                if (!applied.isEmpty())
-                    o[QStringLiteral("hint")] = narrowedHint(applied, toolName,
-                        QStringLiteral("read the full body via read_spill "
-                                       "{handle:\"%1\"}, row-paged "
-                                       "(row_offset/row_count) over the \"%2\" "
-                                       "array.").arg(handle, domKey));
-                // ANTS-4705 — once, here, because a dominant array EXISTS is
-                // exactly when the count is knowable. It used to be set on two
-                // of the three arms below: the head_rows arm and ANTS-4519's
-                // omitted arm, but not the ordinary rows_preview arm — so an
-                // envelope could carry `rows_preview_truncated: true`, which is
-                // computed as `shape.size() < domCount`, while domCount itself
-                // was reported nowhere. The caller was told the preview was
-                // short and could not learn by how much, and that figure is
-                // what decides where to page.
-                o[QStringLiteral("row_count")] = domCount;
-                // S0 = the full envelope with the three scalar preview fields
-                // + head_rows_truncated at its WIDER 'false' form (5 B) + an
-                // empty head_rows. Measuring 'false' guarantees the finished
-                // field (usually 'true', 4 B) can only shrink the envelope,
-                // never grow it past the budget. S0 counts the escaped head
-                // and every other byte, so escaping / config extremes are all
-                // accounted, not assumed away.
-                QJsonObject probe = o;
-                probe[QStringLiteral("head_rows_key")]       = domKey;
-                probe[QStringLiteral("row_count")]           = domCount;
-                probe[QStringLiteral("head_rows_truncated")] = false;
-                probe[QStringLiteral("head_rows")]           = QJsonArray();
-                const qint64 s0 = QJsonDocument(probe)
-                    .toJson(QJsonDocument::Compact).size();
-                // Cap the preview at offloadHeadBytes() (keep it a preview,
-                // not a bytes-1 near-copy) AND at total - s0 - 1 (INV-9: the
-                // -1 supplies the strict inequality).
-                const qint64 budget =
-                    qMin<qint64>(offloadHeadBytes(), total - s0 - 1);
-                // Greedily append complete elements while the head_rows
-                // content (its serialized array literal minus the empty "[]")
-                // stays within budget and the count stays under kHeadRowsMax.
-                const QJsonArray fullArr = root.value(domKey).toArray();
-                QJsonArray headRows;
-                for (const QJsonValue &el : fullArr) {
-                    if (headRows.size() >= kHeadRowsMax) break;
-                    QJsonArray probeArr = headRows;
-                    probeArr.append(el);
-                    const qint64 arrLen = QJsonDocument(probeArr)
-                        .toJson(QJsonDocument::Compact).size();
-                    if (arrLen - 2 > budget) break;   // "[]" == 2 bytes
-                    headRows = probeArr;
-                }
-                if (!headRows.isEmpty()) {
-                    o[QStringLiteral("head_rows_key")] = domKey;
-                    o[QStringLiteral("head_rows")]     = headRows;
-                    o[QStringLiteral("head_rows_truncated")] =
-                        headRows.size() < domCount;
-                }
-
-                // ANTS-4397 — a SHAPE summary when the row bodies do not all
-                // fit. Purely additive: `head_rows` above is untouched in
-                // every case, because a prefix of complete rows is genuinely
-                // the right preview for a body of many SMALL rows, which is
-                // what ANTS-3538 was built for and does well.
-                //
-                // It is the opposite shape that fails. On a body whose rows
-                // are single very long lines — a markdown status table — the
-                // prefix is ONE row, cut off, duplicating bytes `head`
-                // already carries in another encoding. Measured: an 80-line
-                // request returned 20,529 bytes conveying 7 lines, one of
-                // them twice, and said nothing about which of the 80 rows
-                // were large. The preview exists to let a caller decide
-                // whether to page the spill, and there it could not.
-                //
-                // One line of shape per ACTUAL row answers that for a
-                // fraction of the cost, and it is most valuable exactly where
-                // `head_rows` is emptiest — including the single-oversized-row
-                // case, which previously got no structured preview at all.
-                if (headRows.size() < domCount) {
-                    const qint64 usedSoFar = QJsonDocument(o)
-                        .toJson(QJsonDocument::Compact).size();
-                    const qint64 shapeBudget =
-                        qMin<qint64>(offloadHeadBytes() * 2,
-                                     total - usedSoFar - 1);
-                    // Build the summary with per-row heads; if that cannot
-                    // cover EVERY row, rebuild with NARROWER heads, and only
-                    // then without them.
-                    //
-                    // Complete coverage is the finding: a summary of some
-                    // rows has the same defect as a prefix of some rows —
-                    // the caller still cannot see which of the others are
-                    // large. `bytes` is what decides where to page, and the
-                    // head is a convenience, so the head is what gives way.
-                    //
-                    // ANTS-4474 — but it gives way by SHRINKING before it
-                    // gives way by vanishing, which is the rung that was
-                    // missing. A row label, a Markdown heading, a table cell
-                    // name and a function signature all live in the first ~40
-                    // characters, so a narrowed head still answers "what is
-                    // this row?" — the one question the bytes column cannot.
-                    // Reported against a 60-row .claude/workflow.md whose § 1
-                    // status table puts every row's identity in its first ~25
-                    // characters: the caller could see WHICH rows were large
-                    // and not WHAT any of them was, and fell back to
-                    // `sed | grep -o` plus two more reads.
-                    //
-                    // `headChars` of 0 means no head at all. That rung is kept
-                    // only to decide the ANTS-4519 omission below — a headless
-                    // shape is never emitted.
-                    // ANTS-5104 — each row's JSON is built once for every rung,
-                    // and a rung sums row lengths instead of re-serialising the
-                    // growing array for each row, which made every rung
-                    // quadratic in the row count. Compact JSON puts only a comma
-                    // between elements, so the array is 2 + rows + (rows - 1)
-                    // bytes long: the same length the old probe measured.
-                    QList<QByteArray> elBytesByRow;
-                    if (shapeBudget > 0) {
-                        elBytesByRow.reserve(fullArr.size());
-                        for (int i = 0; i < fullArr.size(); ++i)
-                            elBytesByRow.append(QJsonDocument(QJsonObject{
-                                {QStringLiteral("v"), fullArr.at(i)}})
-                                .toJson(QJsonDocument::Compact));
-                    }
-                    const auto buildShape = [&](int headChars) {
-                        QJsonArray acc;
-                        if (shapeBudget <= 0) return acc;
-                        qint64 contentLen = 0;   // the array's length minus "[]"
-                        for (int i = 0; i < fullArr.size(); ++i) {
-                            const QByteArray &elBytes = elBytesByRow.at(i);
-                            QJsonObject r;
-                            r[QStringLiteral("index")] = i;
-                            r[QStringLiteral("bytes")] =
-                                static_cast<int>(elBytes.size());
-                            if (headChars > 0) {
-                                // ANTS-5153 — elBytes is the {"v":row} wrapper
-                                // built for sizing. A head sampled from it began
-                                // `{"v":` on every row and, narrowed, named
-                                // nothing, so sample the row's own JSON.
-                                QString firstChars =
-                                    fullArr.at(i).isString()
-                                        ? fullArr.at(i).toString()
-                                        : QString::fromUtf8(elBytes.mid(
-                                              5, elBytes.size() - 6));
-                                if (firstChars.size() > headChars) {
-                                    firstChars.truncate(headChars);
-                                    firstChars += QChar(0x2026);
-                                }
-                                r[QStringLiteral("head")] = firstChars;
-                            }
-                            const qint64 next = contentLen
-                                + (acc.isEmpty() ? 0 : 1)
-                                + QJsonDocument(r).toJson(QJsonDocument::Compact).size();
-                            if (next > shapeBudget) break;
-                            contentLen = next;
-                            acc.append(r);
-                        }
-                        return acc;
-                    };
-                    // The ladder. Each rung is tried only because the one
-                    // above it could not cover every row, and the walk stops
-                    // the moment coverage is complete — so a call that fits at
-                    // 60 pays for exactly one build, as before.
-                    static constexpr int kHeadLadder[] = { 60, 40, 24, 12 };
-                    QJsonArray shape = buildShape(kHeadLadder[0]);
-                    int headChars = kHeadLadder[0];
-                    for (size_t li = 1;
-                         li < std::size(kHeadLadder) &&
-                             shape.size() < fullArr.size();
-                         ++li) {
-                        const QJsonArray narrower = buildShape(kHeadLadder[li]);
-                        // Strictly more rows, never merely different: a
-                        // narrower head that buys no extra row is a worse
-                        // preview of the same set.
-                        if (narrower.size() > shape.size()) {
-                            shape     = narrower;
-                            headChars = kHeadLadder[li];
-                        }
-                    }
-                    bool headsDropped = false;
-                    if (shape.size() < fullArr.size()) {
-                        const QJsonArray lean = buildShape(0);
-                        if (lean.size() > shape.size()) {
-                            shape = lean;
-                            headsDropped = true;
-                        }
-                    }
-                    // ANTS-4519 — a HEADLESS shape array is omitted, not
-                    // emitted. Dropping the heads to cover every row is sound
-                    // reasoning about the HEADS; it does not justify what is
-                    // left. {index, bytes} per row is neither a summary nor a
-                    // prefix but a list of row lengths, and a row length
-                    // cannot tell a caller which row they want — `row_count`
-                    // and `bytes` already carry that in two integers.
-                    // Measured on the reporting call: 168 entries, ~3.7 KB /
-                    // ~1k tokens, on the kind of call that is already the
-                    // session's most expensive. It also misleads: the entries
-                    // read as content until you notice every one is empty.
-                    if (headsDropped) {
-                        o[QStringLiteral("rows_preview_omitted")] = true;
-                        o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
-                            "no per-row preview: the row bodies do not fit and "
-                            "neither do per-row text samples, and a bare list "
-                            "of row LENGTHS says no more than `row_count` + "
-                            "`bytes` already do. Page the \"%1\" array with "
-                            "read_spill row_offset/row_count.").arg(domKey);
-                    } else if (!shape.isEmpty()) {
-                        o[QStringLiteral("rows_preview_key")] = domKey;
-                        o[QStringLiteral("rows_preview")]     = shape;
-                        o[QStringLiteral("rows_preview_truncated")] =
-                            shape.size() < domCount;
-                        // ANTS-4474 — rides the narrowed arm only. At the
-                        // default width the key would say nothing, and a key
-                        // present on every preview is one nobody reads; when
-                        // it IS present it explains why a head the caller
-                        // recognises is shorter than they have seen before.
-                        if (headChars < kHeadLadder[0])
-                            o[QStringLiteral("rows_preview_head_chars")] =
-                                headChars;
-                        o[QStringLiteral("rows_preview_hint")] = QStringLiteral(
-                            "one SHAPE row per row — {index, bytes, head} — "
-                            "because the row BODIES do not all fit. Use "
-                            "`bytes` to pick which rows to fetch with "
-                            "read_spill row_offset/row_count; a prefix of "
-                            "bodies would show you the first row (possibly "
-                            "cut off, and duplicating `head`) and say nothing "
-                            "about the rest.");
-                    }
-                }
-            }
         }
+    }
+    o[QStringLiteral("hint")] =
+        spillHint(toolName, handle, domCount > 0 ? domKey : QString(), applied);
+
+    // A body with a dominant array is row-pageable, and says so here, where
+    // the caller decides how to continue (ANTS-3545). `row_count` is set
+    // whenever the count is knowable (ANTS-4705); the previews are additive.
+    if (domCount > 0) {
+        o[QStringLiteral("row_count")] = domCount;
+        const QJsonArray fullArr = root.value(domKey).toArray();
+        if (addHeadRows(o, fullArr, domKey, domCount, total) < domCount)
+            addRowsPreview(o, fullArr, domKey, domCount, total);
     }
     // INV-9 (ANTS-3540) — the offload must be a strict net saving. The base
     // head+pointer envelope's fixed overhead (handle + hint + keys ≈ 330 B)

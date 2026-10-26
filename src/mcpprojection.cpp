@@ -649,16 +649,8 @@ QString tabularize(const QString &responseText) {
 
 namespace {
 
-// ANTS-2175 — args the dispatch layer (claudeintegration.cpp) consumes for
-// EVERY verb, independent of the per-verb inputSchema: the caller_cwd anchor
-// (ANTS-1520), the ETag short-circuit (ANTS-1499), the fields= projection
-// (ANTS-1720) + compact flag (ANTS-2091/ANTS-2085), the result-offload flag
-// (ANTS-2094), and the tabular encoding selector (ANTS-2090). A verb that
-// doesn't redeclare these in its own schema still accepts them, so they must
-// never be reported as ignored. Keep in sync with the dispatch
-// post-processing chain.
-// ANTS-4578 — only these two are exempt on EVERY verb, and each for a stated
-// reason. Every verb reads `caller_cwd`. `encoding` is applied by the
+// The args exempt from ignoredArgs on EVERY verb, each for a stated reason.
+// Every verb reads `caller_cwd`. `encoding` is applied by the
 // dispatcher with no tool-name predicate (tabularize self-guards per array),
 // so it is honoured wherever it is sent.
 //

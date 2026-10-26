@@ -76,10 +76,16 @@ constexpr qint64 kExplicitSizeCeilingBytes  = 64LL * 1024;
 qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args);
 bool shouldOffload(qint64 bodyBytes, qint64 thresholdBytes);
 
-// Spill `body` and return the head+pointer envelope JSON string. On ANY
-// write failure (dir unwritable, disk full, commit() false) returns `body`
-// unchanged — fail-open (INV-11). Caller must already have checked the
-// threshold + head guard (INV-1) via shouldOffload().
+// Spill `body` and return the head+pointer envelope JSON string. Three
+// other outcomes:
+//   - a body over kSpillMaxBytes is neither returned nor spilled: the reply
+//     is an ok:false `result_too_large` refusal (ANTS-5104);
+//   - on ANY write failure (dir unwritable, disk full, commit() false) it
+//     returns `body` unchanged — fail-open (INV-11);
+//   - when the envelope would not be smaller than `body`, it returns
+//     `body` (INV-9).
+// Caller must already have checked the threshold + head guard (INV-1) via
+// shouldOffload().
 // ANTS-5266 — `args` is the call's arguments, so the hint does not advise a
 // narrowing the caller already applied.
 QString offloadBody(const QString &toolName, const QString &body,

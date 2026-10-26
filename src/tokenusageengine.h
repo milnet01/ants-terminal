@@ -15,6 +15,9 @@
 
 namespace TokenUsageEngine {
 
+// Adding a field means updating every list of them in tokenusageengine.cpp:
+// kCounterKeys and counterField (the snapshot format), addCounters (the mcpd
+// accumulator) and the ToolReport copy in buildReport.
 struct ToolCounter {
     int    nCalls         = 0;
     qint64 bytesIn        = 0;
@@ -105,6 +108,11 @@ private:
 // bare `/ 4` literal.
 constexpr qint64 kCharsPerToken = 4;  // ~Anthropic BPE order-of-magnitude
 
+// Saved-token retention, shared by both fold paths (MainWindow's session fold
+// and foldPeerUsage's snapshot fold), so the two cannot disagree.
+constexpr int kKeepMonths   = 24;   // foldMonthlyBucket's keepMonths
+constexpr int kKeepProjects = 64;   // pruneProjectBuckets' keepProjects
+
 // Add `add` to monthly[monthKey] (values are JSON numbers, exact-integer to
 // 2^53), then retain only the `keepMonths` lexicographically-greatest keys
 // ("YYYY-MM" collates chronologically). Returns the updated, pruned map.
@@ -145,8 +153,8 @@ QString humanizeCount(qint64 n);
 // arithmetic, callable on a snapshot's counters alone.
 qint64 totalSavedOf(const QHash<QString, ToolCounter> &counters);
 
-// § 2.6 — what one snapshot may contribute. 64 matches the writer's
-// ClaudeIntegration::kMaxTokenProjects, which is private.
+// § 2.6 — what one snapshot may contribute. ClaudeIntegration's
+// kMaxTokenProjects, the writer's cap, is defined from kMaxPeerProjects.
 constexpr int kMaxPeerProjects = 64;
 constexpr int kMaxPeerTools    = 512;
 

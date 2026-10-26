@@ -867,7 +867,7 @@ private:
     QHash<QString, quint64> m_projectTouchSeq;             // canonicalRoot → last touch
     QHash<QString, QString> m_callerCwdRootMemo;           // caller_cwd → canonicalRoot
     quint64                 m_projectTouchCounter = 0;
-    static constexpr int    kMaxTokenProjects = 64;
+    static constexpr int    kMaxTokenProjects = TokenUsageEngine::kMaxPeerProjects;
 
     // ANTS-1399 — snapshot of the last `tools/list` array build,
     // populated at the end of the `tools/list` handler. `tool_info`

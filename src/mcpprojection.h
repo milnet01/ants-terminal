@@ -73,7 +73,9 @@ bool isProtectedCompactKey(const QString &key);
 //   - responseText not a JSON object    -> responseText returned unchanged.
 //   - field present in source           -> copied verbatim.
 //   - field absent / non-string / empty -> omitted, and NAMED in
-//                                          `fields_unmatched` (ANTS-4567).
+//                                          `fields_unmatched` (ANTS-4567),
+//                                          beside `fields_available`, the
+//                                          source's top-level keys.
 //   - NO requested field matched        -> `ok` is carried, so a narrowed
 //                                          success is distinguishable from a
 //                                          call that produced no envelope
@@ -82,6 +84,9 @@ bool isProtectedCompactKey(const QString &key);
 //                                          the call succeeded.
 //   - refusal (`ok:false`)              -> the refusal floor is carried
 //                                          verbatim whatever `fields` names.
+//   - `warning`, `parseable_bullets`    -> the diagnostic floor: carried
+//                                          whenever present, whatever
+//                                          `fields` names.
 //   - a 304 envelope (`unchanged:true`) -> returned unchanged: there is no
 //                                          content to narrow, and narrowing
 //                                          one drops the `unchanged` that IS
@@ -127,19 +132,18 @@ void resetHintLatch();
 
 // ANTS-2091 — compact-envelope transform. Recursively drops dead-weight
 // fields the model never reads (JSON null, false, empty string, empty
-// array, empty object) from a read response, opt-in via `compact:true`.
+// array, empty object) from a read response. It runs on `compact:true`,
+// and BY DEFAULT on a verb whose compaction-table row sets defaultCompact
+// while terseDefault() is on (see mcpprojection.cpp's table).
 // Contract:
 //   - responseText not a JSON object  -> returned unchanged.
-//   - protected keys (ok, code, error, etag, found, unchanged) are kept
-//     at EVERY nesting level regardless of value — they are the fields
-//     callers branch on (a dropped `ok:false` / `found:false` would
-//     invert meaning).
+//   - isProtectedCompactKey's keys are kept at EVERY nesting level
+//     regardless of value — the fields callers branch on, where a dropped
+//     false inverts the meaning (ANTS-4673, ANTS-4956).
 //   - recurses into nested objects and array elements, so per-bullet /
 //     per-match empties (lanes:[], kind:"") are pruned too.
-//   - absent ⟺ default: a caller reading a dropped field as its
-//     zero-value sees no behaviour change. The opt-in is the safety
-//     valve — a caller that needs to distinguish "" / [] / null / false
-//     from absent (e.g. git_state's null binary-file markers) omits it.
+//   - absent ⟺ default for every other key: a caller reading a dropped
+//     field as its zero-value sees no behaviour change.
 QString compactEnvelope(const QString &responseText);
 
 // ANTS-2090 — pack each eligible top-level array-of-objects field of a
@@ -161,25 +165,26 @@ QString compactEnvelope(const QString &responseText);
 QString tabularize(const QString &responseText);
 
 // ANTS-2085 — session/user "terse" default for read responses. When true,
-// the dispatcher applies compactEnvelope() to a field-projection read
-// response even when the caller did NOT pass compact:true — so a user can
+// the dispatcher applies compactEnvelope() to a read
+// response from a verb whose compaction-table row sets defaultCompact, even
+// when the caller did NOT pass compact:true — so a user can
 // set "keep Ants MCP replies lean" ONCE (the Settings toggle / the
 // claude.mcp_terse_responses config key) instead of repeating compact:true
 // on every call (generalises ANTS-2082 across the whole read surface).
 // Precedence: an explicit per-call compact (true OR false) always wins;
-// this only fills the default when the arg is absent. Safe because
-// compactEnvelope is absent-⟺-default by design (see its contract above),
-// so a session opting into terse IS the one opt-in the empty-vs-absent
-// hazard needs. Process-global + atomic: read on every dispatch, written
-// from MainWindow (config load + external reload) and the Settings Apply.
-// Cache-free — no per-call config I/O. Default false (full back-compat).
+// this only fills the default when the arg is absent. A false a caller
+// branches on survives only through isProtectedCompactKey, so a new flag of
+// that kind belongs there. Process-global + atomic: read on every dispatch,
+// written from MainWindow (config load + external reload) and the Settings
+// Apply. Cache-free — no per-call config I/O. The module default is false;
+// claude.mcp_terse_responses (default true) turns it on at startup.
 void setTerseDefault(bool terse);
 bool terseDefault();
 
 // ANTS-2175 — return, sorted, the keys in `args` that the verb does not
-// recognise: neither in its declared inputSchema property set (`known`) nor
-// a universal dispatch-layer arg accepted by every verb (caller_cwd /
-// etag_match / fields / compact / offload). Lets the dispatcher echo a
+// recognise: neither in its declared inputSchema property set (`known`), nor
+// one of the three args every verb honours (caller_cwd, encoding, fields),
+// nor in `honoured`. Lets the dispatcher echo a
 // non-fatal `ignored_args` advisory on the success envelope so a typo'd or
 // stale param surfaces on the FIRST call instead of being silently dropped —
 // the trigger was a `query=` passed to roadmap_query (which has no such
@@ -188,10 +193,9 @@ bool terseDefault();
 // feature test share one implementation. `known` is empty -> every non-
 // universal key is reported (matches a verb that declares no properties).
 // ANTS-4578 — `honoured` names the DISPATCH-layer args this particular call
-// will actually act on (fields / compact / offload / etag_match), which the
-// dispatcher knows and this pure helper cannot. Only `caller_cwd` and
-// `encoding` are exempt unconditionally: every verb reads the first, and
-// tabularize is self-guarding with no tool-name predicate.
+// will actually act on (compact / offload / etag_match), which the
+// dispatcher knows and this pure helper cannot. `caller_cwd`, `encoding`
+// and `fields` are exempt unconditionally (isUniversalDispatchArg says why).
 //
 // Before this the four conditional args were exempt EVERYWHERE, so passing
 // `fields` to a verb with no projection support did nothing and reported

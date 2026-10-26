@@ -2196,7 +2196,7 @@ void MainWindow::foldTokenSavingsIntoConfig() {
         m_claudeIntegration->tokenUsageReport(/*includeZero=*/false).totalSaved;
     if (s > 0) {
         m_config.setClaudeTokensSavedMonthly(TokenUsageEngine::foldMonthlyBucket(
-            m_config.claudeTokensSavedMonthly(), month, s, /*keepMonths=*/24));
+            m_config.claudeTokensSavedMonthly(), month, s, TokenUsageEngine::kKeepMonths));
         m_config.setClaudeTokensSavedLifetime(
             m_config.claudeTokensSavedLifetime() + s);
         if (m_config.claudeTokensSavedSince().isEmpty())
@@ -2217,11 +2217,11 @@ void MainWindow::foldTokenSavingsIntoConfig() {
             const qint64 tokens = it.value() / TokenUsageEngine::kCharsPerToken;
             if (tokens <= 0) continue;
             bp = TokenUsageEngine::foldProjectBucket(
-                bp, it.key(), tokens, month, nowIso, /*keepMonths=*/24);
+                bp, it.key(), tokens, month, nowIso, TokenUsageEngine::kKeepMonths);
             folded = true;
         }
         if (folded) {
-            bp = TokenUsageEngine::pruneProjectBuckets(bp, /*keepProjects=*/64);
+            bp = TokenUsageEngine::pruneProjectBuckets(bp, TokenUsageEngine::kKeepProjects);
             m_config.setClaudeTokensSavedByProject(bp);
             dirty = true;
         }

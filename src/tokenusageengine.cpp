@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <iterator>
 
 namespace TokenUsageEngine {
 
@@ -299,6 +300,7 @@ const char *const kCounterKeys[] = {
     "n_calls", "bytes_in", "bytes_out", "wrap_bytes", "duration_us_min",
     "duration_us_max", "duration_us_sum", "failed_calls", "failed_bytes_in",
     "failed_bytes_out"};
+constexpr int kCounterCount = int(std::size(kCounterKeys));
 
 qint64 *counterField(ToolCounter &c, int i) {
     switch (i) {
@@ -377,7 +379,7 @@ QJsonObject snapshotToJson(const QHash<QString, ToolCounter> &tools,
         ToolCounter c = it.value();
         QJsonObject o;
         o[QLatin1String(kCounterKeys[0])] = c.nCalls;
-        for (int i = 1; i < 10; ++i)
+        for (int i = 1; i < kCounterCount; ++i)
             o[QLatin1String(kCounterKeys[i])] = double(*counterField(c, i));
         t[it.key()] = o;
     }
@@ -415,7 +417,7 @@ bool snapshotFromJson(const QJsonObject &o, QHash<QString, ToolCounter> *tools,
     for (auto it = t.constBegin(); it != t.constEnd(); ++it) {
         const QJsonObject c = it.value().toObject();
         ToolCounter tc;
-        for (int i = 0; i < 10; ++i) {
+        for (int i = 0; i < kCounterCount; ++i) {
             const qint64 v = c.value(QLatin1String(kCounterKeys[i])).toInteger();
             if (v < 0) {
                 *why = QStringLiteral("negative %1 for %2")
@@ -545,7 +547,7 @@ bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime
                    const QString &nowIso) {
     bool changed = false;
     if (dead.savedTokens > 0) {
-        monthly = foldMonthlyBucket(monthly, month, dead.savedTokens, /*keepMonths=*/24);
+        monthly = foldMonthlyBucket(monthly, month, dead.savedTokens, kKeepMonths);
         lifetime += dead.savedTokens;
         changed = true;
     }
@@ -554,11 +556,11 @@ bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime
          it != dead.savedTokensByProject.cend(); ++it) {
         if (it.value() <= 0) continue;
         byProject = foldProjectBucket(byProject, it.key(), it.value(), month, nowIso,
-                                      /*keepMonths=*/24);
+                                      kKeepMonths);
         folded = true;
     }
     if (folded) {
-        byProject = pruneProjectBuckets(byProject, /*keepProjects=*/64);
+        byProject = pruneProjectBuckets(byProject, kKeepProjects);
         changed = true;
     }
     return changed;
