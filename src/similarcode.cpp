@@ -3,6 +3,7 @@
 #include "similarcode.h"
 
 #include "fileoutline.h"
+#include "walkrules.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -44,12 +45,7 @@ bool isAsciiAlnum(QChar c) {
 
 // Lowercased extension → language family; Auto == "skip".
 Lang langForExt(const QString &ext) {
-    if (ext == QLatin1String("cpp") || ext == QLatin1String("cc")  ||
-        ext == QLatin1String("cxx") || ext == QLatin1String("c")   ||
-        ext == QLatin1String("h")   || ext == QLatin1String("hpp") ||
-        ext == QLatin1String("hh")  || ext == QLatin1String("hxx")) {
-        return Lang::Cpp;
-    }
+    if (FileOutline::isCFamilyExt(ext)) return Lang::Cpp;
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
     return Lang::Auto;
 }
@@ -140,21 +136,12 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
 
 void walk(ScanState &st, const QString &dirPath) {
     if (st.walkCapped) return;
-    QDir dir(dirPath);
-    const QFileInfoList entries = dir.entryInfoList(
-        QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Readable,
-        QDir::Name);
-    for (const QFileInfo &fi : entries) {
+    for (const QFileInfo &fi : walkrules::entries(dirPath)) {
         if (st.walkCapped) return;
-        if (fi.isSymLink()) continue;  // never follow symlinks out of root
+        if (!walkrules::followed(fi)) continue;
 
         if (fi.isDir()) {
-            const QString name = fi.fileName();
-            if (name.startsWith(QLatin1Char('.'))) continue;
-            if (name == QLatin1String("build") ||
-                name.startsWith(QLatin1String("build-"))) continue;
-            if (name == QLatin1String("node_modules")) continue;
-            walk(st, fi.absoluteFilePath());
+            if (!walkrules::skippedDir(fi)) walk(st, fi.absoluteFilePath());
             continue;
         }
         if (!fi.isFile()) continue;

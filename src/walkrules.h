@@ -1,5 +1,6 @@
-// ANTS-5734 § 2.5 — the directory-walk rules SymbolQuery (src/symbolquery.cpp)
-// and the trace engine (src/trace/) share, so the two walks cannot drift.
+// ANTS-5734 § 2.5 — the directory-walk rules SymbolQuery (src/symbolquery.cpp),
+// SimilarCode (src/similarcode.cpp) and the trace engine (src/trace/) share, so
+// the walks cannot drift.
 // Header-only: ants_trace_lib uses them without linking ants_mcpcore_lib.
 
 #pragma once

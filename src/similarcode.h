@@ -7,8 +7,8 @@
 // new dialog / IPC verb / test — the CLAUDE.md §3 reuse-before-rewriting
 // rule, surfaced as a tool.
 //
-// Sibling to symbolquery.{h,cpp} (whose tree-walk shape this mirrors)
-// and fileoutline.{h,cpp} (whose extractor this reuses). Qt6::Core only,
+// Sibling to symbolquery.{h,cpp} (whose walk rules, walkrules.h, this
+// shares) and fileoutline.{h,cpp} (whose extractor this reuses). Qt6::Core only,
 // no GUI deps — lives in ants_core_lib so it reaches the MCP/IPC
 // dispatch path. The MCP/IPC caller resolves + anchors the project
 // root; the lib never escapes that subtree (it does not follow

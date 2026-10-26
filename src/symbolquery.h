@@ -35,7 +35,8 @@ namespace SymbolQuery {
 // it matches both same-line and Allman (next-line `{`) function bodies —
 // the Generic brace-family anchor requires the `{` on the def line and
 // would miss the common next-line-brace GLSL style.
-enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic, Glsl };
+enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic, Glsl };   // Glsl stays last
+constexpr int kLangCount = static_cast<int>(Lang::Glsl) + 1;
 
 // "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh"/"generic"/"glsl" → the explicit
 // family; anything else → Auto (permissive — the caller's lang hint never

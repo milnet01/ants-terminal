@@ -56,14 +56,18 @@ struct Options {
 // Slice the already-resolved file at `absPath`. Returns the read_region
 // response envelope:
 //   {ok:true, path, start_line, end_line, lines[], returned, truncated,
-//    bytes_cap_clamped?, symbol?, symbol_ambiguous?, symbol_match_count?,
-//    section?, section_slug?}
+//    bytes_cap_clamped?, line_cap_clamped?, max_line_bytes?, lines_clipped?,
+//    symbol?, symbol_ambiguous?, symbol_match_count?, section?, section_slug?,
+//    call_sequence?, call_sequence_truncated?, accessors?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   bad_args          — zero/multiple selectors, or start<1 / end<start.
 //   not_found         — file cannot be opened.
 //   symbol_not_found  — symbol mode and no outline symbol matches `symbol`.
 //   section_not_found — section mode and no markdown heading slugifies to
-//                       the requested `section` (ANTS-2221).
+//                       the requested `section` (ANTS-2221); carries
+//                       `candidates` when it has any.
+//   section_ambiguous — section mode and several headings match; carries
+//                       `candidates`.
 // Exactly one of {line range, symbol, section} must be selected.
 // The dispatcher injects `etag` (ANTS-1499); the helper emits none.
 QJsonObject extract(const QString &absPath, const Options &opts);

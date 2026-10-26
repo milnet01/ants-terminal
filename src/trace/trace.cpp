@@ -252,32 +252,44 @@ bool textNames(const QString &text, bool pathMode, const QByteArray &needle,
     return pathMode ? !pathHits(b, rel, base).isEmpty() : !wholeWordHits(b, needle).isEmpty();
 }
 
-}  // namespace
 
-QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const Env &env) {
-    // ---- arguments (§ 2.1) ----
-    const bool hasSymbol = args.contains(QStringLiteral("symbol"));
+// The parsed arguments (§ 2.1) and the needles they give.
+struct Request {
+    bool hasSymbol = false;
+    QString symbolArg;     // as given
+    QString name;          // its last part
+    QStringList scopes;    // the parts before it
+    QSet<QString> include;
+    QString langFilter;
+    int maxBytes = kDefaultMaxBytes;
+    int offset = 0;
+    QString pathRel;       // path mode: the project-relative path
+    QByteArray needle;     // symbol mode: the name
+    QByteArray relNeedle;  // path mode: pathRel
+    QByteArray baseNeedle; // path mode: its basename, unless ambiguous
+};
+
+// Fills `req`, or returns the refusal.
+std::optional<QJsonObject> parseRequest(const QJsonObject &args, const QString &root,
+                                        int prefixLen, Request &req) {
+    req.hasSymbol = args.contains(QStringLiteral("symbol"));
     const bool hasPath = args.contains(QStringLiteral("path"));
-    if (hasSymbol == hasPath)
+    if (req.hasSymbol == hasPath)
         return refuse("bad_args", QStringLiteral("give exactly one of \"symbol\" and \"path\""));
 
     static const QRegularExpression symbolRe(QStringLiteral(
         "^[A-Za-z_][A-Za-z0-9_]{0,127}(?:(?:::|\\.)[A-Za-z_][A-Za-z0-9_]{0,127}){0,3}$"));
-    QString symbolArg;
-    QString name;
-    QStringList scopes;
-    if (hasSymbol) {
-        symbolArg = args.value(QStringLiteral("symbol")).toString();
-        if (!args.value(QStringLiteral("symbol")).isString() || !symbolRe.match(symbolArg).hasMatch())
+    if (req.hasSymbol) {
+        req.symbolArg = args.value(QStringLiteral("symbol")).toString();
+        if (!args.value(QStringLiteral("symbol")).isString() || !symbolRe.match(req.symbolArg).hasMatch())
             return refuse("bad_args",
                           QStringLiteral("\"symbol\" must be a name, or up to four "
                                          "names joined by :: or ."));
         static const QRegularExpression sep(QStringLiteral("::|\\."));
-        scopes = symbolArg.split(sep);
-        name = scopes.takeLast();
+        req.scopes = req.symbolArg.split(sep);
+        req.name = req.scopes.takeLast();
     }
 
-    QSet<QString> include;
     if (args.contains(QStringLiteral("include"))) {
         const QJsonValue v = args.value(QStringLiteral("include"));
         if (!v.isArray())
@@ -289,18 +301,17 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
                                               .arg(e.toVariant().toString()));
             if (s == QLatin1String("callees"))
                 return refuse("bad_args", QStringLiteral("\"callees\" arrives with ship 2"));
-            include.insert(s);
+            req.include.insert(s);
         }
     } else {
         for (const QString &s : allSections())
-            if (s != QLatin1String("callees")) include.insert(s);
+            if (s != QLatin1String("callees")) req.include.insert(s);
     }
 
-    QString langFilter;
     if (args.contains(QStringLiteral("lang"))) {
-        langFilter = args.value(QStringLiteral("lang")).toString();
-        if (!isKnownLanguage(langFilter))
-            return refuse("bad_args", QStringLiteral("unknown \"lang\" \"%1\"").arg(langFilter));
+        req.langFilter = args.value(QStringLiteral("lang")).toString();
+        if (!isKnownLanguage(req.langFilter))
+            return refuse("bad_args", QStringLiteral("unknown \"lang\" \"%1\"").arg(req.langFilter));
     }
     if (args.contains(QStringLiteral("depth"))) {
         const QJsonValue d = args.value(QStringLiteral("depth"));
@@ -310,47 +321,44 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         if (dv > 1)
             return refuse("bad_args", QStringLiteral("\"depth\" above 1 arrives with ship 2"));
     }
-    int maxBytes = kDefaultMaxBytes;
     if (args.contains(QStringLiteral("max_bytes"))) {
-        maxBytes = args.value(QStringLiteral("max_bytes")).toInt(-1);
-        if (maxBytes <= 0)
+        req.maxBytes = args.value(QStringLiteral("max_bytes")).toInt(-1);
+        if (req.maxBytes <= 0)
             return refuse("bad_args", QStringLiteral("\"max_bytes\" must be a positive integer"));
     }
-    int offset = 0;
     if (args.contains(QStringLiteral("offset"))) {
-        offset = args.value(QStringLiteral("offset")).toInt(-1);
-        if (offset < 0)
+        req.offset = args.value(QStringLiteral("offset")).toInt(-1);
+        if (req.offset < 0)
             return refuse("bad_args", QStringLiteral("\"offset\" must be 0 or more"));
     }
 
-    const QString root = QDir::cleanPath(rootCanonical);
-    const int prefixLen = int(root.size()) + 1;
-    QByteArray relNeedle, baseNeedle;
-    QString pathRel;
-    QJsonArray notCovered;
     if (hasPath) {
         const QString raw = args.value(QStringLiteral("path")).toString();
         const PathValidation::Check check = PathValidation::validatePath(
             raw, root, QStringLiteral("trace"), QStringLiteral("path"), false);
         if (check.bad) return check.err;
         const QString abs = QDir::cleanPath(QDir(root).absoluteFilePath(raw));
-        pathRel = abs.mid(prefixLen);
-        relNeedle = pathRel.toUtf8();
+        req.pathRel = abs.mid(prefixLen);
+        req.relNeedle = req.pathRel.toUtf8();
     }
+    req.needle = req.name.toUtf8();
+    return std::nullopt;
+}
 
-    // ---- the walk (§ 2.5) ----
+// The walk (§ 2.5): every file under `root` a trace reads, up to
+// kMaxWalkFiles.
+QVector<QFileInfo> collectFiles(const QString &root, bool *walkCapped) {
     QVector<QFileInfo> files;
-    bool walkCapped = false;
     const auto addFile = [&](const QFileInfo &fi) {
         if (files.size() >= kMaxWalkFiles) {
-            walkCapped = true;
+            *walkCapped = true;
             return;
         }
         files.append(fi);
     };
     std::function<void(const QString &)> walk = [&](const QString &dir) {
         for (const QFileInfo &fi : walkrules::entries(dir)) {
-            if (walkCapped) return;
+            if (*walkCapped) return;
             if (!walkrules::followed(fi)) continue;
             if (fi.isDir()) {
                 if (!walkrules::skippedDir(fi)) walk(fi.absoluteFilePath());
@@ -364,7 +372,7 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     // dot-files, and git's list holds them.
     if (const auto listed = gitListedPaths(root)) {
         for (QString rel : *listed) {
-            if (walkCapped) break;
+            if (*walkCapped) break;
             if (rel.endsWith(QLatin1Char('/'))) rel.chop(1);   // a nested repository
             const QStringList parts = rel.split(QLatin1Char('/'));
             if (std::any_of(parts.cbegin(), parts.cend() - 1, walkrules::skippedDirName)
@@ -381,34 +389,11 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     } else {
         walk(root);
     }
+    return files;
+}
 
-    if (hasPath) {
-        const QString base = QFileInfo(pathRel).fileName();
-        int same = 0;
-        for (const QFileInfo &fi : std::as_const(files))
-            if (fi.fileName() == base) ++same;
-        if (same > 1)
-            notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("ambiguous_basename")},
-                                          {QStringLiteral("basename"), base},
-                                          {QStringLiteral("files"), same}});
-        else
-            baseNeedle = base.toUtf8();
-    }
-    const QByteArray needle = name.toUtf8();
-
-    const ProjectSettings::Settings settings = ProjectSettings::load(root);
-    QStringList testRoots;
-    if (settings.testRoots)
-        for (const QString &t : *settings.testRoots)
-            if (QFileInfo(root + QLatin1Char('/') + t).isDir()) testRoots << QDir::cleanPath(t);
-    if (testRoots.isEmpty()) testRoots << QStringLiteral("tests");
-    auto isTestFile = [&](const QString &rel) {
-        return std::any_of(testRoots.begin(), testRoots.end(), [&](const QString &t) {
-            return rel.startsWith(t + QLatin1Char('/'));
-        });
-    };
-
-    // ---- per file ----
+// What the per-file pass gathers.
+struct Gathered {
     QVector<Row> defRows, callerRows, refRows, docRows;
     QSet<QString> testFiles;
     QStringList defFiles;
@@ -417,303 +402,219 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     QMap<QString, QString> limitsByLang;        // vendored languages with files
     QStringList tooLarge, timedOut;
     int filesParsed = 0, filesWithErrors = 0;
+};
 
-    for (const QFileInfo &fi : std::as_const(files)) {
-        const QString rel = fi.absoluteFilePath().mid(prefixLen);
-        const bool md = isMarkdown(fi.fileName());
-        if (md && !include.contains(QStringLiteral("docs"))) continue;
-        QFile f(fi.absoluteFilePath());
-        if (!f.open(QIODevice::ReadOnly)) continue;
-        // ANTS-5748 — binary first, so a large binary is skipped, not reported.
-        QByteArray text = f.read(8000);
-        if (std::memchr(text.constData(), '\0', size_t(text.size())))
-            continue;   // binary
-        if (fi.size() > kMaxFileBytes) {
-            tooLarge << rel;
-            continue;
+// The symbol's definitions and calls in one parsed file. Returns their name
+// ranges, which addReferenceRows must not count as references.
+QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const QString &rel,
+                                 const QString &lang, bool test, const LineIndex &lines,
+                                 const QByteArray &text, Gathered &g) {
+    QVector<ByteRange> skip;
+    for (const DefRow &d : rows.defs) {
+        if (d.name != req.name) continue;
+        skip.append(d.nameRange);
+        if (!req.scopes.isEmpty()) {
+            if (d.scope.size() < req.scopes.size()) continue;
+            if (d.scope.mid(d.scope.size() - req.scopes.size()) != req.scopes) continue;
         }
-        text += f.readAll();
-        if (md) {
-            scanMarkdown(rel, text, hasPath, needle, relNeedle, baseNeedle, docRows);
-            continue;
+        QJsonArray sc;
+        for (const QString &s : d.scope) sc.append(s);
+        g.defRows.append({rel, d.line, d.column, d.isDeclaration ? QStringLiteral("d") : QString(),
+                          QJsonObject{{QStringLiteral("file"), rel},
+                                      {QStringLiteral("line"), d.line},
+                                      {QStringLiteral("end_line"), d.endLine},
+                                      {QStringLiteral("signature"), d.signature},
+                                      {QStringLiteral("kind"), d.kind},
+                                      {QStringLiteral("scope"), sc},
+                                      {QStringLiteral("is_declaration"), d.isDeclaration},
+                                      {QStringLiteral("lang"), lang}}});
+        if (!g.defFiles.contains(rel)) g.defFiles << rel;
+    }
+    for (const CallRow &c : rows.calls) {
+        if (c.name != req.name) continue;
+        skip.append(c.nameRange);
+        const DefRow *enclosing = nullptr;
+        for (const DefRow &d : rows.defs) {
+            if (d.isDeclaration || !d.node.contains(c.nameRange.start)) continue;
+            if (!enclosing || d.node.end - d.node.start <
+                                  enclosing->node.end - enclosing->node.start)
+                enclosing = &d;
         }
+        const QJsonValue caller = enclosing
+            ? QJsonValue(QJsonObject{{QStringLiteral("name"), enclosing->name},
+                                     {QStringLiteral("file"), rel},
+                                     {QStringLiteral("line"), enclosing->line}})
+            : QJsonValue();
+        g.callerRows.append({rel, c.line, c.column, QString(),
+                             QJsonObject{{QStringLiteral("caller"), caller},
+                                         {QStringLiteral("file"), rel},
+                                         {QStringLiteral("call_line"), c.line},
+                                         {QStringLiteral("call_text"),
+                                          lines.textOf(text, c.line)},
+                                         {QStringLiteral("depth"), 1}}});
+        if (test) g.testFiles.insert(rel);
+    }
+    return skip;
+}
 
-        const QString lang = languageForFile(fi.fileName(), text.left(256));
-        const bool vendored = !lang.isEmpty() && languageFor(lang) != nullptr;
-        if (!langFilter.isEmpty() && !lang.isEmpty() && lang != langFilter) continue;
-
-        Query q;
-        if (vendored) {
-            q = queryFor(lang);
-            if (q.query) {
-                if (!q.limits.isEmpty()) limitsByLang.insert(lang, q.limits);
-            } else {
-                ++noGrammarFiles[lang];
-                noGrammarDetail.insert(lang, q.error);
-            }
+// Each hit outside `skip` as a reference row, kinded by where it sits:
+// a test file, else the parse's import / comment / string ranges, else code.
+// `rows` is null when the file was not parsed.
+void addReferenceRows(const QVector<int> &hits, const QVector<ByteRange> &skip,
+                      const FileRows *rows, const QString &lang, bool test,
+                      const QString &rel, const LineIndex &lines, const QByteArray &text,
+                      Gathered &g) {
+    for (int h : hits) {
+        const uint32_t b = uint32_t(h);
+        if (inAny(skip, b)) continue;
+        QString kind;
+        if (test) kind = QStringLiteral("test");
+        else if (rows) {
+            if (inAny(rows->imports, b)) kind = QStringLiteral("import");
+            else if (inAny(rows->comments, b)) kind = QStringLiteral("comment");
+            else if (inAny(rows->strings, b)) kind = QStringLiteral("string_or_config");
+            else kind = QStringLiteral("code");
         } else if (!lang.isEmpty()) {
-            ++noGrammarFiles[lang];
+            kind = QStringLiteral("unparsed");
+        } else {
+            kind = QStringLiteral("string_or_config");
         }
-
-        const QVector<int> hits = hasPath ? pathHits(text, relNeedle, baseNeedle)
-                                          : wholeWordHits(text, needle);
-        if (hits.isEmpty()) continue;
-        const bool test = isTestFile(rel);
-        const LineIndex lines(text);
-
-        std::shared_ptr<const FileRows> rows;
-        if (vendored && q.query) {
-            rows = rowsFor(fi.absoluteFilePath(), fi.lastModified().toMSecsSinceEpoch(),
-                           fi.size(), lang, q.query, q.hash, text);
-            if (rows->timedOut) {
-                timedOut << rel;
-                rows.reset();
-            } else {
-                ++filesParsed;
-                if (rows->hasErrors) ++filesWithErrors;
-            }
-        }
-
-        QVector<ByteRange> skip;   // definition and call names: not references
-        if (rows && hasSymbol) {
-            for (const DefRow &d : rows->defs) {
-                if (d.name != name) continue;
-                skip.append(d.nameRange);
-                if (!scopes.isEmpty()) {
-                    if (d.scope.size() < scopes.size()) continue;
-                    if (d.scope.mid(d.scope.size() - scopes.size()) != scopes) continue;
-                }
-                QJsonArray sc;
-                for (const QString &s : d.scope) sc.append(s);
-                defRows.append({rel, d.line, d.column, d.isDeclaration ? QStringLiteral("d") : QString(),
-                                QJsonObject{{QStringLiteral("file"), rel},
-                                            {QStringLiteral("line"), d.line},
-                                            {QStringLiteral("end_line"), d.endLine},
-                                            {QStringLiteral("signature"), d.signature},
-                                            {QStringLiteral("kind"), d.kind},
-                                            {QStringLiteral("scope"), sc},
-                                            {QStringLiteral("is_declaration"), d.isDeclaration},
-                                            {QStringLiteral("lang"), lang}}});
-                if (!defFiles.contains(rel)) defFiles << rel;
-            }
-            for (const CallRow &c : rows->calls) {
-                if (c.name != name) continue;
-                skip.append(c.nameRange);
-                const DefRow *enclosing = nullptr;
-                for (const DefRow &d : rows->defs) {
-                    if (d.isDeclaration || !d.node.contains(c.nameRange.start)) continue;
-                    if (!enclosing || d.node.end - d.node.start <
-                                          enclosing->node.end - enclosing->node.start)
-                        enclosing = &d;
-                }
-                const QJsonValue caller = enclosing
-                    ? QJsonValue(QJsonObject{{QStringLiteral("name"), enclosing->name},
-                                             {QStringLiteral("file"), rel},
-                                             {QStringLiteral("line"), enclosing->line}})
-                    : QJsonValue();
-                callerRows.append({rel, c.line, c.column, QString(),
-                                   QJsonObject{{QStringLiteral("caller"), caller},
-                                               {QStringLiteral("file"), rel},
-                                               {QStringLiteral("call_line"), c.line},
-                                               {QStringLiteral("call_text"),
-                                                lines.textOf(text, c.line)},
-                                               {QStringLiteral("depth"), 1}}});
-                if (test) testFiles.insert(rel);
-            }
-        }
-
-        for (int h : hits) {
-            const uint32_t b = uint32_t(h);
-            if (inAny(skip, b)) continue;
-            QString kind;
-            if (test) kind = QStringLiteral("test");
-            else if (rows) {
-                if (inAny(rows->imports, b)) kind = QStringLiteral("import");
-                else if (inAny(rows->comments, b)) kind = QStringLiteral("comment");
-                else if (inAny(rows->strings, b)) kind = QStringLiteral("string_or_config");
-                else kind = QStringLiteral("code");
-            } else if (!lang.isEmpty()) {
-                kind = QStringLiteral("unparsed");
-            } else {
-                kind = QStringLiteral("string_or_config");
-            }
-            const int line = lines.lineOf(h);
-            refRows.append({rel, line, lines.columnOf(h), kind,
-                            QJsonObject{{QStringLiteral("kind"), kind},
-                                        {QStringLiteral("file"), rel},
-                                        {QStringLiteral("line"), line},
-                                        {QStringLiteral("text"), lines.textOf(text, line)}}});
-            if (test) testFiles.insert(rel);
-        }
+        const int line = lines.lineOf(h);
+        g.refRows.append({rel, line, lines.columnOf(h), kind,
+                          QJsonObject{{QStringLiteral("kind"), kind},
+                                      {QStringLiteral("file"), rel},
+                                      {QStringLiteral("line"), line},
+                                      {QStringLiteral("text"), lines.textOf(text, line)}}});
+        if (test) g.testFiles.insert(rel);
     }
+}
 
-    // ---- spec invariants (§ 2.7) ----
+// Spec invariants (§ 2.7) whose body names the symbol or path.
+QVector<Row> specInvariantRows(const QString &root, const Request &req, QJsonArray &notCovered) {
     QVector<Row> specRows;
-    if (include.contains(QStringLiteral("spec_invariants"))) {
-        const QString specsRel = ProjectSettings::specsDirOf(root);
-        const QDir specsDir(root + QLatin1Char('/') + specsRel);
-        const QStringList specFiles =
-            specsDir.exists() ? specsDir.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Name)
-                              : QStringList();
-        for (const QString &fname : specFiles) {
-            QFile f(specsDir.filePath(fname));
-            if (!f.open(QIODevice::ReadOnly)) {
-                notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("source_unreadable")},
-                                              {QStringLiteral("source"), QStringLiteral("spec")},
-                                              {QStringLiteral("file"), specsRel + QLatin1Char('/') + fname}});
-                continue;
-            }
-            const QJsonObject parsed = SpecParse::parseSpecBody(QString::fromUtf8(f.readAll()));
-            const QString sid = specIdOf(fname);
-            int n = 0;
-            for (const QJsonValue &inv : parsed.value(QStringLiteral("invariants")).toArray()) {
-                const QJsonObject io = inv.toObject();
-                ++n;
-                if (!textNames(io.value(QStringLiteral("body")).toString(), hasPath, needle,
-                               relNeedle, baseNeedle))
-                    continue;
-                specRows.append({specsRel + QLatin1Char('/') + fname, n, 0, QString(),
-                                 QJsonObject{{QStringLiteral("spec"), sid},
-                                             {QStringLiteral("inv"),
-                                              io.value(QStringLiteral("id")).toString()}}});
-            }
-        }
-    }
-
-    // ---- roadmap items (§ 2.7) ----
-    QVector<Row> roadmapRows;
-    if (include.contains(QStringLiteral("roadmap_items"))) {
-        std::optional<QVector<RoadmapParse::BulletRecord>> bullets;
-        QString err;
-        if (env.roadmapBullets) bullets = env.roadmapBullets(root, &err);
-        if (!bullets && err.isEmpty()) {
-            const QString rel = settings.roadmap ? *settings.roadmap : QStringLiteral("ROADMAP.md");
-            QFile f(root + QLatin1Char('/') + rel);
-            if (f.exists()) {
-                if (f.open(QIODevice::ReadOnly))
-                    bullets = RoadmapParse::parseBullets(QString::fromUtf8(f.readAll()),
-                                                         ProjectSettings::idFormatFor(root));
-                else
-                    err = f.errorString();
-            }
-        }
-        if (!err.isEmpty())
+    const bool pathMode = !req.hasSymbol;
+    const QString specsRel = ProjectSettings::specsDirOf(root);
+    const QDir specsDir(root + QLatin1Char('/') + specsRel);
+    const QStringList specFiles =
+        specsDir.exists() ? specsDir.entryList({QStringLiteral("*.md")}, QDir::Files, QDir::Name)
+                          : QStringList();
+    for (const QString &fname : specFiles) {
+        QFile f(specsDir.filePath(fname));
+        if (!f.open(QIODevice::ReadOnly)) {
             notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("source_unreadable")},
-                                          {QStringLiteral("source"), QStringLiteral("roadmap")},
-                                          {QStringLiteral("detail"), err}});
+                                          {QStringLiteral("source"), QStringLiteral("spec")},
+                                          {QStringLiteral("file"), specsRel + QLatin1Char('/') + fname}});
+            continue;
+        }
+        const QJsonObject parsed = SpecParse::parseSpecBody(QString::fromUtf8(f.readAll()));
+        const QString sid = specIdOf(fname);
         int n = 0;
-        for (const RoadmapParse::BulletRecord &b : bullets.value_or(QVector<RoadmapParse::BulletRecord>{})) {
+        for (const QJsonValue &inv : parsed.value(QStringLiteral("invariants")).toArray()) {
+            const QJsonObject io = inv.toObject();
             ++n;
-            if (b.id.isEmpty()) continue;
-            if (!textNames(b.headlineFull.isEmpty() ? b.headline : b.headlineFull, hasPath,
-                           needle, relNeedle, baseNeedle) &&
-                !textNames(b.body, hasPath, needle, relNeedle, baseNeedle))
+            if (!textNames(io.value(QStringLiteral("body")).toString(), pathMode, req.needle,
+                           req.relNeedle, req.baseNeedle))
                 continue;
-            roadmapRows.append({QString(), n, 0, QString(),
-                                QJsonObject{{QStringLiteral("id"), b.id},
-                                            {QStringLiteral("headline"), b.headline}}});
+            specRows.append({specsRel + QLatin1Char('/') + fname, n, 0, QString(),
+                             QJsonObject{{QStringLiteral("spec"), sid},
+                                         {QStringLiteral("inv"),
+                                          io.value(QStringLiteral("id")).toString()}}});
         }
     }
+    return specRows;
+}
 
-    // ---- tests (§ 2.6) ----
-    QVector<Row> testRows;
-    QStringList sortedTests(testFiles.begin(), testFiles.end());
-    sortedTests.sort();
-    for (const QString &t : std::as_const(sortedTests)) testRows.append({t, 0, 0, QString(), t});
-    QJsonArray ctestPatterns;
-    QString selection;
-    {
-        const QStringList changed = hasPath ? QStringList{pathRel} : defFiles;
-        if (!changed.isEmpty()) {
-            const FocusedTest::Resolution res =
-                FocusedTest::resolve(changed, FocusedTest::loadCoverageMap(root));
-            if (res.selection != FocusedTest::Selection::Full) {
-                for (const QString &p : res.patterns) ctestPatterns.append(p);
-                selection = res.selection == FocusedTest::Selection::Map
-                                ? QStringLiteral("map") : QStringLiteral("heuristic");
-            }
+// Roadmap items (§ 2.7) whose headline or body names the symbol or path:
+// from the store when Env supplies it, else the roadmap file.
+QVector<Row> roadmapItemRows(const QString &root, const ProjectSettings::Settings &settings,
+                             const Env &env, const Request &req, QJsonArray &notCovered) {
+    QVector<Row> roadmapRows;
+    const bool pathMode = !req.hasSymbol;
+    std::optional<QVector<RoadmapParse::BulletRecord>> bullets;
+    QString err;
+    if (env.roadmapBullets) bullets = env.roadmapBullets(root, &err);
+    if (!bullets && err.isEmpty()) {
+        const QString rel = settings.roadmap ? *settings.roadmap : QStringLiteral("ROADMAP.md");
+        QFile f(root + QLatin1Char('/') + rel);
+        if (f.exists()) {
+            if (f.open(QIODevice::ReadOnly))
+                bullets = RoadmapParse::parseBullets(QString::fromUtf8(f.readAll()),
+                                                     ProjectSettings::idFormatFor(root));
+            else
+                err = f.errorString();
         }
     }
+    if (!err.isEmpty())
+        notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("source_unreadable")},
+                                      {QStringLiteral("source"), QStringLiteral("roadmap")},
+                                      {QStringLiteral("detail"), err}});
+    int n = 0;
+    for (const RoadmapParse::BulletRecord &b : bullets.value_or(QVector<RoadmapParse::BulletRecord>{})) {
+        ++n;
+        if (b.id.isEmpty()) continue;
+        if (!textNames(b.headlineFull.isEmpty() ? b.headline : b.headlineFull, pathMode,
+                       req.needle, req.relNeedle, req.baseNeedle) &&
+            !textNames(b.body, pathMode, req.needle, req.relNeedle, req.baseNeedle))
+            continue;
+        roadmapRows.append({QString(), n, 0, QString(),
+                            QJsonObject{{QStringLiteral("id"), b.id},
+                                        {QStringLiteral("headline"), b.headline}}});
+    }
+    return roadmapRows;
+}
 
-    // ---- not_covered (§ 2.2), in a fixed order ----
-    for (auto it = noGrammarFiles.constBegin(); it != noGrammarFiles.constEnd(); ++it) {
+// not_covered (§ 2.2) for what the per-file pass could not read, in a fixed
+// order: no grammar, too large, parse timeout, grammar limits.
+void appendCoverageGaps(Gathered &g, QJsonArray &notCovered) {
+    for (auto it = g.noGrammarFiles.constBegin(); it != g.noGrammarFiles.constEnd(); ++it) {
         QJsonObject o{{QStringLiteral("reason"), QStringLiteral("no_grammar")},
                       {QStringLiteral("lang"), it.key()},
                       {QStringLiteral("files"), it.value()}};
-        if (noGrammarDetail.contains(it.key()))
-            o.insert(QStringLiteral("detail"), noGrammarDetail.value(it.key()));
+        if (g.noGrammarDetail.contains(it.key()))
+            o.insert(QStringLiteral("detail"), g.noGrammarDetail.value(it.key()));
         notCovered.append(o);
     }
-    tooLarge.sort();
-    for (const QString &t : std::as_const(tooLarge))
+    g.tooLarge.sort();
+    for (const QString &t : std::as_const(g.tooLarge))
         notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("file_too_large")},
                                       {QStringLiteral("file"), t}});
-    timedOut.sort();
-    for (const QString &t : std::as_const(timedOut))
+    g.timedOut.sort();
+    for (const QString &t : std::as_const(g.timedOut))
         notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("parse_timeout")},
                                       {QStringLiteral("file"), t}});
-    for (auto it = limitsByLang.constBegin(); it != limitsByLang.constEnd(); ++it)
+    for (auto it = g.limitsByLang.constBegin(); it != g.limitsByLang.constEnd(); ++it)
         notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("limits")},
                                       {QStringLiteral("lang"), it.key()},
                                       {QStringLiteral("detail"), it.value()}});
+}
 
-    // ---- the reply, paged at row boundaries (§ 2.2) ----
-    sortRows(defRows);
-    sortRows(callerRows);
-    sortRows(refRows);
-    sortRows(docRows);
+struct Section {
+    QString key;
+    QVector<Row> *rows;
+};
 
-    struct Section {
-        QString key;
-        QVector<Row> *rows;
-    };
-    QVector<Section> sections;
-    if (hasSymbol && include.contains(QStringLiteral("definitions")))
-        sections.append({QStringLiteral("definitions"), &defRows});
-    if (hasSymbol && include.contains(QStringLiteral("callers")))
-        sections.append({QStringLiteral("callers"), &callerRows});
-    if (include.contains(QStringLiteral("references")))
-        sections.append({QStringLiteral("references"), &refRows});
-    if (include.contains(QStringLiteral("tests")))
-        sections.append({QStringLiteral("tests"), &testRows});
-    if (include.contains(QStringLiteral("docs")))
-        sections.append({QStringLiteral("docs"), &docRows});
-    if (include.contains(QStringLiteral("spec_invariants")))
-        sections.append({QStringLiteral("spec_invariants"), &specRows});
-    if (include.contains(QStringLiteral("roadmap_items")))
-        sections.append({QStringLiteral("roadmap_items"), &roadmapRows});
+// The tests section's extra fields.
+struct TestSelection {
+    QJsonArray ctestPatterns;
+    QString selection;   // "map" | "heuristic" | "" (none)
+};
 
-    QStringList scannedLangs = limitsByLang.keys();
-    QJsonArray langs;
-    for (const QString &l : scannedLangs) langs.append(l);
-
-    QJsonObject reply{{QStringLiteral("ok"), true},
-                      {QStringLiteral("mode"), hasSymbol ? QStringLiteral("symbol")
-                                                         : QStringLiteral("path")},
-                      {QStringLiteral("precision"), QStringLiteral("syntactic")},
-                      {QStringLiteral("not_covered"), notCovered},
-                      {QStringLiteral("scanned"),
-                       QJsonObject{{QStringLiteral("files"), int(files.size())},
-                                   {QStringLiteral("files_parsed"), filesParsed},
-                                   {QStringLiteral("files_with_parse_errors"), filesWithErrors},
-                                   {QStringLiteral("languages"), langs},
-                                   {QStringLiteral("walk_capped"), walkCapped}}}};
-    if (hasSymbol) reply.insert(QStringLiteral("symbol"), symbolArg);
-    else reply.insert(QStringLiteral("path"), pathRel);
-
-    // Every row in one sequence, so `offset` indexes across sections.
+// The sections into `reply`, paged at row boundaries (§ 2.2). Every row is
+// in one sequence, so `offset` indexes across sections; the row budget is
+// maxBytes less the envelope with every section empty.
+void pageInto(QJsonObject &reply, const QVector<Section> &sections, int offset, int maxBytes,
+              const TestSelection &tests) {
     int total = 0;
     for (const Section &s : sections) total += int(s.rows->size());
     auto sectionValue = [&](const Section &s, const QJsonArray &rows) -> QJsonValue {
         if (s.key != QLatin1String("tests")) return rows;
         QJsonObject t{{QStringLiteral("files"), rows}};
-        if (!selection.isEmpty()) {
-            t.insert(QStringLiteral("ctest_patterns"), ctestPatterns);
-            t.insert(QStringLiteral("selection"), selection);
+        if (!tests.selection.isEmpty()) {
+            t.insert(QStringLiteral("ctest_patterns"), tests.ctestPatterns);
+            t.insert(QStringLiteral("selection"), tests.selection);
         }
         return t;
     };
-    // The envelope with every section empty, to size the row budget.
     QJsonObject counts;
     for (const Section &s : sections)
         counts.insert(s.key, QJsonObject{{QStringLiteral("total"), int(s.rows->size())},
@@ -754,6 +655,178 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     reply.insert(QStringLiteral("counts"), counts);
     reply.insert(QStringLiteral("truncated"), nextOffset >= 0);
     reply.insert(QStringLiteral("next_offset"), nextOffset >= 0 ? QJsonValue(nextOffset) : QJsonValue());
+}
+
+}  // namespace
+
+QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const Env &env) {
+    const QString root = QDir::cleanPath(rootCanonical);
+    const int prefixLen = int(root.size()) + 1;
+    Request req;
+    if (const auto refusal = parseRequest(args, root, prefixLen, req)) return *refusal;
+    const bool pathMode = !req.hasSymbol;
+
+    bool walkCapped = false;
+    const QVector<QFileInfo> files = collectFiles(root, &walkCapped);
+
+    QJsonArray notCovered;
+    if (pathMode) {
+        const QString base = QFileInfo(req.pathRel).fileName();
+        int same = 0;
+        for (const QFileInfo &fi : files)
+            if (fi.fileName() == base) ++same;
+        if (same > 1)
+            notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("ambiguous_basename")},
+                                          {QStringLiteral("basename"), base},
+                                          {QStringLiteral("files"), same}});
+        else
+            req.baseNeedle = base.toUtf8();
+    }
+
+    const ProjectSettings::Settings settings = ProjectSettings::load(root);
+    QStringList testRoots;
+    if (settings.testRoots)
+        for (const QString &t : *settings.testRoots)
+            if (QFileInfo(root + QLatin1Char('/') + t).isDir()) testRoots << QDir::cleanPath(t);
+    if (testRoots.isEmpty()) testRoots << QStringLiteral("tests");
+    auto isTestFile = [&](const QString &rel) {
+        return std::any_of(testRoots.begin(), testRoots.end(), [&](const QString &t) {
+            return rel.startsWith(t + QLatin1Char('/'));
+        });
+    };
+
+    // ---- per file ----
+    Gathered g;
+    for (const QFileInfo &fi : files) {
+        const QString rel = fi.absoluteFilePath().mid(prefixLen);
+        const bool md = isMarkdown(fi.fileName());
+        if (md && !req.include.contains(QStringLiteral("docs"))) continue;
+        QFile f(fi.absoluteFilePath());
+        if (!f.open(QIODevice::ReadOnly)) continue;
+        // ANTS-5748 — binary first, so a large binary is skipped, not reported.
+        QByteArray text = f.read(8000);
+        if (std::memchr(text.constData(), '\0', size_t(text.size())))
+            continue;   // binary
+        if (fi.size() > kMaxFileBytes) {
+            g.tooLarge << rel;
+            continue;
+        }
+        text += f.readAll();
+        if (md) {
+            scanMarkdown(rel, text, pathMode, req.needle, req.relNeedle, req.baseNeedle, g.docRows);
+            continue;
+        }
+
+        const QString lang = languageForFile(fi.fileName(), text.left(256));
+        const bool vendored = !lang.isEmpty() && languageFor(lang) != nullptr;
+        if (!req.langFilter.isEmpty() && !lang.isEmpty() && lang != req.langFilter) continue;
+
+        Query q;
+        if (vendored) {
+            q = queryFor(lang);
+            if (q.query) {
+                if (!q.limits.isEmpty()) g.limitsByLang.insert(lang, q.limits);
+            } else {
+                ++g.noGrammarFiles[lang];
+                g.noGrammarDetail.insert(lang, q.error);
+            }
+        } else if (!lang.isEmpty()) {
+            ++g.noGrammarFiles[lang];
+        }
+
+        const QVector<int> hits = pathMode ? pathHits(text, req.relNeedle, req.baseNeedle)
+                                           : wholeWordHits(text, req.needle);
+        if (hits.isEmpty()) continue;
+        const bool test = isTestFile(rel);
+        const LineIndex lines(text);
+
+        std::shared_ptr<const FileRows> rows;
+        if (vendored && q.query) {
+            rows = rowsFor(fi.absoluteFilePath(), fi.lastModified().toMSecsSinceEpoch(),
+                           fi.size(), lang, q.query, q.hash, text);
+            if (rows->timedOut) {
+                g.timedOut << rel;
+                rows.reset();
+            } else {
+                ++g.filesParsed;
+                if (rows->hasErrors) ++g.filesWithErrors;
+            }
+        }
+
+        const QVector<ByteRange> skip = rows && req.hasSymbol
+            ? addSymbolRows(*rows, req, rel, lang, test, lines, text, g)
+            : QVector<ByteRange>();
+        addReferenceRows(hits, skip, rows.get(), lang, test, rel, lines, text, g);
+    }
+
+    QVector<Row> specRows;
+    if (req.include.contains(QStringLiteral("spec_invariants")))
+        specRows = specInvariantRows(root, req, notCovered);
+    QVector<Row> roadmapRows;
+    if (req.include.contains(QStringLiteral("roadmap_items")))
+        roadmapRows = roadmapItemRows(root, settings, env, req, notCovered);
+
+    // ---- tests (§ 2.6) ----
+    QVector<Row> testRows;
+    QStringList sortedTests(g.testFiles.begin(), g.testFiles.end());
+    sortedTests.sort();
+    for (const QString &t : std::as_const(sortedTests)) testRows.append({t, 0, 0, QString(), t});
+    TestSelection tests;
+    {
+        const QStringList changed = pathMode ? QStringList{req.pathRel} : g.defFiles;
+        if (!changed.isEmpty()) {
+            const FocusedTest::Resolution res =
+                FocusedTest::resolve(changed, FocusedTest::loadCoverageMap(root));
+            if (res.selection != FocusedTest::Selection::Full) {
+                for (const QString &p : res.patterns) tests.ctestPatterns.append(p);
+                tests.selection = res.selection == FocusedTest::Selection::Map
+                                      ? QStringLiteral("map") : QStringLiteral("heuristic");
+            }
+        }
+    }
+
+    appendCoverageGaps(g, notCovered);
+
+    // ---- the reply ----
+    sortRows(g.defRows);
+    sortRows(g.callerRows);
+    sortRows(g.refRows);
+    sortRows(g.docRows);
+
+    QVector<Section> sections;
+    if (req.hasSymbol && req.include.contains(QStringLiteral("definitions")))
+        sections.append({QStringLiteral("definitions"), &g.defRows});
+    if (req.hasSymbol && req.include.contains(QStringLiteral("callers")))
+        sections.append({QStringLiteral("callers"), &g.callerRows});
+    if (req.include.contains(QStringLiteral("references")))
+        sections.append({QStringLiteral("references"), &g.refRows});
+    if (req.include.contains(QStringLiteral("tests")))
+        sections.append({QStringLiteral("tests"), &testRows});
+    if (req.include.contains(QStringLiteral("docs")))
+        sections.append({QStringLiteral("docs"), &g.docRows});
+    if (req.include.contains(QStringLiteral("spec_invariants")))
+        sections.append({QStringLiteral("spec_invariants"), &specRows});
+    if (req.include.contains(QStringLiteral("roadmap_items")))
+        sections.append({QStringLiteral("roadmap_items"), &roadmapRows});
+
+    QJsonArray langs;
+    for (const QString &l : g.limitsByLang.keys()) langs.append(l);
+
+    QJsonObject reply{{QStringLiteral("ok"), true},
+                      {QStringLiteral("mode"), req.hasSymbol ? QStringLiteral("symbol")
+                                                             : QStringLiteral("path")},
+                      {QStringLiteral("precision"), QStringLiteral("syntactic")},
+                      {QStringLiteral("not_covered"), notCovered},
+                      {QStringLiteral("scanned"),
+                       QJsonObject{{QStringLiteral("files"), int(files.size())},
+                                   {QStringLiteral("files_parsed"), g.filesParsed},
+                                   {QStringLiteral("files_with_parse_errors"), g.filesWithErrors},
+                                   {QStringLiteral("languages"), langs},
+                                   {QStringLiteral("walk_capped"), walkCapped}}}};
+    if (req.hasSymbol) reply.insert(QStringLiteral("symbol"), req.symbolArg);
+    else reply.insert(QStringLiteral("path"), req.pathRel);
+
+    pageInto(reply, sections, req.offset, req.maxBytes, tests);
     return reply;
 }
 

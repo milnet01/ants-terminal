@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6284 -->
+<!-- ants-roadmap-id-high-water: ANTS=6286 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95845,6 +95845,18 @@ worked after these.
   2026-10-23: HIGH F1 done (trace's docs[] scan built on MarkdownScan
   fenceMask + headings; closes ANTS-6002) and F5 done (findDefinitions
   fills the walk-cap fields; closes ANTS-6001). No HIGH left here.
+  2026-10-26: MEDIUMs done. F4 was already fixed by the F2/F3 work
+  (wrapmatch's comment says the group repeats). F7/F8 kReturnType is the
+  one return-type pattern; the comment is one line per clause. F9
+  kLangCount sizes the anchors array. F10 readregion leads with the
+  Python rule. F11 readregion.h lists every field and section_ambiguous.
+  F13 similar_code walks by walkrules. F14 symbolquery and similarcode
+  delegate to FileOutline::isCFamilyExt; source_scrapes and trace (no
+  `.c`) queued as ANTS-6285; buildfixhint and commentclaims differ by
+  design. F18 trace::serve split into parseRequest, collectFiles,
+  addSymbolRows, addReferenceRows, specInvariantRows, roadmapItemRows,
+  appendCoverageGaps and pageInto; 87 trace cases old vs new identical
+  except one roadmap item filed between runs. LOWs remain.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -101163,6 +101175,34 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   **Layman:** One plugin-timing test failed once when the machine was busy, then passed five times in a row; its timing window needs to tolerate load.
   Kind: test.
   Source: push-gate-2026-10-26.
+
+- 📋 [ANTS-6285] **source_scrapes and trace leave `.c` out of their C/C++ suffix lists, which FileOutline::isCFamilyExt includes.**
+  sourcescrapes.cpp isCppSource and trace/languages.cpp's "cpp" entry list
+  cpp/cc/cxx/h/hpp/hh/hxx but not c. codebase_index, file_outline,
+  find_definition and similar_code now share FileOutline::isCFamilyExt,
+  which has c. Delegating would change what the two verbs read, so it was
+  not folded in the readability pass. trace lives in ants_trace_lib, which
+  does not link ants_mcpcore_lib (walkrules.h): the shared predicate needs a
+  home both can reach. buildfixhint (header/source split, adds c++) and
+  commentclaims (a comment-syntax family) differ by design.
+  **Layman:** Two code tools skip plain C files that the others read; make them read the same files.
+  Kind: fix.
+  Source: review-readability-2026-10-22 (L31-F14).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6286] **A ctest run under heavy load registered 1687 of test_claude's 3303 tests and still reported 100% passed.**
+  2026-10-26 08:30, load about 15-29 from several sessions: `ctest
+  --preset=default -j2` ran 4280 tests. build/test_claude_*_tests.cmake
+  (PRE_TEST discovery, DISCOVERY_TIMEOUT 60, regenerated 08:29) held
+  1687 add_test lines while `test_claude --gtest_list_tests` lists 3303.
+  Touching the binary and re-running discovery restored 3303 (5916 total).
+  Unknown whether a timeout or a cut-off list output caused it. Fix idea:
+  check each bundle's discovered count against its --gtest_list_tests count,
+  and fail the run on a mismatch.
+  **Layman:** Under heavy load the test runner once skipped half of one test group without saying so; find out why and make it fail loudly.
+  Kind: investigate.
+  Source: in-session-2026-10-26.
+  Lanes: build.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

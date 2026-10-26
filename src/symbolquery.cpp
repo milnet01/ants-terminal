@@ -3,6 +3,7 @@
 
 #include "symbolquery.h"
 #include "boundedreadline.h"
+#include "fileoutline.h"
 #include "walkrules.h"
 
 #include <QDir>
@@ -45,12 +46,7 @@ const char *langStr(Lang l) {
 
 // Map a lowercased extension to its language family; Auto == "skip".
 Lang langForExt(const QString &ext) {
-    if (ext == QLatin1String("cpp") || ext == QLatin1String("cc")  ||
-        ext == QLatin1String("cxx") || ext == QLatin1String("c")   ||
-        ext == QLatin1String("h")   || ext == QLatin1String("hpp") ||
-        ext == QLatin1String("hh")  || ext == QLatin1String("hxx")) {
-        return Lang::Cpp;
-    }
+    if (FileOutline::isCFamilyExt(ext)) return Lang::Cpp;
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
     if (ext == QLatin1String("lua")) return Lang::Lua;
     if (ext == QLatin1String("sh") || ext == QLatin1String("bash")) return Lang::Sh;
@@ -226,6 +222,15 @@ struct Anchors {
     const char *lang = "";
 };
 
+// The C++ return type, shared by the function and data-member forms: one or
+// more type tokens, each holding a word character (so `: sym(` and
+// `out << sym(` stay calls, ANTS-4924), each with an optional template
+// argument list (a comma needs it, ANTS-3746; `[^();{]*` ignores `<>` balance
+// because the trailing name anchors the end) and a separator (space, `*`,
+// `&`); then an optional `Class::` qualifier.
+const QLatin1String kReturnType(
+    "(?:(?=[:<>~]*\\w)[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?");
+
 Anchors buildAnchors(Lang lang, const QString &s) {
     Anchors a;
     a.lang = langStr(lang);
@@ -236,54 +241,16 @@ Anchors buildAnchors(Lang lang, const QString &s) {
     };
     switch (lang) {
         case Lang::Cpp:
-            // ANTS-1700 — a definition/declaration requires a return-type
-            // token before the (optionally qualified) name, so a
-            // namespace-qualified *call* site (`ns::sym(`) is no longer
-            // mis-reported as a definition. Each `[\w:<>~]+` token is
-            // followed by a real separator `[\s*&]+` (whitespace / `*` /
-            // `&`); one-or-more such tokens form the return type +
-            // specifiers, then an optional `(?:[\w:]+::)` class qualifier,
-            // then the name. A bare call (`sym(`) and a qualified call
-            // (`ns::sym(`) both lack the leading return-type token, so
-            // neither matches. The per-line byte cap (kMaxLineBytes)
-            // bounds backtracking.
-            // ANTS-2146 — a statement-position call (`return sym(`,
-            // `throw sym(`, `else sym(` …) DOES have a leading word token
-            // (the keyword) + a space, which the return-type group would
-            // otherwise absorb, mis-tagging the call as a `declaration`.
-            // Reject when the first token is an expression-introducing
-            // reserved keyword: a keyword is never a return type, so the
-            // negative lookahead has zero false negatives.
-            // ANTS-4368 — an optional linkage prefix ahead of the return
-            // type. `extern "C" int foo(void)` failed the return-type group
-            // because `"` is not in `[\w:<>~]`, so a C/C++ project's whole
-            // cross-language seam resolved only to its header prototype —
-            // and reported ok:true with definitions_count:1, which is a
-            // confident wrong answer rather than an empty one. The slot also
-            // takes `static`/`inline`/`__declspec(...)` later without another
-            // change. Measured by DOOM: 48 such definitions in one file.
-            // ANTS-3746 — an optional template argument list per return-type
-            // token. A COMMA is neither in `[\w:<>~]` nor a separator, so the
-            // group could not span `QMap<QString, QStringList>` and the
-            // definition was reported absent — indistinguishable from "no such
-            // symbol", so the caller designs around a function that is there.
-            // Measured on this tree: `detectorsByCategory`, declared at
-            // debtsweepengine.h:264 and defined at debtsweepengine.cpp:1344,
-            // returned definitions_count:0 over 911 files.
-            // `[^();{]*` is deliberately blind to `<>` balance rather than
-            // counting it: the trailing `SYMBOL\s*\(` anchors where the list
-            // ends, so arbitrary nesting (`map<K, vector<pair<A, B>>>`) works
-            // with no recursion. Excluding `(`/`)`/`;`/`{` is what stops it
-            // reaching across a statement boundary into a later template.
-            // The base class keeps `<>`, so every pre-ANTS-3746 line still
-            // matches by the same path it did; the new group is only reached
-            // by backtracking, when the greedy token stops at a comma.
-            // ANTS-4924 — each token must hold a word character. `:` and `<<`
-            // are both in the token class, so a wrapped ternary arm
-            // (`: sym(a, b);`) and a stream insertion (`out << sym(i);`) read
-            // as return type + name and were reported as declarations. A
-            // return-type token names a type, so it always has a letter.
-            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)(?:(?=[:<>~]*\\w)[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?") + s + QStringLiteral("\\s*\\("));
+            // The function form, clause by clause:
+            //   extern "C"     optional linkage prefix (ANTS-4368).
+            //   (?!return…)    the first token is not an expression keyword,
+            //                  so `return sym(` is a call (ANTS-2146).
+            //   kReturnType    the return type, then an optional `Class::`.
+            //   SYMBOL\s*\(    the name and its open paren.
+            // Requiring a return-type token keeps a call such as `ns::sym(`
+            // from reading as a definition (ANTS-1700). kMaxLineBytes bounds
+            // backtracking.
+            add(QStringLiteral("^[ \\t]*(?:extern\\s*\"C(?:\\+\\+)?\"\\s+)?(?!(?:return|co_return|co_await|co_yield|throw|else)\\b)") + kReturnType + s + QStringLiteral("\\s*\\("));
             // Out-of-line constructor / destructor definitions carry no
             // return type (`Foo::Foo(` / `Foo::~Foo(`); match them
             // explicitly so a class query still resolves its ctor/dtor.
@@ -322,11 +289,8 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // and from a call, and it is load-bearing rather than incidental.
             // An optional array extent (`int m_rows[8];`) sits between.
             //
-            // The template-argument group is the same one ANTS-3746 added to
-            // the return-type ladder, and it is needed here for the same
-            // reason: a COMMA is neither a type character nor a separator, so
-            // without it `QMap<QString, QStringList> m_byCategory;` does not
-            // match.
+            // kReturnType is the function form's, so a template argument list
+            // with a comma (`QMap<QString, QStringList> m_byCategory;`) matches.
             //
             // This DOES also match a local variable, and that is a decision
             // rather than an oversight. The ladder is line-based with no
@@ -340,15 +304,12 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             // carries, widened by the statement keywords that can precede a
             // bare name (`case Foo:` and `using Foo =` are not declarations
             // of Foo in the sense a reader means).
-            // ANTS-4924 — the same word-character rule as the return-type
-            // ladder, so `out << m_value;` is not a declaration of m_value.
             add(QStringLiteral(
                     "^[ \\t]*(?!(?:return|co_return|co_await|co_yield|throw|else|case|"
-                    "default|using|typedef|friend|delete|goto|sizeof|new)\\b)"
-                    "(?:(?=[:<>~]*\\w)[\\w:<>~]+(?:<[^();{]*>)?[\\s*&]+)+(?:[\\w:]+::)?")
-                + s
+                    "default|using|typedef|friend|delete|goto|sizeof|new)\\b)")
+                + kReturnType + s
                 + QStringLiteral("\\s*(?:\\[[^\\]]*\\])?\\s*[;={]"));
-                        // ANTS-4346 — a namespace. `find_definition` returned an empty
+            // ANTS-4346 — a namespace. `find_definition` returned an empty
             // `definitions[]` for one, which reads as "no such symbol" for a
             // thing that is plainly there. Tagged `namespace` by the kind
             // logic below so a caller can tell it from a function.
@@ -447,9 +408,7 @@ struct ScanState {
     QString stoppedAt;   // ANTS-5478 — root-relative file the cap stopped at
 
     // Anchors keyed by language ordinal; built once per call.
-    // Size == Lang enum cardinality
-    // (Auto,Cpp,Py,Lua,Sh,Generic — ANTS-2150; Glsl — ANTS-3558).
-    Anchors anchors[7];
+    Anchors anchors[kLangCount];
 
     // Definition buckets (definitions first, then declarations).
     bool collectDefs = false;
