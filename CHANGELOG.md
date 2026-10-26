@@ -296,6 +296,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query's release check reads a "Release note (…): no CHANGELOG entry" decision that wraps onto the next body line.** (ANTS-6284)
+
 - **changelog_query's release check counts an id on a wrapped bullet's second line as cited, the same ids its entries mode reports** (ANTS-6282)
 
 - **workspace_search says why a reply is partial: `truncated_reason` is timeout, output_cap, max_results or bytes, and a timeout carries a hint naming timeout_sec.** (ANTS-5323)

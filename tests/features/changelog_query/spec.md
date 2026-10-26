@@ -72,6 +72,10 @@ category.
 - **`ChangelogQueryLint.Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsClean`**
   — `version` moves the cited check to that section, and a tag whose section
   exists is no finding.
+- **`ChangelogQueryLint.Ants6284DecisionWrappedAcrossLinesIsRecorded`** — a
+  `Release note (…): no CHANGELOG entry` decision counts when line breaks
+  and indentation split it. The phrase without the `Release note (` form
+  does not count.
 - **`ChangelogQueryHandler.Ants5507ReleaseSinceMustBeADate`** — a malformed
   `since` refuses `bad_args`.
 

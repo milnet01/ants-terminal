@@ -484,6 +484,14 @@ QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
     return out;
 }
 
+bool recordsNoEntryDecision(const QString &body) {
+    // ANTS-6284 — the store renderer wraps a body, so fold each line break
+    // and its indentation to one space before matching.
+    const QString flat = body.simplified();
+    return flat.contains(QLatin1String("Release note (")) &&
+           flat.contains(QLatin1String("no CHANGELOG entry"));
+}
+
 QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &idPrefix,
                                        const QString &relPath, const QString &version,
                                        const ReleaseFacts &facts) {

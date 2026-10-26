@@ -67,8 +67,7 @@ std::optional<ChangelogQuery::ReleaseFacts> clReleaseFacts(
     for (const QString &id : std::as_const(facts.shippedSince)) {
         const auto pk = store->findItem(*pid, id, &err);
         const auto item = pk ? store->readItem(*pk, &err) : std::nullopt;
-        if (item && item->body.contains(QLatin1String("Release note (")) &&
-            item->body.contains(QLatin1String("no CHANGELOG entry")))
+        if (item && ChangelogQuery::recordsNoEntryDecision(item->body))
             facts.decided << id;
     }
 

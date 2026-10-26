@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6283 -->
+<!-- ants-roadmap-id-high-water: ANTS=6284 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88544,6 +88544,24 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The release check says some finished items are missing from the changelog when they are actually there, just on the second line of an entry.
   Kind: fix.
   Source: frameledger-feedback-2026-10-26.
+
+- ✅ [ANTS-6284] **changelog_query lint release:true misses a "No CHANGELOG entry" decision that wraps across a body line.**
+  frameledger's FLED-0007 body reads "...No CHANGELOG\n  entry: ..."; the
+  store renderer wraps at about 70 columns, and the decision match runs per
+  line, so lint reports shipped_not_cited. Repro: frameledger at 7b17b4c,
+  changelog_query mode:lint version:0.1.0 release:true since:2026-10-24.
+  Fix: fold line breaks and indentation to single spaces before matching.
+  Sibling of ANTS-6282.
+  2026-10-26: ChangelogQuery::recordsNoEntryDecision folds line breaks and
+  indentation before matching; clReleaseFacts calls it. The decision form
+  stays `Release note (…): no CHANGELOG entry` (ANTS-3533 § 2.2), so
+  FLED-0007's bare "No CHANGELOG entry:" still does not count; frameledger
+  told which form to write. Test:
+  ChangelogQueryLint.Ants6284DecisionWrappedAcrossLinesIsRecorded.
+  **Layman:** The release check should see a "no changelog entry" note even when the note runs onto a second line.
+  Kind: fix.
+  Source: frameledger-feedback-2026-10-26.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

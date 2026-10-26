@@ -91,6 +91,10 @@ struct ReleaseFacts {
     QString     latestTag;               // newest stable tag's X.Y.Z; "" when none
 };
 
+// True when a roadmap body records the `Release note (…): no CHANGELOG entry`
+// decision (ANTS-3533 § 2.2) — what fills ReleaseFacts::decided.
+bool recordsNoEntryDecision(const QString &body);
+
 // ANTS-5507 — release consistency, read-only, verb "changelog_query":
 //
 //   cited_not_shipped        a bullet in the checked section cites an id the

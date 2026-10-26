@@ -769,6 +769,20 @@ TEST(ChangelogQueryLint, Ants5507ReleaseChecksEachKind) {
     EXPECT_TRUE(fs.at(1).message.contains(QStringLiteral("not in the roadmap")));
 }
 
+// ANTS-6284 — the store renderer wraps a body at about 70 columns, so the
+// decision can break across lines with the next line indented.
+TEST(ChangelogQueryLint, Ants6284DecisionWrappedAcrossLinesIsRecorded) {
+    EXPECT_TRUE(ChangelogQuery::recordsNoEntryDecision(QStringLiteral(
+        "Release note (chore): no CHANGELOG entry.")));
+    EXPECT_TRUE(ChangelogQuery::recordsNoEntryDecision(QStringLiteral(
+        "text. Release note (chore): no CHANGELOG\n  entry, internal only.")));
+    EXPECT_TRUE(ChangelogQuery::recordsNoEntryDecision(QStringLiteral(
+        "text. Release\n  note (chore): no\n  CHANGELOG entry.")));
+    EXPECT_FALSE(ChangelogQuery::recordsNoEntryDecision(QStringLiteral(
+        "No CHANGELOG entry: this item is the release itself.")))
+        << "the decision is the Release note (…) form, not the phrase alone";
+}
+
 TEST(ChangelogQueryLint, Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsClean) {
     ChangelogQuery::ReleaseFacts f = releaseFacts();
     f.statusById.insert(QStringLiteral("ANTS-3"), QStringLiteral("in-progress"));
