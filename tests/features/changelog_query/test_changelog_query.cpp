@@ -719,7 +719,7 @@ const char kReleaseFixture[] =
     "- **Shipped and cited.** (ANTS-1)\n"
     "- **Still planned.** (ANTS-2)\n"
     "- **Not in the roadmap.** (ANTS-9)\n"
-    "  Continuation prose names ANTS-4, which does not cite it.\n"
+    "  wrapped onto a second line that cites ANTS-4.\n"
     "\n"
     "## [1.0.0] - 2026-01-01\n"
     "\n"
@@ -759,15 +759,13 @@ TEST(ChangelogQueryLint, Ants5507ReleaseChecksEachKind) {
     const QStringList want = {
         QStringLiteral("%1:cited_not_shipped").arg(releaseLineOf(QStringLiteral("- **Still planned.** (ANTS-2)"))),
         QStringLiteral("%1:cited_not_shipped").arg(releaseLineOf(QStringLiteral("- **Not in the roadmap.** (ANTS-9)"))),
-        // ANTS-4 only in continuation prose, ANTS-5 only in a fence: both
-        // uncited. ANTS-6 carries a recorded decision; ANTS-1 is cited.
-        QStringLiteral("0:shipped_not_cited"),
+        // ANTS-5 only in a fence: uncited. ANTS-4 on a continuation line is
+        // cited (ANTS-6282). ANTS-6 carries a recorded decision; ANTS-1 is cited.
         QStringLiteral("0:shipped_not_cited"),
         QStringLiteral("%1:tag_without_section").arg(releaseLineOf(QStringLiteral("## [Unreleased]"))),
     };
     EXPECT_EQ(want, lintShape(fs)) << lintShape(fs).join(QLatin1Char(' ')).toStdString();
-    EXPECT_TRUE(fs.at(2).message.startsWith(QStringLiteral("ANTS-4 ")));
-    EXPECT_TRUE(fs.at(3).message.startsWith(QStringLiteral("ANTS-5 ")));
+    EXPECT_TRUE(fs.at(2).message.startsWith(QStringLiteral("ANTS-5 ")));
     EXPECT_TRUE(fs.at(1).message.contains(QStringLiteral("not in the roadmap")));
 }
 

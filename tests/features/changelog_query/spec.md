@@ -66,7 +66,8 @@ category.
 
 - **`ChangelogQueryLint.Ants5507ReleaseChecksEachKind`** — a planned id and
   an id the roadmap lacks are `cited_not_shipped`; a shipped id named only in
-  continuation prose or a fence is `shipped_not_cited`; a decided id is not;
+  a fence is `shipped_not_cited`, but one on a bullet's continuation line is
+  cited (ANTS-6282); a decided id is not;
   a tag with no section is `tag_without_section`.
 - **`ChangelogQueryLint.Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsClean`**
   — `version` moves the cited check to that section, and a tag whose section

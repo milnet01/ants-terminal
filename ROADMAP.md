@@ -88531,12 +88531,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: frameledger session message 2026-10-24.
   Lanes: mcp.
 
-- 📋 [ANTS-6282] **changelog_query lint release:true reports shipped_not_cited for an id cited on a wrapped bullet's continuation line.**
+- ✅ [ANTS-6282] **changelog_query lint release:true reports shipped_not_cited for an id cited on a wrapped bullet's continuation line.**
   frameledger 0.1.0 (2026-10-26): 5 false findings (FLED-0001,
   0003-0006); each id sits on a continuation line. entries /
   headline_only mode parses the same ids into ids[]. Fix: take the
   release half's cited ids from that entry parse, body included.
   Test: a wrapped bullet citing its id on line 2 is not flagged.
+  Shipped 2026-10-26: releaseLint reads a bullet's indented continuation
+  lines (isContinuation, as parse() does). Spec ANTS-3533 § 2.2 amended,
+  no gate (no Goal/INV/test change). Test fixture's ANTS-4 line is now
+  the wrapped-citation case.
   **Layman:** The release check says some finished items are missing from the changelog when they are actually there, just on the second line of an entry.
   Kind: fix.
   Source: frameledger-feedback-2026-10-26.

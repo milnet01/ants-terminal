@@ -513,6 +513,7 @@ QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &i
     QSet<QString> cited, versions;
     int unreleasedLine = 0;
     QString section;
+    bool inBullet = false;  // ANTS-6282 — a bullet's indented lines cite too, as in parse()
     for (int i = 0; i < lines.size(); ++i) {
         const QString &l = lines.at(i);
         QString ver, date;
@@ -521,10 +522,18 @@ QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &i
             section = ver;
             versions.insert(ver);
             if (unreleased) unreleasedLine = i + 1;
+            inBullet = false;
             continue;
         }
         if (fence.at(i) || section.isEmpty()) continue;
-        if (!bullet.match(l).hasMatch() && !l.startsWith(QLatin1String("### "))) continue;
+        if (bullet.match(l).hasMatch()) {
+            inBullet = true;
+        } else if (l.startsWith(QLatin1String("### "))) {
+            inBullet = false;
+        } else {
+            inBullet = inBullet && isContinuation(l);
+            if (!inBullet) continue;
+        }
         for (const QString &id : extractIds(l, idPrefix)) {
             cited.insert(id);
             if (section != wanted) continue;
