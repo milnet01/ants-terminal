@@ -96,6 +96,16 @@ std::optional<RoadmapParse::IdFormat> parseIdFormat(const QJsonValue &v) {
 
 }  // namespace
 
+QStringList resolveRoots(const QString &rootCanonical,
+                         const std::optional<QStringList> &declared,
+                         const QString &fallback) {
+    if (!declared) return {fallback};
+    QStringList dirs;
+    for (const QString &r : *declared)
+        if (QDir(rootCanonical + QLatin1Char('/') + r).exists()) dirs << r;
+    return dirs.isEmpty() ? QStringList{fallback} : dirs;
+}
+
 Settings load(const QString &rootCanonical) {
     Settings s;
     if (rootCanonical.isEmpty()) return s;

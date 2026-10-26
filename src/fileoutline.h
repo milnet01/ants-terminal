@@ -105,6 +105,12 @@ bool isHtmlExt(const QString &ext);
 // same files, and a second list there is that drift with an extra step.
 bool isShExt(const QString &ext);
 
+// True for a C or C++ extension (lowercase, no dot): outlined by the C++ set.
+// True for a brace-family extension (Rust, Go, JS/TS, … — genericLangName).
+// Exported for the reason isShExt is.
+bool isCFamilyExt(const QString &ext);
+bool isGenericExt(const QString &ext);
+
 // True when `firstLine` is a shebang naming a shell interpreter.
 // ANTS-4826 — a script is routinely EXTENSIONLESS (a git hook, a launcher, a
 // CI gate), and those are the files a session most wants outlined. The

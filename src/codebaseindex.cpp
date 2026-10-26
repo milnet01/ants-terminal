@@ -26,33 +26,13 @@ namespace CodebaseIndex {
 // (ANTS-2161) so the project_settings layout detector counts source files
 // by the same rule — declared in codebaseindex.h.
 bool isIndexableSuffix(const QString &suffixLower) {
-    // ANTS-2148 — admit the full C/C++ family (incl. `.c`, `.cxx`, `.hxx`),
-    // not just C++-only extensions. A C-only project (DOOM: 65 `.c` files)
-    // was yielding file_count:0 because `.c` was absent here AND from
-    // FileOutline::pickModeByExt; both now map the C family to the C++
-    // outline regexes (C and C++ share enough surface syntax). Kept in
-    // step with SymbolQuery::langForExt so count → outline → symbol query
-    // cover the same files.
-    // ANTS-2150 — also admit the brace family (Rust/Go/JS/TS/Java/C#/Kotlin/
-    // Swift/Scala/PHP) + Ruby (`.rb`), kept in step with
-    // FileOutline::genericLangName + SymbolQuery::langForExt so
-    // count → outline → symbol query agree. (The candidates() walk still only
-    // descends src/ + tests/; a non-src layout is a separate follow-on.)
-    return suffixLower == QLatin1String("cpp") || suffixLower == QLatin1String("cc")
-        || suffixLower == QLatin1String("cxx") || suffixLower == QLatin1String("c")
-        || suffixLower == QLatin1String("h")   || suffixLower == QLatin1String("hpp")
-        || suffixLower == QLatin1String("hh")  || suffixLower == QLatin1String("hxx")
+    // The in-step rule: count → outline → symbol query cover the same files,
+    // kept in step with SymbolQuery::langForExt. Every family is delegated
+    // to FileOutline rather than re-listed. ANTS-2148 (the C family) and
+    // ANTS-2150 (the brace family) each once had to patch a copy here.
+    return FileOutline::isCFamilyExt(suffixLower)
         || suffixLower == QLatin1String("py")
-        || suffixLower == QLatin1String("rs")  || suffixLower == QLatin1String("go")
-        || suffixLower == QLatin1String("js")  || suffixLower == QLatin1String("jsx")
-        || suffixLower == QLatin1String("mjs") || suffixLower == QLatin1String("cjs")
-        || suffixLower == QLatin1String("ts")  || suffixLower == QLatin1String("tsx")
-        || suffixLower == QLatin1String("java")|| suffixLower == QLatin1String("cs")
-        || suffixLower == QLatin1String("kt")  || suffixLower == QLatin1String("kts")
-        || suffixLower == QLatin1String("swift")|| suffixLower == QLatin1String("scala")
-        || suffixLower == QLatin1String("sc")  || suffixLower == QLatin1String("php")
-        || suffixLower == QLatin1String("rb")
-        || suffixLower == QLatin1String("uc")   // ANTS-4902 — UnrealScript
+        || FileOutline::isGenericExt(suffixLower)
     // ANTS-4096 — GLSL / Vulkan shader stages. find_definition (ANTS-3558)
     // and file_outline (ANTS-3800) have both admitted them since; this gate
     // was the one left behind, so a shader-heavy project's hand-written
@@ -184,18 +164,12 @@ QStringList candidates(const QString &rootCanonical) {
     // nested declared roots (INV-9); for the disjoint src/tests default it is
     // a no-op, so absent-settings output is byte-identical (INV-1).
     const ProjectSettings::Settings s = ProjectSettings::load(rootCanonical);
-    const auto resolve = [&](const std::optional<QStringList> &declared,
-                             const QString &def) -> QStringList {
-        if (!declared) return {def};
-        QStringList dirs;
-        for (const QString &r : *declared)
-            if (QDir(rootCanonical + QLatin1Char('/') + r).exists()) dirs << r;
-        return dirs.isEmpty() ? QStringList{def} : dirs;   // all dropped → default
-    };
     QStringList out;
-    for (const QString &r : resolve(s.sourceRoots, QStringLiteral("src")))
+    for (const QString &r : ProjectSettings::resolveRoots(
+             rootCanonical, s.sourceRoots, QStringLiteral("src")))
         out += walkSubtree(rootCanonical, r);
-    for (const QString &r : resolve(s.testRoots, QStringLiteral("tests")))
+    for (const QString &r : ProjectSettings::resolveRoots(
+             rootCanonical, s.testRoots, QStringLiteral("tests")))
         out += walkSubtree(rootCanonical, r);
     out.removeDuplicates();
     return out;
@@ -214,7 +188,7 @@ FileEntry outlineFile(const QString &rootCanonical, const QString &rel,
 
     const QJsonObject ol = FileOutline::compute(
         abs, FileOutline::Mode::Auto, /*includeDocComment=*/false,
-        /*maxSymbols=*/1000);
+        FileOutline::kMaxSymbolsCap);
     fe.language = ol.value(QStringLiteral("language")).toString();
     fe.lines = ol.value(QStringLiteral("total_lines")).toInt();
     const QJsonArray syms = ol.value(QStringLiteral("symbols")).toArray();

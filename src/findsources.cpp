@@ -44,8 +44,8 @@ bool looksLikeRoadmapId(const QString &t) {
 
 QString toSnakeCase(const QString &t) {
     // CamelCase / camelCase / mixedCase → camel_case. Conservative —
-    // only injects an underscore between [a-z][A-Z] boundaries to avoid
-    // mangling all-caps acronyms (`MCPServer` → `mcp_server`).
+    // only injects an underscore at a [a-z][A-Z] boundary, so an all-caps
+    // run stays joined (`MCPServer` → `mcpserver`).
     QString out;
     out.reserve(t.size() + 4);
     for (int i = 0; i < t.size(); ++i) {
@@ -148,16 +148,10 @@ QVector<QString> collectCandidates(const QString &rootCanonical) {
     candidates.reserve(512);
     const ProjectSettings::Settings settings =
         ProjectSettings::load(rootCanonical);
-    const auto resolve = [&](const std::optional<QStringList> &declared,
-                             const QString &def) -> QStringList {
-        if (!declared) return {def};
-        QStringList dirs;
-        for (const QString &r : *declared)
-            if (QDir(rootCanonical + QLatin1Char('/') + r).exists()) dirs << r;
-        return dirs.isEmpty() ? QStringList{def} : dirs;   // all dropped → default
-    };
-    QStringList roots = resolve(settings.sourceRoots, QStringLiteral("src"));
-    roots += resolve(settings.testRoots, QStringLiteral("tests"));
+    QStringList roots = ProjectSettings::resolveRoots(
+        rootCanonical, settings.sourceRoots, QStringLiteral("src"));
+    roots += ProjectSettings::resolveRoots(
+        rootCanonical, settings.testRoots, QStringLiteral("tests"));
     roots.removeDuplicates();
 
     for (const QString &subdir : roots) {
@@ -280,7 +274,7 @@ Result findSources(const QString &topic,
         needlesPerToken.append(needles);
     }
 
-    // Walk src/ + tests/ — find_sources is for source code.
+    // Walk the declared roots — find_sources is for source code.
     QVector<QString> candidates = collectCandidates(rootCanonical);
     // ANTS-5103 — a bounded scan: the first maxFiles candidates (sorted),
     // with walkCapped saying the rest were left out.

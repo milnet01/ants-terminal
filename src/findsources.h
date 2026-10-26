@@ -4,9 +4,9 @@
 // topic; returns a ranked file list with role/evidence per entry.
 //
 // Design constraints:
-//   - O(files) walk over <root>/src/ + <root>/tests/. No recursion
-//     outside those two prefixes — find_sources is for source code,
-//     not docs/, packaging/, etc.
+//   - O(files) walk over the declared source_roots + test_roots
+//     (default src/ + tests/) — find_sources is for source code, not
+//     docs/, packaging/, etc.
 //   - Per-file content scan capped to a small byte budget so the tool
 //     stays cheap on large source files (the goal is "where might
 //     this be", not "exhaustive grep").
@@ -51,7 +51,7 @@ struct Options {
 // Tokenise a free-text topic into search tokens. Splits on whitespace
 // / punctuation; drops tokens shorter than 3 chars; drops `ANTS-NNNN`
 // roadmap IDs (they shouldn't be searched literally). Exposed for the
-// tests; the resolveTopic() pipeline calls it internally.
+// tests; findSources() calls it internally.
 QStringList tokenise(const QString &topic);
 
 // Expand a single token into all its likely casing/separator variants
@@ -68,15 +68,15 @@ Result findSources(const QString &topic,
                    const Options &opts = {});
 
 // ANTS-3444a — pre-warm the OS page cache for the find_sources candidate
-// set. Walks the SAME src/+tests/ tree as findSources() and reads each
+// set. Walks the SAME candidate set as findSources() and reads each
 // candidate's first contentByteCap bytes into a throwaway buffer, pulling
 // those pages into the OS cache so the session's first findSources() call
 // reads warm instead of paying the ~50 s cold-disk cliff after a relaunch
 // (52 s measured 2026-07-04). Reads only — no in-process cache, one reused
 // buffer, so the page cache is the sole residency (OS-managed +
 // self-evicting; zero process-heap budget). Returns the number of
-// candidate files touched (== findSources().filesScanned for the same
-// root); 0 for a bad/rootless tree. Touches no shared state, so it is
+// candidate files touched (findSources() scans at most maxFiles of
+// them); 0 for a bad/rootless tree. Touches no shared state, so it is
 // safe to run off the request thread.
 int prewarm(const QString &projectRoot);
 

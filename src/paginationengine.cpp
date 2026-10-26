@@ -10,10 +10,9 @@ namespace PaginationEngine {
 
 namespace {
 
-// Measure-then-cut binary search: find the largest n such that
-// serializing filtered.mid(0, n) fits under `budget` bytes. Returns
-// 0 if even one bullet exceeds the budget (caller emits an empty
-// slice with next_offset:0).
+// Find the largest n such that serializing filtered.mid(0, n) fits under
+// `budget` bytes, in one linear pass. Returns 0 if even one bullet exceeds
+// the budget; every caller then keeps one row anyway (ANTS-5103).
 int measureCutPoint(const QJsonArray &filtered, int budget) {
     if (filtered.isEmpty()) return 0;
     // ANTS-2200 — serialize each element exactly once, then accumulate. The old

@@ -24,8 +24,8 @@ using RowProjector = std::function<void(QJsonArray &)>;
 constexpr int kSoftCapBytes = 20480;
 
 // Envelope wrapper overhead — ok/path/count/filter/section/format
-// fields + the ANTS-1294 <ants_mcp_data> framing. Conservative
-// enough that bullets[] always has 20 KB of its own budget.
+// fields + the ANTS-1294 <ants_mcp_data> framing. bullets[] gets
+// softCapBytes() minus this.
 constexpr int kEnvelopeOverheadBytes = 512;
 
 // ANTS-5571 — room left under the offload threshold for the envelope keys a
@@ -56,7 +56,7 @@ struct PageResult {
 };
 
 // Slice `filtered` per `offset` + `limit`, applying auto-truncate
-// (measure-then-cut binary search) when `limit < 0` (sentinel meaning
+// (measure-then-cut) when `limit < 0` (sentinel meaning
 // "caller omitted limit; auto-pick"). Returns a PageResult ready to
 // fold into the cmdRoadmapQuery envelope.
 //

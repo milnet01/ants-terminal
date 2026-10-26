@@ -336,8 +336,8 @@ const QRegularExpression &rxCppTypeOnly() {
 // ANTS-2159 — net `{` minus `}` on a line, ignoring braces inside string /
 // char literals, line comments, and block comments, so the scope counter
 // doesn't drift on `"{"` or `// {`. `inBlock` carries block-comment state
-// across lines. A heuristic (raw-string literals are not special-cased —
-// rare in a declaration region); good enough to keep the depth honest.
+// across lines. A heuristic: a raw string is skipped only when it closes on
+// the line it opens, so one spanning lines is not tracked.
 // ANTS-3735 — `lastCodeIdxOut` optionally reports the index of the line's
 // last non-space CODE character (comments excluded), which is what the
 // declaration-vs-definition terminator test needs.
@@ -624,20 +624,24 @@ QString genericLangName(const QString &ext) {
     return QString();
 }
 
+}  // namespace
+
 bool isGenericExt(const QString &ext) { return !genericLangName(ext).isEmpty(); }
+
+// ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++ regex
+// set (shared surface syntax).
+bool isCFamilyExt(const QString &ext) {
+    return ext == QLatin1String("cpp") || ext == QLatin1String("cc")
+        || ext == QLatin1String("cxx") || ext == QLatin1String("c")
+        || ext == QLatin1String("h")   || ext == QLatin1String("hpp")
+        || ext == QLatin1String("hh")  || ext == QLatin1String("hxx");
+}
+
+namespace {
 
 Mode pickModeByExt(const QString &absPath) {
     const QString ext = QFileInfo(absPath).suffix().toLower();
-    // ANTS-2148 — the C family (`.c`, `.hxx`) outlines fine with the C++
-    // regex set (shared surface syntax); admitting it here keeps
-    // codebase_index (isIndexableSuffix) able to extract symbols from a
-    // C-only project instead of returning an empty map.
-    if (ext == QLatin1String("cpp") || ext == QLatin1String("cc")  ||
-        ext == QLatin1String("cxx") || ext == QLatin1String("c")   ||
-        ext == QLatin1String("h")   || ext == QLatin1String("hpp") ||
-        ext == QLatin1String("hh")  || ext == QLatin1String("hxx")) {
-        return Mode::Cpp;
-    }
+    if (isCFamilyExt(ext)) return Mode::Cpp;
     if (ext == QLatin1String("py"))  return Mode::Py;
     if (ext == QLatin1String("md")   || ext == QLatin1String("markdown") ||
         ext == QLatin1String("txt")) return Mode::Md;

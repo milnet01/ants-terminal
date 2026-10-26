@@ -227,11 +227,11 @@ namespace {
 
 SymRange resolveSymbol(const QString &absPath, const QString &name) {
     SymRange r;
-    // maxSymbols is hard-clamped to kMaxSymbolsCap (1000) inside compute;
-    // pass a high value so resolution sees all of them up to that cap.
+    // Ask for the cap so resolution sees every symbol compute will return.
     const QJsonObject outline =
         FileOutline::compute(absPath, FileOutline::Mode::Auto,
-                             /*includeDocComment=*/false, /*maxSymbols=*/1000);
+                             /*includeDocComment=*/false,
+                             FileOutline::kMaxSymbolsCap);
     const QJsonArray syms = outline.value(QStringLiteral("symbols")).toArray();
     int firstIdx = -1;
     int defIdx   = -1;  // ANTS-3349 — first match that is a definition

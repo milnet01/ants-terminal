@@ -55,6 +55,13 @@ struct Settings {
 // consumer.
 Settings load(const QString &rootCanonical);
 
+// The folders a walk descends for one roots key: the declared entries that
+// exist as directories under `rootCanonical`, else `{fallback}` (key absent,
+// or every entry dropped). Shared by codebase_index and find_sources.
+QStringList resolveRoots(const QString &rootCanonical,
+                         const std::optional<QStringList> &declared,
+                         const QString &fallback);
+
 // ANTS-3771 — the SINGLE load of a project's declared id format
 // (docs/specs/ANTS-3771-id-format-declaration.md § 2.2, user decision
 // 2026-08-21). Every project-scoped roadmap read calls this and passes the

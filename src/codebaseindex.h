@@ -1,7 +1,7 @@
 // ANTS-1637 — codebase_index MCP tool: a pre-computed project structural map.
 // Pure helper (Qt6::Core-only, FS-reading, no widgets / no subprocess —
 // mirrors findsources.h). Builds {symbols-per-file, lane→files} by walking
-// <root>/src + <root>/tests and reusing FileOutline + SubsystemMap, caches the
+// the declared source_roots + test_roots (default src/ + tests/) and reusing FileOutline + SubsystemMap, caches the
 // result to ~/.cache/ants-terminal/codebase-index/<hash>.json, and serves
 // symbol / lane / file_path / summary queries so a session stops re-deriving
 // the project shape with grep / file_outline / CLAUDE.md reads.
@@ -30,12 +30,12 @@ constexpr int    kMaxLaneDigestFiles = 400;           // ANTS-3468 lane-digest g
 struct Symbol {
     QString name;   // qualified as FileOutline emits, e.g. "TestAuditEngine::foldIn"
     int     line = 0;
-    QString kind;   // FileOutline's kind verbatim: "func" | "class" | "qt"
+    QString kind;   // FileOutline's kind verbatim; FileOutline owns the vocabulary
 };
 
 struct FileEntry {
     QString         path;       // project-relative ("src/testauditengine.cpp")
-    QString         language;   // "cpp" | "py" in v1
+    QString         language;   // FileOutline's `language` verbatim
     QString         role;       // "impl" | "header" | "test"
     QString         lane;       // "" when no lane resolves
     int             lines = 0;
@@ -91,7 +91,7 @@ bool isIndexableSuffix(const QString &suffixLower);
 // present, else CLAUDE.md) for `rootCanonical`; 0 if neither exists.
 qint64 mapSourceMtimeMs(const QString &rootCanonical);
 
-// Cold build over <root>/src + <root>/tests (indexed-suffix set), one
+// Cold build over the declared source + test roots (indexed-suffix set), one
 // FileOutline pass per file, lane assignment + laneToFiles inversion. Stops
 // at maxIndexFiles or maxCacheBytes (filesTruncated). generatedAtMs injected.
 Index build(const QString &rootCanonical, qint64 generatedAtMs,
