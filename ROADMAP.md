@@ -95816,6 +95816,19 @@ worked after these.
   argument matcher. Outlining all of src/ with the old and new
   ants-mcpd: 5 symbols gained, none lost, each a real wrapped
   declaration. Closes ANTS-5994. Mediums and lows remain.
+  2026-10-26, part 1 (0c903b37): MEDIUM F5 (shared resolveRoots), F6,
+  F7, F13, F15-F18 done. Queued: F2 onto ANTS-5992, F3 onto ANTS-5991,
+  F4 onto ANTS-5996, F5's codewalk half onto ANTS-5997. F10-F12, F14
+  (compute's split) next.
+  2026-10-26, part 2: F10 compute is split into one scanner per mode
+  (CppScanner, PyScanner, MdScanner, HtmlScanner, scanShLine,
+  scanGenericLine), each owning its state; HeaderDocCollector,
+  SymbolSink, offerBinding (four copies folded) and addExtents. compute
+  is about 150 lines. F11 trimmed → withoutEol; F12 the match-order
+  comment lists the real chain; F14 the Markdown header_doc comment says
+  what the code does. Every tracked file outlined with the old and new
+  ants-mcpd (both doc modes, sizes on): 0 differences. No MEDIUM left;
+  the LOWs remain.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -99538,6 +99551,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-26: also readability L30-F3 (ANTS-6139): share one
+  literal-aware brace scanner between this and FileOutline's
+  netBraceDelta; function_sizes measures with this one.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99550,6 +99566,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-26: also readability L30-F2 (ANTS-6139): fix by one
+  brace-family line matcher shared by the Generic arm and the <script>
+  arm, so the typed-function rule and the kind mapping reach both.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99603,6 +99622,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-26: also readability L30-F4 (ANTS-6139): roleFor,
+  FindSources::classifyRole and CodeWalk::isTestPath disagree
+  (tests/foo.h is header vs test); fix with one classifier in codewalk.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -99615,6 +99637,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: PARTLY — `sed codewalk.cpp 112-145`: empty paths uses sourceRoots (else src/.); a nonexistent entry refuses at :140 "does not exist"; sibling walkers' behaviour not checked
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-26: also readability L30-F5 (ANTS-6139): codebase_index and
+  find_sources now share ProjectSettings::resolveRoots;
+  CodeWalk::collect should call it too, and the four walk-exclusion sets
+  should become one.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

@@ -702,6 +702,582 @@ QJsonObject errObj(const char *code, const QString &message) {
     return o;
 }
 
+// Collects symbols up to `maxSymbols`. `seen` counts every match, kept or
+// not, so `truncated` and `symbols_dropped` are exact (INV-5).
+struct SymbolSink {
+    QJsonArray symbols;
+    int  maxSymbols = 0;
+    int  seen = 0;
+    bool truncated = false;
+
+    // A multi-line header passes its START line (where the name sits), not
+    // the closing-paren line, so read_region symbol-mode returns the whole
+    // definition (ANTS-2148 follow-up).
+    void offer(int line, const char *kind, const QString &name,
+               const QString &signature) {
+        ++seen;
+        if (symbols.size() >= maxSymbols) {
+            truncated = true;
+            return;
+        }
+        appendSymbol(symbols, line, kind, name, signature);
+    }
+};
+
+// A binding's `const` symbol. Its own kind, so a caller can tell a data
+// binding from a function, and a signature that stops at the `=`: the value
+// may be a 95-line template literal, a 40-line dict or a heredoc opener that
+// would otherwise ride along in every outline response (ANTS-4090).
+// `m` captures the name in group 1 and ends at the `=`.
+void offerBinding(SymbolSink &out, int lineNo, const QString &line,
+                  const QRegularExpressionMatch &m) {
+    out.offer(lineNo, "const", m.captured(1),
+              line.left(m.capturedEnd(0)).trimmed() + QStringLiteral(" …"));
+}
+
+// header_doc: the file's leading comment block (ANTS-1249-INV-6, INV-9).
+struct HeaderDocCollector {
+    bool    active = false;
+    Mode    mode = Mode::Auto;
+    QString marker;          // headerCommentMarker(mode)
+    QString doc;
+    int     linesEmitted = 0;
+
+    void feed(const QString &line) {
+        const QString stripped = line.trimmed();
+        bool isComment = false;
+        if (mode == Mode::Md) {
+            // Markdown: the first line when it is prose (not blank, not a
+            // heading), then each following line that opens an HTML
+            // comment. Anything else ends the block, a blank first line
+            // included, so a prose lead is one line long.
+            isComment = stripped.startsWith(QStringLiteral("<!--")) ||
+                        (linesEmitted == 0 && !stripped.isEmpty() &&
+                         !stripped.startsWith(QLatin1Char('#')));
+            if (!isComment) active = false;
+        } else if (stripped.isEmpty() && linesEmitted == 0) {
+            // Leading blank line — keep scanning.
+        } else if (!marker.isEmpty() && stripped.startsWith(marker)) {
+            isComment = true;
+        } else {
+            active = false;
+        }
+        if (isComment && linesEmitted < kHeaderDocMaxLines) {
+            if (!doc.isEmpty()) doc.append(QLatin1Char('\n'));
+            doc.append(line);
+            ++linesEmitted;
+            if (doc.toUtf8().size() > kHeaderDocByteCap) {
+                // ANTS-1249-INV-9: 2 KiB header_doc cap.
+                doc.truncate(kHeaderDocByteCap);
+                doc.append(QChar(0x2026));  // …
+                active = false;
+            }
+        }
+        if (linesEmitted >= kHeaderDocMaxLines) active = false;
+    }
+};
+
+// ANTS-3399 — the qualified member name (`Class::method`, possibly
+// `NS::Class::method`) is the last whitespace-delimited token before '('.
+// The old heuristic stripped the return type by locating the space before the
+// FIRST `::`, which landed INSIDE a namespace-qualified return type
+// (`JPH::BodyID Class::method`) — no space precedes that `::`, so the return
+// type stayed glued onto the name and broke read_region symbol-mode lookups
+// (Vestige feedback, 2/2 hits). rxCppMember's return type may now be multiple
+// tokens (ANTS-3433, `unsigned int Class::method`), but the qualified name is
+// still the run after the LAST whitespace, so the extraction is unchanged.
+QString qualifiedMemberName(const QString &line) {
+    const int lparen = line.indexOf(QLatin1Char('('));
+    QString name = (lparen > 0) ? line.left(lparen).trimmed() : line;
+    int lastWs = -1;
+    for (int i = name.size() - 1; i >= 0; --i) {
+        if (name.at(i).isSpace()) { lastWs = i; break; }
+    }
+    if (lastWs >= 0) name = name.mid(lastWs + 1);
+    // ANTS-3433 — a `T &Class::method` / `T *Class::method` form glues the
+    // ref/ptr onto the name token; strip it so the emitted symbol is the bare
+    // `Class::method` read_region wants.
+    while (!name.isEmpty() && (name.at(0) == QLatin1Char('&') ||
+                              name.at(0) == QLatin1Char('*'))) {
+        name = name.mid(1);
+    }
+    return name;
+}
+
+// C++, and GLSL with it. ANTS-3800 — GLSL rides the Cpp extractor rather than
+// getting a lane of its own: shader declarations ARE C declarations in shape,
+// and a parallel regex set would drift from this one silently.
+//
+// ANTS-2159 — scope tracking: a function/member symbol is emitted only at file
+// or type-body scope, never inside a code body (so a most-vexing-parse local
+// or a `case X: return f();` statement is not mistaken for a function); and a
+// definition whose return type and/or `{` sit on adjacent lines is still
+// found.
+struct CppScanner {
+    int  braceDepth = 0;            // literal/comment-aware net brace depth
+    int  funcOpenAtDepth = -1;      // depth a function body opened at; -1 = file/type scope
+    bool funcBodyEntered = false;   // the body's opening '{' has been seen
+    bool inBlockComment = false;    // block-comment carry for netBraceDelta
+    QString pendingType;            // prior file-scope line that was a bare return type
+    // ANTS-2148 follow-up — wrapped-parameter-list collector state. When a
+    // function header opens '(' without closing it on the same line, collect
+    // continuation lines until the parens balance, then emit at the header's
+    // start line so read_region symbol-mode resolves the whole definition.
+    bool    inFuncArgs = false;
+    int     funcArgParenDepth = 0;  // running '(' - ')' across the wrapped header
+    int     funcArgStartLine = 0;   // 1-based line where the name sits
+    QString funcArgName;            // captured function name
+    QString funcArgSig;             // accumulated header text → signature
+    // ANTS-2228 — typedef-struct capture. A `typedef struct TAG { … } ALIAS;`
+    // opens here and emits at its START line when the brace balances back,
+    // keyed by BOTH the tag and the alias so read_region symbol-mode (and
+    // ANTS-2222's aggregate-body slice) resolve either.
+    struct PendingTypedef { int startLine{}; QString tag; int depthAtOpen{}; };
+    QVector<PendingTypedef> pendingTypedefs;
+
+    void scan(const QString &line, int lineNo, SymbolSink &out) {
+        // ANTS-2148 follow-up — one literal/comment-aware pass yields both the
+        // brace delta (scope tracking) and the paren delta (the wrapped-
+        // parameter-list collector), so inBlockComment toggles exactly once
+        // per line.
+        int parenDelta  = 0;
+        int lastCodeIdx = -1;
+        const int braceDelta =
+            netBraceDelta(line, inBlockComment, &parenDelta, &lastCodeIdx);
+        // ANTS-3735 — the declaration/definition discriminator. A trailing
+        // comment must not hide the ';': `extern "C" int f(char* c);  // n`
+        // is a DECLARATION, but `line.trimmed().endsWith(';')` reads it as a
+        // definition whose body opens later. The scanner then adopted the
+        // next `{` it met — an anonymous `namespace {` 12 lines down in
+        // DOOM's r_vulkan.cpp — as that function's body and suppressed every
+        // func symbol for the 5,742 lines until the namespace closed.
+        const bool endsWithSemicolon =
+            lastCodeIdx >= 0 && line.at(lastCodeIdx) == QLatin1Char(';');
+        // ANTS-3738 — the same `lastCodeIdx`, reused as a comment-stripped
+        // view for MATCHING. The three function anchors all end-anchor, so
+        // a trailing comment sat in the way of every one of them:
+        // rxCppFuncOpen anchors `\s*$`, rxCppFunc needs `[{;]` right after
+        // the qualifier run, and rxCppFuncHeaderOpen needs `\([^)]*$` — so
+        // `void CreateInstance()   // set up` matched NONE and the symbol
+        // vanished. Same family as ANTS-3735 (raw-line matching against a
+        // comment-aware brace scan), one site further on.
+        //
+        // Deliberately used for matching ONLY. `offer()` is still handed
+        // the raw `line`, because `signature` carries the source text
+        // including its trailing comment and changing that is an
+        // output-shape decision, not a side effect of this fix. The
+        // ANTS-3738 test asserts both halves.
+        const QString codeLine =
+            lastCodeIdx >= 0 ? line.left(lastCodeIdx + 1) : QString();
+
+        const bool opensBody = matchLine(line, codeLine, lineNo, parenDelta,
+                                         endsWithSemicolon, out);
+        trackScope(line, braceDelta, opensBody);
+        closeTypedefs(line, out);
+    }
+
+    // The match chain. First hit wins, so order decides the result:
+    // a wrapped header's continuation, typedef-struct, type/namespace,
+    // qualified member-def, gtest, ctor/dtor, single-line func, func whose
+    // `{` is on the next line, old-style (return type on the prior line),
+    // a wrapped header's first line, Qt marker, bare type (recorded as a
+    // pending return type for the next line). The func arms are suppressed
+    // inside a code body (funcOpenAtDepth >= 0). Returns whether the line is
+    // a definition whose body opens, now or on a later '{'.
+    bool matchLine(const QString &line, const QString &codeLine, int lineNo,
+                   int parenDelta, bool endsWithSemicolon, SymbolSink &out) {
+        const bool inFuncBody = (funcOpenAtDepth >= 0);
+        const QString prevPendingType = pendingType;
+        pendingType.clear();
+        QRegularExpressionMatch m;
+
+        if (inFuncArgs) {
+            // Folding continuation lines of a wrapped parameter list into the
+            // signature until the parens balance; then emit at the header's
+            // start line.
+            if (!funcArgSig.isEmpty()) funcArgSig += QLatin1Char(' ');
+            funcArgSig += line.trimmed();
+            funcArgParenDepth += parenDelta;
+            if (funcArgParenDepth > 0) return false;
+            out.offer(funcArgStartLine, "func", funcArgName,
+                      funcArgSig.simplified());
+            inFuncArgs = false;
+            funcArgSig.clear();
+            return !endsWithSemicolon;
+        }
+        if ((m = rxCppTypedefStructOpen().match(line)).hasMatch()) {
+            // ANTS-2228 — `typedef struct [TAG] {`. Record the opening; the
+            // symbol(s) emit at the matching close line (where the alias
+            // lives). `braceDepth` here is the pre-delta scope depth this
+            // struct body sits above.
+            pendingTypedefs.append({lineNo, m.captured(1), braceDepth});
+            return false;
+        }
+        if ((m = rxCppType().match(line)).hasMatch()) {
+            // ANTS-4101 — a namespace is not a class. Games Hub reported a
+            // caller filtering on `kind` ("show me the classes in this file")
+            // getting the enclosing namespace back as one of them. rxCppType
+            // already captures the keyword, so the accurate kind costs
+            // nothing. read_region's aggregate test keys off kind=="class" AND
+            // the signature keyword, so a namespace still resolves to its
+            // declaration only, exactly as before.
+            out.offer(lineNo,
+                      m.captured(1) == QLatin1String("namespace") ? "namespace"
+                                                                  : "class",
+                      m.captured(2), line);   // type/namespace body — never code
+            return false;
+        }
+        if (!inFuncBody && rxCppMember().match(line).hasMatch()) {
+            out.offer(lineNo, "func", qualifiedMemberName(line), line);
+            return !endsWithSemicolon;
+        }
+        if (!inFuncBody && (m = rxCppGtest().match(codeLine)).hasMatch()) {
+            // ANTS-5019 — named Suite.Case, as gtest itself names it, and
+            // marked as opening a body so the locals inside stay inside.
+            out.offer(lineNo, "func",
+                      m.captured(1) + QLatin1Char('.') + m.captured(2), line);
+            return true;
+        }
+        if (!inFuncBody && rxCppCtorDtor().match(codeLine).hasMatch()) {
+            // ANTS-5021 — `Class::Class(` / `Class::~Class(`, emitted by its
+            // qualified name so read_region resolves `~Class` too.
+            const int lparen = line.indexOf(QLatin1Char('('));
+            out.offer(lineNo, "func", line.left(lparen).trimmed(), line);
+            return !endsWithSemicolon;
+        }
+        if (!inFuncBody && (m = rxCppFunc().match(codeLine)).hasMatch()) {
+            out.offer(lineNo, "func", m.captured(2), line);
+            return !endsWithSemicolon;
+        }
+        if (!inFuncBody && (m = rxCppFuncOpen().match(codeLine)).hasMatch()) {
+            out.offer(lineNo, "func", m.captured(2), line);   // body '{' next line
+            return true;
+        }
+        if (!inFuncBody && !prevPendingType.isEmpty()
+            && (m = rxCppNameArgs().match(line)).hasMatch()) {
+            out.offer(lineNo, "func", m.captured(1), line);   // old-style
+            return true;
+        }
+        if (!inFuncBody
+            && (m = rxCppFuncHeaderOpen().match(codeLine)).hasMatch()) {
+            // ANTS-2148 follow-up — `ReturnType name(` opens a parameter list
+            // that does not close on this line. Start collecting; the closing
+            // line emits the symbol at funcArgStartLine.
+            funcArgName       = m.captured(2);
+            funcArgStartLine  = lineNo;
+            funcArgSig        = line.trimmed();
+            funcArgParenDepth = parenDelta;   // >= 1 by construction
+            inFuncArgs        = true;
+            return false;
+        }
+        if ((m = rxCppQt().match(line)).hasMatch()) {
+            out.offer(lineNo, "qt", m.captured(1), line);
+            return false;
+        }
+        if (!inFuncBody && rxCppTypeOnly().match(line).hasMatch())
+            pendingType = line;               // candidate return type for the next line
+        return false;
+    }
+
+    // Brace-scope bookkeeping (runs every line). A definition that opens a
+    // body records funcOpenAtDepth; the interior stays suppressed until the
+    // matching '}' returns the depth to it.
+    void trackScope(const QString &line, int braceDelta, bool opensBody) {
+        const int before = braceDepth;
+        braceDepth += braceDelta;
+        if (opensBody && funcOpenAtDepth < 0) {
+            if (braceDepth > before) {                   // body opened on this line
+                funcOpenAtDepth = before;
+                funcBodyEntered = true;
+            } else if (!line.contains(QLatin1Char('{'))) {  // await '{' on a later line
+                funcOpenAtDepth = before;
+                funcBodyEntered = false;
+            }
+            // else: single-line body ('{' opened and closed) → stay at file scope
+        } else if (funcOpenAtDepth >= 0) {
+            if (braceDepth > funcOpenAtDepth) funcBodyEntered = true;
+            if (funcBodyEntered && braceDepth <= funcOpenAtDepth) {
+                funcOpenAtDepth = -1;
+                funcBodyEntered = false;
+            }
+        }
+    }
+
+    // ANTS-2228 — close pending typedef-struct(s) whose brace balanced back on
+    // this line. Emit at the recorded start line, keyed by the alias (from
+    // `} ALIAS;`) and, when distinct, the tag. The signature begins "struct"
+    // so resolveSymbol's aggregate-body path (ANTS-2222) reads the FULL body
+    // via brace-match.
+    void closeTypedefs(const QString &line, SymbolSink &out) {
+        while (!pendingTypedefs.isEmpty() &&
+               braceDepth <= pendingTypedefs.last().depthAtOpen) {
+            const PendingTypedef pt = pendingTypedefs.takeLast();
+            const QRegularExpressionMatch cm =
+                rxCppTypedefStructClose().match(line);
+            const QString alias = cm.hasMatch() ? cm.captured(1) : QString();
+            const QString sig = pt.tag.isEmpty()
+                ? QStringLiteral("struct")
+                : (QStringLiteral("struct ") + pt.tag);
+            if (!alias.isEmpty())
+                out.offer(pt.startLine, "class", alias, sig);
+            if (!pt.tag.isEmpty() && pt.tag != alias)
+                out.offer(pt.startLine, "class", pt.tag, sig);
+        }
+    }
+};
+
+// ANTS-3404 — Python class-method qualification. Enclosing classes are
+// tracked by indentation so an indented `def` is emitted as `Class.method`
+// (read_region symbol-mode can then address it); a top-level def/class stays
+// bare.
+struct PyScanner {
+    // Each entry = (indent width, dotted class-name prefix so far). Nested
+    // classes chain (`Outer.Inner`).
+    QVector<QPair<int, QString>> classStack;
+
+    void scan(const QString &line, int lineNo, SymbolSink &out) {
+        QRegularExpressionMatch m = rxPy().match(line);
+        if (m.hasMatch()) {
+            const int indent      = m.captured(1).size();
+            const QString keyword = m.captured(3);
+            const QString name    = m.captured(4);
+            // Dedent: drop any enclosing class we've left. A sibling/outer def
+            // or class at ≤ the class's indent is no longer inside it.
+            while (!classStack.isEmpty() && classStack.last().first >= indent)
+                classStack.removeLast();
+            const QString prefix = classStack.isEmpty()
+                ? QString()
+                : classStack.last().second + QLatin1Char('.');
+            const QString qualified = prefix + name;
+            if (keyword == QLatin1String("class")) {
+                out.offer(lineNo, "class", qualified, line);
+                // A method (def at deeper indent) belongs to this class.
+                classStack.append(qMakePair(indent, qualified));
+            } else {
+                out.offer(lineNo, "func", qualified, line);
+            }
+            return;
+        }
+        // ANTS-4379 — a module-level constant. Only at column 0, and only
+        // outside any class body still on the stack (a top-level assignment
+        // after a class has ended is a constant; one inside it is a class
+        // attribute).
+        const QRegularExpressionMatch cm = rxPyConst().match(line);
+        if (cm.hasMatch()) {
+            classStack.clear();   // column 0 ⟹ outside every class
+            offerBinding(out, lineNo, line, cm);
+        }
+    }
+};
+
+// Markdown headings.
+struct MdScanner {
+    int maxHeadingLevel = 0;               // ANTS-4396; 0 = no filter
+    QHash<int, int> *levelByLine = nullptr;  // heading depth per line, for sizes
+    // ANTS-4722 — fence state. Null when outside a fenced block, else the
+    // fence character (backtick or tilde) that opened the one we are in.
+    QChar fenceChar;
+    int   fenceRun = 0;  // ANTS-4820 — the open fence's run length
+
+    void scan(const QString &line, int lineNo, SymbolSink &out) {
+        // ANTS-4520 — a heading inside a blockquote is a heading. A plan
+        // file whose run-state blocks are `> ## You are here` /
+        // `> ## Previously` outlined to the plain headings only, so the
+        // blocks a session is told to read FIRST were invisible in the one
+        // call meant to answer "what is in this file?". The `>` does not
+        // change the depth, so the ANTS-4396 filter treats it as a `##`.
+        //
+        // ANTS-4722 — fenced code is not document structure. Without this
+        // guard a `# src/pkg/mod.py` label at column 0 inside a ```python
+        // block is emitted as a level-1 heading, and the SIZING is the
+        // damage rather than the phantom row: sizes:true scopes a
+        // heading's extent to the next same-or-higher heading, so a
+        // level-1 phantom in a document whose real sections are `##`
+        // absorbs everything below it to EOF and every real section reads
+        // as its child, with its own size wrong. max_heading_level is no
+        // escape — the phantom is level 1, and any real filter keeps
+        // level 1. Labelling a fenced source listing with a path comment
+        // is an ordinary shape in a technical spec, not an edge case.
+        //
+        // Measured against the blockquote strip, like the heading match
+        // below, so a fenced block quoted inside a `>` is tracked too.
+        const QString mdLine = MarkdownScan::stripBlockquote(line);
+        int openerRun = 0;
+        const QChar opener = MarkdownScan::fenceOpenerChar(mdLine, 3, &openerRun);
+        if (!fenceChar.isNull()) {
+            // Inside a fence. CommonMark § 4.5 closes one on a line opening
+            // with the same fence character in a run AT LEAST AS LONG as the
+            // opener; either way nothing in here is a heading, the closing
+            // line included.
+            // ANTS-4820 — the length half was missing, and the comment above
+            // used to state the rule without it, so a ``` line ended a ````
+            // block and its sample headings became real.
+            if (MarkdownScan::fenceCloses(mdLine, fenceChar, fenceRun)) {
+                fenceChar = QChar();
+                fenceRun  = 0;
+            }
+            return;
+        }
+        if (!opener.isNull()) {
+            fenceChar = opener;
+            fenceRun  = openerRun;
+            return;
+        }
+        const QRegularExpressionMatch m = rxMdHeading().match(mdLine);
+        if (!m.hasMatch()) return;
+        const int level = m.captured(1).size();
+        if (levelByLine) levelByLine->insert(lineNo, level);
+        // ANTS-4396 — the depth filter. Applied at OFFER time rather than as
+        // a post-pass, so a filtered outline is not silently competing with
+        // maxSymbols for the same budget: dropping the `###` noise must free
+        // room for the `##` headings further down the file, which is the
+        // whole point on an append-only log.
+        if (maxHeadingLevel <= 0 || level <= maxHeadingLevel)
+            out.offer(lineNo, "heading", m.captured(2), line);
+    }
+};
+
+// ANTS-4361 — LANDMARKS, deliberately not a DOM parse. Scoping to landmarks is
+// what keeps this out of the tar pit of parsing HTML properly, and it is
+// enough: the questions a caller has about a single-file page are "where does
+// the script start", "where is the style block", "where is the element I am
+// editing".
+//
+// The valuable half is the JS, and it is nearly free — the brace family this
+// outliner already parses well is exactly what is inside a <script>, so the
+// brace-family regexes run over those lines. Only the file's extension ever
+// routed it to the fallback.
+struct HtmlScanner {
+    bool inScript   = false;
+    bool scriptIsJs = true;
+
+    void scan(const QString &line, int lineNo, SymbolSink &out) {
+        const QString lower = line.toLower();
+        if (lower.contains(QStringLiteral("<script"))) {
+            inScript = !lower.contains(QStringLiteral("</script"));
+            // A `type=` that is not JavaScript (application/json,
+            // text/template) must NOT be handed to the brace parser — its
+            // contents are data, and a JSON blob would emit noise.
+            scriptIsJs =
+                !lower.contains(QStringLiteral("type=\"application/json\"")) &&
+                !lower.contains(QStringLiteral("type=\"text/template\""));
+            out.offer(lineNo, "region", QStringLiteral("<script>"), line.trimmed());
+        } else if (lower.contains(QStringLiteral("</script"))) {
+            inScript = false;
+        } else if (lower.contains(QStringLiteral("<style"))) {
+            out.offer(lineNo, "region", QStringLiteral("<style>"), line.trimmed());
+        } else if (inScript && scriptIsJs) {
+            // A hand copy of the Generic arm, not a call to it: it skips the
+            // typed-function rule and labels every declaration "func"
+            // (ANTS-5992).
+            QRegularExpressionMatch m = rxGenericDecl().match(line);
+            if (m.hasMatch()) {
+                out.offer(lineNo, "func", m.captured(2), line);
+            } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
+                out.offer(lineNo, "func", m.captured(1), line);
+            } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
+                out.offer(lineNo, "func", m.captured(1), line);
+            } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
+                offerBinding(out, lineNo, line, m);
+            }
+        } else {
+            // Every element carrying an `id=` is an anchor a caller can
+            // navigate to — outside a script, where an `id:` in JS would be a
+            // property name rather than a landmark.
+            const QRegularExpressionMatch idm = rxHtmlId().match(line);
+            if (idm.hasMatch())
+                out.offer(lineNo, "anchor", idm.captured(1), line.trimmed());
+        }
+    }
+};
+
+// ANTS-4826 — shell landmarks, not a parse. Functions first, because a
+// `name() {` line also matches nothing in the binding rule and the order
+// costs nothing; then top-level constants, which is where a script's paths,
+// versions and directories are declared.
+void scanShLine(const QString &line, int lineNo, SymbolSink &out) {
+    QRegularExpressionMatch m = rxShFunc().match(line);
+    if (m.hasMatch()) {
+        out.offer(lineNo, "func", m.captured(1), line);
+    } else if ((m = rxShFuncKeyword().match(line)).hasMatch()) {
+        out.offer(lineNo, "func", m.captured(1), line);
+    } else if ((m = rxShBinding().match(line)).hasMatch()) {
+        offerBinding(out, lineNo, line, m);
+    }
+}
+
+// The brace family. Try the typed-function form, then keyword decl, then
+// C-style method, then arrow assignment, then binding; first hit wins
+// (ANTS-2150). ANTS-4902 puts the typed form first: on `function bool Foo(`
+// rule (1) MATCHES and captures the return type, so ordering is what decides
+// the name rather than which rule fires.
+void scanGenericLine(const QString &line, int lineNo, SymbolSink &out) {
+    QRegularExpressionMatch m = rxGenericFunctionTyped().match(line);
+    if (m.hasMatch()) {
+        out.offer(lineNo, "func", m.captured(1), line);
+    } else if ((m = rxGenericDecl().match(line)).hasMatch()) {
+        const QString kw = m.captured(1);
+        const char *kind =
+            (kw == QLatin1String("fn")  || kw == QLatin1String("fun") ||
+             kw == QLatin1String("func")|| kw == QLatin1String("function") ||
+             kw == QLatin1String("def")) ? "func"
+            : (kw == QLatin1String("type") || kw == QLatin1String("module") ||
+               kw == QLatin1String("namespace")) ? "type"
+            : "class";
+        out.offer(lineNo, kind, m.captured(2), line);
+    } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
+        out.offer(lineNo, "func", m.captured(1), line);
+    } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
+        out.offer(lineNo, "func", m.captured(1), line);
+    } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
+        offerBinding(out, lineNo, line, m);
+    }
+}
+
+// ANTS-4384 — per-symbol extents (`lines`, `bytes`). lineStart[i] is the byte
+// offset of line i+1, with a sentinel at the end. levelAt gives heading depth
+// in md mode; every other mode is flat, so its symbols are siblings and each
+// runs to the next.
+//
+// Computed in DOCUMENT order, not array order: a symbol can be appended out
+// of order (a typedef-struct emits at its START line only once its brace
+// balances, by which point later symbols are already in the array), and
+// array order would then hand it a negative or whole-file span.
+void addExtents(QJsonArray &symbols, const QVector<qint64> &lineStart,
+                const QHash<int, int> &mdLevelByLine, int totalLines,
+                bool truncated) {
+    QVector<QPair<int, int>> order;   // (start line, index into symbols)
+    order.reserve(symbols.size());
+    for (int i = 0; i < symbols.size(); ++i)
+        order.append({symbols.at(i).toObject().value("line").toInt(), i});
+    std::stable_sort(order.begin(), order.end(),
+                     [](const auto &a, const auto &b) { return a.first < b.first; });
+
+    const auto levelAt = [&](int line) { return mdLevelByLine.value(line, 1); };
+    for (int k = 0; k < order.size(); ++k) {
+        const int startLine = order.at(k).first;
+        if (startLine < 1 || startLine > totalLines) continue;
+        const int level = levelAt(startLine);
+        int endLine = totalLines;              // inclusive; EOF by default
+        for (int j = k + 1; j < order.size(); ++j) {
+            const int nextLine = order.at(j).first;
+            if (nextLine <= startLine) continue;   // same-line siblings
+            if (levelAt(nextLine) <= level) { endLine = nextLine - 1; break; }
+        }
+        // ANTS-4374's invariant — a number is only emitted where the walk
+        // actually saw the end of the range. `truncated` means symbols were
+        // dropped from the tail, so the last retained symbol's extent would
+        // silently absorb everything the cap hid.
+        if (truncated && k == order.size() - 1) continue;
+        if (endLine < startLine) continue;
+        QJsonObject s = symbols.at(order.at(k).second).toObject();
+        s["lines"] = endLine - startLine + 1;
+        s["bytes"] = static_cast<double>(lineStart.at(endLine) -
+                                         lineStart.at(startLine - 1));
+        symbols[order.at(k).second] = s;
+    }
+}
+
 }  // namespace
 
 Mode parseMode(const QString &s) {
@@ -753,64 +1329,26 @@ QJsonObject compute(const QString &absPath,
     // Mode::Auto still here = unknown extension; treat as "unknown".
     const bool isUnknown = (effective == Mode::Auto);
 
-    // ANTS-1249-INV-6: header_doc starts empty (not null).
-    QString headerDoc;
-    QJsonArray symbols;
+    SymbolSink sink;
+    sink.maxSymbols = maxSymbols;
+    HeaderDocCollector header;   // ANTS-1249-INV-6: header_doc starts empty (not null)
+    header.active = includeDocComment && !isUnknown && effective != Mode::Json;
+    header.mode   = effective;
+    header.marker = headerCommentMarker(effective);
     int totalLines = 0;
     qint64 totalBytes = 0;
-    // ANTS-4384 — sizing state, built only when asked for.
-    // lineStart[i] = byte offset of line i+1; a sentinel totalBytes is
-    // appended after the walk so the last symbol's extent needs no special
-    // case. mdLevelByLine carries heading depth for the ONE mode that has
-    // levels; every other mode is flat, so its symbols are siblings and each
-    // runs to the next.
+    // ANTS-4384 — sizing state, filled only when asked for: each line's byte
+    // offset, and heading depth for md, the one mode that has levels.
     QVector<qint64> lineStart;
     QHash<int, int> mdLevelByLine;
-    int seenSymbols = 0;
-    bool truncated = false;
-    bool inHeaderBlock = includeDocComment && !isUnknown &&
-                         effective != Mode::Json;
-    const QString headerMarker = headerCommentMarker(effective);
-    int headerLinesEmitted = 0;
 
-    // ANTS-2159 — C++ scope tracking: a function/member symbol is emitted
-    // only at file or type-body scope, never inside a code body (so a
-    // most-vexing-parse local or a `case X: return f();` statement is not
-    // mistaken for a function); and a definition whose return type and/or
-    // `{` sit on adjacent lines is still found.
-    int braceDepth = 0;            // literal/comment-aware net brace depth
-    int funcOpenAtDepth = -1;      // depth a function body opened at; -1 = file/type scope
-    bool funcBodyEntered = false;  // the body's opening '{' has been seen
-    bool inBlockComment = false;   // block-comment carry for netBraceDelta
-    QString pendingType;           // prior file-scope line that was a bare return type
-    // ANTS-2148 follow-up — wrapped-parameter-list collector state. When a
-    // function header opens '(' without closing it on the same line, collect
-    // continuation lines until the parens balance, then emit at the header's
-    // start line so read_region symbol-mode resolves the whole definition.
-    bool inFuncArgs = false;
-    int funcArgParenDepth = 0;      // running '(' - ')' across the wrapped header
-    int funcArgStartLine = 0;       // 1-based line where the name sits
-    QString funcArgName;           // captured function name
-    QString funcArgSig;            // accumulated header text → signature
-    // ANTS-2228 — typedef-struct capture. A `typedef struct TAG { … } ALIAS;`
-    // opens here and emits at its START line when the brace balances back,
-    // keyed by BOTH the tag and the alias so read_region symbol-mode (and
-    // ANTS-2222's aggregate-body slice) resolve either.
-    struct PendingTypedef { int startLine{}; QString tag; int depthAtOpen{}; };
-    QVector<PendingTypedef> pendingTypedefs;
-    // ANTS-3404 — Python class-method qualification. Track enclosing
-    // classes by indentation so an indented `def` is emitted as
-    // `Class.method` (read_region symbol-mode can then address it); a
-    // top-level def/class stays bare. Each entry = (indent width, dotted
-    // class-name prefix so far). Nested classes chain (`Outer.Inner`).
-    QVector<QPair<int, QString>> pyClassStack;
-    // ANTS-4722 — Md fence state. Null when outside a fenced block, else the
-    // fence character (backtick or tilde) that opened the one we are in.
-    QChar mdFenceChar;
-    int   mdFenceRun = 0;  // ANTS-4820 — the open fence's run length
-    // ANTS-4361 — HTML landmark state.
-    bool inHtmlScript  = false;
-    bool htmlScriptIsJs = true;
+    // One scanner per mode, each owning its own state.
+    CppScanner  cpp;
+    PyScanner   py;
+    MdScanner   md;
+    md.maxHeadingLevel = maxHeadingLevel;
+    md.levelByLine     = withSizes ? &mdLevelByLine : nullptr;
+    HtmlScanner html;
 
     while (!f.atEnd()) {
         // ANTS-5103 — bounded: 4 KiB covers the 2 KiB header_doc cap and
@@ -821,484 +1359,34 @@ QJsonObject compute(const QString &absPath,
         totalBytes += rawBytes;
         ++totalLines;
 
-        // Strip CRLF / LF for matching but keep the raw byte count.
-        QByteArray trimmed = rawLine;
-        while (!trimmed.isEmpty() &&
-               (trimmed.back() == '\n' || trimmed.back() == '\r')) {
-            trimmed.chop(1);
+        // Strip CRLF / LF for matching but keep the raw byte count. Leading
+        // spaces stay: rxPyConst, rxShFunc, rxShBinding and rxGenericBinding
+        // read column 0 as "top level".
+        QByteArray withoutEol = rawLine;
+        while (!withoutEol.isEmpty() &&
+               (withoutEol.back() == '\n' || withoutEol.back() == '\r')) {
+            withoutEol.chop(1);
         }
 
-        // Header doc collector — runs only for the leading contiguous
-        // comment block. Stops at first non-comment line.
-        if (inHeaderBlock) {
-            const QString line = QString::fromUtf8(trimmed);
-            const QString stripped = line.trimmed();
-            bool isComment = false;
-            if (effective == Mode::Md) {
-                // Markdown: collect a leading HTML-comment block or
-                // the first run of non-heading prose. We use a tiny
-                // heuristic — any line up to the first blank or first
-                // heading counts as the file lead.
-                if (stripped.startsWith(QStringLiteral("<!--")) ||
-                    (headerLinesEmitted == 0 &&
-                     !stripped.startsWith(QLatin1Char('#')) &&
-                     !stripped.isEmpty())) {
-                    isComment = true;
-                } else if (stripped.isEmpty() && headerLinesEmitted == 0) {
-                    // Allow one leading blank line.
-                    isComment = false;
-                    inHeaderBlock = false;
-                } else {
-                    inHeaderBlock = false;
-                }
-            } else {
-                if (stripped.isEmpty() && headerLinesEmitted == 0) {
-                    // Leading blank line — keep scanning.
-                    isComment = false;
-                } else if (!headerMarker.isEmpty() &&
-                           stripped.startsWith(headerMarker)) {
-                    isComment = true;
-                } else {
-                    inHeaderBlock = false;
-                }
-            }
-            if (isComment && headerLinesEmitted < kHeaderDocMaxLines) {
-                if (!headerDoc.isEmpty()) headerDoc.append(QLatin1Char('\n'));
-                headerDoc.append(line);
-                ++headerLinesEmitted;
-                if (headerDoc.toUtf8().size() > kHeaderDocByteCap) {
-                    // ANTS-1249-INV-9: 2 KiB header_doc cap.
-                    headerDoc.truncate(kHeaderDocByteCap);
-                    headerDoc.append(QChar(0x2026));  // …
-                    inHeaderBlock = false;
-                }
-            }
-            if (headerLinesEmitted >= kHeaderDocMaxLines) inHeaderBlock = false;
-        }
+        // Header doc collector — runs only for the leading comment block.
+        if (header.active) header.feed(QString::fromUtf8(withoutEol));
 
         // ANTS-1249-INV-8: skip regex scan on lines exceeding the
         // per-line byte cap (catastrophic-backtracking guard).
-        if (trimmed.size() > kMaxLineBytes) continue;
+        if (withoutEol.size() > kMaxLineBytes) continue;
         if (isUnknown) continue;
 
-        const QString line = QString::fromUtf8(trimmed);
-
-        // Symbols cap check. Increment `seenSymbols` only when a regex
-        // would have matched, so `truncated` is accurate per INV-5.
-        auto offer = [&](const char *kind,
-                          const QString &name,
-                          const QString &signature) {
-            ++seenSymbols;
-            if (symbols.size() >= maxSymbols) {
-                truncated = true;
-                return;
-            }
-            appendSymbol(symbols, totalLines, kind, name, signature);
-        };
-        // ANTS-2148 follow-up — emit at an explicit line. A multi-line header
-        // resolves to its START line (where the name sits), not the closing-
-        // paren line, so read_region symbol-mode returns the full definition.
-        auto offerAt = [&](int lineNo, const char *kind,
-                           const QString &name, const QString &signature) {
-            ++seenSymbols;
-            if (symbols.size() >= maxSymbols) {
-                truncated = true;
-                return;
-            }
-            appendSymbol(symbols, lineNo, kind, name, signature);
-        };
-
-        // ANTS-3800 — GLSL rides the Cpp extractor rather than getting a lane
-        // of its own: shader declarations ARE C declarations in shape, and a
-        // parallel regex set would drift from this one silently.
-        if (effective == Mode::Cpp || effective == Mode::Glsl) {
-            // ANTS-2159 — scope-aware. A function/member symbol is emitted
-            // only at file or type-body scope (funcOpenAtDepth < 0); inside
-            // a code body the func paths are suppressed so a local
-            // `Type name(arg);` or a `case X: return f();` statement is not
-            // mistaken for a function. Match order: type-decl, qualified
-            // member-def, free-func, multi-line func header, old-style
-            // (return type on the prior line), Qt-marker, bare-type
-            // (records a pending return type for the next line).
-            const bool inFuncBody = (funcOpenAtDepth >= 0);
-            const QString prevPendingType = pendingType;
-            pendingType.clear();
-            bool funcDefOpensBody = false;   // a definition whose body opens (now or on a later '{')
-            QRegularExpressionMatch m;
-
-            // ANTS-2148 follow-up — one literal/comment-aware pass yields both
-            // the brace delta (scope tracking, below) and the paren delta (the
-            // wrapped-parameter-list collector here), so inBlockComment toggles
-            // exactly once per line.
-            int parenDeltaThisLine = 0;
-            int lastCodeIdx        = -1;
-            const int braceDeltaThisLine =
-                netBraceDelta(line, inBlockComment, &parenDeltaThisLine,
-                              &lastCodeIdx);
-            // ANTS-3735 — the declaration/definition discriminator. A trailing
-            // comment must not hide the ';': `extern "C" int f(char* c);  // n`
-            // is a DECLARATION, but `line.trimmed().endsWith(';')` reads it as a
-            // definition whose body opens later. The scanner then adopted the
-            // next `{` it met — an anonymous `namespace {` 12 lines down in
-            // DOOM's r_vulkan.cpp — as that function's body and suppressed every
-            // func symbol for the 5,742 lines until the namespace closed.
-            const bool endsWithSemicolon =
-                lastCodeIdx >= 0 && line.at(lastCodeIdx) == QLatin1Char(';');
-
-            // ANTS-3738 — the same `lastCodeIdx`, reused as a comment-stripped
-            // view for MATCHING. The three function anchors all end-anchor, so
-            // a trailing comment sat in the way of every one of them:
-            // rxCppFuncOpen anchors `\s*$`, rxCppFunc needs `[{;]` right after
-            // the qualifier run, and rxCppFuncHeaderOpen needs `\([^)]*$` — so
-            // `void CreateInstance()   // set up` matched NONE and the symbol
-            // vanished. Same family as ANTS-3735 (raw-line matching against a
-            // comment-aware brace scan), one site further on.
-            //
-            // Deliberately used for matching ONLY. `offer()` is still handed
-            // the raw `line`, because `signature` carries the source text
-            // including its trailing comment and changing that is an
-            // output-shape decision, not a side effect of this fix. The
-            // ANTS-3738 test asserts both halves.
-            const QString codeLine =
-                lastCodeIdx >= 0 ? line.left(lastCodeIdx + 1) : QString();
-
-            if (inFuncArgs) {
-                // Folding continuation lines of a wrapped parameter list into
-                // the signature until the parens balance; then emit at the
-                // header's start line.
-                if (!funcArgSig.isEmpty()) funcArgSig += QLatin1Char(' ');
-                funcArgSig += line.trimmed();
-                funcArgParenDepth += parenDeltaThisLine;
-                if (funcArgParenDepth <= 0) {
-                    offerAt(funcArgStartLine, "func", funcArgName,
-                            funcArgSig.simplified());
-                    funcDefOpensBody = !endsWithSemicolon;
-                    inFuncArgs = false;
-                    funcArgSig.clear();
-                }
-            } else if ((m = rxCppTypedefStructOpen().match(line)).hasMatch()) {
-                // ANTS-2228 — `typedef struct [TAG] {`. Record the opening;
-                // the symbol(s) emit at the matching close line (where the
-                // alias lives). `braceDepth` here is the pre-delta scope depth
-                // this struct body sits above.
-                pendingTypedefs.append({totalLines, m.captured(1), braceDepth});
-            } else if ((m = rxCppType().match(line)).hasMatch()) {
-                // ANTS-4101 — a namespace is not a class. Games Hub reported
-                // a caller filtering on `kind` ("show me the classes in this
-                // file") getting the enclosing namespace back as one of them.
-                // rxCppType already captures the keyword, so the accurate kind
-                // costs nothing. read_region's aggregate test keys off
-                // kind=="class" AND the signature keyword, so a namespace
-                // still resolves to its declaration only, exactly as before.
-                offer(m.captured(1) == QLatin1String("namespace") ? "namespace"
-                                                                  : "class",
-                      m.captured(2), line);   // type/namespace body — never code
-            } else if (!inFuncBody && (m = rxCppMember().match(line)).hasMatch()) {
-                // ANTS-3399 — the qualified member name (`Class::method`,
-                // possibly `NS::Class::method`) is the last whitespace-
-                // delimited token before '('. The old heuristic stripped
-                // the return type by locating the space before the FIRST
-                // `::`, which landed INSIDE a namespace-qualified return
-                // type (`JPH::BodyID Class::method`) — no space precedes
-                // that `::`, so the return type stayed glued onto the name
-                // and broke read_region symbol-mode lookups (Vestige
-                // feedback, 2/2 hits). rxCppMember's return type may now be
-                // multiple tokens (ANTS-3433, `unsigned int Class::method`),
-                // but the qualified name is still the run after the LAST
-                // whitespace, so the extraction is unchanged.
-                const int lparen = line.indexOf(QLatin1Char('('));
-                QString name = (lparen > 0) ? line.left(lparen).trimmed() : line;
-                int lastWs = -1;
-                for (int i = name.size() - 1; i >= 0; --i) {
-                    if (name.at(i).isSpace()) { lastWs = i; break; }
-                }
-                if (lastWs >= 0) name = name.mid(lastWs + 1);
-                // ANTS-3433 — a `T &Class::method` / `T *Class::method` form
-                // glues the ref/ptr onto the name token; strip it so the
-                // emitted symbol is the bare `Class::method` read_region wants.
-                while (!name.isEmpty() && (name.at(0) == QLatin1Char('&') ||
-                                          name.at(0) == QLatin1Char('*'))) {
-                    name = name.mid(1);
-                }
-                offer("func", name, line);
-                funcDefOpensBody = !endsWithSemicolon;
-            } else if (!inFuncBody && (m = rxCppGtest().match(codeLine)).hasMatch()) {
-                // ANTS-5019 — named Suite.Case, as gtest itself names it, and
-                // marked as opening a body so the locals inside stay inside.
-                offer("func", m.captured(1) + QLatin1Char('.') + m.captured(2), line);
-                funcDefOpensBody = true;
-            } else if (!inFuncBody && rxCppCtorDtor().match(codeLine).hasMatch()) {
-                // ANTS-5021 — `Class::Class(` / `Class::~Class(`, emitted by
-                // its qualified name so read_region resolves `~Class` too.
-                const int lparen = line.indexOf(QLatin1Char('('));
-                offer("func", line.left(lparen).trimmed(), line);
-                funcDefOpensBody = !endsWithSemicolon;
-            } else if (!inFuncBody && (m = rxCppFunc().match(codeLine)).hasMatch()) {
-                offer("func", m.captured(2), line);
-                funcDefOpensBody = !endsWithSemicolon;
-            } else if (!inFuncBody && (m = rxCppFuncOpen().match(codeLine)).hasMatch()) {
-                offer("func", m.captured(2), line);    // ReturnType name(args), body '{' next line
-                funcDefOpensBody = true;
-            } else if (!inFuncBody && !prevPendingType.isEmpty()
-                       && (m = rxCppNameArgs().match(line)).hasMatch()) {
-                offer("func", m.captured(1), line);    // old-style: return type on the prior line
-                funcDefOpensBody = true;
-            } else if (!inFuncBody
-                       && (m = rxCppFuncHeaderOpen().match(codeLine)).hasMatch()) {
-                // ANTS-2148 follow-up — `ReturnType name(` opens a parameter
-                // list that does not close on this line. Start collecting; the
-                // closing line emits the symbol at funcArgStartLine.
-                funcArgName       = m.captured(2);
-                funcArgStartLine  = totalLines;
-                funcArgSig        = line.trimmed();
-                funcArgParenDepth = parenDeltaThisLine;   // >= 1 by construction
-                inFuncArgs        = true;
-            } else if ((m = rxCppQt().match(line)).hasMatch()) {
-                offer("qt", m.captured(1), line);
-            } else if (!inFuncBody && rxCppTypeOnly().match(line).hasMatch()) {
-                pendingType = line;                    // candidate return type for the next line
-            }
-
-            // Brace-scope bookkeeping (runs every C++ line). A definition
-            // that opens a body records funcOpenAtDepth; the interior stays
-            // suppressed until the matching '}' returns the depth to it.
-            const int before = braceDepth;
-            braceDepth += braceDeltaThisLine;
-            if (funcDefOpensBody && funcOpenAtDepth < 0) {
-                if (braceDepth > before) {             // body opened on this line
-                    funcOpenAtDepth = before;
-                    funcBodyEntered = true;
-                } else if (!line.contains(QLatin1Char('{'))) {  // await '{' on a later line
-                    funcOpenAtDepth = before;
-                    funcBodyEntered = false;
-                }
-                // else: single-line body ('{' opened and closed) → stay at file scope
-            } else if (funcOpenAtDepth >= 0) {
-                if (braceDepth > funcOpenAtDepth) funcBodyEntered = true;
-                if (funcBodyEntered && braceDepth <= funcOpenAtDepth) {
-                    funcOpenAtDepth = -1;
-                    funcBodyEntered = false;
-                }
-            }
-
-            // ANTS-2228 — close pending typedef-struct(s) whose brace balanced
-            // back on this line. Emit at the recorded start line, keyed by the
-            // alias (from `} ALIAS;`) and, when distinct, the tag. The
-            // signature begins "struct" so resolveSymbol's aggregate-body path
-            // (ANTS-2222) reads the FULL body via brace-match.
-            while (!pendingTypedefs.isEmpty() &&
-                   braceDepth <= pendingTypedefs.last().depthAtOpen) {
-                const PendingTypedef pt = pendingTypedefs.takeLast();
-                const QRegularExpressionMatch cm =
-                    rxCppTypedefStructClose().match(line);
-                const QString alias =
-                    cm.hasMatch() ? cm.captured(1) : QString();
-                const QString sig = pt.tag.isEmpty()
-                    ? QStringLiteral("struct")
-                    : (QStringLiteral("struct ") + pt.tag);
-                if (!alias.isEmpty())
-                    offerAt(pt.startLine, "class", alias, sig);
-                if (!pt.tag.isEmpty() && pt.tag != alias)
-                    offerAt(pt.startLine, "class", pt.tag, sig);
-            }
-        } else if (effective == Mode::Py) {
-            QRegularExpressionMatch m = rxPy().match(line);
-            if (m.hasMatch()) {
-                const int indent      = m.captured(1).size();
-                const QString keyword = m.captured(3);
-                const QString name    = m.captured(4);
-                // Dedent: drop any enclosing class we've left. A sibling/
-                // outer def or class at ≤ the class's indent is no longer
-                // inside it.
-                while (!pyClassStack.isEmpty() &&
-                       pyClassStack.last().first >= indent) {
-                    pyClassStack.removeLast();
-                }
-                const QString prefix = pyClassStack.isEmpty()
-                    ? QString()
-                    : pyClassStack.last().second + QLatin1Char('.');
-                const QString qualified = prefix + name;
-                if (keyword == QLatin1String("class")) {
-                    offer("class", qualified, line);
-                    // A method (def at deeper indent) belongs to this class.
-                    pyClassStack.append(qMakePair(indent, qualified));
-                } else {
-                    offer("func", qualified, line);
-                }
-            } else {
-                // ANTS-4379 — a module-level constant. Only at column 0, and
-                // only outside any class body still on the stack (a top-level
-                // assignment after a class has ended is a constant; one
-                // inside it is a class attribute).
-                QRegularExpressionMatch cm = rxPyConst().match(line);
-                if (cm.hasMatch()) {
-                    pyClassStack.clear();   // column 0 ⟹ outside every class
-                    // The signature stops at the `=`: a constant's value may
-                    // be a 40-line dict that would otherwise ride along in
-                    // every outline response (same rule as ANTS-4090's).
-                    offer("const", cm.captured(1),
-                          line.left(cm.capturedEnd(0)).trimmed() +
-                              QStringLiteral(" …"));
-                }
-            }
-        } else if (effective == Mode::Md) {
-            // ANTS-4520 — a heading inside a blockquote is a heading. A plan
-            // file whose run-state blocks are `> ## You are here` /
-            // `> ## Previously` outlined to the plain headings only, so the
-            // blocks a session is told to read FIRST were invisible in the one
-            // call meant to answer "what is in this file?". The `>` does not
-            // change the depth, so the ANTS-4396 filter treats it as a `##`.
-            //
-            // ANTS-4722 — fenced code is not document structure. Without this
-            // guard a `# src/pkg/mod.py` label at column 0 inside a ```python
-            // block is emitted as a level-1 heading, and the SIZING is the
-            // damage rather than the phantom row: sizes:true scopes a
-            // heading's extent to the next same-or-higher heading, so a
-            // level-1 phantom in a document whose real sections are `##`
-            // absorbs everything below it to EOF and every real section reads
-            // as its child, with its own size wrong. max_heading_level is no
-            // escape — the phantom is level 1, and any real filter keeps
-            // level 1. Labelling a fenced source listing with a path comment
-            // is an ordinary shape in a technical spec, not an edge case.
-            //
-            // Measured against the blockquote strip, like the heading match
-            // below, so a fenced block quoted inside a `>` is tracked too.
-            const QString mdLine = MarkdownScan::stripBlockquote(line);
-            int openerRun = 0;
-            const QChar opener =
-                MarkdownScan::fenceOpenerChar(mdLine, 3, &openerRun);
-            if (!mdFenceChar.isNull()) {
-                // Inside a fence. CommonMark § 4.5 closes one on a line
-                // opening with the same fence character in a run AT LEAST AS
-                // LONG as the opener; either way nothing in here is a
-                // heading, the closing line included.
-                // ANTS-4820 — the length half was missing, and the comment
-                // above used to state the rule without it, so a ``` line
-                // ended a ```` block and its sample headings became real.
-                if (MarkdownScan::fenceCloses(mdLine, mdFenceChar, mdFenceRun)) {
-                    mdFenceChar = QChar();
-                    mdFenceRun  = 0;
-                }
-                continue;
-            }
-            if (!opener.isNull()) {
-                mdFenceChar = opener;
-                mdFenceRun  = openerRun;
-                continue;
-            }
-            QRegularExpressionMatch m = rxMdHeading().match(mdLine);
-            if (m.hasMatch()) {
-                const int level = m.captured(1).size();
-                if (withSizes) mdLevelByLine.insert(totalLines, level);
-                // ANTS-4396 — the depth filter. Applied at OFFER time rather
-                // than as a post-pass, so a filtered outline is not silently
-                // competing with maxSymbols for the same budget: dropping the
-                // `###` noise must free room for the `##` headings further
-                // down the file, which is the whole point on an append-only
-                // log.
-                if (maxHeadingLevel <= 0 || level <= maxHeadingLevel)
-                    offer("heading", m.captured(2), line);
-            }
-        } else if (effective == Mode::Html) {
-            // ANTS-4361 — LANDMARKS, deliberately not a DOM parse. Scoping to
-            // landmarks is what keeps this out of the tar pit of parsing HTML
-            // properly, and it is enough: the questions a caller has about a
-            // single-file page are "where does the script start", "where is
-            // the style block", "where is the element I am editing".
-            //
-            // The valuable half is the JS, and it is nearly free — the brace
-            // family this outliner already parses well is exactly what is
-            // inside a <script>, so the SAME regexes run over those lines.
-            // Only the file's extension ever routed it to the fallback.
-            const QString lower = line.toLower();
-            if (lower.contains(QStringLiteral("<script"))) {
-                inHtmlScript = !lower.contains(QStringLiteral("</script"));
-                // A `type=` that is not JavaScript (application/json,
-                // text/template) must NOT be handed to the brace parser —
-                // its contents are data, and a JSON blob would emit noise.
-                htmlScriptIsJs =
-                    !lower.contains(QStringLiteral("type=\"application/json\"")) &&
-                    !lower.contains(QStringLiteral("type=\"text/template\""));
-                offer("region", QStringLiteral("<script>"), line.trimmed());
-            } else if (lower.contains(QStringLiteral("</script"))) {
-                inHtmlScript = false;
-            } else if (lower.contains(QStringLiteral("<style"))) {
-                offer("region", QStringLiteral("<style>"), line.trimmed());
-            } else if (inHtmlScript && htmlScriptIsJs) {
-                // Delegate to the brace-family set, which already emits
-                // kind:"const" for a top-level `const NAME =` (ANTS-4090).
-                QRegularExpressionMatch m = rxGenericDecl().match(line);
-                if (m.hasMatch()) {
-                    offer("func", m.captured(2), line);
-                } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
-                    offer("func", m.captured(1), line);
-                } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
-                    offer("func", m.captured(1), line);
-                } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
-                    offer("const", m.captured(1),
-                          line.left(m.capturedEnd(0)).trimmed() +
-                              QStringLiteral(" …"));
-                }
-            } else {
-                // Every element carrying an `id=` is an anchor a caller can
-                // navigate to — outside a script, where an `id:` in JS would
-                // be a property name rather than a landmark.
-                QRegularExpressionMatch idm = rxHtmlId().match(line);
-                if (idm.hasMatch())
-                    offer("anchor", idm.captured(1), line.trimmed());
-            }
-        } else if (effective == Mode::Sh) {
-            // ANTS-4826 — landmarks, not a parse. Functions first, because a
-            // `name() {` line also matches nothing in the binding rule and the
-            // order costs nothing; then top-level constants, which is where a
-            // script's paths, versions and directories are declared.
-            QRegularExpressionMatch m = rxShFunc().match(line);
-            if (m.hasMatch()) {
-                offer("func", m.captured(1), line);
-            } else if ((m = rxShFuncKeyword().match(line)).hasMatch()) {
-                offer("func", m.captured(1), line);
-            } else if ((m = rxShBinding().match(line)).hasMatch()) {
-                // Kind "const" and a signature clipped at the `=`, both for
-                // ANTS-4090's reason on the brace family: a caller can tell a
-                // binding from a function, and a value that is a long command
-                // substitution or a heredoc opener does not ride along in
-                // every outline response.
-                offer("const", m.captured(1),
-                      line.left(m.capturedEnd(0)).trimmed() +
-                          QStringLiteral(" …"));
-            }
-        } else if (effective == Mode::Generic) {
-            // Try the typed-function form, then keyword decl, then C-style
-            // method, then arrow assignment; first hit wins (ANTS-2150).
-            // ANTS-4902 puts the typed form first: on `function bool Foo(`
-            // rule (1) MATCHES and captures the return type, so ordering is
-            // what decides the name rather than which rule fires.
-            QRegularExpressionMatch m = rxGenericFunctionTyped().match(line);
-            if (m.hasMatch()) {
-                offer("func", m.captured(1), line);
-            } else if ((m = rxGenericDecl().match(line)).hasMatch()) {
-                const QString kw = m.captured(1);
-                const char *kind =
-                    (kw == QLatin1String("fn")  || kw == QLatin1String("fun") ||
-                     kw == QLatin1String("func")|| kw == QLatin1String("function") ||
-                     kw == QLatin1String("def")) ? "func"
-                    : (kw == QLatin1String("type") || kw == QLatin1String("module") ||
-                       kw == QLatin1String("namespace")) ? "type"
-                    : "class";
-                offer(kind, m.captured(2), line);
-            } else if ((m = rxGenericMethod().match(line)).hasMatch()) {
-                offer("func", m.captured(1), line);
-            } else if ((m = rxGenericArrow().match(line)).hasMatch()) {
-                offer("func", m.captured(1), line);
-            } else if ((m = rxGenericBinding().match(line)).hasMatch()) {
-                // ANTS-4090 — its own kind, so a caller can tell a data
-                // binding from a function. The signature stops at the `=`:
-                // the value may be a 95-line template literal whose first
-                // line would otherwise ride along in every outline response.
-                offer("const", m.captured(1),
-                      line.left(m.capturedEnd(0)).trimmed() +
-                          QStringLiteral(" …"));
-            }
+        const QString line = QString::fromUtf8(withoutEol);
+        switch (effective) {
+        case Mode::Cpp:
+        case Mode::Glsl:    cpp.scan(line, totalLines, sink);           break;
+        case Mode::Py:      py.scan(line, totalLines, sink);            break;
+        case Mode::Md:      md.scan(line, totalLines, sink);            break;
+        case Mode::Html:    html.scan(line, totalLines, sink);          break;
+        case Mode::Sh:      scanShLine(line, totalLines, sink);         break;
+        case Mode::Generic: scanGenericLine(line, totalLines, sink);    break;
+        case Mode::Auto:
+        case Mode::Json:                                                break;
         }
     }
     f.close();
@@ -1311,13 +1399,19 @@ QJsonObject compute(const QString &absPath,
         if (!precise.isEmpty()) languageStr = precise;
     }
 
+    if (withSizes && !sink.symbols.isEmpty()) {
+        lineStart.append(totalBytes);   // sentinel: start of the line past EOF
+        addExtents(sink.symbols, lineStart, mdLevelByLine, totalLines,
+                   sink.truncated);
+    }
+
     QJsonObject out;
     out["ok"]          = true;
     out["path"]        = absPath;
     out["language"]    = languageStr;
-    out["header_doc"]  = headerDoc;
-    out["symbols"]     = symbols;
-    out["truncated"]   = truncated;
+    out["header_doc"]  = header.doc;
+    out["symbols"]     = sink.symbols;
+    out["truncated"]   = sink.truncated;
     // ANTS-4472's sibling, ANTS-4469 — a bare `truncated:true` cannot tell a
     // caller whether it missed one symbol or four hundred, which is exactly
     // the fact that decides whether to re-call with a raised cap or accept the
@@ -1326,12 +1420,12 @@ QJsonObject compute(const QString &absPath,
     // `filter` already emits symbols_considered / symbols_filtered_out
     // (ANTS-4374), leaving max_symbols as the only narrowing mechanism of the
     // three reporting no number — and the only one with a non-zero DEFAULT
-    // (200), so also the one most likely to fire unasked. `seenSymbols` is
+    // (200), so also the one most likely to fire unasked. `seen` is
     // incremented on every regex match whether or not the symbol was kept, so
     // the count is exact rather than an estimate; the field name is reused
     // from the max_bytes path deliberately, so one caller branch handles both.
-    if (truncated)
-        out["symbols_dropped"] = seenSymbols - symbols.size();
+    if (sink.truncated)
+        out["symbols_dropped"] = sink.seen - sink.symbols.size();
     out["total_bytes"] = static_cast<double>(totalBytes);
     out["total_lines"] = totalLines;
     // ANTS-4366 — "this file genuinely has no top-level symbols" and "the
@@ -1345,52 +1439,7 @@ QJsonObject compute(const QString &absPath,
     // Deliberately narrow: a recognised language AND a non-trivial file. An
     // unknown extension already reports `language:"unknown"`, and a 3-line
     // header stub having no symbols is not evidence of anything.
-    // ANTS-4384 — per-symbol extents. Computed in DOCUMENT order, not array
-    // order: a symbol can be appended out of order (a typedef-struct emits at
-    // its START line only once its brace balances, by which point later
-    // symbols are already in the array), and array order would then hand it a
-    // negative or whole-file span.
-    if (withSizes && !symbols.isEmpty()) {
-        lineStart.append(totalBytes);   // sentinel: start of the line past EOF
-
-        QVector<QPair<int, int>> order;   // (start line, index into symbols)
-        order.reserve(symbols.size());
-        for (int i = 0; i < symbols.size(); ++i)
-            order.append({symbols.at(i).toObject().value("line").toInt(), i});
-        std::stable_sort(order.begin(), order.end(),
-                         [](const auto &a, const auto &b) {
-                             return a.first < b.first;
-                         });
-
-        const auto levelAt = [&](int line) {
-            return mdLevelByLine.value(line, 1);
-        };
-        for (int k = 0; k < order.size(); ++k) {
-            const int startLine = order.at(k).first;
-            if (startLine < 1 || startLine > totalLines) continue;
-            const int level = levelAt(startLine);
-            int endLine = totalLines;              // inclusive; EOF by default
-            for (int j = k + 1; j < order.size(); ++j) {
-                const int nextLine = order.at(j).first;
-                if (nextLine <= startLine) continue;   // same-line siblings
-                if (levelAt(nextLine) <= level) { endLine = nextLine - 1; break; }
-            }
-            // ANTS-4374's invariant — a number is only emitted where the walk
-            // actually saw the end of the range. `truncated` means symbols
-            // were dropped from the tail, so the last retained symbol's extent
-            // would silently absorb everything the cap hid.
-            if (truncated && k == order.size() - 1) continue;
-            if (endLine < startLine) continue;
-            QJsonObject s = symbols.at(order.at(k).second).toObject();
-            s["lines"] = endLine - startLine + 1;
-            s["bytes"] = static_cast<double>(lineStart.at(endLine) -
-                                             lineStart.at(startLine - 1));
-            symbols[order.at(k).second] = s;
-        }
-        out["symbols"] = symbols;
-    }
-
-    if (symbols.isEmpty() && totalLines > 10
+    if (sink.symbols.isEmpty() && totalLines > 10
         && languageStr != QLatin1String("unknown")
         && !languageStr.isEmpty()) {
         out["parse_empty"] = true;
