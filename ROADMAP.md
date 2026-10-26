@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6281 -->
+<!-- ants-roadmap-id-high-water: ANTS=6282 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88530,6 +88530,16 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: frameledger session message 2026-10-24.
   Lanes: mcp.
+
+- 📋 [ANTS-6282] **changelog_query lint release:true reports shipped_not_cited for an id cited on a wrapped bullet's continuation line.**
+  frameledger 0.1.0 (2026-10-26): 5 false findings (FLED-0001,
+  0003-0006); each id sits on a continuation line. entries /
+  headline_only mode parses the same ids into ids[]. Fix: take the
+  release half's cited ids from that entry parse, body included.
+  Test: a wrapped bullet citing its id on line 2 is not flagged.
+  **Layman:** The release check says some finished items are missing from the changelog when they are actually there, just on the second line of an entry.
+  Kind: fix.
+  Source: frameledger-feedback-2026-10-26.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
