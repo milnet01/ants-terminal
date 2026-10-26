@@ -604,9 +604,9 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
                 const QList<DocFinding::Finding> rf = ChangelogQuery::releaseLint(
                     md, m_changelogCachePrefix, relPath,
                     hasVersionFilter ? versionFilter : QString(), *facts);
-                for (DocFinding::Finding f : rf) {
-                    f.emissionIndex = int(fs.size());
-                    fs.append(f);
+                for (DocFinding::Finding finding : rf) {
+                    finding.emissionIndex = int(fs.size());
+                    fs.append(finding);
                 }
                 QJsonObject rel;
                 rel[QStringLiteral("since")] = since.toString(Qt::ISODate);
