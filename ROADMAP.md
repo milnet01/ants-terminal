@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6282 -->
+<!-- ants-roadmap-id-high-water: ANTS=6283 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -101093,6 +101093,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: close-findings-2026-10-22 (ANTS-6135 sweep).
   Lanes: doc-engines.
+
+- 📋 [ANTS-6283] **LuaThreading.Ants5107HealthSeesAWedgedInitLua failed once in the push gate's container under load and passes locally.**
+  2026-10-26, push of 1a7188a6: test_lua_threading.cpp asserts
+  "demoted == 1" after a fixed 3.2 s pump loop; got 0 with load
+  average ~8.7. Passed 5/5 with ctest --repeat until-fail:5 locally.
+  Investigate: wait until demotion or a longer deadline, rather than
+  a fixed window, so a slow plugin-thread start does not miss it.
+  **Layman:** One plugin-timing test failed once when the machine was busy, then passed five times in a row; its timing window needs to tolerate load.
+  Kind: test.
+  Source: push-gate-2026-10-26.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
