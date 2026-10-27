@@ -358,6 +358,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     const QVector<AntsV1Bullet> vbs = hasV1walk ? walkAntsV1Bullets(lines)
                                                 : QVector<AntsV1Bullet>();
 
+    // The file's ids and headlines for rlLocateTarget's in-file-only check,
+    // built once rather than once per locator.
+    QStringList fileIds, fileHeads;
+    if (writeTarget && !isGfm) {
+        for (const AntsV1Bullet &b : vbs) {
+            fileIds << b.id;
+            fileHeads << b.headline;
+        }
+    }
+
     auto skip = [&](int idx, const QString &code, const QString &err) {
         QJsonObject s;
         s["locator_index"] = idx;
@@ -465,11 +475,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         // negated pk, which no file line can equal.
         if (writeTarget && !isGfm && locAnchor.isEmpty() &&
             (!locId.isEmpty() || !locHeadline.isEmpty())) {
-            QStringList fileIds, fileHeads;
-            for (const AntsV1Bullet &b : vbs) {
-                fileIds << b.id;
-                fileHeads << b.headline;
-            }
             const LocateOutcome at = rlLocateTarget(
                 *writeTarget->store, writeTarget->projectId, locId, locHeadline,
                 fileIds, fileHeads);
@@ -678,8 +683,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             rec.id           = t.id;
             rec.headlineFull = t.headline;
             QString pkCode, pkErr;
-            const auto itemPk =
-                rlStoreItemPk(store, projectId, rec, &pkCode, &pkErr);
+            // A target phase 1 already located in the store carries its pk as
+            // the negated dedup key; re-resolving it would repeat the lookup.
+            const auto itemPk = t.firstLine < -1
+                ? std::optional<qint64>(-qint64(t.firstLine) - 1)
+                : rlStoreItemPk(store, projectId, rec, &pkCode, &pkErr);
             if (!itemPk) {
                 // A locator the store cannot resolve lands in skipped[] like any
                 // other, so a mixed batch still applies the rest. Only a store
@@ -2863,16 +2871,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             for (auto it = kIdToken.globalMatch(text); it.hasNext();) {
                 const auto m = it.next();
                 out += text.mid(from, m.capturedStart() - from);
-                const int n = m.captured(1).toInt();
-                if (idOfBullet.contains(n)) {
+                // An index too long for an int fails the parse; it must not
+                // read as 0 and take bullet 0's id.
+                bool nOk = false;
+                const int n = m.captured(1).toInt(&nOk);
+                if (nOk && idOfBullet.contains(n)) {
                     out += idOfBullet.value(n);
                 } else {
                     out += m.captured(0);
                     if (unresolved.isEmpty())
                         unresolved = QStringLiteral(
                             "bullet %1 cites {{id:%2}}, and bullet %2 %3")
-                            .arg(citing).arg(n)
-                            .arg(n < bullets.size()
+                            .arg(citing).arg(m.captured(1))
+                            .arg(nOk && n < bullets.size()
                                      ? QStringLiteral("was skipped (see skipped[])")
                                      : QStringLiteral("does not exist"));
                 }
@@ -3102,8 +3113,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         cursor += blkLines.size();
         for (const QString &l : blkLines) toSplice.append(l);
     }
-    for (int i = toSplice.size() - 1; i >= 0; --i)
-        docLines.insert(insertAt, toSplice.at(i));
+    // One splice, not one insert per line: each insert shifted the whole tail.
+    docLines = docLines.mid(0, insertAt) + toSplice + docLines.mid(insertAt);
     const QString updated = docLines.join(QChar('\n'));
 
     // ANTS-2077 — dry_run preview: return the would-be ids, formatted

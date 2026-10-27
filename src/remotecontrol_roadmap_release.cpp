@@ -285,7 +285,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     if (req.contains(QStringLiteral("sample_limit"))) {
         const QJsonValue v = req.value(QStringLiteral("sample_limit"));
         const double d = v.toDouble(-1);
-        if (!v.isDouble() || d != double(int(d)) || d < 1 || d > 200)
+        // Range first: int(d) on a value outside int's range is UB.
+        if (!v.isDouble() || d < 1 || d > 200 || d != double(int(d)))
             return pbErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: sample_limit is a whole number "
                                "from 1 to 200"));
@@ -318,6 +319,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     const auto itemsOpt = store.readItems(projectId, &err);
     if (!itemsOpt) return pbErr(QStringLiteral("store_failed"), err);
     const QHash<qint64, RoadmapStore::ItemWrite> &items = *itemsOpt;
+    // A reference into `items`, never QHash::value()'s copy of a whole row: the
+    // loops below read it per item per section. Every pk is one of its keys.
+    const auto itemAt = [&items](qint64 pk) -> const RoadmapStore::ItemWrite & {
+        return *items.constFind(pk);
+    };
     const auto historyOpt = store.placementHistory(projectId, &err);
     if (!historyOpt) return pbErr(QStringLiteral("store_failed"), err);
 
@@ -362,7 +368,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     order.reserve(items.size());
     for (auto it = items.cbegin(); it != items.cend(); ++it) order << it.key();
     std::sort(order.begin(), order.end(), [&](qint64 a, qint64 b) {
-        const auto &ia = items.value(a), &ib = items.value(b);
+        const auto &ia = itemAt(a), &ib = itemAt(b);
         const int sa = idxOf.value(ia.sectionId, int(secs.size()));
         const int sb = idxOf.value(ib.sectionId, int(secs.size()));
         if (sa != sb) return sa < sb;
@@ -370,7 +376,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         return a < b;
     });
     QHash<qint64, int> ownItems;   // section -> items filed directly in it
-    for (const qint64 pk : std::as_const(order)) ++ownItems[items.value(pk).sectionId];
+    for (const qint64 pk : std::as_const(order)) ++ownItems[itemAt(pk).sectionId];
 
     // § 2.4 — the marker, read back.
     struct Marker { bool placedBy = false; bool movedAfter = false; };
@@ -395,7 +401,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     int bothCount = 0, differCount = 0, multiCited = 0;
     QJsonArray disagreementSample;
     for (const qint64 pk : std::as_const(order)) {
-        const RoadmapStore::ItemWrite &it = items.value(pk);
+        const RoadmapStore::ItemWrite &it = itemAt(pk);
         if (it.status != QLatin1String("shipped")) continue;   // INV-5
         QStringList cited = cl.cited.value(it.id);
         std::sort(cited.begin(), cited.end(), rlVersionLess);
@@ -447,7 +453,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         const QString v = versionLed.value(i);
         if (!released.contains(v) || established.contains(v)) continue;
         for (const qint64 pk : std::as_const(order))
-            if (markers.value(pk).placedBy && subtrees[i].contains(items.value(pk).sectionId)) {
+            if (markers.value(pk).placedBy && subtrees[i].contains(itemAt(pk).sectionId)) {
                 established.insert(v, i);
                 break;
             }
@@ -459,7 +465,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         const Marker m = markers.value(it.key());
         if (m.placedBy && m.movedAfter) { humanCandidate.insert(it.key()); continue; }
         if (m.placedBy) continue;
-        const qint64 sid = items.value(it.key()).sectionId;
+        const qint64 sid = itemAt(it.key()).sectionId;
         for (auto e = established.cbegin(); e != established.cend(); ++e)
             if (e.key() != it->version && subtrees[e.value()].contains(sid))
                 humanCandidate.insert(it.key());
@@ -486,7 +492,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
             if (versionLed.value(i) != v || rlIsRangeTitle(secs.at(i).title)) continue;
             bool ok = true;
             for (const qint64 pk : std::as_const(order)) {
-                if (!subtrees[i].contains(items.value(pk).sectionId)) continue;
+                if (!subtrees[i].contains(itemAt(pk).sectionId)) continue;
                 if (humanCandidate.contains(pk)) continue;
                 const auto p = placement.constFind(pk);
                 if (p == placement.cend()) { ok = false; break; }   // stays, not v
@@ -625,7 +631,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     for (const qint64 pk : std::as_const(order)) {
         const auto p = placement.constFind(pk);
         if (p == placement.cend()) continue;
-        const qint64 sid = items.value(pk).sectionId;
+        const qint64 sid = itemAt(pk).sectionId;
         const int rIdx = releaseIdx.value(p->version, -1);
         if (rIdx >= 0 && subtrees[rIdx].contains(sid)) { ++alreadyPlaced; continue; }
         if (humanCandidate.contains(pk)) {
@@ -636,7 +642,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
                          rIdx >= 0 ? -1 : createdOf.value(p->version, -1)});
     }
     QHash<qint64, int> leaving;
-    for (const Move &m : std::as_const(moves)) ++leaving[items.value(m.pk).sectionId];
+    for (const Move &m : std::as_const(moves)) ++leaving[itemAt(m.pk).sectionId];
 
     // ---- One write -----------------------------------------------------------
     HistoryContext hist;
@@ -680,7 +686,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
                 }
                 nextPos.insert(dest, maxPos);
             }
-            const RoadmapStore::ItemWrite &it = items.value(m.pk);
+            const RoadmapStore::ItemWrite &it = itemAt(m.pk);
             if (it.sectionId != 0 && !store.unfileItem(m.pk, e)) return false;
             if (!store.fileItem(m.pk, dest, ++nextPos[dest], e)) return false;
             // § 2.4 — the `section` row amend_field writes, then the marker.
@@ -730,7 +736,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     for (const Move &m : std::as_const(moves)) {
         if (moved.size() >= sampleLimit) break;
         QJsonObject o;
-        o[QStringLiteral("id")]      = items.value(m.pk).id;
+        o[QStringLiteral("id")]      = itemAt(m.pk).id;
         o[QStringLiteral("from")]    = m.fromIdx >= 0 ? secs.at(m.fromIdx).slug : QString();
         o[QStringLiteral("to")]      = m.destIdx >= 0 ? slugNow(m.destIdx)
                                                       : created.at(m.destCreated).slug;
@@ -748,9 +754,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     for (const Unplaced &u : std::as_const(unplaced)) {
         byReason[u.reason] = byReason.value(u.reason).toInt() + 1;
         if (unplacedRows.size() >= sampleLimit) continue;
-        const int si = idxOf.value(items.value(u.pk).sectionId, -1);
+        const int si = idxOf.value(itemAt(u.pk).sectionId, -1);
         QJsonObject o;
-        o[QStringLiteral("id")]      = items.value(u.pk).id;
+        o[QStringLiteral("id")]      = itemAt(u.pk).id;
         o[QStringLiteral("reason")]  = u.reason;
         o[QStringLiteral("section")] = si >= 0 ? slugNow(si) : QString();
         unplacedRows.append(o);

@@ -1245,10 +1245,13 @@ static QJsonArray rlStoreSuggestions(RoadmapStore &store, qint64 projectId,
     QString err;
     const auto refs = store.listItems(projectId, &err);
     if (!refs) return out;
+    // One query for every id, not a readItem() per item (ANTS-3816's N+1).
+    const auto items = store.readItems(projectId, &err);
     QStringList ids, heads;
     for (const auto &ref : *refs) {
-        const auto item = store.readItem(ref.itemPk, &err);
-        ids   << (item ? item->id : QString());
+        const auto item = items ? items->constFind(ref.itemPk)
+                                : QHash<qint64, RoadmapStore::ItemWrite>::const_iterator();
+        ids   << ((items && item != items->constEnd()) ? item->id : QString());
         heads << ref.headline;
     }
     auto add = [&](int i) {
