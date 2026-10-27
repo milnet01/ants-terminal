@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <map>
 #include <utility>
+#include <vector>
 
 namespace QuotationCheck {
 
@@ -136,33 +137,45 @@ Normalised dropMarks(const Normalised &in)
     return out;
 }
 
-bool globMatchAt(const QString &g, qsizetype gi, const QString &p, qsizetype pi)
+// `failed` memoises the (glob index, path index) states already proved not to
+// match. Without it a caller's `allowed` glob such as `*a*a*a*a*a*a*b` against
+// a long path backtracks exponentially in the number of stars; with it every
+// state is tried once, so the cost is bounded by g.size() * p.size().
+bool globMatchAt(const QString &g, qsizetype gi, const QString &p, qsizetype pi,
+                 std::vector<bool> &failed)
 {
+    const size_t key = size_t(gi) * size_t(p.size() + 1) + size_t(pi);
+    if (failed[key])
+        return false;
     while (gi < g.size()) {
         const QChar c = g[gi];
         if (c == '*') {
             const bool deep = gi + 1 < g.size() && g[gi + 1] == '*';
             const qsizetype rest = gi + (deep ? 2 : 1);
             for (qsizetype k = pi; k <= p.size(); ++k) {
-                if (globMatchAt(g, rest, p, k))
+                if (globMatchAt(g, rest, p, k, failed))
                     return true;
                 if (k < p.size() && !deep && p[k] == '/')
-                    return false;
+                    break;
             }
+            failed[key] = true;
             return false;
         }
         if (pi >= p.size())
-            return false;
+            break;
         if (c == '?') {
             if (p[pi] == '/')
-                return false;
+                break;
         } else if (c != p[pi]) {
-            return false;
+            break;
         }
         ++gi;
         ++pi;
     }
-    return pi == p.size();
+    if (gi >= g.size() && pi == p.size())
+        return true;
+    failed[key] = true;
+    return false;
 }
 
 } // namespace
@@ -186,7 +199,13 @@ QByteArray normaliseQuotation(const QByteArray &raw)
 
 bool globMatch(const QString &glob, const QString &path)
 {
-    return globMatchAt(glob, 0, path, 0);
+    // The memo is one bit per state; a glob and path whose product passes 64M
+    // states (8 MiB) is not a path glob, and matches nothing.
+    const size_t states = size_t(glob.size() + 1) * size_t(path.size() + 1);
+    if (states > (size_t(1) << 26))
+        return false;
+    std::vector<bool> failed(states, false);
+    return globMatchAt(glob, 0, path, 0, failed);
 }
 
 namespace {

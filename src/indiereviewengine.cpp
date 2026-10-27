@@ -292,8 +292,8 @@ QString laneKindForDir(const QString &projectPath, const QString &dir) {
     const auto declared =
         ProjectSettings::load(projectPath).testRoots.value_or(QStringList{});
     const auto isUnder = [&dir](const QString &root) {
-        const QString r = QString(root).remove(QRegularExpression(
-            QStringLiteral("/+$")));
+        static const QRegularExpression trailingSlashes(QStringLiteral("/+$"));
+        const QString r = QString(root).remove(trailingSlashes);
         return dir == r || dir.startsWith(r + QLatin1Char('/'));
     };
     if (!declared.isEmpty()) {
@@ -377,10 +377,13 @@ QSet<QString> ignoredDirPrefixes(const QString &projectPath,
 // an ignored one is ignored without being named.
 bool underIgnoredDir(const QString &rel, const QSet<QString> &ignored) {
     if (ignored.isEmpty()) return false;
-    for (const QString &pre : ignored) {
-        if (rel == pre) return true;
-        if (rel.startsWith(pre + QLatin1Char('/'))) return true;
-    }
+    // Each ancestor prefix of `rel` is looked up in the set, rather than every
+    // set entry tested against `rel`: the set holds up to kMaxDirsChecked
+    // entries and this runs once per walked file.
+    if (ignored.contains(rel)) return true;
+    for (qsizetype i = rel.indexOf(QLatin1Char('/')); i > 0;
+         i = rel.indexOf(QLatin1Char('/'), i + 1))
+        if (ignored.contains(rel.left(i))) return true;
     return false;
 }
 

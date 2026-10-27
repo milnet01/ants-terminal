@@ -326,7 +326,11 @@ QStringList enclosingScopes(const QStringList &lines, int line) {
                 if (l.at(i + 1) == QLatin1Char('/')) break;
                 if (l.at(i + 1) == QLatin1Char('*')) { inComment = true; ++i; continue; }
             }
-            if (c == QLatin1Char('"')) {
+            // A character literal is skipped like a string: `QLatin1Char('{')`
+            // would otherwise open a scope. A `'` after an alphanumeric is a
+            // digit separator (`1'000`), not a quote.
+            if (c == QLatin1Char('"')
+                || (c == QLatin1Char('\'') && (i == 0 || !l.at(i - 1).isLetterOrNumber()))) {
                 qsizetype j = i + 1;
                 while (j < l.size() && l.at(j) != c) j += (l.at(j) == QLatin1Char('\\')) ? 2 : 1;
                 i = j;

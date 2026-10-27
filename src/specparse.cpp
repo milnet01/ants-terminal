@@ -232,17 +232,20 @@ QJsonObject parseSpecBody(const QString &body) {
                 QRegularExpression::MultilineOption);
             auto bit = bulletStartRe.globalMatch(section);
             QList<QPair<QString, int>> starts;  // id, position-after-marker
+            QList<int> markerAt;                // where each bullet's line begins
             while (bit.hasNext()) {
                 const auto m = bit.next();
                 starts.append({m.captured(1), m.capturedEnd()});
+                markerAt.append(static_cast<int>(m.capturedStart()));
             }
             for (int i = 0; i < starts.size(); ++i) {
                 const int from = starts[i].second;
-                // The body ends at the newline before the next bullet.
+                // The body ends at the newline before the next bullet. Taken
+                // from the anchor's own match: a literal "\n- **INV-" search
+                // missed a next bullet the anchor admits (`-  **INV-2**`, two
+                // spaces) and let this body run on through it.
                 const int to = (i + 1 < starts.size())
-                                   ? section.lastIndexOf(
-                                         QStringLiteral("\n- **INV-"),
-                                         starts[i + 1].second - 1)
+                                   ? markerAt[i + 1] - 1
                                    : section.size();
                 const int end = to > from ? to : section.size();
                 // ANTS-3697 — a bullet-form body also ends at the next ATX

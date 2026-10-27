@@ -133,13 +133,21 @@ bool isExcludedPath(const QString &relPath, const Options &opts) {
     // Qt 6.6's NonPathWildcardConversion says exactly this, but this project's
     // floor is Qt 6.2 (docs/standards/dependencies.md), so the two-line
     // translation is written out rather than raising the floor for it.
+    // Compiled once per glob and thread: this runs per document (twice, from
+    // the doc_dedup walk and add()), and the globs are a handful of fixed
+    // strings, so rebuilding each pattern per call was pure PCRE2 compile cost.
+    thread_local QHash<QString, QRegularExpression> compiled;
     for (const QString &glob : opts.excludedPathGlobs) {
-        QString rx = QRegularExpression::escape(glob);
-        rx.replace(QStringLiteral("\\*"), QStringLiteral(".*"));
-        rx.replace(QStringLiteral("\\?"), QStringLiteral("."));
-        const QRegularExpression re(QStringLiteral("\\A(?:") + rx +
-                                    QStringLiteral(")\\z"));
-        if (re.match(relPath).hasMatch()) return true;
+        auto cit = compiled.constFind(glob);
+        if (cit == compiled.constEnd()) {
+            QString rx = QRegularExpression::escape(glob);
+            rx.replace(QStringLiteral("\\*"), QStringLiteral(".*"));
+            rx.replace(QStringLiteral("\\?"), QStringLiteral("."));
+            if (compiled.size() > 256) compiled.clear();
+            cit = compiled.insert(glob, QRegularExpression(
+                QStringLiteral("\\A(?:") + rx + QStringLiteral(")\\z")));
+        }
+        if (cit->match(relPath).hasMatch()) return true;
     }
     return false;
 }
