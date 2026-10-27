@@ -1964,7 +1964,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
             || key == Qt::Key_PageUp || key == Qt::Key_PageDown);
     const bool ctrlShiftNav = (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)
         && (key == Qt::Key_Up || key == Qt::Key_Down
-            || key == Qt::Key_J || key == Qt::Key_K);
+            || key == Qt::Key_J || key == Qt::Key_K
+            // Copy, search and URL quick-select act on what is on screen,
+            // so they keep a scrolled-up view where it is.
+            || key == Qt::Key_C || key == Qt::Key_F || key == Qt::Key_G);
     if (!shiftOnlyScroll && !ctrlShiftNav) {
         m_scrollOffset = 0;
         m_newOutputMarkerLine = -1;
