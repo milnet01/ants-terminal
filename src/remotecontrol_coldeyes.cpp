@@ -199,7 +199,11 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
                     rejectedDocPaths.append(rej);
                     continue;
                 }
-                adhoc.docPaths << d;
+                // The engine reads root + '/' + entry, so an absolute
+                // in-root path must be made root-relative first.
+                adhoc.docPaths << (QDir::isAbsolutePath(d)
+                                       ? QDir(root).relativeFilePath(pc.resolved)
+                                       : d);
             }
         }
         if (!adhoc.docPaths.isEmpty()) {

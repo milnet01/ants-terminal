@@ -35,6 +35,7 @@
 #include <QSet>
 #include <algorithm>
 #include <functional>
+#include <limits>
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -642,6 +643,16 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         if (parseBudgetExceeded || line.isEmpty()) return;
         if ((++scanCounter & 0x7FF) == 0 && wall.hasExpired(totalBudgetMs)) {
             parseBudgetExceeded = true;
+            return;
+        }
+        // Past the row cap a match event only adds to the count (the branch
+        // below ends in the same `truncated = true; return;`), so it is
+        // counted without being parsed. rg --json writes "type" first.
+        if (!filesOnly && !matchesOnly && seenMatchEvents >= offset &&
+            matches.size() >= maxResults &&
+            line.startsWith(QByteArrayLiteral("{\"type\":\"match\""))) {
+            ++seenMatchEvents;
+            truncated = true;
             return;
         }
         QJsonParseError perr{};
@@ -1671,6 +1682,16 @@ static QJsonObject outlineOneFile(const QString &rawPath,
         o["code"]  = QStringLiteral("not_found");
         return o;
     }
+    // As read_log (ANTS-5110): opening a FIFO or device blocks the worker
+    // until a writer appears.
+    if (!QFileInfo(check.resolved).isFile()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("file_outline: \"%1\" is not a regular file")
+                         .arg(rawPath);
+        o["code"]  = QStringLiteral("bad_path");
+        return o;
+    }
     // ANTS-3839 — when a name filter is in play the engine must see the WHOLE
     // file. `maxSymbols` is enforced during collection, so asking for the
     // caller's budget and filtering afterwards would search only the first
@@ -2517,6 +2538,15 @@ QJsonDocument RemoteControl::cmdReadRegion(const QJsonObject &req) {
         o["code"]  = QStringLiteral("not_found");
         return QJsonDocument(o);
     }
+    // As read_log (ANTS-5110): opening a FIFO or device blocks the worker
+    // until a writer appears.
+    if (!QFileInfo(check.resolved).isFile()) {
+        QJsonObject o;
+        o["ok"]    = false;
+        o["error"] = QStringLiteral("read_region: \"%1\" is not a regular file").arg(rawPath);
+        o["code"]  = QStringLiteral("bad_path");
+        return QJsonDocument(o);
+    }
 
     ReadRegion::Options opts;
     opts.symbol       = req.value(QStringLiteral("symbol")).toString();
@@ -2634,11 +2664,20 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
     // byte mode's arg reads, so a non-numeric row arg falls to byte mode. When
     // a request mixes row keys with byte offset/max_bytes, row mode wins and
     // the byte args are ignored (§ 2.4.1).
+    // Casting a double outside qint64's range is undefined ({"offset":1e30}),
+    // so the argument is clamped first.
+    const auto asI64 = [](const QJsonValue &v) -> qint64 {
+        const double d = v.toDouble();
+        if (d != d) return 0;   // NaN
+        if (d >= 9.0e18)  return std::numeric_limits<qint64>::max();
+        if (d <= -9.0e18) return std::numeric_limits<qint64>::min();
+        return static_cast<qint64>(d);
+    };
     const QJsonValue roV = req.value(QStringLiteral("row_offset"));
     const QJsonValue rcV = req.value(QStringLiteral("row_count"));
     if (roV.isDouble() || rcV.isDouble()) {
-        const qint64 rowOffset = roV.isDouble() ? static_cast<qint64>(roV.toDouble()) : 0;
-        const qint64 rowCount  = rcV.isDouble() ? static_cast<qint64>(rcV.toDouble()) : 0;
+        const qint64 rowOffset = roV.isDouble() ? asI64(roV) : 0;
+        const qint64 rowCount  = rcV.isDouble() ? asI64(rcV) : 0;
         const mcp::SpillRows r = mcp::readSpillRows(handle, rowOffset, rowCount);
         if (!r.ok) {
             QJsonObject o;
@@ -2696,8 +2735,8 @@ QJsonDocument RemoteControl::cmdReadSpill(const QJsonObject &req) {
     // reached only in byte mode (row mode returned above).
     const QJsonValue offV = req.value(QStringLiteral("offset"));
     const QJsonValue mbV  = req.value(QStringLiteral("max_bytes"));
-    const qint64 offset   = offV.isDouble() ? static_cast<qint64>(offV.toDouble()) : 0;
-    const qint64 maxBytes = mbV.isDouble()  ? static_cast<qint64>(mbV.toDouble())  : 0;
+    const qint64 offset   = offV.isDouble() ? asI64(offV) : 0;
+    const qint64 maxBytes = mbV.isDouble()  ? asI64(mbV)  : 0;
     if (offset < 0 || (mbV.isDouble() && maxBytes < 0)) {
         QJsonObject o;
         o["ok"]    = false;

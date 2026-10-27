@@ -950,10 +950,16 @@ QByteArray runGit(const QString &root, const QStringList &argv) {
 
 VerifyGitSnapshot collectGitSnapshot(const QString &root) {
     VerifyGitSnapshot s;
+    // --show-toplevel too: porcelain paths are relative to the repository
+    // root, which `root` need not be.
     const QByteArray headRaw = runGit(root, {QStringLiteral("rev-parse"),
+                                             QStringLiteral("--show-toplevel"),
                                              QStringLiteral("HEAD")});
     if (headRaw.isEmpty()) return s;
-    const QString head = QString::fromUtf8(headRaw).trimmed();
+    const QList<QByteArray> revLines = headRaw.trimmed().split('\n');
+    if (revLines.size() < 2) return s;
+    const QString topLevel = QString::fromUtf8(revLines.first());
+    const QString head = QString::fromUtf8(revLines.last()).trimmed();
     if (head.size() < 7) return s;
 
     // ANTS-5097 — a status that failed or timed out returned empty output,
@@ -966,9 +972,11 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
     if (!statusOk) return s;
     // Empty output from a successful status is a clean tree.
     s.head      = head;
-    s.statusSha = QString::fromUtf8(
-        QCryptographicHash::hash(statusRaw, QCryptographicHash::Sha256)
-            .toHex().left(16));
+    // The status lists a modified file the same way however often it is
+    // edited again, so it alone served a cached result for an edit made after
+    // it. Each listed path's size and mtime join the hash.
+    QCryptographicHash statusHash(QCryptographicHash::Sha256);
+    statusHash.addData(statusRaw);
 
     // ANTS-3373 — pull added/untracked source files out of the same
     // porcelain output (no extra git call). Entries are NUL-separated
@@ -985,6 +993,14 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
         if (t.size() < 4) continue;               // "XY p" minimum
         const char x = t.at(0), y = t.at(1);
         if (x == 'R' || x == 'C') ++i;            // consume paired old-path
+        {
+            const QFileInfo fi(topLevel + QLatin1Char('/')
+                               + QString::fromUtf8(t.mid(3)));
+            const QByteArray stamp = '\0' + QByteArray::number(
+                fi.exists() ? fi.size() : -1) + ':' + QByteArray::number(
+                fi.exists() ? fi.lastModified().toMSecsSinceEpoch() : -1);
+            statusHash.addData(stamp);
+        }
         const bool added = (x == 'A' || y == 'A' || (x == '?' && y == '?'));
         if (!added) continue;
         const QString path = QString::fromUtf8(t.mid(3));
@@ -995,6 +1011,7 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
             }
         }
     }
+    s.statusSha = QString::fromUtf8(statusHash.result().toHex().left(16));
 
     s.valid = true;
     return s;
