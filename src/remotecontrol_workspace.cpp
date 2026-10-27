@@ -645,16 +645,6 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             parseBudgetExceeded = true;
             return;
         }
-        // Past the row cap a match event only adds to the count (the branch
-        // below ends in the same `truncated = true; return;`), so it is
-        // counted without being parsed. rg --json writes "type" first.
-        if (!filesOnly && !matchesOnly && seenMatchEvents >= offset &&
-            matches.size() >= maxResults &&
-            line.startsWith(QByteArrayLiteral("{\"type\":\"match\""))) {
-            ++seenMatchEvents;
-            truncated = true;
-            return;
-        }
         QJsonParseError perr{};
         const QJsonDocument doc = QJsonDocument::fromJson(line, &perr);
         if (perr.error != QJsonParseError::NoError || !doc.isObject()) return;

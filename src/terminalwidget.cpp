@@ -6191,10 +6191,10 @@ void TerminalWidget::updateSuggestion() {
             // commandStartCol is a cell; a prompt glyph of two UTF-16 units
             // (emoji) or with combining marks moves the text offset.
             const QString lt = lineText(cursorLine);
-            const qsizetype from = lt.size() == m_grid->cols()
-                ? qsizetype(pr.commandStartCol)
-                : lineColumns(cursorLine).offsetAt(pr.commandStartCol);
-            currentLine = lt.mid(from).trimmed();
+            currentLine = (lt.size() == m_grid->cols()
+                ? lt.mid(pr.commandStartCol)
+                : lt.mid(lineColumns(cursorLine).offsetAt(pr.commandStartCol)))
+                .trimmed();
         }
     }
 
