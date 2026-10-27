@@ -120,8 +120,12 @@ void MainWindow::refreshRepoVisibility() {
         // pair with the git separator). Foreground colour stays
         // public-green / private-red for the at-a-glance visibility
         // cue from 0.7.45.
-        m_repoVisibilityLabel->setStyleSheet(
-            themedstylesheet::buildChipStylesheet(th, col, /*leftMarginPx=*/0));
+        // Cache hits re-apply this every 2 s tick; an unchanged sheet is
+        // not set again, as the branch chip does.
+        const QString qss =
+            themedstylesheet::buildChipStylesheet(th, col, /*leftMarginPx=*/0);
+        if (m_repoVisibilityLabel->styleSheet() != qss)
+            m_repoVisibilityLabel->setStyleSheet(qss);
         m_repoVisibilityLabel->setToolTip(tr("%1 on GitHub").arg(repoSlug));
         m_repoVisibilityLabel->show();
     };
@@ -157,7 +161,7 @@ void MainWindow::refreshRepoVisibility() {
     QPointer<MainWindow> self(this);
     connect(proc,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished),
-            this, [self, proc, repoRoot, slug, applyVisibility](
+            this, [self, proc, repoRoot](
                 int exitCode, QProcess::ExitStatus status) {
                 proc->deleteLater();
                 if (!self) return;
@@ -193,7 +197,11 @@ void MainWindow::refreshRepoVisibility() {
 #if defined(__GNUC__) && !defined(__clang__)
 #  pragma GCC diagnostic pop
 #endif
-                applyVisibility(visibility, slug);
+                // Re-resolve against the tab now focused: the user may have
+                // switched to another repo's tab while gh ran, and this
+                // result must not be painted onto it. The cache is filled,
+                // so a still-matching tab renders from the hit branch.
+                self->refreshRepoVisibility();
             });
     // ANTS-1137 — mark in-flight before start so a re-entry within
     // this 2 s tick (or any fast tab-switch before the QProcess

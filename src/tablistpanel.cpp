@@ -180,8 +180,7 @@ TabListPanel::TabListPanel(QWidget *parent) : QWidget(parent) {
     m_tree->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_tree, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos) {
         QTreeWidgetItem *item = m_tree->itemAt(pos);
-        auto *page = item ? qobject_cast<QWidget *>(item->data(0, kPageRole).value<QObject *>())
-                          : nullptr;
+        QWidget *page = pageOf(item);
         if (page) emit tabContextMenuRequested(page);
     });
     // Enter and a click away submit; Escape reverts. commitData runs first,
@@ -256,8 +255,7 @@ bool TabListPanel::eventFilter(QObject *watched, QEvent *event) {
             QTreeWidgetItem *pressed = m_closePressed;
             m_closePressed = nullptr;
             if (closeMarkAt(me->position().toPoint()) == pressed) {
-                auto *page =
-                    qobject_cast<QWidget *>(pressed->data(0, kPageRole).value<QObject *>());
+                QWidget *page = pageOf(pressed);
                 if (page) emit tabCloseRequested(page);
             }
             return true;
@@ -363,6 +361,10 @@ void TabListPanel::rebuild() {
     m_closePressed = nullptr;
     m_closeHover = nullptr;
     m_tree->clear();
+    // The pages are live here: setEntries is handed the tab widget's pages.
+    m_pageGuards.clear();
+    for (const TabListEntry &e : std::as_const(m_entries))
+        if (e.page) m_pageGuards.insert(e.page, QPointer<QWidget>(e.page));
     if (m_entries.isEmpty()) return;
 
     const int iconSide = QFontMetrics(m_tree->font()).height();
@@ -445,8 +447,12 @@ void TabListPanel::rebuild() {
 
 void TabListPanel::onItemActivated(QTreeWidgetItem *item) {
     if (!item) return;
-    auto *page = qobject_cast<QWidget *>(item->data(0, kPageRole).value<QObject *>());
-    if (page) emit tabActivated(page);
+    if (QWidget *page = pageOf(item)) emit tabActivated(page);
+}
+
+QWidget *TabListPanel::pageOf(QTreeWidgetItem *item) const {
+    if (!item) return nullptr;
+    return m_pageGuards.value(item->data(0, kPageRole).value<QObject *>()).data();
 }
 
 TabListPanel::RowPaint TabListPanel::rowPaint(ClaudeTabIndicator::Glyph glyph,

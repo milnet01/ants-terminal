@@ -431,6 +431,8 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
     painter.setRenderHint(QPainter::Antialiasing, true);
     constexpr int kDotRadius = 4;
     for (int i = 0; i < count(); ++i) {
+        const QRect r = tabRect(i);
+        if (!event->region().intersects(r)) continue;
         const ClaudeTabIndicator ind = m_indicatorProvider(i);
         // ANTS-5081 — the tab tooltip (the screen-reader surface, ANTS-1185)
         // has one writer, ClaudeStatusBarController, which names the tool in
@@ -443,9 +445,6 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         // sits on.
         const QColor fill = ClaudeTabIndicator::contrastColor(ind.glyph, m_bg);
         if (!fill.isValid()) continue;  // None / unrecognised → no dot
-
-        const QRect r = tabRect(i);
-        if (!event->region().intersects(r)) continue;
 
         // Tab padding is 22 px on the left (see the app stylesheet's
         // `QTabBar::tab { padding: 6px 16px 6px 22px; }` — bumped from

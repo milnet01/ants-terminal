@@ -182,7 +182,9 @@ void MainWindow::restoreSessions() {
 
     // Collect terminals and their start directories for deferred shell startup
     struct RestoredTab {
-        TerminalWidget *terminal;
+        // Guarded: a tab can close (rc close-tab, the tab's x) before the
+        // deferred start below runs, and the widget is then deleted.
+        QPointer<TerminalWidget> terminal;
         QString startDir;
         QString tabId;
     };
@@ -279,6 +281,7 @@ void MainWindow::restoreSessions() {
         QApplication::processEvents();
 
         for (const auto &tab : restoredTabs) {
+            if (!tab.terminal) continue;
             tab.terminal->forceRecalcSize();
             if (!tab.terminal->startShell(tab.startDir, m_config.shellCommand()))
                 continue;

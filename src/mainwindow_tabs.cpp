@@ -242,6 +242,7 @@ void MainWindow::connectTerminal(TerminalWidget *terminal) {
                 if (w->isAncestorOf(terminal)) { ownTab = w; break; }
             }
             firePluginTabEvent(false, m_tabWidget->indexOf(ownTab), true);
+            releaseTerminalShell(terminal);  // as closeFocusedPane does
             terminal->setParent(nullptr);
             terminal->deleteLater();
             cleanupEmptySplitters(ownTab);
@@ -594,13 +595,19 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
             m_tabSessionIds.remove(current);
             m_tabSessionIds[splitter] = sessionId;
         }
+        // The pin and full title are keyed on the tab root too; left on
+        // `current` they were lost, and the label reset to "Shell".
+        moveTabRootKeys(current, splitter);
+        const QString label = m_tabWidget->tabText(tabIdx);
+        const QColor colour = m_coloredTabBar ? m_coloredTabBar->tabColor(tabIdx) : QColor();
 
         current->setParent(nullptr);
         splitter->addWidget(current);
         splitter->addWidget(newTerm);
 
         m_tabWidget->removeTab(tabIdx);
-        m_tabWidget->insertTab(tabIdx, splitter, "Shell");
+        m_tabWidget->insertTab(tabIdx, splitter, label);
+        if (colour.isValid()) m_coloredTabBar->setTabColor(tabIdx, colour);
         m_tabWidget->setCurrentIndex(tabIdx);
     }
 
@@ -707,16 +714,27 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
                     m_tabSessionIds.remove(splitter);
                     m_tabSessionIds[child] = sessionId;
                 }
+                moveTabRootKeys(splitter, child);
+                const QString label = m_tabWidget->tabText(tabIdx);
+                const QColor colour = m_coloredTabBar ? m_coloredTabBar->tabColor(tabIdx) : QColor();
 
                 child->setParent(nullptr);
                 splitter->setParent(nullptr);
                 m_tabWidget->removeTab(tabIdx);
-                m_tabWidget->insertTab(tabIdx, child, "Shell");
+                m_tabWidget->insertTab(tabIdx, child, label);
+                if (colour.isValid()) m_coloredTabBar->setTabColor(tabIdx, colour);
                 m_tabWidget->setCurrentIndex(tabIdx);
                 splitter->deleteLater();
             }
         }
     }
+}
+
+void MainWindow::moveTabRootKeys(QWidget *from, QWidget *to) {
+    if (m_tabTitlePins.contains(from))
+        m_tabTitlePins.insert(to, m_tabTitlePins.take(from));
+    if (m_tabFullTitles.contains(from))
+        m_tabFullTitles.insert(to, m_tabFullTitles.take(from));
 }
 
 TerminalWidget *MainWindow::focusedTerminal() const {

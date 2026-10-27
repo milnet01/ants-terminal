@@ -3,6 +3,7 @@
 #include "coloredtabbar.h"
 
 #include <QColor>
+#include <QHash>
 #include <QPointer>
 #include <QString>
 #include <QVector>
@@ -114,6 +115,10 @@ private:
     // The tab row whose close mark is at `pos`, or null.
     QTreeWidgetItem *closeMarkAt(const QPoint &pos) const;
     void setCloseHover(QTreeWidgetItem *item);
+    // The live page a row names, or null once that tab's widget is gone:
+    // rows outlive their page until the next rebuild (the 50 ms refresh, or
+    // the end of a rename), and a click in that window reached a freed page.
+    QWidget *pageOf(QTreeWidgetItem *item) const;
 
     QTreeWidget *m_tree = nullptr;
     QVector<TabListEntry> m_entries;
@@ -125,4 +130,5 @@ private:
     QPointer<QWidget> m_renamePage;         // null if the tab closes mid-edit
     QTreeWidgetItem *m_closePressed = nullptr;  // pressed on its close mark
     QTreeWidgetItem *m_closeHover = nullptr;    // mouse over its close mark
+    QHash<QObject *, QPointer<QWidget>> m_pageGuards;  // set by rebuild()
 };
