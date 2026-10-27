@@ -245,6 +245,12 @@ void VtParser::processChar(uint32_t ch) {
             return;
         case 0x18: // CAN
         case 0x1A: // SUB
+            // An aborted string never reaches endString, so its accumulator
+            // (up to kMaxStringBytes) is released here instead of staying
+            // resident for the parser's lifetime.
+            if (m_state == OscString) releaseIfLarge(m_oscString);
+            else if (m_state == DcsString) releaseIfLarge(m_dcsString);
+            else if (m_state == ApcString) releaseIfLarge(m_apcString);
             transition(Ground);
             return;
         default:

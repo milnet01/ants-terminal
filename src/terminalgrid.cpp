@@ -505,8 +505,10 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
 }
 
 void TerminalGrid::handlePrint(uint32_t cp) {
-    // Combining character (zero-width) — attach to previous cell
-    int w = wcwidth(static_cast<wchar_t>(cp));
+    // Combining character (zero-width) — attach to previous cell.
+    // Printable ASCII is always width 1; skip the locale-aware wcwidth()
+    // call for it, since the threaded path delivers every output byte here.
+    int w = (cp >= 0x20 && cp < 0x7F) ? 1 : wcwidth(static_cast<wchar_t>(cp));
     if (w == 0 && cp > 0x20) {
         int targetCol;
         if (m_wrapNext) {
@@ -576,7 +578,8 @@ void TerminalGrid::handlePrint(uint32_t cp) {
     c.isWideChar = (charWidth == 2);
     c.isWideCont = false;
     markScreenDirty(m_cursorRow);
-    m_screenLines[m_cursorRow].combining.erase(m_cursorCol);
+    if (!m_screenLines[m_cursorRow].combining.empty())
+        m_screenLines[m_cursorRow].combining.erase(m_cursorCol);
 
     if (charWidth == 2 && m_cursorCol + 1 < m_cols) {
         // Mark next cell as continuation
@@ -855,6 +858,11 @@ void TerminalGrid::handleCsi(const VtAction &a) {
         // default + bg = eraseBg().
         int count = param(0);
         const QColor bg = eraseBg();
+        // The erased cells must reach the span caches (URL detection reads
+        // the dirty bit) and lose their OSC 8 links, as clearRow's do.
+        markScreenDirty(m_cursorRow);
+        dropHyperlinkSpans(m_cursorRow, m_cursorCol,
+                           std::min(m_cols, m_cursorCol + count));
         for (int i = 0; i < count && m_cursorCol + i < m_cols; ++i) {
             auto &c = cell(m_cursorRow, m_cursorCol + i);
             c.codepoint = ' ';
@@ -1965,17 +1973,25 @@ void TerminalGrid::insertLines(int count) {
     // m_screenHyperlinks must track m_screenLines — otherwise OSC 8 spans
     // drift away from the cells that contain the clickable text.
     const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
+    if (count <= 0) return;
+    // One rotate of [cursorRow, bottom] instead of an erase + insert per
+    // line, which shifted the region `count` times. The bottom `count`
+    // rows are discarded; they rotate to the cursor row and are re-blanked.
+    for (int i = 0; i < count; ++i)
+        returnCellsRow(std::move(m_screenLines[bottom - count + 1 + i].cells));
+    std::rotate(m_screenLines.begin() + m_cursorRow,
+                m_screenLines.begin() + bottom + 1 - count,
+                m_screenLines.begin() + bottom + 1);
+    if (hlInRange) {
+        std::rotate(m_screenHyperlinks.begin() + m_cursorRow,
+                    m_screenHyperlinks.begin() + bottom + 1 - count,
+                    m_screenHyperlinks.begin() + bottom + 1);
+    }
     for (int i = 0; i < count; ++i) {
-        returnCellsRow(std::move(m_screenLines[bottom].cells));
-        m_screenLines.erase(m_screenLines.begin() + bottom);
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
-        m_screenLines.insert(m_screenLines.begin() + m_cursorRow, std::move(tl));
-        if (hlInRange) {
-            m_screenHyperlinks.erase(m_screenHyperlinks.begin() + bottom);
-            m_screenHyperlinks.insert(m_screenHyperlinks.begin() + m_cursorRow,
-                                      std::vector<HyperlinkSpan>{});
-        }
+        m_screenLines[m_cursorRow + i] = std::move(tl);
+        if (hlInRange) m_screenHyperlinks[m_cursorRow + i].clear();
     }
 }
 
@@ -1985,17 +2001,25 @@ void TerminalGrid::deleteLines(int count) {
     markAllScreenDirty();
     count = std::min(count, bottom - m_cursorRow + 1);
     const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
+    if (count <= 0) return;
+    // One rotate of [cursorRow, bottom], as insertLines: the `count` rows
+    // at the cursor are discarded, rotate to the bottom and are re-blanked.
+    for (int i = 0; i < count; ++i)
+        returnCellsRow(std::move(m_screenLines[m_cursorRow + i].cells));
+    std::rotate(m_screenLines.begin() + m_cursorRow,
+                m_screenLines.begin() + m_cursorRow + count,
+                m_screenLines.begin() + bottom + 1);
+    if (hlInRange) {
+        std::rotate(m_screenHyperlinks.begin() + m_cursorRow,
+                    m_screenHyperlinks.begin() + m_cursorRow + count,
+                    m_screenHyperlinks.begin() + bottom + 1);
+    }
     for (int i = 0; i < count; ++i) {
-        returnCellsRow(std::move(m_screenLines[m_cursorRow].cells));
-        m_screenLines.erase(m_screenLines.begin() + m_cursorRow);
+        const int dstRow = bottom - count + 1 + i;
         TermLine tl;
         tl.cells = takeBlankedCellsRow();
-        m_screenLines.insert(m_screenLines.begin() + bottom, std::move(tl));
-        if (hlInRange) {
-            m_screenHyperlinks.erase(m_screenHyperlinks.begin() + m_cursorRow);
-            m_screenHyperlinks.insert(m_screenHyperlinks.begin() + bottom,
-                                      std::vector<HyperlinkSpan>{});
-        }
+        m_screenLines[dstRow] = std::move(tl);
+        if (hlInRange) m_screenHyperlinks[dstRow].clear();
     }
 }
 
@@ -2488,11 +2512,12 @@ void TerminalGrid::exitAltScreen() {
     const int enteredMode = m_altScreenMode;
     m_altScreenMode = 0;
     markAllScreenDirty();
-    m_screenLines = m_altScreen;
-    m_screenHyperlinks = m_altScreenHyperlinks;
-    m_inlineImages = m_altInlineImages;
+    // Moved, not copied: the saved buffers are cleared just below anyway.
+    m_screenLines = std::move(m_altScreen);
+    m_screenHyperlinks = std::move(m_altScreenHyperlinks);
+    m_inlineImages = std::move(m_altInlineImages);
     applyPromptRegionShift();  // ANTS-5029
-    m_promptRegions = m_altPromptRegions;
+    m_promptRegions = std::move(m_altPromptRegions);
     m_scrollTop = m_altScrollTop;
     m_scrollBottom = m_altScrollBottom;
     if (enteredMode == 1049) {
@@ -2892,9 +2917,12 @@ void TerminalGrid::resize(int rows, int cols) {
                 if (c.codepoint != ' ' && c.codepoint != 0) return false;
             return tl.combining.empty();
         };
-        while (static_cast<int>(reflowed.size()) > rows) {
-            TermLine front = std::move(reflowed.front());
-            reflowed.erase(reflowed.begin());
+        // The overflow is moved out front-to-back and erased in one call;
+        // erasing the front one line at a time was quadratic in the
+        // overflow, which a narrowing resize makes large.
+        const int overflow = std::max(0, static_cast<int>(reflowed.size()) - rows);
+        for (int k = 0; k < overflow; ++k) {
+            TermLine front = std::move(reflowed[k]);
             if (!isBlankLine(front)) {
                 m_scrollback.push_back(std::move(front));
                 // ANTS-2119 M1 — count reflow overflow as "pushed" so the
@@ -2907,6 +2935,7 @@ void TerminalGrid::resize(int rows, int cols) {
                 m_scrollbackHyperlinks.emplace_back();
             }
         }
+        reflowed.erase(reflowed.begin(), reflowed.begin() + overflow);
 
         std::vector<TermLine> newLines(rows);
         for (auto &line : newLines)
@@ -3484,7 +3513,10 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         resetKittyChunk();
         return;
     }
-    std::string fullData = m_kittyChunkBuffer + data_str;
+    // Moved, not copied: the staging buffer (up to MAX_KITTY_CHUNK_BYTES) is
+    // reset on the next line anyway.
+    std::string fullData = std::move(m_kittyChunkBuffer);
+    fullData += data_str;
     if (imageId == 0 && m_kittyChunkId != 0) imageId = m_kittyChunkId;
     resetKittyChunk();
 
