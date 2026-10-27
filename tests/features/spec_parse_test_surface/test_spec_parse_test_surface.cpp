@@ -318,3 +318,40 @@ TEST(SpecParseTestSurface, Ants5758ClauseEndsAtBreaksWhenMarker) {
            "ANTS-5758: a quoted marker does not end the clause", render(c));
     EXPECT_EQ(0, expect_finish());
 }
+
+// INV-6 — the bullet anchor's trailing separator and whitespace stay on the
+// marker's line. With `\s*[—\-:]?\s*` an empty-bodied `- **INV-1**` crossed
+// the newline and ate the next line's `- `, so `- **INV-2**` never matched and
+// its text became INV-1's body. A body that starts on the next line, and a
+// `—` separator on the next line, still read as before.
+TEST(SpecParseTestSurface, Inv6EmptyBulletDoesNotEatTheNextOne) {
+    expect_reset();
+    const QJsonObject p = parse(withHeader(QStringLiteral(
+        "- **INV-1**\n"
+        "- **INV-2** — Second claim. *Test:* second probe.\n"
+        "- **INV-3**\n"
+        "  Body on the next line. *Test:* third probe.\n"
+        "- **INV-4**\n"
+        "  — Separator on the next line.\n"))
+        .toUtf8().constData());
+
+    expect(p.value(QStringLiteral("invariants_count")).toInt() == 4,
+           "INV-6/four-parsed",
+           QString::number(p.value(QStringLiteral("invariants_count")).toInt()));
+    const QJsonObject i0 = inv(p, 0), i1 = inv(p, 1), i2 = inv(p, 2), i3 = inv(p, 3);
+    expect(field(i0, "id") == QStringLiteral("INV-1"), "INV-6/first-id", render(i0));
+    expect(field(i0, "body").isEmpty(), "INV-6/empty-body-stays-empty", render(i0));
+    expect(field(i1, "id") == QStringLiteral("INV-2"), "INV-6/second-id", render(i1));
+    expect(field(i1, "body") == QStringLiteral("Second claim."),
+           "INV-6/second-body", render(i1));
+    expect(field(i1, "test_surface") == QStringLiteral("second probe."),
+           "INV-6/second-clause", render(i1));
+    expect(field(i2, "id") == QStringLiteral("INV-3"), "INV-6/third-id", render(i2));
+    expect(field(i2, "body") == QStringLiteral("Body on the next line."),
+           "INV-6/next-line-body", render(i2));
+    expect(field(i2, "test_surface") == QStringLiteral("third probe."),
+           "INV-6/next-line-clause", render(i2));
+    expect(field(i3, "body") == QStringLiteral("Separator on the next line."),
+           "INV-6/next-line-separator-consumed", render(i3));
+    EXPECT_EQ(0, expect_finish());
+}

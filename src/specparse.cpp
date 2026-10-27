@@ -226,9 +226,17 @@ QJsonObject parseSpecBody(const QString &body) {
             // Split on the bullet anchor — capture group keeps the
             // INV-N marker, then accumulate body lines until the
             // next anchor.
+            //
+            // The separator may sit on the next line only when it is `—` or
+            // `:`; a `-` must be on the marker's own line, and the trailing
+            // whitespace never crosses a newline. A `\s*` there let an
+            // empty-bodied `- **INV-1**` eat the next line's `- ` so the
+            // following `- **INV-2**` was never matched. The body is taken
+            // from the match end and trimmed, so one that starts on the next
+            // line reads the same.
             static const QRegularExpression bulletStartRe(
                 QLatin1Char('^') + SpecParse::invBulletAnchorPattern() +
-                    QStringLiteral(R"(\s*[—\-:]?\s*)"),
+                    QStringLiteral(R"((?:[ \t]*-|\s*[—:])?[ \t]*)"),
                 QRegularExpression::MultilineOption);
             auto bit = bulletStartRe.globalMatch(section);
             QList<QPair<QString, int>> starts;  // id, position-after-marker
@@ -247,7 +255,10 @@ QJsonObject parseSpecBody(const QString &body) {
                 const int to = (i + 1 < starts.size())
                                    ? markerAt[i + 1] - 1
                                    : section.size();
-                const int end = to > from ? to : section.size();
+                // `>=`: an empty-bodied bullet's match ends exactly at the
+                // newline before the next one (to == from), and its body is
+                // empty, not the rest of the section.
+                const int end = to >= from ? to : section.size();
                 // ANTS-3697 — a bullet-form body also ends at the next ATX
                 // heading. A heading can never be a continuation of a bullet,
                 // so this needs no lookahead and cannot truncate a legitimate

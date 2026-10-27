@@ -27,6 +27,7 @@ Every fixture here is a string literal.
 | INV-3 | The GFM table branch is unchanged | `Inv3TableFormStillWorks` |
 | INV-4 | The clause ends at its paragraph; trailing commentary stays in `body` | `Inv4ClauseEndsAtItsParagraph` |
 | INV-5 | Several bullets in one section each keep their own clause | `Inv5MultipleBulletsEachKeepTheirOwnClause` |
+| INV-6 | An empty-bodied bullet does not consume the next bullet's `- `: the anchor's trailing whitespace never crosses a newline, a `-` separator must be on the marker's line, and a body (or a `—` / `:` separator) on the next line reads as before | `Inv6EmptyBulletDoesNotEatTheNextOne` |
 
 ## Why these assertions and not weaker ones
 
@@ -49,6 +50,14 @@ deliberately does not.
 next `- **INV-` anchor, and that is the part most likely to mis-slice once
 bodies stop being a single line. Its third bullet is untested on purpose, so
 the fixture covers "some have clauses, some do not" in one pass.
+
+**INV-6 pins the anchor's tail.** `bulletStartRe` once ended in
+`\s*[—\-:]?\s*` under `MultilineOption`, so after `- **INV-1**` with nothing
+on its line the first `\s*` crossed the newline and `[—\-:]?` took the next
+bullet's `-`; `- **INV-2**` then had no `^-` left to match and its text was
+read as INV-1's body. The fixture also carries a body that starts on the next
+line and a `—` separator on the next line, the two shapes the old tail served
+on purpose.
 
 ## The hoist
 
