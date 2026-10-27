@@ -715,6 +715,17 @@ which heading you expect it under.
   not restated here); and `op:"bundle_row"` **writes normally** — it appends to a
   Markdown table under a named section and never parses bullets, so the
   roadmap's bullet format never reaches it (ANTS-1691).
+- **`roadmap_log op:"flip_batch"` locators and statuses** — a bullet is
+  written once per call. A later locator naming a bullet an earlier one
+  claimed (the same id, or the same bullet by headline) lands in
+  `skipped[]` as `duplicate_locator`, its `error` naming the earlier
+  locator index, so `flipped_count + skipped_count` equals the locator
+  count; a `line_range` overlapping earlier locators is a duplicate only
+  when it matched nothing new. `annotate_batch` shares the rule. Both the
+  call-level and per-locator `to_status` take `op:"flip"`'s synonyms
+  (`rlCanonicalToStatus`: done/complete/completed, wip/in_progress,
+  todo/open, maybe/idea) besides the five words and their emoji; anything
+  else is `bad_status`.
 - **A `note` is prose (ANTS-4549)** — under `op:"annotate"`, `op:"flip"`
   and `op:"flip_batch"` a note may name a trailer key only with the label
   first on its line, the shape the render writes a declaration in.

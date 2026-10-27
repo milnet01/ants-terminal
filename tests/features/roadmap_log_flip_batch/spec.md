@@ -20,7 +20,8 @@ per-locator `note` and `no_anchor`.
   not-yet-applied target.
 - **INV-3** — partial success: an unresolvable locator lands in
   `skipped[]` with a `code` (`bullet_not_found` / `bullet_ambiguous` /
-  `missing_field`) while every resolvable locator still applies;
+  `missing_field` / `duplicate_locator`) while every resolvable locator
+  still applies;
   `flipped_count + skipped_count` accounts for all inputs.
 - **INV-4** — refuses `missing_field` when `locators` is absent/empty or
   `to_status` is absent; refuses `bad_status` on an unknown `to_status`.
@@ -31,7 +32,19 @@ per-locator `note` and `no_anchor`.
   the counter is written exactly once (single atomic commit). A locator
   with `no_anchor:true` flips without injecting.
 - **INV-7** — dedup: a bullet referenced by two locators flips exactly
-  once (it appears once in `flipped[]`).
+  once (it appears once in `flipped[]`). The later locator is not dropped:
+  it lands in `skipped[]` with `code:"duplicate_locator"` and an `error`
+  naming the earlier locator index ("locator 0"), whether it repeats the id
+  or names the same bullet by another key (e.g. a headline), so
+  `flipped_count + skipped_count` still equals the locator count. A
+  `line_range` overlapping earlier locators is a duplicate only when every
+  bullet it matched was already claimed.
+- **INV-8** — `dry_run:true` resolves the locators and writes nothing.
+- **INV-9** — `to_status` (call-level and per-locator) accepts the same
+  synonyms as `op:"flip"`, through the same map (`rlCanonicalToStatus`:
+  done/complete/completed → shipped, wip/in_progress → in-progress,
+  todo/open → planned, maybe/idea → considered), besides the canonical
+  words and emoji. Any other word is still `bad_status`.
 
 ## Test
 `tests/features/roadmap_log_flip_batch/` (label `features;fast`), driving

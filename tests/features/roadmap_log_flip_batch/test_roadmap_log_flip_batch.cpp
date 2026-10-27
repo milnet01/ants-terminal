@@ -306,6 +306,95 @@ TEST(roadmap_log_flip_batch, Inv7Dedup) {
     EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(resp.value(QStringLiteral("flipped_count")).toInt(), 1)
         << "the same bullet must flip exactly once";
+    // The repeat is reported, not dropped: flipped + skipped == inputs.
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 1);
+    const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1);
+    const QJsonObject s0 = skipped.at(0).toObject();
+    EXPECT_EQ(s0.value(QStringLiteral("locator_index")).toInt(), 1);
+    EXPECT_EQ(s0.value(QStringLiteral("code")).toString(),
+              QStringLiteral("duplicate_locator"));
+    EXPECT_TRUE(s0.value(QStringLiteral("error")).toString()
+                    .contains(QStringLiteral("locator 0")))
+        << "the message names the locator it duplicates";
+
+    // A headline naming the bullet an id already claimed is the same case.
+    QTemporaryDir tmp2;
+    ASSERT_TRUE(tmp2.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp2.path()), seedV1()));
+    QJsonObject byHead;
+    byHead[QStringLiteral("headline")] = QStringLiteral("Second bullet.");
+    QJsonArray mixed;
+    mixed.append(locId(QStringLiteral("ANTS-0043")));
+    mixed.append(locId(QStringLiteral("ANTS-0044")));
+    mixed.append(byHead);
+    const QJsonObject r2 = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(tmp2.path(), QStringLiteral("shipped"), mixed)).object();
+    EXPECT_TRUE(r2.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(r2.value(QStringLiteral("flipped_count")).toInt(), 2);
+    const QJsonArray sk2 = r2.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(sk2.size(), 1);
+    EXPECT_EQ(sk2.at(0).toObject().value(QStringLiteral("locator_index")).toInt(), 2);
+    EXPECT_EQ(sk2.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("duplicate_locator"));
+
+    // A line_range overlapping an earlier locator is not a duplicate while it
+    // still matches a bullet nobody claimed.
+    QTemporaryDir tmp3;
+    ASSERT_TRUE(tmp3.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp3.path()), seedV1()));
+    QJsonObject range; QJsonArray rng; rng.append(1); rng.append(9999);
+    range[QStringLiteral("line_range")] = rng;
+    QJsonArray withRange;
+    withRange.append(locId(QStringLiteral("ANTS-0042")));
+    withRange.append(range);
+    const QJsonObject r3 = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(tmp3.path(), QStringLiteral("shipped"), withRange)).object();
+    EXPECT_TRUE(r3.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(r3.value(QStringLiteral("flipped_count")).toInt(), 3);
+    EXPECT_EQ(r3.value(QStringLiteral("skipped_count")).toInt(), 0);
+}
+
+// INV-9 — to_status takes op:"flip"'s synonyms (done / wip / maybe …), at the
+// call level and per locator.
+TEST(roadmap_log_flip_batch, Inv9StatusSynonyms) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+    RemoteControl rc(nullptr);
+
+    QJsonObject wip = locId(QStringLiteral("ANTS-0043"));
+    wip[QStringLiteral("to_status")] = QStringLiteral("wip");
+    QJsonObject maybe = locId(QStringLiteral("ANTS-0044"));
+    maybe[QStringLiteral("to_status")] = QStringLiteral("maybe");
+    QJsonArray locs;
+    locs.append(locId(QStringLiteral("ANTS-0042")));
+    locs.append(wip);
+    locs.append(maybe);
+    const QJsonObject resp = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(tmp.path(), QStringLiteral("done"), locs)).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 0);
+
+    const std::string md = readFile(roadmapPath(tmp.path())).toStdString();
+    EXPECT_TRUE(contains(md, "- \xE2\x9C\x85 [ANTS-0042] **First bullet.**"))
+        << "done -> shipped";
+    EXPECT_TRUE(contains(md, "- \xF0\x9F\x9A\xA7 [ANTS-0043] **Second bullet.**"))
+        << "wip -> in-progress";
+    EXPECT_TRUE(contains(md, "- \xF0\x9F\x92\xAD [ANTS-0044] **Third bullet.**"))
+        << "maybe -> considered";
+
+    // A word neither map knows is still bad_status, per locator too.
+    QJsonObject bogus = locId(QStringLiteral("ANTS-0042"));
+    bogus[QStringLiteral("to_status")] = QStringLiteral("frobnicated");
+    QJsonArray one; one.append(bogus);
+    const QJsonObject bad = rc.cmdRoadmapLogFlipBatchForTest(
+        batchReq(tmp.path(), QStringLiteral("shipped"), one)).object();
+    EXPECT_FALSE(bad.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_status"))
+        << "the only locator failed bad_status, so the call carries that code";
 }
 
 // ANTS-2136 — dry_run preview: flip / flip_batch / create_section resolve

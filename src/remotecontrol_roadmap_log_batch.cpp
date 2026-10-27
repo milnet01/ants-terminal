@@ -181,7 +181,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                "annotate in one call"));
     }
     else if (!toStatus.isEmpty() &&
-             !rlResolveBatchStatus(toStatus, &targetEmoji, &targetStatusWord))
+             // Same synonyms as op:"flip" (rlCanonicalToStatus: done / wip /
+             // todo …), then the canonical word or emoji.
+             !rlResolveBatchStatus(rlCanonicalToStatus(toStatus),
+                                   &targetEmoji, &targetStatusWord))
         return rlErr(QStringLiteral("bad_status"),
             QStringLiteral("roadmap_log: unknown to_status \"%1\" — expected "
                            "planned / in-progress / shipped / considered / dropped")
@@ -349,6 +352,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     QVector<Target> targets;
     QJsonArray skipped;
     QSet<int> claimedFirstLines;  // dedup: a bullet flips at most once
+    QHash<int, int> claimedBy;    // claimed key -> the locator index that claimed it
 
     // ANTS-3565 — walk ants-v1 whenever the file is big enough (not only for a
     // pure-v1 file) so a GFM-majority roadmap's appended emoji bullets are a
@@ -374,6 +378,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         s["code"]          = code;
         s["error"]         = err;
         skipped.append(s);
+    };
+    // A locator whose bullet an earlier locator already claimed is reported,
+    // not dropped: the caller asked for two writes and gets one.
+    auto skipDuplicate = [&](int idx, int key) {
+        const int first = claimedBy.value(key, -1);
+        skip(idx, QStringLiteral("duplicate_locator"),
+             QStringLiteral("locator names the same item as locator %1, "
+                            "which already claimed it — the item is written "
+                            "once, by locator %1").arg(first));
     };
 
     for (int li = 0; li < locators.size(); ++li) {
@@ -417,7 +430,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                     "leaves status unchanged"));
                 continue;
             }
-            if (!rlResolveBatchStatus(locTo, &locEmoji, &locWord)) {
+            // The single flip's synonyms (done / wip / todo …) resolve here too.
+            if (!rlResolveBatchStatus(rlCanonicalToStatus(locTo), &locEmoji, &locWord)) {
                 skip(li, QStringLiteral("bad_status"),
                      QStringLiteral("unknown to_status \"%1\" — expected planned / "
                                     "in-progress / shipped / considered / dropped")
@@ -485,7 +499,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 continue;
             }
             const int key = -int(at.itemPk) - 1;
-            if (claimedFirstLines.contains(key)) continue;
+            if (claimedFirstLines.contains(key)) {
+                skipDuplicate(li, key);
+                continue;
+            }
             Target t;
             t.firstLine    = key;
             t.headlineLine = key;
@@ -501,6 +518,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             for (const AntsV1Bullet &b : vbs)
                 if (!at.id.isEmpty() && b.id == at.id) t.fromStatus = b.status;
             claimedFirstLines.insert(key);
+            claimedBy.insert(key, li);
             targets.append(t);
             continue;
         }
@@ -595,9 +613,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             continue;
         }
 
-        // Materialise a Target per matched bullet (dedup on firstLine).
+        // Materialise a Target per matched bullet (dedup on firstLine). A
+        // single-bullet locator that repeats an earlier one is skipped as
+        // duplicate_locator; a line_range overlapping earlier locators is
+        // skipped only when every bullet it matched was already claimed.
+        int dupKey = 0, dupCount = 0;
         for (const int fl : candFirstLines) {
-            if (claimedFirstLines.contains(fl)) continue;
+            if (claimedFirstLines.contains(fl)) {
+                if (dupCount++ == 0) dupKey = fl;
+                continue;
+            }
             Target t;
             t.firstLine    = fl;
             t.note         = note;
@@ -639,8 +664,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 t.headline     = it->headline;
             }
             claimedFirstLines.insert(fl);
+            claimedBy.insert(fl, li);
             targets.append(t);
         }
+        if (dupCount > 0 && (!isRange || dupCount == candFirstLines.size()))
+            skipDuplicate(li, dupKey);
     }
 
     if (targets.isEmpty())
