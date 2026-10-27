@@ -329,6 +329,11 @@ void ClaudeIntegration::pollClaudeProcess() {
         // below does NOT subsume the not-found case.
         m_claudePid = 0;
         m_transcriptPath.clear();
+        // Unwatch the exited Claude's transcript too, so a later write to it
+        // (a `claude --resume` in another tab) does not keep re-arming the
+        // debounce for a parse the empty path then skips.
+        if (const QStringList stale = m_transcriptWatcher.files(); !stale.isEmpty())
+            m_transcriptWatcher.removePaths(stale);
         clearContextReading();   // ANTS-5683 — the reading was that Claude's
         // Indie-review 2026-05-13: prune the plan-mode cache for this
         // shell-pid. Linux PID reuse is fast; a tab that crashed before
@@ -18643,7 +18648,10 @@ QString ClaudeIntegration::projectMemory(const QString &projectEncoded) const {
     QFile file(ConfigPaths::claudeProjectMemory(projectEncoded));
     if (!file.open(QIODevice::ReadOnly)) return {};
 
-    QString content = QString::fromUtf8(file.readAll());
+    // Only the first 500 chars are kept, and 500 UTF-16 units never take
+    // more than 2000 UTF-8 bytes, so a bounded read decodes all of them
+    // instead of loading a large memory file whole.
+    QString content = QString::fromUtf8(file.read(4096));
     // Return first ~500 chars as snippet
     if (content.length() > 500)
         content = content.left(500) + "\n...";

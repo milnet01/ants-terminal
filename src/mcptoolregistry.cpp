@@ -414,12 +414,15 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
             QThread *worker = QThread::create(
                 [req, result]() { *result = AuditRunner::runAudit(req); });
             ClaudeIntegration *ci = host.ci;
+            // ANTS-5080 — as the async branch: the worker frees itself, since
+            // the completion below is severed if ci is destroyed mid-sweep.
+            QObject::connect(worker, &QThread::finished, worker,
+                             &QObject::deleteLater);
             // Context object = ci, so a sweep still running at teardown
             // replies into nothing, as the async branch's slot does.
             QObject::connect(worker, &QThread::finished, ci,
-                [ci, worker, result, canon, reply]() {
+                [ci, result, canon, reply]() {
                     ci->verbInFlightRelease(QStringLiteral("audit_run"), canon);
-                    worker->deleteLater();
                     const AuditRunner::RunResult &r = *result;
                     // Serialise envelope.
                     QJsonObject env;
