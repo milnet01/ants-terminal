@@ -352,13 +352,19 @@ void LlmClient::drain() {
             m_text += QStringLiteral("\n[response truncated]");
         }
     } else if (consumeLines(kMaxLinesPerTick) && !m_truncated) {
-        QTimer::singleShot(0, this, &LlmClient::drain);
+        // Gated on the send generation: an abort() + send() before this
+        // runs gives m_reply to a new request this tick must not read.
+        const quint64 gen = m_sendGeneration;
+        QTimer::singleShot(0, this, [this, gen]() {
+            if (gen == m_sendGeneration) drain();
+        });
     }
 
     // ANTS-5008 — the cap ends the download, not just the appending. abort()
     // delivers finished() to onFinished(), which reports the capped answer.
     // Last statement: a finished() slot may delete this client.
-    if (m_truncated) {
+    // m_reply is re-checked: a chunk() slot may have called abort().
+    if (m_truncated && m_reply) {
         m_stoppedAtCap = true;
         m_reply->abort();
     }
@@ -400,7 +406,12 @@ void LlmClient::onFinished() {
     // backlog is not parsed in one GUI-thread slot. m_reply stays set until
     // the last tick; an abort() in between suppresses finished() as before.
     if (consumeLines(kMaxLinesPerTick)) {
-        QTimer::singleShot(0, this, &LlmClient::onFinished);
+        // Gated on the send generation: a stale tick would otherwise report
+        // and delete the reply of a request sent after an abort().
+        const quint64 gen = m_sendGeneration;
+        QTimer::singleShot(0, this, [this, gen]() {
+            if (gen == m_sendGeneration) onFinished();
+        });
         return;
     }
 

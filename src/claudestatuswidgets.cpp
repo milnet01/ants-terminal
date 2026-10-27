@@ -1680,6 +1680,7 @@ void ClaudeStatusBarController::refreshModelChip()
                     && !cfg.claudeAutoModel().value("switch_enabled").toBool());
     if (cfg.claudeAutoModel().value("switch_enabled").toBool()) {
         m_modelBtn->hide();
+        m_modelChipPath.clear();
         return;
     }
     // ANTS-5754 — the user's own off switch for the chip. Clearing the
@@ -1701,6 +1702,7 @@ void ClaudeStatusBarController::refreshModelChip()
 
     if (transcriptPath.isEmpty()) {
         m_modelBtn->hide();
+        m_modelChipPath.clear();
         return;
     }
 
@@ -1770,6 +1772,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
 
     if (transcriptPath.isEmpty()) {
         m_modelStateBtn->hide();
+        m_modelStatePath.clear();
         return;
     }
 

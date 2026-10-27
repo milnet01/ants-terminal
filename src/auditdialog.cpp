@@ -491,6 +491,11 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
     // Only makes sense for checks that produce file:line findings.
     if (r.findings.isEmpty()) return;
 
+    // Each file is read once per check, not once per finding: a grep check
+    // with hundreds of hits in one file re-read and re-decoded it per hit.
+    // Same 2 MB cap and "treat as code" fallback as lineIsCode().
+    QHash<QString, QString> sources;
+    QSet<QString> unreadable;
     QList<Finding> kept;
     for (const Finding &f : std::as_const(r.findings)) {
         if (f.file.isEmpty() || f.line <= 0) { kept.append(f); continue; }
@@ -500,7 +505,18 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
         // here to run the comment/string classifier against it.
         const QString abs = resolveProjectPath(f.file);
         if (abs.isEmpty()) continue;  // traversal or non-existent: drop
-        if (lineIsCode(abs, f.line)) kept.append(f);
+        if (unreadable.contains(abs)) { kept.append(f); continue; }
+        auto src = sources.constFind(abs);
+        if (src == sources.constEnd()) {
+            QFile file(abs);
+            if (!file.open(QIODevice::ReadOnly) || file.size() > 2LL * 1024 * 1024) {
+                unreadable.insert(abs);
+                kept.append(f);
+                continue;
+            }
+            src = sources.insert(abs, QString::fromUtf8(file.readAll()));
+        }
+        if (AuditHygiene::lineHasCode(*src, abs, f.line)) kept.append(f);
     }
     r.findings = std::move(kept);
 }

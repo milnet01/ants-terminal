@@ -173,11 +173,15 @@ ClaudeBgTasksDialog::ClaudeBgTasksDialog(ClaudeBgTaskTracker *tracker,
 }
 
 void ClaudeBgTasksDialog::scheduleRebuild() {
-    if (m_liveStatus) {
-        m_liveStatus->setText(QStringLiteral("● refreshing…"));
-        m_liveStatus->setStyleSheet(QStringLiteral("color: #e0a020; font-size: 11px;"));
+    // A pending render is not restarted: a task writing output more often
+    // than every 200 ms would otherwise push the render back forever.
+    if (!m_debounce.isActive()) {
+        if (m_liveStatus) {
+            m_liveStatus->setText(QStringLiteral("● refreshing…"));
+            m_liveStatus->setStyleSheet(QStringLiteral("color: #e0a020; font-size: 11px;"));
+        }
+        m_debounce.start();
     }
-    m_debounce.start();
     rewatch();
 }
 
