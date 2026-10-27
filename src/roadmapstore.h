@@ -918,6 +918,13 @@ public:
     };
     std::optional<QVector<ElementRow>> listElements(qint64 sectionId,
                                                     QString *error = nullptr) const;
+    // listElements() for every section of one project, in ONE query, keyed by
+    // section_id; each vector is in position order exactly as listElements()
+    // returns it. A section with no elements has no key. For the whole-project
+    // walks (render, store-served read), which otherwise ran one query per
+    // section.
+    std::optional<QHash<qint64, QVector<ElementRow>>>
+    listProjectElements(qint64 projectId, QString *error = nullptr) const;
 
     // ANTS-3758 § 2.1 — the project row. Same gap as listElements(): the export
     // hand-rolled `SELECT project_id, name, legend FROM project` because no

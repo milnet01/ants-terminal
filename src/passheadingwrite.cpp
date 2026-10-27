@@ -10,6 +10,7 @@
 #include <QRegularExpression>
 #include <QStringList>
 
+#include <algorithm>
 #include <utility>
 
 namespace PassHeadingWrite {
@@ -56,11 +57,13 @@ QString capitaliseFirst(const QString &s) {
     return s.left(1).toUpper() + s.mid(1);
 }
 
-// Rewrite the word of the first Status line in lines[from..] that classifies —
-// the reader's line — to `keyword`, and a status glyph to `emoji`, keeping its
-// date and prose. False when none classifies.
+// Rewrite the word of the first Status line in lines[from..to) that classifies
+// — the reader's line — to `keyword`, and a status glyph to `emoji`, keeping its
+// date and prose. False when none classifies. `to` < 0 is lines.size(); a caller
+// holding a whole document passes its block end, or a content-free Status line
+// would send the rewrite into the NEXT pass's block.
 bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
-                       const QString &emoji);
+                       const QString &emoji, int to = -1);
 
 // Synthesise the reader's id for a `#### Pass` heading match.
 QString idForHead(const QRegularExpressionMatch &m) {
@@ -163,8 +166,9 @@ QString designatorFromPassId(const QString &id) {
 namespace {
 
 bool rewriteStatusWord(QStringList &lines, int from, const QString &keyword,
-                       const QString &emoji) {
-    for (int j = from; j < lines.size(); ++j) {
+                       const QString &emoji, int to) {
+    const int end = to < 0 ? int(lines.size()) : std::min(to, int(lines.size()));
+    for (int j = from; j < end; ++j) {
         const QRegularExpressionMatch pm = passStatusLinePattern().match(lines.at(j));
         if (!pm.hasMatch()) continue;
         const QString value = pm.captured(2);
@@ -240,12 +244,11 @@ WriteResult flipPassStatus(const QString &markdown,
     // both were capped at 50 lines, which missed a late line and inserted a
     // second one here.
     int statusLine = -1;
+    int blockEnd = int(lines.size());
     for (int j = head + 1; j < lines.size(); ++j) {
-        if (isPassBlockEnd(lines.at(j))) break;
-        if (passStatusLinePattern().match(lines.at(j)).hasMatch()) {
+        if (isPassBlockEnd(lines.at(j))) { blockEnd = j; break; }
+        if (statusLine < 0 && passStatusLinePattern().match(lines.at(j)).hasMatch())
             statusLine = j;
-            break;
-        }
     }
 
     const QString emoji = passStatusEmoji(keyword);
@@ -255,7 +258,7 @@ WriteResult flipPassStatus(const QString &markdown,
         lines.insert(head + 1, QStringLiteral("- **Status**: ") + keyword);
         r.changedLine = head + 1;
     } else if (QStringList before = lines;
-               rewriteStatusWord(lines, statusLine, keyword, emoji)) {
+               rewriteStatusWord(lines, statusLine, keyword, emoji, blockEnd)) {
         // ANTS-5408 — the word alone, then today's date on that line, as the
         // store route does (ANTS-5395, ANTS-5404). Writing the value whole
         // dropped `(2026-09-02). Lanes: security, packaging.` from the line.
@@ -271,7 +274,7 @@ WriteResult flipPassStatus(const QString &markdown,
     } else {
         // INV-5 — rewrite the value preserving the line's style. A fallback:
         // it runs only when rewriteStatusWord() found no Status line with a
-        // word or glyph from here to EOF, so the line at `statusLine` is
+        // word or glyph in this block, so the line at `statusLine` is
         // content-free.
         const QRegularExpressionMatch pm =
             passStatusLinePattern().match(lines.at(statusLine));

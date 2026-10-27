@@ -533,6 +533,12 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
             ordered.append(s);
     }
 
+    // Every section's elements in one query, not one per section.
+    const auto elementsOf = store.listProjectElements(projectId, error);
+    if (!elementsOf)
+        return fail(ReadError::StoreFailed,
+                    QStringLiteral("could not list elements for project %1").arg(projectId));
+
     QVector<BulletRecord> out;
     // Step 4 — accumulated across the WHOLE walk and never per section: the
     // parser's uniqueSlug() is stateful, appending -2/-3 to a repeated heading
@@ -556,10 +562,9 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
         // findSection() per section, with a "vanished between reads" error path
         // for the row disappearing between the two queries; one read cannot race
         // itself, so both are gone.
-        const auto elements = store.listElements(s.sectionId, error);
-        if (!elements)
-            return fail(ReadError::StoreFailed,
-                        QStringLiteral("could not list elements of section '%1'").arg(s.slug));
+        const auto elements = elementsOf->constFind(s.sectionId);
+        if (elements == elementsOf->constEnd())
+            continue;
 
         // Step 5 — position order, which listElements() supplies as its own
         // contract (UNIQUE (section_id, position) makes it total). `narration`

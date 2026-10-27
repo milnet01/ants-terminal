@@ -3562,6 +3562,25 @@ RoadmapStore::listSectionsOrdered(qint64 projectId, QString *error) const {
     return rows;
 }
 
+namespace {
+// One element row, its five columns starting at `base`. Shared by
+// listElements() and listProjectElements() so the two cannot drift.
+RoadmapStore::ElementRow elementFromRow(const QSqlQuery &q, int base) {
+    RoadmapStore::ElementRow e;
+    e.position = q.value(base + 0).toInt();
+    e.kind = q.value(base + 1).toString();
+    // NULL stays nullopt. The DDL makes payload NULL exactly for kind
+    // 'item', and collapsing it to "" here would lose the distinction the
+    // export's own emit path depends on.
+    if (!q.value(base + 2).isNull())
+        e.payload = q.value(base + 2).toString();
+    if (!q.value(base + 3).isNull())
+        e.itemPk = q.value(base + 3).toLongLong();
+    e.itemIdFold = q.value(base + 4).toString();
+    return e;
+}
+}  // namespace
+
 // ANTS-3758 § 2.1. ORDER BY position and not by rowid: unlike listSections(),
 // whose order is re-applied in C++ by sectionOrderLess(), element order IS
 // position order — UNIQUE (section_id, position) already makes it total, so the
@@ -3582,20 +3601,33 @@ RoadmapStore::listElements(qint64 sectionId, QString *error) const {
     }
 
     QVector<ElementRow> out;
-    while (q.next()) {
-        ElementRow e;
-        e.position = q.value(0).toInt();
-        e.kind = q.value(1).toString();
-        // NULL stays nullopt. The DDL makes payload NULL exactly for kind
-        // 'item', and collapsing it to "" here would lose the distinction the
-        // export's own emit path depends on.
-        if (!q.value(2).isNull())
-            e.payload = q.value(2).toString();
-        if (!q.value(3).isNull())
-            e.itemPk = q.value(3).toLongLong();
-        e.itemIdFold = q.value(4).toString();
-        out.push_back(e);
+    while (q.next())
+        out.push_back(elementFromRow(q, 0));
+    return out;
+}
+
+std::optional<QHash<qint64, QVector<RoadmapStore::ElementRow>>>
+RoadmapStore::listProjectElements(qint64 projectId, QString *error) const {
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    q.setForwardOnly(true);
+    // Same columns as listElements(), offset by the leading section_id, and the
+    // same per-section position order: UNIQUE (section_id, position) makes it
+    // total within each key.
+    q.prepare(QStringLiteral(
+        "SELECT e.section_id, e.position, e.kind, e.payload, e.item_pk, i.id_fold "
+        "FROM element e JOIN section s ON s.section_id = e.section_id "
+        "LEFT JOIN item i ON i.item_pk = e.item_pk "
+        "WHERE s.project_id = ? ORDER BY e.section_id, e.position"));
+    q.addBindValue(projectId);
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return std::nullopt;
     }
+
+    QHash<qint64, QVector<ElementRow>> out;
+    while (q.next())
+        out[q.value(0).toLongLong()].push_back(elementFromRow(q, 1));
     return out;
 }
 

@@ -213,9 +213,16 @@ bool isGrammaticalId(const QString &token, const RoadmapParse::IdFormat &fmt) {
         return true;
     if (fmt.pattern.isEmpty())
         return false;
-    const QRegularExpression declared(QLatin1String(RoadmapParse::kIdFormatMatchLimit) +
-                                      QStringLiteral("\\A(?:") + fmt.pattern +
-                                      QStringLiteral(")\\z"));
+    // Compiled once per declared pattern, not once per bullet (ANTS-3771 § 2.5's
+    // rule): planFrom() calls this for every id-bearing bullet.
+    thread_local QString compiledFor;
+    thread_local QRegularExpression declared;
+    if (compiledFor != fmt.pattern) {
+        declared.setPattern(QLatin1String(RoadmapParse::kIdFormatMatchLimit) +
+                            QStringLiteral("\\A(?:") + fmt.pattern +
+                            QStringLiteral(")\\z"));
+        compiledFor = fmt.pattern;
+    }
     return declared.isValid() && declared.match(token).hasMatch();
 }
 

@@ -658,6 +658,17 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
         idMark = RoadmapParse::formatIdHighWaterMark(*pairs);
     }
 
+    // Every section's elements in one query rather than one per section, and
+    // each section's level from the rows already in hand, so INV-9's parent
+    // check reads no row per section either.
+    const auto elementsOf = store.listProjectElements(projectId, error);
+    if (!elementsOf)
+        return std::nullopt;
+    QHash<qint64, int> levelOf;
+    levelOf.reserve(ordered.size());
+    for (const RoadmapStore::SectionRow &s : ordered)
+        levelOf.insert(s.sectionId, s.level);
+
     // § 2.8 + § 2.2 — assemble each file. Exactly one blank line between
     // blocks; the file ends with exactly one newline.
     QHash<QString, QString> contentOf;
@@ -716,12 +727,16 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             } else {
                 // INV-9 — level is emitted, parent_id is only checked.
                 if (s.parentId) {
-                    const auto parent = store.readSection(*s.parentId, error);
-                    if (!parent)
-                        return std::nullopt;
-                    if (s.level != parent->level + 1) {
+                    int parentLevel = levelOf.value(*s.parentId, -1);
+                    if (parentLevel < 0) {
+                        const auto parent = store.readSection(*s.parentId, error);
+                        if (!parent)
+                            return std::nullopt;
+                        parentLevel = parent->level;
+                    }
+                    if (s.level != parentLevel + 1) {
                         fail(error, QStringLiteral("section '%1' has level %2 under a parent at level %3")
-                                        .arg(s.slug).arg(s.level).arg(parent->level));
+                                        .arg(s.slug).arg(s.level).arg(parentLevel));
                         return std::nullopt;
                     }
                 }
@@ -734,9 +749,9 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
             // ANTS-3817 widened SectionRow with its own id, so the per-section
             // findSection() and its "vanished between reads" error path are both
             // gone — one read cannot race itself.
-            const auto elements = store.listElements(s.sectionId, error);
-            if (!elements)
-                return std::nullopt;
+            const auto elements = elementsOf->constFind(s.sectionId);
+            if (elements == elementsOf->constEnd())
+                continue;
 
             // INV-10 — one pass in stored position order, so narration and
             // tables stay interleaved with items rather than being grouped.

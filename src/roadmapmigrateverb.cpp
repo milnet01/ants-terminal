@@ -1192,8 +1192,8 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     // opposite of reassuring.
     if (req.dryRun) {
         RoadmapStore::DeregisterCounts would;
-        if (const auto items = store.readItems(row->projectId, &err))
-            would.items = int(items->size());
+        if (const auto items = store.countItems(row->projectId, &err))
+            would.items = int(*items);
         else if (!err.isEmpty())
             return rmErr(QStringLiteral("store_failed"), err);
         if (const auto secs = store.listSections(row->projectId, &err))
