@@ -114,7 +114,9 @@ public:
                 return;
             }
             if (errno != EWOULDBLOCK) break;
-            nanosleep(&ts, nullptr);
+            // No sleep after the last attempt: it only delays the refusal
+            // (50 ms of a GUI-thread caller's 250 ms budget).
+            if (i + 1 < attempts) nanosleep(&ts, nullptr);
         }
         ::close(m_fd);
         m_fd = -1;

@@ -235,8 +235,11 @@ void UpdateDialog::fetchAppImage() {
     });
     connect(m_download, &QNetworkReply::readyRead, this, [this] {
         if (!m_session->write(m_download->readAll())) {
-            m_download->abort();
+            // fail() first: abort() emits finished at once, and with
+            // m_failed still clear that handler reported "Operation
+            // canceled" in place of the reason.
             fail(tr("The download was refused: %1").arg(m_session->error()));
+            m_download->abort();
         }
     });
     connect(m_download, &QNetworkReply::finished, this, [this] {

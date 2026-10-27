@@ -223,13 +223,14 @@ StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs) {
                         QDir::Files | QDir::Readable | QDir::NoDotAndDotDot,
                         QDirIterator::Subdirectories);
         while (it.hasNext()) {
-            const QString p = it.next();
+            it.next();
             ++probed;
             if (probed > kStaleWalkCap) {
                 out.staleKnown = false;
                 return out;
             }
-            const QFileInfo fi(p);
+            // The iterator's own entry: a fresh QFileInfo(path) stats again.
+            const QFileInfo fi = it.fileInfo();
             if (fi.lastModified().toMSecsSinceEpoch() > recordedAtMs) {
                 out.stale = true;
                 return out;

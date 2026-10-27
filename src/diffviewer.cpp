@@ -140,6 +140,9 @@ int fileLineCount(const QString &absPath) {
     static QHash<QString, Cached> cache;
     constexpr int kMaxCached = 4096;
     const QFileInfo fi(absPath);
+    // Only a regular file: opening a FIFO (an untracked symlink to one)
+    // blocks the GUI thread until a writer appears.
+    if (!fi.isFile()) return -1;
     const qint64 size = fi.size();
     const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
     const auto it = cache.constFind(absPath);
@@ -685,7 +688,9 @@ QDialog *show(QWidget *parent,
                                 .arg(fileAnchorId(rel));
                     const QString abs = state->cwd + '/' + rel;
                     QFile nf(abs);
-                    if (!nf.open(QIODevice::ReadOnly)) {
+                    // A FIFO (via an untracked symlink) would block open()
+                    // on the GUI thread; read regular files only.
+                    if (!QFileInfo(abs).isFile() || !nf.open(QIODevice::ReadOnly)) {
                         html += QStringLiteral("<span style='color: %1;'>%2 (unreadable)</span>\n")
                                     .arg(lth.textSecondary.name(), rel.toHtmlEscaped());
                         continue;
@@ -716,9 +721,10 @@ QDialog *show(QWidget *parent,
                                 .arg(truncated
                                      ? QStringLiteral(" (truncated at 200 KB)")
                                      : QString{});
+                    const QString addColor = lth.ansi[2].name();
                     for (const QString &ln : bodyLines)
                         html += QStringLiteral("<span style='color: %1;'>+%2</span>\n")
-                                    .arg(lth.ansi[2].name(), ln.toHtmlEscaped());
+                                    .arg(addColor, ln.toHtmlEscaped());
                 }
             }
         }
