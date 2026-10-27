@@ -66,6 +66,13 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
     // Ruby closes a body with `end`, which the brace scan cannot see.
     const bool keywordDelimited = language == QLatin1String("ruby");
     const QJsonArray symbols = outline.value(QStringLiteral("symbols")).toArray();
+    // Every symbol's line, sorted once: the next-symbol lookup below was a
+    // scan of the whole outline per function, quadratic in the file's symbols.
+    QList<int> symbolLines;
+    symbolLines.reserve(symbols.size());
+    for (const QJsonValue other : symbols)
+        symbolLines.append(other.toObject().value(QStringLiteral("line")).toInt());
+    std::sort(symbolLines.begin(), symbolLines.end());
     for (qsizetype i = 0; i < symbols.size(); ++i) {
         const QJsonObject s = symbols.at(i).toObject();
         if (s.value(QStringLiteral("kind")).toString() != QLatin1String("func")) continue;
@@ -85,11 +92,11 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
             // A body's opening brace comes before the next symbol starts. An
             // expression-bodied function (`fun f() = x`) has none, and the
             // scan would otherwise take the next function's braces as its own.
-            int nextSymbol = int(lines.size()) + 1;
-            for (const QJsonValue other : symbols) {
-                const int line = other.toObject().value(QStringLiteral("line")).toInt();
-                if (line > f.bodyStart) nextSymbol = qMin(nextSymbol, line);
-            }
+            const auto next = std::upper_bound(symbolLines.cbegin(),
+                                               symbolLines.cend(), f.bodyStart);
+            const int nextSymbol = next != symbolLines.cend()
+                                       ? qMin(*next, int(lines.size()) + 1)
+                                       : int(lines.size()) + 1;
             int openLine = 0;
             f.bodyEnd = ReadRegion::braceBalancedEndLine(lines, f.bodyStart,
                                                          &f.nestingDepth, &openLine);

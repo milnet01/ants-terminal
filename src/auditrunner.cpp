@@ -849,12 +849,16 @@ bool hasUsageBannerMarker(const QString &raw) {
     static const QRegularExpression rxNoChecks(
         QStringLiteral("^[ \\t]*Error: no checks enabled"),
         QRegularExpression::CaseInsensitiveOption);
-    const QStringList lines = raw.split(QChar('\n'));
-    const int n = qMin(kHeadLines, int(lines.size()));
-    for (int i = 0; i < n; ++i) {
-        const QString &l = lines.at(i);
+    // Walk only the head lines: splitting the whole stream (up to
+    // kMaxToolOutputBytes) built a list of every line to read eight of.
+    qsizetype pos = 0;
+    for (int i = 0; i < kHeadLines && pos <= raw.size(); ++i) {
+        qsizetype nl = raw.indexOf(QChar('\n'), pos);
+        if (nl < 0) nl = raw.size();
+        const QString l = raw.mid(pos, nl - pos);
         if (rxUsage.match(l).hasMatch() || rxNoChecks.match(l).hasMatch())
             return true;
+        pos = nl + 1;
     }
     return false;
 }

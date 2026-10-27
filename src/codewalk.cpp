@@ -147,6 +147,11 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
             walk(root, fi.canonicalFilePath(), walked);
     }
 
+    // A walk that stopped at kMaxFiles + 1 left files unseen. The cap below
+    // only sees what survived the filters, so a cut walk whose tests or
+    // generated files were then dropped would read as complete.
+    if (walked.size() > kMaxFiles) r.truncated = true;
+
     const QSet<QString> ignored = ProjectSettings::gitIgnoredPaths(rootCanonical, walked);
     const QStringList testRoots = settings.testRoots.value_or(QStringList());
     QSet<QString> kept(named.cbegin(), named.cend());

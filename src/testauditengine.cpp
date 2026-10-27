@@ -521,14 +521,21 @@ qint64 walkMaxMtime(const QStringList &files) {
 }
 
 QString computeToken(const QString &callerCwd, const QString &scope,
-                     const QStringList &dimensions, qint64 maxMtime) {
-    // qHash combine; format as 8 hex chars.
+                     const QStringList &dimensions, qint64 maxMtime,
+                     const QStringList &files) {
+    // qHash combine; format as 8 hex chars. The file list is part of the key:
+    // deleting a test file, or adding one older than the newest, leaves the
+    // max mtime unchanged, and a pre-pass-free partition (keepExisting) would
+    // then keep serving briefs from the cached entry for the old file set.
     QStringList sorted = dimensions;
     sorted.sort();
+    QStringList sortedFiles = files;
+    sortedFiles.sort();
     const uint h = qHash(callerCwd)
                  ^ qHash(scope)
                  ^ qHash(sorted.join(QLatin1Char(',')))
-                 ^ qHash(QString::number(maxMtime));
+                 ^ qHash(QString::number(maxMtime))
+                 ^ qHash(sortedFiles.join(QLatin1Char('\n')));
     return QStringLiteral("%1").arg(h, 8, 16, QLatin1Char('0'));
 }
 
@@ -1404,7 +1411,7 @@ PartitionResult partition(const PartitionRequest &req) {
     r.total       = chunks.size();
     // INV-4 — token from canonical inputs + max mtime.
     const qint64 maxMtime = walkMaxMtime(files);
-    r.partitionToken = computeToken(canon, req.scope, dims, maxMtime);
+    r.partitionToken = computeToken(canon, req.scope, dims, maxMtime, files);
     r.mtimeWalkComputedAt = QDateTime::currentDateTimeUtc();
     r.dimensionsActive = dims;
     // ANTS-4111 — say what "auto" left out, rather than leaving a shorter list

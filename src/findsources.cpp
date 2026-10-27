@@ -117,10 +117,13 @@ void maybeAddSource(QVector<QString> *out, const QString &relPath) {
     if (!ok) return;
     // INV-6 — skip generated files (moc/ui/qrc/protobuf/anything
     // under a /generated/ path). Mirrors the audit-engine skip list.
+    // The moc_/ui_/qrc_ markers are basename prefixes: matched anywhere in
+    // the path they dropped hand-written files such as src/gui_main.cpp.
+    const QString base = relPath.mid(relPath.lastIndexOf(QLatin1Char('/')) + 1);
     if (relPath.contains(QLatin1String("/generated/"))
-        || relPath.contains(QLatin1String("moc_"))
-        || relPath.contains(QLatin1String("ui_"))
-        || relPath.contains(QLatin1String("qrc_"))
+        || base.startsWith(QLatin1String("moc_"))
+        || base.startsWith(QLatin1String("ui_"))
+        || base.startsWith(QLatin1String("qrc_"))
         || relPath.endsWith(QLatin1String(".pb.cc"))
         || relPath.endsWith(QLatin1String(".pb.h"))
         || relPath.endsWith(QLatin1String("_generated.cpp"))

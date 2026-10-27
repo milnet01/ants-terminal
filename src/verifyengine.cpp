@@ -276,12 +276,16 @@ GateResult runOneGate(const QString &projectPath,
                      [&]() {
         QByteArray chunk = p.readAllStandardOutput();
         carry += utf8.decode(chunk);
-        int idx;
-        while ((idx = carry.indexOf(QChar('\n'))) >= 0) {
-            lines.append(carry.left(idx));
-            ++totalLines;
-            if (lines.size() > maxLogLines) lines.removeFirst();
-            carry.remove(0, idx + 1);
+        // One split per read: removing each line from the front of `carry`
+        // moved the rest of the read once per line (quadratic in the read).
+        if (carry.indexOf(QChar('\n')) >= 0) {
+            QStringList parts = carry.split(QChar('\n'));
+            carry = parts.takeLast();   // partial last line, or empty
+            for (QString &l : parts) {
+                lines.append(std::move(l));
+                ++totalLines;
+                if (lines.size() > maxLogLines) lines.removeFirst();
+            }
         }
         // Hard-cap an unterminated single line so an attacker can't
         // make us buffer multi-MiB of garbage. Force-split. ANTS-5102 —
