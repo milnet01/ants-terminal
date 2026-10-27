@@ -2397,6 +2397,9 @@ if(ANTS_TESTS)
                 tests/features/terminal_a11y/test_terminal_a11y.cpp
                 # ANTS-2000 — search results are fixed by the grid.
                 tests/features/terminal_search_scan/test_terminal_search_scan.cpp
+                # URL / highlight / search / quick-select spans land on the
+                # cells that hold them after non-BMP or combining characters.
+                tests/features/span_cell_columns/test_span_cell_columns.cpp
                 # ANTS-2119 M2 — OSC 8 phishing classifier (static; needs the full
                 # TerminalWidget link set, same as terminal_a11y above).
                 tests/features/osc8_homograph_guard/test_osc8_homograph_guard.cpp

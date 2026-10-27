@@ -53,6 +53,7 @@
 #include <algorithm>
 #include <cstdio>    // ANTS-5134 — the first-paint marker on stderr
 #include <memory>
+#include <optional>  // lazily built LineColumns maps
 #include <utility>   // std::as_const — see updateSuggestion()
 
 namespace {
@@ -748,6 +749,9 @@ bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {
         m_vtStream = nullptr;
         return false;
     }
+    // Remember the forked PID: shellPid() reads -1 once the child is
+    // reaped, and releaseTerminalShell still needs it after exit.
+    m_lastShellPid = ptyChildPid();
     // Ensure PTY matches grid; resize is blocking-queued so the
     // winsize is set before we return and the next paint fires.
     QMetaObject::invokeMethod(m_vtStream, "resize", Qt::BlockingQueuedConnection,
@@ -1031,12 +1035,15 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
             if (hlCacheIt == m_hlSpanCache.end()) {
                 std::vector<PaintHighlightSpan> computed;
                 QString lt = lineText(globalLine);
+                std::optional<LineColumns> ltCols;   // offsets → cells, on first match
                 for (const auto &rule : m_highlightRules) {
                     auto it = rule.pattern.globalMatch(lt);
                     while (it.hasNext()) {
                         auto m = it.next();
-                        computed.push_back({static_cast<int>(m.capturedStart()),
-                                            static_cast<int>(m.capturedStart() + m.capturedLength() - 1),
+                        if (m.capturedLength() <= 0) continue;
+                        if (!ltCols) ltCols = lineColumns(globalLine);
+                        computed.push_back({ltCols->columnAt(m.capturedStart()),
+                                            ltCols->lastColumnBefore(m.capturedEnd()),
                                             rule.fg, rule.bg});
                     }
                 }
@@ -2374,6 +2381,9 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     }
 
     // ANTS-1061 — hand each action the image the worker decoded from it.
+    // A coalesced print run arrives as one action whose printRun points into
+    // batch->rawBytes (VtBatchBuilder); processAction hands it to
+    // handleAsciiPrintRun in one call.
     auto image = batch->images.cbegin();
     for (std::size_t i = 0; i < batch->actions.size(); ++i) {
         const PredecodedImage *predecoded = nullptr;
@@ -4287,6 +4297,63 @@ QString TerminalWidget::lineText(int globalLine) const {
     return text;
 }
 
+TerminalWidget::LineColumns TerminalWidget::lineColumns(int globalLine) const {
+    // Walks the cells exactly as lineText's per-cell loop does, so unit i of
+    // lineText(globalLine) is entry i here. A wide character is one unit in
+    // its own cell plus a blank unit for its continuation cell; the first
+    // unit's lastCol covers both, so a span ending on it paints the whole
+    // glyph.
+    const int cols = m_grid->cols();
+    LineColumns lc;
+    lc.startCol.reserve(cols + 1);
+    lc.lastCol.reserve(cols);
+    const auto units = [](uint32_t cp) { return cp >= 0x10000 ? 2 : 1; };
+    for (int c = 0; c < cols; ++c) {
+        const Cell &cell = cellAtGlobal(globalLine, c);
+        const uint32_t cp = cell.codepoint == 0 ? uint32_t(' ') : cell.codepoint;
+        int n = units(cp);
+        if (const auto *comb = combiningAt(globalLine, c))
+            for (uint32_t combCp : *comb) n += units(combCp);
+        const int last = (cell.isWideChar && c + 1 < cols &&
+                          cellAtGlobal(globalLine, c + 1).isWideCont) ? c + 1 : c;
+        for (int k = 0; k < n; ++k) {
+            lc.startCol.push_back(c);
+            lc.lastCol.push_back(last);
+        }
+    }
+    lc.startCol.push_back(cols);
+    return lc;
+}
+
+int TerminalWidget::LineColumns::columnAt(qsizetype offset) const {
+    if (startCol.isEmpty()) return 0;
+    return startCol[std::clamp<qsizetype>(offset, 0, startCol.size() - 1)];
+}
+
+int TerminalWidget::LineColumns::lastColumnBefore(qsizetype endOffset) const {
+    if (lastCol.isEmpty()) return 0;
+    if (endOffset <= 0) return columnAt(0) - 1;
+    return lastCol[std::min<qsizetype>(endOffset, lastCol.size()) - 1];
+}
+
+qsizetype TerminalWidget::LineColumns::offsetAt(int col) const {
+    // startCol is non-decreasing and ends with the grid width.
+    return std::lower_bound(startCol.begin(), startCol.end(), col) - startCol.begin();
+}
+
+std::vector<std::pair<int, int>> TerminalWidget::urlSpanColumnsForTest(int globalLine) const {
+    std::vector<std::pair<int, int>> out;
+    for (const auto &s : detectUrls(globalLine)) out.emplace_back(s.startCol, s.endCol);
+    return out;
+}
+
+std::vector<std::pair<int, int>> TerminalWidget::searchMatchColumnsForTest(int globalLine) const {
+    std::vector<std::pair<int, int>> out;
+    for (const auto &m : m_searchMatches)
+        if (m.globalLine == globalLine) out.emplace_back(m.col, m.col + m.length - 1);
+    return out;
+}
+
 const std::vector<TerminalWidget::UrlSpan> &
 TerminalWidget::urlSpansForLine(int globalLine) const {
     // ANTS-1841 — find-or-compute against the per-line span cache. The
@@ -4335,19 +4402,27 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
     }
 
     QString text = lineText(globalLine);
+    // Regex offsets are UTF-16 units; spans hold cell columns. The map is
+    // built only for a line that has a match.
+    std::optional<LineColumns> lineCols;
+    const auto colsOf = [&]() -> const LineColumns & {
+        if (!lineCols) lineCols = lineColumns(globalLine);
+        return *lineCols;
+    };
 
     // Detect URLs
     auto it = urlRe.globalMatch(text);
     while (it.hasNext()) {
         auto match = it.next();
         QString url = match.captured();
-        int endCol = match.capturedEnd() - 1;
-        while (endCol > match.capturedStart() &&
+        qsizetype end = match.capturedEnd();
+        while (end - 1 > match.capturedStart() &&
                (url.endsWith('.') || url.endsWith(',') || url.endsWith(':'))) {
             url.chop(1);
-            --endCol;
+            --end;
         }
-        spans.push_back({static_cast<int>(match.capturedStart()), endCol, url, false, false});
+        spans.push_back({colsOf().columnAt(match.capturedStart()),
+                         colsOf().lastColumnBefore(end), url, false, false});
     }
 
     // Detect file paths with line numbers (e.g., src/main.cpp:42)
@@ -4355,8 +4430,8 @@ std::vector<TerminalWidget::UrlSpan> TerminalWidget::detectUrls(int globalLine) 
     while (it2.hasNext()) {
         auto match = it2.next();
         QString path = match.captured(1);
-        int startCol = match.capturedStart(1);
-        int endCol = match.capturedEnd(1) - 1;
+        int startCol = colsOf().columnAt(match.capturedStart(1));
+        int endCol = colsOf().lastColumnBefore(match.capturedEnd(1));
 
         // Verify it looks like a real file path (has a file extension)
         // Skip if it overlaps with an existing URL span
@@ -4431,8 +4506,11 @@ TerminalWidget::classifyHyperlink(const QString &visibleLabel, const QString &ur
 void TerminalWidget::openHyperlink(UrlSpan span, int globalLine) {
     // Phishing check: only relevant for OSC 8 where the visible text ≠ URL.
     if (span.isOsc8) {
+        // The span is in cells; the label is the text those cells hold.
+        const LineColumns spanCols = lineColumns(globalLine);
+        const qsizetype from = spanCols.offsetAt(span.startCol);
         const QString visible = lineText(globalLine).mid(
-            span.startCol, span.endCol - span.startCol + 1);
+            from, spanCols.offsetAt(span.endCol + 1) - from);
         const HyperlinkWarning warn = classifyHyperlink(visible, span.url);
         if (warn != HyperlinkWarning::None) {
             const QString actualHost = QUrl(span.url).host().toLower();
@@ -4719,6 +4797,9 @@ void TerminalWidget::performSearch() {
         qsizetype end = text.size();
         while (end > 0 && text.at(end - 1) == QLatin1Char(' ')) --end;
         text.truncate(end);
+        // Match offsets are UTF-16 units; a match is stored in cells. The
+        // map is built only for a line that has a match.
+        std::optional<LineColumns> textCols;
         auto it = re.globalMatch(text);
         while (it.hasNext()) {
             auto m = it.next();
@@ -4730,7 +4811,10 @@ void TerminalWidget::performSearch() {
                 // line (ANTS-5078).
                 continue;
             }
-            m_searchMatches.push_back({gl, static_cast<int>(m.capturedStart()), len});
+            if (!textCols) textCols = lineColumns(gl);
+            const int startCol = textCols->columnAt(m.capturedStart());
+            const int lastCol = textCols->lastColumnBefore(m.capturedEnd());
+            m_searchMatches.push_back({gl, startCol, lastCol - startCol + 1});
         }
     }
 
@@ -4927,13 +5011,15 @@ void TerminalWidget::enterUrlQuickSelect() {
         // Then: extended patterns (SHAs, IPs, emails)
         if (labelIdx >= labels.size()) break;
         QString lt = lineText(gl);
+        std::optional<LineColumns> ltCols;   // offsets → cells, on first match
 
         auto addMatches = [&](const QRegularExpression &rx, bool isPath) {
             auto it = rx.globalMatch(lt);
             while (it.hasNext() && labelIdx < labels.size()) {
                 auto m = it.next();
-                int sc = static_cast<int>(m.capturedStart());
-                int ec = static_cast<int>(m.capturedStart() + m.capturedLength() - 1);
+                if (!ltCols) ltCols = lineColumns(gl);
+                int sc = ltCols->columnAt(m.capturedStart());
+                int ec = ltCols->lastColumnBefore(m.capturedEnd());
                 // Skip if overlapping with an existing URL span
                 bool overlaps = false;
                 for (const auto &existing : m_quickSelectLabels) {
@@ -5953,6 +6039,13 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
     int globalLine = m_grid->scrollbackSize() + screenRow;
     QString text = lineText(globalLine);
     if (text.isEmpty()) return;
+    // Match offsets are UTF-16 units; applyRowAttrs / addRowHyperlink take
+    // cell columns. Built on the first span-producing match.
+    std::optional<LineColumns> textCols;
+    const auto colsOf = [&]() -> const LineColumns & {
+        if (!textCols) textCols = lineColumns(globalLine);
+        return *textCols;
+    };
 
     for (const auto &rule : m_triggerRules) {
         const QString &kind = rule.actionType;
@@ -5989,16 +6082,18 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
                 auto [fg, bg] = parseColors(rule.actionValue);
                 // Whole line, regardless of match span.
                 m_grid->applyRowAttrs(screenRow, 0, m_grid->cols() - 1, fg, bg);
+            } else if (m.capturedLength(0) <= 0) {
+                continue;   // a zero-width match covers no cell
             } else if (isHighlightText) {
                 auto [fg, bg] = parseColors(rule.actionValue);
-                int start = m.capturedStart(0);
-                int end   = m.capturedEnd(0) - 1;
+                int start = colsOf().columnAt(m.capturedStart(0));
+                int end   = colsOf().lastColumnBefore(m.capturedEnd(0));
                 m_grid->applyRowAttrs(screenRow, start, end, fg, bg);
             } else if (isMakeLink) {
                 QString uri = expandTemplate(rule.actionValue, m);
                 if (!uri.isEmpty()) {
-                    int start = m.capturedStart(0);
-                    int end   = m.capturedEnd(0) - 1;
+                    int start = colsOf().columnAt(m.capturedStart(0));
+                    int end   = colsOf().lastColumnBefore(m.capturedEnd(0));
                     m_grid->addRowHyperlink(screenRow, start, end, uri);
                 }
             }
@@ -6092,7 +6187,15 @@ void TerminalWidget::updateSuggestion() {
     if (!regions.empty()) {
         const PromptRegion &pr = regions.back();
         if (pr.commandStartMs > 0 && !pr.hasOutput && cursorLine == pr.endLine)
-            currentLine = lineText(cursorLine).mid(pr.commandStartCol).trimmed();
+        {
+            // commandStartCol is a cell; a prompt glyph of two UTF-16 units
+            // (emoji) or with combining marks moves the text offset.
+            const QString lt = lineText(cursorLine);
+            const qsizetype from = lt.size() == m_grid->cols()
+                ? qsizetype(pr.commandStartCol)
+                : lineColumns(cursorLine).offsetAt(pr.commandStartCol);
+            currentLine = lt.mid(from).trimmed();
+        }
     }
 
     // ANTS-3455 — the suggestion is a pure function of the trimmed input
@@ -6302,10 +6405,15 @@ QString TerminalWidget::commandTextAt(int index) const {
     for (int gl = pr.endLine; gl <= cmdEndLine; ++gl) {
         QString line = lineText(gl);
         if (gl == pr.endLine) {
-            // First line — strip the PS1 prefix up to commandStartCol.
-            if (pr.commandStartCol > 0 && pr.commandStartCol < line.size())
-                line = line.mid(pr.commandStartCol);
-            else if (pr.commandStartCol >= line.size())
+            // First line — strip the PS1 prefix up to commandStartCol, a
+            // cell column, turned into a text offset (an emoji or combining
+            // mark in the prompt is more than one UTF-16 unit per cell).
+            const qsizetype from = line.size() == m_grid->cols()
+                ? qsizetype(pr.commandStartCol)
+                : lineColumns(gl).offsetAt(pr.commandStartCol);
+            if (from > 0 && from < line.size())
+                line = line.mid(from);
+            else if (from >= line.size())
                 line.clear();
         }
         // Trim trailing whitespace (cells past the command are padded with spaces).

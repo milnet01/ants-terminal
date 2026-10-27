@@ -133,8 +133,14 @@ public:
     // Get the shell's current working directory (via /proc/PID/cwd)
     QString shellCwd() const;
 
-    // Get the shell's PID (for process tree inspection)
+    // Get the shell's PID (for process tree inspection). -1 once the PTY
+    // has reaped the child, or before a shell started.
     pid_t shellPid() const;
+
+    // The shell PID recorded when the shell started; kept after the child
+    // exits so MainWindow::releaseTerminalShell can release an exited
+    // shell from the Claude trackers. -1 if no shell ever started.
+    pid_t lastShellPid() const { return m_lastShellPid; }
 
     // ANTS-1735 §2.4 — epoch-ms of the user's most recent keystroke,
     // stamped at the top of keyPressEvent BEFORE forwarding to the
@@ -416,6 +422,8 @@ private slots:
 private:
     // ANTS-1735 §2.4 — see lastUserKeystrokeMs() getter above.
     qint64 m_lastUserKeystrokeMs = -1;
+    // See lastShellPid(). Set by startShell once the shell is forked.
+    pid_t m_lastShellPid = -1;
 
     void recalcGridSize();
 
@@ -495,6 +503,24 @@ private:
     // click/hover hit-test.
     const std::vector<UrlSpan> &urlSpansForLine(int globalLine) const;
     QString lineText(int globalLine) const;
+    // Where each UTF-16 unit of lineText(globalLine) sits on the grid.
+    // lineText emits a non-BMP codepoint as two units and a cell's combining
+    // marks after its base, so a regex offset into that text is not a cell
+    // column. Every span found by matching lineText (URLs, highlight rules,
+    // search, quick-select, triggers) converts its offsets through this map
+    // before it is painted or hit-tested; a column turned back into a text
+    // offset goes through offsetAt().
+    struct LineColumns {
+        QVector<int> startCol;  // per unit: its cell; [size] = grid cols
+        QVector<int> lastCol;   // per unit: last cell its glyph covers (wide = cell + 1)
+        // Cell of the unit at `offset` (one-past-end → grid cols).
+        int columnAt(qsizetype offset) const;
+        // Last cell covered by the text ending before `endOffset` (exclusive).
+        int lastColumnBefore(qsizetype endOffset) const;
+        // First text offset whose cell is at or after `col`.
+        qsizetype offsetAt(int col) const;
+    };
+    LineColumns lineColumns(int globalLine) const;
     void openFileAtPath(const QString &path);
     // Opens a hyperlink, with an OSC 8 phishing warning (see classifyHyperlink).
     // Takes the span by value (ANTS-5028): the warning dialog runs a nested
@@ -503,6 +529,10 @@ private:
     void openHyperlink(UrlSpan span, int globalLine);
 
 public:
+    // Test-only probes (the *ForTest convention): the cell columns, inclusive,
+    // of a line's URL/file-path spans and of every search match on a line.
+    std::vector<std::pair<int, int>> urlSpanColumnsForTest(int globalLine) const;
+    std::vector<std::pair<int, int>> searchMatchColumnsForTest(int globalLine) const;
     // ANTS-2119 M2 — OSC 8 phishing classification, split out of openHyperlink so
     // the policy is unit-testable without the modal dialog. Pure: no widget state.
     enum class HyperlinkWarning {

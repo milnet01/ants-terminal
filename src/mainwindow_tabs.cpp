@@ -637,7 +637,11 @@ void MainWindow::trackTerminalShell(TerminalWidget *terminal) {
 }
 
 void MainWindow::releaseTerminalShell(TerminalWidget *terminal) {
-    const pid_t pid = terminal ? terminal->shellPid() : 0;
+    if (!terminal) return;
+    // shellPid() is -1 once the PTY has reaped an exited shell; fall back
+    // to the PID recorded at start so the trackers still release it.
+    pid_t pid = terminal->shellPid();
+    if (pid <= 0) pid = terminal->lastShellPid();
     if (pid <= 0) return;
     if (m_claudeTabTracker) m_claudeTabTracker->untrackShell(pid);
     if (m_claudeStatusBarController) m_claudeStatusBarController->untrackBgShell(pid);

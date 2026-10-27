@@ -14,6 +14,19 @@ QString source() {
     return QString::fromStdString(ants_test::slurpMainWindow());
 }
 
+#ifndef SRC_TERMINALWIDGET_PATH
+#define SRC_TERMINALWIDGET_PATH ""
+#endif
+#ifndef SRC_TERMINALWIDGET_H_PATH
+#define SRC_TERMINALWIDGET_H_PATH ""
+#endif
+
+QString readFile(const char *path) {
+    QFile f(QString::fromUtf8(path));
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    return QString::fromUtf8(f.readAll());
+}
+
 // Brace-balanced body from the first `{` after the signature.
 QString functionBody(const QString &src, const QString &signature) {
     const int start = src.indexOf(signature);
@@ -71,4 +84,35 @@ TEST(SplitPaneShellTracking, ReleaseClearsAllThreeTrackers) {
     EXPECT_TRUE(body.contains(QStringLiteral("untrackShell(")));
     EXPECT_TRUE(body.contains(QStringLiteral("untrackBgShell(")));
     EXPECT_TRUE(body.contains(QStringLiteral("forgetShell(")));
+}
+
+// INV-5
+TEST(SplitPaneShellTracking, ReleaseFallsBackToTheRecordedPid) {
+    const QString body = functionBody(
+        source(), QStringLiteral("void MainWindow::releaseTerminalShell("));
+    ASSERT_FALSE(body.isEmpty()) << "releaseTerminalShell not found";
+    const int live = body.indexOf(QStringLiteral("shellPid()"));
+    const int last = body.indexOf(QStringLiteral("lastShellPid()"));
+    ASSERT_GE(live, 0);
+    ASSERT_GE(last, 0) << "an exited shell (shellPid() == -1) is never released";
+    EXPECT_LT(live, last) << "the live PID must be preferred over the recorded one";
+
+    const QString header = readFile(SRC_TERMINALWIDGET_H_PATH);
+    ASSERT_FALSE(header.isEmpty()) << "cannot read " << SRC_TERMINALWIDGET_H_PATH;
+    EXPECT_TRUE(header.contains(QStringLiteral("pid_t lastShellPid() const")));
+
+    const QString impl = readFile(SRC_TERMINALWIDGET_PATH);
+    ASSERT_FALSE(impl.isEmpty()) << "cannot read " << SRC_TERMINALWIDGET_PATH;
+    const QString start =
+        functionBody(impl, QStringLiteral("bool TerminalWidget::startShell("));
+    ASSERT_FALSE(start.isEmpty()) << "startShell not found";
+    const int fail = start.indexOf(QStringLiteral("return false;"));
+    const int set = start.indexOf(QStringLiteral("m_lastShellPid = ptyChildPid()"));
+    ASSERT_GE(set, 0) << "startShell never records the shell PID";
+    EXPECT_GT(set, fail) << "the PID is recorded before the start is known to succeed";
+    // shellPid() keeps its -1-when-not-running meaning.
+    const QString pidFn =
+        functionBody(impl, QStringLiteral("pid_t TerminalWidget::shellPid() const"));
+    EXPECT_TRUE(pidFn.contains(QStringLiteral("return ptyChildPid();")));
+    EXPECT_FALSE(pidFn.contains(QStringLiteral("m_lastShellPid")));
 }
