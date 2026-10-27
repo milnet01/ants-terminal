@@ -740,6 +740,7 @@ private:
     mutable BracketPair m_cachedBracket{-1, -1, -1, -1};
     mutable int m_cachedBracketCursorRow = -1;
     mutable int m_cachedBracketCursorCol = -1;
+    mutable uint64_t m_cachedBracketPushed = ~uint64_t(0);
     QColor m_bracketHighlightBg{0x58, 0x5B, 0x70};
 
     // Session logging
@@ -878,6 +879,9 @@ private:
     };
     mutable std::vector<PaintTextRun> m_paintRuns;
     mutable std::vector<char32_t> m_paintCps;
+    // Per-run text buffer for the shaped-run cache lookup; reused across
+    // runs and frames.
+    QString m_paintRunText;
     // ANTS-3457 — per-row search-match column spans, precomputed once per
     // row (one std::lower_bound into m_searchMatches) instead of a per-cell
     // probe. Same reuse pattern as m_paintRuns: cleared per row, capacity

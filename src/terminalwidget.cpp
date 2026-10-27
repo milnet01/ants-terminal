@@ -337,6 +337,11 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
         // Scrollbar value 0 = top of scrollback, max = bottom (scrollOffset 0)
         int maxScroll = m_grid->scrollbackSize();
         m_scrollOffset = maxScroll - value;
+        // Route through updateScrollBar like every other scroll path, so
+        // dragging up captures the frozen-view snapshot and dragging back to
+        // the bottom drops it (otherwise the bottom view keeps painting the
+        // stale snapshot until the next output batch or key).
+        updateScrollBar();
         update();
     });
 
@@ -588,8 +593,18 @@ void TerminalWidget::updateFontMetrics() {
 
 void TerminalWidget::setFontSize(int size) {
     size = qBound(4, size, 48);
+    // updateFontMetrics re-derives the styled variants from m_font, which
+    // would drop a family set by setBold/Italic/BoldItalicFontFamily on
+    // every zoom. Keep those families across the size change.
+    const QString boldFamily = m_fontBold.family();
+    const QString italicFamily = m_fontItalic.family();
+    const QString boldItalicFamily = m_fontBoldItalic.family();
+    const QString baseFamily = m_font.family();
     m_font.setPointSize(size);
     updateFontMetrics();
+    if (boldFamily != baseFamily) m_fontBold.setFamily(boldFamily);
+    if (italicFamily != baseFamily) m_fontItalic.setFamily(italicFamily);
+    if (boldItalicFamily != baseFamily) m_fontBoldItalic.setFamily(boldItalicFamily);
     recalcGridSize();
     update();
 }
@@ -1320,7 +1335,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
             if (c.attrs.strikethrough && isGlyphCell) {
                 p.setPen(fg);
                 int sy = px_y + m_cellHeight / 2;
-                p.drawLine(px_x, sy, px_x + m_cellWidth - 1, sy);
+                p.drawLine(px_x, sy, px_x + cellDrawWidth - 1, sy);
             }
         }
 
@@ -1356,7 +1371,11 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
             // <0x80, where a UTF-32→UTF-16 transcode is unnecessary.
             // Pre-allocated QString + QChar copy is roughly 2-3× faster
             // than fromUcs4 on the hot run loop.
-            QString runText;
+            // m_paintRunText is a member so a cache hit reuses its buffer
+            // instead of allocating a fresh QString per run per frame; a
+            // miss shares it with the stored key, and the next resize
+            // detaches.
+            QString &runText = m_paintRunText;
             const char32_t *cps = m_paintCps.data() + run.cpStart;
             const int n = run.cpLen;
             bool allAscii = true;
@@ -1365,8 +1384,9 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
             }
             if (allAscii) {
                 runText.resize(n);
+                QChar *out = runText.data();
                 for (int i = 0; i < n; ++i) {
-                    runText[i] = QChar(static_cast<ushort>(cps[i]));
+                    out[i] = QChar(static_cast<ushort>(cps[i]));
                 }
             } else {
                 runText = QString::fromUcs4(cps, n);
@@ -1931,9 +1951,25 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         return;
     }
 
-    m_scrollOffset = 0;
-    m_newOutputMarkerLine = -1;
-    updateScrollBar();
+    // The view-navigation keys below read the current m_scrollOffset
+    // (Shift+PageUp adds a page to it, Ctrl+Shift+Up/Down and J/K search from
+    // the current view top), so they must not snap to the bottom first —
+    // otherwise repeated Shift+PageUp never gets past one page and prompt or
+    // bookmark navigation always restarts from the newest entry.
+    // Under the Kitty keyboard protocol encodeEarlyKey sends these keys to
+    // the app instead, so they keep the snap-to-bottom there.
+    const bool shiftOnlyScroll = (mods & Qt::ShiftModifier)
+        && m_grid->kittyKeyFlags() == 0
+        && (key == Qt::Key_Home || key == Qt::Key_End
+            || key == Qt::Key_PageUp || key == Qt::Key_PageDown);
+    const bool ctrlShiftNav = (mods & Qt::ControlModifier) && (mods & Qt::ShiftModifier)
+        && (key == Qt::Key_Up || key == Qt::Key_Down
+            || key == Qt::Key_J || key == Qt::Key_K);
+    if (!shiftOnlyScroll && !ctrlShiftNav) {
+        m_scrollOffset = 0;
+        m_newOutputMarkerLine = -1;
+        updateScrollBar();
+    }
     m_cursorBlinkOn = true;
     m_cursorTimer.start();
 
@@ -2508,7 +2544,10 @@ void TerminalWidget::blinkCursor() {
     // paintEvent doesn't paint, leaving the blink visually stalled.
     int cx = m_padding + effectiveCursorCol() * m_cellWidth;
     int cy = m_padding + effectiveCursorRow() * m_cellHeight;
-    update(cx, cy, m_cellWidth, m_cellHeight);
+    // Cover the glow paintEvent draws glowSize (4) px around the cell, or
+    // the halo outside the cell stays on screen through the blink-off phase.
+    constexpr int kGlow = 4;
+    update(cx - kGlow, cy - kGlow, m_cellWidth + kGlow * 2, m_cellHeight + kGlow * 2);
 }
 
 void TerminalWidget::smoothScrollStep() {
@@ -3214,8 +3253,11 @@ void TerminalWidget::copySelectionRich() {
     if (selCells <= kRichCopyCellCap) {
         QString html = QStringLiteral("<pre style='font-family: monospace;'>");
         for (int line = startLine; line <= endLine; ++line) {
-            int colStart = (line == startLine) ? startCol : 0;
-            int colEnd = (line == endLine) ? endCol : m_grid->cols() - 1;
+            // A rectangular selection covers the same columns on every line,
+            // as selectedText() builds the plain half.
+            int colStart = sel.rect ? sel.rectColMin : (line == startLine) ? startCol : 0;
+            int colEnd = sel.rect ? std::min(sel.rectColMax, m_grid->cols() - 1)
+                                  : (line == endLine) ? endCol : m_grid->cols() - 1;
 
             // ANTS-5078 — one span per run of same-style cells, as the
             // HTML export does, instead of one span per character.
@@ -3965,13 +4007,26 @@ int TerminalWidget::a11yLastNonBlankCol(int globalLine) const {
 // builds its lines through this too.
 QString TerminalWidget::a11yComposeCols(int globalLine, int beginCol, int endCol) const {
     QString out;
+    if (endCol > beginCol) out.reserve(endCol - beginCol);
+    // Append UTF-16 directly: a temporary QString per cell made a
+    // whole-scrollback selectedText() allocate once per cell.
+    const auto put = [&out](char32_t cp) {
+        // Same output as fromUcs4 for a codepoint it rejects.
+        if (cp > 0x10FFFF || QChar::isSurrogate(cp)) cp = QChar::ReplacementCharacter;
+        if (QChar::requiresSurrogates(cp)) {
+            out += QChar(QChar::highSurrogate(cp));
+            out += QChar(QChar::lowSurrogate(cp));
+        } else {
+            out += QChar(static_cast<char16_t>(cp));
+        }
+    };
     for (int c = beginCol; c < endCol; ++c) {
         uint32_t cp = cellAtGlobal(globalLine, c).codepoint;
         if (cp == 0) cp = ' ';
-        out += QString::fromUcs4(reinterpret_cast<const char32_t *>(&cp), 1);
+        put(cp);
         if (auto *comb = combiningAt(globalLine, c)) {
             for (uint32_t combCp : *comb)
-                out += QString::fromUcs4(reinterpret_cast<const char32_t *>(&combCp), 1);
+                put(combCp);
         }
     }
     return out;
@@ -4757,11 +4812,18 @@ TerminalWidget::BracketPair TerminalWidget::findMatchingBracket() const {
     int cursorRow = m_grid->cursorRow();
     int cursorCol = m_grid->cursorCol();
 
-    // Return cached result if cursor hasn't moved
-    if (cursorRow == m_cachedBracketCursorRow && cursorCol == m_cachedBracketCursorCol)
+    // Return cached result if cursor hasn't moved and the content under it
+    // hasn't changed. paintEvent calls this before invalidateSpanCaches, so
+    // m_spanCacheDirty still says whether output landed since the last
+    // paint; a scrollback push moves every global line even when the
+    // cursor's screen cell stays put.
+    const uint64_t pushed = m_grid->scrollbackPushed();
+    if (!m_spanCacheDirty && pushed == m_cachedBracketPushed &&
+        cursorRow == m_cachedBracketCursorRow && cursorCol == m_cachedBracketCursorCol)
         return m_cachedBracket;
     m_cachedBracketCursorRow = cursorRow;
     m_cachedBracketCursorCol = cursorCol;
+    m_cachedBracketPushed = pushed;
 
     int scrollbackSize = m_grid->scrollbackSize();
     int cursorGL = scrollbackSize + cursorRow;
@@ -5728,6 +5790,9 @@ void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
         if (!bg.isEmpty()) rule.bg = QColor(bg);
         m_highlightRules.push_back(rule);
     }
+    // invalidateSpanCaches drops only dirty screen rows and the scrollback
+    // band, so spans computed under the old rules would keep painting.
+    m_hlSpanCache.clear();
     m_spanCacheDirty = true;
     update();
 }
