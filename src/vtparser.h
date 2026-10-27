@@ -28,9 +28,11 @@ struct VtAction {
     // treat this as a run of printable-ASCII bytes (each in [0x20..0x7E]).
     //
     // LIFETIME WARNING: consumers that store VtActions past the callback
-    // (e.g. VtStream::m_pending, which outlives onPtyData) MUST expand the
-    // run into per-byte Print actions — the feed-buffer memory is gone by
-    // the time the stored action is dispatched. The direct-callback path
+    // must copy the run's bytes somewhere they own and repoint `printRun`
+    // (VtBatchBuilder in vtstream.h keeps an offset into the batch's raw
+    // bytes), or expand the run into per-byte Print actions — the
+    // feed-buffer memory is gone by the time the stored action is
+    // dispatched. The direct-callback path
     // (bench, tests, synchronous TerminalGrid::processAction) is safe
     // because the action is consumed on the stack before the callback
     // returns.

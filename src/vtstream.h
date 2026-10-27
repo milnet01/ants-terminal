@@ -23,9 +23,11 @@
 // --------
 // - Action-stream identity: for any byte sequence fed through the worker,
 //   the sequence of VtActions delivered to `batchReady.actions` — in order,
-//   concatenated across batches — is identical to what VtParser emits
-//   when driven single-threaded. The `threaded_parse_equivalence` feature
-//   test pins this.
+//   concatenated across batches, with each coalesced print run expanded to
+//   one Print per byte — is identical to what VtParser emits when driven
+//   single-threaded, expanded the same way. Applying the batches to a
+//   TerminalGrid leaves it in the same state as the direct parse. The
+//   `threaded_parse_equivalence` feature test pins both.
 // - Write ordering: every call to `write()` (user keystrokes, grid
 //   response callback like DA1/CPR) serializes onto the worker's event
 //   queue and writes to the PTY master in arrival order. Cross-thread
@@ -45,7 +47,10 @@
 #include <QMetaType>
 
 #include <atomic>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include <sys/types.h>
@@ -80,9 +85,107 @@ struct VtBatch {
     // index in `actions`, ascending. The GUI hands each to processAction so
     // the image is not decoded on the GUI thread.
     std::vector<std::pair<std::size_t, std::shared_ptr<const PredecodedImage>>> images;
+    // A Print action in `actions` may carry a coalesced printable-ASCII run
+    // (`printRun` + `printRunLen`, see VtParser). Its `printRun` points into
+    // `rawBytes`, which therefore must not be modified once the batch is
+    // built. VtBatchBuilder::takeInto sets the pointers after `rawBytes` has
+    // been moved into its final heap batch, and the batch then travels by
+    // `VtBatchPtr` (refcount only), so the pointers hold for its lifetime.
+    // `rawBytes` is implicitly shared, so a copy of the batch also keeps
+    // the buffer alive.
 };
 using VtBatchPtr = std::shared_ptr<const VtBatch>;
 Q_DECLARE_METATYPE(VtBatchPtr)
+
+// Collects one batch's parsed actions and raw bytes on the worker thread.
+//
+// VtParser's SIMD fast path reports a printable-ASCII run as one Print
+// action whose `printRun` points into the buffer handed to feed(), which
+// is gone once onPtyData returns. Copying a run out byte by byte (one
+// ~160-byte VtAction per byte) undid the parser's coalescing, so the
+// builder keeps the run as an offset into the raw bytes it already holds
+// and resolves it to a pointer only in takeInto, once those bytes sit in
+// the batch that ships. A run whose bytes are not inside the current feed
+// buffer falls back to per-byte Print actions.
+//
+// Use: beginFeed(data) before VtParser::feed(data.constData(), ...), add()
+// from the parser callback, endFeed() after it, takeInto() to fill a batch.
+class VtBatchBuilder {
+public:
+    // Appends `data` to the raw bytes and records it as the buffer the
+    // parser is about to be fed. `data` must stay alive and unchanged
+    // until that feed() returns.
+    void beginFeed(const QByteArray &data) {
+        m_feedOffset = m_raw.size();
+        m_raw.append(data);
+        m_feedBase = data.constData();
+        m_feedLen = data.size();
+    }
+
+    // Call once feed() has returned: the buffer may be freed after it.
+    void endFeed() {
+        m_feedBase = nullptr;
+        m_feedLen = 0;
+    }
+
+    // Queues one parsed action.
+    void add(const VtAction &a) {
+        if (a.type == VtAction::Print && a.printRun != nullptr) {
+            // Compared as integers: the run may lie outside the feed buffer.
+            const auto run0 = reinterpret_cast<std::uintptr_t>(a.printRun);
+            const auto base = reinterpret_cast<std::uintptr_t>(m_feedBase);
+            if (m_feedBase != nullptr && a.printRunLen > 0 && run0 >= base &&
+                run0 - base + static_cast<std::uintptr_t>(a.printRunLen) <=
+                    static_cast<std::uintptr_t>(m_feedLen)) {
+                const auto at = static_cast<qsizetype>(run0 - base);
+                VtAction run;
+                run.type = VtAction::Print;
+                run.printRunLen = a.printRunLen;  // printRun set in takeInto
+                m_runs.emplace_back(m_actions.size(), m_feedOffset + at);
+                m_actions.push_back(std::move(run));
+                return;
+            }
+            for (int i = 0; i < a.printRunLen; ++i) {  // not in the feed buffer
+                VtAction b;
+                b.type = VtAction::Print;
+                b.codepoint = static_cast<uint8_t>(a.printRun[i]);
+                m_actions.push_back(std::move(b));
+            }
+            return;
+        }
+        m_actions.push_back(a);
+    }
+
+    std::size_t actionCount() const { return m_actions.size(); }
+    qsizetype rawSize() const { return m_raw.size(); }
+    bool empty() const { return m_actions.empty() && m_raw.isEmpty(); }
+
+    // Moves the pending actions and bytes into `b` and points each run at
+    // `b.rawBytes`. Call it on the batch that will ship (the heap object
+    // behind the VtBatchPtr), not on a temporary that is copied later.
+    void takeInto(VtBatch &b) {
+        b.actions = std::move(m_actions);
+        b.rawBytes = std::move(m_raw);
+        const char *base = b.rawBytes.constData();
+        for (const auto &[index, offset] : m_runs)
+            b.actions[index].printRun = base + offset;
+        m_actions.clear();  // moved-from containers: make them empty
+        m_raw.clear();
+        m_runs.clear();
+        m_feedBase = nullptr;
+        m_feedLen = 0;
+        m_feedOffset = 0;
+    }
+
+private:
+    std::vector<VtAction> m_actions;
+    QByteArray m_raw;
+    // (index in m_actions, offset in m_raw) of each coalesced run.
+    std::vector<std::pair<std::size_t, qsizetype>> m_runs;
+    const char *m_feedBase = nullptr;  // the buffer being fed, or null
+    qsizetype m_feedLen = 0;
+    qsizetype m_feedOffset = 0;        // where that buffer starts in m_raw
+};
 
 class VtStream : public QObject {
     Q_OBJECT
@@ -151,7 +254,7 @@ private:
     void flushBatch();
     // The parser's action callback: queues each action for the next batch.
     void onParsedAction(const VtAction &a);
-    bool hasPending() const { return !m_pending.empty() || !m_pendingRaw.isEmpty(); }
+    bool hasPending() const { return !m_pending.empty(); }
     // Moves everything pending into a new batch and resets the pending state.
     VtBatchPtr takeBatch();
 
@@ -159,8 +262,8 @@ private:
     std::atomic<bool> m_keysShareable{false};
     std::unique_ptr<VtParser> m_parser;
 
-    std::vector<VtAction> m_pending;
-    QByteArray m_pendingRaw;
+    // Actions and raw bytes for the next batch; print runs stay coalesced.
+    VtBatchBuilder m_pending;
     bool m_pendingClearSelection = false;
     // ANTS-1061 — decodes inline images as they are parsed; the results ride
     // in VtBatch::images.

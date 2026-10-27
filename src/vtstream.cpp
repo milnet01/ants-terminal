@@ -63,30 +63,12 @@ void VtStream::onParsedAction(const VtAction &a) {
         (a.type == VtAction::Execute && a.controlChar == '\x0C')) {
         m_pendingClearSelection = true;
     }
-    // Coalesced Print runs (printRun pointing into the feed buffer)
-    // do NOT outlive this callback — `data` in onPtyData is freed
-    // when that frame returns, so any pointer into it is dangling
-    // by the time `flushBatch` ships the batch to the GUI thread.
-    // Expand runs into per-byte Print actions here; the cost is
-    // one VtAction per byte on the worker thread but that's the
-    // same shape as the pre-0.7.17 parser and keeps the GUI-side
-    // batch consumer dangling-pointer-free. The direct (non-
-    // threaded) path in processAction still benefits from
-    // coalescing because there the VtAction lives on the stack
-    // during the callback only.
-    if (a.type == VtAction::Print && a.printRun != nullptr) {
-        for (int i = 0; i < a.printRunLen; ++i) {
-            VtAction b;
-            b.type = VtAction::Print;
-            b.codepoint = static_cast<uint8_t>(a.printRun[i]);
-            m_pending.push_back(std::move(b));
-        }
-        return;
-    }
-    m_pending.push_back(a);
+    // A coalesced Print run stays one action: the builder keeps it as an
+    // offset into the batch's raw bytes (VtBatchBuilder).
+    m_pending.add(a);
     // ANTS-1061 — decode an inline image here, off the GUI thread.
     if (auto image = m_predecoder.onAction(a))
-        m_pendingImages.emplace_back(m_pending.size() - 1, std::move(image));
+        m_pendingImages.emplace_back(m_pending.actionCount() - 1, std::move(image));
 }
 
 pid_t VtStream::childPid() const {
@@ -144,15 +126,16 @@ void VtStream::drainAck() {
 }
 
 void VtStream::onPtyData(const QByteArray &data) {
-    m_pendingRaw.append(data);
+    m_pending.beginFeed(data);
     // Feed the parser. Its action-callback appends to m_pending (set up in
     // start()). This runs synchronously on the worker; no cross-thread hop.
     m_parser->feed(data.constData(), static_cast<int>(data.size()));
+    m_pending.endFeed();
 
     // Fast path: if we're over either threshold, flush immediately so
     // the GUI sees output with sub-frame latency on heavy streams.
-    if (static_cast<int>(m_pending.size()) >= kFlushActions ||
-        m_pendingRaw.size() >= kFlushBytes) {
+    if (static_cast<int>(m_pending.actionCount()) >= kFlushActions ||
+        m_pending.rawSize() >= kFlushBytes) {
         flushBatch();
     } else {
         // Otherwise coalesce — next event-loop turn fires a single flush
@@ -198,15 +181,14 @@ void VtStream::flushBatch() {
 
 VtBatchPtr VtStream::takeBatch() {
     auto b = std::make_shared<VtBatch>();
-    b->actions = std::move(m_pending);
-    b->rawBytes = std::move(m_pendingRaw);
+    // On the heap batch that ships, so the run pointers into rawBytes
+    // stay valid across the queued hop (VtBatch).
+    m_pending.takeInto(*b);
     b->clearSelectionHint = m_pendingClearSelection;
     b->wallClockMs = m_wallClock.elapsed();
     b->images = std::move(m_pendingImages);
 
-    m_pending.clear();       // ensure moved-from vector is empty
-    m_pendingImages.clear();
-    m_pendingRaw.clear();
+    m_pendingImages.clear();  // ensure moved-from vector is empty
     m_pendingClearSelection = false;
     return b;
 }

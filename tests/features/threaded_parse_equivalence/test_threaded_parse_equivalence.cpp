@@ -1,17 +1,24 @@
 // Threaded parse equivalence — see spec.md for the contract.
 //
 // Pins the invariant that VtParser, fed any byte sequence, produces an
-// action stream identical regardless of how the stream is chunked. The
+// action stream identical regardless of how the stream is chunked, and that
+// the worker's batches (VtBatchBuilder, print runs kept coalesced) carry
+// that stream and leave a TerminalGrid as the direct parse does. The
 // worker path in 0.7.0 chunks by 16 KB or 4096-action flush thresholds;
 // if any of those thresholds breaks the parser's state, the chunked
 // path will diverge from the single-shot reference here.
 
 #include "vtparser.h"
+#include "vtstream.h"     // VtBatch, VtBatchBuilder — the worker's batching
+#include "terminalgrid.h"
+
+#include <QByteArray>
 
 #include <cstdint>
 #include <cstdio>
 #include <gtest/gtest.h>
 #include <cstdlib>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -242,7 +249,172 @@ static std::vector<Fixture> buildFixtures() {
         f.push_back({"long_print", s});
     }
 
+    // 12. Grid-state stressors for the run path: runs that wrap at the
+    //     right edge, overwrite a wide pair, precede a combining mark,
+    //     follow charset designations / SO-SI and insert mode, and land
+    //     after a cursor move into the last column.
+    f.push_back({"grid_run_edges",
+                 "\xE4\xB8\xAD\xE6\x96\x87 wide pair\r"
+                 "x overwrites the lead\r\n"
+                 "e\xCC\x81 combining after a run, then a run again\r\n"
+                 "\x1B(0lqqqk\x1B(B \x0Eshifted\x0F back\r\n"
+                 "\x1B[4hinsert mode run\x1B[4l\r\n"
+                 "\x1B[1;20Hedge-of-row run that wraps several times over\r\n"
+                 "\x1B[7mreverse\x1B[0m plain \x1B]8;;https://e.x\x07link\x1B]8;;\x07 tail\n"});
+
     return f;
+}
+
+// ---- Worker batching (VtStream) --------------------------------------------
+//
+// Mirrors VtStream::onPtyData / flushBatch: each read is a fresh QByteArray
+// freed as soon as it has been fed (as the Pty's read buffer is), the
+// builder keeps coalesced runs as offsets, and a batch is taken when the
+// worker's thresholds trip — or, with `flushEveryRead`, after every read.
+// The batches are then moved (shared_ptr into a vector, the vector moved)
+// before anything reads them, as the queued hop to the GUI does.
+static std::vector<VtBatchPtr> parseIntoBatches(const std::string &data,
+                                                const std::vector<size_t> &chunks,
+                                                bool flushEveryRead) {
+    VtBatchBuilder pending;
+    VtParser parser([&pending](const VtAction &a) { pending.add(a); });
+    std::vector<VtBatchPtr> batches;
+    auto flush = [&] {
+        auto b = std::make_shared<VtBatch>();
+        pending.takeInto(*b);
+        batches.push_back(std::move(b));
+    };
+    size_t offset = 0;
+    for (size_t n : chunks) {
+        if (n == 0 || offset >= data.size()) continue;
+        const size_t take = std::min(n, data.size() - offset);
+        {
+            auto read = std::make_unique<QByteArray>(data.data() + offset,
+                                                     static_cast<qsizetype>(take));
+            pending.beginFeed(*read);
+            parser.feed(read->constData(), static_cast<int>(read->size()));
+            pending.endFeed();
+        }  // the read buffer is gone here, as in onPtyData
+        offset += take;
+        if (flushEveryRead || pending.actionCount() >= 4096 ||
+            pending.rawSize() >= 16 * 1024)
+            flush();
+    }
+    if (!pending.empty()) flush();
+    std::vector<VtBatchPtr> shipped = std::move(batches);
+    return shipped;
+}
+
+// The batches' actions, in order, with each coalesced run expanded to one
+// Print per byte — the comparison form of parseAll's output.
+static std::vector<VtAction> expandBatches(const std::vector<VtBatchPtr> &batches) {
+    std::vector<VtAction> out;
+    for (const auto &b : batches) {
+        for (const VtAction &a : b->actions) {
+            if (a.type == VtAction::Print && a.printRun != nullptr) {
+                for (int i = 0; i < a.printRunLen; ++i) {
+                    VtAction one;
+                    one.type = VtAction::Print;
+                    one.codepoint = static_cast<uint8_t>(a.printRun[i]);
+                    out.push_back(one);
+                }
+                continue;
+            }
+            out.push_back(a);
+        }
+    }
+    return out;
+}
+
+static std::size_t batchActionCount(const std::vector<VtBatchPtr> &batches) {
+    std::size_t n = 0;
+    for (const auto &b : batches) n += b->actions.size();
+    return n;
+}
+
+// ---- Grid state -------------------------------------------------------------
+
+static constexpr int kGridRows = 6;
+static constexpr int kGridCols = 17;  // odd and small: runs wrap often
+
+// The reference: the bytes parsed in one feed, each coalesced run split
+// into one scalar Print per byte (the pre-run threaded path), so every
+// printable byte goes through handlePrint rather than handleAsciiPrintRun.
+static void applyDirect(TerminalGrid &grid, const std::string &data) {
+    VtParser parser([&grid](const VtAction &a) {
+        if (a.type == VtAction::Print && a.printRun != nullptr) {
+            for (int i = 0; i < a.printRunLen; ++i) {
+                VtAction one;
+                one.type = VtAction::Print;
+                one.codepoint = static_cast<uint8_t>(a.printRun[i]);
+                grid.processAction(one);
+            }
+            return;
+        }
+        grid.processAction(a);
+    });
+    parser.feed(data.data(), static_cast<int>(data.size()));
+}
+
+static void applyBatches(TerminalGrid &grid, const std::vector<VtBatchPtr> &batches) {
+    for (const auto &b : batches)
+        for (const VtAction &a : b->actions) grid.processAction(a);
+}
+
+static bool attrsEqual(const CellAttrs &a, const CellAttrs &b) {
+    return a.fg == b.fg && a.bg == b.bg && a.underlineColor == b.underlineColor &&
+           a.bold == b.bold && a.italic == b.italic && a.underline == b.underline &&
+           a.underlineStyle == b.underlineStyle && a.inverse == b.inverse &&
+           a.dim == b.dim && a.strikethrough == b.strikethrough;
+}
+
+static bool cellsEqual(const std::vector<Cell> &a, const std::vector<Cell> &b,
+                       std::string &why) {
+    if (a.size() != b.size()) { why = "row width"; return false; }
+    for (size_t c = 0; c < a.size(); ++c) {
+        if (a[c].codepoint != b[c].codepoint ||
+            a[c].isWideChar != b[c].isWideChar ||
+            a[c].isWideCont != b[c].isWideCont ||
+            !attrsEqual(a[c].attrs, b[c].attrs)) {
+            why = "cell col " + std::to_string(c);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool gridsEqual(const TerminalGrid &ref, const TerminalGrid &cand,
+                       std::string &why) {
+    if (ref.cursorRow() != cand.cursorRow() || ref.cursorCol() != cand.cursorCol()) {
+        why = "cursor";
+        return false;
+    }
+    if (ref.scrollbackSize() != cand.scrollbackSize()) {
+        why = "scrollback size";
+        return false;
+    }
+    for (int i = 0; i < ref.scrollbackSize(); ++i) {
+        if (!cellsEqual(ref.scrollbackLine(i), cand.scrollbackLine(i), why) ||
+            ref.scrollbackLineWrapped(i) != cand.scrollbackLineWrapped(i) ||
+            ref.scrollbackCombining(i) != cand.scrollbackCombining(i)) {
+            why = "scrollback line " + std::to_string(i) + " " + why;
+            return false;
+        }
+    }
+    for (int r = 0; r < ref.rows(); ++r) {
+        std::vector<Cell> a, b;
+        for (int c = 0; c < ref.cols(); ++c) {
+            a.push_back(ref.cellAt(r, c));
+            b.push_back(cand.cellAt(r, c));
+        }
+        if (!cellsEqual(a, b, why) ||
+            ref.screenLineWrapped(r) != cand.screenLineWrapped(r) ||
+            ref.screenCombining(r) != cand.screenCombining(r)) {
+            why = "screen row " + std::to_string(r) + " " + why;
+            return false;
+        }
+    }
+    return true;
 }
 
 }  // namespace
@@ -287,5 +459,77 @@ TEST(ThreadedParseEquivalence, Main) {
                 fixtures.size());
     return;
 
+}
+
+// The worker's batches, runs expanded, carry the same action stream as the
+// direct parse; applied to a grid they leave it in the same state as the
+// direct, byte-by-byte parse.
+TEST(ThreadedParseEquivalence, WorkerBatchesMatchDirectParse) {
+    const auto fixtures = buildFixtures();
+    int failures = 0;
+
+    for (const auto &fx : fixtures) {
+        const auto ref = parseByteByByte(fx.bytes);
+        TerminalGrid direct(kGridRows, kGridCols);
+        applyDirect(direct, fx.bytes);
+
+        struct Shape { const char *label; std::vector<size_t> chunks; bool flushEveryRead; };
+        std::vector<Shape> shapes;
+        shapes.push_back({"read-16k", {}, false});
+        for (size_t i = 0; i < fx.bytes.size(); i += 16 * 1024)
+            shapes.back().chunks.push_back(16 * 1024);
+        shapes.push_back({"read-7-flush-each", {}, true});
+        for (size_t i = 0; i < fx.bytes.size(); i += 7) shapes.back().chunks.push_back(7);
+        {
+            std::mt19937 rng(42);
+            std::uniform_int_distribution<size_t> dist(1, 97);
+            Shape sh{"read-rand-flush-each", {}, true};
+            for (size_t left = fx.bytes.size(); left > 0;) {
+                const size_t n = std::min(dist(rng), left);
+                sh.chunks.push_back(n);
+                left -= n;
+            }
+            shapes.push_back(std::move(sh));
+        }
+
+        for (const auto &sh : shapes) {
+            const auto batches = parseIntoBatches(fx.bytes, sh.chunks, sh.flushEveryRead);
+            if (!compareAndReport(fx.name, sh.label, ref, expandBatches(batches)))
+                ++failures;
+
+            TerminalGrid threaded(kGridRows, kGridCols);
+            applyBatches(threaded, batches);
+            std::string why;
+            if (!gridsEqual(direct, threaded, why)) {
+                std::fprintf(stderr, "FAIL [%s / %s]: grid differs: %s\n",
+                             fx.name, sh.label, why.c_str());
+                ++failures;
+            }
+        }
+    }
+
+    EXPECT_EQ(failures, 0);
+}
+
+// The batches keep the parser's coalescing: a long printable-ASCII stream
+// ships as a handful of run actions, not one action per byte.
+TEST(ThreadedParseEquivalence, WorkerBatchesKeepPrintRunsCoalesced) {
+    std::string s;
+    for (int i = 0; i < 50000; ++i) s.push_back(static_cast<char>('a' + (i % 26)));
+    std::vector<size_t> reads;
+    for (size_t i = 0; i < s.size(); i += 16 * 1024) reads.push_back(16 * 1024);
+    const auto batches = parseIntoBatches(s, reads, false);
+    EXPECT_LE(batchActionCount(batches), 64u)
+        << "print runs were expanded to per-byte actions";
+    std::size_t runBytes = 0;
+    for (const auto &b : batches)
+        for (const VtAction &a : b->actions)
+            if (a.type == VtAction::Print && a.printRun != nullptr) {
+                EXPECT_GE(a.printRun, b->rawBytes.constData());
+                EXPECT_LE(a.printRun + a.printRunLen,
+                          b->rawBytes.constData() + b->rawBytes.size());
+                runBytes += static_cast<std::size_t>(a.printRunLen);
+            }
+    EXPECT_GT(runBytes, s.size() / 2);
 }
 
