@@ -91,6 +91,10 @@ struct ParseResult {
                                      // finding's first `**Proposed ID:**` value
                                      // (n/a closures contribute none); the
                                      // retained v1 tables are not counted.
+                                     // ANTS-3744: when no finding yields an
+                                     // id, the ids on `Tracked in ROADMAP`
+                                     // headings instead (retireTrackingHeadings'
+                                     // sole_id_record gate relies on this).
     int         formatVersion = 0;   // ANTS-3448: version from the first
                                      // `<!-- ants-mcp-feedback: N -->` marker
                                      // (0 when absent/malformed). >= 2 ⟹ the v2
@@ -334,10 +338,11 @@ struct TrackingHeading {
     QStringList ids;                // canonical ids parsed from the heading
     bool        retired = false;
     QString     code;               // "" when retired; else the first-failing
-                                    // skip code (no_ids / has_open_id /
-                                    // roadmap_unresolved_ids), same vocabulary
-                                    // and same first-failure-wins order as
-                                    // ResolvedFinding
+                                    // skip code, tested in this order: no_ids,
+                                    // sole_id_record (the file has no inline
+                                    // id, so this heading is its only record),
+                                    // roadmap_unresolved_ids, has_open_id —
+                                    // the last two as ResolvedFinding reads them
     QStringList openIds;            // has_open_id: present but not ✅
     QStringList unresolvedIds;      // roadmap_unresolved_ids: not in the roadmap
 };

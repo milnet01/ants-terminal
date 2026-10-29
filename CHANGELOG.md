@@ -305,6 +305,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log treats a lower-case category heading such as `### fixed` like `### Fixed` when it orders new headings and merges a same-day release.** (ANTS-6145)
+
 - **Settings and saved tab scrollback keep the previous file when the disk does not take the whole new one.** (ANTS-6143)
   config.json, session blobs and tab_order.txt now share one safe-write
   routine, so all three check the final flush before replacing the old

@@ -96006,6 +96006,11 @@ worked after these.
   changeloglog.cpp's six "find [Unreleased] and its end" copies call
   findUnreleased(); the not_unreleased and bad_category refusals are
   written once. No behaviour change. Mediums and lows remain.
+  2026-10-29: MEDIUMs F4-F12 closed. F6 fixed with a test: headings
+  read from the file are matched case-insensitively when ordering and
+  merging. F8/F10: one blockEnd() serves parse, compactShipped and
+  pruneTracking; parse's v1-only work moved to the v1 path. F7, F11, F12,
+  F4, F5: comments. F9 queued on ANTS-6029. LOWs F13-F18 remain.
   **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -100147,6 +100152,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-29: readability finding L36-F9 joins this item. The four
+  changelogquery readers should share one "what starts a section" rule:
+  lint takes any unfenced `## `; parse, citationsByVersion and
+  releaseLint take `## [` only, fenced or not. Queued here, not fixed in
+  ANTS-6145, because choosing the rule changes what three readers report.
+  lint now carries a comment naming the difference.
   **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

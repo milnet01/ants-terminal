@@ -1184,6 +1184,52 @@ TEST(changelog_log_writer, Ants5484DatedCloseAndSameDayMerge) {
               QStringLiteral("merge_unsupported"));
 }
 
+// ANTS-6145 (L36-F6) — a heading's category is matched case-insensitively
+// wherever the writer orders or merges by it, as the target match already is.
+TEST(changelog_log_writer, Ants6145LowerCaseCategoryHeadingIsOrderedAndMerged) {
+    const QString lower = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### fixed\n\n"
+        "- **A fix.** (PROJ-1)\n\n"
+        "## 2026-09-20\n\n"
+        "### Fixed\n\n"
+        "- older.\n");
+
+    // Insert: a missing Changed goes above `### fixed`, not below it.
+    const auto ins = ChangelogLog::insertUnreleasedEntry(
+        lower, QStringLiteral("Changed"), QStringLiteral("- **A change.**"));
+    ASSERT_TRUE(ins.ok) << ins.error.toStdString();
+    const std::string im = ins.markdown.toStdString();
+    EXPECT_LT(im.find("### Changed"), im.find("### fixed"));
+
+    // Same-day merge: `### fixed` joins the day's `### Fixed`.
+    const auto m = ChangelogLog::closeUnreleasedDated(
+        lower, QStringLiteral("2026-09-20"));
+    ASSERT_TRUE(m.ok) << m.code.toStdString() << ": " << m.error.toStdString();
+    EXPECT_TRUE(m.merged);
+    const std::string mm = m.markdown.toStdString();
+    const auto day = mm.find("## 2026-09-20");
+    EXPECT_EQ(mm.find("### ", day), mm.rfind("### Fixed"))
+        << "one Fixed block for the day";
+    EXPECT_LT(mm.find("- **A fix.**"), mm.find("- older."));
+
+    // Dated merge into a day holding a lower-case heading: Added goes above it.
+    const QString dayLower = QString::fromUtf8(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **New.** (PROJ-2)\n\n"
+        "## 2026-09-20\n\n"
+        "### fixed\n\n"
+        "- older.\n");
+    const auto d = ChangelogLog::closeUnreleasedDated(
+        dayLower, QStringLiteral("2026-09-20"));
+    ASSERT_TRUE(d.ok) << d.error.toStdString();
+    const std::string dm = d.markdown.toStdString();
+    EXPECT_LT(dm.find("### Added", dm.find("## 2026-09-20")), dm.find("### fixed"));
+}
+
 // ANTS-5484 — the verb takes `dated:true`, echoes `merged`, and refuses a
 // version alongside it rather than choosing one of the two.
 TEST(changelog_log_writer, Ants5484DatedReleaseThroughTheVerb) {

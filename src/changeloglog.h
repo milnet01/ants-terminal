@@ -140,6 +140,8 @@ struct SubsectionResult {
 // Refusals:
 //   not_unreleased  — no `## [Unreleased]` heading
 //   bad_category    — category not one of the six canonical values
+//   flat_section    — a flat `### <category>` heading with no dated topic
+//                     above it
 // (date/headline emptiness is a verb-layer `missing_field` guard.)
 SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                                             const QString &date,

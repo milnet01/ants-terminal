@@ -396,6 +396,9 @@ QList<DocFinding::Finding> lint(const QString &markdown, const QString &relPath,
     for (int i = 0; i < lines.size(); ++i) {
         const QString &l = lines.at(i);
         if (fence.at(i)) continue;  // fenced code is never a finding
+        // Any unfenced `## ` starts a section here. parse, citationsByVersion
+        // and releaseLint start one only at `## [`, fenced or not
+        // (ANTS-6029, ANTS-6033).
         if (l.startsWith(QLatin1String("## "))) {
             QString ver, date;
             bool unreleased = false;

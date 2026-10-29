@@ -59,6 +59,17 @@ bool isValidCategory(const QString &category) {
 }
 
 namespace {
+// Case-insensitive canonical index for a `### ` heading name. Returns
+// the 0-based Keep-a-Changelog order, or -1 for a non-canonical heading.
+// Every heading read from a file is ordered through this, so `### fixed`
+// sorts and merges as `### Fixed` does.
+int canonicalIndexCI(const QString &name) {
+    const QStringList &cats = canonicalCategories();
+    for (int c = 0; c < cats.size(); ++c)
+        if (cats.at(c).compare(name, Qt::CaseInsensitive) == 0) return c;
+    return -1;
+}
+
 
 // ANTS-6145 — the steps every op opens with, written once. `heading` is the
 // `## [Unreleased]` line (-1 when absent); `end` is the first `## ` line after
@@ -445,10 +456,9 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
     // ok:true, which is why two entries had to be undone by hand.
     //
     // Refused HERE rather than only at the verb, so no direct caller can bury
-    // an entry: op:"add_batch" shares this function and now reports the refusal
-    // per entry in skipped[] instead of writing into the tail. op:"add" itself
-    // still WRITES — the verb routes it to insertUnreleasedSubsection, which
-    // inserts at the TOP among the dated topics (decided by the user
+    // an entry. op:"add" and every op:"add_batch" entry still WRITE — the verb
+    // routes them to insertUnreleasedSubsection (ANTS-5098), which inserts at
+    // the TOP among the dated topics (decided by the user
     // 2026-09-07; refusing outright was rejected, because the previous remedy
     // text pointed callers at op:add in the first place and that loop is what
     // buried the entries).
@@ -504,7 +514,7 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
             catHeading = i;
             break;
         }
-        const int ord = canonicalCategories().indexOf(name);
+        const int ord = canonicalIndexCI(name);
         if (ord > wantOrder && laterHeading < 0) laterHeading = i;
     }
 
@@ -704,7 +714,7 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
         const QString t = line.trimmed();
         if (!bodyFenced.at(k) && isCategoryHeading(line)) {  // ANTS-5108
             const QString name = t.mid(4).trimmed();
-            const int ord = canonicalCategories().indexOf(name);
+            const int ord = canonicalIndexCI(name);
             if (ord < 0) {
                 r.code  = QStringLiteral("merge_unsupported");
                 r.error = QStringLiteral(
@@ -748,7 +758,7 @@ ReleaseResult closeUnreleasedDated(const QString &markdown,
             if (dayFenced.at(i) || !isCategoryHeading(lines.at(i))) continue;  // ANTS-5108
             const QString name = lines.at(i).trimmed().mid(4).trimmed();
             if (name.compare(blk.first, Qt::CaseInsensitive) == 0) { catHeading = i; break; }
-            if (canonicalCategories().indexOf(name) > wantOrder && laterHeading < 0)
+            if (canonicalIndexCI(name) > wantOrder && laterHeading < 0)
                 laterHeading = i;
         }
         QStringList insert;
@@ -918,20 +928,6 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
     r.line = insertAt + 1 + (prependedBlank ? 1 : 0);   // 1-based heading line
     return r;
 }
-
-namespace {
-// Case-insensitive canonical index for a `### ` heading name. Returns
-// the 0-based Keep-a-Changelog order, or -1 for a non-canonical heading.
-// (canonicalCategories().indexOf is case-sensitive; the insert path can
-// afford that because it only orders around a matched target, but the
-// reorder must place a differently-cased `### fixed` correctly.)
-int canonicalIndexCI(const QString &name) {
-    const QStringList &cats = canonicalCategories();
-    for (int c = 0; c < cats.size(); ++c)
-        if (cats.at(c).compare(name, Qt::CaseInsensitive) == 0) return c;
-    return -1;
-}
-}  // namespace
 
 NormalizeResult normalizeUnreleased(const QString &markdown) {
     NormalizeResult r;

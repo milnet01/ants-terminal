@@ -35,7 +35,10 @@ const QRegularExpression &maintainerAnchorRe() {
 using MarkdownScan::fenceOpenerChar;
 
 // A boundary heading is exactly one or two leading hashes followed by a
-// space (`###`+ are inert body lines).
+// space (`###`+ are inert body lines). Any `# ` line counts: the v1 readers
+// take the first boundary as the file's title, whatever it says. The v2
+// scanner, enumerateFindingBlocks, accepts only a dated or title H1
+// (ANTS-3695) and also stops at `### `.
 bool isBoundaryHeading(const QString &line) {
     if (line.startsWith(QStringLiteral("## ")) &&
         !line.startsWith(QStringLiteral("### "))) {
@@ -98,6 +101,14 @@ QVector<Boundary> scanBoundaries(const QStringList &lines) {
         out.append({i, line, isMaintainerHeading(line)});
     }
     return out;
+}
+
+// Exclusive 0-based end of boundary `bi`'s block: the next boundary of either
+// level, or EOF. parse(), compactShipped() and pruneTracking() all bound a
+// maintainer block with this, so their ID accounting agrees.
+int blockEnd(const QVector<Boundary> &boundaries, int bi, int lineCount) {
+    return (bi + 1 < boundaries.size()) ? boundaries.at(bi + 1).line0
+                                        : lineCount;
 }
 
 // ANTS-3448 — version marker regex, digit-optional (`[0-9]*`) so a malformed
@@ -226,75 +237,38 @@ ParseResult parse(const QString &fileContent) {
     r.formatVersion = markerVersion(fileContent);
     const bool v2 = r.formatVersion >= 2;
 
-    // Pass 1 — classify every non-fenced boundary heading via the shared
-    // scanner (ANTS-3421 extraction). Track the greatest-position
-    // maintainer heading and, separately, the index of the first
-    // contributor heading after it (the delta start).
+    // Pass 1 — every non-fenced boundary heading, via the shared scanner
+    // (ANTS-3421 extraction). Both versions report the maintainer blocks.
+    const QVector<Boundary> boundaries = scanBoundaries(lines);
     int lastMaintainerIdx = -1;          // 0-based line index
-    QVector<int> maintainerIdx;
-    QVector<int> contributorIdx;
-    for (const Boundary &b : scanBoundaries(lines)) {
-        if (b.isMaintainer) {
-            maintainerIdx.append(b.line0);
-            lastMaintainerIdx = b.line0;
-        } else {
-            contributorIdx.append(b.line0);
-        }
+    for (const Boundary &b : boundaries) {
+        if (!b.isMaintainer) continue;
+        ++r.maintainerBlockCount;
+        lastMaintainerIdx = b.line0;
     }
-
-    r.maintainerBlockCount = maintainerIdx.size();
     r.lastMaintainerLine =
         (lastMaintainerIdx >= 0) ? (lastMaintainerIdx + 1) : -1;
 
-    // Delta start: the first contributor heading strictly after the last
-    // maintainer heading. When there is no maintainer heading, the delta
-    // is everything after the FIRST boundary heading (the H1 title) —
-    // i.e. the second boundary heading onward, or, if there is only the
-    // title, the line after the title.
-    int deltaStartIdx = -1;  // 0-based line index of the delta's first line
-    if (lastMaintainerIdx >= 0) {
-        for (int idx : contributorIdx) {
-            if (idx > lastMaintainerIdx) { deltaStartIdx = idx; break; }
-        }
-    } else {
-        // Zero maintainer blocks → delta = everything after the H1 title
-        // (the first boundary heading) to EOF.
-        if (!contributorIdx.isEmpty()) {
-            // First boundary heading is the title; the delta starts on
-            // the line AFTER it.
-            deltaStartIdx = contributorIdx.first() + 1;
-        }
-        // No boundary heading at all → no delta.
-    }
-
-    // Pass 2 — mapped IDs: ANTS-[0-9]+ found within maintainer-block
-    // bodies only. A maintainer block runs from its heading to the next
-    // contributor heading after it (or EOF for the last one). Fenced
-    // regions inside the body are still scanned for IDs — the fence rule
-    // only governs boundary detection, not ID extraction; an ID pasted
-    // inside a maintainer-block fence is still a mapped ID.
+    // Pass 2 — each maintainer block (its heading to blockEnd): its tracking
+    // rows, on both versions, and its ANTS-[0-9]+ ids, which are v1's
+    // mappedIds. Fenced regions inside the body are still scanned for IDs —
+    // the fence rule only governs boundary detection, not ID extraction; an
+    // ID pasted inside a maintainer-block fence is still a mapped ID.
     static const QRegularExpression idRe(QStringLiteral("ANTS-[0-9]+"));
     // ANTS-3445 — anchored whole-token id test for the tracking-row ID column
     // (a cell holds only a real id, never an id embedded in prose).
     static const QRegularExpression idCellRe(QStringLiteral("^ANTS-[0-9]+$"));
     // ANTS-3371 — separator row of a GFM table (`|---|:--:|` etc.).
     static const QRegularExpression sepCellRe(QStringLiteral("^:?-{1,}:?$"));
-    QSet<QString> idSet;
-    for (int mi = 0; mi < maintainerIdx.size(); ++mi) {
-        const int start = maintainerIdx.at(mi);
-        // Block end = the first boundary heading of EITHER kind after
-        // `start` (or EOF) — a consecutive maintainer block or the next
-        // contributor heading both terminate this block's body.
-        int end = lines.size();
-        for (int ci : contributorIdx)
-            if (ci > start && ci < end) { end = ci; break; }
-        if (mi + 1 < maintainerIdx.size() &&
-            maintainerIdx.at(mi + 1) < end)
-            end = maintainerIdx.at(mi + 1);
+    QSet<QString> v1Ids;
+    for (int bi = 0; bi < boundaries.size(); ++bi) {
+        if (!boundaries.at(bi).isMaintainer) continue;
+        const int start = boundaries.at(bi).line0;
+        const int end = blockEnd(boundaries, bi, int(lines.size()));
         for (int li = start; li < end; ++li) {
             const QString &row = lines.at(li);
             auto it = idRe.globalMatch(row);
-            while (it.hasNext()) idSet.insert(it.next().captured(0));
+            while (it.hasNext()) v1Ids.insert(it.next().captured(0));
 
             // ANTS-3371 — extract the maintainer tracking-table data rows
             // so include_tracking can return per-item status without a
@@ -335,12 +309,11 @@ ParseResult parse(const QString &fileContent) {
             r.trackingRows.append(tr);
         }
     }
-    r.mappedIds = QStringList(idSet.begin(), idSet.end());
-    r.mappedIds.sort();
 
     // ANTS-3448 — the delta / mappedIds / suspectedUntagged fields branch on
     // the format version. The v1 boundary scan above (lastMaintainerLine /
     // maintainerBlockCount / trackingRows) already ran on both versions (INV-6).
+    // The v2 branch returns; the v1 rule follows it.
     if (v2) {
         // --- v2 rule (spec § 2.2): the un-triaged delta is the ordered
         // concatenation of every `### ` finding whose first `**Proposed ID:**`
@@ -434,6 +407,20 @@ ParseResult parse(const QString &fileContent) {
     }
 
     // --- v1 rule (formatVersion < 2): the current boundary-watermark delta ---
+    r.mappedIds = QStringList(v1Ids.begin(), v1Ids.end());
+    r.mappedIds.sort();
+
+    // Delta start: the first contributor heading strictly after the last
+    // maintainer heading. With no maintainer heading, the first boundary
+    // heading is the H1 title and the delta starts on the line after it.
+    // No such heading → no delta.
+    int deltaStartIdx = -1;  // 0-based line index of the delta's first line
+    for (const Boundary &b : boundaries) {
+        if (b.isMaintainer) continue;
+        if (lastMaintainerIdx < 0) { deltaStartIdx = b.line0 + 1; break; }
+        if (b.line0 > lastMaintainerIdx) { deltaStartIdx = b.line0; break; }
+    }
+
     // Build the delta text + line count.
     if (deltaStartIdx >= 0 && deltaStartIdx < lines.size()) {
         // Trim leading blank lines so a zero-maintainer file whose title
@@ -618,11 +605,8 @@ CompactResult compactShipped(const QString &content,
         QString::fromUtf8("\xE2\x86\x92 shipped ANTS-");
     static const QChar   kCheckMark = QChar(0x2705);  // ✅
 
-    // Block end (0-based, exclusive) = next boundary of EITHER level, or EOF
-    // — byte-identical to parse()'s block-end rule.
-    auto blockEndFor = [&](int bi) -> int {
-        return (bi + 1 < boundaries.size()) ? boundaries.at(bi + 1).line0
-                                            : lines.size();
+    auto blockEndFor = [&](int bi) {
+        return blockEnd(boundaries, bi, int(lines.size()));
     };
     // Fence-aware count of `### ` finding sub-headings in [start,end) (gate 6).
     const QVector<bool> fenced = fencedLines(lines);
@@ -825,17 +809,15 @@ PruneResult pruneTracking(const QString &content, const PruneOptions &opts) {
 
     const QSet<QString> scope(opts.scopeIds.begin(), opts.scopeIds.end());
 
-    // Maintainer-block line indices (0-based): every line from a maintainer
-    // heading to the next boundary of either level. parse() builds mappedIds
-    // from exactly these lines, so the surviving-token accounting matches.
+    // Maintainer-block line indices (0-based). parse() builds mappedIds from
+    // the same blocks (blockEnd), so the surviving-token accounting matches.
     const QVector<Boundary> boundaries = scanBoundaries(lines);
     QSet<int> maintainerLines;
     for (int bi = 0; bi < boundaries.size(); ++bi) {
         if (!boundaries.at(bi).isMaintainer) continue;
         const int start = boundaries.at(bi).line0;
-        const int end = (bi + 1 < boundaries.size())
-                            ? boundaries.at(bi + 1).line0 : lines.size();
-        for (int i = start; i < end && i < lines.size(); ++i)
+        const int end = blockEnd(boundaries, bi, int(lines.size()));
+        for (int i = start; i < end; ++i)
             maintainerLines.insert(i);
     }
 
@@ -919,8 +901,10 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
     static const QRegularExpression idLineRe(
         QStringLiteral("^ *(?:[-*] +)?\\*{0,2} *proposed id[ *:]+(.*)$"),
         QRegularExpression::CaseInsensitiveOption);
-    // 1–3 hash boundary (`# `/`## `/`### `); a `### ` also terminates a block,
-    // unlike the v1 scanBoundaries (which treats `### ` as inert).
+    // 1–3 hash boundary (`# `/`## `/`### `). Two differences from the v1
+    // scanBoundaries: a `### ` also terminates a block, and only a dated or
+    // title H1 is a boundary (below). See isBoundaryHeading for why v1 keeps
+    // every H1.
     static const QRegularExpression boundaryRe(QStringLiteral("^#{1,3} "));
     // ANTS-3695 — read-side hardening for files written before the
     // continuation-indent fix: a column-0 `#` pasted from a shell transcript
