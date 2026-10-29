@@ -1259,7 +1259,7 @@ bool rcdetail::rcRoadmapSourceRefused(QJsonObject &out,
     return false;
 }
 
-// ─── ANTS-3809 — the store-backed write path, shared by all eight ops ──────
+// ─── ANTS-3809 — the store-backed write path, shared by every op ──────────
 
 void rcdetail::rcRoadmapWriteFields(QJsonObject &out,
                                     const RoadmapRender::Outcome &outcome,

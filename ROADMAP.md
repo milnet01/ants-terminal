@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6308 -->
+<!-- ants-roadmap-id-high-water: ANTS=6309 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95530,7 +95530,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6121] **Readability fixes, roadmap-parse-render-b lane: src/passheadingwrite.cpp, src/passheadingwrite.h, src/roadmapexport.cpp, src/roadmapfoldin.cpp, src/roadmapfoldin.h, src/roadmaprender.cpp ….**
+- ✅ [ANTS-6121] **Readability fixes, roadmap-parse-render-b lane: src/passheadingwrite.cpp, src/passheadingwrite.h, src/roadmapexport.cpp, src/roadmapfoldin.cpp, src/roadmapfoldin.h, src/roadmaprender.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane roadmap-parse-render-b:
   2 high, 10 medium, 10 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/12-roadmap-parse-render-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95548,6 +95548,10 @@ worked after these.
   passheadingwrite.cpp (render/export copies queued as ANTS-6215), F4
   DriftBreakdown extends Drift, F5 renderPreImage shared, F6 reportOutcome,
   F7 step 3a and test-hook helper, F8-F12 comments. LOWs remain.
+  2026-10-29: LOWs closed in 72906ce4. Eight fixed (comments moved or
+  corrected, counts dropped, counterPathAsGiven rename, one shared
+  kJsonCols list). Two were already fixed by e2715157 (isHeadingLeQ4
+  gone, the cpp roadmapdialog.cpp pointer gone). Full suite green.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97784,6 +97788,17 @@ worked after these.
   Kind: doc-fix.
   Source: close-findings-sweep-2026-10-29.
   Lanes: roadmap-store.
+
+- ✅ [ANTS-6309] **The write-path banner comment in remotecontrol_roadmap_query.cpp counts "all eight ops", a figure that goes stale.**
+  Found by the ANTS-6121 lane 12 sweep, which dropped the same count from
+  roadmapwrite.h. The banner `ANTS-3809 — the store-backed write path,
+  shared by all eight ops` is outside that lane's files, so it was not
+  edited there. Fix: drop the number.
+  2026-10-29: the banner now reads "shared by every op".
+  **Layman:** Remove a number from a code comment that will become wrong when roadmap operations are added.
+  Kind: doc-fix.
+  Source: close-findings-sweep-2026-10-29.
+  Lanes: roadmap-parse-render.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
