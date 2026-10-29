@@ -79796,6 +79796,13 @@ collision are different strengths of evidence.
   2026-09-19 on ANTS-5090's entry, whose first draft overclaimed. Wanted:
   an op like roadmap_log's amend_body, locating a bullet by id and
   replacing an exact unique phrase, with dry_run.
+  2026-10-29: hit again by Groundwork (Groundwork_Ants_MCP_Feedback.md,
+  "changelog_log has no op to amend or remove an existing entry's
+  text"). A fix made one [Unreleased] sentence false; a fix agent told
+  to use only the verb left it, and the main session hand-edited the
+  file. Its asks, on top of the above: an empty new_text deletes the
+  text, and the op refuses on a released version unless forced, since
+  those sections are frozen records.
   **Layman:** Let the changelog tool fix a word in an entry it just wrote, instead of editing the whole file by hand.
   Kind: enhancement.
   Source: in-session-2026-09-19.
