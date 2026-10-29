@@ -305,6 +305,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status bar returns to idle when a background job finishes within a second of starting** (ANTS-6307)
+  Its "finished" notice can reach the transcript before its start record; that notice now still ends the task.
+
 - **An idle Claude tab keeps reading "Claude: idle" after a built-in command such as /mcp or /model.** (ANTS-6306)
 
 - **changelog_log treats a lower-case category heading such as `### fixed` like `### Fixed` when it orders new headings and merges a same-day release.** (ANTS-6145)

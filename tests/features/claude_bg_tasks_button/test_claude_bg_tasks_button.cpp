@@ -858,6 +858,37 @@ TEST(ClaudeBgTasksButton, Ants5773TaskNotificationEndsTask) {
     EXPECT_TRUE(t2[0].finished) << "a queue-operation notification ends it";
 }
 
+// ANTS-5773 INV-4 — a job that ends at once (`cc-job start` returns in
+// under a second) has its notice written BEFORE the tool_result that names
+// its id. Order copied from a real 2026-10-29 transcript. The notice still
+// ends the task.
+TEST(ClaudeBgTasksButton, Ants5773NotificationBeforeLaunchResultEndsTask) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("b9hagbv7b.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("early.jsonl"));
+    writeLines(tp, {
+        assistantToolUse("2026-10-29T15:09:06.357Z", "Bash", "toolu_01Hf",
+                         QJsonObject{{"command", "cc-job start lane09 -- ctest"},
+                                     {"description", "Run the suite"},
+                                     {"run_in_background", true}}),
+        queueNotification("2026-10-29T15:09:06.467Z", "b9hagbv7b", "completed"),
+        userToolResult("2026-10-29T15:09:06.489Z", "toolu_01Hf",
+                       QJsonObject{{"backgroundTaskId", "b9hagbv7b"}},
+                       shellResultText("b9hagbv7b", out)),
+    });
+
+    const auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(tasks.size(), 1);
+    EXPECT_EQ(tasks[0].id, QStringLiteral("b9hagbv7b"));
+    EXPECT_TRUE(tasks[0].finished) << "a notice before the launch result ends it";
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(tracker.runningCount(), 0) << "the status bar counts nothing pending";
+}
+
 // ANTS-5773 INV-5 — TaskStop ends the task named by task_id or shell_id.
 TEST(ClaudeBgTasksButton, Ants5773TaskStopEndsTask) {
     QTemporaryDir dir;

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6306 -->
+<!-- ants-roadmap-id-high-water: ANTS=6307 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69473,6 +69473,18 @@ remainder, captured so they don't drop on the floor.
   (drop the promptId skip; skip every <command-name>) both caught.
   Reaches a running terminal on relaunch: parser code in the terminal.
   **Layman:** After you run a built-in command like /mcp, an idle Claude tab no longer claims to be thinking.
+  Kind: fix.
+  Source: user-report-2026-10-29.
+  Lanes: claude-integration.
+
+- 🚧 [ANTS-6307] **Status bar shows "Claude: waiting (1 bg)" after a background job that ended at once.**
+  A job that ends within a second (`cc-job start` detaches and returns)
+  has its `<task-notification>` written to the transcript BEFORE the
+  tool_result that carries its backgroundTaskId. `finishById` dropped a
+  notice for an id it had not seen, so the task then started and stayed
+  running (src/claudebgtasks.cpp). Seen in transcript f899c4b4, lines
+  390-393. Breaks ANTS-5773 INV-4.
+  **Layman:** The status bar said Claude was still waiting on a background task after that task had already finished.
   Kind: fix.
   Source: user-report-2026-10-29.
   Lanes: claude-integration.

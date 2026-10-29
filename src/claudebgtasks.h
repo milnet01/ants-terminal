@@ -5,6 +5,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QList>
+#include <QSet>
 #include <QTimer>
 
 #include "claudetranscriptwalker.h"
@@ -62,6 +63,9 @@ struct ClaudeBgTaskAccum {
     QHash<QString, int>         idxByToolUseId;  // tool_use_id → index
     QHash<QString, int>         idxByBgId;       // backgroundTaskId → index
     QHash<QString, ClaudeBgPendingCall> calls;   // ANTS-5773 — tool_use_id → call
+    // ANTS-6307 — ids ended before the tool_result that names them. A job
+    // that ends at once has its notice written ahead of its launch result.
+    QSet<QString>               endedBeforeStart;
 };
 
 // Per-session tracker for Claude Code background tasks.

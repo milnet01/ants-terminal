@@ -265,8 +265,10 @@ QString outputPathFromResult(const QString &resultText) {
 }
 
 void finishById(ClaudeBgTaskAccum &acc, const QString &id) {
+    if (id.isEmpty()) return;
     auto it = acc.idxByBgId.constFind(id);
     if (it != acc.idxByBgId.constEnd()) acc.raw[it.value()].finished = true;
+    else acc.endedBeforeStart.insert(id);  // startTask applies it
 }
 
 // ANTS-5773 — end every task a <task-notification> block with a non-empty
@@ -312,6 +314,7 @@ ClaudeBackgroundTask &startTask(ClaudeBgTaskAccum &acc, const QString &tuId,
     ClaudeBackgroundTask &t = acc.raw[idx];
     t.id = id;
     t.kind = kind;
+    if (acc.endedBeforeStart.remove(id)) t.finished = true;  // ANTS-6307
     acc.idxByBgId.insert(id, idx);
     return t;
 }
