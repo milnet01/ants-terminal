@@ -95316,7 +95316,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: chrome-widgets.
 
-- 📋 [ANTS-6115] **Readability fixes, dialog-chrome-theme lane: src/aboutdialogs.cpp, src/dialogchrome.h, src/dialogshowtracer.cpp, src/reviewdialogbase.h, src/selfupdate.h, src/themedstylesheet.cpp ….**
+- ✅ [ANTS-6115] **Readability fixes, dialog-chrome-theme lane: src/aboutdialogs.cpp, src/dialogchrome.h, src/dialogshowtracer.cpp, src/reviewdialogbase.h, src/selfupdate.h, src/themedstylesheet.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane dialog-chrome-theme:
   1 high, 7 medium, 13 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/06-dialog-chrome-theme.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95331,6 +95331,16 @@ worked after these.
   SelfUpdate::assetName for the three copies. F7 the trust prompt reads
   gates through VerifyEngine::parseGateConfig. F8 WelcomeDialog's helper
   lambdas are private member functions. LOWs F9-F21 remain.
+  2026-10-29: LOWs done. F9-F11 (verifytrust.h: prompt() is not
+  pure virtual, re-adding a SHA replaces its note, the Phase 1/2 history
+  dropped, AlwaysTrustClient is test-only), F12-F13 (the full SHA is in
+  the detailed text; ModalClient passes its path straight through),
+  F14 (VerifyError names step 4's first three checks), F15 (size saved
+  on close or hide), F16 (the review subclasses that exist), F17 (Lua
+  version tied to CMake's lua5.4 probe), F19 (welcome row sets only a
+  real message), F20 (the show tracer logs windows, one test), F21
+  (staleMcpdLine helper). F18 dismissed: the Row comment no longer
+  names onClick (fixed with F8). All lane findings closed.
   **Layman:** Tidy the dialog windows and colour themes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

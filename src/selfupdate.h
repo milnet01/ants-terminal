@@ -43,7 +43,8 @@ struct Manifest {
     QByteArray sha256Hex;  // 64 lowercase hex characters
 };
 
-// § 2.4 step 4's first three checks, each with its own reason.
+// Why § 2.4 step 4's first three checks (signature, version, asset) failed,
+// one value per reason. The fourth, size and hash, is not reported here.
 enum class VerifyError : std::uint8_t {
     None,
     BadKey,           // the public key is not an Ed25519 SubjectPublicKeyInfo

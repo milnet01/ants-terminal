@@ -13,9 +13,8 @@
 // This defends against a hostile cloned repo silently running
 // arbitrary shell via the MCP `verify_changes` tool: the user has
 // to confirm trust once per (SHA, repo) pair before the bespoke
-// `command` fields are honoured. Phase 1 (this header) ships the
-// data layer + nullptr-passthrough back-compat; Phase 2 wires the
-// modal + flips `cmdVerifyChanges` to use the real client.
+// `command` fields are honoured. This header is the data layer; the
+// prompt is ModalClient (verifytrustmodal.h).
 
 #pragma once
 
@@ -64,8 +63,8 @@ public:
     virtual Decision outcomeForConfig(const QString &projectPath,
                                       const QByteArray &configBytes) = 0;
 
-    // Persist a new SHA-trust entry. Idempotent — adding a SHA
-    // that's already trusted is a no-op. Returns true on success.
+    // Persist a SHA-trust entry. Re-adding a trusted SHA keeps its
+    // firstTrusted and replaces its note. Returns true on success.
     virtual bool addTrustedSha(const QString &shaHex,
                                const QString &note = {}) = 0;
 
@@ -88,8 +87,7 @@ public:
 // Production trust client — backed by `~/.config/ants-terminal/
 // verify-trust.json` (mode 0600, atomic write via tmpfile + rename
 // + fsyncParentDir). The path can be overridden at construction
-// for tests. `prompt()` is left pure-virtual on subclasses; the
-// chrome-layer modal client overrides it. The base class's
+// for tests. The chrome-layer modal client overrides `prompt()`. The base class's
 // `outcomeForConfig` returns Outcome::Headless when prompting is
 // reached — i.e., a `FilePersistedTrustClient` constructed
 // directly (no subclass) effectively means "no modal available;
@@ -117,7 +115,7 @@ protected:
     // Subclass hook: invoked when neither SHA nor repo is trusted.
     // The base class returns Decision{Headless, shaHex} so calls
     // through a default-constructed client never run untrusted
-    // configs (defense-in-depth: if Phase 2 wiring forgets to
+    // configs (defense-in-depth: if a caller forgets to
     // construct the chrome-layer subclass, the worst case is
     // "auto-detect fallback", not "arbitrary shell").
     //
@@ -187,9 +185,7 @@ private:
     QHash<QString, bool> m_sessionDenied;
 };
 
-// Test fake: trusts everything. Used by Phase-1 engine tests + by
-// any caller that wants pre-ANTS-1337 behavior temporarily during
-// the rollout.
+// Test fake: trusts everything. Tests only.
 class AlwaysTrustClient : public Client {
 public:
     Decision outcomeForConfig(const QString &projectPath,

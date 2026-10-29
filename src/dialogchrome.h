@@ -47,7 +47,8 @@ struct InstallResult {
 //     every open (never persists position);
 //   • D3 — when `sizeKey` is non-empty AND DialogChrome::setConfig has
 //     been called, the user's chosen SIZE is restored on first show and
-//     saved on close under that key (width/height only).
+//     saved when the dialog closes or hides, under that key
+//     (width/height only).
 // Default `false` leaves the call site at D1 only (unchanged behaviour).
 InstallResult install(QDialog *dlg, const QString &themeName = QString(),
                       bool resizable = false,

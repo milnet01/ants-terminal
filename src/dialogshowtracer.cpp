@@ -4,7 +4,6 @@
 
 #include <QApplication>
 #include <QDateTime>
-#include <QDialog>
 #include <QEvent>
 #include <QMetaObject>
 #include <QRect>
@@ -25,12 +24,9 @@ bool DialogShowTracer::eventFilter(QObject *obj, QEvent *ev) {
     if (ev->type() != QEvent::Show) return false;
     auto *w = qobject_cast<QWidget *>(obj);
     if (!w) return false;
-    // Top-level only — embedded children are uninteresting and would
-    // flood the log. A widget is "top-level" when it has no parent
-    // widget OR when its windowFlag indicates a window of its own.
-    if (w->parentWidget() != nullptr && !w->isWindow()) return false;
-    const bool isDialog = qobject_cast<QDialog *>(w) != nullptr;
-    if (!isDialog && !w->isWindow()) return false;
+    // Windows only (a widget with no parent is always one) — embedded
+    // children are uninteresting and would flood the log.
+    if (!w->isWindow()) return false;
 
     const QString cls    = QString::fromLatin1(w->metaObject()->className());
     const QString name   = w->objectName().isEmpty() ? "<unnamed>" : w->objectName();

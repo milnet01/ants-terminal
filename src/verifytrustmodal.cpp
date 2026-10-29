@@ -44,7 +44,7 @@ public:
 constexpr int kCommandPreviewChars = 200;
 
 // Format a SHA-256 hex for human reading: first 12 hex chars +
-// "…" + last 4. Full SHA is in the tooltip.
+// "…" + last 4. The full SHA is in the detailed text.
 QString shortSha(const QString &fullHex) {
     if (fullHex.size() < 20) return fullHex;
     return fullHex.left(12) + QStringLiteral("…") + fullHex.right(4);
@@ -79,9 +79,8 @@ QString commandPreview(const QByteArray &configBytes) {
 }  // namespace
 
 ModalClient::ModalClient(QWidget *parent, const QString &trustFilePath)
-    : FilePersistedTrustClient(trustFilePath.isEmpty()
-                                   ? QString()  // default-path ctor
-                                   : trustFilePath),
+    // An empty path means the default trust file.
+    : FilePersistedTrustClient(trustFilePath),
       m_parent(parent) {}
 
 Decision ModalClient::prompt(const QString &projectPath,

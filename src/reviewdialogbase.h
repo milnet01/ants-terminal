@@ -3,7 +3,7 @@
 
 // ReviewDialogBase — shared QDialog scaffold for the v2 review-dialog
 // family (ANTS-1727): ColdEyesDialog (ANTS-1721), TestAuditDialog
-// (ANTS-1722), and the deferred audit-v2 / indie-review dialogs. Owns the
+// (ANTS-1722) and IndieReviewDialog. Owns the
 // partition panel, the per-lane brief tabs, the Dispatch button (→
 // LlmDispatcher), a host slot for the subclass's results pane, and the
 // Fold-into-ROADMAP button. Concrete dialogs fill four hooks

@@ -37,8 +37,8 @@ ReviewDialogBase::ReviewDialogBase(QString projectCwd, QWidget *parent,
     // combined minimum heights overflow and the bottom widgets clip. Host the
     // whole column in a resizable scroll area: when the window is tall the
     // stretch fills it; when it's short a scrollbar appears instead of
-    // clipping. Keeps every subclass (cold-eyes / test-audit / the deferred
-    // audit-v2 + indie-review dialogs) safe without per-subclass tuning.
+    // clipping. Keeps every subclass (cold-eyes / test-audit /
+    // indie-review) safe without per-subclass tuning.
     auto *outer = new QVBoxLayout(content);
     outer->setContentsMargins(0, 0, 0, 0);
     auto *scroll = new QScrollArea(content);

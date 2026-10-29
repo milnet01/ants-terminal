@@ -240,8 +240,7 @@ WelcomeDialog::RowAction WelcomeDialog::runNow(std::function<cs::Outcome()> acti
     return [action = std::move(action)](const Row &row) {
         const cs::Outcome o = action();
         row.refresh();
-        if (!o.ok || !o.message.isEmpty())
-            row.state->setText(o.message.isEmpty() ? row.state->text() : o.message);
+        if (!o.message.isEmpty()) row.state->setText(o.message);
     };
 }
 
