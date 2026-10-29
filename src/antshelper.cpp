@@ -10,8 +10,6 @@
 
 namespace AntsHelper {
 
-namespace {
-
 QJsonObject errorObj(const QString &msg, const QString &code) {
     QJsonObject o;
     o.insert(QStringLiteral("ok"), false);
@@ -19,6 +17,8 @@ QJsonObject errorObj(const QString &msg, const QString &code) {
     o.insert(QStringLiteral("code"), code);
     return o;
 }
+
+namespace {
 
 QJsonObject okObj(const QJsonObject &data) {
     QJsonObject o;

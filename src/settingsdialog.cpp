@@ -356,9 +356,10 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
 
     // INV-14 — sub-toggles mirror the master toggle's enabled state
     // live. Greyed-but-checked is the muted-default state; flipping
-    // master back on restores the user's prior choice.
-    auto mirrorMaster = [this]() {
-        const bool on = m_claudeAutoModelSwitch->isChecked();
+    // master back on restores the user's prior choice. `allowed` false
+    // greys them all whatever the checkbox says (the MCP master is off).
+    auto mirrorMaster = [this](bool allowed = true) {
+        const bool on = allowed && m_claudeAutoModelSwitch->isChecked();
         if (m_claudeAutoModelHomeTier)  m_claudeAutoModelHomeTier->setEnabled(on);
         if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setEnabled(on);
         if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(on);
@@ -452,14 +453,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         if (m_claudeMcpOrientation)  m_claudeMcpOrientation->setEnabled(on);
         if (m_claudeMcpTerse)        m_claudeMcpTerse->setEnabled(on);
         if (m_claudeMcpOffload)      m_claudeMcpOffload->setEnabled(on);
-        if (on) {
-            mirrorMaster();   // sub-toggles follow the auto-switch checkbox
-        } else {
-            if (m_claudeAutoModelHomeTier)  m_claudeAutoModelHomeTier->setEnabled(false);
-            if (m_claudeAutoModelToast)     m_claudeAutoModelToast->setEnabled(false);
-            if (m_claudeAutoModelChipPulse) m_claudeAutoModelChipPulse->setEnabled(false);
-            if (m_claudeAutoModelUndo)      m_claudeAutoModelUndo->setEnabled(false);
-        }
+        mirrorMaster(on);   // sub-toggles follow the auto-switch checkbox
     };
     connect(m_claudeMcpEnabled, &QCheckBox::toggled,
             this, [mirrorMcpMaster](bool) { mirrorMcpMaster(); });
@@ -950,6 +944,15 @@ void SettingsDialog::setupPluginsTab(QWidget *tab) {
     layout->addWidget(scroll, 1);
 }
 
+QString SettingsDialog::describePluginPermission(const QString &p) {
+    if (p == "clipboard.write") return "Write to the system clipboard.";
+    if (p == "settings")        return "Store key/value settings under the plugin's name.";
+    if (p == "net")             return "Reserved for future use (network access).";
+    if (p == "terminal.read")   return "Read what the terminal prints.";
+    if (p == "input.keys")      return "See the keys you type, never while you type a password.";
+    return QString();
+}
+
 void SettingsDialog::setPlugins(const QList<PluginDisplay> &plugins) {
     m_plugins = plugins;
     populatePluginsTab();
@@ -974,17 +977,6 @@ void SettingsDialog::populatePluginsTab() {
         return;
     }
     m_pluginsEmptyLabel->setVisible(false);
-
-    // Permission → friendly description. Kept in sync with the first-load
-    // permission prompt in mainwindow.cpp so users see the same wording.
-    auto describe = [](const QString &p) -> QString {
-        if (p == "clipboard.write") return "Write to the system clipboard.";
-        if (p == "settings")        return "Store key/value settings under the plugin's name.";
-        if (p == "net")             return "Reserved for future use (network access).";
-        if (p == "terminal.read")   return "Read what the terminal prints.";
-        if (p == "input.keys")      return "See the keys you type, never while you type a password.";
-        return QString();
-    };
 
     for (const auto &info : m_plugins) {
         auto *group = new QGroupBox(
@@ -1011,7 +1003,7 @@ void SettingsDialog::populatePluginsTab() {
             for (const QString &perm : info.permissions) {
                 auto *cb = new QCheckBox(perm, group);
                 cb->setChecked(granted.contains(perm));
-                QString tip = describe(perm);
+                QString tip = describePluginPermission(perm);
                 if (!tip.isEmpty()) cb->setToolTip(tip);
                 groupLayout->addWidget(cb);
                 m_pluginPermissionChecks[info.name][perm] = cb;

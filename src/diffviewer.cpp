@@ -351,6 +351,9 @@ QDialog *show(QWidget *parent,
         QString unpushed;
         QString branches;        // git for-each-ref refs/heads
         QString crossUnpushed;   // git log --branches --not --remotes
+        // One per runAsync(...) call at the end of runProbes. A new probe
+        // bumps this, gets a field above, and joins rawKey, the empty
+        // check and the Copy-Diff payload in finalize.
         int pending = 5;
         quint64 generation = 0;      // ANTS-5059 — which refresh round
         bool diffTruncated = false;  // ANTS-5059 — diff cut at the cap

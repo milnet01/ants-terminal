@@ -70,8 +70,8 @@ Outcome writeScript(const QString &scriptPath, const QString &script) {
 // object. A file that EXISTS but fails to parse is REFUSED — writing back
 // would leave only `{"hooks": {...}}`, silently destroying every non-hooks
 // key (model, env, permissions). 0.7.12 /indie-review cross-cutting fix.
+// Creates no directory: each caller makes it first, for its lock file.
 Outcome readClaudeSettings(const QString &settingsPath, QJsonObject &root) {
-    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
     QFile rf(settingsPath);
     if (!rf.exists()) return {true, {}};
     if (!rf.open(QIODevice::ReadOnly))

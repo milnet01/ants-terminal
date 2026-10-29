@@ -41,6 +41,10 @@ public:
     // list just changes the message.
     void setPlugins(const QList<PluginDisplay> &plugins);
 
+    // A plugin permission in plain words, or empty for an unknown one.
+    // Shared by the Plugins tab and MainWindow's first-load prompt.
+    static QString describePluginPermission(const QString &permission);
+
 signals:
     void settingsChanged();
 

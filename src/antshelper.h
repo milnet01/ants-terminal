@@ -74,10 +74,17 @@ QJsonObject driftCheck(const QJsonObject &request,
 // stdout. Helper for the dispatcher and tests.
 QString jsonToCompactString(const QJsonObject &obj);
 
+// The failure envelope { "ok": false, "error": msg, "code": code }, the
+// one builder for every error reply, the dispatcher's included.
+QJsonObject errorObj(const QString &msg, const QString &code);
+
 // list: enumerate the available subcommands. Returns the unified
 // envelope { "ok": true, "data": { "subcommands": [...] } } (INV-11) —
 // reuses the shared okObj wrapper so its shape can't drift from
 // drift-check's. ANTS-2013.
+// A new subcommand is added in four places: this list,
+// subcommandTakesRequest, main()'s dispatch and printHelp() (the last
+// two in antshelpermain.cpp).
 QJsonObject listSubcommands();
 
 }  // namespace AntsHelper

@@ -4,8 +4,8 @@
 // simplest of the three L6 LoC carve-outs from the 2026-05-01
 // indie-review sweep. The dialog runs five async git probes on a
 // supplied working directory, renders coloured HTML, owns its own
-// QFileSystemWatcher + debounce timer for live updates across git
-// operations, preserves scroll position across refreshes, and
+// DirTreeWatcher (raw inotify, ANTS-3509) + debounce timer for live
+// updates across git operations, preserves scroll position across refreshes, and
 // supports a Copy-Diff payload covering all five sections.
 //
 // The dialog is parented to `parent` with WA_DeleteOnClose, so it

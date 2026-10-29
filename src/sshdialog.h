@@ -22,18 +22,18 @@ struct SshBookmark {
     // so repeat connections to the same host multiplex over the first session.
     QString toSshCommand(bool controlMaster = false) const;
 
-    // Take a whitespace-separated extraArgs string and return the
-    // tokens safe to forward to ssh. Rejects tokens that enable arbitrary
-    // command execution via ssh's option system:
-    //   -oProxyCommand=…, -o ProxyCommand=…
-    //   -oLocalCommand=…, -o LocalCommand=…
-    //   -oPermitLocalCommand=yes (plus the surrounding -o form)
+    // Split an extraArgs string into tokens, honouring double quotes
+    // (QProcess::splitCommand), and return the tokens safe to forward to
+    // ssh. Rejects every `-o` option that runs a command or loads a file
+    // or library (ProxyCommand, Match, Include and others), and the `-E`,
+    // `-F` and `-I` flags. The full lists are kDangerous and
+    // kRejectedLetters in sshdialog.cpp.
     // These options let the bookmark owner (potentially: a contributed
     // plugin, a config-syncing tool, a synced dotfile repo) run
     // arbitrary shell commands when the user connects — the classic
     // CVE-2017-1000117-adjacent attack via bookmark data rather than
     // hostnames. The `--` separator already guards against dash-host
-    // injection; this list guards against the `-o` surface.
+    // injection; this filter guards against the option surface.
     //
     // Returns the filtered tokens; `out_rejected`, if non-null, gets a
     // list of the rejected raw tokens so callers can surface them in a

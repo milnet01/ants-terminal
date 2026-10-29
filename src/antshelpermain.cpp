@@ -77,6 +77,14 @@ QString readStdin(bool *opened, bool *tooLarge) {
     return QString::fromUtf8(AntsHelper::readRequest(f, tooLarge));
 }
 
+// A usage error: the failure envelope on stdout, the message alone on
+// stderr for a human, exit code 2.
+int usageFail(const QString &msg, const QString &code) {
+    writeStdout(AntsHelper::jsonToCompactString(AntsHelper::errorObj(msg, code)));
+    writeStderr(msg);
+    return 2;
+}
+
 void printHelp() {
     writeStdout(QStringLiteral(
         "ants-helper — local-subagent CLI for Claude Code "
@@ -137,16 +145,9 @@ int main(int argc, char **argv) {
         bool tooLarge = false;
         jsonArg = readStdin(&stdinOpened, &tooLarge);
         if (tooLarge) {
-            const QString msg = QStringLiteral("request exceeds %1 bytes")
-                                    .arg(AntsHelper::kMaxRequestBytes);
-            QJsonObject err;
-            err.insert(QStringLiteral("ok"), false);
-            err.insert(QStringLiteral("error"), msg);
-            err.insert(QStringLiteral("code"),
-                       QStringLiteral("request_too_large"));
-            writeStdout(AntsHelper::jsonToCompactString(err));
-            writeStderr(msg);
-            return 2;
+            return usageFail(QStringLiteral("request exceeds %1 bytes")
+                                 .arg(AntsHelper::kMaxRequestBytes),
+                             QStringLiteral("request_too_large"));
         }
         // ANTS-1123 indie-review F7: a stdin open failure used to
         // silently produce empty input, masquerading as "no request
@@ -155,15 +156,8 @@ int main(int argc, char **argv) {
         // get confused with a default empty request.
         if (!stdinOpened && args.size() > 2 &&
             args[2] == QStringLiteral("-")) {
-            QJsonObject err;
-            err.insert(QStringLiteral("ok"), false);
-            err.insert(QStringLiteral("error"),
-                       QStringLiteral("stdin not readable"));
-            err.insert(QStringLiteral("code"),
-                       QStringLiteral("stdin_unreadable"));
-            writeStdout(AntsHelper::jsonToCompactString(err));
-            writeStderr(QStringLiteral("stdin not readable"));
-            return 2;
+            return usageFail(QStringLiteral("stdin not readable"),
+                             QStringLiteral("stdin_unreadable"));
         }
     }
 
@@ -174,14 +168,8 @@ int main(int argc, char **argv) {
         // Claude consumers parsing JSON don't have to special-case
         // usage errors. Stderr line stays for human users.
         // ANTS-1123 indie-review F1.
-        QJsonObject err;
-        err.insert(QStringLiteral("ok"), false);
-        err.insert(QStringLiteral("error"),
-                   QStringLiteral("invalid JSON: %1").arg(parseErr));
-        err.insert(QStringLiteral("code"), QStringLiteral("usage_error"));
-        writeStdout(AntsHelper::jsonToCompactString(err));
-        writeStderr(QStringLiteral("invalid JSON: %1").arg(parseErr));
-        return 2;
+        return usageFail(QStringLiteral("invalid JSON: %1").arg(parseErr),
+                         QStringLiteral("usage_error"));
     }
 
     int exitCode = 0;
@@ -194,14 +182,8 @@ int main(int argc, char **argv) {
     } else {
         // Same unified-envelope discipline on the unknown-subcommand
         // path. ANTS-1123 indie-review F1.
-        QJsonObject err;
-        err.insert(QStringLiteral("ok"), false);
-        err.insert(QStringLiteral("error"),
-                   QStringLiteral("unknown subcommand: %1").arg(cmd));
-        err.insert(QStringLiteral("code"), QStringLiteral("usage_error"));
-        writeStdout(AntsHelper::jsonToCompactString(err));
-        writeStderr(QStringLiteral("unknown subcommand: %1").arg(cmd));
-        return 2;
+        return usageFail(QStringLiteral("unknown subcommand: %1").arg(cmd),
+                         QStringLiteral("usage_error"));
     }
 
     writeStdout(AntsHelper::jsonToCompactString(response));
