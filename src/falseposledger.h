@@ -10,8 +10,7 @@
 // Standard:  docs/standards/audit-false-positives.md
 // Spec:      docs/specs/ANTS-1457.md
 //
-// Read-only in v1. CC sessions append via shell `>>` per the
-// standard's atomic-append recipe.
+// appendEntry (ANTS-2129) is the write side; v1 was read-only.
 
 #pragma once
 

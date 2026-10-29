@@ -83,7 +83,7 @@ Listed only where behavior isn't obvious from the name.
   "Auto-fix safe" button only, never on a scan. ANTS-1719.
 - `falseposledger` (Qt6::Core, `ants_core_lib`) — prose-grain
   false-positive ledger `.ants_review_falsepos.jsonl`, shared by
-  /cold-eyes, /indie-review, /test-audit. Read-only in v1 (CC appends).
+  /cold-eyes, /indie-review, /test-audit. Reads, and appends through `appendEntry` (ANTS-2129).
   Distinct from line-grain `.audit_suppress`. ANTS-1457; standard
   `docs/standards/audit-false-positives.md`.
 - `auditfpledger` (Qt6::Core, `ants_core_lib`) — fingerprint-keyed

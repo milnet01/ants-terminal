@@ -289,8 +289,8 @@ QStringList parseFailureFiles(const QHash<QString, ToolResult> &byTool);
 // recorded a failure without a message. Pure over byTool, like the two above.
 QJsonArray parseFailureDetails(const QHash<QString, ToolResult> &byTool);
 
-// Apply the bottom-up sample trim cascade: 10 → 5 → 3. Returns the
-// trimmed samples and sets samplesTruncated when any trim fired.
+// Apply the bottom-up sample trim cascade: 10 → 5 → 3. Trims byTool's
+// samples in place and sets samplesTruncated when any trim fired.
 void trimSamplesCascade(QHash<QString, ToolResult> &byTool,
                         bool &samplesTruncated);
 

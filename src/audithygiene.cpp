@@ -235,7 +235,8 @@ bool lineHasCode(const QString &source, const QString &path, int line) {
     if (line <= 0) return true;
 
     // State: 0=code, 1=line-comment (until \n), 2=block-comment,
-    // 3=string, 4=C++ raw string (ANTS-1759).
+    // 3=string, 4=C++ raw string (ANTS-1759), 5=Python triple-quoted
+    // string, 6=Lua long bracket (ANTS-1270).
     int state = 0;
     int curLine = 1;
     bool hasCodeOnLine = false;

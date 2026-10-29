@@ -95385,7 +95385,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6117] **Readability fixes, audit-engine lane: src/auditcache.cpp, src/auditcache.h, src/auditdelta.h, src/auditengine.cpp, src/auditengine.h, src/auditfpledger.cpp ….**
+- ✅ [ANTS-6117] **Readability fixes, audit-engine lane: src/auditcache.cpp, src/auditcache.h, src/auditdelta.h, src/auditengine.cpp, src/auditengine.h, src/auditfpledger.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane audit-engine:
   2 high, 15 medium, 14 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/08-audit-engine.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95403,6 +95403,16 @@ worked after these.
   spec line and test comment), F4 and F5 pointer comments. Queued: F4
   crash-handler merge ANTS-6198, F5 exclusion-list decision ANTS-6199,
   F8 runAudit split ANTS-6200. LOWs remain.
+  2026-10-29: LOWs. Fixed: F7 (comment says why the ledger is
+  written when it cannot be made private), F19 (VCS comment moved onto
+  buildVcsProvenanceBlock; its stale 2 s cap now names runGit's
+  budget), F20-F23, F24 (v1 inventory and line numbers dropped), F25,
+  F26 (also docs/subsystems.md), F27, F28, F29 (also three audit-dialog
+  comments and the audit_hygiene spec line), F31 (window scan is
+  contextWindowContains; the file read stays in applyFilter, which
+  audit_engine_lows INV-1 reads). Dismissed: F30 - renaming
+  stripLineBreaks would strand the name in ANTS-2129's dated loop log;
+  its comment already says it strips every control character.
   **Layman:** Tidy the code-audit checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

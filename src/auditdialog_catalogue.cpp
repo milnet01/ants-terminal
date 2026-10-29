@@ -1349,7 +1349,7 @@ void AuditDialog::populateChecks() {
             hasPylint, hasPylint, nullptr
         });
         const bool hasBandit = toolExists("bandit");
-        // Respect project-local pyproject.toml [tool.ruff.lint.ignore] S-codes
+        // Respect project-local pyproject.toml ruff `ignore` S-codes
         // as a bandit skip list — see banditSkipFlags() for the contract.
         const QString banditSkip = banditSkipFlags();
         m_checks.append({

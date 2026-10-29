@@ -219,7 +219,7 @@ Resolution resolveChangedFiles(const QString &canonProject,
         base = QStringLiteral("main");
         includeWorkTree = false;  // committed-branch comparison only
     } else if (scope.startsWith(QLatin1String("since-tag:"))) {
-        base = scope.mid(10);  // strip "since-tag:" (matches auditrunner.cpp:1102)
+        base = scope.mid(10);  // strip "since-tag:" (as runAudit's INV-15 isScopeTagSafe check does)
         res.anchorCommit = base;
     } else {
         // Unknown narrowing scope — treat as full scan rather than refuse.

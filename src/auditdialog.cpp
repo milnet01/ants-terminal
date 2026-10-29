@@ -1089,7 +1089,7 @@ QString AuditDialog::semgrepExcludeFlags() const {
     return flags;
 }
 
-// Parse `pyproject.toml`'s `[tool.ruff.lint.ignore]` array for `S<nnn>`
+// Parse `pyproject.toml`'s ruff `ignore` array for `S<nnn>`
 // codes and emit `--skip B<nnn>,B<mmm>,...` for bandit. Ruff's `S` family
 // mirrors bandit's `B` family 1:1, so the mapping is lexical.
 //

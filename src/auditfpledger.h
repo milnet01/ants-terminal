@@ -9,7 +9,7 @@
 //
 // Distinct from:
 //   - `.audit_suppress`        — line-grain, per-finding (auditdialog owns).
-//   - `baseline.json`          — "everything at commit X" (auditcache owns).
+//   - `baseline.json`          — "everything at commit X" (auditdialog owns).
 //   - `.ants_review_falsepos.jsonl` — prose-grain, for the AI-review skills
 //                                (falseposledger; the sibling this mirrors).
 //

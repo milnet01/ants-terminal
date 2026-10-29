@@ -756,14 +756,12 @@ struct ParsedOutput {
 };
 
 // ANTS-1820 — learned-FP suppression for the headless path. The GUI's
-// `applyLearnedFpSuppressions` operates on `Finding` objects, which the v1
-// runner never materialises; this path consumes the same ledger via the
-// shared content fingerprint. Cross-path matching works for the line-based
-// tools (cppcheck/clazy/clang-tidy/mypy), whose check id IS the tool name —
-// matching the GUI's `Finding::checkId`. (shellcheck was listed here but is
-// a JSON tool per isJsonFindingTool below — ANTS-3395.) JSON tools key on the tool's own
-// `check_id`, a different namespace, so they don't cross-match (the same v1
-// limitation under which the runner already does no per-finding filtering).
+// `applyLearnedFpSuppressions` works on `Finding` objects, which this runner
+// does not build; it reads the same ledger through the shared content
+// fingerprint. Line-based tools (cppcheck/clazy/clang-tidy/mypy) key on the
+// tool name, which is the GUI's `Finding::checkId`, so their entries match
+// across both paths. JSON tools (isJsonFindingTool) key on the tool's own
+// `check_id`, a different namespace, so their entries match only here.
 bool isLearnedFp(const QSet<QString> &learnedFps, const QString &file,
                  const QString &checkId, const QString &message) {
     if (learnedFps.isEmpty()) return false;
@@ -1232,8 +1230,8 @@ bool writeSarif(const QString &path,
             run["toolExecutionNotifications"] = notifs;
         }
         // ANTS-1870 — results[] from the FULL parsed finding set (falls back
-        // to the capped samples only when no full set was threaded, e.g. a
-        // /tmp legacy caller). current-first cap vs kSarifFindingsMax.
+        // to the capped samples for a tool with no entry, which only
+        // writeSarifForTest can pass). current-first cap vs kSarifFindingsMax.
         QJsonArray results;
         const QJsonArray &src = findingsByTool.contains(it.key())
             ? findingsByTool[it.key()] : tr.samples;
@@ -1603,7 +1601,7 @@ namespace internal {
 QString capMessage(const QString &msg) {
     QByteArray u = msg.toUtf8();
     if (u.size() <= kSampleMessageMaxBytes) return msg;
-    // Trim to ≤ cap-1 to leave room for "…" (3 bytes UTF-8).
+    // Trim to ≤ cap-3 to leave room for "…" (3 bytes UTF-8).
     u.truncate(kSampleMessageMaxBytes - 3);
     // Drop trailing partial UTF-8 sequence.
     while (!u.isEmpty() &&

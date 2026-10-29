@@ -21,7 +21,7 @@ namespace AuditHygiene {
 // lines that follow, stopping at the first non-comment line.
 QStringList parseSemgrepExcludeRules(const QString &ymlText);
 
-// `pyproject.toml` `[tool.ruff.lint.ignore]` parser. Finds the ruff section
+// `pyproject.toml` ruff `ignore` parser. Finds the ruff section
 // (prefers `[tool.ruff.lint]` over `[tool.ruff]`), locates its `ignore = [...]`
 // (or `extend-ignore = [...]`) array, extracts `S<nnn>` codes, and maps them
 // to `B<nnn>` codes (bandit's equivalent family).

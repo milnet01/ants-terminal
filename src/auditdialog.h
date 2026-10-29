@@ -114,7 +114,7 @@ private:
     //
     //   semgrepExcludeFlags() — parse `.semgrep.yml` header block
     //     `# Excluded upstream rules` and emit `--exclude-rule <id>` per entry.
-    //   banditSkipFlags()     — parse `pyproject.toml [tool.ruff.lint.ignore]`
+    //   banditSkipFlags()     — parse `pyproject.toml` ruff `ignore`
     //     for `S<nnn>` codes, map to `B<nnn>`, emit `--skip B101,B104,...`.
     //
     // Both return an empty string if the config file is missing or has no

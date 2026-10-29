@@ -437,6 +437,24 @@ QString mergeToolChannels(const QString &stdoutStr, const QString &stderrStr) {
     return stdoutStr;
 }
 
+namespace {
+// True when any line within ±window of lineNo (1-based) contains a needle.
+bool contextWindowContains(const QStringList &fileLines, int lineNo,
+                           int window, const QStringList &needles) {
+    if (fileLines.isEmpty() || lineNo <= 0) return false;
+    const int total = static_cast<int>(fileLines.size());
+    const int lo = std::max(1, lineNo - window);
+    const int hi = std::min(total, lineNo + window);
+    for (int i = lo; i <= hi; ++i) {
+        for (const QString &needle : needles) {
+            if (fileLines.at(i - 1).contains(needle, Qt::CaseInsensitive))
+                return true;
+        }
+    }
+    return false;
+}
+}  // namespace
+
 FilterResult applyFilter(const QString &raw,
                          const OutputFilter &f,
                          const QString &projectPath) {
@@ -517,15 +535,9 @@ FilterResult applyFilter(const QString &raw,
             if (m.hasMatch()) {
                 const QString relPath = m.captured(1);
                 const int lineNo = m.captured(2).toInt();
-                // const* — only read through fileLines below (size/at/
-                // isEmpty); the write into the slot goes via the
-                // reference, not via this pointer. ANTS-1122 audit-
-                // fold-in (2026-04-30).
-                const QStringList *fileLines = fileCache.contains(relPath)
-                    ? &fileCache[relPath]
-                    : nullptr;
-                if (!fileLines) {
-                    QStringList &slot = fileCache[relPath];
+                auto cached = fileCache.constFind(relPath);
+                if (cached == fileCache.constEnd()) {
+                    QStringList lines;  // stays empty when unreadable
                     const QString abs = resolveProjectPathLocal(relPath, projectPath);
                     // ANTS-5085 — the 4 MiB cap the dialog's readFileLines
                     // uses (lineIsCode caps at 2 MiB); a context window
@@ -534,28 +546,15 @@ FilterResult applyFilter(const QString &raw,
                     if (!abs.isEmpty() && QFileInfo(abs).size() <= kMaxContextFileBytes) {
                         QFile src(abs);
                         if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                            slot = QString::fromUtf8(src.readAll())
-                                       .split('\n', Qt::KeepEmptyParts);
+                            lines = QString::fromUtf8(src.readAll())
+                                        .split('\n', Qt::KeepEmptyParts);
                         }
                     }
-                    fileLines = &slot;
+                    cached = fileCache.insert(relPath, lines);
                 }
-                if (!fileLines->isEmpty() && lineNo > 0) {
-                    const int total = static_cast<int>(fileLines->size());
-                    const int lo = std::max(1, lineNo - f.contextWindow);
-                    const int hi = std::min(total, lineNo + f.contextWindow);
-                    bool ctxHit = false;
-                    for (int i = lo; i <= hi && !ctxHit; ++i) {
-                        const QString &ctxLine = fileLines->at(i - 1);
-                        for (const QString &needle : f.dropIfContextContains) {
-                            if (ctxLine.contains(needle, Qt::CaseInsensitive)) {
-                                ctxHit = true;
-                                break;
-                            }
-                        }
-                    }
-                    if (ctxHit) continue;
-                }
+                if (contextWindowContains(*cached, lineNo, f.contextWindow,
+                                          f.dropIfContextContains))
+                    continue;
             }
         }
 
@@ -1469,12 +1468,6 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
     return out;
 }
 
-// ANTS-1576 — capture best-effort VCS state for SARIF writers. Forks
-// up to three short git subprocesses (rev-parse, symbolic-ref,
-// remote.origin.url) with a 2 s wall-clock cap each. Returns an
-// empty array when rev-parse fails — callers omit the SARIF
-// run.versionControlProvenance block in that case rather than
-// emit a half-populated record.
 QJsonObject sarifArtifactLocation(const QString &file) {
     // Percent-encode everything but unreserved characters and '/', so a
     // space, '#' or '%' in a path cannot change which file the URI names.
@@ -1502,6 +1495,12 @@ QString sarifLocationPath(const QJsonObject &artifactLocation) {
     return uri;   // unmarked: a raw path, as the headless runner writes
 }
 
+// ANTS-1576 — capture best-effort VCS state for SARIF writers. Forks
+// up to three short git subprocesses (rev-parse, symbolic-ref,
+// remote.origin.url) through AuditScope::runGit's time budget. Returns an
+// empty array when rev-parse fails — callers omit the SARIF
+// run.versionControlProvenance block in that case rather than
+// emit a half-populated record.
 QJsonArray buildVcsProvenanceBlock(const QString &rootCanonical) {
     if (rootCanonical.isEmpty()) return {};
 

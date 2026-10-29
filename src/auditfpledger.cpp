@@ -118,6 +118,9 @@ bool appendEntry(const QString &projectPath, Entry e) {
     const bool fresh = !QFileInfo::exists(path) || QFileInfo(path).size() == 0;
     if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) return false;
     if (fresh) {
+        // Unlike the auto-fix log (ANTS-5151), a ledger that cannot be
+        // made private is still written: it holds fingerprints, rule ids
+        // and reasons, no source text.
         if (!setOwnerOnlyPerms(f))
             warnNotOwnerOnly(path, "audit false-positive ledger");
         f.write("# ants-audit learned false positives (JSONL, ANTS-1708). "

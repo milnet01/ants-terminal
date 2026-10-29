@@ -12,7 +12,7 @@ tool invocations:
 - `.semgrep.yml` header: a comment block starting with "Excluded upstream
   rules" lists one rule ID per line (`#   rule.id.here`). Each is passed
   to semgrep as `--exclude-rule <id>`.
-- `pyproject.toml` `[tool.ruff.lint.ignore]` (or `[tool.ruff] ignore`):
+- `pyproject.toml` `[tool.ruff.lint] ignore` (or `[tool.ruff] ignore`):
   any `S<nnn>` entry is an accepted bandit code. Each is mapped to
   `B<nnn>` and passed to bandit as `--skip B101,B104,…`.
 
