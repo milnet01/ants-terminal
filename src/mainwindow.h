@@ -121,7 +121,7 @@ private slots:
 private:
     // ANTS-1181 — setupMenus() was a 947-line block; split per menu so
     // each TUs-worth of action wiring is independently readable and
-    // navigable. setupMenus() is now a 7-call orchestrator.
+    // navigable. setupMenus() now only calls the per-menu functions.
     void setupMenus();
     void setupFileMenu();
     void setupEditMenu();
@@ -158,6 +158,8 @@ public:
     // terminal, when currentTerminal() is null too, so it needs no
     // fallback.
     TerminalWidget *focusedTerminal() const;
+    // The focused terminal's shell cwd, else the process cwd.
+    QString focusedCwdOrCurrentPath() const;
 
     // ANTS-1284 — exposed to RemoteControl::cmdTokenUsage so the MCP
     // tool can read the per-tool dispatch tracker on
@@ -409,14 +411,15 @@ private:
     bool m_quakeVisible = false;
     QPropertyAnimation *m_quakeAnim = nullptr;
     // 0.6.39: Freedesktop Portal GlobalShortcuts client (owned). Nullptr
-    // when the portal service isn't registered (no xdg-desktop-portal)
-    // OR when the bind request was rejected (e.g. GNOME Shell, which
-    // hasn't implemented the GlobalShortcuts portal yet). In both cases
-    // the in-app QShortcut from 0.6.38 stays as the activation path.
+    // when no hotkey is set or the portal service isn't registered (no
+    // xdg-desktop-portal). A rejected bind (e.g. GNOME Shell, which
+    // hasn't implemented the GlobalShortcuts portal) keeps the object and
+    // reports sessionFailed. Either way the in-app QShortcut from 0.6.38
+    // stays as the activation path.
     GlobalShortcutsPortal *m_gsPortal = nullptr;
-    // Monotonic-ms timestamp of the last Quake toggle, keyed by which
-    // path fired. Used to debounce the portal-vs-QShortcut double-fire
-    // when Ants is focused and both paths route the same key press.
+    // Wall-clock ms of the last Quake toggle, from either path. Used to
+    // debounce the portal-vs-QShortcut double-fire when Ants is focused
+    // and both paths route the same key press.
     qint64 m_lastQuakeToggleMs = 0;
     void setupQuakeMode();
     void wireQuakeHotkey();
@@ -478,6 +481,8 @@ private:
         QString hotkey;     // empty if no shortcut
         QAction *qaction = nullptr;     // owned by `this`
         QShortcut *shortcut = nullptr;  // owned by `this`, optional
+        // Schedule qaction and shortcut for deletion.
+        void release() const;
     };
     QList<PluginPaletteEntry> m_pluginPaletteEntries;
     void rebuildCommandPalette();
@@ -565,13 +570,6 @@ private:
     UpdateDialog::Release m_latestRelease;
     QString m_updateInstalledVersion;
     QPointer<UpdateDialog> m_updateDialog;
-    // ANTS-1146 — m_claudeLastState / LastDetail / PromptActive /
-    // PlanMode / Auditing all moved onto ClaudeStatusBarController.
-    // MainWindow's terminal-event handlers poke them via the
-    // controller's setPromptActive / setPlanMode / setAuditing
-    // setters; the auto-state ClaudeIntegration::stateChanged /
-    // planModeChanged / auditingChanged signals are consumed by
-    // the controller's own connect blocks set up in attach().
     // Single entry point that refreshes every per-tab status-bar widget
     // (branch chip, notification, process label, Claude state, Review
     // Changes button, Add-to-allowlist button) against the currently
@@ -610,11 +608,6 @@ private:
     // ANTS-1158 — open the task-list dialog against the focused tab's
     // ClaudeTaskListTracker. Non-modal, mirrors showBgTasksDialog.
     void showTaskListDialog();
-    // ANTS-1146 — refreshBgTasksButton moved to
-    // ClaudeStatusBarController. Three call sites in mainwindow.cpp
-    // (status timer connect, onTabChanged, showBgTasksDialog
-    // post-dismissal) call m_claudeStatusBarController->
-    // refreshBgTasksButton() directly.
     // Ask RemoteControl::roadmapFileFor for the active tab's roadmap
     // and show/hide the Roadmap button. Called from the central
     // refreshStatusBarForActiveTab tick.
@@ -631,7 +624,7 @@ private:
     void refreshRepoVisibility();
     // 0.7.45 — Hit GitHub's `releases/latest` endpoint via QNAM,
     // compare `tag_name` against ANTS_VERSION, and surface a
-    // clickable status-bar label when newer. No-op silently on
+    // menu-bar action when newer. No-op silently on
     // network failure or rate-limit. `userInitiated` (added 0.7.47)
     // enables status-bar feedback for the "no update available" /
     // "network error" cases — startup probes stay silent so the

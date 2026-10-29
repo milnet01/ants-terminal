@@ -21,6 +21,7 @@
 #include <QPointer>
 #include <QVBoxLayout>
 #include <QSplitter>
+#include <QDir>
 #include <QUuid>
 #include <QTimer>
 #include <QJsonArray>
@@ -775,6 +776,12 @@ TerminalWidget *MainWindow::focusedTerminal() const {
     // resolve to the visually-current tab's terminal so the chrome
     // tracks the user's view, not Qt's stale focus.
     return activeTerminalInTab(currentTabRoot);
+}
+
+QString MainWindow::focusedCwdOrCurrentPath() const {
+    QString cwd;
+    if (auto *t = focusedTerminal()) cwd = t->shellCwd();
+    return cwd.isEmpty() ? QDir::currentPath() : cwd;
 }
 
 // ANTS-5223 — the page of `tabs` holding `w`: `w` itself or the ancestor the

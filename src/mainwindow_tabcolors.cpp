@@ -96,10 +96,10 @@ void MainWindow::showTabColorMenu(int tabIndex, bool fromPanel) {
     //
     // The real bar for a new entry: compute the ratio through the wash and
     // require it to be no worse than the WORST colour already shipped. Every
-    // colour below clears that. ANTS-4690 has since capped the wash behind
-    // the name, so paintEvent() keeps every colour at 4.5:1 there.
-    // ANTS-5238 — the list itself lives in ColoredTabBar::palette(), shared
-    // with View > Give Each Tab a Different Colour.
+    // colour in ColoredTabBar::palette() clears that (ANTS-5238: the list is
+    // shared with View > Give Each Tab a Different Colour). ANTS-4690 has
+    // since capped the wash behind the name, so paintEvent() keeps every
+    // colour at 4.5:1 there.
     struct ColorEntry { QString name; QColor color; };
     QList<ColorEntry> colors = {{"None", QColor()}};
     for (const ColoredTabBar::PaletteEntry &e : ColoredTabBar::palette())

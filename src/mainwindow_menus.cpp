@@ -467,9 +467,7 @@ void MainWindow::setupToolsMenu() {
     // Project Audit
     QAction *auditAction = toolsMenu->addAction("Project &Audit...");
     connect(auditAction, &QAction::triggered, this, [this]() {
-        QString cwd;
-        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
-        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        const QString cwd = focusedCwdOrCurrentPath();
         auto *dlg = new AuditDialog(cwd, this, &m_config);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         connect(dlg, &AuditDialog::reviewRequested, this, [this](const QString &resultsFile) {
@@ -492,27 +490,21 @@ void MainWindow::setupToolsMenu() {
     QMenu *reviewMenu = toolsMenu->addMenu("&Review");
     QAction *coldEyesAction = reviewMenu->addAction("&Cold-eyes Documentation Review...");
     connect(coldEyesAction, &QAction::triggered, this, [this]() {
-        QString cwd;
-        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
-        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        const QString cwd = focusedCwdOrCurrentPath();
         auto *dlg = new ColdEyesDialog(cwd, this, &m_config);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->show();
     });
     QAction *testAuditAction = reviewMenu->addAction("&Test-suite Audit...");
     connect(testAuditAction, &QAction::triggered, this, [this]() {
-        QString cwd;
-        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
-        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        const QString cwd = focusedCwdOrCurrentPath();
         auto *dlg = new TestAuditDialog(cwd, this, &m_config);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->show();
     });
     QAction *indieReviewAction = reviewMenu->addAction("&Independent Code Review...");
     connect(indieReviewAction, &QAction::triggered, this, [this]() {
-        QString cwd;
-        if (auto *t = focusedTerminal()) cwd = t->shellCwd();
-        if (cwd.isEmpty()) cwd = QDir::currentPath();
+        const QString cwd = focusedCwdOrCurrentPath();
         auto *dlg = new IndieReviewDialog(cwd, this, &m_config);
         dlg->setAttribute(Qt::WA_DeleteOnClose);
         dlg->show();

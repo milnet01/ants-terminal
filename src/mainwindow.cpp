@@ -634,10 +634,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     connect(m_pluginManager, &PluginManager::pluginsReloaded, this, [this]() {
         // Tear down all plugin entries; they'll be re-added by re-running
         // init.lua during scanAndLoad.
-        for (auto &e : m_pluginPaletteEntries) {
-            if (e.qaction)  e.qaction->deleteLater();
-            if (e.shortcut) e.shortcut->deleteLater();
-        }
+        for (const auto &e : m_pluginPaletteEntries) e.release();
         m_pluginPaletteEntries.clear();
         rebuildCommandPalette();
     });
@@ -1234,7 +1231,7 @@ MainWindow::~MainWindow() {
 
     // ANTS-1320 (review-button probe path): any in-flight QProcess
     // child (the `git status` review-changes probe, started by
-    // refreshReviewChangesButton) emits finished/errorOccurred from
+    // refreshReviewButton) emits finished/errorOccurred from
     // its destructor when Qt's deleteChildren forcibly terminates the
     // child. Those connected lambdas capture QPointer<MainWindow> and
     // dereference `.data()` — a downcast that is UB once the derived
@@ -1832,11 +1829,7 @@ void MainWindow::openClaudeAllowlistDialog(const QString &prefillRule) {
     }
 
     // Resolve .claude/settings.local.json from shell's CWD
-    QString cwd;
-    if (auto *t = focusedTerminal()) {
-        cwd = t->shellCwd();
-    }
-    if (cwd.isEmpty()) cwd = QDir::currentPath();
+    const QString cwd = focusedCwdOrCurrentPath();
     QString settingsPath = cwd + "/.claude/settings.local.json";
 
     m_claudeDialog->setSettingsPath(settingsPath);
@@ -3334,8 +3327,7 @@ void MainWindow::onPluginPaletteRegistered(const QString &pluginName,
     for (int i = 0; i < m_pluginPaletteEntries.size(); ++i) {
         const auto &e = m_pluginPaletteEntries[i];
         if (e.plugin == pluginName && e.title == title && e.action == action) {
-            if (e.qaction)  e.qaction->deleteLater();
-            if (e.shortcut) e.shortcut->deleteLater();
+            e.release();
             m_pluginPaletteEntries.removeAt(i);
             break;
         }
@@ -3380,11 +3372,15 @@ void MainWindow::onPluginPaletteRegistered(const QString &pluginName,
     rebuildCommandPalette();
 }
 
+void MainWindow::PluginPaletteEntry::release() const {
+    if (qaction)  qaction->deleteLater();
+    if (shortcut) shortcut->deleteLater();
+}
+
 void MainWindow::clearPluginPaletteEntriesFor(const QString &pluginName) {
     for (int i = m_pluginPaletteEntries.size() - 1; i >= 0; --i) {
         if (m_pluginPaletteEntries[i].plugin != pluginName) continue;
-        if (m_pluginPaletteEntries[i].qaction)  m_pluginPaletteEntries[i].qaction->deleteLater();
-        if (m_pluginPaletteEntries[i].shortcut) m_pluginPaletteEntries[i].shortcut->deleteLater();
+        m_pluginPaletteEntries[i].release();
         m_pluginPaletteEntries.removeAt(i);
     }
     rebuildCommandPalette();

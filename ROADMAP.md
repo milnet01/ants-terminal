@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6301 -->
+<!-- ants-roadmap-id-high-water: ANTS=6302 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95256,7 +95256,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6113] **Readability fixes, mainwindow lane: src/mainwindow.cpp, src/mainwindow.h, src/mainwindow_internal.h, src/mainwindow_mcp.cpp, src/mainwindow_menus.cpp, src/mainwindow_sessions.cpp ….**
+- ✅ [ANTS-6113] **Readability fixes, mainwindow lane: src/mainwindow.cpp, src/mainwindow.h, src/mainwindow_internal.h, src/mainwindow_mcp.cpp, src/mainwindow_menus.cpp, src/mainwindow_sessions.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane mainwindow:
   4 high, 15 medium, 10 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/04-mainwindow.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95274,6 +95274,15 @@ worked after these.
   dead currentTerminal() fallbacks after focusedTerminal() dropped).
   Queued: F14 as ANTS-6184, F16 as ANTS-6185 and F17 as ANTS-6186
   (test/spec-pinned), F18 as ANTS-6187 (behaviour). LOWs still open.
+  2026-10-29: LOWs done. F20-F25 (comments: the tab palette's home,
+  m_gsPortal's null cases and the wall-clock debounce stamp, the
+  setupMenus count, the update menu-bar action, refreshReviewButton,
+  two ANTS-1146 history notes deleted), F27 (focusedCwdOrCurrentPath
+  replaces five copies), F29 (PluginPaletteEntry::release). F26
+  dismissed: renaming setupStatusBarChrome breaks ANTS-1146 INV-6 and
+  three test scrapes, and the comments beside its call already warn
+  that its order matters. F28 queued as ANTS-6302 (spec-pinned).
+  Earlier queued items stand. All lane findings closed.
   **Layman:** Tidy the main window, its tabs and menus so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97620,6 +97629,19 @@ worked after these.
   Kind: ux.
   Source: review-readability-2026-10-22.
   Lanes: terminal-widget.
+
+- 📋 [ANTS-6302] **Build the tab and window close-confirm dialogs from one helper (L04-F28).**
+  showCloseTabConfirmDialog and showCloseWindowConfirmDialog in
+  src/mainwindow_tabs.cpp are near-copies (ANTS-5123 had to bring one up
+  to the other). Tried 2026-10-29 and reverted: the specs read the
+  dialog-building calls inside each function body, so moving them to a
+  shared builder fails WindowCloseConfirm.Inv3 (ANTS-5120 INV-3) and
+  ConfirmCloseWithProcesses INV-9, INV-12 to INV-14. Amend those
+  invariants to accept the builder first, then fold the two.
+  **Layman:** The two "close anyway?" boxes are built from two copies of the same code; make them share one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mainwindow.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
