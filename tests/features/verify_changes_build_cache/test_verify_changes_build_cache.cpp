@@ -241,6 +241,39 @@ TEST(VerifyChangesBuildCache, UntrackedFileBustsCache) {
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 2);
 }
 
+// INV-5: git status lists a new untracked directory as one `?? dir/` entry,
+// so an in-place edit to a file inside it changes neither the status nor the
+// directory's mtime. It still busts the cache.
+TEST(VerifyChangesBuildCache, EditInsideUntrackedDirBustsCache) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), R"({
+        "build": {"command": "/bin/true", "format": "plain"}
+    })");
+    const QString inner = QDir(tmp.path()).filePath(QStringLiteral("newdir/a.cpp"));
+    QDir().mkpath(QFileInfo(inner).absolutePath());
+    {
+        QFile nf(inner);
+        ASSERT_TRUE(nf.open(QIODevice::WriteOnly));
+        nf.write("int a;\n");
+    }
+
+    RemoteControl rc(nullptr);
+    (void)runVerify(rc, tmp.path());
+    ASSERT_EQ(rc.verifyCacheSizeForTest(), 1);
+
+    {
+        QFile nf(inner);
+        ASSERT_TRUE(nf.open(QIODevice::Append));
+        nf.write("int b;\n");
+    }
+
+    const QJsonObject b = runVerify(rc, tmp.path());
+    EXPECT_FALSE(b.value(QStringLiteral("cache_hit")).toBool());
+    EXPECT_EQ(rc.verifyCacheSizeForTest(), 2);
+}
+
 // INV-5: an empty commit changes HEAD and busts the cache.
 TEST(VerifyChangesBuildCache, CommitBustsCache) {
     QTemporaryDir tmp;

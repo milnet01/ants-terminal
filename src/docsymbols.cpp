@@ -328,9 +328,16 @@ QStringList enclosingScopes(const QStringList &lines, int line) {
             }
             // A character literal is skipped like a string: `QLatin1Char('{')`
             // would otherwise open a scope. A `'` after an alphanumeric is a
-            // digit separator (`1'000`), not a quote.
-            if (c == QLatin1Char('"')
-                || (c == QLatin1Char('\'') && (i == 0 || !l.at(i - 1).isLetterOrNumber()))) {
+            // digit separator (`1'000`), not a quote — unless that word is a
+            // literal prefix (`L'{'`, `u'{'`, `U'{'`, `u8'{'`).
+            bool quote = c == QLatin1Char('"');
+            if (c == QLatin1Char('\'')) {
+                qsizetype w = i;
+                while (w > 0 && (l.at(w - 1).isLetterOrNumber() || l.at(w - 1) == QLatin1Char('_'))) --w;
+                const QStringView word = QStringView(l).mid(w, i - w);
+                quote = word.isEmpty() || word == u"L" || word == u"u" || word == u"U" || word == u"u8";
+            }
+            if (quote) {
                 qsizetype j = i + 1;
                 while (j < l.size() && l.at(j) != c) j += (l.at(j) == QLatin1Char('\\')) ? 2 : 1;
                 i = j;

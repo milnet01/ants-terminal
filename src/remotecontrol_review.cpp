@@ -18,6 +18,7 @@
 #include <QTimeZone>
 #include "fileoutline.h"   // ANTS-4814 — enclosing-symbol grouping
 #include <QDir>
+#include <QDirIterator>
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QProcess>
@@ -994,12 +995,26 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
         const char x = t.at(0), y = t.at(1);
         if (x == 'R' || x == 'C') ++i;            // consume paired old-path
         {
-            const QFileInfo fi(topLevel + QLatin1Char('/')
-                               + QString::fromUtf8(t.mid(3)));
-            const QByteArray stamp = '\0' + QByteArray::number(
-                fi.exists() ? fi.size() : -1) + ':' + QByteArray::number(
-                fi.exists() ? fi.lastModified().toMSecsSinceEpoch() : -1);
-            statusHash.addData(stamp);
+            const auto stampOf = [](const QFileInfo &fi) {
+                return '\0' + QByteArray::number(fi.exists() ? fi.size() : -1)
+                     + ':' + QByteArray::number(
+                           fi.exists() ? fi.lastModified().toMSecsSinceEpoch() : -1);
+            };
+            const QString abs = topLevel + QLatin1Char('/')
+                              + QString::fromUtf8(t.mid(3));
+            statusHash.addData(stampOf(QFileInfo(abs)));
+            // An untracked directory is one `?? dir/` entry, and an in-place
+            // edit inside it moves neither the status nor the directory's
+            // mtime, so every file under it is stamped too.
+            if (t.endsWith('/')) {
+                QStringList inner;
+                QDirIterator it(abs, QDir::Files | QDir::Hidden,
+                                QDirIterator::Subdirectories);
+                while (it.hasNext()) inner.append(it.next());
+                inner.sort();
+                for (const QString &f : std::as_const(inner))
+                    statusHash.addData(f.toUtf8() + stampOf(QFileInfo(f)));
+            }
         }
         const bool added = (x == 'A' || y == 'A' || (x == '?' && y == '?'));
         if (!added) continue;

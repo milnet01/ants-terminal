@@ -491,11 +491,13 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
     // Only makes sense for checks that produce file:line findings.
     if (r.findings.isEmpty()) return;
 
-    // Each file is read once per check, not once per finding: a grep check
-    // with hundreds of hits in one file re-read and re-decoded it per hit.
+    // A run of findings in one file reads it once, not once per finding: a
+    // grep check with hundreds of hits in one file re-read and re-decoded it
+    // per hit. Only the current file is held, since findings arrive grouped
+    // by file and holding every file read let memory grow with the hit count.
     // Same 2 MB cap and "treat as code" fallback as lineIsCode().
-    QHash<QString, QString> sources;
-    QSet<QString> unreadable;
+    QString curPath, curSource;
+    bool curReadable = false;
     QList<Finding> kept;
     for (const Finding &f : std::as_const(r.findings)) {
         if (f.file.isEmpty() || f.line <= 0) { kept.append(f); continue; }
@@ -505,18 +507,15 @@ void AuditDialog::dropFindingsInCommentsOrStrings(CheckResult &r) const {
         // here to run the comment/string classifier against it.
         const QString abs = resolveProjectPath(f.file);
         if (abs.isEmpty()) continue;  // traversal or non-existent: drop
-        if (unreadable.contains(abs)) { kept.append(f); continue; }
-        auto src = sources.constFind(abs);
-        if (src == sources.constEnd()) {
+        if (abs != curPath) {
+            curPath = abs;
             QFile file(abs);
-            if (!file.open(QIODevice::ReadOnly) || file.size() > 2LL * 1024 * 1024) {
-                unreadable.insert(abs);
-                kept.append(f);
-                continue;
-            }
-            src = sources.insert(abs, QString::fromUtf8(file.readAll()));
+            curReadable = file.open(QIODevice::ReadOnly)
+                       && file.size() <= 2LL * 1024 * 1024;
+            curSource = curReadable ? QString::fromUtf8(file.readAll()) : QString();
         }
-        if (AuditHygiene::lineHasCode(*src, abs, f.line)) kept.append(f);
+        if (!curReadable || AuditHygiene::lineHasCode(curSource, abs, f.line))
+            kept.append(f);
     }
     r.findings = std::move(kept);
 }

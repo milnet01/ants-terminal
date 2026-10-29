@@ -589,14 +589,8 @@ void MainWindow::splitCurrentPane(Qt::Orientation orientation) {
 
         auto *splitter = new QSplitter(orientation);
 
-        // Transfer session ID from the terminal to the splitter
-        QString sessionId = m_tabSessionIds.value(current);
-        if (!sessionId.isEmpty()) {
-            m_tabSessionIds.remove(current);
-            m_tabSessionIds[splitter] = sessionId;
-        }
-        // The pin and full title are keyed on the tab root too; left on
-        // `current` they were lost, and the label reset to "Shell".
+        // The session id, pin and full title are keyed on the tab root; left
+        // on `current` they were lost, and the label reset to "Shell".
         moveTabRootKeys(current, splitter);
         const QString label = m_tabWidget->tabText(tabIdx);
         const QColor colour = m_coloredTabBar ? m_coloredTabBar->tabColor(tabIdx) : QColor();
@@ -712,12 +706,6 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
             // This splitter is the tab root
             int tabIdx = m_tabWidget->indexOf(splitter);
             if (tabIdx >= 0) {
-                // Transfer session ID from splitter back to the surviving child
-                QString sessionId = m_tabSessionIds.value(splitter);
-                if (!sessionId.isEmpty()) {
-                    m_tabSessionIds.remove(splitter);
-                    m_tabSessionIds[child] = sessionId;
-                }
                 moveTabRootKeys(splitter, child);
                 const QString label = m_tabWidget->tabText(tabIdx);
                 const QColor colour = m_coloredTabBar ? m_coloredTabBar->tabColor(tabIdx) : QColor();
@@ -735,6 +723,8 @@ void MainWindow::cleanupEmptySplitters(QWidget *tabRoot) {
 }
 
 void MainWindow::moveTabRootKeys(QWidget *from, QWidget *to) {
+    const QString sessionId = m_tabSessionIds.take(from);
+    if (!sessionId.isEmpty()) m_tabSessionIds.insert(to, sessionId);
     if (m_tabTitlePins.contains(from))
         m_tabTitlePins.insert(to, m_tabTitlePins.take(from));
     if (m_tabFullTitles.contains(from))

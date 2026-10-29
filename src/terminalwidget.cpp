@@ -993,6 +993,9 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     int viewStart = scrollbackSize - m_scrollOffset;
 
     BracketPair bp = (m_scrollOffset == 0) ? findMatchingBracket() : BracketPair{-1,-1,-1,-1};
+    // A scrolled-up paint skips the lookup but still clears m_spanCacheDirty
+    // below, so the cached pair cannot tell what changed meanwhile.
+    if (m_scrollOffset != 0) m_cachedBracketCursorRow = -1;
 
     // Invalidate span caches if content changed since last paint
     if (m_spanCacheDirty)

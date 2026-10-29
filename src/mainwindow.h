@@ -269,8 +269,8 @@ private:
     void releaseTerminalShell(TerminalWidget *terminal);
     QSplitter *findParentSplitter(QWidget *w) const;
     void cleanupEmptySplitters(QWidget *tabRoot);
-    // Moves the tab-root-keyed title pin and full title from one root to
-    // the next when a split or unsplit replaces the tab root widget.
+    // Moves the tab-root-keyed session id, title pin and full title from one
+    // root to the next when a split or unsplit replaces the tab root widget.
     void moveTabRootKeys(QWidget *from, QWidget *to);
 
     // Apply settings from config to a terminal

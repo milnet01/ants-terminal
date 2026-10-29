@@ -235,7 +235,11 @@ TEST(DocSymbolsLocator, Inv9QualifierIsHonoured) {
         "};\n"
         "namespace ns {\n"
         "int helperFn(int n);\n"
-        "}\n");
+        "}\n"
+        "class Delta {\n"
+        "    wchar_t open = L'{';\n"
+        "};\n"
+        "int loose(int n);\n");
     put("src/shapes.cpp",
         "#include \"shapes.h\"\n"
         "void Alpha::fire(int n) {\n"
@@ -245,7 +249,8 @@ TEST(DocSymbolsLocator, Inv9QualifierIsHonoured) {
     DocSymbols::Options o;
     o.rootCanonical = root;
     const DocSymbols::ScanResult r = DocSymbols::scan(QStringLiteral(
-        "`Alpha::fire()` `Beta::fire` `Gamma::fire()` `ns::helperFn` `fire()`\n"),
+        "`Alpha::fire()` `Beta::fire` `Gamma::fire()` `ns::helperFn` `fire()` "
+        "`Delta::loose()`\n"),
         QStringLiteral("docs/x.md"), o);
     const DocSymbols::Locators l = DocSymbols::locate(r.symbols, [&root](const QString &rel) {
         QFile f(root + QLatin1Char('/') + rel);
@@ -265,5 +270,8 @@ TEST(DocSymbolsLocator, Inv9QualifierIsHonoured) {
            "INV-9: a namespace qualifier", l.located.value(QStringLiteral("ns::helperFn")));
     expect(l.located.value(QStringLiteral("fire()")) == QLatin1String("src/shapes.cpp:2"),
            "INV-9: an unqualified name is unaffected (the one definition wins)");
+    expect(l.unresolved.contains(QStringLiteral("Delta::loose()")),
+           "INV-9: a prefixed character literal L'{' opens no scope, so Delta "
+           "closes before `loose`", l.located.value(QStringLiteral("Delta::loose()")));
     EXPECT_EQ(0, expect_finish());
 }

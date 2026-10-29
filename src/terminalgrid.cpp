@@ -507,7 +507,7 @@ void TerminalGrid::handleAsciiPrintRun(const char *data, int len) {
 void TerminalGrid::handlePrint(uint32_t cp) {
     // Combining character (zero-width) — attach to previous cell.
     // Printable ASCII is always width 1; skip the locale-aware wcwidth()
-    // call for it, since the threaded path delivers every output byte here.
+    // call for it.
     int w = (cp >= 0x20 && cp < 0x7F) ? 1 : wcwidth(static_cast<wchar_t>(cp));
     if (w == 0 && cp > 0x20) {
         int targetCol;

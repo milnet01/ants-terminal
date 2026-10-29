@@ -719,9 +719,10 @@ which heading you expect it under.
   written once per call. A later locator naming a bullet an earlier one
   claimed (the same id, or the same bullet by headline) lands in
   `skipped[]` as `duplicate_locator`, its `error` naming the earlier
-  locator index, so `flipped_count + skipped_count` equals the locator
-  count; a `line_range` overlapping earlier locators is a duplicate only
-  when it matched nothing new. `annotate_batch` shares the rule. Both the
+  locator index. Where every locator names one bullet,
+  `flipped_count + skipped_count` equals the locator count; a `line_range`
+  counts each bullet it flips, and is a duplicate only when it matched
+  nothing new. `annotate_batch` shares the rule. Both the
   call-level and per-locator `to_status` take `op:"flip"`'s synonyms
   (`rlCanonicalToStatus`: done/complete/completed, wip/in_progress,
   todo/open, maybe/idea) besides the five words and their emoji; anything
