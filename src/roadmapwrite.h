@@ -158,7 +158,7 @@ enum class DriftBasis : std::uint8_t {
 
 // begin → mutate → dry render → commit → real render.
 //
-// One function, because the ordering is INV-1 and eight call sites would each
+// One function, because the ordering is INV-1 and each call site would
 // get a chance to write it differently. And the ordering is not the obvious
 // one: RoadmapRender::render() writes and commits its files itself, so a
 // sequence that rendered before committing the store would leave the FILE ahead
@@ -176,7 +176,7 @@ enum class DriftBasis : std::uint8_t {
 // was gone one `annotate` later. So the dry render's id set is compared against
 // the ids the files it would rewrite hold TODAY, and a render that would drop
 // any refuses instead of publishing. It fails safe, needs no new data, and sits
-// at the one seam all eight ops share.
+// at the one seam every op shares.
 //
 // Its two declared limits. Only files the render would REWRITE are read, ids
 // compared as a union across them, so an item MOVED between the live file and
@@ -186,7 +186,7 @@ enum class DriftBasis : std::uint8_t {
 //
 // `mutate` performs the op's store writes and returns false on failure (setting
 // *error). It is a callback rather than a shape this header enumerates because
-// the eight ops have nothing in common but the transaction around them.
+// the ops have nothing in common but the transaction around them.
 //
 // Under `dryRun` the sequence stops after the dry render and rolls back — so a
 // caller's `dry_run:true` commits nothing on EITHER path, which is what it

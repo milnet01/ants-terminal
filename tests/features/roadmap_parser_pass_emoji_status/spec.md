@@ -3,7 +3,7 @@
 ## Background
 
 `roadmap_query` / `session_orient` read `#### Pass N.M …` heading
-roadmaps via `RoadmapDialog::parsePassHeadingBullets` (ANTS-1530). The
+roadmaps via `RoadmapParse::parsePassHeadingBullets` (ANTS-1530). The
 status emoji is derived from the first `- **Status**: <word>` line
 under each heading. The capture regex `rxStatusLine` matched
 `([A-Za-z0-9_-]+)` immediately after `- **Status**:` plus whitespace,

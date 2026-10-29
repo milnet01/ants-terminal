@@ -27,7 +27,8 @@ namespace RoadmapFoldIn {
 
 namespace {
 
-QString counterPath(const QString &projectPath) {
+// The path as given, unresolved; counterFilePath() is the canonical one.
+QString counterPathAsGiven(const QString &projectPath) {
     return QDir(projectPath).filePath(QStringLiteral(".roadmap-counter"));
 }
 
@@ -290,9 +291,6 @@ QString counterFilePath(const QString &projectPath) {
     return canon + QStringLiteral("/.roadmap-counter");
 }
 
-// ANTS-3450 — see the doc-comment in roadmapfoldin.h. The counter is now a
-// derived cache; this recomputes the true high-water mark from committed
-// content so allocation never trusts a stale/absent counter blindly.
 // ANTS-3473 — dominant `[PREFIX-NNNN]` prefix in a roadmap's text (the
 // most frequent bracketed counter-style token; dominance-by-count shrugs
 // off strays like "[UTF-8]"). Returns `fallback` when none is found.
@@ -429,6 +427,9 @@ qint64 storeAllocationFloor(const QString &projectPath, const QString &prefix) {
 
 }  // namespace
 
+// ANTS-3450 — see the doc-comment in roadmapfoldin.h. The counter is now a
+// derived cache; this recomputes the true high-water mark from committed
+// content so allocation never trusts a stale/absent counter blindly.
 qint64 corpusHighWater(const QString &projectPath, const QString &prefix,
                        QString *usedPrefix) {
     if (usedPrefix) usedPrefix->clear();
@@ -520,7 +521,7 @@ QHash<QString, QString> archivedIds(const QString &projectPath,
 // cause was an empty / corrupt counter file.
 CounterInspection inspectCounter(const QString &projectPath) {
     CounterInspection ins;
-    const QString path = counterPath(projectPath);
+    const QString path = counterPathAsGiven(projectPath);
     if (!counterStaysInProject(projectPath, path)) {
         ins.state = CounterState::PathRefused;
         return ins;
@@ -601,7 +602,7 @@ QList<int> allocateIds(const QString &projectPath, int n, LockWait wait,
                        bool *busy) {
     if (busy) *busy = false;
     if (n <= 0) return {};
-    const QString path = counterPath(projectPath);
+    const QString path = counterPathAsGiven(projectPath);
 
     // ANTS-1342: refuse if the counter path escapes the project root
     // via symlink. Catches the shared-counter-via-symlink case before
@@ -725,7 +726,7 @@ bool insertBlock(const QString &projectPath,
     // Without it two inserts both read the pre-insert ROADMAP, and the
     // second commit clobbers the first — silently dropping a block and
     // orphaning its already-allocated IDs.
-    const QString cpath = counterPath(projectPath);
+    const QString cpath = counterPathAsGiven(projectPath);
     if (!counterStaysInProject(projectPath, cpath)) return false;
     CounterLock lock = acquireCounterLock(cpath, wait, busy);
     if (!lock.held()) return false;

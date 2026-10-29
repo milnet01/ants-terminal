@@ -22,6 +22,7 @@
 #include <QVariant>
 
 #include <algorithm>
+#include <iterator>
 
 // ANTS-3819 — the export's route to the store's private raw handle. The
 // export / import pair is the store's rebuild path, so it is the one
@@ -37,6 +38,10 @@ namespace {
 // use. The store's CHECK constraint carries the same five values.
 constexpr const char *kStatusOrder[] = {"planned", "in-progress", "shipped",
                                         "considered", "dropped"};
+
+// The item columns held as JSON text, in the column order both the export's
+// SELECT and the rebuild's INSERT list them.
+constexpr const char *kJsonCols[] = {"lanes", "evidence", "extras", "provenance"};
 
 // Every string comparison in § 2.4 and § 2.5 is UTF-16 code-unit order, which
 // is exactly QString::compare — never localeAwareCompare, which varies with
@@ -453,8 +458,7 @@ bool writeItems(QSqlDatabase &db, const QList<ItemRef> &order, QIODevice *out, Q
         insertIfPresent(&o, "last_modified", q.value(13));
         insertIfPresent(&o, "shipped", q.value(14));
 
-        static const char *const kJsonCols[] = {"lanes", "evidence", "extras", "provenance"};
-        for (int i = 0; i < 4; ++i) {
+        for (int i = 0; i < int(std::size(kJsonCols)); ++i) {
             QJsonValue v;
             if (!jsonColumn(q.value(15 + i).toString(), kJsonCols[i], &v, error))
                 return false;
@@ -965,7 +969,7 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             q.addBindValue(textOrNull(o, "created"));
             q.addBindValue(textOrNull(o, "last_modified"));
             q.addBindValue(textOrNull(o, "shipped"));
-            for (const char *key : {"lanes", "evidence", "extras", "provenance"}) {
+            for (const char *key : kJsonCols) {
                 QString text, why;
                 if (!canonicalText(o.value(QLatin1String(key)), key, &text, &why))
                     return abort(QStringLiteral("line %1: %2").arg(lineNo).arg(why));

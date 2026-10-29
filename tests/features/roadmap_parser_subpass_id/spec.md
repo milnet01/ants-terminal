@@ -3,7 +3,7 @@
 ## Background
 
 `roadmap_query` reads `#### Pass N.M …` heading roadmaps via
-`RoadmapDialog::parsePassHeadingBullets` (ANTS-1530), synthesising
+`RoadmapParse::parsePassHeadingBullets` (ANTS-1530), synthesising
 `PASS-<major>-<minor>` IDs. The synthesis regex captured only
 `(\d+)\.(\d+)`, so a sub-pass heading `#### Pass 41.5.B` matched
 `major=41, minor=5` and the trailing `.B` fell into the headline

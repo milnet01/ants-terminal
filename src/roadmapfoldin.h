@@ -1,12 +1,12 @@
 // RoadmapFoldIn — atomic ROADMAP.md fold-in helper for ANTS-1111 (and
 // ANTS-1112 / 1113 reuse). Qt::Core only, no widgets.
 //
-// Two operations, both atomic / advisory-locked:
+// Three operations; the two writers are atomic and advisory-locked:
 //
 //   allocateIds(projectPath, n)
 //       Grab N consecutive IDs from `<projectPath>/.roadmap-counter`
 //       under ::flock(LOCK_EX|LOCK_NB) — adopts the same advisory-
-//       lock pattern as ConfigWriteLock in configbackup.h:82-117.
+//       lock pattern as ConfigWriteLock in configbackup.h.
 //       Atomic via QSaveFile — even a kill-9 between read and write
 //       leaves the counter file intact.
 //
@@ -22,7 +22,7 @@
 //       Locate the "active" release block in <projectPath>/ROADMAP.md:
 //       first `^## ` heading whose body matches `\(target:\s*\d{4}-\d+\)`
 //       (in-flight); otherwise the first `^## ` heading whose body
-//       matches `^\d+\.\d+\.\d+\s*—` (most-recent shipped). Empty
+//       matches `^\d+\.\d+(\.\d+)?\s*[—-]` (most-recent shipped). Empty
 //       string if neither matches. Returns the FULL heading line so
 //       the caller can pass it directly to insertBlock.
 
@@ -117,7 +117,8 @@ qint64 corpusHighWater(const QString &projectPath,
 // under release pressure is to weaken the check, which discards the true
 // findings with it.
 //
-// Only the § 3.9 name shape is enumerated (<MAJOR>.<MINOR>.md), so an
+// Only the § 3.9 name shapes are enumerated (<MAJOR>.<MINOR>.md and
+// P<N>[.<sub>].md), so an
 // unrelated .md dropped in that directory cannot resolve an id. Returns empty
 // when `wanted` is empty or the directory is absent — callers gate on the
 // missing set, so an absent archive costs nothing.

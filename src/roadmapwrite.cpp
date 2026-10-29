@@ -67,7 +67,7 @@ QStringList fileIds(const QString &path) {
     // `Qt6::Core Qt6::Sql ants_roadmapparse_lib` and deliberately not
     // ants_core_lib, so ProjectSettings is not reachable from here at all;
     // threading a value down would add a parameter to commitAndRender() and
-    // ten call sites to carry something that cannot change the answer.
+    // every call site, to carry something that cannot change the answer.
     const auto bullets = RoadmapParse::parseBullets(QString::fromUtf8(f.readAll()));
     out.reserve(bullets.size());
     for (const RoadmapParse::BulletRecord &b : bullets) {
@@ -371,25 +371,6 @@ DriftBreakdown externalDrift(const QHash<QString, QString> &preImage) {
     return all;
 }
 
-// ANTS-4947 — keep the file the publish is about to overwrite.
-//
-// Only the LOST arm reaches here. A restyled or repunctuated line survives in
-// the render in another form, so the store still holds its content; a `lost`
-// line is by driftLines()'s own definition text the render reproduces in NO
-// styling, which makes the file on disk its only copy. Reporting that in a
-// capped twenty-line echo and then destroying it leaves a caller retyping their
-// own prose out of a response they may already have dropped.
-//
-// Written OUTSIDE the project, deliberately. A sibling file would appear in
-// `git status` every time this fires, in a repository the caller is typically
-// mid-commit on — which is how a safety net becomes something people delete on
-// sight. GenericDataLocation is the same root RoadmapStore uses, and this
-// library already links only Qt6::Core and Qt6::Sql, so it costs no link edge.
-//
-// Best-effort: a backup that cannot be written must not fail a write that is
-// otherwise correct. The envelope names what was kept, so an empty list says
-// nothing was — never that nothing was at stake, which the caller reads from
-// `discarded_text_lines` as before.
 // ANTS-5087 — how many discarded-text backups the directory keeps. Nothing
 // removed one before this, so it grew for the life of the install, on the home
 // drive, holding copies of files the user never asked to keep.
@@ -416,6 +397,25 @@ void pruneDiscarded(const QString &dir) {
         QFile::remove(files.at(i).absoluteFilePath());
 }
 
+// ANTS-4947 — keep the file the publish is about to overwrite.
+//
+// Only the LOST arm reaches here. A restyled or repunctuated line survives in
+// the render in another form, so the store still holds its content; a `lost`
+// line is by driftLines()'s own definition text the render reproduces in NO
+// styling, which makes the file on disk its only copy. Reporting that in a
+// capped twenty-line echo and then destroying it leaves a caller retyping their
+// own prose out of a response they may already have dropped.
+//
+// Written OUTSIDE the project, deliberately. A sibling file would appear in
+// `git status` every time this fires, in a repository the caller is typically
+// mid-commit on — which is how a safety net becomes something people delete on
+// sight. GenericDataLocation is the same root RoadmapStore uses, and this
+// library already links only Qt6::Core and Qt6::Sql, so it costs no link edge.
+//
+// Best-effort: a backup that cannot be written must not fail a write that is
+// otherwise correct. The envelope names what was kept, so an empty list says
+// nothing was — never that nothing was at stake, which the caller reads from
+// `discarded_text_lines` as before.
 QStringList keepDiscarded(const QStringList &paths) {
     QStringList kept;
     if (paths.isEmpty())
@@ -563,7 +563,7 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // when none is open", so the one case where it does not is the one where
     // there is nothing left to roll back. Reporting a second failure there
     // would tell the caller about the recovery instead of about the fault —
-    // hence the nullptr, which also keeps *error holding the real fault.
+    // hence no error argument, which also keeps *error holding the real fault.
     const auto abort = [&store](Result r) {
         store.rollback();
         return r;

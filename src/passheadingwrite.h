@@ -1,5 +1,5 @@
 // ANTS-2126: pure helpers for the `#### Pass N.M` heading-format
-// roadmap_log writer. The reader (RoadmapDialog::parsePassHeadingBullets,
+// roadmap_log writer. The reader (RoadmapParse::parsePassHeadingBullets,
 // ANTS-1530) classifies a doc as `pass-headings` and synthesises a
 // `PASS-N-M[-SUB]` id per heading; these helpers are the inverse — they
 // render and edit pass blocks so the round-trip (write → reader) is

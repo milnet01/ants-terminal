@@ -846,9 +846,8 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     // rendering, gating or serialising can leave a half-updated project.
     std::vector<std::unique_ptr<QSaveFile>> staged;
     staged.reserve(size_t(toWrite.size()));
-    // ANTS-4780 — shared by now: `out.filesWritten = fileOrder` above bumped
-    // the refcount, so this loop would otherwise detach. The earlier loop over
-    // the same list runs BEFORE that assignment and is genuinely unshared.
+    // ANTS-4780 — `out.filesWritten = toWrite` above shares toWrite's data, so
+    // a non-const loop here would detach it.
     for (const QString &path : std::as_const(toWrite)) {
         auto f = std::make_unique<QSaveFile>(path);
         if (!f->open(QIODevice::WriteOnly | QIODevice::Text)) {
