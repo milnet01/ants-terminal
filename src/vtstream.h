@@ -32,7 +32,9 @@
 //   response callback like DA1/CPR) serializes onto the worker's event
 //   queue and writes to the PTY master in arrival order. Cross-thread
 //   writes from GUI → worker preserve FIFO order via Qt's queued-connection
-//   semantics.
+//   semantics. Exception: bytes written while a paste is still being fed
+//   wait behind it, and are dropped with it if the PTY's write queue
+//   overflows (ANTS-5075).
 // - Resize atomicity: `resize()` is invoked with Qt::BlockingQueuedConnection
 //   so the PTY's winsize is updated before `resizeEvent` returns on the
 //   GUI side. The next paint always sees consistent geometry.

@@ -95174,7 +95174,7 @@ section "Readability review 2026-10-22 — possible bugs to investigate",
 
 worked after these.
 
-- 📋 [ANTS-6110] **Readability fixes, vt-parser-pty lane: src/vtstream.cpp, src/vtstream.h.**
+- ✅ [ANTS-6110] **Readability fixes, vt-parser-pty lane: src/vtstream.cpp, src/vtstream.h.**
   Findings of the 2026-10-22 readability review (src run), lane vt-parser-pty:
   0 high, 1 medium, 3 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/01-vt-parser-pty.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95184,6 +95184,10 @@ worked after these.
   2026-10-23: MEDIUM F1 done (back-pressure comment states the
   real bound: a batch can hold kFlushBytes − 1 plus one Pty read).
   LOW F2 done in the same rewrite. LOW F3, F4 open.
+  2026-10-29: LOW F3 done (the write-ordering contract now says bytes
+  written during a paste wait behind it and drop with it on overflow).
+  LOW F4 dismissed: the zero-copy rewrite already replaced that comment;
+  no version-history clause is left. All lane findings closed.
   **Layman:** Tidy the code that reads what programs send to the terminal so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
