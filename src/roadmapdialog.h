@@ -369,11 +369,9 @@ public:
     }
 
     // ANTS-1235 — return the screen-reader-readable label
-    // ("shipped" / "in progress" / "planned" / "considered") for one
-    // of the four status emoji constants. Returns an empty QString
-    // if `emoji` is not a recognised status glyph. Lookup is a
-    // four-entry linear scan over the file-scope `kStatusLabels`
-    // table; tr()-resolved at call time so future translations work.
+    // ("shipped" / "in progress" / …) for one status emoji. Returns an
+    // empty QString if `emoji` is not a recognised status glyph. Lookup
+    // is a linear scan over the file-scope `kStatusLabels` table; tr()-resolved at call time so future translations work.
     static QString statusAccessibleLabel(const QString &emoji);
 
     // Heading entry surfaced in the TOC sidebar. `level` is 1..4,
@@ -419,7 +417,7 @@ public:
     static QString archiveDirFor(const QString &roadmapPath);
 
     // `loadMarkdown(roadmapPath, includeArchive)` reads the file at
-    // `roadmapPath` (capped at 8 MiB per `read()`) and, if
+    // `roadmapPath` (capped at 64 MiB; each archive at 8 MiB) and, if
     // `includeArchive` is true and `archiveDirFor` returns non-empty,
     // appends each `*.md` archive matching `^[0-9]+\.[0-9]+\.md$`
     // (case-sensitive), sorted numerically descending by the
@@ -499,7 +497,7 @@ private slots:
     // ANTS-1154: handle clicks on the card / section toggle anchors
     // emitted by renderCardsHtml. URL scheme `ants://<verb>/<slug>`
     // where verb is one of {expand, collapse, expand-section,
-    // collapse-section, table}.
+    // collapse-section}.
     void handleAnchorClicked(const QUrl &link);
     // ANTS-1154 — custom context menu on the QTextBrowser. The default
     // context menu Qt provides parents the popup to the viewer widget,
@@ -684,7 +682,7 @@ private:
     // list is short is worse than the busy row it replaces, so this is
     // called from every filter toggle and is not optional.
     void updateFilterSummaries();
-    std::shared_ptr<QString> m_lastHtml;
+    QString m_lastHtml;   // last rendered HTML; skips an identical re-render
     Config *m_config = nullptr;
     SortOrder m_sortOrder = SortOrder::Document;
     // ANTS-1125 INV-6: track the active preset by enumerator so

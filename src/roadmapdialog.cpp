@@ -312,7 +312,7 @@ QString applyInline(const QString &line) {
 
 // Normalise a string for fuzzy matching: lowercase, hyphens/underscores
 // → space, runs of whitespace collapsed, trailing punctuation trimmed.
-QString fuzzy(const QString &in) {
+QString normaliseForMatch(const QString &in) {
     QString out;
     out.reserve(in.size());
     QChar last;
@@ -413,8 +413,8 @@ QStringList recentCommitSubjectsFrom(const QByteArray &gitLogOut) {
 // Used by renderCardsHtml and the TOC when SortOrder is
 // DescendingChronological.
 //
-// ANTS-1140 — function-local cache keyed on the input string's
-// (size, hash-of-prefix). reverseTopLevelSections is on the hot
+// ANTS-1140 — a one-entry memo keyed on the whole input string.
+// reverseTopLevelSections is on the hot
 // path for History-mode renders (every search keystroke +
 // every filter toggle), and the input — particularly with
 // archive markdown attached (ANTS-1125) — is up to 64 MiB. Cache
@@ -601,11 +601,7 @@ void RoadmapDialog::refreshRecentCommitsIfStale() {
 // expand-state survives section moves.
 // ANTS-1287: headingLevel + slugifyHeading + uniqueSlug moved to
 // RoadmapIndex. File-scope using-declarations preserve the unqualified
-// call surface for parseBullets, extractToc, renderCardsHtml.
-// slugifyHeading is not called directly from this file (uniqueSlug
-// wraps it inside the engine), but is kept here for symmetry and so
-// any future direct caller resolves to the canonical engine version.
-// See docs/specs/ANTS-1287.md § 7.
+// call surface for parseBullets, extractToc, renderCardsHtml. See docs/specs/ANTS-1287.md § 7.
 using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
 
@@ -916,12 +912,12 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     QStringList signalsFuzzy;
     signalsFuzzy.reserve(currentBullets.size());
     for (const QString &s : currentBullets) {
-        const QString f = fuzzy(s);
+        const QString f = normaliseForMatch(s);
         if (f.size() >= 6) signalsFuzzy.append(f);
     }
     auto isCurrent = [&](const QString &bulletBody) {
         if (signalsFuzzy.isEmpty()) return false;
-        const QString fHay = fuzzy(bulletPayload(bulletBody));
+        const QString fHay = normaliseForMatch(bulletPayload(bulletBody));
         if (fHay.size() < 6) return false;
         for (const QString &s : signalsFuzzy) {
             if (fHay.contains(s) || s.contains(fHay)) return true;
@@ -1658,13 +1654,6 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
     return html;
 }
 
-// ANTS-1154 — Walk CHANGELOG.md and build an ANTS-NNNN → date map.
-// Section heading shape (Keep-a-Changelog convention):
-//   ## [0.7.82] — 2026-05-11
-//   ## [Unreleased]
-// Every ANTS-NNNN token in the section body inherits that date. The
-// [Unreleased] block has no date; its IDs map to an empty string and
-// thus the card emits no date row (graceful for in-flight ✅).
 // ANTS-1235 — screen-reader-readable label for a status emoji.
 // File-scope `kStatusLabels` is the source of truth; this method
 // looks the emoji up and resolves the label through RoadmapDialog's
@@ -1713,6 +1702,13 @@ QString humanAge(qint64 ageSeconds) {
     return RoadmapDialog::tr("%1y ago").arg(d / 365);
 }
 
+// ANTS-1154 — Walk CHANGELOG.md and build an ANTS-NNNN → date map.
+// Section heading shape (Keep-a-Changelog convention):
+//   ## [0.7.82] — 2026-05-11
+//   ## [Unreleased]
+// Every ANTS-NNNN token in the section body inherits that date. The
+// [Unreleased] block has no date; its IDs map to an empty string and
+// thus the card emits no date row (graceful for in-flight ✅).
 QHash<QString, QString>
 RoadmapDialog::parseShippedDates(const QString &changelogPath) {
     QHash<QString, QString> out;
@@ -1889,7 +1885,6 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     : QDialog(parent),
       m_roadmapPath(roadmapPath),
       m_themeName(themeName),
-      m_lastHtml(std::make_shared<QString>()),
       m_config(cfg) {
     // ANTS-2049 — objectName hook so the e2e harness can resolve this dialog
     // via e2eResolveTarget(findChild) and confirm it opened after an
@@ -2070,7 +2065,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                 if (m_config) {
                     m_config->setRoadmapDensity(densityToString(m_density));
                 }
-                if (m_lastHtml) m_lastHtml->clear();  // bust dedup cache
+                m_lastHtml.clear();  // bust dedup cache
                 rebuild();
             });
     // ANTS-4412 — density moves to the SEARCH row's trailing edge. It is a
@@ -2084,7 +2079,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // visual cues — `audit-fix` ought to pop visually vs
     // `implement` so the user can distinguish at a glance which
     // categories of work are queued.
-    // ANTS-4412 — eleven always-visible boxes become one summarising button,
+    // ANTS-4412 — the always-visible boxes become one summarising button,
     // by the same re-parent as the status set above. `kindLabel` is kept and
     // hidden rather than deleted: its objectName is a documented handle and
     // the button carries the label's text now.
@@ -2107,7 +2102,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
                 [this, kindValue](bool on) {
                     if (on) m_kindFilter.insert(kindValue);
                     else    m_kindFilter.remove(kindValue);
-                    if (m_lastHtml) m_lastHtml->clear();  // force re-render
+                    m_lastHtml.clear();  // force re-render
                     // The Kind set belongs to the tab it was set on
                     // (user request 2026-09-29), saved per project.
                     const int key = static_cast<int>(m_activePreset);
@@ -2297,7 +2292,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
         // scheduled for and the pane would come back empty. Caught by
         // roadmap_toc_toggle's HiddenPaneCostsNothingAndRefillsOnReturn.
         if (on) {
-            if (m_lastHtml) m_lastHtml->clear();
+            m_lastHtml.clear();
             scheduleRebuild();
         }
     });
@@ -2337,7 +2332,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     refreshBtn->setObjectName(QStringLiteral("roadmap-refresh-button"));
     refreshBtn->setShortcut(QKeySequence(Qt::Key_F5));
     connect(refreshBtn, &QPushButton::clicked, this, [this]() {
-        if (m_lastHtml) m_lastHtml->clear();  // bust the dedup cache
+        m_lastHtml.clear();  // bust the dedup cache
         refreshShippedDatesIfStale();
         refreshLastTouchDatesIfStale();  // ANTS-1237
         rebuild();
@@ -2608,7 +2603,7 @@ void RoadmapDialog::showEvent(QShowEvent *event) {
 namespace {
 
 // ANTS-1264 — scan the rendered roadmap document for card anchors
-// (`rm-<id>`, emitted by renderCardsHtml as `<div id="rm-...">`),
+// (`rm-<id>`, emitted by renderCardsHtml as `<tr id="rm-...">`),
 // returning each card's id and its pixel top in document coordinates (the
 // vertical-scrollbar value that puts that card at the viewport top).
 // Section headers carry positional `roadmap-toc-N` anchors which are not
@@ -2819,8 +2814,6 @@ bool RoadmapDialog::eventFilter(QObject *obj, QEvent *event) {
     return QDialog::eventFilter(obj, event);
 }
 
-// ANTS-1154 — anchorClicked handler for `ants://` URLs emitted by
-// renderCardsHtml. Dispatches by verb: expand / collapse toggle a
 void RoadmapDialog::showViewerContextMenu(const QPoint &pos) {
     if (!m_viewer) return;
     // Parent the menu to the dialog top-level (not m_viewer) so the
@@ -2862,7 +2855,9 @@ bool RoadmapDialog::isValidAnchorTarget(const QString &target) {
     return true;
 }
 
-// ANTS-1154 — expand / collapse toggle a card's ID in m_expandedItems;
+// ANTS-1154 — anchorClicked handler for `ants://` URLs emitted by
+// renderCardsHtml. Dispatches by verb: expand / collapse toggle a card's
+// ID in m_expandedItems;
 // expand-section / collapse-section toggle a section's slug in
 // m_expandedSections. Each mutation schedules a rebuild so the new state
 // renders.
@@ -2900,8 +2895,8 @@ void RoadmapDialog::handleAnchorClicked(const QUrl &link) {
     // expanded-state sets, which serialise verbatim to Config on disk.
     // The hrefs this dialog renders only ever carry a roadmap item ID
     // or a section slug, both drawn from [A-Za-z0-9_-]. A hostile
-    // ROADMAP.md shipping `ants://expand/' OR 1=1 --` (htmlEscape only
-    // strips & < >) would otherwise persist arbitrary attacker strings
+    // ROADMAP.md shipping `ants://expand/' OR 1=1 --` (htmlEscape leaves
+    // `'` alone) would otherwise persist arbitrary attacker strings
     // into the user's config. Reject anything outside that charset or
     // implausibly long.
     if (!isValidAnchorTarget(target)) return;
@@ -3146,6 +3141,9 @@ unsigned RoadmapDialog::statusMaskFromBoxes() const {
 }
 
 void RoadmapDialog::showTabFilters(const TabFilters &f) {
+    // Two ways to silence: onCheckboxToggled checks the flag, but the kind
+    // boxes' handler has no flag, so they need a QSignalBlocker. The caller
+    // refreshes the summaries afterwards.
     m_suppressCheckboxSignal = true;
     const auto boxes = statusBoxes();
     for (size_t i = 0; i < boxes.size(); ++i)
@@ -3156,7 +3154,7 @@ void RoadmapDialog::showTabFilters(const TabFilters &f) {
         QSignalBlocker block(it.value());
         it.value()->setChecked(m_kindFilter.contains(it.key()));
     }
-    if (m_lastHtml) m_lastHtml->clear();   // the filter changed under the cache
+    m_lastHtml.clear();   // the filter changed under the cache
 }
 
 void RoadmapDialog::saveViewState() {
@@ -3250,8 +3248,8 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
                                     bool includeArchive,
                                     QString *liveError) {
     // ANTS-1012 indie-review-2026-04-27 + ANTS-1125 INV-5: per-file
-    // 8 MiB cap on every QFile::read() call inside this helper.
-    // Defends against /dev/zero symlinks and accidental binary
+    // 8 MiB cap on each archive read (the live file takes the 64 MiB
+    // cap below, ANTS-5088). Defends against /dev/zero symlinks and accidental binary
     // content. Real archives top out under 1 MiB.
     constexpr qint64 kPerFileCap = 8 * 1024 * 1024;
     // ANTS-1125 INV-5a: total assembled-buffer cap of 64 MiB. After
@@ -3526,7 +3524,7 @@ void RoadmapDialog::rebuild() {
             "<div style=\"padding:16px;font-family:sans-serif\">"
             "<b>Could not read this roadmap.</b><br><br>%1</div>")
                               .arg(htmlEscape(why)));
-        if (m_lastHtml) m_lastHtml->clear();   // the next good render repaints
+        m_lastHtml.clear();   // the next good render repaints
     };
 
     // ANTS-5088 — rebuild() runs per debounced keystroke and per toggle, and
@@ -3588,7 +3586,7 @@ void RoadmapDialog::rebuild() {
                                          m_sortOrder, predicate, m_kindFilter,
                                          opts);
 
-    if (m_lastHtml && *m_lastHtml == html) return;  // skip identical re-render
+    if (m_lastHtml == html) return;  // skip identical re-render
 
     auto *vbar = m_viewer->verticalScrollBar();
     const int saved = vbar ? vbar->value() : 0;
@@ -3598,7 +3596,7 @@ void RoadmapDialog::rebuild() {
     m_viewer->setHtml(html);
     // ANTS-3762 — must follow setHtml: it constrains the PARSED tables.
     applyCardColumnGrid(m_viewer->document(), m_density);
-    if (m_lastHtml) *m_lastHtml = html;
+    m_lastHtml = html;
 
     if (vbar) {
         if (wasAtBottom) vbar->setValue(vbar->maximum());

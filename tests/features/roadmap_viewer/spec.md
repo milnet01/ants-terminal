@@ -137,7 +137,7 @@ when there's nothing to point at.
 0.7.37 / 0.7.38 dialog pattern). Reuses the same scroll-preservation
 shape:
 
-- `m_lastHtml` (`std::shared_ptr<QString>`) holds the last rendered
+- `m_lastHtml` (a `QString`) holds the last rendered
   HTML; identical regenerated HTML short-circuits before `setHtml`.
 - Capture vbar position before `setHtml`, restore with
   `qMin(saved, vbar->maximum())` after.
