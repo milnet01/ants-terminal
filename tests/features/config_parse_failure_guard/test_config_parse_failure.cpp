@@ -166,6 +166,16 @@ void testCorruptConfig() {
     // config.json. Before 0.7.12, setFontSize would trigger save() which
     // would write fresh defaults and destroy the user's prior bytes.
     cfg.setFontSize(99);
+    // L34-F11 (user, 2026-10-29) — every setter applies for this session,
+    // and none is saved. Keybindings and plugin settings used to refuse.
+    cfg.setKeybinding(QStringLiteral("new_tab"), QStringLiteral("Ctrl+Alt+F11"));
+    expect(cfg.keybinding(QStringLiteral("new_tab"), QString())
+               == QStringLiteral("Ctrl+Alt+F11"),
+           "corruptConfig: a keybinding set after a failed load applies");
+    cfg.setPluginGrants(QStringLiteral("p"), {QStringLiteral("clipboard.write")});
+    expect(cfg.pluginGrants(QStringLiteral("p"))
+               == QStringList{QStringLiteral("clipboard.write")},
+           "corruptConfig: a plugin grant set after a failed load applies");
 
     QFile after(cfgPath);
     if (!after.open(QIODevice::ReadOnly)) {

@@ -177,6 +177,9 @@ void Config::save() {
     // state m_data has now. The corrupt file was already rotated aside
     // by load(); this is the write-side guard. See
     // tests/features/config_parse_failure_guard/spec.md.
+    // Setters still change m_data, so every change applies for this session
+    // and none is saved (user, 2026-10-29; replaces ANTS-1141's refusal in
+    // four setters).
     if (m_loadFailed) {
         ANTS_LOG(DebugLog::Config,
                  "save() skipped — earlier load failure latched "
@@ -1015,12 +1018,6 @@ QString Config::keybinding(const QString &action, const QString &defaultKey) con
 }
 
 void Config::setKeybinding(const QString &action, const QString &key) {
-    // ANTS-1141 — short-circuit on m_loadFailed. save() bails
-    // anyway, but the in-memory mutation otherwise leaves a
-    // fictional "your keybinding worked" state visible to
-    // subsequent getters in the session — UX-confusing
-    // because it never persists.
-    if (m_loadFailed) return;
     QJsonObject kb = m_data.value("keybindings").toObject();
     if (kb.value(action).toString() == key) return;
     kb[action] = key;
@@ -1223,7 +1220,6 @@ QStringList Config::pluginGrants(const QString &pluginName) const {
 }
 
 void Config::setPluginGrants(const QString &pluginName, const QStringList &grants) {
-    if (m_loadFailed) return;  // ANTS-1141 — see setKeybinding
     QJsonObject all = m_data.value("plugin_grants").toObject();
     QJsonArray arr;
     for (const QString &g : grants) arr.append(g);
@@ -1242,7 +1238,6 @@ QString Config::pluginSetting(const QString &pluginName, const QString &key) con
 }
 
 QString Config::setPluginSetting(const QString &pluginName, const QString &key, const QString &value) {
-    if (m_loadFailed) return {};  // ANTS-1141 — see setKeybinding
     // ANTS-5419 — a plugin may not grow config.json without bound.
     const qsizetype keyBytes = key.toUtf8().size();
     if (keyBytes > kPluginSettingKeyMaxBytes)
