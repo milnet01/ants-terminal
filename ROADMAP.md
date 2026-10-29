@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6286 -->
+<!-- ants-roadmap-id-high-water: ANTS=6290 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -101217,6 +101217,53 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: investigate.
   Source: in-session-2026-10-26.
   Lanes: build.
+
+- 📋 [ANTS-6287] **roadmap_log's to_status schema lists only the canonical words, though flip and flip_batch accept done/wip/todo, and both refuse a capitalised canonical word ("Shipped") while accepting "DONE".**
+  rlCanonicalToStatus (src/remotecontrol_roadmap_query.cpp) lowercases only the
+  synonyms and returns any other word unchanged, so the canonical check is
+  case-sensitive on every flip path. The to_status enum (lifecycleEnum,
+  src/claudeintegration.cpp) omits the synonyms, so a schema-validating client
+  refuses them first. Raised as an open decision in PR #1; predates it.
+  Decide: widen the enum, or name the synonyms in the description only.
+  **Layman:** Claude may refuse to send 'done' as a roadmap status even though the tool accepts it, and 'Shipped' with a capital S is refused while 'DONE' works.
+  Kind: review-fix.
+  Source: code-review-2026-10-29.
+
+- 📋 [ANTS-6288] **TokenUsageEngine narrows a peer snapshot's n_calls to int without an upper bound, and counterField's switch can drift from kCounterKeys.**
+  snapshotFromJson (src/tokenusageengine.cpp) checks only v < 0 before
+  int(v), so n_calls above INT_MAX wraps negative and subtracts from the
+  totals. The loops are bounded by kCounterCount, but counterField is a
+  hand-written switch whose default returns nullptr: a key added without a
+  case is dereferenced. One {key, member} table would remove the drift.
+  The ToolCounter comment (src/tokenusageengine.h) also omits recordCall,
+  ToolReport and RemoteControl::cmdTokenUsage from its list of places to update.
+  **Layman:** A corrupt usage file could make the token-savings totals go negative, and adding a new counter later could crash the MCP server.
+  Kind: review-fix.
+  Source: code-review-2026-10-29.
+
+- 📋 [ANTS-6289] **mcpspill's INV-9 fail-open returns the body inline after the spill was written and evict() ran, and rows_preview's per-row bytes count the 6-byte {"v":…} sizing wrapper.**
+  src/mcpspill.cpp: the envelope.size() >= total check comes after the
+  QSaveFile commit and evict(handle), so the orphan file stays and live
+  handles may have been evicted for it. Move the check before the write, or
+  remove the file on that branch. rows_preview's bytes is elBytes.size(),
+  the wrapper's size; ANTS-5153 fixed head for the same wrapper. The helpers
+  addHeadRows and addRowsPreview also take domCount, which is always
+  fullArr.size().
+  **Layman:** A large MCP reply that ends up sent in full can still leave an unused copy on disk and push out older saved replies; one size figure reads slightly high.
+  Kind: review-fix.
+  Source: code-review-2026-10-29.
+
+- 📋 [ANTS-6290] **mcpprojection.h's comments contradict the code: ignoredArgs keeps a stale "four conditional args" paragraph, terseDefault names one mechanism of two, and projectFields claims non-string names are reported.**
+  src/mcpprojection.h: the ANTS-4578 paragraph under ignoredArgs still says
+  the four conditional args, including fields, were exempt everywhere,
+  beside text saying fields is exempt unconditionally. terseDefault says a
+  branched-on false survives only through isProtectedCompactKey, but the
+  compaction table's defaultCompact=false rows are the other route.
+  projectFields' contract says absent, non-string and empty names are
+  named in fields_unmatched; check whether the code skips the latter two.
+  **Layman:** Three code comments in the MCP layer describe behaviour the code no longer has, which would mislead the next person editing it.
+  Kind: doc-fix.
+  Source: code-review-2026-10-29.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
