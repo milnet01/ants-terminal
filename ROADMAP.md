@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6293 -->
+<!-- ants-roadmap-id-high-water: ANTS=6294 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88586,6 +88586,22 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The release check should see a "no changelog entry" note even when the note runs onto a second line.
   Kind: fix.
   Source: frameledger-feedback-2026-10-26.
+  Lanes: mcp.
+
+- 💭 [ANTS-6294] **session_cost include_descendants: total a helper agent with the helpers it dispatched.**
+  Follow-up to ANTS-6189. An opt-in include_descendants:true adds
+  every helper whose .meta.json parentAgentId chain reaches the asked-for
+  agent, and reports summed totals plus a per-helper list (id,
+  description, requests, totals). Repro: session bbd4b9a2 in
+  ~/.claude/projects/-home-ants--claude: agent-a450199fa36b20c83 → 25
+  requests; its six lanes (e.g. agent-add422457cf36dabc, 13) are not
+  included. Parked: claude-config lowered the priority on 2026-10-29
+  (message 862); most of their lanes run as separate claude -p sessions
+  that report their own cost, so this helps only lanes that fall back to
+  the Agent tool.
+  **Layman:** One call could report the whole cost of a review, the coordinating helper plus every helper it started.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-10-29.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
