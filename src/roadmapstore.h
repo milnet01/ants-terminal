@@ -176,7 +176,7 @@ public:
     // INV-15 — did THIS open create the schema? Two processes opening a store
     // that does not exist must produce exactly one creator, and after the fact
     // the winner and the loser are otherwise indistinguishable: both end with
-    // user_version = 1 and one set of tables. Without this the CREATE TABLE IF
+    // user_version = kSchemaVersion and one set of tables. Without this the CREATE TABLE IF
     // NOT EXISTS design the invariant forbids passes its own test.
     bool createdSchema() const { return m_createdSchema; }
     QString path() const { return m_path; }
@@ -385,7 +385,8 @@ public:
     };
     // nullopt with `error` clear: no project holds the id, and none holds an id
     // with its prefix (everything before the last '-'). The prefix is read from
-    // the ids items hold, not from id_prefix, which migration never writes.
+    // the ids items hold, not from id_prefix, which migration writes only
+    // when it allocates.
     // An id held by several projects resolves to the caller's own, and is an
     // error otherwise.
     std::optional<LinkTarget> resolveLinkTarget(qint64 callerProjectId, const QString &id,
@@ -1004,14 +1005,16 @@ public:
     // sent to one.
     QStringList slugCandidates(const QString &wantSlug, QString *error = nullptr) const;
 
-    // ANTS-4617 — the inverse of registerProject(), and the store had none.
-    // The store is MACHINE-GLOBAL, so testing anything destructive against a
-    // throwaway copy left a permanent row: `roadmap_query mode:"report"
-    // scope:"all"` then sums a dead project into machine-wide figures forever.
-    // The incentive ran the wrong way — trying a risky render on a scratch copy
-    // is the careful instinct, and the store penalised it.
+    // ANTS-4617 — the inverse of registerProject(). Deletes the project's
+    // element, history, feedback_ref, relationship, citation, item, section
+    // and id_prefix rows; keeps its `project` row, stamped, and its `message`
+    // rows (ANTS-5366, below).
     //
-    // Deletes in FOREIGN-KEY order across all nine tables. The schema declares
+    // Why it exists: the store is MACHINE-GLOBAL, so a throwaway copy tested
+    // against left a permanent row, and `roadmap_query mode:"report"
+    // scope:"all"` summed that dead project into machine-wide figures.
+    //
+    // Deletes in FOREIGN-KEY order. The schema declares
     // REFERENCES and no ON DELETE CASCADE, so this is the hand cascade the
     // project preamble describes, in one transaction, with
     // `PRAGMA defer_foreign_keys` for the duration: `section.parent_id`
@@ -1183,7 +1186,7 @@ public:
     // The floor an allocation must not issue at or below: BOTH columns above,
     // because neither alone is complete. idHighWater() is the allocator's own
     // counter and remembers an id whose item was later deleted, but migration
-    // never writes that row; maxAllocatedId() reads the ids straight off the
+    // writes that row only when it allocates; maxAllocatedId() reads the ids straight off the
     // items. nullopt from either is the ordinary state of a project that has
     // not reached that half yet, so this returns 0 rather than refusing.
     //

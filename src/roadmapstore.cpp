@@ -95,6 +95,20 @@ bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
 
 QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 
+// The same-project rule's one lookup: which project owns this section.
+// nullopt = no such section, or the read failed; every caller refuses either
+// way. A SQLite CHECK may not contain a subquery, so the rule cannot live in
+// the DDL — addSection(), putItem() and updateSection() enforce it with this.
+// fileItem() needs the item's project in the same read, so it joins instead.
+std::optional<qint64> sectionProjectId(const QSqlDatabase &db, qint64 sectionId) {
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
+    q.addBindValue(sectionId);
+    if (!q.exec() || !q.next())
+        return std::nullopt;
+    return q.value(0).toLongLong();
+}
+
 // ANTS-5499 — a read-then-write method takes the write lock BEFORE its read.
 // Read first and the connection holds a snapshot; a write another connection
 // commits meanwhile makes that snapshot stale, and SQLite refuses the upgrade
@@ -966,17 +980,11 @@ std::optional<qint64> RoadmapStore::addSection(qint64 projectId, const QString &
                                                int position,
                                                std::optional<qint64> parentId,
                                                QString *error) {
-    // Same-project rule, write-path enforced: a SQLite CHECK may not contain a
-    // subquery, so a section parented across projects cannot be refused in DDL.
-    if (parentId) {
-        QSqlQuery p(m_db);
-        p.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
-        p.addBindValue(*parentId);
-        if (!p.exec() || !p.next() || p.value(0).toLongLong() != projectId) {
-            if (error)
-                *error = QStringLiteral("parent section is not in project %1").arg(projectId);
-            return std::nullopt;
-        }
+    // Same-project rule: a section's parent is in the section's project.
+    if (parentId && sectionProjectId(m_db, *parentId) != projectId) {
+        if (error)
+            *error = QStringLiteral("parent section is not in project %1").arg(projectId);
+        return std::nullopt;
     }
 
     QSqlQuery q(m_db);
@@ -1014,21 +1022,16 @@ std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) 
     if (!tx.begin(error))
         return std::nullopt;
 
-    // Same-project rule (write-path, as above): the section an item is filed
-    // in must belong to the item's own project — "Items are never global".
+    // Same-project rule: the section an item is filed in must belong to the
+    // item's own project — "Items are never global".
     // Read INSIDE the transaction: checking first and inserting afterwards is
     // a read-then-write race, and BEGIN IMMEDIATE already holds the write lock
     // here, so the check and the insert see one consistent snapshot.
-    {
-        QSqlQuery s(m_db);
-        s.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
-        s.addBindValue(w.sectionId);
-        if (!s.exec() || !s.next() || s.value(0).toLongLong() != w.projectId) {
-            if (error)
-                *error = QStringLiteral("section %1 is not in project %2")
-                             .arg(w.sectionId).arg(w.projectId);
-            return std::nullopt;
-        }
+    if (sectionProjectId(m_db, w.sectionId) != w.projectId) {
+        if (error)
+            *error = QStringLiteral("section %1 is not in project %2")
+                         .arg(w.sectionId).arg(w.projectId);
+        return std::nullopt;
     }
 
     const auto bindOpt = [](QSqlQuery &q, const QString &v) {
@@ -1572,6 +1575,9 @@ bool RoadmapStore::syncConvertedLinks(qint64 itemPk, const QString &body,
             *error = lastErr(rows);
         return false;
     }
+    // remove() both keeps a wanted row and takes it off the want-list, so what
+    // is left in wantPk / wantCross after this loop is the set still to insert.
+    // A pure contains() here would insert every kept row a second time.
     QVector<qint64> stale;
     while (rows.next()) {
         const qint64 relId = rows.value(0).toLongLong();
@@ -1884,18 +1890,10 @@ bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
 bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int level,
                                  int position, std::optional<qint64> parentId,
                                  QString *error) {
-    // Same-project rule, write-path enforced exactly as addSection() does it: a
-    // SQLite CHECK may not contain a subquery, so a section re-parented across
-    // projects cannot be refused in DDL.
+    // Same-project rule, as addSection() states it.
     if (parentId) {
-        QSqlQuery own(m_db);
-        own.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
-        own.addBindValue(sectionId);
-        QSqlQuery p(m_db);
-        p.prepare(QStringLiteral("SELECT project_id FROM section WHERE section_id = ?"));
-        p.addBindValue(*parentId);
-        if (!own.exec() || !own.next() || !p.exec() || !p.next() ||
-            own.value(0).toLongLong() != p.value(0).toLongLong()) {
+        const auto own = sectionProjectId(m_db, sectionId);
+        if (!own || sectionProjectId(m_db, *parentId) != own) {
             if (error)
                 *error = QStringLiteral("parent section %1 is not in section %2's project")
                              .arg(*parentId).arg(sectionId);
@@ -2134,7 +2132,6 @@ bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregister
     static const QString kSections =
         QStringLiteral("SELECT section_id FROM section WHERE project_id = ?");
 
-    struct Step { const char *sql; int *out; };
     DeregisterCounts local;
     if (!counts) counts = &local;
     *counts = DeregisterCounts{};
@@ -2149,8 +2146,8 @@ bool RoadmapStore::deregisterProject(qint64 projectId, const QString &deregister
              + QStringLiteral(")"), &counts->history},
         {QStringLiteral("DELETE FROM feedback_ref WHERE item_pk IN (") + kItems
              + QStringLiteral(")"), &counts->feedbackRefs},
-        // Both ends — see the header. `?` is bound twice here, so this step
-        // takes the id twice; every other takes it once.
+        // Both ends — see the header. This step and the citation step each
+        // carry two `?`; the loop below binds the id once per placeholder.
         {QStringLiteral("DELETE FROM relationship WHERE src_pk IN (") + kItems
              + QStringLiteral(") OR dst_pk IN (") + kItems + QStringLiteral(")"),
          &counts->relationships},
@@ -3182,11 +3179,8 @@ namespace {
 // two query strings. Written as a fragment + a bind rather than string
 // interpolation of the id: the id is trusted here, but a reader should not have
 // to establish that, and the two forms cost the same.
-QString rsScopeClause(const std::optional<qint64> &projectId,
-                      const QString &alias = QString()) {
-    const QString col = alias.isEmpty() ? QStringLiteral("project_id")
-                                        : alias + QStringLiteral(".project_id");
-    return projectId ? QStringLiteral(" AND %1 = ?").arg(col) : QString();
+QString rsScopeClause(const std::optional<qint64> &projectId) {
+    return projectId ? QStringLiteral(" AND project_id = ?") : QString();
 }
 
 void rsBindScope(QSqlQuery &q, const std::optional<qint64> &projectId) {
@@ -3323,14 +3317,10 @@ std::optional<RoadmapStore::DaySpread>
 rsDaySpread(const QSqlDatabase &db, const std::optional<qint64> &projectId,
             const QString &dayExpr, const QVariantList &dayExprBinds,
             const QString &whereExtra, bool wantOldestAndOver90, QString *error) {
-    auto lastErrLocal = [](const QSqlQuery &q) {
-        return q.lastError().text().trimmed();
-    };
     RoadmapStore::DaySpread out;
     QSqlQuery q(const_cast<QSqlDatabase &>(db));
-    const QString scope = projectId ? QStringLiteral(" AND project_id = ?") : QString();
     const QString base  = QStringLiteral("FROM item WHERE 1=1%1%2")
-                              .arg(whereExtra, scope);
+                              .arg(whereExtra, rsScopeClause(projectId));
 
     // `dayExprBinds` belong to dayExpr, which appears in the SELECT list — so
     // they are bound ONLY by the queries that carry it, and `nDayExpr` says how
@@ -3346,7 +3336,7 @@ rsDaySpread(const QSqlDatabase &db, const std::optional<qint64> &projectId,
 
     q.prepare(QStringLiteral("SELECT COUNT(*) %1").arg(base));
     bindFor(0);
-    if (!q.exec() || !q.next()) { if (error) *error = lastErrLocal(q); return std::nullopt; }
+    if (!q.exec() || !q.next()) { if (error) *error = lastErr(q); return std::nullopt; }
     out.sample = q.value(0).toInt();
     if (out.sample == 0)
         return out;              // -1 medians stand: no sample, not zero days
@@ -3358,7 +3348,7 @@ rsDaySpread(const QSqlDatabase &db, const std::optional<qint64> &projectId,
     q.prepare(QStringLiteral("SELECT %1 AS d %2 ORDER BY d LIMIT 1 OFFSET %3")
                   .arg(dayExpr, base, QString::number(offset)));
     bindFor(1);
-    if (!q.exec() || !q.next()) { if (error) *error = lastErrLocal(q); return std::nullopt; }
+    if (!q.exec() || !q.next()) { if (error) *error = lastErr(q); return std::nullopt; }
     out.medianDays = q.value(0).toInt();
 
     if (wantOldestAndOver90) {
@@ -3367,7 +3357,7 @@ rsDaySpread(const QSqlDatabase &db, const std::optional<qint64> &projectId,
             "SELECT MAX(%1), SUM(CASE WHEN %2 > 90 THEN 1 ELSE 0 END) %3")
                       .arg(dayExpr, dayExpr, base));
         bindFor(2);
-        if (!q.exec() || !q.next()) { if (error) *error = lastErrLocal(q); return std::nullopt; }
+        if (!q.exec() || !q.next()) { if (error) *error = lastErr(q); return std::nullopt; }
         out.oldestDays = q.value(0).toInt();
         out.over90     = q.value(1).toInt();
     }
