@@ -30,6 +30,13 @@ int refuse(const char *why)
     return 1;
 }
 
+int refuseKeyTooLong()
+{
+    std::fprintf(stderr, "ants-osc133-sign: key over %lld bytes\n",
+                 static_cast<long long>(kMaxKeyBytes));
+    return 1;
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -48,11 +55,11 @@ int main(int argc, char **argv)
         if (n == 0) break;
         key.append(buf, n);
         // One byte of slack for the trailing newline dropped below.
-        if (key.size() > kMaxKeyBytes + 1) return refuse("key over 4 KiB");
+        if (key.size() > kMaxKeyBytes + 1) return refuseKeyTooLong();
     }
     if (key.endsWith('\n')) key.chop(1);
     if (key.isEmpty()) return refuse("empty key");
-    if (key.size() > kMaxKeyBytes) return refuse("key over 4 KiB");
+    if (key.size() > kMaxKeyBytes) return refuseKeyTooLong();
 
     QMessageAuthenticationCode mac(QCryptographicHash::Sha256, key);
     key.fill('\0');

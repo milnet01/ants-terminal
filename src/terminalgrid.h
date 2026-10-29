@@ -504,7 +504,8 @@ private:
     void handleCsi(const VtAction &a);
     void handleEsc(const VtAction &a);
     void handleOsc(const std::string &payload, bool truncated = false);
-    void handleDcs(const std::string &payload, bool truncated = false);  // Sixel graphics
+    void handleOsc8(const std::string &rest);  // OSC 8 hyperlink open/close
+    void handleDcs(const std::string &payload, bool truncated = false);  // Sixel graphics and DECRQSS
     void handleApc(const std::string &payload, bool truncated = false);  // Kitty graphics
 
     // CSI helpers
@@ -531,6 +532,8 @@ private:
     // introduced the bug 0.7.55 was supposed to close (multi-row
     // hyperlinks across the reopen point lost intermediate rows).
     void pushHyperlinkSpansForActive();
+    // Forget the active OSC 8 link without emitting its spans.
+    void dropActiveHyperlink();
 
     // SGR color parsing helpers
     QColor parse256Color(const std::vector<int> &params, size_t &i);
@@ -883,7 +886,8 @@ private:
         return img.isNull() ? 0 : static_cast<size_t>(img.sizeInBytes());
     }
     // Print a short ASCII error message at the cursor in the warning color.
-    // Used by the image-bomb decoders to signal rejection without surfacing
+    // Used by the Sixel and iTerm2 image-bomb guards to signal rejection
+    // (Kitty replies ENODATA instead) without surfacing
     // a desktop notification (which would be more disruptive than the
     // failed image).
     void writeInlineError(const QString &text);

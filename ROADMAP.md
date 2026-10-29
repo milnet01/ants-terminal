@@ -95193,7 +95193,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-6111] **Readability fixes, terminal-grid lane: src/osc133signmain.cpp, src/terminalgrid.cpp, src/terminalgrid.h.**
+- ✅ [ANTS-6111] **Readability fixes, terminal-grid lane: src/osc133signmain.cpp, src/terminalgrid.cpp, src/terminalgrid.h.**
   Findings of the 2026-10-22 readability review (src run), lane terminal-grid:
   3 high, 10 medium, 7 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/02-terminal-grid.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95209,6 +95209,15 @@ worked after these.
   (note at the m_alt* declarations; a spec quotes the names, so no
   rename), F12 (Kitty staging-cap comment), F17 (enterAltScreen /
   exitAltScreen). F9 queued as ANTS-6177. LOWs still open.
+  2026-10-29: LOWs done. F13 (stale sentinel-envelope sentence
+  dropped), F14 (line-number pointers replaced by enterAltScreen /
+  exitAltScreen; two older ones were already gone), F15 (handleDcs
+  named as Sixel and DECRQSS), F16 (writeInlineError comments name
+  Kitty's ENODATA reply as the exception), F18 (OSC 8 moved into
+  handleOsc8; one dropActiveHyperlink replaces four resets), F19
+  (assumed 8x16 cell named), F20 (sign helper builds its refusal from
+  kMaxKeyBytes). F9 stays queued as ANTS-6177. All lane findings
+  closed.
   **Layman:** Tidy the screen text and scrollback so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

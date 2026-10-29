@@ -1142,82 +1142,7 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
     }
     // OSC 8 — Hyperlinks: OSC 8 ; params ; uri ST (open) or OSC 8 ; ; ST (close)
     else if (oscNum == "8" && semi != std::string::npos) {
-        std::string rest = payload.substr(semi + 1);
-        size_t semi2 = rest.find(';');
-        if (semi2 != std::string::npos) {
-            std::string params = rest.substr(0, semi2);
-            std::string uri = rest.substr(semi2 + 1);
-
-            if (uri.empty()) {
-                // Close hyperlink — emit spans via the helper that
-                // both close + reopen paths share (ANTS-1202).
-                if (m_hyperlinkActive) {
-                    pushHyperlinkSpansForActive();
-                    m_hyperlinkActive = false;
-                    m_hyperlinkUri.clear();
-                    m_hyperlinkId.clear();
-                }
-            } else if (uri.size() > MAX_OSC8_URI_BYTES) {
-                // Oversized URI — same drop-path as an invalid scheme.
-                // Prevents hostile output from wedging tens of GB of URI
-                // bytes into per-row hyperlink spans + scrollback.
-                m_hyperlinkActive = false;
-                m_hyperlinkUri.clear();
-                m_hyperlinkId.clear();
-            } else {
-                if (!isAllowedHyperlinkScheme(uri)) {
-                    // Drop the OSC 8 entirely; the following text remains
-                    // un-hyperlinked but still prints normally.
-                    m_hyperlinkActive = false;
-                    m_hyperlinkUri.clear();
-                    m_hyperlinkId.clear();
-                } else {
-                    // Open hyperlink
-                    if (m_hyperlinkActive) {
-                        // Close previous first via the shared helper
-                        // (ANTS-1202 — pre-fix this branch used the
-                        // legacy single-row emission and silently re-
-                        // introduced the multi-row bug 0.7.55 closed
-                        // for the dedicated close path).
-                        pushHyperlinkSpansForActive();
-                    }
-                    m_hyperlinkActive = true;
-                    m_hyperlinkUri = uri;
-                    m_hyperlinkStartCol = m_cursorCol;
-                    m_hyperlinkStartRow = m_cursorRow;
-                    // ANTS-1202 — parse id from params (id=value).
-                    // Pre-fix used a naive `find("id=")` which matched
-                    // an embedded `id=` inside a value (e.g.
-                    // params="x=id=trick" would yield id="trick").
-                    // OSC 8 spec separates params with `:` and uses
-                    // `=` for key/value within each param; split on
-                    // `:` first, then accept only tokens beginning
-                    // with `id=`.
-                    m_hyperlinkId.clear();
-                    size_t tokenStart = 0;
-                    while (tokenStart < params.size()) {
-                        size_t tokenEnd = params.find(':', tokenStart);
-                        if (tokenEnd == std::string::npos) tokenEnd = params.size();
-                        const std::string token = params.substr(tokenStart, tokenEnd - tokenStart);
-                        if (token.size() > 3 && token.compare(0, 3, "id=") == 0) {
-                            // Bound the id field. URI is capped at
-                            // MAX_OSC8_URI_BYTES; the id used to be
-                            // uncapped and would scale to 10 MB × N
-                            // rows of scrollback via the per-row
-                            // hyperlink span. xterm spec doesn't
-                            // mandate an id length, but 256 bytes
-                            // covers every legitimate use.
-                            constexpr size_t kMaxOsc8IdBytes = 256;
-                            std::string id = token.substr(3);
-                            if (id.size() <= kMaxOsc8IdBytes)
-                                m_hyperlinkId = std::move(id);
-                            break;
-                        }
-                        tokenStart = tokenEnd + 1;
-                    }
-                }
-            }
-        }
+        handleOsc8(payload.substr(semi + 1));
     }
     // OSC 52 — Clipboard access: OSC 52 ; selection ; base64-data ST
     else if (oscNum == "52" && semi != std::string::npos) {
@@ -1227,9 +1152,8 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
             // ANTS-1201 — collapse the multi-char selection field
             // (per xterm: any of c=clipboard, p=primary, s=select,
             // q=cut-buffer-0, 0-7=cut-buffers, plus combinations like
-            // `s0`) down to a single shipping char {'c','p'}. The
-            // sentinel envelope below carries it to the widget which
-            // routes it to QClipboard::Clipboard or
+            // `s0`) down to a single shipping char {'c','p'}: the
+            // widget routes it to QClipboard::Clipboard or
             // QClipboard::Selection. Empty selection per xterm spec
             // defaults to `s0` (=primary); we follow modern OSC52
             // implementations (xterm.js, kitty) and default to
@@ -1615,10 +1539,13 @@ void TerminalGrid::handleOscImage(const std::string &payload) {
         return;
     }
 
-    // Parse optional width/height in cells
-    // Default: scale image to fit reasonable cell dimensions
-    int cellW = std::min(img.width() / 8, m_cols - m_cursorCol);
-    int cellH = std::min(img.height() / 16, m_rows / 2);
+    // Default size in cells. The grid does not know the font's cell size
+    // (the widget does), so it assumes an 8x16-pixel cell; a width= or
+    // height= argument below overrides the result.
+    constexpr int kAssumedCellPxW = 8;
+    constexpr int kAssumedCellPxH = 16;
+    int cellW = std::min(img.width() / kAssumedCellPxW, m_cols - m_cursorCol);
+    int cellH = std::min(img.height() / kAssumedCellPxH, m_rows / 2);
     if (cellW < 1) cellW = 1;
     if (cellH < 1) cellH = 1;
 
@@ -2274,6 +2201,67 @@ void TerminalGrid::resetScrollRegion() {
     m_altScrollBottom = m_rows - 1;
 }
 
+// OSC 8 — `params ; uri`: an empty uri closes the active link, any other
+// opens one.
+void TerminalGrid::handleOsc8(const std::string &rest) {
+    const size_t semi = rest.find(';');
+    if (semi == std::string::npos) return;
+    const std::string params = rest.substr(0, semi);
+    const std::string uri = rest.substr(semi + 1);
+
+    if (uri.empty()) {
+        // Close — emit spans via the helper the close and reopen paths
+        // share (ANTS-1202).
+        pushHyperlinkSpansForActive();
+        dropActiveHyperlink();
+        return;
+    }
+    // An oversized URI or a disallowed scheme drops the link; the text
+    // after it still prints, un-linked. The size cap stops hostile output
+    // wedging tens of GB of URI bytes into per-row spans and scrollback.
+    if (uri.size() > MAX_OSC8_URI_BYTES || !isAllowedHyperlinkScheme(uri)) {
+        dropActiveHyperlink();
+        return;
+    }
+
+    // Open. Close the previous link first via the shared helper
+    // (ANTS-1202 — this path once used a single-row emission and lost
+    // the middle rows of a wrapped link).
+    pushHyperlinkSpansForActive();
+    m_hyperlinkActive = true;
+    m_hyperlinkUri = uri;
+    m_hyperlinkStartCol = m_cursorCol;
+    m_hyperlinkStartRow = m_cursorRow;
+    // ANTS-1202 — params are `:`-separated `key=value` pairs; take the
+    // id only from a token that starts with `id=`, so an `id=` embedded
+    // in another value (params="x=id=trick") is not read as the id.
+    m_hyperlinkId.clear();
+    size_t tokenStart = 0;
+    while (tokenStart < params.size()) {
+        size_t tokenEnd = params.find(':', tokenStart);
+        if (tokenEnd == std::string::npos) tokenEnd = params.size();
+        const std::string token = params.substr(tokenStart, tokenEnd - tokenStart);
+        if (token.size() > 3 && token.compare(0, 3, "id=") == 0) {
+            // The id is copied into every row's span, so it is capped like
+            // the URI. 256 bytes covers every legitimate use.
+            constexpr size_t kMaxOsc8IdBytes = 256;
+            std::string id = token.substr(3);
+            if (id.size() <= kMaxOsc8IdBytes)
+                m_hyperlinkId = std::move(id);
+            break;
+        }
+        tokenStart = tokenEnd + 1;
+    }
+}
+
+void TerminalGrid::dropActiveHyperlink() {
+    m_hyperlinkActive = false;
+    m_hyperlinkUri.clear();
+    m_hyperlinkId.clear();
+    m_hyperlinkStartRow = 0;
+    m_hyperlinkStartCol = 0;
+}
+
 void TerminalGrid::pushHyperlinkSpansForActive() {
     // 0.7.55 + ANTS-1202 — single shared multi-row span emitter for
     // OSC 8 close AND reopen-without-close paths. Pre-1202 only the
@@ -2430,7 +2418,8 @@ void TerminalGrid::carriageReturn() {
 
 // 0.6.11 — image-bomb defense. Writes a short red diagnostic line into the
 // grid at the cursor (followed by CR+LF so subsequent output starts fresh).
-// Reused by every image decoder when ImageBudget::canFit returns false.
+// Used by the Sixel and iTerm2 decoders when ImageBudget::canFit returns
+// false; an over-budget Kitty image gets an ENODATA reply instead.
 // Stays in pure ASCII so no UTF-8 decoder is needed on the print path.
 void TerminalGrid::writeInlineError(const QString &text) {
     CellAttrs saved = m_currentAttrs;
@@ -2690,8 +2679,8 @@ void TerminalGrid::resize(int rows, int cols) {
     // ANTS-1204 (indie-review #3 Lane A M1) — naming: m_scrollTop /
     // m_scrollBottom are LIVE values (whichever buffer is active);
     // m_altScrollTop / m_altScrollBottom are SAVED values for the
-    // OTHER buffer (set on alt-screen entry at handleCsi:632-633 from
-    // the primary's region; restored on exit at :704-705). So during
+    // OTHER buffer (set from the primary's region in enterAltScreen;
+    // restored in exitAltScreen). So during
     // alt-screen mode "live" = alt's region and "saved" = primary's
     // region; during primary mode it's the reverse. The conditional-
     // widen logic applies the same way to whichever pair is "live"
@@ -3069,8 +3058,8 @@ void TerminalGrid::resize(int rows, int cols) {
     // ANTS-1207 — pool entries are sized to old m_cols, so they only
     // need invalidation when cols actually changes. Pre-fix cleared
     // unconditionally; a pure rows-resize lost the pool's cached
-    // allocations for no reason. (m_cols was already updated above
-    // at line ~2589, so we compare to the snapshotted oldCols.)
+    // allocations for no reason. (m_cols was already updated above,
+    // so we compare to the snapshotted oldCols.)
     if (cols != oldCols) {
         m_freeCellBuffers.clear();
     }
@@ -3090,13 +3079,7 @@ void TerminalGrid::resize(int rows, int cols) {
     // startRow into scrollback would then pull it up to a different row
     // on the new screen. Close the active hyperlink for real here —
     // matches xterm's behaviour.
-    if (m_hyperlinkActive) {
-        m_hyperlinkActive  = false;
-        m_hyperlinkUri.clear();
-        m_hyperlinkId.clear();
-        m_hyperlinkStartRow = 0;
-        m_hyperlinkStartCol = 0;
-    }
+    dropActiveHyperlink();
     m_screenHyperlinks.resize(m_rows);
 
     // Reinitialize tab stops for new width
