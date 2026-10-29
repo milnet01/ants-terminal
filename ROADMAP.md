@@ -95557,7 +95557,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6122] **Readability fixes, roadmap-dialog lane: src/roadmapdialog.cpp, src/roadmapdialog.h.**
+- ✅ [ANTS-6122] **Readability fixes, roadmap-dialog lane: src/roadmapdialog.cpp, src/roadmapdialog.h.**
   Findings of the 2026-10-22 readability review (src run), lane roadmap-dialog:
   2 high, 14 medium, 10 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/13-roadmap-dialog.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95578,6 +95578,12 @@ worked after these.
   from presetName, F9 named count columns and kind span, F10-F15 and
   F23 comments. Queued: F4 ANTS-6216, F5 ANTS-6217, F6 ANTS-6218, F7
   ANTS-6219, F23 rename ANTS-6220. LOWs remain.
+  2026-10-29: LOWs done, 2f22925f. All ten fixed: stale memo keying,
+  <tr> card anchors, two misplaced comments, `table` verb, slugifyHeading
+  sentence, 8 MiB cap wording, three stale counts, fuzzy() renamed
+  normaliseForMatch(), the flag-vs-blocker note in showTabFilters, and
+  m_lastHtml now a plain QString. Every finding now fixed or queued
+  (F4-F7, F23 rename: ANTS-6216 to ANTS-6220).
   **Layman:** Tidy the roadmap window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
