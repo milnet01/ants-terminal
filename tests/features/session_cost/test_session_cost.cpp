@@ -187,6 +187,77 @@ TEST(SessionCost, Inv5NewestWhenUnnamed) {
     EXPECT_EQ(r.value("other_active_sessions").toInt(), 0);
 }
 
+namespace {
+
+// A session transcript and one helper agent's, with set mtimes.
+struct HelperFixture {
+    QTemporaryDir dir;
+    QString cwd = QStringLiteral("/p");
+    QString folder = dir.filePath(SessionCost::folderNameFor(cwd));
+    QString session = folder + "/main1234.jsonl";
+    QString helper = folder + "/main1234/subagents/agent-a7487c40babb.jsonl";
+    QDateTime now = QDateTime::currentDateTime();
+
+    bool write(qint64 sessionAgeSecs, qint64 helperAgeSecs) {
+        QByteArray h;  // a helper's own lines all carry isSidechain
+        h += line(assistant("h1", 1, 100, 0, 1, {}, true));
+        h += line(assistant("h2", 1, 300, 0, 1, {}, true));
+        return writeFile(session, line(assistant("m1", 1, 1, 1, 1)))
+            && writeFile(helper, h)
+            && age(session, sessionAgeSecs) && age(helper, helperAgeSecs);
+    }
+    bool age(const QString &path, qint64 secs) {
+        QFile f(path);
+        return f.open(QIODevice::ReadWrite)
+            && f.setFileTime(now.addSecs(-secs), QFileDevice::FileModificationTime);
+    }
+    QJsonObject run(const QString &id) {
+        const QJsonObject args = id.isEmpty() ? QJsonObject{}
+                                              : QJsonObject{{"session_id", id}};
+        return SessionCost::run({dir.path()}, cwd, args, now.toMSecsSinceEpoch());
+    }
+};
+
+}  // namespace
+
+// INV-7
+TEST(SessionCost, Inv7HelperTranscriptCountsItsOwnLines) {
+    HelperFixture f;
+    ASSERT_TRUE(f.write(60, 60));
+    const QJsonObject r = SessionCost::analyse(f.helper, 8);
+    EXPECT_EQ(r.value("requests").toInt(), 2);
+    EXPECT_EQ(r.value("context").toObject().value("peak").toInt(), 301);
+}
+
+// INV-8
+TEST(SessionCost, Inv8AgentIdReadsTheHelper) {
+    HelperFixture f;
+    ASSERT_TRUE(f.write(60, 60));
+    const QJsonObject r = f.run("agent-a7487c40babb");
+    ASSERT_TRUE(r.value("ok").toBool()) << r.value("error").toString().toStdString();
+    EXPECT_EQ(r.value("session_id").toString(), "agent-a7487c40babb");
+    EXPECT_EQ(r.value("parent_session_id").toString(), "main1234");
+    EXPECT_EQ(r.value("requests").toInt(), 2);
+    EXPECT_FALSE(r.value("session_inferred").toBool());
+    EXPECT_EQ(f.run("agent-ffffffffffff").value("code").toString(), "not_found");
+}
+
+// INV-9
+TEST(SessionCost, Inv9SelfIsTheNewestSessionOrHelper) {
+    HelperFixture f;
+    ASSERT_TRUE(f.write(120, 5));
+    QJsonObject r = f.run("self");
+    EXPECT_EQ(r.value("session_id").toString(), "agent-a7487c40babb");
+    EXPECT_TRUE(r.value("session_inferred").toBool());
+    EXPECT_EQ(r.value("other_active_sessions").toInt(), 1);
+    EXPECT_EQ(f.run(QString()).value("session_id").toString(), "main1234")
+        << "with no id, helpers are never read";
+
+    ASSERT_TRUE(f.age(f.session, 1));
+    r = f.run("self");
+    EXPECT_EQ(r.value("session_id").toString(), "main1234");
+}
+
 TEST(SessionCost, Inv6Registration) {
     const auto slurp = [](const char *rel) {
         std::ifstream f(std::string(ANTS_SRC_DIR) + rel);

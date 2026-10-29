@@ -106,6 +106,11 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
         return refuse("not_found",
                       QStringLiteral("session_cost: cannot read %1").arg(transcriptPath));
 
+    // ANTS-6189 — a helper agent's own transcript marks every line
+    // isSidechain; there those lines are the session itself, not a
+    // subagent's lines copied into a main transcript.
+    const bool sidechainIsOwn =
+        QFileInfo(transcriptPath).dir().dirName() == QLatin1String("subagents");
     QSet<QString> seen;
     QHash<QString, QString> toolNames;  // tool_use id -> tool name
     std::vector<Item> items;
@@ -116,7 +121,7 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
 
     while (!f.atEnd()) {
         const QJsonObject e = QJsonDocument::fromJson(f.readLine()).object();
-        if (e.value(QStringLiteral("isSidechain")).toBool())
+        if (!sidechainIsOwn && e.value(QStringLiteral("isSidechain")).toBool())
             continue;
         const QString type = e.value(QStringLiteral("type")).toString();
         if (type == QLatin1String("api-request-shape")) {
@@ -214,7 +219,9 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
                 const QJsonObject &args, qint64 nowMs) {
     static const QRegularExpression sid(QStringLiteral("^[0-9A-Za-z-]{8,64}$"));
     const QString sessionId = args.value(QStringLiteral("session_id")).toString();
-    if (args.contains(QStringLiteral("session_id")) && !sid.match(sessionId).hasMatch())
+    const bool self = sessionId == QLatin1String("self");
+    if (args.contains(QStringLiteral("session_id")) && !self
+        && !sid.match(sessionId).hasMatch())
         return refuse("bad_args",
                       QStringLiteral("session_cost: session_id \"%1\" is not a session id")
                           .arg(sessionId));
@@ -239,17 +246,43 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
         return refuse("not_found",
                       QStringLiteral("session_cost: no transcript folder for %1").arg(cwd));
 
+    // ANTS-6189 — helper agents' transcripts: <session>/subagents/agent-<id>.jsonl.
+    const auto agentTranscripts = [&folder](const QString &glob) {
+        QFileInfoList out;
+        const QStringList sessions =
+            QDir(folder).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QString &s : sessions)
+            out += QDir(QDir(folder).filePath(s + QStringLiteral("/subagents")))
+                       .entryInfoList({glob}, QDir::Files);
+        return out;
+    };
+
     QString path;
     bool inferred = false;
     int othersActive = 0;
-    if (!sessionId.isEmpty()) {
+    if (sessionId.startsWith(QLatin1String("agent-"))) {
+        const QFileInfoList hit = agentTranscripts(sessionId + QStringLiteral(".jsonl"));
+        if (hit.isEmpty())
+            return refuse("not_found",
+                          QStringLiteral("session_cost: no helper-agent transcript %1 "
+                                         "under %2").arg(sessionId, folder));
+        path = hit.first().absoluteFilePath();
+    } else if (!sessionId.isEmpty() && !self) {
         path = QDir(folder).filePath(sessionId + QStringLiteral(".jsonl"));
         if (!QFileInfo(path).isFile())
             return refuse("not_found",
                           QStringLiteral("session_cost: no transcript %1").arg(path));
     } else {
-        const QFileInfoList all = QDir(folder).entryInfoList(
-            {QStringLiteral("*.jsonl")}, QDir::Files, QDir::Time);
+        // No id: the newest session. "self": the newest session or helper
+        // agent, which is the caller when it is the one writing now; every
+        // agent shares one MCP connection, so nothing names it better.
+        QFileInfoList all = QDir(folder).entryInfoList(
+            {QStringLiteral("*.jsonl")}, QDir::Files);
+        if (self)
+            all += agentTranscripts(QStringLiteral("agent-*.jsonl"));
+        std::stable_sort(all.begin(), all.end(), [](const QFileInfo &a, const QFileInfo &b) {
+            return a.lastModified() > b.lastModified();
+        });
         if (all.isEmpty())
             return refuse("not_found",
                           QStringLiteral("session_cost: no transcript in %1").arg(folder));
@@ -264,6 +297,9 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
     if (!r.value(QStringLiteral("ok")).toBool())
         return r;
     r[QStringLiteral("session_id")] = QFileInfo(path).completeBaseName();
+    if (QFileInfo(path).dir().dirName() == QLatin1String("subagents"))
+        r[QStringLiteral("parent_session_id")] =
+            QFileInfo(QFileInfo(path).path()).dir().dirName();
     r[QStringLiteral("transcript")] = path;
     r[QStringLiteral("session_inferred")] = inferred;
     if (inferred)

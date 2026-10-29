@@ -14498,7 +14498,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "holds (tool results by tool, text blocks; bytes). Images "
                         "are counted, not sized. Without session_id it reads the "
                         "newest transcript for caller_cwd and says "
-                        "session_inferred. Refusals: bad_args, not_found, "
+                        "session_inferred. session_id \"agent-<id>\" reads a helper "
+                        "agent's transcript; \"self\" reads the newest session or "
+                        "helper agent, the caller when it is the one writing "
+                        "(also inferred). Refusals: bad_args, not_found, "
                         "no_project. caller_cwd Required.");
                     QJsonObject schema;
                     schema["type"] = "object";
@@ -14514,8 +14517,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"] = "string";
                         p["description"] = QStringLiteral(
-                            "The session to read (its transcript's file name); "
-                            "default the newest one.");
+                            "Session to read: a transcript name, \"agent-<id>\" for a "
+                            "helper agent, or \"self\". Default: the newest session.");
                         props["session_id"] = p;
                     }
                     {

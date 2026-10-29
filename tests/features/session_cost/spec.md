@@ -17,7 +17,9 @@ on its next `/mcp` reconnect; no terminal relaunch.
 - `session_id` (optional) names the transcript. Absent, the newest
   transcript in the folder is read, the reply says `session_inferred: true`,
   and `other_active_sessions` counts the folder's other transcripts written
-  in the last ten minutes.
+  in the last ten minutes. `"agent-<id>"` reads a helper agent's transcript,
+  `<folder>/<session>/subagents/agent-<id>.jsonl`. `"self"` reads the
+  newest transcript among the sessions and their helper agents (ANTS-6189).
 - `top` (optional, default 8, 1 to 50) caps each list.
 
 ## Invariants
@@ -47,5 +49,18 @@ on its next `/mcp` reconnect; no terminal relaunch.
   `CallerCwdContract::Required`, has a `callerCwdContractFor` branch, and
   its schema sets `additionalProperties` false.
   *Test:* `SessionCost.Inv6Registration`.
+- **INV-7** — in a transcript under a `subagents` folder, `isSidechain`
+  lines are counted: they are that helper agent's own.
+  *Test:* `SessionCost.Inv7HelperTranscriptCountsItsOwnLines`.
+- **INV-8** — `session_id` `"agent-<id>"` reads that helper's transcript;
+  the reply adds `parent_session_id`. No such helper refuses `not_found`.
+  *Test:* `SessionCost.Inv8AgentIdReadsTheHelper`.
+- **INV-9** — `session_id` `"self"` reads the newest transcript among the
+  folder's sessions and helper agents, with `session_inferred` true and
+  `other_active_sessions` counted over both. Every agent of a session shares
+  one MCP connection, so the verb cannot name the caller; the newest
+  transcript is the caller's when the caller is the one writing. With no
+  `session_id`, helper agents are never read.
+  *Test:* `SessionCost.Inv9SelfIsTheNewestSessionOrHelper`.
 
 Label: `features;fast`.
