@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6290 -->
+<!-- ants-roadmap-id-high-water: ANTS=6293 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69442,6 +69442,23 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-10-19.
   Lanes: claude-integration.
 
+- 📋 [ANTS-6293] **Status bar shows "Claude: idle" while a skill runs as a background agent.**
+  User report 2026-10-29, screenshot of the DOOM Ants tab (terminal
+  0.7.114, built 2026-10-29 06:04). The transcript shows
+  `Skill(code-review)` with "Running in the background", then
+  "Waiting for 1 background agent to finish"; Claude Code's own footer
+  shows "1 agent" and "code-review Reading PR 1's i_video.c diff". The
+  status bar reads "Claude: idle", not ANTS-5773's "waiting on
+  background work (1)", and the tab dot is not the background pink.
+  Check how ClaudeBgTaskTracker recognises an agent started by the
+  Skill tool (a skill that runs in the background returns only the
+  agent's name), versus one started by the Agent tool. Possible
+  regression of ANTS-5773.
+  **Layman:** A tab waiting on a background code review still says Claude is idle, so it looks finished when it is not.
+  Kind: investigate.
+  Source: user-request-2026-10-29.
+  Lanes: claudebgtasks, claudestateresolver, claudestatuswidgets.
+
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
 - ✅ [ANTS-4254] **Single round dot per tab, colour-only differentiation, palette extended to status bar.**
@@ -95922,6 +95939,13 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: all HIGH (F1-F6) done.
+  2026-10-29: MEDIUMs F7-F10, F12, F13 done. F9 (and F8 with it):
+  one writeFileAtomicOwnerOnly in src/secureio.h for Config::save,
+  writeBlob and saveTabOrder; four text-reading tests and their specs
+  now pin it. F10: configpaths.h header corrected; the split itself
+  queued as ANTS-6291. F11 open: waits on a user decision (do settings
+  changed after a failed config load apply for the session or not?).
+  LOWs F14-F26 open.
   **Layman:** Tidy settings, saved sessions and project settings so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97395,6 +97419,21 @@ worked after these.
   Kind: enhancement.
   Source: self-found 2026-10-24 (ANTS-6137 lane).
   Lanes: mcp.
+
+- 📋 [ANTS-6291] **Hook scripts ignore XDG_CONFIG_HOME while config.json honours it.**
+  From L34-F10. ConfigPaths::antsConfigHome() hard-codes
+  ~/.config/ants-terminal; Config::configPath() uses
+  QStandardPaths::ConfigLocation, which follows XDG_CONFIG_HOME.
+  Not fixed in the readability pass: moving the hooks folder changes a
+  path specs name (ANTS-1897, tests/features/claude_git_context_hook/
+  spec.md), and src/mcporientation.cpp resolves the same folder by
+  hand. Hazard: a moved folder leaves ~/.claude/settings.json pointing
+  at the old scripts. Decide the one rule, amend those specs, then move
+  both to it. configpaths.h's header now states the split.
+  **Layman:** With a custom config folder set, the terminal's settings and its Claude hook scripts end up in two different places.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: config-session-project.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -101279,6 +101318,24 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   **Layman:** Three code comments in the MCP layer describe behaviour the code no longer has, which would mislead the next person editing it.
   Kind: doc-fix.
   Source: code-review-2026-10-29.
+
+- 📋 [ANTS-6292] **source_scrapes misses a test that reads source through its own __FILE__-relative helper.**
+  Seen 2026-10-29 closing L34-F9. source_scrapes on
+  src/sessionmanager.cpp did not list
+  tests/features/session_save_worker/test_session_save_worker.cpp,
+  which reads it with a local `source("sessionmanager.cpp")` that
+  opens `__FILE__/../../../src/<rel>`, then pins
+  `::fsync(file.handle())`, `std::rename(` and more inside
+  `body(src, "bool SessionManager::writeBlob(")`. A workspace_search
+  for `writeBlob` found it. Teach the scanner that helper shape, or
+  report readers it cannot resolve.
+  Second instance, same day: tests/features/session_save_guards/
+  test_session_save_guards.cpp reads src/sessionmanager.cpp through a
+  local source() of the same shape. The full suite caught it; neither
+  source_scrapes nor the up-front search did.
+  **Layman:** The tool that lists which tests read a source file missed one, so an edit nearly broke a test nobody was warned about.
+  Kind: fix.
+  Source: session-2026-10-29-L34.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

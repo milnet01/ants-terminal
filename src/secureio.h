@@ -9,6 +9,8 @@
 #include <QStringList>
 
 #include <cerrno>
+#include <cstdio>
+#include <cstring>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -91,6 +93,72 @@ inline bool fsyncParentDir(const QString &filePath) {
     const int rc = ::fsync(dirfd);
     ::close(dirfd);
     return rc == 0;
+}
+
+// The safe write every owner-only file shares: create `tmpPath` 0600, write
+// `data`, flush and fsync it, rename it over `path`, re-chmod `path`, fsync
+// the folder. True once `path` holds `data`. On false the temp file is gone,
+// the previous `path` is unchanged, and the reason is logged and, when `why`
+// is given, stored there. `what` names the file in the log.
+//   - fsync before rename (0.6.28): without it a crash can leave a
+//     zero-length file after the rename.
+//   - std::rename, not QFile::rename (0.7.12, 0.7.52): QFile::rename will not
+//     replace an existing file, so every save after the first was lost.
+//   - chmod after rename: FAT/exFAT/SMB/NFS can drop the temp file's 0600.
+//     Warn only: the new file is already in place.
+//   - fsyncParentDir (ANTS-1141): makes the rename itself survive a crash.
+// `tempPerms` is the ANTS-5151 policy for a temp file that cannot be made
+// owner-only: Refuse writes nothing, Warn logs and carries on.
+enum class TempPerms { Refuse, Warn };
+
+[[nodiscard]] inline bool writeFileAtomicOwnerOnly(const QString &path,
+                                                   const QString &tmpPath,
+                                                   const QByteArray &data,
+                                                   const char *what,
+                                                   TempPerms tempPerms,
+                                                   QString *why = nullptr) {
+    const auto fail = [&](const QString &reason) {
+        const QString msg = QStringLiteral("%1: %2 — not saved, %3 unchanged")
+                                .arg(QLatin1String(what), reason, path);
+        qWarning("%s", qUtf8Printable(msg));
+        if (why) *why = msg;
+        return false;
+    };
+    QFile file;
+    if (!openOwnerOnlyForWrite(file, tmpPath)) {
+        const int err = errno;
+        return fail(QStringLiteral("could not open %1 (%2)")
+                        .arg(tmpPath, QString::fromLocal8Bit(std::strerror(err))));
+    }
+    if (!setOwnerOnlyPerms(file)) {
+        if (tempPerms == TempPerms::Refuse) {
+            file.close();
+            QFile::remove(tmpPath);
+            return fail(QStringLiteral("could not make %1 owner-only").arg(tmpPath));
+        }
+        warnNotOwnerOnly(tmpPath, what);
+    }
+    if (file.write(data) != data.size() || !file.flush()) {
+        const QString err = file.errorString();
+        file.close();
+        QFile::remove(tmpPath);
+        return fail(QStringLiteral("write to %1 failed (%2)").arg(tmpPath, err));
+    }
+    ::fsync(file.handle());
+    file.close();
+    const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
+                               path.toLocal8Bit().constData());
+    if (rc != 0) {
+        const int err = errno;
+        QFile::remove(tmpPath);
+        return fail(QStringLiteral("rename(%1 -> %2) failed: errno=%3 (%4), tmp removed")
+                        .arg(tmpPath, path, QString::number(err),
+                             QString::fromLocal8Bit(std::strerror(err))));
+    }
+    if (!setOwnerOnlyPerms(path))
+        warnNotOwnerOnly(path, what);
+    fsyncParentDir(path);
+    return true;
 }
 
 // ANTS-1132 — defence-in-depth before unlinking a Unix-domain socket

@@ -3,9 +3,9 @@
 // Source-grep test (no Qt link). Five persistence sites must keep
 // both the pre-write fd chmod AND the post-rename path chmod.
 //
-//   I1: src/config.cpp Config::save — chmod after std::rename success.
-//   I2: src/sessionmanager.cpp saveSession + saveTabOrder — chmod
-//       after QFile::rename success.
+//   I1: src/secureio.h writeFileAtomicOwnerOnly — chmod after
+//       std::rename success.
+//   I2: src/config.cpp and src/sessionmanager.cpp write through it.
 //   I3: src/settingsdialog.cpp installClaudeHooks +
 //       installClaudeGitContextHook — chmod after settingsOut.commit().
 //   I4: every site retains the pre-write fd chmod.
@@ -18,6 +18,9 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#ifndef SRC_SECUREIO_H_PATH
+#  error "SRC_SECUREIO_H_PATH compile definition required"
+#endif
 #ifndef SRC_CONFIG_CPP_PATH
 #  error "SRC_CONFIG_CPP_PATH compile definition required"
 #endif
@@ -46,66 +49,41 @@ int countOccurrences(const std::string &haystack, const std::string &needle) {
     return n;
 }
 
-void checkConfigCpp() {
-    const std::string src = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
+void checkSharedWriter() {
+    const std::string src = ants_test::slurpFile(SRC_SECUREIO_H_PATH);
+    const size_t fnIdx = src.find("inline bool writeFileAtomicOwnerOnly(");
+    expect(fnIdx != std::string::npos, "I1/shared-writer-present");
+    if (fnIdx == std::string::npos) return;
+    const std::string body = src.substr(fnIdx);
 
     // I4 — pre-write fd chmod retained.
-    expect(src.find("setOwnerOnlyPerms(file)") != std::string::npos,
-           "I4/config-pre-write-fd-chmod-retained");
-
-    // I1 — post-rename chmod present.
-    const size_t renameIdx = src.find("std::rename");
-    const size_t chmodPathIdx = src.find("setOwnerOnlyPerms(path)");
-    expect(renameIdx != std::string::npos && chmodPathIdx != std::string::npos,
-           "I1/config-both-rename-and-post-chmod-present");
-    expect(renameIdx < chmodPathIdx,
-           "I1/config-chmod-after-rename-call",
-           "expected std::rename before setOwnerOnlyPerms(path)");
-
-    // I1 (gating) — the chmod must be inside the success branch
-    // (the `else` of `if (rc != 0)`). Look for the `if (rc != 0)`
-    // anchor and confirm the chmod appears after it AND between it
-    // and the next `}` that closes the file-write block.
-    const size_t failBranchIdx = src.find("if (rc != 0)");
-    expect(failBranchIdx != std::string::npos,
-           "I1/config-rename-failure-branch-still-present");
-    expect(failBranchIdx < chmodPathIdx,
-           "I1/config-chmod-after-failure-branch",
-           "expected the rename-failure branch (`if (rc != 0)`) "
-           "to precede the post-rename chmod (chmod is in the else)");
+    const size_t fdIdx = body.find("setOwnerOnlyPerms(file)");
+    // I1 — post-rename chmod, after the rename-failure branch returns.
+    const size_t renameIdx = body.find("std::rename(tmpPath.toLocal8Bit().constData()");
+    const size_t failBranchIdx = body.find("if (rc != 0)");
+    const size_t chmodPathIdx = body.find("setOwnerOnlyPerms(path)");
+    expect(fdIdx != std::string::npos, "I4/shared-writer-pre-write-fd-chmod");
+    expect(renameIdx != std::string::npos && failBranchIdx != std::string::npos
+               && chmodPathIdx != std::string::npos,
+           "I1/shared-writer-rename-failure-branch-and-chmod-present");
+    expect(fdIdx < renameIdx && renameIdx < failBranchIdx
+               && failBranchIdx < chmodPathIdx,
+           "I1/shared-writer-order",
+           "expected fd chmod, std::rename, `if (rc != 0)`, then "
+           "setOwnerOnlyPerms(path)");
 }
 
-void checkSessionManager() {
-    const std::string src = ants_test::slurpFile(SRC_SESSIONMANAGER_CPP_PATH);
-
-    // I4 — both writers retain pre-write fd chmod.
-    int fdCount = countOccurrences(src, "setOwnerOnlyPerms(file)");
+void checkCallers() {
     char buf[64];
-    std::snprintf(buf, sizeof(buf), "got %d", fdCount);
-    expect(fdCount >= 2,
-           "I4/sessionmanager-pre-write-fd-chmod-twice", buf);
+    const std::string cfg = ants_test::slurpFile(SRC_CONFIG_CPP_PATH);
+    int n = countOccurrences(cfg, "writeFileAtomicOwnerOnly(");
+    std::snprintf(buf, sizeof(buf), "got %d", n);
+    expect(n >= 1, "I2/config-writes-through-shared-writer", buf);
 
-    // I2 — post-rename chmod for both writers.
-    int pathChmodCount = countOccurrences(src, "setOwnerOnlyPerms(path)");
-    std::snprintf(buf, sizeof(buf), "got %d", pathChmodCount);
-    expect(pathChmodCount >= 2,
-           "I2/sessionmanager-post-rename-chmod-twice", buf);
-
-    // I2 (gating) — chmod must be gated on rename success. 0.7.52
-    // switched both saveSession + saveTabOrder from QFile::rename to
-    // std::rename (POSIX rename(2)) — QFile::rename refuses to
-    // overwrite an existing destination on POSIX, which broke every
-    // session save after the first. Accept either spelling for the
-    // gating assertion: the key invariant is that chmod runs ONLY
-    // when the rename returned 0 / succeeded.
-    const bool gatedQt  =
-        src.find("if (QFile::rename(tmpPath, path))") != std::string::npos;
-    const bool gatedStd =
-        src.find("std::rename(tmpPath.toLocal8Bit().constData()") != std::string::npos
-        && src.find("if (rc == 0)") != std::string::npos;
-    expect(gatedQt || gatedStd,
-           "I2/sessionmanager-rename-success-gated",
-           "expected either QFile::rename gating OR std::rename + rc==0 gating");
+    const std::string sm = ants_test::slurpFile(SRC_SESSIONMANAGER_CPP_PATH);
+    n = countOccurrences(sm, "writeFileAtomicOwnerOnly(");
+    std::snprintf(buf, sizeof(buf), "got %d", n);
+    expect(n >= 2, "I2/sessionmanager-writes-through-shared-writer-twice", buf);
 }
 
 void checkSettingsDialog() {
@@ -146,8 +124,8 @@ void checkSettingsDialog() {
 
 static int runMain() {
     expect_reset();
-    checkConfigCpp();
-    checkSessionManager();
+    checkSharedWriter();
+    checkCallers();
     checkSettingsDialog();
 
     return expect_finish();

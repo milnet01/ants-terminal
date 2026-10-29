@@ -69,8 +69,8 @@ properly on close — a stale-lock regression would manifest here.
 `ConfigWriteLock writeLock(path, …)` and check `acquired()`, with
 an early return if the lock could not be acquired (ANTS-5106: that
 return schedules a retry). The lock must be in scope for the
-write+rename window — i.e. declared before the temp file's
-`openOwnerOnlyForWrite(file, tmpPath)`, so the destructor releases
+write+rename window — i.e. declared before the call to
+`writeFileAtomicOwnerOnly(path, tmpPath, …)`, so the destructor releases
 AFTER the rename completes.
 
 ### Invariant 4 — ClaudeAllowlistDialog::saveSettings acquires the lock

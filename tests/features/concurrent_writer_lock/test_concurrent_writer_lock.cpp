@@ -130,11 +130,10 @@ void sourceGrepTests() {
         expect(src.find("ConfigWriteLock writeLock(path") != std::string::npos,
                "I3/config-save-constructs-lock");
         // Lock construction must precede the actual write so the
-        // lock covers the whole rename window. We anchor on the temp
-        // file's open (ANTS-5106: openOwnerOnlyForWrite replaced the
-        // QFile(tmpPath) construction this used to anchor on).
+        // lock covers the whole rename window. We anchor on the call to
+        // the shared safe-write helper, which opens the temp file.
         const size_t lockIdx = src.find("ConfigWriteLock writeLock(path");
-        const size_t writeIdx = src.find("openOwnerOnlyForWrite(file, tmpPath)");
+        const size_t writeIdx = src.find("writeFileAtomicOwnerOnly(path, tmpPath");
         expect(lockIdx != std::string::npos &&
                    writeIdx != std::string::npos &&
                    lockIdx < writeIdx,

@@ -21,8 +21,9 @@ tab once, then false.
 **INV-5 — the blob is private without touching the umask.** The written
 blob is mode 0600, and the process umask is unchanged by a save.
 
-**INV-6 — the durability order is unchanged.** Source-scrape of
-`SessionManager::writeBlob`: `fsync` of the temp file, then `std::rename`,
+**INV-6 — the durability order is unchanged.** `SessionManager::writeBlob`
+calls `writeFileAtomicOwnerOnly` (`src/secureio.h`). Source-scrape of that
+function: `fsync` of the temp file, then `std::rename`,
 then the post-rename `setOwnerOnlyPerms(path)`, then `fsyncParentDir`.
 `saveSessionAsync` writes through `writeBlob` and `seal`, and never calls
 `umask`.

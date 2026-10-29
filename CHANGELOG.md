@@ -301,6 +301,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Settings and saved tab scrollback keep the previous file when the disk does not take the whole new one.** (ANTS-6143)
+  config.json, session blobs and tab_order.txt now share one safe-write
+  routine, so all three check the final flush before replacing the old
+  file. Only the tab order did before.
+
 - **The thinking-level chip reads past a user line whose only text block is empty, to the prompt behind it.** (ANTS-6142)
 
 - **Closing a tab while it is still starting, or clicking its row in the tab list just after it closes, is safe** (PR #1)

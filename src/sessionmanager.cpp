@@ -18,12 +18,6 @@
 #include <QStandardPaths>
 
 #include <algorithm>
-#include <cerrno>
-#include <cstdio>      // std::rename — atomic POSIX-compliant overwrite
-#include <cstring>     // std::strerror
-#include <fcntl.h>     // open — the temp blob is created 0600
-#include <sys/stat.h>
-#include <unistd.h>    // fsync — durability guarantee before atomic rename
 
 QString SessionManager::sessionDir() {
     QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
@@ -326,6 +320,15 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     // rejection is diagnosable instead of a silent empty restore.
     constexpr int kMaxRestoreRows = 2000;
     constexpr int kMaxRestoreCols = 4000;
+    // Per-record caps on the rest of the stream. A line may be wider than
+    // the grid it was saved from, so its cap stays at or above the column cap.
+    constexpr int kMaxRestoreLineCells = 10000;
+    static_assert(kMaxRestoreLineCells >= kMaxRestoreCols);
+    // Equals the top of Config::scrollbackLines(); raise the two together, or
+    // restore refuses a tab saved with the larger setting.
+    constexpr int kMaxRestoreScrollbackLines = 1000000;
+    constexpr int kMaxRestoreCombiningCells = 10000;  // per line
+    constexpr int kMaxRestoreCombiningMarks = 8;      // per cell
     if (rows <= 0 || rows > kMaxRestoreRows || cols <= 0 || cols > kMaxRestoreCols) {
         qWarning("sessionmanager: refusing restore with out-of-range dimensions %dx%d (max %dx%d)",
                  rows, cols, kMaxRestoreRows, kMaxRestoreCols);
@@ -363,11 +366,11 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     auto readCombining = [&in](std::unordered_map<int, std::vector<uint32_t>> &combining) -> bool {
         int32_t combCount;
         in >> combCount;
-        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > 10000) return false;
+        if (in.status() != QDataStream::Ok || combCount < 0 || combCount > kMaxRestoreCombiningCells) return false;
         for (int j = 0; j < combCount; ++j) {
             int32_t col, cpCount;
             in >> col >> cpCount;
-            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > 8) return false;
+            if (in.status() != QDataStream::Ok || cpCount < 0 || cpCount > kMaxRestoreCombiningMarks) return false;
             std::vector<uint32_t> cps;
             cps.reserve(cpCount);
             for (int k = 0; k < cpCount; ++k) {
@@ -385,14 +388,14 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     // Read and restore scrollback lines
     int32_t sbSize;
     in >> sbSize;
-    if (in.status() != QDataStream::Ok || sbSize < 0 || sbSize > 1000000) return false;
+    if (in.status() != QDataStream::Ok || sbSize < 0 || sbSize > kMaxRestoreScrollbackLines) return false;
 
     std::vector<TermLine> scrollback;
     for (int i = 0; i < sbSize; ++i) {
         int32_t cellCount;
         bool wrapped;
         in >> cellCount >> wrapped;
-        if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > 10000) return false;
+        if (in.status() != QDataStream::Ok || cellCount < 0 || cellCount > kMaxRestoreLineCells) return false;
 
         TermLine line;
         line.softWrapped = wrapped;
@@ -419,7 +422,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     for (int row = 0; row < screenRows && row < rows; ++row) {
         int32_t colCount;
         in >> colCount;
-        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
+        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > kMaxRestoreLineCells) return false;
 
         screen.emplace_back();
         TermLine &screenLine = screen.back();
@@ -438,7 +441,7 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
     for (int row = rows; row < screenRows; ++row) {
         int32_t colCount;
         in >> colCount;
-        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > 10000) return false;
+        if (in.status() != QDataStream::Ok || colCount < 0 || colCount > kMaxRestoreLineCells) return false;
         for (int col = 0; col < colCount; ++col) {
             Cell skip;
             if (!readCell(skip)) return false;
@@ -562,84 +565,11 @@ void SessionManager::waitForPendingSaves() {
 
 bool SessionManager::writeBlob(const QString &path, const QString &tmpPath,
                                const QByteArray &data) {
-    // ANTS-5131 — created 0600 by open(2) rather than under umask(0077):
-    // the umask is process-wide, and this may run off the GUI thread while
-    // saveTabOrder or Config::save sets and restores it.
-    const int fd = ::open(tmpPath.toLocal8Bit().constData(),
-                          O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
-    if (fd < 0) {
-        // ANTS-5106 — a failed temp open was silent; the save just did not
-        // happen.
-        qWarning("SessionManager::saveSession: could not open %s: %s — not "
-                 "saved, prior blob unchanged",
-                 qUtf8Printable(tmpPath), std::strerror(errno));
-        return false;
-    }
-    QFile file;
-    if (!file.open(fd, QIODevice::WriteOnly, QFileDevice::AutoCloseHandle)) {
-        ::close(fd);
-        QFile::remove(tmpPath);
-        return false;
-    }
-    // ANTS-5151 — scrollback: the temp blob is private or not written,
-    // and the previous blob stays in place. O_TRUNC keeps the mode of a
-    // temp file a killed save left behind, so this still matters.
-    if (!setOwnerOnlyPerms(file)) {
-        qWarning("SessionManager::saveSession: could not make %s owner-only "
-                 "— not saved, prior blob unchanged", qUtf8Printable(tmpPath));
-        file.close();
-        QFile::remove(tmpPath);
-        return false;
-    }
-    if (file.write(data) != data.size()) {
-        file.close();
-        QFile::remove(tmpPath);
-        return false;
-    }
-    // fsync before rename — see Config::save for rationale.
-    // Scrollback blobs are worth durability; losing a session
-    // from the last 200 ms of the previous run to a kernel
-    // crash is a worse outcome than the one-syscall cost.
-    ::fsync(file.handle());
-    file.close();
-    // 0.7.52 (2026-04-27 indie-review CRITICAL — silent data
-    // loss). Was QFile::rename, which on every POSIX target
-    // refuses to overwrite an existing destination — every
-    // session save AFTER the first silently failed (the .dat
-    // file held the original snapshot, .dat.tmp accumulated
-    // each new write). User scrollback never updated past the
-    // first save. std::rename mirrors POSIX rename(2) which
-    // atomically replaces the destination, matching Config's
-    // 0.7.12 fix. Log the errno on failure (ENOSPC, EACCES,
-    // EXDEV) and remove the orphaned .tmp so the disk doesn't
-    // accumulate corpses across session lifetimes.
-    const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
-                               path.toLocal8Bit().constData());
-    if (rc == 0) {
-        // Post-rename chmod: rename(2) preserves perms on
-        // most local FS, but FAT/exFAT/SMB/NFS edge cases or
-        // Qt's copy+unlink fallback can drop the 0600 set on
-        // the temp fd. Session blobs may hold scrollback
-        // content (passwords mistyped at the prompt, ssh
-        // command history, paste buffers); re-chmod the
-        // final inode.
-        // ANTS-5151 — warn, never delete: the blob is already in
-        // place, and removing it would lose this tab's scrollback.
-        if (!setOwnerOnlyPerms(path))
-            warnNotOwnerOnly(path, "session");
-        // ANTS-1141 — fsync parent dir for crash-safe
-        // rename durability (Postgres pattern). See
-        // Config::save for the full rationale.
-        fsyncParentDir(path);
-        return true;
-    }
-    qWarning("SessionManager::saveSession rename(%s -> %s) "
-             "failed: errno=%d (%s) — prior session blob "
-             "unchanged, tmp removed",
-             qUtf8Printable(tmpPath), qUtf8Printable(path),
-             errno, std::strerror(errno));
-    QFile::remove(tmpPath);
-    return false;
+    // ANTS-5151 — scrollback: the temp blob is private or not written, and
+    // the previous blob stays in place. O_TRUNC keeps the mode of a temp file
+    // a killed save left behind, so the check still matters.
+    return writeFileAtomicOwnerOnly(path, tmpPath, data, "session",
+                                    TempPerms::Refuse);
 }
 
 bool SessionManager::loadSession(const QString &tabId, TerminalGrid *grid,
@@ -686,58 +616,16 @@ void SessionManager::saveTabOrder(const QStringList &tabIds, int activeIndex) {
     QString path = sessionDir() + "/tab_order.txt";
     // ANTS-5106 — per-process temp name; see saveSession.
     QString tmpPath = path + QStringLiteral(".%1.tmp").arg(QCoreApplication::applicationPid());
-    // ANTS-5106 — created 0600 directly; no process-wide umask window.
-    QFile file;
-    if (openOwnerOnlyForWrite(file, tmpPath)) {
-        if (!setOwnerOnlyPerms(file))
-            warnNotOwnerOnly(tmpPath, "session tab order");
-        // First line: active tab index
-        QByteArray body = QStringLiteral("active:%1\n").arg(activeIndex).toUtf8();
-        for (const QString &id : tabIds) {
-            body += id.toUtf8();
-            body += '\n';
-        }
-        // ANTS-5106 — a short write or failed flush (a full disk) used to be
-        // renamed over the good tab order anyway.
-        if (file.write(body) != body.size() || !file.flush()) {
-            qWarning("SessionManager::saveTabOrder: write to %s failed (%s) — "
-                     "prior tab_order.txt unchanged",
-                     qUtf8Printable(tmpPath), qUtf8Printable(file.errorString()));
-            file.close();
-            QFile::remove(tmpPath);
-            return;
-        }
-        // fsync after flush — flush is Qt-layer (kernel-layer not guaranteed).
-        // tab_order.txt is what anchors session restore order: if this file
-        // is missing or empty after a crash, saved session blobs orphan.
-        ::fsync(file.handle());
-        file.close();
-        // 0.7.52 — same QFile::rename → std::rename fix as saveSession.
-        // tab_order.txt was even worse: QFile::rename failing meant the
-        // FIRST run's tab order was the only one ever persisted. Every
-        // tab open/close/reorder thereafter looked like it saved but
-        // restoring a future session resurrected the original layout.
-        const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
-                                   path.toLocal8Bit().constData());
-        if (rc == 0) {
-            if (!setOwnerOnlyPerms(path))
-                warnNotOwnerOnly(path, "session tab order");
-            // ANTS-1141 — fsync parent dir; see Config::save.
-            fsyncParentDir(path);
-        } else {
-            qWarning("SessionManager::saveTabOrder rename(%s -> %s) "
-                     "failed: errno=%d (%s) — prior tab_order.txt "
-                     "unchanged, tmp removed",
-                     qUtf8Printable(tmpPath), qUtf8Printable(path),
-                     errno, std::strerror(errno));
-            QFile::remove(tmpPath);
-        }
-    } else {
-        // ANTS-5106 — a failed temp open was silent.
-        qWarning("SessionManager::saveTabOrder: could not open %s (%s) — "
-                 "prior tab_order.txt unchanged",
-                 qUtf8Printable(tmpPath), std::strerror(errno));
+    // First line: active tab index
+    QByteArray body = QStringLiteral("active:%1\n").arg(activeIndex).toUtf8();
+    for (const QString &id : tabIds) {
+        body += id.toUtf8();
+        body += '\n';
     }
+    // tab_order.txt anchors restore order: lost after a crash, every saved
+    // session blob is orphaned.
+    (void)writeFileAtomicOwnerOnly(path, tmpPath, body, "session tab order",
+                                   TempPerms::Warn);
 }
 
 bool SessionManager::hasTabOrder() {

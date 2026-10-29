@@ -1,13 +1,12 @@
 #pragma once
 
-// ConfigPaths — single source of truth for filesystem locations this
-// project reads/writes under the user's home directory. Introduced in
-// 0.7.9 to consolidate the ~/.config/ants-terminal/... and ~/.claude/...
-// strings that were duplicated across 4 files (claudeintegration.cpp,
-// settingsdialog.cpp, claudeallowlist.cpp, mainwindow.cpp).
+// ConfigPaths — the ~/.claude/... and ~/.config/ants-terminal/hooks/...
+// locations this project reads and writes, each named once.
 //
-// A future XDG-respect pass (honoring XDG_CONFIG_HOME / XDG_DATA_HOME
-// instead of hard-coding ~/.config) will have one call site to update.
+// Not config.json: Config::configPath() finds that through
+// QStandardPaths, so it follows XDG_CONFIG_HOME. antsConfigHome() below
+// is always ~/.config/ants-terminal, so with XDG_CONFIG_HOME set the
+// hooks folder and config.json are in different places (ANTS-6291).
 //
 // Paths are returned as absolute QStrings. Callers are responsible for
 // ensuring the directory exists (QDir::mkpath) before writing.

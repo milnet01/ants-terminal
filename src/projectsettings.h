@@ -1,6 +1,6 @@
-// ANTS-2160 — per-project settings file (.ants/project.json) pure loader.
-// Qt6::Core-only, FS-reading, no widgets / no subprocess (mirrors
-// findsources.cpp / codebaseindex.cpp). Lets a project declare where its
+// ANTS-2160 — per-project settings file (.ants/project.json) loader.
+// Qt6::Core-only and no widgets. It reads the file system, and detect() also
+// runs `git check-ignore` (gitIgnoredPaths). Lets a project declare where its
 // source / docs / roadmap / changelog / specs live so the MCP read verbs
 // stop guessing on a non-src/ layout. See docs/specs/ANTS-2160.md.
 

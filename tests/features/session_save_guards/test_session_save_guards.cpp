@@ -9,9 +9,9 @@
 
 namespace {
 
-QString source() {
+QString source(const char *rel = "sessionmanager.cpp") {
     QFile f(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
-            + QStringLiteral("/../../../src/sessionmanager.cpp"));
+            + QStringLiteral("/../../../src/") + QString::fromLatin1(rel));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
     return QString::fromUtf8(f.readAll());
 }
@@ -40,9 +40,13 @@ TEST(SessionSaveGuards, TempNamesArePerProcess) {
 
 // INV-2
 TEST(SessionSaveGuards, TabOrderChecksItsWrite) {
-    const QString b = body(source(), QStringLiteral("void SessionManager::saveTabOrder("));
+    const QString tabOrder = body(source(), QStringLiteral("void SessionManager::saveTabOrder("));
+    ASSERT_FALSE(tabOrder.isEmpty());
+    EXPECT_TRUE(tabOrder.contains(QStringLiteral("writeFileAtomicOwnerOnly(")));
+    const QString b = body(source("secureio.h"),
+                           QStringLiteral("inline bool writeFileAtomicOwnerOnly("));
     ASSERT_FALSE(b.isEmpty());
-    const int check = b.indexOf(QStringLiteral("file.write(body) != body.size() || !file.flush()"));
+    const int check = b.indexOf(QStringLiteral("file.write(data) != data.size() || !file.flush()"));
     const int rename = b.indexOf(QStringLiteral("std::rename("));
     ASSERT_GE(rename, 0);
     ASSERT_GE(check, 0) << "a short write is renamed over the tab order";

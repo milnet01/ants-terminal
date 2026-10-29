@@ -7,8 +7,9 @@
 process id, so two running copies never write the same temp path.
 
 **INV-2 — the tab order is renamed into place only after a full write.**
-`saveTabOrder` checks that the whole body was written and flushed before
-renaming; otherwise it removes the temp file and keeps the previous
+`saveTabOrder` writes through `writeFileAtomicOwnerOnly` (`src/secureio.h`),
+which checks that the whole body was written and flushed before renaming;
+otherwise it removes the temp file and keeps the previous
 `tab_order.txt`.
 
 **INV-3 — the orphan sweep still finds the temp files.** The sweep of old temp

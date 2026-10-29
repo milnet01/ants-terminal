@@ -52,32 +52,31 @@ relying on fd-only chmod.
 
 ## Contract
 
-### Invariant 1 — Config::save calls setOwnerOnlyPerms(path) after rename succeeds
+### Invariant 1 — the shared writer chmods the final path after rename succeeds
 
-`src/config.cpp` `Config::save()` must call
-`setOwnerOnlyPerms(path)` on the success branch of the
-`std::rename` return-code check. The chmod must NOT run when
-rename failed (the failure branch removes the orphan tmp; chmod-ing
-the destination would chmod whatever prior file is sitting there).
+`Config::save()`, `SessionManager::saveSession` and `saveTabOrder`
+write through `writeFileAtomicOwnerOnly` (`src/secureio.h`). It must
+call `setOwnerOnlyPerms(path)` only on the success branch of the
+`std::rename` return-code check. The chmod must NOT run when rename
+failed (the failure branch removes the orphan tmp; chmod-ing the
+destination would chmod whatever prior file is sitting there).
 
-### Invariant 2 — SessionManager saveSession + saveTabOrder chmod after rename
+### Invariant 2 — the config and session writers use it
 
-`src/sessionmanager.cpp` `saveSession()` must chmod the final path
-after `QFile::rename(tmpPath, path)` returns true. Same for
-`saveTabOrder()`.
+`src/config.cpp` calls `writeFileAtomicOwnerOnly` once;
+`src/sessionmanager.cpp` calls it twice (`writeBlob`, `saveTabOrder`).
 
-### Invariant 3 — SettingsDialog hook installers chmod after commit
+### Invariant 3 — the Claude hook installers chmod after commit
 
-`src/settingsdialog.cpp` `installClaudeHooks()` and
-`installClaudeGitContextHook()` must call
+`src/claudesetup.cpp` `writeClaudeSettings` must call
 `setOwnerOnlyPerms(settingsPath)` after `settingsOut.commit()`
-returns true. Both call sites — there are two QSaveFile writers in
-the file, both targeting `~/.claude/settings.json`.
+returns true. Both hook installers write `~/.claude/settings.json`
+through it.
 
 ### Invariant 4 — pre-write fd chmod retained at every site
 
-The fd-level `setOwnerOnlyPerms(file)` / `setOwnerOnlyPerms(settingsOut)`
-remains at every site. The two calls cover different windows:
+The fd-level `setOwnerOnlyPerms(file)` (in the shared writer) and
+`setOwnerOnlyPerms(settingsOut)` remain. The two calls cover different windows:
 
 - Pre-write fd chmod = covers the open→close→rename window on
   filesystems that DO preserve fd perms across rename. Closes the
@@ -91,17 +90,15 @@ violated.
 
 ## How this test anchors to reality
 
-Source-greps three files for the post-rename-chmod call sites:
+Source-greps:
 
-1. `src/config.cpp` — must contain `setOwnerOnlyPerms(path)` AFTER
-   `if (rc != 0)` else-branch (Invariant 1).
-2. `src/sessionmanager.cpp` — must contain
-   `setOwnerOnlyPerms(path)` AFTER `QFile::rename(tmpPath, path)`
-   in both `saveSession` and `saveTabOrder` (Invariant 2).
-3. `src/settingsdialog.cpp` — must contain
-   `setOwnerOnlyPerms(settingsPath)` AFTER both
-   `settingsOut.commit()` calls (Invariant 3).
-4. All five sites also retain the pre-write fd chmod (Invariant 4).
+1. `src/secureio.h` — `writeFileAtomicOwnerOnly` contains
+   `setOwnerOnlyPerms(file)`, then `std::rename`, then `if (rc != 0)`,
+   then `setOwnerOnlyPerms(path)` (Invariants 1 and 4).
+2. `src/config.cpp` and `src/sessionmanager.cpp` — the calls to it
+   (Invariant 2).
+3. `src/claudesetup.cpp` — `setOwnerOnlyPerms(settingsPath)` after
+   `settingsOut.commit()`, plus the fd chmod (Invariants 3 and 4).
 
 A simpler runtime test would also work for Config but the other
 two require a real Qt event loop + mocked save-settings dialog;

@@ -174,7 +174,11 @@ TEST(SessionSaveWorker, Inv5BlobIsPrivateAndUmaskUntouched) {
 TEST(SessionSaveWorker, Inv6DurabilityOrderUnchanged) {
     const QString src = source("sessionmanager.cpp");
     ASSERT_FALSE(src.isEmpty());
-    const QString w = body(src, QStringLiteral("bool SessionManager::writeBlob("));
+    const QString blob = body(src, QStringLiteral("bool SessionManager::writeBlob("));
+    ASSERT_FALSE(blob.isEmpty());
+    EXPECT_TRUE(blob.contains(QStringLiteral("writeFileAtomicOwnerOnly(")));
+    const QString w = body(source("secureio.h"),
+                           QStringLiteral("inline bool writeFileAtomicOwnerOnly("));
     ASSERT_FALSE(w.isEmpty());
     const int fsyncAt = w.indexOf(QStringLiteral("::fsync(file.handle())"));
     const int renameAt = w.indexOf(QStringLiteral("std::rename("));

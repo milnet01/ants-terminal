@@ -18,12 +18,6 @@
 #include <QStandardPaths>
 #include <QTimer>
 
-#include <cerrno>      // errno — report rename() failure causes
-#include <cstdio>      // std::rename — atomic POSIX rename (overwrites dest)
-#include <cstring>     // std::strerror — rename() failure diagnostics
-#include <sys/stat.h>
-#include <unistd.h>    // fsync — durability guarantee before atomic rename
-
 namespace {
 // ANTS-1169: PATH_MAX-sized cap on user-typable path settings. The
 // six path/command setters below run user-supplied strings through
@@ -223,85 +217,18 @@ void Config::save() {
     m_data[QStringLiteral("_schema")] =
         qMax(kSchemaVersion, m_data.value(QStringLiteral("_schema")).toInt(0));
 
-    // ANTS-5106 — created 0600 by open(2): no world-readable window, and no
-    // process-wide umask change that other threads' files would inherit.
-    QFile file;
-    if (openOwnerOnlyForWrite(file, tmpPath)) {
-        if (!setOwnerOnlyPerms(file))
-            warnNotOwnerOnly(tmpPath, "config");
-        QByteArray json = QJsonDocument(m_data).toJson();
-        if (file.write(json) == json.size()) {
-            // 0.6.28 — fsync before rename. QFile::close flushes userspace
-            // buffers but doesn't force a kernel flush to disk; a kernel
-            // crash or power loss between close() and rename() on ext4
-            // with data=ordered can leave a zero-sized config.json after
-            // reboot. fsync on the temp fd, then rename — matches the
-            // classic "write-rename-fsync" pattern used by SQLite/Git.
-            ::fsync(file.handle());
-            file.close();
-            // Atomic rename — on POSIX rename(2) atomically replaces the
-            // destination, so no need to remove first (avoids a crash window
-            // where the file is deleted but not yet renamed).
-            //
-            // MUST use std::rename (POSIX rename(2)) rather than QFile::rename:
-            // QFile::rename refuses to overwrite an existing destination and
-            // returns false, silently leaving config.json untouched while
-            // config.json.tmp accumulates on disk. That path broke every save
-            // after the first — theme / font / tab_groups changes all
-            // evaporated on restart. POSIX rename(2) atomically replaces.
-            //
-            // 0.7.12: check the return value. ENOSPC, EACCES on the dest
-            // dir, or EXDEV (cross-device, shouldn't happen here but
-            // defensive) leave the tmp file orphaned and the user's prior
-            // config silently unchanged. Log + remove the tmp on failure
-            // so the user sees the error in debug.log and the tmp doesn't
-            // accumulate across session lifetimes.
-            const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
-                                       path.toLocal8Bit().constData());
-            if (rc != 0) {
-                ANTS_LOG(DebugLog::Config,
-                         "rename(%s -> %s) failed: errno=%d (%s) — "
-                         "prior config.json unchanged, tmp removed",
-                         qUtf8Printable(tmpPath),
-                         qUtf8Printable(path),
-                         errno, std::strerror(errno));
-                QFile::remove(tmpPath);
-            } else {
-                // Belt-and-suspenders: rename(2) preserves perms on
-                // most local filesystems, but FAT/exFAT/SMB/NFS edges
-                // and Qt's copy+unlink fallback path can drop the
-                // 0600 set on the temp fd. config.json may hold
-                // ai_api_key — re-chmod the final inode after the
-                // atomic rename succeeds.
-                if (!setOwnerOnlyPerms(path))
-                    warnNotOwnerOnly(path, "config");
-                // ANTS-1141 — fsync the parent directory so the
-                // rename's directory-entry update is durable
-                // across power loss / kernel panic. Postgres /
-                // SQLite / Git pattern; ext4 with data=ordered
-                // can otherwise lose the rename on a crash
-                // between rename(2) returning and the journal
-                // commit.
-                fsyncParentDir(path);
-                // Record exactly what we wrote so MainWindow's config
-                // watcher can recognise this event as our own echo and
-                // skip the external-edit hot-reload (which would tear
-                // down an open Settings dialog on Apply / tab-switch).
-                // ANTS-1981.
-                m_lastWrittenBytes = json;
-            }
-        } else {
-            // ANTS-5106 — a short write was dropped without a word.
-            qWarning("Config::save: write to %s failed (%s) — config.json "
-                     "unchanged", qUtf8Printable(tmpPath),
-                     qUtf8Printable(file.errorString()));
-            file.close();
-            QFile::remove(tmpPath);
-        }
+    // config.json may hold ai_api_key, so it is written owner-only.
+    const QByteArray json = QJsonDocument(m_data).toJson();
+    QString why;
+    if (!writeFileAtomicOwnerOnly(path, tmpPath, json, "config", TempPerms::Warn,
+                                  &why)) {
+        ANTS_LOG(DebugLog::Config, "%s", qUtf8Printable(why));
     } else {
-        // ANTS-5106 — and so was a failed temp open.
-        qWarning("Config::save: could not open %s (%s) — config.json unchanged",
-                 qUtf8Printable(tmpPath), std::strerror(errno));
+        // Record exactly what we wrote so MainWindow's config watcher can
+        // recognise this event as our own echo and skip the external-edit
+        // hot-reload (which would tear down an open Settings dialog on
+        // Apply / tab-switch). ANTS-1981.
+        m_lastWrittenBytes = json;
     }
 }
 
@@ -315,6 +242,45 @@ bool Config::storeIfChanged(const QString &key, const QJsonValue &value) {
     if (m_data.value(key) == value) return false;
     m_data[key] = value;
     return true;
+}
+
+// Fixed-value settings. Each set is listed once and read by both ends: the
+// getter falls back to its default on an unknown value, and the setter drops
+// (or normalises) one, so a zombie string never lingers on disk (ANTS-1179).
+static const QSet<QString> &knownRoadmapPresets() {
+    static const QSet<QString> kKnown = {
+        QStringLiteral("full"), QStringLiteral("history"),
+        QStringLiteral("current"), QStringLiteral("next"),
+        QStringLiteral("far_future"), QStringLiteral("custom"),
+    };
+    return kKnown;
+}
+
+static const QSet<QString> &knownRoadmapDensities() {
+    static const QSet<QString> kKnown = {
+        QStringLiteral("compact"), QStringLiteral("cozy"),
+        QStringLiteral("comfortable"),
+    };
+    return kKnown;
+}
+
+// ANTS-1974 — the auto-model home tier.
+static const QSet<QString> &knownHomeTiers() {
+    static const QSet<QString> kKnown = {
+        QStringLiteral("haiku"), QStringLiteral("sonnet"), QStringLiteral("opus"),
+    };
+    return kKnown;
+}
+
+// Tab title format. updateTabTitles (mainwindow.cpp) matches exactly these
+// values; any other string degrades every tab to the "Shell" fallback
+// (ANTS-1764).
+static const QSet<QString> &knownTabTitleFormats() {
+    static const QSet<QString> kKnown = {
+        QStringLiteral("title"), QStringLiteral("cwd"),
+        QStringLiteral("process"), QStringLiteral("cwd-process"),
+    };
+    return kKnown;
 }
 
 QString Config::theme() const {
@@ -396,28 +362,13 @@ void Config::setSettingsDialogLastTab(int index) {
 
 QString Config::roadmapActivePreset() const {
     const QString name = m_data.value("roadmap_active_preset").toString("full");
-    // Validate against the known set; unknown strings (corrupt
-    // hand-edits, older Ants writing a future enum value) fall back
-    // to "full".
-    if (name == "full" || name == "history" || name == "current" ||
-        name == "next" || name == "far_future" || name == "custom") {
-        return name;
-    }
-    return QStringLiteral("full");
+    // Unknown strings (corrupt hand-edits, older Ants writing a future enum
+    // value) fall back to "full".
+    return knownRoadmapPresets().contains(name) ? name : QStringLiteral("full");
 }
 
 void Config::setRoadmapActivePreset(const QString &name) {
-    // ANTS-1179: mirror the getter's known-set validation. Without
-    // this, setRoadmapActivePreset("zombie") writes through, the
-    // getter then silently returns "full" but the JSON file keeps
-    // the zombie value forever — a future KindEntry rename / preset
-    // rename would leave dead values stranded on disk.
-    static const QSet<QString> kKnown = {
-        QStringLiteral("full"), QStringLiteral("history"),
-        QStringLiteral("current"), QStringLiteral("next"),
-        QStringLiteral("far_future"), QStringLiteral("custom"),
-    };
-    if (!kKnown.contains(name)) return;
+    if (!knownRoadmapPresets().contains(name)) return;
     if (!storeIfChanged("roadmap_active_preset", name)) return;
     save();
 }
@@ -508,8 +459,7 @@ QJsonObject Config::claudeAutoModel() const {
     // "sonnet". Clamped up to the floor here (effectiveHome = max(home, floor))
     // so the envelope never advertises a home the floor forbids.
     QString home = m_data.value("claude.auto_model_home_tier").toString("sonnet");
-    if (home != QLatin1String("haiku") && home != QLatin1String("sonnet")
-        && home != QLatin1String("opus"))
+    if (!knownHomeTiers().contains(home))
         home = QStringLiteral("sonnet");
     // One-sided clamp: rank order haiku < sonnet < opus. If home is below the
     // floor, raise it to the floor (the floor is the hard lower bound).
@@ -547,10 +497,7 @@ void Config::setClaudeAutoModelSwitch(bool enabled) {
 // ANTS-1974 — persist the home/baseline tier. Accepts "haiku"|"sonnet"|"opus";
 // anything else is normalised to "sonnet" before storing.
 void Config::setClaudeAutoModelHomeTier(const QString &tier) {
-    QString t = tier;
-    if (t != QLatin1String("haiku") && t != QLatin1String("sonnet")
-        && t != QLatin1String("opus"))
-        t = QStringLiteral("sonnet");
+    const QString t = knownHomeTiers().contains(tier) ? tier : QStringLiteral("sonnet");
     if (!storeIfChanged("claude.auto_model_home_tier", t)) return;
     save();
 }
@@ -905,24 +852,11 @@ void Config::setRoadmapScrollAnchors(const QJsonObject &anchors) {
 // non-string JSON value → "cozy" fallback.
 QString Config::roadmapDensity() const {
     const QString name = m_data.value("roadmap_density").toString("cozy");
-    if (name == QStringLiteral("compact") ||
-        name == QStringLiteral("cozy") ||
-        name == QStringLiteral("comfortable")) {
-        return name;
-    }
-    return QStringLiteral("cozy");
+    return knownRoadmapDensities().contains(name) ? name : QStringLiteral("cozy");
 }
 
 void Config::setRoadmapDensity(const QString &name) {
-    // Mirror getter's known-set validation. Unknown values are
-    // silently dropped on write — same pattern as
-    // setRoadmapActivePreset (ANTS-1179).
-    static const QSet<QString> kKnown = {
-        QStringLiteral("compact"),
-        QStringLiteral("cozy"),
-        QStringLiteral("comfortable"),
-    };
-    if (!kKnown.contains(name)) return;
+    if (!knownRoadmapDensities().contains(name)) return;
     if (!storeIfChanged("roadmap_density", name)) return;
     save();
 }
@@ -958,6 +892,8 @@ void Config::setAuditShowNewOnly(bool enabled) {
     save();
 }
 
+// The top, 1000000, is also SessionManager::restore()'s scrollback cap
+// (kMaxRestoreScrollbackLines); raise the two together.
 int Config::scrollbackLines() const {
     return qBound(1000, m_data.value("scrollback_lines").toInt(50000), 1000000);
 }
@@ -1441,19 +1377,6 @@ void Config::setShellCommand(const QString &cmd) {
     if (!acceptablePathValue(cmd)) return;
     if (!storeIfChanged("shell_command", cmd)) return;
     save();
-}
-
-// Tab title format — fixed enum. The consumer (updateTabTitles in
-// mainwindow.cpp) matches exactly these four values; any other string
-// degrades every tab to the "Shell" fallback. Validate at both ends
-// (ANTS-1764, same pattern as setRoadmapActivePreset/-Density per
-// ANTS-1179) so a zombie value can't linger on disk.
-static const QSet<QString> &knownTabTitleFormats() {
-    static const QSet<QString> kKnown = {
-        QStringLiteral("title"), QStringLiteral("cwd"),
-        QStringLiteral("process"), QStringLiteral("cwd-process"),
-    };
-    return kKnown;
 }
 
 QString Config::tabTitleFormat() const {
