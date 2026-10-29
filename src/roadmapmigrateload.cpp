@@ -1307,19 +1307,23 @@ void markUnresolvedLinks(const RoadmapStore &store, MigrationPlan &plan) {
     for (const PlannedItem &it : std::as_const(plan.items))
         if (!it.id.isEmpty())
             planned.insert(RoadmapParse::foldId(it.id));
+    // A failed lookup reads as "does not resolve": the id is reported, not lost.
+    const auto resolves = [&](const QString &id, const QString &own) {
+        const QString fold = RoadmapParse::foldId(id);
+        if (fold == own)
+            return false;
+        if (planned.contains(fold))
+            return true;
+        const auto dst = store.resolveLinkTarget(self.value_or(0), id);
+        return dst && (!self || dst->projectId != *self);
+    };
     for (PlannedItem &it : plan.items) {
         QJsonObject unresolved;
         const QString own = RoadmapParse::foldId(it.id);
         for (auto t = it.links.cbegin(); t != it.links.cend(); ++t) {
             QJsonArray ids;
             for (const QString &id : t.value()) {
-                const QString fold = RoadmapParse::foldId(id);
-                bool resolves = fold != own && planned.contains(fold);
-                if (!resolves && fold != own) {
-                    const auto dst = store.resolveLinkTarget(self.value_or(0), id);
-                    resolves = dst && (!self || dst->projectId != *self);
-                }
-                if (!resolves)
+                if (!resolves(id, own))
                     ids.append(id);
             }
             if (!ids.isEmpty())
@@ -1331,17 +1335,9 @@ void markUnresolvedLinks(const RoadmapStore &store, MigrationPlan &plan) {
         // § 2.6 — the same test for the converted `Dependencies:` values,
         // which syncConvertedLinks() will not store.
         QJsonArray unconverted;
-        for (const QString &dep : RoadmapParse::convertedLinksIn(it.body).dependencies) {
-            const QString fold = RoadmapParse::foldId(dep);
-            bool resolves = fold != own && planned.contains(fold);
-            if (!resolves && fold != own) {
-                QString ignored;
-                const auto dst = store.resolveLinkTarget(self.value_or(0), dep, &ignored);
-                resolves = dst && (!self || dst->projectId != *self);
-            }
-            if (!resolves)
+        for (const QString &dep : RoadmapParse::convertedLinksIn(it.body).dependencies)
+            if (!resolves(dep, own))
                 unconverted.append(dep);
-        }
         if (!unconverted.isEmpty())
             it.extras.insert(QStringLiteral("unconverted_dependencies"), unconverted);
     }

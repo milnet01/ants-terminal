@@ -271,8 +271,6 @@ QString bodyWithoutHeadPrefix(const BulletRecord &rec) {
         firstLine + QLatin1Char('\n') + continuations);
 }
 
-// One reader record as migration will file it. § 2.1.1 accounts for the fields
-// left empty; the notes this raises are § 2.10's.
 // ANTS-4484 — collapse a soft-wrapped headline to one line. Whitespace runs
 // (the newline plus the continuation indent) become a single space, so nothing
 // is lost and nothing is glued together.
@@ -300,6 +298,8 @@ int trailerLine(const BulletRecord &rec, QLatin1String label) {
     return line;
 }
 
+// One reader record as migration will file it. § 2.1.1 accounts for the fields
+// left empty; the notes this raises are § 2.10's.
 PlannedItem makeItem(const BulletRecord &rec, const QString &sectionSlug,
                      int position, int sourceIndex, QVector<Note> &notes,
                      const RoadmapParse::IdFormat &fmt) {
@@ -694,7 +694,7 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
 
     // Content before the first heading belongs to a synthetic section. Its
     // slug is "" for the live file and the bare "<M>-<N>" for an archive —
-    // it is not a heading, so it never enters `seen` (§ 2.3).
+    // it is not a heading, so it never enters `seenSlugs` (§ 2.3).
     {
         PlannedSection root;
         root.slug        = ctx.prefix;
@@ -837,11 +837,11 @@ void walkSource(const Source &src, const SourceCtx &ctx, MigrationPlan &plan,
             //    INV-4 and INV-9 forbid; the live path's empty-slug hole is
             //    uniqueSlug()'s own pre-existing defect and is left alone.
             // 2. Uniquing runs on the UNPREFIXED base, before the prefix is
-            //    applied. Reversing it breaks the scheme: `seen` holds
+            //    applied. Reversing it breaks the scheme: `seenSlugs` holds
             //    unprefixed slugs, so a post-prefix `0-6-h3` would never
             //    compare against a real `### H3` (which slugifies to `h3` and
             //    prefixes to the same string) and the two would collide.
-            //    Minting `h<ordinal>` outside `seen` reproduces the same
+            //    Minting `h<ordinal>` outside `seenSlugs` reproduces the same
             //    bypass, which is why the substitution happens BEFORE the
             //    uniqueSlug() call rather than instead of it.
             QString base = RoadmapIndex::slugifyHeading(headingText);
@@ -1111,7 +1111,7 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
         if (!f.open(QIODevice::ReadOnly)) {
             // An archive is skippable where the live file is not, so a
             // permissions failure takes the note rather than the
-            // refusal findRoadmap() gives the live file.
+            // `not_found` this function gives the live file.
             addNote(disc.notes, "archive_unrecognised",
                     QFileInfo(entry.second).fileName(), 0, -1);
             continue;

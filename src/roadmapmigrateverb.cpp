@@ -33,6 +33,7 @@
 #include <QJsonArray>
 
 #include <algorithm>
+#include <optional>
 
 namespace {
 
@@ -175,12 +176,17 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
     for (auto it = summary.constBegin(); it != summary.constEnd(); ++it)
         summaryObj[it.key()] = it.value();
     env[QStringLiteral("notes_summary")] = summaryObj;
+    // The EFFECTIVE bound, after run()'s clamp — a caller passing 5000 receives
+    // 2000 rows and has no other way to learn its argument was reduced.
+    env[QStringLiteral("max_notes")] = maxNotes;
+}
 
-    // ANTS-5394 — a pass-headings block with a Status line and no `Pass N.M`
-    // id is not an item, and a count inside notes_summary is where no caller
-    // looks. Lifted to the top level with the Status line under it, so an
-    // OPEN item the migration left as prose is visible at a glance. Emitted
-    // only when there is one, like the other advisory arms.
+// ANTS-5394 — a pass-headings block with a Status line and no `Pass N.M`
+// id is not an item, and a count inside notes_summary is where no caller
+// looks. Lifted to the top level with the Status line under it, so an
+// OPEN item the migration left as prose is visible at a glance. Emitted
+// only when there is one, like the other advisory arms.
+void setUnparsedHeadings(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes) {
     constexpr int kMaxUnparsedHeadings = 50;
     QJsonArray unparsed;
     int unparsedTotal = 0;
@@ -209,9 +215,6 @@ void setNotes(QJsonObject &env, const QVector<RoadmapMigrate::Note> &notes,
     env[QStringLiteral("unparsed_headings_count")] = unparsedTotal;
     if (unparsedTotal > 0)
         env[QStringLiteral("unparsed_headings")] = unparsed;
-    // The EFFECTIVE bound, after run()'s clamp — a caller passing 5000 receives
-    // 2000 rows and has no other way to learn its argument was reduced.
-    env[QStringLiteral("max_notes")] = maxNotes;
 }
 
 // ANTS-4479 — WHICH items `items_updated` counted, and which columns moved.
@@ -327,7 +330,23 @@ QString discoveryRefusalCode(const QString &findRoadmapsCode) {
         return QStringLiteral("no_roadmap");
     if (findRoadmapsCode == QLatin1String("archive_format_mismatch"))
         return QStringLiteral("format_mismatch");
-    return findRoadmapsCode;   // case_ambiguous, not_utf8 — no canonical twin
+    return findRoadmapsCode;   // case_ambiguous, not_utf8, too_large — no canonical twin
+}
+
+// run(), deregister() and reroot() each open the verb's OWN Access::Bulk
+// connection for the duration of one call (§ 2.2) — never RemoteControl's
+// process-owned Interactive one. `store` is the caller's local, so
+// ~RoadmapStore() checkpoints the WAL and removes the connection name before
+// the caller returns. An empty reply means it opened.
+QJsonObject openBulkStore(std::optional<RoadmapStore> &store, const QString &storePath) {
+    store.emplace(storePath, RoadmapStore::kDefaultHistoryCapBytes,
+                  RoadmapStore::Access::Bulk);
+    QString err;
+    if (store->open(&err))
+        return {};
+    return rmErr(QStringLiteral("store_failed"),
+                 QStringLiteral("roadmap_migrate: could not open the roadmap "
+                                "store at \"%1\": %2").arg(storePath, err));
 }
 
 // Step 9's parts of run()'s reply, each setting its own keys on `env`.
@@ -703,25 +722,20 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // shipped or been archived, so this annotates and moves on.
     RoadmapMigrate::validatePaths(plan, req.projectRoot);
 
-    // 5 — the verb's OWN connection, on Access::Bulk, for the duration of one
-    // call (§ 2.2). NOT RemoteControl's process-owned Interactive connection,
-    // which load() refuses outright (ANTS-3765 INV-12) — and which this
-    // function's signature makes unreachable. Two live connections in one
+    // 5 — the verb's OWN connection (openBulkStore()). load() refuses the
+    // process-owned Interactive one outright (ANTS-3765 INV-12), and this
+    // function's signature makes it unreachable. Two live connections in one
     // process are safe by construction: RoadmapStore allocates a per-instance
     // connection name from an atomic counter, and the store runs in WAL.
     //
-    // A stack local, so ~RoadmapStore() runs PRAGMA optimize, close() and
+    // A local, so ~RoadmapStore() runs PRAGMA optimize, close() and
     // removeDatabase() before this function returns — the connection names do
     // not accumulate across calls and the WAL sidecars are checkpointed away,
     // which INV-9 depends on.
-    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
-                       RoadmapStore::Access::Bulk);
-    QString err;
-    if (!store.open(&err)) {
-        return rmErr(QStringLiteral("store_failed"),
-                     QStringLiteral("roadmap_migrate: could not open the roadmap "
-                                    "store at \"%1\": %2").arg(storePath, err));
-    }
+    std::optional<RoadmapStore> opened;
+    if (QJsonObject refusal = openBulkStore(opened, storePath); !refusal.isEmpty())
+        return refusal;
+    RoadmapStore &store = *opened;
 
     // 6 — collision and re-run-identity guards, ahead of the transaction.
     //
@@ -820,9 +834,12 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     };
     // ANTS-5366 § 2.4 — the same rules for a deregistered root, but the
     // message must not call it migrated: it has a mailbox and no roadmap.
-    const QString ownerState = ownerDeregistered
-        ? QStringLiteral("is deregistered and keeps")
-        : QStringLiteral("is already migrated under");
+    // `migratedPreposition` is "under" before a slug, "as" before a name.
+    const auto ownerState = [ownerDeregistered](QLatin1String migratedPreposition) {
+        if (ownerDeregistered)
+            return QStringLiteral("is deregistered and keeps");
+        return QString(QStringLiteral("is already migrated ") + migratedPreposition);
+    };
     const QString rerun = ownerDeregistered ? QStringLiteral("revive it")
                                             : QStringLiteral("re-run");
     if (owner && owner->exportSlug != slug) {
@@ -833,8 +850,8 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                                     "export_slug:\"%2\" to %5, or read "
                                     "project_id / stored_export_slug here if "
                                     "you were asking whether it is migrated")
-                         .arg(req.projectRoot, owner->exportSlug, slug, ownerState,
-                              rerun)));
+                         .arg(req.projectRoot, owner->exportSlug, slug,
+                              ownerState(QLatin1String("under")), rerun)));
     }
     if (owner && owner->name != name) {
         return withOwner(rmErr(QStringLiteral("bad_args"),
@@ -842,9 +859,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                                     "project_name \"%2\"; re-running with "
                                     "\"%3\" would rename it")
                          .arg(req.projectRoot, owner->name, name,
-                              ownerDeregistered
-                                  ? QStringLiteral("is deregistered and keeps")
-                                  : QStringLiteral("is already migrated as"))));
+                              ownerState(QLatin1String("as")))));
     }
 
     // ANTS-4499 / INV-6 — the snapshot goes BEFORE the transaction opens. Two
@@ -968,6 +983,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         env[QStringLiteral("code")]  = QStringLiteral("migrate_failed");
         env[QStringLiteral("error")] = out.error;
         setNotes(env, out.notes, maxNotes);
+        setUnparsedHeadings(env, out.notes);
         return env;
     }
 
@@ -1012,6 +1028,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
 
     env[QStringLiteral("history_rows")]     = out.historyRows;
     setNotes(env, out.notes, maxNotes);
+    setUnparsedHeadings(env, out.notes);
     setUpdatedItems(env, out);
     setOnlyIds(env, req.onlyIds, out);   // ANTS-4992
     env[QStringLiteral("defaulted_fields")] = defaultedFieldTally(plan);
@@ -1120,17 +1137,11 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
                                     "project root or an export_slug to key on"));
     }
 
-    // Its own Access::Bulk connection for the duration of one call, on run()'s
-    // reasoning above: a stack local, so ~RoadmapStore() checkpoints the WAL
-    // and removes the connection name before this returns.
-    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
-                       RoadmapStore::Access::Bulk);
+    std::optional<RoadmapStore> opened;
+    if (QJsonObject refusal = openBulkStore(opened, storePath); !refusal.isEmpty())
+        return refusal;
+    RoadmapStore &store = *opened;
     QString err;
-    if (!store.open(&err)) {
-        return rmErr(QStringLiteral("store_failed"),
-                     QStringLiteral("roadmap_migrate: could not open the roadmap "
-                                    "store at \"%1\": %2").arg(storePath, err));
-    }
 
     // Both lookups check their ERROR out-param and not just their optional, for
     // run()'s reason: nullopt means BOTH "no such row" and "the query failed",
@@ -1248,14 +1259,11 @@ QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootReq
         return rmErr(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: reroot needs the new root"));
 
-    // deregister()'s connection, for its reason.
-    RoadmapStore store(storePath, RoadmapStore::kDefaultHistoryCapBytes,
-                       RoadmapStore::Access::Bulk);
+    std::optional<RoadmapStore> opened;
+    if (QJsonObject refusal = openBulkStore(opened, storePath); !refusal.isEmpty())
+        return refusal;
+    RoadmapStore &store = *opened;
     QString err;
-    if (!store.open(&err))
-        return rmErr(QStringLiteral("store_failed"),
-                     QStringLiteral("roadmap_migrate: could not open the roadmap "
-                                    "store at \"%1\": %2").arg(storePath, err));
 
     const auto row = store.readProjectBySlug(req.exportSlug, &err);
     if (!row && !err.isEmpty())
