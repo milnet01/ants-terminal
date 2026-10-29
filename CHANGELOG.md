@@ -163,6 +163,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log op:"flip_batch"` reports a second locator for the same bullet as `duplicate_locator`, and takes the same status words as `op:"flip"` (done, wip, todo …)** (PR #1)
+
+- **The terminal parses and paints output with less work** (PR #1)
+  Plain ASCII output stays batched on the parse thread, insert and delete line move rows in one step, and alt-screen exit, reflow and image transfers copy less. The roadmap store reads a project's sections and items in one query each, and several MCP tools no longer slow down quadratically on large inputs.
+
 - **roadmap_log's schema says append_batch needs a call-level section even when every bullet names its own.** (ANTS-6274)
 
 - **workspace_search's count_only, files_only and matches_only replies now echo match_wrapped, as the row reply already did.** (ANTS-6131)
@@ -295,6 +300,20 @@ for security-relevant changes.
   `claude mcp add` command in the README again.
 
 ### Fixed
+
+- **Closing a tab while it is still starting, or clicking its row in the tab list just after it closes, is safe** (PR #1)
+  Session restore and the tab list look the tab up again instead of using a freed one. `audit_run` frees its worker thread when the window closes mid-sweep, and an aborted AI request can no longer touch the next request's reply.
+
+- **Scrolling and copying keep a scrolled-up view where it is** (PR #1)
+  Shift+PgUp/PgDn, prompt and bookmark navigation, and Ctrl+Shift+C/F/G no longer jump to the bottom first.
+
+- **Links, highlights, search hits and triggers line up after an emoji or combining mark** (PR #1)
+  Erasing characters (ECH) clears their links and repaints the row. Splitting or unsplitting a pane keeps the tab's title pin, label, colour and session. Zoom keeps the bold and italic fonts. Strikethrough covers wide characters, rich copy honours a rectangular selection, and the bracket highlight follows the screen after scrolling back down.
+
+- **Several MCP tools return correct results in edge cases** (PR #1)
+  `verify_changes` re-checks a file edited again, including one inside a new untracked folder. `test_audit` notices a deleted test file. `find_sources` includes files named like `gui_main.cpp`. `codewalk` says `truncated` when its walk hit the cap. `doc_symbols` and the spec parser read `'{'`, `L'{'` and two-space bullets correctly, and an empty `INV` bullet keeps the one after it. A pass's status flip changes only that pass.
+
+- **A FIFO in the project no longer stalls anything: `read_region` and `file_outline` refuse it (`bad_path`) and the Review Changes dialog skips it. `quotation_check`, `read_spill`, `place_by_release` and `append_batch` bound or refuse inputs that used to stall or overflow** (PR #1)
 
 - **changelog_query's release check reads a "Release note (…): no CHANGELOG entry" decision that wraps onto the next body line.** (ANTS-6284)
 
