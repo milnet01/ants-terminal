@@ -484,7 +484,7 @@ this machine.** The record is a file named for the tree's hash under
 documentation-only one. The tree covers every file, the gate script
 included, so any change misses and the gate runs. The hook says which
 record it skipped on. `githooks/pre-push` does this; `cut-release` Phase 2b (`references/local-pipeline.md`)
-writes the record, so a release push does not run the pipeline twice.
+writes the record where it can, so a release push does not run the pipeline twice.
 
 **A run that skipped any leg is not a full run, and writes no record.** So a
 gate that skips a leg — a cold container, a missing tool — does one of two
