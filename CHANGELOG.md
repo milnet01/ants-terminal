@@ -470,6 +470,9 @@ for security-relevant changes.
 
 ### Security
 
+- **read_log blanks a private key whose BEGIN or END marker sits on a line too long to return** (ANTS-6147)
+  A line longer than max_bytes is still skipped, but its key-block markers now open and close blocks, so the key lines after it come back as [REDACTED:private_key].
+
 - **`read_log` blanks secrets in the lines it returns** (ANTS-5707)
   Known token shapes become `[REDACTED:<kind>]`, private-key lines become `[REDACTED:private_key]` even when a filter or cursor cuts into the block, and `redacted` counts them. Follows `claude.mcp_redact_secrets` (default on) on every call.
 

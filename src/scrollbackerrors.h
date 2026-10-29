@@ -27,7 +27,9 @@ struct ErrorEntry {
     int     line = 0;   // captured source line, or 0
     int     column = 0; // captured column, or 0
     QString message;    // the error message
-    QString text;       // matched scrollback line (trimmed); anchor line for multi-line
+    // The matched scrollback line, trimmed. For a Python traceback: the
+    // exception line, or the last frame line when there is none.
+    QString text;
 };
 
 // maxResults: ≤0 ⇒ default 50; >1000 ⇒ clamped to 1000.

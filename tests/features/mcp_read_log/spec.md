@@ -46,7 +46,8 @@ dispatch are locked by source-scrape.
   is `SecretRedact::scrub` of the raw line, and `redacted` sums the
   replacements. A kept line inside a private-key block, including one in a
   `since_cursor` slice that starts mid-block, returns as
-  `[REDACTED:private_key]`. The byte cap counts the scrubbed text.
+  `[REDACTED:private_key]`. A skipped oversized line's markers still open
+  and close blocks. The byte cap counts the scrubbed text.
   `cmdReadLog` sets the option from `claude.mcp_redact_secrets` on each
   call (ANTS-1855 INV-14, ANTS-5707).
 - **B-not_found** — an unopenable path → `{ok:false, code:"not_found"}`.

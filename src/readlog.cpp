@@ -11,6 +11,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QRegularExpression>
+#include <QStringList>
 
 #include <climits>
 #include <deque>
@@ -55,6 +56,97 @@ enum class Pem { Outside, Inside, HeadPending };
 struct Kept {
     QByteArray raw;
     Pem pem;
+};
+
+const QRegularExpression &pemBegin() {
+    static const QRegularExpression re(
+        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
+    return re;
+}
+const QRegularExpression &pemEnd() {
+    static const QRegularExpression re(
+        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY-----"));
+    return re;
+}
+
+// Key-block state across every scanned line, kept or not. A slice
+// starting past byte 0 may start inside a block: its lines stay
+// HeadPending until an END marker (inside) or a BEGIN marker (outside)
+// settles them, as SecretRedact::scrubCutPemHead does for one string.
+// Settling rewrites the pem of lines already in `kept`.
+class PemTracker {
+public:
+    explicit PemTracker(bool headPending) : m_headPending(headPending) {}
+
+    // Where `line` sits; advances the block state past it.
+    Pem classify(const QString &line, std::deque<Kept> &kept) {
+        if (!line.contains(QLatin1String("PRIVATE KEY-----"))) {
+            if (m_inBlock) return Pem::Inside;
+            return m_headPending ? Pem::HeadPending : Pem::Outside;
+        }
+        const QRegularExpressionMatch b = pemBegin().match(line);
+        const QRegularExpressionMatch e = pemEnd().match(line);
+        const int bAt = b.hasMatch() ? b.capturedStart() : -1;
+        const int eAt = e.hasMatch() ? e.capturedStart() : -1;
+        if (m_headPending) {
+            if (eAt >= 0 && (bAt < 0 || eAt < bAt)) {
+                settle(kept, Pem::Inside);   // the slice began inside a block
+                m_inBlock = bAt > eAt;       // a new block opens after it
+                return Pem::Inside;
+            }
+            if (bAt < 0) return Pem::HeadPending;
+            settle(kept, Pem::Outside);
+        }
+        if (m_inBlock) {
+            if (eAt >= 0)
+                m_inBlock = pemBegin().match(line, e.capturedEnd()).hasMatch();
+            return Pem::Inside;
+        }
+        if (bAt < 0) return Pem::Outside;
+        m_inBlock = !pemEnd().match(line, b.capturedEnd()).hasMatch();
+        return Pem::Inside;
+    }
+
+    // At the end of the scan: a head never settled was not inside a block.
+    void finish(std::deque<Kept> &kept) {
+        if (m_headPending) settle(kept, Pem::Outside);
+    }
+
+private:
+    void settle(std::deque<Kept> &kept, Pem to) {
+        m_headPending = false;
+        for (Kept &k : kept)
+            if (k.pem == Pem::HeadPending) k.pem = to;
+    }
+
+    bool m_inBlock = false;
+    bool m_headPending;
+};
+
+// The key-block markers of a line read in pieces, joined by spaces, so
+// an oversized line is classified without being held whole. A marker
+// split across two pieces is found in the tail carried from the first;
+// one longer than that tail is missed.
+class PieceMarkers {
+public:
+    void feed(const QByteArray &piece) {
+        static const QRegularExpression kMarker(
+            QStringLiteral("-----(BEGIN|END) [^\\-\\n]*PRIVATE KEY-----"));
+        const QString window = QString::fromLatin1(m_carry + piece);
+        auto it = kMarker.globalMatch(window);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            if (m.capturedEnd() > m_carry.size())   // not found last piece
+                m_markers << m.captured();
+        }
+        m_carry = (m_carry + piece).right(kCarry);
+    }
+    QString line() const { return m_markers.join(QLatin1Char(' ')); }
+
+private:
+    static constexpr int kCarry = 128;
+    QByteArray m_carry;
+    QStringList m_markers;
 };
 
 }  // namespace
@@ -136,48 +228,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
     bool budgetExhausted = false;
 
     // ANTS-5707 — key-block tracking over every scanned line, kept or not.
-    // A slice starting past byte 0 may start inside a block: its lines stay
-    // HeadPending until an END marker (inside) or a BEGIN marker (outside)
-    // settles them, as SecretRedact::scrubCutPemHead does for one string.
-    static const QRegularExpression kPemBegin(
-        QStringLiteral("-----BEGIN [^\\-\\n]*PRIVATE KEY-----"));
-    static const QRegularExpression kPemEnd(
-        QStringLiteral("-----END [^\\-\\n]*PRIVATE KEY-----"));
-    bool inBlock = false;
-    bool headPending = opts.redactSecrets && startOffset > 0;
-    const auto settleHead = [&](Pem to) {
-        headPending = false;
-        for (Kept &k : kept)
-            if (k.pem == Pem::HeadPending) k.pem = to;
-    };
-    // Returns where `line` sits and advances the block state past it.
-    const auto pemOf = [&](const QString &line) -> Pem {
-        if (!line.contains(QLatin1String("PRIVATE KEY-----"))) {
-            if (inBlock) return Pem::Inside;
-            return headPending ? Pem::HeadPending : Pem::Outside;
-        }
-        const QRegularExpressionMatch b = kPemBegin.match(line);
-        const QRegularExpressionMatch e = kPemEnd.match(line);
-        const int bAt = b.hasMatch() ? b.capturedStart() : -1;
-        const int eAt = e.hasMatch() ? e.capturedStart() : -1;
-        if (headPending) {
-            if (eAt >= 0 && (bAt < 0 || eAt < bAt)) {
-                settleHead(Pem::Inside);   // the slice began inside a block
-                inBlock = bAt > eAt;       // a new block opens after it
-                return Pem::Inside;
-            }
-            if (bAt < 0) return Pem::HeadPending;
-            settleHead(Pem::Outside);
-        }
-        if (inBlock) {
-            if (eAt >= 0)
-                inBlock = kPemBegin.match(line, e.capturedEnd()).hasMatch();
-            return Pem::Inside;
-        }
-        if (bAt < 0) return Pem::Outside;
-        inBlock = !kPemEnd.match(line, b.capturedEnd()).hasMatch();
-        return Pem::Inside;
-    };
+    PemTracker pems(opts.redactSecrets && startOffset > 0);
 
     while (!f.atEnd()) {
         if (scanned > 0 && (scanned & 255) == 0 && clock.elapsed() > budgetMs) {
@@ -186,16 +237,22 @@ QJsonObject filter(const QString &path, const Options &opts) {
         }
         const qint64 lineStart = f.pos();
         // Never hold more than maxBytes of one line: a longer line is
-        // drained in maxBytes pieces and skipped whole.
+        // drained in maxBytes pieces and skipped whole, its key-block
+        // markers still tracked.
         QByteArray raw = f.readLine(qint64(maxBytes) + 1);
         if (!raw.endsWith('\n') && !f.atEnd()) {
+            PieceMarkers markers;
+            markers.feed(raw);
             QByteArray piece;
-            do { piece = f.readLine(qint64(maxBytes) + 1); }
-            while (!piece.endsWith('\n') && !f.atEnd());
+            do {
+                piece = f.readLine(qint64(maxBytes) + 1);
+                markers.feed(piece);
+            } while (!piece.endsWith('\n') && !f.atEnd());
             if (!piece.endsWith('\n')) {   // oversized AND still being written
                 cursorPos = lineStart;
                 break;
             }
+            if (opts.redactSecrets) pems.classify(markers.line(), kept);
             cursorPos = f.pos();
             ++scanned;
             ++oversizeSkipped;
@@ -212,7 +269,8 @@ QJsonObject filter(const QString &path, const Options &opts) {
 
         ++scanned;
         const QString line = QString::fromUtf8(raw);
-        const Pem pem = opts.redactSecrets ? pemOf(line) : Pem::Outside;
+        const Pem pem = opts.redactSecrets ? pems.classify(line, kept)
+                                           : Pem::Outside;
         if (haveContains && !line.contains(contains)) continue;
         if (haveInc && !incRe.match(line).hasMatch()) continue;
         if (haveExc && excRe.match(line).hasMatch()) continue;
@@ -229,8 +287,7 @@ QJsonObject filter(const QString &path, const Options &opts) {
         }
     }
 
-    // A head never settled by a marker was not inside a block.
-    if (headPending) settleHead(Pem::Outside);
+    pems.finish(kept);
 
     // ANTS-5707 — scrub the kept lines, then re-apply the byte cap: a
     // redaction label can be longer than the secret it replaces.

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6298 -->
+<!-- ants-roadmap-id-high-water: ANTS=6299 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -96070,6 +96070,13 @@ worked after these.
   (ids L38-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-29 — MEDIUMs closed. F1 fixed: a skipped oversized line's
+  key-block markers are tracked (PieceMarkers), as ANTS-1855 § 2.6 step
+  6 already required; test McpReadLog.OversizedLineStillTracksKeyBlocks,
+  red before, and red again with the piece carry removed. F4 fixed: the
+  tracker is the PemTracker class. F2 fixed: ErrorEntry::text comment,
+  and ANTS-1301's struct copy now points to its § 3.3. F3 queued as
+  ANTS-6299. LOWs (F5-F15) still open.
   **Layman:** Tidy the logs and error reports so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97541,6 +97548,22 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L37-F10).
   Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6299] **Name the per-project .audit_cache directory once, and use that name at every site.**
+  L38-F3 (lane 38 of the 2026-10-22 readability review). `<project>/.audit_cache`
+  is built by hand in auditcache.cpp (cacheDirImpl), buildcache.cpp
+  (cacheDirLocal, which says it is a copy), testrescache.cpp, auditrunner.cpp,
+  auditfpledger.cpp, remotecontrol_state.cpp, remotecontrol_feedback.cpp
+  (cmdAuditDismiss), testauditengine.cpp, testauditdialog.cpp,
+  auditdialog.cpp and auditengine.cpp. Fix: one header-only constant (no link
+  dependency, which is why buildcache.cpp copies today), used by every site.
+  Not taken in ANTS-6147: it spans the audit subsystem, and scrape tests
+  under tests/features/audit_* read some of these strings, so it wants its
+  own commit with those tests checked first (ANTS-6292).
+  **Layman:** The audit cache folder's name is typed out by hand in about a dozen files; give it one shared name so moving it is one change.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: diagnostics-logging, audit.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

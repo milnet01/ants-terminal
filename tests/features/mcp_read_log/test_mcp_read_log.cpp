@@ -263,6 +263,30 @@ TEST(McpReadLog, OversizedLineIsSkippedNotHeld) {
     EXPECT_EQ(e2.value("cursor").toString().toLongLong(), 6);
 }
 
+// B-INV-14 — key-block tracking covers a skipped oversized line too: its
+// BEGIN marker still blanks the key body after it, and its END marker
+// still closes a block. Each marker straddles a piece boundary of the
+// drain, and is split in this source so the secret scan skips it.
+TEST(McpReadLog, OversizedLineStillTracksKeyBlocks) {
+    QTemporaryDir d;
+    ASSERT_TRUE(d.isValid());
+    const QString kind = QStringLiteral("RSA PRIVATE") + QStringLiteral(" KEY-----");
+    const QString big(8180, QLatin1Char('x'));
+    ReadLog::Options o; o.maxBytes = 4096;
+
+    const QString opens = writeLog(d, "opens.log", {
+        big + " -----BEGIN " + kind, "MIIEkeybody", "-----END " + kind, "after"});
+    const QJsonObject e1 = ReadLog::filter(opens, o);
+    EXPECT_EQ(linesOf(e1), (QStringList{"[REDACTED:private_key]",
+                                        "[REDACTED:private_key]", "after"}));
+
+    const QString closes = writeLog(d, "closes.log", {
+        "-----BEGIN " + kind, "MIIEkeybody", big + " -----END " + kind, "after"});
+    const QJsonObject e2 = ReadLog::filter(closes, o);
+    EXPECT_EQ(linesOf(e2), (QStringList{"[REDACTED:private_key]",
+                                        "[REDACTED:private_key]", "after"}));
+}
+
 // ANTS-5110 — a line's cost counts its JSON escapes: two lines of 300
 // quotes are 606 bytes raw but 1206 serialised, so a 1000-byte cap keeps one.
 TEST(McpReadLog, ByteCapCountsJsonEscapes) {
