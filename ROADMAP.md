@@ -95436,7 +95436,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: audit-engine.
 
-- 📋 [ANTS-6118] **Readability fixes, roadmap-store-a lane: src/roadmapmigrate.cpp, src/roadmapmigrateload.cpp, src/roadmapmigrateverb.cpp, src/roadmapmigrateverb.h.**
+- ✅ [ANTS-6118] **Readability fixes, roadmap-store-a lane: src/roadmapmigrate.cpp, src/roadmapmigrateload.cpp, src/roadmapmigrateverb.cpp, src/roadmapmigrateverb.h.**
   Findings of the 2026-10-22 readability review (src run), lane roadmap-store-a:
   1 high, 6 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/09-roadmap-store-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95448,6 +95448,10 @@ worked after these.
   comment, F3 weakKeyCandidates lambda, F4 PlannedId holds ItemMatch,
   F5 comment moved, F6 walkSource helpers, F7 run() step-9 helpers.
   LOWs remain.
+  2026-10-29: LOWs F8-F15 all fixed, none queued or dismissed
+  (86174214). F8 setUnparsedHeadings split from setNotes, F9
+  openBulkStore for run/deregister/reroot, F10 one resolves() in
+  markUnresolvedLinks, F11 one ownerState wording, F12-F15 comments.
   **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
