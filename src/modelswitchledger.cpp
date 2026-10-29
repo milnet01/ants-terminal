@@ -339,9 +339,9 @@ OutcomeFillResult computeOutcome(
             lastAssistantTurnTsMs = t.tsMs;
     }
 
-    // Settlement: dwell ended (subsequent auto-switch exists) OR ≥ kOutcomeWindowTurns
-    // post-switch assistant turns observed OR turns_on_to_tier already capped by
-    // a divergent assistant turn (a user-driven /model ended the dwell).
+    // Settlement: dwell ended (subsequent auto-switch exists) OR turns_on_to_tier
+    // reached kOutcomeWindowTurns OR turns_on_to_tier already capped by a
+    // divergent assistant turn (a user-driven /model ended the dwell).
     // ANTS-1891 — additionally: quiet-window settlement for end-of-task 0-turn
     // downgrades. Guarded by `switchTsMs > 0` so a malformed-ts record (whose
     // `ts` failed parseIso8601Ms → 0) can't spuriously settle.
@@ -671,13 +671,12 @@ qint64 parseIso8601Ms(const QString &ts) {
     return dt.isValid() ? dt.toMSecsSinceEpoch() : 0;
 }
 
-// ANTS-1735 § 2.5 — moved here from claudestatuswidgets.cpp (ANTS-6142) so
-// the projection lives beside the struct it fills, and tests can reach it.
-QList<TranscriptTurn> readTranscriptTurns(const QString &path)
+std::optional<QStringList> readTranscriptTail(const QString &path)
 {
-    QList<TranscriptTurn> out;
+    // ANTS-1756 — no QIODevice::Text: its CRLF→LF translation would desync
+    // the read against the byte-offset seek.
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return out;
+    if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
     constexpr qint64 kMaxTailBytes = 512LL * 1024LL;
     const bool didTailSeek = (f.size() > kMaxTailBytes);
     if (didTailSeek) f.seek(f.size() - kMaxTailBytes);
@@ -687,9 +686,31 @@ QList<TranscriptTurn> readTranscriptTurns(const QString &path)
         const QString ln = QString::fromUtf8(f.readLine()).trimmed();
         if (!ln.isEmpty()) lines.append(ln);
     }
-    f.close();
     if (didTailSeek && !lines.isEmpty()) lines.removeFirst();   // truncated head
+    return lines;
+}
 
+QString userLineText(const QJsonObject &line)
+{
+    // content is a bare string, or an array of blocks (text/image/tool_result).
+    const QJsonValue cv = line.value(QStringLiteral("message")).toObject()
+                              .value(QStringLiteral("content"));
+    if (cv.isString()) return cv.toString();
+    QStringList parts;
+    for (const QJsonValue &blk : cv.toArray()) {
+        const QJsonObject b = blk.toObject();
+        if (b.value(QStringLiteral("type")).toString() == QStringLiteral("text"))
+            parts.append(b.value(QStringLiteral("text")).toString());
+    }
+    return parts.join(QLatin1Char(' '));
+}
+
+// ANTS-1735 § 2.5 — moved here from claudestatuswidgets.cpp (ANTS-6142) so
+// the projection lives beside the struct it fills, and tests can reach it.
+QList<TranscriptTurn> readTranscriptTurns(const QString &path)
+{
+    QList<TranscriptTurn> out;
+    const QStringList lines = readTranscriptTail(path).value_or(QStringList());
     out.reserve(lines.size());
     for (const QString &ln : lines) {
         const QJsonObject obj = QJsonDocument::fromJson(ln.toUtf8()).object();
@@ -707,27 +728,8 @@ QList<TranscriptTurn> readTranscriptTurns(const QString &path)
             t.modelId     = msg.value(QStringLiteral("model")).toString();
         } else {
             t.isUser = true;
-            // user.message.content can be a string OR an array of content
-            // blocks (text/image/tool_result). Join all text into userText.
-            const QJsonValue cv = msg.value(QStringLiteral("content"));
-            if (cv.isString()) {
-                t.userText = cv.toString();
-            } else if (cv.isArray()) {
-                QStringList parts;
-                for (const QJsonValue &blk : cv.toArray()) {
-                    const QJsonObject b = blk.toObject();
-                    if (b.value(QStringLiteral("type")).toString()
-                            == QStringLiteral("text")) {
-                        parts.append(b.value(QStringLiteral("text")).toString());
-                    }
-                }
-                t.userText = parts.join(QLatin1Char(' '));
-            }
-            // ANTS-6142 — a line with no text (a tool_result envelope) is the
-            // tool replying, not the person, so it is no user turn. The
-            // recommender's own transcript scans skip it the same way
-            // (ANTS-1892).
-            if (t.userText.isEmpty()) continue;
+            t.userText = userLineText(obj);
+            if (t.userText.isEmpty()) continue;   // a tool reply (ANTS-1892)
         }
         out.append(t);
     }

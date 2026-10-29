@@ -122,12 +122,14 @@ Decision decide(const Gate &g) {
     // Sentinel -1 (no tool-use telemetry) preserves v1 behaviour.
     const bool longToolUse = (g.toolUseElapsedMs >= 0) &&
                              (g.toolUseElapsedMs >= kLongToolUseMs);
+    // One threshold for both gates below: the human-idle bar and the
+    // composer-stale bar (ANTS-1914).
+    const qint64 composerStaleThreshold = (g.composerStaleThresholdMs >= 0)
+        ? g.composerStaleThresholdMs
+        : kComposerStaleVetoMs;
     if (g.focusedState != ClaudeState::Idle) {
-        const qint64 threshold = (g.composerStaleThresholdMs >= 0)
-            ? g.composerStaleThresholdMs
-            : kComposerStaleVetoMs;
         const bool humanIdle = (g.composerStaleMs >= 0) &&
-                               (g.composerStaleMs >= threshold);
+                               (g.composerStaleMs >= composerStaleThreshold);
         // Safe to downgrade regardless of composer state during a long
         // ToolUse: the user is waiting on the command, not driving the agent.
         if (!humanIdle && !longToolUse)
@@ -157,11 +159,8 @@ Decision decide(const Gate &g) {
     // toolUseElapsedMs, both already on the Gate (no composer-content
     // visibility required; ANTS-1931). Sentinel -1 preserves v1 behaviour.
     if (!g.composerEmpty) {
-        const qint64 threshold = (g.composerStaleThresholdMs >= 0)
-            ? g.composerStaleThresholdMs
-            : kComposerStaleVetoMs;
         const bool stale = (g.composerStaleMs >= 0) &&
-                           (g.composerStaleMs >= threshold);
+                           (g.composerStaleMs >= composerStaleThreshold);
         const bool staleDuringToolUse = longToolUse &&
             (g.composerStaleMs >= 0) &&
             (g.composerStaleMs >= kComposerStaleDuringToolUseMs);

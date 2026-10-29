@@ -467,6 +467,17 @@ TEST(ModelRecommenderThinkingLevel, Ants1892ToolResultLinesAreSkipped) {
             << "tool replies after the prompt must not hide it";
     }
     {
+        // ANTS-6142 — a line whose only text block is empty is no prompt
+        // either; the three transcript readers now share one rule.
+        QTemporaryFile f; ASSERT_TRUE(f.open());
+        appendUserTurn(f, QStringLiteral("ultrathink the migration plan"));
+        appendUserTurn(f, QString());
+        f.close();
+        EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
+                  ModelRecommender::ThinkingLevel::Ultrathink)
+            << "an empty text block must not hide the prompt behind it";
+    }
+    {
         QTemporaryFile f; ASSERT_TRUE(f.open());
         appendToolResult(f);
         f.close();
@@ -691,21 +702,23 @@ TEST(ModelRecommenderRecency, PlanKeywordUnweighted) {
 }
 
 // INV-5 — single tail-read inside Result score(...). The body must
-// contain exactly one `f.open(QIODevice::` occurrence — no
-// thinkingLevel-style second tail-read.
+// call the shared transcript tail-read exactly once (ANTS-6142) and open
+// no file of its own — no thinkingLevel-style second tail-read.
 TEST(ModelRecommenderSourceGrep, Inv5SingleFileOpenInScoreBody) {
     const std::string src = slurpFile(SRC_MODELRECOMMENDER_CPP_PATH);
     const std::string body = functionBody(src, "Result score(const QString");
     ASSERT_FALSE(body.empty()) << "could not slice score() body";
     size_t count = 0;
     size_t pos = 0;
-    while ((pos = body.find("f.open(QIODevice::", pos)) != std::string::npos) {
+    while ((pos = body.find("readTranscriptTail(", pos)) != std::string::npos) {
         ++count;
         ++pos;
     }
     EXPECT_EQ(count, 1u)
         << "score() must perform exactly one tail-read; found "
-        << count << " file-open sites in its body";
+        << count << " readTranscriptTail calls in its body";
+    EXPECT_EQ(body.find(".open(QIODevice::"), std::string::npos)
+        << "score() must not open a file besides the shared tail-read";
 }
 
 // INV-9 — purity signatures. Helpers take const QString & / primitives,

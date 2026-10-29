@@ -78,6 +78,7 @@ struct StatsSlim {
     // ANTS-1960 — idle_end_of_session-only records excluded from total24h and
     // dominantBlocker (blocking at session-end is correct behaviour, not a
     // missed opportunity). Exposed as a separate count in the envelope.
+    // statsFull does not exclude them (see there).
     int     idleEndSuppressed24h = 0;
 };
 // ANTS-1954 — minEpoch mirrors the firing-ledger ANTS-1941 filter: records
@@ -91,7 +92,8 @@ StatsSlim statsSlim(const QList<Record> &recs,
 
 // Full breakdown — returned when model_switch_stats is called with
 // mode:"near_misses". window_24h is filtered by nowMs; all_time has no
-// window filter. distinct_signatures counts distinct post-sort blocked_by
+// window filter. Unlike statsSlim, both COUNT idle_end_of_session-only
+// records, so window_24h.total can exceed statsSlim's total24h (ANTS-6013). distinct_signatures counts distinct post-sort blocked_by
 // arrays. Headline gives the human summary.
 // ANTS-1954 — minEpoch: excludes pre-epoch records; surfaces min_epoch +
 // excluded_pre_epoch_count in the envelope when > 0.

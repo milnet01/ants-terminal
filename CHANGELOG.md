@@ -301,6 +301,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The thinking-level chip reads past a user line whose only text block is empty, to the prompt behind it.** (ANTS-6142)
+
 - **Closing a tab while it is still starting, or clicking its row in the tab list just after it closes, is safe** (PR #1)
   Session restore and the tab list look the tab up again instead of using a freed one. `audit_run` frees its worker thread when the window closes mid-sweep, and an aborted AI request can no longer touch the next request's reply.
 

@@ -72,6 +72,6 @@ to the user's configured floor.
 ## ANTS-1892 — the thinking level reads past tool replies
 
 `thinkingLevelFromLatestUserTurn` skips a user-role line that carries no
-`text` block, such as a `tool_result` envelope, and reads the most recent line
+text, such as a `tool_result` envelope or an empty `text` block, and reads the most recent line
 a person typed. A transcript with no such line still returns `Unknown`.
 *Test:* `ModelRecommenderThinkingLevel.Ants1892ToolResultLinesAreSkipped`.

@@ -24,8 +24,12 @@ struct Result {
                                                // 0 = none / unparseable / from cmd
 };
 
+// The number of trailing assistant turns score() reads. Its many_writes
+// threshold is derived from it.
+constexpr int kScoreWindowTurns = 20;
+
 // score() reads at most 512 KB from the tail of the JSONL transcript
-// at transcriptPath, scores the last 20 assistant turns.
+// at transcriptPath, scores the last kScoreWindowTurns assistant turns.
 // Returns the home tier if the file is absent or has no assistant turns.
 // Stateless: no per-call mutable state.
 // ANTS-1974 — `homeTier` is the user's baseline/neutral tier. The default

@@ -95897,6 +95897,18 @@ worked after these.
   TranscriptTurn, and skips text-less (tool_result) user lines, so
   isUser means the person. Closes ANTS-6011. Mediums and lows remain,
   including the shared tail-read helper.
+  2026-10-29, the MEDIUMs closed. F2: one transcript tail-read
+  (ModelSwitchLedger::readTranscriptTail) and one user-text join
+  (userLineText) replace three copies of each; the recommender also uses
+  parseIso8601Ms. A user line whose only text block is empty is now
+  skipped by the thinking-level reader too (test: red before, green
+  after). F3: statsFull and statsSlim headers and the
+  remotecontrol_state.cpp comment say the 24 h totals differ; the
+  behaviour question stays on ANTS-6013. F5: the composer threshold's
+  second use is documented and computed once. F6: computeOutcome's
+  header lists the four settlement clauses. F7: aidialog.h lists the
+  real strip set. F8: kScoreWindowTurns names the window, and the
+  many_writes threshold is derived from it (still 8 at 20). LOWs remain.
   **Layman:** Tidy the automatic model switching so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -99873,6 +99885,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-10-29: the comments now state the difference (ANTS-6142 L33-F3).
+  Open question: should statsFull drop idle_end_of_session-only records
+  as statsSlim does?
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

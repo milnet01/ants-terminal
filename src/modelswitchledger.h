@@ -18,6 +18,8 @@
 #include <QStringList>
 #include <QtGlobal>
 
+#include <optional>
+
 namespace ModelSwitchLedger {
 
 // INV-10 — drop-oldest byte cap. INV-11 — author-correlation window.
@@ -152,8 +154,18 @@ struct TranscriptTurn {
     QString userText;            // user: joined text content
 };
 
-// The turns of a JSONL transcript's last 512 KiB, oldest first (the tail
-// read ModelRecommender::score uses).
+// The non-blank, trimmed lines of a JSONL transcript's last 512 KiB, oldest
+// first. After a seek the first line may be cut short, so it is dropped.
+// nullopt when the file cannot be opened. Every transcript scan reads this.
+std::optional<QStringList> readTranscriptTail(const QString &path);
+
+// A transcript `{type:"user"}` line's text blocks joined with spaces (or its
+// bare-string content). Empty for a tool_result-only line: that is the tool
+// replying, not the person, and every caller skips it (ANTS-1892).
+QString userLineText(const QJsonObject &line);
+
+// The turns of readTranscriptTail, oldest first. A user line with no text is
+// left out (see userLineText).
 QList<TranscriptTurn> readTranscriptTurns(const QString &path);
 
 struct OutcomeFillResult {
@@ -168,11 +180,15 @@ struct OutcomeFillResult {
 // Settlement (`outcome.pending = false`) when ANY of:
 //   - at least one subsequent auto-switch follows this record's ts (the dwell
 //     has ended), OR
-//   - at least `kOutcomeWindowTurns` assistant turns observed post-switch.
+//   - turns_on_to_tier reaches `kOutcomeWindowTurns`, OR
+//   - a post-switch assistant turn ran on another tier (a /model ended the
+//     dwell), OR
+//   - ANTS-1891: on a downgrade, `kCleanEndQuietMs` have passed since the
+//     later of the switch and the last assistant turn.
 // Otherwise stays pending (controller leaves the record alone).
 //
-// turns_on_to_tier counts assistant turns whose modelId aliases to `toTier`,
-// until the first divergent assistant turn OR a subsequent auto-switch.
+// turns_on_to_tier counts post-switch assistant turns whose modelId aliases
+// to `toTier`, stopping at the first one that does not.
 //
 // user_override / correction / under_route follow §2.5 + INV-11/12; correction
 // and under_route only fire on a downgrade (tierRank(from) > tierRank(to)).

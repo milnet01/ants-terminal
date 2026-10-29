@@ -37,8 +37,9 @@ signals:
 public:
     // Extract a candidate command from an AI response (fenced ``` block
     // preferred, else last non-empty line), strip dangerous control
-    // chars (C0 except HT/LF/CR + DEL — same set remotecontrol.cpp
-    // filters), and cap at 4 KiB. Defense against OWASP LLM02 —
+    // chars (C0 except HT/LF/CR, DEL, C1, line/paragraph separators,
+    // bidi controls and zero-width characters — the full list is in
+    // the body), and cap at 4 KiB. Defense against OWASP LLM02 —
     // an LLM coaxed into emitting ESC sequences or NUL bytes can
     // otherwise reprogram the terminal the moment the user clicks
     // Insert. Exposed as a static helper so feature tests can verify

@@ -1,7 +1,6 @@
 // ANTS-1226 — ModelRecommender implementation.
 #include "modelrecommender.h"
-#include <QDateTime>
-#include <QFile>
+#include "modelswitchledger.h"   // shared transcript tail-read (ANTS-6142)
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
@@ -196,40 +195,20 @@ Result score(const QString &transcriptPath, Tier homeTier)
         return r;
     };
 
-    QFile f(transcriptPath);
-    // ANTS-1756 — open without QIODevice::Text. The tail-read seeks by
-    // byte offset (f.size() - kMaxTailBytes); Text-mode CRLF→LF
-    // translation would desync read accounting against that byte seek.
-    // Siblings (claudebgtasks, claudetasklist) open plain ReadOnly.
-    if (!f.open(QIODevice::ReadOnly))
-        return def;
+    // INV-7: tail-read at most 512 KB.
+    const std::optional<QStringList> tail =
+        ModelSwitchLedger::readTranscriptTail(transcriptPath);
+    if (!tail) return def;
+    const QStringList &allLines = *tail;
 
-    // INV-7: tail-read at most 512 KB. Store the flag BEFORE close()
-    // since QFile::size() returns 0 after close on most platforms.
-    constexpr qint64 kMaxTailBytes = 512LL * 1024LL;
-    const bool didTailSeek = (f.size() > kMaxTailBytes);
-    if (didTailSeek)
-        f.seek(f.size() - kMaxTailBytes);
-
-    QStringList allLines;
-    while (!f.atEnd()) {
-        const QString line = QString::fromUtf8(f.readLine()).trimmed();
-        if (!line.isEmpty()) allLines.append(line);
-    }
-    f.close();
-
-    // Discard the first line when tail-seeking — it may be truncated.
-    if (didTailSeek && !allLines.isEmpty())
-        allLines.removeFirst();
-
-    // INV-8: collect the last 20 assistant turns. Walk in reverse, append,
-    // then reverse once — O(n) total (avoids prepend's O(n) per call).
+    // INV-8: collect the last kScoreWindowTurns assistant turns. Walk in
+    // reverse, append, then reverse once — O(n) total (avoids prepend's O(n)
+    // per call).
     // ANTS-1890 (INV-5): same single pass also collects the latest
     // `{type:"user"}` line's joined text (skipping tool_result-only user
-    // lines), feeding the commit-intent hard override. No extra
-    // QFile::open / tail-read.
+    // lines), feeding the commit-intent hard override. No second tail-read.
     QVector<QJsonObject> turns;
-    turns.reserve(20);
+    turns.reserve(kScoreWindowTurns);
     QString latestUserText;
     bool latestUserFound = false;
     // ANTS-1916 — capture a `/model <tier>` command that is MORE RECENT than
@@ -240,7 +219,7 @@ Result score(const QString &transcriptPath, Tier homeTier)
     // the newest assistant turn.
     QString pendingModelTier;
     bool sawAssistantTurn = false;
-    for (int i = allLines.size() - 1; i >= 0 && turns.size() < 20; --i) {
+    for (int i = allLines.size() - 1; i >= 0 && turns.size() < kScoreWindowTurns; --i) {
         const QJsonObject obj =
             QJsonDocument::fromJson(allLines[i].toUtf8()).object();
         const QString type = obj.value(QStringLiteral("type")).toString();
@@ -252,24 +231,8 @@ Result score(const QString &transcriptPath, Tier homeTier)
             if (!tier.isEmpty()) pendingModelTier = tier;
         }
         if (!latestUserFound && type == QStringLiteral("user")) {
-            // Joined text-content blocks; skip user lines with no text
-            // (e.g. tool_result envelopes — those carry no human prompt).
-            const QJsonValue content =
-                obj.value(QStringLiteral("message")).toObject()
-                   .value(QStringLiteral("content"));
-            QStringList parts;
-            if (content.isArray()) {
-                for (const QJsonValue &cv : content.toArray()) {
-                    const QJsonObject c = cv.toObject();
-                    if (c.value(QStringLiteral("type")).toString() ==
-                            QStringLiteral("text"))
-                        parts.append(c.value(QStringLiteral("text")).toString());
-                }
-            } else if (content.isString()) {
-                parts.append(content.toString());
-            }
-            const QString joined = parts.join(QLatin1Char(' '));
-            if (!joined.isEmpty()) {
+            const QString joined = ModelSwitchLedger::userLineText(obj);
+            if (!joined.isEmpty()) {   // empty: a tool reply, keep walking
                 latestUserText = joined.toLower();
                 latestUserFound = true;
             }
@@ -286,13 +249,10 @@ Result score(const QString &transcriptPath, Tier homeTier)
                 .value(QStringLiteral("message")).toObject()
                 .value(QStringLiteral("model")).toString();
         // ANTS-1944 — record the assistant turn's timestamp so the auto-switch
-        // gate can tell a stale read from a fresh one. Inline ISO-8601 parse
-        // (byte-identical to ModelSwitchLedger::parseIso8601Ms) keeps this a
-        // leaf TU — 0 on a missing/unparseable timestamp.
-        const QDateTime ts = QDateTime::fromString(
-            turns.last().value(QStringLiteral("timestamp")).toString(),
-            Qt::ISODate);
-        def.currentModelTsMs = ts.isValid() ? ts.toMSecsSinceEpoch() : 0;
+        // gate can tell a stale read from a fresh one. 0 on a
+        // missing/unparseable timestamp.
+        def.currentModelTsMs = ModelSwitchLedger::parseIso8601Ms(
+            turns.last().value(QStringLiteral("timestamp")).toString());
     }
     // ANTS-1916 — a /model command newer than the last assistant turn is the
     // real current model. tierFromModelId() substring-matches on the tier
@@ -329,7 +289,7 @@ Result score(const QString &transcriptPath, Tier homeTier)
     // unweighted int so the `fileWriteCount == 0` mechanical-feature
     // predicate keeps its v1 semantics.
     int fileWriteCount      = 0;        // unweighted — mechanical predicate
-    double weightedWrites   = 0.0;      // weighted sum, threshold >= 8
+    double weightedWrites   = 0.0;      // weighted sum, vs kManyWritesThreshold
     double weightedMsgLen   = 0.0;
     double weightedMsgCount = 0.0;
     bool planKeyword        = false;
@@ -373,17 +333,19 @@ Result score(const QString &transcriptPath, Tier homeTier)
         ? (weightedMsgLen / weightedMsgCount) : 0.0;
 
     // --- score ---
-    // Threshold raises from v1's `>= 4` (equal weights summing to 20) to
-    // `>= 8` (v2 weights sum to 40 across a full window — 2× the v1 mass).
-    // Calibration is 1:1 only under a uniform distribution; recent
-    // clustering trips earlier, old clustering trips later, by design.
+    // weightForTurnIndex runs 1..3 (mean 2), so a full window's weight mass
+    // is 2 × kScoreWindowTurns. many_writes trips at a fifth of that mass, as
+    // v1's `>= 4` did over equal weights: 8 at 20 turns. Calibration is 1:1
+    // only under a uniform distribution; recent clustering trips earlier, old
+    // clustering trips later, by design.
+    constexpr double kManyWritesThreshold = 2.0 * kScoreWindowTurns / 5.0;
     int sc = 0;
     QString reasons;
     // ANTS-1940 — mechanical predicate hoisted to a named bool so the
     // task-shape signal can ride out on the Result (the gate uses it as a
     // safe-downgrade-window hint). Same condition as the score contribution.
     const bool mechanical = (fileWriteCount == 0 && toolDiversity <= 2);
-    if (weightedWrites >= 8.0)   { sc += 2; reasons += QStringLiteral("many_writes "); }
+    if (weightedWrites >= kManyWritesThreshold) { sc += 2; reasons += QStringLiteral("many_writes "); }
     if (toolDiversity >= 6)      { sc += 1; reasons += QStringLiteral("tool_diversity "); }
     if (planKeyword)             { sc += 2; reasons += QStringLiteral("plan_keyword "); }
     if (avgLen >= 500.0)         { sc += 1; reasons += QStringLiteral("long_prompts "); }
@@ -430,51 +392,21 @@ Tier tierFromModelId(const QString &modelId)
 // nested quantifiers).
 ThinkingLevel thinkingLevelFromLatestUserTurn(const QString &transcriptPath)
 {
-    QFile f(transcriptPath);
-    if (!f.open(QIODevice::ReadOnly)) return ThinkingLevel::Unknown;
+    const QStringList allLines =
+        ModelSwitchLedger::readTranscriptTail(transcriptPath).value_or(QStringList());
 
-    constexpr qint64 kMaxTailBytes = 512LL * 1024LL;
-    const bool didTailSeek = (f.size() > kMaxTailBytes);
-    if (didTailSeek) f.seek(f.size() - kMaxTailBytes);
-
-    QStringList allLines;
-    while (!f.atEnd()) {
-        const QString line = QString::fromUtf8(f.readLine()).trimmed();
-        if (!line.isEmpty()) allLines.append(line);
-    }
-    f.close();
-
-    // The first line after a tail seek may be a truncated JSON fragment.
-    if (didTailSeek && !allLines.isEmpty()) allLines.removeFirst();
-
-    // Walk in reverse for the most recent {type:"user"} line.
+    // Walk in reverse for the most recent {type:"user"} line a person typed.
+    // ANTS-1892 — Claude Code writes every tool reply as a user-role line
+    // holding only a tool_result block. Stopping there answered Unknown for
+    // nearly every live tab, so keep walking past a line with no text.
     QString userText;
     for (int i = allLines.size() - 1; i >= 0; --i) {
         const QJsonObject obj =
             QJsonDocument::fromJson(allLines[i].toUtf8()).object();
         if (obj.value(QStringLiteral("type")).toString() !=
                 QStringLiteral("user")) continue;
-        const QJsonValue content =
-            obj.value(QStringLiteral("message")).toObject()
-               .value(QStringLiteral("content"));
-        QStringList parts;
-        if (content.isArray()) {
-            for (const QJsonValue &cv : content.toArray()) {
-                const QJsonObject c = cv.toObject();
-                if (c.value(QStringLiteral("type")).toString() ==
-                        QStringLiteral("text"))
-                    parts.append(c.value(QStringLiteral("text")).toString());
-            }
-        } else if (content.isString()) {
-            // Some session writers emit a bare-string content; tolerate both.
-            parts.append(content.toString());
-        }
-        // ANTS-1892 — Claude Code writes every tool reply as a user-role line
-        // holding only a tool_result block. Stopping there answered Unknown for
-        // nearly every live tab, so keep walking to a line a person typed.
-        if (parts.isEmpty()) continue;
-        userText = parts.join(QLatin1Char(' ')).toLower();
-        break;
+        userText = ModelSwitchLedger::userLineText(obj).toLower();
+        if (!userText.isEmpty()) break;
     }
 
     if (userText.isEmpty()) return ThinkingLevel::Unknown;

@@ -60,6 +60,8 @@ struct Gate {
     // queuing. Note: Full implementation requires Claude Code to expose actual
     // composer text via MCP for precise slash-command detection; this threshold
     // is a user-tunable workaround (see ANTS-1914 for details).
+    // It has a second use: decide() also reads it as the "human idle" bar for
+    // the focused_state_not_idle veto, so lowering it loosens that veto too.
     qint64 composerStaleThresholdMs = -1;  // -1 = use kComposerStaleVetoMs
     // ANTS-1917 — idle end-of-session suppression. ms the focused shell has
     // been sitting in `Idle` (== nowMs - idleSinceMs). A *fresh* between-turns

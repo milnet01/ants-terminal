@@ -1325,9 +1325,10 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     // values refuse with bad_mode (canonical taxonomy entry in
     // docs/standards/mcp-error-codes.md § "Input validation").
     // ANTS-1960 — firings near_misses.total_24h and near_misses mode's
-    // window_24h.total agree ONLY when read at the same moment. Across-time
-    // reads legitimately differ because the 24 h window advances; this is
-    // expected, not a bug (closes the ANTS-1947 false-alarm class).
+    // window_24h.total can differ even when read at the same moment: the
+    // first leaves out idle_end_of_session-only records and the second
+    // counts them (ANTS-6013). Across-time reads also differ because the
+    // 24 h window advances (closes the ANTS-1947 false-alarm class).
     QString mode = QStringLiteral("firings");
     if (req.contains(QStringLiteral("mode"))) {
         mode = req.value(QStringLiteral("mode")).toString();
