@@ -653,6 +653,57 @@ int inv16StateSurvivesUnknownTrailingRecords() {
     return ok ? 0 : 1;
 }
 
+// ANTS-6306: a local command (/mcp) starts no turn, so its three records —
+// as Claude Code wrote them in a live session (2026-10-29) — must not read
+// as a new prompt. A skill's /command does start a turn and still must.
+int inv17LocalCommandDoesNotDecideState() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const auto parse = [&tmp](const char *name, const QByteArray &last,
+                              const QByteArray &trailer) {
+        const QString path = tmp.path() + "/" + name + ".jsonl";
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return ClaudeTranscriptSnapshot{};
+        f.write(R"({"type":"user","promptId":"p1","message":{"content":"go"}})" "\n");
+        f.write(last + "\n");
+        f.write(trailer);
+        f.close();
+        return ClaudeIntegration::parseTranscriptTail(path, false);
+    };
+    const QByteArray localCommand =
+        R"({"type":"user","promptId":"p2","isMeta":true,"message":{"content":)"
+        R"("<local-command-caveat>Caveat: run directly.</local-command-caveat>"}})" "\n"
+        R"({"type":"user","promptId":"p2","message":{"content":)"
+        R"("<command-name>/mcp</command-name>\n<command-message>mcp</command-message>"}})" "\n"
+        R"({"type":"user","promptId":"p2","message":{"content":)"
+        R"("<local-command-stdout>Reconnected to ants.</local-command-stdout>"}})" "\n"
+        R"({"type":"system","subtype":"away_summary"})" "\n";
+    const QByteArray endTurn =
+        R"({"type":"assistant","message":{"stop_reason":"end_turn",)"
+        R"("content":[{"type":"text","text":"done"}]}})";
+    const QByteArray toolUse =
+        R"({"type":"assistant","message":{"stop_reason":"tool_use",)"
+        R"("content":[{"type":"tool_use","name":"Bash","input":{}}]}})";
+
+    const ClaudeTranscriptSnapshot idle = parse("idle", endTurn, localCommand);
+    const ClaudeTranscriptSnapshot busy = parse("busy", toolUse, localCommand);
+    const ClaudeTranscriptSnapshot skill = parse("skill", endTurn,
+        R"({"type":"user","promptId":"p3","message":{"content":)"
+        R"("<command-name>/go</command-name>\n<command-message>go</command-message>"}})" "\n");
+
+    const bool ok = idle.stateDetermined && idle.state == ClaudeState::Idle &&
+                    busy.stateDetermined && busy.state == ClaudeState::ToolUse &&
+                    skill.stateDetermined && skill.state == ClaudeState::Thinking;
+    std::fprintf(stderr,
+                 "[inv17 local-command-does-not-decide-state] idle=%d (want %d) "
+                 "busy=%d (want %d) skill=%d (want %d)  %s\n",
+                 static_cast<int>(idle.state), static_cast<int>(ClaudeState::Idle),
+                 static_cast<int>(busy.state), static_cast<int>(ClaudeState::ToolUse),
+                 static_cast<int>(skill.state), static_cast<int>(ClaudeState::Thinking),
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -672,6 +723,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv14TailFindsRecordLargerThanOldWindow();
     failures += inv15TailLoaderHonoursByteCap();
     failures += inv16StateSurvivesUnknownTrailingRecords();
+    failures += inv17LocalCommandDoesNotDecideState();
     if (failures) FAIL();
 }
 

@@ -134,6 +134,17 @@ followed by a 100 KiB `api-request-blob`, then `last-prompt`, `ai-title`,
 `AskUserQuestion`. Before the fix it returned no state, so the tab kept
 showing "idle".
 
+**INV-17** — A local command's records never decide state (ANTS-6306). A
+command such as `/mcp` runs inside Claude Code and starts no turn. It
+writes three `user` records sharing one `promptId`: `<local-command-caveat>`,
+`<command-name>`, and `<local-command-stdout>` (or `-stderr`). The state
+walk skips every record sharing a `promptId` with a local-command output
+record. A finished reply followed by `/mcp`'s three records returns `Idle`;
+a pending tool call followed by them returns `ToolUse`. A skill's
+`<command-name>` record with no output record still returns `Thinking`.
+Before the fix the first case returned `Thinking`, so an idle tab showed
+"Claude: thinking".
+
 ## Out of scope
 
 - Rendering/presentation of `thinking` blocks in the transcript

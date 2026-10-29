@@ -305,6 +305,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An idle Claude tab keeps reading "Claude: idle" after a built-in command such as /mcp or /model.** (ANTS-6306)
+
 - **changelog_log treats a lower-case category heading such as `### fixed` like `### Fixed` when it orders new headings and merges a same-day release.** (ANTS-6145)
 
 - **Settings and saved tab scrollback keep the previous file when the disk does not take the whole new one.** (ANTS-6143)

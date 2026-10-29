@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6305 -->
+<!-- ants-roadmap-id-high-water: ANTS=6306 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69458,6 +69458,24 @@ remainder, captured so they don't drop on the floor.
   Kind: investigate.
   Source: user-request-2026-10-29.
   Lanes: claudebgtasks, claudestateresolver, claudestatuswidgets.
+
+- ✅ [ANTS-6306] **The status bar reads "Claude: thinking" on an idle tab after a local command such as /mcp.**
+  Seen on the Vestige tab: /mcp at idle, status stuck on thinking.
+  A local command writes three user records sharing one promptId
+  (<local-command-caveat>, <command-name>, <local-command-stdout>)
+  and starts no turn. parseTranscriptTail takes the last user record
+  as a new prompt, so the state reads Thinking. Fix: the state walk
+  skips a local command's records (claude_transcript_robustness
+  INV-17, user sign-off 2026-10-29).
+  2026-10-29: findStateEvent skips every record sharing a promptId
+  with a <local-command-…> output record. INV-17 red before the fix
+  (idle and mid-tool both read Thinking), green after; two mutations
+  (drop the promptId skip; skip every <command-name>) both caught.
+  Reaches a running terminal on relaunch: parser code in the terminal.
+  **Layman:** After you run a built-in command like /mcp, an idle Claude tab no longer claims to be thinking.
+  Kind: fix.
+  Source: user-report-2026-10-29.
+  Lanes: claude-integration.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 

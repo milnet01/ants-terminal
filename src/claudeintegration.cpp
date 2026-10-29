@@ -972,9 +972,26 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // event (last-prompt, ai-title, mode, atis-latch, api-request, …), so the
     // walk skips everything not on this list, rather than a list of the
     // bookkeeping types, which went stale and froze the state.
-    const auto findStateEvent = [](const QList<QJsonObject> &evs) {
+    // ANTS-6306 — a local command (/mcp, /model) starts no turn. Its caveat,
+    // <command-name> and output records share one promptId, and none of them
+    // decides state; a skill's /command has no output record, so it still does.
+    const auto isLocalCommandOutput = [](const QJsonObject &ev) {
+        return ev.value("message").toObject().value("content").toString()
+                   .startsWith(QLatin1String("<local-command-"));
+    };
+    const auto findStateEvent = [&isLocalCommandOutput](const QList<QJsonObject> &evs) {
+        QSet<QString> localPrompts;
+        for (const QJsonObject &ev : evs) {
+            const QString promptId = ev.value("promptId").toString();
+            if (!promptId.isEmpty() && isLocalCommandOutput(ev))
+                localPrompts.insert(promptId);
+        }
         for (int i = evs.size() - 1; i >= 0; --i) {
             const QString t = evs[i].value("type").toString();
+            if (t == QLatin1String("user") &&
+                (isLocalCommandOutput(evs[i]) ||
+                 localPrompts.contains(evs[i].value("promptId").toString())))
+                continue;
             if (t == QLatin1String("assistant") || t == QLatin1String("user") ||
                 t == QLatin1String("human") || t == QLatin1String("attachment"))
                 return evs[i];
