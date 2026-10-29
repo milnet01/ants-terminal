@@ -33,7 +33,7 @@ int headingLevel(const QString &raw, QString *text) {
     return 0;
 }
 
-// Moved from roadmapdialog.cpp:485. Lowercase + non-alnum→'-' + trim
+// Moved from roadmapdialog.cpp. Lowercase + non-alnum→'-' + trim
 // trailing '-'. Skips leading dashes via `prevDash = true` seed.
 QString slugifyHeading(const QString &heading) {
     QString out;
@@ -72,8 +72,8 @@ bool isCanonicalId(const QString &id) {
 
 // Moved out of roadmapdialog.cpp (ANTS-1287). Walk-order rule for duplicate
 // headings: the Nth occurrence of "Performance" gets "performance",
-// "performance-2", "performance-3", ... — both consumers (parseBullets
-// and buildIndex) call this in the same document order so slugs line up.
+// "performance-2", "performance-3", ... — every walk that assigns section
+// slugs calls this in document order, so the slugs line up across them.
 QString uniqueSlug(QSet<QString> &seen, const QString &heading) {
     const QString base = slugifyHeading(heading);
     if (base.isEmpty()) return base;

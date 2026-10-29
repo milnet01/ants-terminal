@@ -283,7 +283,6 @@ QStringList storeServedDialects();
 // under both caps, rather than arriving already read — but only ever through
 // detectionPrefix(). This function never calls full(), so an unmigrated
 // caller's own text.full() is the first and only body read on that path.
-std::optional<QVector<BulletRecord>>
 //
 // ANTS-3771 — `fmt` is the project's DECLARED id format, from
 // ProjectSettings::idFormatFor(projectRoot). It arrives as a VALUE and is not
@@ -298,6 +297,7 @@ std::optional<QVector<BulletRecord>>
 // declaration governs never runs on the store path. A caller passes the same
 // value it would pass to parseBullets() on the unmigrated path, so one call
 // site holds one declaration for both outcomes (INV-13).
+std::optional<QVector<BulletRecord>>
 bulletsFor(RoadmapStore &store, const QString &projectRoot,
            RoadmapText &text, bool includeArchive, ReadError *why,
            QString *error = nullptr,

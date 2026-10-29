@@ -18,7 +18,7 @@ struct InProgressItem {
 
 struct StaleItem {
     QString id, headline, lastModified;
-    int     days = 0;       // whole days since lastModified
+    int     days = 0;       // whole days since lastModified; -1 when undated
 };
 
 // Items untouched for at least `staleDays` days before `today`, oldest first.
