@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6307 -->
+<!-- ants-roadmap-id-high-water: ANTS=6308 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95472,7 +95472,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6119] **Readability fixes, roadmap-store-b lane: src/roadmapstore.cpp, src/roadmapstore.h.**
+- ✅ [ANTS-6119] **Readability fixes, roadmap-store-b lane: src/roadmapstore.cpp, src/roadmapstore.h.**
   Findings of the 2026-10-22 readability review (src run), lane roadmap-store-b:
   0 high, 6 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/10-roadmap-store-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95483,6 +95483,14 @@ worked after these.
   helper used by inbox and summary, F3 shared mailArgsError (preview now
   checks from_session; new test), F4 one ImmediateTx pattern, F5
   provenance merge helpers, F6 and F7 comments. LOWs remain.
+  2026-10-29: LOWs closed in 927889f3. Eight fixed: sectionProjectId()
+  helper for the same-project rule (fileItem keeps its join), unused
+  Step removed, deregister placeholder comment corrected,
+  syncConvertedLinks remove() commented, rsDaySpread uses
+  rsScopeClause()/lastErr() and the unused alias parameter is gone,
+  header comments fixed (deregister scope first, user_version =
+  kSchemaVersion, id_prefix written only on allocation). The
+  unackedCount parameter finding was already closed by F1 (unackedOut).
   **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97759,6 +97767,18 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: audit-dialog.
+
+- 📋 [ANTS-6308] **roadmap_migrate_verb spec says deregistering deletes across "all nine tables".**
+  tests/features/roadmap_migrate_verb/spec.md (the delete paragraph)
+  says the delete runs "across all nine tables". Since ANTS-5366 it
+  deletes from the child tables and keeps the project and message rows
+  (src/roadmapstore.h, deregisterProject). Found by the lane 10 sweep
+  (ANTS-6119); it predates that change. A spec edit: name the tables
+  rather than a count, and ask rule 14's question.
+  **Layman:** A test's description of project removal names the wrong set of database tables.
+  Kind: doc-fix.
+  Source: close-findings-sweep-2026-10-29.
+  Lanes: roadmap-store.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
