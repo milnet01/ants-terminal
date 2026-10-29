@@ -177,9 +177,9 @@ assumes something different unless the project says otherwise.
   added where the tag, the title and the artifact name are written, and
   nowhere else. **The sanctioned route is `cut-release --pre rc.N`**, which
   keeps the target argument a bare triple and appends the candidate to the
-  tag and the release title, and to no version-bearing file. `cut-release` does not
-  name artifacts; the project's own release scripts do, and this bullet is
-  the rule they follow.
+  tag and the release title, and to no version-bearing file. Whatever names the
+  artifact, the project's release scripts or `cut-release`'s recipe
+  `artifacts` field, follows this bullet.
   Amended 2026-08-20 (CFG-0179): until that landed there was
   no route that *advanced* a candidate, and this bullet routed the whole flow
   outside the tool — by hand or by a project's own RC script, which is still
