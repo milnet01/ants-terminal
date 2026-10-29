@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6294 -->
+<!-- ants-roadmap-id-high-water: ANTS=6298 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69705,6 +69705,23 @@ remainder, captured so they don't drop on the floor.
   `QProcess::startDetached`).
   Kind: implement.
 
+- 📋 [ANTS-6295] **Show the focused tab's project's open pull requests and open issues on the status bar.**
+  User, 2026-10-29: "Have Ants Terminal show if a project has any
+  open PRs or open issues (perhaps in the status bar)."
+  Sits beside the public/private repo badge (ANTS-4257), which already
+  reads GitHub state for the focused tab's repo. Open questions for the
+  design: a count or a dot; what a click opens (the PR/issue list in a
+  browser, or a small popup); how often it refreshes without spending
+  the GitHub API rate limit; hidden when the repo has no GitHub remote
+  or gh is not signed in. Palette: check the palette history before
+  picking a colour.
+  Hot reload: to be stated in the design; a refresh timer and a
+  re-read on tab focus need no relaunch.
+  **Layman:** The status bar tells you when the project you are working in has open pull requests or open issues on GitHub.
+  Kind: feature.
+  Source: user-request-2026-10-29.
+  Lanes: status-bar.
+
 ### 🐜 Tab UX
 
 - ✅ [ANTS-4260] **Tab close button (×) always visible, not hover-only.**
@@ -96030,6 +96047,17 @@ worked after these.
   Ctrl+Shift+Down/Up (dead since ANTS-1165) and lacked 8 menu
   actions. New test keybinding_defaults; osc133_last_command and
   tab_switcher read the table now. Mediums and lows remain.
+  2026-10-29 MEDIUMs. Fixed: F3 the dispatcher's four error replies
+  go through AntsHelper::errorObj (now public) and one usageFail();
+  F4 listSubcommands' comment names the four places a subcommand is
+  added; F5 mirrorMaster takes `allowed`, so the MCP-off branch calls it
+  instead of re-listing the sub-toggles; F7 one
+  SettingsDialog::describePluginPermission, used by the Plugins tab and
+  MainWindow's first-load prompt; F8 sanitizeExtraArgs' header names
+  the quote-aware split and points at kDangerous/kRejectedLetters; F9
+  the header names DirTreeWatcher; F11 `pending` says what it must
+  match; F2's stray mkpath in readClaudeSettings removed. Queued: F2's
+  shared helper ANTS-6296, F6 ANTS-6297, F10 ANTS-6298. LOWs remain.
   **Layman:** Tidy app start-up and the settings window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97467,6 +97495,52 @@ worked after these.
   Kind: investigate.
   Source: review-readability-2026-10-22.
   Lanes: config-session-project.
+
+- 📋 [ANTS-6296] **Give claudesetup.cpp's two hook installers one lock-and-read-settings helper.**
+  From ANTS-6146; feeds ANTS-5796 (dup:b5bc97a759e4).
+  installStatusHooks and installGitContextHook each make the directory,
+  take ConfigWriteLock, refuse when busy and call readClaudeSettings.
+  ANTS-5109 had to patch both. Queued: concurrent_writer_lock spec INV-6
+  says each of the two installers constructs the lock before its read,
+  and three tests count those literals (test_concurrent_writer_lock I6,
+  test_settings_parse_failure_mirror I2, test_installer_grep INV-5c).
+  Amend and gate the spec first. The stray mkpath in readClaudeSettings
+  was removed in the lane pass.
+  Hot reload: none needed; no running state.
+  **Layman:** Two setup buttons each repeat the same careful steps before editing Claude Code's settings file; one shared copy means a fix lands in both.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L37-F2).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6297] **Read each Settings tab's Restore Defaults values from Config instead of a second hard-coded copy.**
+  From ANTS-6146. Every tab's Restore Defaults handler in
+  settingsdialog.cpp hard-codes values that Config's getters also
+  hard-code (scrollback 50000, font size 11, padding 4, "llama3",
+  "F12" and more). The eleven the reviewer checked agree today; nothing
+  links the copies. Fix: one Config-side default per key, as
+  Config::defaultKeybindings() did for shortcuts (L37-F1). Queued: it
+  touches every getter and every tab's handler, too wide for the lane
+  pass.
+  Hot reload: none needed; no running state.
+  **Layman:** The Restore Defaults buttons type out every default a second time, so changing a default in one place leaves the button restoring the old value.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L37-F6).
+  Lanes: app-entry-dialogs, config-session-project.
+
+- 📋 [ANTS-6298] **Split diffviewer::show() into named pieces: the probe runner, the renderer and the copy wiring.**
+  From ANTS-6146. show() holds runProbes, whose finalize lambda runs
+  about 390 lines at the wrong indent level, then the five runAsync
+  calls. Queued: source-grep tests pin the current shape
+  (diffviewer_extraction's `pending = 5` and `struct ProbeState`,
+  review_changes_branches' runAsync literals and
+  `auto state = std::make_shared<ProbeState>();`, probe_guards' log
+  probe literal). Those tests move with the split. L37-F11's comment on
+  `pending` landed in the lane pass.
+  Hot reload: none needed; no running state.
+  **Layman:** The Review Changes window is built by one function of about 800 lines, which is hard to follow; break it into named parts.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 (L37-F10).
+  Lanes: app-entry-dialogs.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -101239,6 +101313,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   2026-10-24: CI run 40077091660 (a377f5fd) failed on Inv3Latency
   alone, p95 65 ms against 50 ms: the highest seen (earlier 51-59 ms).
   The next push (4c080641) passed.
+  2026-10-29: second miss. CI run 40833749857 (afa0bed5, a
+  roadmap-only commit), Release job, perf step: p95 50.337 ms against
+  the 50 ms budget, 3,700 items. The next two runs (e4bd7b8a,
+  36532074) passed. So it is load noise sitting on the budget's edge,
+  not a regression; the remedy the test names is still ANTS-3816's
+  batched readItems().
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
