@@ -41,31 +41,26 @@ public:
 
     Qt::TextElideMode elideMode() const { return m_elideMode; }
 
-    // Minimum width policy: never compress the widget below what it takes
-    // to render the full text, *unless* the full text is wider than
-    // maximumWidth() — at which point elision kicks in and the minimum is
-    // the cap width. Without this, QStatusBar's QBoxLayout was free to
-    // squeeze the branch chip down to 3-char width ("…") even when the
-    // statusbar had plenty of space; the user reported seeing "…" where
-    // their branch name (6 chars) should have fit in ~50 px. Short text
-    // must always show in full; only genuinely-over-cap text elides.
+    // Minimum width policy:
+    // - A CAPPED label (maximumWidth set, e.g. the branch chip) never
+    //   shrinks below its full text, up to the cap; past the cap it
+    //   elides and the minimum is the cap. Without this, QStatusBar's
+    //   QBoxLayout squeezed a 6-char branch name to "…" with room to spare.
+    // - An UNCAPPED label (a stretch slot: the status message, a title)
+    //   takes only the floor as its minimum. Its full text is unbounded,
+    //   so demanding its width let one long message widen the whole
+    //   window (2026-09-29). Its sizeHint still asks for the full text, so
+    //   it shows in full wherever there is room and elides where not.
     //
     // CRITICAL: base the size on `m_fullText`, not on `QLabel::sizeHint()`
     // which reports the *displayed* text's width. Once elision has
     // already run, displayed is "…" and sizeHint is tiny — so relying on
     // it creates a chicken-and-egg loop where the widget shrinks itself
     // and then can't grow back. Compute from the full text directly via
-    // fontMetrics. Include the stylesheet-style padding via contentsMargins
-    // is unreliable across Qt versions; instead we add a small fixed
-    // fudge (sum of two averageCharWidth) to cover the typical
-    // padding: 1px 8px from the chip stylesheet plus a safety margin.
-    //
-    // An UNCAPPED label (no maximumWidth) is a stretch slot — the status
-    // message, a title — and takes only the floor as its minimum. Its full
-    // text is unbounded, so demanding its width let one long message raise
-    // the whole window's minimum and widen the window (2026-09-29). Its
-    // sizeHint still asks for the full text, so it shows in full wherever
-    // there is room, and elides where there is not.
+    // fontMetrics. Reading the stylesheet padding via contentsMargins is
+    // unreliable across Qt versions, so a fixed fudge (two
+    // averageCharWidth) covers the chip's `padding: 1px 8px` plus a
+    // safety margin.
     QSize minimumSizeHint() const override {
         const QFontMetrics fm(font());
         // A floor of 3 averageChar widths keeps an empty or squeezed label a

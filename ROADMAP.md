@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6302 -->
+<!-- ants-roadmap-id-high-water: ANTS=6304 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95288,7 +95288,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mainwindow.
 
-- 📋 [ANTS-6114] **Readability fixes, chrome-widgets lane: src/coloredtabbar.cpp, src/coloredtabbar.h, src/elidedlabel.h, src/globalshortcutsportal.cpp, src/globalshortcutsportal.h, src/kwinpositiontracker.cpp ….**
+- ✅ [ANTS-6114] **Readability fixes, chrome-widgets lane: src/coloredtabbar.cpp, src/coloredtabbar.h, src/elidedlabel.h, src/globalshortcutsportal.cpp, src/globalshortcutsportal.h, src/kwinpositiontracker.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane chrome-widgets:
   1 high, 5 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/05-chrome-widgets.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95303,6 +95303,14 @@ worked after these.
   fallback comment), the coloredtabbar.cpp wash-cap coupling noted at the
   line. F3 queued as ANTS-6190 (portal_failure_paths pins it per handler).
   LOWs still open.
+  2026-10-29: LOWs done. F5 and F6 (pointers name the stylesheet rule
+  and the Activated connect, not line numbers), F8 (isAvailable
+  includes activatable portals; the latch comment no longer lists
+  setters), F10 (ElidedLabel states the capped and uncapped rules
+  first), F11 (ToggleSwitch's unused thumbXChanged signal removed),
+  F12 (the thumb starts from kOff). F13 queued as ANTS-6303, F14 as
+  ANTS-6304 (both test-pinned). F3 stays queued as ANTS-6190. All
+  lane findings closed.
   **Layman:** Tidy the tab bar, side panels and window parts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97642,6 +97650,30 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: mainwindow.
+
+- 📋 [ANTS-6303] **One shared background-fill helper for OpaqueMenuBar, OpaqueStatusBar and ColoredTabBar (L05-F13).**
+  Each class has its own setBackgroundFill plus a CompositionMode_Source
+  fill before the base paint, so a fix to the fill lands once and is
+  missed twice. Not done in the readability pass: test anchors pin
+  fillRect, paintEvent and setBackgroundFill per file
+  (menubar_hover_stylesheet, tabbar_statusbar_opaque). Amend those
+  first.
+  **Layman:** Three bars paint their background with three copies of the same code; make them share one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-6304] **Build the four title-bar buttons from one helper (L05-F14).**
+  src/titlebar.cpp builds four QToolButtons with near-identical blocks
+  (text, object name, accessible name and description, auto-raise,
+  setFixedSize(32, 28)). Not done in the readability pass:
+  a11y_chrome_names T8 counts at least four literal setAccessibleName(
+  and setAccessibleDescription( calls in titlebar.cpp. Amend T8 to
+  accept the helper first.
+  **Layman:** The window's title-bar buttons are each set up by a copied block; make one function do it.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: chrome-widgets.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

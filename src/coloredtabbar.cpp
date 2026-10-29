@@ -371,7 +371,7 @@ void ColoredTabBar::paintEvent(QPaintEvent *event) {
         // to bottom (chosen colour) and it must still have the line
         // underneath to show which tab is active."
         //
-        // The app stylesheet (mainwindow.cpp:1678-1680) gives every tab a
+        // The app stylesheet (themedstylesheet.cpp, `QTabBar::tab`) gives every tab a
         // 2px transparent bottom border and the *selected* tab a 2px
         // accent-colour bottom border. That 2px strip is the "line
         // underneath" that signals the active tab, so we exclude it from

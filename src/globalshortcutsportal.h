@@ -43,8 +43,9 @@ public:
     explicit GlobalShortcutsPortal(QObject *parent = nullptr);
     ~GlobalShortcutsPortal() override;
 
-    // Returns true iff the xdg-desktop-portal service is currently
-    // registered on the session bus. Cheap synchronous query — safe to
+    // Returns true when the xdg-desktop-portal service is registered on
+    // the session bus, or can be started on demand (D-Bus activatable,
+    // ANTS-5081). Cheap synchronous query — safe to
     // call from a constructor. Does NOT verify the GlobalShortcuts
     // interface is actually implemented by the running portal backend;
     // that can only be detected by dispatching CreateSession and
@@ -113,9 +114,8 @@ private:
     // would otherwise leave the session pending and queue every bind.
     static constexpr int kCreateSessionTimeoutMs = 30000;
     QTimer m_createSessionTimer;
-    // ANTS-1152 — terminal-failure latch. Set by
-    // onCreateSessionResponse and onBindShortcutsResponse on
-    // response != 0 (or DBus reply error). Once latched, every
+    // ANTS-1152 — terminal-failure latch, set on every failed portal
+    // response or DBus reply error. Once latched, every
     // subsequent bindShortcut() call early-returns with a
     // sessionFailed signal — the failure is treated as
     // process-permanent. Today's only caller (MainWindow's

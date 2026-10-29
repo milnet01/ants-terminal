@@ -12,7 +12,8 @@ static constexpr int kMargin = 3;
 static constexpr int kOff = kMargin;
 static constexpr int kOn = kW - kThumb - kMargin;
 
-ToggleSwitch::ToggleSwitch(QWidget *parent) : QAbstractButton(parent) {
+ToggleSwitch::ToggleSwitch(QWidget *parent)
+    : QAbstractButton(parent), m_thumbX(kOff) {
     setCheckable(true);
     setFixedSize(kW, kH);
     m_anim = new QPropertyAnimation(this, "thumbX", this);
@@ -32,7 +33,6 @@ QSize ToggleSwitch::sizeHint() const { return {kW, kH}; }
 void ToggleSwitch::setThumbX(int x) {
     if (m_thumbX == x) return;
     m_thumbX = x;
-    emit thumbXChanged(x);
     update();
 }
 

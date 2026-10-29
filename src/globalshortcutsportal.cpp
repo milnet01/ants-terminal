@@ -356,8 +356,8 @@ void GlobalShortcutsPortal::onBindShortcutsResponse(uint response,
 // passedByValue. Reverted — QString is copy-on-write (atomic
 // refcount bump on copy), and Qt's old-style SLOT() macro
 // signature-matches by exact type string at connect time.
-// Changing to const QString & would silently break the connect
-// at globalshortcutsportal.cpp:219. Cppcheck false-positive
+// Changing to const QString & would silently break the Activated
+// connect in onCreateSessionResponse. Cppcheck false-positive
 // class; suppress in-line. The suppression must SPAN the signature
 // (ANTS-3850): an inline `cppcheck-suppress` covers only the next line, so
 // the single-line form silenced the first parameter and left shortcutId --
