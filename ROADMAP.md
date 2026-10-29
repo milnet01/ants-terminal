@@ -96089,6 +96089,18 @@ worked after these.
   (ids L39-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-10-29 — MEDIUMs closed. F1: clipboardguard.h no longer claims to
+  be Qt6::Core-only. F2: the ANTS-4421 comment sits on its feedback-file
+  hint. F3: PathValidation::kFeedbackSuffix is the one copy of the
+  suffix; pathvalidation.cpp's three tests use hasFeedbackSuffix, and
+  rcdetail uses it in place of its own. F4, F5: the comments and header
+  list every reject reason, the ancestor-folder rule, and the RC-43
+  landing path. F6: the folder climb is landingPath(), and both anchor
+  tests are admitted(). F7: joinRefusingMarshals states its precondition
+  first; the caller refuses both workers before joining either, so the
+  function does not set the refusal itself. LOWs (F8-F22) still open.
+  Out of scope, seen: tests/features/mcp_path_anchor/spec.md PV-9 still
+  says "lexical fallback".
   **Layman:** Tidy shared helper code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

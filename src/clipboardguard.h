@@ -7,9 +7,9 @@
 // The 7th-audit memory flagged OSC 52 (PTY-driven clipboard writes)
 // as an exfiltration vector that needs a centralised hygiene layer.
 //
-// The header is Qt6::Core-only (just QString); the .cpp pulls in
-// Qt6::Gui for QApplication::clipboard(). This split lets the
-// feature test drive `sanitize` without spinning up a QApplication.
+// `sanitize` is inline here and needs no QApplication, so the feature
+// test drives it directly. The header still includes the Qt6::Gui
+// header <QClipboard>, for writeText's QClipboard::Mode parameter.
 
 #include <QClipboard>
 #include <QString>
@@ -45,8 +45,7 @@ inline QString sanitize(QString text, Source source) {
     return text;
 }
 
-// Wrapper around QApplication::clipboard()->setText(). Defined in
-// clipboardguard.cpp so the header stays Qt6::Core-only.
+// Wrapper around QApplication::clipboard()->setText().
 void writeText(const QString &text,
                Source source,
                QClipboard::Mode mode = QClipboard::Clipboard);

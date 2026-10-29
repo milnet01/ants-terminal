@@ -45,6 +45,7 @@
 
 #include "coldeyesengine.h"
 #include "indiereviewengine.h"
+#include "pathvalidation.h"
 #include "roadmapparse.h"
 #include "rootprovider.h"
 #include "roadmapindex.h"
@@ -138,7 +139,7 @@ extern const int kWorkspaceSearchThreads;
 extern const int kWorkspaceSearchStderrCapBytes;
 extern const int kWorkspaceSearchGlobBytesCap;
 extern const int kDefaultMaxMatchBytes;
-extern const char kFeedbackSuffix[];
+using PathValidation::kFeedbackSuffix;
 
 // ---- file-scope statics promoted by the cut (ANTS-3833 § 2.5 commit 1b) ----
 //

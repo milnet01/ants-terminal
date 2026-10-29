@@ -12,6 +12,9 @@
 
 namespace PathValidation {
 
+// The cross-session feedback file's name ends with this (ANTS-3430).
+inline constexpr char kFeedbackSuffix[] = "_Ants_MCP_Feedback.md";
+
 // Result of a single validation call.
 //   bad=true   → caller returns `err` as the response envelope.
 //   bad=false  → argvForm is the safe-for-argv form of the path
@@ -34,8 +37,12 @@ struct Check {
 //
 // Reject reasons:
 //   - rawPath contains a control char (U+0000..U+001F) or backslash.
-//   - resolved path is outside rootCanonical (canonical anchor for
-//     existing paths, lexical fallback for non-existent ones).
+//   - rootCanonical is empty: there is no root to anchor against.
+//   - the path is outside rootCanonical. An existing path is judged by
+//     its canonical form; a missing one by its deepest existing folder,
+//     canonicalised, with the missing part re-attached. A feedback file
+//     in an ancestor folder of the root is admitted.
+//   - a missing path has a dangling symlink on its way (RC-43).
 //
 // ANTS-1455 — opt-in escape hatch. When allowOutsideRoot=true, the
 // project-root anchor check is skipped (the NFC + control-char +

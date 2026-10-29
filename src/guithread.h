@@ -97,7 +97,11 @@ auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
     return out;
 }
 
-// ANTS-5113 — join `worker` from the GUI thread at teardown. A worker already
+// ANTS-5113 — PRECONDITION: call setGuiMarshalRefused(worker, true) first;
+// this does not refuse anything itself. Unrefused, a parked marshal RUNS its
+// callable here, during teardown.
+//
+// Join `worker` from the GUI thread at teardown. A worker already
 // parked in onGuiThread is waiting for this thread, so a bare wait() never
 // returns. Between short waits, deliver the posted marshals: with `worker`
 // refused, its own release it without running their callables. A marshal

@@ -3213,10 +3213,6 @@ QJsonObject fbErr(const QString &code, const QString &message) {
     return o;
 }
 
-// Canonical suffix-guard literal (mcp-feedback-files.md § "File location
-// & name"). Checked on the resolved/canonical basename.
-constexpr char kFeedbackSuffix[] = "_Ants_MCP_Feedback.md";
-
 // ANTS-3376 — the caller's project leaf (the caller_cwd basename). Used to
 // (a) derive the conventional default path when `path` is omitted and
 // (b) rank the caller's own sibling first in a not_found candidate list.

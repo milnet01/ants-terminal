@@ -22,6 +22,10 @@ bool hasControlOrBackslash(const QString &s) {
     return false;
 }
 
+bool hasFeedbackSuffix(const QString &path) {
+    return QFileInfo(path).fileName().endsWith(QLatin1String(kFeedbackSuffix));
+}
+
 QJsonObject makeErr(const QString &toolName, const QString &paramName,
                     const QString &reason,
                     const QString &absPath = QString(),
@@ -37,25 +41,6 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
     o[QStringLiteral("error")] =
         QStringLiteral("%1: \"%2\" %3").arg(toolName, paramName, reason);
     o[QStringLiteral("code")]  = QStringLiteral("bad_path");
-    // ANTS-4421 — name the call that WOULD work when the rejected path is a
-    // cross-session feedback file. The refusal itself is correct and stays:
-    // ANTS-3430's exception admits such a file only from an ANCESTOR of the
-    // project root, and a session whose project lives elsewhere entirely
-    // (~/.claude, whose parent is /home/ants, reading a report under
-    // /mnt/Games/Scripts/Linux) is legitimately outside it. No widening can
-    // serve that session, so what was missing was the route out.
-    //
-    // Every session on this machine carries a standing instruction to read
-    // these files via Ants MCP, and the workflow is cross-project BY
-    // CONSTRUCTION — the file never lives under the project it is about. The
-    // reporting session found the working form (caller_cwd at the file's own
-    // directory, plus a bare relative filename) by guessing; the envelope
-    // already knows the path it rejected, so it can just say so. Same shape
-    // as ANTS-4373's skipped_hint.
-    //
-    // The asymmetry that made this surprising is real and worth the words:
-    // feedback_log takes an absolute path happily, so the WRITE verb works
-    // where the READ verbs refuse.
     // ANTS-4569 — the `lane` case, and only it. A lane is a search SCOPE
     // selector, so `lane:".."` is a caller asking to search a wider tree
     // rather than attempting a traversal — and there is a sanctioned route
@@ -98,9 +83,7 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
         QStringLiteral("read_regions")};
     if (!absPath.isEmpty() && callerWroteAbsolute
         && kReadOnlyVerbs.contains(toolName)
-        && QFileInfo::exists(absPath)
-        && !QFileInfo(absPath).fileName().endsWith(
-               QStringLiteral("_Ants_MCP_Feedback.md"))) {
+        && QFileInfo::exists(absPath) && !hasFeedbackSuffix(absPath)) {
         const QString dir = QFileInfo(absPath).absolutePath();
         if (!dir.isEmpty()) {
             o[QStringLiteral("hint")] = QStringLiteral(
@@ -113,9 +96,26 @@ QJsonObject makeErr(const QString &toolName, const QString &paramName,
             return o;
         }
     }
-    if (!absPath.isEmpty()
-        && QFileInfo(absPath).fileName().endsWith(
-               QStringLiteral("_Ants_MCP_Feedback.md"))) {
+    // ANTS-4421 — name the call that WOULD work when the rejected path is a
+    // cross-session feedback file. The refusal itself is correct and stays:
+    // ANTS-3430's exception admits such a file only from an ANCESTOR of the
+    // project root, and a session whose project lives elsewhere entirely
+    // (~/.claude, whose parent is /home/ants, reading a report under
+    // /mnt/Games/Scripts/Linux) is legitimately outside it. No widening can
+    // serve that session, so what was missing was the route out.
+    //
+    // Every session on this machine carries a standing instruction to read
+    // these files via Ants MCP, and the workflow is cross-project BY
+    // CONSTRUCTION — the file never lives under the project it is about. The
+    // reporting session found the working form (caller_cwd at the file's own
+    // directory, plus a bare relative filename) by guessing; the envelope
+    // already knows the path it rejected, so it can just say so. Same shape
+    // as ANTS-4373's skipped_hint.
+    //
+    // The asymmetry that made this surprising is real and worth the words:
+    // feedback_log takes an absolute path happily, so the WRITE verb works
+    // where the READ verbs refuse.
+    if (!absPath.isEmpty() && hasFeedbackSuffix(absPath)) {
         const QString dir = QFileInfo(absPath).absolutePath();
         if (!dir.isEmpty())
             o[QStringLiteral("hint")] = QStringLiteral(
@@ -162,9 +162,7 @@ bool anchoredUnder(const QString &candidate, const QString &root);
 // `absPath` must be the resolved/cleaned absolute path, NOT the caller's
 // raw string: the directory test is meaningless on `../x.md`.
 bool isFeedbackFile(const QString &absPath, const QString &rootCanonical) {
-    if (!QFileInfo(absPath).fileName().endsWith(
-            QStringLiteral("_Ants_MCP_Feedback.md")))
-        return false;
+    if (!hasFeedbackSuffix(absPath)) return false;
     if (rootCanonical.isEmpty()) return false;   // fail closed, as elsewhere
     const QString dir = QFileInfo(absPath).absolutePath()
                             .normalized(QString::NormalizationForm_C);
@@ -185,6 +183,33 @@ bool anchoredUnder(const QString &candidate, const QString &root) {
     const QString c = candidate.normalized(QString::NormalizationForm_C);
     const QString r = root.normalized(QString::NormalizationForm_C);
     return c == r || c.startsWith(r + QLatin1Char('/'));
+}
+
+// The one anchor rule: inside root, or a feedback file in an ancestor of it.
+bool admitted(const QString &path, const QString &root) {
+    return anchoredUnder(path, root) || isFeedbackFile(path, root);
+}
+
+// RC-43 (audit 2026-09-26) — where a write to the missing path `cleaned`
+// would land: its deepest EXISTING ancestor canonicalised, with the missing
+// tail re-attached. A lexical check alone let a missing leaf under a
+// symlinked ancestor (`root/link/new`, link → /etc) pass. Empty when a
+// dangling symlink is on the way, since a write through it lands wherever
+// it points.
+QString landingPath(const QString &cleaned) {
+    QString probe = cleaned;
+    QString tail;
+    while (!probe.isEmpty() && probe != QLatin1String("/")) {
+        const QFileInfo fi(probe);
+        const QString canon = fi.canonicalFilePath();
+        if (!canon.isEmpty())
+            return tail.isEmpty() ? canon : canon + QLatin1Char('/') + tail;
+        if (fi.isSymLink()) return {};
+        tail = tail.isEmpty() ? fi.fileName()
+                              : fi.fileName() + QLatin1Char('/') + tail;
+        probe = fi.path();
+    }
+    return cleaned;
 }
 
 }  // namespace
@@ -232,15 +257,13 @@ Check validatePath(const QString &rawPath,
         }
         // If the path canonicalises, the canonical form is the source of
         // truth — symlink escapes from inside the tree to outside get
-        // caught. If it doesn't canonicalise (e.g. a git pathspec for a
-        // deleted file), apply the lexical fallback so non-existent
-        // escapes still reject.
-        // ANTS-3430 — a cross-session feedback file may escape the root
-        // (it lives one level above it by convention); permit exactly that
-        // suffix and nothing else.
+        // caught. If it doesn't (e.g. a git pathspec for a deleted file),
+        // landingPath() stands in for it so non-existent escapes still
+        // reject. ANTS-3430 — a cross-session feedback file may escape the
+        // root: its suffix AND a directory that is an ancestor of the root
+        // admit it (isFeedbackFile).
         if (!resolved.isEmpty()) {
-            if (!anchoredUnder(resolved, rootCanonical)
-                && !isFeedbackFile(resolved, rootCanonical)) {
+            if (!admitted(resolved, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"), resolved,
@@ -250,31 +273,8 @@ Check validatePath(const QString &rawPath,
             pc.resolved = resolved;
         } else {
             const QString cleaned = QDir::cleanPath(joined);
-            // RC-43 (audit 2026-09-26) — a lexical check alone let a missing
-            // leaf under a symlinked ancestor (`root/link/new`, link → /etc)
-            // pass. So the deepest EXISTING ancestor is canonicalised and the
-            // missing tail re-attached; a dangling symlink on the way is an
-            // escape, since a write through it lands wherever it points.
-            QString probe = cleaned;
-            QString tail;
-            QString effective = cleaned;
-            bool dangling = false;
-            while (!probe.isEmpty() && probe != QLatin1String("/")) {
-                const QFileInfo fi(probe);
-                const QString canon = fi.canonicalFilePath();
-                if (!canon.isEmpty()) {
-                    effective = tail.isEmpty()
-                        ? canon : canon + QLatin1Char('/') + tail;
-                    break;
-                }
-                if (fi.isSymLink()) { dangling = true; break; }
-                tail = tail.isEmpty() ? fi.fileName()
-                                      : fi.fileName() + QLatin1Char('/') + tail;
-                probe = fi.path();
-            }
-            if (dangling
-                || (!anchoredUnder(effective, rootCanonical)
-                    && !isFeedbackFile(effective, rootCanonical))) {
+            const QString landing = landingPath(cleaned);
+            if (landing.isEmpty() || !admitted(landing, rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"), cleaned);
