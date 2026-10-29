@@ -1082,7 +1082,7 @@ void AuditDialog::populateChecks() {
         // scope (would need `grep -Pzo`).
         // The 2026-04-16 triage saw 1/1 finding here as an FP — the truncate()
         // call was 3-8 lines above the callback invocation, not on the same
-        // line. Extended with a ±5-line context filter that also recognises
+        // line. Extended with a ±10-line context filter that also recognises
         // explicit size-caps (`<= kMaxFoo`, `<= 128`, and generic
         // `constexpr.*kMax…` declarations in the same function).
         addGrepCheck("unbounded_callback_payloads", "Unbounded Callback Payloads",
@@ -1498,7 +1498,7 @@ void AuditDialog::populateChecks() {
     //   - clazy: clang-based AST walk over the same TU set
     //   - semgrep: rule-pack compile + AST traversal across language tree
     //   - osv_scanner: network-bound by OSV.dev rate limits
-    //   - trufflehog: full git-history scan with regex eval per blob
+    //   - trufflehog: filesystem scan with live verification of each hit
     // Without these, the slow tools false-positive on the 30 second
     // default and pollute the report with tool-health warnings instead
     // of findings. compiler_warnings sets its own cap at its registration

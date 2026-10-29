@@ -13,10 +13,6 @@
 using namespace auditdialogdetail;
 
 // ---------------------------------------------------------------------------
-// Plain-text export for the Claude Review handoff
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // SARIF v2.1.0 export (OASIS standard, consumed by GitHub code-scanning,
 // VSCode SARIF viewer, SonarQube, etc.)
 // ---------------------------------------------------------------------------
@@ -130,7 +126,7 @@ QString AuditDialog::exportSarif() const {
             // SARIF v2.1.0 §3.34 — result.suppressions[] surfaces user
             // suppressions to external consumers (GitHub Code Scanning,
             // SonarQube, VSCode SARIF Viewer). kind "external" reflects
-            // that the suppression is recorded in ~/.audit_suppress
+            // that the suppression is recorded in the project's .audit_suppress
             // outside the source artifact; state "accepted" mirrors the
             // dialog's no-review-workflow semantics. Justification is
             // the user's free-text reason from the JSONL entry.
@@ -140,7 +136,7 @@ QString AuditDialog::exportSarif() const {
             // exports SARIF would otherwise lose the result.suppressions[]
             // record for the just-suppressed finding (the cached flag
             // hasn't been refreshed; the parser only re-runs on next
-            // audit). HTML export at :5199 already calls isSuppressed
+            // audit). exportHtml() already calls isSuppressed
             // live — this brings SARIF into parity.
             if (isSuppressed(f)) {
                 QJsonObject sup;
@@ -205,7 +201,7 @@ QString AuditDialog::exportSarif() const {
 // Single-file HTML report export
 // ---------------------------------------------------------------------------
 //
-// Embeds findings as an inline JSON payload + ~120 lines of vanilla JS/CSS
+// Embeds findings as an inline JSON payload + vanilla JS/CSS
 // that render severity pills, a text filter, and per-check collapsible
 // cards. No external assets — the file opens standalone in any browser.
 QString AuditDialog::exportHtml() const {
@@ -493,6 +489,10 @@ QString AuditDialog::exportHtml() const {
     return html;
 }
 
+// ---------------------------------------------------------------------------
+// Plain-text export for the Claude Review handoff
+// ---------------------------------------------------------------------------
+
 QString AuditDialog::plainTextResults() const {
     if (m_completedResults.isEmpty()) return {};
 
@@ -653,7 +653,7 @@ QString AuditDialog::plainTextResults() const {
             if (!f.aiVerdict.isEmpty())
                 tags << QString("AI: %1 (%2)").arg(f.aiVerdict).arg(f.aiConfidence);
             body += line + "  " + QString("[%1] [%2]").arg(tags.join(" · "), f.dedupKey) + "\n";
-            // Include a 3-line snippet when we have one; expensive on token
+            // Include the snippet when we have one; expensive on token
             // count but essential for Claude to propose targeted fixes.
             if (!f.snippet.isEmpty()) {
                 const QStringList lines = f.snippet.split('\n');

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6304 -->
+<!-- ants-roadmap-id-high-water: ANTS=6305 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95346,7 +95346,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6116] **Readability fixes, audit-dialog lane: src/auditdialog.cpp, src/auditdialog.h, src/auditdialog_catalogue.cpp, src/auditdialog_debtsweep.cpp, src/auditdialog_export.cpp, src/auditdialog_triage.cpp.**
+- ✅ [ANTS-6116] **Readability fixes, audit-dialog lane: src/auditdialog.cpp, src/auditdialog.h, src/auditdialog_catalogue.cpp, src/auditdialog_debtsweep.cpp, src/auditdialog_export.cpp, src/auditdialog_triage.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane audit-dialog:
   5 high, 11 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/07-audit-dialog.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95365,6 +95365,14 @@ worked after these.
   or spec or a behaviour change: F3 ANTS-6191, F4 failed-to-start
   ANTS-6192, F6 ANTS-6193, F20 ANTS-6194, F22 ANTS-6195, F23 flag
   ANTS-6196, F24 fold ANTS-6197. LOWs remain.
+  2026-10-29: LOWs done. F7 (aiConfigured and aiConfirmTarget shared by
+  both triage paths; each still calls plaintextPromptWarning itself,
+  as ANTS-5010 INV-2 requires), F8 (one trimmedHeading for the fold
+  paths), F15-F19 (±10-line filter, trufflehog's filesystem scan, stale
+  line pointers named by function, the project's .audit_suppress, the
+  plain-text banner moved to its function, stale counts dropped), F21
+  (history30dFires). F25 queued as ANTS-6305. Earlier queued items
+  stand. All lane findings closed.
   **Layman:** Tidy the code-audit window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97684,6 +97692,19 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: chrome-widgets.
+
+- 📋 [ANTS-6305] **Name the fields of every OutputFilter in the audit check catalogue (L07-F25).**
+  src/auditdialog_catalogue.cpp builds about 30 OutputFilter values
+  positionally ({ {...}, R"(...)", {}, 20 }); only some label a field
+  in a comment. Use C++20 designated initialisers (.dropIfContains,
+  .dropIfMatches, .keepOnlyIfContains, .maxLines, ...). Not done in the
+  readability pass: a hand conversion of that many multi-line literals
+  is its own change, and audit feature tests read the catalogue, so run
+  the audit fixtures and feature tests after it.
+  **Layman:** The audit checks set their output filters by position, so a reader cannot tell which value is which; label each one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: audit-dialog.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -101462,6 +101483,14 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   36532074) passed. So it is load noise sitting on the budget's edge,
   not a regression; the remedy the test names is still ANTS-3816's
   batched readItems().
+  2026-10-29: failed again in CI's Release job, run 40847385302 on
+  0c27b25b: p95 55.3 ms over 20 warm reads of 3700 items (budget
+  50 ms). The correctness suite passed 5907/5907; only the perf stage
+  failed. That commit touched only terminalgrid and the sign helper,
+  nothing on the roadmap read path. The next three runs (617cc75c,
+  6bac4337, 1adc6b24) passed. Second miss, larger than the first, so
+  the remedy § 4 names (a batched RoadmapStore::readItems, ANTS-3816)
+  is now due.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.

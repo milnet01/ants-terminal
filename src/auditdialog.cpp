@@ -1250,9 +1250,7 @@ bool AuditDialog::foldFindingsIntoRoadmap(const QList<Finding> &actionable,
     // allocateIds bumps .roadmap-counter atomically (crash-safety), so a
     // doomed insert against a wrong heading would otherwise leak the
     // reserved IDs on every misclick.
-    QString needle = releaseHeading;
-    while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
-        needle.chop(1);
+    const QString needle = trimmedHeading(releaseHeading);
     if (!roadmapHeadingExists(needle)) return false;
 
     // ANTS-5102 — ~1 s lock wait on the GUI thread.
@@ -1345,9 +1343,7 @@ void AuditDialog::onSinceBaselineToggled(bool on) {
 // ---------------------------------------------------------------------------
 
 bool AuditDialog::roadmapHeadingExists(const QString &heading) const {
-    QString needle = heading;
-    while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
-        needle.chop(1);
+    const QString needle = trimmedHeading(heading);
     QFile rf(m_projectPath + "/ROADMAP.md");
     if (!rf.open(QIODevice::ReadOnly | QIODevice::Text)) return false;
     const QStringList lines = QString::fromUtf8(rf.readAll()).split(QChar('\n'));
@@ -2354,7 +2350,7 @@ void AuditDialog::buildUI() {
         ).arg(sp.color));
         const int sevIndex = static_cast<int>(sp.sev);
         // Sync m_activeSeverities to the restored pill state. The
-        // member-default initialiser at auditdialog.h:472 is
+        // member-default initialiser of m_activeSeverities is
         // {0,1,2,3,4} — i.e. all on; remove the index here if the
         // persisted state had this severity off.
         if (!initial) m_activeSeverities.remove(sevIndex);
@@ -3076,6 +3072,21 @@ void AuditDialog::handleCheckOutput(const QString &output) {
 
 namespace auditdialogdetail {
 
+QString trimmedHeading(const QString &heading) {
+    QString out = heading;
+    while (out.endsWith(QChar('\n')) || out.endsWith(QChar('\r'))) out.chop(1);
+    return out;
+}
+
+bool aiConfigured(const Config &cfg) {
+    return cfg.aiEnabled() && !cfg.aiEndpoint().isEmpty();
+}
+
+QString aiConfirmTarget(const Config &cfg) {
+    const QString host = QUrl(cfg.aiEndpoint()).host();
+    return host.isEmpty() ? cfg.aiEndpoint() : host;
+}
+
 QString severityLabel(Severity s) {
     switch (s) {
         case Severity::Blocker:  return "BLOCKER";
@@ -3288,7 +3299,7 @@ void AuditDialog::renderResults() {
     // 30 days of fires vs suppressions to give "how noisy has this
     // project been lately?" as a peer comparison point.
     int history30dPct = -1;
-    int history30dRuns = 0;
+    int history30dFires = 0;
     if (m_qualityTracker) {
         const auto stats = m_qualityTracker->report();
         int fires = 0, suppressed = 0;
@@ -3298,7 +3309,7 @@ void AuditDialog::renderResults() {
         }
         if (fires > 0) {
             history30dPct = (100 * std::max(0, fires - suppressed)) / fires;
-            history30dRuns = fires;  // finding-fires, not run count — naming is user-facing
+            history30dFires = fires;
         }
     }
 
@@ -3318,7 +3329,7 @@ void AuditDialog::renderResults() {
             historySuffix = QString(
                 "  <span style='color:#888;'>· 30d avg %1% actionable "
                 "(n=%2 fires)</span>"
-            ).arg(history30dPct).arg(history30dRuns);
+            ).arg(history30dPct).arg(history30dFires);
         }
         noiseFloorLine = QString(
             "<br><span style='font-size:10px;'>Signal: "

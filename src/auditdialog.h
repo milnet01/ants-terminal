@@ -128,7 +128,7 @@ private:
     // Project-local cross-detector allowlist (`.audit_allowlist.json`).
     // Originally grep-rule-only (0.6.x); ANTS-1111 documented the
     // already-widened behaviour — `allowlisted()` is called from the
-    // main per-check finding loop (auditdialog.cpp:3991) so any
+    // main per-check finding loop (handleCheckOutput) so any
     // detector's findings are filtered. The matcher keys on
     // `Finding::checkId` exact-equality, so an entry with `"rule":
     // "clazy-X"` matches that clazy rule's findings, etc. Schema:
@@ -394,7 +394,7 @@ private:
     // Backward-compatibility lookup. Pre-0.7.29 dedup keys were 16 hex
     // chars (64-bit SHA-256 prefix); new keys are 24 hex chars (96 bits).
     // Match either: full key (post-0.7.29 saves) OR leading-16 prefix
-    // (legacy saves still in the user's ~/.audit_suppress file).
+    // (legacy saves still in the project's .audit_suppress file).
     bool isSuppressed(const QString &dedupKey) const;
     // ANTS-4444 — the whole-Finding form, which every render and export path
     // uses. The key-set lookup above cannot see the learned false-positive
@@ -508,7 +508,8 @@ private:
 
     // Confidence score (0-100) computed from severity, multi-tool agreement,
     // tool class, path heuristics. Populated during renderResults() after
-    // correlation. Formula is documented inline at the definition.
+    // correlation. Forwards to AuditEngine::computeConfidence, whose
+    // header comment documents the formula.
     static int computeConfidence(const Finding &f);
 
     // Fire-and-forget AI triage of a single finding. POSTs the rule +

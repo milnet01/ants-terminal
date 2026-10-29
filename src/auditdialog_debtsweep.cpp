@@ -83,9 +83,7 @@ bool AuditDialog::debtDeferToRoadmap(
     const QString &releaseHeading) {
     m_foldBusy = false;
     if (deferred.isEmpty() || releaseHeading.isEmpty()) return false;
-    QString needle = releaseHeading;
-    while (needle.endsWith(QChar('\n')) || needle.endsWith(QChar('\r')))
-        needle.chop(1);
+    const QString needle = trimmedHeading(releaseHeading);
     if (!roadmapHeadingExists(needle)) return false;   // don't burn IDs
 
     // ANTS-5102 — ~1 s lock wait on the GUI thread.
@@ -232,8 +230,7 @@ void AuditDialog::renderDebtResults() {
         if (!d.autoFixable) { hasLlmShaped = true; break; }
     if (m_debtTriageBtn) {
         Config cfg;
-        m_debtTriageBtn->setEnabled(hasLlmShaped && cfg.aiEnabled()
-                                    && !cfg.aiEndpoint().isEmpty());
+        m_debtTriageBtn->setEnabled(hasLlmShaped && aiConfigured(cfg));
     }
 
     if (!any) {
@@ -358,7 +355,7 @@ void AuditDialog::onDebtTriageClicked() {
         return;
     }
     Config cfg;
-    if (!cfg.aiEnabled() || cfg.aiEndpoint().isEmpty()) {
+    if (!aiConfigured(cfg)) {
         QMessageBox::information(this, "Triage with AI",
             "Configure an AI endpoint in Settings → AI first.");
         return;
@@ -372,8 +369,7 @@ void AuditDialog::onDebtTriageClicked() {
     const auto reply = QMessageBox::question(this, "Triage with AI",
         QString("Send %1 non-mechanical finding%2 to %3 for triage?")
             .arg(llmCount).arg(llmCount == 1 ? "" : "s")
-            .arg(QUrl(cfg.aiEndpoint()).host().isEmpty()
-                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host())
+            .arg(aiConfirmTarget(cfg))
             + (plaintextWarning.isEmpty()
                    ? QString() : QStringLiteral("\n\n") + plaintextWarning),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);

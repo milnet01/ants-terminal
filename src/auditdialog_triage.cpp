@@ -238,8 +238,9 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
         const auto [verdict, conf, reasoning] = parseTriageVerdict(o);
 
         // Write back into every CheckResult that carries this key. Renamed
-        // from `f` to `fi` so -Wshadow=local stays clean — an outer `f` at
-        // line ~2938 is uncaptured here, but GCC warns anyway.
+        // from `f` to `fi` so -Wshadow=local stays clean — the outer `f`
+        // near the top of this function is uncaptured here, but GCC warns
+        // anyway.
         for (auto &r : m_completedResults) {
             for (Finding &fi : r.findings) {
                 if (fi.dedupKey != dedupKey) continue;
@@ -308,8 +309,7 @@ void AuditDialog::refreshBatchTriageButton() {
     if (!m_batchTriageBtn) return;
     const int n = visibleUntriagedKeys().size();
     Config cfg;
-    const bool configured = cfg.aiEnabled() && !cfg.aiEndpoint().isEmpty();
-    m_batchTriageBtn->setVisible(configured);
+    m_batchTriageBtn->setVisible(aiConfigured(cfg));
     m_batchTriageBtn->setEnabled(n > 0);
     m_batchTriageBtn->setText(n > 0
         ? QString("🧠 Triage visible (%1)").arg(n)
@@ -321,7 +321,7 @@ void AuditDialog::onBatchTriageClicked() {
     if (keys.isEmpty()) return;
 
     Config cfg;
-    if (!cfg.aiEnabled() || cfg.aiEndpoint().isEmpty()) {
+    if (!aiConfigured(cfg)) {
         QMessageBox::information(this, "AI triage",
             "Configure an AI endpoint in Settings → AI first.");
         return;
@@ -340,8 +340,7 @@ void AuditDialog::onBatchTriageClicked() {
                 "excluded.")
             .arg(keys.size())
             .arg(keys.size() == 1 ? "" : "s")
-            .arg(QUrl(cfg.aiEndpoint()).host().isEmpty()
-                 ? cfg.aiEndpoint() : QUrl(cfg.aiEndpoint()).host())
+            .arg(aiConfirmTarget(cfg))
             + (plaintextWarning.isEmpty()
                    ? QString() : QStringLiteral("\n\n") + plaintextWarning),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
