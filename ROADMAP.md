@@ -69477,13 +69477,16 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-10-29.
   Lanes: claude-integration.
 
-- 🚧 [ANTS-6307] **Status bar shows "Claude: waiting (1 bg)" after a background job that ended at once.**
+- ✅ [ANTS-6307] **Status bar shows "Claude: waiting (1 bg)" after a background job that ended at once.**
   A job that ends within a second (`cc-job start` detaches and returns)
   has its `<task-notification>` written to the transcript BEFORE the
   tool_result that carries its backgroundTaskId. `finishById` dropped a
   notice for an id it had not seen, so the task then started and stayed
   running (src/claudebgtasks.cpp). Seen in transcript f899c4b4, lines
   390-393. Breaks ANTS-5773 INV-4.
+  Shipped in ce8c6282: the parser remembers an id ended before its
+  launch result and ends the task when the id arrives. Regression test
+  Ants5773NotificationBeforeLaunchResultEndsTask.
   **Layman:** The status bar said Claude was still waiting on a background task after that task had already finished.
   Kind: fix.
   Source: user-report-2026-10-29.
