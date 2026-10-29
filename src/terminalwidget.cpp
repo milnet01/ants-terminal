@@ -165,7 +165,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // automatically on Linux/macOS — the explicit ceremony was
     // dead code. If a future change wants explicit per-codepoint
     // routing (faster than FontConfig query per glyph), wire it in
-    // alongside the m_paintLayout setFont path, not via the
+    // where the shaped-run cache picks each run's font, not via the
     // unused-flag pattern this code originally took.
 
     // Cursor blink timer
@@ -500,8 +500,8 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
 }
 
 TerminalWidget::~TerminalWidget() {
-    // Threaded parse path (0.7.0): stop the worker before GL teardown so
-    // no late batchReady signals arrive at a half-destructed widget.
+    // Threaded parse path (0.7.0): stop the worker first so no late
+    // batchReady signals arrive at a half-destructed widget.
     // quit() posts an event to the worker's loop; wait() blocks until the
     // loop exits. VtStream was deleteLater-scheduled on finished(), so
     // its dtor runs on the worker thread as the loop exits — which in
@@ -878,20 +878,11 @@ bool TerminalWidget::event(QEvent *event) {
             keyPressEvent(ke);
             return true;
         }
-        // Scratchpad: Ctrl+Enter to send, Escape to close. Fallback for when
-        // the TerminalWidget itself holds focus with the scratchpad open; the
-        // common case (edit focused) is handled in eventFilter(). ANTS-1656.
-        if (m_scratchpad && m_scratchpad->isVisible()) {
-            if (ke->key() == Qt::Key_Escape) {
-                hideScratchpad();
-                return true;
-            }
-            if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
-                (ke->modifiers() & Qt::ControlModifier)) {
-                sendScratchpad();
-                return true;
-            }
-        }
+        // Scratchpad fallback for when the TerminalWidget itself holds focus
+        // with the scratchpad open; the common case (edit focused) is
+        // handled in eventFilter(). ANTS-1656.
+        if (m_scratchpad && m_scratchpad->isVisible() && handleScratchpadKey(ke))
+            return true;
     }
     return QWidget::event(event);
 }
@@ -1462,8 +1453,12 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 QDateTime dt = QDateTime::fromMSecsSinceEpoch(pr.commandStartMs);
                 info += dt.toString("HH:mm:ss");
 
+                // A fixed gap from the right edge, picked by eye; it is not
+                // derived from the scroll bar's width.
+                constexpr int kInfoRightGapPx = 14;
                 int textW = sfm.horizontalAdvance(info);
-                p.drawText(width() - textW - m_padding - 14, py + sfm.ascent(), info);
+                p.drawText(width() - textW - m_padding - kInfoRightGapPx,
+                           py + sfm.ascent(), info);
                 p.setFont(m_font);
             }
 
@@ -1737,8 +1732,11 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 static_cast<int>(it - regions.begin()));
             // Viewport top line
             if (outFirst <= viewStart && viewStart < outEnd && pr.hasOutput) {
-                // ANTS-5027 — the command text, cut to the header's width.
-                const int maxChars = (width() - m_padding * 2 - 80) / m_cellWidth;
+                // ANTS-5027 — the command text, cut to the header's width
+                // less the room kept on the right for the duration.
+                constexpr int kDurationReservePx = 80;
+                const int maxChars =
+                    (width() - m_padding * 2 - kDurationReservePx) / m_cellWidth;
                 const QString truncated = stickyCommandText(
                     pr.startLine, pr.endLine, maxChars,
                     [this](int gl) { return lineText(gl); });
@@ -1789,10 +1787,6 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
 
         QStringList lines;
         lines << QString("FPS: %1").arg(m_perfFps, 0, 'f', 1);
-        // Indie-review 2026-05-13: m_perfLastPaintUs is read here but
-        // NEVER written anywhere — the overlay always showed "Paint: 0
-        // us". Removed rather than back-fill the timer because per-
-        // paint timing belongs in a real perf scope, not the overlay.
         lines << QString("Scrollback: %1").arg(m_grid->scrollbackSize());
         lines << QString("Grid: %1x%2").arg(cols).arg(rows);
         lines << QString("Scroll offset: %1").arg(m_scrollOffset);
@@ -2106,10 +2100,10 @@ void TerminalWidget::keyPressEvent(QKeyEvent *event) {
         }
     }
 
-    // Clear suggestion on any non-navigation key
+    // Clear suggestion on any non-navigation key (bare modifiers returned
+    // earlier, so they never get here).
     if (!m_currentSuggestion.isEmpty() &&
-        key != Qt::Key_Right && key != Qt::Key_Left &&
-        key != Qt::Key_Shift && key != Qt::Key_Control && key != Qt::Key_Alt) {
+        key != Qt::Key_Right && key != Qt::Key_Left) {
         m_currentSuggestion.clear();
     }
 
@@ -2299,9 +2293,9 @@ void TerminalWidget::scheduleCoalescedUpdate() {
 }
 
 void TerminalWidget::onVtBatch(VtBatchPtr batch) {
-    // Mirror of onPtyData, but the parse work is already done on the
-    // worker. We apply the pre-built VtAction stream to the grid and run
-    // the same GUI-side side-effects in the same order.
+    // The parse work is already done on the worker (VtStream). Apply the
+    // pre-built VtAction stream to the grid, then run the GUI-side
+    // side-effects.
     //
     // ANTS-1208 contract — no callback installed on m_grid (bell, notify,
     // progress, commandFinished, userVar, osc133Forgery, lineCompletion,
@@ -2337,9 +2331,10 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         clearSelection();
     }
 
-    // Pause scrollback insertion while user is scrolled up (see onPtyData
-    // for the full rationale). This knob must be set before processAction
-    // runs so any scrollUp() during the batch honours it.
+    // Pause scrollback insertion while user is scrolled up (rationale at
+    // TerminalGrid::setScrollbackInsertPaused). This knob must be set
+    // before processAction runs so any scrollUp() during the batch
+    // honours it.
     m_grid->setScrollbackInsertPaused(m_scrollOffset > 0);
 
     // ANTS-1148 — DEC mode 2026 (sync output) snapshot capture.
@@ -3351,7 +3346,7 @@ void TerminalWidget::clickToMoveCursor(int col, int row) {
     // ANTS-1666 — honour DECCKM (application cursor keys). zsh vi-mode and
     // readline put the cursor keys in application mode (ESC O x); emitting the
     // normal-mode form (ESC [ x) there makes click-to-move land on the wrong
-    // column. Mirrors the keyPressEvent arrow-key switch.
+    // column. Same forms as encodeLegacyKey's arrow keys.
     const bool appCursor = m_grid->applicationCursorKeys();
     const char *arrow = (delta > 0) ? (appCursor ? "\x1BOC" : "\x1B[C")
                                     : (appCursor ? "\x1BOD" : "\x1B[D");
@@ -4161,22 +4156,13 @@ void TerminalWidget::invalidateSpanCaches() const {
     // pushed. Big win on high-throughput output that only touches a few lines.
     const int scrollbackSize = m_grid->scrollbackSize();
     const int rows = m_grid->rows();
-    bool anyDirty = false;
     for (int r = 0; r < rows; ++r) {
         if (m_grid->screenLineDirty(r)) {
             int gl = scrollbackSize + r;
             m_urlSpanCache.erase(gl);
             m_hlSpanCache.erase(gl);
-            anyDirty = true;
         }
     }
-    // (Indie-review 2026-05-13: the historical second sweep over
-    // [0, rows) that re-erased the same scrollbackSize+r keys is
-    // gone — scrollbackSize was captured once at the top of this
-    // function, so the second loop hit the identical key set and
-    // did nothing. Real scrollback-shift handling lives below in
-    // the m_lastScrollbackPushed check.)
-    (void)anyDirty;
     // ANTS-1134 / ANTS-3452 — when scrollback grows (push count
     // increased since last paint), scrollback entries keyed by the
     // volatile globalLine integer can re-alias a different historical
@@ -5181,18 +5167,24 @@ bool TerminalWidget::eventFilter(QObject *obj, QEvent *ev) {
     // itself. Without this, QPlainTextEdit swallows Ctrl+Enter as a newline.
     if (m_scratchpad && ev->type() == QEvent::KeyPress &&
         obj == m_scratchpad->findChild<QPlainTextEdit *>()) {
-        auto *ke = static_cast<QKeyEvent *>(ev);
-        if (ke->key() == Qt::Key_Escape) {
-            hideScratchpad();
+        if (handleScratchpadKey(static_cast<QKeyEvent *>(ev)))
             return true;
-        }
-        if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
-            (ke->modifiers() & Qt::ControlModifier)) {
-            sendScratchpad();
-            return true;
-        }
     }
     return QWidget::eventFilter(obj, ev);
+}
+
+// The scratchpad's shortcuts: Escape closes it, Ctrl+Enter sends it.
+bool TerminalWidget::handleScratchpadKey(QKeyEvent *ke) {
+    if (ke->key() == Qt::Key_Escape) {
+        hideScratchpad();
+        return true;
+    }
+    if ((ke->key() == Qt::Key_Return || ke->key() == Qt::Key_Enter) &&
+        (ke->modifiers() & Qt::ControlModifier)) {
+        sendScratchpad();
+        return true;
+    }
+    return false;
 }
 
 // --- Terminal Recording (asciicast v2) ---
@@ -5451,11 +5443,9 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     int totalLines = scrollbackSize + m_grid->rows();
     int scanStart = std::max(0, totalLines - 30);
 
-    // Step 1: Find the Claude Code prompt footer
-    // Two known formats:
-    //   a) "Tab to accept" (older/tool prompts)
-    //   b) "Do you want to proceed?" (newer permission prompts)
-    //   c) "y · yes / n · no" or "y/n" patterns
+    // Step 1: Find the Claude Code prompt footer: a line holding one of
+    // ClaudePromptDetect::containsPermissionAnchor's phrases ("Tab to
+    // accept", "Do you want to proceed", ...).
     //
     // ANTS-1993 — gate the whole scan on a structural check first. A
     // genuine prompt is a multi-line widget (anchor + selection UI); a
@@ -5861,21 +5851,30 @@ QString TerminalWidget::foregroundProcess() const {
     return QString::fromUtf8(commFile.readAll()).trimmed();
 }
 
-// --- Highlight rules ---
+// --- Highlight and trigger rules ---
+
+// The pattern of an enabled highlight or trigger rule; nullopt when the rule
+// is disabled, has no pattern, or does not compile. ANTS-1665 — highlight
+// rules run every paint and trigger rules on every PTY chunk, so the pattern
+// is hardened with PCRE2's LIMIT_MATCH: a catastrophic config or plugin regex
+// must not freeze the GUI.
+static std::optional<QRegularExpression> enabledRulePattern(const QJsonObject &obj) {
+    if (!obj["enabled"].toBool(true)) return std::nullopt;
+    const QString pattern = obj["pattern"].toString();
+    if (pattern.isEmpty()) return std::nullopt;
+    QRegularExpression re(ants::regex::hardenUserRegex(pattern));
+    if (!re.isValid()) return std::nullopt;
+    return re;
+}
 
 void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
     m_highlightRules.clear();
     for (const QJsonValue &v : rules) {
         QJsonObject obj = v.toObject();
-        if (!obj["enabled"].toBool(true)) continue;
-        QString pattern = obj["pattern"].toString();
-        if (pattern.isEmpty()) continue;
+        auto pattern = enabledRulePattern(obj);
+        if (!pattern) continue;
         HighlightRule rule;
-        // ANTS-1665 — highlight rules run against rendered output every paint;
-        // a catastrophic config/plugin pattern would freeze the GUI. Harden
-        // with PCRE2's LIMIT_MATCH.
-        rule.pattern = QRegularExpression(ants::regex::hardenUserRegex(pattern));
-        if (!rule.pattern.isValid()) continue;
+        rule.pattern = std::move(*pattern);
         QString fg = obj["fg"].toString();
         if (!fg.isEmpty()) rule.fg = QColor(fg);
         QString bg = obj["bg"].toString();
@@ -5889,21 +5888,14 @@ void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
     update();
 }
 
-// --- Trigger rules ---
-
 void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
     m_triggerRules.clear();
     for (const QJsonValue &v : rules) {
         QJsonObject obj = v.toObject();
-        if (!obj["enabled"].toBool(true)) continue;
-        QString pattern = obj["pattern"].toString();
-        if (pattern.isEmpty()) continue;
+        auto pattern = enabledRulePattern(obj);
+        if (!pattern) continue;
         TriggerRule rule;
-        // ANTS-1665 — trigger rules run against every PTY chunk; harden the
-        // user/config pattern with PCRE2's LIMIT_MATCH so a catastrophic regex
-        // can't freeze the GUI on streamed output.
-        rule.pattern = QRegularExpression(ants::regex::hardenUserRegex(pattern));
-        if (!rule.pattern.isValid()) continue;
+        rule.pattern = std::move(*pattern);
         rule.actionType = obj["action_type"].toString("notify");
         rule.actionValue = obj["action_value"].toString();
         // 0.6.9 — instant flag (iTerm2 convention): when true, checkTriggers
@@ -6113,12 +6105,6 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
 }
 
 // --- History / Autocomplete ---
-
-void TerminalWidget::setHistoryFile(const QString &path) {
-    Q_UNUSED(path);
-    m_historyLoaded = false;
-    loadHistory();
-}
 
 void TerminalWidget::loadHistory() {
     if (m_historyLoaded) return;

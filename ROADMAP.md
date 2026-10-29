@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6299 -->
+<!-- ants-roadmap-id-high-water: ANTS=6301 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95223,7 +95223,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6112] **Readability fixes, terminal-widget lane: terminalaccessible.cpp, terminalwidget.cpp.**
+- ✅ [ANTS-6112] **Readability fixes, terminal-widget lane: terminalaccessible.cpp, terminalwidget.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane terminal-widget:
   1 high, 15 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/03-terminal-widget.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95244,6 +95244,13 @@ worked after these.
   F10 (outputReceived emitted from the debounce timer, not the Claude
   scan), F12-F16 and F19 (comments). F7 queued as ANTS-6178, F9 as
   ANTS-6179 (source-scrape anchors). LOWs still open.
+  2026-10-29: LOWs done. F11 (unused setHistoryFile deleted), F17
+  (stale comments fixed; the dead anyDirty flag removed), F18 (footer
+  comment points at containsPermissionAnchor), F20 (dead bare-modifier
+  tests dropped), F22 (the 14 px gap and 80 px duration reserve named),
+  F24 (handleScratchpadKey), F25 (enabledRulePattern). F21 queued as
+  ANTS-6300, F23 as ANTS-6301 (a colour pick for the user). F7 and F9
+  stay queued as ANTS-6178 and ANTS-6179. All lane findings closed.
   **Layman:** Tidy the code that draws the terminal and handles typing and the mouse so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -97589,6 +97596,30 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: diagnostics-logging, audit.
+
+- 📋 [ANTS-6300] **Decide whether TerminalWidget::writeCommand should submit with CR, as Enter does, instead of LF (L03-F21).**
+  writeCommand ends a command with "\n"; Enter, re-run and paste-submit
+  send "\r". Nothing records why. Not changed in the readability pass:
+  at a shell prompt both submit, but a raw-mode program (an editor, a
+  TUI) reads LF as Ctrl+J, so switching the byte changes what callers
+  such as the menu commands and the session manager deliver. Find the
+  reason, then either state it at writeCommand or switch to CR.
+  **Layman:** Commands the app types for you end with a different key code than the Enter key; find out whether that matters and make it one rule.
+  Kind: investigate.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6301] **Use one success/failure colour pair for the exit stripe and the command-mark gutter (L03-F23).**
+  The exit stripe paints 0x9ECE6A / 0xF7768E; the gutter paints
+  0x9FE064 / 0xE06464. The greens nearly match; the reds differ
+  (pink versus red). Not changed in the readability pass: which pair
+  reads best is the user's call (partially sighted; see
+  tests/features/claude_state_dot_palette/spec.md for the palette
+  record). Then name the pair once and use it in both places.
+  **Layman:** The green and red that mark a command's result are two slightly different shades in two places; pick one pair.
+  Kind: ux.
+  Source: review-readability-2026-10-22.
+  Lanes: terminal-widget.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

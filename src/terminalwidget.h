@@ -214,9 +214,6 @@ public:
     static constexpr int kPluginKeysPerSecond = 100;
     static bool takeEventBudget(EventBudget &budget, int cap = kEventsPerSecond);
 
-    // Autocomplete
-    void setHistoryFile(const QString &path);
-
     // Font family
     void setFontFamily(const QString &family);
     QString fontFamily() const { return m_font.family(); }
@@ -420,6 +417,9 @@ private slots:
     void checkIdleNotification();
 
 private:
+    // Escape / Ctrl+Enter while the scratchpad is open; true when handled.
+    bool handleScratchpadKey(QKeyEvent *ke);
+
     // ANTS-1735 §2.4 — see lastUserKeystrokeMs() getter above.
     qint64 m_lastUserKeystrokeMs = -1;
     // See lastShellPid(). Set by startShell once the shell is forked.
