@@ -95496,7 +95496,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6120] **Readability fixes, roadmap-parse-render-a lane: src/roadmapindex.cpp, src/roadmapindex.h, src/roadmapledger.h, src/roadmaplinks.cpp, src/roadmapparse.cpp, src/roadmapparse.h ….**
+- ✅ [ANTS-6120] **Readability fixes, roadmap-parse-render-a lane: src/roadmapindex.cpp, src/roadmapindex.h, src/roadmapledger.h, src/roadmaplinks.cpp, src/roadmapparse.cpp, src/roadmapparse.h ….**
   Findings of the 2026-10-22 readability review (src run), lane roadmap-parse-render-a:
   3 high, 10 medium, 11 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/11-roadmap-parse-render-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95520,6 +95520,11 @@ worked after these.
   F9-F13 comments. Queued: F8 fillBulletRecord split ANTS-6212, and the
   claudeintegration link enum ANTS-6214. Filed ANTS-6213, a pre-existing
   -Wnull-dereference in indiereviewengine.cpp. LOWs remain.
+  2026-10-29: LOWs done, e67d5aa9. F1 one stop-and-chop helper for the
+  `Layman:` and `Source:` keys; F2 the wrap-continuation walk is
+  appendWrapContinuation(); F3 already fixed by e2715157; F4-F9 and F11
+  comments corrected or moved onto their functions; F10 cont_ renamed
+  current. The two queued MEDIUMs live on as ANTS-6212 and ANTS-6214.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
