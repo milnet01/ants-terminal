@@ -88385,7 +88385,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6189] **session_cost reads subagent transcripts: session_id "self" for a subagent, "agent-<id>" for the main chat.**
+- ✅ [ANTS-6189] **session_cost reads subagent transcripts: session_id "self" for a subagent, "agent-<id>" for the main chat.**
   UT_Ants: an orchestrator subagent had no way to name its own
   transcript's session_id, so the review's orchestrator cost went
   unmeasured. Fix: accept session_id "self" (the caller's current
@@ -88397,6 +88397,14 @@ measured Ants adding about 5,250 tokens to every request.
   <project>/<session>/subagents/agent-<id>.jsonl. Resolve "agent-<id>"
   (or an agent_id arg) to that file; optional include_subagents:true on
   a main-session call totals the session and its subagents.
+  Shipped 2026-10-29 (725bdcc3): session_id "agent-<id>" reads
+  <session>/subagents/agent-<id>.jsonl and adds parent_session_id;
+  "self" reads the newest session or helper transcript, marked
+  session_inferred. A helper's own isSidechain lines are now counted
+  (they were skipped, so a helper read as zero requests). Tests
+  SessionCost.Inv7-Inv9; Inv7/Inv8 red with the sidechain fix removed.
+  Not built: CFG-0859's optional include_subagents total. Reaches a
+  session after an ants-mcpd rebuild and /mcp reconnect.
   **Layman:** A helper session could not look up its own token cost because it had no way to name itself.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
@@ -95946,6 +95954,8 @@ worked after these.
   queued as ANTS-6291. F11 open: waits on a user decision (do settings
   changed after a failed config load apply for the session or not?).
   LOWs F14-F26 open.
+  2026-10-29: F11 done (user decision: apply all for the session,
+  save none); 4e110c60. All MEDIUMs closed. LOWs F14-F26 open.
   **Layman:** Tidy settings, saved sessions and project settings so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

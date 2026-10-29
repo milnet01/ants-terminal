@@ -163,6 +163,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **After a damaged settings file, keybinding and plugin changes now take effect for the session, like every other setting.** (ANTS-6143)
+  Nothing is saved until the file is fixed, so the damaged file stays as
+  it was.
+
 - **`roadmap_log op:"flip_batch"` reports a second locator for the same bullet as `duplicate_locator`, and takes the same status words as `op:"flip"` (done, wip, todo …)** (PR #1)
 
 - **The terminal parses and paints output with less work** (PR #1)
