@@ -25,7 +25,8 @@
 #include <cmath>
 #include <cstdlib>
 
-// Helper to retrieve LuaEngine* from Lua state upvalue
+// Helper to retrieve LuaEngine* from the registry field `__ants_engine`
+// (set in buildVm). The callbacks are pushed with no upvalues.
 static LuaEngine *getEngine(lua_State *L) {
     lua_getfield(L, LUA_REGISTRYINDEX, "__ants_engine");
     auto *engine = static_cast<LuaEngine *>(lua_touserdata(L, -1));
@@ -231,9 +232,9 @@ bool LuaEngine::buildVm(bool queryMode, const QString &queryRoot) {
     // wall-clock check inside the hook closes the case where a plugin
     // burns time across mostly-C surfaces and the instruction count
     // alone wouldn't accumulate fast enough to fire before a freeze
-    // is felt by the user. A SINGLE C call (one giant gsub) still
-    // can't be preempted on the main thread — the budget is enforced
-    // at the next bytecode boundary.
+    // is felt by the user. A SINGLE C call (one giant gsub) can't be
+    // preempted: the hook acts only at the next bytecode boundary.
+    // A plugin stuck in one is PluginManager::healthTick's job.
     //
     // ANTS-1332: the hook callback is the named static
     // LuaEngine::instructionHook so it can re-arm lua_sethook from
@@ -309,12 +310,11 @@ void LuaEngine::startPcallBudget() {
     m_killed = false;
     lua_sethook(m_state, &LuaEngine::instructionHook,
                 LUA_MASKCOUNT | LUA_MASKLINE, 100000);
-    // Default 1.5 s per pcall — big enough to let a normal plugin
-    // finish (most fire-and-forget handlers complete in single-digit
-    // ms), small enough that the user notices a stall as "snappy
-    // still" rather than "frozen." `m_pcallBudgetMs` is tunable via
-    // `setPcallBudgetMs()` for tests that exercise the kill path —
-    // production callers never touch it.
+    // The default budget is big enough to let a normal plugin finish
+    // (most fire-and-forget handlers complete in single-digit ms), small
+    // enough that the user notices a stall as "snappy still" rather than
+    // "frozen." runQuery and the kill-path tests set their own budget
+    // through `setPcallBudgetMs()`.
     m_pcallTimer.start();  // ANTS-2205 — monotonic budget clock
     m_pcallWaitedMs = 0;
 }
@@ -689,6 +689,7 @@ int LuaEngine::lua_ants_notify(lua_State *L) {
 bool LuaEngine::admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped) {
     if (!m_messageWindow.isValid() || m_messageWindow.elapsed() >= 1000) {
         m_messageWindow.start();
+        // Every counter passed as sentInWindow must be reset here.
         m_logsInWindow = 0;
         m_notificationsInWindow = 0;
     }

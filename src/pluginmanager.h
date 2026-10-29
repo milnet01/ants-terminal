@@ -43,7 +43,8 @@ public:
     void setPluginDir(const QString &dir);
     const QString &pluginDir() const { return m_pluginDir; }
 
-    // Scan for plugins and load enabled ones
+    // Scan for plugins and load enabled ones. An EMPTY enabledList enables
+    // every plugin found; it does not disable them all.
     void scanAndLoad(const QStringList &enabledList);
     void reloadAll(const QStringList &enabledList);
 

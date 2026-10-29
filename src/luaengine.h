@@ -85,11 +85,10 @@ public:
     // before the engine is threaded.
     qint64 pcallBudgetMs() const { return m_pcallBudgetMs; }
 
-    // Per-pcall wall-clock budget (default 1500 ms). Test-only knob —
-    // production callers leave it at the default so a normal plugin
-    // gets the full budget; timeout-enforcement tests drop it to a
-    // small value to assert the kill path without sleeping ~1.5 s
-    // per pcall on every CI run. Applies to the next call to
+    // Per-pcall wall-clock budget (default at m_pcallBudgetMs). Plugins
+    // keep the default. runQuery sets it as the project_query per-call
+    // timeout, and timeout-enforcement tests drop it to a small value to
+    // assert the kill path without sleeping. Applies to the next call to
     // `startPcallBudget()` (i.e. the next outer pcall launched by
     // `loadScript` or an event firing).
     void setPcallBudgetMs(qint64 ms) { m_pcallBudgetMs = ms; }
@@ -234,13 +233,13 @@ signals:
     void eventCompleted(quint64 seq);
 
 private:
-    // ANTS-1332: instruction-count + line + wall-clock hook. Lifted from
-    // a captureless lambda in initialize() to a named static so it can
-    // re-arm `lua_sethook` from inside its own body once the wall budget
+    // ANTS-1332: instruction-count + line + wall-clock hook, installed by
+    // buildVm. A named static (not a lambda) so it can re-arm `lua_sethook` from inside its own body once the wall budget
     // is breached (drops the count-mask threshold from 100000 to 1).
     static void instructionHook(lua_State *L, lua_Debug *ar);
 
-    // Lua C API callbacks (static, use upvalues for 'this' pointer)
+    // Lua C API callbacks (static; each finds its engine with getEngine(),
+    // which reads the registry field `__ants_engine` — they have no upvalues)
     static int lua_ants_send(lua_State *L);
     static int lua_ants_notify(lua_State *L);
     static int lua_ants_get_output(lua_State *L);
@@ -273,14 +272,12 @@ private:
     // Custom memory allocator with limit
     static void *luaAlloc(void *ud, void *ptr, size_t osize, size_t nsize);
 
-    // ANTS-1172: start the wall-clock budget for the next pcall.
-    // Combined with the LUA_MASKLINE | LUA_MASKCOUNT hook below, this
-    // catches plugins that spend their time inside a single large C
-    // call (string.gsub with a catastrophic regex, table.sort with a
-    // pathological comparator) — the instruction-count hook alone
-    // can't fire while pure-C is executing, so a wall-clock check at
-    // the next bytecode boundary is the closest we can get to
-    // bounded-duration termination on the main thread.
+    // ANTS-1172: start the wall-clock budget for the next pcall on this
+    // plugin's worker thread. The hook checks it at each bytecode
+    // boundary, so a pcall that runs many C calls is stopped soon after
+    // the budget expires. A single long C call (string.gsub with a
+    // catastrophic pattern) is checked only once it returns; a plugin
+    // stuck inside one is PluginManager::healthTick's job.
     void startPcallBudget();
     // ANTS-5107 — startPcallBudget() + lua_pcall, bracketed by
     // eventStarted/eventCompleted so the health tick times exactly what
@@ -289,6 +286,8 @@ private:
 
     // ANTS-5107 — counts one message against `sentInWindow` and its cap;
     // false (and one more in `dropped`) once the cap is reached this second.
+    // The window reset clears m_logsInWindow and m_notificationsInWindow by
+    // name: a new counter passed here must be added to that reset.
     bool admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped);
     // ANTS-5107 — applies `update` to uiUpdates() under its mutex, emitting
     // uiUpdatesPending if nothing was pending before.

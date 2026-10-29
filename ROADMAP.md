@@ -95985,6 +95985,8 @@ worked after these.
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
   2026-10-22: HIGH F1 done.
+  2026-10-29: MEDIUMs F2-F8 done (comment fixes; F5 points to ANTS-6024
+  for the Unload settings.get disconnect). LOWs F9-F16 remain.
   **Layman:** Tidy the plugin system so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

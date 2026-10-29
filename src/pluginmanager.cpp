@@ -146,14 +146,14 @@ void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
     }
     if (engine) {
         // ANTS-2117 — sever the BlockingQueuedConnection settings.get edge
-        // BEFORE posting Unload. Unload is documented as "save state" and may
-        // call ants.settings.get, whose blocking-queued emit parks the worker
-        // until the GUI thread services it — but the GUI thread is about to
-        // park in thread->wait() below and won't spin its event loop, so the
-        // two deadlock until the 2s timeout spuriously zombifies a healthy
-        // plugin. With the edge severed first (this runs on the GUI thread
-        // before Unload is even queued), a late settings.get finds no
-        // connected slot, returns immediately, and Lua sees nil.
+        // BEFORE posting Unload, so an Unload handler's settings.get finds no
+        // connected slot, returns at once, and Lua sees nil (spec S5b). It
+        // was added because finishTeardown's wait once ran no events, so the
+        // blocked worker and this thread deadlocked until the timeout
+        // zombified a healthy plugin. Since ANTS-5107, waitServicingCalls
+        // delivers blocked settings calls during the wait, which is why
+        // settings.set stays connected. Whether this disconnect can go too
+        // (Unload's settings.get would then work) is ANTS-6024.
         QObject::disconnect(engine, &LuaEngine::settingsGetRequested,
                             this, nullptr);
         // ANTS-5107 — skip the worker's queued backlog and end its running
@@ -625,8 +625,9 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
 
     // ANTS-1750 — parentless engine (Qt refuses moveToThread on a parented
     // QObject) moved onto its own worker QThread. Lifetime is managed
-    // explicitly: teardownEngine() deletes it worker-side on a clean unload,
-    // or detaches it into m_zombies if its worker is wedged. INV-11.
+    // explicitly: finishTeardown() deletes it on the GUI thread once its
+    // worker has finished, or detaches it into m_zombies if the worker is
+    // wedged. INV-11.
     m_loadedFiles.insert(info.name, filesFingerprint(info.path));
     auto *engine = new LuaEngine(nullptr);
     engine->setPluginName(info.name);
@@ -634,7 +635,7 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
     wireEngine(engine);  // connect signals while the engine is still on the GUI thread
 
     // Parentless thread too — a zombie (stuck) thread must outlive PM, so it
-    // can't be a PM child (deleting a running QThread aborts). teardownEngine
+    // can't be a PM child (deleting a running QThread aborts). finishTeardown
     // owns the clean-path delete; zombies leak until process exit by design.
     auto *thread = new QThread(nullptr);
     thread->setObjectName(QStringLiteral("ants-plugin-") + info.name);
