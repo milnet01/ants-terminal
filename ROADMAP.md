@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6311 -->
+<!-- ants-roadmap-id-high-water: ANTS=6313 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86113,7 +86113,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
 
 ## Ants MCP — shared know-how store (claude-config session request 2026-10-30)
 
-- 📋 [ANTS-6310] **A know_how verb: a machine-global store of practical facts any project's session writes once and others find.**
+- ✅ [ANTS-6310] **A know_how verb: a machine-global store of practical facts any project's session writes once and others find.**
   Design agreed with claude-config, user-approved 2026-10-30.
   Two user constraints rule: (A) startup cost must not grow
   noticeably; (B) sessions find the one fact they need without
@@ -86170,6 +86170,12 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   adds the CLAUDE.md line and handles tools/install-hooks.sh, which
   writes ~/.claude/settings.json), and rebuild ants-mcpd before that
   message.
+  2026-10-30: shipped in 0d27a315; ants-mcpd rebuilt. Full suite green
+  locally and at the push gate; ASan/UBSan run on the new tests by hand.
+  39 deliberate breakages all caught. ThreadSanitizer not run.
+  claude-config adds the CLAUDE.md line and runs tools/install-hooks.sh.
+  Open for the user: § 4.1's refuse-on-chmod-failure is built as
+  written.
   **Layman:** One shared notebook where any Claude session writes down how to reach a machine or use a tool, so other projects look it up instead of working it out again.
   Kind: feature.
   Source: claude-config-session-request-2026-10-30.
@@ -86182,6 +86188,24 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** The shared notebook of how-to facts has only one copy on disk, so back it up the way the roadmap database is.
   Kind: feature.
   Source: ANTS-6310-spec-out-of-scope-2026-10-30.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6312] **spec_lint reports test_surface_unwired on a feature folder whose test is a shell script registered with add_test.**
+  Seen on ANTS-6310 INV-12, which names tests/features/hook_pack.
+  hook_pack is an add_test(NAME hook_pack ...) in CMakeLists.txt, not a
+  bundle source, and the check looks only at bundle sources.
+  **Layman:** A document checker wrongly says a test is not wired in when that test is a shell script.
+  Kind: fix.
+  Source: ants-6310-build-2026-10-30.
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6313] **A second copy of RoadmapStore::enableWal's retry loop lives in KnowHowStore.**
+  enableWal in src/knowhowstore.cpp copies the retry loop in
+  RoadmapStore::enableWal, which is private. Fold them into one helper
+  if a third store appears, or sooner under the readability work.
+  **Layman:** A small tidy-up found while building the know-how store: two copies of one loop.
+  Kind: refactor.
+  Source: ants-6310-build-2026-10-30.
   Lanes: roadmap-store.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
