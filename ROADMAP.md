@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6318 -->
+<!-- ants-roadmap-id-high-water: ANTS=6320 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88452,6 +88452,13 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: review-fix.
   Source: review-contract ANTS-5502 loop 3, 2026-10-22 (out of blast radius).
 
+- ✅ [ANTS-6320] **ants-mcpd's vendored-runtime test holds on builds with link-time optimisation.**
+  LTO inlines ts_parser_new away, so nm shows no definition. Reproduced with gcc -O2 -flto=auto on the vendored lib.c. INV-17 now refuses an undefined ts_parser_new (a shared link shows it as U) and a tree-sitter entry in ldd.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately: test only.
+  **Layman:** A test that wrongly failed on openSUSE's package builds now checks the right thing; the program itself did not change.
+  Kind: fix.
+  Source: release-0.7.115-staging-gate-2026-10-30.
+
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 
 - 📋 [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
@@ -90788,6 +90795,13 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: ux.
   Source: user-request-2026-10-20.
   Lanes: roadmapdialog.
+
+- ✅ [ANTS-6319] **Roadmap state column holds still when a long status legend appears.**
+  The state column measured "direct-to-main," as one word, though Qt wraps it after its hyphens. On Liberation fonts at a 900 px window the column grew 16-19 px. Reproduced with a Liberation-only font config, then fixed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately: a small correction to ANTS-5793, which the 0.7.115 notes already cover.
+  **Layman:** The Roadmap window's columns no longer shift sideways on systems using Liberation fonts when an In-progress card appears.
+  Kind: fix.
+  Source: release-0.7.115-staging-gate-2026-10-30.
 
 ### 🔢 Tasks chip — progress semantics (user feedback 2026-05-12)
 

@@ -3453,13 +3453,16 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
         return std::ceil(widest);
     };
     // A date such as "2026-05-10" cannot break at its hyphens, so these
-    // columns are measured between spaces only.
+    // columns are measured between spaces only. The state column holds no
+    // date, and a legend such as "direct-to-main," wraps after its hyphens:
+    // measured whole, it moved the columns on Liberation fonts (2026-10-30).
     static const QRegularExpression spaces(QStringLiteral(" "));
+    static const QRegularExpression breakAfter(QStringLiteral("(?<=-)| "));
     const auto holdWords = [&](QTextTable *table) {
         QVector<QTextLength> widths = cols;
         for (const int col : {0, kColLabel, kColDateKind, kColDate}) {
-            const qreal need = widestWord(table, col, spaces) + cellPaddingX
-                               + (col == 0 ? 3 : 0);
+            const qreal need = widestWord(table, col, col == 0 ? breakAfter : spaces)
+                               + cellPaddingX + (col == 0 ? 3 : 0);
             if (widths[col].rawValue() < need)
                 widths[col] = QTextLength(QTextLength::FixedLength, need);
         }
@@ -3479,7 +3482,6 @@ void RoadmapDialog::applyCardColumnGrid(QTextDocument *doc, Density density) {
     // where a line may end at a space or after a hyphen, plus the cell
     // padding. Capped at the floor: a longer word breaks, as it must.
     const auto holdSummaryWords = [&](QTextTable *table, qreal cap) {
-        static const QRegularExpression breakAfter(QStringLiteral("(?<=-)| "));
         const qreal need = qMin(
             widestWord(table, kColSummary, breakAfter) + cellPaddingX, cap);
         if (summaryWidth(table) >= need) return;

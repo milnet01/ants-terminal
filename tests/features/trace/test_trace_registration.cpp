@@ -114,17 +114,11 @@ TEST(TraceRegistration, Inv17McpdCarriesTheVendoredRuntime) {
 
     const auto [nmRc, symbols] = run(nm, {bin});
     ASSERT_EQ(nmRc, 0);
-    // Defined in the binary's text, global (T) or local (t): which one
-    // depends on the linker, and either means the vendored runtime is in.
-    int defined = 0;
-    QByteArray seen;
-    for (const QByteArray &line : symbols.split('\n')) {
-        if (!line.contains("ts_parser_new")) continue;
-        seen += line + '\n';
-        if (line.endsWith(" T ts_parser_new") || line.endsWith(" t ts_parser_new")) ++defined;
-    }
-    EXPECT_EQ(defined, 1) << "ts_parser_new is not defined in ants-mcpd; nm shows:\n"
-                          << (seen.isEmpty() ? QByteArray("(nothing)") : seen).toStdString();
+    // Never expected from a shared library. A definition need not show:
+    // link-time optimisation inlines it away (openSUSE's packaging builds).
+    for (const QByteArray &line : symbols.split('\n'))
+        EXPECT_FALSE(line.trimmed().startsWith("U ts_parser_new"))
+            << "ants-mcpd expects ts_parser_new from a shared library: " << line.toStdString();
 
     const auto [lddRc, libs] = run(ldd, {bin});
     ASSERT_EQ(lddRc, 0);
