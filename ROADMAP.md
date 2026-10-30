@@ -101622,7 +101622,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: investigate.
   Source: review-readability-2026-10-22.
 
-- 📋 [ANTS-6163] **CI's Release job failed Inv3Latency once after ANTS-6049, at 51.2 ms against the 50 ms p95 budget.**
+- ✅ [ANTS-6163] **CI's Release job failed Inv3Latency once after ANTS-6049, at 51.2 ms against the 50 ms p95 budget.**
   CI run 39792102405 (dac5f13c), "Run perf tests (serial)" step:
   p95 51.2 ms over 20 warm reads of 3700 items. The next push
   (9e1494cb, same read path) passed. dac5f13c touched id-floor and
@@ -101691,6 +101691,21 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   is a spec amendment guarded by INV-2; (b) parse items on worker
   threads, no semantic change, wall clock only; (c) micro-work inside
   the parse, perhaps 10-20%, which buys one corpus bump of headroom.
+  Shipped 2026-10-30 in 0c3600a1 (lines passed to the parse, bold-id
+  prefix check) and d7eb9634 (render and parse on up to four threads
+  above 256 items). Local p95 for 3,700 items: 42-44 ms -> 23-25 ms.
+  Nothing had regressed: bulletsFromStore was about 2% above ANTS-6049.
+  CI run 41020107128 (d7eb9634) passed its perf step. One pass proves
+  little for an intermittent failure, and that run hid the figure; the
+  perf step now runs ctest -V, so later runs print p95. If CI still
+  misses, this item reopens. What remains is mostly the single-threaded
+  SQL read, so that is the next place to look.
+  Not run: ThreadSanitizer. Thread safety rests on reading the code
+  (no mutable statics in the parser, renderer or reader) and qtbase's
+  qregularexpression.cpp, branch 6.8 (this machine runs 6.12). The suite
+  passes. The push gate skipped ASan on d7eb9634 (build-asan was stale),
+  and CI's ASan job was skipped too; a local ASan run of the read seam
+  follows.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
