@@ -1959,6 +1959,22 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                            "string is refused on purpose: this verb writes to "
                            "a source file and spawns a process."));
 
+    // ANTS-5512 — a compiled suite tests its last build, so each mutant is
+    // built first. A malformed value refuses: reading it as "no build" would
+    // test the old binary and report `survived`.
+    QStringList buildArgv;
+    if (req.contains(QStringLiteral("build_command"))) {
+        for (const auto &v :
+                 req.value(QStringLiteral("build_command")).toArray())
+            buildArgv.append(v.toString());
+        if (buildArgv.isEmpty())
+            return mpErr(QStringLiteral("bad_args"),
+                QStringLiteral("mutation_probe: `build_command` is an ARGV "
+                               "ARRAY with at least one element, not a shell "
+                               "string — e.g. [\"cmake\", \"--build\", "
+                               "\"build\"]."));
+    }
+
     const QJsonArray muts = req.value(QStringLiteral("mutations")).toArray();
     if (muts.isEmpty())
         return mpErr(QStringLiteral("bad_args"),
@@ -2018,18 +2034,18 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     bf.close();
     const QString baseline = QString::fromUtf8(baselineBytes);
 
-    struct RunOut { bool started = false; bool timedOut = false; int exitCode = 0; QString output; };
-    auto runTests = [&]() -> RunOut {
+    struct RunOut { bool started = false; bool timedOut = false; int exitCode = 0; QString output; qint64 ms = 0; };
+    auto runCommand = [&](const QStringList &command) -> RunOut {
         QElapsedTimer runClock;
         runClock.start();
         QProcess p;
         p.setWorkingDirectory(rootCanonical);
         p.setProcessChannelMode(QProcess::MergedChannels);
-        HostExec::start(p, argv.first(), argv.mid(1));
+        HostExec::start(p, command.first(), command.mid(1));
         RunOut o{true, false, -1, QString()};
         if (!p.waitForStarted(5000)) {
             o.started = false;
-            slowestRunMs = qMax(slowestRunMs, runClock.elapsed());
+            o.ms = runClock.elapsed();
             return o;
         }
         if (!p.waitForFinished(timeoutSec * 1000)) {
@@ -2042,8 +2058,11 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         static const int kCap = 512 * 1024;
         if (out.size() > kCap) out = out.right(kCap);
         o.output = QString::fromUtf8(out);
-        slowestRunMs = qMax(slowestRunMs, runClock.elapsed());
+        o.ms = runClock.elapsed();
         return o;
+    };
+    const auto buildSucceeded = [](const RunOut &b) {
+        return b.started && !b.timedOut && b.exitCode == 0;
     };
     // The restore, used on every exit path. Writing the ORIGINAL BYTES (not a
     // re-encode of the decoded string) is what makes `restored_clean` a real
@@ -2087,12 +2106,38 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     bool restoredClean = true;
     bool budgetStopped = false;
     int  notRun        = 0;
+    bool mutantBuilt   = false;
+
+    // ANTS-5512 — build the unmutated source first. A baseline that does not
+    // build would read as every mutant `broken`, and the green-baseline gate
+    // below must not judge an old binary. Its time is not a mutant's, so it
+    // stays out of the deadline's estimate; the clock still counts it.
+    if (!buildArgv.isEmpty()) {
+        const RunOut build = runCommand(buildArgv);
+        if (!build.started)
+            return mpErr(QStringLiteral("command_not_found"),
+                QStringLiteral("mutation_probe: could not start \"%1\"")
+                    .arg(buildArgv.first()));
+        if (!buildSucceeded(build)) {
+            QJsonObject o2;
+            o2[QStringLiteral("ok")]    = false;
+            o2[QStringLiteral("code")]  = QStringLiteral("baseline_build_failed");
+            o2[QStringLiteral("error")] = QStringLiteral(
+                "mutation_probe: build_command failed on the unmutated source, "
+                "so no mutation was applied. Fix the build first.");
+            o2[QStringLiteral("baseline_exit_code")] = build.exitCode;
+            o2[QStringLiteral("baseline_timed_out")] = build.timedOut;
+            o2[QStringLiteral("build_output_tail")]  = build.output.right(2048);
+            return QJsonDocument(o2);
+        }
+    }
 
     // Optional green-baseline gate. A RED baseline makes every result
     // meaningless — a mutant "dying" proves nothing when the suite was
     // already failing — so a caller can refuse the batch up front.
     if (req.value(QStringLiteral("require_green_baseline")).toBool(false)) {
-        const RunOut base = runTests();
+        const RunOut base = runCommand(argv);
+        slowestRunMs = qMax(slowestRunMs, base.ms);
         if (!base.started)
             return mpErr(QStringLiteral("command_not_found"),
                 QStringLiteral("mutation_probe: could not start \"%1\"")
@@ -2319,7 +2364,16 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             continue;
         }
 
-        const RunOut run = runTests();
+        // ANTS-5512 — the deadline's estimate covers the build too.
+        RunOut build;
+        build.started = true;
+        if (!buildArgv.isEmpty()) {
+            mutantBuilt = true;
+            build = runCommand(buildArgv);
+        }
+        const bool built = buildSucceeded(build);
+        const RunOut run = built ? runCommand(argv) : RunOut{};
+        slowestRunMs = qMax(slowestRunMs, build.ms + run.ms);
         // Restore BEFORE interpreting anything, so no early return can leak a
         // mutated file.
         if (!restore(patched)) restoredClean = false;
@@ -2327,7 +2381,19 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         r[QStringLiteral("applied")]     = true;
         r[QStringLiteral("inert")]       = false;
         r[QStringLiteral("occurrences")] = ap.occurrences;
-        if (!run.started) {
+        if (!built) {
+            // No test ran, so none of these is a kill.
+            r[QStringLiteral("outcome")] =
+                !build.started   ? QStringLiteral("command_not_found")
+                : build.timedOut ? QStringLiteral("timed_out")
+                                 : QStringLiteral("broken");
+            r[QStringLiteral("exit_code")] = build.exitCode;
+            r[QStringLiteral("build_output_tail")] = build.output.right(2048);
+            r[QStringLiteral("summary")] = QStringLiteral(
+                "build_command did not finish cleanly on this mutant, so no "
+                "test was run. This is NOT a kill and says nothing about the "
+                "suite. Prefer a mutation that leaves the code valid.");
+        } else if (!run.started) {
             r[QStringLiteral("outcome")] = QStringLiteral("command_not_found");
         } else if (run.timedOut) {
             // Timed out is NOT "killed" — a mutant that hangs the suite has
@@ -2384,6 +2450,20 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             "ANTS_MCP_READ_TIMEOUT_S.")
                 .arg(batchClock.elapsed()).arg(slowestRunMs)
                 .arg(budgetSec).arg(rawPath);
+    }
+
+    // ANTS-5512 — the build tree still holds the last mutant, so it is built
+    // again from the restored source. Not on a file this probe could not put
+    // back: that would build the mutant or another session's edit.
+    if (mutantBuilt) {
+        const bool restored = restoredClean && !concurrentEdit;
+        const bool rebuilt = restored && buildSucceeded(runCommand(buildArgv));
+        out[QStringLiteral("rebuilt_clean")] = rebuilt;
+        if (!rebuilt)
+            out[QStringLiteral("rebuild_hint")] = QStringLiteral(
+                "the build tree may still hold a mutant. Check \"%1\" with git, "
+                "then run build_command before trusting its binaries.")
+                    .arg(rawPath);
     }
 
     // ANTS-5096 — the journal goes once the file is the baseline again, or once

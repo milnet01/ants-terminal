@@ -5818,6 +5818,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             cmdP["description"] = QStringLiteral(
                                 "ARGV array, e.g. [\"pytest\", \"-k\", "
                                 "\"test_supervisor\"]. NOT a shell string.");
+                        QJsonObject bldP; bldP["type"] = "array";
+                            { QJsonObject it; it["type"] = "string";
+                              bldP["items"] = it; }
+                            bldP["description"] = QStringLiteral(
+                                "ARGV array run before the baseline and each "
+                                "test, and again after the batch. Counts against "
+                                "the transport budget.");
+                        props["build_command"] = bldP;
                         QJsonObject mutsP; mutsP["type"] = "array";
                             {
                                 QJsonObject item; item["type"] = "object";

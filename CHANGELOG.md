@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe takes a build_command, so a compiled suite tests each mutant instead of its last build.** (ANTS-5512)
+
 - **The weekly store backup also copies the shared know-how store, once it exists, with the same safe copy, integrity check and retention as the roadmap store.** (ANTS-6311)
 
 - **A shared notebook for Claude sessions: the know_how verb stores how-to facts about machines and tools once, and any project finds them.** (ANTS-6310)

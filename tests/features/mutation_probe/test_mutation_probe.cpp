@@ -612,6 +612,139 @@ TEST(MutationProbe, Ants5360CollectionErrorReportsBrokenEndToEnd) {
     EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
 }
 
+// ANTS-5512 — `build_command`. A compiled suite tests its last build, so without
+// a rebuild every mutant "survives" against the old binary.
+namespace {
+
+QJsonArray shArgv(const QString &script) {
+    const QString sh = QStandardPaths::findExecutable(QStringLiteral("sh"));
+    EXPECT_FALSE(sh.isEmpty());
+    return QJsonArray{sh, QStringLiteral("-c"), script};
+}
+
+// "Building" copies the source to built.py and logs the build. The test reads
+// only built.py, as a compiled test reads only its binary.
+const char *kCopyBuild = "cp palettes.py built.py; echo build >> builds.log";
+const char *kBuiltTest =
+    "if grep -q False built.py; then echo '1 failed'; exit 1; fi; echo '1 passed'";
+
+QJsonObject probeBuilt(const QTemporaryDir &tmp, const QJsonValue &build,
+                       const QString &test, const QJsonArray &muts,
+                       int budgetSec = 60) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]    = tmp.path();
+    req[QStringLiteral("path")]          = QStringLiteral("palettes.py");
+    req[QStringLiteral("build_command")] = build;
+    req[QStringLiteral("test_command")]  = shArgv(test);
+    req[QStringLiteral("mutations")]     = muts;
+    req[QStringLiteral("transport_budget_sec")] = budgetSec;
+    return rc.cmdMutationProbe(req).object();
+}
+
+QByteArray readProjectFile(const QTemporaryDir &tmp, const char *name) {
+    QFile f(QDir(tmp.path()).filePath(QString::fromLatin1(name)));
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+
+}  // namespace
+
+// The mutant is built before its test runs, and the restored source is built
+// after the batch, so no mutated binary outlives the probe.
+TEST(MutationProbe, Ants5512BuildsEachMutantAndRebuildsTheBaseline) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QJsonObject env = probeBuilt(
+        tmp, shArgv(QString::fromLatin1(kCopyBuild)),
+        QString::fromLatin1(kBuiltTest), QJsonArray{mutation(0)});
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(onlyResult(env).value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("killed"));
+    EXPECT_TRUE(env.value(QStringLiteral("rebuilt_clean")).toBool());
+    EXPECT_EQ(readProjectFile(tmp, "built.py"), QByteArray(kTwoSiteSource));
+    // One build of the baseline, one of the mutant, one of the restored file.
+    EXPECT_EQ(readProjectFile(tmp, "builds.log").count('\n'), 3);
+}
+
+// A mutant that does not compile measured nothing, so it is `broken` and its
+// test never runs. The build's own words say why.
+TEST(MutationProbe, Ants5512MutantThatDoesNotBuildIsBroken) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QJsonObject env = probeBuilt(
+        tmp,
+        shArgv(QStringLiteral(
+            "if grep -q False palettes.py; then echo 'compile error'; exit 7; fi")),
+        QStringLiteral("touch test_ran"), QJsonArray{mutation(0)});
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonObject r = onlyResult(env);
+    EXPECT_EQ(r.value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("broken"));
+    EXPECT_EQ(r.value(QStringLiteral("exit_code")).toInt(), 7);
+    EXPECT_TRUE(r.value(QStringLiteral("build_output_tail")).toString()
+                    .contains(QStringLiteral("compile error")));
+    EXPECT_FALSE(QFile::exists(QDir(tmp.path()).filePath(QStringLiteral("test_ran"))));
+    EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
+    EXPECT_TRUE(env.value(QStringLiteral("rebuilt_clean")).toBool());
+}
+
+// A baseline that does not build refuses the batch: every mutant would read as
+// `broken` for a reason that has nothing to do with it.
+TEST(MutationProbe, Ants5512BaselineThatDoesNotBuildRefusesTheBatch) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QJsonObject env = probeBuilt(
+        tmp, shArgv(QStringLiteral("echo 'compile error'; exit 3")),
+        QStringLiteral("touch test_ran"), QJsonArray{mutation(0)});
+    EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("baseline_build_failed"));
+    EXPECT_EQ(env.value(QStringLiteral("baseline_exit_code")).toInt(), 3);
+    EXPECT_TRUE(env.value(QStringLiteral("build_output_tail")).toString()
+                    .contains(QStringLiteral("compile error")));
+    EXPECT_FALSE(QFile::exists(QDir(tmp.path()).filePath(QStringLiteral("test_ran"))));
+    EXPECT_EQ(readProjectFile(tmp, "palettes.py"), QByteArray(kTwoSiteSource));
+}
+
+// A shell string read as "no build" would test the stale binary without saying
+// so, which is the defect this argument exists to remove.
+TEST(MutationProbe, Ants5512ShellStringBuildCommandIsRefused) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QJsonObject env = probeBuilt(
+        tmp, QStringLiteral("make"), QStringLiteral("touch test_ran"),
+        QJsonArray{mutation(0)});
+    EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("bad_args"));
+    EXPECT_FALSE(QFile::exists(QDir(tmp.path()).filePath(QStringLiteral("test_ran"))));
+}
+
+// The deadline's estimate covers the build, the slow half of a compiled mutant.
+// Each build sleeps 1 s: the baseline's and the first mutant's use 2 s of the
+// 3 s budget, and the 1 s estimate no longer fits. Counting only the test would
+// estimate almost nothing, and the second mutant would run.
+TEST(MutationProbe, Ants5512DeadlineCountsTheBuild) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QJsonObject env = probeBuilt(
+        tmp, shArgv(QStringLiteral("sleep 1")), QStringLiteral("echo '1 passed'"),
+        QJsonArray{mutation(0), mutation(0)}, 3);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonArray rs = env.value(QStringLiteral("results")).toArray();
+    ASSERT_EQ(rs.size(), 2);
+    EXPECT_EQ(rs.at(1).toObject().value(QStringLiteral("outcome")).toString().toStdString(),
+              std::string("not_run"));
+}
+
 // ANTS-5096 — the crash-recovery journal. ants-mcpd runs one process per
 // session, so a session that ends mid-probe kills it with a mutant on disk.
 #include "mutationjournal.h"

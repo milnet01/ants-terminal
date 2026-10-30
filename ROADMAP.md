@@ -86003,7 +86003,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B8, quick win).
   Lanes: mcp.
 
-- 📋 [ANTS-5512] **mutation_probe accepts a build_command, so it rebuilds before running the suite.**
+- ✅ [ANTS-5512] **mutation_probe accepts a build_command, so it rebuilds before running the suite.**
   Related: ANTS-4768 (test-command environment variables).
   **Layman:** Mutation testing can run the old binary if nothing rebuilds it first.
   Kind: enhancement.
