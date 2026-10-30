@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6310 -->
+<!-- ants-roadmap-id-high-water: ANTS=6311 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86158,6 +86158,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: feature.
   Source: claude-config-session-request-2026-10-30.
   Lanes: roadmap-store, mcp-transport.
+
+- 📋 [ANTS-6311] **Include knowhow.sqlite in the weekly store backup.**
+  tools/roadmap-store-backup.sh copies only roadmap.sqlite. Losing
+  knowhow.sqlite costs rediscovery rather than work, so this waits
+  until ANTS-6310 ships. Same sqlite3 .backup and integrity check.
+  **Layman:** The shared notebook of how-to facts has only one copy on disk, so back it up the way the roadmap database is.
+  Kind: feature.
+  Source: ANTS-6310-spec-out-of-scope-2026-10-30.
+  Lanes: roadmap-store.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
 
