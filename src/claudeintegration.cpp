@@ -2682,6 +2682,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // (don't return project A's data when a session is
                 // asking about project B) drove the uniform-Required
                 // upgrade.
+                // Write tools use it too, despite "Read" in the name;
+                // the name stays because dated specs cite it.
                 auto makeCallerCwdReadProp = []{
                     QJsonObject p;
                     p["type"] = "string";
@@ -2699,8 +2701,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 };
 
                 // ANTS-1409 — canonical "Pass caller_cwd to anchor"
-                // suffix used by three tool descriptions verbatim
-                // (get_last_command, get_git_status, get_environment).
+                // suffix used verbatim by the get_last_command and
+                // get_environment descriptions.
                 // The helper keeps the phrasing in one place so
                 // future MCP tools opt in via `+ callerCwdSuffix()`
                 // rather than re-typing it. INV-4 of the spec
@@ -2713,8 +2715,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 };
 
                 // ANTS-1499 — `etag_match` input prop for read tools
-                // that opt into the "304 Not Modified" pattern. Eight
-                // tools allowlisted in isEtagSupportedTool(); the same
+                // that opt into the "304 Not Modified" pattern (the
+                // tools allowlisted in isEtagSupportedTool()); the same
                 // schema fragment is reused for each so the field
                 // description stays in lockstep.
                 auto makeEtagMatchProp = []{
@@ -3068,7 +3070,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // ANTS-1247-INV-8: `status` filter declared in inputSchema
                 // with enum [all|active|shipped] + description citing
                 // token counts so Claude prefers `active` for planning
-                // queries (~10× smaller payload).
+                // queries; the description carries the measured figure.
                 QJsonObject roadmapTool;
                 roadmapTool["name"] = "roadmap_query";
                 // ANTS-1287 — `section` arg added. Description cites
@@ -3655,6 +3657,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["kind"] = kindFilterProp;
                     // ANTS-4985 — `source` provenance filter.
                     QJsonObject sourceFilterProp;
+                    { QJsonArray ty; ty.append(QStringLiteral("string"));
+                                     ty.append(QStringLiteral("array"));
+                      sourceFilterProp["type"] = ty; }
                     sourceFilterProp["description"] = QStringLiteral(
                         "Keep only bullets whose `Source:` starts with this "
                         "PREFIX, case-folded. Prefix rather than equality "
@@ -4805,9 +4810,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
 
                 // ANTS-1248: workspace_search — ripgrep wrapper. The
-                // schema declares all 7 spec args and marks `pattern`
-                // as required. The description names the alternative
-                // bash idiom + token-saving headline so Claude prefers
+                // schema marks `pattern` as required. The description
+                // names the alternative bash idiom + token-saving headline so Claude prefers
                 // this over Bash/Read for code searches.
                 QJsonObject wsTool;
                 wsTool["name"] = "workspace_search";
@@ -4886,8 +4890,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "— raise for mid-size projects > 2 k files; "
                     "ANTS-1565). ANTS-1876: opt-in payload knobs — "
                     "`max_match_bytes` (clip every `text` / "
-                    "`headline` to N UTF-8 bytes, default off, range "
-                    "[50, 10000]) and `headline_only:true` (emit "
+                    "`headline` to N UTF-8 bytes, default 512, range "
+                    "[50, 10000], 0 turns it off) and "
+                    "`headline_only:true` (emit "
                     "`{file, line, headline}` triples without "
                     "`text` / `context_*` — pair with "
                     "`max_match_bytes` for ~10× wire reduction on "
@@ -5074,9 +5079,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "did not request) and clearing the drop signals "
                         "when the lean set is complete.");
                     // ANTS-1876 — per-match text clip. Out-of-range
-                    // falls back to default (off, 0); clamp range
-                    // [50, 10000] guarantees at least the ellipsis +
-                    // 47 bytes of payload.
+                    // values clamp to [50, 10000], which guarantees at
+                    // least the ellipsis + 47 bytes of payload.
                     QJsonObject mmbProp;
                     mmbProp["type"]    = "integer";
                     // ANTS-3548 — default-ON clip (512). `minimum` is 0
@@ -5445,8 +5449,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
 
                 // ANTS-1249: file_outline — regex-scanner outline for
                 // a single file. ~13-39× compression on a typical
-                // source file vs full Read. Schema declares `path`
-                // required + 3 optional knobs.
+                // source file vs full Read.
                 QJsonObject foTool;
                 foTool["name"] = "file_outline";
                 foTool["description"] = QStringLiteral(
@@ -5542,8 +5545,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     modeEnum.append("generic");
                     modeEnum.append("glsl");
                     // ANTS-4826 — shell, the third time this schema was the
-                    // one left behind. find_definition's own `lang` enum three
-                    // thousand lines below has listed "sh" since ANTS-3558.
+                    // one left behind. find_definition's own `lang` enum
+                    // (makeSymbolLangProp) has listed "sh" since ANTS-3558.
                     modeEnum.append("sh");
                     modeEnum.append("html");     // ANTS-4361
                     modeProp["enum"]    = modeEnum;
@@ -6301,6 +6304,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "whose preview showed head_rows_key (an array of rows), "
                     "pass row_offset/row_count instead to page that array by "
                     "ROW, parsed: returns a DIFFERENT envelope {mode:\"rows\", "
+                    "key, rows, row_offset, total_rows, population, truncated} (no "
+                    "content); page on via row_offset + rows.size(). "
                     "ANTS-4397: an offload envelope whose row BODIES do not "
                     "all fit carries `rows_preview` — one shape row per row, "
                     "{index, bytes, head} — instead of a prefix that shows one "
@@ -6319,9 +6324,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "LENGTHS says no more than `row_count` + `bytes`); "
                     "`rows_preview_omitted:true` marks that case. `head_rows` "
                     "is unchanged and still the right preview for many small "
-                    "rows. "
-                    "key, rows, row_offset, total_rows, population, truncated} (no "
-                    "content); page on via row_offset + rows.size(). Refusals: "
+                    "rows. Refusals: "
                     "bad_args (bad handle, or negative "
                     "offset/max_bytes/row_offset/row_count), "
                     "not_found (never spilled or evicted — re-issue the "
@@ -6369,15 +6372,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         rcP["description"] = QStringLiteral(
                             "Row-paging: number of rows to return (default 100; "
                             "0/omitted = default). Row mode returns "
-                            "ANTS-4375: `total_rows` is the rows IN the "
+                            "{mode:\"rows\", key, rows, row_offset, total_rows, "
+                            "truncated}. ANTS-4375: `total_rows` is the "
+                            "rows IN the "
                             "spill file, which is what paging is over; "
                             "`population` is what the producing verb was "
                             "reporting on, and `rows_are_partial:true` fires "
                             "when the array was capped BEFORE spilling — then "
                             "paging to the end is NOT completeness, however "
-                            "`truncated` reads. "
-                            "{mode:\"rows\", key, rows, row_offset, total_rows, "
-                            "truncated}.");
+                            "`truncated` reads.");
                     props["handle"]     = hP;
                     props["offset"]     = oP;
                     props["max_bytes"]  = mbP;
@@ -8811,7 +8814,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
 
                 // ANTS-1250: git_state — single tool, dispatches on
-                // `op` (status / log / diff). Collapsed from three
+                // `op` (status / log / diff / rename_sweep / hooks).
+                // Status, log and diff were collapsed from three
                 // separate tools to save ~240 permanent schema tokens
                 // per session-start (cold-eyes pass 2).
                 QJsonObject gsTool;
@@ -8843,7 +8847,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "`index:\"?\"` + `worktree:\"?\"` for `git status "
                     "--porcelain` parity — one array, one shape. "
                     "`untracked[]` (DEPRECATED) is still emitted in "
-                    "parallel for one release; removed in 0.7.93. "
+                    "parallel. "
                     "op=\"diff\" (ANTS-3377): hunks=true emits per-file @@ "
                     "hunk headers {path, hunks:[{header, old_start, "
                     "old_count, new_start, new_count, lines?}]} for a clean "
