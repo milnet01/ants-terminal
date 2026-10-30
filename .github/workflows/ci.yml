@@ -200,7 +200,7 @@ jobs:
       - name: Run perf tests (serial)
         if: env.ANTS_PUSH_GATE != '1'
         working-directory: build
-        run: timeout 5m ctest --output-on-failure --timeout 300 -L perf
+        run: timeout 5m ctest -V --timeout 300 -L perf
 
       # ANTS-4518 — nothing checked this project's shell, and it ships a lot of
       # load-bearing shell. BLOCKING at -S warning, where the surface is clean

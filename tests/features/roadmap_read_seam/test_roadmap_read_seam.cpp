@@ -979,8 +979,8 @@ TEST(RoadmapReadSeam, Inv3Latency) {
     EXPECT_LT(p95, 50 * 1000)
         << "p95 " << (double(p95) / 1000.0) << " ms over " << kRuns
         << " warm reads of a " << kCorpusItems << "-item project. § 4's remedy "
-           "if this reds is a batched RoadmapStore::readItems() (ANTS-3816) — "
-           "not a cache and not a relaxed budget.";
+           "is read-path work (ANTS-3816, ANTS-6049 and ANTS-6163 hold what is "
+           "done) — not a cache and not a relaxed budget.";
 }
 
 // ============================================================================
