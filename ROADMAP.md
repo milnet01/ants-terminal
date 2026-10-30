@@ -95613,7 +95613,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: claude-integration.
 
-- 📋 [ANTS-6124] **Readability fixes, claude-integration-b lane: src/claudeintegration.cpp.**
+- ✅ [ANTS-6124] **Readability fixes, claude-integration-b lane: src/claudeintegration.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane claude-integration-b:
   2 high, 4 medium, 13 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/15-claude-integration-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95630,6 +95630,12 @@ worked after these.
   get_scrollback, get_cwd, get_text, recent_errors and last_selection no
   longer promise a focused-tab fallback (they refuse
   tab_or_cwd_required). LOWs remain.
+  2026-10-30 LOWs, f1f1bd2a: F7-F18 fixed (stale counts and
+  comments, read_spill row envelope un-spliced, max_match_bytes
+  default 512 in text, `source` declares its type). F7 is a comment,
+  not the rename: dated specs cite makeCallerCwdReadProp. F19
+  dismissed: doc_facts is no verb of its own, so "the five calls it
+  replaces" is right. F1 lives on as ANTS-6175. Lane closed.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
