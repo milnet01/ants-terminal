@@ -163,6 +163,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Whole-project roadmap reads are about 40% faster on large projects: items are parsed on up to four threads, and the read skips a needless text join and split.** (ANTS-6163)
+
 - **After a damaged settings file, keybinding and plugin changes now take effect for the session, like every other setting.** (ANTS-6143)
   Nothing is saved until the file is fixed, so the damaged file stays as
   it was.

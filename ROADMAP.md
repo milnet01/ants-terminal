@@ -86141,6 +86141,19 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Open for the spec: a new table means a schema change; check
   whether kSchemaVersion must bump (.claude/rules/roadmap-store.md).
   Hot reload: project-scoped verb, reaches clients on reconnect.
+  2026-10-30, home changed: its own knowhow.sqlite beside roadmap.sqlite,
+  with its own schema version, not a table in roadmap.sqlite. A table
+  added without a bump breaks ANTS-3756 INV-15 and ANTS-3781 INV-8; a bump
+  locks older running binaries out of the roadmap. Decided by claude-config
+  (claude-5e), who says it is telling the user; not confirmed by the user
+  in this session.
+  Facts for the spec, from reading the code: the MCP server sends no
+  protocol "instructions" field, so the "prelude" sentence belongs in
+  kOrientationScriptBody (src/mcporientation.cpp, 500-byte cap). The
+  [ants:*] preamble hook (hooks/ants-session-preamble.sh) reads no store;
+  ants-inbox-notice.sh's "timeout 2 ants-mcpd --call" is the model for a
+  live count. roadmap.sqlite's project id is no foreign key across files,
+  so the author column holds the project's slug.
   **Layman:** One shared notebook where any Claude session writes down how to reach a machine or use a tool, so other projects look it up instead of working it out again.
   Kind: feature.
   Source: claude-config-session-request-2026-10-30.
