@@ -489,5 +489,8 @@ QString passId(int major, int minor, const QString &sub);
 // so `gfmHere` is false and the branch the declaration governs never runs.
 std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
                                               const IdFormat &fmt = {});
+// The same, given the bullet already split into lines (ANTS-6163).
+std::optional<BulletRecord> parseAntsV1Bullet(const QStringList &lines,
+                                              const IdFormat &fmt = {});
 
 }  // namespace RoadmapParse

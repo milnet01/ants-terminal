@@ -239,6 +239,11 @@ TrailerLines trailerLines(const RoadmapStore::ItemWrite &it);
 // bulletText() with `emitted` already computed by trailerLines(it), for a
 // caller that needs both (ANTS-6049: the store read paid for it twice).
 QString bulletText(const RoadmapStore::ItemWrite &it, const TrailerLines &emitted);
+// The same bullet before its lines are joined, for the store read, whose parse
+// would only split them again (ANTS-6163). No element holds a '\n' (the head's
+// headline is simplified(), every other line passes through appendIndented()),
+// so joining and splitting gives this list back.
+QStringList bulletLines(const RoadmapStore::ItemWrite &it, const TrailerLines &emitted);
 
 // ANTS-4955 — roadmap-format.md § 3.5: a Layman value is STORED without its
 // closing full stop and RENDERED with one. laymanForStore() drops one trailing

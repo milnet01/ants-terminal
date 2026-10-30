@@ -166,6 +166,10 @@ QString bulletText(const RoadmapStore::ItemWrite &it) {
 }
 
 QString bulletText(const RoadmapStore::ItemWrite &it, const TrailerLines &emitted) {
+    return bulletLines(it, emitted).join(QLatin1Char('\n'));
+}
+
+QStringList bulletLines(const RoadmapStore::ItemWrite &it, const TrailerLines &emitted) {
     QStringList lines;
     QString head = QStringLiteral("- ") + emojiFor(it.status);
     if (!it.id.isEmpty())
@@ -207,7 +211,7 @@ QString bulletText(const RoadmapStore::ItemWrite &it, const TrailerLines &emitte
                                        + withStop(ids.join(QStringLiteral(", "))));
     }
 
-    return lines.join(QLatin1Char('\n'));
+    return lines;
 }
 
 QStringList TrailerLines::keys() const {

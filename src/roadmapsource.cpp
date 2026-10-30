@@ -131,7 +131,7 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
         rec = RoadmapParse::parsePassHeadingBlock(
             RoadmapRender::passBlockText(it).split(QLatin1Char('\n')));
     } else {
-        rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletText(it, emitted), fmt);
+        rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletLines(it, emitted), fmt);
     }
     if (!rec)
         return;

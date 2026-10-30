@@ -117,6 +117,10 @@ QString base36Lower(quint64 v, int n = 10) {
 bool extractBoldId(const QString &lineHead, QString *id) {
     static const QRegularExpression rx(QStringLiteral(
         "^\\*\\*(.{1,80}?)\\*\\*"));
+    // The pattern's own anchor, tested without a regex call: an ants-v1 head
+    // starts `[id]`, so nearly every store-read bullet fails here (ANTS-6163).
+    if (!lineHead.startsWith(QLatin1String("**")))
+        return false;
     const auto m = rx.match(lineHead);
     if (!m.hasMatch()) return false;
     QString captured = m.captured(1);
@@ -2475,7 +2479,11 @@ parseBulletLines(const QStringList &lines, const IdFormat &fmt) {
 
 std::optional<BulletRecord> parseAntsV1Bullet(const QString &bulletText,
                                               const IdFormat &fmt) {
-    const QStringList lines = bulletText.split('\n');
+    return parseAntsV1Bullet(bulletText.split('\n'), fmt);
+}
+
+std::optional<BulletRecord> parseAntsV1Bullet(const QStringList &lines,
+                                              const IdFormat &fmt) {
     if (lines.isEmpty())
         return std::nullopt;
     const QString &raw = lines.front();
