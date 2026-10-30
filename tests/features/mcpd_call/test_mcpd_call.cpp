@@ -73,7 +73,7 @@ QString writeSpecFixture(const QTemporaryDir &tmp, const QString &name, bool cle
     if (!QDir().mkpath(proj + QStringLiteral("/docs/specs"))) return {};
     QFile spec(proj + QStringLiteral("/docs/specs/T-1-demo.md"));
     if (!spec.open(QIODevice::WriteOnly)) return {};
-    QByteArray body = "# T-1 Demo\n\n## Invariants\n\n- **INV-1** \xe2\x80\x94 a rule.";
+    QByteArray body = "# T-1 Demo\n\nLayman: a demo.\n\n## Invariants\n\n- **INV-1** \xe2\x80\x94 a rule.";
     body += clean ? " *Test:* `tests/features/t1_demo/` covers it.\n" : "\n";
     if (spec.write(body) != body.size()) return {};
     spec.close();
