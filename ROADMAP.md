@@ -86154,6 +86154,10 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   ants-inbox-notice.sh's "timeout 2 ants-mcpd --call" is the model for a
   live count. roadmap.sqlite's project id is no foreign key across files,
   so the author column holds the project's slug.
+  Spec docs/specs/ANTS-6310-know-how-store.md accepted 2026-10-30:
+  review-contract, two loops at the spec cap, 19 verified and fixed,
+  calm cap. The final loop's 5 fixes are read by no lane; implementation
+  is their reader.
   **Layman:** One shared notebook where any Claude session writes down how to reach a machine or use a tool, so other projects look it up instead of working it out again.
   Kind: feature.
   Source: claude-config-session-request-2026-10-30.
@@ -101706,6 +101710,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   passes. The push gate skipped ASan on d7eb9634 (build-asan was stale),
   and CI's ASan job was skipped too; a local ASan run of the read seam
   follows.
+  ASan, 2026-10-30, local, build-asan at 9dba6556's source: test_core
+  filtered to RoadmapReadSeam, RoadmapRender and RoadmapParse, 42
+  passed, no AddressSanitizer or UBSan report,
+  Ants6163ThreadedReadMatchesMarkdown among them (Inv3Latency skips
+  itself under ASan). ASan does not detect data races; ThreadSanitizer
+  was not run.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
