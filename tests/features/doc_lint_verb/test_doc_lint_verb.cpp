@@ -718,3 +718,35 @@ TEST(DocLintVerb, GenreArgReachesTheEngine) {
     EXPECT_EQ(QStringLiteral("bad_args"), bad.value(QStringLiteral("code")).toString())
         << dumpJson(bad);
 }
+
+// ANTS-6315 — the project's spec_test_clause_coverage reaches doc_lint as it
+// reaches spec_lint, so the two verbs agree about one spec.
+TEST(DocLintVerb, Ants6315ProjectCoverageSwitchReachesTheSpecChecker) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/docs/specs")));
+    ASSERT_TRUE(QDir().mkpath(root + QStringLiteral("/.ants")));
+    QFile spec(root + QStringLiteral("/docs/specs/ANTS-1.md"));
+    ASSERT_TRUE(spec.open(QIODevice::WriteOnly));
+    spec.write("# ANTS-1 — a spec\n\n## 3. Invariants\n\n"
+               "- **INV-1** — a. *Test:* x → y.\n"
+               "- **INV-2** — b. *Test:* x → z.\n\n"
+               "## 6. Tests\n\nINV-1 is covered by the fixture.\n");
+    spec.close();
+    QJsonObject q;
+    q[QStringLiteral("checks")] = QJsonArray{QStringLiteral("spec_lint")};
+    const auto gaps = [&] {
+        const QJsonObject r = callDocLint(root, q);
+        return r.value(QStringLiteral("counts")).toObject()
+            .value(QStringLiteral("spec_lint")).toObject()
+            .value(QStringLiteral("test_coverage_gap")).toInt();
+    };
+    EXPECT_EQ(gaps(), 1) << "the default compares the Tests section's id list";
+
+    QFile settings(root + QStringLiteral("/.ants/project.json"));
+    ASSERT_TRUE(settings.open(QIODevice::WriteOnly));
+    settings.write("{\"spec_test_clause_coverage\":true}");
+    settings.close();
+    EXPECT_EQ(gaps(), 0) << "the switch was not read";
+}

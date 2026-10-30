@@ -2253,6 +2253,8 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         specLintRequiredSections(rootCanonical, nullptr, &prefixMatch);
     opts.spec.sectionsPrefixMatch = prefixMatch;
     opts.spec.laymanRequired      = true;   // ANTS-5511
+    opts.spec.testClauseCoverage =   // ANTS-6315 — as spec_lint reads it
+        ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
     opts.spec.existingTestDirs    = specLintExistingTestDirs(rootCanonical);
     opts.spec.wiredTestDirs =
         specLintWiredTestDirs(rootCanonical, opts.spec.existingTestDirs);

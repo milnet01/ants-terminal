@@ -89,3 +89,9 @@ byte-compared):
 | INV-29: `doc_lint` never hands `DocCitations` its `docText` | `Inv29StagedTextReachesEveryChecker` |
 | INV-30: build the staged set from `docIntegrityEnumerate` | `Inv30StagedSetIsGits` |
 | INV-31: delete the `staged` + `fix` guard | `Inv31StagedRefusalsRunNothing` |
+
+## ANTS-6315 — the coverage switch reaches the spec checker
+
+`spec_test_clause_coverage` from `.ants/project.json` is read on every `doc_lint`
+call, so it and `spec_lint` agree about one spec. *Test:*
+`DocLintVerb.Ants6315ProjectCoverageSwitchReachesTheSpecChecker`.

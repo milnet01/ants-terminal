@@ -320,6 +320,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_lint honours a project's spec_test_clause_coverage setting, so it agrees with spec_lint.** (ANTS-6315)
+
 - **`spec_lint` counts a feature test run by a shell or Python script as wired, not only one compiled into a bundle.** (ANTS-6312)
 
 - **Several Ants MCP verb descriptions now match what the verbs accept and do.** (ANTS-6125)

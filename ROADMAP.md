@@ -86130,7 +86130,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: doc_lint while shipping ANTS-5508, 2026-10-22.
   Lanes: mcp.
 
-- 📋 [ANTS-6315] **doc_lint ignores the project's spec_test_clause_coverage switch, so it can report test_coverage_gap where spec_lint does not.**
+- ✅ [ANTS-6315] **doc_lint ignores the project's spec_test_clause_coverage switch, so it can report test_coverage_gap where spec_lint does not.**
   Read in src/remotecontrol_docs.cpp only: spec_lint's handler sets
   opts.testClauseCoverage from ProjectSettings, and doc_lint's opts.spec
   block beside it does not. Not reproduced by a run.
