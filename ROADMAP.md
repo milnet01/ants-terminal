@@ -101616,6 +101616,24 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   p95 59.2 ms. Every other test passed in both. The runs before and
   after passed. Three failures in a week, up to a third over budget:
   the margin is gone, not marginal.
+  2026-10-30, measured at b733e964 (Release build/, local): p95 42.4,
+  43.8, 44.2 ms over three runs. Callgrind: bulletsFromStore 8.49 G
+  instructions inclusive, against 8.35 G after ANTS-6049's fix: about
+  2% more. Nothing on the read path got materially slower; the CI
+  runner is roughly 1.2-1.5x slower than this host, so its baseline
+  sits at the budget and load noise crosses it.
+  Where a read goes (share of bulletsFromStore): parseAntsV1Bullet
+  44% (trailerValuesIn 19%, fillBulletRecord's four whole-body
+  regexes 9%, collectBulletBody 6%); readItems 27% (sqlite3_step
+  18%); bulletText render 13%. The profile is otherwise flat: no
+  single hotspot. EXPLAIN QUERY PLAN: SCAN item, element joined by
+  idx_element_item; no missing index.
+  Remedies, largest first: (a) build the record from the store
+  columns instead of render-then-parse, about 57% of the read, but
+  § 2.1.1 defines a record as the parse of the rendered bullet, so it
+  is a spec amendment guarded by INV-2; (b) parse items on worker
+  threads, no semantic change, wall clock only; (c) micro-work inside
+  the parse, perhaps 10-20%, which buys one corpus bump of headroom.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
