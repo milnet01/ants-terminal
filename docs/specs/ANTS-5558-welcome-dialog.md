@@ -52,7 +52,7 @@ struct Outcome { bool ok; QString message; };
 
 ### 2.4 The Claude Code actions
 
-**Detection** (amended by ANTS-5744)**.** `cs::claudeProgram()`, new with ANTS-5744, returns `QStandardPaths::findExecutable("claude")`, else `$HOME/.local/bin/claude` when that file is executable, else empty. The second place is where § 2.8's installer puts it, and it may not be on the `PATH` Ants started with. Claude Code is present when `claudeProgram()` is not empty or `~/.claude` exists. Read on each open.
+**Detection** (amended by ANTS-5744)**.** `cs::claudeProgram()`, new with ANTS-5744, returns `QStandardPaths::findExecutable("claude")`, else `$HOME/.local/bin/claude` when that file is executable, else empty. The second place is where § 2.8's installer puts it, and it may not be on the `PATH` Ants started with. Claude Code is present when `claudeProgram()` is not empty or `~/.claude.json` exists; only Claude Code writes that file, so a program Ants cannot find on its `PATH` still counts once it has run. `~/.claude` does not count: Ants' SessionStart hook creates it at startup, and § 2.8's installer creates it before downloading. Read on each open.
 
 Four rows:
 
@@ -129,6 +129,7 @@ curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude
 - **INV-12** — The install command reaches `openInstallTab` only after the preview is accepted, once, and equal to `claudeInstallCommand()`, which is the § 2.8 line. Broken by running on click, running twice, or a different command. *Test:* `WelcomeDialog.InstallRunsOnlyAfterPreview` clicks the button with a recording `openInstallTab`: nothing recorded while the preview is open; one entry, equal to the § 2.8 line, after accept.
 - **INV-13** — Activating the dialog re-reads detection and swaps the install offer for the setup section once Claude Code is found. Broken by reading detection only at construction. *Test:* `WelcomeDialog.ReDetectsOnActivate` gives `detectClaude` a flag that starts false, sets it true, sends `QEvent::WindowActivate`, and expects the setup section visible and the install button hidden.
 - **INV-14** — `MainWindow::showWelcome` binds `openInstallTab` to `newTabForRemote` with the command and a trailing newline. Broken by binding nothing, which leaves the button doing nothing. *Test:* `WelcomeDialog.MainWindowOpensInstallTab`, a source check on `showWelcome` in `src/mainwindow.cpp`.
+- **INV-15** — A `~/.claude` that Claude Code did not create does not count as Claude Code. Broken by detection that reads the folder, which hides the install offer on every fresh machine. *Test:* `ClaudeSetup.DetectionIgnoresAFolderClaudeCodeDidNotCreate` runs under an empty `PATH` and temporary HOME: not detected after `mcp_orientation::installAt` and after `~/.claude/downloads` appears; detected with `~/.claude.json`, and with an executable `~/.local/bin/claude`.
 
 ## 4. RAM / build cost
 
@@ -154,6 +155,7 @@ The dialog exists only while open. One new translation unit for the dialog and o
 | INV-12 | `WelcomeDialog.InstallRunsOnlyAfterPreview` |
 | INV-13 | `WelcomeDialog.ReDetectsOnActivate` |
 | INV-14 | `WelcomeDialog.MainWindowOpensInstallTab` |
+| INV-15 | `ClaudeSetup.DetectionIgnoresAFolderClaudeCodeDidNotCreate` |
 
 The source-scrape tests anchored on the moved `SettingsDialog` bodies keep what each protects, and each check follows the text it reads: file work to `src/claudesetup.cpp`, button wiring and message boxes staying in `settingsdialog.cpp`. Where the move changes the text's form, the pattern changes with it — `settings_parse_failure_mirror`'s "`return;` after the rotation" becomes the module's early return of a failed `Outcome`. The tests: `hook_events_wired`, `claude_git_context_hook` (`test_installer_grep.cpp`, `test_script.sh`), `git_optional_locks`, `concurrent_writer_lock`, `persistence_post_rename_chmod`, `settings_parse_failure_mirror` and `secureio_configbackup_split`.
 

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6316 -->
+<!-- ants-roadmap-id-high-water: ANTS=6318 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -104397,6 +104397,25 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   **Layman:** The About window, the welcome window and the README now say Ants Terminal is not made by, affiliated with or endorsed by Anthropic.
   Kind: doc.
   Source: user-request-2026-10-16 via ants-projects-hub-website.
+
+- ✅ [ANTS-6317] **The welcome dialog's install offer shows on a machine without Claude Code.**
+  Ants' SessionStart hook created ~/.claude at startup, and detection read that folder as Claude Code,
+  so the offer never showed on a fresh machine. Detection now reads ~/.claude.json. Proven on a private
+  display with an empty home: offer shown, preview accepted, Anthropic's installer ran, 2.1.314 installed,
+  sign-in started, dialog switched to its setup rows. Spec ANTS-5558 INV-15.
+  **Layman:** On a fresh computer the welcome window now really offers to install Claude Code; before, Ants hid the button by mistake.
+  Kind: fix.
+  Source: user-request-2026-10-30.
+  Lanes: ui, claude.
+
+- 📋 [ANTS-6318] **The orientation hook script lands in ~/.config/Ants Terminal/hooks, not the ants-terminal folder its comments name.**
+  Seen on a first launch with an empty home. resolveScriptPath in src/mcporientation.cpp uses
+  AppConfigLocation; its comment and mcporientation.h name .config/ants-terminal. Decide which is meant:
+  correct the comments, or move the script and keep existing installs working.
+  **Layman:** One helper script is saved in a differently named settings folder than the code's notes say; it still runs.
+  Kind: doc-fix.
+  Source: in-session-2026-10-30.
+  Lanes: ui, claude.
 
 ## How to propose a roadmap item
 

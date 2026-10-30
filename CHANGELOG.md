@@ -322,6 +322,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The welcome window offers to install Claude Code on a fresh computer** (ANTS-6317)
+
 - **doc_lint honours a project's spec_test_clause_coverage setting, so it agrees with spec_lint.** (ANTS-6315)
 
 - **`spec_lint` counts a feature test run by a shell or Python script as wired, not only one compiled into a bundle.** (ANTS-6312)

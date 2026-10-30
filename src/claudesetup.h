@@ -29,7 +29,8 @@ struct Outcome {
 // The `claude` program: on PATH, else ~/.local/bin/claude when executable
 // (where Anthropic's installer puts it), else empty.
 QString claudeProgram();
-// Claude Code is present when claudeProgram() is not empty or ~/.claude exists.
+// Claude Code is present when claudeProgram() is not empty or ~/.claude.json,
+// which only Claude Code writes, exists.
 bool claudeCodeDetected();
 // The one-line install command the welcome dialog runs in a new tab
 // (spec § 2.8): Anthropic's installer, then Claude Code for its sign-in.

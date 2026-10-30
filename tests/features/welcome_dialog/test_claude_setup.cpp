@@ -6,6 +6,7 @@
 // INV-6 — registerMcp's argv, mcpd::locateLaunch, the About query's source.
 // INV-7 — the CLAUDE.md note lives between its markers.
 // INV-8 — shell integration: two blocks, idempotent, key kept.
+// INV-15 — detection ignores a ~/.claude that Claude Code did not create.
 //
 // Why this exists: the setup steps moved out of SettingsDialog into one
 // module the welcome dialog shares; a move that changes what is written, a
@@ -18,6 +19,7 @@
 #include "claudesetup.h"
 #include "configpaths.h"
 #include "mcpdversion.h"
+#include "mcporientation.h"
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
@@ -721,4 +723,38 @@ TEST(ClaudeSetup, Ants5109OutdatedGitContextScriptIsNotInstalled) {
     ASSERT_TRUE(installGitContextHook().ok);
     EXPECT_EQ(gitContextStatus().state, State::Installed)
         << "reinstalling must bring it back to Installed";
+}
+
+// INV-15 — the install offer depends on this answer, and both things that
+// create ~/.claude on a machine without Claude Code must not change it: Ants'
+// own startup hook, and an installer that failed after making its download
+// folder. Reported 2026-10-30: a fresh machine never saw the install button.
+TEST(ClaudeSetup, DetectionIgnoresAFolderClaudeCodeDidNotCreate) {
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    const QString emptyPath = sb.path(QStringLiteral("emptybin"));
+    QDir().mkpath(emptyPath);
+    sb.env.setEnv("PATH", emptyPath.toUtf8());
+
+    EXPECT_FALSE(claudeCodeDetected()) << "an empty home has no Claude Code";
+
+    ASSERT_TRUE(ants::mcp_orientation::installAt(sb.home).ok);
+    ASSERT_TRUE(QFileInfo::exists(sb.home + QStringLiteral("/.claude/settings.json")));
+    EXPECT_FALSE(claudeCodeDetected())
+        << "Ants' own SessionStart hook must not read as Claude Code";
+
+    ASSERT_TRUE(QDir().mkpath(sb.home + QStringLiteral("/.claude/downloads")));
+    EXPECT_FALSE(claudeCodeDetected())
+        << "the folder a failed installer leaves must not hide the retry";
+
+    // Claude Code's own record: it ran here, from a PATH Ants cannot see.
+    const QString record = sb.home + QStringLiteral("/.claude.json");
+    ASSERT_TRUE(writeFile(record, "{}"));
+    EXPECT_TRUE(claudeCodeDetected()) << "~/.claude.json is written by Claude Code";
+    ASSERT_TRUE(QFile::remove(record));
+
+    const QString program = sb.home + QStringLiteral("/.local/bin/claude");
+    ASSERT_TRUE(writeFile(program, "#!/bin/sh\n"));
+    ASSERT_TRUE(makeExecutable(program));
+    EXPECT_TRUE(claudeCodeDetected()) << "the installer's program must be found";
 }

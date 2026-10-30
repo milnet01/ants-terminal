@@ -219,8 +219,9 @@ QString claudeInstallCommand() {
 }
 
 bool claudeCodeDetected() {
-    return !claudeProgram().isEmpty() ||
-           QFileInfo(QDir::homePath() + QStringLiteral("/.claude")).isDir();
+    // Not ~/.claude: Ants' own SessionStart hook creates it at startup, and
+    // Anthropic's installer creates it before downloading anything (INV-15).
+    return !claudeProgram().isEmpty() || QFileInfo(claudeJsonPath()).isFile();
 }
 
 // --- status-bar hooks -----------------------------------------------------
