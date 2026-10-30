@@ -86048,7 +86048,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B3).
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5810] **Four spec lead-ins count fewer items than the lists beneath them.**
+- ✅ [ANTS-5810] **Four spec lead-ins count fewer items than the lists beneath them.**
   Found by doc_integrity kinds:["list_count"] over docs/ (ANTS-5295):
   ANTS-1355.md "Three new tests" over six; ANTS-1873.md "These two
   paths" over three; ANTS-1894.md "Two changes" over four;
@@ -86056,6 +86056,10 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   count of part of the list — likely leave as is). Each is in an
   accepted spec or its loop log, so check whether the extra items were
   added later before editing the number.
+  2026-10-30: ANTS-1355, ANTS-1873 and ANTS-1894 now state their list's
+  count. ANTS-3601 left as is: "Two substantive HIGHs" is true, and the
+  third item is a LOW, so doc_integrity's list_count finding there
+  stays, as a known false positive.
   **Layman:** A few specs say "two changes" or "three tests" above a longer list; fix the number or mark the extra items.
   Kind: doc-fix.
   Source: doc_integrity list_count first run 2026-10-21.
@@ -86101,11 +86105,14 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (A4), split from ANTS-5505 2026-10-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5814] **ANTS-1250's spec still names pathInRepoRoot() and a streamed readyReadStandardOutput read, which the code no longer uses.**
+- ✅ [ANTS-5814] **ANTS-1250's spec still names pathInRepoRoot() and a streamed readyReadStandardOutput read, which the code no longer uses.**
   doc_lint doc_symbols on docs/specs/ANTS-1250.md (2026-10-22) flags
   both. Path checks moved to PathValidation::validatePath (ANTS-1295);
   GitWrap::run waits with waitForFinished, then reads stdout whole. Its
   terminate()/kill() hits are Qt methods the code still calls.
+  2026-10-30: ANTS-1250 now names PathValidation::validatePath and
+  GitWrap::run's whole read. INV-12's QTimer::singleShot, stale the same
+  way, was fixed with them.
   **Layman:** The design note for git_state names some code that has since been renamed or replaced.
   Kind: doc-fix.
   Source: doc_lint while shipping ANTS-5508, 2026-10-22.
