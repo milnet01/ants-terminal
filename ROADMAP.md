@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6309 -->
+<!-- ants-roadmap-id-high-water: ANTS=6310 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86110,6 +86110,41 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Kind: doc-fix.
   Source: doc_lint while shipping ANTS-5508, 2026-10-22.
   Lanes: mcp.
+
+## Ants MCP — shared know-how store (claude-config session request 2026-10-30)
+
+- 📋 [ANTS-6310] **A know_how verb: a machine-global store of practical facts any project's session writes once and others find.**
+  Design agreed with claude-config, user-approved 2026-10-30.
+  Two user constraints rule: (A) startup cost must not grow
+  noticeably; (B) sessions find the one fact they need without
+  reading the store whole.
+  Belongs: how-to facts about machines, tools and environments that
+  help more than one project. Not: chat, status or requests
+  (session_message), one project's internals, any credential (store
+  how to authenticate, never the secret).
+  Home: the machine-global roadmap.sqlite. Never leaves the machine.
+  Any registered project writes, no approval step.
+  Entry: slug topic (^[a-z0-9-]+$), one per topic; title, body, a
+  few tags, author project, last_verified. Update replaces the body,
+  bumps last_verified, keeps the prior body in history. Entries
+  unverified for over 90 days are flagged. Obvious secret patterns
+  refused; the description says the refusal is not exhaustive.
+  Ops: find (keyword/tag over title+body+tags; slug, title, one-line
+  snippet, age), get (one topic's body), list (slugs + titles,
+  paged), add/update, retire. Test: "how do I reach the Windows box"
+  answered in about two small calls.
+  Discovery: one short hook line in the global hook set (count +
+  verb name, e.g. "[ants:know-how] 7 topics: know_how op:find");
+  one static sentence in the MCP prelude; session_orient field
+  optional. claude-config adds the CLAUDE.md line once shipped and
+  wants a message then.
+  Open for the spec: a new table means a schema change; check
+  whether kSchemaVersion must bump (.claude/rules/roadmap-store.md).
+  Hot reload: project-scoped verb, reaches clients on reconnect.
+  **Layman:** One shared notebook where any Claude session writes down how to reach a machine or use a tool, so other projects look it up instead of working it out again.
+  Kind: feature.
+  Source: claude-config-session-request-2026-10-30.
+  Lanes: roadmap-store, mcp-transport.
 
 ## Ants MCP feedback from CC sessions — 2026-09-21 triage
 
