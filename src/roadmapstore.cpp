@@ -305,10 +305,10 @@ bool RoadmapStore::applyPragmas(QString *error) {
             return false;
         }
     }
-    return enableWal(error);
+    return enableWal(m_db, error);
 }
 
-bool RoadmapStore::enableWal(QString *error) {
+bool RoadmapStore::enableWal(QSqlDatabase &db, QString *error) {
     // The one statement busy_timeout does NOT cover. Switching to WAL takes an
     // EXCLUSIVE lock, and SQLite acquires it below the busy handler, so a
     // second instance opening the same store gets an immediate SQLITE_BUSY no
@@ -328,7 +328,7 @@ bool RoadmapStore::enableWal(QString *error) {
     clock.start();
     QString last;
     for (;;) {
-        QSqlQuery q(m_db);
+        QSqlQuery q(db);
         if (q.exec(QStringLiteral("PRAGMA journal_mode = WAL")) && q.next() &&
             q.value(0).toString().compare(QLatin1String("wal"), Qt::CaseInsensitive) == 0)
             return true;

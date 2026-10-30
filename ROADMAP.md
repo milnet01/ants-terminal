@@ -86211,10 +86211,14 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: ants-6310-build-2026-10-30.
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6313] **A second copy of RoadmapStore::enableWal's retry loop lives in KnowHowStore.**
+- ✅ [ANTS-6313] **A second copy of RoadmapStore::enableWal's retry loop lives in KnowHowStore.**
   enableWal in src/knowhowstore.cpp copies the retry loop in
   RoadmapStore::enableWal, which is private. Fold them into one helper
   if a third store appears, or sooner under the readability work.
+  2026-10-30. RoadmapStore::enableWal is a public static taking the
+  connection, and KnowHowStore calls it; its own copy is gone. A
+  know-how failure now carries the roadmap store's fuller message,
+  naming the pragma and the deadline.
   **Layman:** A small tidy-up found while building the know-how store: two copies of one loop.
   Kind: refactor.
   Source: ants-6310-build-2026-10-30.

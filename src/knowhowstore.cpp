@@ -7,7 +7,6 @@
 #include "secureio.h"
 
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -17,7 +16,6 @@
 #include <QSqlQuery>
 #include <QStandardPaths>
 #include <QStringList>
-#include <QThread>
 #include <QVariant>
 
 #include <atomic>
@@ -123,23 +121,6 @@ std::optional<qint64> scalar(QSqlDatabase &db, const QString &sql,
         return std::nullopt;
     }
     return q.value(0).toLongLong();
-}
-
-// Same reason as RoadmapStore::enableWal: the switch to WAL takes its lock below
-// the busy handler, so two sessions creating the store at once need this retry.
-bool enableWal(QSqlDatabase &db, QString *error) {
-    QElapsedTimer clock;
-    clock.start();
-    for (;;) {
-        QSqlQuery q(db);
-        if (q.exec(QStringLiteral("PRAGMA journal_mode = WAL")) && q.next()
-            && q.value(0).toString().compare(QLatin1String("wal"), Qt::CaseInsensitive) == 0)
-            return true;
-        *error = q.lastError().text();
-        if (clock.elapsed() >= RoadmapStore::kBusyTimeoutMs)
-            return false;
-        QThread::msleep(10);
-    }
 }
 
 QStringList storeFiles(const QString &path) {
@@ -514,7 +495,7 @@ QJsonObject KnowHowStore::sessionOn(QSqlDatabase &db, Access access, const QJson
 
     if (needsSchema) {
         QString why;
-        if (!enableWal(db, &why))
+        if (!RoadmapStore::enableWal(db, &why))
             return ioFailure(why);
     }
     const QStringList unsecured = unsecuredFiles(m_path);

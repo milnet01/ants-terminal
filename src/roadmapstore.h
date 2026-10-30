@@ -64,6 +64,9 @@ public:
     // connection pragma and enableWal()'s own retry.
     static constexpr int kBusyTimeoutMs = 5000;
 
+    // Switch `db` to WAL, retrying until kBusyTimeoutMs. KnowHowStore shares it.
+    static bool enableWal(QSqlDatabase &db, QString *error);
+
     // The bulk deadline, for a writer that KNOWS it may queue behind a long
     // transaction — migration (ANTS-3757) and export. 30 s is RetroDB's
     // figure, arrived at there after "database is locked" under concurrent
@@ -1266,7 +1269,6 @@ private:
     QSqlDatabase &db() { return m_db; }
 
     bool applyPragmas(QString *error);
-    bool enableWal(QString *error);
     bool createSchema(QString *error);
 
     QString m_path;
