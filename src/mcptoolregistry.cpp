@@ -164,6 +164,12 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("run_trace",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdRunTrace));
+    // ANTS-5510 — version_check: lockstep against the project's bump recipe.
+    // Required: the recipe and the files it lists resolve against the project.
+    sink.registerToolProvider("version_check",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdVersionCheck));
+
     // ANTS-5502 — quotation_check: a review's quotations verified in one call.
     // Required: paths resolve against the caller's project root.
     sink.registerToolProvider("quotation_check",

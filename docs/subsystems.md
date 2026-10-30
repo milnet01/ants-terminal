@@ -345,6 +345,8 @@ Listed only where behavior isn't obvious from the name.
   caller and its project; the seam is `knowhowstore` (ANTS-6310).
 - `remotecontrol_run_trace` — thin handler for `run_trace`, which records a
   review run's trace-index row; the seam is `runtraceverb` (ANTS-5299).
+- `versioncheck` — `version_check`: does each file `.claude/bump.json` lists hold
+  the source's version; its handler is in `remotecontrol_docs` (ANTS-5510).
 - `remotecontrol_quotation_check` — thin handler for `quotation_check`, which
   checks many quotations in one call; the seam is `quotationcheckverb`
   (ANTS-5502).

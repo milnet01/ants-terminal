@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **New version_check tool reads a project's bump recipe and reports files that have drifted from its version, stray suffixes, and files holding the version that the recipe never names.** (ANTS-5510)
+
 - **invariant_check reads ADRs in docs/decisions as well as specs, and reports decisions_scanned.** (ANTS-5513)
 
 - **spec_lint checks spec headers: Status and Kind words, empty fields, a missing Layman line, a filename that disagrees with the title's id, and duplicate invariants.** (ANTS-5511)

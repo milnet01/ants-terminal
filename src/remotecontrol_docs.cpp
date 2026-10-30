@@ -11,6 +11,7 @@
 #include "falseposledger.h"
 #include "resolvedroot.h"
 #include "secureio.h"
+#include "versioncheck.h"     // ANTS-5510
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -2450,4 +2451,21 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
     }
 
     return o;
+}
+
+// ANTS-5510 — version_check. The seam (src/versioncheck.cpp) does everything
+// below the root; what lives here is the root and git's file list.
+QJsonDocument RemoteControl::cmdVersionCheck(const QJsonObject &req) {
+    QJsonObject refusal;
+    const QString cwd = ants::requiredCallerCwd(m_roots, req, QStringLiteral("version_check"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
+
+    // Uncapped: a cut list would read as a scan of the whole tree. A failure
+    // leaves it empty, which the seam names in `skipped`.
+    const GitWrap::Result git = GitWrap::run(cwd, {QStringLiteral("ls-files")}, -1);
+    QStringList tracked;
+    if (git.started && git.exitCode == 0)
+        tracked = QString::fromUtf8(git.stdoutBytes).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    return QJsonDocument(VersionCheck::run(cwd, tracked));
 }

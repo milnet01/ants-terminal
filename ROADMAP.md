@@ -85989,8 +85989,13 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B6).
   Lanes: mcp.
 
-- 📋 [ANTS-5510] **A version check reads .claude/bump.json and reports lockstep drift and unlisted version-bearing files.**
+- ✅ [ANTS-5510] **A version check reads .claude/bump.json and reports lockstep drift and unlisted version-bearing files.**
   Nothing in src/ reads bump.json today. Stray suffixes too.
+  2026-10-30: first run here named packaging/obs/_service, which
+  release.sh pins at tag time; bump.json now says so in a $ note. The
+  one remaining candidate, an example range in
+  src/remotecontrol_roadmap_query_verb.cpp, is an error message's text
+  and can stay.
   **Layman:** A release can leave one file carrying the old version number and nobody notices until later.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B7; CFG-0175, CFG-0240).

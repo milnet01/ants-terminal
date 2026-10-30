@@ -607,6 +607,8 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-5299 — the run_trace seam, its own TU for roadmapmigrateverb.cpp's
     # reason above: the handler lives in ANTS_RC_SOURCES_REL.
     src/runtraceverb.cpp
+    # ANTS-5510 — the version_check seam; its handler is in remotecontrol_docs.cpp.
+    src/versioncheck.cpp
     # ANTS-5502 — the quotation_check seam, its own TU for the same reason;
     # the handler lives in ANTS_RC_SOURCES_REL.
     src/quotationcheckverb.cpp
@@ -3304,6 +3306,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_spec_query/test_mcp_spec_query.cpp
                 # ANTS-1308 invariant_check MCP tool.
                 tests/features/mcp_invariant_check/test_mcp_invariant_check.cpp
+                # ANTS-5510 — version_check: the seam, and its handler through RemoteControl.
+                tests/features/mcp_version_check/test_mcp_version_check.cpp
                 # ANTS-1299 build_status MCP tool.
                 tests/features/mcp_build_status/test_mcp_build_status.cpp
                 # ANTS-1300 test_results MCP tool.

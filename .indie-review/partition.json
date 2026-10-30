@@ -339,6 +339,8 @@
         "src/runtraceverb.h",
         "src/quotationcheckverb.cpp",
         "src/quotationcheckverb.h",
+        "src/versioncheck.cpp",
+        "src/versioncheck.h",
         "src/sessioncostverb.cpp",
         "src/sessioncostverb.h"
       ]

@@ -14764,6 +14764,38 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5510 — version_check: lockstep against the bump recipe.
+                {
+                    QJsonObject t;
+                    t["name"] = "version_check";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use before a release, or to ask whether every file holding "
+                        "the version agrees with its source.");
+                    t["description"] = QStringLiteral(
+                        "Read .claude/bump.json and check each listed file holds the "
+                        "version_source's version. Findings: version_drift, "
+                        "stray_suffix, pattern_not_found, pattern_ambiguous, "
+                        "file_missing, and unlisted_version_file, a candidate for a "
+                        "tracked file holding the version that the recipe names "
+                        "nowhere. Read skipped[]: no recipe or no git list is silence, "
+                        "not a clean result. Refusals: bad_recipe, version_unreadable. "
+                        "caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5510. Contract: tests/features/mcp_version_check/spec.md. "
+                        "The unlisted scan leaves out tests/, docs/, *.md, comment "
+                        "lines, binary files and files over 1 MiB, and stops at 100 "
+                        "findings with unlisted_truncated. Read each candidate: a grep "
+                        "for a version finds lockstep fields and history alike.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-5502 — quotation_check: many quotations verified in one
                 // call. Every property below is read by cmdQuotationCheck (ANTS-4621).
                 {
@@ -16209,6 +16241,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // ANTS-5502 — quotation_check: does each quoted
                         // sentence occur in the file it names.
                         name == QLatin1String("quotation_check") ||
+                        name == QLatin1String("version_check") ||   // ANTS-5510
                         name == QLatin1String("doc_symbols") ||
                         name == QLatin1String("spec_lint") ||   // ANTS-3662
                         // ANTS-4108 — spec_conformance: spec_lint's executable
@@ -17935,6 +17968,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-5299 — run_trace writes and reads the caller's project trace
     // index; no project, nothing to act on.
     if (toolName == QStringLiteral("run_trace"))          return C::Required;
+    // ANTS-5510 — version_check reads the bump recipe and what it lists.
+    if (toolName == QStringLiteral("version_check"))      return C::Required;
     // ANTS-5502 — quotation_check reads files under the caller's project root.
     if (toolName == QStringLiteral("quotation_check"))    return C::Required;
     // ANTS-5787 — function_sizes walks paths under the caller's project root.
