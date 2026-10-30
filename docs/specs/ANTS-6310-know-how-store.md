@@ -170,8 +170,9 @@ appends one `know_how_purge_log` row, which holds no title, body or tags. Only t
 log rows are kept. No op reads that table; it is there for a person asking what went.
 
 After the commit, `purge` runs `PRAGMA wal_checkpoint(TRUNCATE)`. `file_scrubbed` is
-true when that reports not busy. It is false while another connection holds the file,
-and the text then stays on disk until a later checkpoint, so the reply says to retry.
+true when that reports not busy. It is false while another connection is inside a
+transaction on the file. The text then stays on disk until the last connection to the
+file closes, and the reply says so.
 The op erases the live file only. A backup, or a block the disk's own firmware has
 remapped, is out of its reach, and the verb's description says so. A secret in a
 `topic` name stays in the purge log. The secret check refuses the known shapes before
@@ -346,18 +347,24 @@ rule its fixture isolates. All are in
 - **INV-13** — `purge` erases the text from the file, and only what it names. After
   an `add` with a marker in its body, an `update` replacing it and a `purge` of the
   old revision, with every connection closed, the marker's bytes are in neither the
-  file nor a sidecar, and the current body is intact. With a second connection reading
-  throughout, the reply says `file_scrubbed:false`. A `purge` of the whole topic removes
+  file nor a sidecar, and the current body is intact. With a second connection inside a
+  read transaction, the reply says `file_scrubbed:false`. With a second connection open
+  but idle, it says `file_scrubbed:true` and the marker is gone while that connection
+  stays open. A `purge` of the whole topic removes
   the row and its history, and frees its place under the topic cap. Without
   `expected_revision` or `reason` it refuses `missing_field`, with a stale
   `expected_revision` it refuses `conflict`, and on the current revision it refuses
   `bad_args`, each changing nothing. The log row holds the reason and no marker.
   A `reason` holding a secret shape refuses `secret_detected`.
   *Test:* `tests/features/know_how` `KnowHow.PurgeErasesFromTheFile`, reading the
-  files' raw bytes, on a body long enough to need its own overflow pages. Only
-  `secure_delete` and the checkpoint keep the marker out, so the read fails when
-  either is removed.
-  *Breaks when:* `secure_delete` is set only on the purging connection, the checkpoint
+  files' raw bytes, on a body long enough to need its own overflow pages. Closing the
+  last connection also checkpoints, so only the idle-connection case fails when the
+  checkpoint is removed. A control repeats the sequence on the test's own connections
+  with `secure_delete` OFF and sees the marker, which proves the read can fail. This
+  machine's SQLite is built with `SECURE_DELETE` (`PRAGMA compile_options`, 2026-10-30),
+  so removing the pragma leaves the bytes clean here, and the test also checks the source
+  of `KnowHowStore`'s connection setup for it.
+  *Breaks when:* the pragma leaves the connection setup, the checkpoint
   is skipped, a busy checkpoint reports `file_scrubbed:true`, or the log keeps the body.
 
 ## 6. Failure modes
@@ -448,7 +455,7 @@ checked to have moved after building. `ants_add_core_bundle` and
 | INV-10 | Partial: `KnowHow.FileModeAndNewerSchema` sees the final modes; **nothing** observes § 4.1's order, the empty file secured before SQLite writes to it |
 | INV-11 | `KnowHow.LimitsRefuse` |
 | INV-12 | `hook_pack` and `mcp_orientation_install` |
-| INV-13 | Partial: `KnowHow.PurgeErasesFromTheFile` covers the live file and its sidecars; **nothing** reaches a backup or the disk's own remapped blocks, which is why § 4.2 says so in the verb's description |
+| INV-13 | Partial: `KnowHow.PurgeErasesFromTheFile` covers the live file and its sidecars; on a SQLite built with `SECURE_DELETE`, only its source check sees the pragma go; **nothing** reaches a backup or the disk's own remapped blocks, which is why § 4.2 says so in the verb's description |
 | What belongs in an entry (§ 3 item 1) | **nothing** — no check can tell a how-to fact from chat; the verb's description and claude-config's `CLAUDE.md` line carry it |
 | Discovery actually gets used (Goal) | **nothing** — no measure yet; reading the store's topics after some weeks of use is the check |
 
