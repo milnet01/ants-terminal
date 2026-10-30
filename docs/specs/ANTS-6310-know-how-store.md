@@ -101,9 +101,12 @@ that `purge` may later need to erase, and text freed without it stays in the fil
 
 `PRAGMA user_version` starts at 1. A newer file is refused, as
 `RoadmapStore::createSchema` refuses one. The file and both WAL sidecars are
-owner-only, through `setOwnerOnlyPerms` and `warnNotOwnerOnly` (`src/secureio.h`),
+owner-only, through `setOwnerOnlyPerms` (`src/secureio.h`),
 in the order `RoadmapStore::open` uses: the empty file is secured before SQLite
-writes to it.
+writes to it. A write that cannot secure them refuses `io_error` and removes a file it
+created, because entries are text sessions wrote and that header's policy refuses for
+such a file. The roadmap store's warn half rests on locking every project out, which
+does not apply here. A read warns through `warnNotOwnerOnly` and still answers.
 
 **Only a committed row creates the file.** With no file, `find` and `list` answer
 empty and `get` refuses `not_found`. A write that commits no row, whether a refusal
@@ -116,7 +119,7 @@ written, which § 4.4's hook relies on.
 
 | op | Arguments | Reply |
 |---|---|---|
-| `find` | `query` and/or `tag`; `limit` (default 5, max 20) | `results[]` of `{topic, title, snippet, age_days, stale}`; `count`; `searched`, the active entries scanned |
+| `find` | `query` and/or `tag`; `limit` (default 5, max 20) | `results[]` of `{topic, title, snippet, age_days, stale}`; `count`, the results returned; `searched`, the active entries scanned |
 | `get` | `topic`; `history` (bool) | `{topic, title, body, tags, author, created, last_verified, revision, age_days, stale, retired}`; with `history:true`, `history[]` of its older rows |
 | `list` | `tag`; `limit` (default 50, max 200); `offset` | `topics[]` of `{topic, title, stale}`; `total`; `next_offset` when more remain |
 | `add` | `topic`, `title`, `body`; `tags[]`; `dry_run` | `{topic, revision}` |
@@ -138,7 +141,7 @@ verified. Any-token matching is what lets a sentence work: "how do I reach the
 Windows box" finds `windows-box` although no entry holds every word. Matching is
 SQL `LIKE` with `%`, `_` and the escape character escaped, so it folds case for
 ASCII only. A `tag` must match one tag whole, and filters the entries. With no `query`,
-every active entry holding the tag comes back, most recently verified first. A
+active entries holding the tag come back up to `limit`, most recently verified first. A
 `query` left with no token answers empty. Retired entries are left out, of `list`
 and its `total` too. A `limit` above its maximum is clamped. The
 snippet is the first body line holding the entry's first matched token, or the
@@ -396,7 +399,7 @@ rule its fixture isolates. All are in
 | `tests/features/hook_pack`, `tests/features/mcp_orientation_install` | their own | INV-12 |
 
 The verb's schema is also held by the checks every verb meets: the declared-input
-rule, `McpEagerLoad`'s description cap and `tools/check-readme-claims.sh`.
+rule and `tools/check-readme-claims.sh`.
 
 Each new test is seen to fail before its rule exists, and `ctest -N -R KnowHow` is
 checked to have moved after building. `ants_add_core_bundle` and
@@ -452,7 +455,7 @@ checked to have moved after building. `ants_add_core_bundle` and
 | INV-7 | `test_know_how_verb.cpp` |
 | INV-8 | `KnowHowVerb.WritesLeaveTheRoadmapStoreAlone` |
 | INV-9 | `KnowHow.StaleAfterNinetyDays` |
-| INV-10 | Partial: `KnowHow.FileModeAndNewerSchema` sees the final modes; **nothing** observes § 4.1's order, the empty file secured before SQLite writes to it |
+| INV-10 | Partial: `KnowHow.FileModeAndNewerSchema` sees the final modes; **nothing** observes § 4.1's order, the empty file secured before SQLite writes to it, or forces its `chmod` refusal |
 | INV-11 | `KnowHow.LimitsRefuse` |
 | INV-12 | `hook_pack` and `mcp_orientation_install` |
 | INV-13 | Partial: `KnowHow.PurgeErasesFromTheFile` covers the live file and its sidecars; on a SQLite built with `SECURE_DELETE`, only its source check sees the pragma go; **nothing** reaches a backup or the disk's own remapped blocks, which is why § 4.2 says so in the verb's description |
