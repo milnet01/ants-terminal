@@ -95589,7 +95589,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6123] **Readability fixes, claude-integration-a lane: claudeintegration.h, src/claudeintegration.cpp, src/claudeintegration.h, src/mcptoolregistry.cpp, src/mcptoolsink.h.**
+- ✅ [ANTS-6123] **Readability fixes, claude-integration-a lane: claudeintegration.h, src/claudeintegration.cpp, src/claudeintegration.h, src/mcptoolregistry.cpp, src/mcptoolsink.h.**
   Findings of the 2026-10-22 readability review (src run), lane claude-integration-a:
   0 high, 12 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/14-claude-integration-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95603,6 +95603,11 @@ worked after these.
   fileChanged; its rename queued as ANTS-6224. Queued F7+F11 as
   ANTS-6221, F9 as ANTS-6222, F10 as ANTS-6223, stale feature-spec text
   as ANTS-6225 (all test- or wire-pinned). The sweep found replies and verb descriptions still naming the removed indie_review_brief: queued as ANTS-6226. LOWs F13-F21 remain.
+  2026-10-30 LOWs F13-F21 fixed (f692be5f): one readTailWindow helper
+  for the three tail-window copies; stale counts, line number and
+  function/file names corrected; garbled compact= comment rewritten.
+  processTools in live feature specs queued on ANTS-6225. Suite
+  5906/5906.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96963,6 +96968,14 @@ worked after these.
   (30/min) is a fourth. dispatch_result_accounting/spec.md states the
   old rule under Problem, as history; leave it.
   Hot reload: none needed.
+  Also from the lane 14 LOW sweep (2026-10-30, L14-F16): the
+  dispatcher `processTools` no longer exists; it is handleMcpRequest.
+  Live text still naming it: tests/features/{mcp_refusal_envelope_hints,
+  mcp_idempotent_read_cache, mcp_caller_cwd_contracts,
+  mcp_tool_prefix_tags, mcp_etag_tip_memo, mcp_output_sanitisation,
+  mcp_rate_limit}/spec.md and a comment in
+  tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp. Dated specs
+  under docs/specs/ are records; leave them.
   **Layman:** Two test descriptions still state old rules for counting calls and limiting their rate.
   Kind: doc-fix.
   Source: review-readability-2026-10-22 (L14 sweep).
@@ -101591,6 +101604,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   6bac4337, 1adc6b24) passed. Second miss, larger than the first, so
   the remedy § 4 names (a batched RoadmapStore::readItems, ANTS-3816)
   is now due.
+  Two more CI failures on 2026-10-29, same perf step, both commits
+  readability refactors that do not touch the read path: run
+  40906705850 (ce8c6282) p95 66.7 ms; run 40930378652 (e67d5aa9)
+  p95 59.2 ms. Every other test passed in both. The runs before and
+  after passed. Three failures in a week, up to a third over budget:
+  the margin is gone, not marginal.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
