@@ -1012,6 +1012,24 @@ which heading you expect it under.
     [`mcp-error-codes.md`](mcp-error-codes.md). Spec
     `docs/specs/ANTS-3809-roadmap-write-half.md`.
 
+### `know_how` (ANTS-6310)
+
+The contract is `docs/specs/ANTS-6310-know-how-store.md`.
+
+- **Reads need only a `caller_cwd` that resolves.** A write also needs that
+  folder inside a registered project, whose slug becomes `author`.
+- **Only a committed row creates `knowhow.sqlite`.** A read, a refusal or a
+  `dry_run` leaves an absent file absent, and the SessionStart hook relies on
+  that.
+- **`find` matches any token**, so a sentence works, and a topic, title or tag
+  match outranks a body match.
+- **`update` with no field records a check.** It moves `last_verified` and
+  nothing else, and it makes a retired entry active again. `retire` on an
+  entry already retired changes nothing.
+- **`purge` erases from the live file only.** `file_scrubbed:false` means
+  another connection is inside a transaction, so the text stays on disk until
+  the last connection closes.
+
 ## `model_switch_stats`
 
 (ANTS-1735, extended by ANTS-1889, sharpened by ANTS-1891.) Required

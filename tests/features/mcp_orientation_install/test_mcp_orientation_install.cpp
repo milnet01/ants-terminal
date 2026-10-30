@@ -436,6 +436,9 @@ TEST(McpOrientation_Inv10, ScriptOutputByteCap) {
     EXPECT_EQ(p.exitCode(), 0);
     const QByteArray out = p.readAllStandardOutput();
     EXPECT_LE(out.size(), 500) << "stdout=" << out.size() << " bytes";
+    // ANTS-6310 INV-12 — sessions learn the know-how store exists.
+    EXPECT_TRUE(out.contains("know_how"))
+        << "ANTS-6310: prelude must name the know_how verb";
     // ANTS-2140 — the prelude advertises codebase_index (layer-3: query
     // the index instead of grep) so a session reaches for the verb.
     EXPECT_TRUE(out.contains("codebase_index"))

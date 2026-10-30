@@ -17,6 +17,7 @@ Design contract: [`docs/specs/ANTS-1252.md`](../docs/specs/ANTS-1252.md)
 | `ants-read-roadmap-veto.sh` | PreToolUse(Read) | Blocks a full Read of a large `ROADMAP.md` → `roadmap_query`. |
 | `ants-drift-check.sh` | Stop | Side-effect-only drift check. |
 | `ants-precompact-snapshot.sh` | PreCompact | Saves a resume snapshot. |
+| `ants-know-how-notice.sh` | SessionStart | One line naming `know_how` once the machine-wide know-how store exists (ANTS-6310). Tests for the file and nothing else. Runs in every project; silent until some session has written. |
 | `ants-inbox-notice.sh` | SessionStart, UserPromptSubmit, PostToolUse | A notice, shown to the user and to Claude, when the project has unread `session_message` mail (ANTS-5553); mid-session only when new mail arrives, checked at most every 30 s (ANTS-5619). Runs in every project the roadmap store knows, not only Ants repos; silent elsewhere. |
 | `_common.sh` | — | Shared helpers (sourced, not executed). |
 

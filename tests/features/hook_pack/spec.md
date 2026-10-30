@@ -155,6 +155,14 @@ hook blocks too, just wrongly); matching the reason on `diff` rather than
 on the verb name (the wrong string contains the word); dropping G4 after
 the split looks settled.
 
+## ANTS-6310 — the know-how store is announced
+
+`ants-know-how-notice.sh` runs on SessionStart. With the store file present it
+prints exactly its one `[ants:know-how]` line, under `XDG_DATA_HOME` set and
+unset, and nothing with the file absent, in a directory with no
+`.ants-project`. `install-hooks.sh` registers it, and uninstall removes it. Its
+source names neither `ants-mcpd` nor `sqlite3`.
+
 ## ANTS-5553 — unread session_message mail is announced
 
 `ants-inbox-notice.sh` runs on SessionStart and UserPromptSubmit. A stub

@@ -1,4 +1,4 @@
-// ANTS-5787 TU 23/23 — the readability verbs' handlers: function_sizes,
+// ANTS-5787 TU 23/24 — the readability verbs' handlers: function_sizes,
 // source_scrapes (ANTS-5602), comment_claims (ANTS-5786) and duplicate_blocks
 // (ANTS-5785). Contracts: each
 // verb's tests/features/mcp_<verb>/spec.md.

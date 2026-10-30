@@ -14346,6 +14346,94 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-6310 — know_how: how-to facts any project writes once
+                // and any session finds. Every property below is read by
+                // cmdKnowHow or KnowHowStore (ANTS-4621).
+                {
+                    QJsonObject t;
+                    t["name"] = "know_how";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use to look up, or record once, a lasting how-to fact about a "
+                        "machine, tool or environment that helps more than one "
+                        "project. Not for chat, status or one project's internals.");
+                    t["description"] = QStringLiteral(
+                        "A machine-global store of lasting how-to facts: how to reach a "
+                        "machine, how to use a tool. op:\"find\" (default; `query` and/or "
+                        "`tag`) returns snippets, op:\"get\" one topic's body, op:\"list\" "
+                        "topics. op:\"add\", op:\"update\" and op:\"retire\" write, from a "
+                        "registered project. op:\"purge\" permanently erases a topic or one "
+                        "old version from the live file only: a backup, or a block the "
+                        "disk's firmware remapped, is out of its reach. The secret check "
+                        "catches known secret shapes only, so an entry says how to "
+                        "authenticate, never the secret. Refusals: bad_args, missing_field, "
+                        "no_project, io_error, not_found, topic_exists, conflict, "
+                        "secret_detected, store_full.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-6310. Contract: docs/specs/ANTS-6310-know-how-store.md. "
+                        "Belongs: how-to facts useful to more than one project. Not chat, "
+                        "status or requests (session_message), not one project's internals, "
+                        "and never a credential. find matches any token, so a sentence works, "
+                        "and ranks a match in topic, title or tags above one in the body. "
+                        "An entry not verified for over 90 days is flagged stale. update with "
+                        "no field records that the entry was checked and is still true, and "
+                        "it makes a retired entry active again. Pass the revision you read as "
+                        "expected_revision, so a change someone made since refuses conflict. "
+                        "Only purge and the 20-row history trim delete a row.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    const auto add = [&props](const char *name, const char *type, const char *text) {
+                        QJsonObject p;
+                        p["type"] = QString::fromLatin1(type);
+                        p["description"] = QString::fromUtf8(text);
+                        props[QString::fromLatin1(name)] = p;
+                    };
+                    add("caller_cwd", "string", "Your $PWD (required). A write records this project as the author.");
+                    {
+                        QJsonObject p;
+                        p["type"] = "string";
+                        QJsonArray e;
+                        e.append(QStringLiteral("find"));
+                        e.append(QStringLiteral("get"));
+                        e.append(QStringLiteral("list"));
+                        e.append(QStringLiteral("add"));
+                        e.append(QStringLiteral("update"));
+                        e.append(QStringLiteral("retire"));
+                        e.append(QStringLiteral("purge"));
+                        p["enum"] = e;
+                        p["description"] = QStringLiteral("Default find.");
+                        props["op"] = p;
+                    }
+                    add("query", "string", "find: words or a sentence; any word may match.");
+                    add("tag", "string", "find, list: keep entries holding this tag whole.");
+                    add("limit", "integer", "find: default 5, max 20. list: default 50, max 200.");
+                    add("offset", "integer", "list: 0-based start; a reply with more carries next_offset.");
+                    add("topic", "string", "Slug, ^[a-z0-9-]+$, at most 64 bytes. Needed by all but find and list.");
+                    add("history", "boolean", "get: also return the older versions.");
+                    add("title", "string", "add, update: one line, at most 120 bytes.");
+                    add("body", "string", "add, update: at most 16 KiB. How to authenticate, never the secret.");
+                    {
+                        QJsonObject item;
+                        item["type"] = "string";
+                        QJsonObject p;
+                        p["type"] = "array";
+                        p["items"] = item;
+                        p["description"] = QStringLiteral(
+                            "add, update: at most 8, each ^[a-z0-9-]+$, at most 32 bytes.");
+                        props["tags"] = p;
+                    }
+                    add("expected_revision", "integer", "update: optional. purge: required. A stale value refuses conflict.");
+                    add("revision", "integer", "purge: erase this old version; omit it to erase the topic and its history.");
+                    add("reason", "string", "purge: required, at most 200 bytes. Kept in the purge log.");
+                    props["dry_run"] = makeDryRunProp();
+                    schema["properties"] = props;
+                    QJsonArray req;
+                    req.append(QStringLiteral("caller_cwd"));
+                    schema["required"] = req;
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
                 // ANTS-5299 — run_trace: a review run records its trace-index
                 // row. Every property below is read by cmdRunTrace (ANTS-4621).
                 {
@@ -16219,6 +16307,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             // within one: what survives this session. Bucketed
                             // together so a catalogue reader finds both.
                             name == QLatin1String("session_message") ||
+                            // ANTS-6310 — what survives every session, on
+                            // every project.
+                            name == QLatin1String("know_how") ||
                             name == QLatin1String("workflow_state") ||
                             // ANTS-5299 — run_trace records what a review
                             // run did, for the sessions after it.
@@ -17929,6 +18020,9 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // absent caller_cwd has no mailbox rather than a default one, so the
     // read ops are Required too.
     if (toolName == QStringLiteral("session_message"))    return C::Required;
+    // ANTS-6310 — every op, as ANTS-6310 § 4.2 says: a write resolves its author
+    // from caller_cwd, and a read refuses a cwd that does not resolve.
+    if (toolName == QStringLiteral("know_how"))           return C::Required;
     // ANTS-5299 — run_trace writes and reads the caller's project trace
     // index; no project, nothing to act on.
     if (toolName == QStringLiteral("run_trace"))          return C::Required;

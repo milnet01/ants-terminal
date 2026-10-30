@@ -72,6 +72,8 @@ constexpr const char *kOrientationScriptBody =
     "debug log, not git log. read_regions reads N slices in one call.\n"
     "Full catalog: tool_info {\"catalog\":true}. ToolSearch \"mcp__ants\"\n"
     "loads a verb's schema.\n"
+    // ANTS-6310 — all the room the INV-10 cap leaves.
+    "Shared how-to facts: know_how.\n"
     "EOF\n"
     // ANTS-1971 — feedback_query / feedback_log are kept OUT of the
     // always-on prelude (it must stay under the INV-10 500-byte cap,

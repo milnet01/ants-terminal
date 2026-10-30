@@ -153,6 +153,11 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("session_message",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdSessionMessage));
+    // ANTS-6310 — know_how: how-to facts any project writes and finds. Required
+    // on every op: a read needs only a cwd that resolves, a write its project.
+    sink.registerToolProvider("know_how",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdKnowHow));
     // ANTS-5299 — run_trace: a review run records its trace-index row.
     // Required on every op, get included: the index lives under the
     // caller's project, and there is no default project to read.

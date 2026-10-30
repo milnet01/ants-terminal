@@ -809,10 +809,45 @@ STUB
     rm -rf "$ib_tmp"
 fi
 
+# ---------- ANTS-6310 INV-12: discovery costs one line, or nothing ----------
+KNOWHOW="$HOOKS_DIR/ants-know-how-notice.sh"
+kh_line='[ants:know-how] shared how-to facts for machines and tools: know_how op:"find"'
+if [ ! -f "$KNOWHOW" ]; then
+    fail "ANTS-6310 missing: $KNOWHOW"
+else
+    kh_tmp="$(mktemp -d -t ants-know-how.XXXXXX)"
+    mkdir -p "$kh_tmp/cwd" "$kh_tmp/xdg/ants-terminal" "$kh_tmp/home/.local/share/ants-terminal"
+    # $1 = XDG_DATA_HOME, or empty to leave it unset. Run from a directory with
+    # no .ants-project, because the store serves every project.
+    kh_run() {
+        (cd "$kh_tmp/cwd" && if [ -n "$1" ]; then export XDG_DATA_HOME="$1"; else unset XDG_DATA_HOME; fi
+         printf '{}\n' | HOME="$kh_tmp/home" timeout 5 bash "$KNOWHOW" 2>/dev/null)
+    }
+    if [ -z "$(kh_run "$kh_tmp/xdg")" ]; then pass "ANTS-6310 silent with no store (XDG set)"; else fail "ANTS-6310 printed with no store (XDG set)"; fi
+    if [ -z "$(kh_run "")" ]; then pass "ANTS-6310 silent with no store (XDG unset)"; else fail "ANTS-6310 printed with no store (XDG unset)"; fi
+    : > "$kh_tmp/xdg/ants-terminal/knowhow.sqlite"
+    if [ "$(kh_run "$kh_tmp/xdg")" = "$kh_line" ]; then pass "ANTS-6310 one line with a store (XDG set)"; else fail "ANTS-6310 wrong output with a store (XDG set): $(kh_run "$kh_tmp/xdg")"; fi
+    if [ -z "$(kh_run "")" ]; then pass "ANTS-6310 XDG unset looks under HOME, not at XDG's copy"; else fail "ANTS-6310 XDG unset saw a file outside HOME"; fi
+    : > "$kh_tmp/home/.local/share/ants-terminal/knowhow.sqlite"
+    if [ "$(kh_run "")" = "$kh_line" ]; then pass "ANTS-6310 one line with a store (XDG unset)"; else fail "ANTS-6310 wrong output with a store (XDG unset): $(kh_run "")"; fi
+    if grep -Eq 'ants-mcpd|sqlite3' "$KNOWHOW"; then fail "ANTS-6310 hook names ants-mcpd or sqlite3"; else pass "ANTS-6310 hook names neither ants-mcpd nor sqlite3"; fi
+    if [ "$have_jq" -eq 1 ]; then
+        kh_cmd='[.hooks.SessionStart[]?.hooks[]?.command] | any(endswith("/ants-know-how-notice.sh"))'
+        bash "$INSTALLER" --target "$kh_tmp/settings.json" --hooks-dir "$kh_tmp/hooks" >/dev/null 2>&1
+        if jq -e "$kh_cmd" "$kh_tmp/settings.json" >/dev/null 2>&1; then pass "ANTS-6310 installer registers the notice on SessionStart"; else fail "ANTS-6310 installer did not register the notice"; fi
+        bash "$INSTALLER" --uninstall --target "$kh_tmp/settings.json" --hooks-dir "$kh_tmp/hooks" >/dev/null 2>&1
+        if jq -e "$kh_cmd | not" "$kh_tmp/settings.json" >/dev/null 2>&1; then pass "ANTS-6310 uninstall removes its entry"; else fail "ANTS-6310 uninstall left its entry"; fi
+    else
+        skip "ANTS-6310 installer (jq not available)"
+    fi
+    rm -rf "$kh_tmp"
+fi
+
 # ---------- INV-9: silent outside project ----------
 outside="$(mktemp -d -t ants-hook-pack-out.XXXXXX)"
 for f in "$HOOKS_DIR"/ants-*.sh; do
-    out=$(cd "$outside" && printf '{}\n' | HOME="$outside" timeout 5 bash "$f" 2>/dev/null)
+    # XDG_DATA_HOME too: a real know-how store must not count as a project.
+    out=$(cd "$outside" && printf '{}\n' | HOME="$outside" XDG_DATA_HOME="$outside/xdg" timeout 5 bash "$f" 2>/dev/null)
     if [ -z "$out" ]; then
         pass "INV-9 ${f##*/} silent outside project"
     else

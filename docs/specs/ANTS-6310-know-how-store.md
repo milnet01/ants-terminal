@@ -1,6 +1,6 @@
 # ANTS-6310 — a machine-global know-how store and its `know_how` verb
 
-**Status:** accepted (2026-10-30).
+**Status:** shipped (2026-10-30).
 **Kind:** feature.
 **Source:** ROADMAP ANTS-6310 (claude-config session request, 2026-10-30).
 
@@ -157,7 +157,8 @@ makes it active again. `expected_revision`, when given and not current, refuses
 `conflict` and changes nothing.
 
 **`retire`** sets `retired_at` and raises `revision` by one, adding no history row,
-so a writer who read before the retire refuses `conflict`. The row stays, `get` still reads it with
+so a writer who read before the retire refuses `conflict`. Retiring a retired entry
+changes nothing. The row stays, `get` still reads it with
 `retired:true`, and `add` on that topic refuses `topic_exists` and says to use
 `update`. An accidental overwrite or retire can be recovered, because only `purge` and
 the 20-row history trim delete a row.
@@ -398,8 +399,9 @@ rule its fixture isolates. All are in
 | `test_know_how_verb.cpp` | `test_claude` | INV-7, INV-8 |
 | `tests/features/hook_pack`, `tests/features/mcp_orientation_install` | their own | INV-12 |
 
-The verb's schema is also held by the checks every verb meets: the declared-input
-rule and `tools/check-readme-claims.sh`.
+`tools/check-readme-claims.sh` holds the verb count. No check common to every verb
+holds the declared-input rule, so `KnowHowVerb.SchemaDeclaresEveryArgumentRead`
+holds it for this verb.
 
 Each new test is seen to fail before its rule exists, and `ctest -N -R KnowHow` is
 checked to have moved after building. `ants_add_core_bundle` and

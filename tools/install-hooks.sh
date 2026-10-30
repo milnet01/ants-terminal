@@ -69,7 +69,8 @@ hook_entries() {
   "hooks": {
     "SessionStart": [
       {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-session-preamble.sh"}]},
-      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-inbox-notice.sh"}]}
+      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-inbox-notice.sh"}]},
+      {"matcher": "*", "hooks": [{"type": "command", "command": "$hooks_dir/ants-know-how-notice.sh"}]}
     ],
     "UserPromptSubmit": [
       {"hooks": [{"type": "command", "command": "$hooks_dir/ants-inbox-notice.sh", "timeout": 5}]}
@@ -121,7 +122,7 @@ splice_install() {
 # The scripts this pack ships. Uninstall removes these and nothing else:
 # a pattern such as ants-*.sh also matches scripts other tools put in
 # the same hooks dir.
-pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot|inbox-notice)\.sh$'
+pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot|inbox-notice|know-how-notice)\.sh$'
 
 splice_uninstall() {
     local current

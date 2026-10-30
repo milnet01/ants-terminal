@@ -341,6 +341,8 @@ Listed only where behavior isn't obvious from the name.
   no semantic change (`op:"render"`).
 - `remotecontrol_session_message` — thin handler for the cross-session
   mailbox verb; the store does the work.
+- `remotecontrol_know_how` — thin handler for `know_how`, which resolves the
+  caller and its project; the seam is `knowhowstore` (ANTS-6310).
 - `remotecontrol_run_trace` — thin handler for `run_trace`, which records a
   review run's trace-index row; the seam is `runtraceverb` (ANTS-5299).
 - `remotecontrol_quotation_check` — thin handler for `quotation_check`, which
@@ -508,6 +510,9 @@ Listed only where behavior isn't obvious from the name.
   it lives under `XDG_DATA_HOME` (never a cache path), is created
   `synchronous=FULL` and mode 0600, and its only rebuild path is the
   export. Spec ANTS-3756.
+- `knowhowstore` (`ants_roadmapstore_lib`) — the machine-global know-how store
+  in its own `knowhow.sqlite`: every op, refusal and reply of `know_how`
+  (ANTS-6310).
 - `roadmapcheck` (`ants_roadmapstore_lib`) — store health checks. Today
   one: whole-store relationship acyclicity over the four acyclic types,
   reported rather than refused, read through the typed store surface.

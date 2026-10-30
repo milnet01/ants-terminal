@@ -543,6 +543,8 @@ set(ANTS_RC_SOURCES_REL
     # ANTS-5787 — the readability verbs' handlers. Appended last, for the
     # reason above.
     src/remotecontrol_readability.cpp
+    # ANTS-6310 — know_how's handler. Appended last, for the reason above.
+    src/remotecontrol_know_how.cpp
 )
 # ANTS-4932 § 2.2 — the list splits in two here, derived rather than restated
 # (INV-11): the terminal TU, which holds dispatch(), the --remote socket and
@@ -856,6 +858,9 @@ add_library(ants_roadmapstore_lib STATIC
     # is in core precisely because it needs no database, and this half needs
     # Qt6::Sql and the store.
     src/roadmapmigrateload.cpp
+    # ANTS-6310 — the know-how store. Its own file, beside the store whose
+    # refusals and busy deadline it shares.
+    src/knowhowstore.cpp
 )
 target_link_libraries(ants_roadmapstore_lib
     # ANTS-3808 § 4 — the reader, NOT ants_core_lib: this surface stays
@@ -3150,6 +3155,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_subdir_dispatch/test_roadmap_subdir_dispatch.cpp
                 # ANTS-5667 — an outer folder resolves to its repo_root clone.
                 tests/features/project_repo_root/test_project_repo_root.cpp
+                # ANTS-6310 — know_how's handler, under an XdgGuard sandbox.
+                tests/features/know_how/test_know_how_verb.cpp
                 # ANTS-4070 — rotate a closed minor into its archive, and
                 # retitle a section. Same shape as roadmap_write_half: through
                 # the verbs, against stores the migration actually built.
@@ -4391,6 +4398,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_migrate_verb/test_roadmap_migrate_verb.cpp
                 tests/features/roadmap_migrate_backup/test_roadmap_migrate_backup.cpp
                 tests/features/session_message/test_session_message.cpp
+                # ANTS-6310 — the know-how store, against a QTemporaryDir.
+                tests/features/know_how/test_know_how.cpp
                 # ANTS-5299 — run_trace: the trace-index writer. Behavioural
                 # against a QTemporaryDir; INV-13/14 scrape ANTS_SRC_DIR.
                 tests/features/run_trace/test_run_trace.cpp

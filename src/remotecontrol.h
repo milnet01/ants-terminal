@@ -1112,6 +1112,8 @@ public:
 
     // ANTS-4622 — the cross-session mailbox (ops send / inbox / ack).
     QJsonDocument cmdSessionMessage(const QJsonObject &req);
+    // ANTS-6310 — know_how: the machine-global store of how-to facts.
+    QJsonDocument cmdKnowHow(const QJsonObject &req);
 
     // ANTS-5299 — run_trace: a review run records its trace-index row
     // (ops start / finish / get). Seam: src/runtraceverb.h.

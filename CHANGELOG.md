@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **A shared notebook for Claude sessions: the know_how verb stores how-to facts about machines and tools once, and any project finds them.** (ANTS-6310)
+  Any registered project can add, update or retire an entry, and every project can search them in about two small calls. Secret-shaped text is refused, old versions are kept, and purge permanently erases a topic or an old version. A one-line session-start notice and a sentence in the MCP prelude tell sessions it exists.
+
 - **quotation_check checks a quote against the line its finding cites: an item may carry `line` (and `tolerance`, default 3), and a quote found elsewhere in the file is `hit_displaced`, with the line it was found on** (ANTS-5732)
   A call-level `tolerance` sets the default for every item. An item without `line` gets the same result as before.
 

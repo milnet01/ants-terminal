@@ -167,6 +167,8 @@
         "src/roadmapmigrateload.h",
         "src/roadmapmigrateverb.cpp",
         "src/roadmapmigrateverb.h",
+        "src/knowhowstore.cpp",
+        "src/knowhowstore.h",
         "src/roadmapstore.cpp",
         "src/roadmapstore.h"
       ]
@@ -322,6 +324,7 @@
       "summary": "Feedback, changelog, docs, terminal, cross-session message, run-trace, session-cost and readability verbs.",
       "sourcePaths": [
         "src/remotecontrol_changelog.cpp",
+        "src/remotecontrol_know_how.cpp",
         "src/remotecontrol_docs.cpp",
         "src/githooksreport.cpp",
         "src/githooksreport.h",
