@@ -3,6 +3,7 @@
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 
 #include "auditrunner.h"   // audit_run schema: the tool lists
+#include "testrunners.h"   // test_results, focused_test: the runner enum
 #include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "configpaths.h"
 #include "debuglog.h"
@@ -2847,6 +2848,31 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     return p;
                 };
 
+                // ANTS-6125 — what the verbs that walk a project's source
+                // files share: function_sizes, source_scrapes, comment_claims
+                // and duplicate_blocks.
+                auto makeWalkCallerCwdProp = []{
+                    QJsonObject p;
+                    p["type"] = "string";
+                    p["description"] = QStringLiteral(
+                        "Your $PWD. REQUIRED — the project the paths resolve in.");
+                    return p;
+                };
+                auto makeWalkPathsProp = [](const QString &description){
+                    QJsonObject item;
+                    item["type"] = "string";
+                    QJsonObject p;
+                    p["type"] = "array";
+                    p["items"] = item;
+                    p["description"] = description;
+                    return p;
+                };
+                auto makeWalkIncludeProp = [](const QString &files){
+                    QJsonObject p;
+                    p["type"] = "boolean";
+                    p["description"] = QStringLiteral("Also read %1 (default false).").arg(files);
+                    return p;
+                };
                 // ANTS-2227 — uniform `dry_run` flag for mutating verbs. When
                 // true the verb computes the would-be result envelope (carrying
                 // dry_run:true) WITHOUT writing to disk. The per-verb
@@ -4815,6 +4841,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // this over Bash/Read for code searches.
                 QJsonObject wsTool;
                 wsTool["name"] = "workspace_search";
+                // On the wire, kEagerDescription below replaces this text.
                 wsTool["description"] = QStringLiteral(
                     "Search the project for code matching a literal string "
                     "or regex — prefer over `Bash grep -r` (saves "
@@ -5452,6 +5479,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // source file vs full Read.
                 QJsonObject foTool;
                 foTool["name"] = "file_outline";
+                // On the wire, kEagerDescription below replaces this text.
                 foTool["description"] = QStringLiteral(
                     "Return a structured outline of a file (header comment + "
                     "per-symbol {line, kind, name, signature}) instead of a full "
@@ -5957,6 +5985,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // symbol-scoped under-read) instead of a full native Read.
                 QJsonObject rrTool;
                 rrTool["name"] = "read_region";
+                // On the wire, kEagerDescription below replaces this text.
                 rrTool["description"] = QStringLiteral(
                     "Return an exact slice of a project file instead of Read-ing "
                     "it: a line range (start_line/end_line), a named symbol's body "
@@ -10112,7 +10141,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"]        = "integer";
                         p["description"] = QStringLiteral(
-                            "Ctest exit code (required for op=record).");
+                            "The runner's exit code (required for op=record).");
                         props["exit_code"] = p;
                     }
                     {
@@ -10126,8 +10155,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     {
                         QJsonObject p;
                         p["type"]        = "string";
-                        p["enum"]        = QJsonArray{"ctest", "pytest", "jest",
-                                                      "vitest", "cargo", "go"};
+                        p["enum"]        = QJsonArray::fromStringList(TestRunners::names());
                         p["description"] = QStringLiteral(
                             "op=record: the runner that printed `output`. "
                             "Omitted, it is recognised from the output.");
@@ -10137,7 +10165,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"]        = "integer";
                         p["description"] = QStringLiteral(
-                            "Wall-clock ms when the ctest run "
+                            "Wall-clock ms when the test run "
                             "started (optional, op=record).");
                         props["started_at_ms"] = p;
                     }
@@ -10145,7 +10173,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonObject p;
                         p["type"]        = "integer";
                         p["description"] = QStringLiteral(
-                            "Wall-clock ms when the ctest run "
+                            "Wall-clock ms when the test run "
                             "finished (optional, op=record).");
                         props["finished_at_ms"] = p;
                     }
@@ -10155,8 +10183,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["description"] = QStringLiteral(
                             "Total duration in ms (optional, "
                             "op=record). Caller-supplied wins over "
-                            "the parsed `Total Test time (real)` "
-                            "footer.");
+                            "the duration parsed from the output.");
                         props["duration_ms"] = p;
                     }
                     {
@@ -10266,8 +10293,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     {
                         QJsonObject p;
                         p["type"]        = "string";
-                        p["enum"]        = QJsonArray{"ctest", "pytest", "jest",
-                                                      "vitest", "cargo", "go"};
+                        p["enum"]        = QJsonArray::fromStringList(TestRunners::names());
                         p["description"] = QStringLiteral(
                             "The test runner. Omitted, it is detected from the "
                             "project's marker files (CMakeLists.txt first).");
@@ -10416,6 +10442,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 {
                     QJsonObject t;
                     t["name"] = "find_definition";
+                    // On the wire, kEagerDescription below replaces this text.
                     t["description"] = QStringLiteral(
                         "Find where a symbol is defined across the project, without a "
                         "full LSP: a regex-anchored scan over C++/Python/Lua/Shell/GLSL "
@@ -10990,6 +11017,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 {
                     QJsonObject t;
                     t["name"] = "indie_review_dispatch";
+                    // The tools/list pass below appends a sentence to this description.
                     t["description"] = QStringLiteral(
                         "Server-side multi-agent independent code "
                         "review: dispatches N parallel HTTP POSTs to "
@@ -10997,10 +11025,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "(Settings → AI), one per lane from "
                         "indie_review_partition, saves each response "
                         "as <reports_dir>/<lane>.md, returns a "
-                        "manifest. Replaces the per-Agent fan-out in "
-                        "the /indie-review skill — displaces the "
-                        "orchestration token tax onto the upstream "
-                        "provider's billing. Required: caller_cwd, "
+                        "manifest. Required: caller_cwd, "
                         "reports_dir. Optional: lanes (subset of "
                         "partition; default all), concurrency [1-8] "
                         "default 4, max_tokens [4096-128000] default "
@@ -11082,7 +11107,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "return pass/fail with log tails. Reads "
                         ".ants/verify.json (or auto-detects CMakePresets/"
                         "package.json/Cargo.toml/pyproject.toml). Args: "
-                        "gates (subset of build|tests|lint), lines, "
+                        "gates (subset of build|tests|lint), max_log_lines, "
                         "timeout_sec [10,1800], force_refresh, cache_only "
                         "(read-only, bypasses the cwd gate). Results cached "
                         "5 min keyed on git state; responses carry "
@@ -11556,10 +11581,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // ANTS-2079 — full pagination / resume / polyglot
                     // reference in `detail` (stripped from the tools/list
                     // wire; served by tool_info
-                    // {name:"test_audit_partition"}). NB: the only MCP
-                    // input arg also named `detail` belongs to test_results
-                    // (out of scope) — a different JSON object that never
-                    // aliases this tool-descriptor field.
+                    // {name:"test_audit_partition"}).
                     t["detail"] = QStringLiteral(
                         "Phase 1 of the test_audit trio. Detect "
                         "test framework, walk test files, pack into "
@@ -11630,20 +11652,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "the trio; pairs with test_audit_brief.");
                     QJsonObject schema;
                     schema["type"] = "object";
-                    QJsonObject sP; sP["type"] = "string";
-                    QJsonObject dP; dP["type"] = "string";
+                    QJsonObject scopeProp; scopeProp["type"] = "string";
+                    QJsonObject dimensionsProp; dimensionsProp["type"] = "string";
                     // ANTS-1519 — chunk_size default + bounds surfaced on
                     // the property itself so a session reading the JSON
                     // schema (not the prose description) still knows the
                     // default. Server-side clamp [4, 30] lives in
                     // testauditengine.cpp; default 12 lives in
                     // testauditengine.h PartitionRequest::chunkSize.
-                    QJsonObject cP;
-                    cP["type"] = "integer";
-                    cP["default"] = 12;
-                    cP["minimum"] = 4;
-                    cP["maximum"] = 30;
-                    cP["description"] = QStringLiteral(
+                    QJsonObject chunkSizeProp;
+                    chunkSizeProp["type"] = "integer";
+                    chunkSizeProp["default"] = 12;
+                    chunkSizeProp["minimum"] = 4;
+                    chunkSizeProp["maximum"] = 30;
+                    chunkSizeProp["description"] = QStringLiteral(
                         "Files per chunk. Default 12; clamped to [4, 30] "
                         "server-side. Override via "
                         "<projectPath>/.test-audit/partition.json.");
@@ -11656,25 +11678,25 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // phase is skipped — which is caller-side. With
                     // additionalProperties:false a stale caller now gets a
                     // loud schema refusal instead of a silent no-op.
-                    QJsonObject oP;
-                    oP["type"] = "integer";
-                    oP["default"] = 0;
-                    oP["minimum"] = 0;
-                    oP["description"] = QStringLiteral(
+                    QJsonObject offsetProp;
+                    offsetProp["type"] = "integer";
+                    offsetProp["default"] = 0;
+                    offsetProp["minimum"] = 0;
+                    offsetProp["description"] = QStringLiteral(
                         "0-based start index into chunks[]. Default 0.");
-                    QJsonObject lP;
-                    lP["type"] = "integer";
-                    lP["default"] = -1;
-                    lP["description"] = QStringLiteral(
+                    QJsonObject limitProp;
+                    limitProp["type"] = "integer";
+                    limitProp["default"] = -1;
+                    limitProp["description"] = QStringLiteral(
                         "Cap on chunks[] length. Default -1 (no caller "
                         "limit; server may still auto-truncate large "
                         "envelopes).");
-                    QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject callerCwdProp; callerCwdProp["type"] = "string";
                     QJsonObject props;
-                    props["scope"] = sP; props["dimensions"] = dP;
-                    props["chunk_size"] = cP;
-                    props["offset"] = oP; props["limit"] = lP;
-                    props["caller_cwd"] = ccwd;
+                    props["scope"] = scopeProp; props["dimensions"] = dimensionsProp;
+                    props["chunk_size"] = chunkSizeProp;
+                    props["offset"] = offsetProp; props["limit"] = limitProp;
+                    props["caller_cwd"] = callerCwdProp;
                     schema["properties"] = props;
                     QJsonArray req; req.append("caller_cwd");
                     schema["required"] = req;
@@ -11707,13 +11729,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "test-audit chunk. Phase 2 of the trio; "
                         "run after test_audit_partition.");
                     QJsonObject schema; schema["type"] = "object";
-                    QJsonObject cP; cP["type"] = "string";
-                    QJsonObject pP; pP["type"] = "string";
-                    QJsonObject ccwd; ccwd["type"] = "string";
+                    QJsonObject chunkIdProp; chunkIdProp["type"] = "string";
+                    QJsonObject partitionTokenProp; partitionTokenProp["type"] = "string";
+                    QJsonObject callerCwdProp; callerCwdProp["type"] = "string";
                     QJsonObject props;
-                    props["chunk_id"] = cP;
-                    props["partition_token"] = pP;
-                    props["caller_cwd"] = ccwd;
+                    props["chunk_id"] = chunkIdProp;
+                    props["partition_token"] = partitionTokenProp;
+                    props["caller_cwd"] = callerCwdProp;
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append("caller_cwd");
@@ -12097,9 +12119,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["name"] = "roadmap_log";
                     t["description"] = QStringLiteral(
                         "Append or flip/annotate ROADMAP.md bullets (GFM or "
-                        "Ants-v1 emoji format, auto-detected). ops: append "
-                        "(default) | append_batch | flip | flip_batch | "
-                        "annotate | create_section. append needs caller_cwd, "
+                        "Ants-v1 emoji format, auto-detected). ops: see `op`, "
+                        "default append. append needs caller_cwd, "
                         "section, status, headline, kind, source; flip needs "
                         "to_status + one of (id|anchor|headline). dry_run:"
                         "true previews. Refusals: bullet_not_found, "
@@ -13769,7 +13790,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally
-                    // required across both ops. op:"append" needs
+                    // required across every op. op:"append" needs
                     // section+status+headline+kind+source; op:"flip"
                     // needs to_status + one locator. JSON Schema's
                     // top-level `required` can't express this without
@@ -14872,24 +14893,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        p["description"] = QStringLiteral(
-                            "Your $PWD. REQUIRED — the project the paths resolve in.");
-                        props["caller_cwd"] = p;
-                    }
-                    {
-                        QJsonObject s;
-                        s["type"] = "string";
-                        QJsonObject p;
-                        p["type"] = "array";
-                        p["items"] = s;
-                        p["description"] = QStringLiteral(
-                            "Files or directories, project-relative or absolute. Default: "
-                            "source_roots, else src.");
-                        props["paths"] = p;
-                    }
+                    props["caller_cwd"] = makeWalkCallerCwdProp();
+                    props["paths"] = makeWalkPathsProp(QStringLiteral(
+                        "Files or directories, project-relative or absolute. Default: "
+                        "source_roots, else src."));
                     {
                         QJsonObject p;
                         p["type"] = "integer";
@@ -14898,20 +14905,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["description"] = QStringLiteral("How many rows to return (default 20).");
                         props["top"] = p;
                     }
-                    {
-                        QJsonObject p;
-                        p["type"] = "boolean";
-                        p["description"] = QStringLiteral(
-                            "Also measure test files (default false).");
-                        props["include_tests"] = p;
-                    }
-                    {
-                        QJsonObject p;
-                        p["type"] = "boolean";
-                        p["description"] = QStringLiteral(
-                            "Also measure generated files such as moc_* (default false).");
-                        props["include_generated"] = p;
-                    }
+                    props["include_tests"] = makeWalkIncludeProp(QStringLiteral("test files"));
+                    props["include_generated"] = makeWalkIncludeProp(QStringLiteral("generated files such as moc_*"));
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
@@ -14947,13 +14942,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        p["description"] = QStringLiteral(
-                            "Your $PWD. REQUIRED — the project the paths resolve in.");
-                        props["caller_cwd"] = p;
-                    }
+                    props["caller_cwd"] = makeWalkCallerCwdProp();
                     {
                         QJsonObject p;
                         p["type"] = "string";
@@ -14961,17 +14950,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "A source file or directory, project-relative or absolute.");
                         props["path"] = p;
                     }
-                    {
-                        QJsonObject s;
-                        s["type"] = "string";
-                        QJsonObject p;
-                        p["type"] = "array";
-                        p["items"] = s;
-                        p["description"] = QStringLiteral(
-                            "Several files or directories; rows for any of them. Give path, "
-                            "paths, or both.");
-                        props["paths"] = p;
-                    }
+                    props["paths"] = makeWalkPathsProp(QStringLiteral(
+                        "Several files or directories; rows for any of them. Give path, "
+                        "paths, or both."));
                     {
                         QJsonObject p;
                         p["type"] = "integer";
@@ -15015,24 +14996,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        p["description"] = QStringLiteral(
-                            "Your $PWD. REQUIRED — the project the paths resolve in.");
-                        props["caller_cwd"] = p;
-                    }
-                    {
-                        QJsonObject s;
-                        s["type"] = "string";
-                        QJsonObject p;
-                        p["type"] = "array";
-                        p["items"] = s;
-                        p["description"] = QStringLiteral(
-                            "Files or directories, project-relative or absolute. Default: "
-                            "source_roots, else src.");
-                        props["paths"] = p;
-                    }
+                    props["caller_cwd"] = makeWalkCallerCwdProp();
+                    props["paths"] = makeWalkPathsProp(QStringLiteral(
+                        "Files or directories, project-relative or absolute. Default: "
+                        "source_roots, else src."));
                     {
                         QJsonObject p;
                         p["type"] = "integer";
@@ -15042,20 +15009,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "Cap on each bucket (default 500); scanned holds the totals.");
                         props["limit"] = p;
                     }
-                    {
-                        QJsonObject p;
-                        p["type"] = "boolean";
-                        p["description"] = QStringLiteral(
-                            "Also read test files (default false).");
-                        props["include_tests"] = p;
-                    }
-                    {
-                        QJsonObject p;
-                        p["type"] = "boolean";
-                        p["description"] = QStringLiteral(
-                            "Also read generated files such as moc_* (default false).");
-                        props["include_generated"] = p;
-                    }
+                    props["include_tests"] = makeWalkIncludeProp(QStringLiteral("test files"));
+                    props["include_generated"] = makeWalkIncludeProp(QStringLiteral("generated files such as moc_*"));
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
@@ -15089,24 +15044,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
-                    {
-                        QJsonObject p;
-                        p["type"] = "string";
-                        p["description"] = QStringLiteral(
-                            "Your $PWD. REQUIRED — the project the paths resolve in.");
-                        props["caller_cwd"] = p;
-                    }
-                    {
-                        QJsonObject s;
-                        s["type"] = "string";
-                        QJsonObject p;
-                        p["type"] = "array";
-                        p["items"] = s;
-                        p["description"] = QStringLiteral(
-                            "Files or directories, project-relative or absolute. Default: "
-                            "source_roots, else src.");
-                        props["paths"] = p;
-                    }
+                    props["caller_cwd"] = makeWalkCallerCwdProp();
+                    props["paths"] = makeWalkPathsProp(QStringLiteral(
+                        "Files or directories, project-relative or absolute. Default: "
+                        "source_roots, else src."));
                     {
                         QJsonObject p;
                         p["type"] = "integer";
@@ -15141,20 +15082,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["description"] = QStringLiteral("How many groups to return (default 50).");
                         props["top"] = p;
                     }
-                    {
-                        QJsonObject p;
-                        p["type"] = "boolean";
-                        p["description"] = QStringLiteral(
-                            "Also read test files (default false).");
-                        props["include_tests"] = p;
-                    }
-                    {
-                        QJsonObject p;
-                        p["type"] = "boolean";
-                        p["description"] = QStringLiteral(
-                            "Also read generated files such as moc_* (default false).");
-                        props["include_generated"] = p;
-                    }
+                    props["include_tests"] = makeWalkIncludeProp(QStringLiteral("test files"));
+                    props["include_generated"] = makeWalkIncludeProp(QStringLiteral("generated files such as moc_*"));
                     schema["properties"] = props;
                     QJsonArray req;
                     req.append(QStringLiteral("caller_cwd"));
@@ -15860,8 +15789,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "ANTS-1985.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to fetch one tool's descriptor without "
-                        "re-paying for the full tools/list snapshot "
-                        "snapshot, or catalog:true for the "
+                        "re-paying for the full tools/list snapshot, "
+                        "or catalog:true for the "
                         "whole toolkit grouped by category (ANTS-1985). "
                         "Surfaces selection_hint field (ANTS-1453).");
                     QJsonObject schema;
@@ -16025,12 +15954,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
-                        "Your $PWD. REQUIRED for every op "
-                        "(ANTS-1336 — cross-project tenancy gate; "
-                        "refuses on mismatch with the focused tab's "
-                        "cwd). Previously optional for get/list "
-                        "(ANTS-1372 INV-7); now required for those "
-                        "too — see docs/specs/ANTS-1336.md.");
+                        "Your $PWD, required on every op. get and list "
+                        "read from it directly; set and delete refuse "
+                        "on mismatch with the focused tab's cwd.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to persist tiny per-project notes "
                         "across MCP calls (KB-grain). Self-scoped "
@@ -16080,9 +16006,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // expose overlapping data.
                 auto tokenCostFor = [](const QString &name)
                         -> std::pair<int, int> {
-                    // Buckets: (typical, worst). Keep the table flat
-                    // so the audit pass can spot drift between tool
-                    // additions and budget claims.
+                    // Buckets: (typical, worst). A verb with no row takes
+                    // the default below, an estimate nobody measured.
                     static const QHash<QString, std::pair<int, int>> kCosts = {
                         // Control-plane / cheap fixed responses.
                         {QStringLiteral("get_session_info"),  {100,  400}},
@@ -16134,7 +16059,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_query"),     {1700, 12000}},
                         {QStringLiteral("roadmap_log"),       {200,  600}},
                         // ANTS-3855 — roadmap_migrate: counts + a bounded
-                        // notes[] (200 entries max), no roadmap text echoed
+                        // notes[] (default 200 entries), no roadmap text echoed
                         // back. The upper end is a corpus project whose source
                         // raises the note cap.
                         {QStringLiteral("roadmap_migrate"),   {300,  4000}},
@@ -16201,16 +16126,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // description so a session surfacing tools/list can
                 // grep by surface family without parsing every
                 // descriptor.
-                // ANTS-1567 — Music_Production + MAME Curator
-                // 2026-05-18 asked for grep-friendlier category
-                // labels. Two rename: `memory` → `mcp-state` (the
-                // bucket is server-side per-cwd KV state, not
-                // terminal/RAM "memory"); `caller_cwd_info` moves
-                // from `terminal` to `meta` (it's a diagnostic
-                // verb, not a pty-state read). Net effect: every
-                // tool still has a non-"other" prefix and the
-                // labels match the surface families a session
-                // looking at tools/list would expect to grep for.
+                // ANTS-1567 — every tool has a non-"other" prefix, named
+                // after the surface family a session would grep tools/list
+                // for. `mcp-state` is server-side per-cwd state, and
+                // `caller_cwd_info` is `meta`: a diagnostic, not a pty read.
                 auto kindForName = [](const QString &name) -> QString {
                     if (name.startsWith(QStringLiteral("cold_eyes_")))
                         return QStringLiteral("cold-eyes");
@@ -16423,24 +16342,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                 "underlying file hasn't changed "
                                 "(ANTS-1499 \"304 Not Modified\" pattern).");
                         }
-                        // ANTS-1581(b) stamped every cold_eyes_ /
-                        // indie_review_ verb with "the skill orchestrates
-                        // this itself and does not call this tool", so a
-                        // session reading the deferred-tool list would not
-                        // mistake naming parity for "this is the canonical
-                        // path"; ANTS-3639 then had to exempt the verbs the
-                        // skills DO mandate.
-                        //
-                        // REVERSED 2026-07-28 (global CLAUDE.md §18): the
-                        // MCP verbs are now the default path and the raw
-                        // tools are the fallback, so "the skill does not
-                        // call this" is false of both families — and a note
-                        // steering the reader away from the verb "unless
-                        // building your own pipeline" argues against the
-                        // standing rule.
-                        //
-                        // One carve-out survives, and it is about what the
-                        // verb DOES rather than who calls it:
+                        // One carve-out, about what the verb DOES rather than
+                        // who calls it:
                         // indie_review_dispatch POSTs each lane to the
                         // project's configured AI endpoint (default
                         // "llama3"). Its own text says where the request
@@ -16666,7 +16569,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // descriptions becomes a one-line summary. The snapshot above
                 // keeps the full text, and tool_info {name} serves it, which
                 // the description's pointer already names. Keyed by
-                // "verb/arg" first, then by "arg" for the arguments the four
+                // "verb/arg" first, then by "arg" for the arguments those
                 // verbs share. A summary is used only where it is shorter;
                 // an argument with no entry keeps its own text.
                 {
@@ -16714,14 +16617,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
                         {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
                     };
-                    // ANTS-5694 — the same verbs' own descriptions: the
-                    // purpose, the one usage trap, and (on the two etag
-                    // verbs) a one-line Etag tip. The kind prefix and the
-                    // tool_info pointer are added below, as on every verb.
                     static const QSet<QString> kSharedArgs = {
                         QStringLiteral("fields"), QStringLiteral("compact"),
                         QStringLiteral("encoding"), QStringLiteral("etag_match"),
                     };
+                    // ANTS-5694 — the always-loaded verbs' own descriptions: the
+                    // purpose, the one usage trap, and (on the two etag
+                    // verbs) a one-line Etag tip. The kind prefix and the
+                    // tool_info pointer are added below, as on every verb.
                     static const QHash<QString, QString> kEagerDescription = {
                         {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}].")},
                         {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
@@ -16968,9 +16871,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
 
                 // ANTS-1502 — two-tier discovery. When the caller
                 // requests `_meta.shape == "lite"`, return a compact
-                // shape `[{name, summary, kind}]` per tool (~80 chars
-                // per entry) instead of the full descriptor set
-                // (~60-75 KiB for ~50 tools). Callers drill into a
+                // shape `[{name, summary, kind}]` per tool instead of
+                // the full descriptor set. Callers drill into a
                 // specific tool via `tool_info(name)` (ANTS-1399).
                 // Opt-in only: by default we return the full shape
                 // the MCP spec mandates.
@@ -16989,11 +16891,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // tools/list scope (above) so the full-shape
                     // description-prefix loop and this lite-shape branch
                     // share one source of truth.
-                    auto summaryFor = [](const QJsonObject &t) -> QString {
-                        // Prefer selection_hint (already terse,
-                        // form-factor cue). Fall back to the first
-                        // sentence of description, truncated to
-                        // ~140 chars to keep the lite shape compact.
+                    auto liteSummaryFor = [](const QJsonObject &t) -> QString {
+                        // selection_hint when there is one, else the first
+                        // sentence of description, cut to 160 characters.
                         const QString hint =
                             t.value(QStringLiteral("selection_hint"))
                              .toString();
@@ -17017,7 +16917,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             t.value(QStringLiteral("name")).toString();
                         QJsonObject e;
                         e[QStringLiteral("name")]    = name;
-                        e[QStringLiteral("summary")] = summaryFor(t);
+                        e[QStringLiteral("summary")] = liteSummaryFor(t);
                         e[QStringLiteral("kind")]    = kindForName(name);
                         lite.append(e);
                     }

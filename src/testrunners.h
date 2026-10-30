@@ -24,6 +24,7 @@ enum class Runner { Ctest, Pytest, Jest, Vitest, Cargo, Go };
 
 QString name(Runner r);                           // "ctest", "pytest", ...
 std::optional<Runner> fromName(const QString &s); // exact, lower-case
+QStringList names();                             // the tools/list enum, in one order
 QString allNames();                               // "ctest, pytest, ..." for messages
 
 struct Detection {

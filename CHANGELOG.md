@@ -310,6 +310,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Several Ants MCP verb descriptions now match what the verbs accept and do.** (ANTS-6125)
+  verify_changes names its max_log_lines argument, session_memory says which ops follow the focused tab, indie_review_dispatch no longer claims to replace the review skill's own lanes, and test_results' arguments no longer speak only of ctest.
+
 - **The status bar returns to idle when a background job finishes within a second of starting** (ANTS-6307)
   Its "finished" notice can reach the transcript before its start record; that notice now still ends the task.
 

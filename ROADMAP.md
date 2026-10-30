@@ -95286,6 +95286,10 @@ asked for them to ship in 0.8.0.
   A shortlist, not findings: review-readability's lanes confirm or
   dismiss each group by id before any fold. Re-run the verb for the
   current list.
+  2026-10-30 from ANTS-6125: folded the groups that lane confirmed:
+  dup:0be8fe509c07 (runner enum), dup:8eaf4fe55ef6 (the walk verbs'
+  arguments). dup:500fe37250c0 was dismissed there as real content; its
+  stale ctest wording is fixed.
   **Layman:** The same code is written out in several places; folding the copies means a future fix is made once instead of in each copy.
   Kind: refactor.
   Source: in-session-2026-10-20 (first duplicate_blocks run over src/).
@@ -95738,7 +95742,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: claude-integration.
 
-- 📋 [ANTS-6125] **Readability fixes, claude-integration-c lane: src/claudeintegration.cpp.**
+- ✅ [ANTS-6125] **Readability fixes, claude-integration-c lane: src/claudeintegration.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane claude-integration-c:
   1 high, 4 medium, 15 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/16-claude-integration-c.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95759,6 +95763,23 @@ worked after these.
   makeCallerCwdReadProp (the hand-written copies stay: their wording
   differs per verb); F5 roadmap_log's dry_run text says "every op"
   without a list that had fallen behind. LOWs remain.
+  2026-10-30 LOWs closed. Fixed: F6, F7 (TestRunners::names()), F8
+  (comment states the default; the 19 unlisted verbs keep it, since new
+  numbers would be invented), F9 (three makeWalk*Prop builders), F11 to
+  F16, F17 (two comments trimmed), F18, F19. The medium with no index id
+  (descriptions assembled in several places): pointer comments in the
+  four kEagerDescription verbs and in indie_review_dispatch; the
+  sentence itself stays, because McpIndieReviewTools INV-14 needs its
+  guard before it. Correctness leads fixed: verify_changes names
+  max_log_lines, session_memory's caller_cwd text,
+  indie_review_dispatch's false "replaces" claim, tool_info's doubled
+  word. Dismissed: F10 (the site's comment names the source, and the
+  prose copies would remain); F20 (makeCallerCwdReadProp is cited by
+  frozen specs and CHANGELOG entries, so a rename would strand them);
+  lead 11173/11466 (no contradiction: verify_changes does gate on the
+  focused tab, remotecontrol_review.cpp, and the helper speaks of root
+  resolution); lead on "generic" in find_definition's prose (it is not a
+  language).
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

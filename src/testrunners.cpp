@@ -467,11 +467,13 @@ std::optional<Runner> fromName(const QString &s) {
     return std::nullopt;
 }
 
-QString allNames() {
+QStringList names() {
     QStringList out;
     for (const NamedRunner &n : kRunners) out << QString::fromLatin1(n.name);
-    return out.join(QStringLiteral(", "));
+    return out;
 }
+
+QString allNames() { return names().join(QStringLiteral(", ")); }
 
 Detection detect(const QString &root) {
     if (fileExists(root, "CMakeLists.txt")) return {Runner::Ctest, QStringLiteral("CMakeLists.txt")};
