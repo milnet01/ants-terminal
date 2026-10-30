@@ -592,9 +592,9 @@ its stop/start control, or why it has none>
 | § 4 § RAM / build cost is present where its trigger applies | **nothing** — the trigger is a judgement, and `missing_section` cannot carry a condition (§ 3) |
 | § 4 a § Reload section is present | `spec_lint` `missing_section`, via § 3's block. Whether its answer is true or well chosen: **nothing mechanical** — the review gate's cold lanes. A commit adding a `src/` source file is checked separately by `tools/hooks/commit-msg`, which wants a `Reload:` line |
 | § 5.1 every path, symbol and constant is grounded | **`Partial:`** `check-doc-facts` `paths` and `symbols`, resolution checks emitting candidates. Whether a symbol that RESOLVES supports the claim made about it is **nothing mechanical** — the review gate's cold lanes |
-| § 5.2 the Layman line | **nothing** — no check knows whether a given spec describes user-facing behaviour, which is what triggers the rule |
+| § 5.2 the Layman line | **`Partial:`** `spec_lint` `header_layman_missing` reports a spec with no such line. No check knows whether a spec describes user-facing behaviour, which is what triggers the rule, so here the finding is a candidate |
 | § 5.3 brevity, § 5.4 security boundaries | **nothing mechanical** — the review gate's cold lanes, and the reader of the resulting document |
-| § 5.6 the status lifecycle | **nothing** — no check reads `**Status:**` against the lifecycle. `spec_lint` reads the value only to bucket § 3.6's surface findings |
+| § 5.6 the status lifecycle | **`Partial:`** `spec_lint` `header_status_unknown`, a word-list check on the value's start. It accepts any listed word, so it does not check the order of § 5.6's states |
 | § 5.7 the loop log exists | `spec_lint` `missing_section`, via § 3's block, which lists it |
 | § 5.7 every loop row records an outcome | `spec_lint` `loop_row_no_outcome`, an emptiness check on the row's LAST cell, read by position |
 | § 5.7 the table's columns | **nothing** — no check reads the header cells. `loop_row_no_outcome` matches the first cell `Loop` and then counts from the end, which is what lets it work across the older shapes |

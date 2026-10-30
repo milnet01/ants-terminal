@@ -124,6 +124,12 @@ struct Options {
     // is unchanged for every project that has not opted in.
     bool testClauseCoverage = false;
 
+    // ANTS-5511 — report a header block with no Layman line. Set by both verbs.
+    // Off in the engine because it is the one header check an otherwise
+    // conforming document can fail by omission, so a caller asking about another
+    // check does not have to carry the line.
+    bool laymanRequired = false;
+
     // ANTS-5537 — the scope of a `since` / `staged` run (spec § 2.4).
     DiffScope diff;
 };

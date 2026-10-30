@@ -962,6 +962,7 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     opts.existingTestDirs = specLintExistingTestDirs(rootCanonical);
     opts.wiredTestDirs    = specLintWiredTestDirs(rootCanonical,
                                                   opts.existingTestDirs);
+    opts.laymanRequired = true;   // ANTS-5511
     // ANTS-4890 — the project's own coverage convention, re-read every call.
     opts.testClauseCoverage =
         ProjectSettings::load(rootCanonical).specTestClauseCoverage.value_or(false);
@@ -2250,6 +2251,7 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
     opts.spec.requiredSections =
         specLintRequiredSections(rootCanonical, nullptr, &prefixMatch);
     opts.spec.sectionsPrefixMatch = prefixMatch;
+    opts.spec.laymanRequired      = true;   // ANTS-5511
     opts.spec.existingTestDirs    = specLintExistingTestDirs(rootCanonical);
     opts.spec.wiredTestDirs =
         specLintWiredTestDirs(rootCanonical, opts.spec.existingTestDirs);

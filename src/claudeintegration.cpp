@@ -7154,7 +7154,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 specLint["description"] = QStringLiteral(
                     "Check specs for structural defects: invariant_no_test, "
                     "invariant_id_gap, loop_row_no_outcome, test_coverage_gap, "
-                    "test_coverage_unverifiable, command_test_no_expectation and "
+                    "test_coverage_unverifiable, command_test_no_expectation, "
+                    "header_*, filename_id_mismatch, duplicate_invariant and "
                     "missing_section (only when a format standard carries a "
                     "required-sections block). Read skipped[] and invariants_found: "
                     "a skipped check or zero invariants is silence, not a clean "

@@ -1151,3 +1151,160 @@ TEST(SpecLintVerb, Ants4890ProjectSwitchReachesTheEngine) {
     EXPECT_EQ(findingsOfKind(after, "test_coverage_gap").size(), 0)
         << "the switch was not read: " << dump(after).toStdString();
 }
+
+// ANTS-5511 — the header block. Each finding is checked against a document that
+// is otherwise conforming, so a kind firing elsewhere fails the exact-set test.
+namespace {
+
+const char *kCleanHeader =
+    "# ANTS-1 — header\n"
+    "\n"
+    "**Status:** accepted (2026-10-30).\n"
+    "**Kind:** implement.\n"
+    "**Source:** ROADMAP ANTS-1 (user-request-2026-10-30).\n"
+    "\n"
+    "**Layman:** One plain sentence.\n"
+    "\n"
+    "## 3. Invariants\n"
+    "\n"
+    "- **INV-1** — a. *Test:* `tests/features/spec_lint/`\n";
+
+QStringList headerKinds(const QString &doc, const QString &file = QStringLiteral("ANTS-1-x.md")) {
+    QStringList kinds;
+    SpecLint::Options opts;
+    opts.laymanRequired = true;
+    for (const auto &f : SpecLint::check(doc, file, opts).findings)
+        if (f.kind.startsWith(QLatin1String("header_")) ||
+            f.kind == QLatin1String("filename_id_mismatch") ||
+            f.kind == QLatin1String("duplicate_invariant"))
+            kinds.append(f.kind);
+    return kinds;
+}
+
+QString withLine(const char *from, const char *to) {
+    QString doc = QString::fromUtf8(kCleanHeader);
+    const QString needle = QString::fromUtf8(from);
+    EXPECT_TRUE(doc.contains(needle)) << from;
+    return doc.replace(needle, QString::fromUtf8(to));
+}
+
+}  // namespace
+
+TEST(SpecLintVerb, Ants5511CleanHeaderHasNoFindings) {
+    EXPECT_EQ(headerKinds(QString::fromUtf8(kCleanHeader)), QStringList{});
+}
+
+TEST(SpecLintVerb, Ants5511StatusVocabulary) {
+    const QStringList unknown{QStringLiteral("header_status_unknown")};
+    for (const char *ok : {"spec draft (2026-10-30).", "accepted, cold-eyes loops 1 + 2 folded (2026-10-30).",
+                           "implemented (2026-10-30).", "shipped 0.7.1 (2026-10-30).",
+                           "**Implemented** (2026-10-30).", "superseded (2026-10-30).",
+                           "**considered / shelved (2026-10-30)", "v1 (2026-10-30).",
+                           "not started", "in progress", "done (2026-10-30)."}) {
+        const QString line = QStringLiteral("**Status:** ") + QString::fromUtf8(ok) + QLatin1Char('\n');
+        EXPECT_EQ(headerKinds(withLine("**Status:** accepted (2026-10-30).\n", line.toUtf8().constData())),
+                  QStringList{}) << ok;
+    }
+    for (const char *bad : {"in flight (2026-10-30).", "implementing", "spec, ship-ready.",
+                            "draft", "accepted2", "\xF0\x9F\x93\x8B planned"}) {
+        const QString line = QStringLiteral("**Status:** ") + QString::fromUtf8(bad) + QLatin1Char('\n');
+        EXPECT_EQ(headerKinds(withLine("**Status:** accepted (2026-10-30).\n", line.toUtf8().constData())),
+                  unknown) << bad;
+    }
+}
+
+TEST(SpecLintVerb, Ants5511KindTaxonomy) {
+    EXPECT_EQ(headerKinds(withLine("**Kind:** implement.", "**Kind:** Review-Fix")), QStringList{});
+    EXPECT_EQ(headerKinds(withLine("**Kind:** implement.", "**Kind:** process.")),
+              QStringList{QStringLiteral("header_kind_unknown")});
+}
+
+// A value may wrap onto the next line, as the parser reads it; only a field with
+// nothing under it is empty.
+TEST(SpecLintVerb, Ants5511EmptyField) {
+    EXPECT_EQ(headerKinds(withLine("**Source:** ROADMAP ANTS-1 (user-request-2026-10-30).",
+                                   "**Source:**")),
+              QStringList{QStringLiteral("header_field_empty")});
+    EXPECT_EQ(headerKinds(withLine("**Source:** ROADMAP ANTS-1 (user-request-2026-10-30).",
+                                   "**Source:**\nROADMAP ANTS-1.")),
+              QStringList{});
+}
+
+// A plain `Layman:` line counts too: the standards name the sentence, not one
+// markup for it. A field in a fenced example says nothing about the document.
+TEST(SpecLintVerb, Ants5511LaymanLine) {
+    EXPECT_EQ(headerKinds(withLine("**Layman:** One plain sentence.", "Layman: One plain sentence.")),
+              QStringList{});
+    EXPECT_EQ(headerKinds(withLine("**Layman:** One plain sentence.\n", "")),
+              QStringList{QStringLiteral("header_layman_missing")});
+    EXPECT_EQ(headerKinds(withLine("**Layman:** One plain sentence.\n",
+                                   "```\n**Layman:** an example.\n**Kind:** nonsense\n```\n")),
+              QStringList{QStringLiteral("header_layman_missing")});
+}
+
+TEST(SpecLintVerb, Ants5511FilenameId) {
+    const QString doc = QString::fromUtf8(kCleanHeader);
+    EXPECT_EQ(headerKinds(doc, QStringLiteral("docs/specs/ANTS-1.md")), QStringList{});
+    EXPECT_EQ(headerKinds(doc, QStringLiteral("docs/specs/ANTS-1-topic.md")), QStringList{});
+    EXPECT_EQ(headerKinds(doc, QStringLiteral("docs/specs/ANTS-12.md")),
+              QStringList{QStringLiteral("filename_id_mismatch")});
+    // A file named for no id has nothing to disagree with.
+    EXPECT_EQ(headerKinds(doc, QStringLiteral("docs/specs/design.md")), QStringList{});
+}
+
+TEST(SpecLintVerb, Ants5511DuplicateInvariant) {
+    const QString doc = QString::fromUtf8(kCleanHeader) +
+        QStringLiteral("- **INV-1** — again. *Test:* `tests/features/spec_lint/`\n");
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("ANTS-1.md"), {});
+    int dupes = 0;
+    for (const auto &f : r.findings) {
+        if (f.kind != QLatin1String("duplicate_invariant")) continue;
+        ++dupes;
+        EXPECT_EQ(f.line, 12);
+    }
+    EXPECT_EQ(dupes, 1);
+}
+
+// A scoped run reports a header finding when its line was touched, and a missing
+// Layman only on a new or stamped document, since no line of an old one caused it.
+TEST(SpecLintVerb, Ants5511ScopedRun) {
+    const QString doc = withLine("**Kind:** implement.", "**Kind:** process.");
+    SpecLint::Options opts;
+    opts.laymanRequired = true;
+    opts.diff.active = true;
+    SpecLint::Result r = SpecLint::check(doc, QStringLiteral("ANTS-1.md"), opts);
+    auto inDiffOf = [&r](const char *kind) {
+        for (const auto &f : r.findings)
+            if (f.kind == QLatin1String(kind))
+                return f.extra.value(QStringLiteral("in_diff")).toBool();
+        ADD_FAILURE() << kind << " not reported";
+        return false;
+    };
+    EXPECT_FALSE(inDiffOf("header_kind_unknown"));
+    opts.diff.touched.insert(4);
+    r = SpecLint::check(doc, QStringLiteral("ANTS-1.md"), opts);
+    EXPECT_TRUE(inDiffOf("header_kind_unknown"));
+
+    const QString noLayman = withLine("**Layman:** One plain sentence.\n", "");
+    r = SpecLint::check(noLayman, QStringLiteral("ANTS-1.md"), opts);
+    EXPECT_FALSE(inDiffOf("header_layman_missing"));
+    opts.diff.fileNew = true;
+    r = SpecLint::check(noLayman, QStringLiteral("ANTS-1.md"), opts);
+    EXPECT_TRUE(inDiffOf("header_layman_missing"));
+}
+
+// Both verbs turn the Layman check on; the engine's default is off.
+TEST(SpecLintVerb, Ants5511LaymanReachesTheVerb) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp.path());
+    ASSERT_TRUE(writeText(root + QLatin1Char('/') + kSpecRel,
+                          QStringLiteral("# ANTS-1 — a spec\n\n## 3. Invariants\n")));
+    const QJsonObject r = callLint(root);
+    EXPECT_EQ(findingsOfKind(r, "header_layman_missing").size(), 1)
+        << dump(r).toStdString();
+
+    EXPECT_NE(ants_test::slurpRemoteControl().find("opts.spec.laymanRequired"),
+              std::string::npos)
+        << "doc_lint builds its own options";
+}

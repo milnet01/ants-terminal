@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_lint checks spec headers: Status and Kind words, empty fields, a missing Layman line, a filename that disagrees with the title's id, and duplicate invariants.** (ANTS-5511)
+
 - **mutation_probe takes a build_command, so a compiled suite tests each mutant instead of its last build.** (ANTS-5512)
 
 - **The weekly store backup also copies the shared know-how store, once it exists, with the same safe copy, integrity check and retention as the roadmap store.** (ANTS-6311)

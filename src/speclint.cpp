@@ -3,6 +3,7 @@
 #include "speclint.h"
 
 #include <algorithm>
+#include <array>
 
 #include <QHash>
 #include <QJsonArray>
@@ -14,6 +15,7 @@
 #include <QVector>
 
 #include "markdownscan.h"
+#include "roadmapparse.h"
 #include "specparse.h"
 
 namespace SpecLint {
@@ -416,8 +418,15 @@ bool inDiff(const DocFinding::Finding &f, const Layout &L,
         return testsTouched || anyTouched(d, b.first, b.second);
     }
     if (k == QLatin1String("test_coverage_unverifiable")) return testsTouched;
-    if (k == QLatin1String("loop_row_no_outcome"))
+    if (k == QLatin1String("loop_row_no_outcome") ||
+        k == QLatin1String("header_status_unknown") ||
+        k == QLatin1String("header_kind_unknown") ||
+        k == QLatin1String("header_field_empty") ||
+        k == QLatin1String("filename_id_mismatch") ||
+        k == QLatin1String("duplicate_invariant"))
         return d.touched.contains(f.line);
+    // No line caused it, so only a new or stamped document reports it.
+    if (k == QLatin1String("header_layman_missing")) return false;
     // A kind the table does not name reports in full until someone writes its
     // rule, rather than vanishing from a scoped run.
     return true;
@@ -583,6 +592,101 @@ void checkMissingSections(const QStringList &lines, const QVector<bool> &fence,
                 opts.diff.active
                     ? QJsonObject{{QStringLiteral("section"), want}}
                     : QJsonObject{});
+    }
+}
+
+// --- ANTS-5511: the header block ---------------------------------------
+constexpr std::array kTwoWordStatuses = {
+    QLatin1StringView("spec draft"), QLatin1StringView("not started"),
+    QLatin1StringView("in progress"),
+};
+
+// The union of both lifecycles and the plan vocabulary: this verb serves projects
+// under either standard, and a directory it walks may hold plans. The words the
+// surface checks already sort on count too, or the two would disagree.
+bool knownStatus(const QString &value) {
+    const QString word = statusWord(value);
+    if (word == QLatin1String("accepted") || word == QLatin1String("done") ||
+        shippedStatusWords().contains(word) ||
+        abandonedStatusWords().contains(word))
+        return true;
+    // Two-word entries, which statusWord cuts at the space.
+    QString s = value.trimmed().toLower();
+    while (s.startsWith(QLatin1Char('*'))) s.remove(0, 1);
+    return std::any_of(
+        kTwoWordStatuses.cbegin(), kTwoWordStatuses.cend(), [&s](QLatin1StringView p) {
+            return s.startsWith(p) &&
+                   (s.size() == p.size() || !s.at(p.size()).isLetterOrNumber());
+        });
+}
+
+// Everything above the first `## ` heading, as spec-format.md § 3.2 scopes it.
+void checkHeaderBlock(const QStringList &lines, const QVector<bool> &fence,
+                      const Options &opts, Sink &add) {
+    static const QRegularExpression fieldRe(
+        QStringLiteral(R"(^\*\*([A-Z][A-Za-z ]*):\*\*\s*(.*)$)"));
+    auto isFenced = [&fence](int i) { return i < fence.size() && fence[i]; };
+    int end = 0;
+    while (end < lines.size() &&
+           (isFenced(end) || !lines[end].startsWith(QLatin1String("## "))))
+        ++end;
+
+    bool layman = false;
+    for (int i = 0; i < end; ++i) {
+        if (isFenced(i)) continue;
+        if (lines[i].contains(QLatin1String("layman"), Qt::CaseInsensitive))
+            layman = true;
+        const auto m = fieldRe.match(lines[i]);
+        if (!m.hasMatch()) continue;
+        const QString name = m.captured(1);
+        QString value = m.captured(2).trimmed();
+        if (value.isEmpty() && i + 1 < end) {
+            // SpecParse reads a wrapped value from the next line.
+            const QString next = lines[i + 1].trimmed();
+            if (!next.startsWith(QLatin1String("**")) &&
+                !next.startsWith(QLatin1Char('#')))
+                value = next;
+        }
+        if (value.isEmpty()) {
+            add(QStringLiteral("header_field_empty"), i + 1,
+                QStringLiteral("header field has no value: %1").arg(name));
+        } else if (name == QLatin1String("Status") && !knownStatus(value)) {
+            add(QStringLiteral("header_status_unknown"), i + 1,
+                QStringLiteral("Status is not in the lifecycle: %1").arg(value));
+        } else if (name == QLatin1String("Kind")) {
+            QString kind = value.section(QLatin1Char(' '), 0, 0).toLower();
+            if (kind.endsWith(QLatin1Char('.'))) kind.chop(1);
+            if (!RoadmapParse::canonicalKinds().contains(kind))
+                add(QStringLiteral("header_kind_unknown"), i + 1,
+                    QStringLiteral("Kind is not in the roadmap taxonomy: %1")
+                        .arg(value));
+        }
+    }
+    if (!layman && opts.laymanRequired)
+        add(QStringLiteral("header_layman_missing"), 0,
+            QStringLiteral("the header block has no Layman line"));
+}
+
+// Only a file named for an id can disagree with the H1's, and `ANTS-1` must not
+// match `ANTS-12`.
+void checkFilenameId(const QStringList &lines, const QVector<bool> &fence,
+                     const QString &relPath, Sink &add) {
+    static const QRegularExpression h1Re(
+        QStringLiteral(R"(^#\s+([A-Za-z][A-Za-z0-9_]*-[0-9]+[a-z]?)\b)"));
+    static const QRegularExpression fileRe(
+        QStringLiteral(R"(^([A-Za-z][A-Za-z0-9_]*-[0-9]+[a-z]?)(?:[-._]|$))"));
+    const auto fileId =
+        fileRe.match(relPath.section(QLatin1Char('/'), -1));
+    if (!fileId.hasMatch()) return;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (i < fence.size() && fence[i]) continue;
+        if (!lines[i].startsWith(QLatin1String("# "))) continue;
+        const auto h1 = h1Re.match(lines[i]);
+        if (h1.hasMatch() && h1.captured(1) != fileId.captured(1))
+            add(QStringLiteral("filename_id_mismatch"), i + 1,
+                QStringLiteral("the title names %1 but the file names %2")
+                    .arg(h1.captured(1), fileId.captured(1)));
+        return;
     }
 }
 
@@ -1039,6 +1143,8 @@ Result check(const QString &text, const QString &relPath,
     }
 
     checkMissingSections(lines, fence, opts, r, add);
+    checkHeaderBlock(lines, fence, opts, add);
+    checkFilenameId(lines, fence, relPath, add);
 
     // --- INV-N anchor lines ----------------------------------------------
     // parseSpecBody supplies neither line numbers nor sections nor loop-log
@@ -1055,7 +1161,12 @@ Result check(const QString &text, const QString &relPath,
         auto am = sectionBulletRe.match(lines[i]);
         if (!am.hasMatch()) am = sectionRowRe.match(lines[i]);
         const QString id = am.hasMatch() ? am.captured(1) : QString();
-        if (!id.isEmpty() && !anchorLine.contains(id))
+        if (id.isEmpty()) continue;
+        if (anchorLine.contains(id))
+            add(QStringLiteral("duplicate_invariant"), i + 1,
+                QStringLiteral("%1 is already defined on line %2")
+                    .arg(id).arg(anchorLine.value(id)));
+        else
             anchorLine.insert(id, i + 1);
     }
 

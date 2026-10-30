@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6314 -->
+<!-- ants-roadmap-id-high-water: ANTS=6315 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85996,8 +85996,12 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B7; CFG-0175, CFG-0240).
   Lanes: mcp.
 
-- 📋 [ANTS-5511] **spec_lint checks header fields: status vocabulary, empty fields, Kind taxonomy, Layman, filename id and duplicate INV.**
+- ✅ [ANTS-5511] **spec_lint checks header fields: status vocabulary, empty fields, Kind taxonomy, Layman, filename id and duplicate INV.**
   Adjacent to ANTS-4413 (specs with no Status line).
+  2026-10-30: an absent Kind or Source is not reported, as the item did
+  not ask for it; ANTS-4413's status_missing covers an absent Status. An
+  unscoped run reports old specs too, so use since or staged for what a
+  change caused.
   **Layman:** Spec headers drift from the format and only a person reading them notices.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B8, quick win).
@@ -86116,6 +86120,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** The design note for git_state names some code that has since been renamed or replaced.
   Kind: doc-fix.
   Source: doc_lint while shipping ANTS-5508, 2026-10-22.
+  Lanes: mcp.
+
+- 📋 [ANTS-6315] **doc_lint ignores the project's spec_test_clause_coverage switch, so it can report test_coverage_gap where spec_lint does not.**
+  Read in src/remotecontrol_docs.cpp only: spec_lint's handler sets
+  opts.testClauseCoverage from ProjectSettings, and doc_lint's opts.spec
+  block beside it does not. Not reproduced by a run.
+  **Layman:** Two checks can disagree about the same spec, because one of them does not read this project's setting.
+  Kind: fix.
+  Source: found while shipping ANTS-5511, 2026-10-30.
   Lanes: mcp.
 
 ## Ants MCP — shared know-how store (claude-config session request 2026-10-30)
