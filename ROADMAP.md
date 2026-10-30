@@ -86158,6 +86158,18 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   review-contract, two loops at the spec cap, 19 verified and fixed,
   calm cap. The final loop's 5 fixes are read by no lane; implementation
   is their reader.
+  2026-10-30: purge op and INV-13 added on the user's ruling, via
+  claude-config; gate re-run (document's loop 3, cap, calm), 7 verified
+  and fixed, status accepted. Nothing is built yet. Next: build it with
+  write-code and write-test from the spec. Open for the user, built as
+  written unless they say otherwise: § 4.1 refuses a write when the file
+  cannot be secured, where the roadmap store only warns. For the
+  implementer: § 7 calls the declared-input rule a check every verb
+  meets, and the review found only per-verb tests, so check and add one
+  for know_how if none is global. At ship: message claude-config (it
+  adds the CLAUDE.md line and handles tools/install-hooks.sh, which
+  writes ~/.claude/settings.json), and rebuild ants-mcpd before that
+  message.
   **Layman:** One shared notebook where any Claude session writes down how to reach a machine or use a tool, so other projects look it up instead of working it out again.
   Kind: feature.
   Source: claude-config-session-request-2026-10-30.
@@ -101716,6 +101728,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Ants6163ThreadedReadMatchesMarkdown among them (Inv3Latency skips
   itself under ASan). ASan does not detect data races; ThreadSanitizer
   was not run.
+  2026-10-30: CI run 41023297992 (d3dac72f), Release job, printed p95
+  33.4 ms over 20 warm reads of 3700 items, against the 50 ms budget;
+  failing runs measured 59-67 ms. One run so far; later runs print it
+  too.
   **Layman:** A speed check on reading the roadmap failed once on GitHub's build machines, just over its limit; it needs more headroom.
   Kind: perf.
   Source: ci-run-39792102405-2026-10-22.
