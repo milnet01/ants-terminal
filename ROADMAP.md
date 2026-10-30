@@ -15764,6 +15764,8 @@ for the rotation contract.
   commit each; 22/22 pass. Every file in the 2026-10-12 classification is
   done. Three files that classification did not list are filed as
   ANTS-5771.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — test
+  work, no change a user sees.
 
 - ✅ [ANTS-1380] **`concurrent_writer_lock` predictable `/tmp/ants-cwl-<pid>-<time>.dat` + symlink-attack exposure.**
   `tests/features/concurrent_writer_lock/
@@ -20498,6 +20500,8 @@ for the rotation contract.
   tools have no row, so requiring one would mean inventing 21 figures.
   Making it required, with measured figures and a test, would be a new
   item and a gated direction change.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
 
 - ✅ [ANTS-3653] **Citation scan — the `path:line` grammar and scrape rule as a standalone contract, split out of ANTS-3636.**
   Split out of ANTS-3636 (2026-07-27) after twelve cold-eyes loops failed to
@@ -43013,6 +43017,8 @@ for the rotation contract.
   once.
   Roadmap audit 2026-10-19: done by 425fe69b (2026-09-04), never
   flipped.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** A rule that should cover every case is written where it looks like it covers one.
   Kind: doc.
   Source: in-session-2026-08-25 (found while fixing ANTS-4446).
@@ -51160,6 +51166,8 @@ for the rotation contract.
   ANTS-1569 superseded. No other spec_lint count moved. Follow-ups:
   ANTS-5690 (spec_log set_status cannot insert a line) and the
   missing-Kind item filed beside this one.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
 
 - ✅ [ANTS-3830] **`refactor_shell_quote_duplicate` is stale — it now flags every legitimate `shellQuote()` caller.**
   The rule in `audit_rules.json` says "`shellQuote` is implemented in
@@ -64143,6 +64151,8 @@ for the rotation contract.
   the child's start, is the suspect.
   Roadmap audit 2026-10-19: fixed by 09d13677 (2026-09-28); no
   recurrence recorded past the 2026-10-05 close date.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — test
+  work, no change a user sees.
   **Layman:** A terminal test sometimes failed on a busy machine because it gave a helper program too little time to start.
   Kind: test.
   Source: in-session-2026-09-28 (push-5531 pre-push run).
@@ -73805,6 +73815,8 @@ indie-review finding.
   96117f6d; the user chose not to build the shared base, since the
   remaining wiring differs in types and comparison shape and the two
   trackers drive live status-bar chips.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  internal, no change a user sees.
   **Layman:** Two nearly-identical file-watching helpers (one for the task list, one for background tasks) duplicate ~80 lines and cross-reference each other by line number in comments — which rot. Fold the shared machinery into one base so a fix to one can't silently miss the other.
   Kind: refactor.
   Source: indie-review-2026-06-11 (claudetasklist L1/L2) — deferred from ANTS-2119 surgical sweep 2026-07-14.
@@ -74538,6 +74550,8 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   a shared tests/_support/scoped_umask.h replaces the hand-written umask
   restore in debuglog_perms, allowlist_perms_postcommit and
   roadmap_migrate_verb.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — test
+  work, no change a user sees.
   **Layman:** One test can leave a broken search path behind for the tests after it when it fails; two others repeat cleanup code the shared helper already does.
   Kind: fix.
   Source: ANTS-1379 close-out 2026-10-19.
@@ -79015,6 +79029,8 @@ against current source before filing.
   render exceptions. (5) § 3.2 names op:"convert"'s layman_missing as
   the whole-project figure. (6) § 7.7 says an absent provenance key is
   not defaulted.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The written rules for how roadmap data is stored have fallen behind the code in four spots, so someone following them would build the wrong thing.
   Kind: doc-fix.
   Source: review-contract-2026-10-02 (roadmap-data-model gate, loop 1).
@@ -82214,6 +82230,8 @@ are closed inline in the feedback files rather than filed here.
   root hold, skipped on a dry run, as cmdRoadmapMigrate does); § 2.5's
   roadmap_busy row moves from 4a to 0c; INV-4 lists four rows covered by
   inspection, roadmap_busy included. No other document restates the step.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The written plan for the roadmap import says a "busy" refusal happens in one place while the code raises it somewhere else, which could mislead whoever changes it next.
   Kind: doc-fix.
   Source: review-contract-2026-10-12 (ANTS-3855 loop 13, out of radius).
@@ -83488,6 +83506,8 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Closed as covered by ANTS-3647 (user, 2026-10-21). Every stateable
   class is fixed; the residue is per-file repair on next touch, which
   ANTS-3647 already tracks, so it is not tracked twice.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** Many design documents still point at line numbers in a file that has since been split up, so following one lands on unrelated code.
   Kind: doc-fix.
   Source: in-session-2026-08-28, measured by ANTS-4711's classification lane.
@@ -85366,6 +85386,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   14 gate: review-contract, loops 13–15 in
   docs/reviews/CLAUDE-md-review-contract-2026-08-31.md, cap reached,
   calm. Three ANTS-4932 findings filed as ANTS-5750.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The project rules for adding an MCP tool point at the wrong list and miss one way a tool can break without the terminal window.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16.
@@ -85393,6 +85415,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   state that can grow; What checks this gains a RAM row. review-contract
   converged (specs-review-log loop 9, 2 lanes, no finding in the span);
   two pre-existing findings filed as ANTS-5749.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The spec template and the spec rules disagree about the order of sections.
   Kind: doc-fix.
   Source: review-contract specs.md 2026-10-16.
@@ -85441,6 +85465,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   reconnect; § 2.3 drops get_git_status (a deprecated alias of git_state
   since mcpdeprecation.cpp). No gate: records existing code only (rule
   14 code-already-exists exception).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The design document for the standalone MCP server has fallen behind the code in three places.
   Kind: doc-fix.
   Source: review-contract CLAUDE.md 2026-10-16 loop 15.
@@ -85559,6 +85585,8 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   mainwindow_mcp.cpp and remotecontrol_terminal.cpp without line
   numbers; § 6 lists covered ids (spec_lint clean); the test contract
   names mcptoolregistry.cpp.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The read_log design document describes an older version of the code in a few places.
   Kind: doc-fix.
   Source: review-contract ANTS-1855 2026-10-19 (ANTS-5707 gate, out of radius).
@@ -85745,6 +85773,8 @@ names the sign it claims (SIGN-1 to SIGN-5).
   the bug. Ants 17.3% dearer (0.1409 vs 0.1202 USD); no run called an
   Ants tool — each found the bug with 2-5 shell commands. Journal:
   docs/journal/ANTS-1120-measurement.md § Bench 2.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — test
+  work, no change a user sees.
   **Layman:** A bigger practice job, where Claude has to search, to see whether Ants' tools save more than they cost.
   Kind: test.
   Source: user-decision-2026-10-15.
@@ -85894,6 +85924,9 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Closed (2026-10-21): the record half shipped as ANTS-5299. op:"report" is
   not wanted: claude-config (session_message 786) says run-cost-report.py
   was deleted with draft/v2 (d61439b), so nothing calls a report.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — closed
+  because its record half shipped as ANTS-5299 and the rest is not
+  wanted.
   **Layman:** Record what a review cost and what it caught, together, so cheaper is never mistaken for better.
   Kind: feature.
   Source: claude-config-session-2026-09-21.
@@ -86077,6 +86110,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   count. ANTS-3601 left as is: "Two substantive HIGHs" is true, and the
   third item is a LOW, so doc_integrity's list_count finding there
   stays, as a known false positive.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** A few specs say "two changes" or "three tests" above a longer list; fix the number or mark the extra items.
   Kind: doc-fix.
   Source: doc_integrity list_count first run 2026-10-21.
@@ -86091,6 +86126,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Shipped 2026-10-21: rows for no_build_dir and focused_test_in_flight
   (§ 2) and ctest_missing, ctest_failed and unrecognised_output (§ 4),
   placed as ANTS-1302 § 3.6 assigns them.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The list of error messages Claude's tools can give is missing five that the run-the-tests tool already uses.
   Kind: doc-fix.
   Source: ANTS-5503 spec drafting 2026-10-21.
@@ -86133,6 +86170,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   2026-10-30: ANTS-1250 now names PathValidation::validatePath and
   GitWrap::run's whole read. INV-12's QTimer::singleShot, stale the same
   way, was fixed with them.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The design note for git_state names some code that has since been renamed or replaced.
   Kind: doc-fix.
   Source: doc_lint while shipping ANTS-5508, 2026-10-22.
@@ -86264,6 +86303,8 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   connection, and KnowHowStore calls it; its own copy is gone. A
   know-how failure now carries the roadmap store's fuller message,
   naming the pragma and the deadline.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** A small tidy-up found while building the know-how store: two copies of one loop.
   Kind: refactor.
   Source: ants-6310-build-2026-10-30.
@@ -87396,6 +87437,8 @@ project. Reported causes are claims until checked in source.
   name, matching rlResolveCounterPrefix. The sniffed prefix is left out:
   a first append has no ids to sniff. ~/.claude/standards/roadmap-format.md
   (v1.1) has no § 3.1 paragraph of this shape, so claude-config owes no edit.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** The roadmap standard says where a new item's id prefix comes from, and it left out the prefix a project can declare.
   Kind: doc-fix.
   Source: in-session-2026-10-12 (ANTS-5672 check).
@@ -88868,6 +88911,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   bites — a hard compile error with the PCH stripped.
   Roadmap audit 2026-10-19: decided; .clang-tidy excludes
   misc-include-cleaner and names this id.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — an
+  investigation, no change a user sees.
   **Layman:** Most files do not list what they use; they build because a shared shortcut header supplies it. That works until the shortcut is removed.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -88888,6 +88933,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   which is what settles this. Do not read the body's premise as current.
   Roadmap audit 2026-10-19: decided; .clang-tidy excludes
   misc-const-correctness and names this id.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — an
+  investigation, no change a user sees.
   **Layman:** A style checker wants thousands of variables marked as never-changing. Worth deciding once, not case by case.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -88968,6 +89015,8 @@ volume classes, and the tooling/documentation gaps the run exposed.
   near the 2 GiB boundary — are review-code's to raise per site.
   Roadmap audit 2026-10-19: decided; .clang-tidy excludes
   bugprone-narrowing-conversions and names this id.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — an
+  investigation, no change a user sees.
   **Layman:** Hundreds of places convert big numbers to smaller ones; most are fine, a few might lose data.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
@@ -90697,6 +90746,8 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   roadmap_query and roadmap_log. P5 cross-project rollout is ANTS-3853.
   P1: ANTS-NNNN ids kept by user decision; the v2 format pragma had no
   consumer and is dropped.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — an
+  umbrella closed on the user's call; its parts carry their own entries.
   Source: user-2026-05-07.
 
 - ✅ [ANTS-5793] **The Roadmap dialog's columns change width with what is shown; give each a width set by the dialog's size alone, and wrap text inside it.**
@@ -92221,6 +92272,8 @@ screen mode. Comments survive but their truth conditions don't.
   implemented). Initialize defensively at construction.
   Roadmap audit 2026-10-19: src/terminalgrid.cpp constructor sets
   m_altScrollBottom = m_rows - 1; never flipped.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  default values, no change a user sees.
   **Layman:** Two places start out holding a default value that would read as wrong if anything consulted it early.
   Kind: implement.
 
@@ -92889,6 +92942,8 @@ a modern terminal" release.
   Shipped (2026-10-13): scrubCutPemHead passes a QString, the
   non-deprecated overload on every Qt version, so no version branch.
   Full rebuild: 0 secretredact warnings; mcp_secret_redaction 8/8.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — a
+  compiler-warning cleanup, no change a user sees.
   **Layman:** The build prints a deprecation warning from the secret-redaction code each time a file that uses it compiles.
   Kind: fix.
   Source: in-session-2026-10-13.
@@ -92904,6 +92959,8 @@ a modern terminal" release.
   rebuild missed (-Wdangling-reference at settingsdialog.cpp, from
   2026-10-08) surfaced when that file next recompiled. Fixed by
   binding the theme name to a local; full build 0 warnings.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — a
+  compiler-warning cleanup, no change a user sees.
   **Layman:** The build printed five warnings about confusable variable names and missing braces; it now prints none.
   Kind: fix.
   Source: in-session-2026-10-13.
@@ -94669,6 +94726,8 @@ here.)
   it opens with fenceOpenerChar and closes with fenceCloses on the
   opener's character and run (ANTS-4404). No walker named here still
   hand-rolls the fence test.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** A filed item lists four places with the same bug; checking them found the list is wrong in two of the four.
   Kind: doc-fix.
   Source: in-session-2026-08-15.
@@ -94714,6 +94773,8 @@ here.)
   no-Layman 21% -> 22%. roadmap-data-model.md needed no edit: its
   figures are dated or approximate on purpose (§ 3.3), and § 7.4's
   "21 canonical Kind values, zero others" still holds.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — an
+  internal survey and its figures.
   **Layman:** The tool that counts every project's roadmap items cannot find RetroArch's, so 162 items are missing from figures that claim to cover everything.
   Kind: fix.
   Source: in-session-2026-08-15 (found while writing ANTS-3807's migration briefs).
@@ -94767,6 +94828,8 @@ here.)
   from the global roadmap-format.md plus changelog-format.md, and skips
   where the global tree is absent. Passes today with 30 sections; seen
   failing on a copy of the global tree with one section removed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** Two copies of the same rulebook have drifted apart and no check notices.
   Kind: doc-fix.
   Source: in-session-2026-08-21 (noticed while landing ANTS-3771's cross-doc impact).
@@ -95086,6 +95149,8 @@ asked for them to ship in 0.8.0.
     and the ticket id.
   Shipped 2026-10-19. The chdir (void) cast was replaced in ANTS-5781's
   commit (GCC ignores (void) on warn_unused_result).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — comment
+  corrections, no change a user sees.
   **Layman:** Fix comments in the shell-connection code that describe things wrongly or point readers at nothing.
   Kind: doc-fix.
   Source: readability-trial-review-2026-10-19.
@@ -95107,6 +95172,8 @@ asked for them to ship in 0.8.0.
   Shipped 2026-10-19. Left as is on purpose: the child code stays inline
   (pty_closefrom reads it), and the destructor's two wait loops stay
   (pty_dtor_off_main_thread I4 pins them as the bound's proof).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Remove copied code in the shell-connection code so a future change cannot update one copy and miss another.
   Kind: refactor.
   Source: readability-trial-review-2026-10-19.
@@ -95129,6 +95196,8 @@ asked for them to ship in 0.8.0.
     stated reason.
   - Long "previously" histories bury the current rule.
   Shipped 2026-10-19. oscString is now VtAction::payload.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Rename and re-describe parts of the code that reads program output, where the current names say the wrong thing.
   Kind: doc-fix.
   Source: readability-trial-review-2026-10-19.
@@ -95155,6 +95224,8 @@ asked for them to ship in 0.8.0.
   goes through transition(CsiEntry). Proved behaviour-identical by a
   differential run against the old parser (200 random streams, 878,365
   actions), which two planted faults made fail.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Remove copied code in the part that reads program output, and give one reset step a single home.
   Kind: refactor.
   Source: readability-trial-review-2026-10-19.
@@ -95390,6 +95461,8 @@ worked after these.
   written during a paste wait behind it and drop with it on overflow).
   LOW F4 dismissed: the zero-copy rewrite already replaced that comment;
   no version-history clause is left. All lane findings closed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the code that reads what programs send to the terminal so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95420,6 +95493,8 @@ worked after these.
   (assumed 8x16 cell named), F20 (sign helper builds its refusal from
   kMaxKeyBytes). F9 stays queued as ANTS-6177. All lane findings
   closed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the screen text and scrollback so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95485,6 +95560,8 @@ worked after these.
   three test scrapes, and the comments beside its call already warn
   that its order matters. F28 queued as ANTS-6302 (spec-pinned).
   Earlier queued items stand. All lane findings closed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the main window, its tabs and menus so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95543,6 +95620,8 @@ worked after these.
   real message), F20 (the show tracer logs windows, one test), F21
   (staleMcpdLine helper). F18 dismissed: the Row comment no longer
   names onClick (fixed with F8). All lane findings closed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the dialog windows and colour themes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95575,6 +95654,8 @@ worked after these.
   plain-text banner moved to its function, stale counts dropped), F21
   (history30dFires). F25 queued as ANTS-6305. Earlier queued items
   stand. All lane findings closed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the code-audit window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95608,6 +95689,8 @@ worked after these.
   audit_engine_lows INV-1 reads). Dismissed: F30 - renaming
   stripLineBreaks would strand the name in ANTS-2129's dated loop log;
   its comment already says it strips every control character.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the code-audit checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95629,6 +95712,8 @@ worked after these.
   (86174214). F8 setUnparsedHeadings split from setNotes, F9
   openBulkStore for run/deregister/reroot, F10 one resolves() in
   markUnresolvedLinks, F11 one ownerState wording, F12-F15 comments.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95653,6 +95738,8 @@ worked after these.
   header comments fixed (deregister scope first, user_version =
   kSchemaVersion, id_prefix written only on allocation). The
   unackedCount parameter finding was already closed by F1 (unackedOut).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the roadmap database so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95687,6 +95774,8 @@ worked after these.
   appendWrapContinuation(); F3 already fixed by e2715157; F4-F9 and F11
   comments corrected or moved onto their functions; F10 cont_ renamed
   current. The two queued MEDIUMs live on as ANTS-6212 and ANTS-6214.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95714,6 +95803,8 @@ worked after these.
   corrected, counts dropped, counterPathAsGiven rename, one shared
   kJsonCols list). Two were already fixed by e2715157 (isHeadingLeQ4
   gone, the cpp roadmapdialog.cpp pointer gone). Full suite green.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the code that reads and writes ROADMAP.md so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95746,6 +95837,8 @@ worked after these.
   normaliseForMatch(), the flag-vs-blocker note in showTabFilters, and
   m_lastHtml now a plain QString. Every finding now fixed or queued
   (F4-F7, F23 rename: ANTS-6216 to ANTS-6220).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the roadmap window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95770,6 +95863,8 @@ worked after these.
   function/file names corrected; garbled compact= comment rewritten.
   processTools in live feature specs queued on ANTS-6225. Suite
   5906/5906.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -95798,6 +95893,8 @@ worked after these.
   not the rename: dated specs cite makeCallerCwdReadProp. F19
   dismissed: doc_facts is no verb of its own, so "the five calls it
   replaces" is right. F1 lives on as ANTS-6175. Lane closed.
+  Release note (2026-10-30): no CHANGELOG entry, deliberately —
+  readability work, no change a user sees.
   **Layman:** Tidy the link between the terminal and Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -96978,6 +97075,8 @@ worked after these.
   2026-10-26: the releaseLint append loop's variable is `finding`; the
   -Wshadow=local warning at remotecontrol_changelog.cpp is gone from the
   build (0 shadow warnings in the l32 build log).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — a rename
+  inside the code, no change a user sees.
   **Layman:** A compiler warning: one variable name in the changelog tool hides another of the same name.
   Kind: fix.
   Source: build-warning-2026-10-23.
@@ -98014,6 +98113,8 @@ worked after these.
   shared by all eight ops` is outside that lane's files, so it was not
   edited there. Fix: drop the number.
   2026-10-29: the banner now reads "shared by every op".
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — a
+  comment correction, no change a user sees.
   **Layman:** Remove a number from a code comment that will become wrong when roadmap operations are added.
   Kind: doc-fix.
   Source: close-findings-sweep-2026-10-29.
@@ -103179,6 +103280,8 @@ reports are asked for separately, each time.
   Resolved (2026-10-12): both passages already read correctly (§ 8
   Required fields on markdown; § 7.1 shared counter), and § 8's
   required-pieces list now names `Source:` as well (ANTS-5616).
+  Release note (2026-10-30): no CHANGELOG entry, deliberately — internal
+  documentation.
   **Layman:** One roadmap standard still describes a field as optional after the other standard made it required, so the two disagree.
   Kind: doc-fix.
   Source: in-session-2026-09-14 (review-contract sweep, ANTS-4955 gate on roadmap-format.md).

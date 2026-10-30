@@ -1,3 +1,57 @@
+ants-terminal (0.7.115-1) unstable; urgency=medium
+
+  * Welcome window offers to install Claude Code and says Ants is an
+    independent project. Tabs close from the Tab List Panel. Status bar
+    shows background work. Plugins react to output, lines, prompts,
+    keys and tabs. Claude in Chrome is opt-in. (ANTS-5744, 5746, 5709,
+    5773, 4272, 5728, 5754, 5759, 5667)
+  * Claude tools: shared know-how notebook (ANTS-6310, 6311); session_cost
+    (5698, 6189); dependency_inventory, version_check (5515, 5510);
+    unread messages in session_orient (5400); git_state (5508, 5505);
+    roadmap ledger and changelog release lint (5516, 5507); roadmap_log
+    placement, replace_text, plan_id and batch_hint (5315, 5760, 5704,
+    5735); test_results and focused_test for pytest, jest, vitest, cargo
+    and go (5503); trace (5734, 5785, 5786, 5602, 5787); doc and spec
+    checks (5293, 5294, 5295, 5296, 5265, 5513, 4890, 5511); mutation_probe
+    build_command (5512); quotation_check tolerance (5732); hot-reload
+    check (5721); perf suite (5134); argument survey (4659); status emoji
+    (5695); session_message (5741, 5601); token bench (5545).
+  * Claude Code sessions start lighter; the MCP banner shows once per
+    conversation; the git-context note stays quiet until a change; the
+    Claude area keeps fixed pill positions; a tab waiting on you is bright
+    red; scrollback search and roadmap reads are faster; windows resize
+    and remember size; large images load without freezing; roadmap
+    columns keep their place; roadmap pages fit inline. (ANTS-5725, 5694,
+    5714, 5715, 5693, 5692, 5271, 5762, 5753, 6126, 5718, 2000, 6163,
+    6049, 5651, 1734, 1061, 5793, 6112, 1277)
+  * Trace skips git-ignored and binary files; roadmap and changelog tools
+    name fields, defaults and batch options; spec and feature-test guides
+    and shell code tidied with no change in behaviour; faster builds and
+    tests; settings kept for the session after a damaged file. (ANTS-5755,
+    5748, 5703, 5740, 4767, 5272, 5735, 5722, 6274, 4945, 4830, 5696, 6131,
+    6169, 5668, 4752, 4755, 2122, 5767, 5768, 5757, 5749, 3864, 5756, 5780,
+    5781, 5782, 5783, 2107, 1383, 1384, 5271, 6143)
+  * Status bar Roadmap button for store projects; Claude working and idle
+    states; context gauge fixes; tab close and click safety; theme-change
+    crash fixed; welcome window install; shortcut reset; settings and tab
+    scrollback kept on a failed write; tab tooltip and background work
+    named. (ANTS-5664, 5779, 6307, 6306, 5731, 5682, 5683, 5631, 5747,
+    5733, 5774, 5717, 5716, 6114, 6317, 6146, 6143)
+  * Tool and roadmap fixes: find_definition, changelog and release checks,
+    trace and lookups, spec and doc checks, roadmap migrate and import,
+    workspace_search on timeout, Kitty chunks, nightly ASan limit.
+    (ANTS-5220, 5590, 6284, 6282, 4831, 4528, 6312, 6315, 6125, 6145,
+    5673, 6142, 6002, 6001, 5952, 6011, 5994, 5973, 5965, 6135, 6048,
+    5812, 5591, 4946, 4845, 5805, 4709, 3760, 5662, 5671, 5621, 5677,
+    5678, 5676, 5761, 5769, 5758, 5711, 5323, 5680, 5722)
+  * read_log blanks secrets, including private keys on long lines.
+    (ANTS-5707, 6147)
+  * mcp-bridge.py is gone (ants-mcpd replaces it); rotate-roadmap.sh is
+    gone; deprecated discarded_external_edits keys are no longer reported.
+    (ANTS-5308, 5647, 5613)
+
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 30 Oct 2026 18:00:00 +0200
+
 ants-terminal (0.7.114-1) unstable; urgency=medium
 
   * Tab List Panel lists every open tab by its full name, grouped by

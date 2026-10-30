@@ -12,7 +12,16 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+**Theme:** The welcome window can install Claude Code on a fresh computer; the
+status bar shows when background work is still running; tabs can be closed from
+the Tab List Panel; plugins can react to more events; and Claude sessions get a
+shared notebook and many new tools for checking code, documents and releases.
+
 ### Added
+
+- **session_orient reports unread messages from other sessions as well as pending feedback** (ANTS-5400)
+
+- **session_cost can read a helper session's cost: "self", or "agent-<id>" from the main session** (ANTS-6189)
 
 - **New dependency_inventory tool lists what a project pins, with file and line: workflow actions, runners, container images and runtime versions. It reads local files only and looks nothing up.** (ANTS-5515)
 
@@ -178,6 +187,16 @@ for security-relevant changes.
 
 ### Changed
 
+- **trace walks tracked files first and skips ignored ones, so a capped walk still finds the symbol** (ANTS-5755)
+
+- **changelog_log add_batch handles a mixed section the way a single add does** (ANTS-4945)
+
+- **A fields= call whose names all miss now says which fields are available** (ANTS-4767)
+
+- **The over-ceiling hint names the argument that cuts the reply down** (ANTS-5272)
+
+- **roadmap_query warns when a bullet_fields name matches no field** (ANTS-5740)
+
 - **Whole-project roadmap reads are about 40% faster on large projects: items are parsed on up to four threads, and the read skips a needless text join and split.** (ANTS-6163)
 
 - **After a damaged settings file, keybinding and plugin changes now take effect for the session, like every other setting.** (ANTS-6143)
@@ -321,6 +340,18 @@ for security-relevant changes.
   `claude mcp add` command in the README again.
 
 ### Fixed
+
+- **The status bar's Roadmap button shows for a project served by the roadmap store** (ANTS-5664)
+
+- **The status bar shows Claude working, not idle, while Claude is busy** (ANTS-5779)
+
+- **find_definition no longer lists same-named local variables as declarations of a member function** (ANTS-5220)
+
+- **changelog_query with fields keeps an empty findings list in its reply** (ANTS-5590)
+
+- **mutation_probe's transport_budget_sec can extend a batch** (ANTS-4831)
+
+- **A nested list keeps its indent through roadmap parsing and rendering** (ANTS-4528)
 
 - **The welcome window offers to install Claude Code on a fresh computer** (ANTS-6317)
 
