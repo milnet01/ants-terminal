@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **The weekly store backup also copies the shared know-how store, once it exists, with the same safe copy, integrity check and retention as the roadmap store.** (ANTS-6311)
+
 - **A shared notebook for Claude sessions: the know_how verb stores how-to facts about machines and tools once, and any project finds them.** (ANTS-6310)
   Any registered project can add, update or retire an entry, and every project can search them in about two small calls. Secret-shaped text is refused, old versions are kept, and purge permanently erases a topic or an old version. A one-line session-start notice and a sentence in the MCP prelude tell sessions it exists.
 

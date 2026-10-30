@@ -30,3 +30,8 @@ or `sqlite3` is missing. That skip path is why those tools are not in
 - **INV-13** — a successful snapshot sets `store=` to the copied store's
   directory canonical path plus file name; a failing run under a different
   `XDG_DATA_HOME`, holding no store, leaves it unchanged (ANTS-5621).
+- **INV-14** *(ANTS-6311; the parent assigns no clause)* — the snapshot also
+  copies `knowhow.sqlite` to `knowhow-<timestamp>.sqlite`, mode 600, pruned to
+  KEEP apart from the roadmap copies. With no such file it succeeds and copies
+  nothing. A failed know-how copy exits non-zero, sets `error=` and notifies,
+  while the roadmap copy stays and `success=` still advances.

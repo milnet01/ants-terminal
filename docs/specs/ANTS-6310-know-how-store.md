@@ -438,8 +438,8 @@ checked to have moved after building. `ants_add_core_bundle` and
 
 ## 9. Out of scope
 
-- Backing up `knowhow.sqlite`. `tools/roadmap-store-backup.sh` copies only the
-  roadmap store. Losing this file costs rediscovery, not work — tracked by ANTS-6311.
+- Backing up `knowhow.sqlite`. Losing this file costs rediscovery, not work — shipped
+  separately as ANTS-6311.
 - A UI for browsing the store. A permanent exclusion for now: the readers are sessions, and they have the verb.
 - The `CLAUDE.md` line telling sessions to check the store. Owned by claude-config,
   which adds it once this ships.

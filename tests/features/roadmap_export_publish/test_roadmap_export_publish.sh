@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ANTS-3794 INV-7, INV-8, INV-9, INV-10, INV-12, INV-13 — tools/roadmap-export-publish.sh
+# ANTS-3794 INV-7, INV-8, INV-9, INV-10, INV-12, INV-13, INV-14 — tools/roadmap-export-publish.sh
 # and the snapshot record. Contract: tests/features/roadmap_export_publish/spec.md
 set -uo pipefail
 
@@ -143,6 +143,43 @@ mkdir -p "$T/other"
 XDG_DATA_HOME="$T/other" "$SNAPSHOT" "$T/snaps" >/dev/null 2>&1
 check "INV-13 a run with no store fails" test $? -ne 0
 check "INV-13 failure under another store keeps store" test "$(recval store "$SREC")" = "$want"
+
+# --- INV-14 (ANTS-6311: the know-how store) ---
+KDATA="$T/kdata/ants-terminal"
+KDEST="$T/ksnaps"
+KSTORE="$KDATA/knowhow.sqlite"
+snapshot_k() { XDG_DATA_HOME="$T/kdata" "$SNAPSHOT" "$KDEST" "$@" >/dev/null 2>&1; }
+mkdir -p "$KDATA"
+sqlite3 "$KDATA/roadmap.sqlite" "create table t(a); insert into t values (1);"
+snapshot_k
+check "INV-14 no know-how store still succeeds" test $? -eq 0
+check "INV-14 no know-how store, no copy" test -z "$(find "$KDEST" -name 'knowhow-*')"
+
+sqlite3 "$KSTORE" "create table k(a); insert into k values ('kept');"
+snapshot_k
+check "INV-14 a store is copied, exit 0" test $? -eq 0
+kcopy=$(find "$KDEST" -name 'knowhow-*.sqlite' | sort | tail -n 1)
+check "INV-14 the copy holds the rows" test "$(sqlite3 "${kcopy:-/nonexistent}" 'select a from k;' 2>/dev/null)" = kept
+check "INV-14 the copy is mode 600" test "$(stat -c %a "${kcopy:-/nonexistent}" 2>/dev/null)" = 600
+
+: > "$KDEST/knowhow-20000101-000000.sqlite"
+: > "$KDEST/roadmap-20000101-000000.sqlite"
+snapshot_k 1
+check "INV-14 KEEP prunes old know-how copies" test ! -e "$KDEST/knowhow-20000101-000000.sqlite"
+check "INV-14 KEEP leaves the newest know-how copy" test "$(find "$KDEST" -name 'knowhow-*.sqlite' | wc -l)" -eq 1
+check "INV-14 KEEP leaves the newest roadmap copy" test "$(find "$KDEST" -name 'roadmap-*.sqlite' | wc -l)" -eq 1
+
+rm -f "$T/notified"
+sed -i 's/^success=.*/success=2000-01-01T00:00:00Z/' "$SREC"
+printf 'not a database' > "$KSTORE"
+sleep 1  # snapshot names resolve to the second
+snapshot_k 8
+check "INV-14 a failed copy exits non-zero" test $? -ne 0
+check "INV-14 a failed copy sets error" test -n "$(recval error "$SREC")"
+check "INV-14 a failed copy notifies" test -s "$T/notified"
+check "INV-14 the roadmap copy still counts as a success" test "$(recval success "$SREC")" != "2000-01-01T00:00:00Z"
+check "INV-14 the roadmap copy is kept" test "$(find "$KDEST" -name 'roadmap-*.sqlite' | wc -l)" -eq 2
+check "INV-14 a failed copy leaves no partial" test -z "$(find "$KDEST" -name '*.partial')"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

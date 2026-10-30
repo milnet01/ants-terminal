@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# ANTS-3794 — weekly local snapshot of the machine-global roadmap store.
+# ANTS-3794 — weekly local snapshot of the machine-global roadmap store, and
+# (ANTS-6311) of the know-how store where one exists: only a first entry
+# creates that file, so its absence is not a failure.
 #
 # Usage: roadmap-store-backup.sh DEST_DIR [KEEP]
 #
-# Copies the store with sqlite3 .backup, which is safe while Ants holds a
-# connection (the store runs in WAL; a plain cp is not). The copy must pass
+# Copies each store with sqlite3 .backup, which is safe while Ants holds a
+# connection (the stores run in WAL; a plain cp is not). A copy must pass
 # PRAGMA integrity_check before it is kept, then only the newest KEEP
-# snapshots (default 8) survive.
+# snapshots (default 8) of that store survive.
 #
 # This is the stop-gap half of ANTS-3794. The durable half is the per-project
 # JSONL export pushed to the private claude-config repo; a single-file
@@ -23,7 +25,9 @@ here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=tools/roadmap-backup-lib.sh
 . "$here/roadmap-backup-lib.sh"
 
-STORE="${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal/roadmap.sqlite"
+DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal"
+STORE="$DATA_DIR/roadmap.sqlite"
+KNOWHOW_STORE="$DATA_DIR/knowhow.sqlite"
 DEST="${1:?usage: roadmap-store-backup.sh DEST_DIR [KEEP]}"
 KEEP="${2:-8}"
 
@@ -45,28 +49,43 @@ mkdir -p "$DEST" || fail "cannot create $DEST"
 exec 9>"$DEST/.roadmap-store-backup.lock" || fail "cannot open the lock in $DEST"
 flock -w 60 9 || fail "another backup into $DEST is still running"
 
-out="$DEST/roadmap-$(date +%Y%m%d-%H%M%S).sqlite"
-tmp="$out.partial"
+tmp=""
 trap 'rm -f "$tmp"' EXIT
-
-sqlite3 "$STORE" ".timeout 30000" ".backup '$tmp'" || fail "sqlite3 .backup to $tmp failed"
-check="$(sqlite3 "$tmp" "PRAGMA integrity_check;" 2>&1)" || true
-[ "$check" = "ok" ] || fail "integrity_check failed on the copy: $check"
-# Audit TL-7 — under set -e a bare failure here exited without fail(), so no
-# `snapshot fail` record and no notification.
-chmod 600 "$tmp" || fail "cannot chmod $tmp"
-mv "$tmp" "$out" || fail "cannot move the snapshot into place at $out"
-
-# Keep the newest KEEP snapshots. The glob sorts ascending, and the names
-# carry a timestamp, so the oldest come first.
 shopt -s nullglob
-snaps=("$DEST"/roadmap-*.sqlite)
-if (( ${#snaps[@]} > KEEP )); then
-    rm -f -- "${snaps[@]:0:${#snaps[@]}-KEEP}" || fail "cannot prune old snapshots in $DEST"
-fi
+
+# snapshot_store STORE NAME — copy STORE to DEST/NAME-<timestamp>.sqlite.
+snapshot_store() {
+    local store=$1 name=$2 out check
+    local -a snaps
+    out="$DEST/$name-$(date +%Y%m%d-%H%M%S).sqlite"
+    tmp="$out.partial"
+
+    sqlite3 "$store" ".timeout 30000" ".backup '$tmp'" || fail "sqlite3 .backup to $tmp failed"
+    check="$(sqlite3 "$tmp" "PRAGMA integrity_check;" 2>&1)" || true
+    [ "$check" = "ok" ] || fail "integrity_check failed on the $name copy: $check"
+    # Audit TL-7 — under set -e a bare failure here exited without fail(), so no
+    # `snapshot fail` record and no notification.
+    chmod 600 "$tmp" || fail "cannot chmod $tmp"
+    mv "$tmp" "$out" || fail "cannot move the snapshot into place at $out"
+
+    # Keep the newest KEEP snapshots. The glob sorts ascending, and the names
+    # carry a timestamp, so the oldest come first.
+    snaps=("$DEST/$name"-*.sqlite)
+    if (( ${#snaps[@]} > KEEP )); then
+        rm -f -- "${snaps[@]:0:${#snaps[@]}-KEEP}" || fail "cannot prune old snapshots in $DEST"
+    fi
+    echo "roadmap-store-backup: wrote $out"
+}
+
+snapshot_store "$STORE" roadmap
 
 # ANTS-5247 — the canonical folder, read by roadmap_migrate's snapshot default.
 # ANTS-5621 — and the store it backs up, so a migrate of another store skips it.
+# Recorded before the know-how copy: its failure must report an error without
+# hiding this success.
 roadmap_backup_record snapshot ok "" "$(cd "$DEST" && pwd -P)" \
     "$(cd "$(dirname "$STORE")" && pwd -P)/$(basename "$STORE")"
-echo "roadmap-store-backup: wrote $out"
+
+if [ -f "$KNOWHOW_STORE" ]; then
+    snapshot_store "$KNOWHOW_STORE" knowhow
+fi

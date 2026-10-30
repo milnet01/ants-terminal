@@ -86181,10 +86181,17 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config-session-request-2026-10-30.
   Lanes: roadmap-store, mcp-transport.
 
-- 📋 [ANTS-6311] **Include knowhow.sqlite in the weekly store backup.**
+- ✅ [ANTS-6311] **Include knowhow.sqlite in the weekly store backup.**
   tools/roadmap-store-backup.sh copies only roadmap.sqlite. Losing
   knowhow.sqlite costs rediscovery rather than work, so this waits
   until ANTS-6310 ships. Same sqlite3 .backup and integrity check.
+  2026-10-30. tools/roadmap-store-backup.sh copies knowhow.sqlite as
+  knowhow-<timestamp>.sqlite, pruned to KEEP apart from the roadmap
+  copies. No file yet is not a failure. The roadmap result is recorded
+  first, so a failed know-how copy reports an error without hiding that
+  success. Locked by INV-14 in tests/features/roadmap_export_publish.
+  Not yet exercised on the live timer: this machine has no
+  knowhow.sqlite, and the timer next fires 2026-11-02.
   **Layman:** The shared notebook of how-to facts has only one copy on disk, so back it up the way the roadmap database is.
   Kind: feature.
   Source: ANTS-6310-spec-out-of-scope-2026-10-30.
