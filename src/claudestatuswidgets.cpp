@@ -280,14 +280,12 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_mailChip->hide();
 
     // Review Changes button (shown when Claude edits files). Size/height
-    // intentionally left at Qt's default so it matches the sibling
-    // "Add to allowlist" button (mainwindow.cpp:1234) that inherits the
-    // global QPushButton stylesheet. applyTheme() applies the palette
-    // force-set for contrast without adding compact-height overrides
-    // that would re-introduce the size mismatch.
+    // intentionally left at Qt's default, under the global QPushButton
+    // stylesheet. applyTheme() applies the palette force-set for contrast
+    // without adding compact-height overrides.
     m_reviewBtn = new QPushButton("Review Changes", m_statusBar);
     // Fixed horizontal sizePolicy — never squeezed for the benefit of
-    // the notification slot. See layout contract at mainwindow.cpp:~320.
+    // the notification slot. See "Status-bar layout rule" in MainWindow's ctor.
     m_reviewBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_reviewBtn->setAccessibleName(tr("Review Claude code changes"));
     m_reviewBtn->hide();
@@ -381,7 +379,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
             return;
         }
         // ANTS-1912 — submit with `\r`, not `\n`. The Enter key produces
-        // CR (0x0D) on a PTY (terminalwidget.cpp:1930); Claude Code's TUI
+        // CR (0x0D) on a PTY; Claude Code's TUI
         // treats `\n` as a literal newline character in the composer and
         // does NOT submit. Sending `\n` left `/model <tier>` sitting in
         // the prompt waiting for the user to press Enter manually —
@@ -984,18 +982,15 @@ void ClaudeStatusBarController::applyTheme(const QString &themeName) {
     if (m_contextBar)
         m_contextBar->setStyleSheet(contextMeterStyle(th, th.ansi[2].name()));
     if (m_reviewBtn) {
-        // 0.6.26 — side-by-side with the "Add to allowlist" button in the
-        // status bar, the custom-styled Review Changes button looked wildly
-        // out of place (see screenshot attached to the original report).
-        // "Add to allowlist" is created at mainwindow.cpp:1234 with *no*
-        // stylesheet, so it inherits the global QPushButton rule from
-        // mainwindow.cpp:1625-1630 — that's the target styling. Stop
-        // over-styling the enabled state: reset the font to Qt's default,
-        // clear any fixedHeight so the size-hint matches its sibling.
+        // 0.6.26 — a custom-styled Review Changes button looked wildly out
+        // of place in the status bar. The global QPushButton rule
+        // (themedstylesheet.cpp) is the target styling. Stop over-styling
+        // the enabled state: reset the font to Qt's default, clear any
+        // fixedHeight.
         //
         // Disabled state — the button stays visible on clean git repos so
         // the user still sees "Claude edited something" (see
-        // refreshReviewButton at mainwindow.cpp:~5149). The visual must
+        // MainWindow::refreshReviewButton). The visual must
         // clearly read as non-actionable without shouting. Three layered
         // cues: italic text (typographic "this is passive"), dashed border
         // (borrowed from common desktop-toolkit conventions for disabled
@@ -1259,8 +1254,8 @@ void ClaudeStatusBarController::refreshTasksButton() {
     const int pending    = m_tasks->pendingCount();
     const int done       = m_tasks->completedCount();
 
-    // Diagnostic logging mirrors refreshBgTasksButton's pattern (see
-    // line 615+). Gated on ANTS_DEBUG=claude (or runtime toggle).
+    // Diagnostic logging mirrors refreshBgTasksButton's pattern.
+    // Gated on ANTS_DEBUG=claude (or runtime toggle).
     // Lets the user capture why the chip hides under realistic
     // conditions — added 2026-05-08 because the 11-task TaskCreate
     // run that day left the chip hidden with no signal to debug.
@@ -2017,7 +2012,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     gate.msSinceLastSwitch    = dwellMs;
     // ANTS-1894 INV-3 — configurable min-dwell folded into the gate so
     // dwell_time_insufficient is observable as a near-miss reason. The
-    // pre-1894 pre-decide short-circuit at L1415 is removed; decide()
+    // pre-1894 pre-decide short-circuit is removed; decide()
     // now applies max(kMinDwellMs, configuredMinDwellMs) via the new
     // effectiveMinDwellMs helper.
     gate.configuredMinDwellMs = minDwellMs;
@@ -2073,7 +2068,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     // DebugLog category — one-way for the session so the sink stays open; the
     // env/menu routes toggle it freely. ANTS_LOG is a single bit-test when the
     // category is off, so there is no cost on the default path. `gate.enabled`
-    // is omitted: the !enabled case returns at L1504, so it is always true
+    // is omitted: the !enabled case has already returned, so it is always true
     // here — blockedBy[] carries the real near-miss reasons. kSwitcherEpoch
     // travels with each line so traces are comparable only within a behaviour
     // generation.
@@ -2128,7 +2123,7 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
         return;
 
     // Act — INV-9 keeps tierArg derived solely from the enum.
-    // QStringLiteral matches the model-chip click pattern at :152 — CI's
+    // QStringLiteral matches the model-chip click handler — CI's
     // stricter Qt build rejected the `u"..."` form (char16_t[8] vs QString
     // ambiguity at ants_claude_lib build).
     // ANTS-1912 — `\r` (CR) not `\n` — see chip-click site for rationale.
@@ -2298,15 +2293,15 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed)) {
         if (!visible) {
-        m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
-        // ANTS-1975 — also clear the direct-switch latch once the banner
-        // is no longer in the recent output window.
-        if (m_unarmedDirectSwitchContinuationSent) {
-            const QString recent = focused->recentOutput(kSwitchConfirmScanLines);
-            if (!ModelAutoSwitch::directModelSwitchVisible(recent))
-                m_unarmedDirectSwitchContinuationSent = false;
+            m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
+            // ANTS-1975 — also clear the direct-switch latch once the banner
+            // is no longer in the recent output window.
+            if (m_unarmedDirectSwitchContinuationSent) {
+                const QString recent = focused->recentOutput(kSwitchConfirmScanLines);
+                if (!ModelAutoSwitch::directModelSwitchVisible(recent))
+                    m_unarmedDirectSwitchContinuationSent = false;
+            }
         }
-    }
         // ANTS-1955 — arm a burst so a dialog that renders shortly after this
         // tick is caught at kSwitchConfirmPollMs granularity.
         if (!visible && !m_unarmedSwitchConfirmed
@@ -2478,8 +2473,7 @@ namespace {
 
 // ANTS-1894 — ClaudeState → lowercase snake_case JSON string. NEW helper
 // (no equivalent in claudestateresolver — that switch maps to Display::*
-// glyph enums, a different domain). 5-case mapping over the enum at
-// claudeintegration.h L47-53.
+// glyph enums, a different domain). One case per ClaudeState.
 QString claudeStateName(ClaudeState s) {
     switch (s) {
         case ClaudeState::NotRunning: return QStringLiteral("not_running");
@@ -2505,7 +2499,7 @@ QString tierTitle(ModelRecommender::Tier tier) {
 
 // ANTS-1893 — Maps the recommender's `reason` field to a short
 // user-facing label. The reason field comes in three shapes per
-// `modelrecommender.cpp` (cpp:86, 173, 239-244): "default"
+// `modelrecommender.cpp`: "default"
 // (no-transcript fallback), "commit_intent" (hard override),
 // or a space-joined token list from the scoring path. First match
 // wins; the precedence is defensive against future reason-string
@@ -2650,8 +2644,7 @@ void ClaudeStatusBarController::emitSwitchSurfacing(
     const Config &cfg = cachedConfig();
 
     // (1) Toast — reuse the existing statusMessageRequested signal
-    // that MainWindow routes into m_statusMessage (mainwindow.cpp
-    // L725 construct, L728 addWidget). 6 s timeout is short enough
+    // that MainWindow routes into m_statusMessage. 6 s timeout is short enough
     // to clear before the next user turn but long enough to catch
     // with peripheral vision.
     if (cfg.claudeAutoModelToastEnabled()) {

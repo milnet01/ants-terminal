@@ -114,8 +114,7 @@ ClaudeBgTasksDialog::ClaudeBgTasksDialog(ClaudeBgTaskTracker *tracker,
                                          QWidget *parent)
     : QDialog(parent),
       m_tracker(tracker),
-      m_themeName(themeName),
-      m_lastHtml(std::make_shared<QString>()) {
+      m_themeName(themeName) {
     setObjectName(QStringLiteral("claudeBgTasksDialog"));
     setWindowTitle(tr("Background Tasks"));
     setMinimumSize(600, 400);
@@ -287,7 +286,7 @@ void ClaudeBgTasksDialog::rebuild() {
     // capture vbar/hbar before setHtml, restore after with std::min
     // clamp. lastHtml is per-dialog (member, not static) so multiple
     // dialogs don't fight over the cache.
-    if (*m_lastHtml == html) {
+    if (m_lastHtml == html) {
         if (m_liveStatus) {
             m_liveStatus->setText(QStringLiteral("● live"));
             m_liveStatus->setStyleSheet(
@@ -295,8 +294,8 @@ void ClaudeBgTasksDialog::rebuild() {
         }
         return;
     }
-    const bool isFirstRender = m_lastHtml->isEmpty();
-    *m_lastHtml = html;
+    const bool isFirstRender = m_lastHtml.isEmpty();
+    m_lastHtml = html;
 
     QScrollBar *vbar = m_viewer->verticalScrollBar();
     QScrollBar *hbar = m_viewer->horizontalScrollBar();

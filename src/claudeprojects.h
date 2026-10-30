@@ -49,6 +49,10 @@ private:
     void populateProjects();
     void populateSessions(int projectIndex);
     void showSessionPreview(const ClaudeSession &session);
+    // What the two trees have selected; -1 / nullptr when nothing valid is.
+    int selectedProjectIndex() const;
+    const ClaudeProject *selectedProject() const;
+    const ClaudeSession *selectedSession() const;
     void refreshProjectDirCombo();
     QString formatSize(qint64 bytes) const;
     QString formatTimeAgo(const QDateTime &dt) const;

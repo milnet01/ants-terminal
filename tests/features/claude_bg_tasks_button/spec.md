@@ -59,8 +59,7 @@ Three pieces:
      transcript path (so new starts and completions land
      automatically).
    - 200 ms debounce timer collapses bursts into a single render.
-   - Skip-identical-HTML guard via a per-dialog `m_lastHtml`
-     (`std::shared_ptr<QString>`).
+   - Skip-identical-HTML guard via a per-dialog `m_lastHtml`.
    - Capture-vbar/hbar before `setHtml`, restore after with a
      `qMin(value, maximum())` clamp — same scroll-preservation
      pattern that fixed Review Changes in 0.7.37.
@@ -112,7 +111,7 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   `connect(m_claudeBgTasksBtn, …, MainWindow::showBgTasksDialog)`.)
 
 - **INV-7** (dialog reuses scroll-preservation pattern):
-  `ClaudeBgTasksDialog::rebuild()` declares a `*m_lastHtml == html`
+  `ClaudeBgTasksDialog::rebuild()` declares a `m_lastHtml == html`
   early-return guard, captures `verticalScrollBar()` value before
   `setHtml`, and restores after with a `qMin(... , maximum())`
   clamp. Same shape as `MainWindow::showDiffViewer` — diverging

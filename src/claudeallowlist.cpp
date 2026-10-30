@@ -19,18 +19,6 @@
 #include <QSaveFile>
 #include <QRegularExpression>
 
-// Valid top-level tool names recognized by Claude Code
-static const QStringList s_validTools = {
-    "Read", "Edit", "Write", "Glob", "Grep", "Bash",
-    "WebFetch", "WebSearch", "Agent", "NotebookEdit",
-    "Skill", "TaskCreate", "TaskUpdate", "TaskGet",
-    "TaskList", "TaskOutput", "TaskStop",
-    "ToolSearch", "Monitor", "EnterPlanMode", "ExitPlanMode",
-    "EnterWorktree", "ExitWorktree",
-    "CronCreate", "CronDelete", "CronList",
-    "RemoteTrigger", "ScheduleWakeup",
-};
-
 static const QString s_sudoPrefix =
     QStringLiteral("SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A ");
 
@@ -444,17 +432,6 @@ QString ClaudeAllowlistDialog::normalizeRule(const QString &raw) {
     m = absPath.match(rule);
     if (m.hasMatch()) {
         rule = m.captured(1) + "(//" + m.captured(2) + ")";
-    }
-
-    // Validate tool name exists (for rules with parenthesized args)
-    static QRegularExpression toolParen(R"(^(\w+)\(.+\)$)");
-    m = toolParen.match(rule);
-    if (m.hasMatch()) {
-        QString tool = m.captured(1);
-        // Allow mcp__ prefixed tools and known tools
-        if (!tool.startsWith("mcp__") && !s_validTools.contains(tool)) {
-            // Unknown tool — pass through but it may not work
-        }
     }
 
     return rule;

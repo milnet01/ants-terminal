@@ -43,7 +43,7 @@ struct Theme;
 // ANTS-1928 — modelautoswitch.h is now included directly (was forward-decl'd
 // for the maybeEmitNearMiss/emitSwitchSurfacing by-ref params). The original
 // avoidance — "would pull modelrecommender.h into every consumer" — is moot:
-// modelrecommender.h is already included above (line 22) and is the only
+// modelrecommender.h is already included above and is the only
 // header modelautoswitch.h adds beyond claudeintegration.h (also already in).
 // The StabilityState member (ANTS-1928) is held by value and needs the
 // complete type, which a forward declaration cannot provide.
@@ -93,12 +93,10 @@ public:
     void setError(const QString &text, const QString &tooltip, int autoHideMs);
     void clearError();
 
-    // Tab-switch reset, called from onTabChanged. Bundles the
-    // five-line clear-and-hide block at mainwindow.cpp:4604-4612
-    // that today directly mutates m_claudeLastState,
-    // m_claudeLastDetail, m_claudePlanMode, m_claudeAuditing,
-    // hides three widgets, and resets the bg-tasks transcript path.
-    // Single entry point keeps the reset atomic.
+    // Tab-switch reset, called from onTabChanged. Hides the per-tab
+    // widgets, clears the task tracker's path and the model chips' caches,
+    // then re-derives the display from the new tab. Single entry point
+    // keeps the reset atomic.
     void resetForTabSwitch();
 
     // Theme application — REPLACES MainWindow::updateClaudeThemeColors.

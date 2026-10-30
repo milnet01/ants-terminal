@@ -254,11 +254,13 @@ namespace {
 // You will be notified ..." — the path ends at its ".output" suffix. Older
 // text ended at the path, so with no suffix the rest of the text is taken.
 QString outputPathFromResult(const QString &resultText) {
-    const int marker = resultText.indexOf(QStringLiteral("written to: "));
-    if (marker < 0) return {};
-    QString p = resultText.mid(marker + 12);
-    const int suffix = p.indexOf(QStringLiteral(".output"));
-    if (suffix >= 0) return p.left(suffix + 7);
+    const QString marker = QStringLiteral("written to: ");
+    const int markerAt = resultText.indexOf(marker);
+    if (markerAt < 0) return {};
+    QString p = resultText.mid(markerAt + marker.size());
+    const QString suffix = QStringLiteral(".output");
+    const int suffixAt = p.indexOf(suffix);
+    if (suffixAt >= 0) return p.left(suffixAt + suffix.size());
     p = p.trimmed();
     while (p.endsWith('.') || p.endsWith(' ')) p.chop(1);
     return p;

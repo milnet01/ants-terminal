@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6313 -->
+<!-- ants-roadmap-id-high-water: ANTS=6314 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95785,7 +95785,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: claude-integration.
 
-- 📋 [ANTS-6126] **Readability fixes, claude-session-widgets lane: mainwindow.cpp, src/claudeallowlist.cpp, src/claudebgtasks.cpp, src/claudebgtasks.h, src/claudebgtasksdialog.h, src/claudeprojects.cpp ….**
+- ✅ [ANTS-6126] **Readability fixes, claude-session-widgets lane: mainwindow.cpp, src/claudeallowlist.cpp, src/claudebgtasks.cpp, src/claudebgtasks.h, src/claudebgtasksdialog.h, src/claudeprojects.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane claude-session-widgets:
   2 high, 17 medium, 6 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/17-claude-session-widgets.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -95812,6 +95812,21 @@ worked after these.
   see ANTS-5906); F17 the task-list dialog holds a QPointer to its
   tracker. Queued: F4 ANTS-6227, F5 ANTS-6228, F6 ANTS-6229, F24
   ANTS-6230. LOWs remain.
+  2026-10-30 LOWs closed. Fixed: F19 (line and path citations replaced
+  by symbol names, and the status-widget comments that said Add to
+  allowlist has no stylesheet removed: it now sets its own); F20; F21
+  (m_lastHtml is a plain QString; INV-7's test and spec follow); F22
+  (the do-nothing tool check and s_validTools deleted); F23; F25
+  (selectedProject and selectedSession replace six lookups, which also
+  adds the missing bounds checks); the misleading indentation in
+  pollUnarmedSwitchConfirm. Leads: Allow/Deny is ANTS-5906, the cached
+  multiplier ANTS-6229, fresh Config() closed by F3, the projects bounds
+  check by F25. Dismissed: regret_rate (statsEnvelope computes it as 100
+  * regret / measured, so the +0.5 rounds a percentage); agent
+  outputPath refused (every sampled outputFile in local transcripts sits
+  under /tmp/claude-1000/). The monitor half of that lead is filed
+  separately. Still queued from this lane: ANTS-6227, ANTS-6228,
+  ANTS-6229, ANTS-6230.
   **Layman:** Tidy the Claude status bar and task list so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -101913,6 +101928,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   **Layman:** The tool that lists which tests read a source file missed one, so an edit nearly broke a test nobody was warned about.
   Kind: fix.
   Source: session-2026-10-29-L34.
+
+- 📋 [ANTS-6314] **The background-tasks dialog says "(no output yet)" for a monitor, which never has an output file.**
+  ClaudeBgTasksDialog::rebuild prints that text whenever the tail is
+  empty. startTask gives a Monitor no outputPath, so the wording promises
+  output that cannot arrive. Not fixed under ANTS-6126: the right wording
+  is a product choice, and it needs a look in the running dialog.
+  **Layman:** In the background-tasks window, a monitor job looks like it is about to show output, but it never will.
+  Kind: ux.
+  Source: review-readability-2026-10-22.
+  Lanes: claude-session-widgets.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

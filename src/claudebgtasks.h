@@ -20,11 +20,11 @@ struct ClaudeBackgroundTask {
     // ANTS-5773 — what kind of background work this is; the per-tab counts
     // are taken by it.
     enum class Kind { Shell, Agent, Monitor };
-    QString id;             // backgroundTaskId, matches <id>.output basename stem
-    QString tool;           // "Bash" / "Task" / etc.
-    QString description;    // input.description (Bash) or input.subagent_type (Task)
-    QString command;        // input.command or input.prompt — truncated by display
-    QString outputPath;     // /tmp/claude-$UID/.../<id>.output
+    QString id;             // Shell: backgroundTaskId. Agent: agentId. Monitor: taskId.
+    QString tool;           // the launching tool's name: "Bash", "Agent", "Monitor"…
+    QString description;    // input.description, else input.subagent_type, else `command`
+    QString command;        // the call's command or prompt — truncated by display
+    QString outputPath;     // Shell: from the result text. Agent: outputFile. Monitor: empty.
     QDateTime startedAt;    // assistant event timestamp
     bool finished = false;  // a completion or kill event was seen for this id
     // ANTS-1840 — true only when `finished` was inferred from the output
@@ -133,7 +133,7 @@ public slots:
     // `finished` flag based on whether each task's output file exists. NO
     // transcript reparse — costs N stat() calls instead of a 16 MiB
     // file read. Called from the status-bar 2 s timer
-    // (mainwindow.cpp::refreshBgTasksButton); rescan() continues to
+    // (ClaudeStatusBarController::refreshBgTasksButton); rescan() continues to
     // run on actual transcript changes. Was previously rescan() on
     // every tick — this slot replaces that hot path.
     void sweepLiveness();

@@ -269,11 +269,30 @@ void ClaudeProjectsDialog::populateSessions(int projectIndex) {
     }
 }
 
-void ClaudeProjectsDialog::onProjectSelected() {
-    auto items = m_projectTree->selectedItems();
-    if (items.isEmpty()) return;
+int ClaudeProjectsDialog::selectedProjectIndex() const {
+    const auto items = m_projectTree->selectedItems();
+    if (items.isEmpty()) return -1;
+    const int i = items.first()->data(0, Qt::UserRole).toInt();
+    return (i >= 0 && i < m_projects.size()) ? i : -1;
+}
 
-    int projIdx = items.first()->data(0, Qt::UserRole).toInt();
+const ClaudeProject *ClaudeProjectsDialog::selectedProject() const {
+    const int i = selectedProjectIndex();
+    return i >= 0 ? &m_projects[i] : nullptr;
+}
+
+const ClaudeSession *ClaudeProjectsDialog::selectedSession() const {
+    const ClaudeProject *proj = selectedProject();
+    const auto items = m_sessionTree->selectedItems();
+    if (!proj || items.isEmpty()) return nullptr;
+    const int i = items.first()->data(0, Qt::UserRole).toInt();
+    return (i >= 0 && i < proj->sessions.size()) ? &proj->sessions[i] : nullptr;
+}
+
+void ClaudeProjectsDialog::onProjectSelected() {
+    const int projIdx = selectedProjectIndex();
+    if (projIdx < 0) return;
+
     populateSessions(projIdx);
 
     const auto &proj = m_projects[projIdx];
@@ -290,20 +309,12 @@ void ClaudeProjectsDialog::onProjectSelected() {
 }
 
 void ClaudeProjectsDialog::onSessionSelected() {
-    auto items = m_sessionTree->selectedItems();
-    bool hasSel = !items.isEmpty();
+    const bool hasSel = !m_sessionTree->selectedItems().isEmpty();
     m_resumeBtn->setEnabled(hasSel);
     m_forkBtn->setEnabled(hasSel);
 
-    if (!hasSel) return;
-
-    auto projItems = m_projectTree->selectedItems();
-    if (projItems.isEmpty()) return;
-    int projIdx = projItems.first()->data(0, Qt::UserRole).toInt();
-    int sessIdx = items.first()->data(0, Qt::UserRole).toInt();
-
-    if (projIdx < m_projects.size() && sessIdx < m_projects[projIdx].sessions.size())
-        showSessionPreview(m_projects[projIdx].sessions[sessIdx]);
+    if (const ClaudeSession *session = selectedSession())
+        showSessionPreview(*session);
 }
 
 void ClaudeProjectsDialog::onSessionDoubleClicked(QTreeWidgetItem *, int) {
@@ -340,54 +351,36 @@ void ClaudeProjectsDialog::showSessionPreview(const ClaudeSession &session) {
 }
 
 void ClaudeProjectsDialog::onResume() {
-    auto projItems = m_projectTree->selectedItems();
-    auto sessItems = m_sessionTree->selectedItems();
-    if (projItems.isEmpty() || sessItems.isEmpty()) return;
+    const ClaudeProject *proj = selectedProject();
+    const ClaudeSession *session = selectedSession();
+    if (!session) return;
 
-    int projIdx = projItems.first()->data(0, Qt::UserRole).toInt();
-    int sessIdx = sessItems.first()->data(0, Qt::UserRole).toInt();
-    if (projIdx >= m_projects.size()) return;
-    const auto &proj = m_projects[projIdx];
-    if (sessIdx >= proj.sessions.size()) return;
-
-    emit resumeSession(proj.path, proj.sessions[sessIdx].sessionId, false);
+    emit resumeSession(proj->path, session->sessionId, false);
     accept();
 }
 
 void ClaudeProjectsDialog::onForkResume() {
-    auto projItems = m_projectTree->selectedItems();
-    auto sessItems = m_sessionTree->selectedItems();
-    if (projItems.isEmpty() || sessItems.isEmpty()) return;
+    const ClaudeProject *proj = selectedProject();
+    const ClaudeSession *session = selectedSession();
+    if (!session) return;
 
-    int projIdx = projItems.first()->data(0, Qt::UserRole).toInt();
-    int sessIdx = sessItems.first()->data(0, Qt::UserRole).toInt();
-    if (projIdx >= m_projects.size()) return;
-    const auto &proj = m_projects[projIdx];
-    if (sessIdx >= proj.sessions.size()) return;
-
-    emit resumeSession(proj.path, proj.sessions[sessIdx].sessionId, true);
+    emit resumeSession(proj->path, session->sessionId, true);
     accept();
 }
 
 void ClaudeProjectsDialog::onContinue() {
-    auto projItems = m_projectTree->selectedItems();
-    if (projItems.isEmpty()) return;
+    const ClaudeProject *proj = selectedProject();
+    if (!proj) return;
 
-    int projIdx = projItems.first()->data(0, Qt::UserRole).toInt();
-    if (projIdx >= m_projects.size()) return;
-
-    emit continueProject(m_projects[projIdx].path);
+    emit continueProject(proj->path);
     accept();
 }
 
 void ClaudeProjectsDialog::onNewSession() {
-    auto projItems = m_projectTree->selectedItems();
-    if (projItems.isEmpty()) return;
+    const ClaudeProject *proj = selectedProject();
+    if (!proj) return;
 
-    int projIdx = projItems.first()->data(0, Qt::UserRole).toInt();
-    if (projIdx >= m_projects.size()) return;
-
-    emit newSession(m_projects[projIdx].path);
+    emit newSession(proj->path);
     accept();
 }
 

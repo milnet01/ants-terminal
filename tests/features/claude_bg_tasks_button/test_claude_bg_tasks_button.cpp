@@ -194,10 +194,10 @@ TEST(ClaudeBgTasksButton, Main) {
         fail("INV-7: cannot locate ClaudeBgTasksDialog::rebuild");
     } else {
         std::regex skipGuard(
-            R"(if\s*\(\s*\*m_lastHtml\s*==\s*html\s*\))");
+            R"(if\s*\(\s*m_lastHtml\s*==\s*html\s*\))");
         if (!std::regex_search(rebuildBody, skipGuard)) {
             fail("INV-7: rebuild must guard with "
-                 "`if (*m_lastHtml == html)` early-return — without it "
+                 "`if (m_lastHtml == html)` early-return — without it "
                  "every refresh re-runs setHtml and the scroll bar "
                  "snaps back to the top");
         }
