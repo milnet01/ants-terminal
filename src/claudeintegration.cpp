@@ -14764,6 +14764,39 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+                // ANTS-5515 — dependency_inventory: what the project pins, offline.
+                {
+                    QJsonObject t;
+                    t["name"] = "dependency_inventory";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use instead of grepping for uses:, runs-on, FROM and runtime "
+                        "versions; it lists them and looks nothing up.");
+                    t["description"] = QStringLiteral(
+                        "List what a project pins, each row with file and line: action "
+                        "(repo, ref, version_comment), local_action, docker_action, "
+                        "runner, container (image, tag, digest) and runtime (name, "
+                        "version). Reads tracked files and asks no network, so it never "
+                        "says what is latest. A runtime with no version source says "
+                        "no_authoritative_source; a value holding $ is unresolved. Read "
+                        "skipped[] and not_covered[]. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-5515. Contract: tests/features/mcp_dependency_inventory/"
+                        "spec.md. Lines are read by pattern, not by a YAML parser. Runtime "
+                        "sources: .nvmrc, .node-version, .python-version, .ruby-version, "
+                        ".tool-versions, rust-toolchain(.toml), go.mod, requires-python, "
+                        "rust-version, engines.node, a workflow's *-version: and, in "
+                        "CMakeLists.txt, cmake_minimum_required and a Qt find_package. "
+                        "A version file counts at the project root only.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-5510 — version_check: lockstep against the bump recipe.
                 {
                     QJsonObject t;
@@ -16242,6 +16275,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // sentence occur in the file it names.
                         name == QLatin1String("quotation_check") ||
                         name == QLatin1String("version_check") ||   // ANTS-5510
+                        name == QLatin1String("dependency_inventory") ||   // ANTS-5515
                         name == QLatin1String("doc_symbols") ||
                         name == QLatin1String("spec_lint") ||   // ANTS-3662
                         // ANTS-4108 — spec_conformance: spec_lint's executable
@@ -17968,6 +18002,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     // ANTS-5299 — run_trace writes and reads the caller's project trace
     // index; no project, nothing to act on.
     if (toolName == QStringLiteral("run_trace"))          return C::Required;
+    // ANTS-5515 — dependency_inventory reads the caller's tracked files.
+    if (toolName == QStringLiteral("dependency_inventory")) return C::Required;
     // ANTS-5510 — version_check reads the bump recipe and what it lists.
     if (toolName == QStringLiteral("version_check"))      return C::Required;
     // ANTS-5502 — quotation_check reads files under the caller's project root.

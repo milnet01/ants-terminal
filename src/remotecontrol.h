@@ -1119,6 +1119,10 @@ public:
     // (ops start / finish / get). Seam: src/runtraceverb.h.
     QJsonDocument cmdRunTrace(const QJsonObject &req);
 
+    // ANTS-5515 — dependency_inventory: what the project pins, read offline.
+    // Seam: src/dependencyinventory.h.
+    QJsonDocument cmdDependencyInventory(const QJsonObject &req);
+
     // ANTS-5510 — version_check: lockstep against .claude/bump.json. Seam:
     // src/versioncheck.h.
     QJsonDocument cmdVersionCheck(const QJsonObject &req);

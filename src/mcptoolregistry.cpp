@@ -164,6 +164,12 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     sink.registerToolProvider("run_trace",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdRunTrace));
+    // ANTS-5515 — dependency_inventory: what the project pins, read offline.
+    // Required: it reads the caller's tracked files.
+    sink.registerToolProvider("dependency_inventory",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdDependencyInventory));
+
     // ANTS-5510 — version_check: lockstep against the project's bump recipe.
     // Required: the recipe and the files it lists resolve against the project.
     sink.registerToolProvider("version_check",

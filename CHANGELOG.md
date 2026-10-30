@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **New dependency_inventory tool lists what a project pins, with file and line: workflow actions, runners, container images and runtime versions. It reads local files only and looks nothing up.** (ANTS-5515)
+
 - **New version_check tool reads a project's bump recipe and reports files that have drifted from its version, stray suffixes, and files holding the version that the recipe never names.** (ANTS-5510)
 
 - **invariant_check reads ADRs in docs/decisions as well as specs, and reports decisions_scanned.** (ANTS-5513)

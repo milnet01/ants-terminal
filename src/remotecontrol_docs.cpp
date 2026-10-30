@@ -12,6 +12,7 @@
 #include "resolvedroot.h"
 #include "secureio.h"
 #include "versioncheck.h"     // ANTS-5510
+#include "dependencyinventory.h"   // ANTS-5515
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -2455,6 +2456,14 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
     return o;
 }
 
+// Uncapped: a cut list would read as a scan of the whole tree. A failure leaves
+// it empty, which each seam below names in `skipped`.
+static QStringList gitTrackedFiles(const QString &root) {
+    const GitWrap::Result git = GitWrap::run(root, {QStringLiteral("ls-files")}, -1);
+    if (!git.started || git.exitCode != 0) return {};
+    return QString::fromUtf8(git.stdoutBytes).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+}
+
 // ANTS-5510 — version_check. The seam (src/versioncheck.cpp) does everything
 // below the root; what lives here is the root and git's file list.
 QJsonDocument RemoteControl::cmdVersionCheck(const QJsonObject &req) {
@@ -2462,12 +2471,14 @@ QJsonDocument RemoteControl::cmdVersionCheck(const QJsonObject &req) {
     const QString cwd = ants::requiredCallerCwd(m_roots, req, QStringLiteral("version_check"), &refusal);
     if (cwd.isEmpty())
         return QJsonDocument(refusal);
+    return QJsonDocument(VersionCheck::run(cwd, gitTrackedFiles(cwd)));
+}
 
-    // Uncapped: a cut list would read as a scan of the whole tree. A failure
-    // leaves it empty, which the seam names in `skipped`.
-    const GitWrap::Result git = GitWrap::run(cwd, {QStringLiteral("ls-files")}, -1);
-    QStringList tracked;
-    if (git.started && git.exitCode == 0)
-        tracked = QString::fromUtf8(git.stdoutBytes).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    return QJsonDocument(VersionCheck::run(cwd, tracked));
+// ANTS-5515 — dependency_inventory, the same shape over its own seam.
+QJsonDocument RemoteControl::cmdDependencyInventory(const QJsonObject &req) {
+    QJsonObject refusal;
+    const QString cwd = ants::requiredCallerCwd(m_roots, req, QStringLiteral("dependency_inventory"), &refusal);
+    if (cwd.isEmpty())
+        return QJsonDocument(refusal);
+    return QJsonDocument(DependencyInventory::run(cwd, gitTrackedFiles(cwd)));
 }

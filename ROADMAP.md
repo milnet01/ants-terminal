@@ -85981,9 +85981,13 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (B10, quick win).
   Lanes: mcp.
 
-- 📋 [ANTS-5509] **A commit lint over a range checks subjects, cited ids and trailers against commits.md.**
+- 🚫 [ANTS-5509] **A commit lint over a range checks subjects, cited ids and trailers against commits.md.**
   Subject is the whole first paragraph, ids resolve, component exists,
   trailer model. Builds on git_state log.
+  2026-10-30: closed with claude-config. The rules live in
+  ~/.claude/.githooks/commit-msg, and a C++ verb would be a second copy.
+  claude-config holds a script that runs that hook over a range as
+  considered, until a session asks for it.
   **Layman:** Commit message rules are checked one commit at a time by a hook; nothing checks a whole range.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B6).
@@ -86034,11 +86038,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (tier C; CFG-0562).
   Lanes: mcp.
 
-- 📋 [ANTS-5515] **A dependency check covers GitHub Actions, runner images, container bases and end-of-life dates.**
+- ✅ [ANTS-5515] **A dependency check covers GitHub Actions, runner images, container bases and end-of-life dates.**
   audit_run already runs osv-scanner, npm audit, cargo-audit and
   govulncheck for libraries. This adds `uses:` pins, runs-on images,
   container FROM lines and runtime EOL dates. Adjacent: ANTS-3428.
   Serves the check-dependencies skill.
+  2026-10-30: shipped as an offline inventory, agreed with
+  claude-config: lookups of latest versions and end-of-life dates stay
+  in the check-dependencies skill, so the verb sends nothing off the
+  machine.
   **Layman:** Out-of-date build tools and system images are found by hand today, not by a check.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (B1).
