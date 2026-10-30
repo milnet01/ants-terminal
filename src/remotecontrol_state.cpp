@@ -2541,10 +2541,12 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     QJsonArray matched;
     int specsScanned = 0;
     int phasesScanned = 0;
+    int decisionsScanned = 0;   // ANTS-5513
     // ANTS-4644 — the scan reads its needles from here rather than from
     // `needles`, so a fallback pass can swap in shorter path forms without a
     // second copy of the matcher.
     QStringList activeNeedles = needles;
+    const QString kDecisionsDir = QStringLiteral("docs/decisions");
     auto scanOneDir = [&](const QString &dirRel,
                           const QString &glob,
                           int &counter) {
@@ -2555,6 +2557,9 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
             dir.entryList({glob},
                           QDir::Files | QDir::Readable, QDir::Name);
         for (const QString &fname : files) {
+            // ANTS-5513 — an index, not a decision, as task_priors treats it.
+            if (dirRel == kDecisionsDir && fname == QLatin1String("README.md"))
+                continue;
             ++counter;
             QFile f(absDir + QLatin1Char('/') + fname);
             if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
@@ -2607,11 +2612,14 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
         matched       = QJsonArray();
         specsScanned  = 0;
         phasesScanned = 0;
+        decisionsScanned = 0;
         scanOneDir(specsDir, QStringLiteral("*.md"), specsScanned);
         scanOneDir(QStringLiteral("docs/phases"),
                    QStringLiteral("phase_*.md"), phasesScanned);
+        scanOneDir(kDecisionsDir, QStringLiteral("*.md"), decisionsScanned);
     };
     runScan();
+    const int totalScanned = specsScanned + phasesScanned + decisionsScanned;
 
     // ANTS-4644 — a spec cites a module the way a HUMAN writes it, so the
     // project-relative form this verb's own description prescribes is routinely
@@ -2631,7 +2639,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // rescued hit never passes for a direct one.
     QJsonObject matchedAs;
     QString     fallbackKind;
-    if (matched.isEmpty() && (specsScanned + phasesScanned) > 0) {
+    if (matched.isEmpty() && totalScanned > 0) {
         QList<QPair<QString, QString>> pathForms;   // {form, original}
         QList<QPair<QString, QString>> baseForms;
         for (const QString &n : std::as_const(needles)) {
@@ -2731,7 +2739,8 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     result["matched_specs"]  = matched;
     result["specs_scanned"]  = specsScanned;
     result["phases_scanned"] = phasesScanned;
-    result["total_scanned"]  = specsScanned + phasesScanned;
+    result["decisions_scanned"] = decisionsScanned;
+    result["total_scanned"]  = totalScanned;
     result["matched_count"]  = matched.size();
     // ANTS-3699 — say which shape this is, so an absent `invariants` reads as
     // "omitted by mode" and never as "this spec has none".
@@ -2744,7 +2753,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // for three sessions it was also what a totally blind scan returned. Say
     // which, and say what was looked at.
     QString scannedNothingHint;
-    if (specsScanned == 0 && phasesScanned == 0) {
+    if (totalScanned == 0) {
         result["scanned_nothing"] = true;
         result["specs_dir"]       = specsDir;
         scannedNothingHint = QDir(rootCanonical + QLatin1Char('/') + specsDir).exists()
@@ -2793,9 +2802,9 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-5696 — that zero's hint already says it, so there the note keeps
     // its roadmap sentence only.
     const bool pathOnlyZero =
-        matched.isEmpty() && (specsScanned + phasesScanned) > 0 && nearMiss.isEmpty();
+        matched.isEmpty() && totalScanned > 0 && nearMiss.isEmpty();
     QString scopeNote = QStringLiteral(
-        "scope: %1 + docs/phases only — the ROADMAP was NOT consulted, so work "
+        "scope: %1 + docs/phases + docs/decisions only — the ROADMAP was NOT consulted, so work "
         "already planned there will not appear here. Use roadmap_query "
         "(query=<keyword>) or task_priors for that.").arg(specsDir);
     if (!pathOnlyZero)

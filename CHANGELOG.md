@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **invariant_check reads ADRs in docs/decisions as well as specs, and reports decisions_scanned.** (ANTS-5513)
+
 - **spec_lint checks spec headers: Status and Kind words, empty fields, a missing Layman line, a filename that disagrees with the title's id, and duplicate invariants.** (ANTS-5511)
 
 - **mutation_probe takes a build_command, so a compiled suite tests each mutant instead of its last build.** (ANTS-5512)

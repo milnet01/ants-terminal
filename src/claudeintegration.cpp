@@ -9736,7 +9736,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["name"] = "invariant_check";
                     t["description"] = QStringLiteral(
                         "Given project-relative file paths you are about to edit, list "
-                        "the docs/specs/*.md specs whose body mentions them, with "
+                        "the docs/specs/*.md specs and docs/decisions/*.md ADRs whose body mentions them, with "
                         "invariant counts. Returns {ok, matched_specs:[{id, path, "
                         "title, matched_terms[], invariants_count}], specs_scanned, "
                         "matched_count, mode, invariants_included, fallback_match, "

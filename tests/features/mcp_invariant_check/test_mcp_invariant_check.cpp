@@ -669,3 +669,43 @@ TEST(McpInvariantCheck, Ants5696ZeroSaysPathOnlyOnce) {
     EXPECT_TRUE(note.contains(QStringLiteral("roadmap_query")))
         << "the roadmap half stays: " << note.toStdString();
 }
+
+// ANTS-5513 — an ADR that names a file is part of what governs it, so it is
+// scanned beside the specs. Its README is an index, as task_priors treats it.
+TEST(McpInvariantCheck, Ants5513ReadsDecisionsBesideSpecs) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("PROJ-0001"), QStringLiteral("unrelated"));
+    const QString decisions = dir.path() + QStringLiteral("/docs/decisions");
+    ASSERT_TRUE(QDir().mkpath(decisions));
+    for (const char *name : {"0001-use-sqlite.md", "README.md"}) {
+        QFile f(decisions + QLatin1Char('/') + QLatin1String(name));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# A decision\n\nThe store lives in src/store.cpp.\n");
+    }
+
+    const QJsonObject env = runCheck(dir.path(), QStringLiteral("src/store.cpp"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1) << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(env.value("matched_specs").toArray().at(0).toObject().value("path").toString(),
+              QStringLiteral("docs/decisions/0001-use-sqlite.md"));
+    EXPECT_EQ(env.value("decisions_scanned").toInt(), 1);
+    EXPECT_EQ(env.value("specs_scanned").toInt(), 1) << "its meaning stays specs only";
+    EXPECT_EQ(env.value("total_scanned").toInt(), 2);
+    EXPECT_TRUE(env.value("scope_note").toString().contains(QStringLiteral("docs/decisions")));
+}
+
+// A project with ADRs and no specs read something, so its zero is not
+// scanned_nothing.
+TEST(McpInvariantCheck, Ants5513DecisionsAloneAreAScan) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString decisions = dir.path() + QStringLiteral("/docs/decisions");
+    ASSERT_TRUE(QDir().mkpath(decisions));
+    QFile f(decisions + QStringLiteral("/0001-a.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("# A decision\n");
+    f.close();
+
+    const QJsonObject env = runCheck(dir.path(), QStringLiteral("src/store.cpp"), QString());
+    EXPECT_EQ(env.value("matched_count").toInt(), 0);
+    EXPECT_FALSE(env.contains("scanned_nothing"));
+    EXPECT_TRUE(env.value("path_match_only").toBool());
+}

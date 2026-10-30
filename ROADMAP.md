@@ -86014,7 +86014,7 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: claude-config joint review 2026-09-27 (quick win).
   Lanes: mcp.
 
-- 📋 [ANTS-5513] **invariant_check reads ADRs as well as specs.**
+- ✅ [ANTS-5513] **invariant_check reads ADRs as well as specs.**
   It scans docs/specs only today.
   **Layman:** Decisions recorded in ADRs are not checked the way spec rules are.
   Kind: enhancement.

@@ -27,6 +27,7 @@ substring mentions of the input `files[]`.
 | 16 | (ANTS-4645) Every reply carries `roadmap_scanned:false` and a `scope_note` naming `roadmap_query` — the harm case is a CONFIDENT NON-ZERO answer that reads as "is this under contract?" fully answered while the ROADMAP was never in scope. |
 | 17 | (ANTS-4566) A NEAR MISS is reported beside a non-empty result. INV-12's rescue fires only on a zero, so a call matching one spec on an incidental mention never learned that the spec GOVERNING the file cites it by basename. With one spec citing `src/ui/card.cpp` and another citing `card.cpp`, a query for the full path returns the first in `matched_specs` with `fallback_match:false`, AND the second in `basename_matches[]`, whose `matched_terms` names the shorter form that hit. Reported, never merged: a shorter form can collide, so promoting it would trade a silent miss for a silent wrong answer. |
 | 18 | (ANTS-4566) `basename_matches` (with `basename_matches_count` and `basename_matches_hint`) is emitted ONLY when non-empty — unlike INV-15's `fallback_match`, because here absence and an empty array carry the same meaning, and a constant empty array on every reply is cost with no signal. |
+| 19 | (ANTS-5513) `docs/decisions/*.md` is scanned beside the specs and counted in `decisions_scanned` and `total_scanned`; `specs_scanned` stays specs only. Its `README.md` is not scanned. A project with ADRs and no specs is not `scanned_nothing`. |
 
 INV-7's schema scrape reads the descriptor block via
 `ants_test::mcpToolDescriptor` (ANTS-3720), not a fixed-byte window:
@@ -36,7 +37,7 @@ had nothing to do with the wiring it locks.
 
 ## Acceptance
 
-Exit 0 = all 18 invariants hold.
+Exit 0 = all 19 invariants hold.
 
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. Uses the existing
