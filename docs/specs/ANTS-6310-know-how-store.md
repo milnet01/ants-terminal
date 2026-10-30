@@ -47,6 +47,10 @@ user's approval of the design. The user has not confirmed items 3 to 5 directly.
 6. **The hook line names the verb and shows no count, and the overwrite check
    compares a revision number rather than `last_verified`.** Both refine the
    agreed design; § 8 says why. *(This session; claude-config told.)*
+7. **A `purge` op permanently erases a topic or one old version.** It is the one
+   exception to entries never being deleted, so that a leaked secret can be removed
+   without a hand `sqlite3` job. *(User, 2026-10-30, via claude-config. How it is
+   guarded is this session's call, which the ruling left open.)*
 
 ## 4. Surface
 
@@ -83,7 +87,17 @@ CREATE TABLE know_how_history (
     replaced_at TEXT NOT NULL,
     PRIMARY KEY (topic, revision)
 );
+CREATE TABLE know_how_purge_log (
+    purged_at TEXT NOT NULL,
+    topic     TEXT NOT NULL,
+    revision  INTEGER,             -- NULL when the whole topic went
+    author    TEXT NOT NULL,       -- the purging project's export_slug
+    reason    TEXT NOT NULL
+);
 ```
+
+Every connection sets `PRAGMA secure_delete = ON`, because an `update` moves a body
+that `purge` may later need to erase, and text freed without it stays in the file.
 
 `PRAGMA user_version` starts at 1. A newer file is refused, as
 `RoadmapStore::createSchema` refuses one. The file and both WAL sidecars are
@@ -108,6 +122,7 @@ written, which § 4.4's hook relies on.
 | `add` | `topic`, `title`, `body`; `tags[]`; `dry_run` | `{topic, revision}` |
 | `update` | `topic`; any of `title`, `body`, `tags[]`; `expected_revision`; `dry_run` | `{topic, revision, last_verified}` |
 | `retire` | `topic`; `dry_run` | `{topic, retired_at}` |
+| `purge` | `topic`, `expected_revision`, `reason`; `revision`; `dry_run` | `{topic, revision, rows_erased, file_scrubbed}` |
 
 Refusals: the existing `bad_args`, `missing_field`, `no_project`, `io_error` and
 `not_found`, and four new codes: `topic_exists`, `conflict`, `secret_detected` and
@@ -141,8 +156,26 @@ makes it active again. `expected_revision`, when given and not current, refuses
 **`retire`** sets `retired_at` and raises `revision` by one, adding no history row,
 so a writer who read before the retire refuses `conflict`. The row stays, `get` still reads it with
 `retired:true`, and `add` on that topic refuses `topic_exists` and says to use
-`update`. Nothing deletes a row, so an accidental overwrite or retire can be
-recovered.
+`update`. An accidental overwrite or retire can be recovered, because only `purge` and
+the 20-row history trim delete a row.
+
+**`purge`** erases one history version when `revision` names it, and otherwise the
+topic with all its history. `revision` equal to the current one refuses `bad_args`,
+and the refusal says to `update` the text first and then purge that version.
+`expected_revision` and `reason` are required, and their absence refuses
+`missing_field`. A stale `expected_revision` refuses `conflict`, and a `revision`
+with no history row refuses `not_found`. So nobody erases what they have not just
+read. `reason` is at most 200 bytes and goes through the secret check. Each purge
+appends one `know_how_purge_log` row, which holds no title, body or tags. Only the newest 1000
+log rows are kept. No op reads that table; it is there for a person asking what went.
+
+After the commit, `purge` runs `PRAGMA wal_checkpoint(TRUNCATE)`. `file_scrubbed` is
+true when that reports not busy. It is false while another connection holds the file,
+and the text then stays on disk until a later checkpoint, so the reply says to retry.
+The op erases the live file only. A backup, or a block the disk's own firmware has
+remapped, is out of its reach, and the verb's description says so. A secret in a
+`topic` name stays in the purge log. The secret check refuses the known shapes before
+such a name can exist, and the log row can be removed by hand.
 
 **Staleness.** `age_days` counts whole days since `last_verified`. `stale` is
 true when `age_days` is over 90. Time comes through a clock the test can set.
@@ -310,6 +343,23 @@ rule its fixture isolates. All are in
   *Breaks when:* the hook gates on `.ants-project`, spawns a process, or a later
   prelude line pushes the cap.
 
+- **INV-13** — `purge` erases the text from the file, and only what it names. After
+  an `add` with a marker in its body, an `update` replacing it and a `purge` of the
+  old revision, with every connection closed, the marker's bytes are in neither the
+  file nor a sidecar, and the current body is intact. With a second connection reading
+  throughout, the reply says `file_scrubbed:false`. A `purge` of the whole topic removes
+  the row and its history, and frees its place under the topic cap. Without
+  `expected_revision` or `reason` it refuses `missing_field`, with a stale
+  `expected_revision` it refuses `conflict`, and on the current revision it refuses
+  `bad_args`, each changing nothing. The log row holds the reason and no marker.
+  A `reason` holding a secret shape refuses `secret_detected`.
+  *Test:* `tests/features/know_how` `KnowHow.PurgeErasesFromTheFile`, reading the
+  files' raw bytes, on a body long enough to need its own overflow pages. Only
+  `secure_delete` and the checkpoint keep the marker out, so the read fails when
+  either is removed.
+  *Breaks when:* `secure_delete` is set only on the purging connection, the checkpoint
+  is skipped, a busy checkpoint reports `file_scrubbed:true`, or the log keeps the body.
+
 ## 6. Failure modes
 
 - **The file is locked by another writer.** The `RoadmapStore` Interactive
@@ -325,7 +375,7 @@ rule its fixture isolates. All are in
 - **A false positive from the secret check.** The writer rephrases. There is no
   override flag, since a flag is what a hurried session would reach for.
 - **A real secret of an unknown shape.** Stored. The description warns of this, and
-  `update` plus history cannot remove it: see § 16.
+  `purge` removes it once someone notices.
 - **Disk loss.** The file has no other copy. See § 9.
 
 ## 7. Tests
@@ -334,7 +384,7 @@ rule its fixture isolates. All are in
 
 | Test | Bundle | Locks |
 |---|---|---|
-| `test_know_how.cpp` | `test_core` | INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-9, INV-10, INV-11 |
+| `test_know_how.cpp` | `test_core` | INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-9, INV-10, INV-11, INV-13 |
 | `test_know_how_verb.cpp` | `test_claude` | INV-7, INV-8 |
 | `tests/features/hook_pack`, `tests/features/mcp_orientation_install` | their own | INV-12 |
 
@@ -378,7 +428,6 @@ checked to have moved after building. `ants_add_core_bundle` and
 
 - Backing up `knowhow.sqlite`. `tools/roadmap-store-backup.sh` copies only the
   roadmap store. Losing this file costs rediscovery, not work — tracked by ANTS-6311.
-- Removing a stored secret from history. See § 16.
 - A UI for browsing the store. A permanent exclusion for now: the readers are sessions, and they have the verb.
 - The `CLAUDE.md` line telling sessions to check the store. Owned by claude-config,
   which adds it once this ships.
@@ -399,6 +448,7 @@ checked to have moved after building. `ants_add_core_bundle` and
 | INV-10 | Partial: `KnowHow.FileModeAndNewerSchema` sees the final modes; **nothing** observes § 4.1's order, the empty file secured before SQLite writes to it |
 | INV-11 | `KnowHow.LimitsRefuse` |
 | INV-12 | `hook_pack` and `mcp_orientation_install` |
+| INV-13 | Partial: `KnowHow.PurgeErasesFromTheFile` covers the live file and its sidecars; **nothing** reaches a backup or the disk's own remapped blocks, which is why § 4.2 says so in the verb's description |
 | What belongs in an entry (§ 3 item 1) | **nothing** — no check can tell a how-to fact from chat; the verb's description and claude-config's `CLAUDE.md` line carry it |
 | Discovery actually gets used (Goal) | **nothing** — no measure yet; reading the store's topics after some weeks of use is the check |
 
@@ -435,7 +485,8 @@ Rows live in `../reviews/ANTS-6310-know-how-store-loop-log.md`.
 
 The caps bound the file: 1000 topics, each with a 16 KiB body and 20 history rows,
 is about 340 MiB at the very worst. A real store is expected to stay far below
-that, and a full store refuses rather than dropping anything. Nothing stays in
+that, and a full store refuses rather than dropping anything. The purge log keeps
+1000 rows of at most 200-byte reasons. Nothing stays in
 memory between calls: no connection, cache or thread is held. No new build target,
 and no new dependency: QSQLITE is already linked.
 
@@ -443,11 +494,3 @@ and no new dependency: QSQLITE is already linked.
 
 None. A new file, a new verb and a new hook, and nothing reads them yet. A build
 older than this one ignores the file. `kSchemaVersion` does not move.
-
-## 16. Open questions
-
-- **Removing a secret that got past the check.** `update` moves it into history and
-  `retire` keeps it, deliberately, so a mistake can be recovered. Today the only
-  removal is by hand, with `sqlite3`. A `purge` op would undo that safety for the one
-  case that needs it. Left out until a real case asks for it; the user may decide
-  otherwise.
