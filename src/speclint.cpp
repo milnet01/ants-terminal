@@ -3,7 +3,6 @@
 #include "speclint.h"
 
 #include <algorithm>
-#include <array>
 
 #include <QHash>
 #include <QJsonArray>
@@ -596,11 +595,6 @@ void checkMissingSections(const QStringList &lines, const QVector<bool> &fence,
 }
 
 // --- ANTS-5511: the header block ---------------------------------------
-constexpr std::array kTwoWordStatuses = {
-    QLatin1StringView("spec draft"), QLatin1StringView("not started"),
-    QLatin1StringView("in progress"),
-};
-
 // The union of both lifecycles and the plan vocabulary: this verb serves projects
 // under either standard, and a directory it walks may hold plans. The words the
 // surface checks already sort on count too, or the two would disagree.
@@ -611,13 +605,16 @@ bool knownStatus(const QString &value) {
         abandonedStatusWords().contains(word))
         return true;
     // Two-word entries, which statusWord cuts at the space.
+    static const QStringList twoWords = {
+        QStringLiteral("spec draft"), QStringLiteral("not started"),
+        QStringLiteral("in progress"),
+    };
     QString s = value.trimmed().toLower();
     while (s.startsWith(QLatin1Char('*'))) s.remove(0, 1);
-    return std::any_of(
-        kTwoWordStatuses.cbegin(), kTwoWordStatuses.cend(), [&s](QLatin1StringView p) {
-            return s.startsWith(p) &&
-                   (s.size() == p.size() || !s.at(p.size()).isLetterOrNumber());
-        });
+    return std::any_of(twoWords.cbegin(), twoWords.cend(), [&s](const QString &p) {
+        return s.startsWith(p) &&
+               (s.size() == p.size() || !s.at(p.size()).isLetterOrNumber());
+    });
 }
 
 // Everything above the first `## ` heading, as spec-format.md § 3.2 scopes it.
