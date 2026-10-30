@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6320 -->
+<!-- ants-roadmap-id-high-water: ANTS=6321 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69501,6 +69501,15 @@ remainder, captured so they don't drop on the floor.
   Kind: fix.
   Source: user-report-2026-10-29.
   Lanes: claude-integration.
+
+- 📋 [ANTS-6321] **Status bar counts background work a helper agent started.**
+  Seen on the demoreel tab, 2026-10-30. A helper started a shell, ended its turn, and the main transcript recorded the helper as completed, so the count fell to zero while Claude Code's footer still showed 1 shell and 1 agent.
+  Located, not yet proven by a test: ClaudeBgTaskTracker (src/claudebgtasks.cpp, poll and setTranscriptPath) follows one transcript. A helper's shell is recorded only in <session>/subagents/agent-<id>.jsonl, which the tracker never reads. sessioncostverb.cpp already finds those files.
+  Evidence: demoreel transcript 5fc044b9, helper a1c59ad62479d320f, shell bmm9vec7y started 18:09:02 UTC, helper completed 18:09:06 UTC.
+  Test first: a main transcript with the helper completed, plus a helper transcript holding an unfinished shell, should count one running task; today it counts none. ANTS-5773's spec holds no invariant for this, so add one. Hot reload: needs a terminal relaunch, as the tracker runs inside the terminal.
+  **Layman:** The status bar says "Claude: idle" while a helper's background job is still running; it should say it is waiting.
+  Kind: fix.
+  Source: user-report-2026-10-30.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
