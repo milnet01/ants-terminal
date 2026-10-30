@@ -50,7 +50,7 @@ ants-terminal (0.7.115-1) unstable; urgency=medium
     gone; deprecated discarded_external_edits keys are no longer reported.
     (ANTS-5308, 5647, 5613)
 
- -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 30 Oct 2026 18:00:00 +0200
+ -- Anthony Schemel <aant.schemel@gmail.com>  Fri, 30 Oct 2026 00:00:00 +0200
 
 ants-terminal (0.7.114-1) unstable; urgency=medium
 

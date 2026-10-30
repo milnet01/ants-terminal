@@ -12,6 +12,8 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+## [0.7.115] - 2026-10-30
+
 **Theme:** The welcome window can install Claude Code on a fresh computer; the
 status bar shows when background work is still running; tabs can be closed from
 the Tab List Panel; plugins can react to more events; and Claude sessions get a
