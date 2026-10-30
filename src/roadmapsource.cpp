@@ -11,6 +11,9 @@
 #include <QJsonObject>
 
 #include <algorithm>
+#include <system_error>
+#include <thread>
+#include <vector>
 
 namespace RoadmapSource {
 
@@ -111,9 +114,10 @@ QStringList detectionPrefixOf(const QString &markdown) {
 // — for a roadmap that is nothing of the kind. § 2.1.1 defines a record as what
 // parseBullets() would assign if it parsed this item's RENDERED bullet, and for
 // this dialect the rendered bullet is a `#### Pass` block.
-void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
-                  const QString &heading, int level, const QString &slug,
-                  const RoadmapParse::IdFormat &fmt, const QString &dialect) {
+std::optional<BulletRecord> recordFor(const RoadmapStore::ItemWrite &it,
+                                      const QString &heading, int level, const QString &slug,
+                                      const RoadmapParse::IdFormat &fmt,
+                                      const QString &dialect) {
     const bool passHeadings = dialect == QLatin1String("pass-headings");
     // Asked once: the render and composedTrailers below both need it.
     const RoadmapRender::TrailerLines emitted =
@@ -134,7 +138,7 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
         rec = RoadmapParse::parseAntsV1Bullet(RoadmapRender::bulletLines(it, emitted), fmt);
     }
     if (!rec)
-        return;
+        return rec;
     rec->sectionHeading = heading;
     rec->sectionLevel   = level;
     // The parser assigns a slug only under a real heading, so a bullet above
@@ -160,7 +164,60 @@ void appendRecord(QVector<BulletRecord> &out, const RoadmapStore::ItemWrite &it,
     rec->composedTrailers = emitted.keys();
     // firstLine / lastLine stay 0: a store has no lines to number, and no walk
     // can invent them. INV-2's one declared field difference.
-    out.append(*rec);
+    return rec;
+}
+
+// One item in document order, with the section fields the walk gave it.
+struct PendingRecord {
+    const RoadmapStore::ItemWrite *item = nullptr;
+    QString heading;
+    int level = 0;
+    QString slug;
+};
+
+// ANTS-6163 — below this many items one thread is faster than starting more.
+constexpr qsizetype kThreadedReadFloor = 256;
+// The CI runner's core count, and this host's ctest -j cap.
+constexpr unsigned kMaxReadThreads = 4;
+
+// recordFor() over `pending`, in its order. Each item's render and parse reads
+// only that item and immutable statics (Qt locks a QRegularExpression's
+// compiled pattern and keeps its JIT stack per thread), so a large project is
+// split into contiguous slices, one per thread, each writing its own slots.
+QVector<BulletRecord> buildRecords(const QVector<PendingRecord> &pending,
+                                   const RoadmapParse::IdFormat &fmt,
+                                   const QString &dialect) {
+    const qsizetype n = pending.size();
+    std::vector<std::optional<BulletRecord>> built(static_cast<size_t>(n));
+    const auto buildSlice = [&](qsizetype from, qsizetype to) {
+        for (qsizetype i = from; i < to; ++i) {
+            const PendingRecord &p = pending.at(i);
+            built[size_t(i)] = recordFor(*p.item, p.heading, p.level, p.slug, fmt, dialect);
+        }
+    };
+    const unsigned threads = n < kThreadedReadFloor
+        ? 1u : std::clamp(std::thread::hardware_concurrency(), 1u, kMaxReadThreads);
+    const qsizetype slice = (n + threads - 1) / threads;
+    std::vector<std::thread> workers;
+    for (unsigned t = 1; t < threads; ++t) {
+        const qsizetype from = std::min(n, t * slice);
+        const qsizetype to   = std::min(n, from + slice);
+        try {
+            workers.emplace_back(buildSlice, from, to);
+        } catch (const std::system_error &) {
+            buildSlice(from, to);   // no thread to be had: do the slice here
+        }
+    }
+    buildSlice(0, std::min(n, slice));
+    for (std::thread &w : workers)
+        w.join();
+
+    QVector<BulletRecord> out;
+    out.reserve(n);
+    for (std::optional<BulletRecord> &rec : built)
+        if (rec)
+            out.append(std::move(*rec));
+    return out;
 }
 
 } // namespace
@@ -539,7 +596,8 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
         return fail(ReadError::StoreFailed,
                     QStringLiteral("could not list elements for project %1").arg(projectId));
 
-    QVector<BulletRecord> out;
+    QVector<PendingRecord> pending;
+    pending.reserve(itemOf->size());
     // Step 4 — accumulated across the WHOLE walk and never per section: the
     // parser's uniqueSlug() is stateful, appending -2/-3 to a repeated heading
     // text, and a stateless per-section slug diverges on the first duplicated
@@ -576,7 +634,7 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
             const auto it = itemOf->constFind(e.itemPk);
             if (it == itemOf->constEnd())
                 continue;
-            appendRecord(out, *it, heading, level, slug, fmt, dialect);
+            pending.append({&*it, heading, level, slug});
         }
     }
 
@@ -589,9 +647,9 @@ bulletsFromStore(RoadmapStore &store, qint64 projectId, bool includeArchive,
     // By the store's id_fold (foldId() reproduces it), then item_pk.
     std::sort(unfiled.begin(), unfiled.end());
     for (const auto &[fold, pk] : std::as_const(unfiled))
-        appendRecord(out, itemOf->value(pk), QString(), 0, QString(), fmt, dialect);
+        pending.append({&*itemOf->constFind(pk), QString(), 0, QString()});
 
-    return out;
+    return buildRecords(pending, fmt, dialect);
 }
 
 std::optional<QVector<BulletRecord>>

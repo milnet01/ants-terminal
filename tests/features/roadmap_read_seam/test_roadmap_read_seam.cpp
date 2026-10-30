@@ -809,6 +809,40 @@ qint64 makeSizedProject(RoadmapStore &store, const QString &root, int count) {
 
 }  // namespace
 
+// ANTS-6163 — a project large enough that bulletsFromStore() parses on worker
+// threads still meets INV-2: same records, same order, as the markdown backend
+// reading the file the store renders. Inv2BackendsAgree's fixture is far below
+// the threshold, so only this case reaches the threaded path.
+TEST(RoadmapReadSeam, Ants6163ThreadedReadMatchesMarkdown) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_NE(store, nullptr);
+    constexpr int kItems = 1000;
+    const qint64 projectId = makeSizedProject(*store, dir.path(), kItems);
+    ASSERT_NE(projectId, 0);
+
+    QString err;
+    RoadmapRender::Options opts;
+    opts.liveRoadmapPath = QStringLiteral("ROADMAP.md");
+    const auto outcome = RoadmapRender::render(*store, projectId, dir.path(), opts, &err);
+    ASSERT_TRUE(outcome.has_value()) << err.toStdString();
+    ASSERT_TRUE(outcome->committed);
+    const QVector<BulletRecord> fromMarkdown =
+        RoadmapParse::parseBullets(readAll(dir.filePath(QStringLiteral("ROADMAP.md"))));
+
+    ReadError why = ReadError::TooLarge;
+    const auto fromStore = RoadmapSource::bulletsFromStore(
+        *store, projectId, /*includeArchive=*/false, &why, &err);
+    ASSERT_TRUE(fromStore.has_value()) << err.toStdString();
+    ASSERT_EQ(fromStore->size(), kItems);
+    ASSERT_EQ(fromMarkdown.size(), kItems);
+    for (int i = 0; i < kItems; ++i)
+        ASSERT_EQ(describe(fromStore->at(i)), describe(fromMarkdown.at(i)))
+            << "record " << i << " differs between the backends";
+}
+
 TEST(RoadmapReadSeam, Inv3Ceiling) {
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
