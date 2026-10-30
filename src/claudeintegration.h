@@ -511,7 +511,7 @@ public:
     // invoked from the dispatch site (private member access);
     // reset/buildReport are exposed for RemoteControl::cmdTokenUsage
     // and for tests. Reset additionally fires on MCP `initialize`
-    // (Claude Code session start) — wired in onMcpConnection.
+    // (Claude Code session start) — wired in handleMcpRequest.
     TokenUsageEngine::Snapshot tokenUsageReport(bool includeZero) const {
         return m_tokenUsage.buildReport(includeZero);
     }
@@ -586,9 +586,7 @@ public:
                                   const QString &payload);
 
     // ANTS-1499 — ETag "304 Not Modified" pattern for read tools.
-    // isEtagSupportedTool gates the allowlist (project_layout,
-    // roadmap_query, file_outline, last_audit_summary, get_environment,
-    // tab_list, subsystem, git_state). etagFor returns the sha256-hex16
+    // isEtagSupportedTool holds the allowlist. etagFor returns the sha256-hex16
     // fingerprint of the raw response bytes (stable across runs).
     // applyEtagPattern injects an `etag` field into a parseable JSON
     // envelope; when the caller passes `etag_match` matching the
@@ -1010,7 +1008,7 @@ private:
 
 
     // Private helpers — the test-only methods in the public section
-    // delegate here, and the dispatch site at processTools uses them
+    // delegate here, and the dispatch site in handleMcpRequest uses them
     // directly.
     static bool isIdempotentReadTool(const QString &toolName);
     static QString idempotentReadCacheKey(

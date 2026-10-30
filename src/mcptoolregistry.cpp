@@ -115,7 +115,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdCoChangeFamily));
 
-    // ANTS-1244 surface — the next 7 tools delegate to RemoteControl
+    // ANTS-1244 surface — the tools below delegate to RemoteControl
     // cmd handlers so the IPC and MCP transports share verb logic.
     // ANTS-3422 — roadmap_query forwards `args` VERBATIM via the
     // shared rcDelegate factory (which passes the whole args object
@@ -759,7 +759,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // rg.waitForFinished(), which starved the QLocalSocket notifier and
     // tripped concurrent verbs into a -32000 transport timeout. caller_cwd
     // is Required here, so the off-thread path never reaches the
-    // focused-tab fallback (RootProvider, main-thread-only state).
+    // focused-tab fallback.
     sink.registerToolProvider("workspace_search",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdWorkspaceSearch));

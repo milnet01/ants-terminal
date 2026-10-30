@@ -116,7 +116,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // ignoring the rest) and returns the tool's response as a JSON
     // string. `get_session_info` is intentionally not registered —
     // it reads ClaudeIntegration's own state and is dispatched
-    // inline (see claudeintegration.cpp processTools).
+    // inline (see claudeintegration.cpp handleMcpRequest).
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent
     // scrollback for structured errors (compiler/lint/lua/test/python).
     // TabSpecific like get_text/get_scrollback; delegates to

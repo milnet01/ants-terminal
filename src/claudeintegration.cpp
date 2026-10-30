@@ -82,6 +82,22 @@ static QByteArray readJsonlRecord(QFile &file, qint64 cap) {
     return {};
 }
 
+// The last `window` bytes of a `size`-byte file. A window that starts
+// mid-file drops its leading partial record; with no newline the whole
+// buffer is that partial record, so the result is empty. nullopt when the
+// seek fails.
+static std::optional<QByteArray> readTailWindow(QFile &file, qint64 size,
+                                                qint64 window) {
+    const qint64 start = std::max<qint64>(0, size - window);
+    if (!file.seek(start)) return std::nullopt;
+    QByteArray tail = file.read(size - start);
+    if (start > 0) {
+        const int firstNl = tail.indexOf('\n');
+        tail.remove(0, firstNl >= 0 ? firstNl + 1 : tail.size());
+    }
+    return tail;
+}
+
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // ANTS-1356 — start the monotonic clock used by rateLimitCheck.
     // QElapsedTimer::start() is idempotent; calling it on already-
@@ -352,7 +368,7 @@ void ClaudeIntegration::pollClaudeProcess() {
     // /exit + claude --resume completed within the 2 s poll window).
     // Pre-1225 this gate was `m_claudePid == 0`, missing the replacement
     // case — the status indicator would stay hidden until tab-switch
-    // because setShellPid (line 88) zeroes m_claudePid as a side effect.
+    // because setShellPid zeroes m_claudePid as a side effect.
     const bool pidChanged = (m_claudePid != foundPid);
     if (pidChanged) {
         // Newly detected Claude process (or replacement of a dead one).
@@ -468,18 +484,10 @@ qint64 ClaudeIntegration::lastEventTimestampMs(const QString &path) {
     // up to the per-record cap parseTranscriptTail uses (ANTS-5089).
     for (qint64 window = 32 * 1024;; window *= 4) {
         window = std::min(window, kMaxTranscriptRecordBytes);
-        const qint64 start = std::max<qint64>(0, size - window);
-        if (!f.seek(start)) return 0;
-        QByteArray tail = f.read(size - start);
+        const std::optional<QByteArray> tail = readTailWindow(f, size, window);
+        if (!tail) return 0;
 
-        // Drop a likely-truncated leading partial line if we didn't read
-        // from offset 0 — same trick parseTranscriptTail uses.
-        if (start > 0) {
-            const int firstNl = tail.indexOf('\n');
-            tail.remove(0, firstNl >= 0 ? firstNl + 1 : tail.size());
-        }
-
-        const QList<QByteArray> lines = tail.split('\n');
+        const QList<QByteArray> lines = tail->split('\n');
         for (auto it = lines.crbegin(); it != lines.crend(); ++it) {
             const QByteArray line = it->trimmed();
             if (line.isEmpty()) continue;
@@ -492,7 +500,7 @@ qint64 ClaudeIntegration::lastEventTimestampMs(const QString &path) {
             if (!dt.isValid()) continue;
             return dt.toMSecsSinceEpoch();
         }
-        if (start == 0 || window >= kMaxTranscriptRecordBytes) return 0;
+        if (window >= size || window >= kMaxTranscriptRecordBytes) return 0;
     }
 }
 
@@ -959,11 +967,10 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     if (!readContext(events)) {
         while (window < kMaxWindow && window < size) {
             window = std::min(window * 2, kMaxWindow);
-            const qint64 start = std::max(qint64(0), size - window);
-            if (!file.seek(start)) break;
-            QByteArray wider = file.read(size - start);
-            if (start > 0) wider.remove(0, wider.indexOf('\n') + 1);
-            if (readContext(parseEvents(wider))) break;
+            const std::optional<QByteArray> wider =
+                readTailWindow(file, size, window);
+            if (!wider) break;
+            if (readContext(parseEvents(*wider))) break;
         }
     }
 
@@ -1004,11 +1011,10 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // state record is inside.
     while (stateEvent.isEmpty() && stateWindow < kMaxWindow && stateWindow < size) {
         stateWindow = std::min(stateWindow * 2, kMaxWindow);
-        const qint64 start = std::max(qint64(0), size - stateWindow);
-        if (!file.seek(start)) break;
-        QByteArray wider = file.read(size - start);
-        if (start > 0) wider.remove(0, wider.indexOf('\n') + 1);
-        stateEvent = findStateEvent(parseEvents(wider));
+        const std::optional<QByteArray> wider =
+            readTailWindow(file, size, stateWindow);
+        if (!wider) break;
+        stateEvent = findStateEvent(parseEvents(*wider));
     }
     if (!stateEvent.isEmpty()) {
         const QString type = stateEvent.value("type").toString();
@@ -1554,11 +1560,11 @@ void ClaudeIntegration::stopMcpServer() {
 // ANTS-1253: single tool-provider registrar. Replaces the 12 per-tool
 // setXProvider bodies that ANTS-1244..1251 each added. Each handler
 // receives the JSON-RPC `arguments` object and returns the tool's
-// response as a JSON string; the dispatcher in onMcpConnection wraps
+// response as a JSON string; the dispatcher in handleMcpRequest wraps
 // it into a text content block.
 // ANTS-1419: a CallerCwdContract value is now part of every
 // registration so the per-tool security classification lives next to
-// the tool's handler in mainwindow.cpp rather than in a separate
+// the tool's handler in mcptoolregistry.cpp rather than in a separate
 // table. The dispatcher consults the stored contract on the
 // registered entry; the static `callerCwdContractFor` table is
 // preserved for inline-dispatched tools (get_session_info,
@@ -2070,7 +2076,7 @@ void ClaudeIntegration::shutdownDispatchWorker() {
 }
 
 // ANTS-5072 — the unknown-arg advisory's key set. It reads m_toolParamKeys,
-// which onMcpConnection writes, so the dispatcher computes it on the GUI
+// which handleMcpRequest writes, so the dispatcher computes it on the GUI
 // thread and transformReply only applies it (spec § 2.9).
 QStringList ClaudeIntegration::ignoredArgKeysFor(
     const QString &toolName, const QJsonObject &argsObj) const {
@@ -2203,9 +2209,8 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     }
     // ANTS-2091 — opt-in `compact:true` drops dead-weight
     // fields (null / false / "" / [] / {}) the model never
-    // reads. After fields= (compacts the narrowed body too)
-    // and before the etag-unchanged short-circuit is irrelevant
-    // — skipped on a 304, which is already minimal. Protected
+    // reads. Runs after fields=, so it compacts the narrowed
+    // body; skipped on a 304, which is already minimal. Protected
     // keys (ok/code/error/etag/found/unchanged) survive at
     // every level (see mcp::compactEnvelope).
     // ANTS-2085 — resolve `compact` from the per-call arg when
@@ -17122,7 +17127,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 }
                 // ANTS-1415 — Phase 3b: TabSpecific contract enforcement.
                 // The per-tab read tools route on caller_cwd (ANTS-1392)
-                // and, for two of them (get_text / recent_errors), an
+                // and, for those tabSpecificAcceptsTabIndex lists, an
                 // explicit `tab` index. With NO usable routing key they
                 // fall back to the focused tab — the cross-tenant leak
                 // ANTS-1404 closed for Required tools, deferred from
@@ -17259,7 +17264,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // ClaudeIntegration's own private state (m_state,
                 // m_currentTool, m_contextPercent, m_changedFiles,
                 // m_activeSessionId) rather than delegating to an
-                // external provider. All 12 outward-delegate tools
+                // external provider. All outward-delegate tools
                 // dispatch via the registry below. Guard widened to
                 // `!toolHandled` so a prior refusal (ANTS-1404
                 // contract check) or cache hit (ANTS-1357) short-
@@ -17773,7 +17778,7 @@ QJsonObject ClaudeIntegration::auditJobPollEnvelope(
         QJsonArray inc;
         for (const QString &t : j.incompleteTools) inc.append(t);
         env["incomplete_tools"] = inc;
-        // ANTS-3585 — same richer surfaces as the sync provider (mainwindow):
+        // ANTS-3585 — same richer surfaces as the sync provider (mcptoolregistry.cpp):
         // per-tool truncated/crashed detail + the zero-coverage parse-failure
         // list. Omitted when empty.
         if (!j.incompleteToolsDetail.isEmpty())
@@ -18601,7 +18606,8 @@ QList<ClaudeProject> ClaudeIntegration::discoverProjects() const {
             session.isActive = activeSessionIds.contains(session.sessionId);
             session.name = sessionNames.value(session.sessionId);
 
-            // Lazy-load summary for the first few sessions per project
+            // Summaries load here for the first 5 sessions per project;
+            // the dialog loads the rest on demand.
             if (project.sessions.size() < 5)
                 session.firstMessage = sessionSummary(fi.absoluteFilePath());
 
