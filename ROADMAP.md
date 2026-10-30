@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6315 -->
+<!-- ants-roadmap-id-high-water: ANTS=6316 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86098,12 +86098,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: ANTS-5811 doc-fix 2026-10-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5813] **session_orient carries a short push-gate summary from git_state op:"hooks".**
+- 🚫 [ANTS-5813] **session_orient carries a short push-gate summary from git_state op:"hooks".**
   Split from ANTS-5505, which asked for this too. Every session_orient
   would pay for it: a hook probe, three git calls and more reply bytes.
   Decide the fields first (pre_push.kind, gate.path, gate_passed.passed
   at most), or confirm with claude-config that op:"hooks" alone is
   enough.
+  2026-10-30: claude-config withdrew it. git_state op:"hooks" alone is
+  enough: the pre-push hook is what runs the gate, align-project finds a
+  broken one, and startup cost stays low.
   **Layman:** The start-of-session summary could say whether this project's push check is wired up, at a small cost to every session start.
   Kind: feature.
   Source: claude-config joint review 2026-09-27 (A4), split from ANTS-5505 2026-10-21.
@@ -86129,6 +86132,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   **Layman:** Two checks can disagree about the same spec, because one of them does not read this project's setting.
   Kind: fix.
   Source: found while shipping ANTS-5511, 2026-10-30.
+  Lanes: mcp.
+
+- 📋 [ANTS-6316] **spec_lint's header_layman_missing could also report a Layman line absorbed into the header field above it.**
+  spec-format.md's Layman section names the hazard: with no blank line,
+  SpecParse adds a prose line to the field above it. The check passes any
+  line holding the word "layman". claude-config marked this optional.
+  **Layman:** A plain-language line placed straight under a header field gets read as part of that field, and the check does not notice.
+  Kind: enhancement.
+  Source: claude-config note on ANTS-5511, 2026-10-30.
   Lanes: mcp.
 
 ## Ants MCP — shared know-how store (claude-config session request 2026-10-30)

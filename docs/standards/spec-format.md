@@ -99,8 +99,8 @@ only touches the first:
 
 The gate catches everything countable. These are the judgement calls it
 cannot — **not a complete list of what nothing checks.** § What checks this
-owns that, and its `nothing` rows include the layman line (§5.6), the
-trust-boundary invariant (§5.5) and *Resource cost* (§4), none of which is an
+owns that, and its `nothing` rows include the trust-boundary invariant (§5.5)
+and *Resource cost* (§4), neither of which is an
 item below. Read the table when you want the residue; walk the ten when you
 want the calls.
 
@@ -609,8 +609,8 @@ is harvested as a header field rather than read as prose. **The blank line is
 the load-bearing part**: the parser accumulates continuation lines into the
 preceding field's value until a blank line, a new `**Name:**` marker or a
 heading, so a prose layman line written straight under `**Source:**` is
-silently absorbed into it. Nothing catches that — § What checks this records
-that no check reads this line at all.
+silently absorbed into it. Nothing catches that: `spec_lint`'s
+`header_layman_missing` only looks for the word above the first `## ` heading.
 
 Two reasons, and the second is the one that earns it. A non-technical
 reader needs a way in — but more usefully, **a change that cannot be
@@ -793,10 +793,10 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 
 | Rule | What catches a breach |
 |------|----------------------|
-| §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | **`Partial:`** `check-doc-facts` `structure`, an invariant-parse check (via `spec_query`), which reads Status and Kind only when the invariants fail to parse. **Nothing** checks an empty title, Status or Kind on a spec whose invariants parse, nor §3.2's Status VOCABULARY or its current-state-only rule — the parser returns whatever string follows the label, so `**Status:** in review since loop 2` passes |
+| §3.1–3.2 title / Status / Kind shape, where the Ants MCP is present | **`Partial:`** `spec_lint` `header_field_empty` reports a header field with no value, `header_status_unknown` a Status outside the union of the spec and plan vocabularies, and `header_kind_unknown` a Kind outside the roadmap's. **Nothing** checks an empty title, a plan's word on a spec, or §3.2's current-state-only rule: `**Status:** accepted since loop 2` passes on its first word |
 | §3.1–3.2 the same, where it is not | **nothing** — the format still applies, but no verb enforces it |
 | §3.7 `INV-N` ids contiguous, no gaps | `spec_lint` `invariant_id_gap`, an id-sequence check that also runs on a spec carrying a tombstone, **as a candidate** — it cannot tell a withdrawn id from a lost one. In a spec conforming to §3.7 every candidate is a real defect, because §3.7 withdraws an invariant *in place* and so leaves no legitimate gap |
-| §3.7 no `INV-N` id reused | **`Partial:`** `spec_log op:append_inv` refuses an id already present as a bullet. **Nothing** catches a duplicate written by hand — `check-doc-facts` `structure` checks for *gaps*, which a duplicate does not create; a cold reader or `spec_query`'s returned invariant list read by eye |
+| §3.7 no `INV-N` id reused | **`Partial:`** `spec_log op:append_inv` refuses an id already present as a bullet, and `spec_lint` `duplicate_invariant` reports one written by hand in the invariants section. **Nothing** catches a duplicate elsewhere, such as a withdrawn id reused from a past revision |
 | §3.7 every INV names a test surface | `check-doc-facts` `contract`, an invariant test-clause check |
 | §3.7 a command `*Test:*` states its expected output | **`Partial:`** `check-doc-facts` `contract`, an invariant test-clause check, which produces a short list as a *candidate* — "is this clause a command?" is a heuristic. **A lane makes the call**, so the check narrows and decides nothing |
 | §3.7 every INV names its breaking input — the clause is present | `check-doc-facts` `contract`, the same invariant test-clause check |
@@ -814,9 +814,9 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 | §3.5 the preference calls are recorded, with who made them | **nothing** — an unrecorded call reads exactly like a call nobody had to make |
 | §3.10 each rejected alternative carries why it lost | **nothing** — a rejected option listed without its reason parses as well as one with it |
 | §1 the trigger call — spec or no spec | **nothing.** The call is a judgement, the escape hatch is the correction for a wrong one, and `write-spec` § When NOT to run says outright that nothing observes whether it was taken |
-| §2 filename is `<ID>-<topic>.md`, and the id matches the roadmap's | **nothing mechanical** — `write-spec` reports siblings whose filename differs from the standard's, so a person reading that run notices; nothing fails |
+| §2 filename is `<ID>-<topic>.md`, and the id matches the roadmap's | **`Partial:`** `spec_lint` `filename_id_mismatch` reports a file whose id differs from its title's. **Nothing** compares either with the roadmap; `write-spec` reports siblings whose filename differs from the standard's, so a person reading that run notices |
 | §5.5 a trust boundary is stated as an invariant | **nothing** — whether a change crosses one is a judgement, and a spec that never mentions a boundary reads exactly like one with none to mention |
-| §5.6 layman line present, as prose after the header block | **nothing** — no check reads non-section prose. Nor does anything catch the line being absorbed into the preceding header field when the blank line before it is missing, which §5.6 names as the real hazard |
+| §5.6 layman line present, as prose after the header block | **`Partial:`** `spec_lint` `header_layman_missing` reports a header block where the word *layman* appears on no line. **Nothing** checks the form: a bold `**Layman:**` passes, and so does a line absorbed into the preceding header field when the blank line before it is missing, which §5.6 names as the real hazard |
 | §4 *Resource cost* present where the feature holds state or adds a build target | **nothing** — it sits outside §3's required list, so `missing_section` cannot see it, and whether a feature holds state is a judgement |
 | §8 every plan step has a verification | **nothing mechanical** — a cold reader |
 
