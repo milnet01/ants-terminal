@@ -312,6 +312,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_lint` counts a feature test run by a shell or Python script as wired, not only one compiled into a bundle.** (ANTS-6312)
+
 - **Several Ants MCP verb descriptions now match what the verbs accept and do.** (ANTS-6125)
   verify_changes names its max_log_lines argument, session_memory says which ops follow the focused tab, indie_review_dispatch no longer claims to replace the review skill's own lanes, and test_results' arguments no longer speak only of ctest.
 

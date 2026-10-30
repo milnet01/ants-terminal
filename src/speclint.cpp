@@ -432,6 +432,18 @@ bool inDiffFull(const DocFinding::Finding &f, const Layout &L,
 
 }  // namespace
 
+QSet<QString> wiredTestDirs(const QString &cmakeText, const QSet<QString> &existing) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(tests/features/([a-z0-9_]+)/test_[a-z0-9_]+\.(?:cpp|sh|py)\b)"));
+    QSet<QString> wired;
+    auto it = re.globalMatch(cmakeText);
+    while (it.hasNext()) {
+        const QString name = it.next().captured(1);
+        if (existing.contains(name)) wired.insert(name);
+    }
+    return wired;
+}
+
 QSet<int> invariantNumbers(const QString &text) {
     static const QRegularExpression anchorRe(
         QStringLiteral(R"(^ {0,3}(?:-\s+\*\*|\|\s*)()") +
@@ -708,7 +720,7 @@ void checkTestSurfaces(const QVector<InvId> &ids,
                 !opts.wiredTestDirs.contains(name))
                 add(QStringLiteral("test_surface_unwired"), line,
                     QStringLiteral("%1 names tests/features/%2, which exists but "
-                                   "has no test source in any bundle").arg(id, name),
+                                   "CMakeLists.txt names no test in it").arg(id, name),
                     false, extra);
         }
     }

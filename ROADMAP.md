@@ -86197,10 +86197,15 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: ANTS-6310-spec-out-of-scope-2026-10-30.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6312] **spec_lint reports test_surface_unwired on a feature folder whose test is a shell script registered with add_test.**
+- ✅ [ANTS-6312] **spec_lint reports test_surface_unwired on a feature folder whose test is a shell script registered with add_test.**
   Seen on ANTS-6310 INV-12, which names tests/features/hook_pack.
   hook_pack is an add_test(NAME hook_pack ...) in CMakeLists.txt, not a
   bundle source, and the check looks only at bundle sources.
+  2026-10-30. SpecLint::wiredTestDirs takes the CMake text and accepts
+  test_*.cpp, .sh and .py; the verb layer and the test share it,
+  replacing the test's own copy of the pattern. Measured before the fix:
+  13 folders wired through .sh or .py read as unwired. ANTS-4127 § 2.6
+  updated. Reaches clients after an ants-mcpd rebuild and /mcp.
   **Layman:** A document checker wrongly says a test is not wired in when that test is a shell script.
   Kind: fix.
   Source: ants-6310-build-2026-10-30.

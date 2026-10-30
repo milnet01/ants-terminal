@@ -714,18 +714,7 @@ static QSet<QString> specLintWiredTestDirs(const QString &rootCanonical,
     if (existing.isEmpty()) return {};
     QFile f(QDir(rootCanonical).filePath(QStringLiteral("CMakeLists.txt")));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    const QString text = QString::fromUtf8(f.readAll());
-    f.close();
-
-    static const QRegularExpression re(
-        QStringLiteral(R"(tests/features/([a-z0-9_]+)/test_[a-z0-9_]+\.cpp)"));
-    QSet<QString> wired;
-    auto it = re.globalMatch(text);
-    while (it.hasNext()) {
-        const QString name = it.next().captured(1);
-        if (existing.contains(name)) wired.insert(name);
-    }
-    return wired;
+    return SpecLint::wiredTestDirs(QString::fromUtf8(f.readAll()), existing);
 }
 
 // ANTS-5537 — what a `since` / `staged` run read from git (spec § 2.4). Either

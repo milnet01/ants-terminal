@@ -325,7 +325,8 @@ the wrong target succeeds silently and runs the old binary… a green run
 reads as success"). So a resolved surface is checked twice:
 
 1. the directory exists under `tests/features/`;
-2. at least one `test_*.cpp` inside it is named in `CMakeLists.txt`.
+2. at least one `test_*.cpp`, `test_*.sh` or `test_*.py` inside it is named in
+   `CMakeLists.txt`.
 
 Failing (2) with (1) satisfied is a `test_surface_unwired` FINDING
 **whatever its live Status — for any spec § 2.5 did not make invisible**.

@@ -238,18 +238,32 @@ TEST(SpecLintVerb, Ants4127SurfaceFieldsReachTheWire) {
 
     QFile cml(QString::fromUtf8(ANTS_SOURCE_DIR "/CMakeLists.txt"));
     ASSERT_TRUE(cml.open(QIODevice::ReadOnly));
-    const QString cmake = QString::fromUtf8(cml.readAll());
-    static const QRegularExpression re(
-        QStringLiteral(R"(tests/features/([a-z0-9_]+)/test_[a-z0-9_]+\.cpp)"));
-    QSet<QString> wired;
-    auto it = re.globalMatch(cmake);
-    while (it.hasNext()) {
-        const QString name = it.next().captured(1);
-        if (existing.contains(name)) wired.insert(name);
-    }
+    const QSet<QString> wired =
+        SpecLint::wiredTestDirs(QString::fromUtf8(cml.readAll()), existing);
     EXPECT_FALSE(wired.isEmpty());
     EXPECT_TRUE(wired.contains(QStringLiteral("spec_lint")))
         << "this very test's directory must be in a bundle, or it is not running";
+    EXPECT_TRUE(wired.contains(QStringLiteral("hook_pack")))
+        << "a shell test registered with add_test is wired too (ANTS-6312)";
+}
+
+// ANTS-6312 — § 2.6's check (2) counts every way a feature test reaches ctest:
+// a bundle's C++ source, or a shell or Python script run by add_test.
+TEST(SpecLintVerb, Ants6312ScriptTestsCountAsWired) {
+    const QSet<QString> existing{
+        QStringLiteral("cpp_one"), QStringLiteral("sh_one"), QStringLiteral("py_one"),
+        QStringLiteral("doc_only"), QStringLiteral("not_named"),
+        QStringLiteral("backup_only")};
+    const QString cmake = QStringLiteral(
+        "    tests/features/cpp_one/test_cpp_one.cpp\n"
+        "    COMMAND bash \"${SRC}/tests/features/sh_one/test_hooks.sh\")\n"
+        "    COMMAND python3 ${SRC}/tests/features/py_one/test_py_one.py\n"
+        "# see tests/features/doc_only/spec.md\n"
+        "# old tests/features/backup_only/test_x.shell\n"
+        "    tests/features/no_such_dir/test_gone.sh\n");
+    const QSet<QString> want{QStringLiteral("cpp_one"), QStringLiteral("sh_one"),
+                             QStringLiteral("py_one")};
+    EXPECT_EQ(SpecLint::wiredTestDirs(cmake, existing), want);
 }
 
 // ANTS-4390 — the global standards repo must be able to check its own specs.
