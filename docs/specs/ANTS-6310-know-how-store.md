@@ -57,7 +57,9 @@ library as `RoadmapStore`) owns the file
 `QStandardPaths::GenericDataLocation + /ants-terminal/knowhow.sqlite`. The test
 bundle's `XDG_DATA_HOME` sandbox therefore covers it. It holds no connection
 between calls: the handler constructs it per call, as `cmdSessionMessage` does
-with `RoadmapStore`.
+with `RoadmapStore`. `KnowHowStore` holds every op, its refusals and its reply
+objects, so `test_core` can drive them. `RemoteControl::cmdKnowHow` resolves the
+caller, supplies `author` and dispatches.
 
 ```sql
 CREATE TABLE know_how (
@@ -99,7 +101,7 @@ written, which § 4.4's hook relies on.
 
 | op | Arguments | Reply |
 |---|---|---|
-| `find` | `query` and/or `tag`; `limit` (default 5, max 20) | `results[]` of `{topic, title, snippet, age_days, stale}`; `count` |
+| `find` | `query` and/or `tag`; `limit` (default 5, max 20) | `results[]` of `{topic, title, snippet, age_days, stale}`; `count`; `searched`, the active entries scanned |
 | `get` | `topic`; `history` (bool) | `{topic, title, body, tags, author, created, last_verified, revision, age_days, stale, retired}`; with `history:true`, `history[]` of its older rows |
 | `list` | `tag`; `limit` (default 50, max 200); `offset` | `topics[]` of `{topic, title, stale}`; `total`; `next_offset` when more remain |
 | `add` | `topic`, `title`, `body`; `tags[]`; `dry_run` | `{topic, revision}` |
@@ -110,19 +112,23 @@ Refusals: the existing `bad_args`, `missing_field`, `no_project`, `io_error` and
 `not_found`, and four new codes: `topic_exists`, `conflict`, `secret_detected` and
 `store_full`.
 
-**`find`.** The query splits on whitespace into at most 8 tokens, and a token
-shorter than 2 characters is dropped. An entry's score sums, over its tokens, 3
+**`find`.** The query splits on whitespace, tokens past the eighth are ignored,
+and a token shorter than 2 characters is dropped. An entry's score sums, over its tokens, 3
 for a match in `topic`, `title` or `tags`, or else 1 for a match in `body`.
 Entries scoring above zero come back highest score first, then most recently
 verified. Any-token matching is what lets a sentence work: "how do I reach the
 Windows box" finds `windows-box` although no entry holds every word. Matching is
 SQL `LIKE` with `%`, `_` and the escape character escaped, so it folds case for
-ASCII only. A `tag` must match one tag whole. Retired entries are left out. The
+ASCII only. A `tag` must match one tag whole, and filters the entries. With no `query`,
+every active entry holding the tag comes back, most recently verified first. A
+`query` left with no token answers empty. Retired entries are left out, of `list`
+and its `total` too. A `limit` above its maximum is clamped. The
 snippet is the first body line holding the entry's first matched token, or the
 first non-blank body line, clipped to 120 characters on a surrogate boundary.
 
 **`update`.** With no `title`, `body` or `tags`, it records that the entry was
-checked and is still true: `last_verified` moves and nothing else does. With a
+checked and is still true: `last_verified` moves and no field, `revision` or
+history row changes. With a
 real change, the old row goes to `know_how_history`, the fields change,
 `revision` rises by one, `last_verified` moves and `author` becomes the caller.
 Only the newest 20 history rows per topic are kept. `update` on a retired topic
@@ -150,14 +156,16 @@ true when `age_days` is over 90. Time comes through a clock the test can set.
 ### 4.3 Who may do what
 
 Reads need only a `caller_cwd` that resolves (`ants::requiredCallerCwd`); the
-facts are machine-wide, and reads open no roadmap store. A write also opens `RoadmapStore`, and only reads it:
+facts are machine-wide, and reads open no roadmap store. A write also opens `RoadmapStore`, the ordinary way, to read the caller's project:
 `projectIdContaining(ProjectSettings::repoRootOf(cwd))` resolves the caller, as `cmdSessionMessage` does, and `readProject` supplies its
 `exportSlug` for `author`. An unregistered caller refuses `no_project`. The slug
-is stored as text because a project id is no foreign key across files. Nothing
-writes to `roadmap.sqlite`.
+is stored as text because a project id is no foreign key across files. The verb
+writes nothing to `roadmap.sqlite` itself. `RoadmapStore::open` may still create
+or climb that file, as it does for every verb, and `~RoadmapStore`'s
+`PRAGMA optimize` may add SQLite's own statistics table.
 
 **Secrets.** `add` and `update` run `SecretRedact::scrub` (`src/secretredact.h`)
-over `title`, `body` and the tags. A non-zero `redactedCount` refuses
+over `topic`, `title`, `body` and the tags. A non-zero `redactedCount` refuses
 `secret_detected` and writes nothing. The refusal names the count and never
 echoes the matched text. The verb's description says the check catches known
 secret shapes only, and that an entry says how to authenticate, never the secret.
@@ -166,8 +174,9 @@ secret shapes only, and that an entry says how to authenticate, never the secret
 
 **The hook.** New `hooks/ants-know-how-notice.sh`, registered under `SessionStart`
 in `tools/install-hooks.sh`. It is not gated on `.ants-project`, because the
-store serves every project. It stats the store file and, if present, prints one
-line, and otherwise nothing:
+store serves every project. It stats
+`${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal/knowhow.sqlite` and, if
+present, prints one line, and otherwise nothing:
 
 ```
 [ants:know-how] shared how-to facts for machines and tools: know_how op:"find"
@@ -190,8 +199,8 @@ rule its fixture isolates. All are in
 `tests/features/know_how/test_know_how.cpp` unless a clause says otherwise.
 
 - **INV-1** — A read never creates the store. `find`, `list` and `get` against a
-  path with no file answer empty, empty and `not_found`, and the file is still
-  absent afterwards.
+  path with no file answer empty with `searched` 0, empty and `not_found`, and the
+  file is still absent afterwards.
   *Test:* `tests/features/know_how` `KnowHow.ReadsDoNotCreateTheFile`.
   *Breaks when:* the constructor or a read op calls the code that creates the
   file, so a session that only looked would switch the hook line on.
@@ -205,10 +214,12 @@ rule its fixture isolates. All are in
 
 - **INV-3** — A change keeps what it replaced. An `update` that changes a field
   moves the old row to history, raises `revision` by one and moves
-  `last_verified`. An `update` with no field moves `last_verified` only and adds
-  no history row. Only the newest 20 history rows per topic survive.
+  `last_verified`. An `update` with no field moves `last_verified`, leaves
+  `revision` alone and adds no history row. On a retired topic, either form makes
+  it active again. Only the newest 20 history rows per topic survive.
   *Test:* `tests/features/know_how` `KnowHow.UpdateKeepsHistory`, with 22 changes under a clock set forward
-  at each step, then one fieldless `update`.
+  at each step, then one fieldless `update`, then a `retire` and a fieldless
+  `update`.
   *Breaks when:* the old body is overwritten without a history row, the fieldless
   form writes one, or the trim keeps the oldest rows.
 
@@ -217,9 +228,11 @@ rule its fixture isolates. All are in
   *Test:* `tests/features/know_how` `KnowHow.ExpectedRevisionRefusesAStaleWrite`.
   *Breaks when:* the check is skipped, or it runs after the write.
 
-- **INV-5** — A secret-shaped value is never stored or echoed. A body holding a
-  GitHub-PAT-shaped string, built at run time so that no secret scanner flags the
-  test source, refuses `secret_detected` on both `add` and `update`. No row or
+- **INV-5** — A secret-shaped value is never stored or echoed. A body or title
+  holding a GitHub-PAT-shaped string, or a tag holding a `glpat-` string, each
+  built at run time so that no secret scanner flags the test source, refuses
+  `secret_detected` on both `add` and `update`. So does an `add` whose topic is a
+  `glpat-` string. No row or
   history row changes, and the reply does not contain the value. A body saying
   "SSH key ~/.ssh/win_ed25519" is accepted.
   *Test:* `tests/features/know_how` `KnowHow.SecretShapesAreRefused`.
@@ -227,17 +240,21 @@ rule its fixture isolates. All are in
   quotes the match.
 
 - **INV-6** — `find` answers small, and answers a sentence. With an entry
-  `windows-box` and a second entry whose body alone holds the word "how", the
-  query "how do I reach the Windows box" returns `windows-box` first. No result
+  `windows-box` and a second entry whose body alone holds the words "how", "do",
+  "reach" and "the", the query "how do I reach the Windows box" returns
+  `windows-box` first, although the second entry matches more tokens. No result
   carries a `body` key, every snippet is at most 120 characters, a retired entry
-  is absent, and `limit` is honoured. A query of `%` matches only a literal `%`.
+  is absent from `find` and from `list` and its `total`, and `limit` is honoured.
+  `searched` counts the active entries. A `tag` alone returns the active entries
+  holding it. A query of `50%` matches an entry holding `50%` and not one holding
+  `500`.
   *Test:* `tests/features/know_how` `KnowHow.FindRanksAndStaysSmall`.
   *Breaks when:* tokens are ANDed (no result), scores are unweighted, the body
   leaks into a row, or `LIKE` wildcards go unescaped.
 
 - **INV-7** — Only a registered project writes, and the author is its slug. A
   write from an unregistered `caller_cwd` refuses `no_project` and creates no
-  file. A read from the same place succeeds. A write from a registered project's
+  `knowhow.sqlite`. A read from the same place succeeds. A write from a registered project's
   subdirectory records that project's `export_slug` as `author`.
   *Test:* `tests/features/know_how` `test_know_how_verb.cpp`, driving
   `RemoteControl::cmdKnowHow` in `test_claude`, as `project_repo_root` does for
@@ -246,10 +263,11 @@ rule its fixture isolates. All are in
   `registerProject()`, which would register any root it is handed.
 
 - **INV-8** — The roadmap store is untouched. After a write through the handler,
-  `roadmap.sqlite`'s `user_version` and its `sqlite_master` rows are as they were.
+  `roadmap.sqlite`'s `user_version` is as it was, and so are its `sqlite_master`
+  rows, leaving out SQLite's own `sqlite_stat*` tables.
   *Test:* `tests/features/know_how` `KnowHowVerb.WritesLeaveTheRoadmapStoreAlone`.
   *Breaks when:* the store opens the wrong path, or a table lands in the roadmap
-  schema, which ANTS-3756's and ANTS-3781's created-versus-climbed comparison
+  schema, which ANTS-3781's created-versus-climbed comparison
   forbids at an unchanged version.
 
 - **INV-9** — Staleness flips after 90 days, not at them. An entry verified
@@ -259,13 +277,14 @@ rule its fixture isolates. All are in
   *Breaks when:* the comparison is `>=`, or one op computes it separately.
 
 - **INV-10** — The file is owner-only and a newer one is refused. After a write,
-  the file and any sidecar are mode 0600. A file with a `user_version` above the
+  with a second connection holding the file open so that the sidecars still exist,
+  the file and both sidecars are mode 0600. A file with a `user_version` above the
   build's refuses `io_error` and is left unchanged.
   *Test:* `tests/features/know_how` `KnowHow.FileModeAndNewerSchema`.
-  *Breaks when:* permissions are set only after the schema transaction, or a
-  newer schema is opened and written anyway.
+  *Breaks when:* a file or sidecar keeps wider permissions, or a newer schema is
+  opened and written anyway.
 
-- **INV-11** — Limits refuse rather than truncate. Each limit in § 4.2 accepts its
+- **INV-11** — Limits refuse rather than truncate. Each limit in § 4.2's table accepts its
   maximum, and refuses one over it without a write. `add` of the 1001st topic
   refuses `store_full`, whether or not earlier topics are retired.
   *Test:* `tests/features/know_how` `KnowHow.LimitsRefuse`.
@@ -273,8 +292,8 @@ rule its fixture isolates. All are in
   retired rows escape the cap.
 
 - **INV-12** — Discovery costs one line, or nothing. The hook prints exactly the
-  § 4.4 line with the store file present, and nothing with it absent, in a
-  directory with no `.ants-project`. Its source names neither `ants-mcpd` nor
+  § 4.4 line with the store file present, under `XDG_DATA_HOME` set and unset, and
+  nothing with it absent, in a directory with no `.ants-project`. Its source names neither `ants-mcpd` nor
   `sqlite3`. The prelude holds `know_how` and stays within its 500-byte cap.
   *Test:* `tests/features/hook_pack` for the hook;
   `tests/features/mcp_orientation_install`'s INV-10 and a new text case for the prelude.
@@ -319,8 +338,7 @@ checked to have moved after building. `ants_add_core_bundle` and
 ## 8. Alternatives considered (and rejected)
 
 - **A table in `roadmap.sqlite`, no version bump.** Breaks the store's rule that a
-  version means one set of tables, whether created or climbed (ANTS-3756 INV-15,
-  ANTS-3781 INV-8).
+  version means one set of tables, whether created or climbed (ANTS-3781 INV-8).
 - **A table in `roadmap.sqlite`, version bump.** The first new binary to open the
   store climbs it, and every older binary still running then refuses the store for
   every project (`RoadmapStore::createSchema`'s newer-schema arm), so an old
@@ -368,7 +386,7 @@ checked to have moved after building. `ants_add_core_bundle` and
 | INV-7 | `test_know_how_verb.cpp` |
 | INV-8 | `KnowHowVerb.WritesLeaveTheRoadmapStoreAlone` |
 | INV-9 | `KnowHow.StaleAfterNinetyDays` |
-| INV-10 | `KnowHow.FileModeAndNewerSchema` |
+| INV-10 | Partial: `KnowHow.FileModeAndNewerSchema` sees the final modes; **nothing** observes § 4.1's order, the empty file secured before SQLite writes to it |
 | INV-11 | `KnowHow.LimitsRefuse` |
 | INV-12 | `hook_pack` and `mcp_orientation_install` |
 | What belongs in an entry (§ 3 item 1) | **nothing** — no check can tell a how-to fact from chat; the verb's description and claude-config's `CLAUDE.md` line carry it |
