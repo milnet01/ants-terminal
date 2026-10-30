@@ -1,6 +1,6 @@
 # ANTS-6310 — a machine-global know-how store and its `know_how` verb
 
-**Status:** spec draft (2026-10-30).
+**Status:** accepted (2026-10-30).
 **Kind:** feature.
 **Source:** ROADMAP ANTS-6310 (claude-config session request, 2026-10-30).
 
@@ -91,8 +91,9 @@ owner-only, through `setOwnerOnlyPerms` and `warnNotOwnerOnly` (`src/secureio.h`
 in the order `RoadmapStore::open` uses: the empty file is secured before SQLite
 writes to it.
 
-**A read never creates the file.** With no file, `find` and `list` answer empty
-and `get` refuses `not_found`. So the file exists exactly when some session has
+**Only a committed row creates the file.** With no file, `find` and `list` answer
+empty and `get` refuses `not_found`. A write that commits no row, whether a refusal
+or a `dry_run`, leaves an absent file absent. So the file exists exactly when some session has
 written, which § 4.4's hook relies on.
 
 ### 4.2 The verb
@@ -111,6 +112,8 @@ written, which § 4.4's hook relies on.
 Refusals: the existing `bad_args`, `missing_field`, `no_project`, `io_error` and
 `not_found`, and four new codes: `topic_exists`, `conflict`, `secret_detected` and
 `store_full`.
+
+`tags` is an array in every reply, `history[]` rows included.
 
 **`find`.** The query splits on whitespace, tokens past the eighth are ignored,
 and a token shorter than 2 characters is dropped. An entry's score sums, over its tokens, 3
@@ -135,7 +138,8 @@ Only the newest 20 history rows per topic are kept. `update` on a retired topic
 makes it active again. `expected_revision`, when given and not current, refuses
 `conflict` and changes nothing.
 
-**`retire`** sets `retired_at`. The row stays, `get` still reads it with
+**`retire`** sets `retired_at` and raises `revision` by one, adding no history row,
+so a writer who read before the retire refuses `conflict`. The row stays, `get` still reads it with
 `retired:true`, and `add` on that topic refuses `topic_exists` and says to use
 `update`. Nothing deletes a row, so an accidental overwrite or retire can be
 recovered.
@@ -158,7 +162,8 @@ true when `age_days` is over 90. Time comes through a clock the test can set.
 Reads need only a `caller_cwd` that resolves (`ants::requiredCallerCwd`); the
 facts are machine-wide, and reads open no roadmap store. A write also opens `RoadmapStore`, the ordinary way, to read the caller's project:
 `projectIdContaining(ProjectSettings::repoRootOf(cwd))` resolves the caller, as `cmdSessionMessage` does, and `readProject` supplies its
-`exportSlug` for `author`. An unregistered caller refuses `no_project`. The slug
+`exportSlug` for `author`. An unregistered caller refuses `no_project`, and so does
+a deregistered one, for which `readProject` returns nothing. The slug
 is stored as text because a project id is no foreign key across files. The verb
 writes nothing to `roadmap.sqlite` itself. `RoadmapStore::open` may still create
 or climb that file, as it does for every verb, and `~RoadmapStore`'s
@@ -172,8 +177,8 @@ secret shapes only, and that an entry says how to authenticate, never the secret
 
 ### 4.4 Discovery
 
-**The hook.** New `hooks/ants-know-how-notice.sh`, registered under `SessionStart`
-in `tools/install-hooks.sh`. It is not gated on `.ants-project`, because the
+**The hook.** New `hooks/ants-know-how-notice.sh`, added under `SessionStart` to
+`hook_entries` and to `pack_hook_regex` in `tools/install-hooks.sh`. It is not gated on `.ants-project`, because the
 store serves every project. It stats
 `${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal/knowhow.sqlite` and, if
 present, prints one line, and otherwise nothing:
@@ -198,12 +203,14 @@ The clauses below name a test file that does not exist yet, so each states the
 rule its fixture isolates. All are in
 `tests/features/know_how/test_know_how.cpp` unless a clause says otherwise.
 
-- **INV-1** — A read never creates the store. `find`, `list` and `get` against a
+- **INV-1** — Only a committed row creates the store. `find`, `list` and `get` against a
   path with no file answer empty with `searched` 0, empty and `not_found`, and the
-  file is still absent afterwards.
+  file is still absent afterwards. So is it after a `dry_run` `add` and an `update`
+  refusing `not_found`.
   *Test:* `tests/features/know_how` `KnowHow.ReadsDoNotCreateTheFile`.
-  *Breaks when:* the constructor or a read op calls the code that creates the
-  file, so a session that only looked would switch the hook line on.
+  *Breaks when:* the constructor, a read op or a write that commits nothing calls
+  the code that creates the file, so a session that wrote no entry would switch
+  the hook line on.
 
 - **INV-2** — One entry per topic. `add` on an existing topic refuses
   `topic_exists` and leaves the row unchanged, retired rows included. `update`
@@ -224,7 +231,8 @@ rule its fixture isolates. All are in
   form writes one, or the trim keeps the oldest rows.
 
 - **INV-4** — A stale writer cannot overwrite. `expected_revision` not equal to
-  the current revision refuses `conflict` and changes nothing.
+  the current revision refuses `conflict` and changes nothing, including when a
+  `retire` is what moved it.
   *Test:* `tests/features/know_how` `KnowHow.ExpectedRevisionRefusesAStaleWrite`.
   *Breaks when:* the check is skipped, or it runs after the write.
 
@@ -254,7 +262,8 @@ rule its fixture isolates. All are in
 
 - **INV-7** — Only a registered project writes, and the author is its slug. A
   write from an unregistered `caller_cwd` refuses `no_project` and creates no
-  `knowhow.sqlite`. A read from the same place succeeds. A write from a registered project's
+  `knowhow.sqlite`. A read from the same place succeeds. A write from a deregistered project refuses
+  `no_project`. A write from a registered project's
   subdirectory records that project's `export_slug` as `author`.
   *Test:* `tests/features/know_how` `test_know_how_verb.cpp`, driving
   `RemoteControl::cmdKnowHow` in `test_claude`, as `project_repo_root` does for
@@ -293,7 +302,8 @@ rule its fixture isolates. All are in
 
 - **INV-12** — Discovery costs one line, or nothing. The hook prints exactly the
   § 4.4 line with the store file present, under `XDG_DATA_HOME` set and unset, and
-  nothing with it absent, in a directory with no `.ants-project`. Its source names neither `ants-mcpd` nor
+  nothing with it absent, in a directory with no `.ants-project`. Uninstall removes
+  its settings entry. Its source names neither `ants-mcpd` nor
   `sqlite3`. The prelude holds `know_how` and stays within its 500-byte cap.
   *Test:* `tests/features/hook_pack` for the hook;
   `tests/features/mcp_orientation_install`'s INV-10 and a new text case for the prelude.
