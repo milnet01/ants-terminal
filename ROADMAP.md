@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6329 -->
+<!-- ants-roadmap-id-high-water: ANTS=6331 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88976,6 +88976,29 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Each new version may force a full rebuild of everything, which is slow on GitHub and locally.
   Kind: investigate.
   Source: user-request-2026-10-31.
+  Lanes: ci.
+
+- 📋 [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
+  Push of 45b13e02, 2026-10-31, in the ubuntu:24.04 image at ctest -j2: 'the child
+  ants-mcpd was not listed' at line 137, in 15 ms; 1 failure in 5971 tests. It passed
+  200 of 200 on this machine outside the container the same day. Cause not found.
+  mcpd::runningCopies (src/mcpdversion.cpp) walks /proc and readlinks each exe. Start
+  there, and reproduce with the --run-job command in docs/build-and-ci.md.
+  **Layman:** A test that looks for a running helper program failed once for no clear reason, which blocked a push.
+  Kind: fix.
+  Source: in-session-2026-10-31.
+  Lanes: ci.
+
+- 📋 [ANTS-6331] **Run tools/ci-parity.sh --full and a dispatched CI run to prove local and GitHub CI agree on today's code.**
+  User request 2026-10-31. Audit so far: ci-parity executes ci.yml's own steps and
+  refuses an unclaimed job, so the two cannot drift by copy. Known differences: the
+  perf step is GitHub's alone (user ruling 2026-09-26, ANTS-5375); cppcheck and a cold
+  container leg are left out of the push gate; the build-asan leg needs a warm tree.
+  No full run has been made since these fixes. Compare results with `gh workflow run
+  ci.yml`, which also runs the sanitizer job that a push skips.
+  **Layman:** Run every check both locally and on GitHub once, to confirm they give the same answer.
+  Kind: test.
+  Source: in-session-2026-10-31.
   Lanes: ci.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
