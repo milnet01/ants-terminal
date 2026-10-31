@@ -82,14 +82,73 @@ QJsonValue idAtTail(const QByteArray &line) {
     return idFrom(line.right(kIdWindowBytes), re);
 }
 
+constexpr qsizetype kMaxRequestBytes = qsizetype{256} * 1024;  // ANTS-1659
+
 // Written directly, not through the reply channel: no request was
 // dispatched, so none ends here (ANTS-5320's in-flight count).
 void refuseOversized(const QJsonValue &id) {
-    const QJsonObject error{{"code", -32600},
-                            {"message", "request exceeds the 262144-byte ceiling; discarded"}};
+    const QJsonObject error{
+        {"code", -32600},
+        {"message",
+         QStringLiteral("request exceeds the %1-byte ceiling; discarded").arg(kMaxRequestBytes)}};
     writeStdout(QJsonDocument(QJsonObject{{"jsonrpc", "2.0"}, {"id", id}, {"error", error}})
                     .toJson(QJsonDocument::Compact) + '\n');
 }
+
+// ANTS-1659 — splits stdin into request lines, under the same ceiling the
+// socket enforces. The socket disconnects; stdio cannot reconnect, so an
+// over-ceiling line is refused once and never parsed. It applies to a whole
+// line in the buffer and to one still arriving, whose rest is then skipped up
+// to its newline. The refusal carries the line's id where it can be read
+// (ANTS-4709): at once from the head, else at the newline from the tail.
+class RequestLineFramer {
+public:
+    template <typename OnLine>
+    void feed(const char *data, qsizetype size, OnLine &&onLine) {
+        m_pending.append(data, size);
+        if (m_discarding && !finishDiscard()) return;
+        qsizetype nl;
+        while ((nl = m_pending.indexOf('\n')) >= 0) {
+            if (nl > kMaxRequestBytes) {
+                const QByteArray line = m_pending.left(nl);
+                const QJsonValue head = idAtHead(line);
+                refuseOversized(head.isNull() ? idAtTail(line) : head);
+            } else {
+                const QByteArray line = m_pending.left(nl).trimmed();
+                if (!line.isEmpty()) onLine(line);
+            }
+            m_pending.remove(0, nl + 1);
+        }
+        if (m_pending.size() > kMaxRequestBytes) startDiscard();
+    }
+
+private:
+    void startDiscard() {
+        const QJsonValue head = idAtHead(m_pending);
+        m_discardRefused = !head.isNull();
+        if (m_discardRefused) refuseOversized(head);
+        m_discardTail = m_pending.right(kIdWindowBytes);
+        m_pending.clear();
+        m_discarding = true;
+    }
+
+    // False while the over-ceiling line's newline has not arrived.
+    bool finishDiscard() {
+        const qsizetype nl = m_pending.indexOf('\n');
+        m_discardTail = (m_discardTail + m_pending.left(nl < 0 ? m_pending.size() : nl))
+                            .right(kIdWindowBytes);
+        if (nl < 0) { m_pending.clear(); return false; }
+        m_pending.remove(0, nl + 1);
+        if (!m_discardRefused) refuseOversized(idAtTail(m_discardTail));
+        m_discarding = false;
+        return true;
+    }
+
+    QByteArray m_pending;
+    bool m_discarding = false;      // inside an over-ceiling line
+    bool m_discardRefused = false;  // its refusal already went out, by head id
+    QByteArray m_discardTail;       // its last bytes, where a trailing id sits
+};
 
 }  // namespace
 
@@ -298,11 +357,7 @@ int main(int argc, char **argv) {
         [&requestEnded](const QByteArray &line) { writeStdout(line); requestEnded(); },
         [&requestEnded] { requestEnded(); }, [] { return true; });
 
-    QByteArray pending;
-    bool discarding = false;   // inside an over-ceiling line; drop to its '\n'
-    bool discardRefused = false;   // its refusal already went out, by head id
-    QByteArray discardTail;        // its last bytes, where a trailing id sits
-    constexpr qsizetype kMaxRequestBytes = qsizetype{256} * 1024;  // ANTS-1659
+    RequestLineFramer framer;
     QSocketNotifier stdinNotifier(STDIN_FILENO, QSocketNotifier::Read);
     QObject::connect(&stdinNotifier, &QSocketNotifier::activated, &app,
                      [&](QSocketDescriptor, QSocketNotifier::Type) {
@@ -317,45 +372,10 @@ int main(int argc, char **argv) {
             else eofGrace.start(kEofGraceMs);
             return;
         }
-        pending.append(chunk, n);
-        if (discarding) {
-            const qsizetype nl0 = pending.indexOf('\n');
-            discardTail = (discardTail + pending.left(nl0 < 0 ? pending.size() : nl0))
-                              .right(kIdWindowBytes);
-            if (nl0 < 0) { pending.clear(); return; }
-            pending.remove(0, nl0 + 1);
-            if (!discardRefused) refuseOversized(idAtTail(discardTail));
-            discarding = false;
-        }
-        // ANTS-1659 — the same request ceiling the socket enforces. The
-        // socket disconnects; stdio cannot reconnect, so an over-ceiling line
-        // is refused once and never parsed. It applies to a whole line in the
-        // buffer and to one still arriving, whose rest is then skipped up to
-        // its newline. The refusal carries the line's id where it can be read
-        // (ANTS-4709): at once from the head, else at the newline from the tail.
-        qsizetype nl;
-        while ((nl = pending.indexOf('\n')) >= 0) {
-            if (nl > kMaxRequestBytes) {
-                const QByteArray line = pending.left(nl);
-                const QJsonValue head = idAtHead(line);
-                refuseOversized(head.isNull() ? idAtTail(line) : head);
-            } else {
-                const QByteArray line = pending.left(nl).trimmed();
-                if (!line.isEmpty()) {
-                    ++inFlight;
-                    pipeline.handleMcpLine(line, &out);
-                }
-            }
-            pending.remove(0, nl + 1);
-        }
-        if (pending.size() > kMaxRequestBytes) {
-            const QJsonValue head = idAtHead(pending);
-            discardRefused = !head.isNull();
-            if (discardRefused) refuseOversized(head);
-            discardTail = pending.right(kIdWindowBytes);
-            pending.clear();
-            discarding = true;
-        }
+        framer.feed(chunk, n, [&](const QByteArray &line) {
+            ++inFlight;
+            pipeline.handleMcpLine(line, &out);
+        });
     });
 
     return QCoreApplication::exec();

@@ -30,7 +30,7 @@ struct CallerCwdGate {
 // envelope on `!ok`.
 //
 // `focusedRaw` is the focused-tab cwd as already-canonicalised by the
-// caller (typically `resolveRootCanonical(m_main)` — passed in
+// caller (typically `resolveRootCanonical(m_roots)` — passed in
 // pre-resolved so this helper has zero MainWindow dependency and is
 // trivially unit-testable).
 //

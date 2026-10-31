@@ -1,22 +1,13 @@
-// ANTS-3833 — shared helpers for the remotecontrol translation units.
-//
-// src/remotecontrol.cpp was one 24,803-line TU. Splitting it into eleven
-// per-family TUs breaks every helper that used to resolve through the shared
-// anonymous namespace, so they live in `namespace rcdetail` instead and the
-// cross-TU ones are declared here.
-//
-// The list is DERIVED, not hand-written (spec § 2.3): of the 165 symbols
-// defined across the file's 24 anonymous namespaces, these 91 are referenced
-// from more than one slice. The spec's "~74" was a deliberate estimate from a
-// coarser regex; re-derive rather than trusting either number, because the
-// set changes the first time a verb moves. The linker is the arbiter (INV-7).
+// ANTS-3833 — the helpers more than one remotecontrol translation unit uses,
+// in `namespace rcdetail`. The linker is the arbiter of the list (INV-7). How
+// the split was derived: docs/specs/ANTS-3833-remotecontrol-decomposition.md.
 //
 // TWO RULES THIS HEADER EXISTS TO HOLD.
 //
 //  1. A definition stays in a .cpp. Only the three structs and nothing else
 //     move their text here, and only because a type used by value across TUs
 //     must have one definition visible to each. The test tree scrapes the
-//     remotecontrol sources for helper text (337 sites), and anything whose
+//     remotecontrol sources for helper text, and anything whose
 //     text leaves those files disappears from every such assertion silently.
 //
 //  2. A constant is declared `extern const`, never bare `const`. A
@@ -54,7 +45,6 @@
 // RoadmapParse::BulletRecord), and a nested type cannot be forward-declared
 // without its enclosing definition. remotecontrol.cpp already included all
 // four, so TU 1 pays nothing new; the other TUs pay for the shared header.
-#include "roadmapparse.h"
 #include "roadmaprender.h"
 #include "roadmapsource.h"
 #include "roadmapstore.h"

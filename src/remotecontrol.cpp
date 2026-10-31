@@ -321,7 +321,7 @@ QString findYamlChangelogUnder(const QString &canonicalRoot) {
 // hint carries both bullet-format signatures (`- [ ]` for GFM
 // and the 📋 emoji byte sequence for ants-v1) so a rewording
 // that drops either trips the regression guard. Emoji codepoints
-// are inline UTF-8 byte escapes per remotecontrol.cpp:1435-1437.
+// are inline UTF-8 byte escapes.
 const QString &kUnrecognisedFormatHint() {
     static const QString v = QStringLiteral(
         "Roadmap content didn't match GFM-task-list "
@@ -594,11 +594,15 @@ void rcApplyHeadlineOnly(QJsonArray &matches) {
     }
 }
 
+// The three ID sniffers below look at this many parsed bullets, so they agree
+// on what a roadmap's "existing ids" are.
+constexpr int kIdSniffBullets = 50;
+
 // ANTS-1877 — sniff the existing roadmap for stable-prefix bullet
 // IDs (e.g. "Sh4", "MT8" — anything matching
 // ^[A-Za-z][A-Za-z0-9_-]+$ that is NOT the canonical ^ANTS-[0-9]+$
-// shape). Returns the first matching id within the first 50
-// parsed bullets, or empty string when none. Used by
+// shape). Returns the first matching id within the first
+// kIdSniffBullets parsed bullets, or empty string when none. Used by
 // cmdRoadmapLogAppend to surface a helpful hint when the
 // .roadmap-counter is missing AND the project uses stable IDs the
 // allocator doesn't currently support.
@@ -622,8 +626,7 @@ QString rlDetectStablePrefixId(const QString &markdown,
         QStringLiteral("^ANTS-[0-9]+$"));
     const QRegularExpression &stableRe = rlStableIdShape();   // ANTS-4849
     const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
-    constexpr int kSniffCap = 50;
-    const int upTo = std::min<int>(bullets.size(), kSniffCap);
+    const int upTo = std::min<int>(bullets.size(), kIdSniffBullets);
     for (int i = 0; i < upTo; ++i) {
         const QString id = bullets.at(i).id;
         if (id.isEmpty()) continue;
@@ -633,7 +636,7 @@ QString rlDetectStablePrefixId(const QString &markdown,
     return QString();
 }
 
-// ANTS-3397 — true when any of the first 50 parsed bullets carries a
+// ANTS-3397 — true when any of the first kIdSniffBullets bullets carries a
 // non-empty id (of any shape: counter-style ANTS-NNNN, a project
 // prefix, or a stable string). Lets the counter allocator tell a
 // greenfield roadmap (no ids of any kind → safe to auto-init
@@ -642,8 +645,7 @@ QString rlDetectStablePrefixId(const QString &markdown,
 bool rlRoadmapHasAnyBulletId(const QString &markdown,
                              const RoadmapParse::IdFormat &fmt) {
     const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
-    constexpr int kSniffCap = 50;
-    const int upTo = std::min<int>(bullets.size(), kSniffCap);
+    const int upTo = std::min<int>(bullets.size(), kIdSniffBullets);
     for (int i = 0; i < upTo; ++i)
         if (!bullets.at(i).id.isEmpty()) return true;
     return false;
@@ -652,8 +654,8 @@ bool rlRoadmapHasAnyBulletId(const QString &markdown,
 // ANTS-2054 — infer the dominant counter-style ID prefix from the
 // existing roadmap so op:append / op:append_batch render
 // `[<prefix>-NNNN]` matching the project (e.g. "mame-curator-1073")
-// instead of the hardcoded "ANTS-1073". Scans the first 50 parsed
-// bullets for ids of shape ^(<prefix>)-(<digits>)$ and returns the
+// instead of the hardcoded "ANTS-1073". Scans the first
+// kIdSniffBullets parsed bullets for ids of shape ^(<prefix>)-(<digits>)$ and returns the
 // most common prefix; empty when none found, in which case the caller
 // falls back to "ANTS" (back-compat for a fresh/id-less roadmap). The
 // prefix is the run before the FINAL `-digits`, so "mame-curator-1065"
@@ -666,8 +668,7 @@ QString rlDetectCounterPrefix(const QString &markdown,
             "^((?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*)"
             "-([0-9]{1,8})$"));
     const auto bullets = RoadmapParse::parseBullets(markdown, fmt);
-    constexpr int kSniffCap = 50;
-    const int upTo = std::min<int>(bullets.size(), kSniffCap);
+    const int upTo = std::min<int>(bullets.size(), kIdSniffBullets);
     QHash<QString, int> counts;
     QString best;
     int bestN = 0;
@@ -1105,8 +1106,7 @@ constexpr int kDuplicateOccurrencesCap = 3;
 // file-level etag (the file etag flips on ANY edit; the per-section
 // etag is invariant under edits to OTHER sections, which is the
 // whole point). 16 hex chars = 64 bits of collision space — same
-// budget the dispatch-layer file ETag uses (helpers in remotecontrol.cpp
-// at L10086+). Stable across runs (no salt).
+// budget the dispatch-layer file ETag uses. Stable across runs (no salt).
 QString rcComputeSectionEtag(const QString &slice) {
     return QString::fromUtf8(
         QCryptographicHash::hash(slice.toUtf8(),

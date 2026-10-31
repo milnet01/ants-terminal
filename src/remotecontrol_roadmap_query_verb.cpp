@@ -3183,7 +3183,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             // empty, fall back to the authoritative whole-file parse filtered
             // to this slug: the global parse has the pass-heading context, and
             // parseBullets' sectionSlug is the same global slug the index uses
-            // (the section_index tally at L3646 relies on that). INV-9's
+            // (the section_index tally relies on that). INV-9's
             // "section mode doesn't pre-fill the full cache" is preserved for
             // the common (non-empty-slice) path; the whole-file parse runs only
             // on this otherwise-empty branch. A non-pass-heading doc yields no

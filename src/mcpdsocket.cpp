@@ -38,9 +38,9 @@ long socketPid(const QString &path) {
 
 }  // namespace
 
-// lstat, never stat: /tmp is world-writable, so another uid can plant a
-// symlink at an ants-terminal-mcp-<pid> name pointing at a socket this
-// user owns, and stat would follow it and pass both checks.
+// lstat, never stat: a symlink at this path could point at a socket this user
+// owns, and stat would follow it and pass both checks. The runtime directory
+// is private (ANTS-5587), so this is the second guard, not the only one.
 bool socketOwnedBy(const QString &path, uid_t expectedUid) {
     struct stat st{};
     if (::lstat(QFile::encodeName(path).constData(), &st) != 0) return false;

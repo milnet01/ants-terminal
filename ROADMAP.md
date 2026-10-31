@@ -96021,7 +96021,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6127] **Readability fixes, mcp-transport lane: src/mcpdmain.cpp, src/mcpdsocket.cpp, src/mcpdversion.h, src/remotecontrol.cpp, src/remotecontrol.h, src/remotecontrol_internal.h ….**
+- ✅ [ANTS-6127] **Readability fixes, mcp-transport lane: src/mcpdmain.cpp, src/mcpdsocket.cpp, src/mcpdversion.h, src/remotecontrol.cpp, src/remotecontrol.h, src/remotecontrol_internal.h ….**
   Findings of the 2026-10-22 readability review (src run), lane mcp-transport:
   1 high, 8 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/18-mcp-transport.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -96044,6 +96044,15 @@ worked after these.
   names its constants; F10 three remotecontrol.h docs moved onto their
   declarations. F7's comment now says C0 and DEL; keeping C1 is queued
   as ANTS-6233. Queued: F2 ANTS-6231, F3 ANTS-6232. LOWs remain.
+  2026-10-31 LOWs fixed: kIdSniffBullets replaces three kSniffCap
+  copies; stale line-number pointers gone (also one in the query verb);
+  remotecontrol_internal.h leads with its rules, split history left to
+  the ANTS-3833 spec, duplicate include removed; lstat reason,
+  queryVersion and resolveRootCanonical comments corrected;
+  kMaxRequestBytes at file scope and both size messages built from their
+  constants (same text); stdin handling pulled out of main into
+  RequestLineFramer. Suite 5962/5962. No CHANGELOG entry: readability
+  work, no change a user sees. ANTS-6231, 6232 and 6233 stay queued.
   **Layman:** Tidy the connection Claude Code sessions use so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

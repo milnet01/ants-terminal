@@ -104,7 +104,7 @@ void Forwarder::forward(const QByteArray &requestLine, ReplyFn onReply,
     connect(sock, &QLocalSocket::readyRead, sock, [sock, st, finish] {
         st->buf += sock->readAll();
         if (st->buf.size() > kMaxReplyBytes) {
-            finish(false, noTerminalEnvelope(QStringLiteral("reply exceeded 10 MiB")));
+            finish(false, noTerminalEnvelope(QStringLiteral("reply exceeded %1 MiB").arg(kMaxReplyBytes / (1024 * 1024))));
             return;
         }
         // ANTS-1769 — '\n' ends a reply; compact JSON carries no raw newline.

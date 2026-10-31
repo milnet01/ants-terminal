@@ -1439,7 +1439,7 @@ private:
     // tests/features/roadmap_convert/spec.md.
     QJsonDocument cmdRoadmapLogConvert(const QJsonObject &req);
     // ANTS-1879 INV-10 — shared bullet-formatting helper extracted from
-    // cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
+    // cmdRoadmapLogAppend so cmdRoadmapLogAppendBatch
     // can format each bullet through the same code path. scrubbedNames
     // is an out-param fed by rcScrubLeakedToolXml.
     QString formatRoadmapBullet(const QJsonObject &bulletReq,
