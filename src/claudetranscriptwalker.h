@@ -92,8 +92,14 @@ inline bool canResume(const QString &path, const Cursor &cur) {
 // the cursor and its own accumulator: this function walks from the beginning
 // whenever the cursor is not primed, and a stale offset it was handed anyway
 // would resume into the wrong file.
+//
+// ANTS-6321 — every line of a helper agent's own transcript carries
+// isSidechain, so a caller walking one of those files passes Keep.
+enum class Sidechains { Skip, Keep };
+
 template <typename Handler>
-void walkFrom(const QString &path, Cursor &cur, Handler &&handler) {
+void walkFrom(const QString &path, Cursor &cur, Handler &&handler,
+              Sidechains sidechains = Sidechains::Skip) {
     QFile file(path);
     if (path.isEmpty() || !file.open(QIODevice::ReadOnly)) return;
 
@@ -128,7 +134,8 @@ void walkFrom(const QString &path, Cursor &cur, Handler &&handler) {
         if (!doc.isObject()) continue;
         const QJsonObject ev = doc.object();
 
-        if (ev.value(QStringLiteral("isSidechain")).toBool()) continue;
+        if (sidechains == Sidechains::Skip
+            && ev.value(QStringLiteral("isSidechain")).toBool()) continue;
 
         const qint64 evMs =
             parseIsoMs(ev.value(QStringLiteral("timestamp")).toString());

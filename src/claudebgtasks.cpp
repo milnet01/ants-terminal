@@ -220,7 +220,8 @@ void ClaudeBgTaskTracker::poll() {
     // misses a same-millisecond append; size catches it).
     const qint64 mtimeMs   = fi.lastModified().toMSecsSinceEpoch();
     const qint64 sizeBytes = fi.size();
-    if (mtimeMs == m_lastRescanMtimeMs && sizeBytes == m_lastRescanSizeBytes)
+    if (mtimeMs == m_lastRescanMtimeMs && sizeBytes == m_lastRescanSizeBytes
+        && !walkHelperTranscripts(m_transcriptPath, m_acc))
         return;
     rescan();
 }
@@ -537,7 +538,29 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseIncremental(
         ClaudeBgTaskAccum &acc, qint64 processStartMs) {
     ClaudeTranscript::walkFrom(path, cursor,
         [&acc](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); });
+    walkHelperTranscripts(path, acc);
     return finalize(acc, processStartMs);
+}
+
+// ANTS-6321 — one accumulator holds both sides, as a shell's end can be
+// recorded in either transcript, and before its start is read (ANTS-6307).
+bool ClaudeBgTaskTracker::walkHelperTranscripts(const QString &path, ClaudeBgTaskAccum &acc) {
+    if (path.isEmpty()) return false;
+    const QFileInfo session(path);
+    const QFileInfoList helpers =
+        QDir(session.dir().filePath(session.completeBaseName() + QStringLiteral("/subagents")))
+            .entryInfoList({QStringLiteral("agent-*.jsonl")}, QDir::Files);
+    bool read = false;
+    for (const QFileInfo &helper : helpers) {
+        ClaudeTranscript::Cursor &cursor = acc.helperCursors[helper.filePath()];
+        if (cursor.primed && helper.size() == cursor.offset) continue;
+        if (!ClaudeTranscript::canResume(helper.filePath(), cursor)) cursor = {};
+        ClaudeTranscript::walkFrom(helper.filePath(), cursor,
+            [&acc](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); },
+            ClaudeTranscript::Sidechains::Keep);
+        read = true;
+    }
+    return read;
 }
 
 QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseTranscript(const QString &path) {

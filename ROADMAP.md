@@ -69502,11 +69502,19 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-10-29.
   Lanes: claude-integration.
 
-- 📋 [ANTS-6321] **Status bar counts background work a helper agent started.**
+- ✅ [ANTS-6321] **Status bar counts background work a helper agent started.**
   Seen on the demoreel tab, 2026-10-30. A helper started a shell, ended its turn, and the main transcript recorded the helper as completed, so the count fell to zero while Claude Code's footer still showed 1 shell and 1 agent.
   Located, not yet proven by a test: ClaudeBgTaskTracker (src/claudebgtasks.cpp, poll and setTranscriptPath) follows one transcript. A helper's shell is recorded only in <session>/subagents/agent-<id>.jsonl, which the tracker never reads. sessioncostverb.cpp already finds those files.
   Evidence: demoreel transcript 5fc044b9, helper a1c59ad62479d320f, shell bmm9vec7y started 18:09:02 UTC, helper completed 18:09:06 UTC.
   Test first: a main transcript with the helper completed, plus a helper transcript holding an unfinished shell, should count one running task; today it counts none. ANTS-5773's spec holds no invariant for this, so add one. Hot reload: needs a terminal relaunch, as the tracker runs inside the terminal.
+  2026-10-31: fixed. Cause proven red-first: nothing read helper
+  transcripts, and walkFrom skips their isSidechain lines.
+  parseIncremental and both 2 s polls now fold in
+  <session>/subagents/agent-*.jsonl. ANTS-5773 INV-13, INV-14. First
+  parse of the largest session on this machine (helper files capped at
+  16 MiB each) measured 621 ms on 2026-10-31, once per tracker. Reaches
+  a running terminal on its next relaunch.
+  Spec: docs/specs/ANTS-5773-idle-means-nothing-pending.md § 2.7.
   **Layman:** The status bar says "Claude: idle" while a helper's background job is still running; it should say it is waiting.
   Kind: fix.
   Source: user-report-2026-10-30.

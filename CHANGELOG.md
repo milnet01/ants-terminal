@@ -12,6 +12,10 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The status bar and tab dot say "waiting" while a helper agent's background shell runs, including after the helper has finished** (ANTS-6321)
+
 ## [0.7.115] - 2026-10-30
 
 **Theme:** The welcome window can install Claude Code on a fresh computer; the

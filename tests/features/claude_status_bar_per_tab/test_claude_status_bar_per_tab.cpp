@@ -13,14 +13,20 @@
 
 #include <gtest/gtest.h>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
 #include <QJsonObject>
+#include <QProcess>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QString>
 #include <QStringLiteral>
+#include <QThread>
 
 #include <cstdio>
+#include <unistd.h>
 
 namespace {
 
@@ -263,4 +269,69 @@ TEST(ClaudeStatusBarPerTab, Ants5773UnfocusedTabCountsItsOwnTasks) {
     EXPECT_EQ(focused.backgroundShells, 0);
     EXPECT_EQ(claudestate::display(claudestate::fromShell(focused)),
               claudestate::Display::Idle);
+}
+
+// ANTS-5773 INV-14 — the tab's own poll picks up a helper's shell while the
+// main transcript is silent. pollAllShells needs a real Claude child, or it
+// reads the tab as NotRunning, so a sleep runs under the name "claude".
+TEST(ClaudeStatusBarPerTab, Ants6321TabPollCountsHelperShell) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString fakeClaude = dir.filePath(QStringLiteral("claude"));
+    ASSERT_TRUE(QFile::link(QStandardPaths::findExecutable(QStringLiteral("sleep")), fakeClaude));
+    QProcess proc;
+    proc.start(fakeClaude, {QStringLiteral("30")});
+    ASSERT_TRUE(proc.waitForStarted(3000));
+    const QString cmdline = QStringLiteral("/proc/%1/cmdline").arg(proc.processId());
+    for (int i = 0; i < 200; ++i) {
+        QFile f(cmdline);
+        if (f.open(QIODevice::ReadOnly) && f.readAll().contains("claude")) break;
+        QThread::msleep(10);
+    }
+
+    const QString main = dir.filePath(QStringLiteral("s.jsonl"));
+    {
+        QFile f(main);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(R"({"type":"assistant","timestamp":"2026-10-30T18:00:00.000Z","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"Done."}]}})" "\n");
+    }
+    ClaudeTabTracker tracker;
+    const pid_t shell = ::getpid();
+    tracker.forceRefreshForTest(shell, main);
+    const auto poll = [&tracker] {
+        ASSERT_TRUE(QMetaObject::invokeMethod(&tracker, "pollAllShells"));
+    };
+    poll();  // binds the fake Claude and its start time
+    ASSERT_EQ(tracker.shellState(shell).backgroundShells, 0);
+    ASSERT_EQ(claudestate::display(claudestate::fromShell(tracker.shellState(shell))),
+              claudestate::Display::Idle);
+
+    const QString out = dir.filePath(QStringLiteral("b.output"));
+    {
+        QFile f(out);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("x\n");
+    }
+    // After the fake Claude started, or the process-start rule retires it.
+    const QByteArray ts = QDateTime::currentDateTimeUtc().addSecs(60)
+                              .toString(Qt::ISODateWithMs).toUtf8();
+    ASSERT_TRUE(QDir(dir.path()).mkpath(QStringLiteral("s/subagents")));
+    QFile helper(dir.filePath(QStringLiteral("s/subagents/agent-ahelper.jsonl")));
+    ASSERT_TRUE(helper.open(QIODevice::WriteOnly));
+    helper.write(R"({"isSidechain":true,"type":"assistant","timestamp":")" + ts
+                 + R"(","message":{"content":[{"type":"tool_use","name":"Bash","id":"toolu_b","input":{"command":"sleep 1000"}}]}})" "\n"
+                 R"({"isSidechain":true,"type":"user","timestamp":")" + ts
+                 + R"(","toolUseResult":{"backgroundTaskId":"b"},"message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_b","content":"Command running in background with ID: b. Output is being written to: )"
+                 + out.toUtf8() + R"(. You will be notified when it completes."}]}})" "\n");
+    helper.flush();
+
+    QSignalSpy spy(&tracker, &ClaudeTabTracker::shellStateChanged);
+    poll();
+    EXPECT_EQ(tracker.shellState(shell).backgroundShells, 1);
+    EXPECT_EQ(claudestate::display(claudestate::fromShell(tracker.shellState(shell))),
+              claudestate::Display::Background);
+    EXPECT_EQ(spy.count(), 1) << "the tab dot and status bar repaint on this signal";
+
+    proc.kill();
+    proc.waitForFinished(3000);
 }

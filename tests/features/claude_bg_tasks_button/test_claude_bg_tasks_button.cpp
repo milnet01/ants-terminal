@@ -15,6 +15,7 @@
 #include "claudebgtasksdialog.h"
 #include <QApplication>
 #include <QDateTime>
+#include <QDir>
 #include <QEvent>
 #include <QFile>
 #include <QFileInfo>
@@ -1049,4 +1050,159 @@ TEST(ClaudeBgTasksButton, Ants5773ProcessStartRetiresOldTasks) {
     EXPECT_EQ(tracker.runningCount(), 2);
     tracker.setProcessStartMs(start);
     EXPECT_EQ(tracker.runningCount(), 1) << "the setter re-applies the rule";
+}
+
+// ANTS-6321 — a helper's own transcript, <session>/subagents/agent-<id>.jsonl.
+// Fixture shapes are copied from a real 2026-10-30 session. Every line of a
+// helper's file carries isSidechain.
+
+namespace {
+
+QJsonObject helperLine(QJsonObject o) {
+    o.insert("isSidechain", true);
+    o.insert("agentId", "ahelper");
+    return o;
+}
+
+QList<QJsonObject> helperShell(const QString &ts, const QString &id, const QString &out) {
+    const QString tu = QStringLiteral("toolu_") + id;
+    return {
+        helperLine(assistantToolUse(ts, "Bash", tu, QJsonObject{{"command", "cc-job wait gate"},
+                                                                {"run_in_background", true}})),
+        helperLine(userToolResult(ts, tu, QJsonObject{{"backgroundTaskId", id}},
+                                  shellResultText(id, out))),
+    };
+}
+
+// The main transcript of a session whose helper has already completed.
+QList<QJsonObject> helperCompleted(const QString &outputFile) {
+    return {
+        assistantToolUse("2026-10-30T18:00:00.000Z", "Agent", "toolu_agent",
+                         QJsonObject{{"description", "Fix findings"}}),
+        userToolResult("2026-10-30T18:00:01.000Z", "toolu_agent",
+                       QJsonObject{{"status", "async_launched"}, {"agentId", "ahelper"},
+                                   {"outputFile", outputFile}},
+                       QStringLiteral("Async agent launched successfully.")),
+        queueNotification("2026-10-30T18:09:06.000Z", "ahelper", "completed"),
+    };
+}
+
+QString helperFile(const QTemporaryDir &dir, const QString &session, const QString &agent) {
+    const QString folder = dir.filePath(session + QStringLiteral("/subagents"));
+    QDir().mkpath(folder);
+    return folder + QStringLiteral("/agent-") + agent + QStringLiteral(".jsonl");
+}
+
+void appendLines(const QString &path, const QList<QJsonObject> &events) {
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Append));
+    for (const QJsonObject &e : events) f.write(jsonLine(e).toUtf8());
+}
+
+}  // namespace
+
+// ANTS-5773 INV-13 — the shell outlives the helper that started it, and the
+// main transcript names neither its start nor, yet, its end.
+TEST(ClaudeBgTasksButton, Ants6321HelperShellCounts) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("bmm9vec7y.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, helperCompleted(dir.filePath(QStringLiteral("ahelper.output"))));
+    writeLines(helperFile(dir, "s", "ahelper"),
+               helperShell("2026-10-30T18:09:02.000Z", "bmm9vec7y", out));
+
+    const auto tasks = ClaudeBgTaskTracker::parseTranscript(tp);
+    const ClaudeBgPendingCounts counts = ClaudeBgTaskTracker::pendingCounts(tasks);
+    EXPECT_EQ(counts.shells, 1) << "the helper's unfinished shell is running";
+    EXPECT_EQ(counts.agents, 0) << "the helper itself has completed";
+}
+
+// INV-13 — only this session's helpers, and only the helper's own file: a
+// sidechain line in the main transcript is still skipped.
+TEST(ClaudeBgTasksButton, Ants6321OnlyOwnSessionsHelpersCount) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("x.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, helperShell("2026-10-30T18:09:02.000Z", "binline", out));
+    writeLines(helperFile(dir, "other", "ahelper"),
+               helperShell("2026-10-30T18:09:02.000Z", "bother", out));
+
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).shells, 0);
+}
+
+// INV-13 — either transcript's notice ends the shell, in either order. The
+// real session recorded it in both.
+TEST(ClaudeBgTasksButton, Ants6321HelperShellEnds) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("b.output"));
+    touchFile(out);
+    const QString ahelper = dir.filePath(QStringLiteral("ahelper.output"));
+    const auto shell = helperShell("2026-10-30T18:09:02.000Z", "b", out);
+
+    const QString endInHelper = dir.filePath(QStringLiteral("a.jsonl"));
+    writeLines(endInHelper, helperCompleted(ahelper));
+    writeLines(helperFile(dir, "a", "ahelper"),
+               shell + QList<QJsonObject>{helperLine(
+                   userNotification("2026-10-30T18:31:02.000Z", "b", "failed"))});
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(
+                  ClaudeBgTaskTracker::parseTranscript(endInHelper)).shells, 0);
+
+    const QString endInMain = dir.filePath(QStringLiteral("m.jsonl"));
+    writeLines(endInMain, helperCompleted(ahelper)
+        + QList<QJsonObject>{queueNotification("2026-10-30T18:31:01.000Z", "b", "failed")});
+    writeLines(helperFile(dir, "m", "ahelper"), shell);
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(
+                  ClaudeBgTaskTracker::parseTranscript(endInMain)).shells, 0)
+        << "the main transcript is walked first, so its notice comes before the start";
+}
+
+// INV-13 — ANTS-5773's process-start rule covers a helper's task too.
+TEST(ClaudeBgTasksButton, Ants6321ProcessStartRetiresHelperShell) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("b.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, {});
+    writeLines(helperFile(dir, "s", "ahelper"),
+               helperShell("2026-10-30T18:09:02.000Z", "b", out));
+    const qint64 start = QDateTime::fromString("2026-10-30T19:00:00.000Z", Qt::ISODateWithMs)
+                             .toMSecsSinceEpoch();
+
+    ClaudeTranscript::Cursor cursor;
+    ClaudeBgTaskAccum acc;
+    const auto tasks = ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc, start);
+    ASSERT_EQ(tasks.size(), 1);
+    EXPECT_TRUE(tasks[0].finished);
+}
+
+// INV-14 — poll() notices a helper's write while the main transcript is
+// silent: a new helper file, an append to it, and no double count.
+TEST(ClaudeBgTasksButton, Ants6321PollReadsHelperWithoutMainWrite) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("b.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, helperCompleted(dir.filePath(QStringLiteral("ahelper.output"))));
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(tracker.runningCount(), 0);
+
+    const QString helper = helperFile(dir, "s", "ahelper");
+    writeLines(helper, helperShell("2026-10-30T18:09:02.000Z", "b", out));
+    tracker.poll();
+    EXPECT_EQ(tracker.runningCount(), 1) << "a new helper file is read";
+    tracker.poll();
+    EXPECT_EQ(tracker.runningCount(), 1) << "a second poll does not double count";
+
+    appendLines(helper, {helperLine(userNotification("2026-10-30T18:31:02.000Z", "b", "failed"))});
+    tracker.poll();
+    EXPECT_EQ(tracker.runningCount(), 0) << "an append to a known helper file is read";
 }

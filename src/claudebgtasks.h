@@ -66,13 +66,16 @@ struct ClaudeBgTaskAccum {
     // ANTS-6307 — ids ended before the tool_result that names them. A job
     // that ends at once has its notice written ahead of its launch result.
     QSet<QString>               endedBeforeStart;
+    // ANTS-6321 — helper transcript path → how far it has been read.
+    QHash<QString, ClaudeTranscript::Cursor> helperCursors;
 };
 
 // Per-session tracker for Claude Code background tasks.
 //
 // Watches its transcript through the shared ClaudeTranscriptWatch and
-// re-parses on change, debounced (kRescanDebounceMs). Emits `tasksChanged()` when the running-count or the task
-// list shape changes.
+// re-parses on change, debounced (kRescanDebounceMs). poll() notices a helper
+// agent's transcript moving (ANTS-6321). Emits `tasksChanged()` when the
+// running-count or the task list shape changes.
 
 class ClaudeBgTaskTracker : public QObject {
     Q_OBJECT
@@ -106,9 +109,15 @@ public:
     // ANTS-5773 — a task whose startedAt precedes processStartMs is not
     // running: it belonged to an earlier Claude process. 0 = unknown; the
     // rule is skipped.
+    //
+    // ANTS-6321 — also folds in the session's helper transcripts.
     static QList<ClaudeBackgroundTask> parseIncremental(
         const QString &path, ClaudeTranscript::Cursor &cursor,
         ClaudeBgTaskAccum &acc, qint64 processStartMs = 0);
+    // ANTS-6321 — fold what `path`'s helpers, <session>/subagents/agent-*.jsonl,
+    // have appended into `acc`. True if any file was read. A helper can write
+    // while the main transcript is silent, so the 2 s polls call this too.
+    static bool walkHelperTranscripts(const QString &path, ClaudeBgTaskAccum &acc);
     // The end-of-parse filters over an accumulator, re-runnable without a
     // walk; applies the processStartMs rule above.
     static QList<ClaudeBackgroundTask> finalize(const ClaudeBgTaskAccum &acc,

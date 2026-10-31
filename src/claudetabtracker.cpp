@@ -144,10 +144,13 @@ void ClaudeTabTracker::pollAllShells() {
         const ShellState before = it->state;
         detectClaudeChild(*it);
         // ANTS-5773 — re-run the filters so a deleted output file is
-        // noticed without a transcript write.
-        if (!it->transcriptPath.isEmpty())
+        // noticed without a transcript write. ANTS-6321 — so is a helper's
+        // write, which the watcher on the main transcript cannot see.
+        if (!it->transcriptPath.isEmpty()) {
+            ClaudeBgTaskTracker::walkHelperTranscripts(it->transcriptPath, it->bgAcc);
             setBackgroundCounts(*it, ClaudeBgTaskTracker::finalize(
                                          it->bgAcc, it->state.claudeStartMs));
+        }
         maybeEmit(pid, before);
     }
 }

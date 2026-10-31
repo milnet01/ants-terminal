@@ -101,6 +101,12 @@ enum class Display { /* existing values */ Background };
 - **`claude_state_dot_palette` spec** — the table gains a Background row (pink, `#F07AB4`). Its INV-2 and INV-3 lists and the "all eight" wording in invariant 8 become nine. Its precedence (invariant 6) inserts Background directly before Idle.
 - **`claude_bg_tasks_button` spec** — INV-1 recognises § 2.1's start records rather than only `run_in_background`. INV-12's condition (b), the 60 s staleness window, is withdrawn. INV-13's un-latch then applies only to a task finished by a missing file. Its test `SweepLivenessUnlatchesResumedTask` removes and recreates the output file instead of ageing it, and INV-12's `lastModified` source-grep is dropped.
 
+### 2.7 Helpers' transcripts (ANTS-6321)
+
+A helper agent writes its own records to `<session>/subagents/agent-<id>.jsonl`, and a shell it starts can outlive it. `ClaudeBgTaskTracker::parseIncremental` folds those files into the session's accumulator, under § 2.1's rules and § 2.2's process-start rule. Every line of such a file carries `isSidechain`, so `walkFrom` takes `Sidechains::Keep` for them; a sidechain line in the main transcript is still skipped. `ClaudeBgTaskAccum::helperCursors` holds one cursor per file.
+
+A helper can write while the main transcript is silent, so `walkHelperTranscripts` also runs from `ClaudeBgTaskTracker::poll` and `ClaudeTabTracker::pollAllShells`.
+
 ## 3. Invariants
 
 - **INV-1** — `display()` returns `Background` iff `base == Idle`, `backgroundPending > 0`, and none of awaiting input, planning or auditing is set. With `backgroundPending == 0` it returns `Idle` exactly as today. No other base changes with the count.
@@ -139,6 +145,12 @@ enum class Display { /* existing values */ Background };
 - **INV-12** — `ClaudeState` has no new value, so `tab_list`'s `claude_state` still reads `idle` for a waiting tab, and `ModelAutoSwitch` and `idleSinceMs` see Idle as before.
   *Test:* source-grep: `enum class ClaudeState` in `src/claudeintegration.h` still lists exactly NotRunning, Idle, Thinking, ToolUse, Compacting.
   *Breaks when:* a value is added for this state.
+- **INV-13** — A helper's transcript counts as part of its session: its unfinished shell is pending after the helper has completed. A notice in either transcript ends the shell, in either order. Only `<session>/subagents/` is read, and a sidechain line in the main transcript is still skipped.
+  *Test:* `tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp`: `Ants6321HelperShellCounts`, `Ants6321HelperShellEnds`, `Ants6321OnlyOwnSessionsHelpersCount`, `Ants6321ProcessStartRetiresHelperShell`.
+  *Breaks when:* the walk skips sidechain lines in a helper's file, or stops skipping them in the main transcript.
+- **INV-14** — A helper's write reaches both counts with no write to the main transcript: within one `ClaudeBgTaskTracker::poll` and one `ClaudeTabTracker::pollAllShells`, with no double count on the next poll.
+  *Test:* same file, `Ants6321PollReadsHelperWithoutMainWrite`; `tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp`, `Ants6321TabPollCountsHelperShell`.
+  *Breaks when:* either poll returns early on an unchanged main transcript, or an append to a known helper file goes unread.
 
 ## 4. Failure modes
 
@@ -146,17 +158,16 @@ enum class Display { /* existing values */ Background };
 - **A status this spec does not know.** Any non-empty `<status>` ends a task. A future non-final status would end it early, and the tab shows idle: today's behaviour, never a stuck pink.
 - **A task started before the transcript's walked window.** `ClaudeTranscript::walkFrom` reads at most the last 16 MiB on a cold start. Such a task is not counted, and the tab shows idle, as today.
 - **`/proc` unreadable.** `processStartTimeMs` returns 0, INV-8's rule is skipped, and phantoms from an earlier Claude process may count until their output files go.
-- **Subagents' own background tasks.** `walkFrom` skips `isSidechain` events, so they are not counted.
+- **A helper's shell with no end record.** It stays pending until its output file goes or Claude restarts, like any other task. Checked 2026-10-31 over the last 14 days of `~/.claude/projects/*/*/subagents`: every helper shell had an end record.
 
 ## 5. RAM / build cost
 
-Per tracked shell: one cursor, one accumulator holding that session's background tasks, plus the in-flight `tool_use` map, which empties as results arrive. No new build target. The 2 s poll adds one `stat()` per pending task.
+Per tracked shell: one cursor, one accumulator holding that session's background tasks, plus the in-flight `tool_use` map, which empties as results arrive. No new build target. The 2 s poll adds one `stat()` per pending task, plus one directory listing per tracked shell and one `stat()` per helper transcript. A session's first parse also reads up to 16 MiB of each helper transcript on the GUI thread.
 
 ## 6. Out of scope
 
 - Scheduled and recurring jobs (`CronCreate`) — not counted at all (user, 2026-10-19: they can run for days, and Claude is not waiting on them).
 - A `background_tasks` field on `tab_list` — deferred; not yet queued.
-- Tasks inside a subagent's own transcript — not counted at all, because `walkFrom` skips sidechain events.
 
 ## 7. Tests
 
@@ -181,13 +192,16 @@ Rejected:
 - **Reading Claude Code's footer ("1 shell · 1 agent") from the screen.** It is drawn only while visible, its wording is not a contract, and an unfocused or scrolled tab has none.
 - **Keeping the 60 s silence rule with a longer window.** Any window misreads a long quiet job. The process-start rule removes the phantoms it existed for.
 
+User report, 2026-10-30 (ANTS-6321): "Claude: idle" with a helper's shell still running. This reverses the spec's first scope, which left helpers' transcripts uncounted.
+
 ## 10. What checks this
 
 | Rule | What catches a breach |
 |------|----------------------|
 | INV-1 | `test_claude_state_resolver.cpp` |
-| INV-2 – INV-8 | `test_claude_bg_tasks_button.cpp` |
+| INV-2 – INV-8, INV-13 | `test_claude_bg_tasks_button.cpp` |
 | INV-9 | `test_claude_status_bar_per_tab.cpp` |
+| INV-14 | `test_claude_bg_tasks_button.cpp`, `test_claude_status_bar_per_tab.cpp` |
 | INV-10 | `test_claude_state_dot_palette.cpp` |
 | INV-11 | `test_claude_status.cpp` |
 | INV-12 | source-grep in `test_claude_state_resolver.cpp` |
