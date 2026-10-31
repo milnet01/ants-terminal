@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6332 -->
+<!-- ants-roadmap-id-high-water: ANTS=6333 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88996,6 +88996,11 @@ measured Ants adding about 5,250 tokens to every request.
   container leg are left out of the push gate; the build-asan leg needs a warm tree.
   No full run has been made since these fixes. Compare results with `gh workflow run
   ci.yml`, which also runs the sanitizer job that a push skips.
+  2026-10-31: GitHub run 41191666322 on 8f7c2220 passed all four jobs,
+  ASan included (31 min). Local differences found so far: test_claude's
+  listing overran 60 s (now 300 s), and Qt 6.12's first hash leaves
+  OpenSSL's one-shot 240 bytes (suppressed, CI's Qt 6.4 does not reach
+  it). Both are this machine only.
   **Layman:** Run every check both locally and on GitHub once, to confirm they give the same answer.
   Kind: test.
   Source: in-session-2026-10-31.
@@ -89011,6 +89016,19 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: feedback-retroarch-2026-10-31.
   Lanes: mcp.
+
+- 📋 [ANTS-6333] **McpdCall.Inv2ExitCodesFollowSection2Point2 reported ants-mcpd --call did not exit, once, on a heavily loaded machine.**
+  build-asan, 2026-10-31, load about 21, ctest -j2: test_mcpd_call.cpp's r.finished was
+  false after about 6 s, with empty stdout and stderr, on 'clean fixture, --exit-code'.
+  It passed on rerun at load 10. StandaloneMcpServer.OversizedStdinRefusalCarriesTheLeadingId and
+  TrailingId failed the same way: test_timeout at 5 s, and both passed on rerun without the
+  OpenSSL suppression. The other 21 failures that run were the OpenSSL leak (ANTS-6331); these
+  three printed none. Look at the wait in the
+  test's helper: other waits in the suite are hang detectors at 60 s or more.
+  **Layman:** A test gave a helper program too little time to finish on a very busy machine, and failed once.
+  Kind: fix.
+  Source: in-session-2026-10-31.
+  Lanes: ci.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

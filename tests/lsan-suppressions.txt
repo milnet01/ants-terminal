@@ -34,3 +34,13 @@ leak:libpxbackend
 leak:libproxy
 leak:px_proxy_factory_new
 leak:px_manager_new_with_options
+
+# ----------------------------------------------------------------------
+# OpenSSL's one-shot config load (240 bytes). Qt 6.12's QCryptographicHash
+# loads an OpenSSL provider on first use, which runs OPENSSL_init_crypto ->
+# CONF_modules_load once per process; the allocation lives until exit. Seen
+# with Qt 6.12 and OpenSSL 3.5.3 (ANTS-6331); Qt 6.4 on CI does not reach it.
+# libcrypto has no frame pointers, so LSan's fast unwinder stops at this
+# frame and CONF_modules_load cannot be named. This project calls no OpenSSL
+# function itself.
+leak:CRYPTO_malloc
