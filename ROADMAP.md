@@ -88989,7 +88989,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6331] **Run tools/ci-parity.sh --full and a dispatched CI run to prove local and GitHub CI agree on today's code.**
+- ✅ [ANTS-6331] **Run tools/ci-parity.sh --full and a dispatched CI run to prove local and GitHub CI agree on today's code.**
   User request 2026-10-31. Audit so far: ci-parity executes ci.yml's own steps and
   refuses an unclaimed job, so the two cannot drift by copy. Known differences: the
   perf step is GitHub's alone (user ruling 2026-09-26, ANTS-5375); cppcheck and a cold
@@ -89001,6 +89001,12 @@ measured Ants adding about 5,250 tokens to every request.
   listing overran 60 s (now 300 s), and Qt 6.12's first hash leaves
   OpenSSL's one-shot 240 bytes (suppressed, CI's Qt 6.4 does not reach
   it). Both are this machine only.
+  2026-10-31: they agree. Local: build-test, Qt 6.2, cppcheck and CI's
+  ubuntu:24.04 image pass (5971 of 5971, perf 18 of 18). build-asan:
+  5947 passed in the job, and the 24 failures passed by name after the
+  fixes; its whole job was not rerun. The image's perf failure was load:
+  Inv3Latency 68 ms at load 23, 26.5 ms at load 9, budget untouched.
+  Short waits under load: ANTS-6333.
   **Layman:** Run every check both locally and on GitHub once, to confirm they give the same answer.
   Kind: test.
   Source: in-session-2026-10-31.
