@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The push gate now records a pass after running its sanitizer leg, instead of reporting steps it never skipped.** (ANTS-6336)
+
 - **Test runs on a busy machine now give a large test program up to five minutes to list its tests, so a slow disk no longer fails the run.** (ANTS-6331)
 
 - **The status bar keeps counting a helper after it pauses on its own background work, until the helper really ends.** (ANTS-6326)

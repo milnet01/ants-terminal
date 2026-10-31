@@ -56,6 +56,9 @@ ACTIONS = {
 # has changed a test outcome (ANTS-2120). No display: the runner has none.
 # No BASH_ENV: a non-interactive bash sources it whatever --noprofile/--norc
 # say, and the runner leaves it unset (found by games-hub, relayed by UT_Ants).
+# No ANTS_GATE_SKIPPED: it is the push hook's record of skipped legs, and suite
+# fixtures that run tools/local-ci.sh without podman wrote false entries to it,
+# so a green gate left no passed record.
 RUNNER_ENV = {
     "CI": "true",
     "GITHUB_ACTIONS": "true",
@@ -63,7 +66,7 @@ RUNNER_ENV = {
     "RUNNER_OS": "Linux",
     "LC_ALL": os.environ.get("CI_PARITY_LOCALE", "C.UTF-8"),
 }
-RUNNER_UNSET = ("DISPLAY", "WAYLAND_DISPLAY", "BASH_ENV")
+RUNNER_UNSET = ("DISPLAY", "WAYLAND_DISPLAY", "BASH_ENV", "ANTS_GATE_SKIPPED")
 
 # Prepended to every step. The step budgets in ci.yml are sized for the
 # GitHub runner, and a `timeout` that fires here SIGTERMs ninja, which

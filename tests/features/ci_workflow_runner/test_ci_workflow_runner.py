@@ -101,6 +101,7 @@ jobs:
           test "$(basename "$PWD")" = tools
           test "$CI" = true && test "$LC_ALL" = C.UTF-8
           test -z "${DISPLAY:-}"
+          test -z "${ANTS_GATE_SKIPPED:-}"
           timeout 1s sleep 2
           echo MARK-ENV-OK
       - name: fails
@@ -120,10 +121,11 @@ with tempfile.TemporaryDirectory() as tmp:
     with open(benv, "w") as f:
         f.write("exit 7\n")
     os.environ["BASH_ENV"] = benv
+    os.environ["ANTS_GATE_SKIPPED"] = os.path.join(tmp, "skipped")
     rc, out = runner("run", "j", workflow=wf)
     check("MARK-ENV-OK" in out,
           "INV-3 workflow/job/step env incl. CCACHE_, cwd, CI/LC_ALL, "
-          "no DISPLAY, no BASH_ENV, timeout shim")
+          "no DISPLAY, no BASH_ENV, no ANTS_GATE_SKIPPED, timeout shim")
     check("MARK-SKIPPED-RAN" not in out, "INV-3 a step after a failure is skipped")
     check("MARK-ALWAYS-RAN" in out, "INV-3 an if: always() step still runs")
     check(rc != 0, "INV-3 a failing step fails the run")

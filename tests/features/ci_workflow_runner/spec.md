@@ -23,7 +23,7 @@ its own start-up check enforces at run time.
 the workflow's, the job's and the step's `env` apply, `CCACHE_*` included
 (ci.yml points them at its own `.ccache/`, so its cap bounds that cache and not
 the developer's); `working-directory` sets the cwd; `CI=true` and `LC_ALL=C.UTF-8` are
-set and `DISPLAY` and `BASH_ENV` are not; `timeout <duration> cmd` runs `cmd`; after a failing
+set and `DISPLAY`, `BASH_ENV` and `ANTS_GATE_SKIPPED` are not; `timeout <duration> cmd` runs `cmd`; after a failing
 step a later step runs only if it has `if: always()`; the run exits non-zero.
 
 **INV-4 — what has no local meaning is refused, not guessed.** Each of these

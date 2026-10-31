@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6335 -->
+<!-- ants-roadmap-id-high-water: ANTS=6336 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89064,6 +89064,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: investigate.
   Source: feedback-vestige-2026-10-31.
   Lanes: mcp.
+
+- ✅ [ANTS-6336] **A push whose gate ran the ASan leg wrote false skipped entries and left no passed record.**
+  Push of 67651c65, 2026-10-31: 'gate passed but skipped: build-test in CI's image (podman
+  or tools/qt62-guard.sh missing)', repeated. The ASan leg runs on this machine, so the hook's
+  ANTS_GATE_SKIPPED reached fixtures in the suite that run tools/local-ci.sh with no podman.
+  prepush_asan_gate and prepush_range wrote 14 entries when measured. tools/ci_workflow.py now
+  unsets it for every step, as it does DISPLAY and BASH_ENV. ci_workflow_runner INV-3 holds it.
+  **Layman:** The push check wrongly said it had skipped a step, so it would not remember that it had passed.
+  Kind: fix.
+  Source: in-session-2026-10-31.
+  Lanes: ci.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
