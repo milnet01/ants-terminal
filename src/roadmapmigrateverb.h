@@ -289,4 +289,8 @@ QString initNextStep();
 // because INV-1 keeps every production planFrom() call in this TU.
 RoadmapMigrate::MigrationPlan planPassText(const QString &path, const QString &markdown);
 
+// ANTS-5229 — the same for an ants-v1 fold-in block.
+RoadmapMigrate::MigrationPlan planFoldInText(const QString &path, const QString &markdown,
+                                             const RoadmapParse::IdFormat &fmt);
+
 }  // namespace RoadmapMigrateVerb

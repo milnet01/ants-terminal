@@ -5,6 +5,7 @@
 #include "roadmapclock.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapmigrateverb.h"  // INV-1 — every production planFrom() is there
 #include "roadmapparse.h"    // ANTS-5638 — isIdPrefix(), the prefix grammar
 #include "roadmaprender.h"
 #include "roadmapsource.h"   // ANTS-5087 — the migrated-project dispatch
@@ -922,16 +923,8 @@ std::optional<bool> insertThroughStore(const QString &projectPath, const QString
     if (anchor == sections->cend())
         return refuse(QStringLiteral("no section \"%1\"").arg(heading));
 
-    RoadmapMigrate::Source source;
-    source.path = liveRoadmap;
-    source.markdown = block;
-    source.format = QStringLiteral("ants-v1");
-    RoadmapMigrate::Discovery discovery;
-    discovery.sources = {source};
-    const auto row = store->readProject(*projectId, &err);
-    if (!row) return refuse(err);
-    const RoadmapMigrate::MigrationPlan plan = RoadmapMigrate::planFrom(
-        discovery, row->name, row->exportSlug, ProjectSettings::idFormatFor(root));
+    const RoadmapMigrate::MigrationPlan plan = RoadmapMigrateVerb::planFoldInText(
+        liveRoadmap, block, ProjectSettings::idFormatFor(root));
     // Every producer writes `###` (or no heading). A `##` would adopt the
     // subsections after it, so it refuses rather than re-parent them.
     for (const auto &s : plan.sections)

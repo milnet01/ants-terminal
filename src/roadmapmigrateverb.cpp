@@ -1347,3 +1347,14 @@ RoadmapMigrate::MigrationPlan RoadmapMigrateVerb::planPassText(const QString &pa
     disc.sources.append(src);
     return RoadmapMigrate::planFrom(disc, QString(), QString());
 }
+
+RoadmapMigrate::MigrationPlan RoadmapMigrateVerb::planFoldInText(
+    const QString &path, const QString &markdown, const RoadmapParse::IdFormat &fmt) {
+    RoadmapMigrate::Source src;
+    src.path     = path;
+    src.markdown = markdown;
+    src.format   = QStringLiteral("ants-v1");
+    RoadmapMigrate::Discovery disc;
+    disc.sources.append(src);
+    return RoadmapMigrate::planFrom(disc, QString(), QString(), fmt);
+}
