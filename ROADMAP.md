@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6336 -->
+<!-- ants-roadmap-id-high-water: ANTS=6337 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71297,7 +71297,7 @@ extends an existing item, that item carries it instead.
   Source: code-quality-review-2026-09-11 perf pass (lane audit-engine), split from ANTS-5085.
   Lanes: audit.
 
-- 📋 [ANTS-5229] **A GUI fold-in on a migrated project writes bullets the store never imported, and the next roadmap write refuses.**
+- ✅ [ANTS-5229] **A GUI fold-in on a migrated project writes bullets the store never imported, and the next roadmap write refuses.**
   RoadmapFoldIn::insertBlock splices a fold-in subsection straight into the
   roadmap file. On a MIGRATED project that file is a rendered output of the
   store, so those bullets exist in the file and in no store row.
@@ -71323,6 +71323,14 @@ extends an existing item, that item carries it instead.
   writes through the store, the same write sequence roadmap_log uses,
   and ROADMAP.md is re-rendered from it. Projects still served from
   markdown keep the current insertBlock path unchanged.
+  2026-10-31: fixed. Reproduced first: the next write returned
+  WouldDrop, and a prose-only fold-in was deleted by the next write
+  without a word. insertBlock now writes rows through commitAndRender on
+  a served project. A bullet with no Layman gets a fixed one, a decision
+  taken here since a tool writes the block. Reaches the terminal's
+  buttons on its next relaunch, and test_audit_fold_in on the next
+  ants-mcpd reconnect. Contract:
+  tests/features/roadmap_fold_in_store/spec.md.
   **Layman:** Folding audit or review findings into the roadmap from a window can jam every later roadmap edit on a project whose roadmap lives in the database.
   Kind: fix.
   Source: in-session-2026-09-18 (found while fixing ANTS-5087's allocator floor).
@@ -89075,6 +89083,16 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-10-31.
   Lanes: ci.
+
+- 📋 [ANTS-6337] **templateRoadmapFoldInBlock writes [ANTS-N] on every project, whatever that project's id prefix is.**
+  Read in src/auditengine.cpp, 2026-10-31, while fixing ANTS-5229: the bullet opens with a literal
+  "- 📋 [ANTS-" and takes only the number from allocateIds. allocateIds counts under the project's
+  own prefix, so a DEMO project's fold-in would hold ANTS-0012 from DEMO's counter. Not reproduced.
+  Check the indie-review and debt-sweep templates for the same literal.
+  **Layman:** Folding audit findings into another project's roadmap labels them with this project's prefix instead of its own.
+  Kind: fix.
+  Source: in-session-2026-10-31.
+  Lanes: roadmap.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

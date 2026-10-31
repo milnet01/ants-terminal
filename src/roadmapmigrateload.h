@@ -235,4 +235,11 @@ struct Options {
 [[nodiscard]] Outcome load(RoadmapStore &store, const RoadmapMigrate::MigrationPlan &plan,
                            const Options &opts);
 
+// The row a planned item becomes. The one field mapping, so an item written
+// outside a load (a pass-headings append, a fold-in) is the row a re-import
+// would write. An empty idOrigin means an allocated id.
+[[nodiscard]] RoadmapStore::ItemWrite itemWriteFrom(const RoadmapMigrate::PlannedItem &it,
+                                                    qint64 projectId, const QString &id,
+                                                    qint64 sectionId);
+
 }  // namespace RoadmapMigrateLoad

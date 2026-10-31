@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Folding audit or review findings into a database-backed roadmap now saves them in the database, so later roadmap edits keep working and nothing is lost.** (ANTS-5229)
+
 - **The push gate now records a pass after running its sanitizer leg, instead of reporting steps it never skipped.** (ANTS-6336)
 
 - **Test runs on a busy machine now give a large test program up to five minutes to list its tests, so a slow disk no longer fails the run.** (ANTS-6331)

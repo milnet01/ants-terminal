@@ -14,6 +14,7 @@
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the report reads "today" through the seam
 #include "roadmapwrite.h"   // ANTS-4462 — measureDrift, the read-side staleness check
 #include "passheadingwrite.h"   // ANTS-2126 — the pass-headings writer (moved from TU 2)
+#include "roadmapmigrateload.h"
 #include "roadmapmigrateverb.h" // ANTS-5641 — planPassText, so a store append matches a re-import
 #include "roadmapbackuphealth.h" // ANTS-5638 — the rebuild's snapshot folder
 #include "roadmaprender.h"       // ANTS-5638 — hasGeneratedNotice
@@ -505,23 +506,8 @@ QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
         }
         seen.insert(it.synthId);
 
-        // Loader::itemWriteFor's field mapping, so the row is the re-import's.
-        const RoadmapMigrate::PlannedItem &pi = plan.items.first();
-        RoadmapStore::ItemWrite w;
-        w.projectId  = projectId;
-        w.id         = it.synthId;
-        w.idOrigin   = pi.idOrigin.isEmpty() ? QStringLiteral("synthesised") : pi.idOrigin;
-        w.status     = pi.status;
-        w.headline   = pi.headline;
-        w.kind       = pi.kind;
-        w.source     = pi.source;
-        w.layman     = pi.layman;
-        w.body       = pi.body;
-        w.lanes      = pi.lanes;
-        w.evidence   = pi.evidence;
-        w.extras     = pi.extras;
-        w.provenance = pi.provenance;
-        w.sectionId  = *sectionId;
+        RoadmapStore::ItemWrite w = RoadmapMigrateLoad::itemWriteFrom(
+            plan.items.first(), projectId, it.synthId, *sectionId);
         // ANTS-4501 § 2.2 — dated at insert, as the ants-v1 store append does.
         w.created      = rlStampToday();
         w.lastModified = w.created;

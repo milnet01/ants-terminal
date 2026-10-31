@@ -976,27 +976,7 @@ bool Loader::allocateId(QString *allocated) {
 
 RoadmapStore::ItemWrite Loader::itemWriteFor(const PlannedItem &it, const QString &id,
                                              qint64 sectionId) {
-    RoadmapStore::ItemWrite w;
-    w.projectId = projectId;
-    w.id = id;
-    // An allocated id is neither parsed from source nor quarantined, and
-    // `id_origin` CHECKs those three values — so `synthesised` is the only one
-    // of them that is true of it. The fact § 2.6.1's re-match keys on is
-    // provenance.id == "migrated", which the plan already carries, not this.
-    w.idOrigin = it.idOrigin.isEmpty() ? QStringLiteral("synthesised") : it.idOrigin;
-    w.status = it.status;
-    w.headline = it.headline;
-    w.kind = it.kind;
-    w.source = it.source;
-    w.layman = it.layman;
-    w.body = it.body;
-    w.lanes = it.lanes;
-    w.evidence = it.evidence;
-    w.extras = it.extras;
-    w.provenance = it.provenance;
-    w.sectionId = sectionId;
-    w.position = it.position;
-    return w;
+    return RoadmapMigrateLoad::itemWriteFrom(it, projectId, id, sectionId);
 }
 
 bool Loader::updateMatched() {
@@ -1345,6 +1325,31 @@ void markUnresolvedLinks(const RoadmapStore &store, MigrationPlan &plan) {
 }  // namespace
 
 namespace RoadmapMigrateLoad {
+
+RoadmapStore::ItemWrite itemWriteFrom(const PlannedItem &it, qint64 projectId,
+                                      const QString &id, qint64 sectionId) {
+    RoadmapStore::ItemWrite w;
+    w.projectId = projectId;
+    w.id = id;
+    // An allocated id is neither parsed from source nor quarantined, and
+    // `id_origin` CHECKs those three values — so `synthesised` is the only one
+    // of them that is true of it. The fact § 2.6.1's re-match keys on is
+    // provenance.id == "migrated", which the plan already carries, not this.
+    w.idOrigin = it.idOrigin.isEmpty() ? QStringLiteral("synthesised") : it.idOrigin;
+    w.status = it.status;
+    w.headline = it.headline;
+    w.kind = it.kind;
+    w.source = it.source;
+    w.layman = it.layman;
+    w.body = it.body;
+    w.lanes = it.lanes;
+    w.evidence = it.evidence;
+    w.extras = it.extras;
+    w.provenance = it.provenance;
+    w.sectionId = sectionId;
+    w.position = it.position;
+    return w;
+}
 
 Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts) {
     Outcome out;

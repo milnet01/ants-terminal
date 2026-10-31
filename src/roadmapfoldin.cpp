@@ -1,9 +1,15 @@
 #include "roadmapfoldin.h"
 
 #include "markdownscan.h"
+#include "projectsettings.h"
+#include "roadmapclock.h"
+#include "roadmapmigrate.h"
+#include "roadmapmigrateload.h"
 #include "roadmapparse.h"    // ANTS-5638 — isIdPrefix(), the prefix grammar
+#include "roadmaprender.h"
 #include "roadmapsource.h"   // ANTS-5087 — the migrated-project dispatch
 #include "roadmapstore.h"
+#include "roadmapwrite.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -19,6 +25,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <utility>
 #include <fcntl.h>
 #include <sys/file.h>
 #include <unistd.h>
@@ -710,6 +717,238 @@ QString findActiveReleaseHeading(const QString &projectPath) {
     return firstShipped;
 }
 
+namespace {
+
+// ANTS-5229 INV-3 — the render refuses an open item with no Layman line, and a
+// block comes from a tool, so nobody wrote one.
+const char *const kFoldInLayman =
+    "An automated review flagged this for a closer look";  // the render adds the stop
+
+// A `## Title` or `### Title` line as the store holds it.
+struct HeadingLine {
+    int level = 0;
+    QString title;
+};
+
+HeadingLine parseHeadingLine(const QString &line) {
+    int level = 0;
+    while (level < line.size() && line.at(level) == QLatin1Char('#')) ++level;
+    return {level, line.mid(level).trimmed()};
+}
+
+// One fold-in's writes, inside commitAndRender()'s transaction.
+class StoreFoldIn {
+public:
+    StoreFoldIn(RoadmapStore &store, qint64 projectId, QString projectRoot,
+                const RoadmapStore::SectionRow &anchor,
+                const RoadmapMigrate::MigrationPlan &plan)
+        : m_store(store), m_projectId(projectId), m_root(std::move(projectRoot)),
+          m_anchor(anchor), m_plan(plan) {}
+
+    bool write(QString *err) {
+        // The plan's root section is what precedes the block's first heading:
+        // it belongs to the heading the caller named.
+        m_targets.insert(QString(), m_anchor.sectionId);
+        int insertAt = m_anchor.position + 1;
+        for (const auto &s : m_plan.sections) {
+            if (s.level == 0) {
+                if (!s.intro.trimmed().isEmpty()
+                    && !m_store.addElement(m_anchor.sectionId, baseOf(m_anchor.sectionId),
+                                           QStringLiteral("narration"), s.intro, err))
+                    return false;
+                continue;
+            }
+            if (!placeSection(s, &insertAt, err)) return false;
+        }
+        return writeElements(err) && writeItems(err);
+    }
+
+private:
+    // INV-4 — a section of this title in the anchor's own run is the one an
+    // earlier fold-in made. The block's position is its own sequence, so each
+    // target section's base is fixed once, before this block's first row.
+    bool placeSection(const RoadmapMigrate::PlannedSection &s, int *insertAt, QString *err) {
+        const auto ordered = m_store.listSectionsOrdered(m_projectId, err);
+        if (!ordered) return false;
+        bool afterAnchor = false;
+        for (const auto &row : *ordered) {
+            if (row.sectionId == m_anchor.sectionId) { afterAnchor = true; continue; }
+            if (!afterAnchor) continue;
+            if (row.level < s.level) break;
+            if (row.level == s.level && row.title == s.title)
+                return mergeIntro(row, s, err);
+        }
+
+        // The render reads (position, slug) order, so the rows after this one
+        // move down rather than share its position (create_section's rule).
+        for (const auto &row : *ordered) {
+            if (row.position >= *insertAt
+                && !m_store.updateSection(row.sectionId, row.title, row.level,
+                                          row.position + 1, row.parentId, err))
+                return false;
+        }
+        QString slug = s.slug;
+        for (int n = 2;; ++n) {
+            const auto taken = m_store.findSection(m_projectId, slug, err);
+            if (!taken && err && !err->isEmpty()) return false;
+            if (!taken) break;
+            slug = QStringLiteral("%1-%2").arg(s.slug).arg(n);
+        }
+        const auto id = m_store.addSection(m_projectId, slug, s.title, s.level, (*insertAt)++,
+                                           std::nullopt, err);
+        if (!id) return false;
+        m_targets.insert(s.slug, *id);
+        return s.intro.trimmed().isEmpty() || m_store.setSectionIntro(*id, s.intro, err);
+    }
+
+    bool mergeIntro(const RoadmapStore::SectionRow &row,
+                    const RoadmapMigrate::PlannedSection &s, QString *err) {
+        m_targets.insert(s.slug, row.sectionId);
+        if (s.intro.trimmed().isEmpty()) return true;
+        return m_store.setSectionIntro(
+            row.sectionId,
+            row.intro.isEmpty() ? s.intro : row.intro + QStringLiteral("\n\n") + s.intro, err);
+    }
+
+    // The section's first free position before this block's first row. Items
+    // and prose share one sequence per section, and the plan's positions are the
+    // block's own, so a row lands at base + 1 + its plan position; the base
+    // itself is for the prose ahead of the block's first heading.
+    int baseOf(qint64 sectionId) {
+        const auto it = m_base.constFind(sectionId);
+        if (it != m_base.constEnd()) return it.value();
+        const auto elements = m_store.listElements(sectionId);
+        const int base = elements && !elements->isEmpty() ? elements->last().position + 1 : 0;
+        m_base.insert(sectionId, base);
+        return base;
+    }
+
+    int positionFor(const QString &planSlug, int planPosition) {
+        return baseOf(m_targets.value(planSlug)) + 1 + planPosition;
+    }
+
+    bool writeElements(QString *err) {
+        for (const auto &e : m_plan.elements) {
+            const qint64 sid = m_targets.value(e.sectionSlug);
+            if (!m_store.addElement(sid, positionFor(e.sectionSlug, e.position),
+                                    e.kind, e.payload, err))
+                return false;
+        }
+        return true;
+    }
+
+    // A block's ids came from allocateIds(), so they are allocated ids; one with
+    // none gets the next. A held id refuses: putItem() would overwrite the row.
+    bool writeItems(QString *err) {
+        // No prefix row is ordinary: migration writes one only when it allocates.
+        QString prefix = m_store.idPrefixFor(m_projectId, err).value_or(QString());
+        if (prefix.isEmpty()) prefix = sniffIdPrefix(m_root);
+        const QString idLead = prefix + QLatin1Char('-');
+        qint64 highest = m_store.allocationFloor(m_projectId, prefix, err);
+        for (const auto &it : m_plan.items) {
+            if (it.id.startsWith(idLead))
+                highest = std::max(highest, it.id.mid(idLead.size()).toLongLong());
+        }
+        const QString today = RoadmapClock::today().toString(QStringLiteral("yyyy-MM-dd"));
+        for (const auto &it : m_plan.items) {
+            const QString id = it.id.isEmpty() ? renderId(prefix, int(++highest)) : it.id;
+            if (m_store.findItem(m_projectId, id)) {
+                if (err) *err = QStringLiteral("the store already holds %1").arg(id);
+                return false;
+            }
+            RoadmapStore::ItemWrite w = RoadmapMigrateLoad::itemWriteFrom(
+                it, m_projectId, id, m_targets.value(it.sectionSlug));
+            w.idOrigin = QStringLiteral("synthesised");
+            w.position = positionFor(it.sectionSlug, it.position);
+            w.created = today;
+            w.lastModified = today;
+            w.provenance.insert(QStringLiteral("id"), QStringLiteral("store-generated"));
+            w.provenance.insert(QStringLiteral("created"), QStringLiteral("store-generated"));
+            w.provenance.insert(QStringLiteral("last_modified"), QStringLiteral("store-generated"));
+            if (w.status == QLatin1String("shipped")) {
+                w.shipped = today;
+                w.provenance.insert(QStringLiteral("shipped"), QStringLiteral("store-generated"));
+            }
+            if (w.layman.isEmpty()) {
+                w.layman = QString::fromLatin1(kFoldInLayman);
+                w.provenance.insert(QStringLiteral("layman"), QStringLiteral("defaulted"));
+            }
+            if (!m_store.putItem(w, err)) return false;
+        }
+        return m_store.raiseIdHighWater(m_projectId, prefix, highest, err);
+    }
+
+    RoadmapStore &m_store;
+    const qint64 m_projectId;
+    const QString m_root;
+    const RoadmapStore::SectionRow m_anchor;
+    const RoadmapMigrate::MigrationPlan &m_plan;
+    QHash<QString, qint64> m_targets;   // plan section slug -> store section
+    QHash<qint64, int> m_base;
+};
+
+// ANTS-5229 — a store-served project's file is a rendered output, so its block
+// goes in as rows, with roadmap_log's write sequence. Nullopt: the store does
+// not serve this project, so the caller splices the file.
+std::optional<bool> insertThroughStore(const QString &projectPath, const QString &liveRoadmap,
+                                       const QString &fileText, const QString &heading,
+                                       const QString &block) {
+    const auto refuse = [](const QString &reason) {
+        qWarning("roadmap fold-in refused: %s", qPrintable(reason));
+        return false;
+    };
+    const QString root = QFileInfo(projectPath).canonicalFilePath();
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString err;
+    auto store = RoadmapSource::storeFor(RoadmapStore::defaultPath(), &why, &err);
+    // Unreadable is a refusal: splicing a served project's file is the defect.
+    if (!store) {
+        if (why == RoadmapSource::ReadError::None) return std::nullopt;
+        return refuse(err);
+    }
+    auto text = RoadmapSource::RoadmapText::fromMemory(fileText);
+    const auto projectId = RoadmapSource::migratedProject(*store, root, text, &err, &why);
+    if (!projectId) {
+        if (why == RoadmapSource::ReadError::None) return std::nullopt;
+        return refuse(err);
+    }
+
+    const HeadingLine wanted = parseHeadingLine(heading);
+    const auto sections = store->listSectionsOrdered(*projectId, &err);
+    if (!sections) return refuse(err);
+    const auto anchor = std::find_if(sections->cbegin(), sections->cend(), [&](const auto &s) {
+        return s.level == wanted.level && s.title == wanted.title;
+    });
+    if (anchor == sections->cend())
+        return refuse(QStringLiteral("no section \"%1\"").arg(heading));
+
+    RoadmapMigrate::Source source;
+    source.path = liveRoadmap;
+    source.markdown = block;
+    source.format = QStringLiteral("ants-v1");
+    RoadmapMigrate::Discovery discovery;
+    discovery.sources = {source};
+    const auto row = store->readProject(*projectId, &err);
+    if (!row) return refuse(err);
+    const RoadmapMigrate::MigrationPlan plan = RoadmapMigrate::planFrom(
+        discovery, row->name, row->exportSlug, ProjectSettings::idFormatFor(root));
+    // Every producer writes `###` (or no heading). A `##` would adopt the
+    // subsections after it, so it refuses rather than re-parent them.
+    for (const auto &s : plan.sections)
+        if (s.level != 0 && s.level != 3)
+            return refuse(QStringLiteral("the block's heading \"%1\" is not ###").arg(s.title));
+
+    StoreFoldIn foldIn(*store, *projectId, root, *anchor, plan);
+    RoadmapRender::Outcome outcome;
+    const bool ok = RoadmapWrite::commitAndRender(
+                        *store, *projectId, root, liveRoadmap, /*dryRun=*/false,
+                        [&foldIn](QString *e) { return foldIn.write(e); }, &outcome, &err)
+        == RoadmapWrite::Result::Ok;
+    return ok || refuse(err);
+}
+
+}  // namespace
+
 bool insertBlock(const QString &projectPath,
                  const QString &releaseBlockHeading,
                  const QString &block, LockWait wait, bool *busy) {
@@ -744,6 +983,9 @@ bool insertBlock(const QString &projectPath,
     QString needle = releaseBlockHeading;
     while (needle.endsWith(QChar('\n'))) needle.chop(1);
     while (needle.endsWith(QChar('\r'))) needle.chop(1);
+
+    if (const auto served = insertThroughStore(projectPath, path, body, needle, block))
+        return *served;
 
     // Search line-by-line for an exact match.
     const QStringList lines = body.split(QChar('\n'));

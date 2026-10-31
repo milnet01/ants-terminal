@@ -3150,6 +3150,7 @@ if(ANTS_TESTS)
                 # migration left behind.
                 tests/features/roadmap_repair_trailers/test_roadmap_repair_trailers.cpp
                 tests/features/roadmap_alloc_store_floor/test_roadmap_alloc_store_floor.cpp
+                tests/features/roadmap_fold_in_store/test_roadmap_fold_in_store.cpp
                 # ANTS-5638 — the header id high-water mark and the rebuild
                 # that reads it, against a real store in a QTemporaryDir.
                 tests/features/roadmap_id_high_water_mark/test_roadmap_id_high_water_mark.cpp

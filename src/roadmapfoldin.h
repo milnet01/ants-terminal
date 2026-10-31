@@ -179,6 +179,8 @@ CounterInspection inspectCounter(const QString &projectPath);
 
 // Atomic insert per the doc-comment above. Returns true on success,
 // false on heading-not-found or IO error. `wait` and `busy` as allocateIds.
+// ANTS-5229 — on a project the store serves, the block goes in as store rows and
+// the file is re-rendered: tests/features/roadmap_fold_in_store/spec.md.
 bool insertBlock(const QString &projectPath,
                  const QString &releaseBlockHeading,
                  const QString &block,
