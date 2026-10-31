@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6326 -->
+<!-- ants-roadmap-id-high-water: ANTS=6329 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88942,6 +88942,41 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: user-report-2026-10-31.
   Lanes: claude.
+
+- ✅ [ANTS-6327] **CI's nightly sanitizer build goes red whenever its cache is cold, because the 24-minute limit is too short.**
+  Run 41179033937 (2026-10-31): 6.7% cache hits, step 1100 of 1160 at the 24m
+  guard, exit 124. A cold run took 19m51s on 2026-10-28 with fewer steps. The
+  guard's comment called a cold build a real signal, which it is not.
+  Fixed: build guard 34m, job cap 75m, comment corrected.
+  **Layman:** The overnight safety build failed for lack of time, not because of a bug in the code.
+  Kind: fix.
+  Source: user-request-2026-10-31.
+  Lanes: ci.
+
+- ✅ [ANTS-6328] **The local sanitizer step was skipped on most pushes, because its 03:30 timer never catches up a missed night.**
+  ants-asan-nightly.timer last ran 2026-10-26; the machine is off at 03:30, and
+  Persistent=false dropped each missed run. Over 25 stale build steps, the push
+  gate skips its build-asan leg. Fixed: Persistent=true, still at Nice 19 and
+  idle IO priority, so it builds after the next boot.
+  2026-10-31: the script is changed. This machine's installed timer
+  still reads Persistent=false until tools/asan-nightly.sh --install
+  runs again; that step is left to the user.
+  **Layman:** A nightly job kept the local safety check ready, but it only ran if the computer was on at 03:30.
+  Kind: fix.
+  Source: user-request-2026-10-31.
+  Lanes: ci.
+
+- 📋 [ANTS-6329] **Find out why a version bump appears to empty CI's compile cache, and keep it from doing so.**
+  Not proven. CMakeLists.txt defines ANTS_VERSION for every source file through
+  add_compile_definitions, and the precompiled headers carry it, so a bump may
+  change every compile's hash. Evidence: the nightly after 0.7.115's bump
+  (5247ce4e) reused 6.7%, against 54% to 75% on earlier warm nights. Other
+  header edits landed that day too. Check with ccache logs on a bump alone. A
+  generated version header that only its users include is the likely remedy.
+  **Layman:** Each new version may force a full rebuild of everything, which is slow on GitHub and locally.
+  Kind: investigate.
+  Source: user-request-2026-10-31.
+  Lanes: ci.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

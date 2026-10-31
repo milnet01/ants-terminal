@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **CI's sanitizer job allows 34 minutes for its build, enough for one with a cold cache.** (ANTS-6327)
+
+- **`tools/asan-nightly.sh --install` sets a timer that makes up a missed night after the next boot.** (ANTS-6328)
+
 - **`roadmap_log` `append_batch` takes no call-level `section` when every bullet names its own.** (ANTS-6274)
 
 - **`roadmap_log` `flip` and `annotate` given `ids` name the batch op and its `locators`.** (ANTS-6206)

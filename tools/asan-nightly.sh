@@ -14,7 +14,8 @@
 # and a build this script loses to a signal leaves the marker behind.
 #
 #   tools/asan-nightly.sh            build now
-#   tools/asan-nightly.sh --install  install a systemd --user timer (03:30)
+#   tools/asan-nightly.sh --install  install a systemd --user timer (03:30; a
+#                                    missed run happens after the next boot)
 #   tools/asan-nightly.sh --remove   remove that timer
 #
 # Exit: 0 built, skipped or (un)installed; 1 build failed; 143 interrupted.
@@ -44,7 +45,7 @@ Description=Ants Terminal: nightly build-asan catch-up
 
 [Timer]
 OnCalendar=*-*-* 03:30
-Persistent=false
+Persistent=true
 
 [Install]
 WantedBy=timers.target

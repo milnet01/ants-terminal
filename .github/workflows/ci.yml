@@ -275,13 +275,13 @@ jobs:
     # locally when build-asan/ is warm (tools/ci_workflow.py runs it there).
     if: github.event_name != 'push'
     # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
-    # the sum of the per-step `timeout` guards below (24m + 30m), because a
+    # the sum of the per-step `timeout` guards below (34m + 30m), because a
     # job killed by timeout-minutes concludes `cancelled` rather than
     # `failure`: the run does not read as red and nothing notifies. That is
     # how this job went 36-of-40 cancelled over two days unnoticed. The step
     # guards exit 124 and go red; tests/features/ci_asan_budget/ locks the
     # ordering so a later bump cannot quietly undo it.
-    timeout-minutes: 60
+    timeout-minutes: 75
     env:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       # ANTS-4652 — 500M was thrashing. build-test's own stats step reported
@@ -350,12 +350,11 @@ jobs:
 
       - name: Build
         # Guarded rather than left to timeout-minutes: `timeout` exits 124, so
-        # an overrun FAILS the step. Measured 11m29s / 11m38s / 12m15s warm,
-        # and 16m40s against a cache nine hours stale — 24m is ~1.4x that
-        # worst observed case. A genuinely cold build (cache evicted after
-        # 7 days) is slower still and SHOULD go red: that is a real signal,
-        # not a false alarm.
-        run: timeout 24m cmake --build build-asan --parallel
+        # an overrun FAILS the step. ANTS-6327 — sized for a cold build, which
+        # is a normal event here and no signal: run 41179033937 reused 6.7% of
+        # its cache and reached step 1100 of 1160 at 24m. 34m is about 1.3x that
+        # build's projected length. A warm build measures 8m to 15m.
+        run: timeout 34m cmake --build build-asan --parallel
 
       # ANTS-5190 — see "Slowest build steps (release)".
       - name: Slowest build steps (asan)
