@@ -653,6 +653,54 @@ int inv16StateSurvivesUnknownTrailingRecords() {
     return ok ? 0 : 1;
 }
 
+// ANTS-6323: an automatic compact of an idle session writes these records, as
+// Claude Code wrote them on 2026-10-30, and no reply follows until the user
+// types. They must not read as a new turn; what preceded them decides.
+int inv18CompactDoesNotDecideState() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QByteArray compacted =
+        R"({"type":"system","subtype":"compact_boundary","compactMetadata":{"trigger":"auto"}})" "\n"
+        R"({"type":"user","isCompactSummary":true,"message":{"role":"user","content":)"
+        R"("This session is being continued from a previous conversation."}})" "\n"
+        R"({"type":"attachment","attachment":{"type":"deferred_tools_record"}})" "\n"
+        R"({"type":"attachment","attachment":{"type":"skill_listing"}})" "\n";
+    const QByteArray bulkyAttachment =
+        R"({"type":"attachment","attachment":{"type":"nested_memory","text":")"
+        + QByteArray(100 * 1024, 'x') + R"("}})" "\n";
+    const QByteArray endTurn =
+        R"({"type":"assistant","message":{"stop_reason":"end_turn",)"
+        R"("content":[{"type":"text","text":"done"}]}})" "\n";
+    const QByteArray toolUse =
+        R"({"type":"assistant","message":{"stop_reason":"tool_use",)"
+        R"("content":[{"type":"tool_use","name":"Bash","input":{}}]}})" "\n";
+    const QByteArray prompt = R"({"type":"user","message":{"content":"go on"}})" "\n";
+    const auto parse = [&tmp](const char *name, const QByteArray &records) {
+        const QString path = tmp.path() + "/" + name + ".jsonl";
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return ClaudeTranscriptSnapshot{};
+        f.write(R"({"type":"user","message":{"content":"go"}})" "\n");
+        f.write(records);
+        f.close();
+        return ClaudeIntegration::parseTranscriptTail(path, false);
+    };
+    const ClaudeTranscriptSnapshot idle = parse("idle", endTurn + compacted);
+    const ClaudeTranscriptSnapshot bulky = parse("bulky", endTurn + compacted + bulkyAttachment);
+    const ClaudeTranscriptSnapshot busy = parse("busy", toolUse + compacted);
+    const ClaudeTranscriptSnapshot next =
+        parse("next", endTurn + compacted + prompt + bulkyAttachment);
+    const bool ok = idle.stateDetermined && idle.state == ClaudeState::Idle
+                    && bulky.stateDetermined && bulky.state == ClaudeState::Idle
+                    && busy.stateDetermined && busy.state == ClaudeState::ToolUse
+                    && next.stateDetermined && next.state == ClaudeState::Thinking;
+    std::fprintf(stderr,
+                 "[inv18 compact-does-not-decide-state] idle=%d bulky=%d busy=%d next=%d  %s\n",
+                 static_cast<int>(idle.state), static_cast<int>(bulky.state),
+                 static_cast<int>(busy.state), static_cast<int>(next.state),
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 // ANTS-6306: a local command (/mcp) starts no turn, so its three records —
 // as Claude Code wrote them in a live session (2026-10-29) — must not read
 // as a new prompt. A skill's /command does start a turn and still must.
@@ -724,6 +772,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv15TailLoaderHonoursByteCap();
     failures += inv16StateSurvivesUnknownTrailingRecords();
     failures += inv17LocalCommandDoesNotDecideState();
+    failures += inv18CompactDoesNotDecideState();
     if (failures) FAIL();
 }
 

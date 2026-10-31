@@ -1206,3 +1206,80 @@ TEST(ClaudeBgTasksButton, Ants6321PollReadsHelperWithoutMainWrite) {
     tracker.poll();
     EXPECT_EQ(tracker.runningCount(), 0) << "an append to a known helper file is read";
 }
+
+// ANTS-6322 — Claude Code writes status "completed" when a helper merely
+// pauses on its own background work, and the helper then carries on. Summaries
+// copied from real 2026-10-30 and 2026-10-31 sessions.
+
+namespace {
+
+QJsonObject agentNotice(const QString &ts, const QString &id, const QString &status,
+                        const QString &summary) {
+    return QJsonObject{
+        {"type", "queue-operation"}, {"operation", "enqueue"}, {"timestamp", ts},
+        {"content", QStringLiteral("<task-notification>\n<task-id>%1</task-id>\n"
+                                   "<status>%2</status>\n<summary>Agent \"orchestrator\" %3"
+                                   "</summary>\n</task-notification>").arg(id, status, summary)}};
+}
+
+const QString kPausedSummary = QStringLiteral("is waiting on its own background work");
+
+QList<QJsonObject> agentLaunched(const QString &outputFile) {
+    return {
+        assistantToolUse("2026-10-31T06:08:24.000Z", "Agent", "toolu_agent",
+                         QJsonObject{{"description", "Review"}}),
+        userToolResult("2026-10-31T06:08:24.288Z", "toolu_agent",
+                       QJsonObject{{"status", "async_launched"}, {"agentId", "ahelper"},
+                                   {"outputFile", outputFile}},
+                       QStringLiteral("Async agent launched successfully.")),
+    };
+}
+
+}  // namespace
+
+// ANTS-5773 INV-15 — a pause is not an end; "finished" is.
+TEST(ClaudeBgTasksButton, Ants6322PausedAgentStaysPending) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("ahelper.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, agentLaunched(out)
+        + QList<QJsonObject>{agentNotice("2026-10-31T06:12:40.000Z", "ahelper", "completed",
+                                         kPausedSummary)});
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
+        << "the helper paused; it has not ended";
+
+    appendLines(tp, {agentNotice("2026-10-31T06:30:00.000Z", "ahelper", "completed",
+                                 QStringLiteral("finished"))});
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0);
+}
+
+// ANTS-5773 INV-15 — a helper whose last notice was a pause ends when its meta
+// file says finished, read by the poll with no transcript write.
+TEST(ClaudeBgTasksButton, Ants6322MetaFileEndsPausedAgent) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("ahelper.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, agentLaunched(out)
+        + QList<QJsonObject>{agentNotice("2026-10-31T06:12:40.000Z", "ahelper", "completed",
+                                         kPausedSummary)});
+    const QString meta = helperFile(dir, "s", "ahelper").replace(".jsonl", ".meta.json");
+    const auto writeMeta = [&meta](const QByteArray &body) {
+        QFile f(meta);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body);
+    };
+    writeMeta(R"({"agentType":"general-purpose"})");
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(tracker.runningCount(), 1) << "no finished field: still running";
+
+    writeMeta(R"({"agentType":"general-purpose","finished":true})");
+    tracker.poll();
+    EXPECT_EQ(tracker.runningCount(), 0);
+}
+

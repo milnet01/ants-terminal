@@ -115,8 +115,9 @@ public:
         const QString &path, ClaudeTranscript::Cursor &cursor,
         ClaudeBgTaskAccum &acc, qint64 processStartMs = 0);
     // ANTS-6321 — fold what `path`'s helpers, <session>/subagents/agent-*.jsonl,
-    // have appended into `acc`. True if any file was read. A helper can write
-    // while the main transcript is silent, so the 2 s polls call this too.
+    // have appended into `acc`, and end a helper whose meta file says finished
+    // (ANTS-6322). True if anything moved. A helper can write while the main
+    // transcript is silent, so the 2 s polls call this too.
     static bool walkHelperTranscripts(const QString &path, ClaudeBgTaskAccum &acc);
     // The end-of-parse filters over an accumulator, re-runnable without a
     // walk; applies the processStartMs rule above.

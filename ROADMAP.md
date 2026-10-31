@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6321 -->
+<!-- ants-roadmap-id-high-water: ANTS=6324 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69518,6 +69518,32 @@ remainder, captured so they don't drop on the floor.
   **Layman:** The status bar says "Claude: idle" while a helper's background job is still running; it should say it is waiting.
   Kind: fix.
   Source: user-report-2026-10-30.
+
+- ✅ [ANTS-6322] **A helper agent that pauses on its own background work stays counted as running.**
+  Seen on the Contact List tab, 2026-10-31 (screenshot: footer 2 shells, 1 agent; status bar idle). Claude Code writes a task-notification with status completed and the summary 'is waiting on its own background work' when a helper pauses, then the helper carries on. applyNotifications ends the task on any non-empty status (ANTS-5773 INV-4). Measured over 14 days of transcripts: 18 such notices across 11 helpers; 8 of them later got a 'finished' notice. 2 have finished:true in agent-<id>.meta.json with no later notice, so the meta file must end a task too. The screenshot's 2 shells are ANTS-6321's, built but not yet in that terminal. Hot reload: needs a terminal relaunch.
+  2026-10-31: fixed. A notice with the pause summary ends nothing; a
+  later notice or finished:true in the meta file ends the task.
+  ANTS-5773 INV-15. Reaches a running terminal on its next relaunch.
+  **Layman:** The status bar says idle while a helper is paused waiting on its own jobs, and again after it resumes; it should say waiting until the helper has really finished.
+  Kind: fix.
+  Source: user-report-2026-10-31.
+
+- ✅ [ANTS-6323] **Status stays idle after an automatic compact of an idle session.**
+  User report 2026-10-31. Claude Code auto-compacts after a finished turn: measured on 19 recent compacts, every one followed an end_turn, and writes a compact_boundary, a user record with isCompactSummary, then attachments, with no assistant reply until the user types. parseTranscriptTail's findStateEvent takes the newest user or attachment record as the state, so it reads Thinking. Hot reload: needs a terminal relaunch.
+  2026-10-31: fixed. Attachments and a compact summary no longer decide
+  state; the record before them does. claude_transcript_robustness
+  INV-18. Replay of 456 real sessions: all 36 ending on a compact read
+  Idle. Reaches a running terminal on its next relaunch.
+  **Layman:** A session that compacts itself while idle shows thinking until you next type; it should keep saying idle.
+  Kind: fix.
+  Source: user-report-2026-10-31.
+
+- 💭 [ANTS-6324] **Run each tab's Claude state reading in its own process, and check it against real sessions.**
+  User asked 2026-10-31 whether the helper behind the context gauge can keep each tab's state accurate. No separate gauge helper exists: ClaudeTabTracker reads each tab's context and state from one parse (reparseTranscript), every tab, so the wrong states came from misreading records, not from a missing reader.
+  Two things would help. (1) Move the parsing into a restartable process, as ants-mcpd does, because every state fix today needs a relaunch, which closes the Claude sessions in its tabs. (2) A replay tool: run parseTranscriptTail and ClaudeBgTaskTracker over recent real transcripts and report sessions whose final state looks wrong or whose records are of an unknown type. A one-off of this on 2026-10-31, after ANTS-6321, 6322 and 6323, covered 456 sessions: all 36 ending on a compact read Idle, and no helper task was stuck. The 7 sessions not reading Idle were not examined. Needs a spec if built. Decision for the user.
+  **Layman:** State-reading fixes would reach open tabs without a terminal relaunch, and a check over real sessions would catch a wrong state before you see it.
+  Kind: investigate.
+  Source: user-request-2026-10-31.
 
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 

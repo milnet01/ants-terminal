@@ -126,8 +126,8 @@ byte it returns record 9 alone. The transcript dialog passes a byte cap so
 a few huge records cannot make its parse and HTML unbounded.
 
 **INV-16** — Record types the parser does not know never hide the turn's
-state (ANTS-5779). Only `assistant`, `user`, `human` and `attachment`
-records decide state; every other type is skipped. When none is in the
+state (ANTS-5779). Only `assistant`, `user` and `human` records decide
+state; every other type is skipped, `attachment` included (ANTS-6323). When none is in the
 first window, the window widens until one is. A pending `AskUserQuestion`
 followed by a 100 KiB `api-request-blob`, then `last-prompt`, `ai-title`,
 `mode` and `atis-latch`, returns `stateDetermined`, `ToolUse` and tool
@@ -144,6 +144,13 @@ a pending tool call followed by them returns `ToolUse`. A skill's
 `<command-name>` record with no output record still returns `Thinking`.
 Before the fix the first case returned `Thinking`, so an idle tab showed
 "Claude: thinking".
+
+**INV-18** — A compact's records never decide state (ANTS-6323). An idle
+session compacts itself: a `compact_boundary`, a `user` record with
+`isCompactSummary`, then attachments, and no reply until the user types. The
+record before them decides. After `end_turn` the state is `Idle`, with a
+100 KiB attachment past the first window too; after a pending `tool_use` it is
+`ToolUse`. A prompt written after the compact gives `Thinking`.
 
 ## Out of scope
 

@@ -36,7 +36,7 @@ The silence rule had a reason (`claude_bg_tasks_button` spec, INV-12): tasks who
 | user `tool_result`, `toolUseResult.backgroundTaskId` set | A flagged launch's task for this `tool_use_id` takes the id, as today. With no such task, start a `shell` task with that id. |
 | user `tool_result`, `toolUseResult.status == "async_launched"` and `agentId` set | Start an `agent` task, id = `agentId`, output path = `toolUseResult.outputFile`. |
 | user `tool_result` for a remembered `Monitor` call, `toolUseResult.taskId` set | Start a `monitor` task, id = `taskId`. |
-| `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from a `queue-operation` record's `content`; the first one seen ends it. A block without `<status>` (a monitor's per-event notice) ends nothing. |
+| `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from a `queue-operation` record's `content`; the first one seen ends it. A block without `<status>` (a monitor's per-event notice) ends nothing, and nor does one whose summary reads `is waiting on its own background work` (a helper pausing, ANTS-6322). |
 | assistant `tool_use` named `TaskStop` (`input.task_id`, or the deprecated `input.shell_id`) | End that task, as `KillShell` already does. |
 
 The 60 s silence rule is removed from both `finalize` (§ 2.2) and `sweepLiveness`. A missing output file still ends a task.
@@ -107,6 +107,8 @@ A helper agent writes its own records to `<session>/subagents/agent-<id>.jsonl`,
 
 A helper can write while the main transcript is silent, so `walkHelperTranscripts` also runs from `ClaudeBgTaskTracker::poll` and `ClaudeTabTracker::pollAllShells`.
 
+A running helper also ends when `agent-<id>.meta.json` holds `finished: true` (ANTS-6322): a helper's last notice can be a pause.
+
 ## 3. Invariants
 
 - **INV-1** — `display()` returns `Background` iff `base == Idle`, `backgroundPending > 0`, and none of awaiting input, planning or auditing is set. With `backgroundPending == 0` it returns `Idle` exactly as today. No other base changes with the count.
@@ -151,6 +153,9 @@ A helper can write while the main transcript is silent, so `walkHelperTranscript
 - **INV-14** — A helper's write reaches both counts with no write to the main transcript: within one `ClaudeBgTaskTracker::poll` and one `ClaudeTabTracker::pollAllShells`, with no double count on the next poll.
   *Test:* same file, `Ants6321PollReadsHelperWithoutMainWrite`; `tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp`, `Ants6321TabPollCountsHelperShell`.
   *Breaks when:* either poll returns early on an unchanged main transcript, or an append to a known helper file goes unread.
+- **INV-15** — A helper's pause is not its end: a notice with status `completed` and the summary `is waiting on its own background work` leaves its agent task pending. A later notice ends it, and so does `finished: true` in its meta file, read by the poll with no transcript write.
+  *Test:* `tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp`: `Ants6322PausedAgentStaysPending`, `Ants6322MetaFileEndsPausedAgent`.
+  *Breaks when:* any non-empty status ends a task, or a helper with no later notice stays pending after its meta file says finished.
 
 ## 4. Failure modes
 
@@ -194,12 +199,14 @@ Rejected:
 
 User report, 2026-10-30 (ANTS-6321): "Claude: idle" with a helper's shell still running. This reverses the spec's first scope, which left helpers' transcripts uncounted.
 
+User report, 2026-10-31 (ANTS-6322): a helper paused on its own work read as ended. Matching the summary's wording is the only signal the notice holds. If the wording changes, a pause ends the task again, which shows idle and never a stuck pink.
+
 ## 10. What checks this
 
 | Rule | What catches a breach |
 |------|----------------------|
 | INV-1 | `test_claude_state_resolver.cpp` |
-| INV-2 – INV-8, INV-13 | `test_claude_bg_tasks_button.cpp` |
+| INV-2 – INV-8, INV-13, INV-15 | `test_claude_bg_tasks_button.cpp` |
 | INV-9 | `test_claude_status_bar_per_tab.cpp` |
 | INV-14 | `test_claude_bg_tasks_button.cpp`, `test_claude_status_bar_per_tab.cpp` |
 | INV-10 | `test_claude_state_dot_palette.cpp` |

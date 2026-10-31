@@ -983,6 +983,9 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
     // ANTS-6306 — a local command (/mcp, /model) starts no turn. Its caveat,
     // <command-name> and output records share one promptId, and none of them
     // decides state; a skill's /command has no output record, so it still does.
+    // ANTS-6323 — an attachment only ever accompanies a turn's real records, and
+    // a compact summary starts no turn: an idle session compacts itself and
+    // writes one, then attachments, then nothing until the user types.
     const auto isLocalCommandOutput = [](const QJsonObject &ev) {
         return ev.value("message").toObject().value("content").toString()
                    .startsWith(QLatin1String("<local-command-"));
@@ -1000,8 +1003,9 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
                 (isLocalCommandOutput(evs[i]) ||
                  localPrompts.contains(evs[i].value("promptId").toString())))
                 continue;
+            if (evs[i].value("isCompactSummary").toBool()) continue;
             if (t == QLatin1String("assistant") || t == QLatin1String("user") ||
-                t == QLatin1String("human") || t == QLatin1String("attachment"))
+                t == QLatin1String("human"))
                 return evs[i];
         }
         return QJsonObject();
@@ -1070,10 +1074,6 @@ ClaudeTranscriptSnapshot ClaudeIntegration::parseTranscriptTail(
             snap.state = ClaudeState::Thinking;
             snap.detail = isToolResult ? QStringLiteral("processing result")
                                        : QStringLiteral("thinking");
-            snap.stateDetermined = true;
-        } else if (type == "attachment") {
-            snap.state = ClaudeState::Thinking;
-            snap.detail = "thinking";
             snap.stateDetermined = true;
         }
     }

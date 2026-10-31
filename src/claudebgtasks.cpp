@@ -5,9 +5,11 @@
 
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QHash>
 #include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QRegularExpression>
@@ -288,6 +290,10 @@ void applyNotifications(ClaudeBgTaskAccum &acc, const QString &text) {
         const QString body = m.next().captured(1);
         const QString status = statusRx.match(body).captured(1);
         if (status.isEmpty()) continue;
+        // ANTS-6322 — a helper pausing on its own background work is reported
+        // "completed" too, and then carries on. Its end is a later notice, or
+        // its meta file (walkHelperTranscripts).
+        if (body.contains(QLatin1String("is waiting on its own background work"))) continue;
         finishById(acc, idRx.match(body).captured(1));
     }
 }
@@ -547,9 +553,9 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::parseIncremental(
 bool ClaudeBgTaskTracker::walkHelperTranscripts(const QString &path, ClaudeBgTaskAccum &acc) {
     if (path.isEmpty()) return false;
     const QFileInfo session(path);
+    const QDir folder(session.dir().filePath(session.completeBaseName() + QStringLiteral("/subagents")));
     const QFileInfoList helpers =
-        QDir(session.dir().filePath(session.completeBaseName() + QStringLiteral("/subagents")))
-            .entryInfoList({QStringLiteral("agent-*.jsonl")}, QDir::Files);
+        folder.entryInfoList({QStringLiteral("agent-*.jsonl")}, QDir::Files);
     bool read = false;
     for (const QFileInfo &helper : helpers) {
         ClaudeTranscript::Cursor &cursor = acc.helperCursors[helper.filePath()];
@@ -559,6 +565,18 @@ bool ClaudeBgTaskTracker::walkHelperTranscripts(const QString &path, ClaudeBgTas
             [&acc](const QJsonObject &ev, qint64) { applyBgEvent(acc, ev); },
             ClaudeTranscript::Sidechains::Keep);
         read = true;
+    }
+    // ANTS-6322 — a helper's last notice can be a pause, so its meta file has
+    // the last word. Read for running helpers only, as this runs every 2 s.
+    for (ClaudeBackgroundTask &t : acc.raw) {
+        if (t.finished || t.kind != ClaudeBackgroundTask::Kind::Agent || t.id.isEmpty()) continue;
+        QFile meta(folder.filePath(QStringLiteral("agent-%1.meta.json").arg(t.id)));
+        if (!meta.open(QIODevice::ReadOnly)) continue;
+        if (QJsonDocument::fromJson(meta.readAll()).object()
+                .value(QStringLiteral("finished")).toBool()) {
+            t.finished = true;
+            read = true;
+        }
     }
     return read;
 }
