@@ -983,6 +983,45 @@ TEST(roadmap_query_id_body_cap, Ants5468RegexAndBadPattern) {
               QStringLiteral("bad_args"));
 }
 
+// ANTS-6203 — a literal body_match that reads like a pattern and matched no
+// line says so. It stays silent where the regex route would not help.
+TEST(roadmap_query_id_body_cap, Ants6203HintsAtRegexOnLiteralMiss) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithMiddleSentinelBody(20)));
+    const QString hintKey = QStringLiteral("body_match_hint");
+    RemoteControl rc(nullptr);
+
+    const struct { const char *name; const char *key; const char *value; } paths[] = {
+        {"list", nullptr, nullptr},
+        {"section", "section", "work"},
+        {"id", "id", "ANTS-7777"},
+    };
+    for (const auto &p : paths) {
+        QJsonObject req = bodyMatchRequest(tmp.path(), QStringLiteral("headsentinel|tailsentinel"));
+        if (p.key) req[QLatin1String(p.key)] = QLatin1String(p.value);
+        const QJsonObject resp = rc.cmdRoadmapQuery(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << p.name;
+        EXPECT_TRUE(resp.value(hintKey).toString().contains(QStringLiteral("body_match_regex")))
+            << p.name;
+    }
+    QJsonObject idsReq = bodyMatchRequest(tmp.path(), QStringLiteral("headsentinel|tailsentinel"));
+    idsReq[QStringLiteral("ids")] = QJsonArray{QStringLiteral("ANTS-7777")};
+    EXPECT_TRUE(rc.cmdRoadmapQuery(idsReq).object().contains(hintKey)) << "ids";
+
+    // No hint: a plain word, a pattern that does not compile, a line that did
+    // match, and a call already in regex mode.
+    for (const char *silent : {"nosuchword", "nosuchword(", "sentinel"}) {
+        const QJsonObject resp =
+            rc.cmdRoadmapQuery(bodyMatchRequest(tmp.path(), QLatin1String(silent))).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << silent;
+        EXPECT_FALSE(resp.contains(hintKey)) << silent;
+    }
+    QJsonObject regexReq = bodyMatchRequest(tmp.path(), QStringLiteral("nosuch|word"));
+    regexReq[QStringLiteral("body_match_regex")] = true;
+    EXPECT_FALSE(rc.cmdRoadmapQuery(regexReq).object().contains(hintKey));
+}
+
 // ANTS-5468c — refused where no body can be emitted, never silently ignored.
 TEST(roadmap_query_id_body_cap, Ants5468RefusedWithoutABody) {
     QTemporaryDir tmp;

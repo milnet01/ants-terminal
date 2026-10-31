@@ -12,6 +12,14 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **`roadmap_log` `flip` and `annotate` given `ids` name the batch op and its `locators`.** (ANTS-6206)
+
+- **A section-slug refusal lists first the section whose slug starts with what the caller typed, in `roadmap_log`, `read_region` and every other verb that ranks sections.** (ANTS-6211)
+
+- **`roadmap_query` adds `body_match_hint` naming `body_match_regex:true` when a plain-text `body_match` that reads like a pattern matches no line.** (ANTS-6203)
+
 ### Fixed
 
 - **The status bar and tab dot keep saying "waiting" while a helper agent is paused on its own background work, until it has really finished** (ANTS-6322)

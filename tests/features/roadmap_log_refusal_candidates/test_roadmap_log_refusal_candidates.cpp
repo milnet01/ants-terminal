@@ -194,3 +194,74 @@ TEST(RoadmapLogRefusalCandidates, AmbiguousIdNamesTheHeadlineRoute) {
     EXPECT_FALSE(env["suggestions"].toArray().isEmpty())
         << "headline route named with no headlines supplied";
 }
+
+// ANTS-6211 — the start of a slug ranks its section first. Every section here
+// shares the leading number, so without the prefix rule document order puts
+// the older release first and a reader takes the wrong slug.
+TEST(RoadmapLogRefusalCandidates, SlugPrefixRanksFirstAndStillRefuses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    writeRoadmap(dir.path(), QStringLiteral(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# Test Roadmap\n"
+        "\n"
+        "## 0.0.9 Polish\n"
+        "\n"
+        "- 📋 [ANTS-9001] **A bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"
+        "## 0.1.0 Bake and render\n"
+        "\n"
+        "- 📋 [ANTS-9002] **Another bullet.**\n"
+        "  Kind: implement.\n"
+        "  Source: test.\n"
+        "\n"));
+    const QString before = readRoadmap(dir.path());
+    RemoteControl rc(nullptr);
+
+    const auto env =
+        rc.cmdRoadmapLogAppendForTest(appendReq(dir.path(), QStringLiteral("0-1-0")))
+            .object();
+    ASSERT_EQ(env["code"].toString(), QStringLiteral("bad_section"));
+    const QStringList cand = candidatesOf(env);
+    ASSERT_FALSE(cand.isEmpty());
+    EXPECT_EQ(cand.first(), QStringLiteral("0-1-0-bake-and-render"))
+        << cand.join(QStringLiteral(", ")).toStdString();
+    EXPECT_EQ(readRoadmap(dir.path()), before)
+        << "a prefix was resolved and written instead of refused";
+}
+
+// ANTS-6206 — `ids` on a single-item op names the batch op that takes several,
+// whatever else the call lacks; a singular locator beside it still wins.
+TEST(RoadmapLogRefusalCandidates, IdsOnSingleOpNamesTheBatchOp) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    writeRoadmap(dir.path(), roadmapWithSections());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["op"]         = QStringLiteral("flip");
+    req["ids"]        = QJsonArray{QStringLiteral("ANTS-9001"), QStringLiteral("ANTS-9002")};
+
+    auto env = rc.cmdRoadmapLogFlipForTest(req).object();
+    EXPECT_EQ(env["code"].toString(), QStringLiteral("missing_field"));
+    EXPECT_TRUE(env["error"].toString().contains(QStringLiteral("op:\"flip_batch\"")))
+        << env["error"].toString().toStdString();
+    EXPECT_TRUE(env["error"].toString().contains(QStringLiteral("locators")))
+        << env["error"].toString().toStdString();
+
+    req["op"] = QStringLiteral("annotate");
+    env = rc.cmdRoadmapLogFlipForTest(req).object();
+    EXPECT_TRUE(env["error"].toString().contains(QStringLiteral("op:\"annotate_batch\"")))
+        << env["error"].toString().toStdString();
+
+    req["op"]        = QStringLiteral("flip");
+    req["id"]        = QStringLiteral("ANTS-9001");
+    req["to_status"] = QStringLiteral("shipped");
+    req["dry_run"]   = true;
+    env = rc.cmdRoadmapLogFlipForTest(req).object();
+    EXPECT_TRUE(env["ok"].toBool()) << env["error"].toString().toStdString();
+}

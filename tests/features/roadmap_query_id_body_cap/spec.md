@@ -149,3 +149,11 @@ envelope echoes `body_match`. It refuses `bad_mode_combo` with
 `include_body:false` and under `headline_only`, `section_index`, `bundles`
 and `report`, which emit no body. *Tests:* the three `Ants5468*` cases in
 `test_roadmap_query_id_body_cap.cpp`.
+
+## ANTS-6203 — a literal `body_match` that reads like a pattern says so
+
+Where `body_match` runs in literal mode, keeps no line of any body, holds a
+regex metacharacter other than a lone `.`, and compiles as a regex, the reply
+carries `body_match_hint` naming `body_match_regex:true`. It runs on the same
+paths as `body_match`. A plain word, a pattern that does not compile, a match
+and regex mode all stay silent. *Tests:* `Ants6203HintsAtRegexOnLiteralMiss`.

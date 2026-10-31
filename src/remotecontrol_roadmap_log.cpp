@@ -1678,6 +1678,23 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             QStringLiteral("roadmap_log: caller_cwd is required"));
     }
 
+    // ANTS-6206 — `ids` is roadmap_query's plural, and this op takes one item.
+    // Ahead of every other guard, so the caller hears the route first, on a
+    // pass-headings roadmap too. A singular locator beside `ids` still wins.
+    if (req.contains(QStringLiteral("ids")) &&
+        req.value(QStringLiteral("id")).toString().isEmpty() &&
+        req.value(QStringLiteral("anchor")).toString().isEmpty() &&
+        req.value(QStringLiteral("headline")).toString().isEmpty()) {
+        return rlErr(QStringLiteral("missing_field"),
+            annotateMode
+                ? QStringLiteral("roadmap_log: op:\"annotate\" takes one item, "
+                                 "so it does not read `ids`. For several, use "
+                                 "op:\"annotate_batch\" with locators:[{id, note}]")
+                : QStringLiteral("roadmap_log: op:\"flip\" takes one item, so "
+                                 "it does not read `ids`. For several, use "
+                                 "op:\"flip_batch\" with locators:[{id, to_status}]"));
+    }
+
     // ANTS-2126 — pass-headings roadmaps route to the heading-format
     // flip/annotate writer BEFORE the GFM to_status/note/locator guards
     // below, so the pass path owns its own validation (INV-3 bad_args for

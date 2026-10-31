@@ -99,8 +99,8 @@ QJsonObject extractBatch(const QString &rootCanonical,
 // word overlap is the primary key and a shared leading numeric token the
 // tiebreak: a caller who half-remembers a title gets the WORDS right and the
 // number wrong, while one working from a cross-reference ("commits.md § 1.1")
-// gets the NUMBER right and the words wrong. Nothing scoring falls back to the
-// supplied order. Capped at 10 so a large document does not pay a big refusal.
+// gets the NUMBER right and the words wrong. A slug starting with the query
+// ranks above both (ANTS-6211). Nothing scoring falls back to the supplied order. Capped at 10 so a large document does not pay a big refusal.
 //
 // ANTS-4556 — takes a plain slug list rather than parsed headings, because
 // roadmap_log's `bad_section` ranks SECTION slugs it already holds and there

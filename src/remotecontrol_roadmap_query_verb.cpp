@@ -1097,17 +1097,33 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     auto applyBodyMatch = [&](QJsonArray &arr) {
         if (!bodyMatchActive) return;
         const mcp::QueryMatcher matcher(bodyMatchArg, bodyMatchMode);
+        bool bodySeen = false;
+        bool lineKept = false;
         for (int i = 0; i < arr.size(); ++i) {
             QJsonObject o = arr.at(i).toObject();
             const auto it = o.constFind(QStringLiteral("body"));
             if (it == o.constEnd()) continue;
+            bodySeen = true;
             const QStringList lines = it->toString().split(QLatin1Char('\n'));
             QStringList kept;
             for (const QString &line : lines)
                 if (matcher.matches(line)) kept.append(line);
+            lineKept = lineKept || !kept.isEmpty();
             o["body"] = kept.join(QLatin1Char('\n'));
             o["body_lines_dropped"] = int(lines.size() - kept.size());
             arr.replace(i, o);
+        }
+        // ANTS-6203 — a literal miss on text that reads like a pattern. A lone
+        // `.` does not count: "Bundle.h" is a filename far more often than a
+        // regex, and regex mode would not rescue that miss.
+        static const QRegularExpression regexMeta(
+            QStringLiteral(R"([|^$\\()\[\]*+?])"));
+        if (bodySeen && !lineKept && bodyMatchMode == mcp::QueryMode::Substring &&
+            bodyMatchArg.contains(regexMeta) &&
+            QRegularExpression(bodyMatchArg).isValid()) {
+            out["body_match_hint"] = QStringLiteral(
+                "body_match was read as plain text and matched no line; pass "
+                "body_match_regex:true to read it as a regular expression");
         }
     };
     auto applyQueryFilter = [&queryArg, queryMode](QJsonArray &arr) {

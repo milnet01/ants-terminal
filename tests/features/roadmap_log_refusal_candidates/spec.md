@@ -1,8 +1,12 @@
 # roadmap_log_refusal_candidates — feature-conformance contract
 
-Locks two refusal affordances on `roadmap_log`, filed independently by two
+Locks refusal affordances on `roadmap_log`, filed independently by several
 sessions with the same complaint: **the refusal names no route forward.**
 
+- [ANTS-6206] `ids` on `flip` or `annotate` is refused for a missing locator,
+  with no word of the batch op that takes several items.
+- [ANTS-6211] `section:"0-1-0"` refuses, and the section whose slug starts with
+  that text can rank below an earlier section sharing its leading number.
 - [ANTS-4556] `bad_section` refuses an unknown slug and offers nothing, where
   three sibling refusals now rank near-misses — `read_region` section mode on
   both `section_ambiguous` (ANTS-2234) and `section_not_found` (ANTS-4350), and
@@ -26,6 +30,8 @@ over the refusal string would assert that the message looks like itself.
 | `BadSectionStillRefuses` | 4556 | candidates are added by RESOLVING the near miss — the write must still refuse, because guessing which section the caller meant is how a body lands in the wrong place |
 | `BadCaseStillWinsOverCandidates` | 4556 | the candidates path swallows a pure case mismatch, which has an exact answer (`canonical_slug`, ANTS-1524) and must not be downgraded to a ranked guess |
 | `AmbiguousIdNamesTheHeadlineRoute` | 4574 | the message still says "narrow with anchor or id" after an **id** was the ambiguous locator, or it names `anchor` when the matched bullets carry none |
+| `SlugPrefixRanksFirstAndStillRefuses` | 6211 | a section whose slug starts with the caller's text ranks below a same-numbered earlier section, or the prefix is resolved and written instead of refused |
+| `IdsOnSingleOpNamesTheBatchOp` | 6206 | `ids` with no singular locator on `flip` or `annotate` does not name the batch op and `locators`, or `ids` beside an `id` stops the single write |
 
 ## Verifying RED
 
@@ -39,5 +45,6 @@ rebuild, and the mutation accumulates silently in a green-linking binary.
 The **ranking function** is `ReadRegion::rankSectionCandidates`, already locked
 by `read_region`'s own suite (ANTS-4350). This contract asserts that
 `roadmap_log` *reaches* it and that the near miss surfaces — not how the score
-is computed. Re-asserting the algorithm here would be a second copy of that
+is computed. The one exception is the prefix tier ANTS-6211 added, locked here
+because this is the refusal it was filed against. Re-asserting the algorithm here would be a second copy of that
 test which drifts from it.

@@ -64,6 +64,7 @@ namespace ReadRegion {
 QStringList rankSectionCandidates(const QString &wantSlug,
                                   const QStringList &slugs) {
     constexpr int kMaxCandidates = 10;
+    constexpr int kPrefixTier = 1 << 20;   // above any slug's possible overlap
     if (slugs.isEmpty()) return {};
 
     const auto isNumeric = [](const QString &tok) {
@@ -94,7 +95,10 @@ QStringList rankSectionCandidates(const QString &wantSlug,
             else if (wantWords.contains(t)) ++overlap;
         }
         const int numMatch = (!wantNum.isEmpty() && num == wantNum) ? 1 : 0;
-        scored.push_back({overlap * 2 + numMatch, i, slugs[i]});
+        // ANTS-6211 — a slug that starts with the query outranks any overlap:
+        // the caller typed the start of this very slug.
+        const int prefixTier = slugs[i].startsWith(wantSlug) ? kPrefixTier : 0;
+        scored.push_back({prefixTier + overlap * 2 + numMatch, i, slugs[i]});
     }
     std::stable_sort(scored.begin(), scored.end(),
                      [](const Scored &a, const Scored &b) {

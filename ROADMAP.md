@@ -88727,7 +88727,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6203] **roadmap_query hints at body_match_regex when a literal body_match holding regex metacharacters matches nothing.**
+- ✅ [ANTS-6203] **roadmap_query hints at body_match_regex when a literal body_match holding regex metacharacters matches nothing.**
   UT_Ants: body_match "created|Bundle.h" was matched literally and
   returned no bodies with no hint. Fix: when body_match contains `|`,
   `.*` or similar and matches nothing, add a hint naming
@@ -88769,7 +88769,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6206] **roadmap_log op:flip given ids[] names flip_batch with locators[] in its refusal, instead of only 'missing locator'.**
+- ✅ [ANTS-6206] **roadmap_log op:flip given ids[] names flip_batch with locators[] in its refusal, instead of only 'missing locator'.**
   UT_Ants: a caller passed an ids array to op:flip and was told only
   'missing locator'. Fix: name op:"flip_batch" with locators[] in the
   refusal, or accept ids[] on flip.
@@ -88820,10 +88820,12 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6211] **roadmap_log refuses a unique section-slug prefix with no candidate naming the full slug.**
+- ✅ [ANTS-6211] **roadmap_log refuses a unique section-slug prefix with no candidate naming the full slug.**
   UT_Ants: section:"0-1-0" refused; the slug is 0-1-0-bake-and-render.
   Fix: accept a unique slug prefix, or put the prefix match first in
   candidates[].
+  Took the candidates route the item offered: a prefix ranks first and
+  the write still refuses, the rule ANTS-4556 set.
   **Layman:** Naming a roadmap section by the start of its name fails without suggesting the full name.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
