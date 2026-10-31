@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Test runs on a busy machine now give a large test program up to five minutes to list its tests, so a slow disk no longer fails the run.** (ANTS-6331)
+
 - **The status bar keeps counting a helper after it pauses on its own background work, until the helper really ends.** (ANTS-6326)
 
 - **The status bar and tab dot keep saying "waiting" while a helper agent is paused on its own background work, until it has really finished** (ANTS-6322)

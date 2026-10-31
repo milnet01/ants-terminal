@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6331 -->
+<!-- ants-roadmap-id-high-water: ANTS=6332 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89001,6 +89001,17 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-31.
   Lanes: ci.
 
+- 📋 [ANTS-6332] **invariant_check reports scanned_nothing from a linked worktree whose branch lacks the specs.**
+  RetroArch, 2026-10-31: caller_cwd /mnt/Games/Scripts/Linux/ra-pr or ra-fixes gives
+  scanned_nothing:true, specs_scanned:0 and the hint to set specs_dir. The same call
+  from the main checkout scans docs/private/specs. Fork specs live only on the docs
+  branch. Remedy: say this is a linked worktree with no specs directory and name the
+  sibling worktree that has one, or resolve specs through it.
+  **Layman:** Checking a fix against its written rules finds no rules when run from a side copy of a project, and its hint points at a setting that is already right.
+  Kind: fix.
+  Source: feedback-retroarch-2026-10-31.
+  Lanes: mcp.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -102176,6 +102187,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Unknown whether a timeout or a cut-off list output caused it. Fix idea:
   check each bundle's discovered count against its --gtest_list_tests count,
   and fail the run on a mismatch.
+  2026-10-31: a listing timeout is not the silent route.
+  GoogleTestAddTests.cmake stops on a non-zero listing with FATAL_ERROR,
+  and build-asan's timeout on test_claude that day ended ctest with exit
+  8 (ANTS-6331).
   **Layman:** Under heavy load the test runner once skipped half of one test group without saying so; find out why and make it fail loudly.
   Kind: investigate.
   Source: in-session-2026-10-26.
