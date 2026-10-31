@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6333 -->
+<!-- ants-roadmap-id-high-water: ANTS=6335 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88922,6 +88922,9 @@ measured Ants adding about 5,250 tokens to every request.
   so the value may be lost before it arrives: the argument is absent from the
   verb's published schema. Not yet traced. Find where it is lost, then either
   publish the argument or drop it from the hints.
+  2026-10-31: Vestige reports the same with 30, and it recurred here
+  with 20, where a whole-tree search with no lane then hit the 5 s
+  budget on a loaded disk.
   **Layman:** A slow search tells you to allow it more time, but asking for more time seems to have no effect.
   Kind: fix.
   Source: in-session-2026-10-31.
@@ -88978,12 +88981,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: user-request-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
+- 💭 [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
   Push of 45b13e02, 2026-10-31, in the ubuntu:24.04 image at ctest -j2: 'the child
   ants-mcpd was not listed' at line 137, in 15 ms; 1 failure in 5971 tests. It passed
   200 of 200 on this machine outside the container the same day. Cause not found.
   mcpd::runningCopies (src/mcpdversion.cpp) walks /proc and readlinks each exe. Start
   there, and reproduce with the --run-job command in docs/build-and-ci.md.
+  2026-10-31: not reproduced in 7000 repeats in CI's image (3000 at two
+  at once, 4000 at four at once on one CPU), and it passed in that
+  image's two full runs that day. Cause still unknown. Killing the child
+  before the walk gives this same message, so a child that died early is
+  one candidate, not a finding. The failure now prints the pid, the exe
+  readlink's result and /proc/pid/stat. Reopen when it recurs and read
+  that line.
   **Layman:** A test that looks for a running helper program failed once for no clear reason, which blocked a push.
   Kind: fix.
   Source: in-session-2026-10-31.
@@ -89035,6 +89045,25 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-10-31.
   Lanes: ci.
+
+- 📋 [ANTS-6334] **source_scrapes returned 0 rows on a tree whose tests read source through compile definitions.**
+  Vestige, 2026-10-31: 0 rows over 322 test files, though tests read source through
+  VESTIGE_SHADER_DIR with .. path joins (test_renderer_view_override reads
+  engine/renderer/renderer.cpp), and 19 test files read shaders. Remedy: follow
+  compile-definition paths, or say in not_covered that this case is not seen.
+  **Layman:** A tool that lists which tests read source files reported none, on a project where many do, so a change can break a test nobody expected.
+  Kind: fix.
+  Source: feedback-vestige-2026-10-31.
+  Lanes: mcp.
+
+- 📋 [ANTS-6335] **A multi-file file_outline spilled to a result that review lanes reported they could not page.**
+  Vestige, 2026-10-31: reported by lanes in a 28-lane review, not reproduced by the
+  reporter. Reproduce first. The review-lane agent type has read_spill in its tool list,
+  so find which agent could not page and why.
+  **Layman:** Asking for outlines of several files at once can return a result some helpers cannot read, so they fall back to slower reads.
+  Kind: investigate.
+  Source: feedback-vestige-2026-10-31.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

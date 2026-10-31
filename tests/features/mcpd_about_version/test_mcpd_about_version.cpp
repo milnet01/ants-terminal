@@ -12,6 +12,12 @@
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
+#include <cerrno>
+#include <cstring>
+#include <string>
+
+#include <unistd.h>
+
 #ifndef ANTS_MCPD_BIN
 #error "ANTS_MCPD_BIN compile definition required"
 #endif
@@ -126,6 +132,21 @@ const mcpd::RunningCopy *findPid(const QList<mcpd::RunningCopy> &copies, qint64 
     return nullptr;
 }
 
+// ANTS-6330 — what /proc says of a pid runningCopies skipped. Failed once in
+// the push gate's container and not in 7000 repeats, so the next failure has
+// to name its own cause. A child killed first reads exe ENOENT, stat unreadable.
+std::string procDiagnosis(qint64 pid) {
+    const QByteArray exe = QFile::encodeName(QStringLiteral("/proc/%1/exe").arg(pid));
+    char buf[4096];
+    errno = 0;
+    const ssize_t n = ::readlink(exe.constData(), buf, sizeof(buf));
+    const std::string target = n > 0 ? std::string(buf, static_cast<size_t>(n))
+                                     : std::string("readlink failed: ") + std::strerror(errno);
+    QFile stat(QStringLiteral("/proc/%1/stat").arg(pid));
+    const QByteArray statLine = stat.open(QIODevice::ReadOnly) ? stat.readAll() : QByteArray("unreadable");
+    return "pid " + std::to_string(pid) + "; exe: " + target + "; stat: " + statLine.toStdString();
+}
+
 }  // namespace
 
 // INV-6
@@ -134,7 +155,8 @@ TEST(McpdAboutVersion, Inv6ListsARunningCopy) {
     ASSERT_EQ(child.p.state(), QProcess::Running);
     const auto copies = mcpd::runningCopies(5000);
     const mcpd::RunningCopy *c = findPid(copies, child.p.processId());
-    ASSERT_NE(c, nullptr) << "the child ants-mcpd was not listed";
+    ASSERT_NE(c, nullptr) << "the child ants-mcpd was not listed; "
+                          << procDiagnosis(child.p.processId());
     EXPECT_EQ(c->version, mcpd::versionLine());
     EXPECT_FALSE(c->replaced);
     EXPECT_TRUE(c->ancestors.contains(QCoreApplication::applicationPid()));
