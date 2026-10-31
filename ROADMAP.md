@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6324 -->
+<!-- ants-roadmap-id-high-water: ANTS=6325 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88850,7 +88850,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Vestige_Ants_MCP_Feedback.md 2026-10-24.
   Lanes: mcp-workspace.
 
-- 📋 [ANTS-6274] **roadmap_log append_batch refuses "section is required" when every bullet names its own section.**
+- ✅ [ANTS-6274] **roadmap_log append_batch refuses "section is required" when every bullet names its own section.**
   frameledger, 2026-10-24: a batch spanning two sections, each bullet
   with its own `section` and no call-level one, refuses missing_field.
   The schema calls the call-level section the fallback. Reproduced here
@@ -88861,6 +88861,8 @@ measured Ants adding about 5,250 tokens to every request.
   first. Shipped now: the bullets.section schema text says append_batch
   still requires the call-level section. Open: amend INV-2, then
   default the call-level section to the bullets' own when all carry one.
+  INV-2 of ANTS-1879 amended in the same commit. That spec has two
+  review loops, so the 2026-10-30 ruling re-arms no gate.
   **Layman:** Adding several roadmap items at once fails unless you also name a section you don't need.
   Kind: fix.
   Source: frameledger session message 2026-10-24.
@@ -88912,6 +88914,17 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** One call could report the whole cost of a review, the coordinating helper plus every helper it started.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-10-29.
+  Lanes: mcp.
+
+- 📋 [ANTS-6325] **workspace_search asked for timeout_sec:20 replies timeout_sec:5, though its own hint says to raise it.**
+  Measured 2026-10-31 through the MCP client: timeout_sec:20 came back as
+  "timeout_sec":5. The handler in remotecontrol_workspace.cpp accepts 1 to 30,
+  so the value may be lost before it arrives: the argument is absent from the
+  verb's published schema. Not yet traced. Find where it is lost, then either
+  publish the argument or drop it from the hints.
+  **Layman:** A slow search tells you to allow it more time, but asking for more time seems to have no effect.
+  Kind: fix.
+  Source: in-session-2026-10-31.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

@@ -13245,9 +13245,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["type"] = "string";
                         p["description"] = QStringLiteral(
                             "This bullet's section slug; the call-level "
-                            "`section` is the fallback. Store-served "
+                            "`section` is the fallback, and may be omitted "
+                            "when every bullet names one. Store-served "
                             "projects only: a markdown or pass-headings "
-                            "roadmap refuses unsupported_format.");
+                            "roadmap refuses unsupported_format when a "
+                            "bullet's section differs from the batch's.");
                         bulletItemProps["section"] = p;
                     }
                     {   // ANTS-4354 — per-bullet pass designator.
@@ -16763,7 +16765,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_log/bullets"), QStringLiteral("append_batch: bullets with append's fields; {{id:N}} in text cites bullet N's new id.")},
                         {QStringLiteral("roadmap_log/bullets.id_hint"), QStringLiteral("Explicit id number; honoured on the first bullet only (counter strategy).")},
                         {QStringLiteral("roadmap_log/bullets.pass"), QStringLiteral("This bullet's pass designator on a pass-headings roadmap; the call-level pass is the fallback.")},
-                        {QStringLiteral("roadmap_log/bullets.section"), QStringLiteral("This bullet's section slug. append_batch still requires the call-level section, which is the fallback.")},
+                        {QStringLiteral("roadmap_log/bullets.section"), QStringLiteral("This bullet's section slug. The call-level section is the fallback; omit it when every bullet names one.")},
                         {QStringLiteral("roadmap_log/bullets.stable_id"), QStringLiteral("This bullet's id when id_strategy is stable_prefix; unique within the batch.")},
                         {QStringLiteral("roadmap_log/bullets.status"), QStringLiteral("planned, in-progress, shipped, considered or dropped; the call-level status is the fallback.")},
                         {QStringLiteral("roadmap_log/cells"), QStringLiteral("bundle_row: one string per table column.")},

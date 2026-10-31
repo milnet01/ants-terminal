@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` `append_batch` takes no call-level `section` when every bullet names its own.** (ANTS-6274)
+
 - **`roadmap_log` `flip` and `annotate` given `ids` name the batch op and its `locators`.** (ANTS-6206)
 
 - **A section-slug refusal lists first the section whose slug starts with what the caller typed, in `roadmap_log`, `read_region` and every other verb that ranks sections.** (ANTS-6211)

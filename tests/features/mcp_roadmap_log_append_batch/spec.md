@@ -17,7 +17,8 @@ Part of **ANTS-1879**. Full design + invariants live in
 ## Invariants tested
 
 - **INV-1** dispatch — source-grep `op == "append_batch"`.
-- **INV-2** required fields → `missing_field`.
+- **INV-2** required fields → `missing_field`. `section` may be omitted when
+  every bullet names its own (ANTS-6274, in `roadmap_write_half`).
 - **INV-3** per-bullet validation failure → `skipped[]` with
   `bullet_index` + appropriate code; rest of batch applies;
   `bytes_written` covers ONLY accepted blocks.

@@ -3329,6 +3329,49 @@ TEST(RoadmapWriteHalf, Ants5344UnknownPerBulletSectionSkips) {
         << QJsonDocument(resp).toJson().toStdString();
 }
 
+// ANTS-6274 — no call-level section is needed when every bullet names its own;
+// a bullet left with no section at all still refuses the whole call.
+TEST(RoadmapWriteHalf, Ants6274EveryBulletNamesItsSection) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject resp;
+    QJsonObject partial;
+    const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
+    {
+        RemoteControl rc(nullptr);
+        QJsonObject partialReq = sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("Has no section.")),
+            sectionBullet(QStringLiteral("Lands in Bundles."), QStringLiteral("bundles"))});
+        partialReq.remove(QStringLiteral("section"));
+        partial = rc.cmdRoadmapLogAppendBatchForTest(partialReq).object();
+        EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+
+        QJsonObject req = sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("Lands in Work."), QStringLiteral("work")),
+            sectionBullet(QStringLiteral("Lands in Bundles."), QStringLiteral("bundles"))});
+        req.remove(QStringLiteral("section"));
+        resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    }
+    EXPECT_EQ(partial.value(QStringLiteral("code")).toString(),
+              QStringLiteral("missing_field"))
+        << QJsonDocument(partial).toJson().toStdString();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("skipped")).toArray().isEmpty())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    const int bundles = file.indexOf(QStringLiteral("## Bundles"));
+    const int work    = file.indexOf(QStringLiteral("**Lands in Work.**"));
+    const int other   = file.indexOf(QStringLiteral("**Lands in Bundles.**"));
+    ASSERT_GE(bundles, 0) << file.toStdString();
+    EXPECT_TRUE(work >= 0 && work < bundles) << file.toStdString();
+    EXPECT_GT(other, bundles) << file.toStdString();
+}
+
 // A roadmap the store does not serve refuses rather than filing every
 // bullet under the call-level section.
 TEST(RoadmapWriteHalf, Ants5344PerBulletSectionOnTheFileRefuses) {

@@ -334,6 +334,14 @@ or one that runs with arguments the preview never saw.
 
 **Would break this:** filing every bullet under the call-level section.
 
+### ANTS-6274 — every bullet naming its section lifts the call-level one
+
+| Case | Asserts |
+|---|---|
+| `Ants6274EveryBulletNamesItsSection` | With no call-level `section`, each bullet lands in the section it names. A bullet with no section refuses the whole call `missing_field` and ROADMAP.md is unchanged. |
+
+**Would break this:** requiring the call-level section regardless, or filing a section-less bullet somewhere by guess.
+
 ### ANTS-5353 — a folder-derived id prefix warns
 
 | Case | Asserts |

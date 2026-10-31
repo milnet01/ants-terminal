@@ -2243,9 +2243,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     if (callerRaw.isEmpty())
         return rlErr(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: caller_cwd is required"));
-    if (section.isEmpty())
-        return rlErr(QStringLiteral("missing_field"),
-            QStringLiteral("roadmap_log: section is required"));
+    if (section.isEmpty()) {
+        // ANTS-6274 — every bullet naming its own section makes the call-level
+        // one redundant. The first bullet's stands in, and every path below,
+        // pass-headings and file-backed included, judges the batch as usual.
+        const QJsonArray named = req.value(QStringLiteral("bullets")).toArray();
+        const bool allNamed = !named.isEmpty() &&
+            std::all_of(named.begin(), named.end(), [](const QJsonValue &v) {
+                return !v.toObject().value(QStringLiteral("section")).toString().isEmpty();
+            });
+        if (!allNamed)
+            return rlErr(QStringLiteral("missing_field"),
+                QStringLiteral("roadmap_log: section is required unless every "
+                               "bullet names its own"));
+        QJsonObject filled = req;
+        filled[QStringLiteral("section")] =
+            named.first().toObject().value(QStringLiteral("section"));
+        return cmdRoadmapLogAppendBatch(filled);
+    }
     if (!req.value(QStringLiteral("bullets")).isArray() ||
         req.value(QStringLiteral("bullets")).toArray().isEmpty())
         return rlErr(QStringLiteral("missing_field"),
