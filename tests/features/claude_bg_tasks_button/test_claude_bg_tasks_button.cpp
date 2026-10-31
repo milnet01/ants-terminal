@@ -1283,3 +1283,47 @@ TEST(ClaudeBgTasksButton, Ants6322MetaFileEndsPausedAgent) {
     EXPECT_EQ(tracker.runningCount(), 0);
 }
 
+// ANTS-5773 INV-15 (ANTS-6326) — Claude Code sets finished:true at a pause as
+// well, clears it on resuming and sets it again at the end (measured on a live
+// helper, 2026-10-31). So the flag ends nothing while other work runs, and a
+// flag that clears puts the helper back.
+TEST(ClaudeBgTasksButton, Ants6326PauseFlagDoesNotLatchAgentFinished) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString agentOut = dir.filePath(QStringLiteral("ahelper.output"));
+    const QString shellOut = dir.filePath(QStringLiteral("b.output"));
+    touchFile(agentOut);
+    touchFile(shellOut);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, agentLaunched(agentOut)
+        + QList<QJsonObject>{agentNotice("2026-10-31T06:12:40.000Z", "ahelper", "completed",
+                                         kPausedSummary)});
+    const QString helper = helperFile(dir, "s", "ahelper");
+    writeLines(helper, helperShell("2026-10-31T06:12:00.000Z", "b", shellOut));
+    const QString meta = QString(helper).replace(".jsonl", ".meta.json");
+    const auto writeMeta = [&meta](const QByteArray &body) {
+        QFile f(meta);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write(body);
+    };
+    const QByteArray stopped = R"({"agentType":"general-purpose","finished":true})";
+    const QByteArray running = R"({"agentType":"general-purpose"})";
+    writeMeta(stopped);
+
+    ClaudeBgTaskTracker tracker;
+    tracker.setTranscriptPath(tp);
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(tracker.tasks()).agents, 1)
+        << "paused on its own shell: the flag does not end it";
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(tracker.tasks()).shells, 1);
+
+    appendLines(helper, {helperLine(userNotification("2026-10-31T06:20:00.000Z", "b", "completed"))});
+    writeMeta(running);
+    tracker.poll();
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(tracker.tasks()).agents, 1)
+        << "its shell ended and it resumed: the earlier flag must not have stuck";
+
+    writeMeta(stopped);
+    tracker.poll();
+    EXPECT_EQ(tracker.runningCount(), 0) << "the flag with nothing else running is the end";
+}
+

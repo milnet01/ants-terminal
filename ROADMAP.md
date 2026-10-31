@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6325 -->
+<!-- ants-roadmap-id-high-water: ANTS=6326 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88926,6 +88926,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-10-31.
   Lanes: mcp.
+
+- ✅ [ANTS-6326] **A helper paused on its own work reads as finished for good, so its tab says idle once its shells end.**
+  Seen on the RetroArch tab, 2026-10-31 (screenshot: footer 1 agent, status
+  bar idle). ANTS-6322 ended a helper on finished:true in its meta file. Measured
+  with a live helper, 2026-10-31: the flag is set at the pause too (10:04:39),
+  clears on resuming (10:06:07) and returns at the real end (10:06:09). The code
+  latches the first one. Hot reload: needs a terminal relaunch, as the tracker
+  runs inside the terminal.
+  2026-10-31: fixed. The flag is re-read each poll, never latched, and
+  ends a helper only when no other task runs. ANTS-5773 INV-15. A helper
+  whose work ends can read idle for one poll before it resumes. Reaches
+  a running terminal on its next relaunch.
+  **Layman:** The status bar says idle while a helper is still working, after that helper has paused once.
+  Kind: fix.
+  Source: user-report-2026-10-31.
+  Lanes: claude.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

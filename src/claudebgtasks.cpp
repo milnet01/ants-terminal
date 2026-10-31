@@ -3,6 +3,7 @@
 #include "claudecontent.h"   // ANTS-2002 — content-as-array text extraction
 #include "claudetranscriptwalker.h"  // ANTS-1261 — shared JSONL walk + gating
 
+#include <algorithm>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -536,6 +537,16 @@ QList<ClaudeBackgroundTask> ClaudeBgTaskTracker::finalize(
         }
     }
 
+    // ANTS-6326 — a stopped helper with other work running may be paused on
+    // that work, so it counts as running. The flag cannot say whose work it is;
+    // once nothing else runs, it means the helper has ended.
+    const bool otherWorkRuns = std::any_of(filtered.cbegin(), filtered.cend(),
+        [](const ClaudeBackgroundTask &t) { return !t.finished && !t.helperStopped; });
+    if (!otherWorkRuns) {
+        for (auto &t : filtered)
+            if (t.helperStopped) t.finished = true;
+    }
+
     return filtered;
 }
 
@@ -566,15 +577,18 @@ bool ClaudeBgTaskTracker::walkHelperTranscripts(const QString &path, ClaudeBgTas
             ClaudeTranscript::Sidechains::Keep);
         read = true;
     }
-    // ANTS-6322 — a helper's last notice can be a pause, so its meta file has
-    // the last word. Read for running helpers only, as this runs every 2 s.
+    // ANTS-6322, ANTS-6326 — a helper's last notice can be a pause, so its meta
+    // file is read too. Claude Code sets the flag at a pause as well as at the
+    // end and clears it on resuming, so it is re-read rather than latched, and
+    // finalize decides what it means. Running helpers only: this runs every 2 s.
     for (ClaudeBackgroundTask &t : acc.raw) {
         if (t.finished || t.kind != ClaudeBackgroundTask::Kind::Agent || t.id.isEmpty()) continue;
         QFile meta(folder.filePath(QStringLiteral("agent-%1.meta.json").arg(t.id)));
-        if (!meta.open(QIODevice::ReadOnly)) continue;
-        if (QJsonDocument::fromJson(meta.readAll()).object()
-                .value(QStringLiteral("finished")).toBool()) {
-            t.finished = true;
+        const bool stopped = meta.open(QIODevice::ReadOnly)
+            && QJsonDocument::fromJson(meta.readAll()).object()
+                   .value(QStringLiteral("finished")).toBool();
+        if (stopped != t.helperStopped) {
+            t.helperStopped = stopped;
             read = true;
         }
     }

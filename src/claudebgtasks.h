@@ -32,6 +32,9 @@ struct ClaudeBackgroundTask {
     // event. sweepLiveness un-latches it if the file reappears; a
     // transcript-finish is permanent.
     bool finishedByLiveness = false;
+    // ANTS-6326 — an Agent's meta file holds finished:true as of the last read.
+    // True at a pause as well as at the end; see ClaudeBgTaskTracker::finalize.
+    bool helperStopped = false;
     Kind kind = Kind::Shell;
 };
 

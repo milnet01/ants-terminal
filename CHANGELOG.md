@@ -24,6 +24,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status bar keeps counting a helper after it pauses on its own background work, until the helper really ends.** (ANTS-6326)
+
 - **The status bar and tab dot keep saying "waiting" while a helper agent is paused on its own background work, until it has really finished** (ANTS-6322)
 
 - **A session that compacts itself while idle keeps saying "idle"** (ANTS-6323)

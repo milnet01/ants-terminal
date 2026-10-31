@@ -378,11 +378,11 @@ its output on one for the tombstone check alone.
 
 **The contract may be the test source's own header comment**, where the
 project's pattern puts it there rather than in a separate file; the ids
-and the append-only rule bind the same either way. `CLAUDE.md` rule 14
-sanctions that container **while its conditions hold** — one feature's
+and the append-only rule bind the same either way. That container holds
+**while its conditions hold** — one feature's
 tests discharging every clause, no other contract in the file, nothing but its
-own test binding to it. A contract that outgrows them is gated like any
-other, so a header comment is not a route around the gate.
+own test binding to it. A contract that outgrows them is a spec's to
+carry, under `spec-format.md` § 1.
 
 That word is [spec-format.md](spec-format.md) §3.7's, which owns the
 Invariants section the marking lives in — this section said *retired*

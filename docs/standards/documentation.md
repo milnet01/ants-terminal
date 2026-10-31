@@ -649,12 +649,11 @@ the loop log after it** — a loop log is a record rather than content. A
 reference is not gated (§9.1) and carries no loop log; the placement rule
 bites only where one exists.
 
-**A gated document owed no `## What checks this` table — a plan, ADR, design
+**A reviewed document owed no `## What checks this` table — a plan, ADR, design
 doc, charter or `CLAUDE.md` — puts its loop log last.** The table is
 required of standards, references and specs only, and the placement rule
-above uses it as its anchor. The log itself is owed by
-every gated document: the gate writes rows as the loops happen, so one
-with nowhere to write them cannot comply. **A spec's order is
+above uses it as its anchor. A review writes the log's rows as the loops
+happen; a document never reviewed needs no log. **A spec's order is
 `spec-format.md` § 3's block**, which puts `Cross-doc impact` between the two
 and appends § 4's sections after the log. (A spec numbers it, per the
 note below. `spec-format.md` § 3.12 delegates **all** of the table's rules
@@ -1317,22 +1316,18 @@ and for no other.
 
 ### 9.1 The gate
 
-**A gated document gets a cold read before the work it governs starts** —
-a spec, plan, ADR, design doc, standard, charter or `CLAUDE.md`,
+**A new spec that would be expensive to build wrong gets a cold read before
+the work it governs starts**, and any other document only when the user asks:
 reviewed
 by someone with no memory of writing it, looped until a pass finds
 nothing that changes what gets built — **or until the review instrument's
 loop cap binds**, at which point the remaining findings are filed and the
 document ships. `review-contract` owns the cap and its numbers.
 
-**`CLAUDE.md` rule 14 owns when the gate fires and what it exempts** — the
-trigger is a change of direction rather than an edit, and the scope
-exclusions are its list. **So an inert edit to a gated document owes no
-run**, whatever the sentence above reads like on its own. This section
-states what a run must produce, never when one is owed.
+**`CLAUDE.md` rule 14 owns when the gate fires.** This section states what a
+run must produce, never when one is owed.
 
-**A `CLAUDE.md` is Agent rules by §1's kind and is gated all the same** —
-something is built under it. Read as one document it is `review-contract`'s;
+**A `CLAUDE.md` is Agent rules by §1's kind.** Read as one document it is `review-contract`'s;
 read with settings, hooks and skills as a config set it is
 `review-agent-rules`'. A `SKILL.md` is machinery, and `review-skill` is what
 asks whether its rules belong.
@@ -1345,7 +1340,7 @@ The requirements this standard adds:
 
 - **The loop log is written as the loops happen**, in a `## Cold-eyes
   loop log` section, after the What-checks-this table **in a standard; a
-  spec's position is §2.9's, and a gated document with no such table puts
+  spec's position is §2.9's, and a reviewed document with no such table puts
   the log last**. Back-filling destroys
   the audit trail, which is the only evidence the review was real.
   **Where that section names a record, the rows are written there and the
@@ -1375,9 +1370,8 @@ The requirements this standard adds:
   after a cap, and the log reads clean over a document known to be wrong —
   measured 2026-09-26 on a capped spec whose build found a false claim that
   went into a roadmap note, leaving neither the log nor the spec pointing at
-  it. **Where `CLAUDE.md` rule 14's already-existing-code exception permits
-  repairing the document itself after the cap, the row says the document
-  moved after the cap** — the cap ends the review, not the repair.
+  it. **Where the document itself is repaired after the cap, the row says the
+  document moved after the cap** — the cap ends the review, not the repair.
 - **Rows are numbered continuously across runs**, never restarted per run,
   so *row 4 corrects row 3* stays unambiguous when the correction is two runs
   later. Each run's first row says it begins a new run.
@@ -1474,7 +1468,7 @@ defect is repaired by hand, outside every gate — §2.8's length rule and
 | §2.2 a new value lists what constrains its set | **nothing** — the limits it inherits are stated in another section, and the one check that does read section against section, `enumeration-parity`, takes two enumerations of one set, which these are not |
 | §2.2 cited symbols exist | **`Partial:`** `check-doc-facts` `symbols`, a symbol-resolution check against current source, which emits CANDIDATES — only *does not resolve* is deterministic. **Nothing** decides which candidate is a defect |
 | §2.9 required sections present | **`Partial:`** `check-doc-facts` `sections`, a required-section check against the format standard, **for a spec only** — it reads a spec's machine-readable block, and a standard's or reference's requirement is prose, which `mandated-section` reaches from the document side and `section-exists` from the rule side. Both test PRESENCE; **nothing** checks that a mandated section is in the mandated PLACE, though §2.9 requires `## What checks this` last and the loop log after it |
-| §9.1 loop log present, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence, and `sections` skips a standard, whose requirement is prose — which is what `mandated-section` exists for. **Once the rows live in a record the tally is caught only by a `loop-log` run pointed at the record itself** — a run pointed at this document reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
+| §9.1 loop log present where a review ran, tally balances | **`Partial:`** `check-doc-facts` `loop-log`, a tally check over the log's own rows, plus a required-section check for the log's presence — `mandated-section` where the requirement is prose, `sections` in a spec. The `loop-log` check does not test presence, and `sections` skips a standard, whose requirement is prose — which is what `mandated-section` exists for. **Once the rows live in a record the tally is caught only by a `loop-log` run pointed at the record itself** — a run pointed at this document reads the pointing section, finds no rows and passes; and a row written into that section instead reads as conforming to the sentence before it, with no check comparing the two |
 | §9.1 a landed row is not edited | **nothing** — the edit shows in the commit diff, and no check reads it |
 | §9.0 checks run before done | **`Partial:`** the `pre-commit` hook, a staged-commit blocking check, blocks this repository's classes at commit time — after *done*, not before it, which is what the rule asks. **Nothing** catches a document called done without `check-doc-facts` having run |
 | A record's home and name (§ 3.4) | **`Partial:`** `check-doc-facts`' link and path checks catch a POINTER that does not resolve, in either direction, once one exists. **A new record's filename and home are both mechanical** — a glob for `*20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]*.md` under `docs/` finds a dated name, and the prescribed home and basename are as greppable as the § 3.1 / § 3.3 row says a filename form is; nothing runs either check today. **Nothing** checks that a document carrying pedigree has a history file at all, that a record sits in its prescribed home, or that what moved out was provenance rather than a rule the document needed |

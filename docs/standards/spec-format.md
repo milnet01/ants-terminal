@@ -81,7 +81,7 @@ reasoning.
 **Look this up; do not read it through.** It is long by design, and reading
 it end to end before writing a spec is how variance gets in. (*Reference* here
 is the reading habit, not `documentation.md` §1's document kind — this file is
-a standard, it is gated, and it carries a loop log.) Three tiers, and most work
+a standard.) Three tiers, and most work
 only touches the first:
 
 1. **Run `write-spec`.** It resolves the id, copies the skeleton (§9),
@@ -661,12 +661,11 @@ unverifiable is a wish wearing a table's clothes.
 
 ## 6. Review gate
 
-Every spec runs through `review-contract` before implementation, looped until
-it converges **or reaches the skill's cap — both are clean exits** (§5.4).
-**`CLAUDE.md` rule 14 owns when that fires, and an inert edit owes no run** —
-the trigger there is a change of direction rather than an edit, and a
-considered no is recorded in the commit body. This section states what a run
-must produce, never when one is owed.
+A new spec that would be expensive to build wrong runs through
+`review-contract` before implementation, looped until it converges **or reaches
+the skill's cap — both are clean exits** (§5.4). **`CLAUDE.md` rule 14 owns when
+that fires.** This section states what a run must produce, never when one is
+owed.
 **A test's own contract is excluded**, by that same rule, which owns the
 gate's scope: it is a single-behaviour contract beside its test rather than a
 multi-file design document, and a self-read is sufficient.
@@ -731,7 +730,8 @@ enforces it.
 A plan is deliberately thin: ordered steps, each with its verification.
 Skeleton at `skeletons/plan-skeleton.md`.
 
-A plan runs §6's gate and keeps its loop log the same way. Its record is
+A plan gets no automatic review. One the user asks for keeps its loop log as
+§6 says. Its record is
 `docs/reviews/<ID>-<topic>-plan-loop-log.md`, since §2 gives a plan and its
 spec the same stem; the skeleton carries the heading and the pointer.
 

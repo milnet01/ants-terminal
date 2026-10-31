@@ -304,7 +304,7 @@ and the project's copy is the one that goes stale.
 **One test decides every rule in it: would this be true of any project on this
 machine?** Yes — it is this file's, and the project's statement of it becomes a
 pointer here. **Where this file does not already state it, adding it here is an
-edit to a machine-global standard** — gated, and taken only on the bar below,
+edit to a machine-global standard** — taken only on the bar below,
 before the project's copy is reduced to a pointer.
 
 No — it names something only that project has, and it stays the project's.

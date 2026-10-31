@@ -107,7 +107,7 @@ A helper agent writes its own records to `<session>/subagents/agent-<id>.jsonl`,
 
 A helper can write while the main transcript is silent, so `walkHelperTranscripts` also runs from `ClaudeBgTaskTracker::poll` and `ClaudeTabTracker::pollAllShells`.
 
-A running helper also ends when `agent-<id>.meta.json` holds `finished: true` (ANTS-6322): a helper's last notice can be a pause.
+A running helper also ends when `agent-<id>.meta.json` holds `finished: true` and no other task is running (ANTS-6322, ANTS-6326): a helper's last notice can be a pause. Claude Code sets that flag at a pause as well as at the end, and clears it on resuming (measured on a live helper, 2026-10-31), so the flag is re-read each poll and never latched.
 
 ## 3. Invariants
 
@@ -153,7 +153,7 @@ A running helper also ends when `agent-<id>.meta.json` holds `finished: true` (A
 - **INV-14** — A helper's write reaches both counts with no write to the main transcript: within one `ClaudeBgTaskTracker::poll` and one `ClaudeTabTracker::pollAllShells`, with no double count on the next poll.
   *Test:* same file, `Ants6321PollReadsHelperWithoutMainWrite`; `tests/features/claude_status_bar_per_tab/test_claude_status_bar_per_tab.cpp`, `Ants6321TabPollCountsHelperShell`.
   *Breaks when:* either poll returns early on an unchanged main transcript, or an append to a known helper file goes unread.
-- **INV-15** — A helper's pause is not its end: a notice with status `completed` and the summary `is waiting on its own background work` leaves its agent task pending. A later notice ends it, and so does `finished: true` in its meta file, read by the poll with no transcript write.
+- **INV-15** — A helper's pause is not its end: a notice with status `completed` and the summary `is waiting on its own background work` leaves its agent task pending. A later notice ends it, and so does `finished: true` in its meta file once no other task is running, read by the poll with no transcript write. A flag that clears puts the helper back to running.
   *Test:* `tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp`: `Ants6322PausedAgentStaysPending`, `Ants6322MetaFileEndsPausedAgent`.
   *Breaks when:* any non-empty status ends a task, or a helper with no later notice stays pending after its meta file says finished.
 
