@@ -264,6 +264,40 @@ TEST(DocCitationsExamples, Inv53MaskedLineResetsAntecedent) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// INV-56 (ANTS-5469) — a path written straight after "not" is what NOT to write,
+// so it is a specimen. documentation.md's `src/vault.py:39-49` is the case. The
+// surviving rows stop the rule growing into any line that says "not".
+TEST(DocCitationsExamples, Ants5469PathAfterNotIsASpecimen) {
+    expect_reset();
+    const auto r = scan(lines({
+        "`src/a.py::key()`, not `src/vault.py:39-49`.",  // 1 symbol stays, citation goes
+        "Not src/upper.cpp:1 either.",                   // 2 goes
+        "and do not",                                    // 3
+        "> `src/wrapped.cpp:2`",                         // 4 goes, the "not" is on line 3
+        "not `src/b.py::sym`",                           // 5 symbol reference goes
+        "src/before.cpp:3 is not stale",                 // 6 stays: the path comes first
+        "not only src/between.cpp:4",                    // 7 stays: a word between
+        "cannot src/can.cpp:5",                          // 8 stays: not the word
+        "not",                                           // 9
+        "",                                              // 10
+        "src/para.cpp:6",                                // 11 stays: a new paragraph
+    }));
+    QStringList paths;
+    for (const Citation &c : r.citations) paths << c.path;
+    expect(paths == QStringList({QStringLiteral("src/before.cpp"),
+                                 QStringLiteral("src/between.cpp"),
+                                 QStringLiteral("src/can.cpp"),
+                                 QStringLiteral("src/para.cpp")}),
+           "INV-56: only the survivors", render(r));
+    expect(r.symbolRefs.size() == 1 && r.symbolRefs.at(0).path == QStringLiteral("src/a.py"),
+           "INV-56: the symbol after not goes, the one before it stays", render(r));
+    expect(r.examplesSuppressed == 4, "INV-56: each specimen is counted", render(r));
+
+    // A bare path has no line number to go stale, and ANTS-5296 judges it: after
+    // "not" it is still checked, as Ants5296PathTokenOkMissingAndForeign asserts.
+    EXPECT_EQ(0, expect_failures());
+}
+
 // INV-55 — the JSON keys omit at their sentinels and appear otherwise, and
 // suppressed tokens are absent from every tally. The in-region `6.2:1` is the
 // row that makes `unparsed_total:0` falsifiable: it would be an `unresolvable`

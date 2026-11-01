@@ -195,7 +195,8 @@ struct ScanResult {
     // region whose `end` is past the cut reports here, and
     // scanned_lines < doc_lines (ANTS-3636 INV-30) is what says so.
     int unterminatedExamples = -1;
-    // ANTS-3659 — how many tokens the example mask dropped, across BOTH arrays.
+    // ANTS-3659 — how many tokens the example mask dropped, across BOTH arrays,
+    // plus (ANTS-5469) each path written straight after the word "not".
     // Whole-doc: the emission caps trim what is returned, never what was
     // suppressed. Without it a too-wide region is indistinguishable from a
     // document that cites nothing.

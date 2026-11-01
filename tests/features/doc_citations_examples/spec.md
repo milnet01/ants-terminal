@@ -31,6 +31,11 @@ have nothing to do with regions.
 - **INV-55** — the JSON keys' omit-when-false, and tally invisibility.
   *Test:* `Inv55JsonKeysAndTallies`.
 
+- **INV-56** — a path straight after the word "not" is a specimen, on the same
+  line or wrapped from the line before, and counts in `examplesSuppressed`. A
+  word between, a path before the "not", another word ending in "not" and a new
+  paragraph all stay citations. *Test:* `Ants5469PathAfterNotIsASpecimen`.
+
 ## Why so many fixtures assert a NEGATIVE
 
 Eleven of these rows assert that something is **not** suppressed. Against

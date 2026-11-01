@@ -187,6 +187,22 @@ int oneSpaceStrip(const QString &content, QString &stripped) {
     return 0;
 }
 
+// ANTS-5469 — true when the text at `col` comes straight after the word "not",
+// allowing for markup and a line wrap. "`a.py::key()`, not `a.py:39`" shows what
+// not to write, so the path is a specimen rather than a claim.
+bool followsNot(const QStringList &lines, int li, int col) {
+    static const QRegularExpression sameLine(
+        QStringLiteral("(?:^|\\W)not\\s*[`*_\"'(]*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    static const QRegularExpression lineOpening(QStringLiteral("^\\s*(?:>\\s*)*[`*_\"'(]*$"));
+    static const QRegularExpression lineEnd(QStringLiteral("(?:^|\\W)not\\s*$"),
+                                            QRegularExpression::CaseInsensitiveOption);
+    const QString before = lines.at(li).left(col);
+    if (sameLine.match(before).hasMatch()) return true;
+    return li > 0 && lineOpening.match(before).hasMatch()
+           && lineEnd.match(lines.at(li - 1)).hasMatch();
+}
+
 void record(ScanResult &r, const Options &opts, const QVector<bool> &examples,
           const QString &line, int docLine, int docCol, const Token &tok,
           const QString &raw, const QString &path, bool continuation) {
@@ -254,6 +270,11 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
 
             Token tok;
             if (!recogniseAfterColon(line, i, tok)) continue;
+            if (followsNot(lines, li, start)) {
+                ++r.examplesSuppressed;
+                i = tok.end - 1;
+                continue;
+            }
             record(r, opts, examples, line, li + 1, start, tok,
                  line.mid(start, tok.end - start), path, false);
             i = tok.end - 1;                          // resume past the token
@@ -286,7 +307,7 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
             if (dc > 0 && validPath(sp) && isIdentifier(sym)) {
                 // The same funnel guard record() applies: an illustration is
                 // not a claim, whichever array it would have landed in.
-                if (examples.value(s.startLine)) {
+                if (examples.value(s.startLine) || followsNot(lines, s.startLine, off)) {
                     ++r.examplesSuppressed;
                     continue;
                 }

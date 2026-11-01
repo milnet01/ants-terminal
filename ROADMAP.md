@@ -86797,12 +86797,16 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-09-26 triage
 
-- 📋 [ANTS-5469] **doc_lint's doc_citations treats an illustrative path in an "X, not Y" example as a specimen.**
+- ✅ [ANTS-5469] **doc_lint's doc_citations treats an illustrative path in an "X, not Y" example as a specimen.**
   doc_lint over ~/.claude/standards flagged `src/vault.py:39-49` in
   documentation.md, an invented example of the form not to use. Reporter's
   preferred rule: a path inside a negative construction (`X, not Y`) is a
   specimen; alternatively skip a path whose directory root does not exist
   in the project.
+  Shipped 2026-11-01: amendment to docs/specs/ANTS-3659.md, INV-56. Bare
+  paths under paths:true are still judged, as ANTS-5296 requires. The
+  alternative, skipping a path whose first directory is absent, was not
+  taken.
   **Layman:** The document checker stops flagging made-up example paths in a guide about how to cite paths.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.

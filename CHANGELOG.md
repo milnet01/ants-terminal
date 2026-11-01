@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_citations` reads a `path:line` or `path::symbol` written straight after the word "not" as an example, and counts it in `examples_suppressed`** (ANTS-5469)
+
 - **`doc_symbols` reports a single capitalised word such as `Kind` or `PARTIAL` only when it resolves, and never reports a naming-convention name such as `PascalCase`** (ANTS-5470)
 
 - **trace lists a macro argument as a possible call, not a prototype** (ANTS-6339)
