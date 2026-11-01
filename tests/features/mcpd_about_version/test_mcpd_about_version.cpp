@@ -54,7 +54,9 @@ TEST(McpdAboutVersion, Inv1VersionFlagPrintsOneLine) {
     p.start(QStringLiteral(ANTS_MCPD_BIN), {QStringLiteral("--version")});
     ASSERT_TRUE(p.waitForStarted(5000));
     // stdin stays open: a --version that read it would hang here.
-    ASSERT_TRUE(p.waitForFinished(5000)) << "--version waited on stdin";
+    // Long enough for a freshly linked sanitizer binary on a busy host: 5 s
+    // failed there with nothing wrong. A real wait on stdin still never ends.
+    ASSERT_TRUE(p.waitForFinished(60000)) << "--version waited on stdin";
     EXPECT_EQ(p.exitStatus(), QProcess::NormalExit);
     EXPECT_EQ(p.exitCode(), 0);
     const QString out = QString::fromUtf8(p.readAllStandardOutput());
