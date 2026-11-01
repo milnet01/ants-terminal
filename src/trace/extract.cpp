@@ -256,6 +256,23 @@ std::shared_ptr<const FileRows> extractRows(const QString &langId, const TSQuery
                           rows->calls.end());
     }
 
+    // ANTS-6339: `TRY(fn(x))` with no semicolon parses as a prototype of fn.
+    // A prototype inside a function body is rare, and this reading of it hid
+    // the call, so it falls through to the references as a possible call.
+    {
+        const QVector<DefRow> all = rows->defs;
+        rows->defs.erase(std::remove_if(rows->defs.begin(), rows->defs.end(),
+                                        [&](const DefRow &d) {
+                                            if (!d.isDeclaration || d.kind != QLatin1String("function"))
+                                                return false;
+                                            return std::any_of(all.cbegin(), all.cend(), [&](const DefRow &o) {
+                                                return !o.isDeclaration && o.kind == QLatin1String("function")
+                                                    && strictlyInside(d.node, o.node);
+                                            });
+                                        }),
+                         rows->defs.end());
+    }
+
     // Scopes, outermost first; a qualifier (`Foo::` in `void Foo::bar()`)
     // adds its parts innermost.
     for (DefRow &d : rows->defs) {

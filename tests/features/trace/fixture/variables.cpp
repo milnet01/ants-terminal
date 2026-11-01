@@ -10,8 +10,10 @@ struct TraceHolder {
 #define TRACE_TRY(x) if (!(x)) return
 int traceWrap(int);
 int macroArgFn();
+int macroDirectFn();
 void useVariables() {
     int traceLocal = traceConstant;
     (void)traceLocal;
     TRACE_TRY(traceWrap(macroArgFn()))
+    TRACE_TRY(macroDirectFn())
 }

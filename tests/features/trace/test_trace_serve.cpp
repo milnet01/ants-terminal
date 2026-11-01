@@ -167,6 +167,12 @@ TEST_F(TraceServe, Ants6209MacroArgumentIsAPossibleCall) {
         return o.value(QStringLiteral("possible_call")).toBool();
     });
     EXPECT_EQ(possible.size(), 1) << dump(r);
+    // ANTS-6339 — a direct macro argument is not read as a prototype of it.
+    const QJsonObject direct = traceSymbol(QStringLiteral("macroDirectFn"));
+    EXPECT_EQ(arr(direct, "definitions").size(), 1) << dump(direct);
+    EXPECT_EQ(rowsWhere(arr(direct, "references"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("possible_call")).toBool();
+    }).size(), 1) << dump(direct);
     const QJsonObject plain = traceSymbol(QStringLiteral("traceConstant"));
     EXPECT_TRUE(rowsWhere(arr(plain, "references"), [](const QJsonObject &o) {
         return o.value(QStringLiteral("possible_call")).toBool();
