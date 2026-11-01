@@ -22,6 +22,14 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
   file; the others only in their own file.
 - **A variable.** A variable assigned from a statement that reads a path
   reads it too, until the end of the enclosing test or function.
+- **A Python test** (ANTS-6180). `getsource(x)` or `Path(x.__file__).read_text`
+  reads the module `x` was imported from, under `source_roots` or the root. A
+  join from `Path(__file__)`, or from a variable holding a repository path,
+  reads the existing file it names. So a test that runs a script shows too.
+- **A shell test** (ANTS-6180). `$VAR/<path>` reads the existing file it names,
+  where `VAR` holds the script's own directory, the git top level, the script's
+  `$1` at the top level, or a known variable joined to a path. Any other
+  variable, such as a `mktemp` directory, reads nothing.
 
 ## Invariants
 
@@ -36,9 +44,16 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
 | 7 | Only rows reading a requested path are returned, ordered by path, file and line. `readers` lists each test file and test that reads a requested path directly, so a test with no captured anchor is still named. `limit` caps each list (default 500); `scanned` holds the totals, and `scanned.rows_truncated` is true when the cap cut either list (`scanned.truncated` is the file walk's own cap). | `SourceScrapes.Inv7FilteredAndOrdered` |
 | 8 | Neither `path` nor `paths`, a non-string entry, or `limit` outside 1 to 5000 refuses `bad_args`. A path outside the root or missing refuses `bad_path`. | `SourceScrapes.Inv8Refusals` |
 | 9 | The verb is registered in `registerProjectScopedVerbs` with `CallerCwdContract::Required`, matches `callerCwdContractFor`, and its schema is a closed object. | `SourceScrapes.Inv9Wiring` |
+| 10 | In a Python test, `getsource` or a `__file__` read of an imported name gives a reader row: `test` is the enclosing `test*` function, `via` the call. A name that is no module, or an attribute of one, reads the nearest module above it. | `SourceScrapes.Inv10PythonGetsourceReadsItsModule` |
+| 11 | A Python join from `Path(__file__)` or a variable holding a repository path gives a reader row. A join from any other name, a comment and a triple-quoted string give none. | `SourceScrapes.Inv11PythonJoinsFromTheTestFile` |
+| 12 | A shell `$VAR/<path>` gives a reader row only where `VAR` holds a repository path as "A shell test" says. A comment, a `mktemp` variable, a function's `$1` and a variable rebound to anything else give none. | `SourceScrapes.Inv12ShellJoinsFromAKnownRoot` |
+| 13 | `scanned.test_files` counts C++, Python and shell files. At zero, `notices` says empty rows do not mean nothing reads the path, and names the test roots. Otherwise `notices` is absent. | `SourceScrapes.Inv13NoticeWhenNoTestFileWasRead` |
 
 ## Not covered
 
 A path built at run time (`ANTS_SOURCE_DIR "/" + rel`), a definition in a
 `CMakeLists.txt` other than the root one, and a file reached through an
-environment variable. `not_covered` in every reply says so.
+environment variable. In Python, a module passed through a variable, a path
+built with `os.path`, and a file found by walking a directory. Anchors in a
+Python or shell test: those tests appear in `readers` only. Test files in any
+other language. `not_covered` in every reply says so.

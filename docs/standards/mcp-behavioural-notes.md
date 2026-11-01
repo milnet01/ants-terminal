@@ -271,7 +271,10 @@ server-controllable beyond this per-tool hint.
   in a file that names a directory definition reads the file it names when
   that file exists, so a fixture string naming a real file can show as a
   reader. A search by a variable is counted in
-  `scanned.unresolved_anchors`, never reported as a row. Contract:
+  `scanned.unresolved_anchors`, never reported as a row. A Python or shell
+  test gets `readers` rows only, never an anchor, and a test that runs a
+  script counts as reading it (ANTS-6180). `notices` appears when no test
+  file was read at all. Contract:
   [`tests/features/mcp_source_scrapes/spec.md`](../../tests/features/mcp_source_scrapes/spec.md).
 
 - **`comment_claims` reports a finding only where a lookup decides it**

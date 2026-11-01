@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6337 -->
+<!-- ants-roadmap-id-high-water: ANTS=6338 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88633,7 +88633,7 @@ measured Ants adding about 5,250 tokens to every request.
 
 ### Ants MCP feedback from CC sessions — 2026-10-23 triage
 
-- 📋 [ANTS-6180] **source_scrapes reports test_files 0 with no warning when test_roots is set, and misses Python tests that read source.**
+- ✅ [ANTS-6180] **source_scrapes reports test_files 0 with no warning when test_roots is set, and misses Python tests that read source.**
   Pressless: paths over .githooks, scripts, src/pressless and more
   returned scanned.test_files 0 and readers [] although .ants/project.json
   declares test_roots ["tests"]. Its tests read source through
@@ -88646,6 +88646,8 @@ measured Ants adding about 5,250 tokens to every request.
   with sed. Resolve a $VAR/<repo-path> join in shell tests. Also unseen:
   non-test text pins such as scripts/mutations/*.py, which hold verbatim
   source lines (a separate scrape kind).
+  Python and shell tests now give readers rows; a zero scan gives a
+  notice. Follow-up: ANTS-6338.
   **Layman:** The tool that finds tests reading source code said none existed on a project full of them, without warning that it had looked at nothing.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
@@ -89093,6 +89095,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-10-31.
   Lanes: roadmap.
+
+- 📋 [ANTS-6338] **source_scrapes misses Python tests that read through os.path, walk a directory, or pass a module in a variable, and captures no Python or shell anchors.**
+  Seen building ANTS-6180. All three are named in not_covered. os.path joins from
+  __file__ appear in test files of RetroDB, Slipcase and Snatch. Pressless walks
+  _SRC with a directory walk and calls getsource(module) on a variable. Anchors: readers
+  name the test, but no scrape row gives the string it looks for. Non-test text
+  pins such as scripts/mutations/*.py (UT_Ants) are a separate scrape kind, also unseen.
+  **Layman:** The tool that lists which tests read a file now covers Python and shell, but still skips a few ways of reading, and says so in its reply.
+  Kind: fix.
+  Source: session-2026-11-01-ANTS-6180.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

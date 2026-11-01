@@ -6,7 +6,8 @@
 // walked once: a statement that reads a path binds the variable it assigns,
 // and the literal arguments of a scrape call on a reading value are
 // anchors. Deliberately looser than a C++ parser; what it cannot follow is
-// counted or named in not_covered, never guessed.
+// counted or named in not_covered, never guessed. Python and shell tests get
+// a line scan for reads only: see analyseScript.
 
 #include "sourcescrapes.h"
 
@@ -22,6 +23,7 @@
 #include <QRegularExpression>
 
 #include <algorithm>
+#include <optional>
 
 namespace SourceScrapes {
 namespace {
@@ -554,6 +556,244 @@ bool isHeader(const QString &rel) {
     return s.startsWith(QLatin1Char('h'));
 }
 
+bool isPython(const QString &rel) { return QFileInfo(rel).suffix() == QLatin1String("py"); }
+
+bool isShell(const QString &rel) {
+    const QString s = QFileInfo(rel).suffix();
+    return s == QLatin1String("sh") || s == QLatin1String("bash");
+}
+
+// `rel` under the root-relative `base`, root-relative itself; "" is the root,
+// and nothing past the root is a repository path.
+std::optional<QString> under(const QString &base, const QString &rel) {
+    const QString p = QDir::cleanPath(base.isEmpty() ? rel : base + QLatin1Char('/') + rel);
+    if (p == QLatin1String("..") || p.startsWith(QLatin1String("../")) || p.startsWith(QLatin1Char('/')))
+        return std::nullopt;
+    return p == QLatin1String(".") ? QString() : p;
+}
+
+// Whether group `n` took part in the match. hasCaptured needs Qt 6.3.
+bool took(const QRegularExpressionMatch &m, int n) { return m.capturedStart(n) >= 0; }
+
+// Python's lines with comments and triple-quoted strings blanked; line numbers
+// hold. A fixture inside a docstring reads nothing.
+QStringList pythonCodeLines(const QString &text) {
+    QStringList lines = text.split(QLatin1Char('\n'));
+    QString closing;
+    for (QString &line : lines) {
+        QString kept;
+        int i = 0;
+        while (i < line.size()) {
+            if (!closing.isEmpty()) {
+                const int end = line.indexOf(closing, i);
+                if (end < 0) break;
+                i = end + closing.size();
+                closing.clear();
+                continue;
+            }
+            const QChar c = line.at(i);
+            if (c == QLatin1Char('#')) break;
+            if (c != QLatin1Char('"') && c != QLatin1Char('\'')) {
+                kept += c;
+                ++i;
+                continue;
+            }
+            if (line.mid(i, 3) == QString(3, c)) {
+                closing = QString(3, c);
+                i += 3;
+                continue;
+            }
+            int j = i + 1;
+            while (j < line.size() && line.at(j) != c) j += line.at(j) == QLatin1Char('\\') ? 2 : 1;
+            kept += line.mid(i, j - i + 1);
+            i = j + 1;
+        }
+        line = kept;
+    }
+    return lines;
+}
+
+// Each name a Python file's imports bind, to the dotted module it stands for.
+QHash<QString, QString> pythonImports(const QString &code) {
+    QHash<QString, QString> out;
+    static const QRegularExpression plain(
+        QStringLiteral("^\\s*import\\s+(\\w[\\w.]*)(?:\\s+as\\s+(\\w+))?\\s*$"),
+        QRegularExpression::MultilineOption);
+    for (auto it = plain.globalMatch(code); it.hasNext();) {
+        const auto m = it.next();
+        const QString first = m.captured(1).section(QLatin1Char('.'), 0, 0);
+        if (took(m, 2)) out.insert(m.captured(2), m.captured(1));
+        else out.insert(first, first);
+    }
+    static const QRegularExpression from(
+        QStringLiteral("^\\s*from\\s+(\\w[\\w.]*)\\s+import\\s+(?:\\(([^)]*)\\)|(.*))$"),
+        QRegularExpression::MultilineOption);
+    static const QRegularExpression name(QStringLiteral("(\\w+)(?:\\s+as\\s+(\\w+))?"));
+    for (auto it = from.globalMatch(code); it.hasNext();) {
+        const auto m = it.next();
+        const QString names = took(m, 2) ? m.captured(2) : m.captured(3);
+        for (auto n = name.globalMatch(names); n.hasNext();) {
+            const auto nm = n.next();
+            out.insert(took(nm, 2) ? nm.captured(2) : nm.captured(1),
+                       m.captured(1) + QLatin1Char('.') + nm.captured(1));
+        }
+    }
+    return out;
+}
+
+// The file a dotted module lives in, under each root. A last part naming no
+// module is an attribute (`from pkg.store import Klass`, `Klass.method`), so
+// the nearest parent that is a module reads.
+QString moduleFile(QString dotted, const QStringList &roots,
+                   const std::function<bool(const QString &)> &existing) {
+    while (!dotted.isEmpty()) {
+        const QString rel = QString(dotted).replace(QLatin1Char('.'), QLatin1Char('/'));
+        for (const QString &root : roots)
+            for (const QString &tail : {rel + QStringLiteral(".py"), rel + QStringLiteral("/__init__.py")}) {
+                const std::optional<QString> p = under(root, tail);
+                if (p && existing(*p)) return *p;
+            }
+        dotted = dotted.contains(QLatin1Char('.')) ? dotted.section(QLatin1Char('.'), 0, -2) : QString();
+    }
+    return QString();
+}
+
+void scanPython(const QString &rel, const QString &text, const QStringList &moduleRoots,
+                const std::function<bool(const QString &)> &existing, FileResult *out) {
+    const QStringList lines = pythonCodeLines(text);
+    const QHash<QString, QString> imports = pythonImports(lines.join(QLatin1Char('\n')));
+    // A base is `Path(__file__)` climbing up, or a name holding a repository
+    // path; `tmp_path / "src"` has neither, so a fixture tree reads nothing.
+    const QString base = QStringLiteral(
+        "((?:pathlib\\.)?Path\\(\\s*__file__\\s*\\)(?:\\.parent\\b|\\.parents\\[\\d+\\]|\\.resolve\\(\\)|\\.absolute\\(\\))*"
+        "|(?<![\\w.])[A-Za-z_]\\w*)");
+    const QString part = QStringLiteral("\\s*/\\s*(?:\"[^\"]*\"|'[^']*')");
+    static const QRegularExpression join(base + QStringLiteral("((?:") + part + QStringLiteral(")+)"));
+    static const QRegularExpression whole(QStringLiteral("^\\s*") + base + QStringLiteral("((?:") + part
+                                          + QStringLiteral(")*)\\s*$"));
+    static const QRegularExpression assign(
+        QStringLiteral("^\\s*([A-Za-z_]\\w*)(?:\\s*:[^=]+)?\\s*=(?!=)(.+)$"));
+    static const QRegularExpression def(QStringLiteral("^(\\s*)(?:async\\s+)?def\\s+(\\w+)"));
+    static const QRegularExpression source(QStringLiteral(
+        "(?<![\\w.])(?:inspect\\.)?getsource\\(\\s*([\\w.]+)\\s*\\)"
+        "|Path\\(\\s*(\\w+(?:\\.\\w+)*)\\.__file__\\s*\\)\\.read_(?:text|bytes)"));
+    static const QRegularExpression climb(QStringLiteral("\\.parents\\[(\\d+)\\]|\\.parent\\b"));
+    static const QRegularExpression piece(QStringLiteral("\"([^\"]*)\"|'([^']*)'"));
+
+    QHash<QString, std::optional<QString>> globals, locals;
+    const auto evaluate = [&](const QRegularExpressionMatch &m) -> std::optional<QString> {
+        const QString head = m.captured(1);
+        std::optional<QString> at;
+        if (head.contains(QLatin1String("__file__"))) {
+            at = rel;
+            for (auto it = climb.globalMatch(head); at && it.hasNext();) {
+                const auto c = it.next();
+                const int up = took(c, 1) ? c.captured(1).toInt() + 1 : 1;
+                for (int i = 0; at && i < up; ++i) at = under(*at, QStringLiteral(".."));
+            }
+        } else {
+            at = locals.contains(head) ? locals.value(head) : globals.value(head);
+        }
+        for (auto it = piece.globalMatch(m.captured(2)); at && it.hasNext();) {
+            const auto p = it.next();
+            at = under(*at, took(p, 1) ? p.captured(1) : p.captured(2));
+        }
+        return at;
+    };
+
+    QString test;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString &line = lines.at(i);
+        if (line.trimmed().isEmpty()) continue;
+        const bool topLevel = !line.at(0).isSpace();
+        if (const auto d = def.match(line); d.hasMatch()) {
+            if (d.captured(2).startsWith(QLatin1String("test"))) test = d.captured(2);
+            else if (topLevel) test.clear();
+            if (topLevel) locals.clear();
+        } else if (topLevel) {
+            test.clear();
+            locals.clear();
+        }
+        for (auto it = join.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            const std::optional<QString> p = evaluate(m);
+            if (p && existing(*p)) out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
+        }
+        for (auto it = source.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            const QString arg = took(m, 1) ? m.captured(1) : m.captured(2);
+            const QString first = arg.section(QLatin1Char('.'), 0, 0);
+            if (!imports.contains(first)) continue;
+            const QString rest = arg.section(QLatin1Char('.'), 1);
+            const QString dotted = imports.value(first) + (rest.isEmpty() ? QString() : QLatin1Char('.') + rest);
+            const QString p = moduleFile(dotted, moduleRoots, existing);
+            if (!p.isEmpty()) out->reads.append({test, i + 1, m.captured(0), {p}});
+        }
+        if (const auto a = assign.match(line); a.hasMatch()) {
+            const auto w = whole.match(a.captured(2));
+            (topLevel ? globals : locals).insert(a.captured(1), w.hasMatch() ? evaluate(w) : std::nullopt);
+        }
+    }
+}
+
+// What a shell assignment's value holds, where that is a repository path: this
+// script's own directory, the git top level, the script's first argument at
+// the top level (a function's $1 is any argument), or a known variable joined
+// to a path. Anything else, a mktemp directory above all, is not known.
+std::optional<QString> shellValue(const QString &value, bool topLevel, const QString &scriptDir,
+                                  const QHash<QString, QString> &known) {
+    static const QRegularExpression here(QStringLiteral(
+        "dirname\\s+\"?\\$\\{?(?:BASH_SOURCE(?:\\[0\\])?|0)\\}?\"?\\s*\\)\"?((?:/[\\w.+-]+)*)"));
+    if (const auto m = here.match(value); m.hasMatch()) return under(scriptDir, m.captured(1).mid(1));
+    if (value.contains(QLatin1String("rev-parse --show-toplevel")) && !value.contains(QLatin1String(" -C ")))
+        return QString();
+    static const QRegularExpression first(QStringLiteral("^\"?\\$\\{?1(?::[-?][^}]*)?\\}?\"?$"));
+    if (topLevel && first.match(value).hasMatch()) return QString();
+    static const QRegularExpression joined(QStringLiteral(
+        "^(?:\"?\\$\\(\\s*cd\\s+)?\"?\\$\\{?([A-Za-z_]\\w*)\\}?((?:/[\\w.+-]+)*)\"?(?:\\s*&&\\s*pwd\\s*\\)\"?)?$"));
+    if (const auto m = joined.match(value); m.hasMatch() && known.contains(m.captured(1)))
+        return under(known.value(m.captured(1)), m.captured(2).mid(1));
+    return std::nullopt;
+}
+
+void scanShell(const QString &rel, const QString &text,
+               const std::function<bool(const QString &)> &existing, FileResult *out) {
+    static const QRegularExpression use(QStringLiteral("\\$\\{?([A-Za-z_]\\w*)\\}?((?:/[\\w.+-]+)+)"));
+    static const QRegularExpression assign(QStringLiteral(
+        "^(\\s*)(?:(?:export|readonly|local|declare)\\s+)?([A-Za-z_]\\w*)=(.*)$"));
+    static const QRegularExpression comment(QStringLiteral("\\s#.*$"));
+    const QString scriptDir = under(rel, QStringLiteral("..")).value_or(QString());
+    QHash<QString, QString> known;
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString code = QString(lines.at(i)).remove(comment);
+        if (code.trimmed().isEmpty() || code.trimmed().startsWith(QLatin1Char('#'))) continue;
+        for (auto it = use.globalMatch(code); it.hasNext();) {
+            const auto m = it.next();
+            if (!known.contains(m.captured(1))) continue;
+            const std::optional<QString> p = under(known.value(m.captured(1)), m.captured(2).mid(1));
+            if (p && existing(*p)) out->reads.append({QString(), i + 1, m.captured(0), {*p}});
+        }
+        if (const auto a = assign.match(code); a.hasMatch()) {
+            const std::optional<QString> v =
+                shellValue(a.captured(3).trimmed(), a.captured(1).isEmpty(), scriptDir, known);
+            if (v) known.insert(a.captured(2), *v);
+            else known.remove(a.captured(2));
+        }
+    }
+}
+
+// Reads in one Python or shell test, no anchors: these tests look for text in
+// too many ways to read one off a line, so `readers` names them and
+// not_covered says the anchors are not seen.
+FileResult analyseScript(const QString &rel, const QString &text, const QStringList &moduleRoots,
+                         const std::function<bool(const QString &)> &existing) {
+    FileResult out;
+    if (isPython(rel)) scanPython(rel, text, moduleRoots, existing, &out);
+    else scanShell(rel, text, existing, &out);
+    return out;
+}
+
 QString readText(const QString &abs) {
     QFile f(abs);
     if (!f.open(QIODevice::ReadOnly)) return QString();
@@ -625,8 +865,9 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     }
 
     const ProjectSettings::Settings settings = ProjectSettings::load(rootCanonical);
+    const QStringList declaredRoots = settings.testRoots.value_or(QStringList{QStringLiteral("tests")});
     QJsonArray testRoots;
-    for (const QString &t : settings.testRoots.value_or(QStringList{QStringLiteral("tests")}))
+    for (const QString &t : declaredRoots)
         if (QFileInfo(root.filePath(t)).isDir()) testRoots.append(t);
     CodeWalk::Result walk;
     if (!testRoots.isEmpty()) {
@@ -637,7 +878,9 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     }
     QStringList files;
     for (const QString &abs : std::as_const(walk.files))
-        if (isCppSource(abs)) files.append(abs);
+        if (isCppSource(abs) || isPython(abs) || isShell(abs)) files.append(abs);
+    QStringList moduleRoots = settings.sourceRoots.value_or(QStringList{QStringLiteral("src")});
+    moduleRoots.append(QString());
 
     QHash<QString, QString> texts;
     for (const QString &abs : std::as_const(files)) {
@@ -659,7 +902,9 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     QSet<QString> readerSeen;
     for (const QString &abs : std::as_const(files)) {
         const QString rel = root.relativeFilePath(abs);
-        const FileResult fr = analyse(texts.value(abs), readers, existing);
+        const FileResult fr = isCppSource(abs)
+                                  ? analyse(texts.value(abs), readers, existing)
+                                  : analyseScript(rel, texts.value(abs), moduleRoots, existing);
         for (const Anchor &a : fr.anchors)
             for (const QString &p : matching(a.paths)) {
                 QJsonObject o;
@@ -719,7 +964,16 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     env[QStringLiteral("not_covered")] = QJsonArray{
         QStringLiteral("a path built at run time, such as a directory token joined to a variable"),
         QStringLiteral("definitions in a CMakeLists.txt other than the root one"),
-        QStringLiteral("a file reached through an environment variable")};
+        QStringLiteral("a file reached through an environment variable"),
+        QStringLiteral("a Python module passed through a variable, such as getsource(module)"),
+        QStringLiteral("a Python path built with os.path, or a file found by walking a directory"),
+        QStringLiteral("anchors in a Python or shell test, which appears in readers only"),
+        QStringLiteral("test files other than C++, Python and shell")};
+    if (files.isEmpty())
+        env[QStringLiteral("notices")] = QJsonArray{
+            QStringLiteral("no C++, Python or shell test file found under test_roots (%1): empty rows do "
+                           "not mean nothing reads these paths")
+                .arg(declaredRoots.join(QStringLiteral(", ")))};
     return env;
 }
 

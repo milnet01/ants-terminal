@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **source_scrapes now names Python and shell tests that read a source file, and warns when it found no test file to read.** (ANTS-6180)
+
 - **Folding audit or review findings into a database-backed roadmap now saves them in the database, so later roadmap edits keep working and nothing is lost.** (ANTS-5229)
 
 - **The push gate now records a pass after running its sanitizer leg, instead of reporting steps it never skipped.** (ANTS-6336)

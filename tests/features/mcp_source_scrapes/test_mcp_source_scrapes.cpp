@@ -245,6 +245,160 @@ TEST(SourceScrapes, Inv8Refusals) {
     EXPECT_EQ(code({{QStringLiteral("path"), QStringLiteral("missing.cpp")}}), QStringLiteral("bad_path"));
 }
 
+namespace {
+
+// The reader rows of `path` from `file`.
+QList<QJsonObject> readersFrom(const QJsonObject &r, const QString &file) {
+    QList<QJsonObject> out;
+    for (const QJsonValue v : r.value(QStringLiteral("readers")).toArray())
+        if (v.toObject().value(QStringLiteral("file")).toString() == file) out.append(v.toObject());
+    return out;
+}
+
+QTemporaryDir *scriptFixture() {
+    auto *dir = new QTemporaryDir;
+    writeFile(dir->filePath("src/pkg/__init__.py"), "");
+    writeFile(dir->filePath("src/pkg/store.py"), "x = 1\n");
+    writeFile(dir->filePath("src/pkg/words.py"), "y = 1\n");
+    writeFile(dir->filePath("src/pkg/plain.py"), "z = 1\n");
+    writeFile(dir->filePath("src/pkg/alt.py"), "w = 1\n");
+    writeFile(dir->filePath("src/pkg/Bundle.h"), "int b;\n");
+    writeFile(dir->filePath("scripts/gate.sh"), "true\n");
+    writeFile(dir->filePath("tools/nested.sh"), "true\n");
+    writeFile(dir->filePath("tests/test_py.py"),
+              "import inspect\n"                                                      // 1
+              "from pathlib import Path\n"                                            // 2
+              "import pkg.store as store_module\n"                                    // 3
+              "from pkg import (\n"                                                   // 4
+              "    words,  # a comment\n"                                             // 5
+              ")\n"                                                                   // 6
+              "from pkg.plain import helper\n"                                        // 7
+              "ROOT = Path(__file__).resolve().parent.parent\n"                       // 8
+              "_SRC = Path(__file__).resolve().parents[1] / \"src\" / \"pkg\"\n"      // 9
+              "def test_getsource():\n"                                               // 10
+              "    inspect.getsource(store_module)\n"                                 // 11
+              "    inspect.getsource(words)\n"                                        // 12
+              "def test_function_source():\n"                                         // 13
+              "    inspect.getsource(helper)\n"                                       // 14
+              "def test_join(tmp_path):\n"                                            // 15
+              "    (ROOT / \"scripts\" / \"gate.sh\").read_text()\n"                  // 16
+              "    (_SRC / 'Bundle.h').read_text()\n"                                 // 17
+              "def test_noise(tmp_path):\n"                                           // 18
+              "    (tmp_path / \"src\" / \"pkg\" / \"store.py\").write_text(\"\")\n"  // 19
+              "    # ROOT / \"tools\" / \"nested.sh\"\n"                              // 20
+              "    \"\"\"\n"                                                          // 21
+              "    ROOT / \"tools\" / \"nested.sh\"\n"                                // 22
+              "    \"\"\"\n"                                                          // 23
+              "    inspect.getsource(unknown_module)\n"                               // 24
+              "def test_dunder_file():\n"                                             // 25
+              "    Path(words.__file__).read_text(encoding=\"utf-8\")\n"              // 26
+              "def test_method():\n"                                                  // 27
+              "    inspect.getsource(helper.method)\n"                                // 28
+              "ALT = pathlib.Path(__file__).parent.parent / \"src\"\n"                // 29
+              "(ALT / \"pkg\" / \"alt.py\").read_text()\n");                         // 30
+    writeFile(dir->filePath("tests/guard/test_guard.sh"),
+              "#!/bin/bash\n"                                                         // 1
+              "SRC=$1\n"                                                              // 2
+              "sed -n 1p \"$SRC/src/pkg/Bundle.h\"\n"                                 // 3
+              "here=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\n"          // 4
+              "TOP=\"$(cd \"$here/../..\" && pwd)\"\n"                                // 5
+              "cp \"$TOP/scripts/gate.sh\" /dev/null\n"                               // 6
+              "# cp \"$TOP/tools/nested.sh\"\n"                                       // 7
+              "T=$(mktemp -d)\n"                                                      // 8
+              "cp \"$T/tools/nested.sh\" /dev/null\n"                                 // 9
+              "helper() {\n"                                                          // 10
+              "    D=$1\n"                                                            // 11
+              "    cat \"$D/tools/nested.sh\"\n"                                      // 12
+              "}\n"                                                                   // 13
+              "SRC=$(mktemp -d)\n"                                                    // 14
+              "cat \"$SRC/tools/nested.sh\"\n");                                      // 15
+    return dir;
+}
+
+} // namespace
+
+TEST(SourceScrapes, Inv10PythonGetsourceReadsItsModule) {
+    std::unique_ptr<QTemporaryDir> dir(scriptFixture());
+    const QString file = QStringLiteral("tests/test_py.py");
+    const auto reader = [&](const char *path) {
+        const QList<QJsonObject> rows = readersFrom(forPath(*dir, path), file);
+        return rows.isEmpty() ? QJsonObject() : rows.first();
+    };
+    const QJsonObject store = reader("src/pkg/store.py");
+    EXPECT_EQ(store.value(QStringLiteral("test")).toString(), QStringLiteral("test_getsource"));
+    EXPECT_EQ(store.value(QStringLiteral("line")).toInt(), 11);
+    EXPECT_EQ(store.value(QStringLiteral("via")).toString(), QStringLiteral("inspect.getsource(store_module)"));
+    EXPECT_EQ(reader("src/pkg/words.py").value(QStringLiteral("line")).toInt(), 12)
+        << "a name in a bracketed from-import is a module";
+    const QList<QJsonObject> words = readersFrom(forPath(*dir, "src/pkg/words.py"), file);
+    ASSERT_EQ(words.size(), 2);
+    EXPECT_EQ(words.last().value(QStringLiteral("test")).toString(), QStringLiteral("test_dunder_file"));
+    EXPECT_EQ(reader("src/pkg/plain.py").value(QStringLiteral("test")).toString(),
+              QStringLiteral("test_function_source")) << "a function reads the module holding it";
+    const QList<QJsonObject> plain = readersFrom(forPath(*dir, "src/pkg/plain.py"), file);
+    ASSERT_EQ(plain.size(), 2);
+    EXPECT_EQ(plain.last().value(QStringLiteral("test")).toString(), QStringLiteral("test_method"))
+        << "an attribute of an imported name reads the module holding the name";
+
+    QTemporaryDir dotRoot;
+    writeFile(dotRoot.filePath(".ants/project.json"), "{\"source_roots\": [\".\"]}\n");
+    writeFile(dotRoot.filePath("pkg/m.py"), "x = 1\n");
+    writeFile(dotRoot.filePath("tests/test_m.py"),
+              "import inspect\nfrom pkg import m\ndef test_m():\n    inspect.getsource(m)\n");
+    EXPECT_EQ(readersFrom(forPath(dotRoot, "pkg/m.py"), QStringLiteral("tests/test_m.py")).size(), 1)
+        << "a source root of \".\" still gives a root-relative path";
+}
+
+TEST(SourceScrapes, Inv11PythonJoinsFromTheTestFile) {
+    std::unique_ptr<QTemporaryDir> dir(scriptFixture());
+    const QString file = QStringLiteral("tests/test_py.py");
+    const QList<QJsonObject> gate = readersFrom(forPath(*dir, "scripts/gate.sh"), file);
+    ASSERT_EQ(gate.size(), 1);
+    EXPECT_EQ(gate.first().value(QStringLiteral("test")).toString(), QStringLiteral("test_join"));
+    EXPECT_EQ(gate.first().value(QStringLiteral("line")).toInt(), 16);
+    const QList<QJsonObject> bundle = readersFrom(forPath(*dir, "src/pkg/Bundle.h"), file);
+    ASSERT_EQ(bundle.size(), 1) << "a variable holding a directory joins, in either quote";
+    EXPECT_EQ(bundle.first().value(QStringLiteral("line")).toInt(), 17);
+    const QList<QJsonObject> alt = readersFrom(forPath(*dir, "src/pkg/alt.py"), file);
+    ASSERT_EQ(alt.size(), 1) << "pathlib.Path assigned, then joined";
+    EXPECT_EQ(alt.first().value(QStringLiteral("line")).toInt(), 30);
+    for (const QJsonObject &o : readersFrom(forPath(*dir, "src/pkg/store.py"), file))
+        EXPECT_NE(o.value(QStringLiteral("line")).toInt(), 19) << "tmp_path is not the repository";
+    EXPECT_TRUE(readersFrom(forPath(*dir, "tools/nested.sh"), file).isEmpty())
+        << "a comment or a docstring reads nothing";
+}
+
+TEST(SourceScrapes, Inv12ShellJoinsFromAKnownRoot) {
+    std::unique_ptr<QTemporaryDir> dir(scriptFixture());
+    const QString file = QStringLiteral("tests/guard/test_guard.sh");
+    const QList<QJsonObject> bundle = readersFrom(forPath(*dir, "src/pkg/Bundle.h"), file);
+    ASSERT_EQ(bundle.size(), 1) << "SRC=$1 at the top level";
+    EXPECT_EQ(bundle.first().value(QStringLiteral("line")).toInt(), 3);
+    EXPECT_EQ(bundle.first().value(QStringLiteral("via")).toString(), QStringLiteral("$SRC/src/pkg/Bundle.h"));
+    const QList<QJsonObject> gate = readersFrom(forPath(*dir, "scripts/gate.sh"), file);
+    ASSERT_EQ(gate.size(), 1) << "dirname of BASH_SOURCE, then a cd up from it";
+    EXPECT_EQ(gate.first().value(QStringLiteral("line")).toInt(), 6);
+    EXPECT_TRUE(readersFrom(forPath(*dir, "tools/nested.sh"), file).isEmpty())
+        << "a comment, a mktemp variable, a function's $1 and a rebound name read nothing";
+}
+
+TEST(SourceScrapes, Inv13NoticeWhenNoTestFileWasRead) {
+    QTemporaryDir empty;
+    writeFile(empty.filePath(".ants/project.json"), "{\"test_roots\": [\"tests\"]}\n");
+    writeFile(empty.filePath("src/a.js"), "a();\n");
+    writeFile(empty.filePath("tests/a.test.js"), "a();\n");
+    const QJsonObject r = forPath(empty, "src/a.js");
+    EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject().value(QStringLiteral("test_files")).toInt(), 0);
+    const QJsonArray notices = r.value(QStringLiteral("notices")).toArray();
+    ASSERT_EQ(notices.size(), 1) << QJsonDocument(r).toJson().constData();
+    EXPECT_TRUE(notices.first().toString().contains(QStringLiteral("tests")));
+
+    std::unique_ptr<QTemporaryDir> scripts(scriptFixture());
+    const QJsonObject read = forPath(*scripts, "src/pkg/store.py");
+    EXPECT_EQ(read.value(QStringLiteral("scanned")).toObject().value(QStringLiteral("test_files")).toInt(), 2);
+    EXPECT_FALSE(read.contains(QStringLiteral("notices")));
+}
+
 TEST(SourceScrapes, Inv9Wiring) {
     const auto slurp = [](const char *rel) {
         std::ifstream f(std::string(ANTS_SRC_DIR) + rel);

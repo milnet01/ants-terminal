@@ -15014,7 +15014,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "literal arguments of find/contains/indexOf/count, of a call whose "
                         "first argument reads the file, or a regex used on it. test is "
                         "Suite.Name, for ctest -R. scanned.unresolved_anchors counts "
-                        "searches by a variable; not_covered names what is not followed.");
+                        "searches by a variable; not_covered names what is not followed. "
+                        "Python and shell tests give readers rows only (ANTS-6180); notices "
+                        "warns when no test file was read.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;

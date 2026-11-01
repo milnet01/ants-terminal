@@ -166,7 +166,8 @@ Listed only where behavior isn't obvious from the name.
 - `sourcescrapes` (Qt6::Core, `ants_mcpcore_lib`) — the `source_scrapes`
   verb's seam: the tests that read a source file as text, through the root
   `CMakeLists.txt`'s path definitions (`BuildTargets::pathDefinitions`),
-  helpers and variables, and the strings each looks for. ANTS-5602.
+  helpers and variables, and the strings each looks for. ANTS-5602. Python
+  and shell tests get a line scan for reads only. ANTS-6180.
 - `commentclaims` (Qt6::Core, `ants_mcpcore_lib`) — the `comment_claims`
   verb's seam: comments harvested by each file's comment syntax and checked
   for missing quotations, dead `see` references and unknown ticket ids, with
