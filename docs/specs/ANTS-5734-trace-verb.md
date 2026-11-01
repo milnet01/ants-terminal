@@ -79,14 +79,14 @@ Exactly one of `symbol` and `path` is required. These refuse the call with `bad_
 
 The values in that example are illustrative, not measured. Rules on the shape:
 
-- **`definitions[]`** spans the whole definition node: `line` is its first line and `end_line` its last, both 1-based. `signature` is the node's text up to its body, folded to one line and cut at 200 bytes. `scope` lists the enclosing class, namespace or module names, outermost first. Every match is listed; an overload is a second entry. A declaration with no body (a C++ prototype) is listed with `is_declaration:true`.
+- **`definitions[]`** includes C++ variables at file or namespace scope and initialised class members, of kind `variable`; a local is left out (ANTS-6208). It spans the whole definition node: `line` is its first line and `end_line` its last, both 1-based. `signature` is the node's text up to its body, folded to one line and cut at 200 bytes. `scope` lists the enclosing class, namespace or module names, outermost first. Every match is listed; an overload is a second entry. A declaration with no body (a C++ prototype) is listed with `is_declaration:true`.
 - **`callers[]`** has one row per call site, not per caller. `caller` is the innermost definition enclosing the call, or `null` at file scope.
 - **`references[]`** holds every other occurrence, each with one `kind`:
 
 | `kind` | What it is |
 |---|---|
 | `import` | An include, import, use or require naming the symbol or its file. |
-| `code` | An identifier in parsed code that is neither a definition, a call nor an import: a type use, a function pointer, a Qt `&Class::method`. |
+| `code` | An identifier in parsed code that is neither a definition, a call nor an import: a type use, a function pointer, a Qt `&Class::method`. A row followed by `(` carries `possible_call: true`: a macro argument need not parse as a call (ANTS-6209). |
 | `comment` | A comment node in parsed code. |
 | `string_or_config` | A string literal in parsed code, or a whole-word match in any other file that is neither Markdown nor in a § 2.3 language: JSON, YAML, TOML, INI, XML, HTML, Meson, `.desktop`, systemd units and the like (§ 9.2 says why these get no grammar). |
 | `test` | Any of the above inside a test file (§ 2.6). |

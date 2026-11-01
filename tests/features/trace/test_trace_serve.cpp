@@ -145,6 +145,34 @@ TEST_F(TraceServe, Inv2DefinitionSpansWholeNode) {
     EXPECT_EQ(d.value(QStringLiteral("end_line")).toInt(), 9);
 }
 
+// ANTS-6208 — a variable at file or namespace scope and an initialised member
+// are definitions; a local is not.
+TEST_F(TraceServe, Ants6208VariablesAreDefinitions) {
+    for (const char *name : {"traceConstant", "traceArray", "traceGlobal", "traceMember"}) {
+        const QJsonObject r = traceSymbol(QString::fromLatin1(name));
+        const QJsonArray defs = arr(r, "definitions");
+        ASSERT_EQ(defs.size(), 1) << name << dump(r);
+        EXPECT_EQ(defs.at(0).toObject().value(QStringLiteral("kind")).toString(),
+                  QStringLiteral("variable")) << name;
+        EXPECT_EQ(defs.at(0).toObject().value(QStringLiteral("file")).toString(),
+                  QStringLiteral("variables.cpp")) << name;
+    }
+    EXPECT_TRUE(arr(traceSymbol(QStringLiteral("traceLocal")), "definitions").isEmpty());
+}
+
+// ANTS-6209 — a name followed by `(` that did not parse as a call says so.
+TEST_F(TraceServe, Ants6209MacroArgumentIsAPossibleCall) {
+    const QJsonObject r = traceSymbol(QStringLiteral("macroArgFn"));
+    const QJsonArray possible = rowsWhere(arr(r, "references"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("possible_call")).toBool();
+    });
+    EXPECT_EQ(possible.size(), 1) << dump(r);
+    const QJsonObject plain = traceSymbol(QStringLiteral("traceConstant"));
+    EXPECT_TRUE(rowsWhere(arr(plain, "references"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("possible_call")).toBool();
+    }).isEmpty()) << "a plain use is not a possible call";
+}
+
 // INV-3 — a prototype and two overloads: three entries, one a declaration.
 TEST_F(TraceServe, Inv3PrototypeAndOverloadsAreSeparateEntries) {
     const QJsonObject r = traceSymbol(QStringLiteral("overloaded"));

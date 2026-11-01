@@ -457,6 +457,14 @@ QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const
     return skip;
 }
 
+// True when the identifier starting at byte `at` is followed by `(`.
+bool followedByParen(const QByteArray &text, int at) {
+    int i = at;
+    while (i < text.size() && (isalnum(uchar(text.at(i))) || text.at(i) == '_')) ++i;
+    while (i < text.size() && (text.at(i) == ' ' || text.at(i) == '\t')) ++i;
+    return i < text.size() && text.at(i) == '(';
+}
+
 // Each hit outside `skip` as a reference row, kinded by where it sits:
 // a test file, else the parse's import / comment / string ranges, else code.
 // `rows` is null when the file was not parsed.
@@ -480,11 +488,15 @@ void addReferenceRows(const QVector<int> &hits, const QVector<ByteRange> &skip,
             kind = QStringLiteral("string_or_config");
         }
         const int line = lines.lineOf(h);
-        g.refRows.append({rel, line, lines.columnOf(h), kind,
-                          QJsonObject{{QStringLiteral("kind"), kind},
-                                      {QStringLiteral("file"), rel},
-                                      {QStringLiteral("line"), line},
-                                      {QStringLiteral("text"), lines.textOf(text, line)}}});
+        QJsonObject row{{QStringLiteral("kind"), kind},
+                        {QStringLiteral("file"), rel},
+                        {QStringLiteral("line"), line},
+                        {QStringLiteral("text"), lines.textOf(text, line)}};
+        // ANTS-6209: a macro argument may not parse as a call, so a live
+        // function could read as uncalled.
+        if (kind == QLatin1String("code") && followedByParen(text, h))
+            row[QStringLiteral("possible_call")] = true;
+        g.refRows.append({rel, line, lines.columnOf(h), kind, row});
         if (test) g.testFiles.insert(rel);
     }
 }

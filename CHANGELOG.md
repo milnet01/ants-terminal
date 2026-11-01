@@ -18,6 +18,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **changelog_log's schema says an entry body is stored as sent, so callers wrap it themselves** (ANTS-6205)
+
+- **trace marks a reference followed by a bracket as possible_call, so a call inside a macro argument no longer reads as nothing calling the function** (ANTS-6209)
+
 - **function_sizes names each function it could not measure and why, and says which languages a directory walk leaves out** (ANTS-6183)
 
 - **workspace_search lists the hidden directories it skipped when a reply is empty or cut off, and names include_hidden** (ANTS-6188)
@@ -37,6 +41,8 @@ for security-relevant changes.
 - **`roadmap_query` adds `body_match_hint` naming `body_match_regex:true` when a plain-text `body_match` that reads like a pattern matches no line.** (ANTS-6203)
 
 ### Fixed
+
+- **trace finds C++ variables at file or namespace scope and initialised class members** (ANTS-6208)
 
 - **mutation_probe reports a ctest filter that selects nothing as an empty run, and shows the command** (ANTS-6210)
 

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6338 -->
+<!-- ants-roadmap-id-high-water: ANTS=6339 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88771,12 +88771,14 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6205] **Check whether changelog_log op:add stores a body as one unwrapped line, then wrap it or document verbatim.**
+- ✅ [ANTS-6205] **Check whether changelog_log op:add stores a body as one unwrapped line, then wrap it or document verbatim.**
   Pressless: a lane agent reported op:add stored its body as one long
   line and rewrapped it by hand; not reproduced. Reproduce first. If
   true, wrap to the file's prevailing width, or say in the schema that
   the body is stored verbatim so callers pre-wrap (as roadmap_log's
   body field does).
+  Reproduced with a dry run: the body is stored as one line, matching
+  roadmap_log's verbatim rule. Chose to document it.
   **Layman:** A changelog tool may write long entries as one line, so people rewrap them by hand.
   Kind: investigate.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
@@ -88800,7 +88802,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6208] **trace finds the definition of a C++ constexpr variable that find_definition already finds.**
+- ✅ [ANTS-6208] **trace finds the definition of a C++ constexpr variable that find_definition already finds.**
   UT_Ants: trace symbol:"LIGHT_SIZE" returned references only; it is a
   `constexpr std::uint64_t` inside `namespace { }`. Reproduced here
   2026-10-23: find_definition symbol:"kEd25519SpkiPrefix" lang:cpp gives
@@ -88813,11 +88815,12 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6209] **trace counts a call inside a macro argument as a reference, not a caller.**
+- ✅ [ANTS-6209] **trace counts a call inside a macro argument as a reference, not a caller.**
   UT_Ants: trace symbol:"lampNameOf" gave 0 callers and 2 references;
   both are calls wrapped in UTA_TRY(...). Fix: classify a call
   expression inside a macro argument as a call, or mark the reference
   row 'possible call inside macro'.
+  Marked, not reclassified: a macro argument does not parse as a call.
   **Layman:** The code tracer can report that nothing calls a function when the calls sit inside a macro, so a live function looks dead.
   Kind: fix.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
@@ -89075,10 +89078,13 @@ measured Ants adding about 5,250 tokens to every request.
   Source: feedback-vestige-2026-10-31.
   Lanes: mcp.
 
-- 📋 [ANTS-6335] **A multi-file file_outline spilled to a result that review lanes reported they could not page.**
+- 🚫 [ANTS-6335] **A multi-file file_outline spilled to a result that review lanes reported they could not page.**
   Vestige, 2026-10-31: reported by lanes in a 28-lane review, not reproduced by the
   reporter. Reproduce first. The review-lane agent type has read_spill in its tool list,
   so find which agent could not page and why.
+  Not reproduced. The review-lane agent's tool list holds read_spill,
+  and read_regions spilled and offered read_spill as expected on
+  2026-11-01. The report names no agent, so nothing more can be traced.
   **Layman:** Asking for outlines of several files at once can return a result some helpers cannot read, so they fall back to slower reads.
   Kind: investigate.
   Source: feedback-vestige-2026-10-31.
@@ -89114,6 +89120,16 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The tool that lists which tests read a file now covers Python and shell, but still skips a few ways of reading, and says so in its reply.
   Kind: fix.
   Source: session-2026-11-01-ANTS-6180.
+  Lanes: mcp.
+
+- 📋 [ANTS-6339] **trace reads a macro call with no semicolon as a prototype, so its argument appears as a declaration and not a call.**
+  Seen while fixing ANTS-6209: in `TRY(fnB(x))` with no semicolon inside a
+  function body, the parse gives fnB a declaration row and no caller.
+  A declaration inside a function body whose name is followed by a call
+  argument could be left out.
+  **Layman:** The code tracer can list a function call wrapped in certain macros as a declaration of that function.
+  Kind: fix.
+  Source: in-session-2026-11-01.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

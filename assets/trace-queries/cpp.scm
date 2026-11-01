@@ -51,6 +51,24 @@
   declarator: (_
     (function_declarator declarator: (field_identifier) @name))) @declaration.method
 
+; ANTS-6208: a variable at file or namespace scope, and a class member with an
+; initialiser. A local variable is not a definition worth tracing.
+(translation_unit (declaration declarator: (identifier) @name) @definition.variable)
+(translation_unit (declaration
+  declarator: (init_declarator declarator: (identifier) @name)) @definition.variable)
+(translation_unit (declaration
+  declarator: (init_declarator declarator: (array_declarator declarator: (identifier) @name))) @definition.variable)
+(translation_unit (declaration declarator: (array_declarator declarator: (identifier) @name)) @definition.variable)
+(namespace_definition body: (declaration_list
+  (declaration declarator: (identifier) @name) @definition.variable))
+(namespace_definition body: (declaration_list
+  (declaration declarator: (init_declarator declarator: (identifier) @name)) @definition.variable))
+(namespace_definition body: (declaration_list
+  (declaration declarator: (init_declarator declarator: (array_declarator declarator: (identifier) @name))) @definition.variable))
+(namespace_definition body: (declaration_list
+  (declaration declarator: (array_declarator declarator: (identifier) @name)) @definition.variable))
+(field_declaration declarator: (field_identifier) @name default_value: (_)) @definition.variable
+
 (class_specifier name: (type_identifier) @name body: (_)) @definition.class
 (struct_specifier name: (type_identifier) @name body: (_)) @definition.class
 (union_specifier name: (type_identifier) @name body: (_)) @definition.class
