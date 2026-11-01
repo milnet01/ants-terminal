@@ -86808,12 +86808,15 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: docs.
 
-- 📋 [ANTS-5470] **doc_lint's doc_symbols stops reporting backticked prose words as unresolved symbols.**
+- ✅ [ANTS-5470] **doc_lint's doc_symbols stops reporting backticked prose words as unresolved symbols.**
   On ~/.claude/standards the kind reported mostly field values, verdict
   bands and naming-convention names (`Kind`, `PARTIAL`, `PascalCase`) as
   unresolved. Candidate rules: a single backticked TitleCase/ALLCAPS word
   or a known naming-convention name is prose; consider defaulting the
   kind off outside source-adjacent documents.
+  Shipped 2026-11-01: amendment to docs/specs/ANTS-3661.md, INV-11.
+  Unresolved occurrences on ~/.claude/standards went from 281 to 132.
+  The kind stays on by default for every document.
   **Layman:** The document checker stops treating ordinary words in code formatting as missing code names.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.

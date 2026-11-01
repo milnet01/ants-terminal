@@ -73,8 +73,8 @@ struct Options {
     int maxSymbolsPerRun = 500;
 
     // A single lowercase word shorter than this is emphasis far more often
-    // than an identifier. A `::`-bearing, `()`-bearing or mixed-case span is
-    // exempt — those shapes are unambiguous.
+    // than an identifier. A `::`-bearing or `()`-bearing span, or one holding
+    // a capital, is exempt.
     int minIdentChars = 5;
 
     // Wall-clock ceiling on the resolution phase: a cap on needles alone does

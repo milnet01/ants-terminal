@@ -171,15 +171,15 @@ TEST(DocSymbols, Inv5DocumentOrder) {
 
     DocSymbols::Options opts;
     opts.rootCanonical = root;  // empty tree — order is what is under test
-    const QString doc = QStringLiteral("`Alpha`\n`Bravo` then `Charlie`\n");
+    const QString doc = QStringLiteral("`AlphaOne`\n`BravoTwo` then `CharlieThree`\n");
 
     for (int run = 0; run < 2; ++run) {
         const DocSymbols::ScanResult r =
             DocSymbols::scan(doc, QStringLiteral("docs/x.md"), opts);
         ASSERT_EQ(r.symbols.size(), 3) << "run " << run;
-        EXPECT_EQ(r.symbols.at(0).symbol, QStringLiteral("Alpha"));
-        EXPECT_EQ(r.symbols.at(1).symbol, QStringLiteral("Bravo"));
-        EXPECT_EQ(r.symbols.at(2).symbol, QStringLiteral("Charlie"));
+        EXPECT_EQ(r.symbols.at(0).symbol, QStringLiteral("AlphaOne"));
+        EXPECT_EQ(r.symbols.at(1).symbol, QStringLiteral("BravoTwo"));
+        EXPECT_EQ(r.symbols.at(2).symbol, QStringLiteral("CharlieThree"));
         for (int i = 1; i < r.symbols.size(); ++i) {
             const auto &prev = r.symbols.at(i - 1);
             const auto &cur  = r.symbols.at(i);
@@ -294,6 +294,61 @@ TEST(DocSymbols, Inv10AmbiguousNeedlesResolveLastAndTruncatedSurvivesTheDrop) {
     EXPECT_EQ(r.symbols.at(0).resolution, DocSymbols::Resolution::Unresolved);
     EXPECT_EQ(r.notChecked, 0);   // the elided needle is not in symbols[] …
     EXPECT_TRUE(r.truncated);     // … but the run still admits it was elided.
+}
+
+// INV-11 (ANTS-5470) — one capitalised word is as ambiguous as one lowercase
+// word. On ~/.claude/standards the unresolved list was mostly field values,
+// verdict bands and lint codes (`Kind`, `PARTIAL`, `S110`), so it reads like
+// INV-9: reported only when it resolves. A naming-convention name is never a
+// symbol at all. A multi-hump name and an underscored constant mark themselves
+// as somebody's identifier, so they stay reported; those rows are what stop the
+// rule being satisfied by dropping every capitalised span.
+TEST(DocSymbols, Inv11SingleCapitalisedWordReportedOnlyWhenResolved) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/src/shapes.cpp"),
+                          QStringLiteral("class Foo {\n};\n"
+                                         "void HTTP(int x) {\n    (void)x;\n}\n"
+                                         "void PascalCase(int x) {\n    (void)x;\n}\n")));
+
+    DocSymbols::Options opts;
+    opts.rootCanonical = root;
+    const DocSymbols::ScanResult r = DocSymbols::scan(
+        QStringLiteral("Dropped: `Kind`, `PARTIAL`, `S110`, `Sh4`, `X`.\n"
+                       "Naming: `PascalCase`, `camelCase`, `SCREAMING_SNAKE`.\n"
+                       "Resolved: `Foo`, `HTTP`.\n"
+                       "Reported: `RemoteControl`, `Q_OBJECT`, `Kind::value`, `Kind()`.\n"),
+        QStringLiteral("docs/x.md"), opts);
+
+    QStringList got;
+    for (const DocSymbols::Symbol &s : r.symbols) got << s.symbol;
+    EXPECT_EQ(got, (QStringList{QStringLiteral("Foo"), QStringLiteral("HTTP"),
+                                QStringLiteral("RemoteControl"), QStringLiteral("Q_OBJECT"),
+                                QStringLiteral("Kind::value"), QStringLiteral("Kind()")}))
+        << "harvested: " << got.join(QStringLiteral(", ")).toStdString();
+    EXPECT_EQ(r.resolved, 2);
+    EXPECT_EQ(r.unresolved, 4);
+    EXPECT_EQ(r.findings.size(), 4);
+}
+
+// INV-11's budget half: a single capitalised word waits behind the spans that
+// mark themselves as identifiers, as a lowercase word does under INV-10.
+TEST(DocSymbols, Inv11SingleCapitalisedWordResolvesLast) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(seedTree(root));
+
+    DocSymbols::Options capped;
+    capped.rootCanonical    = root;
+    capped.maxSymbolsPerRun = 1;
+    const DocSymbols::ScanResult r = DocSymbols::scan(
+        QStringLiteral("`PARTIAL` and `AlsoMissing`\n"), QStringLiteral("docs/x.md"), capped);
+
+    ASSERT_EQ(r.symbols.size(), 1);
+    EXPECT_EQ(r.symbols.at(0).symbol, QStringLiteral("AlsoMissing"));
+    EXPECT_TRUE(r.truncated);
 }
 
 // ANTS-3661 § 2.1 / § 4 — CALIBRATION HARNESS, not a conformance row. It sweeps

@@ -54,6 +54,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_symbols` reports a single capitalised word such as `Kind` or `PARTIAL` only when it resolves, and never reports a naming-convention name such as `PascalCase`** (ANTS-5470)
+
 - **trace lists a macro argument as a possible call, not a prototype** (ANTS-6339)
 
 - **indie_review_partition keeps computed lanes within the line budget, and names code outside the source roots and files the suffix filter dropped** (ANTS-6182)

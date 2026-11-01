@@ -18,10 +18,10 @@ survivor to a needle, and resolves distinct needles through
 
 - **INV-1 candidate harvest** — a span is a candidate only with all six
   exclusions applied: paths (excluded by the production itself), `doc-examples`
-  regions, the short-lowercase floor (`minIdentChars`, waived for a `::`-,
-  `()`- or mixed-case span; a longer bare lowercase word clears it here and is
-  filtered later at emission instead — INV-9), language keywords, and the two
-  injected halves
+  regions, the short-lowercase floor (`minIdentChars`, waived for a span
+  holding `::`, `()` or a capital; a longer bare lowercase word clears it here
+  and is filtered later at emission instead — INV-9), language keywords and
+  naming-convention names, and the two injected halves
   (verb names, schema arguments/refusal codes) supplied via
   `Options::excludedNames`. Fixture: `parseSpecBody`, `Foo::bar()`,
   `src/a.cpp`, `ok`, `return`, `spec_query`, `caller_cwd`, a fenced `Widget`
@@ -47,6 +47,13 @@ survivor to a needle, and resolves distinct needles through
   `truncated` must be true even though `counts.not_checked` is 0. Deriving
   `truncated` from `notChecked > 0` (the pre-ANTS-3692 form) reports a complete
   run here.
+- **INV-11 one capitalised word is ambiguous (ANTS-5470)** — all capitals and
+  digits (`PARTIAL`, `S110`) or one hump (`Kind`) reads as INV-9 and INV-10 do.
+  A naming-convention name never reaches `symbols[]`, even where it resolves.
+  Fixture: `Foo` and `HTTP` resolve and stay; `Kind`, `PARTIAL`, `S110`, `Sh4`
+  and `X` go; `PascalCase` resolves and still goes; `RemoteControl`, `Q_OBJECT`,
+  `Kind::value` and `Kind()` stay as findings, which stops the rule being met by
+  dropping every capitalised span.
 - **INV-5 document order** — `symbols[]` ascends by `docLine` then `docCol`,
   stable across runs.
 - **INV-7 elided needle is `not_checked`** — a needle the run never looked up
@@ -83,6 +90,9 @@ run, including the one that did not.
 | M8 always report `not_checked` | INV-7 | RED |
 | M10 the shipped pre-ANTS-3692 engine (emits every candidate) | INV-9 | RED |
 | M11 the shipped pre-ANTS-3692 engine (document-order budget) | INV-10 | RED |
+| M12 the shipped pre-ANTS-5470 engine | INV-11 | RED, both tests |
+| M13 drop the naming-convention list | INV-11 | RED — `PascalCase` harvested |
+| M14 apply the length floor to capitalised words | INV-11 | RED — `Foo` and `HTTP` dropped |
 
 **M10 and M11 were not hypothetical — they were the shipped state**, run before
 the engine changed. INV-9 failed on `r.total` 3 against 2 and

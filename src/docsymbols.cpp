@@ -64,6 +64,27 @@ const QSet<QString> &keywords() {
     return k;
 }
 
+// ANTS-5470 — a document names these to describe how code is written; none is
+// a symbol anyone declared, even where a project happens to define one.
+const QSet<QString> &namingConventionNames() {
+    static const QSet<QString> names = {
+        QStringLiteral("camelCase"),       QStringLiteral("lowerCamelCase"),
+        QStringLiteral("PascalCase"),      QStringLiteral("UpperCamelCase"),
+        QStringLiteral("TitleCase"),       QStringLiteral("snake_case"),
+        QStringLiteral("SCREAMING_SNAKE"), QStringLiteral("SCREAMING_SNAKE_CASE"),
+    };
+    return names;
+}
+
+// ANTS-5470 — one capitalised word with nothing marking it as an identifier:
+// `PARTIAL`, `S110`, `Kind`. Field values, verdict bands and lint codes take
+// these shapes, so the span reads as prose unless it resolves. A second hump
+// (`RemoteControl`) or an underscore (`Q_OBJECT`) marks somebody's identifier.
+bool isSingleCapitalisedWord(const QString &span) {
+    static const QRegularExpression re(QStringLiteral("^[A-Z](?:[A-Z0-9]*|[a-z0-9]*)$"));
+    return re.match(span).hasMatch();
+}
+
 // CommonMark § 6.1: one leading AND one trailing space are stripped from a code
 // span's content when both are present and the content is not all spaces.
 QString stripOneSpace(const QString &content) {
@@ -78,7 +99,7 @@ struct Candidate {
     QString needle;  // what the resolver is asked for
     int     line = 0;    // 1-based
     int     col = 0;     // 0-based
-    bool    ambiguous = false;  // bare lowercase word — see the emission rule (ANTS-3692)
+    bool    ambiguous = false;  // one word, lowercase or capitalised — see the emission rule
 };
 
 }  // namespace
@@ -119,15 +140,18 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         if (!candidateRe().match(span).hasMatch()) continue;
         if (opts.excludedNames.contains(span)) continue;
         if (keywords().contains(span)) continue;
+        if (namingConventionNames().contains(span)) continue;
 
         // The length floor is a real trade: it also drops `emit`, `exec`,
         // `main` and `open`. Accepted, because a doc asserting something about
         // one of those almost always writes it with `()` or a scope, and the
         // alternative is a list dominated by prose emphasis.
-        const bool unambiguousShape = span.contains(QLatin1String("::"))
-                                      || span.endsWith(QLatin1String("()"))
-                                      || span != span.toLower();
-        if (!unambiguousShape && span.size() < opts.minIdentChars) continue;
+        const bool scopedOrCall = span.contains(QLatin1String("::"))
+                                  || span.endsWith(QLatin1String("()"));
+        const bool bareLowercase = !scopedOrCall && span == span.toLower();
+        if (bareLowercase && span.size() < opts.minIdentChars) continue;
+        const bool ambiguous =
+            bareLowercase || (!scopedOrCall && isSingleCapitalisedWord(span));
 
         // Two reductions, IN THIS ORDER: `Foo::bar()` must become `bar`, never
         // `bar()`. Unstripped, the corpus's commonest candidate shape fails
@@ -138,7 +162,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         if (scope >= 0) needle = needle.mid(scope + 2);
         if (!SymbolQuery::isValidSymbol(needle)) continue;  // >128 chars, etc.
 
-        cands.push_back({span, needle, s.startLine + 1, s.startCol, !unambiguousShape});
+        cands.push_back({span, needle, s.startLine + 1, s.startCol, ambiguous});
     }
 
     std::stable_sort(cands.begin(), cands.end(), [](const Candidate &a, const Candidate &b) {
@@ -227,6 +251,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         // Resolution is the discriminator, deliberately NOT shape: requiring a
         // `::`/`()`/mixed-case span would drop shell, Python and Lua symbols
         // wholesale, since bare lowercase is those languages' naming convention.
+        // ANTS-5470 — one capitalised word follows the same rule (isSingleCapitalisedWord).
         if (c.ambiguous && r != Resolution::Resolved) continue;
 
         Symbol sym;
