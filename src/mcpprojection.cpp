@@ -668,6 +668,33 @@ bool isUniversalDispatchArg(const QString &key) {
 
 }  // namespace
 
+QJsonObject coerceArgTypes(const QJsonObject &args, const QJsonObject &properties) {
+    QJsonObject out = args;
+    for (auto it = args.constBegin(); it != args.constEnd(); ++it) {
+        if (!it.value().isString()) continue;
+        const QString text = it.value().toString();
+        const QString type = properties.value(it.key()).toObject()
+                                 .value(QStringLiteral("type")).toString();
+        if (type == QLatin1String("integer")) {
+            bool ok = false;
+            const qlonglong n = text.toLongLong(&ok);
+            if (ok) out[it.key()] = n;
+        } else if (type == QLatin1String("number")) {
+            bool ok = false;
+            const double n = text.toDouble(&ok);
+            if (ok) out[it.key()] = n;
+        } else if (type == QLatin1String("boolean")) {
+            if (text == QLatin1String("true")) out[it.key()] = true;
+            else if (text == QLatin1String("false")) out[it.key()] = false;
+        } else if (type == QLatin1String("array") || type == QLatin1String("object")) {
+            const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+            if (type == QLatin1String("array") && doc.isArray()) out[it.key()] = doc.array();
+            else if (type == QLatin1String("object") && doc.isObject()) out[it.key()] = doc.object();
+        }
+    }
+    return out;
+}
+
 QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
                         const QSet<QString> &honoured) {
     QStringList out;

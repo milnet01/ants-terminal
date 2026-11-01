@@ -10,6 +10,7 @@
 #include "../../_support/srcgrep.h"
 
 #include "claudeintegration.h"
+#include "mcpprojection.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -242,6 +243,37 @@ TEST(McpEagerLoad, Ants5714SharedArgumentsAreShortOnEveryVerb) {
         << "tool_info no longer carries caller_cwd's full description";
     EXPECT_TRUE(text.contains(QStringLiteral("fields_available")))
         << "tool_info no longer carries fields' full description";
+}
+
+// ANTS-6325 — Claude Code sends an argument the wire schema leaves out as text,
+// so "20" and "true" must reach the verb as the types the full schema declares.
+TEST(McpEagerLoad, Ants6325HiddenArgumentSentAsTextIsHonoured) {
+    const QJsonObject props = QJsonDocument::fromJson(R"({
+        "timeout_sec": {"type":"integer"}, "ratio": {"type":"number"},
+        "include_hidden": {"type":"boolean"}, "fields": {"type":"array"},
+        "opts": {"type":"object"}, "pattern": {"type":"string"},
+        "either": {"type":["string","array"]}})").object();
+    const QJsonObject in = QJsonDocument::fromJson(R"({
+        "timeout_sec":"20", "ratio":"0.5", "include_hidden":"true", "fields":"[\"a\"]",
+        "opts":"{\"k\":1}", "pattern":"7", "either":"[1]", "unknown":"3"})").object();
+    const QJsonObject out = mcp::coerceArgTypes(in, props);
+    EXPECT_EQ(out.value(QStringLiteral("timeout_sec")).toInt(), 20);
+    EXPECT_EQ(out.value(QStringLiteral("ratio")).toDouble(), 0.5);
+    EXPECT_EQ(out.value(QStringLiteral("include_hidden")), QJsonValue(true));
+    EXPECT_EQ(out.value(QStringLiteral("fields")).toArray().size(), 1);
+    EXPECT_EQ(out.value(QStringLiteral("opts")).toObject().value(QStringLiteral("k")).toInt(), 1);
+    // A string, a union type and an undeclared argument stay as sent.
+    for (const char *same : {"pattern", "either", "unknown"})
+        EXPECT_EQ(out.value(QLatin1String(same)), in.value(QLatin1String(same))) << same;
+
+    // Text that is not the declared type is left for the verb to judge.
+    const QJsonObject bad = QJsonDocument::fromJson(R"({
+        "timeout_sec":"soon", "ratio":"", "include_hidden":"maybe", "fields":"{}", "opts":"[]"})").object();
+    EXPECT_EQ(mcp::coerceArgTypes(bad, props), bad);
+
+    // The dispatcher applies it to every call, from the saved full schema.
+    const std::string ci = ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/claudeintegration.cpp");
+    EXPECT_NE(ci.find("mcp::coerceArgTypes(params.value(\"arguments\").toObject(),"), std::string::npos);
 }
 
 // ANTS-5725 — an always-loaded verb's wire schema leaves out the arguments

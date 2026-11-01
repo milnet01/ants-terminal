@@ -88929,7 +88929,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude_config_Ants_MCP_Feedback.md 2026-10-29.
   Lanes: mcp.
 
-- 📋 [ANTS-6325] **workspace_search asked for timeout_sec:20 replies timeout_sec:5, though its own hint says to raise it.**
+- ✅ [ANTS-6325] **workspace_search asked for timeout_sec:20 replies timeout_sec:5, though its own hint says to raise it.**
   Measured 2026-10-31 through the MCP client: timeout_sec:20 came back as
   "timeout_sec":5. The handler in remotecontrol_workspace.cpp accepts 1 to 30,
   so the value may be lost before it arrives: the argument is absent from the
@@ -88938,6 +88938,12 @@ measured Ants adding about 5,250 tokens to every request.
   2026-10-31: Vestige reports the same with 30, and it recurred here
   with 20, where a whole-tree search with no lane then hit the 5 s
   budget on a loaded disk.
+  Cause, shown by mcp_trace: Claude Code sends an argument outside the
+  wire schema as a string ("20"), and the verb's isDouble test dropped
+  it. This hit every argument ANTS-5725 hides on workspace_search,
+  file_outline and read_region. The dispatcher now restores the declared
+  type. Checked over a real stdio exchange with ants-mcpd: timeout_sec
+  20, include_hidden true.
   **Layman:** A slow search tells you to allow it more time, but asking for more time seems to have no effect.
   Kind: fix.
   Source: in-session-2026-10-31.

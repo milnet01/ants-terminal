@@ -53,6 +53,12 @@ deferred: most sessions call them rarely.
   carries long argument prose on the wire, or if the shortening reaches
   `tool_info`. *Test:* `Ants5271LeanVerbArgumentsAreShort`.
 
+- **ANTS-6325** — Claude Code sends an argument the wire schema leaves out as
+  text. The dispatcher converts each string to the type the verb's full schema
+  declares (integer, number, boolean, array, object), and leaves text that does
+  not parse for the verb to judge. Breaks if `timeout_sec:20` reaches the verb
+  as `"20"`. *Test:* `Ants6325HiddenArgumentSentAsTextIsHonoured`.
+
 - **ANTS-5725** — on the wire, `workspace_search`, `file_outline` and
   `read_region` leave out each argument used in under 5% of their calls
   (user decision, 2026-10-16; measured with `tools/mcp-arg-usage-survey.py`

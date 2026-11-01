@@ -16585,6 +16585,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // Derived from the FULL array (pre-detail-strip) — the strip
                 // only touches `description`, not `inputSchema`.
                 m_toolParamKeys.clear();
+                m_toolParamSchemas.clear();
                 for (const auto &v : std::as_const(tools)) {
                     const QJsonObject t = v.toObject();
                     const QString name =
@@ -16598,6 +16599,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                          pit != props.constEnd(); ++pit)
                         keys.insert(pit.key());
                     m_toolParamKeys.insert(name, keys);
+                    m_toolParamSchemas.insert(name, props);
                 }
 
                 // ANTS-5506 — doc_lint's doc_facts reads this map from a
@@ -16840,8 +16842,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // under 5% of its calls stay off the wire (user decision,
                     // 2026-10-16). They are still accepted: m_toolParamKeys
                     // and tool_info read the saved full list, and Claude Code
-                    // passes an argument the wire schema leaves out (checked
-                    // 2026-10-22). Measured 2026-10-22 with
+                    // passes an argument the wire schema leaves out, as text
+                    // (ANTS-6325: mcp::coerceArgTypes restores its type). Measured 2026-10-22 with
                     // tools/mcp-arg-usage-survey.py; re-run it before adding
                     // to or taking from a list. find_definition hides none.
                     static const QHash<QString, QStringList> kWireHidden = {
@@ -17018,7 +17020,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // ANTS-1284 — hoist args + responseText out of the
                 // branches so a single recordCall covers both the
                 // inline get_session_info path and registered providers.
-                const QJsonObject argsObj = params.value("arguments").toObject();
+                const QJsonObject argsObj = mcp::coerceArgTypes(params.value("arguments").toObject(),
+                                                                m_toolParamSchemas.value(toolName));
                 QString responseText;
                 bool toolHandled = false;
                 // ANTS-1356 — dispatchResult overrides the default

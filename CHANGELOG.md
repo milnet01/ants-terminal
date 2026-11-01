@@ -28,6 +28,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Arguments left off a tool's short schema now work from Claude Code: timeout_sec, include_hidden, count_only and the rest arrive with their declared types** (ANTS-6325)
+
 - **comment_claims census_number skips section, step and decision numbers, HTTP statuses before a verb, shell $N, and byte, bit, degree and pixel constants** (ANTS-6181)
 
 - **source_scrapes now names Python and shell tests that read a source file, and warns when it found no test file to read.** (ANTS-6180)

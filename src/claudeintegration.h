@@ -883,6 +883,8 @@ private:
     // of silently dropping it. Empty until the first tools/list (Claude Code
     // always lists before any call); an empty map degrades to "no advisory".
     mutable QHash<QString, QSet<QString>> m_toolParamKeys;
+    // ANTS-6325 — each verb's full `properties`, for mcp::coerceArgTypes.
+    mutable QHash<QString, QJsonObject> m_toolParamSchemas;
     // ANTS-5506 — see verbArgsSnapshot().
     mutable QMutex                        m_verbArgsMutex;
     QHash<QString, QSet<QString>>         m_verbArgsPublished;

@@ -204,6 +204,13 @@ bool terseDefault();
 QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
                         const QSet<QString> &honoured);
 
+// ANTS-6325 — Claude Code sends an argument the wire schema leaves out
+// (ANTS-5725) as text, so `timeout_sec:20` arrives as "20". Returns `args` with
+// each string converted to the type `properties` declares for it: integer,
+// number, boolean, array or object. Text that does not parse as that type is
+// left for the verb to judge, as is every other argument.
+QJsonObject coerceArgTypes(const QJsonObject &args, const QJsonObject &properties);
+
 // ANTS-4525 — attach the `ignored_args` advisory to a response body, REFUSALS
 // INCLUDED. Returns `responseJson` unchanged when `ignored` is empty or the
 // body is not a JSON object.
