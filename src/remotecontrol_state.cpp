@@ -2464,6 +2464,18 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     return QJsonDocument(result);
 }
 
+
+// The main checkout of a linked worktree, read from its `.git` file
+// ("gitdir: <main>/.git/worktrees/<name>"). Empty for anything else.
+static QString mainCheckoutOfWorktree(const QString &root) {
+    QFile f(root + QStringLiteral("/.git"));
+    if (!QFileInfo(f).isFile() || !f.open(QIODevice::ReadOnly)) return {};
+    const QString line = QString::fromUtf8(f.readLine()).trimmed();
+    static const QRegularExpression gitdir(QStringLiteral(R"(^gitdir:\s*(.+)/\.git/worktrees/[^/]+$)"));
+    const QRegularExpressionMatch m = gitdir.match(line);
+    return m.hasMatch() ? m.captured(1) : QString();
+}
+
 QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-4744 — `paths` is an alias for `files`.
     //
@@ -2764,6 +2776,17 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
             : QStringLiteral("no spec files were read: %1 does not exist. Set "
                              "`specs_dir` in .ants/project.json if this "
                              "project keeps specs elsewhere.").arg(specsDir);
+        // ANTS-6332 — specs_dir is right in a linked worktree whose branch
+        // lacks the specs, so the hint must point at the checkout that has them.
+        const QString mainCheckout = mainCheckoutOfWorktree(rootCanonical);
+        if (!QDir(rootCanonical + QLatin1Char('/') + specsDir).exists() && !mainCheckout.isEmpty()
+            && QDir(mainCheckout + QLatin1Char('/') + specsDir).exists()) {
+            result["main_checkout"] = mainCheckout;
+            scannedNothingHint = QStringLiteral(
+                "no spec files were read: this linked worktree's branch has no %1. "
+                "The main checkout at %2 has it; pass that as caller_cwd.")
+                .arg(specsDir, mainCheckout);
+        }
     }
     // ANTS-4644 — emitted on EVERY reply. An absent flag is indistinguishable
     // from a build that has no fallback, which is the class of ambiguity this

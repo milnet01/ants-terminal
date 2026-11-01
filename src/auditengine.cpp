@@ -1,4 +1,5 @@
 #include "auditengine.h"
+#include "roadmapfoldin.h"
 
 #include "auditfpledger.h"
 #include "regexharden.h"  // ANTS-1665 — isCatastrophicRegex / hardenUserRegex
@@ -1374,7 +1375,8 @@ void applyCorroborationShiftAcross(QList<CheckResult> &results,
 // roadmap-format.md § 3.8 + § 3.5.
 QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
                                    const QList<int> &allocatedIds,
-                                   const QString &dateIso) {
+                                   const QString &dateIso,
+                                   const QString &idPrefix) {
     if (actionable.isEmpty() || actionable.size() != allocatedIds.size()) {
         return {};
     }
@@ -1437,8 +1439,8 @@ QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
         const QString theme = themeFromMessage(f.message);
         const QString lane = laneFromPath(f.file);
 
-        out += QStringLiteral("- 📋 [ANTS-");
-        out += QString::number(id);
+        out += QStringLiteral("- 📋 [");
+        out += RoadmapFoldIn::renderId(idPrefix, id);
         out += QStringLiteral("] **");
         out += mdInline(theme);
         out += QStringLiteral(".**\n");

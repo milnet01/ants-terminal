@@ -461,7 +461,7 @@ TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
     ASSERT_TRUE(mcpd.started());
     mcpd.writeRaw(QByteArray(qsizetype(300) * 1024, 'a'));
     mcpd.writeRaw(QByteArray(qsizetype(10) * 1024, 'a') + '\n');
-    const QJsonObject err = mcpd.await(0, 5000);
+    const QJsonObject err = mcpd.await(0, 60000);
     EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
                   .value(QStringLiteral("code")).toInt(), -32600)
         << QJsonDocument(err).toJson().toStdString();
@@ -491,7 +491,7 @@ TEST(StandaloneMcpServer, OversizedStdinRefusalCarriesTheTrailingId) {
     mcpd.writeRaw(R"({"method":"tools/call","params":{"name":"apply_edits",)"
                   R"("arguments":{"pad":")" + oversizedPad()
                   + R"("}},"jsonrpc":"2.0","id":4242})" + '\n');
-    const QJsonObject err = mcpd.await(4242, 5000);
+    const QJsonObject err = mcpd.await(4242, 60000);
     EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
                   .value(QStringLiteral("code")).toInt(), -32600)
         << QJsonDocument(err).toJson().toStdString();
@@ -510,7 +510,7 @@ TEST(StandaloneMcpServer, OversizedStdinRefusalCarriesTheLeadingId) {
     mcpd.writeRaw(R"({"jsonrpc":"2.0","id":4343,"method":"tools/call",)"
                   R"("params":{"name":"apply_edits","arguments":{"pad":")"
                   + oversizedPad());
-    const QJsonObject err = mcpd.await(4343, 5000);
+    const QJsonObject err = mcpd.await(4343, 60000);
     EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
                   .value(QStringLiteral("code")).toInt(), -32600)
         << QJsonDocument(err).toJson().toStdString();

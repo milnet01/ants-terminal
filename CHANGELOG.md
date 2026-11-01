@@ -18,6 +18,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **invariant_check names the main checkout when a linked worktree's branch has no specs** (ANTS-6332)
+
+- **source_scrapes says it does not follow a path built with std::filesystem's / operator** (ANTS-6334)
+
 - **changelog_log's schema says an entry body is stored as sent, so callers wrap it themselves** (ANTS-6205)
 
 - **trace marks a reference followed by a bracket as possible_call, so a call inside a macro argument no longer reads as nothing calling the function** (ANTS-6209)
@@ -41,6 +45,8 @@ for security-relevant changes.
 - **`roadmap_query` adds `body_match_hint` naming `body_match_regex:true` when a plain-text `body_match` that reads like a pattern matches no line.** (ANTS-6203)
 
 ### Fixed
+
+- **Audit fold-ins number new roadmap items with the target project's own id prefix** (ANTS-6337)
 
 - **trace finds C++ variables at file or namespace scope and initialised class members** (ANTS-6208)
 

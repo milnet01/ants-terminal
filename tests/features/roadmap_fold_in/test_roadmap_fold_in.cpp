@@ -54,9 +54,14 @@ TEST(RoadmapFoldIn, Inv5TemplateShape) {
     QList<Finding> findings = {f};
     QList<int> ids = {1500};
     const QString out = AuditEngine::templateRoadmapFoldInBlock(
-        findings, ids, "2026-05-13");
+        findings, ids, "2026-05-13", "ANTS");
     EXPECT_TRUE(out.startsWith("### 🔍 Audit fold-in (2026-05-13)"));
     EXPECT_TRUE(out.contains("- 📋 [ANTS-1500]"));
+    // ANTS-6337 — the id carries the project's own prefix.
+    const QString demo = AuditEngine::templateRoadmapFoldInBlock(
+        findings, {12}, "2026-05-13", "DEMO");
+    EXPECT_TRUE(demo.contains("- 📋 [DEMO-0012]")) << demo.toStdString();
+    EXPECT_FALSE(demo.contains("ANTS-"));
     EXPECT_TRUE(out.contains("Kind: audit-fix."));
     EXPECT_TRUE(out.contains("Source: audit-2026-05-13."));
     EXPECT_TRUE(out.contains("Lanes: foo."));
@@ -68,9 +73,9 @@ TEST(RoadmapFoldIn, TemplateEmptyOnSizeMismatch) {
     QList<Finding> findings = {f, f};
     QList<int> ids = {1};  // wrong size
     EXPECT_TRUE(AuditEngine::templateRoadmapFoldInBlock(
-        findings, ids, "2026-05-13").isEmpty());
+        findings, ids, "2026-05-13", "ANTS").isEmpty());
     EXPECT_TRUE(AuditEngine::templateRoadmapFoldInBlock(
-        {}, {}, "2026-05-13").isEmpty());
+        {}, {}, "2026-05-13", "ANTS").isEmpty());
 }
 
 // ---- INV-6: allocateIds returns N consecutive ints --------------

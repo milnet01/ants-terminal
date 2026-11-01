@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6339 -->
+<!-- ants-roadmap-id-high-water: ANTS=6340 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89044,7 +89044,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6332] **invariant_check reports scanned_nothing from a linked worktree whose branch lacks the specs.**
+- ✅ [ANTS-6332] **invariant_check reports scanned_nothing from a linked worktree whose branch lacks the specs.**
   RetroArch, 2026-10-31: caller_cwd /mnt/Games/Scripts/Linux/ra-pr or ra-fixes gives
   scanned_nothing:true, specs_scanned:0 and the hint to set specs_dir. The same call
   from the main checkout scans docs/private/specs. Fork specs live only on the docs
@@ -89055,7 +89055,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: feedback-retroarch-2026-10-31.
   Lanes: mcp.
 
-- 📋 [ANTS-6333] **McpdCall.Inv2ExitCodesFollowSection2Point2 reported ants-mcpd --call did not exit, once, on a heavily loaded machine.**
+- ✅ [ANTS-6333] **McpdCall.Inv2ExitCodesFollowSection2Point2 reported ants-mcpd --call did not exit, once, on a heavily loaded machine.**
   build-asan, 2026-10-31, load about 21, ctest -j2: test_mcpd_call.cpp's r.finished was
   false after about 6 s, with empty stdout and stderr, on 'clean fixture, --exit-code'.
   It passed on rerun at load 10. StandaloneMcpServer.OversizedStdinRefusalCarriesTheLeadingId and
@@ -89063,16 +89063,22 @@ measured Ants adding about 5,250 tokens to every request.
   OpenSSL suppression. The other 21 failures that run were the OpenSSL leak (ANTS-6331); these
   three printed none. Look at the wait in the
   test's helper: other waits in the suite are hang detectors at 60 s or more.
+  The call test's six-second limit is gone, so its helper's 20 s default
+  applies. The oversize-refusal waits go from 5 s to 60 s as hang
+  detectors. Not re-run under heavy load.
   **Layman:** A test gave a helper program too little time to finish on a very busy machine, and failed once.
   Kind: fix.
   Source: in-session-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6334] **source_scrapes returned 0 rows on a tree whose tests read source through compile definitions.**
+- ✅ [ANTS-6334] **source_scrapes returned 0 rows on a tree whose tests read source through compile definitions.**
   Vestige, 2026-10-31: 0 rows over 322 test files, though tests read source through
   VESTIGE_SHADER_DIR with .. path joins (test_renderer_view_override reads
   engine/renderer/renderer.cpp), and 19 test files read shaders. Remedy: follow
   compile-definition paths, or say in not_covered that this case is not seen.
+  Took the remedy of naming the case in not_covered. Run read-only on
+  Vestige: 0 rows, and not_covered names both causes. Following nested
+  definitions is ANTS-6340.
   **Layman:** A tool that lists which tests read source files reported none, on a project where many do, so a change can break a test nobody expected.
   Kind: fix.
   Source: feedback-vestige-2026-10-31.
@@ -89101,11 +89107,13 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6337] **templateRoadmapFoldInBlock writes [ANTS-N] on every project, whatever that project's id prefix is.**
+- ✅ [ANTS-6337] **templateRoadmapFoldInBlock writes [ANTS-N] on every project, whatever that project's id prefix is.**
   Read in src/auditengine.cpp, 2026-10-31, while fixing ANTS-5229: the bullet opens with a literal
   "- 📋 [ANTS-" and takes only the number from allocateIds. allocateIds counts under the project's
   own prefix, so a DEMO project's fold-in would hold ANTS-0012 from DEMO's counter. Not reproduced.
   Check the indie-review and debt-sweep templates for the same literal.
+  Only the audit template held the literal: debt-sweep, indie-review and
+  cold-eyes already take a prefix.
   **Layman:** Folding audit findings into another project's roadmap labels them with this project's prefix instead of its own.
   Kind: fix.
   Source: in-session-2026-10-31.
@@ -89130,6 +89138,15 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The code tracer can list a function call wrapped in certain macros as a declaration of that function.
   Kind: fix.
   Source: in-session-2026-11-01.
+  Lanes: mcp.
+
+- 📋 [ANTS-6340] **source_scrapes follows definitions in a nested CMakeLists.txt and paths joined with std::filesystem's / operator.**
+  Split from ANTS-6334. Vestige: tests/CMakeLists.txt defines VESTIGE_SHADER_DIR,
+  and test_renderer_view_override.cpp joins it with / ".." / "engine" and so on.
+  Both forms are named in not_covered today.
+  **Layman:** The tool that lists which tests read source files should also see tests that build the file's path in steps.
+  Kind: enhancement.
+  Source: feedback-vestige-2026-10-31.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

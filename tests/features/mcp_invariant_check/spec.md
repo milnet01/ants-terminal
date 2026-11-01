@@ -28,6 +28,7 @@ substring mentions of the input `files[]`.
 | 17 | (ANTS-4566) A NEAR MISS is reported beside a non-empty result. INV-12's rescue fires only on a zero, so a call matching one spec on an incidental mention never learned that the spec GOVERNING the file cites it by basename. With one spec citing `src/ui/card.cpp` and another citing `card.cpp`, a query for the full path returns the first in `matched_specs` with `fallback_match:false`, AND the second in `basename_matches[]`, whose `matched_terms` names the shorter form that hit. Reported, never merged: a shorter form can collide, so promoting it would trade a silent miss for a silent wrong answer. |
 | 18 | (ANTS-4566) `basename_matches` (with `basename_matches_count` and `basename_matches_hint`) is emitted ONLY when non-empty — unlike INV-15's `fallback_match`, because here absence and an empty array carry the same meaning, and a constant empty array on every reply is cost with no signal. |
 | 19 | (ANTS-5513) `docs/decisions/*.md` is scanned beside the specs and counted in `decisions_scanned` and `total_scanned`; `specs_scanned` stays specs only. Its `README.md` is not scanned. A project with ADRs and no specs is not `scanned_nothing`. |
+| 20 | (ANTS-6332) In a linked worktree with no specs directory, where the main checkout has one, a `scanned_nothing` reply sets `main_checkout` and its hint names that path. | `McpInvariantCheck.Ants6332WorktreeHintNamesTheMainCheckout` |
 
 INV-7's schema scrape reads the descriptor block via
 `ants_test::mcpToolDescriptor` (ANTS-3720), not a fixed-byte window:

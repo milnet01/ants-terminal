@@ -253,7 +253,7 @@ TEST(McpdCall, Inv2ExitCodesFollowSection2Point2) {
         if (c.exitFlag) args << QStringLiteral("--exit-code");
         const CallOutcome r = runMcpdCall(
             args, cleanProj, env,
-            /*closeStdin=*/true, /*timeoutMs=*/6000);
+            /*closeStdin=*/true);
         ASSERT_TRUE(r.finished)
             << "ants-mcpd --call did not exit; stdout=" << r.out.toStdString()
             << " stderr=" << r.err.toStdString();

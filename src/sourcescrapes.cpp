@@ -962,7 +962,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     env[QStringLiteral("limit")] = limit;
     env[QStringLiteral("scanned")] = scanned;
     env[QStringLiteral("not_covered")] = QJsonArray{
-        QStringLiteral("a path built at run time, such as a directory token joined to a variable"),
+        QStringLiteral("a path built at run time, such as a directory token joined to a variable or with std::filesystem's /"),
         QStringLiteral("definitions in a CMakeLists.txt other than the root one"),
         QStringLiteral("a file reached through an environment variable"),
         QStringLiteral("a Python module passed through a variable, such as getsource(module)"),

@@ -509,6 +509,7 @@ void applyCorroborationShiftAcross(QList<CheckResult> &results,
 // Empty input -> empty string.
 QString templateRoadmapFoldInBlock(const QList<Finding> &actionable,
                                    const QList<int> &allocatedIds,
-                                   const QString &dateIso);
+                                   const QString &dateIso,
+                                   const QString &idPrefix);
 
 }  // namespace AuditEngine

@@ -709,3 +709,36 @@ TEST(McpInvariantCheck, Ants5513DecisionsAloneAreAScan) {
     EXPECT_FALSE(env.contains("scanned_nothing"));
     EXPECT_TRUE(env.value("path_match_only").toBool());
 }
+
+// ANTS-6332 — in a linked worktree whose branch lacks the specs, the hint names
+// the main checkout, not a setting that is already right.
+TEST(McpInvariantCheck, Ants6332WorktreeHintNamesTheMainCheckout) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString base = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString main = base + "/main";
+    const QString side = base + "/side";
+    ASSERT_TRUE(QDir().mkpath(main + "/.git/worktrees/side"));
+    ASSERT_TRUE(QDir().mkpath(main + "/docs/specs"));
+    ASSERT_TRUE(QDir().mkpath(side));
+    QFile link(side + "/.git");
+    ASSERT_TRUE(link.open(QIODevice::WriteOnly));
+    link.write(("gitdir: " + main + "/.git/worktrees/side\n").toUtf8());
+    link.close();
+
+    QJsonObject req;
+    req["caller_cwd"] = side;
+    req["files"] = QJsonArray{QStringLiteral("src/x.cpp")};
+    RemoteControl rc(nullptr, nullptr);
+    const QJsonObject env = rc.cmdInvariantCheck(req).object();
+    EXPECT_TRUE(env.value("scanned_nothing").toBool());
+    EXPECT_EQ(env.value("main_checkout").toString(), main);
+    EXPECT_TRUE(env.value("hint").toString().contains(main)) << env.value("hint").toString().toStdString();
+    EXPECT_FALSE(env.value("hint").toString().contains("Set `specs_dir`"));
+
+    // The main checkout without the specs: the ordinary hint stands.
+    ASSERT_TRUE(QDir(main + "/docs/specs").removeRecursively());
+    const QJsonObject bare = rc.cmdInvariantCheck(req).object();
+    EXPECT_FALSE(bare.contains("main_checkout"));
+    EXPECT_TRUE(bare.value("hint").toString().contains("specs_dir"));
+}

@@ -1261,7 +1261,8 @@ bool AuditDialog::foldFindingsIntoRoadmap(const QList<Finding> &actionable,
 
     const QString block = AuditEngine::templateRoadmapFoldInBlock(
         actionable, ids,
-        QDate::currentDate().toString(Qt::ISODate));
+        QDate::currentDate().toString(Qt::ISODate),
+        RoadmapFoldIn::sniffIdPrefix(m_projectPath));
 
     return RoadmapFoldIn::insertBlock(m_projectPath, needle, block,
                                       RoadmapFoldIn::LockWait::Interactive,
