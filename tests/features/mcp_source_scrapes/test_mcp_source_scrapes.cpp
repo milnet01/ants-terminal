@@ -425,3 +425,73 @@ TEST(SourceScrapes, Inv9Wiring) {
     EXPECT_NE(body.find("schema[\"type\"] = \"object\";"), std::string::npos);
     EXPECT_NE(body.find("schema[\"additionalProperties\"] = false;"), std::string::npos);
 }
+
+// ANTS-6338 — os.path joins from __file__, and directory walks, are reads.
+TEST(SourceScrapes, Ants6338OsPathAndWalksAreReads) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/one.py"), "x = 1\n");
+    writeFile(dir.filePath("src/two.py"), "x = 2\n");
+    writeFile(dir.filePath("src/deep/three.py"), "x = 3\n");
+    writeFile(dir.filePath("src/notes.txt"), "x\n");
+    writeFile(dir.filePath("src/__pycache__/one.pyc"), "x\n");
+    writeFile(dir.filePath("tools/run.py"), "x = 4\n");
+    writeFile(dir.filePath("tests/test_os.py"),
+              "import os\n"
+              "from pathlib import Path\n"
+              "HERE = os.path.dirname(os.path.abspath(__file__))\n"
+              "SRC = os.path.join(HERE, '..', 'src')\n"
+              "ROOT = Path(__file__).parent.parent\n"
+              "\n"
+              "def test_join():\n"
+              "    open(os.path.join(os.path.dirname(__file__), '..', 'tools', 'run.py')).read()\n"
+              "\n"
+              "def test_var():\n"
+              "    open(os.path.join(SRC, 'one.py')).read()\n"
+              "\n"
+              "def test_glob():\n"
+              "    for p in (ROOT / 'src').glob('*.py'):\n"
+              "        p.read_text()\n"
+              "\n"
+              "def test_walk():\n"
+              "    for a, b, c in os.walk(SRC):\n"
+              "        pass\n"
+              "\n"
+              "def test_tree(tmp_path):\n"
+              "    open(os.path.join(tmp_path, 'src', 'two.py')).read()\n");
+    const QString file = QStringLiteral("tests/test_os.py");
+    const auto tests = [&](const char *path) {
+        QStringList out;
+        for (const QJsonObject &o : readersFrom(forPath(dir, path), file))
+            out << o.value(QStringLiteral("test")).toString();
+        out.sort();
+        return out;
+    };
+    EXPECT_EQ(tests("tools/run.py"), QStringList{QStringLiteral("test_join")});
+    EXPECT_EQ(tests("src/one.py"), (QStringList{QStringLiteral("test_glob"), QStringLiteral("test_var"),
+                                                QStringLiteral("test_walk")}));
+    EXPECT_EQ(tests("src/two.py"), (QStringList{QStringLiteral("test_glob"), QStringLiteral("test_walk")}))
+        << "a tmp_path tree is not the repository";
+    EXPECT_EQ(tests("src/deep/three.py"), QStringList{QStringLiteral("test_walk")})
+        << "glob stays in its directory; os.walk descends";
+    EXPECT_EQ(tests("src/notes.txt"), QStringList{QStringLiteral("test_walk")});
+    EXPECT_TRUE(tests("src/__pycache__/one.pyc").isEmpty()) << "a cache directory is not read";
+}
+
+// ANTS-6340 — a definition in a test root's own CMakeLists.txt, joined with `/`.
+TEST(SourceScrapes, Ants6340NestedDefinitionAndPathChain) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("CMakeLists.txt"), "project(x)\n");
+    writeFile(dir.filePath("engine/r/render.cpp"), "int r;\n");
+    writeFile(dir.filePath("assets/shaders/a.glsl"), "x\n");
+    writeFile(dir.filePath("tests/CMakeLists.txt"),
+              "add_executable(t test_r.cpp)\n"
+              "target_compile_definitions(t PRIVATE SHADER_DIR=\"${CMAKE_SOURCE_DIR}/assets/shaders\")\n");
+    writeFile(dir.filePath("tests/test_r.cpp"),
+              "#include <gtest/gtest.h>\n"
+              "TEST(R, Reads) {\n"
+              "    std::ifstream f(std::filesystem::path(SHADER_DIR) / \"..\" / \"..\" / \"engine\" / \"r\" / \"render.cpp\");\n"
+              "}\n");
+    const QList<QJsonObject> rows = readersFrom(forPath(dir, "engine/r/render.cpp"), QStringLiteral("tests/test_r.cpp"));
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows.first().value(QStringLiteral("test")).toString(), QStringLiteral("R.Reads"));
+}

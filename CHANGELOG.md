@@ -18,6 +18,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **source_scrapes sees Python tests that read through os.path joins or by walking a directory** (ANTS-6338)
+
+- **source_scrapes follows definitions in a test root's CMakeLists.txt and paths joined with std::filesystem's / operator** (ANTS-6340)
+
 - **A version bump rebuilds only the files that show the version, through a generated antsversion.h** (ANTS-6329)
 
 - **workspace_search's timeout hint says the reply may miss whole folders and that a repeat usually finishes** (ANTS-6270)
@@ -49,6 +53,8 @@ for security-relevant changes.
 - **`roadmap_query` adds `body_match_hint` naming `body_match_regex:true` when a plain-text `body_match` that reads like a pattern matches no line.** (ANTS-6203)
 
 ### Fixed
+
+- **trace lists a macro argument as a possible call, not a prototype** (ANTS-6339)
 
 - **indie_review_partition keeps computed lanes within the line budget, and names code outside the source roots and files the suffix filter dropped** (ANTS-6182)
 

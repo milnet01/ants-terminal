@@ -52,8 +52,10 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
 ## Not covered
 
 A path built at run time (`ANTS_SOURCE_DIR "/" + rel`), a definition in a
-`CMakeLists.txt` other than the root one, and a file reached through an
-environment variable. In Python, a module passed through a variable, a path
-built with `os.path`, and a file found by walking a directory. Anchors in a
+`CMakeLists.txt` other than the root one and the test roots' own, and a file
+reached through an environment variable. In Python, a module passed through a
+variable. A Python `glob`, `rglob` or `os.walk` over a repository directory
+counts as reading every file it lists, leaving out build and cache directories,
+since a filter inside the loop is not read. Anchors in a
 Python or shell test: those tests appear in `readers` only. Test files in any
 other language. `not_covered` in every reply says so.

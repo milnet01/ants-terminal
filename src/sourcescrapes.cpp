@@ -17,6 +17,7 @@
 #include "projectsettings.h"
 
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -356,6 +357,27 @@ private:
             static const QRegularExpression idx(QStringLiteral("\\x01(\\d+)\\x02"));
             static const QRegularExpression shape(
                 QStringLiteral("^/?[\\w.+-]+(?:/[\\w.+-]+)*\\.[A-Za-z0-9]+$"));
+            // ANTS-6340 — `path(DIR) / ".." / "engine" / "a.cpp"` is one path.
+            static const QRegularExpression chain(
+                QStringLiteral("\\x01\\d+\\x02(?:\\s*/\\s*\\x01\\d+\\x02)+"));
+            for (auto ci = chain.globalMatch(code); ci.hasNext();) {
+                const QString links = ci.next().captured(0);
+                QStringList parts;
+                int firstLine = 0;
+                for (auto li = idx.globalMatch(links); li.hasNext();) {
+                    const Literal &lit = m_lits.at(li.next().captured(1).toInt());
+                    if (parts.isEmpty()) firstLine = lit.line;
+                    parts << lit.text;
+                }
+                const QString joined = parts.join(QLatin1Char('/'));
+                for (const QString &dir : std::as_const(m_dirs)) {
+                    const QString rel = QDir::cleanPath(dir.isEmpty() ? joined : dir + QLatin1Char('/') + joined);
+                    if (rel.startsWith(QLatin1String("..")) || rel.startsWith(QLatin1Char('/')) || !m_existing(rel))
+                        continue;
+                    out.insert(rel);
+                    if (record) m_out.reads.append({m_item.test, firstLine, joined, {rel}});
+                }
+            }
             for (auto it = idx.globalMatch(code); it.hasNext();) {
                 const Literal &lit = m_lits.at(it.next().captured(1).toInt());
                 if (!shape.match(lit.text).hasMatch()) continue;
@@ -658,8 +680,12 @@ QString moduleFile(QString dotted, const QStringList &roots,
     return QString();
 }
 
+// Files under a repository directory matching a glob, as repository paths.
+using ListFiles = std::function<QStringList(const QString &dir, const QString &glob, bool recurse)>;
+
 void scanPython(const QString &rel, const QString &text, const QStringList &moduleRoots,
-                const std::function<bool(const QString &)> &existing, FileResult *out) {
+                const std::function<bool(const QString &)> &existing,
+                const ListFiles &listFiles, FileResult *out) {
     const QStringList lines = pythonCodeLines(text);
     const QHash<QString, QString> imports = pythonImports(lines.join(QLatin1Char('\n')));
     // A base is `Path(__file__)` climbing up, or a name holding a repository
@@ -679,6 +705,16 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         "|Path\\(\\s*(\\w+(?:\\.\\w+)*)\\.__file__\\s*\\)\\.read_(?:text|bytes)"));
     static const QRegularExpression climb(QStringLiteral("\\.parents\\[(\\d+)\\]|\\.parent\\b"));
     static const QRegularExpression piece(QStringLiteral("\"([^\"]*)\"|'([^']*)'"));
+    // ANTS-6338 — os.path's forms of the same joins.
+    const QString osHere = QStringLiteral(
+        "(?:os\\.path\\.dirname\\(\\s*)+(?:os\\.path\\.(?:abspath|realpath)\\(\\s*)?__file__\\s*\\)+");
+    static const QRegularExpression osHereOnly(osHere);
+    static const QRegularExpression osJoin(
+        QStringLiteral("os\\.path\\.join\\(\\s*(") + osHere
+        + QStringLiteral("|[A-Za-z_]\\w*)((?:\\s*,\\s*(?:\"[^\"]*\"|'[^']*'))+)\\s*\\)"));
+    static const QRegularExpression walkCall(base + QStringLiteral("((?:") + part
+        + QStringLiteral(")*)\\)?\\.(r?glob)\\(\\s*[\"']([^\"']+)[\"']"));
+    static const QRegularExpression osWalk(QStringLiteral("(?<![\\w.])os\\.walk\\(\\s*([A-Za-z_]\\w*)\\s*\\)"));
 
     QHash<QString, std::optional<QString>> globals, locals;
     const auto evaluate = [&](const QRegularExpressionMatch &m) -> std::optional<QString> {
@@ -694,6 +730,23 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         } else {
             at = locals.contains(head) ? locals.value(head) : globals.value(head);
         }
+        for (auto it = piece.globalMatch(m.captured(2)); at && it.hasNext();) {
+            const auto p = it.next();
+            at = under(*at, took(p, 1) ? p.captured(1) : p.captured(2));
+        }
+        return at;
+    };
+
+    const auto osBase = [&](const QString &head) -> std::optional<QString> {
+        if (!head.contains(QLatin1String("__file__")))
+            return locals.contains(head) ? locals.value(head) : globals.value(head);
+        std::optional<QString> at = rel;
+        for (int n = int(head.count(QLatin1String("dirname"))); at && n > 0; --n)
+            at = under(*at, QStringLiteral(".."));
+        return at;
+    };
+    const auto evaluateOs = [&](const QRegularExpressionMatch &m) -> std::optional<QString> {
+        std::optional<QString> at = osBase(m.captured(1));
         for (auto it = piece.globalMatch(m.captured(2)); at && it.hasNext();) {
             const auto p = it.next();
             at = under(*at, took(p, 1) ? p.captured(1) : p.captured(2));
@@ -719,6 +772,28 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
             const std::optional<QString> p = evaluate(m);
             if (p && existing(*p)) out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
         }
+        for (auto it = osJoin.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            const std::optional<QString> p = evaluateOs(m);
+            if (p && existing(*p)) out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
+        }
+        for (auto it = walkCall.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            const std::optional<QString> dir = evaluate(m);
+            if (!dir) continue;
+            const QStringList found = listFiles(*dir, m.captured(4),
+                                                m.captured(3) == QLatin1String("rglob"));
+            if (!found.isEmpty())
+                out->reads.append({test, i + 1, m.captured(0).trimmed(), QSet<QString>(found.cbegin(), found.cend())});
+        }
+        for (auto it = osWalk.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            const std::optional<QString> dir = osBase(m.captured(1));
+            if (!dir) continue;
+            const QStringList found = listFiles(*dir, QStringLiteral("*"), true);
+            if (!found.isEmpty())
+                out->reads.append({test, i + 1, m.captured(0).trimmed(), QSet<QString>(found.cbegin(), found.cend())});
+        }
         for (auto it = source.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
             const QString arg = took(m, 1) ? m.captured(1) : m.captured(2);
@@ -731,7 +806,12 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         }
         if (const auto a = assign.match(line); a.hasMatch()) {
             const auto w = whole.match(a.captured(2));
-            (topLevel ? globals : locals).insert(a.captured(1), w.hasMatch() ? evaluate(w) : std::nullopt);
+            const QString value = a.captured(2);
+            std::optional<QString> held;
+            if (w.hasMatch()) held = evaluate(w);
+            else if (const auto j = osJoin.match(value); j.hasMatch()) held = evaluateOs(j);
+            else if (const auto h = osHereOnly.match(value); h.hasMatch()) held = osBase(h.captured(0));
+            (topLevel ? globals : locals).insert(a.captured(1), held);
         }
     }
 }
@@ -787,9 +867,10 @@ void scanShell(const QString &rel, const QString &text,
 // too many ways to read one off a line, so `readers` names them and
 // not_covered says the anchors are not seen.
 FileResult analyseScript(const QString &rel, const QString &text, const QStringList &moduleRoots,
-                         const std::function<bool(const QString &)> &existing) {
+                         const std::function<bool(const QString &)> &existing,
+                         const ListFiles &listFiles) {
     FileResult out;
-    if (isPython(rel)) scanPython(rel, text, moduleRoots, existing, &out);
+    if (isPython(rel)) scanPython(rel, text, moduleRoots, existing, listFiles, &out);
     else scanShell(rel, text, existing, &out);
     return out;
 }
@@ -854,8 +935,13 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     };
 
     Readers readers;
-    const QHash<QString, QStringList> defs =
-        BuildTargets::pathDefinitions(readText(root.filePath(QStringLiteral("CMakeLists.txt"))));
+    const ProjectSettings::Settings settings = ProjectSettings::load(rootCanonical);
+    const QStringList declaredRoots = settings.testRoots.value_or(QStringList{QStringLiteral("tests")});
+    // ANTS-6340 — a test root's own CMakeLists.txt defines paths too.
+    QHash<QString, QStringList> defs;
+    for (const QString &t : declaredRoots)
+        defs.insert(BuildTargets::pathDefinitions(readText(root.filePath(t + QStringLiteral("/CMakeLists.txt")))));
+    defs.insert(BuildTargets::pathDefinitions(readText(root.filePath(QStringLiteral("CMakeLists.txt")))));
     for (auto it = defs.cbegin(); it != defs.cend(); ++it) {
         const QString first = it.value().first();
         if (first.isEmpty() || QFileInfo(root.filePath(first)).isDir())
@@ -864,8 +950,6 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             readers.fileTokens.insert(it.key(), it.value());
     }
 
-    const ProjectSettings::Settings settings = ProjectSettings::load(rootCanonical);
-    const QStringList declaredRoots = settings.testRoots.value_or(QStringList{QStringLiteral("tests")});
     QJsonArray testRoots;
     for (const QString &t : declaredRoots)
         if (QFileInfo(root.filePath(t)).isDir()) testRoots.append(t);
@@ -900,11 +984,23 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     };
     QList<Row> rows, readerRows;
     QSet<QString> readerSeen;
+    const ListFiles listFiles = [&root](const QString &dir, const QString &glob, bool recurse) {
+        constexpr int kMaxListed = 2000;
+        QStringList found;
+        QDirIterator it(root.filePath(dir), {glob}, QDir::Files,
+                        recurse ? QDirIterator::Subdirectories : QDirIterator::NoIteratorFlags);
+        while (it.hasNext() && found.size() < kMaxListed) {
+            const QString rel = root.relativeFilePath(it.next());
+            const QStringList parts = rel.split(QLatin1Char('/'));
+            if (std::none_of(parts.cbegin(), parts.cend() - 1, ProjectSettings::isNoiseDir)) found << rel;
+        }
+        return found;
+    };
     for (const QString &abs : std::as_const(files)) {
         const QString rel = root.relativeFilePath(abs);
         const FileResult fr = isCppSource(abs)
                                   ? analyse(texts.value(abs), readers, existing)
-                                  : analyseScript(rel, texts.value(abs), moduleRoots, existing);
+                                  : analyseScript(rel, texts.value(abs), moduleRoots, existing, listFiles);
         for (const Anchor &a : fr.anchors)
             for (const QString &p : matching(a.paths)) {
                 QJsonObject o;
@@ -962,11 +1058,10 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     env[QStringLiteral("limit")] = limit;
     env[QStringLiteral("scanned")] = scanned;
     env[QStringLiteral("not_covered")] = QJsonArray{
-        QStringLiteral("a path built at run time, such as a directory token joined to a variable or with std::filesystem's /"),
-        QStringLiteral("definitions in a CMakeLists.txt other than the root one"),
+        QStringLiteral("a path built at run time, such as a directory token joined to a variable"),
+        QStringLiteral("definitions in a CMakeLists.txt other than the root one and the test roots' own"),
         QStringLiteral("a file reached through an environment variable"),
         QStringLiteral("a Python module passed through a variable, such as getsource(module)"),
-        QStringLiteral("a Python path built with os.path, or a file found by walking a directory"),
         QStringLiteral("anchors in a Python or shell test, which appears in readers only"),
         QStringLiteral("test files other than C++, Python and shell")};
     if (files.isEmpty())

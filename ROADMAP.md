@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6340 -->
+<!-- ants-roadmap-id-high-water: ANTS=6341 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89135,18 +89135,23 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-31.
   Lanes: roadmap.
 
-- 📋 [ANTS-6338] **source_scrapes misses Python tests that read through os.path, walk a directory, or pass a module in a variable, and captures no Python or shell anchors.**
+- ✅ [ANTS-6338] **source_scrapes misses Python tests that read through os.path, walk a directory, or pass a module in a variable, and captures no Python or shell anchors.**
   Seen building ANTS-6180. All three are named in not_covered. os.path joins from
   __file__ appear in test files of RetroDB, Slipcase and Snatch. Pressless walks
   _SRC with a directory walk and calls getsource(module) on a variable. Anchors: readers
   name the test, but no scrape row gives the string it looks for. Non-test text
   pins such as scripts/mutations/*.py (UT_Ants) are a separate scrape kind, also unseen.
+  Old against new readers: RetroDB 22 to 237, Slipcase 10 to 207, Snatch
+  5 to 42, nearly all from real rglob, glob and os.walk calls. A walk
+  counts every file it lists, since the loop's own filter is not read.
+  Left for ANTS-6341: getsource of a variable, Python and shell anchors,
+  and non-test text pins.
   **Layman:** The tool that lists which tests read a file now covers Python and shell, but still skips a few ways of reading, and says so in its reply.
   Kind: fix.
   Source: session-2026-11-01-ANTS-6180.
   Lanes: mcp.
 
-- 📋 [ANTS-6339] **trace reads a macro call with no semicolon as a prototype, so its argument appears as a declaration and not a call.**
+- ✅ [ANTS-6339] **trace reads a macro call with no semicolon as a prototype, so its argument appears as a declaration and not a call.**
   Seen while fixing ANTS-6209: in `TRY(fnB(x))` with no semicolon inside a
   function body, the parse gives fnB a declaration row and no caller.
   A declaration inside a function body whose name is followed by a call
@@ -89156,13 +89161,25 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-11-01.
   Lanes: mcp.
 
-- 📋 [ANTS-6340] **source_scrapes follows definitions in a nested CMakeLists.txt and paths joined with std::filesystem's / operator.**
+- ✅ [ANTS-6340] **source_scrapes follows definitions in a nested CMakeLists.txt and paths joined with std::filesystem's / operator.**
   Split from ANTS-6334. Vestige: tests/CMakeLists.txt defines VESTIGE_SHADER_DIR,
   and test_renderer_view_override.cpp joins it with / ".." / "engine" and so on.
   Both forms are named in not_covered today.
+  Vestige's engine/renderer/renderer.cpp now names
+  RendererViewOverride.NoDrawPathTakesItsViewFromTheCamera, the
+  reporter's own example.
   **Layman:** The tool that lists which tests read source files should also see tests that build the file's path in steps.
   Kind: enhancement.
   Source: feedback-vestige-2026-10-31.
+  Lanes: mcp.
+
+- 💭 [ANTS-6341] **source_scrapes reads getsource of a variable, Python and shell anchors, and text pins outside tests.**
+  Split from ANTS-6338, and all named in not_covered. The anchors were left out on
+  purpose by ANTS-6180: these tests look for text in too many ways to read one off a
+  line. Build only on a report that a reader row was not enough.
+  **Layman:** The tool that lists which tests read a file could also say what text they look for in Python and shell tests.
+  Kind: enhancement.
+  Source: session-2026-11-01-ANTS-6338.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
