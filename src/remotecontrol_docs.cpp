@@ -1418,6 +1418,12 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
     // they supply more than half of this corpus's exact-duplicate pairs, which
     // is what those files ARE.
     opts.excludedPathGlobs = DocDedup::generatedPathGlobs();
+    const auto excludedHeadings =
+        DocDedup::excludedHeadingsArg(req.value(QStringLiteral("exclude_headings")));
+    if (!excludedHeadings)
+        return QJsonDocument(gitErr("bad_args",
+            QStringLiteral("doc_dedup: exclude_headings must be an array of non-blank heading texts")));
+    opts.excludedHeadings = *excludedHeadings;
 
     DocDedup::Accumulator acc;
     QStringList checked;
@@ -1493,6 +1499,8 @@ QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,
     o[QStringLiteral("passages_compared")] = result.passagesCompared;
     o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
     if (result.truncated) o[QStringLiteral("truncated")] = true;
+    if (result.sectionsExcluded > 0)
+        o[QStringLiteral("sections_excluded")] = result.sectionsExcluded;
     return o;
 }
 
@@ -2261,6 +2269,12 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
         specLintWiredTestDirs(rootCanonical, opts.spec.existingTestDirs);
 
     opts.dedup.excludedPathGlobs = DocDedup::generatedPathGlobs();
+    const auto excludedHeadings =
+        DocDedup::excludedHeadingsArg(req.value(QStringLiteral("exclude_headings")));
+    if (!excludedHeadings)
+        return QJsonDocument(gitErr("bad_args",
+            QStringLiteral("doc_lint: exclude_headings must be an array of non-blank heading texts")));
+    opts.dedup.excludedHeadings = *excludedHeadings;
 
     // ANTS-5506 — doc_facts' two inputs. The provider returns a COPY the
     // tools/list handler published under a mutex: this runs on a worker, and
@@ -2404,7 +2418,8 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
         stats[QStringLiteral("doc_dedup")] = QJsonObject{
             {QStringLiteral("passages_total"), result.stats.passagesTotal},
             {QStringLiteral("passages_compared"), result.stats.passagesCompared},
-            {QStringLiteral("truncated"), result.stats.dedupTruncated}};
+            {QStringLiteral("truncated"), result.stats.dedupTruncated},
+            {QStringLiteral("sections_excluded"), result.stats.sectionsExcluded}};
     if (run.contains(QStringLiteral("doc_facts")))
         // ANTS-5506 — the two flags are ALWAYS present when doc_facts ran:
         // without them a clean run and one with nothing to compare against

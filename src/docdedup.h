@@ -41,10 +41,13 @@
 #include "docfinding.h"
 
 #include <QHash>
+#include <QJsonValue>
 #include <QList>
 #include <QString>
 #include <QStringList>
 #include <QVector>
+
+#include <optional>
 
 namespace DocDedup {
 
@@ -72,6 +75,12 @@ struct Options {
     // pair in this corpus. Injected rather than hardcoded because the engine is
     // corpus-agnostic and ANTS-3663 § 2.4 forwards this from the composer.
     QStringList excludedPathGlobs;
+
+    // ANTS-5471 — headings whose sections are left out of the comparison: a
+    // section the corpus's own standard requires in every document repeats by
+    // design. A section runs to the next heading of its level or higher, so its
+    // subsections go with it. Case is ignored, and a leading `## ` is allowed.
+    QStringList excludedHeadings;
 };
 
 struct Passage {
@@ -117,6 +126,10 @@ struct Result {
     int maxPostingLength  = 0;
 
     bool truncated = false;    // passagesTotal exceeded maxPassages
+
+    // ANTS-5471 — sections excludedHeadings removed, so a short report can be
+    // told from a clean one.
+    int sectionsExcluded = 0;
 };
 
 // Accumulate documents, then score once. Members rather than free functions
@@ -143,6 +156,7 @@ private:
     QVector<Entry>      m_passages;
     Options             m_opts;
     int                 m_total = 0;
+    int                 m_sectionsExcluded = 0;
 };
 
 // --- exposed for the conformance tests, and because the verb layer needs the
@@ -172,6 +186,11 @@ QString normalise(const QString &text);
 // pointers would flag the fix as the defect. A sentence that merely contains a
 // link is prose and is compared.
 bool isPointerLine(const QString &raw);
+
+// ANTS-5471 — reads the `exclude_headings` argument. Absent is an empty list;
+// anything but an array of non-blank strings is std::nullopt, which the verbs
+// refuse, because a mistyped filter would read as a duplicate-free section.
+std::optional<QStringList> excludedHeadingsArg(const QJsonValue &value);
 
 // True when `relPath` matches any of `opts.excludedPathGlobs`.
 bool isExcludedPath(const QString &relPath, const Options &opts);

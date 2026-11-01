@@ -18,6 +18,7 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QHash>
+#include <QJsonArray>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -52,6 +53,53 @@ DocDedup::Result run(const QVector<QPair<QString, QString>> &docs,
 int pairsAt(const DocDedup::Result &r) { return r.pairs.size(); }
 
 }  // namespace
+
+// ANTS-5471 — a named section is left out, its subsections with it, and the
+// section after it stays. Line numbers must not shift, so a report still points
+// at the real line. A heading-shaped line in a fence starts nothing.
+TEST(DocDedup, Ants5471ExcludedHeadingLeavesItsSectionOut) {
+    const QString required = para(tokens(QStringLiteral("rq"), 30));
+    const QString nested   = para(tokens(QStringLiteral("ns"), 30));
+    const QString kept     = para(tokens(QStringLiteral("kp"), 30));
+    const QString after    = para(tokens(QStringLiteral("fn"), 30));
+    const QString doc =
+        QStringLiteral("# T\n\n## What checks this\n\n%1\n\n### Detail\n\n%2\n\n"
+                       "## Real\n\n```\n## What checks this\n```\n\n%3\n\n%4\n")
+            .arg(required, nested, kept, after);
+    const QVector<QPair<QString, QString>> docs{{QStringLiteral("a.md"), doc},
+                                                {QStringLiteral("b.md"), doc}};
+
+    const DocDedup::Result all = run(docs, DocDedup::Options{});
+    EXPECT_EQ(pairsAt(all), 4);
+    EXPECT_EQ(all.sectionsExcluded, 0);
+
+    DocDedup::Options named;
+    named.excludedHeadings = {QStringLiteral("## WHAT checks this ")};
+    const DocDedup::Result r = run(docs, named);
+    ASSERT_EQ(pairsAt(r), 2) << "the fenced heading must not start a section";
+    EXPECT_EQ(r.pairs.at(0).a.line, 17) << "blanking must keep the line numbers";
+    EXPECT_EQ(r.pairs.at(1).a.line, 19);
+    EXPECT_EQ(r.sectionsExcluded, 2);
+
+    DocDedup::Options deeper;
+    deeper.excludedHeadings = {QStringLiteral("Detail")};
+    EXPECT_EQ(pairsAt(run(docs, deeper)), 3) << "a higher-level heading ends a section";
+
+    DocDedup::Options unmatched;
+    unmatched.excludedHeadings = {QStringLiteral("What checks")};
+    EXPECT_EQ(pairsAt(run(docs, unmatched)), 4) << "a heading matches whole, never in part";
+}
+
+// ANTS-5471 — a mistyped filter refuses rather than reading as no filter.
+TEST(DocDedup, Ants5471ArgumentShape) {
+    EXPECT_EQ(DocDedup::excludedHeadingsArg(QJsonValue(QJsonValue::Undefined)),
+              std::optional<QStringList>(QStringList{}));
+    EXPECT_EQ(DocDedup::excludedHeadingsArg(QJsonArray{QStringLiteral("Kind")}),
+              std::optional<QStringList>(QStringList{QStringLiteral("Kind")}));
+    EXPECT_FALSE(DocDedup::excludedHeadingsArg(QStringLiteral("Kind")).has_value());
+    EXPECT_FALSE(DocDedup::excludedHeadingsArg(QJsonArray{1}).has_value());
+    EXPECT_FALSE(DocDedup::excludedHeadingsArg(QJsonArray{QStringLiteral(" ## ")}).has_value());
+}
 
 // INV-1 — the threshold is asserted from BOTH sides, because either alone
 // passes under both `>` and `>=` (the trap ANTS-3653 INV-40 records).

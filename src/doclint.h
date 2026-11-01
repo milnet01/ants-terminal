@@ -194,6 +194,7 @@ struct Stats {
     int  passagesTotal    = 0;
     int  passagesCompared = 0;
     bool dedupTruncated   = false;
+    int  sectionsExcluded = 0;    // ANTS-5471
 
     // doc_facts — counters summed; the two flags describe the run's inputs, not
     // a document, and are set once (spec § 2.6).

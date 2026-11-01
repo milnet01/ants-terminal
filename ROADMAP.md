@@ -86822,10 +86822,14 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.
   Lanes: docs.
 
-- 📋 [ANTS-5471] **doc_lint's doc_dedup can exclude a section heading the corpus's own standard requires.**
+- ✅ [ANTS-5471] **doc_lint's doc_dedup can exclude a section heading the corpus's own standard requires.**
   Most near_duplicate hits on ~/.claude/standards were each standard's
   `## What checks this` section, which documentation.md mandates. An
   argument naming headings to treat as structural would drop them.
+  Shipped 2026-11-01: amendment to docs/specs/ANTS-3660.md, INV-11. On
+  ~/.claude/standards, excluding `Cold-eyes loop log` took doc_dedup
+  from 140 pairs to 4. Excluding the `What checks this` section this
+  item named changes no pair there today.
   **Layman:** The document checker stops calling a required section a duplicate just because every document has one.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-26.

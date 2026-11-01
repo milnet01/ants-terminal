@@ -504,6 +504,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
         r.stats.passagesTotal    = dr.passagesTotal;
         r.stats.passagesCompared = dr.passagesCompared;
         r.stats.dedupTruncated   = dr.truncated;
+        r.stats.sectionsExcluded = dr.sectionsExcluded;
     }
 
     // ---- Phase 2: the two frozen adapters ----------------------------------

@@ -7408,7 +7408,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "question about document architecture, and deleting the wrong one "
                     "destroys the authoritative copy. Generated artifacts "
                     "(AUTOMATED_AUDIT_REPORT*, superpowers/) and pointer-only paragraphs "
-                    "are excluded; short paragraphs below min_words are too. Finds shared "
+                    "are excluded; short paragraphs below min_words are too. exclude_headings "
+                    "also leaves out a section the corpus's own standard requires in every "
+                    "document, and sections_excluded says how many went. Finds shared "
                     "WORDS, not shared meaning — a clean run is not proof of no "
                     "duplication. caller_cwd required.");
                 docDedup["selection_hint"] = QStringLiteral(
@@ -7443,12 +7445,18 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         ddShingle["description"] = QStringLiteral(
                             "Words per shingle (default 3, clamped to [2,10]). Larger is "
                             "stricter about word order, smaller pairs more freely.");
+                    QJsonObject ddHeadings; ddHeadings["type"] = "array";
+                        ddHeadings["items"] = QJsonObject{{"type", "string"}};
+                        ddHeadings["description"] = QStringLiteral(
+                            "Leave out the sections under these headings, subsections "
+                            "included: ones every document must carry. Case ignored.");
                     const QJsonObject ddEtag = makeEtagMatchProp();
                     props["path"] = ddPath;
                     props["caller_cwd"] = ddCwd;
                     props["min_similarity"] = ddSim;
                     props["min_words"] = ddWords;
                     props["shingle_size"] = ddShingle;
+                    props["exclude_headings"] = ddHeadings;
                     props["etag_match"] = ddEtag;
                     schema["properties"] = props;
                     docDedup["inputSchema"] = schema;
@@ -7566,6 +7574,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["path"] = dlPath;
                     props["caller_cwd"] = dlCwd;
                     props["checks"] = dlChecks;
+                    QJsonObject dlHeadings; dlHeadings["type"] = "array";
+                        dlHeadings["items"] = QJsonObject{{"type", "string"}};
+                        dlHeadings["description"] = QStringLiteral(
+                            "doc_dedup: leave out the sections under these headings, "
+                            "subsections included. Case ignored.");
+                    props["exclude_headings"] = dlHeadings;
                     props["max_findings"] = dlMax;
                     props["fix"] = dlFix;
                     props["dry_run"] = dlDry;

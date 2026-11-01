@@ -25,6 +25,8 @@ Jaccard below is arithmetic a reader can check.
 | `Inv6PassageCapCountsAll` | INV-6 | `maxPassages` caps what is compared; the walk still counts everything. |
 | `Inv7StopShinglePrune` | INV-7 | The prune drops candidates and never changes a score. |
 | `Inv9ClustersAreConnectedComponents` | INV-9 | A–B and B–C with no A–C is **one** cluster of three. |
+| `Ants5471ExcludedHeadingLeavesItsSectionOut` | INV-11 | A named section and its subsections go, the next section stays, line numbers hold, and a heading-shaped line in a fence starts nothing. |
+| `Ants5471ArgumentShape` | INV-11 | Anything but an array of non-blank strings refuses. |
 | `DISABLED_CorpusCalibration` | — | § 2.3's acceptance criterion, measured against `docs/`. Not a contract; re-runnable. |
 
 INV-5 and INV-8 are the verb lane's (`tests/features/doc_dedup_verb/`): both are

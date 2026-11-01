@@ -5,6 +5,7 @@
 
 #include "markdownscan.h"
 
+#include <QJsonArray>
 #include <QRegularExpression>
 #include <QSet>
 
@@ -35,6 +36,37 @@ const QRegularExpression &tableRe() {
 const QRegularExpression &indentRe() {
     static const QRegularExpression re(QStringLiteral("^\\s+\\S"));
     return re;
+}
+
+QString headingKey(const QString &heading) {
+    static const QRegularExpression marks(QStringLiteral("^\\s*#*\\s*|\\s*#*\\s*$"));
+    return QString(heading).remove(marks).toCaseFolded();
+}
+
+// Blanks each named section in place, so segment() sees it as blank lines and
+// every other passage keeps its line number. Returns how many it removed.
+int blankExcludedSections(QStringList &lines, const QStringList &headings) {
+    QSet<QString> wanted;
+    for (const QString &h : headings) wanted.insert(headingKey(h));
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    static const QRegularExpression atx(QStringLiteral("^(#{1,6}) +(.*)$"));
+    int removed = 0;
+    int cutLevel = 0;  // the level of the section being blanked; 0 is none
+    for (int i = 0; i < lines.size(); ++i) {
+        if (!fence.at(i)) {
+            const auto m = atx.match(lines.at(i).trimmed());
+            if (m.hasMatch()) {
+                const int level = int(m.capturedLength(1));
+                if (cutLevel != 0 && level <= cutLevel) cutLevel = 0;
+                if (cutLevel == 0 && wanted.contains(headingKey(m.captured(2)))) {
+                    cutLevel = level;
+                    ++removed;
+                }
+            }
+        }
+        if (cutLevel != 0) lines[i].clear();
+    }
+    return removed;
 }
 
 }  // namespace
@@ -152,12 +184,25 @@ bool isExcludedPath(const QString &relPath, const Options &opts) {
     return false;
 }
 
+std::optional<QStringList> excludedHeadingsArg(const QJsonValue &value) {
+    if (value.isUndefined() || value.isNull()) return QStringList{};
+    if (!value.isArray()) return std::nullopt;
+    QStringList out;
+    for (const QJsonValue &v : value.toArray()) {
+        if (!v.isString() || headingKey(v.toString()).isEmpty()) return std::nullopt;
+        out << v.toString();
+    }
+    return out;
+}
+
 void Accumulator::add(const QString &text, const QString &relPath,
                       const Options &opts) {
     m_opts = opts;
     if (isExcludedPath(relPath, opts)) return;
 
-    const QStringList lines = text.split(QLatin1Char('\n'));
+    QStringList lines = text.split(QLatin1Char('\n'));
+    if (!opts.excludedHeadings.isEmpty())
+        m_sectionsExcluded += blankExcludedSections(lines, opts.excludedHeadings);
     for (const auto &p : segment(lines)) {
         if (isPointerLine(p.second)) continue;
         const QStringList words =
@@ -197,6 +242,7 @@ Result Accumulator::finish() {
     Result r;
     r.passagesTotal    = m_total;
     r.passagesCompared = int(m_passages.size());
+    r.sectionsExcluded = m_sectionsExcluded;
     r.truncated        = m_total > r.passagesCompared;
 
     // shingle -> passage ids. This plus the per-passage sets is the whole

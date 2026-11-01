@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_dedup` and `doc_lint` take `exclude_headings`, which leaves out sections a corpus requires in every document and says how many went** (ANTS-5471)
+
 - **workspace_search runs a regex with look-around or a backreference through ripgrep's PCRE2 engine** (ANTS-6207)
 
 ### Changed
