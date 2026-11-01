@@ -879,3 +879,14 @@ TEST(MutationProbe, Ants5096ProbeRecoversBeforeReadingItsBaseline) {
     EXPECT_EQ(slurp(src), original) << "the probe restored to the leftover mutant";
     EXPECT_EQ(journalCount(dir), 0) << "a clean run left its journal behind";
 }
+
+// ANTS-6210 — ctest with a filter that selects nothing is an empty run, not an
+// unreadable one, and the refusal shows the command holding the filter.
+TEST(MutationProbe, Ants6210EmptyCtestFilterIsAnEmptyRun) {
+    const auto c = MutationProbe::parseCounts(QStringLiteral(
+        "Test project /tmp/build\nNo tests were found!!!\n"));
+    EXPECT_EQ(c.passed, 0);
+    EXPECT_EQ(c.failed, 0);
+    EXPECT_EQ(MutationProbe::judgeBaseline(false, 0, c), MutationProbe::BaselineVerdict::Empty);
+    EXPECT_NE(ants_test::slurpRemoteControl().find("baseline_command"), std::string::npos);
+}

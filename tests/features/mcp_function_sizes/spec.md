@@ -11,7 +11,7 @@ shares with the other readability verbs is `src/codewalk.{h,cpp}`.
 |---|---|---|
 | 1 | Rows are ordered by `lines`, longest first, then by file and `body_start`. `lines` is `body_end - body_start + 1`. `top` caps the rows (default 20). | `FunctionSizes.Inv1RankedLongestFirst` |
 | 2 | A brace-family body ends at the brace that balances its first `{`, skipping braces in comments and strings. A declaration ending in `;` is not a row. | `FunctionSizes.Inv2BraceBodyEndsAtItsBrace` |
-| 2a | A function whose first `{` comes at or after the next symbol's line has no brace body (`fun f() = x`), and a Ruby function closes with `end`: each is counted in `scanned.unmeasured`, never given another function's size. | `FunctionSizes.Inv2aNoBraceBodyIsUnmeasured` |
+| 2a | A function whose first `{` comes at or after the next symbol's line has no brace body (`fun f() = x`), and a Ruby function closes with `end`: each is counted in `scanned.unmeasured` and named in `unmeasured` (`file`, `symbol`, `line`, `why`, capped at `top`), never given another function's size. `not_covered` names the languages a directory walk leaves out. | `FunctionSizes.Inv2aNoBraceBodyIsUnmeasured` |
 | 3 | A Python body ends at its last non-blank line indented deeper than its `def`. | `FunctionSizes.Inv3PythonBodyEndsByIndentation` |
 | 4 | `nesting_depth` counts the body's own level as 1 and each level opened inside it as one more. | `FunctionSizes.Inv4NestingDepth` |
 | 5 | A directory walk leaves out test and generated files unless `include_tests` or `include_generated` is set, and `scanned` counts each kind left out. A file named in `paths` is measured whatever it is. | `FunctionSizes.Inv5TestsAndGeneratedLeftOut` |

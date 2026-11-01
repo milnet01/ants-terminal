@@ -88684,7 +88684,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6183] **function_sizes counts unmeasured files without naming them.**
+- ✅ [ANTS-6183] **function_sizes counts unmeasured files without naming them.**
   Pressless: the reply said unmeasured: 5 with no list (probably shell
   scripts). Fix: list each unmeasured path and why. Related: ANTS-5800
   (shell top-level code never measured, yet unmeasured reads 0).
@@ -88696,7 +88696,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6188] **workspace_search names include_hidden when a no-match or capped reply skipped a hidden directory that exists.**
+- ✅ [ANTS-6188] **workspace_search names include_hidden when a no-match or capped reply skipped a hidden directory that exists.**
   UT_Ants: a review lane covering CI config searched without
   include_hidden and got nothing back from .github/, with no word that
   hidden paths were skipped. Fix: when a hidden directory exists under the
@@ -88731,7 +88731,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6202] **workspace_search refuses or warns on a glob holding `|`, which today matches nothing silently.**
+- ✅ [ANTS-6202] **workspace_search refuses or warns on a glob holding `|`, which today matches nothing silently.**
   UT_Ants: glob `*.cmake|CMakeLists.txt` returned zero matches and no
   warning. Fix: refuse or add a hint naming the `{a,b}` brace form,
   or accept `|` as alternation.
@@ -88791,7 +88791,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6207] **workspace_search runs a regex with lookaround through ripgrep --pcre2, or its refusal says how.**
+- ✅ [ANTS-6207] **workspace_search runs a regex with lookaround through ripgrep --pcre2, or its refusal says how.**
   UT_Ants: regex:true with a lookahead returned rg_failed with no hint.
   Fix: retry with --pcre2 when the pattern needs it, or say in the
   refusal that lookaround needs PCRE2 and how to ask for it.
@@ -88823,7 +88823,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6210] **mutation_probe refuses baseline_unreadable when the test filter matched no tests, without naming the filter.**
+- ✅ [ANTS-6210] **mutation_probe refuses baseline_unreadable when the test filter matched no tests, without naming the filter.**
   UT_Ants: ctest `-R urecipe` matched nothing and the refusal read as
   an unreadable baseline. Fix: detect an empty selection and refuse with
   its own reason naming the filter. Neighbour of ANTS-4768 (a fully

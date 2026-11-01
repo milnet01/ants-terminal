@@ -56,7 +56,7 @@ int pythonEnd(const QStringList &lines, int defLine, int *maxDepth) {
 } // namespace
 
 QList<Function> measure(const QString &absPath, const QStringList &lines,
-                        int *unmeasured) {
+                        QList<Unmeasured> *unmeasured) {
     QList<Function> out;
     const QJsonObject outline = FileOutline::compute(
         absPath, FileOutline::Mode::Auto, /*includeDocComment=*/false,
@@ -83,7 +83,7 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
         f.bodyStart = s.value(QStringLiteral("line")).toInt();
         if (f.bodyStart < 1 || f.bodyStart > lines.size()) continue;
         if (keywordDelimited) {
-            ++*unmeasured;
+            unmeasured->append({f.symbol, f.bodyStart, QStringLiteral("closes with `end`, not a brace")});
             continue;
         }
         if (python) {
@@ -103,7 +103,7 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
             if (openLine >= nextSymbol) f.bodyEnd = 0;
         }
         if (f.bodyEnd < f.bodyStart) {
-            ++*unmeasured;
+            unmeasured->append({f.symbol, f.bodyStart, QStringLiteral("no body the scan could find")});
             continue;
         }
         out.append(f);
@@ -138,6 +138,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         int lines() const { return f.bodyEnd - f.bodyStart + 1; }
     };
     QList<Row> rows;
+    QJsonArray unmeasuredRows;
     int unmeasured = 0;
     const QDir root(rootCanonical);
     for (const QString &abs : files.files) {
@@ -146,8 +147,17 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         QStringList lines;
         while (!in.atEnd()) lines.append(QString::fromUtf8(in.readLine()));
         const QString rel = root.relativeFilePath(abs);
-        for (const Function &f : measure(abs, lines, &unmeasured))
+        QList<Unmeasured> skipped;
+        for (const Function &f : measure(abs, lines, &skipped))
             rows.append({rel, f});
+        unmeasured += int(skipped.size());
+        for (const Unmeasured &u : std::as_const(skipped)) {
+            if (unmeasuredRows.size() >= top) break;
+            unmeasuredRows.append(QJsonObject{{QStringLiteral("file"), rel},
+                                              {QStringLiteral("symbol"), u.symbol},
+                                              {QStringLiteral("line"), u.line},
+                                              {QStringLiteral("why"), u.why}});
+        }
     }
     std::sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
         if (a.lines() != b.lines()) return a.lines() > b.lines();
@@ -178,6 +188,9 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     env[QStringLiteral("functions")] = functions;
     env[QStringLiteral("top")] = top;
     env[QStringLiteral("scanned")] = scanned;
+    env[QStringLiteral("unmeasured")] = unmeasuredRows;
+    env[QStringLiteral("not_covered")] = QJsonArray{QStringLiteral(
+        "a language a directory walk does not read, such as shell or CMake; name the file in paths")};
     return env;
 }
 

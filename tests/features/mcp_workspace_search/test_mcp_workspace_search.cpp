@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QDir>
 #include <QFile>
+#include <QProcess>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -648,4 +649,78 @@ TEST(McpWorkspaceSearch, Ants5711HardKillKeepsPartialResultsInEveryMode) {
                   .value(QStringLiteral("file")).toString(),
               QStringLiteral("a.txt"));
     EXPECT_EQ(run("count_only").value(QStringLiteral("count")).toInt(), 1);
+}
+
+namespace {
+// A project with one hit in a hidden directory and one in a plain directory.
+QJsonObject search6188(const QString &root, QJsonObject req) {
+    req[QStringLiteral("caller_cwd")] = root;
+    RemoteControl rc(nullptr);
+    return rc.cmdWorkspaceSearch(req).object();
+}
+
+QString hiddenFixture(QTemporaryDir &tmp) {
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    for (const char *rel : {"/.github/ci.yml", "/.git/config", "/src/a.txt", "/src/b.md"}) {
+        QDir().mkpath(QFileInfo(root + QLatin1String(rel)).path());
+        QFile f(root + QLatin1String(rel));
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray(rel).endsWith("ci.yml") ? "hidden_6188\n" : "plain_6188 next\n");
+    }
+    return root;
+}
+} // namespace
+
+TEST(McpWorkspaceSearch, Ants6188HiddenDirsAreNamed) {
+    QTemporaryDir tmp;
+    const QString root = hiddenFixture(tmp);
+    for (const char *mode : {"rows", "files_only", "count_only", "matches_only"}) {
+        QJsonObject req{{QStringLiteral("pattern"), QStringLiteral("hidden_6188")}};
+        if (qstrcmp(mode, "rows") != 0) req[QLatin1String(mode)] = true;
+        const QJsonObject zero = search6188(root, req);
+        EXPECT_EQ(zero.value(QStringLiteral("hidden_dirs_skipped")).toArray(),
+                  QJsonArray{QStringLiteral(".github")}) << mode;
+        EXPECT_TRUE(zero.value(QStringLiteral("hidden_dirs_hint")).toString()
+                        .contains(QStringLiteral("include_hidden"))) << mode;
+    }
+    const QJsonObject found = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("plain_6188")}});
+    EXPECT_FALSE(found.contains(QStringLiteral("hidden_dirs_skipped"))) << "a full answer needs no note";
+    const QJsonObject capped = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("plain_6188")},
+                                                 {QStringLiteral("max_results"), 1}});
+    EXPECT_TRUE(capped.value(QStringLiteral("truncated")).toBool());
+    EXPECT_EQ(capped.value(QStringLiteral("hidden_dirs_skipped")).toArray(),
+              QJsonArray{QStringLiteral(".github")});
+    const QJsonObject asked = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("hidden_6188")},
+                                                {QStringLiteral("include_hidden"), true}});
+    EXPECT_EQ(asked.value(QStringLiteral("matches")).toArray().size(), 1);
+    EXPECT_FALSE(asked.contains(QStringLiteral("hidden_dirs_skipped")));
+}
+
+TEST(McpWorkspaceSearch, Ants6202BarInGlobIsNamed) {
+    QTemporaryDir tmp;
+    const QString root = hiddenFixture(tmp);
+    const QJsonObject bar = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("plain_6188")},
+                                              {QStringLiteral("glob"), QStringLiteral("*.txt|*.yml")}});
+    EXPECT_TRUE(bar.value(QStringLiteral("glob_hint")).toString().contains(QStringLiteral("{a,b}")));
+    const QJsonObject brace = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("plain_6188")},
+                                                {QStringLiteral("glob"), QStringLiteral("*.{txt,yml}")}});
+    EXPECT_FALSE(brace.contains(QStringLiteral("glob_hint")));
+    EXPECT_EQ(brace.value(QStringLiteral("matches")).toArray().size(), 1);
+}
+
+TEST(McpWorkspaceSearch, Ants6207LookaroundRuns) {
+    QTemporaryDir tmp;
+    const QString root = hiddenFixture(tmp);
+    const QJsonObject o = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("plain_6188(?= next)")},
+                                            {QStringLiteral("regex"), true}});
+    QProcess probe;
+    probe.start(QStringLiteral("rg"), {QStringLiteral("--pcre2-version")});
+    probe.waitForFinished(5000);
+    if (probe.exitCode() == 0) {
+        EXPECT_TRUE(o.value(QStringLiteral("ok")).toBool()) << QJsonDocument(o).toJson().constData();
+        EXPECT_EQ(o.value(QStringLiteral("matches")).toArray().size(), 1);
+    } else {
+        EXPECT_EQ(o.value(QStringLiteral("code")).toString(), QStringLiteral("rg_failed"));
+        EXPECT_TRUE(o.value(QStringLiteral("hint")).toString().contains(QStringLiteral("PCRE2")));
+    }
 }

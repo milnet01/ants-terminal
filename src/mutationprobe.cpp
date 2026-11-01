@@ -116,6 +116,13 @@ Counts parseCounts(const QString &output) {
         return c;
     }
 
+    // ctest prints this and exits 0 when -R selects nothing (ANTS-6210).
+    if (output.contains(QLatin1String("No tests were found"))) {
+        c.passed = 0;
+        c.failed = 0;
+        return c;
+    }
+
     // Unrecognised. Both stay -1: a run whose output could not be parsed has
     // NOT told the caller that nothing passed, and reporting 0 would be a
     // confident wrong answer of exactly the kind this verb exists to prevent.

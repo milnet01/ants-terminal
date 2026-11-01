@@ -12,7 +12,17 @@ for security-relevant changes.
 
 ## [Unreleased]
 
+### Added
+
+- **workspace_search runs a regex with look-around or a backreference through ripgrep's PCRE2 engine** (ANTS-6207)
+
 ### Changed
+
+- **function_sizes names each function it could not measure and why, and says which languages a directory walk leaves out** (ANTS-6183)
+
+- **workspace_search lists the hidden directories it skipped when a reply is empty or cut off, and names include_hidden** (ANTS-6188)
+
+- **workspace_search explains the {a,b} form when a glob holding | finds nothing** (ANTS-6202)
 
 - **CI's sanitizer job allows 34 minutes for its build, enough for one with a cold cache.** (ANTS-6327)
 
@@ -27,6 +37,8 @@ for security-relevant changes.
 - **`roadmap_query` adds `body_match_hint` naming `body_match_regex:true` when a plain-text `body_match` that reads like a pattern matches no line.** (ANTS-6203)
 
 ### Fixed
+
+- **mutation_probe reports a ctest filter that selects nothing as an empty run, and shows the command** (ANTS-6210)
 
 - **Arguments left off a tool's short schema now work from Claude Code: timeout_sec, include_hidden, count_only and the rest arrive with their declared types** (ANTS-6325)
 

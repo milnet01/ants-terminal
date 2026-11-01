@@ -568,6 +568,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // must be allowed to cross a line boundary, which is rg's --multiline.
     if (matchWrapped) argv << QStringLiteral("--multiline");
     else if (!isRegex) argv << QStringLiteral("--fixed-strings");
+    // ANTS-6207 — look-around and backreferences need rg's PCRE2 engine.
+    static const QRegularExpression needsPcre2(QStringLiteral(R"(\(\?<?[=!]|\\[1-9])"));
+    if (isRegex && !matchWrapped && needsPcre2.match(pattern).hasMatch())
+        argv << QStringLiteral("--pcre2");
     if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
     if (!glob.isEmpty()) argv << QStringLiteral("--glob") << laneGlob(glob);
     // ANTS-3704 — rendered AFTER the positive glob: rg resolves competing globs
@@ -836,6 +840,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             QStringLiteral("workspace-search: rg returned non-zero exit code %1")
                 .arg(run.exitCode));
         if (!stderrTail.isEmpty()) o["stderr"] = QString::fromUtf8(stderrTail);
+        if (stderrTail.contains("PCRE2"))
+            o["hint"] = QStringLiteral(
+                "this pattern needs ripgrep's PCRE2 engine, for look-around or "
+                "backreferences; if this ripgrep has none, rewrite the pattern "
+                "without them");
         return QJsonDocument(o);
     }
     // A REAL hard kill only: a run stopped at the output ceiling (ANTS-5052)
@@ -895,6 +904,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // see whether they got their requested timeout_sec or the default.
         out["timeout_sec"] = budgetSec;
         out["elapsed_ms"]  = static_cast<int>(wall.elapsed());
+        // ANTS-6188 — a zero or a cut-off reply says what the walk left out.
+        if (!include_hidden && (nothingFound || truncated)) {
+            QJsonArray hiddenDirs;
+            const QStringList dirs = QDir(laneAbs).entryList(
+                {QStringLiteral(".*")}, QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot, QDir::Name);
+            for (const QString &d : dirs)
+                if (d != QLatin1String(".git")) hiddenDirs.append(d);
+            if (!hiddenDirs.isEmpty()) {
+                out["hidden_dirs_skipped"] = hiddenDirs;
+                out["hidden_dirs_hint"] = QStringLiteral(
+                    "these were not searched; pass include_hidden:true to search them");
+            }
+        }
+        // ANTS-6202 — ripgrep reads `|` in a glob as a literal character.
+        if (nothingFound && glob.contains(QLatin1Char('|')))
+            out["glob_hint"] = QStringLiteral(
+                "`|` in a glob is a literal character; write alternatives as {a,b}");
     };
 
     // ANTS-3537 — count_only: return the totals with no row bodies. Placed
@@ -2158,6 +2184,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                 "(4) or when it collected nothing (5). Check the paths and the "
                 "filter in test_command; the suite itself was never measured.")
                     .arg(base.exitCode);
+            o2[QStringLiteral("baseline_command")]   = argv.join(QLatin1Char(' '));
             o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
             o2[QStringLiteral("test_command")] = QJsonArray::fromStringList(argv);
             return QJsonDocument(o2);
@@ -2217,7 +2244,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                            "passed, 0 failed, exit 0. A suite that executes "
                            "nothing cannot be green, and every mutant would "
                            "then report `survived` for the wrong reason. "
-                           "Check the filter or the build, or drop "
+                           "Check the filter in baseline_command, or the build, or drop "
                            "require_green_baseline to probe anyway."));
             o2[QStringLiteral("baseline_exit_code")] = base.exitCode;
             o2[QStringLiteral("baseline_timed_out")] = base.timedOut;

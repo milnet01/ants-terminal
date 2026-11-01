@@ -27,9 +27,14 @@ struct Function {
 
 // Measures every function FileOutline finds in `lines` of `absPath`. A
 // declaration with no body is skipped; one whose end cannot be found is
-// counted in `*unmeasured`.
+// listed in `*unmeasured`.
+struct Unmeasured {
+    QString symbol;
+    int line = 0;
+    QString why;
+};
 QList<Function> measure(const QString &absPath, const QStringList &lines,
-                        int *unmeasured);
+                        QList<Unmeasured> *unmeasured);
 
 // The whole call below the resolved project root: the envelope, or a
 // refusal {ok:false, code, error}.

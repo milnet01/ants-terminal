@@ -99,6 +99,19 @@ TEST(FunctionSizes, Inv2aNoBraceBodyIsUnmeasured) {
     EXPECT_TRUE(rowFor(r, QStringLiteral("ruby_one")).isEmpty());
     EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject()
                   .value(QStringLiteral("unmeasured")).toInt(), 2);
+    const QJsonArray named = r.value(QStringLiteral("unmeasured")).toArray();
+    ASSERT_EQ(named.size(), 2);
+    QStringList where;
+    for (const QJsonValue v : named) {
+        const QJsonObject o = v.toObject();
+        where << QStringLiteral("%1:%2:%3").arg(o.value(QStringLiteral("file")).toString())
+                     .arg(o.value(QStringLiteral("line")).toInt())
+                     .arg(o.value(QStringLiteral("symbol")).toString());
+        EXPECT_FALSE(o.value(QStringLiteral("why")).toString().isEmpty());
+    }
+    EXPECT_TRUE(where.contains(QStringLiteral("src/k.kt:1:expr"))) << where.join(' ').toStdString();
+    EXPECT_TRUE(where.contains(QStringLiteral("src/r.rb:1:ruby_one"))) << where.join(' ').toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("not_covered")).toArray().size(), 1);
 }
 
 TEST(FunctionSizes, Inv3PythonBodyEndsByIndentation) {
