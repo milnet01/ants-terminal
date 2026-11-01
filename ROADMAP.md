@@ -69538,9 +69538,12 @@ remainder, captured so they don't drop on the floor.
   Kind: fix.
   Source: user-report-2026-10-31.
 
-- 💭 [ANTS-6324] **Run each tab's Claude state reading in its own process, and check it against real sessions.**
+- 📋 [ANTS-6324] **Run each tab's Claude state reading in its own process, and check it against real sessions.**
   User asked 2026-10-31 whether the helper behind the context gauge can keep each tab's state accurate. No separate gauge helper exists: ClaudeTabTracker reads each tab's context and state from one parse (reparseTranscript), every tab, so the wrong states came from misreading records, not from a missing reader.
   Two things would help. (1) Move the parsing into a restartable process, as ants-mcpd does, because every state fix today needs a relaunch, which closes the Claude sessions in its tabs. (2) A replay tool: run parseTranscriptTail and ClaudeBgTaskTracker over recent real transcripts and report sessions whose final state looks wrong or whose records are of an unknown type. A one-off of this on 2026-10-31, after ANTS-6321, 6322 and 6323, covered 456 sessions: all 36 ending on a compact read Idle, and no helper task was stuck. The 7 sessions not reading Idle were not examined. Needs a spec if built. Decision for the user.
+  User decision 2026-11-01: build the replay checker only. No change to
+  the terminal. Moving state reading into its own process stays parked
+  until the checker's results show it is needed.
   **Layman:** State-reading fixes would reach open tabs without a terminal relaunch, and a check over real sessions would catch a wrong state before you see it.
   Kind: investigate.
   Source: user-request-2026-10-31.
@@ -71539,6 +71542,10 @@ they are one change.
   used. Short fixed-prompt jobs measure only Ants' overhead; the cost
   lives in long sessions (100-274 requests). Next measurement needs real
   long sessions (ANTS-5698's context-rent read) — the user's call.
+  User decision 2026-11-01: next measurement reads past long sessions
+  already on disk with session_cost, and reports what Ants costs and
+  saves. No new test runs. It compares sessions as they happened, so it
+  is not a controlled test.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
@@ -82182,12 +82189,15 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-claude-40, in-session-2026-09-21.
   Lanes: mcp.
 
-- 💭 [ANTS-5519] **Should a default roadmap_query leave out dropped items?**
+- 🚫 [ANTS-5519] **Should a default roadmap_query leave out dropped items?**
   ANTS-4487 § 4.2 specified it: the default status becomes every status
   except dropped; status:"dropped" or "all" still returns them. It was
   never built, and the 2026-09-26 decision to keep dropped items visible
   in ROADMAP.md (as 🚫) argues the other way. Needs the user's call before
   any code: hide by default, or keep today's behaviour.
+  User decision 2026-11-01: keep today's behaviour. A plain search goes
+  on showing dropped items, marked as dropped; a search can already
+  filter by status. ANTS-4487 § 4.2's default stays unbuilt.
   **Layman:** Items marked "dropped" still show up in every list of roadmap items unless you filter them out.
   Kind: enhancement.
   Source: ANTS-4487 § 4.2, split out 2026-09-27.
