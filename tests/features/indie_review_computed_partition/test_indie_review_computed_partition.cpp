@@ -12,6 +12,9 @@
 #include <QString>
 #include <QStringList>
 #include <QProcess>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryDir>
 
 #include "indiereviewengine.h"
@@ -597,4 +600,58 @@ TEST(IndieReviewComputedPartition, Inv5HandlerLabelsDerivedAndKeepsHint) {
         << "a computed guess must not ship as a declared partition";
     EXPECT_NE(body.find("lanes.size() <= 1 || derived"), std::string::npos)
         << "the sparse hint still applies to a derived partition";
+}
+
+// ANTS-6182 — a directory splits on lines as well as files, so no chunk is
+// larger than one reviewer can hold.
+TEST(IndieReviewComputedPartition, Ants6182ChunksKeepToTheLineBudget) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const qint64 big = IndieReviewEngine::kMaxReviewableLinesPerLane / 2 + 1;
+    QByteArray body;
+    for (qint64 i = 0; i < big; ++i) body += "int x;\n";
+    writeFile(root, QStringLiteral("CLAUDE.md"), "# Proj\n");
+    for (const char *rel : {"src/a/one.cpp", "src/a/two.cpp", "src/a/three.cpp"})
+        writeFile(root, QString::fromLatin1(rel), body);
+    writeFile(root, QStringLiteral("src/b/small.cpp"), "int y;\n");
+    SubsystemMap::clearCacheForTests();
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root);
+    ASSERT_EQ(lanes.size(), 4);
+    EXPECT_NE(laneNamed(lanes, QStringLiteral("src/a (3/3)")), nullptr);
+    EXPECT_NE(laneNamed(lanes, QStringLiteral("src/b")), nullptr);
+    for (const auto &l : lanes)
+        EXPECT_LE(IndieReviewEngine::laneLineCount(root, l),
+                  IndieReviewEngine::kMaxReviewableLinesPerLane) << l.name.toStdString();
+}
+
+// ANTS-6182 — the reply names code outside the source roots and a sample of
+// the files the suffix filter dropped, and always carries too_coarse.
+TEST(IndieReviewComputedPartition, Ants6182ReplyNamesWhatNoLaneCovers) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("CLAUDE.md"), "# Proj\n");
+    writeFile(root, QStringLiteral("src/a/one.cpp"), "int x;\n");
+    writeFile(root, QStringLiteral("src/b/two.cpp"), "int y;\n");
+    writeFile(root, QStringLiteral("src/a/CMakeLists.txt"), "project(x)\n");
+    writeFile(root, QStringLiteral("scripts/run.sh"), "#!/bin/sh\n");
+    writeFile(root, QStringLiteral(".githooks/pre-push"), "#!/bin/sh\n");
+    writeFile(root, QStringLiteral("notes/readme.md"), "# no code\n");
+    SubsystemMap::clearCacheForTests();
+    IndieReviewEngine::UnassignedSources skipped;
+    ASSERT_FALSE(IndieReviewEngine::deriveComputedPartition(root, &skipped).isEmpty());
+    EXPECT_EQ(skipped.sample, QStringList{QStringLiteral("src/a/CMakeLists.txt")});
+    const QMap<QString, int> outside = IndieReviewEngine::codeOutsideRoots(root);
+    EXPECT_EQ(outside.value(QStringLiteral("scripts")), 1);
+    EXPECT_EQ(outside.value(QStringLiteral(".githooks")), 1);
+    EXPECT_FALSE(outside.contains(QStringLiteral("notes")));
+    EXPECT_FALSE(outside.contains(QStringLiteral("src")));
+
+    // The handler needs a MainWindow, so its wiring is read from the source.
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(), "RemoteControl::cmdIndieReviewPartition");
+    EXPECT_NE(body.find("env[\"outside_roots\"]"), std::string::npos);
+    EXPECT_NE(body.find("unassignedSample = unassigned.sample"), std::string::npos);
+    EXPECT_NE(body.find("env[\"too_coarse\"] = !coarseLanes.isEmpty()"), std::string::npos);
 }

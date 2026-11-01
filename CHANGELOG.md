@@ -50,6 +50,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **indie_review_partition keeps computed lanes within the line budget, and names code outside the source roots and files the suffix filter dropped** (ANTS-6182)
+
 - **trace narrows callers and references by a symbol's qualifier, in C++ and Python, and says when a qualifier matched no definition** (ANTS-6204)
 
 - **Audit fold-ins number new roadmap items with the target project's own id prefix** (ANTS-6337)

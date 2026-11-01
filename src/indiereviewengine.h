@@ -217,7 +217,12 @@ QString partitionOverrideRejection(const QString &projectPath);
 struct UnassignedSources {
     int                count = 0;   // files the suffix filter skipped
     QMap<QString, int> bySuffix;    // lowercased suffix -> count ("" if none)
+    QStringList        sample;      // the first of them, for the reply
 };
+
+// ANTS-6182 — code in top-level directories the computed walk does not enter,
+// such as scripts/ or .githooks/: directory -> files. Empty when "." is a root.
+QMap<QString, int> codeOutsideRoots(const QString &projectPath);
 
 QList<Lane> deriveComputedPartition(const QString &projectPath,
                                     UnassignedSources *unassigned = nullptr);

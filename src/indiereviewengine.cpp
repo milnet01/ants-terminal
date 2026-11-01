@@ -483,6 +483,8 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
                 if (unassigned) {
                     ++unassigned->count;
                     ++unassigned->bySuffix[suffix];
+                    constexpr int kMaxSample = 20;
+                    if (unassigned->sample.size() < kMaxSample) unassigned->sample << rel;
                 }
                 return true;
             }
@@ -494,19 +496,36 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
         }, kMaxWalkEntries);
     }
 
+    // Split a directory by whichever limit it reaches first. ANTS-6182: a file
+    // count alone gave chunks too large for one reviewer. ANTS-4811: a small
+    // file count hid a directory too large for one.
     QList<Lane> out;
     for (auto it = byDir.constBegin(); it != byDir.constEnd(); ++it) {
         QStringList paths = it.value();
         paths.sort();
-        const int parts =
-            (paths.size() + kMaxFilesPerLane - 1) / kMaxFilesPerLane;
-        for (int p = 0; p < parts; ++p) {
+        QList<QStringList> chunks{QStringList{}};
+        qint64 chunkLines = 0;
+        for (const QString &rel : std::as_const(paths)) {
+            Lane one;
+            one.sourcePaths = QStringList{rel};
+            const qint64 lines = laneLineCount(projectPath, one);
+            if (!chunks.last().isEmpty()
+                && (chunks.last().size() >= kMaxFilesPerLane
+                    || chunkLines + lines > kMaxReviewableLinesPerLane)) {
+                chunks.append(QStringList{});
+                chunkLines = 0;
+            }
+            chunks.last() << rel;
+            chunkLines += lines;
+        }
+        const qsizetype parts = chunks.size();
+        for (qsizetype p = 0; p < parts; ++p) {
             Lane l;
             l.name = parts > 1
                 ? QStringLiteral("%1 (%2/%3)").arg(
                       it.key(), QString::number(p + 1), QString::number(parts))
                 : it.key();
-            l.sourcePaths = paths.mid(p * kMaxFilesPerLane, kMaxFilesPerLane);
+            l.sourcePaths = chunks.at(p);
             l.kind = laneKindForDir(projectPath, it.key());   // ANTS-4806
             l.summary = QStringLiteral(
                 "%1 file(s) under %2/ (computed partition — no module map; "
@@ -514,56 +533,42 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
             out << l;
         }
     }
-    // ANTS-4811 — a project whose sources all sit under ONE directory grouped
-    // to one lane, which the >1 gate below then discarded, so the verb
-    // returned `lanes:[] , ok:true` — shape-identical to a project with no
-    // subsystems at all. LocalWebServerManager hit it with fifteen modules
-    // under src/lwsm/, and its consumer (review-code Phase 2) would have
-    // merged nothing while believing it had checked.
-    //
-    // Split that one directory by the LINE budget rather than the file count:
-    // the file count is what could not see it (fifteen files is under every
-    // per-lane file threshold), and size is what decides whether one reviewer
-    // can hold a lane. A directory genuinely under the budget still collapses
-    // to nothing, which is correct — there the refusal and its
-    // sparse_partition hint are the honest answer.
-    if (out.size() == 1 && byDir.size() == 1 && out.first().sourcePaths.size() > 1) {
-        const Lane whole = out.first();
-        const QString dir = byDir.constBegin().key();
-        QList<Lane> split;
-        QStringList chunk;
-        qint64 chunkLines = 0;
-        auto flush = [&]() {
-            if (chunk.isEmpty()) return;
-            Lane l;
-            l.sourcePaths = chunk;
-            split << l;
-            chunk.clear();
-            chunkLines = 0;
-        };
-        for (const QString &rel : whole.sourcePaths) {
-            Lane one;
-            one.sourcePaths = QStringList{rel};
-            const qint64 lines = laneLineCount(projectPath, one);
-            if (!chunk.isEmpty() && chunkLines + lines > kMaxReviewableLinesPerLane)
-                flush();
-            chunk << rel;
-            chunkLines += lines;
-        }
-        flush();
-        if (split.size() > 1) {
-            for (int p = 0; p < split.size(); ++p) {
-                split[p].name = QStringLiteral("%1 (%2/%3)")
-                                    .arg(dir, QString::number(p + 1), QString::number(split.size()));
-                split[p].summary = QStringLiteral(
-                    "%1 file(s) under %2/ (computed partition — no module map; "
-                    "one directory split by size)")
-                        .arg(split.at(p).sourcePaths.size()).arg(dir);
-            }
-            return split;
-        }
-    }
     return out.size() > 1 ? out : QList<Lane>{};
+}
+
+QMap<QString, int> codeOutsideRoots(const QString &projectPath) {
+    QMap<QString, int> out;
+    const QStringList roots = walkedSourceRoots(projectPath);
+    if (roots.contains(QStringLiteral("."))) return out;
+    const QDir top(projectPath);
+    // A hidden directory is usually a cache; these three hold hand-written code.
+    static const QSet<QString> kHiddenCode = {QStringLiteral(".githooks"), QStringLiteral(".husky"),
+                                              QStringLiteral(".circleci")};
+    const QStringList dirs = top.entryList(QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot, QDir::Name);
+    const QSet<QString> ignored = ignoredDirPrefixes(projectPath, dirs);
+    constexpr int kMaxEntries = 20000;
+    for (const QString &dir : dirs) {
+        if (roots.contains(dir) || (isPartitionNoiseDir(dir) && !kHiddenCode.contains(dir))
+            || underIgnoredDir(dir + QLatin1Char('/'), ignored))
+            continue;
+        int files = 0;
+        PrunedWalk::walkFiles(top.filePath(dir), isPartitionNoiseDir, [&](const QString &abs) {
+            const QString rel = abs.mid(projectPath.size() + 1);
+            if (underIgnoredDir(rel, ignored)) return true;
+            const QFileInfo fi(abs);
+            const QString suffix = fi.suffix().toLower();
+            bool code = CodebaseIndex::isIndexableSuffix(suffix)
+                || suffix == QLatin1String("sh") || suffix == QLatin1String("bash");
+            if (!code && suffix.isEmpty()) {
+                QFile f(abs);
+                code = f.open(QIODevice::ReadOnly) && f.read(2) == "#!";
+            }
+            if (code) ++files;
+            return true;
+        }, kMaxEntries);
+        if (files > 0) out.insert(dir, files);
+    }
+    return out;
 }
 
 // ANTS-4100 — see header. Counts reviewable files behind a lane's sourcePaths,

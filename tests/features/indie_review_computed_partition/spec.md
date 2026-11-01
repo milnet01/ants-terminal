@@ -105,3 +105,11 @@ of the surface.
   `Inv9SampleIsDeterministicAndCapped`.
   *Breaks when:* the coverage walk and the partition walk resolve different
   source roots, or the sample is capped in directory-walk order.
+
+**ANTS-6182.** A directory splits into `<dir> (n/m)` lanes on whichever limit it
+reaches first: `kMaxFilesPerLane` files or `kMaxReviewableLinesPerLane` lines. A
+single file over the line budget keeps its own lane. A derived reply names code
+in top-level directories outside the source roots in `outside_roots`, and the
+first files the suffix filter dropped in `unassigned_sample`. `too_coarse` and
+`too_coarse_lanes` are in every reply. *Test:* `Ants6182ChunksKeepToTheLineBudget`,
+`Ants6182ReplyNamesWhatNoLaneCovers`.

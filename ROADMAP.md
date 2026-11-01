@@ -88670,7 +88670,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6182] **indie_review_partition splits a project with no module map into oversized alphabetical chunks, and hides code outside source_roots.**
+- ✅ [ANTS-6182] **indie_review_partition splits a project with no module map into oversized alphabetical chunks, and hides code outside source_roots.**
   Pressless: three alphabetical chunks of src/pressless, all oversized,
   suggested_merges []. unassigned_* counted 2 yml files, while scripts/
   and .githooks/ were invisible. fields:["too_coarse","source"] came back
@@ -88679,6 +88679,9 @@ measured Ants adding about 5,250 tokens to every request.
   2026-10-23, UT_Ants: suffix_filter leaves every CMakeLists.txt and
   .yml unassigned (30 files), so build and CI code reach no lane. Partition
   them, or suggest a build lane. `fields` also ignored too_coarse_lanes.
+  Lanes are still by directory and name order, not by cohesion: a
+  project wanting better uses partition.json. CMake and CI files are
+  named in the sample, not given a computed lane.
   **Layman:** The tool that divides a project into review lanes produced unusable, too-large lanes for a project without a module map, and silently skipped scripts outside the source folders.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.

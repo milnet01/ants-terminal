@@ -194,6 +194,20 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     if (!derived) {
         unassigned =
             IndieReviewEngine::unassignedForLanes(root, lanes, &unassignedSample);
+    } else {
+        unassignedSample = unassigned.sample;
+        // ANTS-6182 — a walk bounded by source roots says what it did not enter.
+        const QMap<QString, int> outside = IndieReviewEngine::codeOutsideRoots(root);
+        if (!outside.isEmpty()) {
+            QJsonObject o;
+            for (auto it = outside.constBegin(); it != outside.constEnd(); ++it)
+                o[it.key()] = it.value();
+            env["outside_roots"] = o;
+            env["outside_roots_hint"] = QStringLiteral(
+                "these directories hold code in no lane, because the walk covers "
+                "only the source roots; name them in source_roots, or in "
+                ".indie-review/partition.json");
+        }
     }
     if (unassigned.count > 0) {
         env["unassigned_count"]  = unassigned.count;
@@ -216,7 +230,8 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
                       "the computed partition admits only the suffixes the "
                       "codebase index can outline — shell, and any language "
                       "this project builds on that the index does not read, "
-                      "land here")
+                      "land here; build and CI files can share a lane of their "
+                      "own in .indie-review/partition.json")
                 : QStringLiteral(
                       "the partition this project declares does not name them "
                       "— see `path` for the file that declares it, and "
@@ -267,11 +282,12 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     // return SILENTLY: an empty suggested_merges reads as "this partition is
     // fine". Hand-splitting the case that prompted this into 16 cohesive lanes
     // surfaced 3 critical and 11 high findings the single lane did not.
+    // ANTS-6182 — always present, so `fields` can name them on a clean reply.
+    env["too_coarse"] = !coarseLanes.isEmpty();
+    QJsonArray cl;
+    for (const QString &n : std::as_const(coarseLanes)) cl.append(n);
+    env["too_coarse_lanes"] = cl;
     if (!coarseLanes.isEmpty()) {
-        env["too_coarse"] = true;
-        QJsonArray cl;
-        for (const QString &n : std::as_const(coarseLanes)) cl.append(n);
-        env["too_coarse_lanes"] = cl;
         env["too_coarse_hint"]  = QStringLiteral(
             "%1 lane(s) exceed %2 source files each (see per-lane "
             "`file_count`). This verb mirrors the granularity of the module "
