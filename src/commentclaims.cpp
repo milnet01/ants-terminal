@@ -236,6 +236,35 @@ QJsonObject refusal(const QString &code, const QString &error) {
     return e;
 }
 
+// True when the number at `at` names a place rather than counts anything:
+// §2, SS 4, step 6, decisions 3 and 10.
+bool isLabelNumber(const QString &text, int at) {
+    static const QRegularExpression label(
+        QStringLiteral("(?:\u00A7|\\bSS|\\b(?:section|step|decision)s?)\\s*"
+                       "(?:\\d[\\d.]*\\s*(?:,|and|or|to)\\s*)*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    constexpr int kLookBack = 48;
+    const int from = qMax(0, at - kLookBack);
+    return label.match(text.mid(from, at - from)).hasMatch();
+}
+
+// True for "404 keeps": a real HTTP status followed by a verb. "404 files"
+// stays a count, because a noun follows it.
+bool isHttpStatus(const QString &digits, const QString &word) {
+    static const QSet<QString> kCodes = {
+        QStringLiteral("200"), QStringLiteral("201"), QStringLiteral("204"), QStringLiteral("301"),
+        QStringLiteral("302"), QStringLiteral("304"), QStringLiteral("400"), QStringLiteral("401"),
+        QStringLiteral("403"), QStringLiteral("404"), QStringLiteral("409"), QStringLiteral("410"),
+        QStringLiteral("422"), QStringLiteral("429"), QStringLiteral("500"), QStringLiteral("502"),
+        QStringLiteral("503"), QStringLiteral("504")};
+    static const QSet<QString> kVerbs = {
+        QStringLiteral("keeps"), QStringLiteral("names"), QStringLiteral("says"),
+        QStringLiteral("means"), QStringLiteral("returns"), QStringLiteral("refuses"),
+        QStringLiteral("stays"), QStringLiteral("reads"), QStringLiteral("becomes"),
+        QStringLiteral("goes")};
+    return kCodes.contains(digits) && kVerbs.contains(word);
+}
+
 class Checker {
 public:
     Checker(const QString &root, const QSet<QString> &ids, const QSet<QString> &prefixes)
@@ -392,12 +421,15 @@ private:
         static const QRegularExpression approx(QStringLiteral("~\\s?\\d[\\d,]*(?:[- ][A-Za-z]+)?"));
         static const QRegularExpression nLine(QStringLiteral("(?<![\\w.-])\\d+-line\\b"));
         static const QRegularExpression plural(QStringLiteral(
-            "(?<![\\w.\\-/#:~])(\\d{1,3}(?:,\\d{3})+|\\d+)(?![\\d.:%/,-])\\s+(?:[A-Za-z][\\w-]*\\s+)?([a-z]{3,}s)\\b"));
-        static const QSet<QString> kTime = {
+            "(?<![\\w.\\-/#:~$])(\\d{1,3}(?:,\\d{3})+|\\d+)(?![\\d.:%/,-])\\s+(?:[A-Za-z][\\w-]*\\s+)?([a-z]{3,}s)\\b"));
+        static const QSet<QString> kUnits = {
             QStringLiteral("seconds"), QStringLiteral("minutes"), QStringLiteral("hours"),
             QStringLiteral("days"), QStringLiteral("weeks"), QStringLiteral("months"),
             QStringLiteral("years"), QStringLiteral("milliseconds"), QStringLiteral("microseconds"),
-            QStringLiteral("nanoseconds"), QStringLiteral("secs"), QStringLiteral("mins")};
+            QStringLiteral("nanoseconds"), QStringLiteral("secs"), QStringLiteral("mins"),
+            QStringLiteral("bytes"), QStringLiteral("bits"), QStringLiteral("kilobytes"),
+            QStringLiteral("megabytes"), QStringLiteral("gigabytes"), QStringLiteral("degrees"),
+            QStringLiteral("radians"), QStringLiteral("pixels")};
         const QString why = QStringLiteral("a count that goes stale when the code changes");
         QSet<int> taken;
         for (auto it = approx.globalMatch(j.text); it.hasNext();) {
@@ -413,10 +445,12 @@ private:
         }
         for (auto it = plural.globalMatch(j.text); it.hasNext();) {
             const auto m = it.next();
-            if (taken.contains(int(m.capturedStart(1))) || kTime.contains(m.captured(2))) continue;
+            if (taken.contains(int(m.capturedStart(1))) || kUnits.contains(m.captured(2))) continue;
             QString digits = m.captured(1);
             digits.remove(QLatin1Char(','));
-            if (digits.toLongLong() < 2) continue;
+            if (digits.toLongLong() < 2 || isLabelNumber(j.text, int(m.capturedStart(1)))
+                || isHttpStatus(digits, m.captured(2)))
+                continue;
             add(j, int(m.capturedStart(1)), QStringLiteral("census_number"), m.captured(0), why, false);
         }
     }

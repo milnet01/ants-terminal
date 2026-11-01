@@ -88653,7 +88653,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6181] **comment_claims flags section, step and decision numbers, HTTP status codes and shell $N as census_number candidates.**
+- ✅ [ANTS-6181] **comment_claims flags section, step and decision numbers, HTTP status codes and shell $N as census_number candidates.**
   Pressless: all 15 census_number candidates were false: 9 section/step/
   decision numbers (§2 expects, step 6 raises, decision 10 refuses), 3 HTTP
   statuses (404 keeps), 1 shell $2, 2 true approximate figures (~60 KB,
@@ -88662,6 +88662,9 @@ measured Ants adding about 5,250 tokens to every request.
   2026-10-23, UT_Ants (185 candidates, whole tree): also numbers after
   "SS", numbers inside a <PREFIX>-NNNN id ("UTA-0432 headers" read as
   "432 headers") and number+unit constants (90 degrees, 16 bytes).
+  UTA-0432 was not reproducible: the existing lookbehind already skips
+  it, and the new test locks that. Verdicts over this repo moved on 136
+  rows out of 1710, all read as correct by sample.
   **Layman:** The checker that hunts for stale counts in comments mistook section numbers, web error codes and shell arguments for counts.
   Kind: fix.
   Source: Pressless_Ants_MCP_Feedback.md 2026-10-23.

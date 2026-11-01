@@ -136,6 +136,21 @@ TEST(CommentClaims, Inv5CensusNumbers) {
     EXPECT_EQ(c.value(1).value(QStringLiteral("line")).toInt(), 8);
 }
 
+TEST(CommentClaims, Inv5NumbersThatAreNotCounts) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/n.cpp"),
+              "// §2 expects, § 3 keeps, §§ 4 and 5 holds, SS 6 says.\n"
+              "// step 6 raises, Decision 10 refuses, section 7 lists, steps 8, 9 and 11 runs.\n"
+              "// a 404 keeps, a 400 names it, $2 holds, UTA-0432 headers.\n"
+              "// 90 degrees, 16 bytes, 8 bits, 32 pixels.\n"
+              // Each of these is a count, and stays a candidate.
+              "// the 7 keys, 404 files, 123 keeps, ~60 KB.\n");
+    const QStringList q = quotes(rows(call(dir), "candidates", QStringLiteral("census_number")));
+    EXPECT_EQ(q, (QStringList{QStringLiteral("~60 KB"), QStringLiteral("7 keys"),
+                              QStringLiteral("404 files"), QStringLiteral("123 keeps")}))
+        << q.join(QStringLiteral(" | ")).toStdString();
+}
+
 TEST(CommentClaims, Inv6StableIds) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QJsonObject r = call(*dir);
