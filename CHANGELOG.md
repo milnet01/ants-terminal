@@ -18,6 +18,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **A version bump rebuilds only the files that show the version, through a generated antsversion.h** (ANTS-6329)
+
+- **workspace_search's timeout hint says the reply may miss whole folders and that a repeat usually finishes** (ANTS-6270)
+
 - **invariant_check names the main checkout when a linked worktree's branch has no specs** (ANTS-6332)
 
 - **source_scrapes says it does not follow a path built with std::filesystem's / operator** (ANTS-6334)

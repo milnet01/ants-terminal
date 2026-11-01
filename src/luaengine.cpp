@@ -1,4 +1,5 @@
 #include "luaengine.h"
+#include "antsversion.h"
 
 #include "config.h"          // ANTS-5419 — plugin settings limits
 #include "pathvalidation.h"

@@ -1,4 +1,5 @@
 #include "auditdialog.h"
+#include "antsversion.h"
 #include "auditdialog_internal.h"
 #include "auditautofix.h"
 #include "auditcache.h"

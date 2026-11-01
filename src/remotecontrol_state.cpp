@@ -1,5 +1,6 @@
 // ANTS-3833 TU 11/24 — Session and state verbs.
 #include "remotecontrol.h"
+#include "antsversion.h"
 #include "gitwrap.h"   // ANTS-4352 — gate_drift
 #include "githooksreport.h"   // ANTS-5505 — git_state op:"hooks"
 #include "remotecontrol_internal.h"

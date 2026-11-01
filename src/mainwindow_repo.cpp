@@ -1,5 +1,6 @@
 // ANTS-1677 mainwindow piece 8/8 — repository state and updates
 #include "mainwindow.h"
+#include "antsversion.h"
 #include "mainwindow_internal.h"
 #include "terminalwidget.h"
 #include "themes.h"             // ANTS-1325: include directly where Themes:: is called

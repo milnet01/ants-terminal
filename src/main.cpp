@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "antsversion.h"
 #include "appimageenv.h"
 #include "remotecontrol.h"
 #include "terminalaccessible.h"  // ANTS-1078 — screen-reader factory

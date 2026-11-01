@@ -88847,7 +88847,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6270] **workspace_search times out on a three-name regex in Vestige and returns only docs hits, missing every source hit.**
+- ✅ [ANTS-6270] **workspace_search times out on a three-name regex in Vestige and returns only docs hits, missing every source hit.**
   Repro (Vestige session): caller_cwd /mnt/Games/Scripts/Linux/Vestige,
   pattern 'MAX_POINT_LIGHTS|u_pointLightCount|createPointLight',
   regex:true, max_results 80. Reply: truncated_reason timeout, hits in
@@ -88861,6 +88861,17 @@ measured Ants adding about 5,250 tokens to every request.
   2026-10-24, seen again from this repo: a regex of ten alternatives
   with exclude_glob build/** and .indie-review/** hit the 5 s budget;
   lane tests also did. Lanes src and docs each answered in about 2 s.
+  Measured 2026-11-01 with the reporter's pattern on Vestige: 14 ms
+  through ants-mcpd twice (29 hits, no truncation), 11 ms with plain rg,
+  load about 3. So the scan is not slow on warm caches; a cold or busy
+  disk is the likely cause, not proven. ANTS-6325 makes the timeout
+  hint's timeout_sec work. Reopen work only on a fresh timeout with its
+  load and elapsed_ms.
+  Measured 2026-11-01 in this repo: a search took 10129 ms on its first
+  run and about 30 ms on each repeat, whatever the arguments. So a cold
+  disk is the cause, and the hint now says repeat the search.
+  Source-first ordering not built: nothing shows it would help a cold
+  disk.
   **Layman:** A code search in a larger project gives up early and shows only documents, so the caller misses the code.
   Kind: fix.
   Source: Vestige_Ants_MCP_Feedback.md 2026-10-24.
@@ -88991,13 +89002,15 @@ measured Ants adding about 5,250 tokens to every request.
   Source: user-request-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6329] **Find out why a version bump appears to empty CI's compile cache, and keep it from doing so.**
+- ✅ [ANTS-6329] **Find out why a version bump appears to empty CI's compile cache, and keep it from doing so.**
   Not proven. CMakeLists.txt defines ANTS_VERSION for every source file through
   add_compile_definitions, and the precompiled headers carry it, so a bump may
   change every compile's hash. Evidence: the nightly after 0.7.115's bump
   (5247ce4e) reused 6.7%, against 54% to 75% on earlier warm nights. Other
   header edits landed that day too. Check with ccache logs on a bump alone. A
   generated version header that only its users include is the likely remedy.
+  Measured with ninja -n on a trial bump: 1220 build steps before, 135
+  after. CI's ccache hit rate after a real bump is not yet seen.
   **Layman:** Each new version may force a full rebuild of everything, which is slow on GitHub and locally.
   Kind: investigate.
   Source: user-request-2026-10-31.

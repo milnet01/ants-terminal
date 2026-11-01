@@ -11,6 +11,7 @@
 // prints its unwrapped result; docs/specs/ANTS-5506-mcpd-call.md.
 
 #include "claudeintegration.h"
+#include "antsversion.h"
 #include "config.h"
 #include "debuglog.h"
 #include "mcpdcall.h"

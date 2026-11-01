@@ -1,6 +1,7 @@
 // ANTS-5340 — see mcpdversion.h.
 
 #include "mcpdversion.h"
+#include "antsversion.h"
 
 // cppcheck-suppress missingInclude  // ANTS-1682: generated at build time
 #include "build_info.h"
@@ -15,10 +16,6 @@
 #include <QStandardPaths>
 
 #include <unistd.h>
-
-#ifndef ANTS_VERSION
-#define ANTS_VERSION "0.0.0"
-#endif
 
 namespace mcpd {
 

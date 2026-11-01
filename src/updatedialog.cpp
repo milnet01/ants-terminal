@@ -4,6 +4,7 @@
 // memory holds one network buffer, never the file (spec § 4).
 
 #include "updatedialog.h"
+#include "antsversion.h"
 
 #include "dialogchrome.h"
 

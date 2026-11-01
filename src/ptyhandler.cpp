@@ -1,4 +1,5 @@
 #include "ptyhandler.h"
+#include "antsversion.h"
 #include "debuglog.h"
 #include "secretredact.h"
 

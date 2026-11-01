@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "antsversion.h"
 #include "mainwindow_internal.h"
 
 #include "tokenusageengine.h"  // ANTS-3572 — foldMonthlyBucket / sumYear

@@ -1,6 +1,7 @@
 // ANTS-1897 — implementation. See mcporientation.h + docs/specs/ANTS-1897.md.
 
 #include "mcporientation.h"
+#include "antsversion.h"
 
 #include "secureio.h"
 

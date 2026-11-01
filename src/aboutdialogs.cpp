@@ -1,6 +1,7 @@
 // ANTS-1181 — see aboutdialogs.h for rationale.
 
 #include "aboutdialogs.h"
+#include "antsversion.h"
 // cppcheck-suppress missingInclude  // ANTS-1682: generated at build time
 #include "build_info.h"  // ANTS-1222: configure-time build metadata
 #include "dialogchrome.h"  // ANTS-1766: theme-aware frameless chrome
@@ -15,10 +16,6 @@
 #include <QString>
 #include <QVBoxLayout>
 #include <QtCore/qglobal.h>
-
-#ifndef ANTS_VERSION
-#define ANTS_VERSION "0.0.0"
-#endif
 
 namespace {
 

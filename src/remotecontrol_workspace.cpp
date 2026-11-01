@@ -217,7 +217,9 @@ void rcStampTruncatedReason(QJsonObject &out, const QString &reason,
     if (reason == QLatin1String("timeout")) {
         out["hint"] = QStringLiteral(
             "the scan stopped at the %1 s wall budget, so the results are "
-            "partial; raise timeout_sec (max 30) or narrow with lane= / glob=")
+            "partial and may miss whole folders. Repeat the search, since the "
+            "first pass warms the disk cache (ANTS-6270: 10 s, then 30 ms); or "
+            "raise timeout_sec (max 30), or narrow with lane= / glob=")
                 .arg(budgetSec);
     } else if (reason == QLatin1String("output_cap")) {
         out["hint"] = QStringLiteral(

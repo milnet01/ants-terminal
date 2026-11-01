@@ -1,4 +1,5 @@
 #include "claudeintegration.h"
+#include "antsversion.h"
 #include "guithread.h"
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 

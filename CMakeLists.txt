@@ -7,10 +7,12 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Single source of truth for the application version. Consumed by main.cpp
-# (setApplicationVersion) and auditdialog.cpp (SARIF driver.version, UI badge).
-# Bump in PROJECT() above; every caller picks up the new value on rebuild.
-add_compile_definitions(ANTS_VERSION="${PROJECT_VERSION}")
+# Single source of truth for the application version: bump it in PROJECT() above.
+# A generated header, not a compile definition: a definition changes every
+# compile command, so a bump rebuilt the whole tree (ANTS-6329). configure_file
+# leaves the file alone when the text is unchanged.
+configure_file(src/antsversion.h.in ${CMAKE_BINARY_DIR}/generated/antsversion.h @ONLY)
+include_directories(${CMAKE_BINARY_DIR}/generated)
 
 # ---------------------------------------------------------------------------
 # Build metadata for Help → About + MCP server identity

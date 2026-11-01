@@ -1,6 +1,7 @@
 // ANTS-5340 — the About dialog's ants-mcpd line. Contract: spec.md here.
 
 #include "build_info.h"
+#include "antsversion.h"
 #include "mcpdversion.h"
 
 #include <gtest/gtest.h>
@@ -209,4 +210,14 @@ TEST(McpdAboutVersion, Inv5QueryVersion) {
     ASSERT_TRUE(tmp.isValid());
     EXPECT_TRUE(mcpd::queryVersion(tmp.filePath(QStringLiteral("absent")), 2000)
                     .isEmpty());
+}
+
+// ANTS-6329 — a compile definition would change every compile command, so a
+// version bump would rebuild the whole tree.
+TEST(McpdAboutVersion, Ants6329VersionIsNotACompileDefinition) {
+    QFile cmake(QStringLiteral(ANTS_SOURCE_DIR "/CMakeLists.txt"));
+    ASSERT_TRUE(cmake.open(QIODevice::ReadOnly));
+    const QByteArray text = cmake.readAll();
+    EXPECT_FALSE(text.contains("add_compile_definitions(ANTS_VERSION"));
+    EXPECT_TRUE(text.contains("antsversion.h.in"));
 }

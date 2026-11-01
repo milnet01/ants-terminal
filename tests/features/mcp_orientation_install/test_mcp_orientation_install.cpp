@@ -19,6 +19,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "antsversion.h"
 
 #include <QByteArray>
 #include <QDir>

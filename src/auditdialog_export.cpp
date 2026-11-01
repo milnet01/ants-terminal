@@ -1,5 +1,6 @@
 // ANTS-1677 auditdialog piece 5/5 — SARIF, HTML and plain-text export
 #include "auditdialog.h"
+#include "antsversion.h"
 #include "auditdialog_internal.h"
 #include "auditautofix.h"
 #include "auditfpledger.h"
