@@ -688,11 +688,13 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
                 const ListFiles &listFiles, FileResult *out) {
     const QStringList lines = pythonCodeLines(text);
     const QHash<QString, QString> imports = pythonImports(lines.join(QLatin1Char('\n')));
-    // A base is `Path(__file__)` climbing up, or a name holding a repository
-    // path; `tmp_path / "src"` has neither, so a fixture tree reads nothing.
-    const QString base = QStringLiteral(
-        "((?:pathlib\\.)?Path\\(\\s*__file__\\s*\\)(?:\\.parent\\b|\\.parents\\[\\d+\\]|\\.resolve\\(\\)|\\.absolute\\(\\))*"
-        "|(?<![\\w.])[A-Za-z_]\\w*)");
+    // A base is `Path(__file__)` or `Path(module.__file__)`, or a name holding a
+    // repository path, each climbing up; `tmp_path / "src"` has neither, so a
+    // fixture tree reads nothing.
+    const QString upward = QStringLiteral(
+        "(?:\\.parent\\b|\\.parents\\[\\d+\\]|\\.resolve\\(\\)|\\.absolute\\(\\))*");
+    const QString base = QStringLiteral("((?:pathlib\\.)?Path\\(\\s*(?:[\\w.]+\\.)?__file__\\s*\\)") + upward
+                         + QStringLiteral("|(?<![\\w.])[A-Za-z_]\\w*") + upward + QStringLiteral(")");
     const QString part = QStringLiteral("\\s*/\\s*(?:\"[^\"]*\"|'[^']*')");
     static const QRegularExpression join(base + QStringLiteral("((?:") + part + QStringLiteral(")+)"));
     static const QRegularExpression whole(QStringLiteral("^\\s*") + base + QStringLiteral("((?:") + part
@@ -715,26 +717,46 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
     static const QRegularExpression walkCall(base + QStringLiteral("((?:") + part
         + QStringLiteral(")*)\\)?\\.(r?glob)\\(\\s*[\"']([^\"']+)[\"']"));
     static const QRegularExpression osWalk(QStringLiteral("(?<![\\w.])os\\.walk\\(\\s*([A-Za-z_]\\w*)\\s*\\)"));
+    static const QRegularExpression moduleBase(QStringLiteral("Path\\(\\s*([\\w.]+)\\.__file__"));
+    static const QRegularExpression forIn(QStringLiteral("\\bfor\\s+(\\w+)\\s+in\\s+(\\w+)\\b"));
 
     QHash<QString, std::optional<QString>> globals, locals;
-    const auto evaluate = [&](const QRegularExpressionMatch &m) -> std::optional<QString> {
-        const QString head = m.captured(1);
-        std::optional<QString> at;
-        if (head.contains(QLatin1String("__file__"))) {
-            at = rel;
-            for (auto it = climb.globalMatch(head); at && it.hasNext();) {
-                const auto c = it.next();
-                const int up = took(c, 1) ? c.captured(1).toInt() + 1 : 1;
-                for (int i = 0; at && i < up; ++i) at = under(*at, QStringLiteral(".."));
-            }
-        } else {
-            at = locals.contains(head) ? locals.value(head) : globals.value(head);
+    // ANTS-6343 — a module-level tuple of roots, and a loop name over one.
+    QHash<QString, QStringList> rootTuples, loopRoots;
+
+    // The file a name imported in this test is: "" when it is not one of ours.
+    const auto importedFile = [&](const QString &arg) {
+        const QString first = arg.section(QLatin1Char('.'), 0, 0);
+        if (!imports.contains(first)) return QString();
+        const QString rest = arg.section(QLatin1Char('.'), 1);
+        const QString dotted = imports.value(first) + (rest.isEmpty() ? QString() : QLatin1Char('.') + rest);
+        return moduleFile(dotted, moduleRoots, existing);
+    };
+    const auto startOf = [&](const QString &head) -> std::optional<QString> {
+        if (!head.contains(QLatin1String("__file__"))) {
+            const QString name = head.section(QLatin1Char('.'), 0, 0);
+            return locals.contains(name) ? locals.value(name) : globals.value(name);
+        }
+        const auto module = moduleBase.match(head);
+        if (!module.hasMatch()) return rel;
+        const QString file = importedFile(module.captured(1));
+        return file.isEmpty() ? std::nullopt : std::optional<QString>(file);
+    };
+    // `head`'s climbs and the match's joined pieces, applied to a starting path.
+    const auto applyTail = [&](std::optional<QString> at, const QRegularExpressionMatch &m) {
+        for (auto it = climb.globalMatch(m.captured(1)); at && it.hasNext();) {
+            const auto c = it.next();
+            const int up = took(c, 1) ? c.captured(1).toInt() + 1 : 1;
+            for (int i = 0; at && i < up; ++i) at = under(*at, QStringLiteral(".."));
         }
         for (auto it = piece.globalMatch(m.captured(2)); at && it.hasNext();) {
             const auto p = it.next();
             at = under(*at, took(p, 1) ? p.captured(1) : p.captured(2));
         }
         return at;
+    };
+    const auto evaluate = [&](const QRegularExpressionMatch &m) {
+        return applyTail(startOf(m.captured(1)), m);
     };
 
     const auto osBase = [&](const QString &head) -> std::optional<QString> {
@@ -762,10 +784,18 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         if (const auto d = def.match(line); d.hasMatch()) {
             if (d.captured(2).startsWith(QLatin1String("test"))) test = d.captured(2);
             else if (topLevel) test.clear();
-            if (topLevel) locals.clear();
+            if (topLevel) {
+                locals.clear();
+                loopRoots.clear();
+            }
         } else if (topLevel) {
             test.clear();
             locals.clear();
+            loopRoots.clear();
+        }
+        for (auto it = forIn.globalMatch(line); it.hasNext();) {
+            const auto m = it.next();
+            if (rootTuples.contains(m.captured(2))) loopRoots.insert(m.captured(1), rootTuples.value(m.captured(2)));
         }
         for (auto it = join.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
@@ -779,12 +809,25 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         }
         for (auto it = walkCall.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
-            const std::optional<QString> dir = evaluate(m);
-            if (!dir) continue;
-            const QStringList found = listFiles(*dir, m.captured(4),
-                                                m.captured(3) == QLatin1String("rglob"));
-            if (!found.isEmpty())
-                out->reads.append({test, i + 1, m.captured(0).trimmed(), QSet<QString>(found.cbegin(), found.cend())});
+            QVector<std::optional<QString>> dirs;
+            const QString name = m.captured(1).section(QLatin1Char('.'), 0, 0);
+            if (loopRoots.contains(name)) {
+                for (const QString &root : loopRoots.value(name)) dirs.append(applyTail(root, m));
+            } else {
+                dirs.append(evaluate(m));
+            }
+            // A pattern may name a sub-directory: `glob("pkg/*.py")`.
+            const QString pattern = m.captured(4);
+            const qsizetype slash = pattern.lastIndexOf(QLatin1Char('/'));
+            QSet<QString> found;
+            for (std::optional<QString> dir : std::as_const(dirs)) {
+                if (dir && slash >= 0) dir = under(*dir, pattern.left(slash));
+                if (!dir) continue;
+                const QStringList files = listFiles(*dir, pattern.mid(slash + 1),
+                                                    m.captured(3) == QLatin1String("rglob"));
+                found.unite(QSet<QString>(files.cbegin(), files.cend()));
+            }
+            if (!found.isEmpty()) out->reads.append({test, i + 1, m.captured(0).trimmed(), found});
         }
         for (auto it = osWalk.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
@@ -796,12 +839,7 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         }
         for (auto it = source.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
-            const QString arg = took(m, 1) ? m.captured(1) : m.captured(2);
-            const QString first = arg.section(QLatin1Char('.'), 0, 0);
-            if (!imports.contains(first)) continue;
-            const QString rest = arg.section(QLatin1Char('.'), 1);
-            const QString dotted = imports.value(first) + (rest.isEmpty() ? QString() : QLatin1Char('.') + rest);
-            const QString p = moduleFile(dotted, moduleRoots, existing);
+            const QString p = importedFile(took(m, 1) ? m.captured(1) : m.captured(2));
             if (!p.isEmpty()) out->reads.append({test, i + 1, m.captured(0), {p}});
         }
         if (const auto a = assign.match(line); a.hasMatch()) {
@@ -812,6 +850,17 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
             else if (const auto j = osJoin.match(value); j.hasMatch()) held = evaluateOs(j);
             else if (const auto h = osHereOnly.match(value); h.hasMatch()) held = osBase(h.captured(0));
             (topLevel ? globals : locals).insert(a.captured(1), held);
+            const QString tuple = value.trimmed();
+            if (topLevel && tuple.size() > 2 && tuple.contains(QLatin1Char(','))
+                && (tuple.startsWith(QLatin1Char('(')) || tuple.startsWith(QLatin1Char('[')))) {
+                QStringList roots;
+                for (const QString &member : tuple.mid(1, tuple.size() - 2).split(QLatin1Char(','))) {
+                    const auto mw = whole.match(member);
+                    const std::optional<QString> root = mw.hasMatch() ? evaluate(mw) : std::nullopt;
+                    if (root) roots << *root;
+                }
+                if (!roots.isEmpty()) rootTuples.insert(a.captured(1), roots);
+            }
         }
     }
 }

@@ -56,6 +56,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`trace` names each file holding a match that it could not fully parse, says callers there may be missing, and marks a `name(` in it as `possible_call`** (ANTS-6342)
+
+- **`source_scrapes` follows a walk from a module's `__file__`, through `.parent`, into a sub-directory in the pattern, and over a module-level tuple of roots** (ANTS-6343)
+
 - **`doc_citations` reads a `path:line` or `path::symbol` written straight after the word "not" as an example, and counts it in `examples_suppressed`** (ANTS-5469)
 
 - **`doc_symbols` reports a single capitalised word such as `Kind` or `PARTIAL` only when it resolves, and never reports a naming-convention name such as `PascalCase`** (ANTS-5470)

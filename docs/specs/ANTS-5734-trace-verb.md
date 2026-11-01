@@ -94,7 +94,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   Markdown files are not `references`; they go to `docs[]` (§ 2.7).
 - **`counts`** carries `{total, returned}` for every section, so a capped reply says how much it left out.
-- **`not_covered[]`** names what the answer could not see: `no_grammar` (a language with files present but no grammar), `file_too_large`, `parse_timeout`, `ambiguous_basename` (§ 2.7), `source_unreadable` (§ 4), and `limits` (a fixed sentence per language from its query file, such as "calls through function pointers and Qt signal connections are not followed").
+- **`not_covered[]`** names what the answer could not see: `no_grammar` (a language with files present but no grammar), `file_too_large`, `parse_timeout`, `parse_error` (a file holding a match whose parse has errors: callers may be missing, and a `name(` there that reads as a string is marked `possible_call`, ANTS-6342), `ambiguous_basename` (§ 2.7), `source_unreadable` (§ 4), and `limits` (a fixed sentence per language from its query file, such as "calls through function pointers and Qt signal connections are not followed").
 - **`scanned`** is the "a zero says what it looked at" block (`docs/standards/mcp-tools.md` step 5a).
 
 **Ordering and paging.** Rows are emitted in a fixed order: section order as in the example, then file path, then line, then column. The byte cap cuts at a row boundary, never inside one, and sets `truncated:true` and `next_offset` to the index of the first row left out. A call repeating the same arguments with that `offset` returns the rows from there. Offset paging replaces spill offload for this verb, so `trace` is exempt from `mcp::offloadThresholdFor`'s threshold. The reply is never trimmed silently.

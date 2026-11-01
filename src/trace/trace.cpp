@@ -401,7 +401,7 @@ struct Gathered {
     QMap<QString, int> noGrammarFiles;          // lang -> files present
     QMap<QString, QString> noGrammarDetail;     // lang -> why
     QMap<QString, QString> limitsByLang;        // vendored languages with files
-    QStringList tooLarge, timedOut;
+    QStringList tooLarge, timedOut, parseErrors;
     int filesParsed = 0, filesWithErrors = 0;
 };
 
@@ -542,8 +542,11 @@ void addReferenceRows(const QVector<int> &hits, const QVector<ByteRange> &skip,
                         {QStringLiteral("line"), line},
                         {QStringLiteral("text"), lines.textOf(text, line)}};
         // ANTS-6209: a macro argument may not parse as a call, so a live
-        // function could read as uncalled.
-        if (kind == QLatin1String("code") && followedByParen(text, h))
+        // function could read as uncalled. ANTS-6342: a parse error can also
+        // read the code after it as one long string.
+        const bool mayBeCode = kind == QLatin1String("code")
+            || (rows && rows->hasErrors && kind == QLatin1String("string_or_config"));
+        if (mayBeCode && followedByParen(text, h))
             row[QStringLiteral("possible_call")] = true;
         g.refRows.append({rel, line, lines.columnOf(h), kind, row});
         if (test) g.testFiles.insert(rel);
@@ -669,6 +672,14 @@ void appendCoverageGaps(Gathered &g, QJsonArray &notCovered) {
     for (const QString &t : std::as_const(g.timedOut))
         notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("parse_timeout")},
                                       {QStringLiteral("file"), t}});
+    // ANTS-6342 — counts can read as complete while such a file hides a caller.
+    g.parseErrors.sort();
+    for (const QString &t : std::as_const(g.parseErrors))
+        notCovered.append(QJsonObject{
+            {QStringLiteral("reason"), QStringLiteral("parse_error")},
+            {QStringLiteral("file"), t},
+            {QStringLiteral("detail"),
+             QStringLiteral("callers in this file may be missing; check its references rows.")}});
     for (auto it = g.limitsByLang.constBegin(); it != g.limitsByLang.constEnd(); ++it)
         notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("limits")},
                                       {QStringLiteral("lang"), it.key()},
@@ -836,7 +847,10 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
                 rows.reset();
             } else {
                 ++g.filesParsed;
-                if (rows->hasErrors) ++g.filesWithErrors;
+                if (rows->hasErrors) {
+                    ++g.filesWithErrors;
+                    g.parseErrors << rel;
+                }
             }
         }
 

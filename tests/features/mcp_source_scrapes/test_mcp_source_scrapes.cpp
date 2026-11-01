@@ -477,6 +477,59 @@ TEST(SourceScrapes, Ants6338OsPathAndWalksAreReads) {
     EXPECT_TRUE(tests("src/__pycache__/one.pyc").isEmpty()) << "a cache directory is not read";
 }
 
+// ANTS-6343 — a walk's root may come from a module's __file__, climb with
+// .parent, name a sub-directory in its pattern, or be each member of a tuple.
+TEST(SourceScrapes, Ants6343WalksThroughModuleRootsAndTuples) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("pkg/words.py"), "x = 1\n");
+    writeFile(dir.filePath("pkg/votes.py"), "x = 2\n");
+    writeFile(dir.filePath("pkg_import/fetch.py"), "x = 3\n");
+    writeFile(dir.filePath("other/alone.py"), "x = 4\n");
+    writeFile(dir.filePath("tests/test_words.py"),
+              "from pathlib import Path\n"
+              "from pkg import words\n"
+              "SOURCE = Path(words.__file__).parent\n"
+              "NOT_IMPORTED = Path(ghost.__file__).parent\n"
+              "\n"
+              "def test_own():\n"
+              "    for p in SOURCE.glob(\"*.py\"):\n"
+              "        p.read_text()\n"
+              "\n"
+              "def test_sibling():\n"
+              "    for p in sorted(SOURCE.parent.glob(\"pkg_import/*.py\")):\n"
+              "        p.read_text()\n"
+              "\n"
+              "def test_ghost():\n"
+              "    for p in NOT_IMPORTED.glob(\"*.py\"):\n"
+              "        p.read_text()\n");
+    writeFile(dir.filePath("tests/test_net.py"),
+              "from pathlib import Path\n"
+              "_SRC = Path(__file__).resolve().parent.parent / \"pkg\"\n"
+              "_WALKED = (_SRC, _SRC.parent / \"pkg_import\")\n"
+              "\n"
+              "def test_net():\n"
+              "    for s in sorted(path for root in _WALKED for path in root.rglob(\"*.py\")):\n"
+              "        s.read_text()\n"
+              "\n"
+              "def test_tmp(tmp_path):\n"
+              "    for root in (tmp_path, tmp_path / \"x\"):\n"
+              "        list(root.rglob(\"*.py\"))\n");
+    const auto tests = [&](const char *path, const char *file) {
+        QStringList out;
+        for (const QJsonObject &o : readersFrom(forPath(dir, path), QString::fromLatin1(file)))
+            out << o.value(QStringLiteral("test")).toString();
+        out.sort();
+        return out;
+    };
+    EXPECT_EQ(tests("pkg/votes.py", "tests/test_words.py"), QStringList{QStringLiteral("test_own")});
+    EXPECT_EQ(tests("pkg_import/fetch.py", "tests/test_words.py"),
+              QStringList{QStringLiteral("test_sibling")});
+    EXPECT_EQ(tests("pkg/votes.py", "tests/test_net.py"), QStringList{QStringLiteral("test_net")});
+    EXPECT_EQ(tests("pkg_import/fetch.py", "tests/test_net.py"), QStringList{QStringLiteral("test_net")});
+    EXPECT_TRUE(tests("other/alone.py", "tests/test_words.py").isEmpty());
+    EXPECT_TRUE(tests("other/alone.py", "tests/test_net.py").isEmpty());
+}
+
 // ANTS-6340 — a definition in a test root's own CMakeLists.txt, joined with `/`.
 TEST(SourceScrapes, Ants6340NestedDefinitionAndPathChain) {
     QTemporaryDir dir;

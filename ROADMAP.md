@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6341 -->
+<!-- ants-roadmap-id-high-water: ANTS=6346 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89201,6 +89201,59 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The tool that lists which tests read a file could also say what text they look for in Python and shell tests.
   Kind: enhancement.
   Source: session-2026-11-01-ANTS-6338.
+  Lanes: mcp.
+
+- ✅ [ANTS-6342] **trace says all callers were found while a file it could not fully parse hides one.**
+  Pressless at 5043c28: trace store.vote_key reports 7 of 7 and omits
+  editor.py's _keeping_votes; scanned.files_with_parse_errors is 1 with no
+  file named. Name each such file in not_covered, and mark its `name(` hits
+  as possible_call, because a misparse can read later code as a string.
+  Shipped 2026-11-01. Pressless repro: editor.py named in not_covered,
+  line 733 marked possible_call; counts still say 7 of 7 callers.
+  Grammar cause: ANTS-6344.
+  **Layman:** The who-calls-this tool now warns which file it could not read properly, so a rename does not miss a caller there.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
+  Lanes: mcp.
+
+- ✅ [ANTS-6343] **source_scrapes follows a walk from a module's __file__, through .parent, and over a tuple of roots.**
+  Pressless at 5043c28: source_scrapes on src/pressless/votes.py returns no
+  readers. tests/test_words.py has SOURCE = Path(words.__file__).parent and
+  SOURCE.glob("*.py"); tests/test_network_timeouts.py has _WALKED, a tuple
+  of roots, and root.rglob("*.py") in a comprehension.
+  Shipped 2026-11-01. Pressless repro on votes.py now lists
+  test_words.py, test_network_timeouts.py and test_takein.py as readers.
+  **Layman:** The tool that finds tests reading a source file now sees tests that walk a whole folder through a named variable.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
+  Lanes: mcp.
+
+- 💭 [ANTS-6344] **Vendored Python grammar cannot parse a multi-line replacement field in a triple-quoted f-string.**
+  Smallest failing form, shrunk from Pressless editor.py _page on 2026-11-01:
+  f"""{a}\n<p x="/">{say("b")}</p>\n<p x="c">{\n say("d" if e else "f")}</p>\n<s>{g}</s>"""
+  Python's ast accepts it. Cause in the grammar's scanner not looked into.
+  Trace now names the file and marks possible calls, so this is the root
+  cause only. Build on a second report, or with the next grammar bump.
+  **Layman:** The code reader trips on one rare way of writing long text in Python, and anything after it in that file can be misread.
+  Kind: fix.
+  Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
+  Lanes: mcp.
+
+- 📋 [ANTS-6345] **ANTS-3663 cites a line of src/remotecontrol.cpp beyond the end of that file.**
+  doc_lint doc_citations on docs/specs/ANTS-3663.md: out_of_range,
+  src/remotecontrol.cpp, at the spec's own line naming it.
+  **Layman:** A design document points at a line in a code file that no longer exists.
+  Kind: doc-fix.
+  Source: in-session-2026-11-01.
+  Lanes: mcp.
+
+- 📋 [ANTS-6346] **workspace_search with lane=standards finds nothing under ~/.claude for a word that file holds.**
+  caller_cwd ~/.claude, lane standards, pattern vault\.py returned no matches
+  and no notice; grep finds it in standards/documentation.md. Likely the
+  repository's ignore rules. If so, the reply should say files were ignored.
+  **Layman:** A search inside the shared settings folder came back empty for a word that is really there.
+  Kind: investigate.
+  Source: in-session-2026-11-01.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

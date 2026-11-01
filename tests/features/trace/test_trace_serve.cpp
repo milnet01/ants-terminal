@@ -160,6 +160,36 @@ TEST_F(TraceServe, Ants6208VariablesAreDefinitions) {
     EXPECT_TRUE(arr(traceSymbol(QStringLiteral("traceLocal")), "definitions").isEmpty());
 }
 
+// ANTS-6342 — a file the grammar could not fully parse is named, and a `name(`
+// in it is marked even where it reads as a string: on a real file the misparse
+// turned a later call into one (ANTS-6344). In a clean file a string stays one.
+TEST_F(TraceServe, Ants6342ParseErrorFileIsNamedAndItsCallsMarked) {
+    ASSERT_TRUE(write(QStringLiteral("broken_page.py"),
+                      "def broken(:\n"
+                      "    pass\n"
+                      "\n"
+                      "HELD = \"parse_hidden_fn(entry)\"\n"
+                      "NOTE = \"parse_hidden_fn alone\"\n"
+                      "# parse_hidden_fn(entry) in a comment is no call\n"));
+    ASSERT_TRUE(write(QStringLiteral("clean_page.py"),
+                      "HELD = \"clean_hidden_fn(entry)\"\n"));
+    const auto possibleCalls = [](const QJsonObject &reply) {
+        return rowsWhere(arr(reply, "references"), [](const QJsonObject &o) {
+            return o.value(QStringLiteral("possible_call")).toBool();
+        });
+    };
+    const QJsonObject r = traceSymbol(QStringLiteral("parse_hidden_fn"));
+    const auto row = notCovered(r, QStringLiteral("parse_error"));
+    ASSERT_TRUE(row.has_value()) << dump(r);
+    EXPECT_EQ(row->value(QStringLiteral("file")).toString(), QStringLiteral("broken_page.py"));
+    EXPECT_TRUE(row->value(QStringLiteral("detail")).toString().contains(QStringLiteral("callers")));
+    EXPECT_EQ(possibleCalls(r).size(), 1) << dump(r);
+
+    const QJsonObject clean = traceSymbol(QStringLiteral("clean_hidden_fn"));
+    EXPECT_FALSE(notCovered(clean, QStringLiteral("parse_error")).has_value()) << dump(clean);
+    EXPECT_TRUE(possibleCalls(clean).isEmpty()) << dump(clean);
+}
+
 // ANTS-6209 — a name followed by `(` that did not parse as a call says so.
 TEST_F(TraceServe, Ants6209MacroArgumentIsAPossibleCall) {
     const QJsonObject r = traceSymbol(QStringLiteral("macroArgFn"));

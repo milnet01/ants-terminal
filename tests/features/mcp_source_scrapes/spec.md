@@ -48,6 +48,7 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
 | 11 | A Python join from `Path(__file__)` or a variable holding a repository path gives a reader row. A join from any other name, a comment and a triple-quoted string give none. | `SourceScrapes.Inv11PythonJoinsFromTheTestFile` |
 | 12 | A shell `$VAR/<path>` gives a reader row only where `VAR` holds a repository path as "A shell test" says. A comment, a `mktemp` variable, a function's `$1` and a variable rebound to anything else give none. | `SourceScrapes.Inv12ShellJoinsFromAKnownRoot` |
 | 13 | `scanned.test_files` counts C++, Python and shell files. At zero, `notices` says empty rows do not mean nothing reads the path, and names the test roots. Otherwise `notices` is absent. | `SourceScrapes.Inv13NoticeWhenNoTestFileWasRead` |
+| 14 | A Python walk's root may be `Path(module.__file__)` for an imported module, may climb with `.parent`, may name a sub-directory in its pattern, and may be a `for` name over a module-level tuple or list of roots. A root it cannot place, such as `tmp_path`, reads nothing. | `SourceScrapes.Ants6343WalksThroughModuleRootsAndTuples` |
 
 ## Not covered
 
@@ -56,6 +57,7 @@ A path built at run time (`ANTS_SOURCE_DIR "/" + rel`), a definition in a
 reached through an environment variable. In Python, a module passed through a
 variable. A Python `glob`, `rglob` or `os.walk` over a repository directory
 counts as reading every file it lists, leaving out build and cache directories,
-since a filter inside the loop is not read. Anchors in a
+since a filter inside the loop is not read. A `for` name over anything but a
+module-level tuple or list named on that line. Anchors in a
 Python or shell test: those tests appear in `readers` only. Test files in any
 other language. `not_covered` in every reply says so.
