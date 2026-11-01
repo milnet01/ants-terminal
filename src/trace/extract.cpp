@@ -218,7 +218,7 @@ std::shared_ptr<const FileRows> extractRows(const QString &langId, const TSQuery
             if (!haveName) continue;
             const TSPoint sp = ts_node_start_point(name);
             rows->calls.append({nodeText(text, name), int(sp.row) + 1, int(sp.column),
-                                rangeOf(name)});
+                                rangeOf(name), qualifier});
         } else if (role == "reference.import") {
             rows->imports.append(rangeOf(outer));
         }

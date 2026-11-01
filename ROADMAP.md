@@ -88750,7 +88750,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-10-23.
   Lanes: mcp.
 
-- 📋 [ANTS-6204] **trace applies a symbol's qualifier to callers as well as definitions (C++ scope::name, Python module.function).**
+- ✅ [ANTS-6204] **trace applies a symbol's qualifier to callers as well as definitions (C++ scope::name, Python module.function).**
   Pressless (reproduced): trace symbol:"github_setup.register" gives
   0 definitions and 111 callers, every `register` in the tree. The
   leading part narrows definitions by class scope only, and callers

@@ -14731,7 +14731,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["caller_cwd"] = str("Your $PWD (required); picks the project.");
                     props["symbol"] = str(
                         "A name, or up to four joined by :: or . (Foo::bar); "
-                        "the leading parts narrow definitions by scope.");
+                        "the leading parts narrow definitions, callers and references.");
                     props["path"] = str(
                         "A file to trace instead of a symbol: what tests, docs and "
                         "config name it.");

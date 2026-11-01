@@ -46,6 +46,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **trace narrows callers and references by a symbol's qualifier, in C++ and Python, and says when a qualifier matched no definition** (ANTS-6204)
+
 - **Audit fold-ins number new roadmap items with the target project's own id prefix** (ANTS-6337)
 
 - **trace finds C++ variables at file or namespace scope and initialised class members** (ANTS-6208)

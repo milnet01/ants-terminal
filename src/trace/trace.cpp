@@ -397,12 +397,54 @@ struct Gathered {
     QVector<Row> defRows, callerRows, refRows, docRows;
     QSet<QString> testFiles;
     QStringList defFiles;
+    QHash<QString, QString> fileLang;           // rel -> language id
     QMap<QString, int> noGrammarFiles;          // lang -> files present
     QMap<QString, QString> noGrammarDetail;     // lang -> why
     QMap<QString, QString> limitsByLang;        // vendored languages with files
     QStringList tooLarge, timedOut;
     int filesParsed = 0, filesWithErrors = 0;
 };
+
+// The last name in `Foo<T>::bar` or `pkg.mod`, with template arguments gone.
+QString lastScopePart(QString receiver) {
+    receiver.replace(QLatin1Char('.'), QStringLiteral("::"));
+    QString part = receiver.section(QStringLiteral("::"), -1);
+    const qsizetype lt = part.indexOf(QLatin1Char('<'));
+    if (lt >= 0) part.truncate(lt);
+    return part.trimmed();
+}
+
+// True when a Python file imports `name` from the module `module`.
+bool pythonImportsFrom(const QByteArray &text, const QString &module, const QString &name) {
+    const QRegularExpression from(
+        QStringLiteral(R"(\bfrom\s+(?:[\w.]*\.)?%1\s+import\s+(\([^)]*\)|[^\n]*))")
+            .arg(QRegularExpression::escape(module)));
+    const QRegularExpression word(QStringLiteral(R"(\b%1\b)").arg(QRegularExpression::escape(name)));
+    const QString s = QString::fromUtf8(text);
+    for (auto it = from.globalMatch(s); it.hasNext();)
+        if (word.match(it.next().captured(1)).hasMatch()) return true;
+    return false;
+}
+
+// ANTS-6204: what a qualified symbol makes of one call.
+enum class CallScope { Match, Unresolved, Other };
+
+CallScope callScope(const CallRow &c, const Request &req, const QString &lang, const QString &rel,
+                    const QByteArray &text) {
+    if (req.scopes.isEmpty()) return CallScope::Match;
+    const QString want = req.scopes.last();
+    const bool python = lang == QLatin1String("python");
+    if (!c.receiver.isEmpty()) {
+        const QString got = lastScopePart(c.receiver);
+        if (got == want) return CallScope::Match;
+        if (python && (got == QLatin1String("self") || got == QLatin1String("cls")))
+            return CallScope::Unresolved;
+        return CallScope::Other;
+    }
+    if (!python) return CallScope::Unresolved;
+    return QFileInfo(rel).completeBaseName() == want || pythonImportsFrom(text, want, req.name)
+               ? CallScope::Match : CallScope::Other;
+}
 
 // The symbol's definitions and calls in one parsed file. Returns their name
 // ranges, which addReferenceRows must not count as references.
@@ -414,8 +456,12 @@ QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const
         if (d.name != req.name) continue;
         skip.append(d.nameRange);
         if (!req.scopes.isEmpty()) {
-            if (d.scope.size() < req.scopes.size()) continue;
-            if (d.scope.mid(d.scope.size() - req.scopes.size()) != req.scopes) continue;
+            const bool inScope = d.scope.size() >= req.scopes.size()
+                && d.scope.mid(d.scope.size() - req.scopes.size()) == req.scopes;
+            // A Python module qualifier names the file, not a class.
+            const bool inModule = lang == QLatin1String("python") && req.scopes.size() == 1
+                && QFileInfo(rel).completeBaseName() == req.scopes.first();
+            if (!inScope && !inModule) continue;
         }
         QJsonArray sc;
         for (const QString &s : d.scope) sc.append(s);
@@ -433,6 +479,8 @@ QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const
     for (const CallRow &c : rows.calls) {
         if (c.name != req.name) continue;
         skip.append(c.nameRange);
+        const CallScope scope = callScope(c, req, lang, rel, text);
+        if (scope == CallScope::Other) continue;
         const DefRow *enclosing = nullptr;
         for (const DefRow &d : rows.defs) {
             if (d.isDeclaration || !d.node.contains(c.nameRange.start)) continue;
@@ -445,13 +493,14 @@ QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const
                                      {QStringLiteral("file"), rel},
                                      {QStringLiteral("line"), enclosing->line}})
             : QJsonValue();
-        g.callerRows.append({rel, c.line, c.column, QString(),
-                             QJsonObject{{QStringLiteral("caller"), caller},
-                                         {QStringLiteral("file"), rel},
-                                         {QStringLiteral("call_line"), c.line},
-                                         {QStringLiteral("call_text"),
-                                          lines.textOf(text, c.line)},
-                                         {QStringLiteral("depth"), 1}}});
+        QJsonObject callerRow{{QStringLiteral("caller"), caller},
+                              {QStringLiteral("file"), rel},
+                              {QStringLiteral("call_line"), c.line},
+                              {QStringLiteral("call_text"), lines.textOf(text, c.line)},
+                              {QStringLiteral("depth"), 1}};
+        if (scope == CallScope::Unresolved)
+            callerRow[QStringLiteral("scope_unresolved")] = true;
+        g.callerRows.append({rel, c.line, c.column, QString(), callerRow});
         if (test) g.testFiles.insert(rel);
     }
     return skip;
@@ -499,6 +548,32 @@ void addReferenceRows(const QVector<int> &hits, const QVector<ByteRange> &skip,
         g.refRows.append({rel, line, lines.columnOf(h), kind, row});
         if (test) g.testFiles.insert(rel);
     }
+}
+
+// ANTS-6204: a qualified symbol keeps only the rows in its definitions'
+// languages; a qualifier that matched no definition is said, not dropped.
+void narrowByQualifier(const Request &req, Gathered &g, QJsonArray &notCovered) {
+    if (req.scopes.isEmpty()) return;
+    if (g.defRows.isEmpty()) {
+        notCovered.append(QJsonObject{
+            {QStringLiteral("reason"), QStringLiteral("qualifier_unmatched")},
+            {QStringLiteral("detail"), QStringLiteral("no definition of %1 under %2, so references are not narrowed")
+                 .arg(req.name, req.scopes.join(QStringLiteral("::")))}});
+        return;
+    }
+    const auto family = [](const QString &lang) {
+        return lang == QLatin1String("c") ? QStringLiteral("cpp") : lang;
+    };
+    QSet<QString> langs;
+    for (const Row &d : std::as_const(g.defRows)) langs.insert(family(g.fileLang.value(d.file)));
+    const auto foreign = [&](const Row &r) {
+        const QString lang = g.fileLang.value(r.file);
+        return !lang.isEmpty() && !langs.contains(family(lang));
+    };
+    g.callerRows.erase(std::remove_if(g.callerRows.begin(), g.callerRows.end(), foreign), g.callerRows.end());
+    g.refRows.erase(std::remove_if(g.refRows.begin(), g.refRows.end(), foreign), g.refRows.end());
+    for (auto it = g.testFiles.begin(); it != g.testFiles.end();)
+        it = foreign(Row{*it, 0, 0, QString(), QJsonValue()}) ? g.testFiles.erase(it) : ++it;
 }
 
 // Spec invariants (§ 2.7) whose body names the symbol or path.
@@ -769,7 +844,9 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
             ? addSymbolRows(*rows, req, rel, lang, test, lines, text, g)
             : QVector<ByteRange>();
         addReferenceRows(hits, skip, rows.get(), lang, test, rel, lines, text, g);
+        g.fileLang.insert(rel, lang);
     }
+    narrowByQualifier(req, g, notCovered);
 
     QVector<Row> specRows;
     if (req.include.contains(QStringLiteral("spec_invariants")))

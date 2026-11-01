@@ -7,7 +7,7 @@
 (class_definition name: (identifier) @name body: (_)) @scope
 
 (call function: (identifier) @name) @reference.call
-(call function: (attribute attribute: (identifier) @name)) @reference.call
+(call function: (attribute object: (_) @qualifier attribute: (identifier) @name)) @reference.call
 
 (import_statement name: (dotted_name) @path) @reference.import
 (import_statement name: (aliased_import name: (dotted_name) @path)) @reference.import

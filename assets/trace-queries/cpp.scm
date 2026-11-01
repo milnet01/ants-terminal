@@ -86,13 +86,14 @@
 
 (call_expression function: (identifier) @name) @reference.call
 (call_expression
-  function: (qualified_identifier name: (identifier) @name)) @reference.call
+  function: (qualified_identifier scope: (_) @qualifier name: (identifier) @name)) @reference.call
 (call_expression
   function: (field_expression field: (field_identifier) @name)) @reference.call
 (call_expression
   function: (template_function name: (identifier) @name)) @reference.call
 (call_expression
   function: (qualified_identifier
+    scope: (_) @qualifier
     name: (template_function name: (identifier) @name))) @reference.call
 
 (preproc_include path: (_) @path) @reference.import

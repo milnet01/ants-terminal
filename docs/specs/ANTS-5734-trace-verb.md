@@ -227,7 +227,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **A query file has a syntax error.** That language reports `no_grammar` with the error (§ 2.4); other languages still answer.
 - **The roadmap or a spec is unreadable.** That section is empty, and `not_covered` names `{reason:"source_unreadable", source:"roadmap"}`. The call still succeeds.
 - **A common name.** A name like `init` matches thousands of rows. The byte cap and paging bound the reply (INV-8); the 200-row caller stop bounds a depth-N walk (ship 2).
-- **Two functions share a name.** Their callers merge (§ 2.5). `scope` narrows definitions but not callers; `precision:"syntactic"` says so.
+- **Two functions share a name.** Their callers merge (§ 2.5). A qualified symbol narrows callers and references too (ANTS-6204): a call whose written qualifier differs is left out, a call with none in a language with no receiver to read carries `scope_unresolved: true`, rows in a language no matching definition has are left out, and a qualifier matching no definition is named in `not_covered` as `qualifier_unmatched`. A Python module name matches the file; a Python call counts when it goes through that module, sits in that file, or follows a `from` import of the name.
 - **A file changes during a call.** The rows come from the parse that ran; the next call sees the new mtime and re-parses.
 - **A grammar's ABI is outside 13–15.** `ts_parser_set_language` fails at first use. That language becomes `no_grammar` with the reason. A load test in the bundle (§ 7) sets every vendored language once, so this is caught before release.
 

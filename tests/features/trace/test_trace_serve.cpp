@@ -173,6 +173,42 @@ TEST_F(TraceServe, Ants6209MacroArgumentIsAPossibleCall) {
     }).isEmpty()) << "a plain use is not a possible call";
 }
 
+// ANTS-6204 — a qualifier narrows callers and references as well as definitions.
+TEST_F(TraceServe, Ants6204QualifierNarrowsCallers) {
+    const auto callLines = [&](const QJsonObject &r, const QString &file) {
+        QList<int> out;
+        for (const QJsonValue v : arr(r, "callers"))
+            if (v.toObject().value(QStringLiteral("file")).toString() == file)
+                out << v.toObject().value(QStringLiteral("call_line")).toInt();
+        return out;
+    };
+    const QJsonObject py = traceSymbol(QStringLiteral("qual_module.qual_target"));
+    ASSERT_EQ(arr(py, "definitions").size(), 1) << dump(py);
+    EXPECT_EQ(callLines(py, QStringLiteral("qual_user.py")), (QList<int>{3, 5})) << dump(py);
+    EXPECT_TRUE(callLines(py, QStringLiteral("qual_stranger.py")).isEmpty()) << dump(py);
+
+    const QJsonObject cpp = traceSymbol(QStringLiteral("detail::qualNamed"));
+    ASSERT_EQ(arr(cpp, "definitions").size(), 1) << dump(cpp);
+    EXPECT_EQ(callLines(cpp, QStringLiteral("qual.cpp")), (QList<int>{5, 7})) << dump(cpp);
+    EXPECT_EQ(rowsWhere(arr(cpp, "callers"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("scope_unresolved")).toBool();
+    }).size(), 1) << "obj.qualNamed() cannot be resolved, and says so";
+    EXPECT_TRUE(rowsWhere(arr(cpp, "references"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("file")).toString() == QLatin1String("qual.js");
+    }).isEmpty()) << "another language's name is not this symbol";
+    EXPECT_TRUE(callLines(cpp, QStringLiteral("qual.js")).isEmpty());
+
+    const QJsonObject none = traceSymbol(QStringLiteral("nosuch::qualNamed"));
+    EXPECT_TRUE(notCovered(none, QStringLiteral("qualifier_unmatched")).has_value()) << dump(none);
+
+    // Without a qualifier nothing changes: every call counts.
+    const QJsonObject bare = traceSymbol(QStringLiteral("qualNamed"));
+    EXPECT_EQ(callLines(bare, QStringLiteral("qual.cpp")), (QList<int>{5, 6, 7})) << dump(bare);
+    EXPECT_FALSE(rowsWhere(arr(bare, "callers"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("scope_unresolved")).toBool();
+    }).size() > 0);
+}
+
 // INV-3 — a prototype and two overloads: three entries, one a declaration.
 TEST_F(TraceServe, Inv3PrototypeAndOverloadsAreSeparateEntries) {
     const QJsonObject r = traceSymbol(QStringLiteral("overloaded"));

@@ -42,6 +42,7 @@ struct CallRow {
     int line = 0;
     int column = 0;
     ByteRange nameRange;
+    QString receiver;   // `Foo` in `Foo::bar()`, `mod` in `mod.bar()`; else empty
 };
 
 struct FileRows {
