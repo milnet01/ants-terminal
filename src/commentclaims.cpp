@@ -62,12 +62,23 @@ Family familyOf(const QString &fileName) {
     static const QSet<QString> kHash = {
         QStringLiteral("py"), QStringLiteral("sh"), QStringLiteral("bash"), QStringLiteral("cmake"),
         QStringLiteral("yml"), QStringLiteral("yaml"), QStringLiteral("toml"), QStringLiteral("rb"),
-        QStringLiteral("pl"), QStringLiteral("r"), QStringLiteral("nix")};
+        QStringLiteral("pl"), QStringLiteral("r"), QStringLiteral("nix"),
+        QStringLiteral("fish"), QStringLiteral("zsh"), QStringLiteral("ksh")};
     const QString s = QFileInfo(fileName).suffix().toLower();
     if (kC.contains(s)) return Family::CLike;
     if (kHash.contains(s)) return Family::Hash;
     if (s == QLatin1String("lua")) return Family::Lua;
     return Family::None;
+}
+
+// ANTS-5806 — a file with no telling suffix, by its first line: a zsh
+// completion's `#compdef`, or a `#!` naming an interpreter with `#` comments.
+Family familyFor(const QString &fileName, const QString &text) {
+    const Family byName = familyOf(fileName);
+    if (byName != Family::None) return byName;
+    static const QRegularExpression hashScript(QStringLiteral(
+        R"(^(?:#compdef\b|#!.*\b(?:(?:ba|z|k|da|a|fi)?sh|python[0-9.]*|ruby|perl)\b))"));
+    return hashScript.match(text).hasMatch() ? Family::Hash : Family::None;
 }
 
 class Harvester {
@@ -273,7 +284,12 @@ public:
     void file(const QString &rel, const QString &text) {
         m_dir = QFileInfo(rel).path();
         m_rel = rel;
-        for (const Block &b : harvest(QFileInfo(rel).fileName(), text)) {
+        const QString name = QFileInfo(rel).fileName();
+        if (familyFor(name, text) == Family::None) {
+            unread.append(rel);
+            return;
+        }
+        for (const Block &b : harvest(name, text)) {
             ++comments;
             const Joined j = join(b);
             quotations(j);
@@ -285,6 +301,7 @@ public:
 
     QList<Row> rows;
     QList<PendingSymbol> pending;
+    QStringList unread;   // walked or named, with no comment syntax this knows
     int comments = 0;
 
 private:
@@ -485,7 +502,7 @@ QSet<QString> roadmapIds(const QString &rootCanonical) {
 } // namespace
 
 QList<Block> harvest(const QString &fileName, const QString &text) {
-    const Family f = familyOf(fileName);
+    const Family f = familyFor(fileName, text);
     if (f == Family::None) return {};
     return Harvester(text, f).run();
 }
@@ -560,6 +577,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     scanned[QStringLiteral("findings_total")] = findingsTotal;
     scanned[QStringLiteral("candidates_total")] = candidatesTotal;
     scanned[QStringLiteral("symbols_unchecked")] = unchecked;
+    scanned[QStringLiteral("unread_files")] = static_cast<int>(checker.unread.size());
     // True when `limit` cut either bucket; `truncated` is the file walk's cap.
     scanned[QStringLiteral("rows_truncated")] = findingsTotal > limit || candidatesTotal > limit;
     QJsonObject env;
@@ -568,11 +586,21 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     env[QStringLiteral("candidates")] = candidates;
     env[QStringLiteral("limit")] = limit;
     env[QStringLiteral("scanned")] = scanned;
-    env[QStringLiteral("not_covered")] = QJsonArray{
+    QJsonArray notCovered{
         QStringLiteral("a bare file name after \"see\" (no directory), which could live anywhere"),
         QStringLiteral("Qt, std and other library names, which the project does not define"),
         QStringLiteral("a quotation not directly beside the file it is attributed to"),
-        QStringLiteral("a bare name after \"see\" with no ::, () or backticks")};
+        QStringLiteral("a bare name after \"see\" with no ::, () or backticks"),
+        QStringLiteral("under a directory, a file codebase_index does not index, such as Lua, "
+                       "fish, zsh or an extensionless script: name it in paths")};
+    if (!checker.unread.isEmpty()) {
+        constexpr int kNamed = 20;
+        const qsizetype more = checker.unread.size() - kNamed;
+        notCovered.append(QStringLiteral("files with no known comment syntax, so not read: %1%2")
+                              .arg(checker.unread.mid(0, kNamed).join(QStringLiteral(", ")),
+                                   more > 0 ? QStringLiteral(" and %1 more").arg(more) : QString()));
+    }
+    env[QStringLiteral("not_covered")] = notCovered;
     return env;
 }
 

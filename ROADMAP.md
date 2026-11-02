@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6347 -->
+<!-- ants-roadmap-id-high-water: ANTS=6348 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88595,7 +88595,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: cc-feedback-2026-10-21 RetroDB.
 
-- 📋 [ANTS-5806] **comment_claims skips fish, zsh and extensionless shell files without saying so.**
+- ✅ [ANTS-5806] **comment_claims skips fish, zsh and extensionless shell files without saying so.**
   familyOf (src/commentclaims.cpp) picks a comment syntax by suffix
   only. .fish, .zsh, .ksh and an extensionless script such as a zsh
   completion `_demoreel` (first line `#compdef`) map to Family::None,
@@ -88603,6 +88603,10 @@ measured Ants adding about 5,250 tokens to every request.
   them. Add the hash-comment suffixes, sniff a `#!` or `#compdef`
   first line for extensionless files, and list any file still unread
   in not_covered.
+  Reads .fish, .zsh, .ksh and a file with a #compdef or scripting #!
+  first line; scanned.unread_files counts the rest and not_covered names
+  up to 20. Findings unchanged across 32 projects, since a walk does not
+  reach these files.
   **Layman:** A tool that checks code comments quietly ignores some shell script files, so it looks like they were checked when they were not.
   Kind: fix.
   Source: cc-feedback-2026-10-21 demoreel.
@@ -89276,6 +89280,13 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: retrodb-3d cross-session request 2026-11-02.
   Lanes: packaging.
+
+- 📋 [ANTS-6348] **comment_claims reads no comments in .tsx, .mjs or .uc files, which a directory walk reaches.**
+  Measured 2026-11-02 with scanned.unread_files over 32 projects: freellmapi 122, UT_MonsterHunt 110, MAME_Curator 81, and 18down.github.io 863. In the first 20 names per project the suffixes are .html, .tsx, .uc, .mjs and .vsh. All but .html use // comments, so familyOf's C-like set is the likely fix. HTML needs its own syntax or stays reported as unread. Check the new hits on those projects before shipping.
+  **Layman:** A tool that checks code comments cannot read a few common kinds of code file; it now says so, but it should read them.
+  Kind: fix.
+  Source: in-session-2026-11-02, found while fixing ANTS-5806.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

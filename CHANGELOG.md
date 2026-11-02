@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`comment_claims` reads fish, zsh, ksh and extensionless scripts, and names any file it could not read** (ANTS-5806)
+
 - **`cc-job start` passes exported variables to the job, apart from the session's own, and `--help` says so** (ANTS-6347)
 
 - **Spec tools read an invariant whose title sits inside the bold, such as `- **INV-1 — A title.**`** (ANTS-6046)

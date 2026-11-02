@@ -186,6 +186,56 @@ TEST(CommentClaims, Inv7ScopeAndCounts) {
     EXPECT_FALSE(s.value(QStringLiteral("rows_truncated")).toBool());
 }
 
+TEST(CommentClaims, Inv10ShellFilesAndUnreadFiles) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    writeFile(dir->filePath("src/c.fish"), "# ANTS-630 fish\n");
+    writeFile(dir->filePath("src/c.zsh"), "# ANTS-631 zsh\n");
+    writeFile(dir->filePath("src/c.ksh"), "# ANTS-632 ksh\n");
+    writeFile(dir->filePath("src/_completion"), "#compdef demoreel\n# ANTS-633 completion\n");
+    writeFile(dir->filePath("src/runner"), "#!/usr/bin/env bash\n# ANTS-634 script\n");
+    writeFile(dir->filePath("src/notes.txt"), "# ANTS-635 not code\n");
+    writeFile(dir->filePath("src/noder"), "#!/usr/bin/env node\n# ANTS-636 another syntax\n");
+    QJsonArray paths;
+    for (const char *p : {"src/c.fish", "src/c.zsh", "src/c.ksh", "src/_completion", "src/runner",
+                          "src/notes.txt", "src/noder"})
+        paths.append(QString::fromLatin1(p));
+    const QJsonObject r = call(*dir, {{QStringLiteral("paths"), paths}});
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().constData();
+
+    const QStringList t = quotes(rows(r, "findings", QStringLiteral("unknown_ticket")));
+    for (const char *id : {"ANTS-630", "ANTS-631", "ANTS-632", "ANTS-633", "ANTS-634"})
+        EXPECT_TRUE(t.contains(QString::fromLatin1(id))) << id;
+    EXPECT_FALSE(t.contains(QStringLiteral("ANTS-635")));
+    EXPECT_FALSE(t.contains(QStringLiteral("ANTS-636")));
+
+    EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("unread_files")).toInt(), 2);
+    QStringList notCovered;
+    for (const QJsonValue v : r.value(QStringLiteral("not_covered")).toArray())
+        notCovered.append(v.toString());
+    const QString named = notCovered.filter(QStringLiteral("src/notes.txt")).value(0);
+    EXPECT_TRUE(named.contains(QStringLiteral("src/noder"))) << notCovered.join('\n').toStdString();
+    EXPECT_FALSE(named.contains(QStringLiteral("src/runner")));
+    EXPECT_FALSE(notCovered.filter(QStringLiteral("extensionless")).isEmpty())
+        << "a directory walk does not reach these, and the reply must say so";
+
+    // A long list is cut, and the count stays whole.
+    std::unique_ptr<QTemporaryDir> many(fixture());
+    QJsonArray lots;
+    for (int i = 0; i < 25; ++i) {
+        const QString rel = QStringLiteral("src/n%1.txt").arg(i);
+        writeFile(many->filePath(rel), "x\n");
+        lots.append(rel);
+    }
+    const QJsonObject cut = call(*many, {{QStringLiteral("paths"), lots}});
+    EXPECT_EQ(cut.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("unread_files")).toInt(), 25);
+    QStringList cutLines;
+    for (const QJsonValue v : cut.value(QStringLiteral("not_covered")).toArray())
+        cutLines.append(v.toString());
+    EXPECT_FALSE(cutLines.filter(QStringLiteral("and 5 more")).isEmpty()) << cutLines.join('\n').toStdString();
+}
+
 TEST(CommentClaims, Inv8Refusals) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const auto code = [&](const QJsonObject &args) {
