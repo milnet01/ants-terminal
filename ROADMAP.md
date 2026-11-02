@@ -89268,18 +89268,26 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Pressless_Ants_MCP_Feedback.md 2026-11-01.
   Lanes: mcp.
 
-- 📋 [ANTS-6345] **ANTS-3663 cites a line of src/remotecontrol.cpp beyond the end of that file.**
+- ✅ [ANTS-6345] **ANTS-3663 cites a line of src/remotecontrol.cpp beyond the end of that file.**
   doc_lint doc_citations on docs/specs/ANTS-3663.md: out_of_range,
   src/remotecontrol.cpp, at the spec's own line naming it.
+  The citation sat in loop 2's log row and dated from before
+  remotecontrol.cpp was split. Dropped, since the row's sentence stands
+  without it.
   **Layman:** A design document points at a line in a code file that no longer exists.
   Kind: doc-fix.
   Source: in-session-2026-11-01.
   Lanes: mcp.
 
-- 📋 [ANTS-6346] **workspace_search with lane=standards finds nothing under ~/.claude for a word that file holds.**
+- ✅ [ANTS-6346] **workspace_search with lane=standards finds nothing under ~/.claude for a word that file holds.**
   caller_cwd ~/.claude, lane standards, pattern vault\.py returned no matches
   and no notice; grep finds it in standards/documentation.md. Likely the
   repository's ignore rules. If so, the reply should say files were ignored.
+  The filed cause was wrong: ignore rules play no part. `vault\.py`
+  under the default regex:false looks for a real backslash. Plain
+  `vault.py`, or the regex with regex:true, finds the file. A zero-hit
+  literal pattern with escaped punctuation now gets the "did you mean
+  regex:true?" hint.
   **Layman:** A search inside the shared settings folder came back empty for a word that is really there.
   Kind: investigate.
   Source: in-session-2026-11-01.

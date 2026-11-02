@@ -4540,8 +4540,10 @@ bool rcdetail::rcLooksLikeRegexButLiteral(const QString &pattern) {
         pattern.contains(QStringLiteral(".+"))) return true;    // wildcard
     if (pattern.contains(QChar('[')) && pattern.contains(QChar(']')))
         return true;                                            // char class
-    static const QRegularExpression escClass(QStringLiteral("\\\\[dwsbDWSB]"));
-    return escClass.match(pattern).hasMatch();                  // \d \w \s \b …
+    // \d \w \s \b …, and (ANTS-6346) escaped punctuation such as `vault\.py`.
+    static const QRegularExpression escClass(
+        QStringLiteral("\\\\[dwsbDWSB.()+?*^$|{}\\[\\]]"));
+    return escClass.match(pattern).hasMatch();
 }
 
 // ANTS-4419's sibling, ANTS-4420 — a pattern carrying HTML entities where the

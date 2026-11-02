@@ -83,6 +83,21 @@ TEST(WorkspaceSearchPhraseHint, Ants3466MetacharRegexFalseHint) {
         << "alternation must be a detected metacharacter";
 }
 
+// ANTS-6346 — `vault\.py` under regex:false looks for a real backslash, finds
+// nothing and gave no hint, which was misfiled as a search that misses files.
+namespace rcdetail { bool rcLooksLikeRegexButLiteral(const QString &pattern); }
+TEST(WorkspaceSearchPhraseHint, Ants6346EscapedPunctuationIsARegexSign) {
+    using rcdetail::rcLooksLikeRegexButLiteral;
+    EXPECT_TRUE(rcLooksLikeRegexButLiteral(QStringLiteral(R"(vault\.py)")));
+    EXPECT_TRUE(rcLooksLikeRegexButLiteral(QStringLiteral(R"(foo\(bar\))")));
+    EXPECT_TRUE(rcLooksLikeRegexButLiteral(QStringLiteral(R"(a\[0\])")));
+    // Still narrow: a lone metacharacter is ordinary code, and so is a Windows
+    // path's backslash before a letter this does not treat as an escape class.
+    EXPECT_FALSE(rcLooksLikeRegexButLiteral(QStringLiteral("cfg.get(")));
+    EXPECT_FALSE(rcLooksLikeRegexButLiteral(QStringLiteral("vault.py")));
+    EXPECT_FALSE(rcLooksLikeRegexButLiteral(QStringLiteral(R"(C:\Users)")));
+}
+
 // ANTS-4420 — a pattern carrying HTML entities where the caller meant the
 // literal characters returns zero matches and, before this, no hint at all:
 // neither the ANTS-2045 branch (the pattern has no whitespace) nor ANTS-3466's

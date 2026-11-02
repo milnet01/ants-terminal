@@ -24,9 +24,11 @@ name is cited elsewhere, so the contract grew here instead (ANTS-4755).
   judged per alternative, so `tan|cosine` and `(tan)|\b(TBD)\b` still name
   `tan`. *Test:* `WorkspaceSearchPhraseHint.Ants5139BoundedGroupIsAnchored`.
 - **INV-4 (ANTS-3466)** — A zero-match `regex:false` pattern with no
-  whitespace that carries regex metacharacters, alternation `|` among them,
-  gets a `hint` asking "did you mean regex:true?".
-  *Test:* `WorkspaceSearchPhraseHint.Ants3466MetacharRegexFalseHint`.
+  whitespace that carries regex metacharacters, alternation `|` and escaped
+  punctuation such as `\.` among them, gets a `hint` asking "did you mean
+  regex:true?".
+  *Tests:* `WorkspaceSearchPhraseHint.Ants3466MetacharRegexFalseHint`,
+  `WorkspaceSearchPhraseHint.Ants6346EscapedPunctuationIsARegexSign`.
 - **INV-5 (ANTS-4420)** — A zero-match pattern containing a terminated HTML
   entity (`&lt;`, `&#60;` and the like; a bare `&` does not count) gets a
   `hint` pointing at the literal characters.

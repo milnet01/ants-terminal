@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`workspace_search` suggests `regex:true` when a literal pattern with an escape such as `\.` finds nothing** (ANTS-6346)
+
 - **`task_priors` scores every roadmap card, and ranks named paths and rare words above common ones** (ANTS-5801)
 
 - **`function_sizes` measures shell and Python code outside any function, in a new `top_level` list** (ANTS-5800)
