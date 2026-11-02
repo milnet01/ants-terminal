@@ -2909,10 +2909,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // cap so a kept `body` is still capped.
         applyBulletFields(filtered);
         // ANTS-1436-INV-11 — pagination via PaginationEngine.
-        auto page = PaginationEngine::pageBullets(
-            filtered, offsetArg, limitArg,
-            wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
-                          : PaginationEngine::RowProjector{});
+        PaginationEngine::PageResult page;
+        if (m_roadmapQueryWhole) {   // ANTS-5801 — see the member's comment
+            page.slice = filtered;
+            page.total = static_cast<int>(filtered.size());
+        } else {
+            page = PaginationEngine::pageBullets(
+                filtered, offsetArg, limitArg,
+                wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
+                              : PaginationEngine::RowProjector{});
+        }
         // ANTS-1517 — strip bodies when include_body is false (a no-op when
         // the headline_only projection already dropped them).
         if (!includeBody) rcStripBodyFields(page.slice);

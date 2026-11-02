@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`task_priors` scores every roadmap card, and ranks named paths and rare words above common ones** (ANTS-5801)
+
 - **`function_sizes` measures shell and Python code outside any function, in a new `top_level` list** (ANTS-5800)
 
 - **`comment_claims` reads fish, zsh, ksh and extensionless scripts, and names any file it could not read** (ANTS-5806)

@@ -29,6 +29,7 @@
 #include <QFileInfo>
 #include <QLocalSocket>
 #include <QProcess>
+#include <QScopedValueRollback>
 #include <QThread>
 #include <sys/socket.h>
 #include "build_info.h"
@@ -3001,6 +3002,40 @@ int tpDistinctNeedles(const QString &haystackLower, const TpTerms &t) {
     return n;
 }
 
+using TpWeights = QList<QPair<QString, int>>;   // lower-cased needle, weight
+
+// ANTS-5801 — what each needle is worth on a roadmap card. A named id or path
+// is 3. A term is 2 on under 1 card in 20, 1 on under 1 in 4, and 0 beyond that,
+// since a word on so many cards says nothing about this task. Under 20 cards,
+// or where every needle would be 0, each counts 1: there is nothing to tell
+// common from rare, and a description of common words still finds its cards.
+TpWeights tpCardWeights(const QStringList &haysLower, const TpTerms &t) {
+    constexpr int kMinCards = 20;
+    TpWeights w;
+    for (const QString &id : t.ids) w.append({id.toLower(), 3});
+    for (const QString &p : t.paths) w.append({p.toLower(), 3});
+    const qsizetype cards = haysLower.size();
+    bool anyWorth = !w.isEmpty();
+    for (const QString &term : t.terms) {
+        qsizetype holding = 0;
+        for (const QString &hay : haysLower)
+            if (hay.contains(term)) ++holding;
+        const int worth = holding * 20 < cards ? 2 : holding * 4 < cards ? 1 : 0;
+        anyWorth = anyWorth || worth > 0;
+        w.append({term, worth});
+    }
+    if (cards < kMinCards || !anyWorth)
+        for (auto &needle : w) needle.second = 1;
+    return w;
+}
+
+int tpWeightedScore(const QString &hayLower, const TpWeights &weights) {
+    int score = 0;
+    for (const auto &needle : weights)
+        if (needle.second > 0 && hayLower.contains(needle.first)) score += needle.second;
+    return score;
+}
+
 // First body line containing any needle, trimmed + capped to 200
 // chars; fallback (trimmed) when none matches.
 QString tpExcerpt(const QString &body, const TpTerms &t,
@@ -3124,29 +3159,41 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
 
     // (2) roadmap_cards — compose over cmdRoadmapQuery (status:all,
     // limit:500, include_body). Non-ok ⇒ empty bucket.
+    // ANTS-5801 — every card, as one read: a reply is cut to a byte budget under
+    // any limit (ANTS-5651), so the first page alone is a few of the oldest
+    // cards, and following next_offset took minutes on a large roadmap.
     {
         QJsonObject rq;
         rq["caller_cwd"]   = rootCanonical;
         rq["status"]       = QStringLiteral("all");
         rq["limit"]        = 500;
         rq["include_body"] = true;
-        const QJsonObject rqObj = cmdRoadmapQuery(rq).object();
+        QJsonObject rqObj;
+        {
+            const QScopedValueRollback whole(m_roadmapQueryWhole, true);
+            rqObj = cmdRoadmapQuery(rq).object();
+        }
         QVector<TpScored> hits;
         if (rqObj.value(QStringLiteral("ok")).toBool(false)) {
             const QJsonArray bullets =
                 rqObj.value(QStringLiteral("bullets")).toArray();
+            QStringList hays;
+            hays.reserve(bullets.size());
+            for (const QJsonValue &v : bullets) {
+                const QJsonObject b = v.toObject();
+                hays.append((b.value(QStringLiteral("id")).toString() + QLatin1Char(' ') +
+                             b.value(QStringLiteral("headline_oneline")).toString() +
+                             QLatin1Char(' ') + b.value(QStringLiteral("body")).toString())
+                                .toLower());
+            }
+            const TpWeights weights = tpCardWeights(hays, terms);
             int order = 0;
             for (const QJsonValue &v : bullets) {
                 const QJsonObject b = v.toObject();
                 const QString id = b.value(QStringLiteral("id")).toString();
                 const QString headline =
                     b.value(QStringLiteral("headline_oneline")).toString();
-                const QString body =
-                    b.value(QStringLiteral("body")).toString();
-                const QString hayLow =
-                    (id + QLatin1Char(' ') + headline + QLatin1Char(' ') +
-                     body).toLower();
-                int score = tpDistinctNeedles(hayLow, terms);
+                int score = tpWeightedScore(hays.at(order), weights);
                 if (!id.isEmpty() && terms.ids.contains(id.toUpper()))
                     score += 5;
                 if (score > 0) {

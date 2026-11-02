@@ -1710,6 +1710,10 @@ private:
     MainWindow *m_main;  // non-owning; MainWindow owns us via QObject parent
     ants::RootProvider *m_roots = nullptr;  // non-owning; ANTS-4932 § 2.4
     bool m_e2eMode = false;  // ANTS-2049 — inject-verb gate (see setE2eMode)
+    // ANTS-5801 — cmdRoadmapQuery returns every filtered row, uncut by limit or
+    // byte budget, to a caller here that reads them rather than sends them. Set
+    // only with a QScopedValueRollback around the call; no request can set it.
+    bool m_roadmapQueryWhole = false;
 
     // ANTS-1337 — verify_changes content-trust gate. nullptr by
     // default; MainWindow constructs the chrome-layer modal client

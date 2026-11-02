@@ -46,6 +46,11 @@ against the source files.
 - **INV-12**: the tools/list schema registers `task_priors` with a
   `description` and a `selection_hint`, `description` + `caller_cwd`
   required. Source: ANTS-1306 INV-17.
+- **INV-13**: a card past `roadmap_query`'s first byte-budgeted page is
+  scored. Test: `McpTaskPriors.ScoresCardsPastTheFirstPage`.
+- **INV-14**: card scores weigh needles as ANTS-1306 § 3.3 states: a word
+  on a quarter of the cards scores nothing unless every needle is that
+  common. Test: `McpTaskPriors.CommonWordsDoNotScoreCards`.
 
 ## Out of scope
 

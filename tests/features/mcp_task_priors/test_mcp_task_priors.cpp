@@ -224,6 +224,83 @@ TEST(McpTaskPriors, ScansSpecsOfAnyProjectPrefix) {
         << QJsonDocument(out).toJson().toStdString();
 }
 
+// ANTS-5801 — roadmap_query cuts a page to a byte budget even under an explicit
+// limit (ANTS-5651), and this verb read only the first page: 10 of 3963 cards on
+// this project, so what it offered was whatever the oldest cards happened to say.
+TEST(McpTaskPriors, ScoresCardsPastTheFirstPage) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QFile f(root + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QByteArray roadmap = "# Roadmap\n\n## Work\n\n";
+    const QByteArray filler(1500, 'x');
+    for (int i = 1; i <= 120; ++i)
+        roadmap += "- 📋 [ANTS-" + QByteArray::number(i) + "] **Card number " + QByteArray::number(i)
+                   + ".**\n  " + filler + "\n";
+    roadmap += "- 📋 [ANTS-500] **The zebrafish card.**\n";
+    f.write(roadmap);
+    f.close();
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]  = root;
+    req[QStringLiteral("description")] = QStringLiteral("zebrafish");
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdTaskPriors(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray cards = out.value(QStringLiteral("roadmap_cards")).toArray();
+    ASSERT_EQ(cards.size(), 1) << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(cards.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("ANTS-500"));
+}
+
+// ANTS-5801 — a word a quarter of the cards hold says nothing about a task, so
+// it does not score. A rarer word and a named path score above a merely uncommon
+// one. A description of nothing but common words still gets its matches.
+TEST(McpTaskPriors, CommonWordsDoNotScoreCards) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QFile f(root + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    QByteArray roadmap = "# Roadmap\n\n## Work\n\n";
+    for (int i = 1; i <= 60; ++i)
+        roadmap += "- 📋 [ANTS-" + QByteArray::number(i) + "] **The common widget number "
+                   + QByteArray::number(i) + (i <= 6 ? ", uncommon." : ".") + "**\n";
+    roadmap += "- 📋 [ANTS-900] **The zebrafish card.**\n"
+               "- 📋 [ANTS-901] **Change src/a.cpp here.**\n";
+    f.write(roadmap);
+    f.close();
+
+    const auto cardIds = [&](const QString &description) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")]  = root;
+        req[QStringLiteral("description")] = description;
+        req[QStringLiteral("max_cards")]   = 20;
+        RemoteControl rc(nullptr);
+        QStringList ids;
+        const QJsonObject out = rc.cmdTaskPriors(req).object();
+        for (const QJsonValue v : out.value(QStringLiteral("roadmap_cards")).toArray())
+            ids.append(v.toObject().value(QStringLiteral("id")).toString());
+        return ids;
+    };
+
+    // `common` and `widget` sit on most cards; only the rare words place any.
+    EXPECT_EQ(cardIds(QStringLiteral("common widget zebrafish")),
+              QStringList{QStringLiteral("ANTS-900")});
+
+    // A rare word outranks an uncommon one, and a path outranks a rare word.
+    const QStringList ranked = cardIds(QStringLiteral("zebrafish uncommon src/a.cpp"));
+    ASSERT_GE(ranked.size(), 3) << ranked.join(' ').toStdString();
+    EXPECT_EQ(ranked.at(0), QStringLiteral("ANTS-901"));
+    EXPECT_EQ(ranked.at(1), QStringLiteral("ANTS-900"));
+
+    // Nothing but common words: they still find their cards.
+    EXPECT_EQ(cardIds(QStringLiteral("common widget")).size(), 20);
+}
+
 // The `specs_dir` override is honoured, so a project that keeps its specs
 // somewhere other than docs/specs is not silently invisible either (ANTS-2160).
 TEST(McpTaskPriors, HonoursTheSpecsDirOverride) {

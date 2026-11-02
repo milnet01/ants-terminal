@@ -88552,7 +88552,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).
   Lanes: mcp.
 
-- 📋 [ANTS-5801] **task_priors ranks roadmap cards on common words, so an unrelated card looks relevant.**
+- ✅ [ANTS-5801] **task_priors ranks roadmap cards on common words, so an unrelated card looks relevant.**
   Repro on demoreel: a task naming OBS scripts, the pre-push hook and
   ci.sh returned five unrelated cards scoring 2-3 on words such as tool,
   version and read. The specs half ranked correctly (top score 15).
@@ -88562,6 +88562,13 @@ measured Ants adding about 5,250 tokens to every request.
   Fix direction (reporter's): weight path tokens and rare terms above
   common words, drop cards under a score floor, or hint when every card
   scored only on common words.
+  The main cause was not the one reported. Since ANTS-5651 task_priors
+  read only roadmap_query's first byte-budgeted page: 10 of 3963 cards
+  here, the oldest. It now reads every card in one internal read, 0.6 s
+  here, against 134 s by following next_offset. Common words were also a
+  real cost, so needles are weighted as ANTS-1306 section 3.3 states: id
+  or path 3, rare term 2, uncommon term 1, a term on a quarter of the
+  cards 0.
   **Layman:** The tool that suggests related roadmap items picks unrelated ones because they share everyday words.
   Kind: enhancement.
   Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).
