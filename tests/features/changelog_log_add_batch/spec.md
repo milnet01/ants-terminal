@@ -64,6 +64,10 @@ either way.
 order the writes ran in: both are keyed by `index` so a caller can line
 them up against its own array.
 
+**ANTS-5377:** an entry's `created_category` is true on the first applied
+entry of a category that had no heading, in input order, because that entry
+reads directly under the new heading.
+
 ### INV-5 — empty / missing entries refuses bad_args
 
 `op:add_batch` with a missing or empty `entries` array (and a missing

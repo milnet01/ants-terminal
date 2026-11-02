@@ -1566,6 +1566,28 @@ ClBatchEntryResult resolveClBatchEntry(
 }
 }  // namespace rcdetail
 
+// ANTS-5377 — the reverse write loop makes a category's LAST entry the one that
+// physically adds its heading, but the caller reads the file top-down: report
+// the entry that sits directly under the new heading. `applied` is in input
+// order. A routed entry writes a dated topic, not a bullet, so it never takes
+// the flag.
+static void reportCreatedCategoryOnFirstEntry(QJsonArray &applied) {
+    QSet<QString> created;
+    for (const auto &v : applied) {
+        const QJsonObject a = v.toObject();
+        if (a.value(QStringLiteral("created_category")).toBool())
+            created.insert(a.value(QStringLiteral("category")).toString());
+    }
+    for (int k = 0; k < applied.size(); ++k) {
+        QJsonObject a = applied.at(k).toObject();
+        if (a.contains(QStringLiteral("routed_to_subsection")))
+            continue;
+        a[QStringLiteral("created_category")] =
+            created.remove(a.value(QStringLiteral("category")).toString());
+        applied.replace(k, a);
+    }
+}
+
 // ANTS-2044 — changelog_log op:"add_batch". N entries, one read + one
 // atomic QSaveFile commit (parity with roadmap_log op:append_batch,
 // ANTS-1879). Each entry is resolved by resolveClBatchEntry above;
@@ -1737,6 +1759,7 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     }
     for (int i = 0; i < appliedByIndex.size(); ++i)
         if (appliedHas.at(i)) applied.append(appliedByIndex.at(i));
+    reportCreatedCategoryOnFirstEntry(applied);
     // ANTS-4854 — and `skipped[]` for the same reason: it is keyed by `index`
     // precisely so a caller can line it up against its own array, and the
     // reversed write order would otherwise hand back 2, 1, 0.

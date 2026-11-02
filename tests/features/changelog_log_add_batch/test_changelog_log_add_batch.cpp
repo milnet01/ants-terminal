@@ -234,6 +234,47 @@ TEST(changelog_log_add_batch, Inv4ResultReadsInInputOrder) {
             << "applied[] must stay in input order";
 }
 
+// INV-4a (ANTS-5377) — created_category names the entry whose heading reads
+// first. Writes run in reverse, so the LAST entry of a category is the one that
+// physically adds the heading; the reply must not report that. A skipped entry
+// is not a candidate.
+TEST(changelog_log_add_batch, Ants5377CreatedCategoryIsOnTheFirstEntry) {
+    const QByteArray noHeadings(
+        "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-01\n\n- old.\n");
+    QJsonArray entries;
+    entries.append(QJsonObject());  // index 0: invalid, skipped
+    entries.append(addEntry(QStringLiteral("Fix one."), QStringLiteral("fix")));
+    entries.append(addEntry(QStringLiteral("Feature two."), QStringLiteral("feature")));
+    entries.append(addEntry(QStringLiteral("Fix three."), QStringLiteral("fix")));
+    entries.append(addEntry(QStringLiteral("Feature four."), QStringLiteral("feature")));
+
+    for (const bool dryRun : {false, true}) {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        ASSERT_TRUE(writeFile(clPath(tmp.path()), noHeadings));
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+        req[QStringLiteral("entries")]    = entries;
+        req[QStringLiteral("dry_run")]    = dryRun;
+        const QJsonObject env = rc.cmdChangelogLog(req).object();
+        ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+            << env.value(QStringLiteral("error")).toString().toStdString();
+        EXPECT_TRUE(env.value(QStringLiteral("created_category")).toBool());
+
+        const QJsonArray applied = env.value(QStringLiteral("applied")).toArray();
+        ASSERT_EQ(applied.size(), 4);
+        for (const auto &v : applied) {
+            const QJsonObject a = v.toObject();
+            const int index = a.value(QStringLiteral("index")).toInt();
+            EXPECT_EQ(a.value(QStringLiteral("created_category")).toBool(),
+                      index == 1 || index == 2)
+                << "entry " << index << " dry_run=" << dryRun;
+        }
+    }
+}
+
 // INV-5 — empty / missing entries refuses bad_args (no write).
 TEST(changelog_log_add_batch, Inv5EmptyEntriesBadArgs) {
     QTemporaryDir tmp;

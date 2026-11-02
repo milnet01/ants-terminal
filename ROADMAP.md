@@ -86769,8 +86769,11 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-25.
   Lanes: mcp.
 
-- 📋 [ANTS-5377] **changelog_log add_batch reports created_category on the entry that created the heading.**
+- ✅ [ANTS-5377] **changelog_log add_batch reports created_category on the entry that created the heading.**
   With four Fixed entries into an [Unreleased] section lacking ### Fixed, the reply flags the last entry as the creator. The heading is created for the first entry in reading order (ANTS-4854).
+  Resolved 2026-11-02: applied[] flags the first applied entry of each
+  new category, in input order, on dry runs too. Test:
+  changelog_log_add_batch.Ants5377CreatedCategoryIsOnTheFirstEntry.
   **Layman:** Makes the changelog tool report correctly which entry created a new heading.
   Kind: fix.
   Source: Album_Builder feedback 2026-09-25.

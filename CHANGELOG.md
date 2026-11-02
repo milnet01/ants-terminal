@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log add_batch reports `created_category` on the entry that reads directly under a new heading** (ANTS-5377)
+
 - **`read_regions` returns its slices as text up to 64 KiB, instead of a spill handle from 16 KiB.** (ANTS-5291)
 
 - **The document checkers (`spec_lint`, `doc_lint`, `doc_integrity`, `doc_symbols`, `doc_dedup`, `doc_citations`) refuse a path that does not exist with `not_found`, so a mistyped name can no longer read as a clean run.** (ANTS-5554)
