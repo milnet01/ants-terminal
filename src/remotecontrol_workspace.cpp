@@ -41,6 +41,35 @@ using namespace rcdetail;  // ANTS-3833
 
 namespace {
 
+// ANTS-4855 — for an unknown lane: the directories in the deepest folder of its
+// path that exists, as root-relative paths, longest shared name start first.
+// The reported slip was a plural; a typo early in a name ranks by name order.
+QJsonArray nearbyDirectories(const QString &root, const QString &lane) {
+    constexpr int kMaxCandidates = 10;
+    const QString wanted = QDir::cleanPath(QDir(root).absoluteFilePath(lane));
+    QString parent = QFileInfo(wanted).path();
+    while (parent.startsWith(root + QLatin1Char('/')) && !QDir(parent).exists())
+        parent = QFileInfo(parent).path();
+    if (!parent.startsWith(root)) return {};
+    const QString name = wanted.mid(parent.size() + 1).section(QLatin1Char('/'), 0, 0);
+
+    const auto sharedStart = [&name](const QString &dir) {
+        int n = 0;
+        while (n < dir.size() && n < name.size()
+               && dir.at(n).toLower() == name.at(n).toLower())
+            ++n;
+        return n;
+    };
+    QStringList dirs = QDir(parent).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+    std::stable_sort(dirs.begin(), dirs.end(), [&](const QString &a, const QString &b) {
+        return sharedStart(a) > sharedStart(b);
+    });
+    QJsonArray out;
+    for (const QString &dir : dirs.mid(0, kMaxCandidates))
+        out.append(QDir(root).relativeFilePath(parent + QLatin1Char('/') + dir));
+    return out;
+}
+
 // ANTS-3716 § 2.4 — the ONE rg call site in this TU (INV-9). Runs a ripgrep
 // invocation to completion — start, wall budget, terminate/kill grace, stderr
 // cap — and returns the raw result. ANTS-5127 — stdout is not part of that
@@ -303,8 +332,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             QStringLiteral("lane"));
         if (check.bad) return QJsonDocument(check.err);
         if (check.resolved.isEmpty()) {
-            return QJsonDocument(wsErr("bad_path",
-                QStringLiteral("workspace-search: \"lane\" does not exist")));
+            QJsonObject refusal = wsErr("bad_path",
+                QStringLiteral("workspace-search: \"lane\" does not exist"));
+            const QJsonArray nearby = nearbyDirectories(rootCanonical, laneRaw);
+            if (!nearby.isEmpty()) refusal[QStringLiteral("candidates")] = nearby;
+            return QJsonDocument(refusal);
         }
         laneAbs = check.resolved;
     }

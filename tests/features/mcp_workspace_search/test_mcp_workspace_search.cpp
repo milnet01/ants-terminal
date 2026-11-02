@@ -534,6 +534,38 @@ TEST(McpWorkspaceSearch, Ants4650NoCallSiteHardcodesTheOneCause) {
 // the project root with the lane as its path argument, and such a glob
 // anchors at rg's working directory. Behavioural, through the real verb and
 // ripgrep, against a fixture tree.
+// ANTS-4855 — an unknown lane still refuses, and names the nearest directories.
+TEST(McpWorkspaceSearch, Ants4855UnknownLaneNamesNearbyDirectories) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    for (const char *dir : {"src", "tests/alpha", "tests/features", "tests/fixtures"})
+        ASSERT_TRUE(QDir(root).mkpath(QString::fromUtf8(dir)));
+    QFile notADir(root + QStringLiteral("/tests/featurez"));
+    ASSERT_TRUE(notADir.open(QIODevice::WriteOnly));
+    notADir.close();
+
+    const auto refuse = [&root](const QString &lane) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("pattern")] = QStringLiteral("x");
+        req[QStringLiteral("lane")] = lane;
+        RemoteControl rc(nullptr);
+        const QJsonObject o = rc.cmdWorkspaceSearch(req).object();
+        EXPECT_EQ(o.value(QStringLiteral("code")).toString(), QStringLiteral("bad_path"))
+            << QJsonDocument(o).toJson().constData();
+        return o.value(QStringLiteral("candidates")).toArray();
+    };
+
+    // A singular slip: the closest name comes first, a file is not offered.
+    const QJsonArray singular = refuse(QStringLiteral("tests/feature"));
+    EXPECT_EQ(singular.at(0).toString(), QStringLiteral("tests/features"));
+    EXPECT_FALSE(singular.contains(QStringLiteral("tests/featurez")));
+    EXPECT_TRUE(singular.contains(QStringLiteral("tests/alpha")));
+    // A missing parent is answered from the deepest folder that exists.
+    EXPECT_EQ(refuse(QStringLiteral("tst/features")).at(0).toString(), QStringLiteral("tests"));
+}
+
 TEST(McpWorkspaceSearch, Ants5117SlashGlobResolvesUnderLane) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

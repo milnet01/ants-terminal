@@ -20,6 +20,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`workspace_search` names the nearest folders when `lane` does not exist** (ANTS-4855)
+
 - **`feedback_log` `assign_id` names the closest headings when a heading matches no finding** (ANTS-4983)
 
 - **source_scrapes sees Python tests that read through os.path joins or by walking a directory** (ANTS-6338)

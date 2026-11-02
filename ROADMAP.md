@@ -84025,8 +84025,11 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
 
-- 📋 [ANTS-4855] **workspace_search refuses an unknown lane with no near-miss candidates, where every sibling locator offers them.**
+- ✅ [ANTS-4855] **workspace_search refuses an unknown lane with no near-miss candidates, where every sibling locator offers them.**
   Observed on a plural-for-singular slip against a directory that existed. roadmap_log's section returns candidates plus sections_total (ANTS-4556 / ANTS-4591), read_region's section returns candidates on both not-found and ambiguous (ANTS-4350), find_definition returns file_stem_hint; lane is the odd one out. The cost lands on the caller who was scoping the search to be token-careful, and the natural recovery is a raw find, which rule 18 asks a session to avoid. It is also the argument a cold review lane uses to stay inside its permitted file set. Keep refusing, as section does, so nothing is silently guessed.
+  Shipped 2026-11-02: an unknown lane still refuses bad_path, and
+  carries candidates[], the directories in the deepest existing folder
+  of its path, longest shared name start first, up to 10.
   **Layman:** A one-character typo in a search folder gives a bare "does not exist".
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
