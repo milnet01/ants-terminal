@@ -273,3 +273,37 @@ static int runMain() {
 TEST(RoadmapViewer, Main) {
     ASSERT_EQ(0, runMain());
 }
+
+// INV-15: prose is drawn as Markdown would draw it, so a comment or a `---`
+// rule never shows as text. A comment-shaped string quoted inside a sentence
+// is ordinary prose and stays.
+TEST(RoadmapViewer, Inv15CommentsAndRulesAreNotProse) {
+    const QString markdown = QStringLiteral(
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "# Title\n"
+        "\n"
+        "Kept intro, naming `<!-- quoted -->` in a sentence.\n"
+        "\n"
+        "<!-- first line of a long note\n"
+        "second line of the note\n"
+        "-->\n"
+        "\n"
+        "---\n"
+        "\n"
+        "Kept after the note.\n");
+    RoadmapDialog::CardRenderOptions opts;
+    opts.activePreset = RoadmapDialog::Preset::Full;
+    const std::string html = RoadmapDialog::renderCardsHtml(
+        markdown, RoadmapDialog::filterFor(RoadmapDialog::Preset::Full), {},
+        QStringLiteral("light"), RoadmapDialog::SortOrder::Document, QString(), {}, opts)
+        .toStdString();
+
+    EXPECT_EQ(html.find("ants-roadmap-format"), std::string::npos) << html;
+    EXPECT_EQ(html.find("first line of a long note"), std::string::npos) << html;
+    EXPECT_EQ(html.find("second line of the note"), std::string::npos) << html;
+    EXPECT_EQ(html.find("<p>--&gt;</p>"), std::string::npos) << html;
+    EXPECT_EQ(html.find("<p>---</p>"), std::string::npos) << html;
+    EXPECT_NE(html.find("Kept intro"), std::string::npos) << html;
+    EXPECT_NE(html.find("quoted"), std::string::npos) << html;
+    EXPECT_NE(html.find("Kept after the note."), std::string::npos) << html;
+}

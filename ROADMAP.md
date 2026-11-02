@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6352 -->
+<!-- ants-roadmap-id-high-water: ANTS=6353 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -78430,7 +78430,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-09.
 
-- 📋 [ANTS-4078] **Two sections hold 2.6 MB of the roadmap's 3.2 MB and are both still labelled `(target: …)` — rotation cannot help either.**
+- ✅ [ANTS-4078] **Two sections hold 2.6 MB of the roadmap's 3.2 MB and are both still labelled `(target: …)` — rotation cannot help either.**
   Split from ANTS-4070 after measuring, so that item can stay the
   mechanism it is: § 3.9 rotation moves closed MINORS, and 92% of this
   file sits under the open minor 0.7, so rotation as specified would move
@@ -78465,6 +78465,12 @@ against current source before filing.
 
   Depends on ANTS-4070 for the two operations any answer needs — no store
   op changes a section title or moves a section today.
+  Answered 2026-11-02. Both sections are closed now: their headings read
+  `## 0.7.65 — released 2026-05-01` and `## 0.7.92 — released
+  2026-05-28`. They stay as they are and go with the whole minor at the
+  0.8.0 bump (ANTS-3749). A `rotate_minor` dry run for 0.7 succeeded and
+  reported 51 sections moved, so rotating in one move works. Nothing to
+  split or retitle.
   **Layman:** Nearly all of the oversized roadmap file is two sections that were never marked finished, so the tidy-up mechanism will never touch them.
   Kind: investigate.
   Source: in-session-2026-08-09.
@@ -87950,7 +87956,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config request 2026-10-16.
   Lanes: mcp.
 
-- 📋 [ANTS-5727] **The Roadmap window hides HTML comments in a ROADMAP.md file, as Markdown does.**
+- ✅ [ANTS-5727] **The Roadmap window hides HTML comments in a ROADMAP.md file, as Markdown does.**
   Seen 2026-10-16 recording trailer clips: a project whose ROADMAP.md
   opens with `<!-- ants-roadmap-format: 1 -->` (the line roadmap-format.md
   puts first) and has no store entry shows that comment as visible text
@@ -87958,6 +87964,9 @@ measured Ants adding about 5,250 tokens to every request.
   block and the `---` rule also render as stray lines above the sections.
   Repro: a folder with only that ROADMAP.md, git init, open Ants there,
   click Roadmap in the status bar.
+  Shipped 2026-11-02. The Full tab no longer draws a comment block or a
+  `---` rule as text. The `**Legend**` block still shows: it is real
+  preamble text, which ANTS-1275 requires on that tab.
   **Layman:** The roadmap window showed an invisible formatting note as visible text at the top.
   Kind: fix.
   Source: in-session-2026-10-16 trailer recording.
@@ -89395,6 +89404,13 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-11-02.
   Lanes: mcp.
+
+- 📋 [ANTS-6353] **RoadmapFoldIn::findActiveReleaseHeading does not follow roadmap-format.md § 3.5.4's choice of active release.**
+  Read 2026-11-02 in src/roadmapfoldin.cpp. It returns the first `##` holding `(target: YYYY-MM)` in document order, else the first numbered heading. Step 2 of § 3.5.4 picks the lowest-numbered version block with workable items whose heading does not read shipped. Callers: coldeyesdialog.cpp and indiereviewdialog.cpp through ReviewDialogBase::activeReleaseHeading. Not yet checked: which heading it returns on this roadmap today.
+  **Layman:** The review dialogs may file their findings under a different release block from the one the roadmap rules call active.
+  Kind: fix.
+  Source: in-session-2026-11-02, seen while working ANTS-5652.
+  Lanes: roadmap.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

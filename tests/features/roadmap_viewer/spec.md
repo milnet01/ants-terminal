@@ -223,6 +223,10 @@ source-grep + pure-helper harness, no full Qt widget tree.
   role-dispatch path is itself an aggravator. Source-grep ensures
   `QDialogButtonBox` does not reappear and `QPushButton::clicked`/
   `QDialog::close` are present.
+- INV-15 `renderCardsHtml` draws no HTML comment and no `---` rule as
+  text on the Full tab. A comment is a block that starts a line with
+  `<!--` and runs to the line holding `-->`, as in Markdown. A comment
+  quoted inside a sentence stays.
 
 ## Rationale
 

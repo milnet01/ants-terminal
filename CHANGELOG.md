@@ -74,6 +74,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Roadmap window hides HTML comments and `---` rules on the Full roadmap tab, as Markdown does.** (ANTS-5727)
+
 - **file_outline and function_sizes read a Python script with no file extension from its shebang** (ANTS-6352)
 
 - **`comment_claims` accepts a `see` reference that names a file by a shorter path or without its extension** (ANTS-6350)

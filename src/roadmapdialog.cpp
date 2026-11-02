@@ -1556,6 +1556,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             emitCard(*rec);
     }
 
+    bool inHtmlComment = false;
     for (int i = 0; i < lines.size(); ++i) {
         const QString &raw = lines[i];
 
@@ -1634,6 +1635,16 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
             continue;
         }
 
+        // ANTS-5727 — a comment block or `---` rule is invisible in Markdown.
+        // Checked before the preset gate so the block state survives a
+        // comment that spans lines, whichever tab is showing.
+        const QString trimmedRaw = raw.trimmed();
+        if (inHtmlComment || trimmedRaw.startsWith(QStringLiteral("<!--"))) {
+            inHtmlComment = !trimmedRaw.contains(QStringLiteral("-->"));
+            continue;
+        }
+        if (trimmedRaw == QStringLiteral("---")) continue;
+
         // Prose / narration / section-intros. INV-11.
         if (opts.activePreset != Preset::Full) continue;
         // ANTS-1275 — preamble prose before the first "## " section has no
@@ -1644,7 +1655,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // (inside a section); the top-of-document preamble always shows.
         if (!currentSlug.isEmpty() && (!sectionVisible || !sectionExpanded))
             continue;
-        if (raw.trimmed().isEmpty()) continue;
+        if (trimmedRaw.isEmpty()) continue;
         emitFullRow(QStringLiteral("<p>") + applyInline(raw)
                     + QStringLiteral("</p>"));
     }
