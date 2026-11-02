@@ -29,6 +29,7 @@ substring mentions of the input `files[]`.
 | 18 | (ANTS-4566) `basename_matches` (with `basename_matches_count` and `basename_matches_hint`) is emitted ONLY when non-empty — unlike INV-15's `fallback_match`, because here absence and an empty array carry the same meaning, and a constant empty array on every reply is cost with no signal. |
 | 19 | (ANTS-5513) `docs/decisions/*.md` is scanned beside the specs and counted in `decisions_scanned` and `total_scanned`; `specs_scanned` stays specs only. Its `README.md` is not scanned. A project with ADRs and no specs is not `scanned_nothing`. |
 | 20 | (ANTS-6332) In a linked worktree with no specs directory, where the main checkout has one, a `scanned_nothing` reply sets `main_checkout` and its hint names that path. | `McpInvariantCheck.Ants6332WorktreeHintNamesTheMainCheckout` |
+| 21 | (ANTS-5270) With `specs_scanned:0`, `basename_matches` is omitted: the reply keeps `basename_matches_count`, and its hint says no spec was scanned and names `workspace_search`. `matched_specs` still lists direct hits in phase documents and ADRs (ANTS-1880, INV-19). | `McpInvariantCheck.Ants5270NoSpecsScannedKeepsOnlyTheNearMissCount` |
 
 INV-7's schema scrape reads the descriptor block via
 `ants_test::mcpToolDescriptor` (ANTS-3720), not a fixed-byte window:
@@ -38,7 +39,7 @@ had nothing to do with the wiring it locks.
 
 ## Acceptance
 
-Exit 0 = all 19 invariants hold.
+Exit 0 = all invariants hold.
 
 Wired as a source file in `ants_add_gui_bundle(test_claude …)` in
 top-level `CMakeLists.txt`. Uses the existing

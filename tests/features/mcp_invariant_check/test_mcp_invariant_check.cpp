@@ -710,6 +710,33 @@ TEST(McpInvariantCheck, Ants5513DecisionsAloneAreAScan) {
     EXPECT_TRUE(env.value("path_match_only").toBool());
 }
 
+// ANTS-5270 — with no spec scanned, a shorter-form mention in a phase document
+// is coincidence far more often than contract, so only its count is reported.
+// The direct hit stays: a phase document naming the full path is ANTS-1880's
+// contract, and dropping it as the finding suggested would break that.
+TEST(McpInvariantCheck, Ants5270NoSpecsScannedKeepsOnlyTheNearMissCount) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString phases = dir.path() + QStringLiteral("/docs/phases");
+    ASSERT_TRUE(QDir().mkpath(phases));
+    const auto seedPhase = [&](const QString &name, const QByteArray &cites) {
+        QFile f(phases + QLatin1Char('/') + name);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("# A phase\n\nTouches " + cites + ".\n");
+    };
+    seedPhase(QStringLiteral("phase_01.md"), "src/ui/card.cpp");
+    seedPhase(QStringLiteral("phase_02.md"), "card.cpp");
+
+    const QJsonObject env =
+        runCheck(dir.path(), QStringLiteral("src/ui/card.cpp"), QString());
+    ASSERT_EQ(env.value("specs_scanned").toInt(), 0);
+    EXPECT_EQ(env.value("matched_count").toInt(), 1) << "the direct hit stays";
+    EXPECT_FALSE(env.contains("basename_matches"));
+    EXPECT_EQ(env.value("basename_matches_count").toInt(), 1) << "never silently dropped";
+    const QString hint = env.value("basename_matches_hint").toString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("no spec"))) << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("workspace_search"))) << hint.toStdString();
+}
+
 // ANTS-6332 — in a linked worktree whose branch lacks the specs, the hint names
 // the main checkout, not a setting that is already right.
 TEST(McpInvariantCheck, Ants6332WorktreeHintNamesTheMainCheckout) {

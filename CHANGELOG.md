@@ -31,6 +31,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`invariant_check` keeps only the count of shorter-form mentions when no spec was scanned, and says how to read them** (ANTS-5270)
+
 - **spec_lint's repeated hints are less than half their old size and keep their warnings** (ANTS-5264)
 
 - **Plain `cc-job status` answers at once with running jobs and the newest 20 others; `cc-job status --all` lists every job.** (ANTS-6354)

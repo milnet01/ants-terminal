@@ -81604,7 +81604,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (OneUp).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5270] **invariant_check reports basename matches as evidence when it scanned no specs at all.**
+- ✅ [ANTS-5270] **invariant_check reports basename matches as evidence when it scanned no specs at all.**
   Measured: `invariant_check` on three files returned 16
   `basename_matches` rows, 2 `matched_specs`, a `scope_note`, a
   `basename_matches_hint` and a `leaner_call_hint`. The reporter used ONE
@@ -81622,6 +81622,10 @@ are closed inline in the feedback files rather than filed here.
 
   Cheap: branch on `specs_scanned == 0` and return that plus the scope
   note, omitting the row arrays.
+  Narrower than the finding asked. Only basename_matches rows go when
+  specs_scanned is 0, with the count and a route kept. matched_specs
+  stays, because direct hits in phase documents and ADRs are ANTS-1880's
+  and ANTS-5513's contract.
   **Layman:** A checking tool listed sixteen loosely-matching files as findings on a project that has no specification documents for it to check against.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (Vestige).

@@ -2792,18 +2792,29 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-4566 — emitted only when non-empty: a constant empty array on every
     // call is noise, and its absence means "no spec cites these files by a
     // shorter form", which is the same answer.
+    // ANTS-5270 — with no spec scanned, these rows can only be phase documents
+    // and ADRs. Measured on Vestige: sixteen rows, all incidental mentions of
+    // `renderer.h`. So keep the count and the route, not the rows.
     if (!nearMiss.isEmpty()) {
-        result["basename_matches"]       = nearMiss;
         result["basename_matches_count"] = nearMiss.size();
-        result["basename_matches_hint"]  = QStringLiteral(
-            "these specs cite one of the files you passed by a SHORTER form — "
-            "a bare basename or a path suffix — and so are absent from "
-            "matched_specs, which matched the path as you wrote it. A spec "
-            "names a module the way its author writes it, so the spec that "
-            "GOVERNS the file is often in this list rather than that one: "
-            "read these before treating matched_specs as the contract. "
-            "Reported and never merged, because a shorter form can collide "
-            "between two like-named modules.");
+        if (specsScanned == 0) {
+            result["basename_matches_hint"] = QStringLiteral(
+                "no spec was scanned, so the documents counted here are phase "
+                "documents or ADRs that mention a shorter form of the path, "
+                "usually in passing. Rows omitted; to read them, search the "
+                "file's basename with workspace_search.");
+        } else {
+            result["basename_matches"]      = nearMiss;
+            result["basename_matches_hint"] = QStringLiteral(
+                "these specs cite one of the files you passed by a SHORTER form — "
+                "a bare basename or a path suffix — and so are absent from "
+                "matched_specs, which matched the path as you wrote it. A spec "
+                "names a module the way its author writes it, so the spec that "
+                "GOVERNS the file is often in this list rather than that one: "
+                "read these before treating matched_specs as the contract. "
+                "Reported and never merged, because a shorter form can collide "
+                "between two like-named modules.");
+        }
     }
     result["fallback_match"] = !fallbackKind.isEmpty();
     if (!fallbackKind.isEmpty()) {
