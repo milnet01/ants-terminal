@@ -332,6 +332,25 @@ TEST_F(McpResultOffload, Inv1ExplicitBodyCapRaisesThreshold) {
     mcp::setOffloadConfig(true, 16384, 2048);
 }
 
+// ANTS-5291 — read_regions returns slices the caller named one by one, so its
+// threshold is the 64 KiB ceiling. The reported cases: 16,874 and 20,520 bytes
+// spilled with no bodies, and the callers fell back to shell reads.
+TEST_F(McpResultOffload, Inv1ReadRegionsUsesTheCeiling) {
+    mcp::setOffloadConfig(true, 16384, 2048);
+    const QString rr = QStringLiteral("read_regions");
+    EXPECT_FALSE(mcp::shouldOffload(20520, mcp::offloadThresholdFor(rr, QJsonObject{})))
+        << "the reported 20,520-byte batch stays inline";
+    EXPECT_TRUE(mcp::shouldOffload(mcp::kExplicitSizeCeilingBytes,
+                                   mcp::offloadThresholdFor(rr, QJsonObject{})))
+        << "a batch at the ceiling still spills";
+    EXPECT_EQ(mcp::offloadThresholdFor(QStringLiteral("read_region"), QJsonObject{}), 16384)
+        << "read_region keeps the configured threshold";
+    mcp::setOffloadConfig(true, 100000, 2048);
+    EXPECT_EQ(mcp::offloadThresholdFor(rr, QJsonObject{}), 100000)
+        << "a configured threshold above the ceiling stands";
+    mcp::setOffloadConfig(true, 16384, 2048);
+}
+
 // INV-1 — offloadBody has NO threshold guard: handed a body BELOW the offload
 // threshold (yet still large enough that the head+pointer envelope saves
 // bytes), it spills anyway. The threshold is purely the dispatch's concern

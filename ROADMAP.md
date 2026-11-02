@@ -82080,7 +82080,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5291] **read_regions spills where the same ranges read singly do not.**
+- ✅ [ANTS-5291] **read_regions spills where the same ranges read singly do not.**
   Measured by peer session finbreak-65, who ranked it above the three
   other items they sent. Agreed: this one defeats the verb's entire
   purpose.
@@ -82135,6 +82135,11 @@ are closed inline in the feedback files rather than filed here.
   returned a spill handle, so the caller fell back to Read. Raise the
   inline cap for a single region, or let the caller ask for inline text
   up to a byte limit.
+  Shipped 2026-11-02. read_regions keeps a reply inline up to 64 KiB
+  rather than the 16 KiB default, so the reported 16.9 KB and 20.5 KB
+  batches come back as text. Larger batches still spill. Not seen live
+  yet: the threshold applies only under real offload, which `ants-mcpd
+  --call` forces off.
   **Layman:** The tool for fetching several pieces of a file at once returns nothing usable, while fetching the same pieces one at a time works.
   Kind: fix.
   Source: peer-session-finbreak-65, in-session-2026-09-21.

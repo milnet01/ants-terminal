@@ -155,6 +155,10 @@ qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args) {
     if (toolName == QLatin1String("trace"))
         return std::numeric_limits<qint64>::max();
     const qint64 base = offloadThresholdBytes();
+    // ANTS-5291 — the caller named each slice, and a spill hands back none of
+    // their text, so a batch stays inline up to the ceiling.
+    if (toolName == QLatin1String("read_regions"))
+        return qMax(base, kExplicitSizeCeilingBytes);
     const QJsonValue cap = args.value(QStringLiteral("max_body_bytes"));
     if (toolName != QLatin1String("roadmap_query") || !cap.isDouble())
         return base;
