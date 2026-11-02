@@ -79147,7 +79147,7 @@ against current source before filing.
   Source: review-ut-ants-49 of c05fb4d8, session_message 578.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-5652] **roadmap-format.md § 3.5.4 step 2 does not rank a `.x` patch-stream block against numbered patches.**
+- ✅ [ANTS-5652] **roadmap-format.md § 3.5.4 step 2 does not rank a `.x` patch-stream block against numbered patches.**
   Filed by the roadmap-format gate, loop 27 (2026-10-11), outside its
   change. Step 2 compares the (major, minor, patch) triple as integers,
   an absent patch reading as 0. A `## v0.7.x` block is a version block
@@ -79156,6 +79156,8 @@ against current source before filing.
   block undecided. State the rank (for example: a patch stream ranks as
   its minor's highest patch).
   Re-found by both lanes of loop 28 (2026-10-11).
+  Shipped 2026-11-02. § 3.5.4 step 2 ranks a patch stream above every
+  numbered patch of its minor and below the next minor.
   **Layman:** Says which release block an agent works first when a roadmap has both a 0.7.x block and a 0.7.3 block.
   Kind: review-fix.
   Source: cold-eyes-2026-10-11 roadmap-format loop 27.
@@ -82905,6 +82907,13 @@ open, and two of these were exactly that.
   decide between refusing dispatcher-wide, refusing per verb, or keeping
   the advisory. Reading it: count lines per tool and key, e.g.
   `jq -r '.tool+" "+(.keys|join(","))' <file> | sort | uniq -c | sort -rn`.
+  Early reading 2026-11-02, twelve days in, 22 lines. Not yet the few
+  weeks asked for, so no decision. doc_lint `compact` accounts for 9.
+  Argument-name slips: build_target_for `file`, workspace_search
+  `caller_cwd_note`, spec_query `query`, read_regions `ranges`,
+  roadmap_log `ids`, invariant_check `path`, git_state `limit`. Two more
+  are this project's probes (`zz_probe_ants5725`). Read it again from
+  2026-11-11.
   **Layman:** Passing a setting a tool does not have gets you a note rather than a clear error.
   Kind: fix.
   Source: in-session-2026-08-25, split out of ANTS-4626.

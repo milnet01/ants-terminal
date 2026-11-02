@@ -29,6 +29,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap format says where a `v0.7.x` patch-stream block ranks when choosing the active release: after that minor's numbered patches, before the next minor.** (ANTS-5652)
+
 - **Nine more read verbs hand back a preview and a handle when their reply is large** (ANTS-6351)
   `source_scrapes`, `comment_claims`, `doc_lint`, `doc_symbols`, `doc_integrity`, `duplicate_blocks`, `trace`, `find_caller` and `subsystem` now spill like other read verbs, so a large reply stays readable through `read_spill`.
 

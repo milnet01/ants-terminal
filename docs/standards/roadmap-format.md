@@ -807,7 +807,8 @@ roadmap"*, it MUST:
    version block, an absent patch reading as 0, and `(phase, sub)` for
    a phase designator, an absent sub reading as 0, so `P07.5` ranks
    between `P07` and `P08`. Lexical sort is wrong: `0.10` sorts below
-   `0.9`.
+   `0.9`. A patch stream (`## v0.7.x`) ranks above every numbered patch
+   of its minor and below the next minor.
    **On a file carrying both shapes** the version blocks win (§ 3.2):
    its phase blocks are worked as extra theme sections of the active
    release, after that release's own themes. Where no version block
