@@ -200,6 +200,64 @@ TEST(McpdCall, Inv1StdoutMatchesStdioUnwrapped) {
         << QJsonDocument(viaStdio).toJson().toStdString();
 }
 
+// ANTS-5356, ANTS-5363 — a spilled reply through the real reply pipeline, whose
+// order is the defect in ANTS-5356: `fields` ran before the offload, so asking
+// for the handle narrowed the body below the threshold and nothing spilled.
+TEST(McpdCall, SpilledReplyKeepsItsHandleAndNamesTheRightRows) {
+    QTemporaryDir tmp, sock, cfg, data;
+    ASSERT_TRUE(tmp.isValid() && sock.isValid() && cfg.isValid() && data.isValid());
+    const QString proj = QFileInfo(tmp.path()).canonicalFilePath();
+    QFile f(proj + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    QJsonArray ids;
+    const QByteArray filler(3000, 'x');
+    QByteArray roadmap = "# Roadmap\n\n## Work\n\n";
+    for (int i = 1; i <= 30; ++i) {
+        roadmap += "- 📋 [ANTS-" + QByteArray::number(i) + "] **Card " + QByteArray::number(i)
+                   + ".**\n  " + filler + "\n";
+        ids.append(QStringLiteral("ANTS-%1").arg(i));
+    }
+    f.write(roadmap);
+    f.close();
+    ASSERT_TRUE(writeConfig(cfg.path(), QJsonObject{{"claude.mcp_offload_large_results", true}}));
+
+    McpdSession session(QStringLiteral(ANTS_SOURCE_DIR), deadSocket(sock),
+        QHash<QString, QString>{{QStringLiteral("XDG_CONFIG_HOME"), cfg.path()},
+                                {QStringLiteral("XDG_DATA_HOME"), data.path()},
+                                {QStringLiteral("HOME"), cfg.path()}});
+    ASSERT_TRUE(session.started());
+    const QJsonObject base{{"caller_cwd", proj}, {"ids", ids}, {"max_body_bytes", 4096}};
+
+    const QJsonObject spilled = session.call(QStringLiteral("roadmap_query"), base);
+    ASSERT_TRUE(spilled.value(QStringLiteral("offloaded")).toBool())
+        << "the fixture must spill: " << QJsonDocument(spilled).toJson().toStdString();
+    // The hint says where a row page lands, since that is not the source key.
+    EXPECT_TRUE(spilled.value(QStringLiteral("hint")).toString().contains(QStringLiteral("`rows`")))
+        << spilled.value(QStringLiteral("hint")).toString().toStdString();
+
+    QJsonObject narrowed = base;
+    narrowed[QStringLiteral("fields")] = QJsonArray{QStringLiteral("handle")};
+    const QJsonObject handleOnly = session.call(QStringLiteral("roadmap_query"), narrowed);
+    EXPECT_FALSE(handleOnly.contains(QStringLiteral("hint")))
+        << QJsonDocument(handleOnly).toJson().toStdString();
+    const QJsonObject page = session.call(QStringLiteral("read_spill"), QJsonObject{
+        {"caller_cwd", proj},
+        {"handle", handleOnly.value(QStringLiteral("handle")).toString()},
+        {"row_count", 1}});
+    EXPECT_EQ(page.value(QStringLiteral("total_rows")).toInt(), 30)
+        << QJsonDocument(page).toJson().toStdString();
+    EXPECT_EQ(page.value(QStringLiteral("rows")).toArray().size(), 1);
+
+    // A reply too small to spill still narrows, and reports no handle.
+    QJsonObject small{{"caller_cwd", proj}, {"id", "ANTS-1"},
+                      {"fields", QJsonArray{QStringLiteral("id"), QStringLiteral("handle")}}};
+    const QJsonObject notSpilled = session.call(QStringLiteral("roadmap_query"), small);
+    EXPECT_EQ(notSpilled.value(QStringLiteral("id")).toString(), QStringLiteral("ANTS-1"))
+        << QJsonDocument(notSpilled).toJson().toStdString();
+    EXPECT_FALSE(notSpilled.contains(QStringLiteral("bullets")))
+        << QJsonDocument(notSpilled).toJson().toStdString();
+}
+
 // INV-2 — the exit code follows § 2.2's rules, applied in order: usage (2),
 // then ok:false (1), then check_errors (1), then a missing findings key (2),
 // then findings (3), else 0.

@@ -104,7 +104,9 @@ short-circuits when state is unchanged.
 - **INV-9 — dispatch ordering.** In `claudeintegration.cpp` the
   `projectFields` call appears after `applyEtagPattern` and before the
   `wrapMcpData` call, and is guarded so the etag short-circuit
-  (`{ok,unchanged,etag}`) is never narrowed.
+  (`{ok,unchanged,etag}`) is never narrowed. A call naming `handle` or
+  `offloaded` on a reply that may spill is projected after the offload instead
+  (ANTS-5356), since only the offload writes those keys.
 - **INV-10 — the schema declares `fields` on EVERY verb.** The `tools/list`
   builder injects the property into any verb whose schema does not already
   carry it, in the same per-tool loop as the ANTS-1520 `caller_cwd` injection

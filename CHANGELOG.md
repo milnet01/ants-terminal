@@ -60,6 +60,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`fields:["handle"]` returns the handle of a large reply's whole saved body** (ANTS-5356)
+
+- **A saved reply's hint says row pages come back as `rows`, and offers byte paging for tabular rows** (ANTS-5363)
+
 - **`comment_claims` reads comments in `.tsx`, `.jsx`, `.mjs`, `.cjs`, `.uc`, `.vsh` and `.fsh` files** (ANTS-6348)
 
 - **`session_orient` names the in-progress item wherever it sits on the roadmap, with its kind and lanes** (ANTS-6349)

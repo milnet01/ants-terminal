@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6350 -->
+<!-- ants-roadmap-id-high-water: ANTS=6351 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86679,11 +86679,14 @@ project. Reported causes are claims until checked in source.
   Source: feedback-LocalWebServerManager-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5356] **A spilled reply's handle does not survive `fields`, so a narrowed call cannot fetch it.**
+- ✅ [ANTS-5356] **A spilled reply's handle does not survive `fields`, so a narrowed call cannot fetch it.**
   Reported by Rolodex: roadmap_query ids= spilled; fields:["handle"] then
   reported handle unmatched, because fields applies before the offload.
   Suggested: let handle and offloaded survive fields, as etag does, or add
   max_total_bytes to ids=. Related: ANTS-5266, ANTS-5292.
+  Shipped 2026-11-02: a call whose fields name handle or offloaded is
+  projected after the offload, so it gets the handle of the whole reply.
+  Other calls project before the offload as they did.
   **Layman:** Asking for just the reference to a large saved reply returns nothing, costing an extra call.
   Kind: enhancement.
   Source: feedback-Rolodex-2026-09-21.
@@ -86700,7 +86703,7 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Rolodex-2026-09-21.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5363] **read_spill's `fields` rejects the row key its own spill hint names.**
+- ✅ [ANTS-5363] **read_spill's `fields` rejects the row key its own spill hint names.**
   Reported by finbreak: the hint and rows_preview_key say "bullets", but
   read_spill names the array `rows`, so fields:["bullets"] returns ok:true
   with no data. Suggested: accept the source key as an alias, or have the
@@ -86711,6 +86714,10 @@ project. Reported causes are claims until checked in source.
   head_rows_key:"bullet_fields". The rows live under `bullets` (as
   __cols__/__rows__), and bullet_fields is the ARGUMENT name. So the spill
   hint names the wrong key on this path too; fix both together.
+  Shipped 2026-11-02: the spill hint says a row page comes back as
+  `rows`, with no alias added. A tabular member with at least as many
+  rows as the largest root array means no array dominates, so the reply
+  offers byte paging rather than naming an echoed argument.
   **Layman:** Following the tool's own hint for paging a large reply returns an empty page.
   Kind: fix.
   Source: feedback-finbreak-2026-09-21.
@@ -89336,6 +89343,13 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A tool that checks code comments can report a reference as broken when the file exists under a slightly shorter name.
   Kind: fix.
   Source: in-session-2026-11-02, found while fixing ANTS-6348.
+  Lanes: mcp.
+
+- 📋 [ANTS-6351] **source_scrapes overflows the client's reply limit on a widely scraped file.**
+  Measured 2026-11-02: source_scrapes on src/remotecontrol_state.cpp, with default arguments, returned 197,078 characters on one line, and the client refused it. The verb's default limit is 500 rows. A cheap first answer would be the reading tests' names only, with anchors on request.
+  **Layman:** A tool that lists which tests read a source file can answer with far too much text for the session to read.
+  Kind: fix.
+  Source: in-session-2026-11-02, hit while checking write-code's scrape step for ANTS-6349.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

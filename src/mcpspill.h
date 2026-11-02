@@ -58,6 +58,11 @@ int  offloadHeadBytes();
 // `compact` resolution).
 bool offloadRequested(const QJsonObject &args);
 
+// ANTS-5356 — true when `fields` names `handle` or `offloaded` on a call that
+// may spill. Those keys exist only after the offload, so the projection waits
+// for it; narrowed first, the body falls below the threshold and nothing spills.
+bool fieldsWaitForOffload(const QString &toolName, const QJsonObject &args);
+
 // ANTS-3552 — the dispatch-site offload size gate (INV-1), extracted so the
 // >=threshold / >head boundary is behaviourally testable. offloadBody has no
 // internal threshold guard (it always spills), so the dispatch must gate its

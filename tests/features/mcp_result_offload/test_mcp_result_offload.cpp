@@ -642,6 +642,25 @@ TEST_F(McpResultOffload, Inv13TabularSiblingAndPacked) {
     EXPECT_EQ(so.value("row_count").toInt(), 3);
 }
 
+// ANTS-5363 — packed rows outnumber the leftover array, as with roadmap_query's
+// echoed bullet_fields argument. Naming that array sent a caller to page the
+// argument, not the rows, so the reply offers byte paging alone.
+TEST_F(McpResultOffload, Ants5363PackedRowsAreNotPagedThroughAnEcho) {
+    QJsonArray packedRows;
+    for (int i = 0; i < 50; ++i) packedRows.append(QJsonArray{i, QString(500, QLatin1Char('x'))});
+    QJsonObject bullets;
+    bullets["__cols__"] = QJsonArray{QStringLiteral("id"), QStringLiteral("body")};
+    bullets["__rows__"] = packedRows;
+    QJsonObject body;
+    body["bullets"] = bullets;
+    body["bullet_fields"] = QJsonArray{QStringLiteral("id"), QStringLiteral("body")};
+    const QJsonObject o = offloadEnv(QStringLiteral("roadmap_query"), compact(body));
+    ASSERT_TRUE(o.value("offloaded").toBool());
+    EXPECT_FALSE(o.contains("head_rows_key")) << QJsonDocument(o).toJson().toStdString();
+    EXPECT_FALSE(o.value("hint").toString().contains(QStringLiteral("row-paged")))
+        << o.value("hint").toString().toStdString();
+}
+
 // ANTS-3540 / INV-9 — the base (pre-3538) head+pointer envelope must itself be
 // a strict net saving. At a head≈threshold config the fixed envelope overhead
 // (handle + hint + keys ≈ 330 B) plus a full head can exceed a body that only

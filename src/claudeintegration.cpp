@@ -2201,10 +2201,13 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     // pure top-level key filter with a refusal floor and a 304
     // floor, which is what makes it safe on an envelope this
     // dispatcher has never seen.
+    // ANTS-5356 — it runs after the offload below for a call naming a key only
+    // the offload writes.
+    const bool fieldsAfterOffload = mcp::fieldsWaitForOffload(toolName, argsObj);
     if (toolHandled && !etagUnchanged) {
         const QJsonValue fv =
             argsObj.value(QStringLiteral("fields"));
-        if (fv.isArray()) {
+        if (fv.isArray() && !fieldsAfterOffload) {
             responseText = mcp::projectFields(
                 responseText, fv.toArray());
         }
@@ -2319,6 +2322,9 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
             }
         }
     }
+    if (toolHandled && !etagUnchanged && fieldsAfterOffload)
+        responseText = mcp::projectFields(
+            responseText, argsObj.value(QStringLiteral("fields")).toArray());
 
     if (toolHandled) {
         // ANTS-1294 — frame user-supplied content as data,

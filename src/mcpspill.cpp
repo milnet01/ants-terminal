@@ -95,17 +95,27 @@ void evict(const QString &keepHandle) {
 // array member with the most elements; ties break to the lexicographically-
 // first key (QJsonObject iterates in sorted key order). No recursion into
 // nested objects, so a tabular {__cols__,__rows__} member is never selected.
+// ANTS-5363 — and a tabular member with at least as many rows means no array
+// dominates: the winner would be a leftover beside the real rows, such as
+// roadmap_query's echoed bullet_fields argument.
 // Shared by offloadBody's head_rows preview and readSpillRows, so the previewed
 // key (head_rows_key) and the paged key are always the same array (INV-13/14).
 // Sets *count to the winning array's size (0 ⇒ empty return key, no root array).
 QString dominantArrayKey(const QJsonObject &root, int *count) {
     QString domKey;
     int domCount = 0;
+    int packedRows = 0;
     for (auto it = root.begin(); it != root.end(); ++it) {
+        if (it.value().isObject()) {
+            const QJsonArray rows =
+                it.value().toObject().value(QStringLiteral("__rows__")).toArray();
+            packedRows = qMax(packedRows, int(rows.size()));
+        }
         if (!it.value().isArray()) continue;
         const int n = it.value().toArray().size();
         if (n > domCount) { domCount = n; domKey = it.key(); }
     }
+    if (packedRows >= domCount) { domCount = 0; domKey.clear(); }
     if (count) *count = domCount;
     return domKey;
 }
@@ -157,6 +167,15 @@ qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args) {
 bool offloadRequested(const QJsonObject &args) {
     const QJsonValue v = args.value(QStringLiteral("offload"));
     return v.isBool() ? v.toBool() : offloadDefault();
+}
+
+bool fieldsWaitForOffload(const QString &toolName, const QJsonObject &args) {
+    const QJsonArray fields = args.value(QStringLiteral("fields")).toArray();
+    if (!fields.contains(QStringLiteral("handle"))
+        && !fields.contains(QStringLiteral("offloaded")))
+        return false;
+    const bool raw = isRawEligible(toolName) && args.value(QStringLiteral("raw")).toBool();
+    return !raw && isOffloadEligible(toolName) && offloadRequested(args);
 }
 
 // ANTS-4692 — keys the OFFLOAD or the DISPATCH LAYER owns. A body member of
@@ -311,7 +330,7 @@ QString spillHint(const QString &toolName, const QString &handle,
             QStringLiteral("read the full body via read_spill "
                            "{handle:\"%1\"}, row-paged "
                            "(row_offset/row_count) over the \"%2\" "
-                           "array.").arg(handle, domKey));
+                           "array; a page comes back as `rows`.").arg(handle, domKey));
     return QStringLiteral(
         "Large result spilled. The cheaper fix, first: re-ask %3 with "
         "`fields:[...]` naming only the top-level fields you need — "
@@ -322,7 +341,8 @@ QString spillHint(const QString &toolName, const QString &handle,
         "page size (`limit`, or `max_results`) plus `offset`. "
         "Failing both, read the full body via read_spill "
         "{handle:\"%1\"}: byte-paged (offset/max_bytes), or "
-        "row-paged (row_offset/row_count) over the \"%2\" array.")
+        "row-paged (row_offset/row_count) over the \"%2\" array; a page "
+        "comes back as `rows`.")
         .arg(handle, domKey, toolName);
 }
 
