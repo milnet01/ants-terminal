@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`build_target_for` suggests which test bundle should own a new source** (ANTS-5251)
+  For a source no target lists yet, `candidate_targets` ranks the bundles whose sources already include the same headers, and names the headers each one covers and misses.
+
 - **`changelog_log` can correct or delete a phrase in an unreleased entry** (ANTS-5246)
   `op:"amend"` replaces one exact phrase under `[Unreleased]`, and an empty `new_text` deletes it. `id` picks the entry when a phrase repeats. Released sections stay frozen.
 

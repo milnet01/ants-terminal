@@ -181,3 +181,83 @@ TEST(BuildTargetFor, LiveCmakeOwnsALibrarySource) {
     EXPECT_EQ(ownerNames(ts, "src/buildtargets.cpp"),
               QStringList{"ants_mcpcore_lib"});
 }
+
+// ANTS-5251 — what a new, unlisted test source would need linked.
+TEST(BuildTargetFor, QuotedIncludesAreFileNamesInOrder) {
+    const QString src = QStringLiteral(
+        "// #include \"commented.h\"\n"
+        "#include \"remotecontrol.h\"\n"
+        "#include <gtest/gtest.h>\n"
+        "  #  include \"../../_support/expect.h\"\n"
+        "#include \"remotecontrol.h\"\n"
+        "const char *s = \"#include \\\"string.h\\\"\";\n");
+    EXPECT_EQ(BuildTargets::quotedIncludes(src),
+              (QStringList{"remotecontrol.h", "expect.h"}));
+}
+
+TEST(BuildTargetFor, CandidatesRankByHeadersCovered) {
+    const QString cm = QStringLiteral(
+        "add_library(some_lib STATIC src/lib.cpp)\n"
+        "ants_add_gui_bundle(test_small\n"
+        "    SOURCES tests/a/a.cpp\n"
+        ")\n"
+        "ants_add_gui_bundle(test_big\n"
+        "    SOURCES tests/b/b1.cpp tests/b/b2.cpp\n"
+        ")\n"
+        "ants_add_gui_bundle(test_other\n"
+        "    SOURCES tests/c/c.cpp\n"
+        ")\n");
+    const QHash<QString, QString> files = {
+        {"src/lib.cpp", "#include \"one.h\"\n#include \"two.h\"\n"},
+        {"tests/a/a.cpp", "#include \"one.h\"\n"},
+        {"tests/b/b1.cpp", "#include \"one.h\"\n"},
+        {"tests/b/b2.cpp", "#include \"two.h\"\n"},
+        {"tests/c/c.cpp", "#include \"unrelated.h\"\n"},
+    };
+    const auto read = [&](const QString &p) { return files.value(p); };
+    const auto ts = BuildTargets::parse(cm);
+    const QStringList want = {"one.h", "two.h"};
+
+    const auto got = BuildTargets::candidateBundles(ts, want, read);
+    ASSERT_EQ(got.size(), 2)
+        << "a library cannot own a test, and test_other covers nothing";
+    EXPECT_EQ(got.at(0).name, QStringLiteral("test_big"));
+    EXPECT_EQ(got.at(0).headersCovered, want);
+    EXPECT_TRUE(got.at(0).headersMissing.isEmpty());
+    EXPECT_EQ(got.at(1).name, QStringLiteral("test_small"));
+    EXPECT_EQ(got.at(1).headersMissing, QStringList{"two.h"});
+
+    EXPECT_EQ(BuildTargets::candidateBundles(ts, want, read, 1).size(), 1)
+        << "the limit holds";
+    EXPECT_TRUE(BuildTargets::candidateBundles(ts, {}, read).isEmpty())
+        << "no headers is no evidence, so no suggestion";
+}
+
+TEST(BuildTargetFor, CandidatesBreakATieBySourcesThenOrder) {
+    const QString cm = QStringLiteral(
+        "ants_add_gui_bundle(test_first\n    SOURCES tests/a/a.cpp\n)\n"
+        "ants_add_gui_bundle(test_second\n    SOURCES tests/b/b.cpp\n)\n"
+        "ants_add_gui_bundle(test_third\n"
+        "    SOURCES tests/c/c1.cpp tests/c/c2.cpp\n)\n");
+    const auto read = [](const QString &) {
+        return QStringLiteral("#include \"one.h\"\n");
+    };
+    const auto got = BuildTargets::candidateBundles(
+        BuildTargets::parse(cm), {"one.h"}, read);
+    ASSERT_EQ(got.size(), 3);
+    EXPECT_EQ(got.at(0).name, QStringLiteral("test_third")) << "more sources";
+    EXPECT_EQ(got.at(1).name, QStringLiteral("test_first")) << "declared first";
+    EXPECT_EQ(got.at(2).name, QStringLiteral("test_second"));
+}
+
+// The case the item was filed on: a roadmap-store test built into test_core
+// could not resolve RemoteControl's externals, measured on ANTS-4500.
+TEST(BuildTargetFor, LiveCmakeSendsARemoteControlTestToTestClaude) {
+    const QString rootDir = QStringLiteral(ANTS_SOURCE_DIR);
+    const auto ts = BuildTargets::parse(slurp(rootDir + "/CMakeLists.txt"));
+    const auto read = [&](const QString &p) { return slurp(rootDir + "/" + p); };
+    const auto got =
+        BuildTargets::candidateBundles(ts, {"remotecontrol.h"}, read);
+    ASSERT_FALSE(got.isEmpty());
+    EXPECT_EQ(got.first().name, QStringLiteral("test_claude"));
+}

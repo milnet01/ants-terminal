@@ -25,6 +25,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
+
 namespace BuildTargets {
 
 struct Target {
@@ -64,6 +66,27 @@ QList<Target> ownersOf(const QList<Target> &targets, const QString &relPath);
 // This is what makes `ctest -R` usable straight from the answer, and it is the
 // half the `--gtest_list_tests` fallback was paying a process launch for.
 QStringList gtestSuites(const QString &sourceText);
+
+// ANTS-5251 — the file names of a source's `#include "..."` lines, deduplicated,
+// in first-seen order. `<...>` includes are not the project's own.
+QStringList quotedIncludes(const QString &sourceText);
+
+struct Candidate {
+    QString     name;
+    QStringList headersCovered;  // of the new file's, some source here includes
+    QStringList headersMissing;  // of the new file's, no source here includes
+};
+
+// Which bundles could own a source no target lists yet, best first. A bundle
+// whose sources already include a header links what that header needs, so the
+// most headers covered wins, then the most including sources, then declaration
+// order. A bundle covering none is left out. `readSource` returns a listed
+// source's text; this function opens nothing, like the rest of this file. A
+// suggestion only: it reads includes, not the link line.
+using SourceReader = std::function<QString(const QString &relPath)>;
+QList<Candidate> candidateBundles(const QList<Target> &targets,
+                                  const QStringList &headers,
+                                  const SourceReader &readSource, int limit = 3);
 
 // ANTS-5602 — the compile definitions that hand a test a source path, as
 // definition name -> root-relative paths. `NAME="${CMAKE_SOURCE_DIR}/rel"`

@@ -23,11 +23,16 @@ nothing about that.
 | `GtestSuitesAreDeduplicatedInOrder` | `TEST`, `TEST_F` and `TEST_P` all count; a suite named twice appears once; first-seen order is preserved; a suite named mid-line or in prose does not count. |
 | `LiveCmakeMapsTheTwoNonObviousBundles` | Against the real `CMakeLists.txt`: `tests/features/cold_eyes_engine/` is owned by `test_audit` and `tests/features/spec_conformance/` by `test_claude` — the two examples ANTS-3745 cites as proof recall does not substitute. |
 | `LiveCmakeOwnsALibrarySource` | Against the real `CMakeLists.txt`: `src/buildtargets.cpp` is owned by `ants_mcpcore_lib`, so the verb answers for library sources and not only for tests. |
+| `QuotedIncludesAreFileNamesInOrder` | ANTS-5251: only a real `#include "..."` line counts, as its file name, once. A `<...>` include, a comment and a string do not. |
+| `CandidatesRankByHeadersCovered` | ANTS-5251: bundles only, most of the new file's headers first, each naming what it covers and misses. A bundle covering none is left out, the limit holds, and no headers gives no suggestion. |
+| `CandidatesBreakATieBySourcesThenOrder` | ANTS-5251: a tie goes to the bundle with more including sources, then to the one declared first. |
+| `LiveCmakeSendsARemoteControlTestToTestClaude` | ANTS-5251: against the real tree, a source including `remotecontrol.h` is sent to `test_claude`, the bundle ANTS-4500's test needed. |
 
 ## What is NOT locked
 
 The verb body (`RemoteControl::cmdBuildTargetFor`) needs a live MainWindow, so
 its envelope is not driven here. What that body adds over the engine is string
-composition — `build_command`, `ctest_filter`, `ctest_command` — and the
-`found:false` hint. A defect there is visible on the first call; a defect in
+composition — `build_command`, `ctest_filter`, `ctest_command` — the
+`found:false` hint, and reading the sources behind `candidate_targets`. A defect
+there is visible on the first call; a defect in
 the mapping is not, which is why the coverage sits at the engine.

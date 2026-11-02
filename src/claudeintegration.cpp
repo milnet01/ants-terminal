@@ -10412,9 +10412,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "for a gtest source, the `ctest -R` filter. Returns {ok, path, "
                         "cmake_path, targets:[{name, kind, command, line, source_count, "
                         "build_command}], targets_parsed, found, suites?, "
-                        "ctest_filter?, ctest_command?, hint?}. found:false is an "
-                        "answer: a header, or a new test source not yet in a bundle's "
-                        "SOURCES. Read-only. caller_cwd required.");
+                        "ctest_filter?, ctest_command?, hint?, candidate_targets?}. "
+                        "found:false is an answer: a header, or a new test source not "
+                        "yet in a bundle's SOURCES, where candidate_targets suggests "
+                        "bundles. Read-only. caller_cwd required.");
                     t["detail"] = QStringLiteral(
                         "Which build target owns this source file, "
                         "read statically from CMakeLists.txt — plus the "
@@ -10438,13 +10439,21 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "is not listed until it is added to a bundle's "
                         "SOURCES — the trap where the build then succeeds "
                         "silently and runs the old binary, so check `found` "
-                        "after adding one. A source named through a CMake "
+                        "after adding one. For such a source (ANTS-5251), "
+                        "`candidate_targets:[{name, build_command, "
+                        "headers_covered, headers_missing}]` lists up to three "
+                        "bundles whose sources already include this file's "
+                        "`#include \\\"...\\\"` headers, best first. It is a "
+                        "suggestion read from includes, not the link line, "
+                        "and is absent when the file does not exist yet or "
+                        "no bundle covers a header. A source named through a CMake "
                         "variable, a generator expression or "
                         "target_sources() is not resolved and reports "
                         "unowned rather than being attributed to the wrong "
                         "target. Multiple owners are possible and all are "
                         "returned. Read-only; opens the CMake file and (for "
-                        "suites) the source. caller_cwd required.");
+                        "suites) the source, plus each bundle's sources when "
+                        "suggesting candidates. caller_cwd required.");
                     t["selection_hint"] = QStringLiteral(
                         "Use right after editing or adding a test source and "
                         "before building — it answers what to build and what "

@@ -5,6 +5,8 @@
 #include <QRegularExpression>
 #include <QSet>
 
+#include <algorithm>
+
 namespace BuildTargets {
 namespace {
 
@@ -258,6 +260,63 @@ QStringList gtestSuites(const QString &sourceText) {
     while (it.hasNext()) {
         const QString s = it.next().captured(1);
         if (!seen.contains(s)) { seen.insert(s); out.append(s); }
+    }
+    return out;
+}
+
+QStringList quotedIncludes(const QString &sourceText) {
+    static const QRegularExpression re(
+        QStringLiteral(R"re(^[ \t]*#[ \t]*include[ \t]*"([^"\n]+)")re"),
+        QRegularExpression::MultilineOption);
+    QStringList out;
+    auto it = re.globalMatch(sourceText);
+    while (it.hasNext()) {
+        const QString path = it.next().captured(1);
+        const QString name = path.mid(path.lastIndexOf(QLatin1Char('/')) + 1);
+        if (!out.contains(name)) out.append(name);
+    }
+    return out;
+}
+
+QList<Candidate> candidateBundles(const QList<Target> &targets,
+                                  const QStringList &headers,
+                                  const SourceReader &readSource, int limit) {
+    struct Ranked { Candidate candidate; int includingSources = 0; };
+    QList<Ranked> ranked;
+    if (headers.isEmpty()) return {};
+
+    const QSet<QString> wanted(headers.cbegin(), headers.cend());
+    for (const Target &t : targets) {
+        if (t.kind != QLatin1String("bundle")) continue;
+        Ranked r;
+        QSet<QString> covered;
+        for (const QString &source : t.sources) {
+            const QStringList included = quotedIncludes(readSource(source));
+            QSet<QString> hits(included.cbegin(), included.cend());
+            hits.intersect(wanted);
+            if (hits.isEmpty()) continue;
+            covered.unite(hits);
+            ++r.includingSources;
+        }
+        if (covered.isEmpty()) continue;
+        r.candidate.name = t.name;
+        for (const QString &h : headers)
+            (covered.contains(h) ? r.candidate.headersCovered
+                                 : r.candidate.headersMissing).append(h);
+        ranked.append(r);
+    }
+
+    std::stable_sort(ranked.begin(), ranked.end(),
+                     [](const Ranked &a, const Ranked &b) {
+        const auto ac = a.candidate.headersCovered.size();
+        const auto bc = b.candidate.headersCovered.size();
+        return ac != bc ? ac > bc : a.includingSources > b.includingSources;
+    });
+
+    QList<Candidate> out;
+    for (const Ranked &r : ranked) {
+        if (out.size() == limit) break;
+        out.append(r.candidate);
     }
     return out;
 }

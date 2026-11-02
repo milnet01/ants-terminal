@@ -4176,8 +4176,9 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
 // a caller that has to assemble those from the name is one CLAUDE.md lookup
 // short of where it started.
 //
-// Read-only, opens two files at most (the CMake file, and the source when
-// suites are wanted). The parse lives in buildtargets.cpp.
+// Read-only. A wired file opens two at most (the CMake file, and the source
+// when suites are wanted); an unlisted source also reads each bundle's sources
+// to suggest an owner. The parse lives in buildtargets.cpp.
 QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
@@ -4271,6 +4272,41 @@ QJsonDocument RemoteControl::cmdBuildTargetFor(const QJsonObject &req) {
             "ANTS-3745 trap — the build then succeeds silently and runs the "
             "old binary. Sources named through a CMake variable or "
             "target_sources() are not resolved.");
+
+        // ANTS-5251 — a new source's next question is where to put it. This
+        // one branch reads every bundle source, so it stays off the wired
+        // path. Includes sit at a file's top, so a prefix of each will do.
+        static const QRegularExpression rxSource(
+            QStringLiteral("\\.(c|cc|cpp|cxx)$"));
+        QFile newFile(root.filePath(rel));
+        if (rxSource.match(rel).hasMatch()
+            && newFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            constexpr qint64 kIncludePrefixBytes = 64 * 1024;
+            const auto readPrefix = [&root](const QString &source) {
+                QFile f(root.filePath(source));
+                return f.open(QIODevice::ReadOnly | QIODevice::Text)
+                           ? QString::fromUtf8(f.read(kIncludePrefixBytes))
+                           : QString();
+            };
+            QJsonArray candidates;
+            for (const BuildTargets::Candidate &c : BuildTargets::candidateBundles(
+                     all, BuildTargets::quotedIncludes(QString::fromUtf8(
+                              newFile.read(kIncludePrefixBytes))),
+                     readPrefix)) {
+                QJsonObject o;
+                o[QStringLiteral("name")] = c.name;
+                o[QStringLiteral("build_command")] =
+                    QStringLiteral("cmake --build %1 --target %2")
+                        .arg(buildDir, c.name);
+                o[QStringLiteral("headers_covered")] =
+                    QJsonArray::fromStringList(c.headersCovered);
+                o[QStringLiteral("headers_missing")] =
+                    QJsonArray::fromStringList(c.headersMissing);
+                candidates.append(o);
+            }
+            if (!candidates.isEmpty())
+                out[QStringLiteral("candidate_targets")] = candidates;
+        }
     }
 
     // The gtest suites, so `ctest -R` is usable straight from the answer

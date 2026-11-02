@@ -81094,7 +81094,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-20, measured.
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-5251] **build_target_for answers `found:false` for a new test source but cannot suggest which bundle should own it.**
+- ✅ [ANTS-5251] **build_target_for answers `found:false` for a new test source but cannot suggest which bundle should own it.**
   `found:false` on a not-yet-wired source is the documented, correct
   answer, and the schema says so. What it leaves the caller to do is guess
   the bundle from a sibling test — and siblings disagree. Measured this
@@ -81114,6 +81114,10 @@ are closed inline in the feedback files rather than filed here.
   CLAUDE.md already warns that bundles are not guessable from the path and
   tells you to ask this verb. It answers the question for a wired file and
   not for a new one, which is exactly when it is asked.
+  Shipped 2026-11-02 as `candidate_targets`. It reads includes, not link
+  lines, so it is a suggestion: on this tree test_core also has a source
+  including remotecontrol.h, and only the ranking puts test_claude
+  first.
   **Layman:** When you add a new test file, the tool that says which build target owns it correctly reports that nothing does yet — but it can't tell you where to put it, which is the thing you actually needed.
   Kind: enhancement.
   Source: in-session-2026-09-21 (Ants MCP improvement noted while implementing ANTS-4500).
