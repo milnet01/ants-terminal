@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`workspace_search` gains `multiline:true`, so a regex can match across line breaks, and its error on such a pattern names that argument** (ANTS-4851)
+
 - **session_message op:"outbox" lists the mail a project sent and shows which of it was acked** (ANTS-5255)
 
 - **`build_target_for` suggests which test bundle should own a new source** (ANTS-5251)

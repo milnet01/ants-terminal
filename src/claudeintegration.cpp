@@ -4858,7 +4858,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "lane, glob, max_results (cap 500), context [0,10], "
                     "case, respect_gitignore, include_hidden, dedup, "
                     "timeout_sec [1,30], max_match_bytes, headline_only, "
-                    "enclosing_symbol, match_wrapped. "
+                    "enclosing_symbol, match_wrapped, multiline. "
                     "caller_cwd picks the tree: ANY directory, not only "
                     "this project. The query is ONE pattern, not "
                     "AND-combined words — a multi-word query that hits 0 "
@@ -5316,6 +5316,18 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "refuses bad_args rather than re-flowing your "
                             "pattern. Off by default.");
                         props["match_wrapped"] = mw;
+                    }
+                    {
+                        QJsonObject ml; ml["type"] = "boolean";
+                                        ml["default"] = false;
+                                        ml["description"] = QStringLiteral(
+                            "Optional (ANTS-4851). Let a regex cross line breaks: "
+                            "write the break yourself, as `\\n` or `\\s+`. `line` "
+                            "reports where the match STARTS and `text` is folded "
+                            "to one line. Needs `regex:true`, or it refuses "
+                            "bad_args; for literal wrapped prose use "
+                            "`match_wrapped`. Off by default.");
+                        props["multiline"] = ml;
                     }
                     props["offset"]      = wsOffsetProp;      // ANTS-3547
                     props["context"]     = ctxProp;
@@ -16770,6 +16782,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("workspace_search/match_wrapped"), QStringLiteral("Match a literal quotation across hard line wraps.")},
                         {QStringLiteral("workspace_search/matches_only"), QStringLiteral("Return the distinct matched strings, with counts.")},
                         {QStringLiteral("workspace_search/max_bytes"), QStringLiteral("Reply size cap in bytes (default 512 KiB).")},
+                        {QStringLiteral("workspace_search/multiline"), QStringLiteral("Let a regex cross line breaks; write the break as \\n or \\s+.")},
                         {QStringLiteral("workspace_search/max_match_bytes"), QStringLiteral("Clip each match's text to N bytes (default 512; 0 = no clip).")},
                         {QStringLiteral("workspace_search/offset"), QStringLiteral("Skip the first N matches; pass back next_offset to page.")},
                         {QStringLiteral("workspace_search/query"), QStringLiteral("Alias for pattern.")},
@@ -16948,7 +16961,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                           QStringLiteral("dedup"), QStringLiteral("encoding"),
                           QStringLiteral("fields"), QStringLiteral("include_hidden"),
                           QStringLiteral("match_wrapped"), QStringLiteral("matches_only"),
-                          QStringLiteral("max_bytes"), QStringLiteral("offset"),
+                          QStringLiteral("max_bytes"), QStringLiteral("multiline"),
+                          QStringLiteral("offset"),
                           QStringLiteral("query"), QStringLiteral("raw"),
                           QStringLiteral("respect_gitignore"), QStringLiteral("timeout_sec")}},
                         {QStringLiteral("file_outline"),

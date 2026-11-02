@@ -84079,7 +84079,7 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 RetroDB/Slipcase.
 
-- 📋 [ANTS-4851] **workspace_search refuses a multiline regex by naming a flag it does not expose.**
+- ✅ [ANTS-4851] **workspace_search refuses a multiline regex by naming a flag it does not expose.**
   rg's stderr passes through recommending --multiline; the verb has no such argument, so the remedy the error names is unreachable and every route to the pattern leaves the MCP. A two-line shape, such as an exception swallowed by a bare pass, is a normal thing to search a codebase for. match_wrapped (ANTS-4547) solved the same class for hard-wrapped prose; this is its code-shaped twin. Either add a multiline boolean passing -U, or replace the passthrough with a refusal saying multiline is out of scope and naming the alternatives.
   **Layman:** Searching for a two-line code pattern fails with advice you cannot act on.
   Kind: enhancement.

@@ -295,7 +295,7 @@ TEST(McpEagerLoad, Ants5725RareArgumentsLeaveTheWire) {
     const struct { const char *verb; QStringList hidden, kept; } rows[] = {
         {"workspace_search",
          {"case", "count_only", "dedup", "encoding", "fields", "include_hidden",
-          "match_wrapped", "matches_only", "max_bytes", "offset", "query", "raw",
+          "match_wrapped", "matches_only", "max_bytes", "multiline", "offset", "query", "raw",
           "respect_gitignore", "timeout_sec"},
          {"pattern", "caller_cwd", "regex", "glob", "headline_only", "lane",
           "max_results", "max_match_bytes", "context", "exclude_glob",

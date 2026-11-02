@@ -740,6 +740,39 @@ TEST(McpWorkspaceSearch, Ants6202BarInGlobIsNamed) {
     EXPECT_EQ(brace.value(QStringLiteral("matches")).toArray().size(), 1);
 }
 
+// ANTS-4851 — a two-line shape is a normal thing to search for, and rg's error
+// on one recommends a flag this verb must therefore actually offer.
+TEST(McpWorkspaceSearch, Ants4851MultilineRegexCrossesALineBreak) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QFile f(root + QStringLiteral("/a.py"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("try:\n    run()\nexcept:\n    pass\n");
+    f.close();
+    const QJsonObject base{{QStringLiteral("pattern"), QStringLiteral("except:\\n\\s+pass")},
+                           {QStringLiteral("regex"), true}};
+
+    const QJsonObject refused = search6188(root, base);
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(), QStringLiteral("rg_failed"));
+    EXPECT_TRUE(refused.value(QStringLiteral("hint")).toString().contains(QStringLiteral("multiline:true")))
+        << QJsonDocument(refused).toJson().constData();
+
+    QJsonObject req = base;
+    req[QStringLiteral("multiline")] = true;
+    const QJsonObject found = search6188(root, req);
+    ASSERT_TRUE(found.value(QStringLiteral("ok")).toBool()) << QJsonDocument(found).toJson().constData();
+    const QJsonArray rows = found.value(QStringLiteral("matches")).toArray();
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows.at(0).toObject().value(QStringLiteral("line")).toInt(), 3);
+    EXPECT_EQ(rows.at(0).toObject().value(QStringLiteral("text")).toString(), QStringLiteral("except: pass"));
+
+    const QJsonObject literal = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("except:")},
+                                                  {QStringLiteral("multiline"), true}});
+    EXPECT_EQ(literal.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+    EXPECT_TRUE(literal.value(QStringLiteral("hint")).toString().contains(QStringLiteral("match_wrapped")));
+}
+
 TEST(McpWorkspaceSearch, Ants6207LookaroundRuns) {
     QTemporaryDir tmp;
     const QString root = hiddenFixture(tmp);

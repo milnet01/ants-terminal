@@ -454,7 +454,19 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                            "would change what a regex means"));
         e["hint"] = QStringLiteral(
             "drop `regex:true`, or write the wrap into the pattern yourself "
-            "(e.g. `\\s+` between words with `--multiline` semantics).");
+            "(`\\s+` between words) and pass `multiline:true`.");
+        return QJsonDocument(e);
+    }
+    // ANTS-4851 — the code-shaped twin of match_wrapped: the caller writes the
+    // line break into their own regex, so nothing is re-flowed. Regex only,
+    // since a literal has no way to name the break.
+    const bool multiline = req.value(QStringLiteral("multiline")).toBool(false);
+    if (multiline && !isRegex) {
+        QJsonObject e = wsErr("bad_args",
+            QStringLiteral("workspace-search: \"multiline\" applies to a regex"));
+        e["hint"] = QStringLiteral(
+            "pass `regex:true`, or `match_wrapped:true` for literal text that "
+            "wraps across lines.");
         return QJsonDocument(e);
     }
     // The pattern handed to rg: the literal itself, or — under
@@ -600,7 +612,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     else if (caseMode == QLatin1String("sensitive"))   argv << QStringLiteral("--case-sensitive");
     // ANTS-4547 — the wrapped form IS a regex (WrapMatch::toRegex), and it
     // must be allowed to cross a line boundary, which is rg's --multiline.
-    if (matchWrapped) argv << QStringLiteral("--multiline");
+    if (matchWrapped || multiline) argv << QStringLiteral("--multiline");
     else if (!isRegex) argv << QStringLiteral("--fixed-strings");
     // ANTS-6207 — look-around and backreferences need rg's PCRE2 engine.
     static const QRegularExpression needsPcre2(QStringLiteral(R"(\(\?<?[=!]|\\[1-9])"));
@@ -809,7 +821,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // so fold it the same way the match itself was folded. `line` still
         // reports where the span STARTS, which is the question the caller
         // asked.
-        if (matchWrapped) text = text.simplified();
+        if (matchWrapped || multiline) text = text.simplified();
 
         QJsonObject m;
         m["file"] = path;
@@ -879,6 +891,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                 "this pattern needs ripgrep's PCRE2 engine, for look-around or "
                 "backreferences; if this ripgrep has none, rewrite the pattern "
                 "without them");
+        // ANTS-4851 — rg's own remedy names its flag, not this verb's argument.
+        else if (stderrTail.contains("--multiline"))
+            o["hint"] = QStringLiteral(
+                "this regex crosses a line break: pass `multiline:true`, which "
+                "is what ripgrep's `--multiline` above means on this verb");
         return QJsonDocument(o);
     }
     // A REAL hard kill only: a run stopped at the output ceiling (ANTS-5052)
