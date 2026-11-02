@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6354 -->
+<!-- ants-roadmap-id-high-water: ANTS=6355 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89433,6 +89433,13 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Asking which background jobs exist took minutes and printed thousands of old lines; it now answers at once with the running jobs and the newest finished ones.
   Kind: fix.
   Source: peer-session claude-config CFG-0885, message 1149, 2026-11-02.
+  Lanes: packaging.
+
+- 📋 [ANTS-6355] **Running cc_job_bundle's test by hand from the repo root can leave `.local/state/gh/device-id` there, and the push gate then refuses.**
+  Seen 2026-11-02 at 12:29: one stray file during a hand run of a copy of test_cc_job_bundle.sh from the repo root. The same run printed `/home/ants/.bashrc: line 15: /.cargo/env`, so a shell started with HOME empty and read .bashrc. Likely cause, not proved: `gh`, reached from .bashrc, wrote its state relative to the current folder. The ctest run left nothing in the repo. Check by running it from a scratch folder with HOME unset, and find which step starts that shell.
+  **Layman:** A test run by hand can leave a stray file in the project, which then blocks the next push until someone removes it.
+  Kind: fix.
+  Source: in-session-2026-11-02, hit while working ANTS-6354.
   Lanes: packaging.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
