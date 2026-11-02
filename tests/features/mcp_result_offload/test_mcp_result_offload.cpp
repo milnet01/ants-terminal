@@ -68,6 +68,12 @@ TEST_F(McpResultOffload, Inv1EligibilityAndRequestResolution) {
                           "read_region", "workspace_search", "codebase_index",
                           "docs_index", "find_sources", "roadmap_query"})
         EXPECT_TRUE(mcp::isOffloadEligible(QString::fromUtf8(t))) << t;
+    // ANTS-6351 / ANTS-5292 — read verbs measured over the threshold on this
+    // tree, the largest at 1.76 MB, with no handle to hand back.
+    for (const char *t : {"source_scrapes", "comment_claims", "doc_lint",
+                          "doc_symbols", "doc_integrity", "duplicate_blocks",
+                          "trace", "find_caller", "subsystem"})
+        EXPECT_TRUE(mcp::isOffloadEligible(QString::fromUtf8(t))) << t;
     for (const char *t : {"apply_edits", "roadmap_log", "get_session_info",
                           "token_usage", "tool_info", "read_spill"})
         EXPECT_FALSE(mcp::isOffloadEligible(QString::fromUtf8(t))) << t;

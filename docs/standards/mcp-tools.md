@@ -38,6 +38,7 @@ what it restates, which is what ANTS-4680 removed.
 - **Response wrap (ANTS-1294)**, **raw reads (ANTS-2218)** — step 5.
 - **A verb reporting ZERO must say what it looked at (ANTS-4374)** —
   step 5a.
+- **A reply that grows with the project (ANTS-5292)** — step 5b.
 - **Refusal codes** — step 6; the taxonomy itself is
   [mcp-error-codes.md](mcp-error-codes.md).
 - **Writer/reader format parity (ANTS-2042 / ANTS-4134)** — step 6a.
@@ -247,6 +248,23 @@ place when it saves a Claude session real tokens or round-trips
    independently from three directions in one session; the instances are
    ANTS-4366, ANTS-4370, ANTS-4371, ANTS-4373, and the refusal side of
    ANTS-4350 / ANTS-4368 / ANTS-4387.
+
+   **5b. A read verb whose reply grows with the project must have an answer
+   when it gets too big (ANTS-5292).** List it in `mcp::isOffloadEligible`, so
+   a large reply becomes a handle and cannot overflow the client. Nothing
+   checks that a new verb did this.
+
+   A handle only keeps the session alive, so then shape the default for the
+   question the verb answers:
+
+   - **A question about how many:** give an aggregate mode, not rows to count.
+   - **A review surface:** emit only the rows that need a decision, and state
+     how many matched.
+   - **Anything else:** rows with `limit`, stating the total.
+
+   `fields=` works only when the big field is not the answer, and a larger cap
+   is not an answer. The cases are ANTS-5275, ANTS-5277, ANTS-5285 and
+   ANTS-6351.
 
 6. **Use the canonical refusal shape.** Every failure is
    `{ok:false, error:"<human readable>", code:"<taxonomy code>"}` with

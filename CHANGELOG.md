@@ -29,6 +29,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **Nine more read verbs hand back a preview and a handle when their reply is large** (ANTS-6351)
+  `source_scrapes`, `comment_claims`, `doc_lint`, `doc_symbols`, `doc_integrity`, `duplicate_blocks`, `trace`, `find_caller` and `subsystem` now spill like other read verbs, so a large reply stays readable through `read_spill`.
+
 - **`workspace_search` names the nearest folders when `lane` does not exist** (ANTS-4855)
 
 - **`feedback_log` `assign_id` names the closest headings when a heading matches no finding** (ANTS-4983)

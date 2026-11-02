@@ -82132,7 +82132,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-finbreak-65, in-session-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5292] **Give the surface one answer for a reply whose oversized field is the one the caller wants.**
+- ✅ [ANTS-5292] **Give the surface one answer for a reply whose oversized field is the one the caller wants.**
   THE GENERALISATION, filed because two instances are and it is not.
   ANTS-5275 (roadmap_query's documented startup survey spills) and
   ANTS-5277 (convert's dry-run table is unreadable at real scale) are
@@ -82192,6 +82192,12 @@ are closed inline in the feedback files rather than filed here.
   read_spill was 30% of all reply bytes (5 calls, ~55 KB each), the
   largest share of any verb. Every spill a default avoids removes both
   the offload and the read-back.
+  Decided 2026-11-02: one convention. docs/standards/mcp-tools.md step
+  5b states it. Its floor is offload eligibility, which nine more read
+  verbs gained (measured with defaults on this tree: doc_symbols 1.76
+  MB, trace 407 KB, doc_lint 214 KB, comment_claims 124 KB). ANTS-5275,
+  5277 and 5285 had already fixed their own verbs. Not measured: read
+  verbs outside the fifteen sampled.
   **Layman:** When a tool's answer is too big it hands back a file reference instead. That works when the bulky part is not what you asked for — but when it IS what you asked for, the usual remedy makes things worse, and each tool currently solves that alone.
   Kind: enhancement.
   Source: peer-session-claude-40, in-session-2026-09-21.
@@ -89356,8 +89362,12 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-11-02, found while fixing ANTS-6348.
   Lanes: mcp.
 
-- 📋 [ANTS-6351] **source_scrapes overflows the client's reply limit on a widely scraped file.**
+- ✅ [ANTS-6351] **source_scrapes overflows the client's reply limit on a widely scraped file.**
   Measured 2026-11-02: source_scrapes on src/remotecontrol_state.cpp, with default arguments, returned 197,078 characters on one line, and the client refused it. The verb's default limit is 500 rows. A cheap first answer would be the reading tests' names only, with anchors on request.
+  Shipped 2026-11-02. The cause was that source_scrapes was not
+  offload-eligible. The reply now becomes a handle;
+  `fields:["readers","scanned"]` is the cheap names-first call, so no
+  new argument was added.
   **Layman:** A tool that lists which tests read a source file can answer with far too much text for the session to read.
   Kind: fix.
   Source: in-session-2026-11-02, hit while checking write-code's scrape step for ANTS-6349.

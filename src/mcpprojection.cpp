@@ -172,7 +172,18 @@ bool isOffloadEligible(const QString &toolName) {
         || toolName == QStringLiteral("changelog_query")   // ANTS-3533
         // ANTS-2093 — project_query: a large snippet result spills like any
         // other read body (INV-9), re-read verbatim via read_spill.
-        || toolName == QStringLiteral("project_query");
+        || toolName == QStringLiteral("project_query")
+        // ANTS-6351 / ANTS-5292 — replies that grow with the project, each
+        // measured over the threshold. docs/standards/mcp-tools.md step 5b.
+        || toolName == QStringLiteral("source_scrapes")
+        || toolName == QStringLiteral("comment_claims")
+        || toolName == QStringLiteral("doc_lint")
+        || toolName == QStringLiteral("doc_symbols")
+        || toolName == QStringLiteral("doc_integrity")
+        || toolName == QStringLiteral("duplicate_blocks")
+        || toolName == QStringLiteral("trace")
+        || toolName == QStringLiteral("find_caller")
+        || toolName == QStringLiteral("subsystem");
 }
 
 // ANTS-2218 — read verbs that honour `raw:true` (see header). The content
