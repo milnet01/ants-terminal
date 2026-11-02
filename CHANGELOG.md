@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`session_orient` names the in-progress item wherever it sits on the roadmap, with its kind and lanes** (ANTS-6349)
+
 - **`workspace_search` suggests `regex:true` when a literal pattern with an escape such as `\.` finds nothing** (ANTS-6346)
 
 - **`task_priors` scores every roadmap card, and ranks named paths and rare words above common ones** (ANTS-5801)

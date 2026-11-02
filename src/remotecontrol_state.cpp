@@ -1142,43 +1142,39 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     // (1) active_bullet — first 🚧 in document order, else first 📋.
     // INV-7 delegation: pure composer over cmdRoadmapQuery; INV-8
     // omit-on-empty / non-ok.
+    // ANTS-6349 — one query per status: a reply is cut to a byte budget
+    // (ANTS-5651), so a 🚧 can sit past the first page of status:active.
     {
-        QJsonObject rqReq;
-        rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
-        rqReq[QStringLiteral("status")]     = QStringLiteral("active");
-        const QJsonDocument rqDoc = cmdRoadmapQuery(rqReq);
-        const QJsonObject     rqObj = rqDoc.object();
-        if (rqObj.value(QStringLiteral("ok")).toBool(false)) {
-            const QJsonArray bullets =
-                rqObj.value(QStringLiteral("bullets")).toArray();
-            QJsonObject pick;
-            for (const QJsonValue &v : bullets) {
-                const QJsonObject b = v.toObject();
-                if (b.value(QStringLiteral("status")).toString() ==
-                    QStringLiteral("🚧")) {
-                    pick = b;
-                    break;
-                }
-            }
-            if (pick.isEmpty() && !bullets.isEmpty()) {
-                pick = bullets.first().toObject();
-            }
-            if (!pick.isEmpty()) {
-                QJsonObject ab;
-                ab[QStringLiteral("id")] =
-                    pick.value(QStringLiteral("id")).toString();
-                ab[QStringLiteral("headline")] =
-                    pick.value(QStringLiteral("headline_oneline")).toString();
-                ab[QStringLiteral("section_slug")] =
-                    pick.value(QStringLiteral("section_slug")).toString();
-                ab[QStringLiteral("kind")] =
-                    pick.value(QStringLiteral("kind")).toString();
-                ab[QStringLiteral("lanes")] =
-                    pick.value(QStringLiteral("lanes")).toArray();
-                ab[QStringLiteral("status")] =
-                    pick.value(QStringLiteral("status")).toString();
-                result[QStringLiteral("active_bullet")] = ab;
-            }
+        const auto firstWithStatus = [&](const QString &status) {
+            QJsonObject rqReq;
+            rqReq[QStringLiteral("caller_cwd")] = rootCanonical;
+            rqReq[QStringLiteral("status")]     = status;
+            rqReq[QStringLiteral("limit")]      = 1;
+            rqReq[QStringLiteral("bullet_fields")] = QJsonArray{
+                QStringLiteral("id"), QStringLiteral("headline_oneline"),
+                QStringLiteral("section_slug"), QStringLiteral("kind"),
+                QStringLiteral("lanes"), QStringLiteral("status")};
+            const QJsonObject rqObj = cmdRoadmapQuery(rqReq).object();
+            if (!rqObj.value(QStringLiteral("ok")).toBool(false)) return QJsonObject();
+            return rqObj.value(QStringLiteral("bullets")).toArray().at(0).toObject();
+        };
+        QJsonObject pick = firstWithStatus(QStringLiteral("in-progress"));
+        if (pick.isEmpty()) pick = firstWithStatus(QStringLiteral("active"));
+        if (!pick.isEmpty()) {
+            QJsonObject ab;
+            ab[QStringLiteral("id")] =
+                pick.value(QStringLiteral("id")).toString();
+            ab[QStringLiteral("headline")] =
+                pick.value(QStringLiteral("headline_oneline")).toString();
+            ab[QStringLiteral("section_slug")] =
+                pick.value(QStringLiteral("section_slug")).toString();
+            ab[QStringLiteral("kind")] =
+                pick.value(QStringLiteral("kind")).toString();
+            ab[QStringLiteral("lanes")] =
+                pick.value(QStringLiteral("lanes")).toArray();
+            ab[QStringLiteral("status")] =
+                pick.value(QStringLiteral("status")).toString();
+            result[QStringLiteral("active_bullet")] = ab;
         }
     }
 

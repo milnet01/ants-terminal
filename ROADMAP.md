@@ -89307,8 +89307,12 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-11-02, found while fixing ANTS-5806.
   Lanes: mcp.
 
-- 📋 [ANTS-6349] **session_orient's active_bullet misses an in-progress item past roadmap_query's first page.**
+- ✅ [ANTS-6349] **session_orient's active_bullet misses an in-progress item past roadmap_query's first page.**
   Measured 2026-11-02: status active returned 65 of 906 rows, none in progress, while ANTS-4659 and ANTS-5734 are in progress, so active_bullet named ANTS-3730. Same cause as ANTS-5801. Likely fix: ask status in-progress first, or use the m_roadmapQueryWhole read.
+  Shipped 2026-11-02: current_state asks for the first in-progress row,
+  then the first active row, and names kind and lanes, which the default
+  row projection had dropped. Spec amended: docs/specs/ANTS-1569.md.
+  Test: SessionOrientBundle.ActiveBulletFindsInProgressPastTheFirstPage.
   **Layman:** The start-of-session summary can name the wrong current task, because it only looks at the first part of the to-do list.
   Kind: fix.
   Source: in-session-2026-11-02, found while fixing ANTS-5801.

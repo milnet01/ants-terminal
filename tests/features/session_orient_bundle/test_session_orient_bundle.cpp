@@ -4,7 +4,17 @@
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
 
+#include "remotecontrol.h"
+#include "rootprovider.h"
+
 #include <gtest/gtest.h>
+
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -24,7 +34,52 @@ bool contains(const std::string &hay, const std::string &needle) {
     return hay.find(needle) != std::string::npos;
 }
 
+// current_state's active_bullet over a roadmap holding `cards` after enough
+// planned cards to overflow one roadmap_query page.
+QJsonObject activeBulletAfterAFullPage(const QByteArray &cards) {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return {};
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QFile f(root + QStringLiteral("/ROADMAP.md"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return {};
+    QByteArray roadmap = "# Roadmap\n\n## Work\n\n";
+    const QByteArray longHeadline(190, 'x');
+    for (int i = 1; i <= 1500; ++i)
+        roadmap += "- 📋 [ANTS-" + QByteArray::number(i) + "] **" + longHeadline + ".**\n";
+    roadmap += cards;
+    f.write(roadmap);
+    f.close();
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    ants::ServerCwdRootProvider roots;
+    RemoteControl rc(nullptr, nullptr, &roots);
+    const QJsonObject out = rc.cmdCurrentState(req).object();
+    EXPECT_TRUE(out.contains(QStringLiteral("active_bullet")))
+        << QJsonDocument(out).toJson().toStdString();
+    return out.value(QStringLiteral("active_bullet")).toObject();
+}
+
 }  // namespace
+
+// ANTS-6349 — the in-progress item is found wherever it sits, not only on the
+// first page, and carries the kind and lanes ANTS-1569 promises.
+TEST(SessionOrientBundle, ActiveBulletFindsInProgressPastTheFirstPage) {
+    const QJsonObject ab = activeBulletAfterAFullPage(
+        "- 🚧 [ANTS-5000] **The item being worked on.**\n"
+        "  Kind: fix.\n"
+        "  Lanes: mcp.\n");
+    EXPECT_EQ(ab.value(QStringLiteral("id")).toString().toStdString(), "ANTS-5000");
+    EXPECT_EQ(ab.value(QStringLiteral("kind")).toString().toStdString(), "fix");
+    EXPECT_EQ(ab.value(QStringLiteral("lanes")).toArray().size(), 1);
+}
+
+// ANTS-6349 — with nothing in progress, the first planned item is the pick.
+TEST(SessionOrientBundle, ActiveBulletFallsBackToFirstPlanned) {
+    const QJsonObject ab = activeBulletAfterAFullPage(QByteArray());
+    EXPECT_EQ(ab.value(QStringLiteral("id")).toString().toStdString(), "ANTS-1");
+    EXPECT_EQ(ab.value(QStringLiteral("status")).toString().toStdString(), "📋");
+}
 
 // INV-1 — envelope carries the three composed-verb keys.
 TEST(session_orient_bundle, Inv1EnvelopeShape) {
