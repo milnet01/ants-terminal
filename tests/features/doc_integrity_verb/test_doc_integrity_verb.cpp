@@ -238,8 +238,8 @@ TEST(DocIntegrityVerb, EnumerateManyUnion) {
                   root, {"docs/a", "docs/a/one.md"}, "docs"),
               (QStringList{"docs/a/one.md", "docs/a/sub/two.md"}));
 
-    // A non-existent in-root entry contributes nothing and does not refuse
-    // (INV-15's rule, per entry).
+    // A non-existent in-root entry contributes nothing to the enumeration; the
+    // verb refuses it before this runs (ANTS-5554).
     EXPECT_EQ(RemoteControl::docIntegrityEnumerateMany(
                   root, {"docs/b", "docs/nope"}, "docs"),
               (QStringList{"docs/b/three.md"}));

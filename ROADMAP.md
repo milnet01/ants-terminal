@@ -87044,13 +87044,19 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5554] **spec_lint on a path that does not exist returns ok:true with no findings instead of refusing.**
+- ✅ [ANTS-5554] **spec_lint on a path that does not exist returns ok:true with no findings instead of refusing.**
   Measured 2026-09-28 through the live verb: spec_lint with path
   "docs/specs/no-such-file.md" returned ok:true and findings:[], while a
   path escaping the root refuses bad_path. A push gate calling it
   through ANTS-5506's --call with --exit-code would exit 0 on a typo.
   Refuse a path that resolves to nothing (not_found), as doc_lint and
   the read verbs should be checked for the same shape.
+  Shipped 2026-11-02. spec_lint, doc_lint, doc_integrity (path and any
+  paths entry), doc_symbols, doc_dedup and doc_citations refuse
+  not_found for a path naming nothing. doc_lint with staged:true is
+  exempt: a staged-only path is absent from disk. A folder holding no
+  document still answers ok:true with empty results. ANTS-3601 INV-15
+  and the doc_citations INV-18 and INV-47 clauses are amended.
   **Layman:** A mistyped file name makes the spec checker report "all clean", so a push check built on it would pass without checking anything.
   Kind: fix.
   Source: in-session-2026-09-28 (review-contract of ANTS-5506, loop 1).

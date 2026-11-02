@@ -106,6 +106,17 @@ QString RemoteControl::docSetDigest(const QString &rootCanonical,
 // PathValidation; an optional `kinds` filter narrows findings + counts; the
 // ETag-304 short-circuit is applied centrally (isEtagSupportedTool). Findings
 // come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601.md.
+// ANTS-5554 — a checker that scanned nothing because the path names nothing
+// must not answer ok:true: a push gate would read a typo as a clean run.
+static QJsonObject docPathNotFound(const QString &verb, const QString &rawPath) {
+    QJsonObject o;
+    o[QStringLiteral("ok")]    = false;
+    o[QStringLiteral("code")]  = QStringLiteral("not_found");
+    o[QStringLiteral("error")] =
+        QStringLiteral("%1: \"%2\" does not exist").arg(verb, rawPath);
+    return o;
+}
+
 QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
     // ANTS-3719 — `~global` / `~claude-config` routes to ~/.claude, the same
     // sentinel workspace_search and file_outline already take (ANTS-1390).
@@ -134,6 +145,8 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
             rawPath, rootCanonical, QStringLiteral("doc_integrity"),
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+        if (check.resolved.isEmpty())
+            return QJsonDocument(docPathNotFound(QStringLiteral("doc_integrity"), rawPath));
     }
     // ANTS-4106 — `paths:[…]`, the multi-file form file_outline already has.
     // /apply-fixes step 5 says to pass the files a run edited, precisely to
@@ -156,6 +169,8 @@ QJsonDocument RemoteControl::cmdDocIntegrity(const QJsonObject &req) {
             p, rootCanonical, QStringLiteral("doc_integrity"),
             QStringLiteral("paths"));
         if (check.bad) return QJsonDocument(check.err);
+        if (check.resolved.isEmpty())
+            return QJsonDocument(docPathNotFound(QStringLiteral("doc_integrity"), p));
     }
 
     const QString docsDir =
@@ -239,7 +254,7 @@ QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
     const QFileInfo fi(abs);
     if (fi.isDir())  return collectMd(abs);           // dir → recursive *.md
     if (fi.isFile()) return {rootDir.relativeFilePath(abs)};  // file → one doc
-    return {};  // non-existent in-root path → INV-15 (empty checked_docs)
+    return {};  // non-existent in-root path; the verbs refuse it first (ANTS-5554)
 }
 
 // ANTS-4106 — pure: several validated paths → their de-duplicated, sorted
@@ -340,6 +355,8 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
             rawPath, rootCanonical, QStringLiteral("doc_symbols"),
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+        if (check.resolved.isEmpty())
+            return QJsonDocument(docPathNotFound(QStringLiteral("doc_symbols"), rawPath));
     }
     const QString docsDir =
         ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
@@ -920,6 +937,8 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
             rawPath, rootCanonical, QStringLiteral("spec_lint"),
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+        if (check.resolved.isEmpty())
+            return QJsonDocument(docPathNotFound(QStringLiteral("spec_lint"), rawPath));
     }
     const QString specsDir = ProjectSettings::specsDirOf(rootCanonical);
     bool walkCut = false;
@@ -1396,6 +1415,8 @@ QJsonDocument RemoteControl::cmdDocDedup(const QJsonObject &req) {
             rawPath, rootCanonical, QStringLiteral("doc_dedup"),
             QStringLiteral("path"));
         if (check.bad) return QJsonDocument(check.err);  // root-escape → bad_path
+        if (check.resolved.isEmpty())
+            return QJsonDocument(docPathNotFound(QStringLiteral("doc_dedup"), rawPath));
     }
     const QString docsDir =
         ProjectSettings::load(rootCanonical).docsDir.value_or(QStringLiteral("docs"));
@@ -1643,9 +1664,8 @@ QJsonObject RemoteControl::docCitationsValidate(const QString &rootCanonical,
         return refuse(QStringLiteral("bad_args"),
                       QStringLiteral("path names a directory; this verb reads one file at a "
                                      "time (a corpus sweep is ANTS-3643)"));
-    // A non-existent in-root path is NOT a refusal: it answers ok:true with an
-    // empty result, so a typo'd path gets the same answer doc_integrity gives.
-    if (!fi.exists()) return {};
+    if (!fi.exists())   // ANTS-5554
+        return docPathNotFound(QStringLiteral("doc_citations"), rawPath);
     if (!fi.isReadable() || fi.size() > DocCitations::Options{}.maxDocBytes)
         return refuse(QStringLiteral("read_failed"),
                       QStringLiteral("doc is unreadable or too large to hold"));
@@ -2237,6 +2257,8 @@ QJsonDocument RemoteControl::cmdDocLint(const QJsonObject &req) {
                                                   &opts.walk.textByRel);
         if (!err.isEmpty()) return QJsonDocument(err);
     } else {
+        if (!rawPath.isEmpty() && !QFileInfo::exists(QDir(rootCanonical).filePath(rawPath)))
+            return QJsonDocument(docPathNotFound(QStringLiteral("doc_lint"), rawPath));
         relDocs = docIntegrityEnumerate(rootCanonical, rawPath, docsDir, &walkCut);
     }
 

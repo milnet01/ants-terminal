@@ -16,9 +16,10 @@ same reason.
 
 ## Contract
 
-- **INV-18** — `docCitationsValidate` produces exactly five refusals: empty
+- **INV-18** — `docCitationsValidate` produces exactly six refusals: empty
   `rootCanonical` → `bad_path`; a root-escaping `path` → `bad_path`; a directory
-  → `bad_args`; absent or empty `path` → `missing_field`; an existing `path` that
+  → `bad_args`; absent or empty `path` → `missing_field`; a `path` naming nothing
+  → `not_found` (ANTS-5554); an existing `path` that
   `QFileInfo` alone rules out → `read_failed`. It returns an empty envelope for
   input it accepts, and never decodes the doc — undecodable-as-UTF-8 is the
   engine's refusal (`doc_citations`' INV-47), because validating it here would

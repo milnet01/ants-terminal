@@ -6908,7 +6908,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "granted), list_count (a lead-in counting fewer items than its "
                     "list holds). Fence-aware. path=<file|dir> or paths=[...] scopes "
                     "the run (default: the docs dir); kinds=[...] filters. "
-                    "Suppressed cases are counted, not reported. Refusal: bad_path. "
+                    "Suppressed cases are counted, not reported. Refusals: bad_path, not_found. "
                     "caller_cwd required, or \"~global\" with an explicit path.");
                 docInt["detail"] = QStringLiteral(
                     "Deterministic markdown doc-integrity check (no LLM). Reports "

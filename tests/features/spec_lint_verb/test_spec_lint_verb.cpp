@@ -109,8 +109,8 @@ TEST(SpecLintVerb, Inv4CommandClauseIsACandidate) {
 }
 
 // INV-7 — the verb-contract minimum: caller_cwd Required; a root-escaping
-// `path` refuses bad_path; a well-formed non-existent in-root `path` is ok:true
-// with empty findings (ANTS-3601 INV-15's shape).
+// `path` refuses bad_path; a run with nothing to scan is ok:true with empty
+// findings. A non-existent `path` refuses before that (ANTS-5554 test below).
 TEST(SpecLintVerb, Inv7RefusalMinimums) {
     // (1) caller_cwd Required — at the call site AND in the static table
     // registerToolProvider asserts against.
@@ -1307,4 +1307,56 @@ TEST(SpecLintVerb, Ants5511LaymanReachesTheVerb) {
     EXPECT_NE(ants_test::slurpRemoteControl().find("opts.spec.laymanRequired"),
               std::string::npos)
         << "doc_lint builds its own options";
+}
+
+// ANTS-5554 — a mistyped path must never read as a clean run: every document
+// checker that takes a path refuses one naming nothing, and still checks one
+// that exists. doc_lint's staged form is exempt: a staged-only path is absent
+// from disk by design.
+TEST(SpecLintVerb, Ants5554MissingPathRefusesNotFound) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("docs")));
+    ASSERT_TRUE(writeText(tmp.path() + QStringLiteral("/docs/real.md"),
+                          QStringLiteral("# Real\n\nText.\n")));
+    const QString missing = QStringLiteral("docs/no-such-file.md");
+    const QString real = QStringLiteral("docs/real.md");
+    const auto args = [&](const QString &path) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("path")] = path;
+        return req;
+    };
+    RemoteControl rc(nullptr);
+    const struct {
+        const char *verb;
+        QJsonDocument (RemoteControl::*call)(const QJsonObject &);
+    } verbs[] = {
+        {"spec_lint", &RemoteControl::cmdSpecLint},
+        {"doc_lint", &RemoteControl::cmdDocLint},
+        {"doc_integrity", &RemoteControl::cmdDocIntegrity},
+        {"doc_symbols", &RemoteControl::cmdDocSymbols},
+        {"doc_dedup", &RemoteControl::cmdDocDedup},
+    };
+    for (const auto &v : verbs) {
+        expectRefusal((rc.*v.call)(args(missing)).object(), "not_found", v.verb);
+        const QJsonObject ok = (rc.*v.call)(args(real)).object();
+        EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool()) << v.verb << ": " << dump(ok).toStdString();
+    }
+
+    expectRefusal(rc.cmdDocCitations(args(missing)).object(), "not_found", "doc_citations");
+    EXPECT_TRUE(rc.cmdDocCitations(args(real)).object().value(QStringLiteral("ok")).toBool());
+
+    // One missing entry in doc_integrity's list refuses too, and names it.
+    QJsonObject many;
+    many[QStringLiteral("caller_cwd")] = tmp.path();
+    many[QStringLiteral("paths")] = QJsonArray{real, missing};
+    const QJsonObject listed = rc.cmdDocIntegrity(many).object();
+    expectRefusal(listed, "not_found", "doc_integrity paths");
+    EXPECT_TRUE(listed.value(QStringLiteral("error")).toString().contains(missing));
+
+    QJsonObject stagedReq = args(missing);
+    stagedReq[QStringLiteral("staged")] = true;
+    EXPECT_NE(rc.cmdDocLint(stagedReq).object().value(QStringLiteral("code")).toString(),
+              QStringLiteral("not_found"));
 }

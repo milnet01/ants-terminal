@@ -537,11 +537,10 @@ server-controllable beyond this per-tool hint.
   Complements `spec_query` (the deep per-spec reader) — `docs_index` is the
   shallow cross-doc discovery layer over all doc types (ANTS-2139).
 
-- **`doc_integrity`** — a `path` that does not exist is **not a refusal**:
-  enumeration returns nothing and the envelope is `ok:true` with empty
-  `findings[]` (INV-15), which is byte-indistinguishable from a clean run.
-  Only a root-escaping path refuses `bad_path`. So a typo'd path reads as
-  a pass — check `checked_docs[]` before believing a zero. A directory
+- **`doc_integrity`** — a `path` or `paths` entry that does not exist
+  refuses `not_found`, as `spec_lint`, `doc_lint`, `doc_symbols`,
+  `doc_dedup` and `doc_citations` do for `path` (ANTS-5554). A root-escaping path refuses
+  `bad_path`. A directory
   walks recursively for `*.md` alone, and **docs past
   `Options::maxDocsPerRun` are skipped silently**: no `truncated` flag is
   emitted, so again a short `checked_docs[]` is the only signal (INV-14).

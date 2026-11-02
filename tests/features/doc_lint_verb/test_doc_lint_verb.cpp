@@ -172,10 +172,9 @@ TEST(DocLintVerb, Inv8VerbContractMinimums) {
     EXPECT_LT(validate, enumerate)
         << "the path must be validated before the walk, not after it";
 
-    // (3) THE ARM THAT IS NOT A REFUSAL. A well-formed non-existent in-root path
-    // yields ok:true with an empty checked_docs, because docIntegrityEnumerate
-    // returns {} for one. An implementer who reads "the refusal minimums" and
-    // builds three refusals breaks a contract the whole family shares.
+    // (3) THE ARM THAT IS NOT A REFUSAL. Nothing to scan, as in a folder holding
+    // no document, is ok:true with an empty checked_docs. A non-existent path
+    // refuses before this (ANTS-5554, test in spec_lint_verb).
     const QJsonObject empty = RemoteControl::docLintBuildResponse({}, 500);
     EXPECT_TRUE(empty.value(QStringLiteral("ok")).toBool());
     EXPECT_TRUE(empty.value(QStringLiteral("findings")).toArray().isEmpty());

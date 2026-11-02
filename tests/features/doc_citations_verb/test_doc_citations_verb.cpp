@@ -72,7 +72,7 @@ QString authoredString(const QString &region, const QString &key) {
 
 }  // namespace
 
-// INV-18 — exactly five refusals, and an empty envelope for accepted input.
+// INV-18 — exactly six refusals, and an empty envelope for accepted input.
 TEST(DocCitationsVerb, Inv18ValidateRefusalSet) {
     expect_reset();
     QTemporaryDir tmp;
@@ -110,10 +110,11 @@ TEST(DocCitationsVerb, Inv18ValidateRefusalSet) {
     }
 
     expect(call(root, good).isEmpty(), "INV-18: accepted input returns an empty envelope");
-    // A well-formed in-root path that does not exist is accepted here and
-    // answered ok:true by the engine — the companion-verb convergence.
-    expect(call(root, {{QStringLiteral("path"), QStringLiteral("docs/nope.md")}}).isEmpty(),
-           "INV-18: a non-existent in-root path is not a refusal");
+    // ANTS-5554 — a typo must not read as a clean run.
+    expect(call(root, {{QStringLiteral("path"), QStringLiteral("docs/nope.md")}})
+                   .value(QStringLiteral("code")).toString()
+               == QStringLiteral("not_found"),
+           "INV-18: a non-existent in-root path refuses not_found");
     EXPECT_EQ(0, expect_failures());
 }
 

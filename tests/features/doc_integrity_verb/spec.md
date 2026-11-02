@@ -46,8 +46,8 @@ because the pure helpers are the sharper place to pin these two invariants.
   of several files and/or directories in one run, and wins over `path` when
   both are sent. Overlapping entries (a dir and a file inside it) collapse to
   one doc, so no document is counted into two findings; a non-existent in-root
-  entry contributes nothing without refusing (INV-15's rule, applied per
-  entry); an empty list yields empty, keeping "no paths given" distinguishable
+  entry contributes nothing to the enumeration, and the verb refuses it
+  `not_found` first (ANTS-5554); an empty list yields empty, keeping "no paths given" distinguishable
   from "paths matched nothing" at the call site. `docs_digest` and the ETag
   need no change — they already key off the walked set, which is now the
   union. *Test:* `EnumerateManyUnion` over

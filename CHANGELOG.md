@@ -74,6 +74,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The document checkers (`spec_lint`, `doc_lint`, `doc_integrity`, `doc_symbols`, `doc_dedup`, `doc_citations`) refuse a path that does not exist with `not_found`, so a mistyped name can no longer read as a clean run.** (ANTS-5554)
+
 - **The Roadmap window hides HTML comments and `---` rules on the Full roadmap tab, as Markdown does.** (ANTS-5727)
 
 - **file_outline and function_sizes read a Python script with no file extension from its shebang** (ANTS-6352)

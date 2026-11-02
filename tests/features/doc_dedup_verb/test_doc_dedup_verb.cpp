@@ -113,9 +113,8 @@ TEST(DocDedupVerb, Inv8RefusalMinimums) {
     EXPECT_LT(validate, enumerate)
         << "the path must be validated before the walk, not after it";
 
-    // (3) nothing to scan → ok:true with EMPTY arrays, not a refusal. This is
-    // the shape a well-formed non-existent in-root path produces, since
-    // docIntegrityEnumerate returns {} for one (ANTS-3601 INV-15).
+    // (3) nothing to scan → ok:true with EMPTY arrays, not a refusal: a docs
+    // folder holding no document. A non-existent path refuses (ANTS-5554).
     const QJsonObject empty = RemoteControl::docDedupBuildResponse({}, {});
     EXPECT_TRUE(empty.value(QStringLiteral("ok")).toBool());
     EXPECT_TRUE(empty.value(QStringLiteral("findings")).toArray().isEmpty());

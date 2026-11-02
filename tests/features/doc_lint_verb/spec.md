@@ -24,7 +24,7 @@ vocabulary provider `src/mainwindow.cpp` does.
 | Row | Invariant | Claim |
 |---|---|---|
 | `Inv2CheckFilterAndUnknownName` | INV-2 | `checks[]` narrows findings and `counts` together, and an unknown name is refused rather than read as "all". |
-| `Inv8VerbContractMinimums` | INV-8 | `caller_cwd` is Required at both sites; a supplied path is validated before the walk; a well-formed non-existent in-root path is `ok:true` with empty arrays, **not** a refusal. |
+| `Inv8VerbContractMinimums` | INV-8 | `caller_cwd` is Required at both sites; a supplied path is validated before the walk; a well-formed non-existent in-root path refuses `not_found` (ANTS-5554); nothing to scan is `ok:true` with empty arrays. |
 | `Inv11CapTruncatesAfterTheSort` | INV-11 | The page is a prefix of the uncapped run, the flag is set, and `counts` still describes the whole run. |
 | `Inv13EtagNeverSkipsAFix` | INV-13 | The schema carries no `etag_match`, and `isEtagSupportedTool` has no entry. |
 | `Inv26VersionTruthPrefersBumpFile` | INV-26 | `cmdDocLint` resolves `projectVersion` from `.claude/bump.json` before `CMakeLists.txt`: present, a document claim matching the CMake version but not the bump target produces a `version_drift` finding; absent, the same claim (now matching the CMake fallback) produces none. `version_unavailable` is false in both runs. |
