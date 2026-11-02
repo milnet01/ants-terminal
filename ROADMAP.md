@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6356 -->
+<!-- ants-roadmap-id-high-water: ANTS=6357 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -81937,7 +81937,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-games-hub-78, in-session-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5280] **read_regions has no catalog line, so the one-call-for-N-slices route is invisible.**
+- ✅ [ANTS-5280] **read_regions has no catalog line, so the one-call-for-N-slices route is invisible.**
   Reported by peer session games-hub-78, as the cause behind four
   unnecessary `Bash awk` calls.
 
@@ -81963,6 +81963,10 @@ are closed inline in the feedback files rather than filed here.
   The second is the stronger fix: it removes the need for discovery rather
   than improving it. Pairs with ANTS-5278's point that a nudge at the point
   of use beats a catalog read at session start.
+  The session-start line was already shipped by ANTS-4422. This added
+  the pointer to read_region's own description. symbols[] on read_region
+  was not built: it would be a second form of what read_regions already
+  does.
   **Layman:** A tool that reads several pieces of files at once is not listed where people look for tools, so they run several separate commands instead.
   Kind: doc.
   Source: peer-session-games-hub-78, in-session-2026-09-21.
@@ -84384,7 +84388,7 @@ rather than refiled.
   Source: user-request-2026-09-06.
   Lanes: docs, roadmap.
 
-- 📋 [ANTS-4998] **spec_lint raises no finding when a spec's invariants section parses to zero invariants.**
+- ✅ [ANTS-4998] **spec_lint raises no finding when a spec's invariants section parses to zero invariants.**
   Split from ANTS-4894 on 2026-09-10 (ANTS-4995). ANTS-4894 shipped
   the `invariants_found` count, which makes the zero visible. This is
   the stronger half it left open: a finding.
@@ -84394,6 +84398,8 @@ rather than refiled.
   recognised none. But a new finding kind changes what
   docs/specs/ANTS-3662.md promises, so it owes that amendment and its
   rule 14 gate before anyone builds it.
+  Amendment in docs/specs/ANTS-3662.md (INV-16). No review: rule 14
+  since 2026-10-31.
   **Layman:** A spec whose rules the checker could not read is still not flagged as a problem; only a count shows it.
   Kind: fix.
   Source: UT_Ants-feedback-2026-09-06.
@@ -84423,6 +84429,15 @@ rather than refiled.
   Kind: enhancement.
   Source: pressless-msg-803-2026-10-22.
   Lanes: spec-engines.
+
+- 📋 [ANTS-6357] **Five older specs write invariants in a form spec_lint and spec_query cannot read.**
+  `invariants_unparsed` fires on ANTS-1154, ANTS-1283, ANTS-1372, ANTS-1445 and
+  ANTS-1446. Rewrite each Invariants section in the bullet or table form, keeping
+  the ids. Done when `SpecLint.DISABLED_CorpusCalibration` reports none.
+  **Layman:** Five old design documents write their rules in a layout the checking tools skip, so nothing checks those rules.
+  Kind: doc-fix.
+  Source: ANTS-4998 corpus measurement, 2026-11-02.
+  Lanes: docs, specs.
 
 ### Ants MCP feedback from CC sessions — 2026-09-07 triage
 

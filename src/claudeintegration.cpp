@@ -7175,7 +7175,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "Check specs for structural defects: invariant_no_test, "
                     "invariant_id_gap, loop_row_no_outcome, test_coverage_gap, "
                     "test_coverage_unverifiable, command_test_no_expectation, "
-                    "header_*, filename_id_mismatch, duplicate_invariant and "
+                    "header_*, filename_id_mismatch, duplicate_invariant, "
+                    "invariants_unparsed and "
                     "missing_section (only when a format standard carries a "
                     "required-sections block). Read skipped[] and invariants_found: "
                     "a skipped check or zero invariants is silence, not a clean "
@@ -16820,7 +16821,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}].")},
                         {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
                         {QStringLiteral("file_outline"), QStringLiteral("Outline a file (header comment + symbols {line, kind, name, signature}) instead of a full Read; paths:[...] outlines several. caller_cwd required, or \"~global\". Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
-                        {QStringLiteral("read_region"), QStringLiteral("Return an exact slice of a file instead of a Read: a line range, a symbol's body, or a markdown section; exactly one. caller_cwd required, or \"~global\" for ~/.claude/. Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
+                        {QStringLiteral("read_region"), QStringLiteral("Return an exact slice of a file instead of a Read: a line range, a symbol's body, or a markdown section; exactly one. Several: read_regions. caller_cwd required, or \"~global\" for ~/.claude/. Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
                     };
                     // ANTS-5271 — the five largest schemas are deferred, but a
                     // session that loads one carries it to the end, and most

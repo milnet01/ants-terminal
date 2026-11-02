@@ -137,8 +137,8 @@ Listed only where behavior isn't obvious from the name.
 - `speclint` (Qt6::Core, `ants_core_lib`) — the greppable half of the
   spec-format contract, which `/cold-eyes` § 1e hand-rolls every pass:
   `invariant_no_test`, `invariant_id_gap`, `loop_row_no_outcome`,
-  `command_test_no_expectation` (a candidate — no subprocess is ever run) and
-  `missing_section`. Consumes `SpecParse::parseSpecBody` for what each
+  `command_test_no_expectation` (a candidate — no subprocess is ever run),
+  `invariants_unparsed` and `missing_section`. Consumes `SpecParse::parseSpecBody` for what each
   invariant says, but owns the id list itself via a fence-aware anchor scan
   confined to the Invariants section — the parser's table branch drops a row
   whose surface cell is empty, which is the very defect the check names.

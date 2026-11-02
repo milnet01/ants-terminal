@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`spec_lint` reports `invariants_unparsed` when a spec's invariants are in a form it cannot read** (ANTS-4998)
+
 - **`workspace_search` gains `multiline:true`, so a regex can match across line breaks, and its error on such a pattern names that argument** (ANTS-4851)
 
 - **session_message op:"outbox" lists the mail a project sent and shows which of it was acked** (ANTS-5255)
@@ -32,6 +34,8 @@ for security-relevant changes.
 - **workspace_search runs a regex with look-around or a backreference through ripgrep's PCRE2 engine** (ANTS-6207)
 
 ### Changed
+
+- **`read_region`'s description points to `read_regions` for reading several slices** (ANTS-5280)
 
 - **`invariant_check` keeps only the count of shorter-form mentions when no spec was scanned, and says how to read them** (ANTS-5270)
 

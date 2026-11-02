@@ -1194,6 +1194,24 @@ Result check(const QString &text, const QString &relPath,
     // envelope is otherwise identical to one that checked all of them.
     r.invariantsFound = allIds.size();
 
+    // ANTS-4998 — the section holds a line opening with an id, yet nothing was
+    // parsed, so the author wrote invariants in a form § 3.7 does not define.
+    // Opening a line is the test: a mere citation of another spec's INV-3 is a
+    // legitimate section that adds none.
+    if (allIds.isEmpty() && invStart >= 0) {
+        static const QRegularExpression unparsedRe(
+            QStringLiteral(R"(^[\s*_#>|-]*INV-[0-9])"));
+        for (int i = invStart; i < invEnd; ++i) {
+            if (fence[i] || !unparsedRe.match(lines[i]).hasMatch()) continue;
+            add(QStringLiteral("invariants_unparsed"), i + 1,
+                QStringLiteral("the Invariants section names invariants in a form "
+                               "the parser does not read, so no per-invariant "
+                               "check ran on this document. Use the bullet or "
+                               "table form in the spec format standard"));
+            break;
+        }
+    }
+
     // ANTS-4107 — the checks below walk the ID STRINGS; only the gap scan
     // reduces them to numbers. Rebuilding `INV-%1` from an int silently dropped
     // every sub-lettered invariant from every check, so one could ship with no

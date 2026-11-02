@@ -1516,6 +1516,35 @@ TEST(SpecLint, Ants4894ReportsZeroWhenNoInvariantFormIsRecognised) {
            "case below is what still needs to hold";
 }
 
+// ANTS-4998 — the count makes the zero visible; this makes it a finding. Only an
+// id OPENING a line counts: a section that merely cites another spec's INV-3, or
+// shows one in a fence, has written no invariant the parser could have missed.
+TEST(SpecLint, Ants4998UnparsedInvariantsAreAFinding) {
+    const SpecLint::Result unread = SpecLint::check(QStringLiteral(
+        "# A spec\n\n## 5. Invariants\n\n"
+        "**INV-1.** The thing holds.\n*Test:* `test_thing`\n\n"
+        "**INV-2.** The other thing holds.\n*Test:* `test_other`\n"),
+        QStringLiteral("s.md"));
+    EXPECT_EQ(unread.invariantsFound, 0);
+    ASSERT_EQ(countKind(unread, "invariants_unparsed"), 1) << "one per document";
+    for (const auto &f : unread.findings)
+        if (f.kind == QLatin1String("invariants_unparsed"))
+            EXPECT_EQ(f.line, 5) << "the first id the parser did not read";
+
+    EXPECT_EQ(countKind(SpecLint::check(QStringLiteral(
+        "# A spec\n\n## 5. Invariants\n\nThis spec adds none; see ANTS-1's INV-3.\n"),
+        QStringLiteral("s.md")), "invariants_unparsed"), 0) << "a citation is not an invariant";
+    EXPECT_EQ(countKind(SpecLint::check(QStringLiteral(
+        "# A spec\n\n## 5. Invariants\n\n```\n**INV-1.** An example.\n```\n"),
+        QStringLiteral("s.md")), "invariants_unparsed"), 0) << "a fence is not an invariant";
+    EXPECT_EQ(countKind(SpecLint::check(QStringLiteral(
+        "# A spec\n\n## 5. Notes\n\n**INV-1.** Not in the section.\n"),
+        QStringLiteral("s.md")), "invariants_unparsed"), 0) << "outside the section";
+    EXPECT_EQ(countKind(SpecLint::check(QStringLiteral(
+        "# A spec\n\n## 5. Invariants\n\n- **INV-1** — Holds. *Test:* `t`\n"),
+        QStringLiteral("s.md")), "invariants_unparsed"), 0) << "the parser read this one";
+}
+
 TEST(SpecLint, Ants4894CountsTheInvariantsItDoesRecognise) {
     // The same two claims in the § 3.7 bullet form, changing nothing else. The
     // reporter's point is that these two runs were indistinguishable from the
