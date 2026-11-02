@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6348 -->
+<!-- ants-roadmap-id-high-water: ANTS=6349 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89305,6 +89305,13 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A tool that checks code comments cannot read a few common kinds of code file; it now says so, but it should read them.
   Kind: fix.
   Source: in-session-2026-11-02, found while fixing ANTS-5806.
+  Lanes: mcp.
+
+- 📋 [ANTS-6349] **session_orient's active_bullet misses an in-progress item past roadmap_query's first page.**
+  Measured 2026-11-02: status active returned 65 of 906 rows, none in progress, while ANTS-4659 and ANTS-5734 are in progress, so active_bullet named ANTS-3730. Same cause as ANTS-5801. Likely fix: ask status in-progress first, or use the m_roadmapQueryWhole read.
+  **Layman:** The start-of-session summary can name the wrong current task, because it only looks at the first part of the to-do list.
+  Kind: fix.
+  Source: in-session-2026-11-02, found while fixing ANTS-5801.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
