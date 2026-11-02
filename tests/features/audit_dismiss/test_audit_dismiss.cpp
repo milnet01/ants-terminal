@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QTemporaryDir>
 
@@ -37,6 +38,23 @@ QJsonObject dismissReq(const QString &root) {
 
 QString ledgerPath(const QString &root) {
     return root + QStringLiteral("/.audit_cache/learned-fp.jsonl");
+}
+
+QJsonObject byMessage(const char *file, const char *message) {
+    QJsonObject o;
+    o[QStringLiteral("file")]    = QString::fromLatin1(file);
+    o[QStringLiteral("message")] = QString::fromLatin1(message);
+    return o;
+}
+
+// Rows on disk, which loadEntries folds by fingerprint and so cannot count.
+int dataRowCount(const QString &root) {
+    QFile f(ledgerPath(root));
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    int rows = 0;
+    for (const QByteArray &line : f.readAll().split('\n'))
+        if (line.startsWith('{')) ++rows;
+    return rows;
 }
 
 }  // namespace
@@ -185,4 +203,264 @@ TEST(AuditDismiss, Inv6ReDismissIsIdempotent) {
         << "INV-6: a repeat dismissal must not be an error";
     EXPECT_EQ(ants::auditfp::loadEntries(tmp.path()).size(), 1)
         << "INV-6: and must not duplicate the entry";
+}
+
+// INV-6 — the repeat says what happened, so a dropped reason is not silent.
+TEST(AuditDismiss, Inv6RepeatReportsTheStoredReason) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+
+    const QJsonObject first = rc.cmdAuditDismiss(dismissReq(tmp.path())).object();
+    EXPECT_EQ(first.value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("recorded"));
+    EXPECT_FALSE(first.contains(QStringLiteral("hint")));
+
+    QJsonObject again = dismissReq(tmp.path());
+    const QJsonObject same = rc.cmdAuditDismiss(again).object();
+    EXPECT_EQ(same.value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("already_recorded"));
+    EXPECT_FALSE(same.contains(QStringLiteral("hint")))
+        << "INV-6: the same reason again has nothing to warn about";
+
+    again[QStringLiteral("reason")] = QStringLiteral("a different reason");
+    const QJsonObject differs = rc.cmdAuditDismiss(again).object();
+    EXPECT_EQ(differs.value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("already_recorded"));
+    EXPECT_EQ(differs.value(QStringLiteral("reason")).toString(),
+              QStringLiteral("fixture, not a real bug"))
+        << "INV-6: reports the reason the ledger holds, not the caller's";
+    EXPECT_TRUE(differs.value(QStringLiteral("hint")).toString()
+                    .contains(QStringLiteral("replace_reason")));
+}
+
+// INV-7 — many findings in one call, with the call's values as fallbacks.
+TEST(AuditDismiss, Inv7EntriesRecordMany) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("rule")]       = QStringLiteral("vulture");
+    req[QStringLiteral("reason")]     = QStringLiteral("route handler");
+    req[QStringLiteral("entries")]    = QJsonArray{
+        byMessage("app.py", "unused function 'index'"),
+        byMessage("app.py", "unused function 'login'"),
+        QJsonObject{{QStringLiteral("fingerprint"),
+                     QStringLiteral("00112233445566aa")},
+                    {QStringLiteral("rule"), QStringLiteral("typos")},
+                    {QStringLiteral("reason"), QStringLiteral("own word")}},
+    };
+
+    const QJsonObject resp = rc.cmdAuditDismiss(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 3);
+    EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 0);
+
+    const QJsonArray applied = resp.value(QStringLiteral("applied")).toArray();
+    ASSERT_EQ(applied.size(), 3);
+    EXPECT_EQ(applied.at(1).toObject().value(QStringLiteral("index")).toInt(), 1);
+    EXPECT_EQ(applied.at(1).toObject().value(QStringLiteral("fingerprint")).toString(),
+              ants::auditfp::computeFingerprint(
+                  "app.py", "vulture", "unused function 'login'"))
+        << "INV-7: the call's rule goes into the hash";
+
+    const QList<ants::auditfp::Entry> loaded =
+        ants::auditfp::loadEntries(tmp.path());
+    ASSERT_EQ(loaded.size(), 3);
+    EXPECT_EQ(loaded.at(0).reason, QStringLiteral("route handler"));
+    EXPECT_EQ(loaded.at(2).rule, QStringLiteral("typos"))
+        << "INV-7: an entry's own rule beats the call's";
+    EXPECT_EQ(loaded.at(2).reason, QStringLiteral("own word"));
+}
+
+// INV-7 — the same finding twice in one batch is one row.
+TEST(AuditDismiss, Inv7RepeatInsideABatchIsOneRow) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("rule")]       = QStringLiteral("vulture");
+    req[QStringLiteral("entries")]    = QJsonArray{
+        byMessage("app.py", "unused function 'index'"),
+        byMessage("app.py", "unused function 'index'"),
+    };
+    const QJsonArray applied =
+        rc.cmdAuditDismiss(req).object().value(QStringLiteral("applied")).toArray();
+    ASSERT_EQ(applied.size(), 2);
+    EXPECT_EQ(applied.at(1).toObject().value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("already_recorded"));
+    EXPECT_EQ(dataRowCount(tmp.path()), 1);
+}
+
+// INV-8 — a bad entry costs only itself; nothing applied is a refusal.
+TEST(AuditDismiss, Inv8BadEntryLandsInSkipped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("rule")]       = QStringLiteral("vulture");
+    req[QStringLiteral("entries")]    = QJsonArray{
+        QJsonObject{{QStringLiteral("fingerprint"), QStringLiteral("NOTHEX")}},
+        byMessage("app.py", "unused function 'index'"),
+    };
+    const QJsonObject mixed = rc.cmdAuditDismiss(req).object();
+    EXPECT_TRUE(mixed.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(mixed.value(QStringLiteral("applied_count")).toInt(), 1);
+    const QJsonArray skipped = mixed.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("index")).toInt(), 0);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_EQ(dataRowCount(tmp.path()), 1);
+
+    QTemporaryDir tmp2;
+    ASSERT_TRUE(tmp2.isValid());
+    req[QStringLiteral("caller_cwd")] = tmp2.path();
+    req[QStringLiteral("entries")]    = QJsonArray{
+        QJsonObject{{QStringLiteral("fingerprint"), QStringLiteral("NOTHEX")}},
+    };
+    const QJsonObject allBad = rc.cmdAuditDismiss(req).object();
+    EXPECT_FALSE(allBad.value(QStringLiteral("ok")).toBool())
+        << "INV-8: nothing applied must not read as success";
+    EXPECT_EQ(allBad.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_EQ(allBad.value(QStringLiteral("skipped_count")).toInt(), 1);
+    EXPECT_FALSE(QFile::exists(ledgerPath(tmp2.path())));
+}
+
+// INV-9 — one identity cannot apply to a whole batch, and entries must be real.
+TEST(AuditDismiss, Inv9BatchRefusesASharedIdentityAndEmptyEntries) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+
+    QJsonObject shared = dismissReq(tmp.path());
+    shared[QStringLiteral("entries")] =
+        QJsonArray{byMessage("app.py", "unused function 'index'")};
+    EXPECT_EQ(rc.cmdAuditDismiss(shared).object()
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("rule")]       = QStringLiteral("vulture");
+    req[QStringLiteral("entries")]    = QJsonArray{};
+    EXPECT_EQ(rc.cmdAuditDismiss(req).object()
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args")) << "INV-9: empty entries";
+    req[QStringLiteral("entries")] = QStringLiteral("not an array");
+    EXPECT_EQ(rc.cmdAuditDismiss(req).object()
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args")) << "INV-9: non-array entries";
+    EXPECT_FALSE(QFile::exists(ledgerPath(tmp.path())));
+}
+
+// INV-10 — a wrong reason can be corrected through the verb.
+TEST(AuditDismiss, Inv10ReplaceReason) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdAuditDismiss(dismissReq(tmp.path())).object()
+                    .value(QStringLiteral("ok")).toBool());
+
+    QJsonObject replace = dismissReq(tmp.path());
+    replace[QStringLiteral("reason")]         = QStringLiteral("the right reason");
+    replace[QStringLiteral("replace_reason")] = true;
+    const QJsonObject resp = rc.cmdAuditDismiss(replace).object();
+    EXPECT_EQ(resp.value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("reason_replaced"));
+    EXPECT_EQ(resp.value(QStringLiteral("reason")).toString(),
+              QStringLiteral("the right reason"));
+
+    const QList<ants::auditfp::Entry> loaded =
+        ants::auditfp::loadEntries(tmp.path());
+    ASSERT_EQ(loaded.size(), 1) << "INV-10: still one finding";
+    EXPECT_EQ(loaded.first().reason, QStringLiteral("the right reason"));
+    EXPECT_EQ(dataRowCount(tmp.path()), 2) << "INV-10: the old row stays on disk";
+
+    EXPECT_EQ(rc.cmdAuditDismiss(replace).object()
+                  .value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("already_recorded"));
+    EXPECT_EQ(dataRowCount(tmp.path()), 2)
+        << "INV-10: the same reason again writes nothing";
+
+    QJsonObject noReason = replace;
+    noReason.remove(QStringLiteral("reason"));
+    EXPECT_EQ(rc.cmdAuditDismiss(noReason).object()
+                  .value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"))
+        << "INV-10: replacing needs a reason to replace with";
+}
+
+// INV-10 — the correction keeps the stored rule, and records a new finding.
+TEST(AuditDismiss, Inv10ReplaceKeepsRuleAndRecordsAnUnknownFinding) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = tmp.path();
+    req[QStringLiteral("rule")]           = QStringLiteral("first_rule");
+    req[QStringLiteral("fingerprint")]    = QStringLiteral("00112233445566aa");
+    req[QStringLiteral("reason")]         = QStringLiteral("first");
+    req[QStringLiteral("replace_reason")] = true;
+    EXPECT_EQ(rc.cmdAuditDismiss(req).object()
+                  .value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("recorded"));
+
+    req[QStringLiteral("rule")]   = QStringLiteral("other_rule");
+    req[QStringLiteral("reason")] = QStringLiteral("second");
+    ASSERT_EQ(rc.cmdAuditDismiss(req).object()
+                  .value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("reason_replaced"));
+    const QList<ants::auditfp::Entry> loaded =
+        ants::auditfp::loadEntries(tmp.path());
+    ASSERT_EQ(loaded.size(), 1);
+    EXPECT_EQ(loaded.first().rule, QStringLiteral("first_rule"));
+    EXPECT_EQ(loaded.first().reason, QStringLiteral("second"));
+}
+
+// INV-11 — dry_run predicts both new forms and leaves the bytes alone.
+TEST(AuditDismiss, Inv11DryRunCoversBatchAndReplace) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(rc.cmdAuditDismiss(dismissReq(tmp.path())).object()
+                    .value(QStringLiteral("ok")).toBool());
+    QFile ledger(ledgerPath(tmp.path()));
+    ASSERT_TRUE(ledger.open(QIODevice::ReadOnly));
+    const QByteArray before = ledger.readAll();
+    ledger.close();
+
+    QJsonObject replaceOne;
+    replaceOne[QStringLiteral("file")]           = QString::fromLatin1(kFile);
+    replaceOne[QStringLiteral("message")]        = QString::fromLatin1(kMessage);
+    replaceOne[QStringLiteral("reason")]         = QStringLiteral("corrected");
+    replaceOne[QStringLiteral("replace_reason")] = true;
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("rule")]       = QString::fromLatin1(kRule);
+    req[QStringLiteral("dry_run")]    = true;
+    req[QStringLiteral("entries")]    = QJsonArray{
+        replaceOne, byMessage("app.py", "unused function 'index'")};
+
+    const QJsonObject resp = rc.cmdAuditDismiss(req).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("dry_run")).toBool());
+    const QJsonArray applied = resp.value(QStringLiteral("applied")).toArray();
+    ASSERT_EQ(applied.size(), 2);
+    EXPECT_EQ(applied.at(0).toObject().value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("reason_replaced"));
+    EXPECT_EQ(applied.at(1).toObject().value(QStringLiteral("outcome")).toString(),
+              QStringLiteral("recorded"));
+
+    ASSERT_TRUE(ledger.open(QIODevice::ReadOnly));
+    EXPECT_EQ(ledger.readAll(), before) << "INV-11: dry_run wrote to the ledger";
 }

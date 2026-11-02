@@ -37,5 +37,23 @@ writes the **fingerprint** ledger the audit *engine* filters on.
   tool's true raw total. This is the end-to-end proof, not just that a line
   was appended.
 - **INV-6 / re-dismissing is a no-op, not an error.** Recording the same
-  fingerprint twice returns `ok` and does not duplicate the entry
-  (`appendEntry`'s existing dedup).
+  fingerprint twice returns `ok` and does not duplicate the entry. The reply
+  says `outcome:"already_recorded"` and carries the `reason` the ledger holds.
+  Where the caller's reason differs, a `hint` names `replace_reason`.
+- **INV-7 / `entries[]` records many in one call (ANTS-5603).** Each entry
+  takes `fingerprint` or `file`+`message`. `rule`, `reason` and
+  `replace_reason` fall back to the call's values. The reply lists `applied[]`
+  and `skipped[]`, each row carrying its `index`.
+- **INV-8 / one bad entry costs only itself.** It lands in `skipped[]` with its
+  `code`, and the others are written. A batch with nothing applied refuses
+  `bad_args`, so a caller reading only `ok` cannot take it for success.
+- **INV-9 / a batch cannot share an identity.** `fingerprint`, `file` or
+  `message` at the top level beside `entries` refuses `bad_args`. An empty or
+  non-array `entries` refuses too.
+- **INV-10 / `replace_reason` replaces a stored reason.** The reply says
+  `outcome:"reason_replaced"`, later reads see the new reason, and the rule
+  stays the stored one. On an unrecorded finding it records as usual. Without
+  a non-empty `reason` it refuses `bad_args`. The same reason again is
+  `already_recorded` and writes nothing.
+- **INV-11 / `dry_run` covers both new forms.** It reports the outcomes a real
+  call would, and leaves the ledger's bytes alone.

@@ -888,7 +888,7 @@ public:
     QJsonDocument cmdAuditFalseposLog(const QJsonObject &req);
     // ANTS-1713 — audit_dismiss: record a learned-false-positive verdict
     // into <root>/.audit_cache/learned-fp.jsonl (delegates to the pure
-    // ants::auditfp::appendEntry). Deferred v2 of ANTS-1708, which shipped
+    // ants::auditfp::recordEntries). Deferred v2 of ANTS-1708, which shipped
     // the ledger + GUI recording path but no MCP write side. Takes either a
     // `fingerprint` or (`file`, `message`) the server hashes via
     // computeFingerprint. Distinct from cmdAuditFalseposLog: that writes the

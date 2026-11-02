@@ -54,6 +54,9 @@ stays hidden across edits.
   because `computeFingerprint` strips the location prefix, so the GUI's
   full-line `Finding::message` and the runner's already-stripped message hash to
   the same value.
+- **INV-8** (ANTS-5603) A later row for a fingerprint supersedes the earlier one
+  in `loadEntries`, which keeps the first row's place. The file stays
+  append-only, so the earlier reason survives on disk.
 
 ## Out of scope (v1)
 

@@ -26,6 +26,9 @@
 #include <QSet>
 #include <QString>
 
+#include <cstdint>
+#include <optional>
+
 namespace ants {
 namespace auditfp {
 
@@ -51,6 +54,7 @@ QString computeFingerprint(const QString &file,
 // Reads <projectPath>/.audit_cache/learned-fp.jsonl. Returns an empty list on
 // a missing / non-regular file or any I/O error; malformed lines are skipped
 // individually (a torn append at EOF costs one entry, never the whole file).
+// A later row for a fingerprint supersedes the earlier one, in its place.
 QList<Entry> loadEntries(const QString &projectPath);
 
 QSet<QString> fingerprintSet(const QList<Entry> &entries);
@@ -60,6 +64,27 @@ QSet<QString> fingerprintSet(const QList<Entry> &entries);
 // fingerprint is already in the ledger this is a no-op that still returns
 // true. Returns false only on a real write failure or an invalid entry.
 bool appendEntry(const QString &projectPath, Entry e);
+
+// ANTS-5603 — what recordEntries should do with one entry.
+struct RecordRequest {
+    Entry entry;
+    bool replaceReason = false;  // a different reason supersedes the stored one
+};
+
+enum class RecordOutcome : std::uint8_t { Recorded, AlreadyRecorded, ReasonReplaced };
+
+struct RecordResult {
+    RecordOutcome outcome = RecordOutcome::Recorded;
+    Entry entry;  // what the ledger holds for this fingerprint afterwards
+};
+
+// Applies `requests` in order, under one lock, with one read and one write, so
+// a repeat inside the batch behaves as it would across calls. With `dryRun` it
+// reports the same results and touches nothing. Returns nullopt on a write
+// failure or an invalid entry, having written nothing for the invalid case.
+std::optional<QList<RecordResult>> recordEntries(
+    const QString &projectPath, const QList<RecordRequest> &requests,
+    bool dryRun = false);
 
 }  // namespace auditfp
 }  // namespace ants

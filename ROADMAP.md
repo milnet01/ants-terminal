@@ -87223,7 +87223,7 @@ project. Reported causes are claims until checked in source.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-10-01.
   Lanes: mcp.
 
-- 📋 [ANTS-5603] **audit_dismiss takes one finding per call and cannot replace a stored reason.**
+- ✅ [ANTS-5603] **audit_dismiss takes one finding per call and cannot replace a stored reason.**
   Reported by LocalWebServerManager: closing one vulture list took 14
   audit_dismiss calls; two wrong reasons could only be fixed by a hand
   sed on .audit_cache/learned-fp.jsonl, because re-dismissing a
@@ -87232,6 +87232,9 @@ project. Reported causes are claims until checked in source.
   and a way to replace the reason on an existing fingerprint. Related:
   ANTS-4966 (a rule-wide form, a different axis) and ANTS-5410 (revoke
   by tombstone; revoke then re-dismiss would also amend a reason).
+  Shipped 2026-11-02: `entries[]` and `replace_reason`. A replacement
+  appends a superseding row, so ANTS-5410's tombstone can use the same
+  reader. ANTS-4966's rule-wide form stays open.
   **Layman:** Marking a list of audit warnings as false alarms takes one call each, and a wrong reason cannot be corrected without editing the file by hand.
   Kind: feature.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md, 2026-10-01.

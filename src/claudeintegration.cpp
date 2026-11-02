@@ -8797,17 +8797,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject t;
                     t["name"] = "audit_dismiss";
                     t["description"] = QStringLiteral(
-                        "Record one learned false-positive verdict in "
+                        "Record learned false-positive verdicts in "
                         "<project>/.audit_cache/learned-fp.jsonl, the fingerprint "
-                        "ledger audit_run and the Audit dialog both filter on, so the "
+                        "ledger audit_run and the Audit dialog both filter on, so a "
                         "finding stays suppressed on later sweeps. Pass `rule` plus "
-                        "EITHER `fingerprint` OR `file`+`message`. Re-dismissing is a "
-                        "no-op. Returns {ok, path, fingerprint, computed, rule, "
-                        "timestamp}. Refusals: bad_args, no_project, write_failed. "
+                        "EITHER `fingerprint` OR `file`+`message`, or `entries[]` for "
+                        "many. Re-dismissing changes nothing unless `replace_reason` "
+                        "is set. Returns {ok, path, fingerprint, computed, rule, "
+                        "reason, timestamp, outcome}; with entries {ok, path, "
+                        "applied[], applied_count, skipped[], skipped_count, "
+                        "changed}. Refusals: bad_args, no_project, write_failed. "
                         "caller_cwd required. Not audit_falsepos_log, which writes the "
                         "reviewers' prose ledger.");
                     t["detail"] = QStringLiteral(
-                        "Record one learned-false-positive verdict into "
+                        "Record learned-false-positive verdicts into "
                         "<project>/.audit_cache/learned-fp.jsonl — the "
                         "fingerprint-keyed ledger BOTH `audit_run` and the "
                         "Audit dialog filter on, so a dismissed finding stays "
@@ -8817,11 +8820,24 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`fingerprint` OR `file`+`message` (preferred — the "
                         "server hashes them the same way the engine will look "
                         "them up). Re-dismissing an already-recorded "
-                        "fingerprint is a no-op, not an error. Returns {ok, "
-                        "path, fingerprint, computed, rule, timestamp}. "
+                        "fingerprint writes nothing and is not an error: "
+                        "`outcome` says `already_recorded` and `reason` is the "
+                        "stored one. `replace_reason:true` with a new `reason` "
+                        "appends a row that supersedes it, keeping the stored "
+                        "rule (`reason_replaced`). Returns {ok, path, "
+                        "fingerprint, computed, rule, reason, timestamp, "
+                        "outcome, hint?}. `entries[]` records many in one "
+                        "write: each takes its own fingerprint or file+message, "
+                        "and rule, reason and replace_reason fall back to the "
+                        "call's. Returns {ok, path, applied[], applied_count, "
+                        "skipped[], skipped_count, changed}; rows carry "
+                        "`index`, and a bad entry costs only itself. "
                         "Refusals: `bad_args` (missing rule, or neither "
                         "fingerprint nor file+message, or a malformed "
-                        "fingerprint), `no_project` (caller_cwd unresolved), "
+                        "fingerprint, or replace_reason with no reason, or an "
+                        "empty entries, or a finding's identity beside "
+                        "entries, or a batch where every entry was refused), "
+                        "`no_project` (caller_cwd unresolved), "
                         "`write_failed` (I/O error). caller_cwd required. "
                         "NOT the same as audit_falsepos_log, which writes the "
                         "prose ledger the review skills read.");
@@ -8835,8 +8851,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject props;
                     QJsonObject ruleProp; ruleProp["type"] = "string";
                         ruleProp["description"] = QStringLiteral(
-                            "Required. The audit check id the finding came "
-                            "from. For the line-based tools (cppcheck, clazy, "
+                            "Required here or on each entry. The audit check "
+                            "id the finding came from. For the line-based tools (cppcheck, clazy, "
                             "clang-tidy, mypy, shellcheck) this is the tool "
                             "name; JSON tools use their own check id.");
                     QJsonObject fileProp; fileProp["type"] = "string";
@@ -8857,16 +8873,31 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         reasonProp["description"] = QStringLiteral(
                             "Optional human note — why it isn't a real bug. "
                             "Recorded for the next reader; no secrets.");
-                    props["rule"]        = ruleProp;
-                    props["file"]        = fileProp;
-                    props["message"]     = msgProp;
-                    props["fingerprint"] = fpProp;
-                    props["reason"]      = reasonProp;
+                    QJsonObject replaceProp; replaceProp["type"] = "boolean";
+                        replaceProp["description"] = QStringLiteral(
+                            "Replace the reason already stored for this "
+                            "finding. Needs a non-empty `reason`.");
+                    props["rule"]           = ruleProp;
+                    props["reason"]         = reasonProp;
+                    props["replace_reason"] = replaceProp;
+                    QJsonObject entryProps = props;
+                    entryProps["file"]        = fileProp;
+                    entryProps["message"]     = msgProp;
+                    entryProps["fingerprint"] = fpProp;
+                    QJsonObject entryItem;
+                    entryItem["type"]       = "object";
+                    entryItem["properties"] = entryProps;
+                    QJsonObject entriesProp; entriesProp["type"] = "array";
+                        entriesProp["items"] = entryItem;
+                        entriesProp["description"] = QStringLiteral(
+                            "Many findings in one write. Each takes fingerprint "
+                            "or file+message; the rest fall back to the call's.");
+                    props = entryProps;
+                    props["entries"]     = entriesProp;
                     props["dry_run"]     = makeDryRunProp();
                     props["caller_cwd"]  = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;
-                    req.append(QStringLiteral("rule"));
                     req.append(QStringLiteral("caller_cwd"));
                     schema["required"] = req;
                     t["inputSchema"] = schema;

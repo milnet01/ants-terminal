@@ -2853,31 +2853,34 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
 // Distinct from audit_falsepos_log above: that is the PROSE ledger the
 // review skills read (.ants_review_falsepos.jsonl, claim + rationale); this
 // is the FINGERPRINT ledger the audit engine filters on.
-QJsonDocument RemoteControl::cmdAuditDismiss(const QJsonObject &req) {
-    auto adErr = [](const QString &code, const QString &message) {
-        QJsonObject o;
-        o["ok"]    = false;
-        o["error"] = message;
-        o["code"]  = code;
-        return QJsonDocument(o);
+namespace {
+
+QJsonObject adErr(const QString &code, const QString &message) {
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = message;
+    o["code"]  = code;
+    return o;
+}
+
+struct AdParsed {
+    ants::auditfp::RecordRequest request;
+    bool computed = false;
+};
+
+// One finding's arguments. `item` is the call itself on the single form and
+// one element of entries[] on the batch, where `rule`, `reason` and
+// `replace_reason` fall back to the call's. Returns the bad_args message, or
+// an empty string on success.
+QString adParse(const QJsonObject &item, const QJsonObject &req, AdParsed *out) {
+    const auto shared = [&](const QString &key) {
+        return item.contains(key) ? item.value(key) : req.value(key);
     };
 
-    // Root resolution mirrors cmdAuditFalseposLog: caller_cwd is Required by
-    // contract, so the canonical path is all we need (no tab fallback).
-    const QString callerRaw =
-        req.value(QStringLiteral("caller_cwd")).toString();
-    const QString root = QFileInfo(callerRaw).canonicalFilePath();
-    if (root.isEmpty()) {
-        return adErr(QStringLiteral("no_project"),
-            QStringLiteral("audit_dismiss: caller_cwd does not resolve to "
-                           "an existing project directory"));
-    }
-
-    const QString rule = req.value(QStringLiteral("rule")).toString().trimmed();
+    const QString rule = shared(QStringLiteral("rule")).toString().trimmed();
     if (rule.isEmpty()) {
-        return adErr(QStringLiteral("bad_args"),
-            QStringLiteral("audit_dismiss: `rule` is required (the audit "
-                           "check id the finding came from)"));
+        return QStringLiteral("audit_dismiss: `rule` is required (the audit "
+                              "check id the finding came from)");
     }
 
     // Two input shapes: a caller-supplied fingerprint, or (file, message)
@@ -2885,70 +2888,184 @@ QJsonDocument RemoteControl::cmdAuditDismiss(const QJsonObject &req) {
     // preferred form — it guarantees the same hash the engine will look up.
     static const QRegularExpression rxFp(QStringLiteral("^[0-9a-f]{16}$"));
     QString fingerprint =
-        req.value(QStringLiteral("fingerprint")).toString().trimmed();
-    bool computed = false;
+        item.value(QStringLiteral("fingerprint")).toString().trimmed();
     if (!fingerprint.isEmpty()) {
         if (!rxFp.match(fingerprint).hasMatch()) {
-            return adErr(QStringLiteral("bad_args"),
-                QStringLiteral("audit_dismiss: `fingerprint` must be 16 "
-                               "lowercase hex chars (got \"%1\")")
-                    .arg(fingerprint));
+            return QStringLiteral("audit_dismiss: `fingerprint` must be 16 "
+                                  "lowercase hex chars (got \"%1\")")
+                .arg(fingerprint);
         }
     } else {
-        const QString file = req.value(QStringLiteral("file")).toString();
+        const QString file = item.value(QStringLiteral("file")).toString();
         const QString message =
-            req.value(QStringLiteral("message")).toString();
+            item.value(QStringLiteral("message")).toString();
         if (file.isEmpty() || message.isEmpty()) {
-            return adErr(QStringLiteral("bad_args"),
-                QStringLiteral("audit_dismiss: pass either `fingerprint`, or "
-                               "both `file` and `message` so the server can "
-                               "compute it"));
+            return QStringLiteral("audit_dismiss: pass either `fingerprint`, "
+                                  "or both `file` and `message` so the server "
+                                  "can compute it");
         }
-        fingerprint =
-            ants::auditfp::computeFingerprint(file, rule, message);
-        computed = true;
+        fingerprint = ants::auditfp::computeFingerprint(file, rule, message);
+        out->computed = true;
     }
 
-    ants::auditfp::Entry e;
-    e.fingerprint = fingerprint;
-    e.rule        = rule;
-    e.reason      = req.value(QStringLiteral("reason")).toString();
-    // Stamp here rather than letting appendEntry default it, so the response
-    // can report the exact value written.
-    e.timestamp   = QDateTime::currentDateTimeUtc()
-                        .toString(Qt::ISODate);
-
-    const QString path = root + QStringLiteral("/.audit_cache/learned-fp.jsonl");
-
-    // dry_run: validate + compute + report the would-be record without the
-    // append (ANTS-2227's convention on the sibling write verbs).
-    if (req.value(QStringLiteral("dry_run")).toBool()) {
-        QJsonObject out;
-        out["ok"]          = true;
-        out["dry_run"]     = true;
-        out["path"]        = path;
-        out["fingerprint"] = fingerprint;
-        out["computed"]    = computed;
-        out["rule"]        = rule;
-        out["timestamp"]   = e.timestamp;
-        return QJsonDocument(out);
+    out->request.entry.fingerprint = fingerprint;
+    out->request.entry.rule        = rule;
+    out->request.entry.reason      = shared(QStringLiteral("reason")).toString();
+    out->request.replaceReason =
+        shared(QStringLiteral("replace_reason")).toBool();
+    if (out->request.replaceReason
+        && out->request.entry.reason.trimmed().isEmpty()) {
+        return QStringLiteral("audit_dismiss: `replace_reason` needs a "
+                              "non-empty `reason` to replace the stored one "
+                              "with");
     }
+    return {};
+}
 
-    if (!ants::auditfp::appendEntry(root, e)) {
-        return adErr(QStringLiteral("write_failed"),
-            QStringLiteral("audit_dismiss: could not append to %1").arg(path));
-    }
-
-    QJsonObject out;
-    out["ok"]          = true;
-    out["path"]        = path;
-    out["fingerprint"] = fingerprint;
+// What one finding's reply says, on both forms. `reason` and `timestamp` are
+// what the ledger holds, which is not what the caller sent when nothing was
+// written.
+QJsonObject adResultFields(const AdParsed &parsed,
+                           const ants::auditfp::RecordResult &result) {
+    using ants::auditfp::RecordOutcome;
+    QJsonObject o;
+    o["fingerprint"] = result.entry.fingerprint;
     // True when the server derived the fingerprint from (file, rule, message)
     // rather than taking the caller's — lets a caller confirm the hash it
     // will need if it wants to reference the entry later.
-    out["computed"]    = computed;
-    out["rule"]        = rule;
-    out["timestamp"]   = e.timestamp;
+    o["computed"]    = parsed.computed;
+    o["rule"]        = result.entry.rule;
+    o["reason"]      = result.entry.reason;
+    o["timestamp"]   = result.entry.timestamp;
+    switch (result.outcome) {
+    case RecordOutcome::Recorded:
+        o["outcome"] = QStringLiteral("recorded");
+        break;
+    case RecordOutcome::AlreadyRecorded:
+        o["outcome"] = QStringLiteral("already_recorded");
+        if (!parsed.request.entry.reason.isEmpty()
+            && parsed.request.entry.reason != result.entry.reason) {
+            o["hint"] = QStringLiteral("the stored reason was kept; pass "
+                                       "replace_reason:true to replace it");
+        }
+        break;
+    case RecordOutcome::ReasonReplaced:
+        o["outcome"] = QStringLiteral("reason_replaced");
+        break;
+    }
+    return o;
+}
+
+QJsonObject adWriteFailed(const QString &path) {
+    return adErr(QStringLiteral("write_failed"),
+        QStringLiteral("audit_dismiss: could not append to %1").arg(path));
+}
+
+// ANTS-5603 — entries[]: N findings in one lock, one read and one write. A bad
+// entry lands in skipped[] and costs only itself; a batch that applied nothing
+// is a refusal, as on feedback_log's assign_id_batch.
+QJsonObject adRecordBatch(const QJsonObject &req, const QString &root,
+                          const QString &path, bool dryRun) {
+    for (const char *key : {"fingerprint", "file", "message"}) {
+        if (req.contains(QLatin1String(key))) {
+            return adErr(QStringLiteral("bad_args"),
+                QStringLiteral("audit_dismiss: `%1` names one finding, so it "
+                               "goes inside each entry, not beside `entries`")
+                    .arg(QLatin1String(key)));
+        }
+    }
+    const QJsonArray entries = req.value(QStringLiteral("entries")).toArray();
+    if (entries.isEmpty()) {
+        return adErr(QStringLiteral("bad_args"),
+            QStringLiteral("audit_dismiss: `entries` must be a non-empty array"));
+    }
+
+    QList<AdParsed> parsed;
+    QList<int> indexes;
+    QJsonArray skipped;
+    for (int i = 0; i < entries.size(); ++i) {
+        AdParsed p;
+        const QString error = adParse(entries.at(i).toObject(), req, &p);
+        if (!error.isEmpty()) {
+            QJsonObject row = adErr(QStringLiteral("bad_args"), error);
+            row.remove(QStringLiteral("ok"));
+            row["index"] = i;
+            skipped.append(row);
+            continue;
+        }
+        parsed.append(p);
+        indexes.append(i);
+    }
+    if (parsed.isEmpty()) {
+        QJsonObject e = adErr(QStringLiteral("bad_args"),
+            QStringLiteral("audit_dismiss: applied no entry — every one was "
+                           "refused"));
+        rcSetAllRefusedSkipped(e, skipped);
+        return e;
+    }
+
+    QList<ants::auditfp::RecordRequest> requests;
+    for (const AdParsed &p : parsed) requests.append(p.request);
+    const auto results = ants::auditfp::recordEntries(root, requests, dryRun);
+    if (!results) return adWriteFailed(path);
+
+    QJsonArray applied;
+    bool changed = false;
+    for (qsizetype i = 0; i < results->size(); ++i) {
+        QJsonObject row = adResultFields(parsed.at(i), results->at(i));
+        row["index"] = indexes.at(i);
+        applied.append(row);
+        changed = changed || results->at(i).outcome
+                                 != ants::auditfp::RecordOutcome::AlreadyRecorded;
+    }
+
+    QJsonObject out;
+    out["ok"]            = true;
+    if (dryRun) out["dry_run"] = true;
+    out["path"]          = path;
+    out["applied"]       = applied;
+    out["applied_count"] = applied.size();
+    out["skipped"]       = skipped;
+    out["skipped_count"] = skipped.size();
+    out["changed"]       = changed;
+    return out;
+}
+
+}  // namespace
+
+QJsonDocument RemoteControl::cmdAuditDismiss(const QJsonObject &req) {
+    // Root resolution mirrors cmdAuditFalseposLog: caller_cwd is Required by
+    // contract, so the canonical path is all we need (no tab fallback).
+    const QString callerRaw =
+        req.value(QStringLiteral("caller_cwd")).toString();
+    const QString root = QFileInfo(callerRaw).canonicalFilePath();
+    if (root.isEmpty()) {
+        return QJsonDocument(adErr(QStringLiteral("no_project"),
+            QStringLiteral("audit_dismiss: caller_cwd does not resolve to "
+                           "an existing project directory")));
+    }
+
+    const QString path = root + QStringLiteral("/.audit_cache/learned-fp.jsonl");
+    // dry_run: validate + compute + report the would-be record without the
+    // append (ANTS-2227's convention on the sibling write verbs).
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    if (req.contains(QStringLiteral("entries")))
+        return QJsonDocument(adRecordBatch(req, root, path, dryRun));
+
+    AdParsed parsed;
+    const QString error = adParse(req, req, &parsed);
+    if (!error.isEmpty())
+        return QJsonDocument(adErr(QStringLiteral("bad_args"), error));
+
+    const auto results =
+        ants::auditfp::recordEntries(root, {parsed.request}, dryRun);
+    if (!results) return QJsonDocument(adWriteFailed(path));
+
+    QJsonObject out = adResultFields(parsed, results->first());
+    out["ok"]   = true;
+    if (dryRun) out["dry_run"] = true;
+    out["path"] = path;
     return QJsonDocument(out);
 }
 

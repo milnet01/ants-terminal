@@ -10,9 +10,12 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
+
+#include <utility>
 
 namespace ants {
 namespace auditfp {
@@ -29,7 +32,7 @@ QString ledgerPath(const QString &projectPath) {
 QString stripLocation(const QString &message) {
     static const QRegularExpression re(
         QStringLiteral(R"(^\s*\S+?:\d+(?::\d+)?:\s*)"));
-    const QString trimmed = message.trimmed();
+    QString trimmed = message.trimmed();
     const QRegularExpressionMatch m = re.match(trimmed);
     if (m.hasMatch()) return trimmed.mid(m.capturedLength()).trimmed();
     return trimmed;
@@ -68,6 +71,7 @@ QList<Entry> loadEntries(const QString &projectPath) {
     const QByteArray bytes = f.readAll();
     f.close();
 
+    QHash<QString, qsizetype> positions;
     const QList<QByteArray> lines = bytes.split('\n');
     for (const QByteArray &rawLine : lines) {
         const QByteArray line = rawLine.trimmed();
@@ -82,7 +86,15 @@ QList<Entry> loadEntries(const QString &projectPath) {
         e.rule        = o.value(QStringLiteral("rule")).toString();
         e.reason      = o.value(QStringLiteral("reason")).toString();
         e.timestamp   = o.value(QStringLiteral("timestamp")).toString();
-        if (e.isValid()) out.append(e);
+        if (!e.isValid()) continue;
+
+        const auto seen = positions.constFind(e.fingerprint);
+        if (seen != positions.constEnd()) {
+            out[*seen] = e;
+        } else {
+            positions.insert(e.fingerprint, out.size());
+            out.append(e);
+        }
     }
     return out;
 }
@@ -94,14 +106,81 @@ QSet<QString> fingerprintSet(const QList<Entry> &entries) {
     return s;
 }
 
+namespace {
+
+// ANTS-5603 — decide each request against `stored`, updating it as it goes so
+// a repeat inside the batch behaves as it would across calls. Returns the rows
+// to append, as one buffer.
+QByteArray planRecords(QList<Entry> stored, const QList<RecordRequest> &requests,
+                       QList<RecordResult> *results) {
+    QHash<QString, qsizetype> positions;
+    for (qsizetype i = 0; i < stored.size(); ++i)
+        positions.insert(stored.at(i).fingerprint, i);
+
+    QByteArray rows;
+    for (const RecordRequest &request : requests) {
+        Entry e = request.entry;
+        if (e.timestamp.isEmpty())
+            e.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+
+        RecordResult result;
+        const auto at = positions.constFind(e.fingerprint);
+        if (at != positions.constEnd()) {
+            const Entry &held = stored.at(*at);
+            if (!request.replaceReason || held.reason == e.reason) {
+                result.outcome = RecordOutcome::AlreadyRecorded;
+                result.entry = held;
+                results->append(result);
+                continue;
+            }
+            // A correction to the reason, so the finding keeps the rule it was
+            // recorded under: a fingerprint alone does not prove a new one.
+            e.rule = held.rule;
+            result.outcome = RecordOutcome::ReasonReplaced;
+            stored[*at] = e;
+        } else {
+            result.outcome = RecordOutcome::Recorded;
+            positions.insert(e.fingerprint, stored.size());
+            stored.append(e);
+        }
+        result.entry = e;
+        results->append(result);
+
+        QJsonObject o;
+        o[QStringLiteral("fingerprint")] = e.fingerprint;
+        o[QStringLiteral("rule")]        = e.rule;
+        o[QStringLiteral("reason")]      = e.reason;
+        o[QStringLiteral("timestamp")]   = e.timestamp;
+        // ANTS-1824 — one write() for record + newline. The file is opened
+        // O_APPEND, so a single write lands atomically at EOF; the pre-fix
+        // two-call form let a concurrent CC session's append interleave
+        // between the JSON and its terminating '\n', corrupting the JSONL.
+        rows += QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
+    }
+    return rows;
+}
+
+}  // namespace
+
 bool appendEntry(const QString &projectPath, Entry e) {
-    if (projectPath.isEmpty()) return false;
-    if (e.timestamp.isEmpty())
-        e.timestamp = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
-    if (!e.isValid()) return false;
+    return recordEntries(projectPath, {RecordRequest{std::move(e)}}).has_value();
+}
+
+std::optional<QList<RecordResult>> recordEntries(
+    const QString &projectPath, const QList<RecordRequest> &requests,
+    bool dryRun) {
+    if (projectPath.isEmpty()) return std::nullopt;
+    for (const RecordRequest &r : requests)
+        if (!r.entry.isValid()) return std::nullopt;
+
+    QList<RecordResult> results;
+    if (dryRun) {
+        planRecords(loadEntries(projectPath), requests, &results);
+        return results;
+    }
 
     const QString dir = projectPath + QStringLiteral("/.audit_cache");
-    if (!ensurePrivateDir(dir)) return false;   // ANTS-1988 — 0700 cache dir
+    if (!ensurePrivateDir(dir)) return std::nullopt;  // ANTS-1988 — 0700 cache dir
     const QString path = ledgerPath(projectPath);
 
     // ANTS-1989 — hold the lock across the dedup-check AND the append, so a
@@ -111,12 +190,13 @@ bool appendEntry(const QString &projectPath, Entry e) {
     ConfigWriteLock lock(path);
 
     // Dedup against what's already on disk — a learned FP only needs one row.
-    if (fingerprintSet(loadEntries(projectPath)).contains(e.fingerprint))
-        return true;
+    const QByteArray rows =
+        planRecords(loadEntries(projectPath), requests, &results);
+    if (rows.isEmpty()) return results;
 
     QFile f(path);
     const bool fresh = !QFileInfo::exists(path) || QFileInfo(path).size() == 0;
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) return false;
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Append)) return std::nullopt;
     if (fresh) {
         // Unlike the auto-fix log (ANTS-5151), a ledger that cannot be
         // made private is still written: it holds fingerprints, rule ids
@@ -127,20 +207,10 @@ bool appendEntry(const QString &projectPath, Entry e) {
                 "Keyed by line-independent content fingerprint.\n");
     }
 
-    QJsonObject o;
-    o[QStringLiteral("fingerprint")] = e.fingerprint;
-    o[QStringLiteral("rule")]        = e.rule;
-    o[QStringLiteral("reason")]      = e.reason;
-    o[QStringLiteral("timestamp")]   = e.timestamp;
-    // ANTS-1824 — one write() for record + newline. The file is opened
-    // O_APPEND, so a single write lands atomically at EOF; the pre-fix
-    // two-call form let a concurrent CC session's append interleave
-    // between the JSON and its terminating '\n', corrupting the JSONL.
-    const QByteArray line =
-        QJsonDocument(o).toJson(QJsonDocument::Compact) + '\n';
-    const bool wrote = f.write(line) == line.size();
+    const bool wrote = f.write(rows) == rows.size();
     f.close();
-    return wrote;
+    if (!wrote) return std::nullopt;
+    return results;
 }
 
 }  // namespace auditfp

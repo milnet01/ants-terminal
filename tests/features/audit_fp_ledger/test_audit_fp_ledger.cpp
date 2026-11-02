@@ -91,6 +91,25 @@ TEST(AuditFpLedger, AppendDedups) {
     EXPECT_EQ(ants::auditfp::loadEntries(dir.path()).size(), 1);
 }
 
+// INV-8 (ANTS-5603) — a later row for a fingerprint supersedes the earlier one.
+TEST(AuditFpLedger, LaterRowSupersedes) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkpath(".audit_cache"));
+    QFile f(dir.path() + "/.audit_cache/learned-fp.jsonl");
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("{\"fingerprint\":\"aaaaaaaaaaaaaaaa\",\"rule\":\"r\",\"reason\":\"old\"}\n");
+    f.write("{\"fingerprint\":\"bbbbbbbbbbbbbbbb\",\"rule\":\"r\",\"reason\":\"b\"}\n");
+    f.write("{\"fingerprint\":\"aaaaaaaaaaaaaaaa\",\"rule\":\"r\",\"reason\":\"new\"}\n");
+    f.close();
+
+    const QList<Entry> loaded = ants::auditfp::loadEntries(dir.path());
+    ASSERT_EQ(loaded.size(), 2);
+    EXPECT_EQ(loaded.at(0).fingerprint, "aaaaaaaaaaaaaaaa")
+        << "keeps the first row's place";
+    EXPECT_EQ(loaded.at(0).reason, "new");
+}
+
 // INV-6 — filter marks matching findings suppressed.
 TEST(AuditFpLedger, FilterMarksMatchingSuppressed) {
     Finding hit;
