@@ -88604,7 +88604,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: cc-feedback-2026-10-21 demoreel.
 
-- 📋 [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (- **INV-N — title.**).**
+- ✅ [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (- **INV-N — title.**).**
   Reported by finbreak (2026-10-22). docs/specs/FIBR-0097-transactions-table-model.md
   holds INV-1 to INV-7 as bullets opening `- **INV-N — <title>.**`.
   spec_lint on that file returns invariants_found: 0 and skips both
@@ -88613,6 +88613,12 @@ measured Ants adding about 5,250 tokens to every request.
   path: docs/specs/FIBR-0097-transactions-table-model.md}.
   Suggested fix: recognise a bold `**INV-N —` bullet as an invariant
   opener.
+  The shared anchor in specparse.h now also takes the title forms with a
+  dash, colon, slash or bracket after the id, the same defect in other
+  punctuation. `INV-2's test` and `INV-21-3` stay unread. Across 646
+  specs in all projects 62 changed; FIBR-0097 went from 0 to 7
+  invariants with no new findings. 489 invariant_no_test findings are
+  new, all on invariants that had never been checked.
   **Layman:** A spec-checking tool missed every rule in another project's design document because the rules were written in a slightly different style.
   Kind: fix.
   Source: finbreak-feedback-2026-10-22.

@@ -19,10 +19,14 @@ namespace SpecParse {
 // An id may carry a sub-letter (INV-3b, ANTS-4107). In both anchors,
 // capture group 1 is the id: a bullet `- **INV-N**` (a `.` allowed before
 // the closing `**`) and a table row `| INV-N |`.
+// ANTS-6046 — a bullet may also hold its title inside the bold, as
+// `- **INV-N — title.**`, with `—`, `–`, `:`, ` - `, ` / ` or ` (` after the
+// id. The match then ends at the id, so the title stays with the body.
+// `INV-2's test` is prose and `INV-21-3` is another numbering; neither matches.
 inline QString invIdPattern() { return QStringLiteral(R"(INV-\d+[a-z]?)"); }
 inline QString invBulletAnchorPattern() {
     return QStringLiteral(R"(-\s+\*\*()") + invIdPattern() +
-           QStringLiteral(R"()\.?\*\*)");
+           QStringLiteral(R"()(?:\.?\*\*|(?=[ \t]*[—–:]|[ \t]+[-/(])))");
 }
 inline QString invRowAnchorPattern() {
     return QStringLiteral(R"(\|\s*()") + invIdPattern() +

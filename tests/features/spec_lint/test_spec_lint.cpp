@@ -1533,6 +1533,68 @@ TEST(SpecLint, Ants4894CountsTheInvariantsItDoesRecognise) {
         << "the bullet form § 3.7 defines was not counted";
 }
 
+// ANTS-6046 — finbreak's FIBR-0097 opens each invariant with its title inside
+// the bold, `- **INV-1 — A title.** Prose`, and spec_lint found none of them.
+TEST(SpecLint, Ants6046TitleInsideTheBoldIsAnInvariant) {
+    const QString doc = QStringLiteral(
+        "# A spec\n"
+        "\n"
+        "## 5. Invariants\n"
+        "\n"
+        "- **INV-1 — The dash title.** Dash prose. *Test:* `test_dash`\n"
+        "- **INV-2: The colon title.** Colon prose. *Test:* `test_colon`\n"
+        "- **INV-3 / The slash title.** Slash prose. *Test:* `test_slash`\n"
+        "- **INV-4 (the bracket title).** Bracket prose. *Test:* `test_bracket`\n"
+        "- **INV-5 - The hyphen title.** Hyphen prose. *Test:* `test_hyphen`\n"
+        "- **INV-6:** Only a colon. *Test:* `test_bare_colon`\n"
+        "- **INV-7 — A title that wraps\n"
+        "  to a second line.** Wrapped prose. *Test:* `test_wrap`\n"
+        "- **INV-8** — The plain form, with **bold** inside. *Test:* `test_plain`\n");
+
+    const SpecLint::Result r = SpecLint::check(doc, QStringLiteral("s.md"));
+    EXPECT_EQ(r.invariantsFound, 8);
+    EXPECT_EQ(countKind(r, "invariant_no_test"), 0);
+
+    QHash<QString, QJsonObject> byId;
+    const QJsonArray invariants =
+        SpecParse::parseSpecBody(doc).value(QStringLiteral("invariants")).toArray();
+    for (const auto &v : invariants) {
+        const QJsonObject o = v.toObject();
+        byId.insert(o.value(QStringLiteral("id")).toString(), o);
+    }
+    const auto body = [&](const char *id) {
+        return byId.value(QLatin1String(id)).value(QStringLiteral("body")).toString();
+    };
+    // The title is part of the claim, and the bold's closing marker is not.
+    EXPECT_EQ(body("INV-1"), QStringLiteral("The dash title. Dash prose."));
+    EXPECT_EQ(body("INV-2"), QStringLiteral("The colon title. Colon prose."));
+    EXPECT_EQ(body("INV-3"), QStringLiteral("The slash title. Slash prose."));
+    EXPECT_EQ(body("INV-4"), QStringLiteral("(the bracket title). Bracket prose."));
+    EXPECT_EQ(body("INV-5"), QStringLiteral("The hyphen title. Hyphen prose."));
+    EXPECT_EQ(body("INV-6"), QStringLiteral("Only a colon."));
+    EXPECT_EQ(body("INV-7"), QStringLiteral("A title that wraps\n  to a second line. Wrapped prose."));
+    EXPECT_EQ(body("INV-8"), QStringLiteral("The plain form, with **bold** inside."))
+        << "a plain anchor's own bold is untouched";
+    EXPECT_EQ(byId.value(QStringLiteral("INV-1")).value(QStringLiteral("test_surface")).toString(),
+              QStringLiteral("`test_dash`"));
+}
+
+// Prose that merely opens on an id, and a differently numbered scheme, are not
+// anchors: `INV-21-3` is no INV-21.
+TEST(SpecLint, Ants6046ProseAndOtherIdSchemesAreNotInvariants) {
+    const QString doc = QStringLiteral(
+        "# A spec\n"
+        "\n"
+        "## 5. Invariants\n"
+        "\n"
+        "- **INV-2's test did not check what it claimed.** Prose.\n"
+        "- **INV-2 and INV-3 share a fixture.** Prose.\n"
+        "- **INV-2, INV-3 share a fixture.** Prose.\n"
+        "- **INV-21-3** - the other numbering. *Test:* `test_other`\n");
+
+    EXPECT_EQ(SpecLint::check(doc, QStringLiteral("s.md")).invariantsFound, 0);
+}
+
 // --------------------------------------------------------------- ANTS-4413 --
 //
 // A spec with no `**Status:**` line is not merely undocumented: every

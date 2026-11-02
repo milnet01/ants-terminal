@@ -236,15 +236,17 @@ QJsonObject parseSpecBody(const QString &body) {
             // line reads the same.
             static const QRegularExpression bulletStartRe(
                 QLatin1Char('^') + SpecParse::invBulletAnchorPattern() +
-                    QStringLiteral(R"((?:[ \t]*-|\s*[—:])?[ \t]*)"),
+                    QStringLiteral(R"((?:[ \t]*[-/]|\s*[—–:])?[ \t]*)"),
                 QRegularExpression::MultilineOption);
             auto bit = bulletStartRe.globalMatch(section);
             QList<QPair<QString, int>> starts;  // id, position-after-marker
             QList<int> markerAt;                // where each bullet's line begins
+            QList<bool> boldStillOpen;          // the title is inside the bold
             while (bit.hasNext()) {
                 const auto m = bit.next();
                 starts.append({m.captured(1), m.capturedEnd()});
                 markerAt.append(static_cast<int>(m.capturedStart()));
+                boldStillOpen.append(m.captured(0).count(QStringLiteral("**")) == 1);
             }
             for (int i = 0; i < starts.size(); ++i) {
                 const int from = starts[i].second;
@@ -277,6 +279,15 @@ QJsonObject parseSpecBody(const QString &body) {
                                      ? hm.capturedStart()
                                      : end;
                 QString invBody = section.mid(from, stop - from).trimmed();
+                // ANTS-6046 — `- **INV-N — title.** prose`: the title is part
+                // of the claim, and the marker closing its bold is not.
+                if (boldStillOpen[i]) {
+                    const int close = invBody.indexOf(QStringLiteral("**"));
+                    if (close >= 0) {
+                        invBody.remove(close, 2);
+                        invBody = invBody.trimmed();
+                    }
+                }
 
                 // ANTS-3665 — lift the `*Test:*` clause into its own field.
                 // specs.md § 6 promises `test_surface` from BOTH forms, but

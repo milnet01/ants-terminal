@@ -56,6 +56,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Spec tools read an invariant whose title sits inside the bold, such as `- **INV-1 — A title.**`** (ANTS-6046)
+  `spec_lint` may report new findings on older specs in these forms, because their invariants are now checked.
+
 - **`spec_log append_loop` reads a table log's direction from its numbered rows, so a row labelled `impl` no longer hides it** (ANTS-6047)
 
 - **`trace` names each file holding a match that it could not fully parse, says callers there may be missing, and marks a `name(` in it as `possible_call`** (ANTS-6342)
