@@ -496,6 +496,7 @@ struct AssignResult {
     QString code;             // "" on success; else target_not_found /
                               // target_ambiguous
     QVector<int> candidates;  // target_ambiguous only: colliding 1-based `### ` lines
+    QStringList headings;     // target_not_found only: every `### ` heading, in file order
 };
 
 // Pure. Enumerate `### ` findings (enumerateFindingBlocks), resolve

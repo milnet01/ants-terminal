@@ -4,7 +4,9 @@
 #include "build_info.h"    // ANTS-4741 — the stale-binary comparison
 #include "guithread.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
+#include "markdownscan.h"
 #include "readlog.h"
+#include "readregion.h"          // ANTS-4983 — the shared candidate ranker
 #include "speclog.h"             // ANTS-1963
 #include "gitwrap.h"
 #include "claudeintegration.h"
@@ -564,6 +566,39 @@ void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
 // The ids these ops write are the ones the Ants MCP maintainer assigns at
 // triage, from this project's roadmap, so only an ANTS id is accepted.
 // Another project's ids are only ever read (rlResolveForeignFeedbackIds).
+// assign_id's refusal, single and batch. target_ambiguous lists the colliding
+// lines; target_not_found (ANTS-4983) the closest headings, for the caller to
+// copy, since it was copying one when it missed.
+static QJsonObject fbAssignRefusal(const FeedbackFile::AssignResult &ar,
+                                   const QString &heading) {
+    if (ar.code == QStringLiteral("target_ambiguous")) {
+        QJsonObject e = fbErr(ar.code,
+            QStringLiteral("feedback_log: assign_id heading matches %1 `### ` "
+                           "blocks; pass heading_line").arg(ar.candidates.size()));
+        QJsonArray lines;
+        for (const int line : ar.candidates) lines.append(line);
+        e[QStringLiteral("candidates")] = lines;
+        return e;
+    }
+    QJsonObject e = fbErr(ar.code,
+        QStringLiteral("feedback_log: assign_id found no `### ` finding matching "
+                       "\"%1\"").arg(heading));
+    QStringList slugs;   // file order, which the ranker breaks ties by
+    QHash<QString, QString> headingBySlug;
+    for (const QString &h : ar.headings) {
+        const QString slug = MarkdownScan::headingSlug(h);
+        if (headingBySlug.contains(slug)) continue;
+        slugs.append(slug);
+        headingBySlug.insert(slug, h);
+    }
+    QJsonArray nearest;
+    for (const QString &slug :
+         ReadRegion::rankSectionCandidates(MarkdownScan::headingSlug(heading), slugs))
+        nearest.append(headingBySlug.value(slug));
+    if (!nearest.isEmpty()) e[QStringLiteral("candidates")] = nearest;
+    return e;
+}
+
 static bool fbIsAntsId(const QString &id) {
     static const QRegularExpression re(QStringLiteral("^ANTS-[0-9]+$"));
     return re.match(id).hasMatch();
@@ -1385,22 +1420,8 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             tgt.note        = note;
             const FeedbackFile::AssignResult ar =
                 FeedbackFile::assignId(content, tgt);
-            if (!ar.code.isEmpty()) {       // target_not_found / target_ambiguous
-                QJsonObject e = fbErr(
-                    ar.code,
-                    ar.code == QStringLiteral("target_ambiguous")
-                        ? QStringLiteral("feedback_log: assign_id heading "
-                                         "matches %1 `### ` blocks; pass "
-                                         "heading_line").arg(ar.candidates.size())
-                        : QStringLiteral("feedback_log: assign_id found no "
-                                         "`### ` finding matching \"%1\"")
-                              .arg(heading));
-                if (!ar.candidates.isEmpty()) {
-                    QJsonArray cand;
-                    for (int c : ar.candidates) cand.append(c);
-                    e[QStringLiteral("candidates")] = cand;
-                }
-                skip(e);
+            if (!ar.code.isEmpty()) {
+                skip(fbAssignRefusal(ar, heading));
                 continue;
             }
 
@@ -1493,22 +1514,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const FeedbackFile::AssignResult ar =
             FeedbackFile::assignId(content, tgt);
 
-        if (!ar.code.isEmpty()) {   // target_not_found / target_ambiguous
-            QJsonObject e = fbErr(
-                ar.code,
-                ar.code == QStringLiteral("target_ambiguous")
-                    ? QStringLiteral("feedback_log: assign_id heading matches "
-                                     "%1 `### ` blocks; pass heading_line")
-                          .arg(ar.candidates.size())
-                    : QStringLiteral("feedback_log: assign_id found no `### ` "
-                                     "finding matching \"%1\"").arg(heading));
-            if (!ar.candidates.isEmpty()) {
-                QJsonArray cand;
-                for (int c : ar.candidates) cand.append(c);
-                e[QStringLiteral("candidates")] = cand;
-            }
-            return QJsonDocument(e);
-        }
+        if (!ar.code.isEmpty()) return QJsonDocument(fbAssignRefusal(ar, heading));
 
         const bool dryRunA = req.value(QStringLiteral("dry_run")).toBool();
         // Write only on a real change (skip the byte-identical no-op so the

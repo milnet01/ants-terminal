@@ -20,6 +20,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`feedback_log` `assign_id` names the closest headings when a heading matches no finding** (ANTS-4983)
+
 - **source_scrapes sees Python tests that read through os.path joins or by walking a directory** (ANTS-6338)
 
 - **source_scrapes follows definitions in a test root's CMakeLists.txt and paths joined with std::filesystem's / operator** (ANTS-6340)

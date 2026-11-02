@@ -29,7 +29,9 @@ Nothing else changes — no other finding, no tracking table, no version marker.
 - **INV-3** — the written line is exactly `- **Proposed ID:** <value>`; the
   enumerator reports the block's `idValue` = `<value>` after the write.
 - **INV-4** — resolution: 0 matches → `target_not_found`; > 1 (bare heading) →
-  `target_ambiguous` + `candidates[]`; `heading_line` disambiguates.
+  `target_ambiguous` + `candidates[]` of line numbers; `heading_line`
+  disambiguates. `target_not_found` carries `candidates[]` of the closest
+  heading texts (ANTS-4983), in both the single and the batch form.
 - **INV-5** — request validation: `hasIds XOR hasClosure`; ids match
   `^ANTS-[0-9]+$`; a closure begins `n/a`; a newline in `closure` is folded to a
   space (single-line INV-3).

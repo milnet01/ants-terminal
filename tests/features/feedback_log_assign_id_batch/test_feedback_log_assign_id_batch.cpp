@@ -137,6 +137,36 @@ TEST(FeedbackAssignIdBatch, Inv2OneBadHeadingDoesNotCostTheRest) {
     EXPECT_FALSE(out.contains(QStringLiteral("ANTS-1002")));
 }
 
+// ANTS-4983 — a heading one word out names the closest finding, in the batch
+// and the single form. Nothing is written on the guess.
+TEST(FeedbackAssignIdBatch, Inv2NotFoundNamesTheClosestHeadings) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    const QString nearMiss = kH2 + QStringLiteral(" thing");
+    RemoteControl rc(nullptr);
+    const QJsonObject batch = rc.cmdFeedbackLog(fx.req({
+        one(kH1, QStringLiteral("ANTS-1001")),
+        one(nearMiss, QStringLiteral("ANTS-1002")),
+    })).object();
+    const QJsonObject bad =
+        batch.value(QStringLiteral("skipped")).toArray().at(0).toObject();
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
+              QStringLiteral("target_not_found"));
+    EXPECT_EQ(bad.value(QStringLiteral("candidates")).toArray().at(0).toString(), kH2)
+        << QJsonDocument(batch).toJson().toStdString();
+
+    QJsonObject single = fx.req({});
+    single.remove(QStringLiteral("assignments"));
+    single[QStringLiteral("op")]      = QStringLiteral("assign_id");
+    single[QStringLiteral("heading")] = nearMiss;
+    single[QStringLiteral("ids")]     = QJsonArray{QStringLiteral("ANTS-1002")};
+    const QJsonObject refused = rc.cmdFeedbackLog(single).object();
+    EXPECT_EQ(refused.value(QStringLiteral("code")).toString(),
+              QStringLiteral("target_not_found"));
+    EXPECT_EQ(refused.value(QStringLiteral("candidates")).toArray().at(0).toString(), kH2)
+        << QJsonDocument(refused).toJson().toStdString();
+    EXPECT_FALSE(readStr(fx.path).contains(QStringLiteral("ANTS-1002")));
+}
+
 // ---------------------------------------------------------------- INV-3 -----
 
 TEST(FeedbackAssignIdBatch, Inv3AllFailedRefuses) {

@@ -1505,6 +1505,12 @@ AssignResult assignId(const QString &content, const AssignTarget &target) {
     // heading_line pins a repeated heading; a bare heading matching > 1 block is
     // target_ambiguous (+ candidates); 0 matches is target_not_found.
     const QString want = target.heading.trimmed();
+    const auto notFound = [&] {
+        res.code = QStringLiteral("target_not_found");
+        for (const FindingBlock &b : blocks) res.headings.append(b.heading.trimmed());
+        res.newContent = content;
+        return res;
+    };
     int idx = -1;   // index into `blocks`
     if (target.headingLine > 0) {
         const int wantLine0 = target.headingLine - 1;
@@ -1512,20 +1518,13 @@ AssignResult assignId(const QString &content, const AssignTarget &target) {
             if (blocks.at(k).headingLine0 == wantLine0) { idx = k; break; }
         // heading_line must name a `### ` heading equal to `heading`.
         if (idx < 0 ||
-            (!want.isEmpty() && blocks.at(idx).heading.trimmed() != want)) {
-            res.code = QStringLiteral("target_not_found");
-            res.newContent = content;
-            return res;
-        }
+            (!want.isEmpty() && blocks.at(idx).heading.trimmed() != want))
+            return notFound();
     } else {
         QVector<int> matches;
         for (int k = 0; k < blocks.size(); ++k)
             if (blocks.at(k).heading.trimmed() == want) matches.append(k);
-        if (matches.isEmpty()) {
-            res.code = QStringLiteral("target_not_found");
-            res.newContent = content;
-            return res;
-        }
+        if (matches.isEmpty()) return notFound();
         if (matches.size() > 1) {
             res.code = QStringLiteral("target_ambiguous");
             for (int k : matches)

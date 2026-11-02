@@ -85164,7 +85164,7 @@ than re-filed; everything else lands here.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4983] **assign_id_batch fails a whole assignment on a heading that differs by one word, with no candidates to correct it from.**
+- ✅ [ANTS-4983] **assign_id_batch fails a whole assignment on a heading that differs by one word, with no candidates to correct it from.**
   HIT IN THIS SESSION. One assignment in a batch of seven refused
   target_not_found because the heading I sent read "a hand edit is
   discarded" where the file said "a hand edit to one is
@@ -85189,6 +85189,10 @@ than re-filed; everything else lands here.
   well as the single one, ranked by the shared ranker those two
   items already use. Nothing about the refusal itself changes —
   guessing which heading was meant is not wanted.
+  Shipped 2026-11-02: target_not_found from assign_id and
+  assign_id_batch carries candidates[], the closest heading texts from
+  the shared ranker. The refusal itself is unchanged and nothing is
+  guessed. compact_shipped's target_not_found is not part of this item.
   **Layman:** Assigning an id fails if the heading is copied with one word out, and the reply does not show the near match.
   Kind: enhancement.
   Source: in-session-2026-09-08, hit while triaging the feedback corpus.
