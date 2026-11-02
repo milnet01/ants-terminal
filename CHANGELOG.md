@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_log append_loop` reads a table log's direction from its numbered rows, so a row labelled `impl` no longer hides it** (ANTS-6047)
+
 - **`trace` names each file holding a match that it could not fully parse, says callers there may be missing, and marks a `name(` in it as `possible_call`** (ANTS-6342)
 
 - **`source_scrapes` follows a walk from a module's `__file__`, through `.parent`, into a sub-directory in the pattern, and over a module-level tuple of roots** (ANTS-6343)

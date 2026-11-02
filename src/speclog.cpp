@@ -302,8 +302,15 @@ static EditResult appendTableRow(QStringList lines, int headerLine, int sepLine,
     QString rowOrder = QStringLiteral("ambiguous");
     int insertAt = (lastData >= 0) ? lastData + 1 : sepLine + 1;
     if (firstData >= 0 && lastData > firstData) {
-        const int a = slRowLoopNumber(lines.at(firstData));
-        const int b = slRowLoopNumber(lines.at(lastData));
+        // ANTS-6047 — the first and last rows that carry a number: a label
+        // such as `impl` has none, and must not hide the others' direction.
+        int a = -1, b = -1;
+        for (int i = firstData; i <= lastData; ++i) {
+            const int n = isRow(i) ? slRowLoopNumber(lines.at(i)) : -1;
+            if (n < 0) continue;
+            if (a < 0) a = n;
+            b = n;
+        }
         if (a >= 0 && b >= 0 && a != b) {
             if (a < b) {
                 rowOrder = QStringLiteral("oldest_first");

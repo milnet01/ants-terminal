@@ -560,6 +560,52 @@ TEST(McpSpecLog, Ants4364TableFormAnd4353DirectionInference) {
     EXPECT_TRUE(d.content.contains(QStringLiteral("- **Loop 2** — 0 findings.")));
 }
 
+// ANTS-6047 — a row labelled `impl` carries no number, and the direction was
+// read from the first and last rows only, so a log ending in one reported
+// "ambiguous" however clearly its other rows ran. The numbered rows decide.
+TEST(McpSpecLog, Ants6047UnnumberedRowDoesNotHideDirection) {
+    const QString head = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n");
+    const QStringList newRow = {QStringLiteral("4"), QStringLiteral("2026-08-14"),
+                                QStringLiteral("x")};
+
+    // Unnumbered last row, the reported case: the new row still goes last.
+    const auto a = SpecLog::appendLoop(
+        head + QStringLiteral("| 1 | 2026-08-01 | a |\n"
+                              "| 2 | 2026-08-02 | b |\n"
+                              "| impl | 2026-08-03 | c |\n"),
+        QString(), QString(), newRow);
+    ASSERT_TRUE(a.ok) << a.error.toStdString();
+    EXPECT_EQ(a.rowOrder, QStringLiteral("oldest_first"));
+    EXPECT_GT(a.content.indexOf(QStringLiteral("| 4 | 2026-08-14")),
+              a.content.indexOf(QStringLiteral("| impl |")));
+
+    // Unnumbered first row of a newest-first log: the new row goes above it.
+    // Reading "ambiguous" here put the row at the bottom, under the oldest.
+    const auto b = SpecLog::appendLoop(
+        head + QStringLiteral("| impl | 2026-08-03 | c |\n"
+                              "| 2 | 2026-08-02 | b |\n"
+                              "| 1 | 2026-08-01 | a |\n"),
+        QString(), QString(), newRow);
+    ASSERT_TRUE(b.ok) << b.error.toStdString();
+    EXPECT_EQ(b.rowOrder, QStringLiteral("newest_first"));
+    EXPECT_LT(b.content.indexOf(QStringLiteral("| 4 | 2026-08-14")),
+              b.content.indexOf(QStringLiteral("| impl |")));
+
+    // One numbered row carries no direction, so the report stays honest.
+    const auto c = SpecLog::appendLoop(
+        head + QStringLiteral("| 1 | 2026-08-01 | a |\n"
+                              "| impl | 2026-08-03 | c |\n"),
+        QString(), QString(), newRow);
+    ASSERT_TRUE(c.ok) << c.error.toStdString();
+    EXPECT_EQ(c.rowOrder, QStringLiteral("ambiguous"));
+}
+
 // ANTS-5769 — a BULLET log runs in either direction too. Seen on
 // docs/specs/ANTS-1855.md: its log runs newest first, and a dry run reported
 // landing at the end of the file, below the oldest row. The direction comes

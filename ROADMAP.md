@@ -88618,11 +88618,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: finbreak-feedback-2026-10-22.
   Lanes: spec-engines.
 
-- 📋 [ANTS-6047] **spec_log append_loop reports row_order "ambiguous" on a loop log whose rows are 1, 2, 3, impl.**
+- ✅ [ANTS-6047] **spec_log append_loop reports row_order "ambiguous" on a loop log whose rows are 1, 2, 3, impl.**
   Reported by finbreak in a session message (2026-10-22), not filed
   in its feedback file. The row still landed last, which was correct;
   the "ambiguous" report is the question. Likely the non-numeric
   "impl" row label.
+  Cause confirmed: slRowLoopNumber returns -1 for `impl`, and only the
+  first and last rows were compared. It also misplaced rows: a
+  newest-first log opening on `impl` took the new row at the bottom.
+  Across 134 table logs in all projects, 17 changed verdict; 6 of those
+  now take the row at the top.
   **Layman:** A spec tool gave a confusing warning about the order of rows in a review log, even though it put the new row in the right place.
   Kind: investigate.
   Source: finbreak-feedback-2026-10-22.
