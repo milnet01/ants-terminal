@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6351 -->
+<!-- ants-roadmap-id-high-water: ANTS=6352 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89355,8 +89355,12 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-11-02, found while fixing ANTS-5801.
   Lanes: mcp.
 
-- 📋 [ANTS-6350] **comment_claims calls a see-reference dead when it names a file by a shorter path or without its extension.**
+- ✅ [ANTS-6350] **comment_claims calls a see-reference dead when it names a file by a shorter path or without its extension.**
   Measured 2026-11-02 on freellmapi. client/src/pages/ModelDetailPage.tsx says `see lib/alias-merge`, and client/src/lib/alias-merge.ts exists. client/src/pages/AnalyticsPage.tsx says `see db/model-pricing.ts`, and server/src/db/model-pricing.ts exists. Inv3 looks only under the root and the comment's own directory. Whether a suffix match should count, and how an ambiguous one should report, needs deciding when built. 37 other findings on that project were not checked for this shape.
+  Decided 2026-11-02: a suffix match on a whole path segment counts, and
+  several matches count as alive, because this check reports references
+  that name nothing. The 37 other findings on freellmapi were not
+  re-checked one by one.
   **Layman:** A tool that checks code comments can report a reference as broken when the file exists under a slightly shorter name.
   Kind: fix.
   Source: in-session-2026-11-02, found while fixing ANTS-6348.
@@ -89371,6 +89375,13 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A tool that lists which tests read a source file can answer with far too much text for the session to read.
   Kind: fix.
   Source: in-session-2026-11-02, hit while checking write-code's scrape step for ANTS-6349.
+  Lanes: mcp.
+
+- 📋 [ANTS-6352] **function_sizes and file_outline silently skip an extensionless Python script that trace parses.**
+  Reported by claude-config, on tools/lane-verify and tools/neutral-lane, which have a python3 shebang and no extension. function_sizes counts each as scanned with functions_measured 0, unmeasured 0 and no not_covered row; file_outline says language unknown. trace on the same files returns python. So the reply looks like a measured file with nothing long in it. Its ask: sort by shebang as trace does, or list the file under unmeasured. Not reproduced here yet.
+  **Layman:** Two code-measuring tools quietly ignore a Python script with no file extension, so it looks measured when it was not.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md, 2026-11-02.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

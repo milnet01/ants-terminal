@@ -117,6 +117,30 @@ TEST(CommentClaims, Inv3DeadReference) {
     for (const QJsonObject &o : d) EXPECT_EQ(o.value(QStringLiteral("line")).toInt(), 4);
 }
 
+// ANTS-6350 — measured on freellmapi: `see lib/alias-merge` names
+// client/src/lib/alias-merge.ts, from client/src/pages.
+TEST(CommentClaims, Inv3ShorterPathIsNotDead) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    writeFile(dir.filePath("client/lib/alias-merge.ts"), "");
+    writeFile(dir.filePath("other/lib/alias-merge.js"), "");
+    writeFile(dir.filePath("server/db/pricing.cpp"), "");
+    writeFile(dir.filePath("server/db/tables/users.sql"), "");
+    writeFile(dir.filePath("build/dep/noise.cpp"), "");
+    writeFile(dir.filePath("src/a.cpp"),
+              "// see lib/alias-merge\n"        // no extension, two files match
+              "// see db/pricing.cpp\n"         // a shorter path
+              "// see db/tables\n"              // a directory
+              "// see db/ricing.cpp\n"          // part of a segment: dead
+              "// see dep/noise.cpp\n"          // a noise directory: dead
+              "// see lib/alias-merge.cpp\n");  // the wrong extension: dead
+    const QStringList q = quotes(rows(call(dir), "findings", QStringLiteral("dead_reference")));
+    EXPECT_EQ(q, (QStringList{QStringLiteral("see db/ricing.cpp"),
+                              QStringLiteral("see dep/noise.cpp"),
+                              QStringLiteral("see lib/alias-merge.cpp")}))
+        << q.join(QStringLiteral(" | ")).toStdString();
+}
+
 TEST(CommentClaims, Inv4UnknownTicket) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QStringList t = quotes(rows(call(*dir), "findings", QStringLiteral("unknown_ticket")));

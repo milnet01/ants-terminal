@@ -317,6 +317,47 @@ private:
         return QString();
     }
 
+    // ANTS-6350 — every file and directory under the root as "/rel", plus each
+    // file's "/rel" without its extension. Noise and hidden directories are
+    // left out, as a reference into one is not a claim about this project's
+    // tree. Walked once, on the first reference the plain lookup cannot find.
+    void walkPaths(const QString &dir) {
+        constexpr int kMaxPaths = 200000;   // bounds a huge root; beyond it, a reference can read dead
+        const QDir root(m_root);
+        const auto entries = QDir(dir).entryInfoList(
+            QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::NoSymLinks);
+        for (const QFileInfo &fi : entries) {
+            if (m_paths.size() >= kMaxPaths) return;
+            const QString rel = QLatin1Char('/') + root.relativeFilePath(fi.filePath());
+            if (fi.isDir()) {
+                if (fi.fileName().startsWith(QLatin1Char('.'))
+                    || ProjectSettings::isNoiseDir(fi.fileName()))
+                    continue;
+                m_paths.append(rel);
+                walkPaths(fi.filePath());
+                continue;
+            }
+            m_paths.append(rel);
+            if (!fi.suffix().isEmpty())
+                m_paths.append(rel.left(rel.size() - fi.suffix().size() - 1));
+        }
+    }
+
+    // `p` ends some project path on a segment boundary. Several matches still
+    // count: this check reports references that name nothing, and it does not
+    // guess which of several was meant.
+    bool endsAProjectPath(QString p) {
+        if (!m_pathsWalked) {
+            m_pathsWalked = true;
+            walkPaths(m_root);
+        }
+        while (p.endsWith(QLatin1Char('/'))) p.chop(1);
+        const QString needle = QLatin1Char('/') + p;
+        return std::any_of(m_paths.cbegin(), m_paths.cend(), [&needle](const QString &path) {
+            return path.endsWith(needle);
+        });
+    }
+
     void add(const Joined &j, int offset, const QString &kind, const QString &quote,
              const QString &why, bool finding = true) {
         rows.append({m_rel, j.lineAt(offset), kind, quote, why, finding});
@@ -401,7 +442,7 @@ private:
                     || tok.contains(QLatin1Char('<')) || tok.contains(QLatin1Char('{'))
                     || tok.contains(QLatin1Char('$')))
                     continue;
-                if (resolve(tok).isEmpty())
+                if (resolve(tok).isEmpty() && !endsAProjectPath(tok))
                     add(j, at, QStringLiteral("dead_reference"), m.captured(0).trimmed(),
                         QStringLiteral("no file or directory %1 under the project").arg(tok));
                 continue;
@@ -475,6 +516,8 @@ private:
     }
 
     QString m_root;
+    QStringList m_paths;        // endsAProjectPath's index, built on first use
+    bool m_pathsWalked = false;
     QSet<QString> m_ids;
     QSet<QString> m_prefixes;
     QString m_dir;

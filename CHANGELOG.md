@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`comment_claims` accepts a `see` reference that names a file by a shorter path or without its extension** (ANTS-6350)
+
 - **`fields:["handle"]` returns the handle of a large reply's whole saved body** (ANTS-5356)
 
 - **A saved reply's hint says row pages come back as `rows`, and offers byte paging for tabular rows** (ANTS-5363)
