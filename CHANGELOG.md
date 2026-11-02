@@ -31,6 +31,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **spec_lint's repeated hints are less than half their old size and keep their warnings** (ANTS-5264)
+
 - **Plain `cc-job status` answers at once with running jobs and the newest 20 others; `cc-job status --all` lists every job.** (ANTS-6354)
 
 - **The roadmap format says where a `v0.7.x` patch-stream block ranks when choosing the active release: after that minor's numbered patches, before the next minor.** (ANTS-5652)

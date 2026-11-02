@@ -1194,25 +1194,19 @@ QJsonObject RemoteControl::specLintBuildResponse(
         // No hint on the project arm: there the path already answers it.
         if (sectionsSourceReason == QLatin1String("adoption_marker"))
             o[QStringLiteral("sections_source_hint")] = QStringLiteral(
-                "this project HAS adopted the global spec-format standard. It "
-                "keeps no local copy because the standard forbids one, and its "
-                "deltas are at docs/standards/spec-format-overrides.md, which "
-                "is present. The section findings are REAL: do NOT drop them "
-                "on the `~global/` prefix. Tracked as ANTS-4926.");
+                "this project HAS adopted the global spec-format standard (its "
+                "deltas: docs/standards/spec-format-overrides.md). The section "
+                "findings are REAL: do NOT drop them on the `~global/` prefix.");
         else if (sectionsSourceReason == QLatin1String("local_standard_no_block"))
             o[QStringLiteral("sections_source_hint")] = QStringLiteral(
-                "this project ships a format standard of its own, but that "
-                "file carries no required-sections block, so the global list "
-                "answered instead. The findings state the global shape, not "
-                "the one this project wrote down. Add the block to the "
-                "project's own standard. Tracked as ANTS-4926.");
+                "this project's own format standard has no required-sections "
+                "block, so the global list answered. The findings state the "
+                "global shape: add the block to that standard.");
         else if (sectionsSourceReason == QLatin1String("no_local_standard"))
             o[QStringLiteral("sections_source_hint")] = QStringLiteral(
-                "no format standard was found under this project, and no "
+                "no format standard is here, and no "
                 "docs/standards/spec-format-overrides.md marks the global one "
-                "as adopted. The section findings therefore state a shape this "
-                "project may never have adopted — verify adoption before "
-                "acting on them. Tracked as ANTS-4926.");
+                "as adopted. Verify adoption before acting on section findings.");
     }
     // ANTS-4393 — `surfaces_checked` has a DIFFERENT cause from
     // `sections_checked`, measured on a project where adding the format
@@ -1250,18 +1244,11 @@ QJsonObject RemoteControl::specLintBuildResponse(
         // scanning <root>/tests/features/. A reporting project hand-checked
         // every invariant after being told the skip was unfixable.
         o[QStringLiteral("surfaces_skipped_hint")] = QStringLiteral(
-            "explains test_surface_absent / test_surface_unresolved / "
-            "test_surface_unwired in skipped[]: no test surface was resolved, "
-            "so those three checks did NOT run. The input is a "
-            "`tests/features/<name>/` directory — this verb resolves a "
-            "surface in that shape and no other, so a project laid out "
-            "differently cannot turn the check on however many tests it has. "
-            "Treat `findings:[]` as SILENT about test surfaces, not as a "
-            "pass. Note `invariant_no_test` is NOT gated by this and runs "
-            "over whatever invariants were RECOGNISED: an INV-N with no "
-            "*Test:* clause is still reported, but see `invariants_found` "
-            "before reading that as evidence any were (ANTS-4894). "
-            "Tracked as ANTS-4393 / ANTS-4679.");
+            "test_surface_absent / test_surface_unresolved / "
+            "test_surface_unwired did NOT run: only a "
+            "`tests/features/<name>/` directory resolves a surface. "
+            "`findings:[]` is SILENT about test surfaces, not a pass. "
+            "invariant_no_test still ran; see `invariants_found`.");
     }
     if (!testCoverageChecked) {
         o[QStringLiteral("test_coverage_skipped_hint")] = QStringLiteral(

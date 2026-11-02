@@ -636,6 +636,33 @@ TEST(SpecLintVerb, Ants4926SectionsSourceReasonSeparatesAdoptionFromAbsence) {
     EXPECT_FALSE(bare.contains(QStringLiteral("sections_source_hint")));
 }
 
+// ANTS-5264 — these hints fire on every call on a project whose layout never
+// matches, so their size is paid repeatedly. Short, and still carrying what
+// stops `findings:[]` being read as a pass.
+TEST(SpecLintVerb, Ants5264RepeatedHintsStayShortAndKeepTheirWarning) {
+    const QString viaGlobal = QStringLiteral("~global/standards/spec-format.md");
+    const QJsonObject surfaces = RemoteControl::specLintBuildResponse(
+        {}, true, false, QJsonObject{}, false,
+        QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, viaGlobal);
+    const QByteArray sh =
+        surfaces.value(QStringLiteral("surfaces_skipped_hint")).toString().toUtf8();
+    EXPECT_LE(sh.size(), 300) << sh.constData();
+    EXPECT_TRUE(sh.contains("SILENT")) << sh.constData();
+    EXPECT_TRUE(sh.contains("not a pass")) << sh.constData();
+
+    for (const char *reason :
+         {"adoption_marker", "local_standard_no_block", "no_local_standard"}) {
+        const QJsonObject o = RemoteControl::specLintBuildResponse(
+            {}, true, false, QJsonObject{}, false,
+            QStringList{QStringLiteral("docs/specs/X.md")}, 0, false, viaGlobal,
+            500, QString::fromLatin1(reason));
+        const QByteArray hint =
+            o.value(QStringLiteral("sections_source_hint")).toString().toUtf8();
+        EXPECT_FALSE(hint.isEmpty()) << reason;
+        EXPECT_LE(hint.size(), 200) << reason << ": " << hint.constData();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // ANTS-4737 — the cap must trim what is EMITTED and nothing else.
 //

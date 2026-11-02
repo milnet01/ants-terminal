@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6355 -->
+<!-- ants-roadmap-id-high-water: ANTS=6356 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -81369,7 +81369,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (Vestige and ai-prompts, independently).
   Lanes: mcp.
 
-- 📋 [ANTS-5264] **spec_lint re-sends two static hints on every call, and they fire forever on a project whose layout does not match the verb's expectation.**
+- ✅ [ANTS-5264] **spec_lint re-sends two static hints on every call, and they fire forever on a project whose layout does not match the verb's expectation.**
   Measured: `surfaces_skipped_hint` 680 B and `sections_source_hint` 272 B,
   byte-identical on every call. Four calls during one gate = 3,808 B, of
   which 952 were informative once and 2,856 bought nothing.
@@ -81397,6 +81397,15 @@ are closed inline in the feedback files rather than filed here.
   that was measured, probably not the only one.
   Corroborated (2026-10-15 token survey): Groundwork named spec_lint's
   sections_source_hint and surfaces_skipped_hint as needed once only.
+  Resolved 2026-11-02: the hints are shortened, not suppressed.
+  surfaces_skipped_hint went from 680 to 253 bytes and
+  sections_source_hint from 272 to 158, measured with ants-mcpd --call
+  on a project with no test folders. Once-per-session was rejected: a
+  subagent shares its parent's server connection but not what the parent
+  read, so it would lose the warning that stopped a false pass. A
+  hints_seen echo was rejected: every caller would have to learn it, and
+  it adds state to the protocol for less gain. skipped[] stays on every
+  reply.
   **Layman:** A checking tool repeats the same two paragraphs of advice on every single run, and on some projects those paragraphs can never stop appearing.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts).
@@ -82329,6 +82338,14 @@ are closed inline in the feedback files rather than filed here.
   Kind: doc-fix.
   Source: review-contract-2026-10-12 (ANTS-3855 loop 13, out of radius).
   Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-6356] **Other verbs may repeat long fixed hints on every call, as spec_lint did before ANTS-5264.**
+  Measured 2026-11-02: spec_lint's test_coverage_skipped_hint is 441 bytes on a project with no Tests section, and it was left alone by ANTS-5264.
+  Survey the hints a verb emits because of a project property that cannot change, then shorten the long ones the same way.
+  **Layman:** Some tools may repeat the same long advice on every run, which wastes tokens.
+  Kind: optimize.
+  Source: in-session-2026-11-02 ANTS-5264 build.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-20 triage
 
