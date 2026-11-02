@@ -34,7 +34,16 @@ struct Unmeasured {
     QString why;
 };
 QList<Function> measure(const QString &absPath, const QStringList &lines,
-                        QList<Unmeasured> *unmeasured);
+                        QList<Unmeasured> *unmeasured, QString *language = nullptr);
+
+// ANTS-5800 — a script's code outside every function: the lines that are
+// neither blank nor `#` comments, and the first and last of them (1-based).
+struct TopLevel {
+    int lines = 0;
+    int firstLine = 0;
+    int lastLine = 0;
+};
+TopLevel topLevelCode(const QStringList &lines, const QList<Function> &measured);
 
 // The whole call below the resolved project root: the envelope, or a
 // refusal {ok:false, code, error}.

@@ -262,7 +262,8 @@ server-controllable beyond this per-tool hint.
   outline, such as Lua, gives no rows and no `unmeasured` count;
   `scanned.files` still counts its files. A function with no brace body (a
   Ruby `def … end`, a Kotlin `fun f() = x`) or whose closing brace never
-  balances is counted in `unmeasured`. Contract:
+  balances is counted in `unmeasured`. Shell and Python code outside any
+  function is ranked in `top_level` (ANTS-5800). Contract:
   [`tests/features/mcp_function_sizes/spec.md`](../../tests/features/mcp_function_sizes/spec.md).
 
 - **`source_scrapes` follows a test's reads, not its build** (ANTS-5602). A

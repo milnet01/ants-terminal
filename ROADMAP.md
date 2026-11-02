@@ -88533,7 +88533,7 @@ measured Ants adding about 5,250 tokens to every request.
 
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 
-- 📋 [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
+- ✅ [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
   Repro on demoreel: obs-submit.sh and .githooks/pre-push are mostly
   top-level statements. function_sizes ranked only their small functions
   (largest 4 lines) and reported unmeasured:0, which a caller reads as
@@ -88543,6 +88543,10 @@ measured Ants adding about 5,250 tokens to every request.
   line count of code outside any function, or at least a
   scanned.top_level_lines count plus a hint. Applies to any language
   with top-level statements (shell, Python, Lua).
+  A top_level array and scanned.top_level_lines cover shell and Python.
+  Kept out of functions[], so its ranking and its lines formula hold.
+  Lua stays unmeasured, because file_outline has no Lua mode;
+  not_covered says so.
   **Layman:** The code-size tool skips the main body of shell scripts but says it measured everything.
   Kind: fix.
   Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).

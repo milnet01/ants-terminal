@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`function_sizes` measures shell and Python code outside any function, in a new `top_level` list** (ANTS-5800)
+
 - **`comment_claims` reads fish, zsh, ksh and extensionless scripts, and names any file it could not read** (ANTS-5806)
 
 - **`cc-job start` passes exported variables to the job, apart from the session's own, and `--help` says so** (ANTS-6347)

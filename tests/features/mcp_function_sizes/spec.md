@@ -18,3 +18,4 @@ shares with the other readability verbs is `src/codewalk.{h,cpp}`.
 | 6 | Every reply names what it looked at: `scanned.files`, `scanned.functions_measured` and `scanned.unmeasured`, so an empty answer is not a silent one. | `FunctionSizes.Inv6EmptyAnswerSaysWhatItScanned` |
 | 7 | `top` outside 1 to 500 and a non-string `paths` entry refuse `bad_args`. A path outside the root or missing refuses `bad_path`. | `FunctionSizes.Inv7Refusals` |
 | 8 | The verb is registered in `registerProjectScopedVerbs` with `CallerCwdContract::Required`, matches `callerCwdContractFor`, and its schema is a closed object. | `FunctionSizes.Inv8Wiring` |
+| 9 | For a shell or Python file, lines outside every measured function, neither blank nor `#` comments, are `top_level` rows (`file`, `lines`, `first_line`, `last_line`), most lines first and capped at `top`. `scanned.top_level_lines` is the uncapped total. | `FunctionSizes.Inv9TopLevelCodeIsMeasured` |

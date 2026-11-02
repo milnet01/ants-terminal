@@ -14971,7 +14971,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["description"] = QStringLiteral(
                         "Rank the longest functions in the given files or directories. "
                         "Each row: {id, file, symbol, lines, body_start, body_end, "
-                        "nesting_depth}. A shortlist for review, not a finding. Tests and "
+                        "nesting_depth}. `top_level` ranks shell and Python code outside any "
+                        "function. A shortlist for review, not a finding. Tests and "
                         "generated files are left out unless asked for; `scanned` counts "
                         "files, functions measured and any unmeasured. Refusals: "
                         "bad_args, bad_path, no_project. caller_cwd Required.");

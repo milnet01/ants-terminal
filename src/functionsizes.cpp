@@ -55,13 +55,28 @@ int pythonEnd(const QStringList &lines, int defLine, int *maxDepth) {
 
 } // namespace
 
+TopLevel topLevelCode(const QStringList &lines, const QList<Function> &measured) {
+    QList<bool> inFunction(lines.size() + 1, false);
+    for (const Function &f : measured)
+        for (int n = f.bodyStart; n <= f.bodyEnd && n <= lines.size(); ++n) inFunction[n] = true;
+    TopLevel t;
+    for (int n = 1; n <= lines.size(); ++n) {
+        if (inFunction.at(n) || isBlankOrComment(lines.at(n - 1))) continue;
+        ++t.lines;
+        if (t.firstLine == 0) t.firstLine = n;
+        t.lastLine = n;
+    }
+    return t;
+}
+
 QList<Function> measure(const QString &absPath, const QStringList &lines,
-                        QList<Unmeasured> *unmeasured) {
+                        QList<Unmeasured> *unmeasured, QString *languageOut) {
     QList<Function> out;
     const QJsonObject outline = FileOutline::compute(
         absPath, FileOutline::Mode::Auto, /*includeDocComment=*/false,
         FileOutline::kMaxSymbolsCap);
     const QString language = outline.value(QStringLiteral("language")).toString();
+    if (languageOut) *languageOut = language;
     const bool python = language == QLatin1String("py");
     // Ruby closes a body with `end`, which the brace scan cannot see.
     const bool keywordDelimited = language == QLatin1String("ruby");
@@ -137,6 +152,12 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         Function f;
         int lines() const { return f.bodyEnd - f.bodyStart + 1; }
     };
+    struct TopRow {
+        QString file;
+        TopLevel t;
+    };
+    QList<TopRow> topRows;
+    int topLevelLines = 0;
     QList<Row> rows;
     QJsonArray unmeasuredRows;
     int unmeasured = 0;
@@ -148,8 +169,17 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         while (!in.atEnd()) lines.append(QString::fromUtf8(in.readLine()));
         const QString rel = root.relativeFilePath(abs);
         QList<Unmeasured> skipped;
-        for (const Function &f : measure(abs, lines, &skipped))
+        QString language;
+        const QList<Function> measured = measure(abs, lines, &skipped, &language);
+        for (const Function &f : measured)
             rows.append({rel, f});
+        // Only where a file's top level runs as a program. A C++ file's is
+        // declarations, which would crowd out the rows this reports.
+        if (language == QLatin1String("sh") || language == QLatin1String("py")) {
+            const TopLevel t = topLevelCode(lines, measured);
+            topLevelLines += t.lines;
+            if (t.lines > 0) topRows.append({rel, t});
+        }
         unmeasured += int(skipped.size());
         for (const Unmeasured &u : std::as_const(skipped)) {
             if (unmeasuredRows.size() >= top) break;
@@ -180,17 +210,31 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         functions.append(o);
     }
 
+    std::sort(topRows.begin(), topRows.end(), [](const TopRow &a, const TopRow &b) {
+        if (a.t.lines != b.t.lines) return a.t.lines > b.t.lines;
+        return a.file < b.file;
+    });
+    QJsonArray topLevel;
+    for (int i = 0; i < topRows.size() && i < top; ++i)
+        topLevel.append(QJsonObject{{QStringLiteral("file"), topRows.at(i).file},
+                                    {QStringLiteral("lines"), topRows.at(i).t.lines},
+                                    {QStringLiteral("first_line"), topRows.at(i).t.firstLine},
+                                    {QStringLiteral("last_line"), topRows.at(i).t.lastLine}});
+
     QJsonObject scanned = CodeWalk::scannedSummary(files);
     scanned[QStringLiteral("functions_measured")] = int(rows.size());
     scanned[QStringLiteral("unmeasured")] = unmeasured;
+    scanned[QStringLiteral("top_level_lines")] = topLevelLines;
     QJsonObject env;
     env[QStringLiteral("ok")] = true;
     env[QStringLiteral("functions")] = functions;
     env[QStringLiteral("top")] = top;
     env[QStringLiteral("scanned")] = scanned;
     env[QStringLiteral("unmeasured")] = unmeasuredRows;
+    env[QStringLiteral("top_level")] = topLevel;
     env[QStringLiteral("not_covered")] = QJsonArray{QStringLiteral(
-        "a language a directory walk does not read, such as shell or CMake; name the file in paths")};
+        "a language a directory walk does not read, such as CMake, or that file_outline does not, "
+        "such as Lua, whose functions and top-level code are not measured even when named")};
     return env;
 }
 

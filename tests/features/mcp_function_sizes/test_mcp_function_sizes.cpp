@@ -114,6 +114,48 @@ TEST(FunctionSizes, Inv2aNoBraceBodyIsUnmeasured) {
     EXPECT_EQ(r.value(QStringLiteral("not_covered")).toArray().size(), 1);
 }
 
+// ANTS-5800 — a script's main body is code no function holds, so ranking only
+// its small functions read as full coverage.
+TEST(FunctionSizes, Inv9TopLevelCodeIsMeasured) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/run.sh"),
+              "#!/bin/sh\n"          // 1, a comment
+              "echo one\n"           // 2
+              "\n"
+              "small() {\n"          // 4
+              "    echo body\n"
+              "}\n"                  // 6
+              "# a comment\n"
+              "echo two\n"           // 8
+              "echo three\n");       // 9
+    writeFile(dir.filePath("src/m.py"),
+              "import os\n"          // 1
+              "def f():\n"           // 2
+              "    return 1\n"
+              "print(os.name)\n");   // 4
+    writeFile(dir.filePath("src/a.cpp"), kCpp);
+
+    const QJsonObject r = call(dir);   // the walk of src reaches the shell file
+    const QJsonArray rows = r.value(QStringLiteral("top_level")).toArray();
+    ASSERT_EQ(rows.size(), 2) << QJsonDocument(r).toJson().constData();
+    const QJsonObject sh = rows.at(0).toObject();
+    EXPECT_EQ(sh.value(QStringLiteral("file")).toString(), QStringLiteral("src/run.sh"));
+    EXPECT_EQ(sh.value(QStringLiteral("lines")).toInt(), 3);
+    EXPECT_EQ(sh.value(QStringLiteral("first_line")).toInt(), 2);
+    EXPECT_EQ(sh.value(QStringLiteral("last_line")).toInt(), 9);
+    const QJsonObject py = rows.at(1).toObject();
+    EXPECT_EQ(py.value(QStringLiteral("file")).toString(), QStringLiteral("src/m.py"));
+    EXPECT_EQ(py.value(QStringLiteral("lines")).toInt(), 2);
+    EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("top_level_lines")).toInt(), 5);
+    EXPECT_FALSE(rowFor(r, QStringLiteral("small")).isEmpty());
+
+    const QJsonObject capped = call(dir, {{QStringLiteral("top"), 1}});
+    EXPECT_EQ(capped.value(QStringLiteral("top_level")).toArray().size(), 1);
+    EXPECT_EQ(capped.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("top_level_lines")).toInt(), 5);
+}
+
 TEST(FunctionSizes, Inv3PythonBodyEndsByIndentation) {
     QTemporaryDir dir;
     writeFile(dir.filePath("src/m.py"),
