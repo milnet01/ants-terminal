@@ -449,6 +449,7 @@ TEST(StandaloneMcpServer, OversizedStdinRequestIsRefusedOnce) {
     EXPECT_EQ(err.value(QStringLiteral("error")).toObject()
                   .value(QStringLiteral("code")).toInt(), -32600)
         << QJsonDocument(err).toJson().toStdString();
+    EXPECT_EQ(mcpd.repliesWithNoId(), 1);
 }
 
 // The same ceiling when the line arrives in pieces: the first 300 KiB with
@@ -468,11 +469,9 @@ TEST(StandaloneMcpServer, OversizedStdinRequestInPiecesIsRefusedOnce) {
     const QJsonObject listed = mcpd.await(mcpd.send(QStringLiteral("tools/list")));
     EXPECT_TRUE(listed.contains(QStringLiteral("result")))
         << QJsonDocument(listed).toJson().toStdString();
-    const QJsonObject after = mcpd.await(0, 500);
-    EXPECT_EQ(after.value(QStringLiteral("error")).toObject()
-                  .value(QStringLiteral("code")).toInt(), -32600)
-        << "the tail was parsed as a request: "
-        << QJsonDocument(after).toJson().toStdString();
+    // ANTS-5802 — counted, since a second reply would land under the same key.
+    // Stdin is read in order, so the tail's reply would precede tools/list's.
+    EXPECT_EQ(mcpd.repliesWithNoId(), 1) << "the refusal repeated, or the tail was parsed";
 }
 
 namespace {

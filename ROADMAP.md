@@ -88563,13 +88563,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: demoreel_Ants_MCP_Feedback.md 2026-10-21 (session demoreel-c6).
   Lanes: mcp.
 
-- 📋 [ANTS-5802] **OversizedStdinRequestInPiecesIsRefusedOnce's "tail was parsed" check reads a stored reply and cannot fail.**
+- ✅ [ANTS-5802] **OversizedStdinRequestInPiecesIsRefusedOnce's "tail was parsed" check reads a stored reply and cannot fail.**
   The test's last assertion calls mcpd.await(0, 500) to catch a second
   -32600 from the skipped tail. McpdSession keeps replies in a map keyed
   by id, and the first refusal already sits under 0, so await returns it
   at once and the assertion holds whether or not a second reply came.
   Fix: count id:null refusals (or clear the stored reply before the tail
   is written) and assert exactly one.
+  McpdSession counts id:null replies; both oversized-request tests
+  assert exactly one. A server made to refuse twice fails the in-pieces
+  test.
   **Layman:** One check in a server test looks at an old saved answer, so it would pass even if the bug it guards against came back.
   Kind: test.
   Source: in-session-2026-10-21, found while fixing ANTS-4709.

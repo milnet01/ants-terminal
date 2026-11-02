@@ -83,15 +83,7 @@ public:
         while (!m_replies.contains(id) && t.elapsed() < timeoutMs) {
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
             m_proc.waitForReadyRead(20);
-            m_buf += m_proc.readAllStandardOutput();
-            qsizetype nl;
-            while ((nl = m_buf.indexOf('\n')) >= 0) {
-                const QJsonObject o =
-                    QJsonDocument::fromJson(m_buf.left(nl)).object();
-                m_buf.remove(0, nl + 1);
-                if (o.contains(QStringLiteral("id")))
-                    m_replies.insert(o.value(QStringLiteral("id")).toInt(), o);
-            }
+            collectReplies();
             if (m_proc.state() == QProcess::NotRunning) break;
         }
         // ANTS-5339 — a missing reply says so, and how long was waited. An
@@ -139,25 +131,36 @@ public:
             QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
             exited = m_proc.waitForFinished(20);
         }
-        m_buf += m_proc.readAllStandardOutput();
-        qsizetype nl;
-        while ((nl = m_buf.indexOf('\n')) >= 0) {
-            const QJsonObject o = QJsonDocument::fromJson(m_buf.left(nl)).object();
-            m_buf.remove(0, nl + 1);
-            if (o.contains(QStringLiteral("id")))
-                m_replies.insert(o.value(QStringLiteral("id")).toInt(), o);
-        }
+        collectReplies();
         return exited;
     }
 
     bool hasReply(int id) const { return m_replies.contains(id); }
 
+    // ANTS-5802 — how many id:null replies have been read so far. They share
+    // the key 0 in the map, so await(0) cannot tell one from several.
+    int repliesWithNoId() const { return m_repliesWithNoId; }
+
     QByteArray stderrText() { return m_proc.readAllStandardError(); }
 
 private:
+    void collectReplies() {
+        m_buf += m_proc.readAllStandardOutput();
+        qsizetype nl;
+        while ((nl = m_buf.indexOf('\n')) >= 0) {
+            const QJsonObject o = QJsonDocument::fromJson(m_buf.left(nl)).object();
+            m_buf.remove(0, nl + 1);
+            if (!o.contains(QStringLiteral("id"))) continue;
+            const QJsonValue id = o.value(QStringLiteral("id"));
+            if (id.isNull()) ++m_repliesWithNoId;
+            m_replies.insert(id.toInt(), o);
+        }
+    }
+
     QProcess m_proc;
     bool m_started = false;
     int m_nextId = 0;
+    int m_repliesWithNoId = 0;
     QByteArray m_buf;
     QHash<int, QJsonObject> m_replies;
 };
