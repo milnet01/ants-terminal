@@ -14,6 +14,9 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_log` can correct or delete a phrase in an unreleased entry** (ANTS-5246)
+  `op:"amend"` replaces one exact phrase under `[Unreleased]`, and an empty `new_text` deletes it. `id` picks the entry when a phrase repeats. Released sections stay frozen.
+
 - **`audit_dismiss` records many findings in one call and can replace a stored reason** (ANTS-5603)
   `entries[]` takes a list of findings in one write, and a bad entry costs only itself. `replace_reason` corrects a wrong reason without editing the ledger by hand. Every reply now says what happened through `outcome`, and shows the reason the ledger holds.
 

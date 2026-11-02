@@ -258,4 +258,29 @@ struct NormalizeResult {
 //                             dated topics by category is meaningless)
 NormalizeResult normalizeUnreleased(const QString &markdown);
 
+struct AmendResult {
+    bool    ok = false;
+    QString markdown;              // new body (valid iff ok)
+    QString code;                  // refusal code iff !ok
+    QString error;                 // human message iff !ok
+    int     line = -1;             // 1-based line the match started on
+    QString lineText;              // that line now; empty when it was removed
+    bool    changed = false;
+    bool    wrapped = false;       // the match spanned a hard wrap
+    bool    lineRemoved = false;   // the deletion emptied the line, so it went
+};
+
+// ANTS-5246 — replace the one occurrence of `oldText` under `## [Unreleased]`,
+// matched by WrapMatch's rule; an empty `newText` deletes it. A non-empty `id`
+// limits the search to the entries citing it. Released sections are never
+// searched. Refusals:
+//   not_unreleased       — no `## [Unreleased]` heading
+//   id_not_in_unreleased — no entry there cites `id`
+//   text_not_found       — no occurrence
+//   text_ambiguous       — more than one occurrence
+//   wrapped_block        — the match spans lines whose layout a re-flow breaks
+//   empty_bullet         — the deletion would leave a bare `- `
+AmendResult amendUnreleased(const QString &markdown, const QString &oldText,
+                            const QString &newText, const QString &id);
+
 }  // namespace ChangelogLog

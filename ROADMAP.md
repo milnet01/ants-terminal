@@ -79897,7 +79897,7 @@ collision are different strengths of evidence.
   Source: cc-feedback-2026-08-14 (claude_config).
   Lanes: speclint, mcp.
 
-- 📋 [ANTS-5246] **`changelog_log` cannot amend an entry it just wrote.**
+- ✅ [ANTS-5246] **`changelog_log` cannot amend an entry it just wrote.**
   Correcting one phrase in a fresh [Unreleased] bullet needs a native
   Read of CHANGELOG.md plus Edit, because the verb only adds. Hit
   2026-09-19 on ANTS-5090's entry, whose first draft overclaimed. Wanted:
@@ -79910,6 +79910,10 @@ collision are different strengths of evidence.
   file. Its asks, on top of the above: an empty new_text deletes the
   text, and the op refuses on a released version unless forced, since
   those sections are frozen records.
+  Shipped 2026-11-02 as op:"amend". Decided against Groundwork's "unless
+  forced" switch: the op has no route to a released section at all,
+  so a released section is still corrected by hand and no flag can
+  rewrite one by accident.
   **Layman:** Let the changelog tool fix a word in an entry it just wrote, instead of editing the whole file by hand.
   Kind: enhancement.
   Source: in-session-2026-09-19.

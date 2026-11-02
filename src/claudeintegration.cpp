@@ -15230,13 +15230,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["name"] = "changelog_log";
                     t["description"] = QStringLiteral(
                         "Append a Keep-a-Changelog entry under ## "
-                        "[Unreleased] in CHANGELOG.md without re-emitting "
-                        "the file. ops: add (default) | add_from_roadmap "
+                        "[Unreleased] in CHANGELOG.md. "
+                        "ops: add (default) | add_from_roadmap "
                         "(cite a ROADMAP id; reuses its headline + Layman "
                         "line) | add_batch (entries[], one atomic commit) | "
-                        "normalize (reorder [Unreleased]'s ### category "
-                        "blocks into canonical order + fold stray prose "
-                        "into the bullet above it). "
+                        "normalize (put [Unreleased]'s ### blocks in canonical "
+                        "order; fold stray prose into the bullet above) | "
+                        "amend (replace or delete one [Unreleased] phrase). "
                         "Category from `category` or derived from `kind`. "
                         "Required: caller_cwd (+ summary for add, id for "
                         "add_from_roadmap, entries[] for add_batch). "
@@ -15321,6 +15321,17 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "absorbed by the entry above it. Prose separated "
                         "from its bullet by a heading is left alone and "
                         "keeps raising the `advisory`. "
+                        "op:\"amend\" (ANTS-5246) — replace the one "
+                        "occurrence of `old_text` under `## [Unreleased]` with "
+                        "`new_text`; empty deletes it, and a line left blank "
+                        "goes too. The match may span a hard wrap. `id` limits "
+                        "it to the entries citing that id. Released sections "
+                        "are frozen and never searched, so passing `version` "
+                        "refuses `not_unreleased`. Refusals: missing_field, "
+                        "id_not_in_unreleased, text_not_found, text_ambiguous, "
+                        "wrapped_block, empty_bullet. Returns {ok, op, file, "
+                        "section, line, changed, wrapped?, line_text or "
+                        "line_removed, bytes_written, file_bytes}. "
                         "Returns {ok, op, file, changed, order_before, "
                         "order_after, prose_moved, moves?, bytes_written, "
                         "file_bytes} "
@@ -15388,6 +15399,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     clOpEnum.append("add_subsection");
                     clOpEnum.append("release");   // ANTS-4363
                     clOpEnum.append("normalize");
+                    clOpEnum.append("amend");   // ANTS-5246
                     clOp["enum"] = clOpEnum;
                     clOp["description"] = QStringLiteral(
                         "Verb mode. Default \"add\" (summary + optional "
@@ -15618,6 +15630,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     clProps["date"]       = clDate;
                     clProps["bullets"]    = clBullets;
                     clProps["dry_run"]    = clDryRun;
+                    {   // ANTS-5246 — op:"amend" operands.
+                        QJsonObject o;
+                        o["type"] = "string";
+                        o["description"] = QStringLiteral(
+                            "amend: the exact phrase under [Unreleased]; it must "
+                            "occur once, and may span a hard wrap.");
+                        clProps["old_text"] = o;
+                        QJsonObject n;
+                        n["type"] = "string";
+                        n["description"] = QStringLiteral(
+                            "amend: the replacement; empty deletes the phrase.");
+                        clProps["new_text"] = n;
+                    }
                     {   // ANTS-4561
                         QJsonObject mb; mb["type"] = "integer";
                         mb["description"] = QStringLiteral(

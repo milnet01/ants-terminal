@@ -354,6 +354,63 @@ QJsonDocument clFindChangelog(const QJsonObject &req, const QString &callerRaw,
     return {};
 }
 
+// ANTS-5246 — op:"amend": one phrase under [Unreleased]. There is no route to
+// a released section, because those are frozen records: a caller naming one is
+// told so rather than having `version` ignored.
+QJsonDocument clAmend(const QJsonObject &req, const QString &clPath, bool dryRun) {
+    if (req.contains(QStringLiteral("version"))) {
+        return clErr(QStringLiteral("not_unreleased"),
+            QStringLiteral("changelog_log: op:amend edits `## [Unreleased]` "
+                           "only; a released section is a frozen record"));
+    }
+    const QString oldText = req.value(QStringLiteral("old_text")).toString();
+    if (oldText.trimmed().isEmpty() || !req.contains(QStringLiteral("new_text"))) {
+        return clErr(QStringLiteral("missing_field"),
+            QStringLiteral("changelog_log: op:amend needs `old_text` and "
+                           "`new_text` (empty deletes the phrase)"));
+    }
+    QString newText = req.value(QStringLiteral("new_text")).toString();
+    QStringList scrubbed;
+    rcScrubLeakedToolXml(newText, scrubbed);
+
+    QString markdown;
+    if (const QJsonDocument e = clReadFile(clPath, &markdown); !e.isNull())
+        return e;
+    const ChangelogLog::AmendResult res = ChangelogLog::amendUnreleased(
+        markdown, oldText, newText, req.value(QStringLiteral("id")).toString());
+    if (!res.ok) return clErr(res.code, res.error);
+
+    QJsonObject out;
+    out["ok"]      = true;
+    out["op"]      = QStringLiteral("amend");
+    out["file"]    = clPath.section('/', -1);
+    out["section"] = QStringLiteral("Unreleased");
+    out["line"]    = res.line;
+    out["changed"] = res.changed;
+    if (res.wrapped) out["wrapped"] = true;
+    if (res.lineRemoved) out["line_removed"] = true;
+    else out["line_text"] = res.lineText;
+    if (!scrubbed.isEmpty()) {
+        QJsonArray dropped;
+        for (const QString &n : scrubbed) dropped.append(n);
+        out["scrubbed_params"] = dropped;
+    }
+
+    const QByteArray utf8 = res.markdown.toUtf8();
+    if (dryRun) {
+        out["dry_run"] = true;
+        out["bytes"]   = static_cast<qint64>(utf8.size());
+        return QJsonDocument(out);
+    }
+    if (res.changed) {
+        const qint64 before = QFileInfo(clPath).size();
+        if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
+            return e;
+        rcSetWriteBytes(out, before, static_cast<qint64>(utf8.size()));
+    }
+    return QJsonDocument(out);
+}
+
 }  // namespace
 
 // ANTS-3533 — changelog_query: read-only structured CHANGELOG.md reader,
@@ -841,12 +898,13 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         op != QStringLiteral("add_from_roadmap") &&
         op != QStringLiteral("add_subsection") &&
         op != QStringLiteral("release") &&
-        op != QStringLiteral("normalize")) {
+        op != QStringLiteral("normalize") &&
+        op != QStringLiteral("amend")) {
         return clErr(QStringLiteral("bad_op_combo"),
             QStringLiteral("changelog_log: unknown op \"%1\" — expected "
                            "\"add\" (default), \"add_from_roadmap\", "
                            "\"add_batch\", \"add_subsection\", "
-                           "\"release\", or \"normalize\"")
+                           "\"release\", \"normalize\", or \"amend\"")
                 .arg(op));
     }
 
@@ -855,6 +913,8 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             clFindChangelog(req, callerRaw, &callerCanonical, &clPath);
         !e.isNull())
         return e;
+
+    if (op == QStringLiteral("amend")) return clAmend(req, clPath, dryRun);
 
     // ANTS-3495 — op:"normalize": reorder the `### <category>` blocks in
     // `## [Unreleased]` into canonical Keep-a-Changelog order. No summary/

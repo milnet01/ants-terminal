@@ -2,6 +2,7 @@
 
 #include "changeloglog.h"
 #include "markdownscan.h"       // ANTS-5108
+#include "wrapmatch.h"          // ANTS-5246
 #include <QRegularExpression>   // ANTS-4629
 #include <QDate>
 
@@ -1048,6 +1049,115 @@ NormalizeResult normalizeUnreleased(const QString &markdown) {
     r.changed = true;
     const int pl = firstInterleavedProseLine(out, unrel + 1, sectionEnd);
     if (pl > 0) { r.malformed_section = true; r.malformed_line = pl; }
+    return r;
+}
+
+namespace {
+
+struct LineRange { int from = 0; int to = 0; };  // [from, to)
+
+// The entries under [Unreleased] whose head cites `id`: a `- ` bullet up to the
+// next bullet or heading, or a dated `### ` topic up to the next heading.
+QVector<LineRange> entriesCiting(const QStringList &lines,
+                                 const UnreleasedBounds &bounds,
+                                 const QString &id) {
+    const QRegularExpression cites(
+        QStringLiteral("\\b%1\\b").arg(QRegularExpression::escape(id)));
+    QVector<LineRange> ranges;
+    for (int i = bounds.heading + 1; i < bounds.end; ++i) {
+        const QString &line = lines.at(i);
+        const bool isBullet = line.startsWith(QStringLiteral("- "));
+        if (!isBullet && !line.startsWith(QStringLiteral("### "))) continue;
+        if (!cites.match(line).hasMatch()) continue;
+        int to = i + 1;
+        while (to < bounds.end && !lines.at(to).startsWith(QLatin1Char('#'))
+               && !(isBullet && lines.at(to).startsWith(QStringLiteral("- "))))
+            ++to;
+        ranges.append({i, to});
+    }
+    return ranges;
+}
+
+AmendResult refuseAmend(const QString &code, const QString &error) {
+    AmendResult r;
+    r.code  = code;
+    r.error = QStringLiteral("changelog_log: ") + error;
+    return r;
+}
+
+}  // namespace
+
+AmendResult amendUnreleased(const QString &markdown, const QString &oldText,
+                            const QString &newText, const QString &id) {
+    const QStringList lines = markdown.split(QLatin1Char('\n'));
+    const UnreleasedBounds bounds = findUnreleased(lines);
+    if (bounds.heading < 0) return refuseNotUnreleased(AmendResult{});
+
+    QVector<LineRange> ranges = {{bounds.heading + 1, bounds.end}};
+    if (!id.isEmpty()) {
+        ranges = entriesCiting(lines, bounds, id);
+        if (ranges.isEmpty()) {
+            return refuseAmend(QStringLiteral("id_not_in_unreleased"),
+                QStringLiteral("no entry under `## [Unreleased]` cites %1")
+                    .arg(id));
+        }
+    }
+
+    int hits = 0;
+    LineRange hitRange;
+    WrapMatch::Patch patch;
+    for (const LineRange &range : ranges) {
+        const QString text =
+            lines.mid(range.from, range.to - range.from).join(QLatin1Char('\n'));
+        const WrapMatch::Patch p = WrapMatch::patchOnce(
+            text, oldText, newText, WrapMatch::Indent::MatchLineIndent);
+        if (p.hits == 0) continue;
+        if (hits == 0) { patch = p; hitRange = range; }
+        hits += p.hits;
+    }
+    if (hits == 0) {
+        return refuseAmend(QStringLiteral("text_not_found"),
+            QStringLiteral("`old_text` is not under `## [Unreleased]`%1")
+                .arg(id.isEmpty() ? QString()
+                                  : QStringLiteral(" in an entry citing ") + id));
+    }
+    if (hits > 1) {
+        return refuseAmend(QStringLiteral("text_ambiguous"),
+            QStringLiteral("`old_text` occurs %1 times; lengthen it, or pass "
+                           "`id` to name the entry").arg(hits));
+    }
+    if (patch.structuredBlock) {
+        return refuseAmend(QStringLiteral("wrapped_block"),
+            QStringLiteral("`old_text` spans lines whose layout a re-flow would "
+                           "break; amend them one line at a time"));
+    }
+
+    QStringList patched = patch.text.split(QLatin1Char('\n'));
+    AmendResult r;
+    r.line    = hitRange.from + patch.line + 1;
+    r.wrapped = patch.wrapped;
+    // An old_text ending in a newline already took its whole line, so the line
+    // now at this index is a neighbour, and a blank one is a real separator.
+    if (newText.isEmpty() && !oldText.endsWith(QLatin1Char('\n'))
+        && patch.line < patched.size()) {
+        const QString left = patched.at(patch.line).trimmed();
+        if (left == QStringLiteral("-")) {
+            return refuseAmend(QStringLiteral("empty_bullet"),
+                QStringLiteral("the deletion would leave a bare `- `; include "
+                               "the `- ` and the entry's body in `old_text`"));
+        }
+        if (left.isEmpty()) {
+            patched.removeAt(patch.line);
+            r.lineRemoved = true;
+        }
+    }
+    if (!r.lineRemoved && patch.line < patched.size())
+        r.lineText = patched.at(patch.line);
+
+    r.markdown = (lines.mid(0, hitRange.from) + patched + lines.mid(hitRange.to))
+                     .join(QLatin1Char('\n'));
+    r.changed  = r.markdown != markdown;
+    r.ok       = true;
     return r;
 }
 
