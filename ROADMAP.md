@@ -81667,7 +81667,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ut-ants, ut-monsterhunt).
   Lanes: mcp.
 
-- 📋 [ANTS-5273] **spec_lint reports ok with no findings on a spec whose test clauses it resolved none of, and the contradicting field is one a caller has no reason to read.**
+- ✅ [ANTS-5273] **spec_lint reports ok with no findings on a spec whose test clauses it resolved none of, and the contradicting field is one a caller has no reason to read.**
   MEASURED, Pressless, docs/specs/PRESS-0015-undo.md:
 
       ok: true,  findings: [],  findings_total: 0,
@@ -81712,6 +81712,12 @@ are closed inline in the feedback files rather than filed here.
   breaks callers; decide that separately.
   On ship: message the Pressless session (it verifies on its code).
   Promised 2026-09-29.
+  Resolved 2026-11-02: replies carry surfaces_unresolved_hint when
+  invariants exist, the check ran and nothing resolved. A hint, not the
+  proposed surfaces_unresolved count, because surfaces_resolved counts
+  distinct surfaces and the number would equal invariants_found.
+  surfaces_checked keeps its value. Pressless to be told once ants-mcpd
+  is rebuilt from the pushed commit.
   **Layman:** A spec checker says everything is fine when it has in fact checked none of the spec's twelve test promises — the only clue is a number buried lower down that nobody is told matters.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Pressless, Games_Hub, independently).

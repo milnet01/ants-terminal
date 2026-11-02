@@ -636,6 +636,52 @@ TEST(SpecLintVerb, Ants4926SectionsSourceReasonSeparatesAdoptionFromAbsence) {
     EXPECT_FALSE(bare.contains(QStringLiteral("sections_source_hint")));
 }
 
+// ANTS-5273 — a spec with invariants, on a project where the surface check ran
+// and resolved none, is not a clean result, and the reply says so. Pressless's
+// shape: one tests/features/ directory, and specs citing a flat tests/test_x.py.
+TEST(SpecLintVerb, Ants5273NothingResolvedIsSaidOutLoud) {
+    const auto run = [](const QString &clause, bool withFeaturesDir) {
+        QTemporaryDir tmp;
+        QDir root(tmp.path());
+        root.mkpath(QStringLiteral("docs/specs"));
+        if (withFeaturesDir)
+            root.mkpath(QStringLiteral("tests/features/packaging"));
+        QFile f(root.filePath(QStringLiteral("docs/specs/X-1.md")));
+        if (!f.open(QIODevice::WriteOnly))
+            return QJsonObject();
+        f.write(QStringLiteral("# X-1 — t\n\n**Status:** Draft\n\n## Invariants\n\n"
+                               "- **INV-1** — a thing holds. *Test:* %1.\n")
+                    .arg(clause).toUtf8());
+        f.close();
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("path")]       = QStringLiteral("docs/specs/X-1.md");
+        return rc.cmdSpecLint(req).object();
+    };
+    const QString hintKey = QStringLiteral("surfaces_unresolved_hint");
+
+    const QJsonObject flat = run(QStringLiteral("`tests/test_undo.py`"), true);
+    ASSERT_TRUE(flat.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(flat.value(QStringLiteral("invariants_found")).toInt(), 1);
+    EXPECT_TRUE(flat.value(QStringLiteral("surfaces_checked")).toBool());
+    EXPECT_EQ(flat.value(QStringLiteral("surfaces_resolved")).toInt(), 0);
+    const QString hint = flat.value(hintKey).toString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("tests/features/<name>/"))) << hint.toStdString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("not a pass"))) << hint.toStdString();
+
+    // A resolved surface is the arm that separates this from "always say it".
+    const QJsonObject resolved =
+        run(QStringLiteral("`tests/features/packaging/`"), true);
+    EXPECT_EQ(resolved.value(QStringLiteral("surfaces_resolved")).toInt(), 1);
+    EXPECT_FALSE(resolved.contains(hintKey));
+
+    // A skipped check already has surfaces_skipped_hint; two would disagree.
+    const QJsonObject skipped = run(QStringLiteral("`tests/test_undo.py`"), false);
+    EXPECT_FALSE(skipped.value(QStringLiteral("surfaces_checked")).toBool());
+    EXPECT_FALSE(skipped.contains(hintKey));
+}
+
 // ANTS-5264 — these hints fire on every call on a project whose layout never
 // matches, so their size is paid repeatedly. Short, and still carrying what
 // stops `findings:[]` being read as a pass.

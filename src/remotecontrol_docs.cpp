@@ -1106,6 +1106,15 @@ QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     // shipped accepted with every invariant invisible to every verb that reads
     // one, and the linting path said nothing.
     out[QStringLiteral("invariants_found")] = invariantsFound;
+    // ANTS-5273 — the check ran and resolved nothing, so `surfaces_checked:true`
+    // beside an empty findings[] reads as a pass it is not. A skipped check has
+    // surfaces_skipped_hint instead.
+    if (invariantsFound > 0 && surfacesChecked && surfacesResolved == 0)
+        out[QStringLiteral("surfaces_unresolved_hint")] = QStringLiteral(
+            "no test clause of these %1 invariant(s) resolved to a "
+            "`tests/features/<name>/` directory, the only shape this verb "
+            "resolves. An empty findings[] is SILENT about their test surfaces, "
+            "not a pass.").arg(invariantsFound);
     // ANTS-4413 — ALWAYS, like the row above and unlike the two conditional
     // ones. An absent Status is not cosmetic: every status-gated check reads it
     // as "unknown" rather than "shipped", so a shipped spec's false claims are

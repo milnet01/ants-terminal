@@ -533,6 +533,14 @@ every other kind.
   *Breaks when:* the boolean is inferred from the counter, the defect
   `Result::sectionsChecked` exists to prevent — its header comment says it
   "is always reported and never inferred from an empty findings list".
+- **INV-11** (ANTS-5273) — When `invariants_found > 0`, `surfaces_checked` is
+  true and `surfaces_resolved == 0`, the reply carries
+  `surfaces_unresolved_hint`, naming the shape it looks for and saying an empty
+  `findings[]` is not a pass. It is absent when any surface resolved, and when
+  the check was skipped. *Test:*
+  `SpecLintVerb.Ants5273NothingResolvedIsSaidOutLoud` drives all three arms.
+  *Breaks when:* the hint keys on `surfaces_checked` alone, or the zero is left
+  for a caller to notice.
 
 ## 4. RAM / build cost
 
@@ -621,7 +629,7 @@ which is what keeping the engine filesystem-free buys. Verb lane:
 `tests/features/spec_lint_verb/`, same labels, for the gathering step
 (a real `tests/features/` scan and `CMakeLists.txt` parse) and for the
 three new `kind` values and **both** envelope fields —
-`surfaces_resolved` *and* `surfaces_checked` — reaching the wire.
+`surfaces_resolved` *and* `surfaces_checked` — reaching the wire, and for INV-11.
 `surfaces_checked` is the one § 2.3 says is "always emitted and never
 inferred", so a verb lane that never asserts it leaves that claim untested
 at the only layer where it is observable.
@@ -688,6 +696,7 @@ the document itself joined the corpus.
 | 1 | 2 cold, spec genre | 7 | 4 | 4 | 1 | 16 / 0 | all fixed |
 | 2 | 2 cold, spec genre | 3 | 3 | 4 | 1 | 11 / 0 | all fixed; + 4 collateral in own sweep |
 | 3 | 2 cold, spec genre | 3 | 3 | 2 | 2 | 10 / 1 | all fixed; **cap reached, not converged**; empty tail |
+| impl | 0 — no reviewer dispatched; an in-place amendment | — | — | — | — | — | 2026-11-02, ANTS-5273: adds INV-11. Rule 14: an amendment gets no automatic review. |
 
 **Loop 1 (2026-08-12).** 12 of the 16 came from the two lanes (2 raised by
 both, merged on defect identity); 4 were found by the orchestrator — two

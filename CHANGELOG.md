@@ -80,6 +80,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_lint says when none of a spec's test clauses resolved, so an empty result no longer reads as a pass** (ANTS-5273)
+
 - **feedback_log compact_resolved labels a finding whose ids were all dropped as dropped** (ANTS-5242)
 
 - **changelog_log add_batch reports `created_category` on the entry that reads directly under a new heading** (ANTS-5377)
