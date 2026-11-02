@@ -977,7 +977,8 @@ QString shipDateFromRoadmapBody(const QString &roadmapBulletBody) {
 
 // ANTS-3443 — compact_resolved. Collapse each shipped v2 finding's write-up
 // to a `→ shipped ✅ (write-up compacted, ANTS-3443)` stub that retains the
-// heading + the first `**Proposed ID:**` line. Gated per-finding on the
+// heading + the first `**Proposed ID:**` line. A finding whose ids are all 🚫
+// gets `→ dropped 🚫` instead (ANTS-5242). Gated per-finding on the
 // injected roadmap sets (spec § 2.5, first-failure-wins); id-less `### `
 // prose blocks are not findings and are neither collapsed nor reported.
 // Pure; single bottom-up rewrite.
@@ -988,6 +989,8 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
 
     static const QRegularExpression idTokRe(QStringLiteral("ANTS-[0-9]+"));
     static const QString kShippedProbe = QString::fromUtf8("\xE2\x86\x92 shipped");
+    static const QString kDroppedHead =
+        QString::fromUtf8("\xE2\x86\x92 dropped \xF0\x9F\x9A\xAB ");
     // ANTS-3504 — breadcrumb head ("→ shipped ✅ ", trailing space) + tail; a
     // ship-date, when known, is inserted between them. Dateless: head+tail is
     // byte-identical to the pre-3504 stub.
@@ -1002,13 +1005,15 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
             seg.append(lines.at(li));
         return seg.join(QLatin1Char('\n')).toUtf8().size();
     };
-    // gate 2 — any body line (fences skipped) begins "→ shipped" ⟹ already a
-    // stub. NB it is "any" body line, not the first: the v2 stub keeps the
-    // `**Proposed ID:**` line above the breadcrumb.
+    // gate 2 — any body line (fences skipped) begins "→ shipped" or "→ dropped 🚫"
+    // ⟹ already a stub. NB it is "any" body line, not the first: the v2 stub
+    // keeps the `**Proposed ID:**` line above the breadcrumb.
     const QVector<bool> fenced = fencedLines(lines);
     auto hasStub = [&](int start0, int end0) -> bool {
         for (int li = start0; li < end0 && li < lines.size(); ++li) {
-            if (!fenced.at(li) && lines.at(li).trimmed().startsWith(kShippedProbe))
+            if (fenced.at(li)) continue;
+            const QString line = lines.at(li).trimmed();
+            if (line.startsWith(kShippedProbe) || line.startsWith(kDroppedHead))
                 return true;
         }
         return false;
@@ -1088,9 +1093,14 @@ ResolveResult compactResolved(const QString &content, const ResolveOptions &opts
             const QString d = opts.shipDates.value(id);
             if (!d.isEmpty() && d > maxDate) maxDate = d;
         }
-        const QString breadcrumb = maxDate.isEmpty()
-            ? kBreadcrumbHead + kBreadcrumbTail
-            : kBreadcrumbHead + maxDate + QLatin1Char(' ') + kBreadcrumbTail;
+        const bool allDropped = std::all_of(
+            f.ids.cbegin(), f.ids.cend(),
+            [&](const QString &id) { return opts.droppedIds.contains(id); });
+        const QString breadcrumb = allDropped
+            ? kDroppedHead + kBreadcrumbTail
+            : maxDate.isEmpty()
+                ? kBreadcrumbHead + kBreadcrumbTail
+                : kBreadcrumbHead + maxDate + QLatin1Char(' ') + kBreadcrumbTail;
         // Stub order: heading (untouched) → blank → retained id line →
         // breadcrumb → trailing blank.
         const QStringList newBody = { QString(), idLineVerbatim,

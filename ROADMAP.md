@@ -85274,12 +85274,16 @@ than re-filed; everything else lands here.
   Source: in-session-2026-09-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5242] **feedback_log compact_resolved labels a dropped (🚫) finding's stub as shipped.**
+- ✅ [ANTS-5242] **feedback_log compact_resolved labels a dropped (🚫) finding's stub as shipped.**
   ANTS-4977 made a 🚫 id count as closed, so compact_resolved collapses its
   write-up. The stub it writes is `→ shipped ✅ (write-up compacted, ...)`,
   because FeedbackFile::compactResolved only receives a closed-id set. It
   should say the item was dropped. Needs the resolver to pass which ids are
   🚫 rather than folding them into shippedIds.
+  Resolved 2026-11-02: an all-🚫 finding gets `→ dropped 🚫 (write-up
+  compacted, ANTS-3443)`; one ✅ among its ids keeps the shipped stub.
+  Stubs already written keep their old label. Test:
+  FeedbackCompactResolved.Ants5242DroppedFindingStubSaysDropped.
   **Layman:** A feedback note closed as "won't do" is summarised as if the work was done.
   Kind: fix.
   Source: in-session-2026-09-19 ANTS-4977 build.

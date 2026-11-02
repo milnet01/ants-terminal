@@ -42,6 +42,9 @@ per-finding, on the injected roadmap sets (pure helper) or the live
 - **fence safety (INV-8)** — a `### ` heading and a `→ shipped` line pasted
   inside a ``` fence are ignored (not enumerated / do not trip
   `already_compacted`).
+- **dropped stub (ANTS-5242)** — a finding whose ids are all 🚫 gets
+  `→ dropped 🚫 (write-up compacted, ANTS-3443)`; one ✅ among them keeps the
+  shipped stub; a re-run reads the dropped stub as `already_compacted`.
 - **signed bytes_saved (INV-13)** — a present v2 file with zero collapsible
   findings → `findings_collapsed:0, bytes_saved:0`, per-finding `skipped[]`.
 - **wrapper (INV-9/11)** — `dry_run` leaves the file byte-identical;

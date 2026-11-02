@@ -1030,7 +1030,10 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                     if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
                     ropts.roadmapIds.insert(b.id);
                     callerPrefixes.insert(fbIdPrefix(b.id));
-                    if (b.status == kDropped) ropts.shippedIds.insert(b.id);
+                    if (b.status == kDropped) {
+                        ropts.shippedIds.insert(b.id);
+                        ropts.droppedIds.insert(b.id);
+                    }
                     if (b.status == fbShippedMark()) {
                         ropts.shippedIds.insert(b.id);
                         // ANTS-3504 — capture the ship-date from the same pass so
@@ -1054,8 +1057,10 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                         prC.mappedIds, ropts.roadmapIds);
         for (auto it = foreignC.constBegin(); it != foreignC.constEnd(); ++it) {
             ropts.roadmapIds.insert(it.key());
-            if (it.value().value(QStringLiteral("status")).toString() == kDropped)
+            if (it.value().value(QStringLiteral("status")).toString() == kDropped) {
                 ropts.shippedIds.insert(it.key());
+                ropts.droppedIds.insert(it.key());
+            }
             if (it.value().value(QStringLiteral("status")).toString() == fbShippedMark()) {
                 ropts.shippedIds.insert(it.key());
                 const QString d =

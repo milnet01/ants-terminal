@@ -889,6 +889,10 @@ compacted, ANTS-3443)`) when no id has a parseable `Resolved` date. See
 `Resolved` line, parens optional, the regex), the date-not-version/commit
 rationale, and the contributor self-check convention.
 
+A finding whose ids are all 🚫 gets `→ dropped 🚫 (write-up compacted, ANTS-3443)`,
+with no date (ANTS-5242). One ✅ among its ids keeps the shipped stub. Gate 2 below
+treats a dropped stub as `already_compacted` too.
+
 Retaining the `**Proposed ID:**` line is load-bearing: it keeps the block a
 *finding* (not reclassified as prose), keeps its ids in the assigned-id set
 (§"The un-triaged delta" step 3), and so keeps a later "Issue #1 STILL PRESENT"
@@ -917,7 +921,7 @@ reported in `skipped[]` with a `code`):
    non-blank body line begins `→ shipped ANTS-`": the v2 stub keeps the
    `**Proposed ID:**` line *above* the breadcrumb, so the probe is "**any** body
    line (outside fences) begins `→ shipped`", not the first line.
-3. **every** id is ✅ in the live roadmap, unresolved checked before open: an id
+3. **every** id is ✅ or 🚫 in the live roadmap, unresolved checked before open: an id
    absent from the roadmap (e.g. archive-rotated) fails `roadmap_unresolved_ids`
    (unresolved ids surfaced), and otherwise an id present-but-open fails
    `has_open_id` (open ids surfaced).

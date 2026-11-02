@@ -76,6 +76,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **feedback_log compact_resolved labels a finding whose ids were all dropped as dropped** (ANTS-5242)
+
 - **changelog_log add_batch reports `created_category` on the entry that reads directly under a new heading** (ANTS-5377)
 
 - **`read_regions` returns its slices as text up to 64 KiB, instead of a spill handle from 16 KiB.** (ANTS-5291)

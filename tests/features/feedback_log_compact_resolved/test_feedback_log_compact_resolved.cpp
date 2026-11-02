@@ -374,6 +374,42 @@ TEST(FeedbackCompactResolved, LiveRealWrite) {
     EXPECT_TRUE(md.contains(QStringLiteral("counts absent on the section rows")));
 }
 
+// ANTS-5242 — a finding whose ids were ALL dropped says so. One shipped id among
+// them keeps the shipped stub, since work did land. Re-running must recognise
+// the dropped stub as a stub.
+TEST(FeedbackCompactResolved, Ants5242DroppedFindingStubSaysDropped) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seed(dir, /*withRoadmap=*/false);
+    writeStr(dir.path() + "/ROADMAP.md", QString::fromUtf8(
+        "# Roadmap\n"
+        "\n"
+        "- \xE2\x9C\x85 [ANTS-1525] **verify_changes timeout fixed.**\n"
+        "- \xF0\x9F\x9A\xAB [ANTS-1579] **cache warm, will not do.**\n"
+        "- \xF0\x9F\x9A\xAB [ANTS-1600] **codebase_index counts, will not do.**\n"));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["op"] = "compact_resolved";
+    req["path"] = p;
+    req["caller_cwd"] = dir.path();
+
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool())
+        << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("findings_collapsed").toInt(), 2);
+    const QString md = readStr(p);
+    EXPECT_TRUE(md.contains(QStringLiteral("ANTS-1525, ANTS-1579\n") + kBreadcrumb))
+        << md.toStdString();
+    EXPECT_TRUE(md.contains(QString::fromUtf8(
+        "**Proposed ID:** ANTS-1600\n"
+        "\xE2\x86\x92 dropped \xF0\x9F\x9A\xAB (write-up compacted, ANTS-3443)")))
+        << md.toStdString();
+
+    const QJsonObject again = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(again.value("ok").toBool());
+    EXPECT_EQ(again.value("findings_collapsed").toInt(), 0);
+    EXPECT_EQ(readStr(p), md);
+}
+
 // not_v2 — a `: 1`-marked file is refused (run migrate_v2 first).
 TEST(FeedbackCompactResolved, LiveNotV2) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

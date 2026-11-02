@@ -270,7 +270,8 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines);
 struct ResolveOptions {
     QSet<QString> shippedIds;   // canonical ids whose live roadmap status is
                                 // closed: ✅, or 🚫 (ANTS-4977)
-    QSet<QString> roadmapIds;   // every canonical id present in the roadmap
+    QSet<QString> droppedIds;   // the 🚫 subset of shippedIds (ANTS-5242)
+    QSet<QString> roadmapIds;  // every canonical id present in the roadmap
                                 // (any status) — an id absent from this set is
                                 // "unresolved" (archive-rotated / unknown)
     // ANTS-3504 — id → ship-date (ISO "YYYY-MM-DD"): the date on the id's LAST
