@@ -236,6 +236,29 @@ TEST(CommentClaims, Inv10ShellFilesAndUnreadFiles) {
     EXPECT_FALSE(cutLines.filter(QStringLiteral("and 5 more")).isEmpty()) << cutLines.join('\n').toStdString();
 }
 
+TEST(CommentClaims, Inv11MoreSlashCommentSuffixes) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    const QList<const char *> suffixes = {"tsx", "jsx", "mjs", "cjs", "uc", "vsh", "fsh"};
+    int id = 640;
+    QStringList expected;
+    for (const char *s : suffixes) {
+        const QString ticket = QStringLiteral("ANTS-%1").arg(id++);
+        writeFile(dir->filePath(QStringLiteral("src/m.%1").arg(QLatin1String(s))),
+                  QStringLiteral("// %1\n").arg(ticket).toUtf8());
+        expected.append(ticket);
+    }
+    // HTML has no `//` comments, so it stays unread rather than misread.
+    writeFile(dir->filePath("src/page.html"), "// ANTS-660 page text\n");
+    const QJsonObject r = call(*dir, {{QStringLiteral("paths"), QJsonArray{QStringLiteral("src")}}});
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().constData();
+
+    const QStringList t = quotes(rows(r, "findings", QStringLiteral("unknown_ticket")));
+    for (const QString &ticket : expected)
+        EXPECT_TRUE(t.contains(ticket)) << ticket.toStdString() << "\n"
+                                        << QJsonDocument(r).toJson().constData();
+    EXPECT_FALSE(t.contains(QStringLiteral("ANTS-660")));
+}
+
 TEST(CommentClaims, Inv8Refusals) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const auto code = [&](const QJsonObject &args) {

@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`comment_claims` reads comments in `.tsx`, `.jsx`, `.mjs`, `.cjs`, `.uc`, `.vsh` and `.fsh` files** (ANTS-6348)
+
 - **`session_orient` names the in-progress item wherever it sits on the roadmap, with its kind and lanes** (ANTS-6349)
 
 - **`workspace_search` suggests `regex:true` when a literal pattern with an escape such as `\.` finds nothing** (ANTS-6346)

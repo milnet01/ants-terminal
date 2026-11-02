@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6349 -->
+<!-- ants-roadmap-id-high-water: ANTS=6350 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89300,8 +89300,14 @@ measured Ants adding about 5,250 tokens to every request.
   Source: retrodb-3d cross-session request 2026-11-02.
   Lanes: packaging.
 
-- 📋 [ANTS-6348] **comment_claims reads no comments in .tsx, .mjs or .uc files, which a directory walk reaches.**
+- ✅ [ANTS-6348] **comment_claims reads no comments in .tsx, .mjs or .uc files, which a directory walk reaches.**
   Measured 2026-11-02 with scanned.unread_files over 32 projects: freellmapi 122, UT_MonsterHunt 110, MAME_Curator 81, and 18down.github.io 863. In the first 20 names per project the suffixes are .html, .tsx, .uc, .mjs and .vsh. All but .html use // comments, so familyOf's C-like set is the likely fix. HTML needs its own syntax or stays reported as unread. Check the new hits on those projects before shipping.
+  Shipped 2026-11-02: .tsx, .jsx, .mjs, .cjs, .uc, .vsh and .fsh read as
+  C-family comments; .html stays unread. Measured on the built
+  ants-mcpd: unread files fell from 122 to 4 on freellmapi, 110 to 0 on
+  UT_MonsterHunt, 81 to 1 on MAME_Curator. New hits in those suffixes:
+  112 census_number candidates and 2 dead_reference findings; the latter
+  are filed separately. 18down.github.io's unread files are its .html.
   **Layman:** A tool that checks code comments cannot read a few common kinds of code file; it now says so, but it should read them.
   Kind: fix.
   Source: in-session-2026-11-02, found while fixing ANTS-5806.
@@ -89316,6 +89322,13 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The start-of-session summary can name the wrong current task, because it only looks at the first part of the to-do list.
   Kind: fix.
   Source: in-session-2026-11-02, found while fixing ANTS-5801.
+  Lanes: mcp.
+
+- 📋 [ANTS-6350] **comment_claims calls a see-reference dead when it names a file by a shorter path or without its extension.**
+  Measured 2026-11-02 on freellmapi. client/src/pages/ModelDetailPage.tsx says `see lib/alias-merge`, and client/src/lib/alias-merge.ts exists. client/src/pages/AnalyticsPage.tsx says `see db/model-pricing.ts`, and server/src/db/model-pricing.ts exists. Inv3 looks only under the root and the comment's own directory. Whether a suffix match should count, and how an ambiguous one should report, needs deciding when built. 37 other findings on that project were not checked for this shape.
+  **Layman:** A tool that checks code comments can report a reference as broken when the file exists under a slightly shorter name.
+  Kind: fix.
+  Source: in-session-2026-11-02, found while fixing ANTS-6348.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)

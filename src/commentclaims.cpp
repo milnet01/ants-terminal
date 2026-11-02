@@ -58,7 +58,9 @@ Family familyOf(const QString &fileName) {
         QStringLiteral("java"), QStringLiteral("js"), QStringLiteral("ts"), QStringLiteral("go"),
         QStringLiteral("rs"), QStringLiteral("kt"), QStringLiteral("swift"), QStringLiteral("cs"),
         QStringLiteral("glsl"), QStringLiteral("vert"), QStringLiteral("frag"), QStringLiteral("comp"),
-        QStringLiteral("qml"), QStringLiteral("m"), QStringLiteral("mm"), QStringLiteral("zig")};
+        QStringLiteral("qml"), QStringLiteral("m"), QStringLiteral("mm"), QStringLiteral("zig"),
+        QStringLiteral("tsx"), QStringLiteral("jsx"), QStringLiteral("mjs"), QStringLiteral("cjs"),
+        QStringLiteral("uc"), QStringLiteral("vsh"), QStringLiteral("fsh")};
     static const QSet<QString> kHash = {
         QStringLiteral("py"), QStringLiteral("sh"), QStringLiteral("bash"), QStringLiteral("cmake"),
         QStringLiteral("yml"), QStringLiteral("yaml"), QStringLiteral("toml"), QStringLiteral("rb"),
