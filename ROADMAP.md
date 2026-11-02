@@ -89377,8 +89377,11 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-11-02, hit while checking write-code's scrape step for ANTS-6349.
   Lanes: mcp.
 
-- 📋 [ANTS-6352] **function_sizes and file_outline silently skip an extensionless Python script that trace parses.**
+- ✅ [ANTS-6352] **function_sizes and file_outline silently skip an extensionless Python script that trace parses.**
   Reported by claude-config, on tools/lane-verify and tools/neutral-lane, which have a python3 shebang and no extension. function_sizes counts each as scanned with functions_measured 0, unmeasured 0 and no not_covered row; file_outline says language unknown. trace on the same files returns python. So the reply looks like a measured file with nothing long in it. Its ask: sort by shebang as trace does, or list the file under unmeasured. Not reproduced here yet.
+  Reproduced by red tests. A python* shebang now outlines as py, so
+  function_sizes measures the script. Any other unlaned shebang stays
+  unknown, and not_covered names that case.
   **Layman:** Two code-measuring tools quietly ignore a Python script with no file extension, so it looks measured when it was not.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-11-02.

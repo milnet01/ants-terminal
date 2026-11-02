@@ -56,9 +56,12 @@ its landmarks.
   extensionless is the normal shape for a hook, a launcher or a CI gate — and
   the extension is the only signal `pickModeByExt` has.
 - **INV-5 no shebang stays unknown.** A file with neither a known extension
-  nor a shell shebang is still `unknown`. The control for INV-4: a peek that
-  fired on any `#!` would claim every extensionless Python and Perl file in
-  the tree. Passes in both states.
+  nor a shebang is still `unknown`. The control for INV-4. Passes in both
+  states.
+- **INV-7 Python shebang (ANTS-6352).** An extensionless script with a
+  `python*` shebang, direct or `env`, outlines as `py`. A shebang for an
+  interpreter with no outline lane, such as Perl, stays `unknown`: a peek that
+  fired on any `#!` would run it through another language's scanner.
 - **INV-6 the index agrees.** `CodebaseIndex::isIndexableSuffix` admits the
   same extensions. `codebaseindex.cpp`'s own in-step rule is that count →
   outline → symbol query cover the same files, and it is the rule ANTS-4096

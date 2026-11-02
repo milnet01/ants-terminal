@@ -118,6 +118,9 @@ bool isGenericExt(const QString &ext);
 // declaration of its language is the one left.
 bool isShShebang(const QByteArray &firstLine);
 
+// True when `firstLine` is a shebang naming a Python interpreter. ANTS-6352.
+bool isPythonShebang(const QByteArray &firstLine);
+
 // Compute the outline for a single file. `absPath` MUST be a
 // canonical filesystem path under the project root (the caller is
 // responsible for the path-escape check; ANTS-1249-INV-1 lives at

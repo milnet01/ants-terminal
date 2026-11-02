@@ -195,6 +195,27 @@ TEST(FileOutlineSh, NoShebangStaysUnknown) {
         << "only a shebang may promote an extensionless file to shell";
 }
 
+// INV-7 — ANTS-6352: an extensionless Python script is recognised the same way,
+// in both forms, and an interpreter with no outline lane stays unknown.
+TEST(FileOutlineSh, ShebangDetectsAnExtensionlessPythonScript) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QByteArray body = "\ndef main():\n    return 1\n";
+    for (const QByteArray &shebang : {QByteArray("#!/usr/bin/env python3"),
+                                      QByteArray("#!/usr/bin/python3.13 -u")}) {
+        const QJsonObject out = FileOutline::compute(
+            writeScript(dir, QStringLiteral("lane-verify"), shebang + body),
+            FileOutline::Mode::Auto, true, 1000);
+        EXPECT_EQ(out.value(QStringLiteral("language")).toString(), QStringLiteral("py"))
+            << shebang.constData();
+        EXPECT_TRUE(symbolNames(out).contains(QStringLiteral("main"))) << shebang.constData();
+    }
+    const QJsonObject perl = FileOutline::compute(
+        writeScript(dir, QStringLiteral("report"), "#!/usr/bin/perl\nsub main {\n}\n"),
+        FileOutline::Mode::Auto, true, 1000);
+    EXPECT_EQ(perl.value(QStringLiteral("language")).toString(), QStringLiteral("unknown"));
+}
+
 // INV-6 — codebase_index admits the same extensions. This file's own in-step
 // rule is that count → outline → symbol query cover the same files, and it is
 // the rule ANTS-4096 and ANTS-4425 were each filed to restore after exactly

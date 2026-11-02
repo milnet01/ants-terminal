@@ -114,6 +114,26 @@ TEST(FunctionSizes, Inv2aNoBraceBodyIsUnmeasured) {
     EXPECT_EQ(r.value(QStringLiteral("not_covered")).toArray().size(), 1);
 }
 
+// ANTS-6352 — a named Python script with no extension is measured, not counted
+// as a scanned file holding no functions.
+TEST(FunctionSizes, Inv10ExtensionlessPythonScriptIsMeasured) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("tools/lane-verify"),
+              "#!/usr/bin/env python3\n"  // 1
+              "def main():\n"             // 2
+              "    return 1\n"            // 3
+              "main()\n");                // 4
+    const QJsonObject r = call(dir, {{QStringLiteral("paths"),
+                                      QJsonArray{QStringLiteral("tools/lane-verify")}}});
+    const QJsonObject row = rowFor(r, QStringLiteral("main"));
+    EXPECT_EQ(row.value(QStringLiteral("body_end")).toInt(), 3)
+        << QJsonDocument(r).toJson().constData();
+    EXPECT_EQ(r.value(QStringLiteral("scanned")).toObject()
+                  .value(QStringLiteral("top_level_lines")).toInt(), 1);
+    EXPECT_TRUE(r.value(QStringLiteral("not_covered")).toArray().at(0).toString()
+                    .contains(QStringLiteral("extensionless")));
+}
+
 // ANTS-5800 — a script's main body is code no function holds, so ranking only
 // its small functions read as full coverage.
 TEST(FunctionSizes, Inv9TopLevelCodeIsMeasured) {

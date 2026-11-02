@@ -72,6 +72,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **file_outline and function_sizes read a Python script with no file extension from its shebang** (ANTS-6352)
+
 - **`comment_claims` accepts a `see` reference that names a file by a shorter path or without its extension** (ANTS-6350)
 
 - **`fields:["handle"]` returns the handle of a large reply's whole saved body** (ANTS-5356)

@@ -234,7 +234,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     env[QStringLiteral("top_level")] = topLevel;
     env[QStringLiteral("not_covered")] = QJsonArray{QStringLiteral(
         "a language a directory walk does not read, such as CMake, or that file_outline does not, "
-        "such as Lua, whose functions and top-level code are not measured even when named")};
+        "such as Lua or an extensionless script with a shebang other than shell or Python, whose "
+        "functions and top-level code are not measured even when named")};
     return env;
 }
 

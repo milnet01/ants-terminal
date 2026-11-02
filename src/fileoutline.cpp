@@ -46,14 +46,12 @@ bool isShExt(const QString &ext) {
     return ext == QLatin1String("sh") || ext == QLatin1String("bash");
 }
 
-// ANTS-4826 — the interpreter a shebang names, if it is a shell. Matches the
-// direct form (`#!/bin/sh`) and the env form (`#!/usr/bin/env bash`), which is
-// what these scripts are actually written with. Anything else is left alone:
-// promoting on the mere presence of `#!` would claim every extensionless
-// Python and Perl file in the tree.
-bool isShShebang(const QByteArray &firstLine) {
+// ANTS-4826 — the interpreter a shebang names, empty when `firstLine` is not
+// one. Reads the direct form (`#!/bin/sh`) and the env form
+// (`#!/usr/bin/env bash`), which is what these scripts are actually written with.
+static QByteArray shebangInterpreter(const QByteArray &firstLine) {
     QByteArray l = firstLine.trimmed();
-    if (!l.startsWith("#!")) return false;
+    if (!l.startsWith("#!")) return {};
     l = l.mid(2).trimmed();
     // Split on whitespace: the interpreter, then its arguments. Under `env`
     // the interpreter is the first argument instead.
@@ -67,8 +65,19 @@ bool isShShebang(const QByteArray &firstLine) {
         interp = base;
         break;
     }
+    return interp;
+}
+
+bool isShShebang(const QByteArray &firstLine) {
+    const QByteArray interp = shebangInterpreter(firstLine);
     return interp == "sh"   || interp == "bash" || interp == "dash" ||
            interp == "ksh"  || interp == "zsh"  || interp == "ash";
+}
+
+// ANTS-6352 — `python`, `python3`, `python3.13`: the test trace's
+// languageForFile uses.
+bool isPythonShebang(const QByteArray &firstLine) {
+    return shebangInterpreter(firstLine).startsWith("python");
 }
 
 // ANTS-4425 — see the header. `.htm` is the DOS-era spelling of the same thing
@@ -1321,10 +1330,14 @@ QJsonObject compute(const QString &absPath,
     // launcher, a CI gate), and those are the files a session most wants
     // outlined. The extension is the only signal pickModeByExt has, so when it
     // has said nothing, ask the file: a shebang is its own declaration of its
-    // language. Only a SHELL shebang promotes — firing on the mere presence of
-    // `#!` would claim every extensionless Python and Perl file in the tree.
-    if (effective == Mode::Auto && isShShebang(f.readLine(256)))
-        effective = Mode::Sh;
+    // language. Only an interpreter with a lane here promotes (ANTS-6352 added
+    // Python) — firing on the mere presence of `#!` would run an extensionless
+    // Perl file through a scanner written for another language.
+    if (effective == Mode::Auto) {
+        const QByteArray firstLine = f.readLine(256);
+        if (isShShebang(firstLine)) effective = Mode::Sh;
+        else if (isPythonShebang(firstLine)) effective = Mode::Py;
+    }
     f.seek(0);
     // Mode::Auto still here = unknown extension; treat as "unknown".
     const bool isUnknown = (effective == Mode::Auto);
