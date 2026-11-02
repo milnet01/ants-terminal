@@ -245,6 +245,18 @@ per ref — and a hook that then runs the gate from the repo root has
 thrown it away. **The same range decides § 7's skip**, so a hook that
 reads it for one and not the other is already half right.
 
+**Over HTTP(S), check the ref again before the hook exits.** git sends the
+ref's tip as it stands after the hook, yet prints the commit the hook was
+told about. A commit landing during the gate reaches the remote unchecked
+(measured 2026-11-02, git 2.56 against `git http-backend`; a path remote got
+the commit named). `githooks/pre-push` refuses such a push. A project keeping
+its own hook owes the same check.
+
+**A local pass answers for this machine only.** Where the push starts CI, read
+that commit's result before calling the work done: `gh run list --commit <sha>`.
+GitHub failed twice while demoreel's local gate passed (2026-10-31). Nothing
+checks this.
+
 ### 5.1 Route 1 — check the pushed commits out somewhere else
 
 ```bash

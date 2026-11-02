@@ -178,6 +178,11 @@ because it reads as a list nobody filled in.
 - **Not on a command line.** Process arguments are readable by other
   users on the same host. Use an environment variable, a file, or
   standard input.
+- **Not in a transcript.** A session's environment can hold tokens, and
+  command output leaves the machine. `env | grep GITHUB_` printed a
+  personal access token (demoreel, 2026-10-31). List names only, with
+  `compgen -e`. `hooks/env-dump-guard.sh` stops the common listing forms;
+  it does not see `echo $NAME`.
 - **A scanner match that is not a secret is excused by its fingerprint,
   never by a wider rule.** A published test password, a key header quoted
   as text: list each finding's exact fingerprint in `.gitleaksignore`,
