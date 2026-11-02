@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ANTS-5629 — install the cc-job component into a scratch prefix and run the
-# installed copy. No systemd --user is needed: nothing here starts a job.
+# installed copy. No systemd --user is needed: a job starts through a stand-in.
 # Args: <build dir>.
 set -euo pipefail
 
@@ -48,4 +48,46 @@ case "$msg" in
     *) echo "FAIL INV-4: watch without Konsole printed '$msg'"; exit 1 ;;
 esac
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole"
+# INV-5..7 — a job started through a stand-in systemd-run, which gives the job
+# an empty environment apart from PATH, as a real unit's is apart from the user
+# manager's. The stand-in records its arguments and the variables file's mode.
+fake="$prefix/fake"
+jobs="$prefix/jobs"
+mkdir "$fake" "$jobs"
+cat >"$fake/systemctl" <<'EOF'
+#!/bin/bash
+exit 1
+EOF
+cat >"$fake/systemd-run" <<EOF
+#!/bin/bash
+printf '%s\n' "\$*" >"$prefix/argv"
+stat -c %a "$jobs/probe.env" >"$prefix/mode"
+while [[ \$1 == --* ]]; do shift; done
+exec env -i PATH="\$PATH" "\$@"
+EOF
+chmod +x "$fake/systemctl" "$fake/systemd-run"
+
+value=$'two words "quoted" $notexpanded\nsecond line'
+env CC_JOB_DIR="$jobs" PATH="$fake:$PATH" PROBE_VALUE="$value" \
+    CLAUDE_CODE_SESSION_ID=session-leak ANTS_MCP_SOCKET=session-leak \
+    "$bin" start probe -- bash -c \
+    'printf "%s" "$PROBE_VALUE" >"$0"; printf "%s" "${CLAUDE_CODE_SESSION_ID:-}${ANTS_MCP_SOCKET:-}" >"$0.session"' \
+    "$prefix/seen" >/dev/null
+
+[ "$(cat "$prefix/seen")" = "$value" ] ||
+    { echo "FAIL INV-5: the job saw '$(cat "$prefix/seen")', want the exported value"; exit 1; }
+[ ! -s "$prefix/seen.session" ] ||
+    { echo "FAIL INV-6: a session variable reached the job"; exit 1; }
+[ "$(cat "$prefix/mode")" = 600 ] ||
+    { echo "FAIL INV-7: the variables file had mode $(cat "$prefix/mode"), want 600"; exit 1; }
+[ ! -e "$jobs/probe.env" ] ||
+    { echo "FAIL INV-7: the variables file outlived the job's start"; exit 1; }
+case "$(cat "$prefix/argv")" in
+    *notexpanded*) echo "FAIL INV-7: an exported value is on systemd-run's command line"; exit 1 ;;
+esac
+case "$help" in
+    *"xported"*) ;;
+    *) echo "FAIL INV-5: --help does not say which variables reach a job"; exit 1 ;;
+esac
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables"

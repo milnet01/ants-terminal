@@ -29,6 +29,8 @@ cc-job clean <name> [--force]
                             until `tail` has shown the log, unless --force
 
 A pipeline or shell syntax needs a shell:  cc-job start build -- bash -c 'make 2>&1 | tee out'
+Exported variables reach the job, except this session's own (CLAUDE*, ANTS_MCP_SOCKET and
+the like). Unsetting one does not hide it from the job if the systemd --user manager has it.
 Logs live in $XDG_STATE_HOME/cc-job/<name>.log (CC_JOB_DIR overrides)
 Needs systemd --user; watch also needs Konsole.
 EOF
@@ -52,6 +54,26 @@ watch_job() {
         konsole --hold -p tabtitle="cc-job: $name" -e tail -n +1 -F "$log"
 }
 
+# Write this shell's exported variables to file $1, mode 0600, as commands for
+# bash to read. Left out are those describing this session and terminal rather
+# than the job, so a job does not act as Claude Code's or Ants' own child.
+write_vars() {
+    local var
+    (
+        umask 077
+        for var in $(compgen -e); do
+            case $var in
+                CLAUDE*|AI_AGENT|ANTS_CLAUDE_HOOK_SOCKET|ANTS_MCP_SOCKET|ANTS_OSC133_KEY) ;;
+                BASHOPTS|SHELLOPTS|SHLVL|PWD|OLDPWD|_) ;;
+                INVOCATION_ID|JOURNAL_STREAM|MANAGERPID|MANAGERPIDFDID|SYSTEMD_EXEC_PID) ;;
+                MEMORY_PRESSURE_*|NOTIFY_SOCKET|LISTEN_*) ;;
+                TERM|TERM_PROGRAM|TERM_PROGRAM_VERSION|COLORTERM|COLORFGBG|GPG_TTY) ;;
+                *) printf 'export %s=%q\n' "$var" "${!var}" ;;
+            esac
+        done >"$1"
+    )
+}
+
 start_job() {
     local name=${1:-}; checkname "$name"; shift
     local watch=0
@@ -70,17 +92,24 @@ start_job() {
         echo "command=$(printf '%q ' "$@")"
     } >"$STATE/$name.info"
 
-    # The user manager's environment, not this shell's, apart from PATH and
-    # LANG — so a job does not inherit Claude Code's or Ants' session variables.
-    # The inner script is single-quoted on purpose: $1, $2 and "$@" belong to
-    # that inner bash, which receives log, rec and the command as arguments.
+    # A unit starts from the user manager's environment, not this shell's. A
+    # variable exported for the job must still reach it: dropped, a test job
+    # selecting a scratch database falls back to the live one, with no error.
+    # The values travel in a private file because --setenv would show them,
+    # tokens included, in `ps` and in the unit's properties.
+    local vars="$STATE/$name.env"
+    write_vars "$vars"
+
+    # The inner script is single-quoted on purpose: $1, $2, $3 and "$@" belong
+    # to that inner bash, which receives log, rec, vars and the command as
+    # arguments.
     # --expand-environment=no: otherwise systemd substitutes ${VAR} in the
     # command itself, so `exit ${PIPESTATUS[0]}` ran as `exit` and reported 0.
     # shellcheck disable=SC2016
     systemd-run --user --quiet --collect --unit="$(unit "$name")" --expand-environment=no \
-        --working-directory="$PWD" --setenv=PATH="$PATH" --setenv=LANG="${LANG:-C.UTF-8}" \
-        /bin/bash -c 'log=$1 rec=$2; shift 2; "$@" >>"$log" 2>&1; rc=$?; echo "$rc" >"$rec"; exit "$rc"' \
-        cc-job "$log" "$rec" "$@"
+        --working-directory="$PWD" --setenv=LANG="${LANG:-C.UTF-8}" \
+        /bin/bash -c 'log=$1 rec=$2 vars=$3; shift 3; . "$vars"; rm -f "$vars"; unset vars; "$@" >>"$log" 2>&1; rc=$?; echo "$rc" >"$rec"; exit "$rc"' \
+        cc-job "$log" "$rec" "$vars" "$@" || { local rc=$?; rm -f "$vars"; exit "$rc"; }
     echo "started '$name' — log: $log"
     if ((watch)); then watch_job "$name"; fi
 }
@@ -133,7 +162,7 @@ case $cmd in
             fi
             # Close any watch window first, or it reports the log vanishing.
             systemctl --user stop "cc-job-watch-$1-*" 2>/dev/null || true
-            rm -f "$STATE/$1".{log,exit,info,read}; echo "removed '$1'" ;;
+            rm -f "$STATE/$1".{log,exit,info,read,env}; echo "removed '$1'" ;;
     ""|-h|--help|help) usage ;;
     *)      usage >&2; exit 2 ;;
 esac

@@ -15,6 +15,16 @@ source is `packaging/cc-job/cc-job`.
 - **INV-4** — `cc-job watch <name>` with no `konsole` on `PATH` exits `2`
   with a message naming Konsole.
 
-No case starts a job, so the test needs no `systemd --user`.
+- **INV-5** — A variable exported to `cc-job start` reaches the job with its
+  exact value, and `--help` says so.
+  *Breaks when:* a test job silently falls back to its defaults, such as a
+  live database.
+- **INV-6** — The session's own variables, such as `CLAUDE_CODE_SESSION_ID`
+  and `ANTS_MCP_SOCKET`, do not reach the job.
+- **INV-7** — Exported values travel in a mode 0600 file that is gone once the
+  job has started, and not on `systemd-run`'s command line.
+
+The test starts its job through a stand-in `systemd-run`, so it needs no
+`systemd --user`.
 
 Test: `test_cc_job_bundle.sh`, ctest name `cc_job_bundle`.

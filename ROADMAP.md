@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6346 -->
+<!-- ants-roadmap-id-high-water: ANTS=6347 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89266,6 +89266,13 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: investigate.
   Source: in-session-2026-11-01.
   Lanes: mcp.
+
+- ✅ [ANTS-6347] **cc-job start dropped exported variables, so a test job could fall back to live data.**
+  Forwarding chosen over a --env option, since an explicit option leaves the silent fallback for anyone who forgets it. The session's own variables stay out. Values travel in a private file, because --setenv would show tokens in ps and in the unit's properties.
+  **Layman:** A variable you set for a background job now reaches it, so a test run cannot silently use the real database instead of a scratch one.
+  Kind: fix.
+  Source: retrodb-3d cross-session request 2026-11-02.
+  Lanes: packaging.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
