@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`read_region` gains `tail_lines` to read the end of a long section without line numbers, and a cut-off section read reports where the section ends** (ANTS-5281)
+
 - **`spec_lint` reports `invariants_unparsed` when a spec's invariants are in a form it cannot read** (ANTS-4998)
 
 - **`workspace_search` gains `multiline:true`, so a regex can match across line breaks, and its error on such a pattern names that argument** (ANTS-4851)

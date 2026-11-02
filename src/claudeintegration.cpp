@@ -6160,6 +6160,18 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         props["max_line_bytes"] = mlb;
                     }
                     {
+                        QJsonObject tl; tl["type"] = "integer";
+                                        tl["minimum"] = 1;
+                                        tl["description"] = QStringLiteral(
+                            "Optional (ANTS-5281). With `section`: return only "
+                            "that section's last N lines, so the newest rows "
+                            "of an append-only log need no line numbers. The "
+                            "reply's `section_end_line` is where the section "
+                            "ends, and it also appears on a truncated section "
+                            "read. Without `section` it refuses bad_args.");
+                        props["tail_lines"] = tl;
+                    }
+                    {
                         // ANTS-2157 — integration brief.
                         QJsonObject p;
                         p["type"]        = "boolean";
@@ -16805,6 +16817,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("read_region/start_line"), QStringLiteral("1-based first line.")},
                         {QStringLiteral("read_region/end_line"), QStringLiteral("1-based last line, inclusive (default start_line).")},
                         {QStringLiteral("read_region/symbol"), QStringLiteral("Return this symbol's body.")},
+                        {QStringLiteral("read_region/tail_lines"), QStringLiteral("With section: only its last N lines.")},
                         {QStringLiteral("read_region/max_bytes"), QStringLiteral("Cap on lines[] bytes (default 512 KiB); keeps the head.")},
                         {QStringLiteral("find_definition/lang"), QStringLiteral("One language family; auto (default) scans all.")},
                         {QStringLiteral("find_definition/max_results"), QStringLiteral("Cap on definitions[] (default 50).")},
@@ -16973,7 +16986,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("read_region"),
                          {QStringLiteral("call_sequence"), QStringLiteral("compact"),
                           QStringLiteral("etag_match"), QStringLiteral("fields"),
-                          QStringLiteral("max_bytes"), QStringLiteral("raw")}},
+                          QStringLiteral("max_bytes"), QStringLiteral("raw"),
+                          QStringLiteral("tail_lines")}},
                     };
                     // The first key with an entry wins: "verb/parent.child"
                     // (nested only), "verb/arg", then the shared "arg".

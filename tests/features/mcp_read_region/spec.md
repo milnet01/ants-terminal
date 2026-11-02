@@ -15,6 +15,7 @@ invariants source-scrape the registration sites. Full design contract:
 | B6 | `ByteCapHead` (INV-8) | small `max_bytes` keeps the head, stops early, sets `truncated`, effective `end_line` < requested; over-ceiling sets `bytes_cap_clamped`. |
 | B7 | `Ants4700PerLineClipMakesRoomForMoreLines` | `max_line_bytes` clips each line BEFORE the byte cap is charged, so the same `max_bytes` reaches strictly MORE lines than without it — the assertion is against the unclipped call's own `returned`, because a clip that only shortened what already fitted would satisfy a fixed number. Echoes `max_line_bytes` / `lines_clipped`; the marker is U+2026, as `max_match_bytes` emits it; a line that already fitted is untouched. |
 | B8 | `Ants4700ClampsAndReportsTheLineCap` | An out-of-range `max_line_bytes` is clamped to [50, 10000] and says so via `line_cap_clamped`. A guard on the echoed contract rather than a red-to-green case: it passes with the clip disabled, because clamping is plumbing. It also asserts clamping does not INVENT clipping (`lines_clipped: 0` on short lines). |
+| B9 | `Ants5281SectionTailNeedsNoLineNumbers` | `tail_lines:N` with `section` returns the section's last N lines, stopping at the section's end. Above the section's size it returns the whole section. Without `section` it refuses `bad_args`. `section_end_line` appears when `tail_lines` is set or a section read is truncated. |
 
 INV-4 (path validation), INV-5 (caller_cwd Required), INV-6 (ETag), INV-7
 (fields projection), INV-9 (bounded read) are covered by the W1 source-scrape

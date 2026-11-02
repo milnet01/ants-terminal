@@ -81972,7 +81972,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-games-hub-78, in-session-2026-09-21.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5281] **read_region section mode hands back line numbers on exactly the sections it exists to save you from.**
+- ✅ [ANTS-5281] **read_region section mode hands back line numbers on exactly the sections it exists to save you from.**
   Measured by peer session finbreak-65.
 
   THE MEASUREMENT: `read_region path:docs/specs/FIBR-0050.md
@@ -82000,6 +82000,10 @@ are closed inline in the feedback files rather than filed here.
   entries swamp the headings. Section mode has no equivalent. Consider
   whether the answer is a row cap with a marker, a heading-level filter
   within a section, or a `structure_only` shape.
+  Took tail_lines plus section_end_line, not a structure_only shape: a
+  loop log's rows are table rows, so a heading filter finds nothing, and
+  max_line_bytes already gives a row-by-row skim. read_region only;
+  read_regions items do not take it.
   **Layman:** A tool that fetches a document section by name so you need not know line numbers returns too much on long sections, forcing you back to line numbers.
   Kind: enhancement.
   Source: peer-session-finbreak-65, in-session-2026-09-21.

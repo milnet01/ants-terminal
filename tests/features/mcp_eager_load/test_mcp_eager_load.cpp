@@ -304,7 +304,7 @@ TEST(McpEagerLoad, Ants5725RareArgumentsLeaveTheWire) {
          {"path", "paths", "include_doc_comment", "compact", "sizes",
           "max_heading_level", "fields", "max_symbols", "encoding", "filter"}},
         {"read_region",
-         {"call_sequence", "compact", "etag_match", "fields", "max_bytes", "raw"},
+         {"call_sequence", "compact", "etag_match", "fields", "max_bytes", "raw", "tail_lines"},
          {"path", "start_line", "end_line", "section", "max_line_bytes", "symbol"}},
     };
     for (const auto &row : rows) {

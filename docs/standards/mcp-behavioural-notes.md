@@ -477,6 +477,10 @@ server-controllable beyond this per-tool hint.
   `lines_clipped:0` says nothing was long enough to clip, which is not the
   same as the argument having been ignored. Pairs with `file_outline`
   `sizes:true`, which answers WHERE the weight is.
+- **`tail_lines` (ANTS-5281)** — with `section`, returns that section's last N
+  lines, for the newest rows of a long append-only log. Refuses `bad_args`
+  without `section`. `section_end_line` appears with it and on any truncated
+  section read, because `end_line` there is where the byte cap stopped.
 - **`raw:true` (ANTS-2218)** — opt-in verbatim framing, honoured by
   `read_region` / `read_regions` / `workspace_search`
   (`mcp::isRawEligible`). The default frame neutralises any literal

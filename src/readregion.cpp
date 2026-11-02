@@ -475,6 +475,12 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
             "read_region: start_line must be >= 1 and end_line >= start_line");
         return env;
     }
+    if (opts.tailLines > 0 && !hasSec) {
+        env["ok"] = false;
+        env["code"] = QStringLiteral("bad_args");
+        env["error"] = QStringLiteral("read_region: tail_lines applies to `section`");
+        return env;
+    }
 
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) {
@@ -521,6 +527,11 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         endLine         = sec.end;
         sectionEcho     = opts.section;
         sectionSlugEcho = sec.slug;  // resolved heading slug (may differ from input)
+        // ANTS-5281 — the newest rows of an append-only log, with no line
+        // arithmetic. qint64: tail_lines is caller input and may be huge.
+        if (opts.tailLines > 0)
+            startLine = static_cast<int>(
+                qMax<qint64>(startLine, qint64(endLine) - opts.tailLines + 1));
     }
     if (hasSym) {
         const SymRange sr = resolveSymbol(absPath, opts.symbol);
@@ -635,6 +646,9 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     if (hasSec) {
         env["section"] = sectionEcho;
         env["section_slug"] = sectionSlugEcho;
+        // ANTS-5281 — a cut-off read's end_line is where the CAP stopped, so
+        // say where the section stops. A complete read's end_line already does.
+        if (truncated || opts.tailLines > 0) env["section_end_line"] = endLine;
     }
 
     // ANTS-2157 — integration brief: the ordered call-expressions inside the

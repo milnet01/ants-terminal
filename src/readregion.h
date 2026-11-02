@@ -50,6 +50,7 @@ struct Options {
     // that is the difference between the rows you were reading toward and a
     // truncated head.
     int     maxLineBytes = 0;
+    int     tailLines = 0;         // ANTS-5281 — <=0 → off; section mode only: its last N lines
     bool    callSequence = false;  // ANTS-2157 — also emit the ordered call list + accessors
 };
 
@@ -58,7 +59,7 @@ struct Options {
 //   {ok:true, path, start_line, end_line, lines[], returned, truncated,
 //    bytes_cap_clamped?, line_cap_clamped?, max_line_bytes?, lines_clipped?,
 //    symbol?, symbol_ambiguous?, symbol_match_count?, section?, section_slug?,
-//    call_sequence?, call_sequence_truncated?, accessors?}
+//    section_end_line?, call_sequence?, call_sequence_truncated?, accessors?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   bad_args          — zero/multiple selectors, or start<1 / end<start.
 //   not_found         — file cannot be opened.

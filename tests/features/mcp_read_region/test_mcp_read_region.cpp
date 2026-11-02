@@ -411,6 +411,45 @@ TEST(McpReadRegion, Ants4700PerLineClipMakesRoomForMoreLines) {
 
 // ANTS-4700 — the range is the one `max_match_bytes` uses, and an out-of-range
 // value is clamped and SAID SO, rather than silently becoming something else.
+// ANTS-5281 — section mode exists so a caller need not know line numbers, and on
+// a long append-only log it handed them back as the only route to the newest
+// rows. The fixture has a following section: the tail must stop at the section's
+// end, not the file's.
+TEST(McpReadRegion, Ants5281SectionTailNeedsNoLineNumbers) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeFile(dir, "log.md",
+        {"# Doc", "", "## Log", "| 1 |", "| 2 |", "| 3 |", "| 4 |", "", "## Next", "later"});
+
+    ReadRegion::Options tail;
+    tail.section   = QStringLiteral("Log");
+    tail.tailLines = 3;
+    const QJsonObject env = ReadRegion::extract(p, tail);
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 6);
+    EXPECT_EQ(env.value("end_line").toInt(), 8);
+    EXPECT_EQ(env.value("lines").toArray().at(0).toString(), QStringLiteral("| 3 |"));
+    EXPECT_FALSE(env.value("truncated").toBool());
+    EXPECT_EQ(env.value("section_end_line").toInt(), 8);
+
+    // More than the section holds: the whole section, never the line before it.
+    tail.tailLines = 100;
+    EXPECT_EQ(ReadRegion::extract(p, tail).value("start_line").toInt(), 3);
+
+    // The other route: a head cut short says where the section really ends.
+    ReadRegion::Options head;
+    head.section  = QStringLiteral("Log");
+    head.maxBytes = 12;
+    const QJsonObject cut = ReadRegion::extract(p, head);
+    ASSERT_TRUE(cut.value("truncated").toBool());
+    EXPECT_LT(cut.value("end_line").toInt(), 8);
+    EXPECT_EQ(cut.value("section_end_line").toInt(), 8);
+
+    // Only a section has a tail worth naming without line numbers.
+    ReadRegion::Options noSection = lineOpts(1, 4);
+    noSection.tailLines = 2;
+    EXPECT_EQ(ReadRegion::extract(p, noSection).value("code").toString(), QStringLiteral("bad_args"));
+}
+
 TEST(McpReadRegion, Ants4700ClampsAndReportsTheLineCap) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString p = writeFile(dir, "f.txt", kFixture);
