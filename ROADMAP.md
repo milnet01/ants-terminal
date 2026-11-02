@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6353 -->
+<!-- ants-roadmap-id-high-water: ANTS=6354 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89422,6 +89422,18 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-11-02, seen while working ANTS-5652.
   Lanes: roadmap.
+
+- ✅ [ANTS-6354] **Plain `cc-job status` answers in under a second and lists only what a reader needs.**
+  Measured by claude-config 2026-11-02 on 4,012 jobs: 188 s on a busy disk, 33 s on an idle one, 542 KB of output with one job running. The cost per job was one `systemctl is-active`, one `sed` and one `basename`. One `list-units` call replaces the first. Finished jobs never expire: a log is the only copy of its output. On ship: message claude-config; CFG-0885 waits on it.
+  Shipped 2026-11-02. Measured on the real job folder (4,017 jobs): 0.14
+  s and 22 lines. `status --all` keeps the old by-name list,
+  byte-identical on a 200-job sample; it took 54 s on the busy disk,
+  which is the disk, at 0.6 s of CPU. Installed by rename, so no session
+  read it half-written.
+  **Layman:** Asking which background jobs exist took minutes and printed thousands of old lines; it now answers at once with the running jobs and the newest finished ones.
+  Kind: fix.
+  Source: peer-session claude-config CFG-0885, message 1149, 2026-11-02.
+  Lanes: packaging.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

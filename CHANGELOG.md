@@ -29,6 +29,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Plain `cc-job status` answers at once with running jobs and the newest 20 others; `cc-job status --all` lists every job.** (ANTS-6354)
+
 - **The roadmap format says where a `v0.7.x` patch-stream block ranks when choosing the active release: after that minor's numbered patches, before the next minor.** (ANTS-5652)
 
 - **Nine more read verbs hand back a preview and a handle when their reply is large** (ANTS-6351)

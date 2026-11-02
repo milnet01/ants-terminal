@@ -23,6 +23,15 @@ source is `packaging/cc-job/cc-job`.
   and `ANTS_MCP_SOCKET`, do not reach the job.
 - **INV-7** — Exported values travel in a mode 0600 file that is gone once the
   job has started, and not on `systemd-run`'s command line.
+- **INV-8** — Plain `cc-job status` runs no per-job `systemctl is-active`.
+  *Breaks when:* its cost grows with the jobs kept, as it did: 188 s for 4,012
+  jobs, measured 2026-11-02.
+- **INV-9** — Plain `status` lists running jobs, then the newest 20 others by
+  log time, then a line counting the rest and naming `--all`. `status --all`
+  lists every job by name, and `--help` names it. Both work where the state
+  dir is a symlink.
+- **INV-10** — If `list-units` fails, `status` asks per job, so a running job
+  never reads as finished.
 
 The test starts its job through a stand-in `systemd-run`, so it needs no
 `systemd --user`.

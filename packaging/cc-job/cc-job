@@ -19,7 +19,9 @@ usage() {
     cat <<'EOF'
 cc-job start <name> [--watch] -- <command> [args...]
                             run in the current directory; --watch also opens Konsole
-cc-job status [<name>]      running / finished with exit code / stopped (all jobs if no name)
+cc-job status [<name>]      running / finished with exit code / stopped; no name lists
+                            running jobs and the newest 20 others
+cc-job status --all         the same for every job, by name
 cc-job tail <name> [lines]  last lines of output (default 40)
 cc-job wait <name>          block until the job ends, then exit with its exit code
 cc-job watch <name>         open a Konsole window following the output live
@@ -41,7 +43,28 @@ unit() { printf 'cc-job-%s.service' "$1"; }
 checkname() {
     [[ ${1:-} =~ ^[A-Za-z0-9_.-]+$ ]] || die "a job name is letters, digits, dot, underscore or dash"
 }
-running() { systemctl --user is-active --quiet "$(unit "$1")"; }
+# Filled by snapshot_running for a status listing, where one call per job took
+# minutes (ANTS-6354). Empty otherwise, so `wait` always asks afresh.
+declare -A ACTIVE=()
+USE_SNAPSHOT=0
+running() {
+    if ((USE_SNAPSHOT)); then
+        [[ -n ${ACTIVE[cc-job-$1.service]:-} ]]
+    else
+        systemctl --user is-active --quiet "$(unit "$1")"
+    fi
+}
+# On failure the listing asks per job: slow, but a running job never reads as
+# finished.
+snapshot_running() {
+    local units u
+    units=$(systemctl --user list-units 'cc-job-*' --state=active --no-legend --plain 2>/dev/null) ||
+        return 0
+    while read -r u _; do
+        [[ -n $u ]] && ACTIVE[$u]=1
+    done <<<"$units"
+    USE_SNAPSHOT=1
+}
 
 watch_job() {
     local name=$1 log="$STATE/$1.log"
@@ -125,9 +148,50 @@ status_one() {
     else
         echo "$name: no such job"; return 1
     fi
-    local started=""
-    [[ -f $STATE/$name.info ]] && started=$(sed -n 's/^started=//p' "$STATE/$name.info")
+    local started="" line
+    if [[ -f $STATE/$name.info ]]; then
+        while IFS= read -r line; do
+            if [[ $line == started=* ]]; then started=${line#started=}; break; fi
+        done <"$STATE/$name.info"
+    fi
     echo "$name: $state${started:+ — started $started} — log: $STATE/$name.log"
+}
+
+# Every job by name.
+status_all() {
+    shopt -s nullglob
+    local f b found=0
+    for f in "$STATE"/*.log; do
+        if ((!found)); then snapshot_running; found=1; fi
+        b=${f##*/}
+        status_one "${b%.log}"
+    done
+    ((found)) || echo "no jobs"
+}
+
+# Running jobs, then the newest others. A finished job is kept, since its log is
+# the only copy of its output, so the list has to bound itself.
+status_recent() {
+    local keep=20 names name shown=0 hidden=0
+    mapfile -t names < <(find -H "$STATE" -maxdepth 1 -name '*.log' -printf '%T@ %f\n' |
+                         sort -k1,1rn -k2,2 | sed 's/^[^ ]* //; s/\.log$//')
+    if ((${#names[@]} == 0)); then echo "no jobs"; return 0; fi
+    snapshot_running
+    for name in "${names[@]}"; do
+        if running "$name"; then status_one "$name"; fi
+    done
+    for name in "${names[@]}"; do
+        if running "$name"; then continue; fi
+        if ((shown < keep)); then
+            status_one "$name"
+            shown=$((shown + 1))
+        else
+            hidden=$((hidden + 1))
+        fi
+    done
+    if ((hidden)); then
+        echo "... $hidden older finished jobs not shown; 'cc-job status --all' lists them"
+    fi
 }
 
 wait_job() {
@@ -143,11 +207,9 @@ cmd=${1:-}; shift || true
 case $cmd in
     start)  start_job "$@" ;;
     status)
-        if (($#)); then checkname "$1"; status_one "$1"
-        else
-            shopt -s nullglob; found=0
-            for f in "$STATE"/*.log; do found=1; status_one "$(basename "$f" .log)"; done
-            ((found)) || echo "no jobs"
+        if [[ ${1:-} == --all ]]; then status_all
+        elif (($#)); then checkname "$1"; status_one "$1"
+        else status_recent
         fi ;;
     tail)   checkname "${1:-}"; [[ -f $STATE/$1.log ]] || die "no job named '$1'"
             tail -n "${2:-40}" "$STATE/$1.log"; : >"$STATE/$1.read" ;;

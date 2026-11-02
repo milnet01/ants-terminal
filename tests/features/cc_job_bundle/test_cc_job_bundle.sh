@@ -90,4 +90,62 @@ case "$help" in
     *) echo "FAIL INV-5: --help does not say which variables reach a job"; exit 1 ;;
 esac
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables"
+# INV-8..10 — plain status over more jobs than it shows. A stand-in systemctl
+# counts is-active calls: 26 jobs must cost none of them.
+many="$prefix/many"
+mkdir "$many"
+for i in $(seq -w 1 25); do
+    : >"$many/job$i.log"
+    echo 0 >"$many/job$i.exit"
+    echo "started=2026-01-$i" >"$many/job$i.info"
+    touch -d "2026-01-$i 12:00:00" "$many/job$i.log"
+done
+: >"$many/oldrun.log"
+touch -d "2020-01-01 12:00:00" "$many/oldrun.log"
+calls="$prefix/is-active-calls"
+: >"$calls"
+listing="$prefix/listing"
+cat >"$fake/systemctl" <<EOF
+#!/bin/bash
+for a in "\$@"; do
+    case "\$a" in
+        list-units) [ -f "$listing" ] || exit 1
+                    echo "cc-job-oldrun.service loaded active running stand-in"; exit 0 ;;
+        is-active)  echo x >>"$calls"
+                    case "\$*" in *cc-job-oldrun.service*) exit 0 ;; esac; exit 3 ;;
+    esac
+done
+exit 1
+EOF
+: >"$listing"
+out="$(env CC_JOB_DIR="$many" PATH="$fake:$PATH" "$bin" status)"
+[ ! -s "$calls" ] || { echo "FAIL INV-8: plain status ran is-active $(wc -l <"$calls") times"; exit 1; }
+[ "$(sed -n 1p <<<"$out" | cut -d: -f1)" = oldrun ] ||
+    { echo "FAIL INV-9: a running job did not come first: $out"; exit 1; }
+sed -n 1p <<<"$out" | grep -q 'oldrun: running' ||
+    { echo "FAIL INV-9: the running job read as not running: $out"; exit 1; }
+[ "$(sed -n 2p <<<"$out" | cut -d: -f1)" = job25 ] ||
+    { echo "FAIL INV-9: the newest finished job did not follow it: $out"; exit 1; }
+[ "$(sed -n 21p <<<"$out" | cut -d: -f1)" = job06 ] ||
+    { echo "FAIL INV-9: finished jobs are not the newest 20: $out"; exit 1; }
+sed -n 22p <<<"$out" | grep -q '5 older finished jobs not shown.*--all' ||
+    { echo "FAIL INV-9: no line counts the rest: $out"; exit 1; }
+[ "$(wc -l <<<"$out")" = 22 ] || { echo "FAIL INV-9: $(wc -l <<<"$out") lines, want 22"; exit 1; }
+out="$(env CC_JOB_DIR="$many" PATH="$fake:$PATH" "$bin" status --all)"
+[ "$(wc -l <<<"$out")" = 26 ] || { echo "FAIL INV-9: --all printed $(wc -l <<<"$out") lines, want 26"; exit 1; }
+[ "$(sed -n 1p <<<"$out" | cut -d: -f1)" = job01 ] || { echo "FAIL INV-9: --all is not by name: $out"; exit 1; }
+case "$("$bin" --help)" in *"status --all"*) ;; *) echo "FAIL INV-9: --help omits --all"; exit 1 ;; esac
+# The state dir may be a symlink to a data drive, as this script's header offers.
+ln -s "$many" "$prefix/many-link"
+out="$(env CC_JOB_DIR="$prefix/many-link" PATH="$fake:$PATH" "$bin" status)"
+[ "$(wc -l <<<"$out")" = 22 ] ||
+    { echo "FAIL INV-9: a symlinked state dir listed: $out"; exit 1; }
+# INV-10 — with list-units failing, status falls back to asking per job rather
+# than calling a running job finished.
+rm -f "$listing"
+out="$(env CC_JOB_DIR="$many" PATH="$fake:$PATH" "$bin" status)"
+sed -n 1p <<<"$out" | grep -q 'oldrun: running' ||
+    { echo "FAIL INV-10: a failed list-units hid a running job: $out"; exit 1; }
+[ -s "$calls" ] || { echo "FAIL INV-10: no per-job fallback ran"; exit 1; }
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply"
