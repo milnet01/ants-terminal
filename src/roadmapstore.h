@@ -1116,6 +1116,23 @@ public:
     static constexpr int kMailInboxPageMax = 200;
     static int inboxPageLimit(int requested);
 
+    // ANTS-5255 — the mail a project has sent, so a sender can see `acked_at`.
+    struct SentMessage {
+        qint64 id = 0;
+        QString toSlug;
+        QString createdAt;
+        QString preview;      // the body's first kMailPreviewChars characters
+        QString ackedAt;      // empty ⇒ not acked
+    };
+    static constexpr int kMailPreviewChars = 120;
+
+    // `toProjectId` 0 reads mail to every recipient. `limit <= 0` returns every
+    // row. Ordered newest first. `*unackedOut` is the true unacked total for
+    // the same recipient filter, whatever the page.
+    bool outboxFor(qint64 projectId, qint64 toProjectId, int limit, int offset,
+                   QVector<SentMessage> *out, int *unackedOut,
+                   QString *error = nullptr) const;
+
     // ANTS-5601 — one message from this project's inbox, acked or not.
     // Another project's message is `not_found`, as in ackMessage.
     bool messageFor(qint64 projectId, qint64 messageId, Message *out,

@@ -14286,7 +14286,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "export_slug, never to a session. op:\"send\" (needs `to` + "
                         "`body`; to:\"*\" reaches every registered project and "
                         "returns sent[] and refused[]), op:\"inbox\" (default: your unacked mail, newest "
-                        "first), op:\"ack\" (needs `message_id`; idempotent). An entry "
+                        "first), op:\"outbox\" (mail you sent), op:\"ack\" (needs "
+                        "`message_id`; idempotent). An entry "
                         "with `acked_at` has been read. Refusals: no_project (run "
                         "roadmap_migrate first), unknown_project, inbox_full, "
                         "not_found. Distinct from the *_Ants_MCP_Feedback.md corpus, "
@@ -14301,9 +14302,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "op:\"send\" (needs `to` + `body`), op:\"inbox\" (the "
                         "default — YOUR unacked mail, newest first) and "
                         "op:\"ack\" (needs `message_id`; idempotent, and the "
-                        "FIRST ack is the fact). Confirmation is two states in "
+                        "FIRST ack is the fact). op:\"outbox\" (ANTS-5255) lists "
+                        "the mail you sent, newest first, optionally for one "
+                        "`to`, with a body preview; no `acked_at` means not acked "
+                        "yet, and acked mail disappears when it is pruned. "
+                        "Confirmation is two states in "
                         "one nullable column: an entry carrying `acked_at` has "
-                        "been read. All three ops need the CALLING project "
+                        "been read. Every op needs the CALLING project "
                         "registered in the roadmap store, else `no_project` — "
                         "run roadmap_migrate first. An unresolvable `to` "
                         "refuses `unknown_project` rather than accepting mail "
@@ -14341,11 +14346,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         QJsonArray e;
                         e.append(QStringLiteral("send"));
                         e.append(QStringLiteral("inbox"));
+                        e.append(QStringLiteral("outbox"));
                         e.append(QStringLiteral("ack"));
                         p["enum"] = e;
                         p["description"] = QStringLiteral(
-                            "Verb mode. Default \"inbox\" (omit it) — your own "
-                            "unacked mail. \"send\" needs `to` and `body`; "
+                            "Default \"inbox\": your unacked mail. \"outbox\": "
+                            "mail you sent. \"send\" needs `to` and `body`; "
                             "\"ack\" needs `message_id`.");
                         props["op"] = p;
                     }
@@ -14359,7 +14365,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "`unknown_project`. Self-addressed mail is allowed "
                             "on purpose: it is the note for the next session on "
                             "THIS project. \"*\" sends one copy to every "
-                            "registered project but yours (ANTS-5741).");
+                            "registered project but yours (ANTS-5741). "
+                            "op:\"outbox\" — optional: only mail to this slug.");
                         props["to"] = p;
                     }
                     {
@@ -14417,7 +14424,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["type"] = "integer";
                         p["default"] = 20;
                         p["description"] = QStringLiteral(
-                            "op:\"inbox\" — cap on `messages[]`, at most 200; "
+                            "op:\"inbox\" or \"outbox\" — cap on `messages[]`, at most 200; "
                             "0 or less asks for 200. `unacked_count` is the TRUE "
                             "total either way, so a capped page still reports "
                             "how much is waiting.");
@@ -14428,7 +14435,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["type"] = "integer";
                         p["default"] = 0;
                         p["description"] = QStringLiteral(
-                            "op:\"inbox\" — 0-based offset into the result, for "
+                            "op:\"inbox\" or \"outbox\" — 0-based offset into the result, for "
                             "paging past `limit`.");
                         props["offset"] = p;
                     }

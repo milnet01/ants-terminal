@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **session_message op:"outbox" lists the mail a project sent and shows which of it was acked** (ANTS-5255)
+
 - **`build_target_for` suggests which test bundle should own a new source** (ANTS-5251)
   For a source no target lists yet, `candidate_targets` ranks the bundles whose sources already include the same headers, and names the headers each one covers and misses.
 

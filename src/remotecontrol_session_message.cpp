@@ -249,6 +249,47 @@ QJsonDocument opInbox(MailCall &c, qint64 id) {
     return QJsonDocument(c.out);
 }
 
+// ANTS-5255 — the mail this project sent. A read, so it never prunes. `to` is an
+// optional filter; an unknown slug refuses, because an empty list would read as
+// "nothing was sent there".
+QJsonDocument opOutbox(MailCall &c) {
+    const QString to = c.req.value(QStringLiteral("to")).toString();
+    qint64 toProject = 0;
+    if (!to.isEmpty()) {
+        const auto id = c.store.projectIdForSlug(to);
+        if (!id)
+            return refuseUnknownProject(c.store, to,
+                          QStringLiteral("no project is registered under "
+                                         "export_slug \"%1\"").arg(to));
+        toProject = *id;
+    }
+    const int limit = RoadmapStore::inboxPageLimit(
+        c.req.value(QStringLiteral("limit")).toInt(20));
+    const int offset = qMax(0, c.req.value(QStringLiteral("offset")).toInt(0));
+
+    QVector<RoadmapStore::SentMessage> rows;
+    int unacked = 0;
+    QString err;
+    if (!c.store.outboxFor(c.self, toProject, limit, offset, &rows, &unacked, &err))
+        return refuseStore(QString(), err);
+
+    QJsonArray arr;
+    for (const auto &m : rows) {
+        QJsonObject o;
+        o[QStringLiteral("message_id")] = double(m.id);
+        o[QStringLiteral("to")]         = m.toSlug;
+        o[QStringLiteral("created_at")] = m.createdAt;
+        o[QStringLiteral("preview")]    = m.preview;
+        if (!m.ackedAt.isEmpty())
+            o[QStringLiteral("acked_at")] = m.ackedAt;
+        arr.append(o);
+    }
+    c.out[QStringLiteral("messages")]      = arr;
+    c.out[QStringLiteral("unacked_count")] = unacked;
+    c.out[QStringLiteral("count")]         = arr.size();
+    return QJsonDocument(c.out);
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
@@ -264,10 +305,10 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     const QString op = req.value(QStringLiteral("op")).toString(
         QStringLiteral("inbox"));
     if (op != QStringLiteral("send") && op != QStringLiteral("inbox")
-        && op != QStringLiteral("ack"))
+        && op != QStringLiteral("outbox") && op != QStringLiteral("ack"))
         return refuse("bad_args",
                       QStringLiteral("session_message: unknown op \"%1\" — "
-                                     "expected send, inbox or ack").arg(op));
+                                     "expected send, inbox, outbox or ack").arg(op));
 
     RoadmapStore store(RoadmapStore::defaultPath());
     QString err;
@@ -276,7 +317,7 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
                       QStringLiteral("session_message: cannot open the roadmap "
                                      "store: %1").arg(err));
 
-    // § 2.3 — all three ops require the CALLER's project to be registered.
+    // § 2.3 — every op requires the CALLER's project to be registered.
     // `from_project_id` is NOT NULL and inbox/ack resolve the caller the same
     // way, so this is one condition with one code. Deliberately NOT
     // registerProject(): that is upsert-shaped and would silently register any
@@ -300,6 +341,8 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
                QJsonObject{{QStringLiteral("ok"), true}, {QStringLiteral("op"), op}}};
     if (op == QStringLiteral("send"))
         return opSend(c);
+    if (op == QStringLiteral("outbox"))
+        return opOutbox(c);
     const std::optional<qint64> id = messageIdArg(req);
     if (!id)
         return refuse("bad_args",

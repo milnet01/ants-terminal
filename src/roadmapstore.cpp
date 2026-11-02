@@ -2520,6 +2520,61 @@ bool RoadmapStore::inboxFor(qint64 projectId, bool includeAcked, int limit,
     return true;
 }
 
+bool RoadmapStore::outboxFor(qint64 projectId, qint64 toProjectId, int limit,
+                             int offset, QVector<SentMessage> *out,
+                             int *unackedOut, QString *error) const {
+    if (out) out->clear();
+    const QString recipient =
+        toProjectId > 0 ? QStringLiteral(" AND m.to_project_id = ?") : QString();
+    const auto bindScope = [&](QSqlQuery &q) {
+        q.addBindValue(projectId);
+        if (toProjectId > 0)
+            q.addBindValue(toProjectId);
+    };
+
+    if (unackedOut) {
+        QSqlQuery q(m_db);
+        q.prepare(QStringLiteral("SELECT COUNT(*) FROM message m "
+                                 "WHERE m.from_project_id = ? AND m.acked_at IS NULL")
+                  + recipient);
+        bindScope(q);
+        if (!q.exec() || !q.next()) {
+            if (error) *error = lastErr(q);
+            return false;
+        }
+        *unackedOut = q.value(0).toInt();
+    }
+    if (!out)
+        return true;
+
+    // substr() on a TEXT value counts characters, so it never splits one.
+    QString sql = QStringLiteral(
+        "SELECT m.message_id, p.export_slug, m.created_at, substr(m.body, 1, %1), "
+        "m.acked_at FROM message m JOIN project p ON p.project_id = m.to_project_id "
+        "WHERE m.from_project_id = ?").arg(kMailPreviewChars)
+        + recipient + QStringLiteral(" ORDER BY m.message_id DESC");
+    if (limit > 0)
+        sql += QStringLiteral(" LIMIT %1 OFFSET %2").arg(limit).arg(qMax(0, offset));
+
+    QSqlQuery q(m_db);
+    q.prepare(sql);
+    bindScope(q);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return false;
+    }
+    while (q.next()) {
+        SentMessage m;
+        m.id        = q.value(0).toLongLong();
+        m.toSlug    = q.value(1).toString();
+        m.createdAt = q.value(2).toString();
+        m.preview   = q.value(3).toString();
+        m.ackedAt   = q.value(4).isNull() ? QString() : q.value(4).toString();
+        out->append(m);
+    }
+    return true;
+}
+
 bool RoadmapStore::ackMessage(qint64 projectId, qint64 messageId,
                               const QString &ackedAt, bool *alreadyAcked,
                               QString *code, QString *error) {

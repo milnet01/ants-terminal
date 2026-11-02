@@ -137,7 +137,7 @@ rationale for it lives above the array rather than inside the SQL.**
 The ladder takes exactly one rung per step and stamps `user_version` once after
 the last (`src/roadmapstore.cpp`, the `rungs != 1` guard).
 
-### 2.3 The verb: `session_message`, ops `send` / `inbox` / `ack`
+### 2.3 The verb: `session_message`, ops `send` / `inbox` / `outbox` / `ack`
 
 One verb with ops, matching `roadmap_log` and `roadmap_migrate`, rather than
 three thin verbs.
@@ -146,13 +146,21 @@ three thin verbs.
 |---|---|---|---|
 | `send` | `caller_cwd`, `to`, `body` | `from_session`, `dry_run`, `include_self` (§ 2.7) | `message_id`, `to`, `created_at`; for `to:"*"`, § 2.7's shape |
 | `inbox` | `caller_cwd` | `include_acked`, `limit`, `offset`, `message_id` | `messages[]`, `unacked_count` |
+| `outbox` | `caller_cwd` | `to`, `limit`, `offset` | `messages[]` (`message_id`, `to`, `created_at`, `preview`, `acked_at`), `unacked_count` |
 | `ack` | `caller_cwd`, `message_id` | — | `acked_at`, `already_acked` |
 
 `inbox` with `message_id` returns that one message, acked or not (ANTS-5601).
 Without it, `limit` pages at most 200 rows, and 0 or less asks for 200
 (ANTS-5591).
 
-**All three ops require the CALLING project to be registered**, because
+`outbox` lists the mail the calling project sent, newest first (ANTS-5255).
+`to` narrows it to one recipient, and an unregistered slug refuses
+`unknown_project`. `preview` holds the body's first
+`RoadmapStore::kMailPreviewChars` characters. An entry with no `acked_at` has
+not been acked. Acked mail leaves the outbox when § 2.6 prunes it.
+`unacked_count` is the true total for that recipient filter, whatever the page.
+
+**All four ops require the CALLING project to be registered**, because
 `from_project_id` is `NOT NULL` and `inbox`/`ack` resolve the caller the same
 way. That refusal is `no_project`, which the taxonomy already carries — a
 caller in an unregistered checkout must be able to tell *you are not
@@ -410,6 +418,11 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
   count is unchanged, `would_send_to[]` names `charlie` and `would_refuse[]`
   names `bravo`. The full `bravo` is what makes the preview's split checkable
   rather than an echo of the recipient list.
+- **INV-14** — `outbox` returns only the mail the calling project sent, newest
+  first, with `acked_at` on acked rows. Breaks when the query selects on the
+  recipient or either end. *Test:* `bravo` also sends to `alpha`, and that row
+  stays out of `alpha`'s outbox; the recipient filter narrows `unacked_count`,
+  and a page does not.
 
 ## 4. RAM / build cost
 
@@ -478,7 +491,7 @@ sits at exactly the 6000 lines ANTS-3833 INV-6 caps a TU at, with no headroom
 ## 6. Tests
 
 Feature test: `tests/features/session_message/`, covering INV-1, INV-2, INV-3,
-INV-4, INV-5, INV-8, INV-9, INV-10, INV-11, INV-12 and INV-13 — written out rather than as a range, so
+INV-4, INV-5, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13 and INV-14 — written out rather than as a range, so
 the parity between this list and § 3 stays mechanically checkable. Label
 `features`. Wired into an existing bundle's `SOURCES`
 list — ask `build_target_for` which bundle owns the file rather than guessing,
@@ -529,3 +542,4 @@ here.
 | amend | 2026-10-21 | 0 — no reviewer dispatched; an in-place amendment before implementation | — | ANTS-5741 (user decision 2026-10-16): adds § 2.7, broadcast by `to:"*"`, with INV-11 to INV-13; § 2.1 and § 2.3 gain the `*` value and `include_self`; § 5 withdraws broadcast from out of scope. It changes direction, so rule 14's gate runs next as loop 3. |
 | 3 | 2026-10-21 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; one shared packet carrying the handler whole, the `RoadmapStore` mailbox, transaction and project-list windows, the tool schema, the test fixture and the ANTS-5366 passages. Gated span: commit 6a71f24f (ANTS-5741) | **Q1 0 · Q2 0 · Q3 1 · Q4 1** (2 verified, 2 fixed / 2 dismissed) | **[Q4], both lanes:** § 2.7 placed the broadcast nowhere, and the handler opens the real store, so a handler-side broadcast left INV-11 to INV-13 with no runnable test. § 2.7 now puts the walk, the cap split and the dry-run split in one `RoadmapStore` method that the invariants drive on a temporary store. **[Q3], one lane:** only the body was validated up front, so an oversized `from_session` could come back `ok:true` with every recipient refused; it now refuses `bad_args` for the whole call and `refused[]` carries only `inbox_full`. § 2.3's `bad_args` gloss gains the same case. **Dismissed:** the single-slug preview not checking the cap while the broadcast preview does (two paths, each stated, neither false); a claim that § 6 overstates INV-10's coverage (the feature test covers it by source inspection, in that directory). **Outside the amendment's radius, filed on the roadmap:** INV-5, § 2.5 and § 7 still describe the pre-ANTS-5366 delete; § 2.3 says `acked_at` is always returned; § 2.1 says the refusal lists the known slugs. **Open questions, none became a finding:** a deregistered caller's `include_self`, `include_self` on a single-slug send, and whether a broadcast writing no row prunes — local choices nothing else binds to. |
 | 4 | 2026-10-21 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt whole from disk; every lane held every question | **Q1 0 · Q2 0 · Q3 1 · Q4 0** (1 verified, 1 fixed / 0 dismissed) | **Cap reached (2 for a spec); calm, not oscillating.** **[Q3], one lane, the other asking it as an open question:** § 2.7 never said whether the broadcast reply and its preview carry the top-level `to` and `dry_run` keys a single-slug send returns. Both now carry `to:"*"`, the preview carries `dry_run:true`, and `would_send_to[]` stands in for `would_send`. That fix is read by no lane; implementation is its reader. **Own-fix share of this loop: 0 of 1** — the finding sat on text the ANTS-5741 commit wrote. **Run share inside the gated span (6a71f24f): 3 of 7 verified findings**; the other four lie outside the amendment and are filed as ANTS-5809 (INV-5 and § 7 against ANTS-5366, § 2.3's `acked_at`, § 2.1's slug list, INV-4 and INV-10 written as behavioural tests the handler's real store rules out). Status set to `accepted (2026-10-21)`. **Open questions, none became a finding:** whether a broadcast that writes no row prunes, and whether a broadcast preview refuses a bad body — local choices nothing else binds to. |
+| impl | 2026-11-02 | 0 — no reviewer dispatched; an in-place amendment | — | ANTS-5255: § 2.3 gains op `outbox`, with INV-14. It reads rows the store already holds. Rule 14: an amendment gets no automatic review. |

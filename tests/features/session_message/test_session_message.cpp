@@ -253,6 +253,64 @@ TEST(SessionMessage, Ants5601MessageForReadsOneMessageScopedToTheInbox) {
     EXPECT_EQ(code, QStringLiteral("not_found"));
 }
 
+// INV-14 (ANTS-5255) — outbox returns only what the calling project sent, newest
+// first, and shows which of it was acked. bravo's own message to alpha is what
+// separates the sender predicate from "every row touching alpha".
+TEST(SessionMessage, Inv14OutboxShowsSentMailAndItsAcks) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("bravo"));
+    const qint64 c = f.addProject(QStringLiteral("charlie"));
+    ASSERT_GT(c, 0);
+
+    QString code, err;
+    qint64 first = 0, second = 0, third = 0, incoming = 0;
+    const QString t = QString::fromLatin1(kT1);
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("bravo"), QStringLiteral("first"),
+                                     QString(), t, &first, &code, &err));
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("charlie"), QStringLiteral("second"),
+                                     QString(), t, &second, &code, &err));
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("bravo"), QStringLiteral("third"),
+                                     QString(), t, &third, &code, &err));
+    ASSERT_TRUE(f.store->sendMessage(b, QStringLiteral("alpha"), QStringLiteral("incoming"),
+                                     QString(), t, &incoming, &code, &err));
+    bool already = false;
+    ASSERT_TRUE(f.store->ackMessage(b, first, QString::fromLatin1(kNew), &already,
+                                    &code, &err));
+
+    QVector<RoadmapStore::SentMessage> rows;
+    int unacked = -1;
+    ASSERT_TRUE(f.store->outboxFor(a, 0, 20, 0, &rows, &unacked, &err)) << err.toStdString();
+    ASSERT_EQ(rows.size(), 3);
+    EXPECT_EQ(rows.at(0).id, third);
+    EXPECT_EQ(rows.at(1).id, second);
+    EXPECT_EQ(rows.at(2).id, first);
+    EXPECT_EQ(rows.at(1).toSlug, QStringLiteral("charlie"));
+    EXPECT_EQ(rows.at(2).preview, QStringLiteral("first"));
+    EXPECT_EQ(rows.at(2).createdAt, t);
+    EXPECT_EQ(rows.at(2).ackedAt, QString::fromLatin1(kNew));
+    EXPECT_TRUE(rows.at(0).ackedAt.isEmpty());
+    EXPECT_EQ(unacked, 2);
+
+    // The recipient filter narrows the rows and the total; a page does not
+    // narrow the total.
+    ASSERT_TRUE(f.store->outboxFor(a, b, 1, 1, &rows, &unacked, &err));
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows.at(0).id, first);
+    EXPECT_EQ(unacked, 1);
+
+    // The preview counts characters, so a multi-byte body is never split.
+    qint64 longId = 0;
+    ASSERT_TRUE(f.store->sendMessage(c, QStringLiteral("alpha"),
+                                     QString(RoadmapStore::kMailPreviewChars + 5, QChar(0x00E9)),
+                                     QString(), t, &longId, &code, &err));
+    ASSERT_TRUE(f.store->outboxFor(c, 0, 20, 0, &rows, &unacked, &err));
+    ASSERT_EQ(rows.size(), 1);
+    EXPECT_EQ(rows.at(0).preview,
+              QString(RoadmapStore::kMailPreviewChars, QChar(0x00E9)));
+}
+
 // INV-5 — deregistering KEEPS a project's mail at both ends (ANTS-5366 § 2.2,
 // which withdrew the old clear-both-ends rule): the project row stays, so the
 // mail it sent and the mail sent to it both still have a row to point at.
@@ -619,7 +677,7 @@ TEST(SessionMessage, Inv7SchemaDeclaresEveryOp) {
     }
     // Without the enum values a client offering completions never surfaces the
     // ops at all — the half of ANTS-4621 that a properties check alone misses.
-    for (const char *op : {"send", "inbox", "ack"}) {
+    for (const char *op : {"send", "inbox", "outbox", "ack"}) {
         EXPECT_TRUE(block.contains(QStringLiteral("e.append(QStringLiteral(\"%1\"))")
                                        .arg(QString::fromLatin1(op))))
             << "op enum is missing \"" << op << "\"";

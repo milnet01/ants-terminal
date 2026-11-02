@@ -30,7 +30,7 @@ reached, and the test would pass for the wrong reason.
 
 | Invariant | Route |
 |---|---|
-| INV-1, INV-2, INV-3, INV-5, INV-8, INV-9, INV-11, INV-12, INV-13 | `RoadmapStore` against a temp store |
+| INV-1, INV-2, INV-3, INV-5, INV-8, INV-9, INV-11, INV-12, INV-13, INV-14 | `RoadmapStore` against a temp store |
 | INV-6 | `tests/features/roadmap_store_upgrade/` — created vs climbed |
 | INV-4, INV-7, INV-10 | the verb and `session_orient` layer, not this file |
 
@@ -79,6 +79,10 @@ sleeping or faking a clock.
   per-recipient skip from refusing the whole call.
 - **INV-13** — A broadcast dry run writes no row and reports the same split,
   with no message id on any outcome.
+- **INV-14** — `outbox` (`RoadmapStore::outboxFor()`) returns only what the
+  caller sent, newest first, with `acked_at` on acked rows. A message `bravo`
+  sent to the caller stays out, which separates the sender predicate from
+  every row touching the caller.
 
 ## Also asserted, and not from the design contract's invariant list
 

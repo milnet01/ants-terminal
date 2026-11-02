@@ -81157,7 +81157,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-21, generalising ANTS-5253.
   Lanes: mcp, testing.
 
-- 📋 [ANTS-5255] **session_message has no sent-mail view, so a sender cannot tell whether their message was delivered or read.**
+- ✅ [ANTS-5255] **session_message has no sent-mail view, so a sender cannot tell whether their message was delivered or read.**
   op:"inbox" returns mail addressed TO the caller. There is no op that
   lists mail the caller SENT, so `acked_at` — the one field that records
   whether a message was read — is visible only to the recipient, who is
@@ -81175,6 +81175,11 @@ are closed inline in the feedback files rather than filed here.
   Keep it a separate op rather than a flag on inbox: the two answer
   different questions and a caller paging one should not silently get the
   other.
+  Resolved 2026-11-02: op:"outbox" returns message_id, to, created_at,
+  preview and acked_at, newest first, with an optional `to` filter and a
+  true unacked_count. A preview, rather than the whole body, keeps a
+  page small. Acked mail leaves the outbox when pruned. Spec:
+  docs/specs/ANTS-4622-cross-session-mailbox.md INV-14.
   **Layman:** You can send a note to another project but never see whether it arrived or was read — so the only way to follow up is to send the same note again.
   Kind: enhancement.
   Source: in-session-2026-09-21, hit re-sending to Vestige at the user's request.
