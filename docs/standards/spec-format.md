@@ -378,9 +378,10 @@ test-file path there is nothing to run, so drop the arrow rather than
 inventing an output for it — the rule below asks for an expected result of a
 *command*, and the skeleton says the same.
 
-**Any other form parses to no invariants.** `spec_lint` then runs every
-per-invariant check over an empty set, and the spec reads clean. Its
-`invariants_found` is the tell: zero is the alarm.
+**Any other form parses to no invariants.** Where a line in the section
+opens with an `INV-` id, `spec_lint` reports `invariants_unparsed`, and
+`invariants_found` is 0. A section that only cites another spec's
+invariant reads clean, so there `invariants_found` of zero is the alarm.
 
 Five rules, each of which exists because its absence shipped a defect:
 
