@@ -11,7 +11,6 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
-#include <QRegularExpression>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -26,6 +25,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/srcregex.h"
 #include "../../_support/xdg_guard.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
@@ -57,27 +57,9 @@ bool contains(const std::string &hay, const char *needle) {
 
 }  // namespace
 
-// ANTS-6362 — these scrapes used std::regex, whose matcher recurses and
-// allocates per character: over the multi-megabyte RemoteControl source it
-// took about 38 s under ASan, against a 60 s limit. PCRE2 does the same
-// search far faster. An invalid pattern fails the test rather than reading
-// as "no match", which would pass the negative checks.
-static QRegularExpression srcRe(const char *pattern) {
-    QRegularExpression re(QString::fromUtf8(pattern));
-    if (!re.isValid())
-        ADD_FAILURE() << "bad pattern " << pattern << ": "
-                      << re.errorString().toStdString();
-    return re;
-}
-static bool srcSearch(const std::string &hay, const char *pattern) {
-    return srcRe(pattern).match(QString::fromStdString(hay)).hasMatch();
-}
-static long srcCount(const std::string &hay, const char *pattern) {
-    long n = 0;
-    auto it = srcRe(pattern).globalMatch(QString::fromStdString(hay));
-    while (it.hasNext()) { it.next(); ++n; }
-    return n;
-}
+// ANTS-6362 — these scrapes use PCRE2, not std::regex: see srcregex.h.
+using ants_test::srcCount;
+using ants_test::srcSearch;
 
 TEST(McpWorkspaceSearch, WiringContract) {
     expect_reset();

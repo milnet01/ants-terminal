@@ -4,8 +4,8 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/srcregex.h"
 
-#include <regex>
 #include <string>
 #include <vector>
 
@@ -26,16 +26,12 @@ struct Site {
 };
 
 std::vector<Site> collectNameSites(const std::string &region) {
-    static const std::regex pattern(
-        R"((\w+(?:Tool)?|t)\[\"name\"\]\s*=\s*\"([a-z_]+)\")");
     std::vector<Site> out;
-    auto begin = std::sregex_iterator(
-        region.begin(), region.end(), pattern);
-    auto end   = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) {
+    for (const auto &m : ants_test::srcMatches(
+             region, R"((\w+(?:Tool)?|t)\[\"name\"\]\s*=\s*\"([a-z_]+)\")")) {
         Site s;
-        s.tool        = (*it)[2].str();
-        s.namePos     = static_cast<std::size_t>(it->position());
+        s.tool        = m.groups[2];
+        s.namePos     = m.pos;
         s.nextNamePos = region.size();
         out.push_back(s);
     }

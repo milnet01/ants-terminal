@@ -8,10 +8,10 @@
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
+#include "../../_support/srcregex.h"
 
 #include <algorithm>
 #include <cctype>
-#include <regex>
 #include <set>
 #include <string>
 #include <vector>
@@ -286,12 +286,10 @@ TEST(McpVerbOffthreadGuard, Main) {
     // at all). Move one to rcDelegate and its unwrapped reads fail here.
     std::set<std::string> offThreadCmds;
     {
-        static const std::regex rx(
-            R"RX(registerToolProvider\("[^"]+",\s*ClaudeIntegration::CallerCwdContract::(\w+),\s*rcDelegate\(rc, &RemoteControl::(\w+)(?:,\s*ClaudeIntegration::DispatchLane::\w+)?\))RX");
-        for (auto it = std::sregex_iterator(mw.begin(), mw.end(), rx);
-             it != std::sregex_iterator(); ++it) {
-            if ((*it)[1].str() != "TabSpecific")
-                offThreadCmds.insert((*it)[2].str());
+        for (const auto &m : ants_test::srcMatches(mw,
+                 R"RX(registerToolProvider\("[^"]+",\s*ClaudeIntegration::CallerCwdContract::(\w+),\s*rcDelegate\(rc, &RemoteControl::(\w+)(?:,\s*ClaudeIntegration::DispatchLane::\w+)?\))RX")) {
+            if (m.groups[1] != "TabSpecific")
+                offThreadCmds.insert(m.groups[2]);
         }
         expect(!offThreadCmds.empty(), "INV-6/registration-table-parsed");
         // ANTS-5086 — a lane argument must not drop a verb out of the set.
@@ -341,7 +339,6 @@ TEST(McpVerbOffthreadGuard, Main) {
 
     // Matches the arrow, not a list of accessor names, so a NEW MainWindow
     // accessor cannot be added without this test noticing.
-    static const std::regex reach(R"RX(\b(m_main|main)->[A-Za-z_]+)RX");
     for (const std::string &path : rcSourcePaths()) {
         const std::string src = ants_test::slurpFile(path);
         expect(!src.empty(), "INV-6/load", baseName(path).c_str());
@@ -355,9 +352,9 @@ TEST(McpVerbOffthreadGuard, Main) {
         }
         const std::vector<Def> defs = definitions(src);
 
-        for (auto it = std::sregex_iterator(src.begin(), src.end(), reach);
-             it != std::sregex_iterator(); ++it) {
-            const size_t at = static_cast<size_t>(it->position(0));
+        for (const auto &m : ants_test::srcMatches(
+                 src, R"RX(\b(m_main|main)->[A-Za-z_]+)RX")) {
+            const size_t at = m.pos;
             bool wrapped = false;
             for (const auto &span : marshalled)
                 if (at > span.first && at < span.second) { wrapped = true; break; }
@@ -387,8 +384,6 @@ TEST(McpVerbOffthreadGuard, Main) {
     // Passing a bare `this` to an already-marshalled free function
     // (ants::resolveCallerCwdRoot) is not a member read and is not matched.
     {
-        static const std::regex member(R"RX(\bm_[A-Za-z_]+)RX");
-        static const std::regex nameRx(R"RX(registerToolProvider\("([^"]+)")RX");
         // Segment the file by the registration statements themselves rather
         // than paren-matching a call: callEnd() skips ' as a char literal, so
         // an apostrophe in a comment inside a handler body ("the caller's
@@ -404,9 +399,10 @@ TEST(McpVerbOffthreadGuard, Main) {
             const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
             const size_t rc = seg.find("RcHandler{");
             if (rc == std::string::npos) continue;
-            std::smatch nm;
-            if (!std::regex_search(seg, nm, nameRx)) continue;  // not a registration
-            const std::string verb = nm[1].str();
+            ants_test::SrcMatch nm;
+            if (!ants_test::srcFirst(seg, R"RX(registerToolProvider\("([^"]+)")RX", &nm))
+                continue;  // not a registration
+            const std::string verb = nm.groups[1];
 
             std::vector<std::pair<size_t, size_t>> marshalled;
             for (size_t g = seg.find("onGuiThread("); g != std::string::npos;
@@ -417,16 +413,15 @@ TEST(McpVerbOffthreadGuard, Main) {
 
             // Scan only the HANDLER, so the registration's own
             // `m_claudeIntegration->` receiver is not itself a finding.
-            for (auto it = std::sregex_iterator(seg.begin() + static_cast<long>(rc),
-                                                seg.end(), member);
-                 it != std::sregex_iterator(); ++it) {
-                const size_t off = rc + static_cast<size_t>(it->position(0));
+            for (const auto &m : ants_test::srcMatches(seg.substr(rc),
+                                                       R"RX(\bm_[A-Za-z_]+)RX")) {
+                const size_t off = rc + m.pos;
                 bool wrapped = false;
                 for (const auto &sp : marshalled)
                     if (off > sp.first && off < sp.second) { wrapped = true; break; }
                 expect(wrapped,
                        "INV-11/off-thread-inline-member-read-must-be-marshalled",
-                       (verb + ":" + it->str(0)).c_str());
+                       (verb + ":" + m.groups[0]).c_str());
             }
             ++seen;
         }
@@ -443,21 +438,19 @@ TEST(McpVerbOffthreadGuard, Main) {
         // The rcDelegate half is INV-6's offThreadCmds. Add the RcHandler{
         // lambdas, segmented by registration statement as INV-11 does.
         std::set<std::string> twinCmds = offThreadCmds;
-        static const std::regex contractRx(R"RX(CallerCwdContract::(\w+))RX");
-        static const std::regex rcCallRx(R"RX((?:m_remoteControl|rc\(\))->(cmd\w+)\()RX");
         const std::vector<size_t> bounds = registrationBounds(mw);
         for (size_t i = 0; i + 1 < bounds.size(); ++i) {
             const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
             if (seg.find("registerToolProvider(") == std::string::npos ||
                 seg.find("RcHandler{") == std::string::npos)
                 continue;
-            std::smatch contract;
-            if (!std::regex_search(seg, contract, contractRx) ||
-                contract[1].str() == "TabSpecific")
+            ants_test::SrcMatch contract;
+            if (!ants_test::srcFirst(seg, R"RX(CallerCwdContract::(\w+))RX", &contract) ||
+                contract.groups[1] == "TabSpecific")
                 continue;
-            for (auto it = std::sregex_iterator(seg.begin(), seg.end(), rcCallRx);
-                 it != std::sregex_iterator(); ++it)
-                twinCmds.insert((*it)[1].str());
+            for (const auto &m : ants_test::srcMatches(
+                     seg, R"RX((?:m_remoteControl|rc\(\))->(cmd\w+)\()RX"))
+                twinCmds.insert(m.groups[1]);
         }
 
         std::string rc;
@@ -474,24 +467,20 @@ TEST(McpVerbOffthreadGuard, Main) {
         // first return is not a cmd* call, like the e2e gate's refusal, maps to
         // none.
         std::set<std::string> eligible;
-        static const std::regex routeRx(R"RX(cmd == QLatin1String\("([^"]+)"\))RX");
-        static const std::regex returnRx(R"RX(^return (cmd\w+)\()RX");
-        for (auto it = std::sregex_iterator(routes.begin(), routes.end(), routeRx);
-             it != std::sregex_iterator(); ++it) {
-            const size_t ret = routes.find(
-                "return ", static_cast<size_t>(it->position(0) + it->length(0)));
+        for (const auto &m : ants_test::srcMatches(
+                 routes, R"RX(cmd == QLatin1String\("([^"]+)"\))RX")) {
+            const size_t ret = routes.find("return ", m.pos + m.len);
             if (ret == std::string::npos) continue;
             const std::string tail = routes.substr(ret, 80);
-            std::smatch called;
-            if (std::regex_search(tail, called, returnRx) &&
-                twinCmds.count(called[1].str()))
-                eligible.insert((*it)[1].str());
+            ants_test::SrcMatch called;
+            if (ants_test::srcFirst(tail, R"RX(^return (cmd\w+)\()RX", &called) &&
+                twinCmds.count(called.groups[1]))
+                eligible.insert(m.groups[1]);
         }
         std::set<std::string> listed;
-        static const std::regex literalRx(R"RX(QStringLiteral\("([^"]+)"\))RX");
-        for (auto it = std::sregex_iterator(routeSet.begin(), routeSet.end(), literalRx);
-             it != std::sregex_iterator(); ++it)
-            listed.insert((*it)[1].str());
+        for (const auto &m : ants_test::srcMatches(
+                 routeSet, R"RX(QStringLiteral\("([^"]+)"\))RX"))
+            listed.insert(m.groups[1]);
 
         expect(!eligible.empty(), "INV-13/eligible-routes-found");
         for (const std::string &r : eligible)

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6366 -->
+<!-- ants-roadmap-id-high-water: ANTS=6367 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85592,7 +85592,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, found while building ANTS-6360.
   Lanes: mcp.
 
-- 📋 [ANTS-6366] **Other scrape tests run std::regex over whole source files, which ANTS-6362 measured as 60 times slower under ASan.**
+- ✅ [ANTS-6366] **Other scrape tests run std::regex over whole source files, which ANTS-6362 measured as 60 times slower under ASan.**
   ANTS-6362 cut McpWorkspaceSearch.WiringContract from 38.6 s to 0.5 s
   under ASan by swapping std::regex for QRegularExpression; gdb samples
   showed std::regex's executor in every stack. `rg -l` finds other test
@@ -85601,10 +85601,35 @@ than re-filed; everything else lands here.
   under build-asan, move srcRe/srcSearch/srcCount from
   test_mcp_workspace_search.cpp into tests/_support/srcgrep.h, and
   convert the slow ones.
+  Shipped 2026-11-03. Timed the whole fast suite under build-asan; 81
+  test files use std::regex, and only three of them were among the slow
+  tests. Converted those to PCRE2 through a new
+  tests/_support/srcregex.h (srcSearch, srcCount, srcMatches, srcFirst;
+  Latin-1 so offsets stay byte offsets), which
+  test_mcp_workspace_search.cpp now shares. ASan times: McpSelectionHint
+  28.3 s → 1.7 s, McpProviderRegistry.Inv5 13.5 s → 1.7 s,
+  McpVerbOffthreadGuard 10.4 s → 1.2 s. The other 78 files are left as
+  they are: none ran slowly. The slowest tests that do not use regex are
+  ANTS-6367.
   **Layman:** More tests may be slow enough to fail the pre-push check on a busy machine for the same reason as ANTS-6362.
   Kind: test.
   Source: in-session-2026-11-03, found while fixing ANTS-6362.
   Lanes: mcp.
+
+- 📋 [ANTS-6367] **Three tests run hundreds of times slower under ASan than in the normal build, and none of them uses std::regex.**
+  Measured 2026-11-03, `ctest --test-dir build-asan -L fast -j4` (binary
+  from 20:50) against `build` at f3b50a8d+:
+  - RoadmapReadSeam.Ants3863Inv2BothProducersAgree: 201.7 s vs 0.21 s.
+  - RoadmapReadSeam.Ants3863Inv1ByteCapBoundsAnAllBlankRoadmap: 198.9 s
+    vs 0.17 s.
+  - McpReadLog.TimeBudgetStopsAtALineAndResumes: 59.5 s vs 0.11 s.
+  They passed, so their limit is above the 60 s some tests carry; check
+  what limit they run under. Cause not yet found. Start with gdb samples
+  as ANTS-6362 did (perf is blocked by perf_event_paranoid).
+  **Layman:** A few tests take minutes in the memory-checking build when they take a fraction of a second normally.
+  Kind: test.
+  Source: in-session-2026-11-03, found while measuring ANTS-6366.
+  Lanes: roadmap-store, mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

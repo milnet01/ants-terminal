@@ -6,12 +6,12 @@
 
 #include "../../_support/expect.h"
 
-#include <regex>
 #include <set>
 #include <string>
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/srcregex.h"
 
 #ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
 #error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
@@ -27,16 +27,9 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-
-
-
-// Counts non-overlapping regex matches across a string (regex has no
-// trivial std equivalent for this; the iteration form below is the
-// std-recommended pattern).
-size_t countMatches(const std::string &haystack, const std::regex &re) {
-    auto begin = std::sregex_iterator(haystack.begin(), haystack.end(), re);
-    auto end   = std::sregex_iterator();
-    return static_cast<size_t>(std::distance(begin, end));
+// ANTS-6366 — non-overlapping matches, through PCRE2 (srcregex.h).
+size_t countMatches(const std::string &haystack, const char *pattern) {
+    return static_cast<size_t>(ants_test::srcCount(haystack, pattern));
 }
 
 }  // namespace
@@ -47,7 +40,7 @@ TEST(McpProviderRegistry, Inv1NoStdFunctionProviderMembers) {
     // claudeintegration.h. Catches accidental re-introduction of
     // a per-tool member after the registry consolidation.
     const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
-    std::regex memberRe(R"(std::function\s*<[^>]*>\s+m_\w+Provider\b)");
+    const char *memberRe = R"(std::function\s*<[^>]*>\s+m_\w+Provider\b)";
     const size_t n = countMatches(hdr, memberRe);
     expect(n == 0, "INV-1",
            ("claudeintegration.h has " + std::to_string(n) +
@@ -60,7 +53,7 @@ TEST(McpProviderRegistry, Inv2NoSetXProviderDecls) {
     expect_reset();
     // Setter decls are gone; registry replaces them.
     const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
-    std::regex setterRe(R"(void\s+set[A-Z][A-Za-z]*Provider\b)");
+    const char *setterRe = R"(void\s+set[A-Z][A-Za-z]*Provider\b)";
     const size_t n = countMatches(hdr, setterRe);
     expect(n == 0, "INV-2",
            ("claudeintegration.h has " + std::to_string(n) +
@@ -78,9 +71,9 @@ TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
     // ANTS-4932 § 2.3 — the alias's definition moved to mcptoolsink.h;
     // claudeintegration.h re-exports it as ClaudeIntegration::ToolHandler.
     const std::string sink = ants_test::slurpFile(SRC_MCP_TOOL_SINK_H_PATH);
-    std::regex aliasRe(
-        R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)");
-    expect(std::regex_search(sink, aliasRe) &&
+    const char *aliasRe =
+        R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)";
+    expect(ants_test::srcSearch(sink, aliasRe) &&
                hdr.find("using ToolHandler = mcp::ToolHandler;") != std::string::npos,
            "INV-3b",
            "claudeintegration.h missing ToolHandler = "
@@ -91,8 +84,7 @@ TEST(McpProviderRegistry, Inv3RegistrarAndTypeAlias) {
 TEST(McpProviderRegistry, Inv4ExplicitMapInclude) {
     expect_reset();
     const std::string hdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
-    std::regex mapRe(R"(#include\s*<map>)");
-    expect(std::regex_search(hdr, mapRe),
+    expect(ants_test::srcSearch(hdr, R"(#include\s*<map>)"),
            "INV-4",
            "claudeintegration.h missing explicit #include <map>");
     EXPECT_EQ(0, expect_failures());
@@ -101,15 +93,15 @@ TEST(McpProviderRegistry, Inv4ExplicitMapInclude) {
 TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    std::regex outwardRe(
-        R"((?:else )?if\s*\(\s*toolName\s*==\s*"[^"]+"\s*&&\s*m_\w+Provider\s*\))");
+    const char *outwardRe =
+        R"((?:else )?if\s*\(\s*toolName\s*==\s*"[^"]+"\s*&&\s*m_\w+Provider\s*\))";
     const size_t outward = countMatches(cpp, outwardRe);
     expect(outward == 0, "INV-5a",
            ("claudeintegration.cpp has " + std::to_string(outward) +
             " outward-delegate dispatch branches; expected 0 (was 12)")
                .c_str());
-    std::regex sessionInfoRe(
-        R"((?:else )?if\s*\(\s*toolName\s*==\s*"get_session_info"\s*\))");
+    const char *sessionInfoRe =
+        R"((?:else )?if\s*\(\s*toolName\s*==\s*"get_session_info"\s*\))";
     const size_t carve = countMatches(cpp, sessionInfoRe);
     expect(carve == 1, "INV-5b",
            ("claudeintegration.cpp has " + std::to_string(carve) +
@@ -122,7 +114,7 @@ TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
 TEST(McpProviderRegistry, Inv6RegistryReferencedFromDispatch) {
     expect_reset();
     const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    std::regex reg(R"(\bm_toolProviders\b)");
+    const char *reg = R"(\bm_toolProviders\b)";
     const size_t n = countMatches(cpp, reg);
     expect(n >= 2, "INV-6",
            ("claudeintegration.cpp references m_toolProviders " +
@@ -142,7 +134,7 @@ TEST(McpProviderRegistry, Inv7AtLeastTwelveRegisterCalls) {
     // project-scoped calls read `sink.registerToolProvider("…")` in
     // mcptoolregistry.cpp, which the reading set includes.
     const std::string mw = ants_test::slurpMainWindow();
-    std::regex callRe(R"((->|\bsink\.)registerToolProvider\(\")");
+    const char *callRe = R"((->|\bsink\.)registerToolProvider\(\")";
     const size_t n = countMatches(mw, callRe);
     expect(n >= 12, "INV-7",
            ("mainwindow.cpp has " + std::to_string(n) +
@@ -163,11 +155,10 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
                            ants_test::slurpFile(SRC_TRACE_VERB_CPP_PATH);
     // Custom raw-string delimiter ("rx") because the regex literal
     // itself contains `)"` which would close the default `R"(…)"` form.
-    std::regex schemaRe(R"rx(\["name"\]\s*=\s*"([a-z_]+)")rx");
     std::set<std::string> schemaTools;
-    auto begin = std::sregex_iterator(ci.begin(), ci.end(), schemaRe);
-    auto end   = std::sregex_iterator();
-    for (auto it = begin; it != end; ++it) schemaTools.insert((*it)[1].str());
+    for (const auto &m : ants_test::srcMatches(
+             ci, R"rx(\["name"\]\s*=\s*"([a-z_]+)")rx"))
+        schemaTools.insert(m.groups[1]);
     expect(!schemaTools.empty(), "INV-8a",
            "no tool names found in tools/list schema builder");
     for (const auto &name : schemaTools) {
