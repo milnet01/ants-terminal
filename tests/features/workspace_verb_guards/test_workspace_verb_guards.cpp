@@ -28,7 +28,9 @@ TEST(WorkspaceVerbGuards, MutationProbeWritesAtomically) {
     ASSERT_FALSE(b.isEmpty());
     EXPECT_FALSE(b.contains(QStringLiteral("QIODevice::WriteOnly | QIODevice::Truncate")))
         << "a truncating write can leave the source file cut short";
-    EXPECT_GE(b.count(QStringLiteral("QSaveFile w(check.resolved)")), 2);
+    // The mutant write and the restore (ANTS-4975: per file, so not named
+    // after `check.resolved` any more).
+    EXPECT_GE(b.count(QStringLiteral("QSaveFile w(")), 2);
 }
 
 // INV-2
