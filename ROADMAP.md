@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6363 -->
+<!-- ants-roadmap-id-high-water: ANTS=6364 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84989,6 +84989,14 @@ than re-filed; everything else lands here.
   asked of the MCP as filed — the reporter logged it because the
   question is cross-project and this is the only cross-project
   surface.
+  Measured 2026-11-03 (load avg ~4.4). 29 live registered roots, ~7,700
+  .md files outside noise dirs. Whole-tree scan: 34 s cold, 4 s warm.
+  Real mirrors (a line opening `<!-- MIRROR BEGIN ~/`): 13, all in this
+  project's docs/standards/; other hits are prose naming the marker.
+  ~/.claude/standards/README.md fixes the marker and tools/align-report
+  scans only docs/standards/. A scan of <root>/docs/standards/**/*.md
+  over every root found all 13 in 0.1 s, so no cached index is needed.
+  Asked claude-config whether it would use the verb before building it.
   **Layman:** When a shared rule document changes, nothing can tell you which projects are carrying a copy of it.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08 (CFG-0130).
@@ -85506,6 +85514,16 @@ than re-filed; everything else lands here.
   Kind: enhancement.
   Source: in-session-2026-11-03, split from ANTS-4966.
   Lanes: audit, mcp.
+
+- 📋 [ANTS-6364] **spec_log op:"append_status" dry run reports the line and byte count but not the resulting Status text.**
+  Pressless verified ANTS-4959 on 2026-11-03 (message 1175) and
+  noted this as a nit, not a defect: a preview cannot show where the
+  appended text lands. Fix: add the would-be Status value to the
+  dry_run reply, as the real write already returns previous_status.
+  **Layman:** Previewing a status update should show what the status will read afterwards.
+  Kind: enhancement.
+  Source: pressless session message 1175, 2026-11-03.
+  Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
