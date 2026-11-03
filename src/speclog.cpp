@@ -157,6 +157,7 @@ EditResult setStatus(const QString &content, const QString &newStatus,
         // shapes that do not share a grammar. The value already in the file is
         // the one project-agnostic evidence of that vocabulary, so hand it back.
         r.previousValue = e.value;
+        r.newValue = SpecParse::headerField(lines, QStringLiteral("Status")).value;
         r.content = fromLines(lines, ewn);
         // 1-based line of the rewritten Status line (ANTS-1963 INV-10's shape;
         // FieldExtent::line is 0-based).
@@ -189,6 +190,7 @@ EditResult appendStatus(const QString &content, const QString &text) {
     EditResult r;
     r.ok = true;
     r.previousValue = e.value;
+    r.newValue = SpecParse::headerField(lines, QStringLiteral("Status")).value;
     r.content = fromLines(lines, ewn);
     r.line = last + 1;
     return r;

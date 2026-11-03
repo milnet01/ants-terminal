@@ -1940,7 +1940,10 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         out["path"]    = rel;
         out["line"]    = res.line;
         out["bytes"]   = static_cast<qint64>(utf8.size());
-        if (statusOp) out["previous_status"] = res.previousValue;
+        if (statusOp) {
+            out["previous_status"] = res.previousValue;
+            out["new_status"]      = res.newValue;   // ANTS-6364
+        }
         // ANTS-4353/4364 — say which SHAPE was written and which DIRECTION
         // was inferred, so a caller can see which way the row went instead of
         // re-reading the file to find out.
@@ -1986,7 +1989,10 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     // standard defines its own Status vocabulary otherwise learns of a wrong
     // value at its lint gate minutes later; the replaced value makes the
     // mismatch visible in the write's own envelope.
-    if (statusOp) out["previous_status"] = res.previousValue;
+    if (statusOp) {
+        out["previous_status"] = res.previousValue;
+        out["new_status"]      = res.newValue;   // ANTS-6364
+    }
     // ANTS-4353/4364 — the shape written and the direction inferred.
     if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
     if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;

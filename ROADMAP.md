@@ -85527,11 +85527,14 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, split from ANTS-4966.
   Lanes: audit, mcp.
 
-- 📋 [ANTS-6364] **spec_log op:"append_status" dry run reports the line and byte count but not the resulting Status text.**
+- ✅ [ANTS-6364] **spec_log op:"append_status" dry run reports the line and byte count but not the resulting Status text.**
   Pressless verified ANTS-4959 on 2026-11-03 (message 1175) and
   noted this as a nit, not a defect: a preview cannot show where the
   appended text lands. Fix: add the would-be Status value to the
   dry_run reply, as the real write already returns previous_status.
+  Shipped 2026-11-03: SpecLog::EditResult::newValue, read back with
+  SpecParse::headerField; the envelope's `new_status` on both status
+  ops, write and dry run. Spec ANTS-1963 INV-10, INV-12 and T16 amended.
   **Layman:** Previewing a status update should show what the status will read afterwards.
   Kind: enhancement.
   Source: pressless session message 1175, 2026-11-03.

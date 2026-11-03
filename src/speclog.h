@@ -31,9 +31,12 @@ struct EditResult {
     // ANTS-4114 — set_status and append_status: the value before the edit, space-joined
     // across its continuations. The verb imposes no Status vocabulary (it
     // writes the caller's string verbatim), so the project's own vocabulary
-    // is only knowable from the value already in the file. Empty for the
-    // append ops.
+    // is only knowable from the value already in the file. Empty for
+    // append_loop and append_inv.
     QString previousValue;
+    // ANTS-6364 — the same two ops: the value after the edit, read back by
+    // the parser readers use, so a dry run shows where the text landed.
+    QString newValue;
     // ANTS-4353/4364 — append_loop only. `rowShape` is "table" or "bullet",
     // so a caller can see which form the section actually holds rather than
     // assuming. `rowOrder` is the direction INFERRED from the existing rows —

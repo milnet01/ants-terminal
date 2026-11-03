@@ -53,4 +53,5 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
 - T16 — (ANTS-4959) `append_status` adds `status` after one space at the
   end of the Status field's LAST line and changes no other byte; `line`
   names that line. No Status field → unrecognised_format; an empty
-  `status` → bad_args.
+  `status` → bad_args. ANTS-6364: the write and the `dry_run` preview both
+  return `new_status`, the field as it reads after the edit.

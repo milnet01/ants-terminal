@@ -9717,6 +9717,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "docs/phases/) or a project-relative `path`. "
                         "Atomic write. Returns {ok, op, id?, path, line, "
                         "bytes_written, file_bytes} plus `previous_status` "
+                        "and `new_status` "
                         "on set_status and append_status (ANTS-4114 — the "
                         "value before the write, so a "
                         "vocabulary mismatch shows here, not at the project's "

@@ -920,7 +920,19 @@ TEST(McpSpecLog, Ants4959AppendStatusHandler) {
     req["id"] = "ANTS-9999";
     req["op"] = "append_status";
     req["status"] = "Built 2026-11-03.";
+
+    // ANTS-6364 — the preview shows the Status as it would read after the
+    // write, so a caller sees where the text lands without writing it.
+    req["dry_run"] = true;
+    const QJsonObject preview = rc.cmdSpecLog(req).object();
+    ASSERT_TRUE(preview.value("ok").toBool());
+    EXPECT_EQ(preview.value("new_status").toString(),
+              "spec draft (2026-06-03). Built 2026-11-03.");
+    req.remove("dry_run");
+
     const QJsonObject env = rc.cmdSpecLog(req).object();
+    EXPECT_EQ(env.value("new_status").toString(),
+              "spec draft (2026-06-03). Built 2026-11-03.");
     ASSERT_TRUE(env.value("ok").toBool()) << env.value("error").toString().toStdString();
     EXPECT_EQ(env.value("op").toString(), "append_status");
     EXPECT_EQ(env.value("previous_status").toString(), "spec draft (2026-06-03).");
