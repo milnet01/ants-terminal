@@ -59,6 +59,36 @@ Counts parseCounts(const QString &output) {
         return c;
     }
 
+    // ANTS-4950 — Catch2 v3's console reporter (printTestRunTotals): "All
+    // tests passed (5 assertions in 2 test cases)", "No tests ran", or
+    // "test cases: 3 | 1 passed | 1 failed | 1 skipped | 1 failed as
+    // expected" with zero columns left out. Read before pytest's loose
+    // "N passed" match, which takes the first number anywhere. A test case
+    // failing as expected exits 0, so it counts as passed.
+    static const QRegularExpression c2Green(
+        QStringLiteral(R"(^All tests passed \(\d+ assertions? in (\d+) test cases?\)\s*$)"),
+        QRegularExpression::MultilineOption);
+    if (const auto m = c2Green.match(output); m.hasMatch()) {
+        c.passed = m.captured(1).toInt();
+        c.failed = 0;
+        return c;
+    }
+    static const QRegularExpression c2Table(QStringLiteral(R"(^test cases:\s*\d+(.*)$)"),
+                                            QRegularExpression::MultilineOption);
+    if (const auto m = c2Table.match(output); m.hasMatch()) {
+        static const QRegularExpression col(
+            QStringLiteral(R"(\|\s*(\d+) (passed|failed as expected|failed|skipped))"));
+        c.passed = 0;
+        c.failed = 0;
+        for (auto it = col.globalMatch(m.captured(1)); it.hasNext();) {
+            const auto x = it.next();
+            const int n = x.captured(1).toInt();
+            if (x.captured(2) == QLatin1String("failed")) c.failed += n;
+            else if (x.captured(2) != QLatin1String("skipped")) c.passed += n;
+        }
+        return c;
+    }
+
     // ANTS-5475 — vitest ("Tests  1 failed | 10 passed (11)") and jest
     // ("Tests:  2 failed, 9 passed, 11 total") print a FILE-count line first
     // ("Test Files  1 passed", "Test Suites: 1 failed"). The counts are read
@@ -117,8 +147,12 @@ Counts parseCounts(const QString &output) {
         return c;
     }
 
-    // ctest prints this and exits 0 when -R selects nothing (ANTS-6210).
-    if (output.contains(QLatin1String("No tests were found"))) {
+    // ctest prints the first and exits 0 when -R selects nothing (ANTS-6210);
+    // Catch2 prints the second on its own line when it ran no test case.
+    static const QRegularExpression c2Empty(QStringLiteral(R"(^No tests ran\s*$)"),
+                                            QRegularExpression::MultilineOption);
+    if (output.contains(QLatin1String("No tests were found"))
+        || c2Empty.match(output).hasMatch()) {
         c.passed = 0;
         c.failed = 0;
         return c;

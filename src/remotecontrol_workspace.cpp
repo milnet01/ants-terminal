@@ -2329,8 +2329,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                            "so `require_green_baseline` has nothing to check. "
                            "A run that could not be read has not said the "
                            "suite is green. Point `test_command` at a runner "
-                           "whose summary this verb recognises (ctest, pytest "
-                           "or gtest), or drop require_green_baseline to probe "
+                           "whose summary this verb recognises (ctest, pytest, "
+                           "gtest, Catch2, jest or vitest), or drop "
+                           "require_green_baseline to probe "
                            "anyway.")
                      : QStringLiteral(
                            "mutation_probe: the baseline ran no tests — 0 "

@@ -1137,3 +1137,40 @@ TEST(MutationProbe, Ants4975BadMutationPathRefusesTheBatch) {
     EXPECT_EQ(readProjectFile(tmp, "palettes.py"), QByteArray(kTwoSiteSource))
         << "the default-path mutation ran although the batch was refused";
 }
+
+// ANTS-4950 — Catch2 v3's console summary. The green and empty shapes are
+// the strings Catch2's own tests assert (tests/CMakeLists.txt, v3.8.1); the
+// table rows are its SelfTest baselines (console.std / console.swa4).
+TEST(MutationProbe, Ants4950Catch2SummaryParses) {
+    const auto parse = [](const char *s) {
+        return MutationProbe::parseCounts(QString::fromUtf8(s));
+    };
+    auto c = parse("Randomness seeded to: 1\n"
+                   "==================================================\n"
+                   "All tests passed (5 assertions in 1 test case)\n");
+    EXPECT_EQ(c.passed, 1);
+    EXPECT_EQ(c.failed, 0);
+    EXPECT_EQ(MutationProbe::judgeBaseline(false, 0, c),
+              MutationProbe::BaselineVerdict::Green)
+        << "a green Catch2 run must satisfy require_green_baseline";
+    c = parse("All tests passed (1 assertion in 1 test case)\n");
+    EXPECT_EQ(c.passed, 1) << "the singular forms";
+
+    c = parse("===============================================================================\n"
+              "test cases:  419 |  327 passed |  71 failed | 7 skipped | 14 failed as expected\n"
+              "assertions: 2252 | 2087 passed | 130 failed | 35 failed as expected\n");
+    EXPECT_EQ(c.failed, 71) << "\"failed as expected\" is not a failure";
+    EXPECT_EQ(c.passed, 341) << "327 passed + 14 failed as expected, skipped left out";
+    c = parse("test cases:  33 | 27 passed | 3 failed | 3 failed as expected\n"
+              "assertions: 102 | 94 passed | 4 failed | 4 failed as expected\n");
+    EXPECT_EQ(c.failed, 3) << "the test-case row, not the assertion row";
+    EXPECT_EQ(c.passed, 30);
+
+    c = parse("Filters: \"zzz\"\nNo test cases matched '\"zzz\"'\n"
+              "===============================================================================\n"
+              "No tests ran\n");
+    EXPECT_EQ(c.passed, 0);
+    EXPECT_EQ(c.failed, 0);
+    EXPECT_EQ(MutationProbe::judgeBaseline(false, 0, c),
+              MutationProbe::BaselineVerdict::Empty);
+}

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6358 -->
+<!-- ants-roadmap-id-high-water: ANTS=6359 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84808,7 +84808,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-4950] **mutation_probe cannot read a Catch2 summary, so require_green_baseline is unavailable to a Catch2 project.**
+- ✅ [ANTS-4950] **mutation_probe cannot read a Catch2 summary, so require_green_baseline is unavailable to a Catch2 project.**
   require_green_baseline:true refused a whole batch with
   code:"baseline_unreadable" — the baseline exited 0 and its output
   could not be parsed for pass/fail counts. The refusal is honest
@@ -84835,6 +84835,11 @@ than re-filed; everything else lands here.
   themselves already rest on. Without either, the reporter
   established the baseline by hand, which is exactly the
   unfalsifiable state ANTS-4401 was written to close.
+  Shipped 2026-11-03: parseCounts reads Catch2 v3's console summary (All
+  tests passed / test-case table / No tests ran), from Catch2 v3.8.1's
+  reporter source and SelfTest baselines; "failed as expected" counts as
+  passed. The exit-code-only downgrade moved to ANTS-6359, which needs a
+  decision.
   **Layman:** On projects using the Catch2 test framework the mutation tool cannot check the suite was green first, so its verdicts rest on nobody's evidence.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -85404,6 +85409,22 @@ than re-filed; everything else lands here.
   Kind: enhancement.
   Source: in-session-2026-11-03, found while building ANTS-4963.
   Lanes: mcp, indie-review.
+
+- 📋 [ANTS-6359] **require_green_baseline refuses an unreadable baseline outright, with no opt-in to gate on the exit code alone.**
+  Split from ANTS-4950, whose Catch2 half shipped. The reporter's second
+  ask: where counts are unparsable but the exit code is readable, run
+  the batch with the gate downgraded and say so
+  (`baseline_gate:"exit_code_only"`) instead of refusing.
+
+  NEEDS THE USER'S DECISION. ANTS-4401 made `baseline_unreadable` a
+  refusal on purpose: an exit code is weaker evidence than counts. A
+  downgrade reverses that default. A middle path is an opt-in flag the
+  caller sets, which keeps the default refusal and names the weaker
+  evidence in the reply.
+  **Layman:** For a test tool whose summary the mutation tool cannot read, there is no way to say "the exit code is good enough".
+  Kind: enhancement.
+  Source: ANTS-4950 split 2026-11-03 (UT_Ants_Ants_MCP_Feedback.md 2026-09-08).
+  Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

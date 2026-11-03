@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe reads Catch2's test summary, so require_green_baseline works on Catch2 projects** (ANTS-4950)
+
 - **mutation_probe takes a `path` per mutation, so a fix spanning two files is probed in one batch** (ANTS-4975)
   One call, one baseline run, one verdict list. Each file is restored to
   its own baseline, and every path is checked before anything is written.
