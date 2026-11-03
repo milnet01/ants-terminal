@@ -52,6 +52,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The MCP authoring standard names batch arguments by what they hold: `paths`, `ids` or `items`; read_regions' alias help now says two names together are refused** (ANTS-4952)
+
 - **apply_edits names the line when `old` differs from the file only in typed punctuation: `--` for an em dash, straight for curly quotes, `...` for an ellipsis** (ANTS-4857)
 
 - **project_settings op:"detect" and codebase_index count an executable file with no extension as source when its shebang names Python or a shell** (ANTS-4963)

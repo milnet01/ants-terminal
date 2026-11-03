@@ -32,7 +32,8 @@ etag_match?}`. caller_cwd Required.
   remotecontrol.cpp; the `read_regions` tool schema in claudeintegration.cpp;
   the provider registered Required in mainwindow.cpp.
 - **RR-7/RR-8 items aliases** (ANTS-3500/3568) — `requests` / `paths` /
-  `regions` are accepted as aliases for `items` (canonical `items` wins) and
+  `regions` are accepted as aliases for `items` (two sent together refuse
+  `bad_op_combo`, ANTS-4512) and
   are DECLARED in the schema so `additionalProperties:false` does not strip
   them before the handler's fallback runs.
 - **RR-9 top-level `path` default** (ANTS-3589) — an optional top-level `path`

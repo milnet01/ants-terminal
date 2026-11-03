@@ -6334,14 +6334,15 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // properties so additionalProperties:false does not strip
                     // these documented aliases (ANTS-3500) before they reach
                     // cmdReadRegions' fallback. Same array shape as `items`
-                    // (the handler picks the first array-valued alias when
-                    // `items` is absent); `items` still wins.
+                    // (the handler uses the alias when `items` is absent).
+                    // Two of these sent together refuse bad_op_combo
+                    // (ANTS-4512), so the description says so.
                     for (const char *alias : {"requests", "paths", "regions"}) {
                         QJsonObject a = itemsProp;
                         a["description"] = QStringLiteral(
                             "Alias for `items` (ANTS-3500) — same array shape. "
-                            "Declared so the documented alias survives schema "
-                            "validation; canonical `items` still wins.");
+                            "Send one name only: two together refuse "
+                            "bad_op_combo.");
                         props[QLatin1String(alias)] = a;
                     }
                     // ANTS-3589 — optional top-level `path`: the per-item

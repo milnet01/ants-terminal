@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6359 -->
+<!-- ants-roadmap-id-high-water: ANTS=6360 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84845,7 +84845,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4952] **The batch argument is `paths` on some verbs and `regions` on others, with no stated convention.**
+- ✅ [ANTS-4952] **The batch argument is `paths` on some verbs and `regions` on others, with no stated convention.**
   read_regions refused bad_op_combo on a call carrying BOTH `paths`
   and `regions` — aliases for the same batch key, pass exactly one —
   with supplied[] echoing both. The refusal is good and the reporter
@@ -84862,6 +84862,12 @@ than re-filed; everything else lands here.
   The reporter's alternative — honour both when they are CONSISTENT,
   as they were here — is recorded and not recommended: it makes the
   inconsistency cheaper to live with rather than smaller.
+  Resolved (2026-11-03): docs/standards/mcp-tools.md § Authoring
+  checklist, Schema hygiene, now names batch arguments by element:
+  `paths` (path strings), `ids` (id strings), `items` (request objects);
+  two names for one argument refuse bad_op_combo. read_regions' stale
+  "items still wins" alias text corrected. The two verbs that still pick
+  silently are filed separately.
   **Layman:** Tools that take a list of files spell that list differently, so a session that just used one guesses wrong on the next.
   Kind: doc.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -85424,6 +85430,18 @@ than re-filed; everything else lands here.
   **Layman:** For a test tool whose summary the mutation tool cannot read, there is no way to say "the exit code is good enough".
   Kind: enhancement.
   Source: ANTS-4950 split 2026-11-03 (UT_Ants_Ants_MCP_Feedback.md 2026-09-08).
+  Lanes: mcp.
+
+- 📋 [ANTS-6360] **invariant_check and similar_code silently pick one name when a caller sends two for one argument.**
+  mcp-tools.md's authoring checklist (schema hygiene, ANTS-4952) now says
+  two names for one argument refuse bad_op_combo with supplied[], as
+  read_regions does (ANTS-4512). invariant_check takes `files` over
+  `paths`, and similar_code takes `shape` over `query`, without saying.
+  Fix: refuse as read_regions does, update both alias descriptions, and
+  add a test per verb.
+  **Layman:** Two tools quietly ignore one of two clashing inputs instead of saying so, which hides the caller's mistake.
+  Kind: fix.
+  Source: in-session-2026-11-03, found while building ANTS-4952.
   Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)

@@ -496,6 +496,22 @@ place when it saves a Claude session real tokens or round-trips
     its step-2 contract word — all four are permissible, not just
     `Required` / `Optional`.
 
+    **Name a batch argument by what its elements are (ANTS-4952).** A
+    caller who used one verb guesses the same name on the next.
+    - `paths`: an array of path strings, the plural of `path`.
+    - `ids`: an array of id strings, the plural of `id`.
+    - `items`: an array of objects, one request each.
+
+    Use these names for a new batch argument. An alias for an
+    existing one names its canonical key in its `description`. When
+    a caller sends two names for one argument, refuse `bad_op_combo`
+    and return the names in `supplied[]`, as `read_regions` does
+    (ANTS-4512). Choosing one hides the caller's mistake.
+    `read_regions` breaks the first rule: its `paths` alias takes
+    objects, added because callers guessed that name (ANTS-3500).
+    Removing it would break those callers. Nothing checks this
+    rule.
+
 11. **Keep the wire `description` short; move encyclopedic prose to
     `detail` (ANTS-2079).** Every tool's `description` ships in
     `tools/list` and is paid for once per session (plus per deferred
