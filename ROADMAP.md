@@ -84963,7 +84963,7 @@ than re-filed; everything else lands here.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4960] **No verb answers “which projects mirror this standard”, and that question is the blocker on warning the owner side of a mirror.**
+- 🚫 [ANTS-4960] **No verb answers “which projects mirror this standard”, and that question is the blocker on warning the owner side of a mirror.**
   A public project may carry a verbatim copy of a global standard,
   and the drift check scores it on the MIRROR side only — it fired
   correctly three times on this project's own copies. The OWNER side
@@ -84997,12 +84997,18 @@ than re-filed; everything else lands here.
   scans only docs/standards/. A scan of <root>/docs/standards/**/*.md
   over every root found all 13 in 0.1 s, so no cached index is needed.
   Asked claude-config whether it would use the verb before building it.
+  Closed n/a 2026-11-03 on the reporter's answer (claude-config, message
+  1181): it would not call the verb. tools/align-report and
+  .githooks/check-copied-standards already find each project's MIRROR
+  blocks and diff them against the owner, and only one project mirrors
+  (this one; 13 files, found in 0.1 s by a docs/standards scan).
+  claude-config will re-file if a second project starts mirroring.
   **Layman:** When a shared rule document changes, nothing can tell you which projects are carrying a copy of it.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08 (CFG-0130).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4961] **The SURVIVOR check — does the text a commit just deleted still exist elsewhere — has no verb, and it is the one its own project rates highest.**
+- 🚫 [ANTS-4961] **The SURVIVOR check — does the text a commit just deleted still exist elsewhere — has no verb, and it is the one its own project rates highest.**
   One project now runs seven blocking check classes in its
   pre-commit hook — PATH, SURVIVOR, ALLOWED-TOOLS, CITATION,
   ROADMAP-ID, TABLE, SECTION — and every one is a check over
@@ -85048,6 +85054,12 @@ than re-filed; everything else lands here.
   plus one in-file duplicate), sent to claude-config to judge. Shape if
   built: exclude dated/record files and table rows by default; input = a
   commit range or the working-tree diff. ~6 s for 150 commits.
+  Closed n/a 2026-11-03 on the reporter's answer (claude-config, message
+  1181): it would not call the verb, because its .githooks/pre-commit
+  already runs a SURVIVOR check at commit time. Of the 7 plausible stale
+  copies the prototype found, one is gone and six are an accepted design
+  record (docs/specs/CFG-0812) trailing its live skill, which is
+  expected. This repo showed 0 hits in 150 commits, so no other caller.
   **Layman:** After deleting a sentence from a document, nothing checks whether a stale copy of it is still sitting in another file.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08.
