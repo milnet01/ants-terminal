@@ -3393,7 +3393,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`filter` is accepted as an alias (the envelope "
                         "echoes the applied lifecycle under that name, so it "
                         "is what a caller writing the next call by hand "
-                        "sends); `status` wins when both are present.");
+                        "sends); sending both refuses bad_op_combo.");
                     props["status"] = statusProp;
                     // ANTS-3698 — `filter` alias. Declared so the arg is not
                     // reported in ignored_args now that it is honoured, and so
@@ -3406,8 +3406,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "values. Exists because the response echoes the "
                         "applied lifecycle as `filter`; passing that name "
                         "used to be silently ignored and answered with the "
-                        "full set. Prefer `status`, which wins if both are "
-                        "sent.");
+                        "full set. Sending both refuses bad_op_combo.");
                     props["filter"] = filterAliasProp;
                     // ANTS-1287 — `section` slug (optional). Unknown
                     // slug → ok:false with code=bad_section.
@@ -3776,8 +3775,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "`max_results` aliases `limit`: unrecognised, it "
                             "landed in ignored_args and the call returned an "
                             "UNFILTERED page, which is the one result shape "
-                            "that cannot be told from an answer. `query` wins "
-                            "if both are sent.");
+                            "that cannot be told from an answer. Sending both "
+                            "refuses bad_op_combo.");
                         props["q"] = qAlias;
                     }
                     // ANTS-4367 — the two narrowing knobs.
@@ -4052,7 +4051,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     maxResultsAliasProp["maximum"] = 500;
                     maxResultsAliasProp["description"] = QStringLiteral(
                         "Alias for `limit` (ANTS-4701) — same range and same "
-                        "meaning; `limit` wins when both are sent. Accepted "
+                        "meaning; sending both refuses bad_op_combo. Accepted "
                         "because workspace_search, the other list verb a "
                         "session reaches for, spells this cap `max_results`, "
                         "so the name a caller naturally carries across used "
@@ -4692,12 +4691,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         // reaching for the "who defines/uses X" verb by
                         // symbol name (natural from the catalog one-liner)
                         // was refused bad_args; accept it as an alias so the
-                        // call succeeds. `topic` wins when both are set. For
+                        // call succeeds. Both together refuse (ANTS-6365). For
                         // call-sites of a known symbol, prefer find_caller.
                         QJsonObject p; p["type"] = "string";
                         p["description"] = QStringLiteral(
-                            "Alias for `topic` (ANTS-3415). `topic` takes "
-                            "precedence when both are present. To list the "
+                            "Alias for `topic` (ANTS-3415). Sending both "
+                            "refuses bad_op_combo. To list the "
                             "call-sites of a known symbol, prefer find_caller.");
                         props["symbol"] = p;
                     }
@@ -4791,7 +4790,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "One exemplar name — an identifier "
                             "(claudeMcpEnabled) or a config key "
                             "(claude.mcp_enabled). Sugar for a one-element "
-                            "`stems`; `stems` wins when both are sent. Must "
+                            "`stems`; sending both refuses bad_op_combo. Must "
                             "match ^[A-Za-z0-9_.-]+$.");
                         props["stem"] = p;
                     }
@@ -5163,14 +5162,12 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`max_match_bytes` for ~10× wire reduction "
                         "on dense bundle sweeps (ANTS-1876).");
                     // ANTS-2041 — `query` alias for `pattern`. Declared
-                    // so the schema advertises it; the handler reads it
-                    // only when `pattern` is absent. `pattern` stays the
-                    // canonical (required) arg.
+                    // so the schema advertises it. `pattern` stays the
+                    // canonical (required) arg; both together refuse.
                     QJsonObject queryProp;  queryProp["type"] = "string";
                     queryProp["description"] = QStringLiteral(
-                        "Alias for `pattern` — used only when `pattern` "
-                        "is absent/empty. Prefer `pattern` (the "
-                        "canonical, required arg).");
+                        "Alias for `pattern`, the canonical, required arg. "
+                        "Sending both refuses bad_op_combo.");
                     // ANTS-2220 — enclosing_symbol: annotate each match
                     // with the function/method it lives inside.
                     QJsonObject encProp;  encProp["type"] = "boolean";
@@ -6654,11 +6651,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             osP["description"] = QStringLiteral(
                                 "Alias for `old` — the native Edit tool's "
                                 "spelling, accepted so this verb is a drop-in "
-                                "for it. `old` wins if both are sent.");
+                                "for it. Sending two spellings refuses bad_op_combo.");
                         QJsonObject nsP; nsP["type"] = "string";
                             nsP["description"] = QStringLiteral(
                                 "Alias for `new` — the native Edit tool's "
-                                "spelling. `new` wins if both are sent.");
+                                "spelling. Sending two spellings refuses bad_op_combo.");
                         // ANTS-4936 — old_text/new_text, the spelling
                         // roadmap_log op:"amend_body" uses. Declared for the
                         // same reason ANTS-4089's pair is: additionalProperties
@@ -6669,12 +6666,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                 "Alias for `old` — roadmap_log "
                                 "op:\"amend_body\"'s spelling, accepted so a "
                                 "caller arriving from that verb guesses "
-                                "consistently. `old` wins if both are sent.");
+                                "consistently. Sending two spellings refuses "
+                                "bad_op_combo.");
                         QJsonObject ntP; ntP["type"] = "string";
                             ntP["description"] = QStringLiteral(
                                 "Alias for `new` — roadmap_log "
-                                "op:\"amend_body\"'s spelling. `new` wins if "
-                                "both are sent.");
+                                "op:\"amend_body\"'s spelling. Sending two "
+                                "spellings refuses bad_op_combo.");
                         ip["path"] = pP; ip["old"] = oP; ip["new"] = nP;
                         ip["old_string"] = osP; ip["new_string"] = nsP;
                         ip["old_text"] = oldTextP; ip["new_text"] = ntP;

@@ -2960,6 +2960,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_render_pass_headings/test_roadmap_render_pass_headings.cpp
                 # ANTS-4610 section_index narrowed by name.
                 tests/features/roadmap_query_section_filter/test_roadmap_query_section_filter.cpp
+                # ANTS-6365 two names for one argument refuse bad_op_combo.
+                tests/features/mcp_alias_clash/test_mcp_alias_clash.cpp
                 # ANTS-4611 no_roadmap_loaded names the root it searched.
                 tests/features/roadmap_query_no_roadmap_refusal/test_roadmap_query_no_roadmap_refusal.cpp
                 # ANTS-1881 roadmap_query mode:"headline_only".

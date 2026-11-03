@@ -54,6 +54,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_query, workspace_search, file_outline, codebase_index, co_change_family, find_sources and apply_edits refuse an argument sent under two of its names** (ANTS-6365)
+  They answer `bad_op_combo` and list the names in `supplied[]`, as
+  invariant_check and similar_code already do.
+
 - **spec_log append_loop writes a `### <label>` heading row, with the body under it and row_shape "heading", when a loop log's latest rows are headings** (ANTS-6361)
 
 - **invariant_check and similar_code refuse bad_op_combo, naming both in supplied[], when a call sends an argument and its alias together (files and paths, shape and query)** (ANTS-6360)

@@ -85556,7 +85556,7 @@ than re-filed; everything else lands here.
   Source: pressless session message 1175, 2026-11-03.
   Lanes: mcp.
 
-- 📋 [ANTS-6365] **More verbs silently pick one name when a caller sends an argument and its alias together.**
+- ✅ [ANTS-6365] **More verbs silently pick one name when a caller sends an argument and its alias together.**
   mcp-tools.md's schema-hygiene rule says two names for one argument
   refuse bad_op_combo with supplied[]. ANTS-6360 fixed invariant_check
   and similar_code. A search for "wins when both" / "wins if both"
@@ -85567,6 +85567,14 @@ than re-filed; everything else lands here.
   aliasClash helper in src/remotecontrol_state.cpp (lift it to a shared
   header), update each description, and add a test per verb. Check
   first that no caller relies on sending both.
+  Shipped 2026-11-03: aliasClash moved to rcdetail
+  (remotecontrol_internal.h) and takes any number of names. Covers
+  roadmap_query (status/filter, query/q, limit/max_results),
+  workspace_search, file_outline, codebase_index, co_change_family,
+  find_sources and apply_edits per edit. Test:
+  tests/features/mcp_alias_clash. Left alone: changelog_query already
+  refuses differing version/section; file_outline's path vs paths is two
+  shapes, not an alias.
   **Layman:** Several tools still quietly ignore one of two clashing inputs instead of saying so.
   Kind: fix.
   Source: in-session-2026-11-03, found while building ANTS-6360.

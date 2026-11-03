@@ -232,10 +232,9 @@ a path.
 
 `inputSchema.required` is `["caller_cwd"]` alone — "one of `stem`/`stems`" is
 not expressible in JSON Schema `required[]`, so it is a runtime check
-refusing `bad_args`. **`stems` wins when both are sent**, rather than merging;
-a caller sending both has made a mistake, and picking the richer argument
-makes that mistake visible in the echoed `stems` rather than silently
-doubling the family.
+refusing `bad_args`. **Sending both refuses `bad_op_combo`** with both names
+in `supplied[]` (ANTS-6365), rather than merging or picking one: a caller
+sending both has made a mistake.
 
 ### 2.5 Response
 

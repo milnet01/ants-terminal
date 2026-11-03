@@ -726,9 +726,10 @@ TEST(McpApplyEdits, Ants4936OldTextNewTextAreAcceptedAliases) {
     EXPECT_EQ(slurp(p), QStringLiteral("alpha\nbeta\nGAMMA\ndelta\nepsilon\n"));
 }
 
-// Canonical `old`/`new` still win when a caller sends both spellings, so the
-// alias can never quietly redirect an edit the caller spelled canonically.
-TEST(McpApplyEdits, Ants4936CanonicalOldNewWinOverTheAliases) {
+// ANTS-6365 — two spellings of `old` or `new` in one edit refuse
+// bad_op_combo and leave the file untouched. Before, `old`/`new` won and the
+// alias was dropped, which hid the caller's mistake.
+TEST(McpApplyEdits, Ants6365TwoSpellingsRefuseAndLeaveTheFile) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString p = seedDoc(dir); ASSERT_FALSE(p.isEmpty());
 
@@ -740,9 +741,10 @@ TEST(McpApplyEdits, Ants4936CanonicalOldNewWinOverTheAliases) {
     e[QStringLiteral("new_text")] = QStringLiteral("WRONG");
 
     const QJsonObject env = runEdit(dir.path(), e);
-    ASSERT_TRUE(env.value("ok").toBool());
-    EXPECT_EQ(slurp(p), QStringLiteral("alpha\nBETA\ngamma\ndelta\nepsilon\n"))
-        << "ANTS-4936: `old`/`new` are canonical and win over the aliases";
+    EXPECT_FALSE(env.value("ok").toBool(true));
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("bad_op_combo"));
+    EXPECT_EQ(slurp(p), QStringLiteral("alpha\nbeta\ngamma\ndelta\nepsilon\n"))
+        << "ANTS-6365: a refused edit must not touch the file";
 }
 
 // A top-level `path` supplies the target for every edit that omits one. It used

@@ -2477,20 +2477,22 @@ static QString mainCheckoutOfWorktree(const QString &root) {
 // ANTS-6360 — a caller that sends an argument and its alias together gets a
 // bad_op_combo refusal naming both in supplied[] (mcp-tools.md, schema
 // hygiene; read_regions' ANTS-4512 is the model). Using one silently hid the
-// caller's mistake. Empty when only one name, or neither, was sent.
-static QJsonObject aliasClash(const QJsonObject &req, const char *verb,
-                              const char *canonical, const char *alias) {
-    if (!req.contains(QLatin1String(canonical))
-        || !req.contains(QLatin1String(alias)))
-        return {};
+// caller's mistake. Empty when fewer than two of `names` were sent.
+// ANTS-6365 — shared by every remotecontrol verb; `names` lists the
+// canonical name first, and supplied[] keeps that order.
+QJsonObject rcdetail::aliasClash(const QJsonObject &req, const QString &verb,
+                                 std::initializer_list<const char *> names) {
+    QStringList sent;
+    for (const char *n : names)
+        if (req.contains(QLatin1String(n))) sent << QLatin1String(n);
+    if (sent.size() < 2) return {};
     QJsonObject o;
     o["ok"]    = false;
-    o["error"] = QStringLiteral("%1: %2 and %3 are names for the same "
-                                "argument and were sent together; pass one")
-                     .arg(QLatin1String(verb), QLatin1String(canonical),
-                          QLatin1String(alias));
+    o["error"] = QStringLiteral("%1: %2 are names for the same argument and "
+                                "were sent together; pass one")
+                     .arg(verb, sent.join(QStringLiteral(" and ")));
     o["code"]     = QStringLiteral("bad_op_combo");
-    o["supplied"] = QJsonArray{QLatin1String(canonical), QLatin1String(alias)};
+    o["supplied"] = QJsonArray::fromStringList(sent);
     return o;
 }
 
@@ -2504,7 +2506,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // refusal. There is no files-versus-directories distinction behind the
     // name — every entry is substring-matched against spec bodies — so the
     // asymmetry was accidental rather than meaningful.
-    const QJsonObject clash = aliasClash(req, "invariant_check", "files", "paths");
+    const QJsonObject clash = aliasClash(req, "invariant_check", {"files", "paths"});
     if (!clash.isEmpty()) return QJsonDocument(clash);
     QJsonArray filesArr = req.value(QStringLiteral("files")).toArray();
     if (filesArr.isEmpty())
@@ -4211,7 +4213,7 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
     // one cycle; the guess is natural because workspace_search takes `query` as
     // an alias for `pattern`, so the two search-shaped verbs in one family took
     // different names for one idea.
-    const QJsonObject clash = aliasClash(req, "similar_code", "shape", "query");
+    const QJsonObject clash = aliasClash(req, "similar_code", {"shape", "query"});
     if (!clash.isEmpty()) return QJsonDocument(clash);
     QString shape = req.value(QStringLiteral("shape")).toString().trimmed();
     if (shape.isEmpty())

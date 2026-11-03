@@ -267,7 +267,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // ANTS-2041 — accept `query` as an alias for `pattern` (the natural
     // synonym a caller reaches for beside the sibling read verbs
     // roadmap_query / spec_query). `pattern` stays the source of truth;
-    // `query` only fills in when `pattern` is absent/empty.
+    // `query` only fills in when `pattern` is absent/empty. Both together
+    // refuse (ANTS-6365).
+    const QJsonObject clash =
+        aliasClash(req, "workspace_search", {"pattern", "query"});
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     QString pattern = req.value("pattern").toString();
     if (pattern.isEmpty()) {
         pattern = req.value(QStringLiteral("query")).toString();
@@ -1848,6 +1852,10 @@ static QString outlineFileEtag(const QJsonObject &fileObj) {
 // work itself lives in fileoutline.cpp — this body validates input,
 // resolves the path, and delegates.
 QJsonDocument RemoteControl::cmdFileOutline(const QJsonObject &req) {
+    // ANTS-6365 — `path` and its alias `file_path` together refuse.
+    const QJsonObject clash =
+        aliasClash(req, "file_outline", {"path", "file_path"});
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     // ANTS-1391: prefer caller_cwd's project root over the focused tab.
     // ANTS-1390: `~global` / `~claude-config` sentinel routes to
     // ~/.claude/ so global-config edits (skills, agents, the global
@@ -3057,6 +3065,12 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     };
     for (int i = 0; i < edits.size(); ++i) {
         const QJsonObject e = edits.at(i).toObject();
+        // ANTS-6365 — two spellings of `old` or of `new` in one edit refuse.
+        const QString where = QStringLiteral("apply_edits: edit %1").arg(i);
+        for (const QJsonObject &clash :
+             {aliasClash(e, where, {"old", "old_string", "old_text"}),
+              aliasClash(e, where, {"new", "new_string", "new_text"})})
+            if (!clash.isEmpty()) return QJsonDocument(clash);
         // ANTS-4936 — a top-level `path` is the default for any edit that
         // omits one. A single-file batch reads naturally with the path stated
         // once, and until now that spelling was accepted, dropped into
@@ -3069,7 +3083,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         // tool, whose keys are old_string/new_string, so the first call is
         // written with those and refused on a message naming the key that is
         // missing but not the one that was sent. The pairing is unambiguous,
-        // so accept both spellings; canonical `old`/`new` win if both arrive.
+        // so accept both spellings; two together refuse (above).
         //
         // ANTS-4936 — and old_text/new_text, which is what roadmap_log's
         // op:"amend_body" calls the same pair. That is the OTHER sibling a
@@ -3989,6 +4003,10 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
 // (bad_path on escape, incl. an in-root symlink resolving outside root). The
 // disk cache + lazy refresh live in CodebaseIndex::serve.
 QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
+    // ANTS-6365 — `file_path` and its alias `path` together refuse.
+    const QJsonObject clash =
+        aliasClash(req, "codebase_index", {"file_path", "path"});
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
     const QString rootCanonical =
@@ -4049,6 +4067,10 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
 // CLAUDE.md mentions are co-change sites, which is exactly what a walk
 // narrowed to the declared source roots would drop.
 QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
+    // ANTS-6365 — `stems` and `stem` together refuse.
+    const QJsonObject clash =
+        aliasClash(req, "co_change_family", {"stems", "stem"});
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     QStringList rawStems;
     const QJsonArray stemsArr = req.value(QStringLiteral("stems")).toArray();
     for (const auto &v : stemsArr) {
@@ -4056,8 +4078,7 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
         if (!s.isEmpty()) rawStems.append(s);
     }
     if (rawStems.isEmpty()) {
-        // `stem` is sugar for a one-element `stems`; `stems` wins when both
-        // are sent, so a caller's mistake shows up in the echoed `stems`.
+        // `stem` is sugar for a one-element `stems`.
         const QString one =
             req.value(QStringLiteral("stem")).toString().trimmed();
         if (!one.isEmpty()) rawStems.append(one);
@@ -4442,7 +4463,11 @@ QJsonDocument RemoteControl::cmdFindSources(const QJsonObject &req) {
     QJsonObject out;
     // ANTS-3415 — accept `symbol` as an alias for `topic` (fills in only
     // when `topic` is absent), mirroring the file_outline path/file_path
-    // and workspace_search query/pattern idioms. `topic` stays canonical.
+    // and workspace_search query/pattern idioms. `topic` stays canonical;
+    // both together refuse (ANTS-6365).
+    const QJsonObject clash =
+        aliasClash(req, "find_sources", {"topic", "symbol"});
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     QString topic = req.value(QStringLiteral("topic")).toString().trimmed();
     if (topic.isEmpty())
         topic = req.value(QStringLiteral("symbol")).toString().trimmed();

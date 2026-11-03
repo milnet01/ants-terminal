@@ -870,6 +870,13 @@ int rcShrinkBodiesToFit(QJsonObject &out, int cap, bool fromEnd,
 QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-1247-INV-1
     QJsonObject out;
 
+    // ANTS-6365 — an argument sent under two of its names is refused.
+    for (const QJsonObject &clash :
+         {aliasClash(req, "roadmap_query", {"status", "filter"}),
+          aliasClash(req, "roadmap_query", {"query", "q"}),
+          aliasClash(req, "roadmap_query", {"limit", "max_results"})})
+        if (!clash.isEmpty()) return QJsonDocument(clash);
+
     // ANTS-1247-INV-4: case-insensitive status parse; canonicalise
     // to lowercase. Anchor: filter parse.
     // ANTS-3698 — `filter` is accepted as an alias for `status`. The envelope
@@ -879,8 +886,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // FULL set under an echo (`filter:"all"`) that reads as confirmation a
     // filter was applied. Degrading on a near-miss is bad enough anywhere;
     // on this verb's own advertised lean-planning call it hands a planning
-    // session a list of already-shipped ids. `status` still wins when both
-    // are present.
+    // session a list of already-shipped ids. Both together refuse (above).
     QJsonValue statusVal = req.value(QStringLiteral("status"));
     if (!statusVal.isArray() && statusVal.toString().isEmpty())
         statusVal = req.value(QStringLiteral("filter"));
@@ -1039,7 +1045,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // used to land in ignored_args, and the call then returned an UNFILTERED
     // page. That is the one result shape indistinguishable from an answer —
     // a full list reads as a search result at a glance — which is why this is
-    // a fix rather than a convenience. `query` still wins when both are sent.
+    // a fix rather than a convenience. Both together refuse (ANTS-6365).
     QJsonValue queryVal = req.value(QStringLiteral("query"));
     if (queryVal.isUndefined()) queryVal = req.value(QStringLiteral("q"));
     QString queryArg = queryVal.toString().trimmed();
@@ -1465,7 +1471,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // answered with the FULL set. Under mode:"headline_only" that is every
     // row, which then spills, so the wasted call is the whole result set —
     // and the cost lands on the caller who was being token-careful, which is
-    // the wrong way round. `limit` still wins when both are present.
+    // the wrong way round. Both together refuse (ANTS-6365).
     QJsonValue limitVal = req.value(QStringLiteral("limit"));
     if (limitVal.isUndefined())
         limitVal = req.value(QStringLiteral("max_results"));

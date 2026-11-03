@@ -331,7 +331,7 @@ TEST(McpSimilarCode, Ants4951QueryIsAnAliasForShape) {
            "alias: the fallback is guarded");
     // ANTS-6360 — sending both names refuses bad_op_combo with supplied[]
     // (mcp-tools.md, schema hygiene), rather than silently using `shape`.
-    expect(contains(rcCpp, "aliasClash(req, \"similar_code\", \"shape\", \"query\")"),
+    expect(contains(rcCpp, "aliasClash(req, \"similar_code\", {\"shape\", \"query\"})"),
            "alias: shape + query together refuse instead of picking one");
 
     // Declared, or additionalProperties:false refuses the call before the

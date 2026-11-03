@@ -32,6 +32,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <initializer_list>
 #include <optional>
 
 #include "coldeyesengine.h"
@@ -683,5 +684,9 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root);
 QJsonObject ceErr(const QString &code, const QString &msg);
 QString ceSanitiseEcho(const QString &raw);
 QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes);
+// ANTS-6360/6365 — bad_op_combo when two or more names for one argument
+// arrive together; empty otherwise. Canonical name first in `names`.
+QJsonObject aliasClash(const QJsonObject &req, const QString &verb,
+                       std::initializer_list<const char *> names);
 
 }  // namespace rcdetail

@@ -215,18 +215,5 @@ TEST(roadmap_query_section_filter, Ants4927QAliasesQuery) {
            "can see it took";
 }
 
-// `query` wins when both are sent, so the alias can never redirect a caller
-// who spelled it canonically.
-TEST(roadmap_query_section_filter, Ants4927CanonicalQueryWinsOverQ) {
-    QTemporaryDir tmp;
-    ASSERT_TRUE(tmp.isValid());
-    const QString root = seed(tmp);
-
-    QJsonObject both;
-    both[QStringLiteral("query")] = QStringLiteral("Second");
-    both[QStringLiteral("q")]     = QStringLiteral("Third");
-
-    EXPECT_EQ(idsOf(bulletsWith(root, both)),
-              QStringList{QStringLiteral("ANTS-0002")})
-        << "ANTS-4927: `query` is canonical and wins";
-}
+// `query` and `q` sent together refuse bad_op_combo (ANTS-6365):
+// tests/features/mcp_alias_clash.
