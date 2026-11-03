@@ -119,6 +119,42 @@ enum class MutantVerdict : std::uint8_t {
 };
 MutantVerdict judgeMutant(int exitCode, const Counts &c);
 
+// ANTS-4974 — what killed a `Killed` mutant.
+//
+// A mutant killed by an assertion says the suite measures the behaviour. A
+// mutant killed by a crash (a NameError, an uncaught exception, a segfault)
+// says only that the edit was not valid code, and proves nothing about
+// coverage. Both used to read as `killed`.
+enum class FailureKind : std::uint8_t {
+    Unknown,    // the output names no cause, e.g. a bare ctest "(Failed)"
+    Assertion,  // a test's own check failed
+    Error,      // the test crashed or raised; an error signal outranks an
+                //   assertion in the same block
+};
+
+// Classify one failing test's output block, as TestRunners::parse or the
+// gtest reader cuts it. Reads pytest's summary message or first `E ` line,
+// gtest's "file:N: Failure" and "C++ exception" lines, and ctest's crash
+// status ("***Exception:", "Subprocess aborted", "***Timeout").
+[[nodiscard]] FailureKind classifyFailure(const QString &block);
+
+struct KillReport {
+    QStringList failedTests;  // in output order, capped as TestResCache caps
+    bool        truncated = false;
+    int         assertion = 0;
+    int         error     = 0;
+    int         unknown   = 0;
+};
+
+// Failing test names and their classification, read from a run's output.
+// Names come from TestRunners (ctest, pytest, jest, vitest, cargo, go), or
+// from a bare gtest binary's "[ RUN ]" / "[  FAILED  ]" blocks.
+[[nodiscard]] KillReport readKill(const QString &output);
+
+// "assertion" or "error" when every failure is that kind, "unknown" when
+// every failure is unknown or none was named, otherwise "mixed".
+[[nodiscard]] QString killedBy(const KillReport &k);
+
 // ANTS-4736 — whether the NEXT run would outlive the transport budget.
 //
 // The bridge stops waiting after ANTS_MCP_READ_TIMEOUT_S while the loop keeps

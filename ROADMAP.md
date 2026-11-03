@@ -85158,7 +85158,7 @@ than re-filed; everything else lands here.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4974] **mutation_probe reports a mutant killed by a crash and one killed by an assertion with the same word.**
+- ✅ [ANTS-4974] **mutation_probe reports a mutant killed by a crash and one killed by an assertion with the same word.**
   A mutation deleted a line DEFINING a name read further down. The
   mutant raised NameError, 12 tests failed, and the verdict was
   `killed` — the same word a mutant caught by a real assertion gets.
@@ -85199,6 +85199,11 @@ than re-filed; everything else lands here.
   reasoning rather than reading. ctest and gtest both print the failing
   test names, so a failed_tests list is derivable from output the verb
   already runs.
+  Shipped 2026-11-03: killed results carry killed_by, killed_by_counts
+  and failed_tests; the description carries the valid-mutation guidance.
+  pytest, gtest and ctest causes are read; jest, vitest, cargo and go
+  give names and `unknown`. The failure-count outlier signal was not
+  added.
   **Layman:** The tool that measures test strength counts a broken-on-purpose file as proof the tests are good.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.

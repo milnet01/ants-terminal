@@ -115,3 +115,23 @@ as when the mutant breaks the file's syntax and pytest fails at collection.
 A `broken` result carries `exit_code` and a `summary` saying it is not a kill.
 *Test:* `MutationProbe.Ants5360UnreadableNonZeroExitIsBroken`,
 `MutationProbe.Ants5360CollectionErrorReportsBrokenEndToEnd`.
+
+## ANTS-4974 — a killed mutant says what killed it
+
+A `killed` result carries `failed_tests`, `killed_by` and `killed_by_counts`
+(`assertion`, `error`, `unknown`). `readKill` takes the names from
+`TestRunners::parse`, or from a bare gtest binary's `[ RUN ]` to
+`[  FAILED  ] X (N ms)` blocks. `classifyFailure` sorts each failure's block:
+
+- **error**: ctest's `***Exception:`, `Subprocess aborted` or `***Timeout`
+  status; gtest's `C++ exception` lines; a pytest `ERROR` line; a pytest
+  message naming any exception but `AssertionError`, or `Failed: Timeout`.
+- **assertion**: gtest's `file:N: Failure`; a pytest message starting
+  `assert`, `AssertionError` or `Failed:`.
+- **unknown**: anything else, such as a bare ctest `(Failed)`.
+
+An error outranks an assertion in the same block. `killed_by` is the kind
+every failure shares, `unknown` when none was named, and `mixed` otherwise.
+An `error` or `mixed` result's `summary` says a crash is not evidence about
+the suite. *Test:* `MutationProbe.Ants4974KilledByNamesTheCause`,
+`…PythonMessageShapes`, `…KilledResultCarriesTheCauseEndToEnd`.

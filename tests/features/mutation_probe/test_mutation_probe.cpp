@@ -890,3 +890,168 @@ TEST(MutationProbe, Ants6210EmptyCtestFilterIsAnEmptyRun) {
     EXPECT_EQ(MutationProbe::judgeBaseline(false, 0, c), MutationProbe::BaselineVerdict::Empty);
     EXPECT_NE(ants_test::slurpRemoteControl().find("baseline_command"), std::string::npos);
 }
+
+// ANTS-4974 — a killed mutant says what killed it, and which tests failed.
+// Each fixture is real runner output captured 2026-11-03, trimmed to the lines
+// the reader uses: pytest 9.1, the vendored googletest, and ctest wrapping both.
+namespace {
+
+const char *kPytestAssertion =
+    "test_assert.py .F                                                        [100%]\n"
+    "\n"
+    "=================================== FAILURES ===================================\n"
+    "____________________________________ test_a ____________________________________\n"
+    "\n"
+    ">   def test_a(): assert f(1) == 3\n"
+    "E   assert 2 == 3\n"
+    "E    +  where 2 = f(1)\n"
+    "\n"
+    "test_assert.py:2: AssertionError\n"
+    "=========================== short test summary info ============================\n"
+    "FAILED test_assert.py::test_a - assert 2 == 3\n"
+    "1 failed, 1 passed in 0.05s\n";
+
+// The mutant deleted the line defining `y`: every failure is a NameError.
+const char *kPytestNameError =
+    "=================================== FAILURES ===================================\n"
+    "____________________________________ test_a ____________________________________\n"
+    ">       return y + 1\n"
+    "E       NameError: name 'y' is not defined\n"
+    "\n"
+    "mod_err.py:2: NameError\n"
+    "____________________________________ test_b ____________________________________\n"
+    ">       return y + 1\n"
+    "E       NameError: name 'y' is not defined\n"
+    "\n"
+    "mod_err.py:2: NameError\n"
+    "=========================== short test summary info ============================\n"
+    "FAILED test_err.py::test_a - NameError: name 'y' is not defined\n"
+    "FAILED test_err.py::test_b - NameError: name 'y' is not defined\n"
+    "2 failed, 1 passed in 0.05s\n";
+
+const char *kGtestAssertionAndThrow =
+    "[ RUN      ] S.Pass\n"
+    "[       OK ] S.Pass (0 ms)\n"
+    "[ RUN      ] S.Assert\n"
+    "/mnt/Games/tmp/ants4974/gt/t.cpp:5: Failure\n"
+    "Expected equality of these values:\n"
+    "  2\n"
+    "  3\n"
+    "\n"
+    "[  FAILED  ] S.Assert (0 ms)\n"
+    "[ RUN      ] S.Throws\n"
+    "unknown file: Failure\n"
+    "C++ exception with description \"boom\" thrown in the test body.\n"
+    "\n"
+    "[  FAILED  ] S.Throws (0 ms)\n"
+    "[ RUN      ] S.Later\n"
+    "[       OK ] S.Later (0 ms)\n"
+    "[----------] 3 tests from S (0 ms total)\n"
+    "\n"
+    "[==========] 3 tests from 1 test suite ran. (0 ms total)\n"
+    "[  PASSED  ] 1 test.\n"
+    "[  FAILED  ] 2 tests, listed below:\n"
+    "[  FAILED  ] S.Assert\n"
+    "[  FAILED  ] S.Throws\n"
+    "\n"
+    " 2 FAILED TESTS\n";
+
+// Without --output-on-failure: only status lines, so "(Failed)" names no
+// cause while the segfault does.
+const char *kCtestBare =
+    "1/3 Test #1: unit_t ...........................***Failed    0.00 sec\n"
+    "2/3 Test #2: unit_crash .......................***Exception: SegFault  0.24 sec\n"
+    "3/3 Test #3: ok ...............................   Passed    0.00 sec\n"
+    "\n"
+    "33% tests passed, 2 tests failed out of 3\n";
+
+// With --output-on-failure: the wrapped pytest run's own output is readable.
+const char *kCtestWrappedPytest =
+    "1/2 Test #1: py_err ...........................***Failed    0.50 sec\n"
+    "E       NameError: name 'y' is not defined\n"
+    "FAILED test_err.py::test_a - NameError: name 'y' is not defined\n"
+    "2 failed, 1 passed in 0.05s\n"
+    "\n"
+    "2/2 Test #2: ok ...............................   Passed    0.00 sec\n"
+    "\n"
+    "50% tests passed, 1 tests failed out of 2\n";
+
+MutationProbe::KillReport kill(const char *out) {
+    return MutationProbe::readKill(QString::fromUtf8(out));
+}
+
+}  // namespace
+
+TEST(MutationProbe, Ants4974KilledByNamesTheCause) {
+    const auto a = kill(kPytestAssertion);
+    EXPECT_EQ(MutationProbe::killedBy(a).toStdString(), "assertion");
+    EXPECT_EQ(a.failedTests, QStringList{QStringLiteral("test_assert.py::test_a")});
+
+    const auto e = kill(kPytestNameError);
+    EXPECT_EQ(MutationProbe::killedBy(e).toStdString(), "error");
+    EXPECT_EQ(e.failedTests, (QStringList{QStringLiteral("test_err.py::test_a"),
+                                          QStringLiteral("test_err.py::test_b")}));
+
+    const auto g = kill(kGtestAssertionAndThrow);
+    EXPECT_EQ(MutationProbe::killedBy(g).toStdString(), "mixed");
+    EXPECT_EQ(g.failedTests,
+              (QStringList{QStringLiteral("S.Assert"), QStringLiteral("S.Throws")}))
+        << "the closing list must not add names twice, nor '2' as a name";
+    EXPECT_EQ(g.assertion, 1);
+    EXPECT_EQ(g.error, 1);
+
+    const auto c = kill(kCtestBare);
+    EXPECT_EQ(MutationProbe::killedBy(c).toStdString(), "mixed");
+    EXPECT_EQ(c.unknown, 1) << "a bare (Failed) names no cause";
+    EXPECT_EQ(c.error, 1) << "a segfault is a crash";
+
+    const auto w = kill(kCtestWrappedPytest);
+    EXPECT_EQ(MutationProbe::killedBy(w).toStdString(), "error");
+    EXPECT_EQ(w.failedTests, QStringList{QStringLiteral("py_err")});
+
+    EXPECT_EQ(MutationProbe::killedBy(kill("")).toStdString(), "unknown");
+}
+
+// pytest's other failure shapes, from the same capture.
+TEST(MutationProbe, Ants4974PythonMessageShapes) {
+    using K = MutationProbe::FailureKind;
+    const auto k = [](const char *s) { return MutationProbe::classifyFailure(QString::fromUtf8(s)); };
+    EXPECT_EQ(k("FAILED t.py::test_raises - Failed: DID NOT RAISE ValueError"), K::Assertion);
+    EXPECT_EQ(k("FAILED t.py::test_fail - Failed: explicit"), K::Assertion);
+    EXPECT_EQ(k("FAILED t.py::T::test_eq - AssertionError: 2 != 3"), K::Assertion);
+    EXPECT_EQ(k("FAILED t.py::test_key - KeyError: 'k'"), K::Error);
+    EXPECT_EQ(k("ERROR t.py::test_fixture - RuntimeError: fixture boom"), K::Error);
+    EXPECT_EQ(k("FAILED t.py::test_slow - Failed: Timeout >1.0s"), K::Error);
+    // A long id drops the summary message; the section's E line still says.
+    EXPECT_EQ(k("E   AssertionError: assert 'a_very_long_' == 'x'"), K::Assertion);
+    // A captured log line shaped like a summary line is not one.
+    EXPECT_EQ(k("ERROR db - connection refused\nE   assert 1 == 2"), K::Assertion);
+    EXPECT_EQ(k("something unrelated"), K::Unknown);
+}
+
+TEST(MutationProbe, Ants4974KilledResultCarriesTheCauseEndToEnd) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    QJsonArray muts; muts.append(mutation(0));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = shArgv(QStringLiteral(
+        "echo 'FAILED test_p.py::test_a - NameError: name y is not defined'; "
+        "echo '1 failed, 3 passed in 0.10s'; exit 1"));
+    req[QStringLiteral("mutations")]    = muts;
+    const QJsonObject env = rc.cmdMutationProbe(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonObject r = env.value(QStringLiteral("results")).toArray().at(0).toObject();
+    EXPECT_EQ(r.value(QStringLiteral("outcome")).toString().toStdString(), "killed");
+    EXPECT_EQ(r.value(QStringLiteral("killed_by")).toString().toStdString(), "error");
+    EXPECT_EQ(r.value(QStringLiteral("failed_tests")).toArray(),
+              QJsonArray{QStringLiteral("test_p.py::test_a")});
+    EXPECT_EQ(r.value(QStringLiteral("killed_by_counts")).toObject()
+                  .value(QStringLiteral("error")).toInt(), 1);
+    EXPECT_TRUE(r.value(QStringLiteral("summary")).toString().contains(QLatin1String("not valid code")))
+        << QJsonDocument(r).toJson().toStdString();
+}

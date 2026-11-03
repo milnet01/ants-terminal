@@ -2504,6 +2504,26 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                     "a kill and says nothing about the suite. Prefer a mutation "
                     "that leaves the code valid.")
                         .arg(run.exitCode);
+            } else {
+                // ANTS-4974 — say what killed it, and which tests failed.
+                const auto k = MutationProbe::readKill(run.output);
+                const QString by = MutationProbe::killedBy(k);
+                r[QStringLiteral("killed_by")] = by;
+                r[QStringLiteral("killed_by_counts")] = QJsonObject{
+                    {QStringLiteral("assertion"), k.assertion},
+                    {QStringLiteral("error"), k.error},
+                    {QStringLiteral("unknown"), k.unknown}};
+                r[QStringLiteral("failed_tests")] = QJsonArray::fromStringList(k.failedTests);
+                if (k.truncated) r[QStringLiteral("failed_tests_truncated")] = true;
+                if (by == QLatin1String("error") || by == QLatin1String("mixed")) {
+                    r[QStringLiteral("summary")] = QStringLiteral(
+                        "%1 of the failing tests crashed or raised (a NameError, an "
+                        "uncaught exception, a segfault) rather than failing a "
+                        "check. A crash says the mutant was not valid code, not that "
+                        "the suite measures it. Prefer a mutation that leaves the "
+                        "code valid and changes only what it means.")
+                            .arg(k.error);
+                }
             }
         }
         results.append(r);

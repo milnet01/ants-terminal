@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe says what killed a mutant: `killed_by` (assertion, error, mixed or unknown) and the names of the failing tests** (ANTS-4974)
+  A mutant whose tests crashed (a NameError, an uncaught exception, a
+  segfault) now reads `killed_by:"error"`, with a summary saying that is
+  not evidence about the suite. Reads pytest, gtest and ctest output.
+
 - **project_settings op:set takes a `note` saying why the settings are as they are; get and detect show it back** (ANTS-4978)
 
 - **spec_log op:"append_status" adds a clause at the end of a spec's Status field without retyping or rewrapping it** (ANTS-4959)

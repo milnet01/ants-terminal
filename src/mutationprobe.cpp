@@ -2,6 +2,7 @@
 
 #include "mutationprobe.h"
 #include "testrescache.h"   // ANTS-4996 — the shared ctest summary matcher
+#include "testrunners.h"    // ANTS-4974 — failing test names per runner
 
 #include <QRegularExpression>
 
@@ -161,6 +162,119 @@ MutantVerdict judgeMutant(int exitCode, const Counts &c) {
     if (exitCode == 0) return MutantVerdict::Survived;
     if (c.passed < 0 || c.failed < 0) return MutantVerdict::Broken;
     return MutantVerdict::Killed;
+}
+
+namespace {
+
+// A Python failure message: pytest's short-summary text after " - ", or an
+// `E ` line. "assert ...", "AssertionError" and pytest's own "Failed:"
+// (pytest.fail, DID NOT RAISE) are the test's check; any other exception
+// type is a crash. pytest-timeout also reports through "Failed:", so that
+// one is an error.
+FailureKind classifyPython(const QString &msg) {
+    if (msg.startsWith(QLatin1String("assert ")) || msg == QLatin1String("assert")
+        || msg.startsWith(QLatin1String("AssertionError")))
+        return FailureKind::Assertion;
+    if (msg.startsWith(QLatin1String("Failed: Timeout"))) return FailureKind::Error;
+    if (msg.startsWith(QLatin1String("Failed:"))) return FailureKind::Assertion;
+    static const QRegularExpression exc(QStringLiteral(
+        R"(^(?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*(?:Error|Exception|Exit|Interrupt|Fault)(?::|$))"));
+    return exc.match(msg).hasMatch() ? FailureKind::Error : FailureKind::Unknown;
+}
+
+// gtest run on its own: each "[ RUN      ] X" up to "[  FAILED  ] X (N ms)"
+// is one failure. The closing list repeats the names without "(N ms)", and
+// "[  FAILED  ] 2 tests, listed below:" is not a name, so neither matches.
+TestResCache::ParsedTests parseGtestBlocks(const QString &output) {
+    TestResCache::ParsedTests t;
+    static const QRegularExpression run(QStringLiteral(R"(^\[ RUN      \] (\S+))"));
+    static const QRegularExpression failed(
+        QStringLiteral(R"(^\[  FAILED  \] ([^\s,]+).* \(\d+ ms\)$)"));
+    const QStringList lines = output.split(QLatin1Char('\n'));
+    qsizetype start = -1;
+    for (qsizetype i = 0; i < lines.size(); ++i) {
+        const QString line = lines[i].endsWith(QLatin1Char('\r')) ? lines[i].chopped(1)
+                                                                   : lines[i];
+        if (run.match(line).hasMatch()) { start = i; continue; }
+        const auto f = failed.match(line);
+        if (!f.hasMatch() || start < 0) continue;
+        if (!TestResCache::appendFailure(
+                t, f.captured(1), lines.mid(start, i + 1 - start).join(QLatin1Char('\n'))))
+            break;
+        start = -1;
+    }
+    return t;
+}
+
+}  // namespace
+
+FailureKind classifyFailure(const QString &block) {
+    bool assertion = false;
+
+    // ctest's status line: a crash, abort or timeout is never a check failing.
+    static const QRegularExpression ctestCrash(QStringLiteral(
+        R"(Test\s+#\d+:.*(?:\*\*\*Exception:|Subprocess aborted|\*\*\*Timeout))"));
+    if (ctestCrash.match(block).hasMatch()) return FailureKind::Error;
+
+    // gtest.
+    if (block.contains(QLatin1String("C++ exception with description"))
+        || block.contains(QLatin1String("Unknown C++ exception thrown")))
+        return FailureKind::Error;
+    static const QRegularExpression gtestAssert(QStringLiteral(R"(^\S.*:\d+: Failure\s*$)"),
+                                                QRegularExpression::MultilineOption);
+    if (gtestAssert.match(block).hasMatch()) assertion = true;
+
+    // pytest: every short-summary line in the block (several, when ctest
+    // wraps a whole pytest run); failing those, the first `E ` line. A pytest
+    // id holds "::" or ".py", so a captured "ERROR ..." print is not one.
+    static const QRegularExpression summary(
+        QStringLiteral(R"(^(FAILED|ERROR) \S*(?:::|\.py)\S*(?: - (.*))?$)"),
+        QRegularExpression::MultilineOption);
+    bool sawSummaryMessage = false;
+    for (auto it = summary.globalMatch(block); it.hasNext();) {
+        const auto m = it.next();
+        if (m.captured(1) == QLatin1String("ERROR")) return FailureKind::Error;
+        if (!m.hasCaptured(2) || m.captured(2).isEmpty()) continue;
+        sawSummaryMessage = true;
+        const FailureKind k = classifyPython(m.captured(2).trimmed());
+        if (k == FailureKind::Error) return k;
+        if (k == FailureKind::Assertion) assertion = true;
+    }
+    if (!sawSummaryMessage) {
+        static const QRegularExpression eLine(QStringLiteral(R"(^E\s+(\S.*)$)"),
+                                              QRegularExpression::MultilineOption);
+        if (const auto m = eLine.match(block); m.hasMatch()) {
+            const FailureKind k = classifyPython(m.captured(1).trimmed());
+            if (k == FailureKind::Error) return k;
+            if (k == FailureKind::Assertion) assertion = true;
+        }
+    }
+    return assertion ? FailureKind::Assertion : FailureKind::Unknown;
+}
+
+KillReport readKill(const QString &output) {
+    TestResCache::ParsedTests t;
+    if (const auto r = TestRunners::sniff(output)) t = TestRunners::parse(*r, output);
+    if (t.failingTests.isEmpty()) t = parseGtestBlocks(output);
+    KillReport k;
+    k.truncated = t.failingTestsTruncated;
+    for (const auto &f : t.failingTests) {
+        k.failedTests << f.name;
+        switch (classifyFailure(f.fullExcerpt)) {
+            case FailureKind::Assertion: ++k.assertion; break;
+            case FailureKind::Error:     ++k.error;     break;
+            case FailureKind::Unknown:   ++k.unknown;   break;
+        }
+    }
+    return k;
+}
+
+QString killedBy(const KillReport &k) {
+    const int n = k.assertion + k.error + k.unknown;
+    if (n == 0 || k.unknown == n) return QStringLiteral("unknown");
+    if (k.assertion == n) return QStringLiteral("assertion");
+    if (k.error == n) return QStringLiteral("error");
+    return QStringLiteral("mixed");
 }
 
 }  // namespace MutationProbe
