@@ -102656,6 +102656,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   (project_query Ants5107ReadRefusesFifo) makes its FIFO in a
   QTemporaryDir. Next step: find what another test writes under src/
   or tests/ during a run, or what a read there can block on.
+  Seen again 2026-11-03, pushing a22c7ae5: NoListedFileExceedsTheCap
+  hung 60 s in the build-asan step only (the plain build passed it in
+  0.12 s; the previous push's ASan run passed it). Re-run alone on the
+  same build-asan binary: three passes, 0.5 to 2 s. Blocked the push
+  once.
   **Layman:** Three code-layout checks froze once during a full test run and passed when rerun; find out what made them wait.
   Kind: investigate.
   Source: full-suite-run-2026-10-22.
