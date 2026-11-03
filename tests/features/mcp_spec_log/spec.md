@@ -37,7 +37,8 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
 - T13 — (ANTS-4114) `set_status` reports `previous_status`: the replaced
   value, space-joined across the field's continuation lines (a wrapped
   Status reports its whole extent, not just the opener), on the write
-  envelope AND the `dry_run` preview. The append ops omit the key — an
+  envelope AND the `dry_run` preview, as does `append_status`.
+  `append_loop` and `append_inv` omit the key — an
   empty string there would read as "the Status was blank". The verb
   validates no vocabulary, so this is the caller's only project-agnostic
   read of the one in use.
@@ -49,3 +50,7 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
   its first and last rows: by leading loop number, else by date. A
   newest-first log takes the row above its first row; an oldest-first or
   ambiguous one takes it at the section's end. `row_order` reports which.
+- T16 — (ANTS-4959) `append_status` adds `status` after one space at the
+  end of the Status field's LAST line and changes no other byte; `line`
+  names that line. No Status field → unrecognised_format; an empty
+  `status` → bad_args.

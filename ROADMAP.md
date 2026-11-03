@@ -84894,7 +84894,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4959] **spec_log cannot APPEND to a Status field, so recording “this decision was later built” falls back to a raw edit.**
+- ✅ [ANTS-4959] **spec_log cannot APPEND to a Status field, so recording “this decision was later built” falls back to a raw edit.**
   op:"set_status" takes `status` as the REPLACEMENT value, and
   preserve_body:true rewrites the opener LINE only. Both are
   documented and neither is wrong. The missing third shape is
@@ -84934,6 +84934,10 @@ than re-filed; everything else lands here.
   guessed wrong.
   On ship: message the Pressless session (it verifies on its code).
   Promised 2026-09-29.
+  Shipped 2026-11-03: op:"append_status" appends `status` after one
+  space at the end of the field's last line; previous_status echoed.
+  Tests: McpSpecLog.Ants4959*. Also removed a duplicated phrase from the
+  `status` argument's description.
   **Layman:** Adding one sentence to a spec's status line means retyping the whole paragraph or cutting it mid-sentence.
   Kind: enhancement.
   Source: Pressless_Ants_MCP_Feedback.md 2026-09-08.

@@ -169,6 +169,31 @@ EditResult setStatus(const QString &content, const QString &newStatus,
                                "(set_status needs one to rewrite)"));
 }
 
+EditResult appendStatus(const QString &content, const QString &text) {
+    bool ewn = false;
+    QStringList lines = toLines(content, ewn);
+    // SpecParse owns the field's extent, as for setStatus (ANTS-3785), so the
+    // text lands after the last continuation line, never mid-paragraph.
+    const SpecParse::FieldExtent e =
+        SpecParse::headerField(lines, QStringLiteral("Status"));
+    if (!e.found()) {
+        return fail(QStringLiteral("unrecognised_format"),
+                    QStringLiteral("spec_log: no \"**Status:**\" line found "
+                                   "(append_status needs one to extend)"));
+    }
+    const int last = e.line + e.lineCount - 1;
+    QString &tail = lines[last];
+    while (!tail.isEmpty() && tail.back().isSpace()) tail.chop(1);
+    tail += QLatin1Char(' ') + text;
+
+    EditResult r;
+    r.ok = true;
+    r.previousValue = e.value;
+    r.content = fromLines(lines, ewn);
+    r.line = last + 1;
+    return r;
+}
+
 // ANTS-4353 — split a markdown table row into trimmed cells.
 static QStringList slRowCells(const QString &line) {
     QString t = line.trimmed();

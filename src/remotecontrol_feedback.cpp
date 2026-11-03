@@ -1835,12 +1835,16 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     }
 
     const QString op = req.value(QStringLiteral("op")).toString();
-    if (op != QStringLiteral("set_status") &&
+    // ANTS-4959 — both Status ops echo the value they started from.
+    const bool statusOp = op == QStringLiteral("set_status") ||
+                          op == QStringLiteral("append_status");
+    if (!statusOp &&
         op != QStringLiteral("append_loop") &&
         op != QStringLiteral("append_inv")) {
         return slErr(QStringLiteral("bad_mode"),
                      QStringLiteral("spec_log: op must be \"set_status\", "
-                                    "\"append_loop\", or \"append_inv\""));
+                                    "\"append_status\", \"append_loop\", or "
+                                    "\"append_inv\""));
     }
 
     QFile f(full);
@@ -1867,6 +1871,14 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         res = SpecLog::setStatus(
             content, status,
             req.value(QStringLiteral("preserve_body")).toBool(false));
+    } else if (op == QStringLiteral("append_status")) {
+        const QString text = req.value(QStringLiteral("status")).toString();
+        if (text.trimmed().isEmpty()) {
+            return slErr(QStringLiteral("bad_args"),
+                         QStringLiteral("spec_log: append_status requires a "
+                                        "non-empty \"status\" (the text to add)"));
+        }
+        res = SpecLog::appendStatus(content, text);
     } else if (op == QStringLiteral("append_loop")) {
         const QString label =
             req.value(QStringLiteral("loop_label")).toString();
@@ -1928,8 +1940,7 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         out["path"]    = rel;
         out["line"]    = res.line;
         out["bytes"]   = static_cast<qint64>(utf8.size());
-        if (op == QStringLiteral("set_status"))
-            out["previous_status"] = res.previousValue;
+        if (statusOp) out["previous_status"] = res.previousValue;
         // ANTS-4353/4364 — say which SHAPE was written and which DIRECTION
         // was inferred, so a caller can see which way the row went instead of
         // re-reading the file to find out.
@@ -1975,8 +1986,7 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     // standard defines its own Status vocabulary otherwise learns of a wrong
     // value at its lint gate minutes later; the replaced value makes the
     // mismatch visible in the write's own envelope.
-    if (op == QStringLiteral("set_status"))
-        out["previous_status"] = res.previousValue;
+    if (statusOp) out["previous_status"] = res.previousValue;
     // ANTS-4353/4364 — the shape written and the direction inferred.
     if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
     if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;

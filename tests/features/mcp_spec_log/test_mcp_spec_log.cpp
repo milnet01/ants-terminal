@@ -871,6 +871,67 @@ TEST(McpSpecLog, Ants4136PreserveBodyKeepsWrappedStatusProse) {
     EXPECT_FALSE(kept.previousValue.isEmpty());
 }
 
+// ANTS-4959 — op:"append_status" adds a clause at the END of a wrapped Status
+// field and rewrites nothing else, so recording "this decision was later
+// built" needs neither a retyped paragraph nor a mid-sentence cut.
+TEST(McpSpecLog, Ants4959AppendStatusAddsToTheFieldsEnd) {
+    const QString before = QStringLiteral(
+        "# ANTS-9999 — Fixture\n"
+        "\n"
+        "**Status:** accepted (2026-09-06), which is\n"
+        "not the direction a spec usually runs.\n"
+        "\n"
+        "## 1. Problem\n");
+    const SpecLog::EditResult r = SpecLog::appendStatus(
+        before, QStringLiteral("Built 2026-11-03."));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_EQ(r.content, QStringLiteral(
+        "# ANTS-9999 — Fixture\n"
+        "\n"
+        "**Status:** accepted (2026-09-06), which is\n"
+        "not the direction a spec usually runs. Built 2026-11-03.\n"
+        "\n"
+        "## 1. Problem\n"))
+        << "only the field's last line changes, and only by the appended text";
+    EXPECT_EQ(r.line, 4) << "line names where the text landed";
+    EXPECT_EQ(r.previousValue, QStringLiteral(
+        "accepted (2026-09-06), which is not the direction a spec usually runs."));
+
+    // A one-line Status takes the text on that line.
+    const SpecLog::EditResult one = SpecLog::appendStatus(
+        QStringLiteral("**Status:** draft.\n"), QStringLiteral("More."));
+    ASSERT_TRUE(one.ok);
+    EXPECT_EQ(one.content, QStringLiteral("**Status:** draft. More.\n"));
+
+    // No Status field → the same refusal set_status gives.
+    const SpecLog::EditResult none = SpecLog::appendStatus(
+        QStringLiteral("# x\n"), QStringLiteral("More."));
+    EXPECT_FALSE(none.ok);
+    EXPECT_EQ(none.code, QStringLiteral("unrecognised_format"));
+}
+
+TEST(McpSpecLog, Ants4959AppendStatusHandler) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedSpec(dir, "ANTS-9999", QString::fromUtf8(kSpec));
+    ASSERT_FALSE(p.isEmpty());
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["id"] = "ANTS-9999";
+    req["op"] = "append_status";
+    req["status"] = "Built 2026-11-03.";
+    const QJsonObject env = rc.cmdSpecLog(req).object();
+    ASSERT_TRUE(env.value("ok").toBool()) << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("op").toString(), "append_status");
+    EXPECT_EQ(env.value("previous_status").toString(), "spec draft (2026-06-03).");
+    EXPECT_TRUE(QString::fromUtf8(readAll(p)).contains(
+        "**Status:** spec draft (2026-06-03). Built 2026-11-03."));
+
+    // An empty addition refuses rather than writing a trailing space.
+    req["status"] = "";
+    EXPECT_EQ(rc.cmdSpecLog(req).object().value("code").toString(), "bad_args");
+}
+
 // --------------------------------------------------------------- ANTS-4886 --
 //
 // appendLoop locates the log by its `## Cold-eyes loop log` heading. Given a

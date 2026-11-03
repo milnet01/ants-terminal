@@ -696,7 +696,7 @@ which heading you expect it under.
   `_Ants_MCP_Feedback.md`; append-only at EOF.
 - **`spec_log`** — writes a spec's Status line / cold-eyes loop log /
   `INV-N` via the pure `SpecLog` module (`op:"set_status"` /
-  `"append_loop"` / `"append_inv"`), never renumbering; reuses
+  `"append_status"` / `"append_loop"` / `"append_inv"`), never renumbering; reuses
   `spec_query`'s id routing (ANTS-1963). Shared id routing accepts any
   `<PREFIX>-NNNN` id (e.g. `DOOM-0009`, not just `ANTS-NNNN`) and resolves
   the file via `resolveSpecRelForId` — exact `<id>.md`, then a `<id>-*.md`

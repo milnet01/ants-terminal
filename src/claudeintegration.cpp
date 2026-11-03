@@ -9647,6 +9647,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "hand-editing markdown. op:\"set_status\" rewrites "
                         "the whole **Status:** field, including any "
                         "continuation lines it wraps onto (ANTS-3785); "
+                        "op:\"append_status\" adds `status` at the field's "
+                        "end, rewriting nothing (ANTS-4959); "
                         "op:\"append_loop\" appends a "
                         "cold-eyes loop-log row, matching the SHAPE the "
                         "section already holds (ANTS-4364): a TABLE row when "
@@ -9672,7 +9674,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "docs/phases/) or a project-relative `path`. "
                         "Atomic write. Returns {ok, op, id?, path, line, "
                         "bytes_written, file_bytes} plus `previous_status` "
-                        "on set_status (ANTS-4114 — the replaced value, so a "
+                        "on set_status and append_status (ANTS-4114 — the "
+                        "value before the write, so a "
                         "vocabulary mismatch shows here, not at the project's "
                         "lint gate) (ANTS-3724: "
                         "bytes_written is the ADDED-bytes delta, matching "
@@ -9692,12 +9695,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject props;
                     QJsonObject opProp; opProp["type"] = "string";
                         { QJsonArray e; e.append(QStringLiteral("set_status"));
+                          e.append(QStringLiteral("append_status"));  // ANTS-4959
                           e.append(QStringLiteral("append_loop"));
                           e.append(QStringLiteral("append_inv"));
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
-                            "Required. set_status | append_loop | "
-                            "append_inv.");
+                            "Required. set_status | append_status | "
+                            "append_loop | append_inv.");
                     QJsonObject idProp; idProp["type"] = "string";
                         idProp["description"] = QStringLiteral(
                             "Spec id (<PREFIX>-NNNN, any project prefix "
@@ -9714,9 +9718,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "set_status: the replacement value, written "
                             "VERBATIM as one line after \"**Status:** \". "
                             "Any continuation lines the previous value "
-                            "Any continuation lines the previous value "
                             "wrapped onto are replaced too — pass "
                             "`preserve_body:true` to KEEP them (ANTS-4136). "
+                            "append_status (ANTS-4959): the text to add after "
+                            "a space at the field's END; nothing is rewrapped. "
                             "ANTS-4114 — this verb imposes NO vocabulary and "
                             "cannot validate one: each project's permitted "
                             "values live in its own spec standard (Ants uses "

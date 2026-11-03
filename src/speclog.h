@@ -28,7 +28,7 @@ struct EditResult {
     int     line = -1;   // 1-based line the edit landed on (success only)
     QString code;
     QString error;
-    // ANTS-4114 — set_status only: the value being REPLACED, space-joined
+    // ANTS-4114 — set_status and append_status: the value before the edit, space-joined
     // across its continuations. The verb imposes no Status vocabulary (it
     // writes the caller's string verbatim), so the project's own vocabulary
     // is only knowable from the value already in the file. Empty for the
@@ -57,6 +57,13 @@ struct EditResult {
 // Default false, so every existing caller is unchanged.
 EditResult setStatus(const QString &content, const QString &newStatus,
                      bool preserveBody = false);
+
+// op:"append_status" (ANTS-4959) — add `text` after a space at the END of the
+// Status field's last line, rewrapping nothing. For recording a later event
+// ("Built 2026-11-03.") without retyping the field or cutting it at a wrap.
+// `line` is the 1-based line the text landed on; `unrecognised_format` as
+// for setStatus.
+EditResult appendStatus(const QString &content, const QString &text);
 
 // op:"append_loop" — append a `- **<label>** — <body>` bullet at the end
 // of the `## …` section whose heading contains "Cold-eyes loop log"
