@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6360 -->
+<!-- ants-roadmap-id-high-water: ANTS=6361 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84873,7 +84873,7 @@ than re-filed; everything else lands here.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4954] **An offloaded read_region spends its whole envelope on a preview truncated mid-array, and never says why it spilled.**
+- ✅ [ANTS-4954] **An offloaded read_region spends its whole envelope on a preview truncated mid-array, and never says why it spilled.**
   A read_region of a 331-line region returned offloaded:true with a
   spill handle at bytes:19432, and the preview was the expensive
   part: head_truncated:true and head_rows_truncated:true cut it
@@ -84900,6 +84900,15 @@ than re-filed; everything else lands here.
   COST, which is the part worth acting on: the reporter dropped to
   `sed -n` via Bash for every subsequent spec read that session —
   the raw-tool fallback the verbs exist to replace.
+  Resolved (2026-11-03): read_region now spills only from 64 KiB, as
+  read_regions does since ANTS-5291, so the reported 19,432-byte region
+  comes back inline. Every spill envelope carries `threshold_bytes`, the
+  threshold the call crossed, which answers "why did it spill". Ask (1),
+  dropping the mid-array `head` prefix, is not done: INV-2 makes `head`
+  part of the envelope contract, and with the higher threshold
+  read_region spills only on bodies above 64 KiB. Spec ANTS-2094 INV-1,
+  INV-2, § 2.3, § 2.3.2 amended. Tests: Inv1ReadRegionsUsesTheCeiling,
+  Inv2EnvelopeNamesItsThreshold.
   **Layman:** When a file read is too big to return directly, the summary it returns instead is cut off mid-way and useless.
   Kind: enhancement.
   Source: UT_Ants_Ants_MCP_Feedback.md 2026-09-08.
@@ -85442,6 +85451,18 @@ than re-filed; everything else lands here.
   **Layman:** Two tools quietly ignore one of two clashing inputs instead of saying so, which hides the caller's mistake.
   Kind: fix.
   Source: in-session-2026-11-03, found while building ANTS-4952.
+  Lanes: mcp.
+
+- 📋 [ANTS-6361] **spec_log append_loop writes a bullet row into a loop log whose latest rows are ### headings.**
+  docs/specs/ANTS-2094.md's Cold-eyes loop log ends in `### <label>`
+  heading rows with prose under them. append_loop reported
+  row_shape:"bullet", row_order:"ambiguous" and appended a
+  `- **<label>** — <body>` bullet glued to the last heading's prose.
+  Fix: when the log's last row is a heading, write a heading row; add a
+  test on a heading-shaped log.
+  **Layman:** The tool that adds a note to a design document's review log can write it in a different layout from the notes above it.
+  Kind: fix.
+  Source: in-session-2026-11-03, found while building ANTS-4954.
   Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)

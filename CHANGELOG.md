@@ -52,6 +52,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`read_region` returns a slice as text up to 64 KiB, as `read_regions` does, and every spilled reply names the threshold it crossed in `threshold_bytes`** (ANTS-4954)
+
 - **The MCP authoring standard names batch arguments by what they hold: `paths`, `ids` or `items`; read_regions' alias help now says two names together are refused** (ANTS-4952)
 
 - **apply_edits names the line when `old` differs from the file only in typed punctuation: `--` for an em dash, straight for curly quotes, `...` for an ellipsis** (ANTS-4857)

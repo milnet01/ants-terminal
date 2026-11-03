@@ -156,8 +156,10 @@ qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args) {
         return std::numeric_limits<qint64>::max();
     const qint64 base = offloadThresholdBytes();
     // ANTS-5291 — the caller named each slice, and a spill hands back none of
-    // their text, so a batch stays inline up to the ceiling.
-    if (toolName == QLatin1String("read_regions"))
+    // their text, so a batch stays inline up to the ceiling. ANTS-4954 — the
+    // same holds for read_region's one slice.
+    if (toolName == QLatin1String("read_regions")
+        || toolName == QLatin1String("read_region"))
         return qMax(base, kExplicitSizeCeilingBytes);
     const QJsonValue cap = args.value(QStringLiteral("max_body_bytes"));
     if (toolName != QLatin1String("roadmap_query") || !cap.isDouble())
@@ -194,6 +196,7 @@ static bool isOffloadOwnedKey(const QString &k) {
         QStringLiteral("ok"),
         QStringLiteral("offloaded"),          QStringLiteral("handle"),
         QStringLiteral("bytes"),              QStringLiteral("head"),
+        QStringLiteral("threshold_bytes"),
         QStringLiteral("head_truncated"),     QStringLiteral("hint"),
         QStringLiteral("preserved_omitted"),
         QStringLiteral("head_rows"),          QStringLiteral("head_rows_key"),
@@ -551,6 +554,10 @@ QString offloadBody(const QString &toolName, const QString &body,
     o[QStringLiteral("offloaded")]     = true;
     o[QStringLiteral("handle")]        = handle;
     o[QStringLiteral("bytes")]         = total;
+    // ANTS-4954 — the threshold this call crossed, so `bytes` can be read
+    // against it: a caller cannot otherwise tell a large result from a
+    // transient spill.
+    o[QStringLiteral("threshold_bytes")] = offloadThresholdFor(toolName, args);
     o[QStringLiteral("head")]          = QString::fromUtf8(utf8.left(static_cast<int>(hlen)));
     o[QStringLiteral("head_truncated")] = true;
 

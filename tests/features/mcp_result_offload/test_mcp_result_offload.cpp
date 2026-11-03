@@ -343,12 +343,30 @@ TEST_F(McpResultOffload, Inv1ReadRegionsUsesTheCeiling) {
     EXPECT_TRUE(mcp::shouldOffload(mcp::kExplicitSizeCeilingBytes,
                                    mcp::offloadThresholdFor(rr, QJsonObject{})))
         << "a batch at the ceiling still spills";
-    EXPECT_EQ(mcp::offloadThresholdFor(QStringLiteral("read_region"), QJsonObject{}), 16384)
-        << "read_region keeps the configured threshold";
+    EXPECT_EQ(mcp::offloadThresholdFor(QStringLiteral("read_region"), QJsonObject{}),
+              mcp::kExplicitSizeCeilingBytes)
+        << "ANTS-4954: read_region returns one named slice, so it uses the ceiling too";
+    EXPECT_FALSE(mcp::shouldOffload(
+        19432, mcp::offloadThresholdFor(QStringLiteral("read_region"), QJsonObject{})))
+        << "ANTS-4954: the reported 19,432-byte region stays inline";
+    EXPECT_EQ(mcp::offloadThresholdFor(QStringLiteral("file_outline"), QJsonObject{}), 16384)
+        << "other verbs keep the configured threshold";
     mcp::setOffloadConfig(true, 100000, 2048);
     EXPECT_EQ(mcp::offloadThresholdFor(rr, QJsonObject{}), 100000)
         << "a configured threshold above the ceiling stands";
     mcp::setOffloadConfig(true, 16384, 2048);
+}
+
+// ANTS-4954 — an offloaded envelope names the threshold it crossed, so a
+// caller can tell a large result from a transient one.
+TEST_F(McpResultOffload, Inv2EnvelopeNamesItsThreshold) {
+    mcp::setOffloadConfig(true, 16384, 2048);
+    const QString body = QString(20000, QLatin1Char('t'));
+    const QJsonObject env = QJsonDocument::fromJson(
+        mcp::offloadBody(QStringLiteral("file_outline"), body, QJsonObject{})
+            .toUtf8()).object();
+    ASSERT_TRUE(env.value(QStringLiteral("offloaded")).toBool());
+    EXPECT_EQ(env.value(QStringLiteral("threshold_bytes")).toInteger(), 16384);
 }
 
 // INV-1 — offloadBody has NO threshold guard: handed a body BELOW the offload
