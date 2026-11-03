@@ -104,6 +104,13 @@ the ANTS-2160 suite used for its consumer-wiring check.
   trains a caller to ignore the array, costing the cases where it is a real
   to-do list.
 
+- **INV-24** (ANTS-4963) — an executable file with no extension counts as
+  source when its first line is a Python or shell shebang. `detect` counts
+  it, and `codebase_index`'s walk lists it. The same file without the
+  execute bit, or an executable without a shebang, counts as nothing. Both
+  sides go through `CodebaseIndex::isIndexableFile`, so count and index
+  stay in step.
+
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

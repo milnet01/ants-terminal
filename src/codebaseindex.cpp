@@ -64,6 +64,22 @@ bool isIndexableSuffix(const QString &suffixLower) {
         || FileOutline::isHtmlExt(suffixLower);
 }
 
+// ANTS-4963 — a one-file tool is often an executable with no extension, so
+// the suffix rule alone counted it as nothing. Python and shell are the two
+// shebangs FileOutline::compute reads (ANTS-6352), so they are the two this
+// admits, keeping count and outline in step. The execute bit keeps an
+// extensionless data file such as LICENSE from being opened at all.
+bool isIndexableFile(const QFileInfo &fi) {
+    const QString suffix = fi.suffix();
+    if (!suffix.isEmpty()) return isIndexableSuffix(suffix.toLower());
+    if (!fi.isExecutable()) return false;
+    QFile f(fi.filePath());
+    if (!f.open(QIODevice::ReadOnly)) return false;
+    const QByteArray firstLine = f.readLine(256);
+    return FileOutline::isShShebang(firstLine)
+        || FileOutline::isPythonShebang(firstLine);
+}
+
 namespace {
 
 QString roleFor(const QString &relPath, const QString &basename) {
@@ -123,7 +139,7 @@ QStringList walkSubtree(const QString &rootCanonical, const QString &sub) {
     const int prefix = rootCanonical.size() + 1;  // strip "<root>/"
     while (it.hasNext()) {
         it.next();
-        if (!isIndexableSuffix(it.fileInfo().suffix().toLower())) continue;
+        if (!isIndexableFile(it.fileInfo())) continue;
         QString rel = it.filePath().mid(prefix);
         // ANTS-3390 — a "." source_root (ANTS-3393 flat-root layouts, and the
         // ANTS-3390 op:detect suggestion for repo-root source) makes the walk

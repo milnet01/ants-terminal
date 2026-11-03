@@ -6,6 +6,7 @@
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
+#include "codebaseindex.h"
 #include "projectsettings.h"
 #include "remotecontrol.h"
 
@@ -246,6 +247,43 @@ TEST(ProjectSettingsVerb, RepoRootSourceSuggestsWholeRoot) {
     EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral(".")});
     EXPECT_EQ(s.totalSourceCount, 2);
     EXPECT_FALSE(s.reason.isEmpty());
+}
+
+// INV-24 (ANTS-4963) — a one-file tool shipped as an executable with no
+// extension is source when its shebang names Python or a shell. Without the
+// execute bit, or without a shebang, the same file is data.
+namespace {
+void writeExecutable(const QString &path, const QString &content) {
+    writeFile(path, content);
+    ASSERT_TRUE(QFile::setPermissions(
+        path, QFile::permissions(path) | QFileDevice::ExeOwner));
+}
+}  // namespace
+
+TEST(ProjectSettingsVerb, Inv24ExtensionlessShebangScriptCounts) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeExecutable(root + "/demoreel",
+                    QStringLiteral("#!/usr/bin/env python3\ndef main():\n    pass\n"));
+    writeFile(root + "/NOTES", QStringLiteral("#!/usr/bin/env python3\n"));
+    writeExecutable(root + "/blob", QStringLiteral("no shebang here\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    EXPECT_EQ(s.totalSourceCount, 1);
+    ASSERT_TRUE(s.sourceRoots.has_value());
+    EXPECT_EQ(*s.sourceRoots, QStringList{QStringLiteral(".")});
+}
+
+TEST(ProjectSettingsVerb, Inv24IndexAdmitsExtensionlessShebangScript) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeExecutable(root + "/src/tool", QStringLiteral("#!/bin/sh\necho hi\n"));
+    writeFile(root + "/src/data", QStringLiteral("#!/bin/sh\n"));
+
+    const CodebaseIndex::Index idx = CodebaseIndex::build(root, 0);
+    QStringList paths;
+    for (const CodebaseIndex::FileEntry &fe : idx.files) paths << fe.path;
+    EXPECT_EQ(paths, QStringList{QStringLiteral("src/tool")});
 }
 
 // INV-14 — ANTS-3369: on a miss with NO root source (rootLevel==0), suggest

@@ -198,7 +198,7 @@ int countSourceFiles(const QString &root, const QString &sub, int budget) {
     while (it.hasNext() && n < budget && visited < kDetectVisitCeiling) {
         it.next();
         ++visited;
-        if (CodebaseIndex::isIndexableSuffix(it.fileInfo().suffix().toLower())) ++n;
+        if (CodebaseIndex::isIndexableFile(it.fileInfo())) ++n;
     }
     return n;
 }
@@ -395,7 +395,7 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
         const QFileInfoList files =
             root.entryInfoList(QDir::Files | QDir::NoSymLinks, QDir::Name);
         for (const QFileInfo &fi : files)
-            if (CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) ++rootLevel;
+            if (CodebaseIndex::isIndexableFile(fi)) ++rootLevel;
     }
 
     int total = rootLevel, srcCount = 0, testsCount = 0;

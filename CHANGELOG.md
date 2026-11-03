@@ -37,6 +37,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **project_settings op:"detect" and codebase_index count an executable file with no extension as source when its shebang names Python or a shell** (ANTS-4963)
+  A project that is one command-line script, such as `demoreel`, is no
+  longer reported as empty, so its source_roots can be declared.
+
 - **`read_region`'s description points to `read_regions` for reading several slices** (ANTS-5280)
 
 - **`invariant_check` keeps only the count of shorter-form mentions when no spec was scanned, and says how to read them** (ANTS-5270)

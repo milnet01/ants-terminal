@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <QFileInfo>
 #include <QJsonObject>
 #include <QMap>
 #include <QString>
@@ -84,8 +85,15 @@ struct StaleSet {
 // True iff a lowercased file suffix is one the index walk admits (the
 // C/C++/brace/script family — ANTS-2148/2150). Exported (ANTS-2161) so the
 // settings-suggestion detector counts source files by the SAME rule the
-// index admits by; single-sourced here (callers: walkSubtree + detect).
+// index admits by; single-sourced here. walkSubtree and detect reach it
+// through isIndexableFile below.
 bool isIndexableSuffix(const QString &suffixLower);
+
+// True iff the index walk admits this file: an indexable suffix, or an
+// executable with no suffix whose shebang names Python or a shell
+// (ANTS-4963). Reads the first line only in that second case. Callers:
+// walkSubtree + detect, as for isIndexableSuffix.
+bool isIndexableFile(const QFileInfo &fi);
 
 // mtime (ms) of the canonical lane-map source (docs/subsystems.md when
 // present, else CLAUDE.md) for `rootCanonical`; 0 if neither exists.

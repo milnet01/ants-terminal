@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6357 -->
+<!-- ants-roadmap-id-high-water: ANTS=6358 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -82325,6 +82325,9 @@ are closed inline in the feedback files rather than filed here.
   loses the record a restore exists to keep. Trigger: start when the
   largest export passes 35 MB, which at the measured rate is about
   January 2027. Re-measure first, since the rate is one week's.
+  Re-measured 2026-11-03: ~/.claude/roadmap-export/ants-terminal.jsonl is
+  26.9 MB (export of 2026-11-02). 6.4 MB in five weeks, about 1.3 MB a
+  week, so the rate held. 35 MB falls around mid-December 2026. Not due.
   **Layman:** Keep the weekly roadmap backup under GitHub's size limit by storing its edit history in a separate file.
   Kind: implement.
   Source: ANTS-5245 measurement (in-session-2026-10-02).
@@ -85003,7 +85006,7 @@ than re-filed; everything else lands here.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4963] **project_settings op:"detect" counts no source in a project whose implementation is one extensionless executable script.**
+- ✅ [ANTS-4963] **project_settings op:"detect" counts no source in a project whose implementation is one extensionless executable script.**
   detect reported total_source_count 0 with reason "no source files
   found under the project root" and put source_roots in
   unavailable[], for a project whose whole implementation is one
@@ -85027,6 +85030,11 @@ than re-filed; everything else lands here.
   root even when the walk found nothing would give a project the
   route to declare the truth — worth doing anyway, since a detector
   will always have shapes it misses.
+  Shipped 2026-11-03. CodebaseIndex::isIndexableFile admits an executable
+  extensionless file with a Python or shell shebang; detect and the index
+  walk both use it (INV-24). The op:"set"-accepts-root half was not built:
+  with the count fixed, detect suggests ["."] and the key is declarable.
+  The review-lane walks still go by suffix: ANTS-6358.
   **Layman:** A one-file command-line tool looks like an empty project, and there is no way to tell it otherwise.
   Kind: enhancement.
   Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
@@ -85358,6 +85366,18 @@ than re-filed; everything else lands here.
   Kind: chore.
   Source: split from ANTS-4984, 2026-10-01.
   Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-6358] **The review-lane walks still skip an extensionless shebang script that codebase_index now admits.**
+  ANTS-4963 added CodebaseIndex::isIndexableFile and moved walkSubtree
+  and detect onto it. src/codewalk.cpp's walk and the suffix gates in
+  src/indiereviewengine.cpp still call isIndexableSuffix, so a lane
+  partition built from them leaves such a script out. Fix: switch those
+  call sites to isIndexableFile where they hold a QFileInfo, then check
+  the partition tests.
+  **Layman:** Code reviews can still miss a one-file script that has no extension, though the project map now lists it.
+  Kind: enhancement.
+  Source: in-session-2026-11-03, found while building ANTS-4963.
+  Lanes: mcp, indie-review.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
