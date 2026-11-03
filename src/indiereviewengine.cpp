@@ -404,7 +404,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
             continue;
         const QFileInfo fi(canon);
         if (fi.isFile()) {
-            if (CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())
+            if (CodebaseIndex::isIndexableFile(fi)
                 && !isGeneratedSource(fi.fileName()))
                 out->insert(canon);
             continue;
@@ -413,8 +413,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
         PrunedWalk::walkFiles(canon, isPartitionNoiseDir, [&](const QString &f) {
             if (out->size() >= cap) return false;
             const QFileInfo ffi(f);
-            if (!CodebaseIndex::isIndexableSuffix(ffi.suffix().toLower()))
-                return true;
+            if (!CodebaseIndex::isIndexableFile(ffi)) return true;
             if (isGeneratedSource(ffi.fileName())) return true;
             const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
                                     ? f.mid(rootCanon.size() + 1) : QString();
@@ -475,11 +474,11 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
                 if (isPartitionNoiseDir(segs.at(i))) return true;
             if (underIgnoredDir(rel, ignoredDirs)) return true;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) return true;
-            // The suffix gate is the surprising one: it is narrower than
+            // The indexable gate is the surprising one: it is narrower than
             // "source" on purpose (see UnassignedSources in the header), so a
-            // hand-written shell script is dropped here. Report it.
+            // config file is dropped here. Report it.
             const QString suffix = fi.suffix().toLower();
-            if (!CodebaseIndex::isIndexableSuffix(suffix)) {
+            if (!CodebaseIndex::isIndexableFile(fi)) {
                 if (unassigned) {
                     ++unassigned->count;
                     ++unassigned->bySuffix[suffix];

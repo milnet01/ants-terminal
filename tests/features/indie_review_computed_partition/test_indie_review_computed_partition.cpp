@@ -181,6 +181,34 @@ TEST(IndieReviewComputedPartition, Inv6SuffixFilteredFilesAreReported) {
     EXPECT_EQ(dropped.count, 3) << "count is the sum across suffixes";
 }
 
+// ANTS-6358 — an extensionless shebang script is lane source, as
+// codebase_index has admitted it since ANTS-4963. A file with no extension
+// and no execute bit stays out, and is reported under the empty suffix.
+TEST(IndieReviewComputedPartition, ExtensionlessShebangScriptJoinsItsLane) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("oneup/updater.py"),
+        QStringLiteral("packaging/release.py"),
+    });
+    writeFile(root, QStringLiteral("oneup/oneup"), "#!/bin/sh\necho hi\n");
+    QFile script(QDir(root).filePath(QStringLiteral("oneup/oneup")));
+    ASSERT_TRUE(script.setPermissions(script.permissions() | QFile::ExeOwner));
+    writeFile(root, QStringLiteral("oneup/NOTES"), "#!/bin/sh but not executable\n");
+
+    IndieReviewEngine::UnassignedSources dropped;
+    const auto lanes = IndieReviewEngine::deriveComputedPartition(root, &dropped);
+
+    const auto *oneup = laneNamed(lanes, QStringLiteral("oneup"));
+    ASSERT_NE(oneup, nullptr);
+    EXPECT_TRUE(oneup->sourcePaths.contains(QStringLiteral("oneup/oneup")))
+        << "the script is a lane member";
+    EXPECT_EQ(IndieReviewEngine::laneFileCount(root, *oneup), 2)
+        << "the lane's own file walk counts it too";
+    EXPECT_EQ(dropped.bySuffix.value(QString()), 1)
+        << "the non-executable NOTES file is the one extensionless drop";
+}
+
 // INV-7 — a caller that passes no reporter still works (ANTS-4771).
 TEST(IndieReviewComputedPartition, Inv7NullReporterIsHarmless) {
     QTemporaryDir tmp;

@@ -85415,7 +85415,7 @@ than re-filed; everything else lands here.
   Source: split from ANTS-4984, 2026-10-01.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-6358] **The review-lane walks still skip an extensionless shebang script that codebase_index now admits.**
+- ✅ [ANTS-6358] **The review-lane walks still skip an extensionless shebang script that codebase_index now admits.**
   ANTS-4963 added CodebaseIndex::isIndexableFile and moved walkSubtree
   and detect onto it. src/codewalk.cpp's walk and the suffix gates in
   src/indiereviewengine.cpp still call isIndexableSuffix, so a lane
@@ -85428,6 +85428,14 @@ than re-filed; everything else lands here.
   admits any extensionless file starting "#!". The citation scan matches
   `path.ext` tokens, so an extensionless file cannot be cited at all.
   Decide per site before editing.
+  Shipped 2026-11-03. Per site: collectLaneFiles (both gates),
+  deriveComputedPartition and CodeWalk's walk now call isIndexableFile.
+  Left alone: codeOutsideRoots already admits any "#!" file and is a
+  wider "is there code here" hint; the basename index and
+  isCitableSuffix serve citations, which need a `name.ext` token, so an
+  extensionless file cannot be cited and opening files there would buy
+  nothing. Test:
+  IndieReviewComputedPartition.ExtensionlessShebangScriptJoinsItsLane.
   **Layman:** Code reviews can still miss a one-file script that has no extension, though the project map now lists it.
   Kind: enhancement.
   Source: in-session-2026-11-03, found while building ANTS-4963.

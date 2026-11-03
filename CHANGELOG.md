@@ -52,6 +52,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Review lanes, and the readability verbs that walk a directory, now include an executable script with no extension when its first line is a shell or Python shebang, matching codebase_index** (ANTS-6358)
+
 - **`audit_dismiss` and the false-positive standard point at `.audit_allowlist.json`, where one entry dismisses a false positive across every file a glob matches** (ANTS-4966)
 
 - **`read_region` returns a slice as text up to 64 KiB, as `read_regions` does, and every spilled reply names the threshold it crossed in `threshold_bytes`** (ANTS-4954)

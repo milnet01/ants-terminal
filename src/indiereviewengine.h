@@ -195,12 +195,13 @@ QString partitionOverrideRejection(const QString &projectPath);
 // separate from derivePartition so the MCP layer can label the result
 // `derived: true` rather than passing off a guess as a declared partition.
 // ANTS-4771 — what the walk DROPPED, and why this is not a wider suffix list.
-// deriveComputedPartition admits only suffixes CodebaseIndex::isIndexableSuffix
-// accepts, and that list is deliberately narrower than "source": it is kept in
+// deriveComputedPartition admits only files CodebaseIndex::isIndexableFile
+// accepts, and that rule is deliberately narrower than "source": it is kept in
 // step with FileOutline so count -> outline -> symbol query cover the same
-// files. That comment excludes `css` for exactly this reason. Shell is outside
-// it too, so a mixed Python/shell tree lost every .sh file — on the reported
-// project, including the only component that runs as root.
+// files. That comment excludes `css` for exactly this reason. Shell was
+// outside it too until ANTS-4826, so a mixed Python/shell tree lost every .sh
+// file — on the reported project, including the only component that runs as
+// root.
 //
 // Widening the list is therefore the wrong repair: it would count files the
 // outline cannot read, which is the drift that rule exists to prevent. The

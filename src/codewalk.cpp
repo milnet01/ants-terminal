@@ -39,7 +39,7 @@ void walk(const QDir &root, const QString &dir, QStringList &out) {
                 || ProjectSettings::isNoiseDir(fi.fileName()))
                 continue;
             walk(root, fi.absoluteFilePath(), out);
-        } else if (CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) {
+        } else if (CodebaseIndex::isIndexableFile(fi)) {
             out.append(root.relativeFilePath(fi.absoluteFilePath()));
         }
     }

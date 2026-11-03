@@ -173,8 +173,8 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "directory (ANTS-3709). Adjust and commit as "
             ".indie-review/partition.json to pin it.");
     }
-    // ANTS-4771 — the computed walk admits only suffixes
-    // CodebaseIndex::isIndexableSuffix accepts, which is narrower than
+    // ANTS-4771 — the computed walk admits only files
+    // CodebaseIndex::isIndexableFile accepts, which is narrower than
     // "source" by design, so the files it drops are reported rather than lost.
     // ANTS-4786 — the DECLARED partition needs the same answer and could not
     // give it: `unassigned` is populated only when the computed walk runs, so

@@ -629,7 +629,7 @@ which heading you expect it under.
   when `present:true` short-circuits before the walk (ANTS-4648) — a 0 there
   read as a measurement and had a ~3000-line project reported as holding no
   source, so absent now means not-taken and `counts_computed` says which;
-  its bounded shallow walk reuses `CodebaseIndex::isIndexableSuffix` so
+  its bounded shallow walk reuses `CodebaseIndex::isIndexableFile` so
   counts agree with what the index admits, and discounts vendored /
   third-party trees — `*-deps`, `*-prefix`, `third_party`, `external`,
   `deps`, `vendor`, … — so a bundled-dependency dir is never ranked as a
