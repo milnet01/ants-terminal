@@ -85036,6 +85036,18 @@ than re-filed; everything else lands here.
   is its core (the moved block still exists verbatim elsewhere). The
   skill-specific parts (pointer left, position words, labels kept) stay
   in Games Hub's tools/move-check.
+  Noise floor measured 2026-11-03 with a prototype: removed sentences
+  (60+ chars, whitespace-normalised, skipped when the same commit
+  re-adds them) searched across every other tracked .md at that commit.
+  A planted survivor wrapped differently was found. Ants_Terminal, 150
+  commits: 172 sentences examined, 0 hits. ~/.claude, 150 commits: 1003
+  examined, 67 hits in 18 commits. 52 are dated records or docs/reviews/
+  (quote old text on purpose); 7 are one table-header row in templates;
+  1 is an intended move to claude-md-detail.md; 7 are plausible stale
+  copies (skills/_shared/fresh-orchestrator.md vs docs/specs/CFG-0812-*,
+  plus one in-file duplicate), sent to claude-config to judge. Shape if
+  built: exclude dated/record files and table rows by default; input = a
+  commit range or the working-tree diff. ~6 s for 150 commits.
   **Layman:** After deleting a sentence from a document, nothing checks whether a stale copy of it is still sitting in another file.
   Kind: feature.
   Source: claude_config_Ants_MCP_Feedback.md 2026-09-08.
