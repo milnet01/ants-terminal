@@ -37,6 +37,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **apply_edits names the line when `old` differs from the file only in typed punctuation: `--` for an em dash, straight for curly quotes, `...` for an ellipsis** (ANTS-4857)
+
 - **project_settings op:"detect" and codebase_index count an executable file with no extension as source when its shebang names Python or a shell** (ANTS-4963)
   A project that is one command-line script, such as `demoreel`, is no
   longer reported as empty, so its source_roots can be declared.

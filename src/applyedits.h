@@ -31,7 +31,8 @@ struct EditOutcome {
     // a caller reads the line number and retries with a line range.
     int     nearMissLine = -1;     // 1-based line in `contents`
     QString nearMissText;          // that line, verbatim, as the file has it
-    QString nearMissKind;          // why it differed: "whitespace" | "wrapped"
+    QString nearMissKind;          // why it differed: "whitespace" | "punctuation"
+                                   // | "wrapped"
 
     // ANTS-4723 — the edit was matched by the wrapped rule rather than
     // verbatim, i.e. `oldStr` and the file agree except in where their

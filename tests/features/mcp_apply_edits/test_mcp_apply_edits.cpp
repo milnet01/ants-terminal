@@ -181,6 +181,56 @@ TEST(McpApplyEdits, Ants4418NearMissOnlyWhenUniqueAndWhitespace) {
            "candidates already do";
 }
 
+// ANTS-4857 — prose re-typed with ASCII punctuation (`--` for an em dash,
+// straight quotes for curly ones, `...` for an ellipsis) names the line, as a
+// spacing miss does. Same uniqueness guard, single-line only, never applied.
+TEST(McpApplyEdits, Ants4857PunctuationNearMissNamesTheLine) {
+    const QString file = QStringLiteral(
+        "# Title\n"
+        "The verb refuses — it doesn’t guess…\n"
+        "“Quoted” – end\n");
+
+    const auto dash = ApplyEdits::applyToContent(
+        file, QStringLiteral("The verb refuses -- it doesn't guess..."),
+        QStringLiteral("x"), false);
+    EXPECT_FALSE(dash.applied) << "a punctuation near miss is reported, never applied";
+    EXPECT_EQ(dash.skipReason, "not_found");
+    EXPECT_EQ(dash.nearMissLine, 2);
+    EXPECT_EQ(dash.nearMissKind, "punctuation");
+    EXPECT_EQ(dash.nearMissText,
+              QStringLiteral("The verb refuses — it doesn’t guess…"));
+
+    // A single hyphen for an en dash, straight double quotes for curly ones.
+    const auto quotes = ApplyEdits::applyToContent(
+        file, QStringLiteral("\"Quoted\" - end"), QStringLiteral("x"), false);
+    EXPECT_EQ(quotes.nearMissLine, 3);
+    EXPECT_EQ(quotes.nearMissKind, "punctuation");
+
+    // Punctuation and spacing drift together still fold to one candidate.
+    const auto both = ApplyEdits::applyToContent(
+        file, QStringLiteral("\"Quoted\"  -  end"), QStringLiteral("x"), false);
+    EXPECT_EQ(both.nearMissLine, 3);
+
+    // Uniqueness: two lines folding to the same text report none.
+    const auto twice = ApplyEdits::applyToContent(
+        QStringLiteral("a — b\na – b\n"), QStringLiteral("a -- b"),
+        QStringLiteral("x"), false);
+    EXPECT_EQ(twice.nearMissLine, -1)
+        << "two punctuation-equal candidates must report none";
+
+    // A spacing-only miss keeps its own kind: the fold is a second pass.
+    const auto ws = ApplyEdits::applyToContent(
+        QStringLiteral("a  — b\n"), QStringLiteral("a — b"),
+        QStringLiteral("x"), false);
+    EXPECT_EQ(ws.nearMissKind, "whitespace");
+
+    // A word difference is not folded away.
+    const auto word = ApplyEdits::applyToContent(
+        file, QStringLiteral("The verb accepts -- it doesn't guess..."),
+        QStringLiteral("x"), false);
+    EXPECT_EQ(word.nearMissLine, -1);
+}
+
 // ANTS-4723 — match_wrapped applies an `old` whose line breaks fall elsewhere
 // than the file's. Opt-in, fallback-only, uniqueness enforced.
 TEST(McpApplyEdits, Ants4723MatchWrappedOptIn) {

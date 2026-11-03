@@ -84111,8 +84111,11 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
 
-- 📋 [ANTS-4857] **apply_edits near-miss candidates fire on whitespace only, so a punctuation-class miss returns a bare not_found.**
+- ✅ [ANTS-4857] **apply_edits near-miss candidates fire on whitespace only, so a punctuation-class miss returns a bare not_found.**
   ANTS-4418 covers a spacing-only difference and returns candidates, near_miss_line and a hint; an em dash typed as -- returns none of them, though the cause is the same (prose re-typed with ASCII punctuation where the file holds the typographic form) and so is the remedy. High frequency in a prose corpus, and it compounds with the partial-batch finding, since this is the kind of miss that lands mid-batch. Widen the equivalence class to a small punctuation fold: en/em dash, curly quotes and apostrophes, ellipsis. Same uniqueness guard, same fields, same single-line restriction; report as a candidate rather than matching, so the verb still refuses to guess.
+  Shipped 2026-11-03: a second near-miss pass folds dashes, curly quotes
+  and the ellipsis; candidates carry kind "punctuation". Test:
+  McpApplyEdits.Ants4857PunctuationNearMissNamesTheLine.
   **Layman:** Retyping an em dash as two hyphens gives no hint that you nearly matched.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Rolodex.

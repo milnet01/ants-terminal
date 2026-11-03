@@ -32,6 +32,40 @@ QString wsNormalised(const QString &s) {
     return out;
 }
 
+// ANTS-4857 — fold the punctuation prose is most often re-typed in ASCII:
+// any run of hyphens, en and em dashes becomes one '-' (so "--", "-" and "—"
+// agree), curly quotes become straight, and an ellipsis becomes "...".
+QString punctFolded(const QString &s) {
+    QString out;
+    out.reserve(s.size());
+    for (const QChar c : s) {
+        const char16_t u = c.unicode();
+        if (u == u'-' || u == u'–' || u == u'—') {
+            if (!out.endsWith(QLatin1Char('-'))) out.append(QLatin1Char('-'));
+            continue;
+        }
+        if (u == u'‘' || u == u'’') out.append(QLatin1Char('\''));
+        else if (u == u'“' || u == u'”') out.append(QLatin1Char('"'));
+        else if (u == u'…') out.append(QStringLiteral("..."));
+        else out.append(c);
+    }
+    return out;
+}
+
+// The single line of `lines` whose `norm` form equals `needle`, 1-based, or
+// -1 when there is none or more than one: two candidates cannot tell the
+// caller which to retry, and naming one arbitrarily is worse than naming none.
+template <typename Norm>
+int uniqueLineMatching(const QStringList &lines, const QString &needle, Norm norm) {
+    int hit = -1;
+    for (int i = 0; i < lines.size(); ++i) {
+        if (norm(lines.at(i)) != needle) continue;
+        if (hit >= 0) return -1;           // ambiguous → report nothing
+        hit = i + 1;                       // 1-based, matching read_region
+    }
+    return hit;
+}
+
 // ANTS-4418 — locate the single line whose whitespace-normalised form equals
 // the normalised `oldStr`. Sets the near-miss fields only on a UNIQUE hit:
 // two candidate lines cannot tell the caller which to retry, and naming one
@@ -76,20 +110,22 @@ void findWhitespaceNearMiss(const QString &contents, const QString &oldStr,
     }
     const QString needle = wsNormalised(oldStr);
     if (needle.isEmpty()) return;
-
-    int hitLine = -1;
-    QString hitText;
     const QStringList lines = contents.split(QLatin1Char('\n'));
-    for (int i = 0; i < lines.size(); ++i) {
-        if (wsNormalised(lines.at(i)) != needle) continue;
-        if (hitLine >= 0) return;          // ambiguous → report nothing
-        hitLine = i + 1;                   // 1-based, matching read_region
-        hitText = lines.at(i);
+
+    // Spacing first, so a spacing-only miss keeps its own kind. ANTS-4857 —
+    // then spacing and punctuation together. The fold is coarser, so two
+    // spacing matches stay two under it and the guard holds on both passes.
+    int hitLine = uniqueLineMatching(lines, needle, wsNormalised);
+    const char *kind = "whitespace";
+    if (hitLine < 0) {
+        const auto fold = [](const QString &s) { return wsNormalised(punctFolded(s)); };
+        hitLine = uniqueLineMatching(lines, fold(oldStr), fold);
+        kind = "punctuation";
     }
     if (hitLine < 0) return;
     r.nearMissLine = hitLine;
-    r.nearMissText = hitText;
-    r.nearMissKind = QStringLiteral("whitespace");
+    r.nearMissText = lines.at(hitLine - 1);
+    r.nearMissKind = QString::fromLatin1(kind);
 }
 
 // ANTS-4473 — record WHERE the N occurrences behind an `ambiguous` are.

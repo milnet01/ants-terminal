@@ -3122,9 +3122,14 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                       .arg(oc.nearMissLine)
                 : QStringLiteral(
                       "%1-only mismatch at line %2 — the file's text differs from "
-                      "`old` only in spacing. Retry with that line's exact text, or "
+                      "`old` only in %3. Retry with that line's exact text, or "
                       "use the start_line/end_line form for line %2.")
-                      .arg(oc.nearMissKind).arg(oc.nearMissLine);
+                      .arg(oc.nearMissKind).arg(oc.nearMissLine)
+                      // ANTS-4857 — name what the fold forgave.
+                      .arg(oc.nearMissKind == QStringLiteral("punctuation")
+                               ? QStringLiteral("spacing and punctuation "
+                                                "(dashes, quotes, ellipses)")
+                               : QStringLiteral("spacing"));
         } else if (!oc.matchLines.isEmpty()) {
             // ANTS-4473 — the `ambiguous` half, in the SAME fields. The two
             // outcomes are mutually exclusive by construction (a near miss is
