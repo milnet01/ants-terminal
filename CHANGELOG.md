@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe takes a `path` per mutation, so a fix spanning two files is probed in one batch** (ANTS-4975)
+  One call, one baseline run, one verdict list. Each file is restored to
+  its own baseline, and every path is checked before anything is written.
+
 - **mutation_probe says what killed a mutant: `killed_by` (assertion, error, mixed or unknown) and the names of the failing tests** (ANTS-4974)
   A mutant whose tests crashed (a NameError, an uncaught exception, a
   segfault) now reads `killed_by:"error"`, with a summary saying that is

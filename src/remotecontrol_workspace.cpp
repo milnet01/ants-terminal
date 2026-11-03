@@ -2062,6 +2062,44 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             QStringLiteral("mutation_probe: %1 mutations exceeds the 50 cap — "
                            "each one is a full test run").arg(muts.size()));
 
+    // ANTS-4975 — a mutation may name its own file, so a fix spanning two
+    // files is probed in one batch against one baseline run. Each distinct
+    // file keeps its own baseline, restore and journal. Every path is
+    // validated before anything is written.
+    struct Target {
+        QString    rawPath, resolved;
+        QByteArray baselineBytes;
+        QString    baseline;
+        bool       restoreFailed  = false;
+        bool       concurrentEdit = false;
+    };
+    QList<Target> targets{Target{rawPath, check.resolved, {}, {}}};
+    QList<int> mutTarget;   // index into targets, per mutation
+    for (qsizetype i = 0; i < muts.size(); ++i) {
+        const QJsonObject mo = muts.at(i).toObject();
+        if (!mo.contains(QStringLiteral("path"))) { mutTarget << 0; continue; }
+        const QString field = QStringLiteral("mutations[%1].path").arg(i);
+        const QJsonValue pv = mo.value(QStringLiteral("path"));
+        if (!pv.isString() || pv.toString().isEmpty())
+            return mpErr(QStringLiteral("bad_args"),
+                QStringLiteral("mutation_probe: `%1` must be a non-empty string; "
+                               "omit it to use the top-level `path`").arg(field));
+        const auto mc = PathValidation::validatePath(
+            pv.toString(), rootCanonical, QStringLiteral("mutation_probe"), field);
+        if (mc.bad) return QJsonDocument(mc.err);
+        if (mc.resolved.isEmpty())
+            return mpErr(QStringLiteral("not_found"),
+                QStringLiteral("mutation_probe: `%1` \"%2\" does not exist")
+                    .arg(field, pv.toString()));
+        qsizetype t = 0;
+        while (t < targets.size() && targets[t].resolved != mc.resolved) ++t;
+        if (t == targets.size()) targets.append(Target{pv.toString(), mc.resolved, {}, {}});
+        mutTarget << int(t);
+    }
+    QStringList targetPaths;
+    for (const Target &t : targets) targetPaths << t.rawPath;
+    const QString allPaths = targetPaths.join(QStringLiteral("\", \""));
+
     int timeoutSec = qBound(5, req.value(QStringLiteral("timeout_sec"))
                                    .toInt(300), 1800);
 
@@ -2094,22 +2132,23 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     qint64 slowestRunMs = 0;
 
     // ANTS-5096 — put back any mutant a killed probe left on disk, in any
-    // file, BEFORE reading this file's baseline: a leftover mutant here would
+    // file, BEFORE reading any baseline: a leftover mutant here would
     // otherwise become the "original" this run restores to.
     const QString journalDir = MutationJournal::defaultDir();
     const QList<MutationJournal::Recovered> recovered =
         MutationJournal::recover(journalDir);
 
-    // Read the baseline ONCE. Every mutation is applied to this, never to the
-    // previous mutant, so two mutations cannot compound.
-    QFile bf(check.resolved);
-    if (!bf.open(QIODevice::ReadOnly))
-        return mpErr(QStringLiteral("read_failed"),
-                     QStringLiteral("mutation_probe: could not read \"%1\"")
-                         .arg(rawPath));
-    const QByteArray baselineBytes = bf.readAll();
-    bf.close();
-    const QString baseline = QString::fromUtf8(baselineBytes);
+    // Read each baseline ONCE. Every mutation is applied to its file's
+    // baseline, never to the previous mutant, so two mutations cannot compound.
+    for (Target &t : targets) {
+        QFile bf(t.resolved);
+        if (!bf.open(QIODevice::ReadOnly))
+            return mpErr(QStringLiteral("read_failed"),
+                         QStringLiteral("mutation_probe: could not read \"%1\"")
+                             .arg(t.rawPath));
+        t.baselineBytes = bf.readAll();
+        t.baseline = QString::fromUtf8(t.baselineBytes);
+    }
 
     struct RunOut { bool started = false; bool timedOut = false; int exitCode = 0; QString output; qint64 ms = 0; };
     auto runCommand = [&](const QStringList &command) -> RunOut {
@@ -2154,28 +2193,31 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     // while the tests ran, and writing the baseline would destroy that edit.
     // It is left alone, reported, and the batch stops: every later mutant was
     // built from the same stale baseline.
-    bool concurrentEdit = false;
-    auto restore = [&](const QByteArray &written) -> bool {
+    bool concurrentEdit = false;   // any file; stops the whole batch
+    auto restoreOnce = [&](Target &t, const QByteArray &written) -> bool {
         {
-            QFile cur(check.resolved);
+            QFile cur(t.resolved);
             if (cur.open(QIODevice::ReadOnly)) {
                 const QByteArray now = cur.readAll();
-                if (now == baselineBytes) return true;
+                if (now == t.baselineBytes) return true;
                 if (now != written) {
-                    concurrentEdit = true;
+                    t.concurrentEdit = concurrentEdit = true;
                     return false;
                 }
             }
         }
-        QSaveFile w(check.resolved);
+        QSaveFile w(t.resolved);
         if (!w.open(QIODevice::WriteOnly)) return false;
-        if (w.write(baselineBytes) != baselineBytes.size() || !w.commit())
+        if (w.write(t.baselineBytes) != t.baselineBytes.size() || !w.commit())
             return false;
-        QFile v(check.resolved);
+        QFile v(t.resolved);
         if (!v.open(QIODevice::ReadOnly)) return false;
-        const bool same = (v.readAll() == baselineBytes);
-        v.close();
-        return same;
+        return v.readAll() == t.baselineBytes;
+    };
+    auto restore = [&](Target &t, const QByteArray &written) -> bool {
+        const bool ok = restoreOnce(t, written);
+        if (!ok) t.restoreFailed = true;
+        return ok;
     };
 
     QJsonObject out;
@@ -2310,8 +2352,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         out[QStringLiteral("baseline_failed")] = bc.failed;
     }
 
-    for (const auto &mv : muts) {
-        const QJsonObject mo = mv.toObject();
+    for (qsizetype mi = 0; mi < muts.size(); ++mi) {
+        const QJsonObject mo = muts.at(mi).toObject();
+        Target &target = targets[mutTarget.at(mi)];
         MutationProbe::Mutation m;
         m.label   = mo.value(QStringLiteral("label")).toString();
         m.oldText = mo.value(QStringLiteral("old")).toString();
@@ -2319,6 +2362,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
 
         QJsonObject r;
         r[QStringLiteral("label")] = m.label;
+        r[QStringLiteral("path")]  = target.rawPath;
 
         // RC-33 — after a concurrent edit nothing more is written.
         if (concurrentEdit) {
@@ -2351,7 +2395,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             continue;
         }
 
-        const auto ap = MutationProbe::applyOne(baseline, m);
+        const auto ap = MutationProbe::applyOne(target.baseline, m);
         if (!ap.ok) {
             // Inert: NO test run at all. Running one would produce a green
             // result against unmutated code, which is the false reading this
@@ -2417,7 +2461,8 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
 
         const QByteArray patched = ap.patched.toUtf8();
         // ANTS-5096 — no mutant goes on disk without a journal to undo it.
-        if (!MutationJournal::write(journalDir, check.resolved, baselineBytes, patched)) {
+        if (!MutationJournal::write(journalDir, target.resolved, target.baselineBytes,
+                                    patched)) {
             r[QStringLiteral("applied")] = false;
             r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
             r[QStringLiteral("summary")] = QStringLiteral(
@@ -2426,7 +2471,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             results.append(r);
             continue;
         }
-        QSaveFile w(check.resolved);   // ANTS-5096 — see restore()
+        QSaveFile w(target.resolved);   // ANTS-5096 — see restore()
         if (!w.open(QIODevice::WriteOnly)) {
             r[QStringLiteral("applied")] = false;
             r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
@@ -2435,7 +2480,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         }
         const bool wrote = (w.write(patched) == patched.size()) && w.commit();
         if (!wrote) {
-            if (!restore(patched)) restoredClean = false;
+            if (!restore(target, patched)) restoredClean = false;
             r[QStringLiteral("applied")] = false;
             r[QStringLiteral("outcome")] = QStringLiteral("write_failed");
             results.append(r);
@@ -2454,7 +2499,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         slowestRunMs = qMax(slowestRunMs, build.ms + run.ms);
         // Restore BEFORE interpreting anything, so no early return can leak a
         // mutated file.
-        if (!restore(patched)) restoredClean = false;
+        if (!restore(target, patched)) restoredClean = false;
 
         r[QStringLiteral("applied")]     = true;
         r[QStringLiteral("inert")]       = false;
@@ -2547,7 +2592,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             "raise `transport_budget_sec` to match an increased "
             "ANTS_MCP_READ_TIMEOUT_S.")
                 .arg(batchClock.elapsed()).arg(slowestRunMs)
-                .arg(budgetSec).arg(rawPath);
+                .arg(budgetSec).arg(allPaths);
     }
 
     // ANTS-5512 — the build tree still holds the last mutant, so it is built
@@ -2561,16 +2606,23 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             out[QStringLiteral("rebuild_hint")] = QStringLiteral(
                 "the build tree may still hold a mutant. Check \"%1\" with git, "
                 "then run build_command before trusting its binaries.")
-                    .arg(rawPath);
+                    .arg(allPaths);
     }
 
     // ANTS-5096 — the journal goes once the file is the baseline again, or once
     // a concurrent edit owns it. A failed restore keeps it for the next probe.
-    if (restoredClean || concurrentEdit)
-        MutationJournal::clear(journalDir, check.resolved);
+    QStringList editedPaths, unrestoredPaths;
+    for (const Target &t : targets) {
+        if (!t.restoreFailed || t.concurrentEdit)
+            MutationJournal::clear(journalDir, t.resolved);
+        if (t.concurrentEdit) editedPaths << t.rawPath;
+        else if (t.restoreFailed) unrestoredPaths << t.rawPath;
+    }
 
     out[QStringLiteral("ok")]             = true;
     out[QStringLiteral("path")]           = rawPath;
+    if (targets.size() > 1)
+        out[QStringLiteral("paths")] = QJsonArray::fromStringList(targetPaths);
     out[QStringLiteral("results")]        = results;
     out[QStringLiteral("restored_clean")] = restoredClean;
     if (!recovered.isEmpty()) {
@@ -2586,13 +2638,20 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             "\"%1\" changed during a test run to bytes that are neither the "
             "mutant nor the baseline, so it was NOT restored — that would have "
             "destroyed the other edit. Check it with git: it may still hold "
-            "the mutation as well as the edit.").arg(rawPath);
+            "the mutation as well as the edit.")
+                .arg(editedPaths.join(QStringLiteral("\", \"")));
+        if (!unrestoredPaths.isEmpty())
+            out[QStringLiteral("restore_hint")] =
+                out.value(QStringLiteral("restore_hint")).toString()
+                + QStringLiteral(" \"%1\" also could NOT be restored; check it with git.")
+                      .arg(unrestoredPaths.join(QStringLiteral("\", \"")));
     } else if (!restoredClean) {
         out[QStringLiteral("restore_hint")] = QStringLiteral(
             "the source file could NOT be restored to its baseline — check "
             "\"%1\" with git before doing anything else. This is the failure "
             "mode the verb exists to prevent, so it is reported loudly rather "
-            "than folded into a per-mutation outcome.").arg(rawPath);
+            "than folded into a per-mutation outcome.")
+                .arg(unrestoredPaths.join(QStringLiteral("\", \"")));
     }
     return QJsonDocument(out);
 }

@@ -5777,6 +5777,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "means. A bare ctest \"(Failed)\" names no cause and "
                         "reads `unknown`; run ctest with --output-on-failure "
                         "so the test's own output can be read. "
+                        "ANTS-4975: a mutation may carry its own `path`, so a "
+                        "fix spanning two files is probed in one batch with "
+                        "one baseline run; each result echoes its `path`, "
+                        "and every path is validated before anything is "
+                        "written. "
                         "Each mutation is applied to a CLEAN baseline so two "
                         "cannot compound, and the restore is guaranteed even on "
                         "a failed or timed-out run — `restored_clean` is "
@@ -5888,8 +5893,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                         "meant to probe while the one you did "
                                         "stays uncovered, and the verdict "
                                         "still reads `killed`.");
+                                QJsonObject pp; pp["type"] = "string";
+                                    pp["description"] = QStringLiteral(
+                                        "ANTS-4975, optional: the file this "
+                                        "mutation edits. Default: the top-level "
+                                        "`path`. Each file keeps its own baseline.");
                                 ip["label"] = l; ip["old"] = ov; ip["new"] = nv;
-                                ip["expect_occurrences"] = eo;
+                                ip["expect_occurrences"] = eo; ip["path"] = pp;
                                 item["properties"] = ip;
                                 mutsP["items"] = item;
                             }

@@ -85209,7 +85209,7 @@ than re-filed; everything else lands here.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4975] **mutation_probe takes one path per call, so a mechanism spanning two files cannot be probed as one mechanism.**
+- ✅ [ANTS-4975] **mutation_probe takes one path per call, so a mechanism spanning two files cannot be probed as one mechanism.**
   Every batch mutates a single file. Where a fix spans two — the
   same defect at twin call sites, or a value in one file and its use
   in another — the only route is two calls with the same
@@ -85241,6 +85241,10 @@ than re-filed; everything else lands here.
   and one verdict list, and a single batch can name two files. That
   also makes "change one side only" expressible as two mutations in
   one batch, which the current shape cannot reach.
+  Shipped 2026-11-03: a mutation may carry `path` (default the top-level
+  one); each file keeps its own baseline, journal and restore; all paths
+  are validated up front. Each mutation is still applied alone, so a
+  joint two-file mutant is not expressible yet.
   **Layman:** A fix that touches two files has to be tested as two unrelated things, so nothing checks they hold together.
   Kind: enhancement.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.

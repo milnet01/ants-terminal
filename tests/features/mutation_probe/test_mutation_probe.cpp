@@ -1055,3 +1055,85 @@ TEST(MutationProbe, Ants4974KilledResultCarriesTheCauseEndToEnd) {
     EXPECT_TRUE(r.value(QStringLiteral("summary")).toString().contains(QLatin1String("not valid code")))
         << QJsonDocument(r).toJson().toStdString();
 }
+
+// ANTS-4975 — a mutation may name its own file. A fix spanning two files is
+// probed in one batch, and each file is restored to its own baseline.
+namespace {
+
+const char *kTwinSource = "limit = 3\n";
+
+QJsonObject twoFileProbe(const QTemporaryDir &tmp, const QJsonArray &muts) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = shArgv(QStringLiteral(
+        "if grep -q False palettes.py || grep -q 'limit = 4' twin.py; "
+        "then echo '1 failed, 1 passed in 0.01s'; exit 1; fi; "
+        "echo '2 passed in 0.01s'"));
+    req[QStringLiteral("mutations")]    = muts;
+    return rc.cmdMutationProbe(req).object();
+}
+
+QJsonObject twinMutation(const QString &path) {
+    QJsonObject m;
+    m[QStringLiteral("label")] = QStringLiteral("raise the twin's limit");
+    m[QStringLiteral("old")]   = QStringLiteral("limit = 3");
+    m[QStringLiteral("new")]   = QStringLiteral("limit = 4");
+    m[QStringLiteral("path")]  = path;
+    return m;
+}
+
+void seedTwin(const QTemporaryDir &tmp) {
+    QFile f(QDir(tmp.path()).filePath(QStringLiteral("twin.py")));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(kTwinSource);
+}
+
+}  // namespace
+
+TEST(MutationProbe, Ants4975OneBatchProbesTwoFiles) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    seedTwin(tmp);
+    const QJsonObject env = twoFileProbe(
+        tmp, QJsonArray{mutation(0), twinMutation(QStringLiteral("twin.py"))});
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    const QJsonArray rs = env.value(QStringLiteral("results")).toArray();
+    ASSERT_EQ(rs.size(), 2);
+    EXPECT_EQ(rs.at(0).toObject().value(QStringLiteral("path")).toString().toStdString(),
+              "palettes.py");
+    EXPECT_EQ(rs.at(1).toObject().value(QStringLiteral("path")).toString().toStdString(),
+              "twin.py");
+    for (const auto &v : rs)
+        EXPECT_EQ(v.toObject().value(QStringLiteral("outcome")).toString().toStdString(),
+                  "killed")
+            << "each mutant must reach the test with its own file changed";
+    EXPECT_EQ(env.value(QStringLiteral("paths")).toArray().size(), 2);
+    EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
+    EXPECT_EQ(readProjectFile(tmp, "palettes.py"), QByteArray(kTwoSiteSource));
+    EXPECT_EQ(readProjectFile(tmp, "twin.py"), QByteArray(kTwinSource));
+}
+
+// A bad path anywhere refuses the batch before any file is written.
+TEST(MutationProbe, Ants4975BadMutationPathRefusesTheBatch) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const auto code = [&](const QJsonValue &path) {
+        QJsonObject bad = twinMutation(QString());
+        bad[QStringLiteral("path")] = path;
+        const QJsonObject env = twoFileProbe(tmp, QJsonArray{mutation(0), bad});
+        EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+        EXPECT_FALSE(env.contains(QStringLiteral("results")));
+        return env.value(QStringLiteral("code")).toString().toStdString();
+    };
+    EXPECT_EQ(code(QStringLiteral("missing.py")), "not_found");
+    EXPECT_EQ(code(QStringLiteral("")), "bad_args");
+    EXPECT_EQ(code(7), "bad_args");
+    EXPECT_NE(code(QStringLiteral("../outside.py")), "") << "an escaping path refuses";
+    EXPECT_EQ(readProjectFile(tmp, "palettes.py"), QByteArray(kTwoSiteSource))
+        << "the default-path mutation ran although the batch was refused";
+}

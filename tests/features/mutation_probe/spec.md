@@ -135,3 +135,15 @@ every failure shares, `unknown` when none was named, and `mixed` otherwise.
 An `error` or `mixed` result's `summary` says a crash is not evidence about
 the suite. *Test:* `MutationProbe.Ants4974KilledByNamesTheCause`,
 `…PythonMessageShapes`, `…KilledResultCarriesTheCauseEndToEnd`.
+
+## ANTS-4975 — a mutation may name its own file
+
+A mutation may carry `path`; without one it edits the top-level `path`. Every
+path is validated before anything is written: a value that is not a non-empty
+string refuses `bad_args`, a missing file `not_found`, and an escaping path
+the shared path refusal. Each distinct file keeps its own baseline, journal
+and restore, and each result echoes its `path`. A batch over more than one
+file also returns `paths`. A concurrent edit to any file stops the batch, and
+the restore hint names every file not put back. *Test:*
+`MutationProbe.Ants4975OneBatchProbesTwoFiles`,
+`…BadMutationPathRefusesTheBatch`.
