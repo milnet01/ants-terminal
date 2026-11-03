@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **project_settings op:set takes a `note` saying why the settings are as they are; get and detect show it back** (ANTS-4978)
+
 - **spec_log op:"append_status" adds a clause at the end of a spec's Status field without retyping or rewrapping it** (ANTS-4959)
 
 - **`read_region` gains `tail_lines` to read the end of a long section without line numbers, and a cut-off section read reports where the section ends** (ANTS-5281)

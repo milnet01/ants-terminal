@@ -802,3 +802,42 @@ TEST(ProjectSettingsVerb, Ants5728SetWritesClaudeChrome) {
         << QJsonDocument(ok).toJson().toStdString();
     EXPECT_TRUE(ProjectSettings::claudeChromeFor(root));
 }
+
+// ANTS-4978 — op:set takes a free-text `note` saying WHY the settings are what
+// they are. It is stored as the `_comment` key the file already tolerates, so
+// the verb stays its only writer, and op:get echoes it as `note`.
+TEST(ProjectSettingsVerb, Ants4978SetRecordsANoteAndGetEchoesIt) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    RemoteControl rc(nullptr);
+    const auto call = [&](const QString &op, const QJsonValue &note) {
+        QJsonObject s;
+        s[QStringLiteral("caller_cwd")] = root;
+        s[QStringLiteral("op")]         = op;
+        if (!note.isUndefined()) s[QStringLiteral("note")] = note;
+        return rc.cmdProjectSettings(s).object();
+    };
+
+    // A note alone is a valid set.
+    const QJsonObject set = call(QStringLiteral("set"),
+                                 QStringLiteral("source_roots narrowed: vendor/ is upstream"));
+    ASSERT_TRUE(set.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(set).toJson().toStdString();
+    QFile f(root + QStringLiteral("/.ants/project.json"));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    EXPECT_EQ(QJsonDocument::fromJson(f.readAll()).object()
+                  .value(QStringLiteral("_comment")).toString(),
+              QStringLiteral("source_roots narrowed: vendor/ is upstream"));
+    f.close();
+
+    EXPECT_EQ(call(QStringLiteral("get"), QJsonValue::Undefined)
+                  .value(QStringLiteral("note")).toString(),
+              QStringLiteral("source_roots narrowed: vendor/ is upstream"));
+
+    // A non-string refuses; an empty string clears the note.
+    EXPECT_EQ(call(QStringLiteral("set"), 3).value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    ASSERT_TRUE(call(QStringLiteral("set"), QString()).value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(call(QStringLiteral("get"), QJsonValue::Undefined)
+                     .contains(QStringLiteral("note")));
+}

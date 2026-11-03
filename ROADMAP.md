@@ -85241,7 +85241,7 @@ than re-filed; everything else lands here.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4978] **project_settings cannot record WHY a setting is what it is, so a rationale forces the hand edit the instruction forbids.**
+- ✅ [ANTS-4978] **project_settings cannot record WHY a setting is what it is, so a rationale forces the hand edit the instruction forbids.**
   op:"set" writes the six recognised keys and the schema is
   additionalProperties:false, so no rationale can be attached.
   Narrowing source_roots is exactly the decision that needs one —
@@ -85262,6 +85262,10 @@ than re-filed; everything else lands here.
   hand-maintained key so the instructions stop conflicting. The
   first is better: it keeps the verb the only writer, which is what
   the instruction is protecting.
+  Shipped 2026-11-03: op:set `note` is stored as `_comment` (empty
+  string clears; a non-string refuses bad_args); get and detect echo it
+  as `note`. Test:
+  ProjectSettingsVerb.Ants4978SetRecordsANoteAndGetEchoesIt.
   **Layman:** There is nowhere to write down why a project setting was narrowed, so the next session sees the choice and not the reason.
   Kind: enhancement.
   Source: DOOM_Ants_MCP_Feedback.md 2026-09-08.

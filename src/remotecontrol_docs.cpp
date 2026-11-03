@@ -1834,11 +1834,15 @@ QJsonDocument psDescribe(const QString &rootCanonical, const QString &settingsPa
     // `declared_missing`.
     QJsonObject declared;
     QJsonArray  declaredMissing;
+    QString     noteText;
     QFile sf(settingsPath);
     if (sf.open(QIODevice::ReadOnly)) {
         const QJsonObject stored =
             QJsonDocument::fromJson(sf.readAll()).object();
         sf.close();
+        // ANTS-4978 — the recorded reason, beside the settings it explains.
+        const QJsonValue note = stored.value(QStringLiteral("_comment"));
+        if (note.isString()) noteText = note.toString();
         // ANTS-5667 — repo_root is echoed and checked like a path key,
         // but stays out of kKeys so it never lands in `undeclared`.
         QStringList echoed = kKeys;
@@ -1896,6 +1900,7 @@ QJsonDocument psDescribe(const QString &rootCanonical, const QString &settingsPa
     else             o[QStringLiteral("suggestion")] = s;
     if (!declared.isEmpty())
         o[QStringLiteral("declared")] = declared;
+    if (!noteText.isEmpty()) o[QStringLiteral("note")] = noteText;
     // ANTS-5562 — always present, empty when nothing applies: a caller
     // told to check declared_missing cannot read "absent" as "clean".
     // compact:true still drops the empty ones for a caller who wants that.
@@ -2041,6 +2046,18 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             return QJsonDocument(o);
         }
         existing = d.object();
+    }
+    // ANTS-4978 — `note` records WHY the settings are what they are. It is
+    // written as `_comment`, which load() and applyWrite() already pass over
+    // as an unknown key; an empty string clears it.
+    if (req.contains(QStringLiteral("note"))) {
+        const QJsonValue n = req.value(QStringLiteral("note"));
+        if (!n.isString())
+            return psErr(QStringLiteral("bad_args"),
+                         QStringLiteral("project_settings: note must be a string"));
+        const QString text = n.toString().trimmed();
+        changes[QStringLiteral("_comment")] =
+            text.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(text);
     }
     if (changes.isEmpty())
         return psErr(QStringLiteral("bad_args"),

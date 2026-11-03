@@ -8056,6 +8056,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "op:set only. true: Ants starts this project's Claude "
                             "Code sessions with --chrome. Read at each launch.");
                     props["claude_chrome"] = ccProp;
+                    // ANTS-4978 — set-only, the reason behind the settings.
+                    QJsonObject noteProp; noteProp["type"] = "string";
+                        noteProp["description"] = QStringLiteral(
+                            "op:set only. Why the settings are as they are; "
+                            "stored as `_comment`, echoed by get as `note`. "
+                            "\"\" clears it.");
+                    props["note"] = noteProp;
                     props["dry_run"]      = makeDryRunProp();    // ANTS-2227
                     props["caller_cwd"]   = makeCallerCwdReadProp();
                     schema["properties"]  = props;
