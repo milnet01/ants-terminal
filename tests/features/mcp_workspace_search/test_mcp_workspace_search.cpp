@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFile>
 #include <QProcess>
+#include <QRegularExpression>
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -21,7 +22,6 @@
 #include <QStringList>
 
 #include <cstdio>
-#include <regex>
 #include <string>
 
 #include <gtest/gtest.h>
@@ -57,6 +57,28 @@ bool contains(const std::string &hay, const char *needle) {
 
 }  // namespace
 
+// ANTS-6362 — these scrapes used std::regex, whose matcher recurses and
+// allocates per character: over the multi-megabyte RemoteControl source it
+// took about 38 s under ASan, against a 60 s limit. PCRE2 does the same
+// search far faster. An invalid pattern fails the test rather than reading
+// as "no match", which would pass the negative checks.
+static QRegularExpression srcRe(const char *pattern) {
+    QRegularExpression re(QString::fromUtf8(pattern));
+    if (!re.isValid())
+        ADD_FAILURE() << "bad pattern " << pattern << ": "
+                      << re.errorString().toStdString();
+    return re;
+}
+static bool srcSearch(const std::string &hay, const char *pattern) {
+    return srcRe(pattern).match(QString::fromStdString(hay)).hasMatch();
+}
+static long srcCount(const std::string &hay, const char *pattern) {
+    long n = 0;
+    auto it = srcRe(pattern).globalMatch(QString::fromStdString(hay));
+    while (it.hasNext()) { it.next(); ++n; }
+    return n;
+}
+
 TEST(McpWorkspaceSearch, WiringContract) {
     expect_reset();
 
@@ -75,10 +97,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "the ANTS-1244 public block)");
 
     // INV-2 — body has 10 INV anchors, one per spec invariant.
-    std::regex anchorRe(R"(//\s*ANTS-1248-INV-\d+)");
-    auto begin = std::sregex_iterator(rcCpp.begin(), rcCpp.end(), anchorRe);
-    auto end   = std::sregex_iterator();
-    const long anchorCount = std::distance(begin, end);
+    const long anchorCount = srcCount(rcCpp, R"(//\s*ANTS-1248-INV-\d+)");
     char detail2[160];
     std::snprintf(detail2, sizeof detail2,
                   "expected >=10 // ANTS-1248-INV-N anchors in "
@@ -101,8 +120,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // `cmdSubsystem(` from ANTS-1251) are not false-flagged. We only
     // want to catch a bare call to ::system or std::system.
     {
-        std::regex sysCall(R"(\bsystem\()");
-        expect(!std::regex_search(rcCpp, sysCall),
+        expect(!srcSearch(rcCpp, R"(\bsystem\()"),
                "INV-3c",
                "remotecontrol.cpp contains a bare 'system(' call — "
                "shell-less argv violated");
@@ -114,9 +132,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // Positive shape: the body uses QProcess::start with an argv list.
     // Either `start("rg", ...)` or `start(QStringLiteral("rg"), ...)`, or
     // the ANTS-5527 host-aware `HostExec::start(proc, QStringLiteral("rg"), ...)`.
-    std::regex rgStart(
-        R"((\.start\s*\(|HostExec::start\s*\(\s*\w+\s*,)\s*(QStringLiteral\s*\(\s*)?"rg")");
-    expect(std::regex_search(rcCpp, rgStart),
+    expect(srcSearch(rcCpp, R"((\.start\s*\(|HostExec::start\s*\(\s*\w+\s*,)\s*(QStringLiteral\s*\(\s*)?"rg")"),
            "INV-3e",
            "remotecontrol.cpp does not call QProcess::start(\"rg\", ...) "
            "with an argv list");
@@ -191,8 +207,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // INV-6 — tools/list schema declares the workspace_search tool.
     // ANTS-1253 collapsed the per-tool dispatch into a single registry
     // lookup, so we re-anchor the wiring check to the schema entry.
-    std::regex schemaRe(R"("name"\]\s*=\s*"workspace_search")");
-    expect(std::regex_search(ciCpp, schemaRe),
+    expect(srcSearch(ciCpp, R"("name"\]\s*=\s*"workspace_search")"),
            "INV-6",
            "claudeintegration.cpp missing tools/list schema entry "
            "naming \"workspace_search\"");
@@ -207,11 +222,10 @@ TEST(McpWorkspaceSearch, WiringContract) {
            "INV-7b",
            "claudeintegration.h missing m_toolProviders registry "
            "member (ANTS-1253)");
-    std::regex toolHandlerRe(
-        R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*QString\s*\(\s*const\s+QJsonObject\s*&)");
     // ANTS-4932 § 2.3 — defined in mcptoolsink.h, aliased by ClaudeIntegration.
-    expect(std::regex_search(ants_test::slurpFile(SRC_MCP_TOOL_SINK_H_PATH),
-                             toolHandlerRe) &&
+    expect(srcSearch(ants_test::slurpFile(SRC_MCP_TOOL_SINK_H_PATH),
+                     R"(using\s+ToolHandler\s*=\s*std::function\s*<\s*)"
+                     R"(QString\s*\(\s*const\s+QJsonObject\s*&)") &&
                contains(ciHdr, "using ToolHandler = mcp::ToolHandler;"),
            "INV-7c",
            "claudeintegration.h does not declare ToolHandler as "
@@ -284,8 +298,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // INV-1452-1b — argv contains "--no-ignore" literal (the umbrella).
     // Use a regex so the substring isn't matched against --no-ignore-vcs.
     {
-        std::regex noIgnoreRe(R"("--no-ignore"\s*[,)])");
-        expect(std::regex_search(rcCpp, noIgnoreRe),
+        expect(srcSearch(rcCpp, R"("--no-ignore"\s*[,)])"),
                "INV-1452-1b",
                "remotecontrol.cpp does not pass the bare --no-ignore "
                "umbrella flag — needed for respect_gitignore=false "
@@ -334,16 +347,12 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // Source-scrape for `.toBool(true)` and `.toBool(false)` near each
     // flag name to lock in the defaults.
     {
-        std::regex rgIgnoreDefault(
-            R"(respect_gitignore[^;]{0,80}\.toBool\(\s*true\s*\))");
-        expect(std::regex_search(rcCpp, rgIgnoreDefault),
+        expect(srcSearch(rcCpp, R"(respect_gitignore[^;]{0,80}\.toBool\(\s*true\s*\))"),
                "INV-1452-6a",
                "remotecontrol.cpp does not call .toBool(true) on the "
                "respect_gitignore parse — default must preserve "
                "pre-1452 behaviour (ANTS-1452 INV-6)");
-        std::regex rgHiddenDefault(
-            R"(include_hidden[^;]{0,80}\.toBool\(\s*false\s*\))");
-        expect(std::regex_search(rcCpp, rgHiddenDefault),
+        expect(srcSearch(rcCpp, R"(include_hidden[^;]{0,80}\.toBool\(\s*false\s*\))"),
                "INV-1452-6b",
                "remotecontrol.cpp does not call .toBool(false) on the "
                "include_hidden parse — default must preserve pre-1452 "
@@ -356,9 +365,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // INV-1304-1 — body parses type=="context" events with a
     // context > 0 guard.
     {
-        std::regex ctxParseRe(
-            R"(QLatin1String\("context"\))");
-        expect(std::regex_search(rcCpp, ctxParseRe),
+        expect(srcSearch(rcCpp, R"(QLatin1String\("context"\))"),
                "INV-1304-1a",
                "remotecontrol.cpp does not branch on the rg "
                "type==\"context\" event — ANTS-1304 INV-1 violated");
@@ -416,9 +423,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // INV-1304-7 — argv "--context" is gated on context > 0 (the
     // pre-1304 default-0 path passes no flag).
     {
-        std::regex ctxArgvRe(
-            R"(context\s*>\s*0[\s\S]{0,200}"--context")");
-        expect(std::regex_search(rcCpp, ctxArgvRe),
+        expect(srcSearch(rcCpp, R"(context\s*>\s*0[\s\S]{0,200}"--context")"),
                "INV-1304-7",
                "remotecontrol.cpp does not gate the rg --context "
                "flag on `context > 0` — ANTS-1304 INV-7 violated");
@@ -442,8 +447,7 @@ TEST(McpWorkspaceSearch, Ants3704ExcludeGlobWiring) {
            "remotecontrol.cpp does not read the \"exclude_glob\" argument");
 
     // Rendered as a '!'-prefixed --glob, which is ripgrep's exclusion form.
-    std::regex renderRe(R"(excludeGlobs[\s\S]{0,200}"--glob"[\s\S]{0,80}'!')");
-    expect(std::regex_search(rcCpp, renderRe),
+    expect(srcSearch(rcCpp, R"(excludeGlobs[\s\S]{0,200}"--glob"[\s\S]{0,80}'!')"),
            "INV-3704-2",
            "exclude_glob entries are not rendered as ripgrep --glob '!<pattern>'");
 

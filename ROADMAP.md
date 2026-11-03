@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6365 -->
+<!-- ants-roadmap-id-high-water: ANTS=6366 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85511,13 +85511,19 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, found while building ANTS-4954.
   Lanes: mcp.
 
-- 📋 [ANTS-6362] **McpWorkspaceSearch.WiringContract takes about 34 s alone under ASan and timed out at its 60 s limit in the push gate.**
+- ✅ [ANTS-6362] **McpWorkspaceSearch.WiringContract takes about 34 s alone under ASan and timed out at its 60 s limit in the push gate.**
   The push gate's build-asan step failed on 8697fec1 (ANTS-4954, which
   does not touch workspace_search) with only this test, a Timeout.
   Re-run alone under build-asan it passed in 32.7 s and 34.8 s, against
   TIMEOUT 60. It is labelled `fast`. Find what makes it slow under ASan
   (a tree walk or a repeated server start, probably) and cut it, or
   split the slow part out of the `fast` label.
+  Shipped 2026-11-03. Cause: std::regex over the multi-megabyte
+  RemoteControl source; gdb samples of the ASan run showed std::regex's
+  executor in every stack. The test's ten searches and one count now use
+  QRegularExpression: 38.6 s → 0.51 s under ASan, 0.59 s → 0.06 s in
+  Release. A mutation probe (the INV-6 pattern broken) went red. Other
+  tests with the same pattern: ANTS-6366.
   **Layman:** One slow test can fail the pre-push check on a busy machine even when nothing is wrong.
   Kind: test.
   Source: in-session-2026-11-03, push gate on 8697fec1.
@@ -85564,6 +85570,20 @@ than re-filed; everything else lands here.
   **Layman:** Several tools still quietly ignore one of two clashing inputs instead of saying so.
   Kind: fix.
   Source: in-session-2026-11-03, found while building ANTS-6360.
+  Lanes: mcp.
+
+- 📋 [ANTS-6366] **Other scrape tests run std::regex over whole source files, which ANTS-6362 measured as 60 times slower under ASan.**
+  ANTS-6362 cut McpWorkspaceSearch.WiringContract from 38.6 s to 0.5 s
+  under ASan by swapping std::regex for QRegularExpression; gdb samples
+  showed std::regex's executor in every stack. `rg -l` finds other test
+  files calling std::regex_search on a slurped source (rcCpp, ciCpp,
+  mwCpp and the like). Not yet measured. Fix: time the `fast` tests
+  under build-asan, move srcRe/srcSearch/srcCount from
+  test_mcp_workspace_search.cpp into tests/_support/srcgrep.h, and
+  convert the slow ones.
+  **Layman:** More tests may be slow enough to fail the pre-push check on a busy machine for the same reason as ANTS-6362.
+  Kind: test.
+  Source: in-session-2026-11-03, found while fixing ANTS-6362.
   Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
