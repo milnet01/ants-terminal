@@ -85374,6 +85374,12 @@ than re-filed; everything else lands here.
   partition built from them leaves such a script out. Fix: switch those
   call sites to isIndexableFile where they hold a QFileInfo, then check
   the partition tests.
+  Read 2026-11-03: not a straight swap. indiereviewengine.cpp checks the
+  suffix in five places with different jobs. One reports dropped files as
+  unassigned on purpose (UnassignedSources in the header). One already
+  admits any extensionless file starting "#!". The citation scan matches
+  `path.ext` tokens, so an extensionless file cannot be cited at all.
+  Decide per site before editing.
   **Layman:** Code reviews can still miss a one-file script that has no extension, though the project map now lists it.
   Kind: enhancement.
   Source: in-session-2026-11-03, found while building ANTS-4963.
