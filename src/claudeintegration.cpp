@@ -8863,7 +8863,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "applied[], applied_count, skipped[], skipped_count, "
                         "changed}. Refusals: bad_args, no_project, write_failed. "
                         "caller_cwd required. Not audit_falsepos_log, which writes the "
-                        "reviewers' prose ledger.");
+                        "reviewers' prose ledger. Many files, one rule: "
+                        ".audit_allowlist.json.");
                     t["detail"] = QStringLiteral(
                         "Record learned-false-positive verdicts into "
                         "<project>/.audit_cache/learned-fp.jsonl — the "
@@ -8895,7 +8896,21 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "`no_project` (caller_cwd unresolved), "
                         "`write_failed` (I/O error). caller_cwd required. "
                         "NOT the same as audit_falsepos_log, which writes the "
-                        "prose ledger the review skills read.");
+                        "prose ledger the review skills read. "
+                        // ANTS-4966 — the class-wide form already exists, so
+                        // point at it rather than add a second matcher.
+                        "A false positive that is a property of the rule, "
+                        "repeated across many files, needs no entry per site: "
+                        "add ONE object to the \"allowlist\" array in "
+                        "<project>/.audit_allowlist.json, "
+                        "{\"rule\", \"path_glob\", \"line_regex\", \"reason\"}. "
+                        "`path_glob` matches the file as the tool reports it "
+                        "(`*` stays within a folder, `**` crosses folders); "
+                        "`line_regex` matches the message. All three of rule, "
+                        "path_glob and line_regex are required. audit_run and "
+                        "the Audit dialog both apply it, and it also covers "
+                        "files added later. This verb does not write that "
+                        "file.");
                     t["selection_hint"] = QStringLiteral(
                         "Use when you have verified an audit finding is a "
                         "false positive and want future audits to stop "

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6361 -->
+<!-- ants-roadmap-id-high-water: ANTS=6363 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85067,7 +85067,7 @@ than re-filed; everything else lands here.
   Source: demoreel_Ants_MCP_Feedback.md 2026-09-08.
   Lanes: mcp.
 
-- 📋 [ANTS-4966] **audit_dismiss has no class-wide form, so a false positive that is a property of the rule costs one call per site.**
+- ✅ [ANTS-4966] **audit_dismiss has no class-wide form, so a false positive that is a property of the rule costs one call per site.**
   The fingerprint ledger is keyed on rule + file + message, which is
   right for a one-off and has no expression for a false positive
   that is a property of the RULE against this project rather than of
@@ -85098,6 +85098,14 @@ than re-filed; everything else lands here.
   Check against docs/standards/audit-false-positives.md before
   building: that ledger's contract is the thing being extended, and
   a coarser key changes what a stale entry can hide.
+  Resolved (2026-11-03): the class-wide form already existed as
+  .audit_allowlist.json ({rule, path_glob, line_regex, reason};
+  ANTS-3615 made audit_run apply it, the Audit dialog already did). One
+  entry covers every file the glob matches, files added later included.
+  audit_dismiss's description and detail now point at it, and
+  docs/standards/audit-false-positives.md names all three /audit
+  suppression files. A verb that writes allowlist entries is split off
+  as a considered item.
   **Layman:** Dismissing one wrong warning that appears in fifty places takes fifty separate calls, so nobody records it.
   Kind: enhancement.
   Source: Contact_List_Ants_MCP_Feedback.md 2026-09-08.
@@ -85464,6 +85472,32 @@ than re-filed; everything else lands here.
   Kind: fix.
   Source: in-session-2026-11-03, found while building ANTS-4954.
   Lanes: mcp.
+
+- 📋 [ANTS-6362] **McpWorkspaceSearch.WiringContract takes about 34 s alone under ASan and timed out at its 60 s limit in the push gate.**
+  The push gate's build-asan step failed on 8697fec1 (ANTS-4954, which
+  does not touch workspace_search) with only this test, a Timeout.
+  Re-run alone under build-asan it passed in 32.7 s and 34.8 s, against
+  TIMEOUT 60. It is labelled `fast`. Find what makes it slow under ASan
+  (a tree walk or a repeated server start, probably) and cut it, or
+  split the slow part out of the `fast` label.
+  **Layman:** One slow test can fail the pre-push check on a busy machine even when nothing is wrong.
+  Kind: test.
+  Source: in-session-2026-11-03, push gate on 8697fec1.
+  Lanes: mcp.
+
+- 💭 [ANTS-6363] **No verb writes a .audit_allowlist.json entry, so a class-wide dismissal is a hand-edit of a JSON file.**
+  ANTS-4966 found the class-wide form already exists: an
+  .audit_allowlist.json entry {rule, path_glob, line_regex, reason},
+  applied by audit_run and the Audit dialog. audit_dismiss's detail and
+  docs/standards/audit-false-positives.md now point at it. What is left
+  is a write path from a session, for example an audit_dismiss form
+  taking path_glob + line_regex, reusing AuditDialog's
+  appendAllowlistEntry logic (atomic QSaveFile) moved into AuditEngine.
+  Build it when a session reports the hand-edit as a cost.
+  **Layman:** Hiding one kind of wrong warning across many files means editing a settings file by hand.
+  Kind: enhancement.
+  Source: in-session-2026-11-03, split from ANTS-4966.
+  Lanes: audit, mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

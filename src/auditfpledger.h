@@ -14,7 +14,7 @@
 //                                (falseposledger; the sibling this mirrors).
 //
 // Storage:  <projectRoot>/.audit_cache/learned-fp.jsonl  (JSONL, 0600).
-// Spec:     docs/specs/ANTS-1708.md
+// Spec:     tests/features/audit_fp_ledger/spec.md
 //
 // Pure (Qt6::Core, no Finding dependency) so it lives in ants_core_lib next
 // to falseposledger. The Finding-aware suppression filter that consumes it

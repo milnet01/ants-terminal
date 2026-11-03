@@ -52,6 +52,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`audit_dismiss` and the false-positive standard point at `.audit_allowlist.json`, where one entry dismisses a false positive across every file a glob matches** (ANTS-4966)
+
 - **`read_region` returns a slice as text up to 64 KiB, as `read_regions` does, and every spilled reply names the threshold it crossed in `threshold_bytes`** (ANTS-4954)
 
 - **The MCP authoring standard names batch arguments by what they hold: `paths`, `ids` or `items`; read_regions' alias help now says two names together are refused** (ANTS-4952)

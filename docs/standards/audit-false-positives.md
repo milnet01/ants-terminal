@@ -41,6 +41,18 @@ Note: the tool names in the last column (`cold_eyes_brief`, `indie_review_dispat
 files**. `.audit_suppress` is line-grain and tool-keyed; the new
 ledger is prose-grain and review-kind-keyed. Both coexist.
 
+`/audit` has two more suppression files, and both the Audit dialog and
+headless `audit_run` apply them:
+
+- `.audit_cache/learned-fp.jsonl` — one finding, keyed by a
+  line-independent fingerprint. The `audit_dismiss` verb writes it.
+- `.audit_allowlist.json` — a class of findings: one
+  `{rule, path_glob, line_regex, reason}` entry covers every file the
+  glob matches, files added later included. Use it when the false
+  positive is a property of the rule, not of one site (ANTS-4966). No
+  verb writes it; edit the file. A broad glob can hide a real finding,
+  so give it a `reason` a later reader can check.
+
 ## File location and format
 
 **Path:** `.ants_review_falsepos.jsonl` at project root. `.jsonl`
