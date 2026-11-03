@@ -54,6 +54,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **spec_log append_loop writes a `### <label>` heading row, with the body under it and row_shape "heading", when a loop log's latest rows are headings** (ANTS-6361)
+
 - **invariant_check and similar_code refuse bad_op_combo, naming both in supplied[], when a call sends an argument and its alias together (files and paths, shape and query)** (ANTS-6360)
 
 - **Review lanes, and the readability verbs that walk a directory, now include an executable script with no extension when its first line is a shell or Python shebang, matching codebase_index** (ANTS-6358)

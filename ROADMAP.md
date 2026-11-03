@@ -85494,13 +85494,18 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, found while building ANTS-4952.
   Lanes: mcp.
 
-- 📋 [ANTS-6361] **spec_log append_loop writes a bullet row into a loop log whose latest rows are ### headings.**
+- ✅ [ANTS-6361] **spec_log append_loop writes a bullet row into a loop log whose latest rows are ### headings.**
   docs/specs/ANTS-2094.md's Cold-eyes loop log ends in `### <label>`
   heading rows with prose under them. append_loop reported
   row_shape:"bullet", row_order:"ambiguous" and appended a
   `- **<label>** — <body>` bullet glued to the last heading's prose.
   Fix: when the log's last row is a heading, write a heading row; add a
   test on a heading-shaped log.
+  Shipped 2026-11-03: appendBulletRow takes a heading row when the
+  section's last `### ` line follows its last `- **` bullet; order
+  inferred from the first and last headings, as the bullet arm does.
+  McpSpecLog.Ants6361HeadingShapedLogGetsAHeadingRow covers
+  oldest-first, newest-first and the no-label refusal.
   **Layman:** The tool that adds a note to a design document's review log can write it in a different layout from the notes above it.
   Kind: fix.
   Source: in-session-2026-11-03, found while building ANTS-4954.

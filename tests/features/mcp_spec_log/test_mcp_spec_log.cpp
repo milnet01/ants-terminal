@@ -673,6 +673,82 @@ TEST(McpSpecLog, Ants5769BulletLogDirectionInference) {
               d.content.indexOf(QStringLiteral("- **Loop 1")));
 }
 
+// ANTS-6361 — a log whose latest rows are `### <label>` headings with prose
+// under them gets a heading row, not a bullet. Seen on docs/specs/ANTS-2094.md:
+// bullet loops first, then heading rows; the verb wrote `- **label** — body`
+// glued to the last heading's prose and reported row_order "ambiguous".
+TEST(McpSpecLog, Ants6361HeadingShapedLogGetsAHeadingRow) {
+    const QString log = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## Cold-eyes loop log\n"
+        "\n"
+        "- **Loop 1 (2026-06-16)** — two findings.\n"
+        "\n"
+        "### ANTS-1 amendment loop (2026-07-16)\n"
+        "\n"
+        "- **Loop 1** — clean.\n"
+        "\n"
+        "### ANTS-2 implementation row (2026-10-03)\n"
+        "\n"
+        "Origin: implementation. Some prose\n"
+        "that wraps.\n"
+        "\n"
+        "## Later\n"
+        "\n"
+        "text.\n");
+    const auto r = SpecLog::appendLoop(
+        log, QStringLiteral("ANTS-3 implementation row (2026-11-03)"),
+        QStringLiteral("Origin: implementation."));
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    EXPECT_EQ(r.rowShape, QStringLiteral("heading"));
+    EXPECT_EQ(r.rowOrder, QStringLiteral("oldest_first"));
+    EXPECT_TRUE(r.content.contains(QStringLiteral(
+        "that wraps.\n"
+        "\n"
+        "### ANTS-3 implementation row (2026-11-03)\n"
+        "\n"
+        "Origin: implementation.\n"
+        "\n"
+        "## Later\n")))
+        << r.content.toStdString();
+    EXPECT_FALSE(r.content.contains(QStringLiteral("- **ANTS-3")));
+    EXPECT_EQ(r.line, 16) << "the reported line is the heading's real line";
+
+    // Newest first by date → the heading row goes above the first heading.
+    const QString newest = QStringLiteral(
+        "## Cold-eyes loop log\n"
+        "\n"
+        "### ANTS-2 row (2026-10-03)\n"
+        "\n"
+        "Later prose.\n"
+        "\n"
+        "### ANTS-1 row (2026-07-16)\n"
+        "\n"
+        "Earlier prose.\n");
+    const auto n = SpecLog::appendLoop(newest,
+                                       QStringLiteral("ANTS-3 row (2026-11-03)"),
+                                       QStringLiteral("Newest."));
+    ASSERT_TRUE(n.ok) << n.error.toStdString();
+    EXPECT_EQ(n.rowOrder, QStringLiteral("newest_first"));
+    EXPECT_TRUE(n.content.startsWith(QStringLiteral(
+        "## Cold-eyes loop log\n"
+        "\n"
+        "### ANTS-3 row (2026-11-03)\n"
+        "\n"
+        "Newest.\n"
+        "\n"
+        "### ANTS-2 row (2026-10-03)\n")))
+        << n.content.toStdString();
+    EXPECT_EQ(n.line, 3);
+
+    // A heading row needs a label: the heading IS the label.
+    const auto noLabel = SpecLog::appendLoop(log, QString(),
+                                             QStringLiteral("body only."));
+    EXPECT_FALSE(noLabel.ok);
+    EXPECT_EQ(noLabel.code, QStringLiteral("bad_args"));
+}
+
 // ANTS-3651 — append_loop must append to the EXISTING loop-log section,
 // wherever it sits, and must never create a second one.
 //

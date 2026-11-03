@@ -246,7 +246,9 @@ static int slBulletOrder(const QString &a, const QString &b) {
         QRegularExpression::CaseInsensitiveOption);
     static const QRegularExpression dateRe(
         QStringLiteral("\\d{4}-\\d{2}-\\d{2}"));
+    // A `### <label>` heading row (ANTS-6361) is its whole text after `### `.
     const auto label = [](const QString &line) {
+        if (line.startsWith(QStringLiteral("### "))) return line.mid(4);
         const int end = line.indexOf(QStringLiteral("**"), 4);
         return end < 0 ? line.mid(4) : line.mid(4, end - 4);
     };
@@ -389,6 +391,59 @@ static EditResult appendBulletRow(QStringList lines, int hdr, int loopEnd,
                         "rendered — pass `label` and `body` for a bullet "
                         "log, or convert the section to a table first. "
                         "Nothing was written."));
+
+    // ANTS-6361 — a log whose latest row is a `### <label>` heading with
+    // prose under it takes a heading row. A bullet there was glued to the
+    // last heading's prose, in a layout no other row used.
+    int firstHeading = -1, lastHeading = -1, lastBullet = -1;
+    for (int i = hdr + 1; i < loopEnd; ++i) {
+        if (fence.at(i)) continue;
+        if (lines.at(i).startsWith(QStringLiteral("### "))) {
+            if (firstHeading < 0) firstHeading = i;
+            lastHeading = i;
+        } else if (lines.at(i).startsWith(QStringLiteral("- **"))) {
+            lastBullet = i;
+        }
+    }
+    if (lastHeading > lastBullet) {
+        if (label.trimmed().isEmpty())
+            return fail(QStringLiteral("bad_args"),
+                        QStringLiteral(
+                            "spec_log: this loop log's rows are `### <label>` "
+                            "headings, so append_loop needs `label` for the "
+                            "heading. Nothing was written."));
+        QStringList row{QStringLiteral("### ") + label};
+        if (!body.trimmed().isEmpty()) row << QString() << body;
+        QString rowOrder = QStringLiteral("ambiguous");
+        if (lastHeading > firstHeading) {
+            const int c = slBulletOrder(lines.at(firstHeading),
+                                        lines.at(lastHeading));
+            if (c != 0)
+                rowOrder = c < 0 ? QStringLiteral("oldest_first")
+                                 : QStringLiteral("newest_first");
+        }
+        int at;
+        if (rowOrder == QStringLiteral("newest_first")) {
+            at = firstHeading;
+            row << QString();
+        } else {
+            // After the section's last non-blank line, one blank line apart.
+            int last = hdr;
+            for (int i = loopEnd - 1; i > hdr; --i)
+                if (!lines.at(i).trimmed().isEmpty()) { last = i; break; }
+            row.prepend(QString());
+            at = last + 1;
+        }
+        for (int k = 0; k < row.size(); ++k) lines.insert(at + k, row.at(k));
+        EditResult r;
+        r.ok = true;
+        r.content = fromLines(lines, ewn);
+        r.line = (rowOrder == QStringLiteral("newest_first") ? at : at + 1) + 1;
+        r.rowShape = QStringLiteral("heading");
+        r.rowOrder = rowOrder;
+        return r;
+    }
+
     if (label.trimmed().isEmpty() && body.trimmed().isEmpty())
         return fail(QStringLiteral("bad_args"),
                     QStringLiteral(
