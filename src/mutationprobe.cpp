@@ -234,7 +234,7 @@ FailureKind classifyFailure(const QString &block) {
     for (auto it = summary.globalMatch(block); it.hasNext();) {
         const auto m = it.next();
         if (m.captured(1) == QLatin1String("ERROR")) return FailureKind::Error;
-        if (!m.hasCaptured(2) || m.captured(2).isEmpty()) continue;
+        if (m.captured(2).isEmpty()) continue;  // no " - message" (Qt 6.2: no hasCaptured)
         sawSummaryMessage = true;
         const FailureKind k = classifyPython(m.captured(2).trimmed());
         if (k == FailureKind::Error) return k;
