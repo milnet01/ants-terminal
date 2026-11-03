@@ -600,8 +600,8 @@ TEST(McpInvariantCheck, Ants4744PathsIsAnAliasForFiles) {
               viaFiles.value("matched_count").toInt())
         << "the alias must give the SAME answer, not merely an ok one";
 
-    // `files` wins when both are sent — the house rule for every alias here.
-    // Without this arm the alias could be implemented as "last key wins".
+    // ANTS-6360 — both names refuse bad_op_combo, naming both in supplied[]
+    // (mcp-tools.md, schema hygiene). Picking one hid the caller's mistake.
     {
         QJsonObject req;
         req[QStringLiteral("caller_cwd")] = dir.path();
@@ -610,8 +610,13 @@ TEST(McpInvariantCheck, Ants4744PathsIsAnAliasForFiles) {
         req[QStringLiteral("files")] = good;
         req[QStringLiteral("paths")] = bad;
         const QJsonObject both = rc.cmdInvariantCheck(req).object();
-        EXPECT_EQ(both.value("matched_count").toInt(), 1)
-            << "`files` must win, so a caller sending both is not surprised";
+        EXPECT_FALSE(both.value("ok").toBool());
+        EXPECT_EQ(both.value("code").toString().toStdString(),
+                  std::string("bad_op_combo"));
+        const QJsonArray supplied = both.value("supplied").toArray();
+        ASSERT_EQ(supplied.size(), 2);
+        EXPECT_EQ(supplied.at(0).toString().toStdString(), std::string("files"));
+        EXPECT_EQ(supplied.at(1).toString().toStdString(), std::string("paths"));
     }
 
     // Neither key still refuses, and the refusal names both spellings — which

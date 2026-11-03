@@ -323,14 +323,16 @@ TEST(McpSimilarCode, Ants4951QueryIsAnAliasForShape) {
     const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
 
-    // The fallback itself, and that it is a FALLBACK: `shape` is read first and
-    // the alias consulted only when it is empty, which is the house rule for
-    // every alias here (roadmap_query status/filter, apply_edits old/old_string,
-    // invariant_check files/paths).
+    // The fallback itself: `shape` is read first and the alias consulted only
+    // when it is empty.
     expect(contains(rcCpp, "shape = req.value(QStringLiteral(\"query\"))"),
            "alias: cmdSimilarCode falls back to `query`");
     expect(contains(rcCpp, "if (shape.isEmpty())"),
-           "alias: the fallback is guarded, so `shape` wins when both are sent");
+           "alias: the fallback is guarded");
+    // ANTS-6360 — sending both names refuses bad_op_combo with supplied[]
+    // (mcp-tools.md, schema hygiene), rather than silently using `shape`.
+    expect(contains(rcCpp, "aliasClash(req, \"similar_code\", \"shape\", \"query\")"),
+           "alias: shape + query together refuse instead of picking one");
 
     // Declared, or additionalProperties:false refuses the call before the
     // handler is reached, and ANTS-2175 reports it in ignored_args on a

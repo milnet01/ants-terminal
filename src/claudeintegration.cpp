@@ -9968,8 +9968,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         aliasProp["description"] = QStringLiteral(
                             "Alias for `files` — the spelling doc_integrity "
                             "and file_outline use, so the name a caller "
-                            "carries across works here too. `files` wins when "
-                            "both are sent. There is no files-versus-"
+                            "carries across works here too. Sending both "
+                            "refuses bad_op_combo. There is no files-versus-"
                             "directories distinction behind the two names.");
                         props["paths"] = aliasProp;
                     }
@@ -10863,7 +10863,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         p["type"]        = "string";
                         p["description"] = QStringLiteral(
                             "Alias for `shape` (ANTS-4951) — same meaning, "
-                            "and `shape` wins if both are sent. Accepted "
+                            "and sending both refuses bad_op_combo. Accepted "
                             "because workspace_search takes `query` as its "
                             "own alias for `pattern`, so the two "
                             "search-shaped verbs in one family took "

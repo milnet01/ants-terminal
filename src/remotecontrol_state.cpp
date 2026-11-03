@@ -2474,6 +2474,26 @@ static QString mainCheckoutOfWorktree(const QString &root) {
     return m.hasMatch() ? m.captured(1) : QString();
 }
 
+// ANTS-6360 — a caller that sends an argument and its alias together gets a
+// bad_op_combo refusal naming both in supplied[] (mcp-tools.md, schema
+// hygiene; read_regions' ANTS-4512 is the model). Using one silently hid the
+// caller's mistake. Empty when only one name, or neither, was sent.
+static QJsonObject aliasClash(const QJsonObject &req, const char *verb,
+                              const char *canonical, const char *alias) {
+    if (!req.contains(QLatin1String(canonical))
+        || !req.contains(QLatin1String(alias)))
+        return {};
+    QJsonObject o;
+    o["ok"]    = false;
+    o["error"] = QStringLiteral("%1: %2 and %3 are names for the same "
+                                "argument and were sent together; pass one")
+                     .arg(QLatin1String(verb), QLatin1String(canonical),
+                          QLatin1String(alias));
+    o["code"]     = QStringLiteral("bad_op_combo");
+    o["supplied"] = QJsonArray{QLatin1String(canonical), QLatin1String(alias)};
+    return o;
+}
+
 QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-4744 — `paths` is an alias for `files`.
     //
@@ -2484,9 +2504,8 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // refusal. There is no files-versus-directories distinction behind the
     // name — every entry is substring-matched against spec bodies — so the
     // asymmetry was accidental rather than meaningful.
-    //
-    // `files` wins when both are sent, the house rule for every alias here
-    // (roadmap_query's `status`/`filter`, apply_edits' `old`/`old_string`).
+    const QJsonObject clash = aliasClash(req, "invariant_check", "files", "paths");
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     QJsonArray filesArr = req.value(QStringLiteral("files")).toArray();
     if (filesArr.isEmpty())
         filesArr = req.value(QStringLiteral("paths")).toArray();
@@ -4192,10 +4211,8 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
     // one cycle; the guess is natural because workspace_search takes `query` as
     // an alias for `pattern`, so the two search-shaped verbs in one family took
     // different names for one idea.
-    //
-    // `shape` wins when both are sent — the house rule for every alias here
-    // (roadmap_query's status/filter, apply_edits' old/old_string,
-    // invariant_check's files/paths).
+    const QJsonObject clash = aliasClash(req, "similar_code", "shape", "query");
+    if (!clash.isEmpty()) return QJsonDocument(clash);
     QString shape = req.value(QStringLiteral("shape")).toString().trimmed();
     if (shape.isEmpty())
         shape = req.value(QStringLiteral("query")).toString().trimmed();

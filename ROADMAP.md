@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6364 -->
+<!-- ants-roadmap-id-high-water: ANTS=6365 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85477,13 +85477,18 @@ than re-filed; everything else lands here.
   Source: ANTS-4950 split 2026-11-03 (UT_Ants_Ants_MCP_Feedback.md 2026-09-08).
   Lanes: mcp.
 
-- 📋 [ANTS-6360] **invariant_check and similar_code silently pick one name when a caller sends two for one argument.**
+- ✅ [ANTS-6360] **invariant_check and similar_code silently pick one name when a caller sends two for one argument.**
   mcp-tools.md's authoring checklist (schema hygiene, ANTS-4952) now says
   two names for one argument refuse bad_op_combo with supplied[], as
   read_regions does (ANTS-4512). invariant_check takes `files` over
   `paths`, and similar_code takes `shape` over `query`, without saying.
   Fix: refuse as read_regions does, update both alias descriptions, and
   add a test per verb.
+  Shipped 2026-11-03: aliasClash helper in remotecontrol_state.cpp; both
+  schema descriptions updated; McpInvariantCheck.Ants4744 drives the
+  refusal, McpSimilarCode.Ants4951 scrapes it (the bundle cannot link
+  RemoteControl). read_regions keeps its own check, tied to its
+  four-alias loop. The other verbs: ANTS-6365.
   **Layman:** Two tools quietly ignore one of two clashing inputs instead of saying so, which hides the caller's mistake.
   Kind: fix.
   Source: in-session-2026-11-03, found while building ANTS-4952.
@@ -85538,6 +85543,22 @@ than re-filed; everything else lands here.
   **Layman:** Previewing a status update should show what the status will read afterwards.
   Kind: enhancement.
   Source: pressless session message 1175, 2026-11-03.
+  Lanes: mcp.
+
+- 📋 [ANTS-6365] **More verbs silently pick one name when a caller sends an argument and its alias together.**
+  mcp-tools.md's schema-hygiene rule says two names for one argument
+  refuse bad_op_combo with supplied[]. ANTS-6360 fixed invariant_check
+  and similar_code. A search for "wins when both" / "wins if both"
+  still finds the pick-one rule on roadmap_query (status/filter,
+  limit/max_results, query alias), apply_edits (old/old_string,
+  new/new_string), co_change_family (stem/stems) and more schema
+  descriptions in src/claudeintegration.cpp. Fix: move each to the
+  aliasClash helper in src/remotecontrol_state.cpp (lift it to a shared
+  header), update each description, and add a test per verb. Check
+  first that no caller relies on sending both.
+  **Layman:** Several tools still quietly ignore one of two clashing inputs instead of saying so.
+  Kind: fix.
+  Source: in-session-2026-11-03, found while building ANTS-6360.
   Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
