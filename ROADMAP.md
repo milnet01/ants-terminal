@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6374 -->
+<!-- ants-roadmap-id-high-water: ANTS=6375 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74082,6 +74082,22 @@ indie-review finding.
   Source: in-session-2026-10-13 (found during ANTS-1734).
   Lanes: dialogchrome, auditdialog, mainwindow, terminalwidget.
 
+- 📋 [ANTS-6375] **get_last_command redacts secrets and flags instruction-like text, as the other terminal-reading verbs do.**
+  Seen 2026-11-05 while building ANTS-5184: the get_last_command
+  provider in src/mainwindow_mcp.cpp returns lastCommandOutput() as is,
+  in both its full and summary modes. ANTS-5169 routed get_text,
+  get_scrollback, recent_errors and last_selection through
+  RemoteControl::redactForClaude; this fifth terminal-reading verb was
+  not listed, so a key printed by the last command reaches Claude, and
+  ANTS-5184's possible_prompt_injection warning is missing there too.
+  Fix: pass the output through redactForClaude with
+  Config().claudeMcpRedactSecrets() before building either mode, report
+  redacted, and call addInjectionWarning.
+  **Layman:** The tool that shows Claude your last command's output can pass a password or key straight through; the other terminal-reading tools hide them.
+  Kind: security.
+  Source: in-session-2026-11-05 (ANTS-5184 build).
+  Lanes: mcp.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
@@ -92978,11 +92994,16 @@ command ledger is the foundation several others read from.
   Kind: enhancement.
   Source: user-request-2026-09-14 (coder-helper research).
 
-- 💭 [ANTS-5184] **Flag instruction-like text in terminal output returned to Claude as a possible prompt injection.**
+- ✅ [ANTS-5184] **Flag instruction-like text in terminal output returned to Claude as a possible prompt injection.**
   Research rank 23 of 24. Add a warning field to terminal-reading
   replies when the text carries phrases such as 'ignore previous
   instructions'. A signal, not a block: expect false alarms.
   Research links — https://www.cequence.ai/blog/ai/even-the-best-ai-agents-leak-secrets-prompt-injection-is-why/
+  Shipped 2026-11-05 (031cdbeb): get_text, get_scrollback, recent_errors
+  and last_selection carry possible_prompt_injection: [kinds] when the
+  text holds an instruction-like phrase. Contract:
+  tests/features/mcp_prompt_injection_hint/spec.md. get_last_command is
+  not covered; it bypasses the shared funnel (ANTS-6375 tracks it).
   **Layman:** Warn Claude when program output contains text that looks like it is trying to give Claude orders.
   Kind: security.
   Source: user-request-2026-09-14 (coder-helper research).
