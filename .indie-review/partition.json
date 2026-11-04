@@ -170,7 +170,8 @@
         "src/knowhowstore.cpp",
         "src/knowhowstore.h",
         "src/roadmapstore.cpp",
-        "src/roadmapstore.h"
+        "src/roadmapstore.h",
+        "src/roadmapstore_feedback.cpp"
       ]
     },
     {
@@ -567,7 +568,9 @@
         "src/changelogquery.cpp",
         "src/changelogquery.h",
         "src/feedbackfile.cpp",
-        "src/feedbackfile.h"
+        "src/feedbackfile.h",
+        "src/feedbackstore.cpp",
+        "src/feedbackstore.h"
       ]
     },
     {

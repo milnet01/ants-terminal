@@ -288,8 +288,10 @@ TEST(session_orient_bundle, Inv9FeedbackPendingScan) {
                "INV-9: reuses the canonical parser (no bash reimpl)");
         expect(contains(scan, "mcp-feedback-files.md"),
                "INV-9: maintainer-only gate via the format-standard doc");
-        expect(contains(scan, "deltaPresent"),
-               "INV-9: surfaces only files with an un-triaged delta");
+        // ANTS-4513 § 4.6 — which files are pending now comes from the
+        // store's finding rows, which parse() classified.
+        expect(contains(scan, "feedbackFindings"),
+               "INV-9: surfaces only files with un-triaged findings");
     }
     EXPECT_EQ(0, expect_failures());
 }

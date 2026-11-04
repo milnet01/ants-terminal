@@ -51,7 +51,11 @@ public:
     // 3 → 4 by ANTS-5366 § 2.1, which appends project.deregistered_at so a
     // deregistered project keeps its row: its mailbox stays reachable and
     // SQLite never reuses its project_id (ANTS-5483).
-    static constexpr int kSchemaVersion = 4;
+    //
+    // 4 → 5 by ANTS-4513 § 4.1, which adds `feedback_reporter`,
+    // `feedback_finding` and the triage index: the feedback corpus moves into
+    // the store. Whole new tables, so rung 3's shared-constant shape.
+    static constexpr int kSchemaVersion = 5;
 
     // ANTS-5366 § 2.3 — whether a project reader returns a DEREGISTERED row.
     // The default hides it, so a reader added later fails closed: a departed
@@ -1161,6 +1165,44 @@ public:
     // when it still matters. Returns the row count, or -1 on error.
     int pruneAckedMail(qint64 projectId, const QString &cutoff,
                        QString *error = nullptr);
+
+    // --- ANTS-4513 § 4.1 — the feedback corpus ------------------------------
+    // Raw rows only: deriving the findings from `content` is FeedbackStore's
+    // job (src/feedbackstore.h), which runs FeedbackFile::parse — a library
+    // this one does not link. The three writers refuse unless begin() is open,
+    // because § 4.4's read-then-write must sit inside one BEGIN IMMEDIATE.
+    struct FeedbackReporter {
+        qint64  reporterId = 0;
+        QString exportPath;
+        QString content;
+        int     revision = 0;
+        QString exportSha256;   // "" = NULL: no export written yet
+    };
+    struct FeedbackFindingRow {
+        int         ordinal = 0;
+        QString     heading;
+        int         headingLine = 0;
+        QString     entryHeading;
+        QString     filedOn;    // "" = NULL
+        QString     triage;
+        QStringList ids;
+    };
+    // nullopt with *error empty = no row; with *error set = the read failed.
+    std::optional<FeedbackReporter> feedbackReporter(const QString &exportPath,
+                                                     QString *error = nullptr) const;
+    std::optional<qint64> insertFeedbackReporter(
+        const QString &exportPath, const QString &content, const QString &exportSha256,
+        const QString &now, const QVector<FeedbackFindingRow> &rows,
+        QString *error = nullptr);
+    // Replaces content, bumps revision, and rebuilds every finding row.
+    bool updateFeedbackContent(qint64 reporterId, const QString &content,
+                               const QString &now,
+                               const QVector<FeedbackFindingRow> &rows,
+                               QString *error = nullptr);
+    bool setFeedbackExportSha(qint64 reporterId, const QString &sha256,
+                              QString *error = nullptr);
+    std::optional<QVector<FeedbackFindingRow>> feedbackFindings(
+        qint64 reporterId, QString *error = nullptr) const;
 
     // § 2.8 step 1's first branch: the prefix this project already allocates
     // under, which idHighWater() cannot answer because it takes the prefix as

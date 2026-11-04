@@ -532,11 +532,15 @@ TEST(FeedbackAssignId, Ants3631ExactlyOneOfThreeDispositions) {
     // An EMPTY question still writes a marker rather than refusing: the
     // disposition's job is to keep the finding in the reporter's delta, and a
     // marker with no text beats a slot that reverts to "nobody looked".
-    ASSERT_TRUE(writeStr(p, v2()));
+    // ANTS-4513 — a fresh file: the first is now the store's read-only
+    // export, and a hand re-seed of it would be drift.
+    const QString p2 = dir.path() + "/TEST2_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeStr(p2, v2()));
     req = base();
+    req["path"] = p2;
     req["awaiting"] = QStringLiteral("");
     env = rc.cmdFeedbackLog(req).object();
     EXPECT_TRUE(env.value("ok").toBool());
-    EXPECT_TRUE(readStr(p).contains(
+    EXPECT_TRUE(readStr(p2).contains(
         QStringLiteral("- **Proposed ID:** _(awaiting reporter)_")));
 }

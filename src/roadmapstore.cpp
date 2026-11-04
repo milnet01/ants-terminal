@@ -84,6 +84,40 @@ constexpr const char *kMessageInboxIdxDdl =
 constexpr const char *kMessageFromIdxDdl =
     "CREATE INDEX idx_message_from  ON message(from_project_id)";
 
+// ANTS-4513 § 4.1 — the feedback corpus. Shared by createSchema() and the
+// 4 → 5 rung for kMessageTableDdl's reason. A reporter is one
+// *_Ants_MCP_Feedback.md file: `content` is the document verbatim and is the
+// record; every feedback_finding column is derived from it, so the rows can
+// always be rebuilt and never hold anything the text does not.
+constexpr const char *kFeedbackReporterDdl = R"(CREATE TABLE feedback_reporter (
+  reporter_id    INTEGER PRIMARY KEY,
+  export_path    TEXT NOT NULL UNIQUE,
+  content        TEXT NOT NULL,
+  revision       INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+  export_sha256  TEXT,
+  created_at     TEXT NOT NULL CHECK (created_at GLOB
+    '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z'),
+  updated_at     TEXT NOT NULL CHECK (updated_at GLOB
+    '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')
+))";
+
+constexpr const char *kFeedbackFindingDdl = R"(CREATE TABLE feedback_finding (
+  reporter_id    INTEGER NOT NULL REFERENCES feedback_reporter(reporter_id),
+  ordinal        INTEGER NOT NULL,
+  heading        TEXT NOT NULL,
+  heading_line   INTEGER NOT NULL,
+  entry_heading  TEXT NOT NULL DEFAULT '',
+  filed_on       TEXT CHECK (filed_on IS NULL OR filed_on GLOB
+                   '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'),
+  triage         TEXT NOT NULL CHECK (triage IN
+                   ('untriaged','awaiting','closed','mapped','untagged')),
+  ids            TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (reporter_id, ordinal)
+))";
+
+constexpr const char *kFeedbackTriageIdxDdl =
+    "CREATE INDEX idx_feedback_finding_triage ON feedback_finding(triage)";
+
 bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
     QSqlQuery q(db);
     if (q.exec(sql))
@@ -509,6 +543,11 @@ const QVector<RoadmapStore::Upgrade> &RoadmapStore::upgradeLadder() {
             "ALTER TABLE project ADD COLUMN deregistered_at TEXT "
             "CHECK (deregistered_at IS NULL OR deregistered_at GLOB "
             "'[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]:[0-9][0-9]Z')")}},
+        // ANTS-4513 § 4.1 — rung 3's shape again: whole new tables, issued
+        // from the same constants createSchema() uses.
+        Upgrade{5, {QString::fromUtf8(kFeedbackReporterDdl),
+                    QString::fromUtf8(kFeedbackFindingDdl),
+                    QString::fromUtf8(kFeedbackTriageIdxDdl)}},
     };
     return ladder;
 }
@@ -901,6 +940,10 @@ bool RoadmapStore::createSchema(QString *error) {
         QString::fromUtf8(kMessageTableDdl),
         QString::fromUtf8(kMessageInboxIdxDdl),
         QString::fromUtf8(kMessageFromIdxDdl),
+        // ANTS-4513 § 4.1 — shared verbatim with the 4 → 5 rung.
+        QString::fromUtf8(kFeedbackReporterDdl),
+        QString::fromUtf8(kFeedbackFindingDdl),
+        QString::fromUtf8(kFeedbackTriageIdxDdl),
     };
 
     for (const QString &stmt : ddl) {

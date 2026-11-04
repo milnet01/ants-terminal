@@ -323,7 +323,7 @@ Listed only where behavior isn't obvious from the name.
   citation / dedup checks, spec lint and conformance, and the per-project
   `.ants/project.json` settings verb.
 - `remotecontrol_feedback` — the cross-session feedback files (read and
-  write), spec-file writes, git status / log / diff plumbing, audit
+  write, through `feedbackstore`), spec-file writes, git status / log / diff plumbing, audit
   false-positive bookkeeping, and the `caller_cwd` → project-root resolver
   every verb depends on.
 - `remotecontrol_state` — session orientation and "where am I" state (git,
@@ -515,6 +515,12 @@ Listed only where behavior isn't obvious from the name.
   it lives under `XDG_DATA_HOME` (never a cache path), is created
   `synchronous=FULL` and mode 0600, and its only rebuild path is the
   export. Spec ANTS-3756.
+- `roadmapstore_feedback` (`ants_roadmapstore_lib`) — the feedback corpus
+  tables' rows: one reporter per feedback file, and its derived findings
+  (ANTS-4513).
+- `feedbackstore` (`ants_mcpcore_lib`) — the feedback corpus in the store:
+  import on first touch, the locked write, drift, and the read-only export
+  file (ANTS-4513).
 - `knowhowstore` (`ants_roadmapstore_lib`) — the machine-global know-how store
   in its own `knowhow.sqlite`: every op, refusal and reply of `know_how`
   (ANTS-6310).

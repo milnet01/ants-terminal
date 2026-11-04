@@ -8351,76 +8351,55 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     QJsonObject t;
                     t["name"] = "feedback_log";
                     t["description"] = QStringLiteral(
-                        "Write to a cross-session *_Ants_MCP_Feedback.md file, always "
-                        "at EOF. Contributor: op:\"append_finding\" (creates the file). "
-                        "Maintainer: op:\"assign_id\" (fill a finding's Proposed ID), "
-                        "assign_id_batch, compact_resolved, migrate_v2, set_title, "
-                        "set_format_version, and the v1 ops append_tracking, "
-                        "compact_shipped and prune_tracking. `path` is "
-                        "optional and derived from caller_cwd's leaf. Atomic write. "
-                        "Returns {ok, op, path, bytes_appended, date, created}. "
-                        "Refusals: bad_mode, bad_args, bad_status, not_feedback_file, "
-                        "bad_path, not_found, write_failed. caller_cwd required.");
+                        "Write to a cross-session *_Ants_MCP_Feedback.md finding. "
+                        "The roadmap store holds the text; the file is a read-only "
+                        "export. Contributor: op:\"append_finding\" (registers a new "
+                        "file). Maintainer: op:\"assign_id\" (fill a finding's Proposed "
+                        "ID), assign_id_batch, set_title, reimport. `path` is optional "
+                        "and derived from caller_cwd's leaf. Returns {ok, op, path, "
+                        "bytes_appended, date, created}. Refusals: bad_mode, bad_args, "
+                        "retired, not_feedback_file, bad_path, not_found, not_v2, "
+                        "not_utf8, export_drift, confirm_required, store_failed, "
+                        "write_failed. caller_cwd required.");
                     t["detail"] = QStringLiteral(
-                        "Append to a cross-session "
-                        "*_Ants_MCP_Feedback.md file — always at EOF, "
-                        "never inserting above a maintainer block. "
-                        "op:\"append_finding\" (contributor) renders a "
-                        "dated session heading + one ### sub-block per "
-                        "finding; op:\"append_tracking\" (maintainer) "
-                        "renders the 📋 watermark heading + a mapping "
-                        "table. Creates an absent file with a conforming "
-                        "skeleton on append_finding; append_tracking on an "
-                        "absent file refuses not_found (with `candidates` + "
-                        "`hint` listing sibling *_Ants_MCP_Feedback.md "
-                        "files — ANTS-3366). `path` is OPTIONAL (ANTS-3376): "
-                        "omit it for a first-time log and the conventional "
-                        "<caller_cwd-leaf>_Ants_MCP_Feedback.md at the shared "
-                        "root is derived (reply carries path_derived:true). "
-                        "ANTS-4613: a leaf beginning with a DOT (~/.claude) "
-                        "refuses `bad_args` with `candidates` instead of "
-                        "deriving — such a name can never match the "
-                        "*_Ants_MCP_Feedback.md glob, so the file it created "
-                        "was one nobody would ever read. Name it explicitly. "
-                        "ANTS-5500: unless the git origin remote names the "
-                        "repository and exactly one candidate matches it; "
-                        "then that file is used and `path_derived_reason` "
-                        "says so. "
-                        "Atomic write. Returns {ok, op, path, bytes_appended, "
-                        "date, created}. Refusals: `bad_mode`, `bad_args` "
-                        "(includes no path AND no resolvable caller_cwd), "
-                        "`bad_status` (row status outside 📋🚧✅💭🔄❓), "
-                        "`not_feedback_file`, `bad_path`, `not_found`, "
-                        "`write_failed`. ANTS-3421: op:\"compact_shipped\" "
-                        "(maintainer) collapses confirmed-shipped contributor "
-                        "blocks named in `targets` to a one-line stub (heading "
-                        "kept; gated ✅-shipped + above-watermark + "
-                        "single-finding + idempotent; batch, atomic, dry_run "
-                        "byte report; per-target refusals in skipped[]). "
-                        "ANTS-3443: op:\"compact_resolved\" (maintainer, v2 "
-                        "files) auto-collapses shipped findings' write-ups, "
-                        "gated on the live ROADMAP.md status. ANTS-3446: "
-                        "op:\"migrate_v2\" (maintainer) mechanically converts a "
-                        "v1 file to v2 — bumps the version marker and stamps "
-                        "blank \"**Proposed ID:**\" placeholders on un-triaged "
-                        "findings; leaves the v1 tracking tables in place. "
-                        "ANTS-3447: op:\"assign_id\" (maintainer, v2 triage) "
-                        "fills ONE finding's \"**Proposed ID:**\" line in place "
-                        "with the assigned ids or an n/a closure — the inline "
-                        "replacement for append_tracking. ANTS-4646: "
-                        "op:\"set_title\" (maintainer) rewrites the H1's "
-                        "project name after a rename — the FILENAME is derived "
-                        "from caller_cwd's leaf and is always right, the H1 was "
-                        "writable by no op, and hand-editing it contradicts the "
-                        "file's own instruction. compact_resolved additionally "
-                        "retires a legacy v1 \"## Tracked in ROADMAP\" heading "
-                        "once every id in it is ✅, under the gate it already "
-                        "applies (`retired_headings`). caller_cwd required.");
+                        "ANTS-4513: the feedback corpus lives in the roadmap "
+                        "store. Each write takes the store's write lock, edits "
+                        "the stored text, rebuilds its finding rows, and "
+                        "rewrites the file as a read-only (0444) export, so two "
+                        "sessions writing at once both land. A file with no "
+                        "store row is imported on first touch; a file without "
+                        "the `<!-- ants-mcp-feedback: 2 -->` marker refuses "
+                        "`not_v2`, and one that is not plain UTF-8 refuses "
+                        "`not_utf8`. A file edited by hand refuses every write "
+                        "with `export_drift`: op:\"reimport\" with confirm:true "
+                        "keeps the file's text, and deleting the file keeps the "
+                        "store's. op:\"append_finding\" (contributor) appends a "
+                        "dated session heading + one ### sub-block per finding "
+                        "at the end, and registers a new file from the "
+                        "skeleton. `path` is OPTIONAL (ANTS-3376): omit it and "
+                        "the conventional <caller_cwd-leaf>_Ants_MCP_Feedback.md "
+                        "at the shared root is derived (reply carries "
+                        "path_derived:true). ANTS-4613: a leaf beginning with a "
+                        "DOT (~/.claude) refuses `bad_args` with `candidates` "
+                        "instead of deriving. ANTS-5500: unless the git origin "
+                        "remote names the repository and exactly one candidate "
+                        "matches it; then that file is used and "
+                        "`path_derived_reason` says so. A maintainer op on a "
+                        "path with neither a row nor a file refuses not_found "
+                        "with `candidates` + `hint` (ANTS-3366). ANTS-3447: "
+                        "op:\"assign_id\" fills ONE finding's \"**Proposed "
+                        "ID:**\" line in place with the assigned ids, an n/a "
+                        "closure or an awaiting question. ANTS-4646: "
+                        "op:\"set_title\" rewrites the H1's project name after "
+                        "a rename. The six ops that kept files tidy or served "
+                        "format version 1 (compact_resolved, compact_shipped, "
+                        "prune_tracking, append_tracking, migrate_v2, "
+                        "set_format_version) refuse `retired`. caller_cwd "
+                        "required.");
                     t["selection_hint"] = QStringLiteral(
-                        "Use to add feedback to a shared "
-                        "*_Ants_MCP_Feedback.md file (or stamp a "
-                        "maintainer tracking block) instead of "
-                        "hand-editing markdown.");
+                        "Use to add or triage feedback in a shared "
+                        "*_Ants_MCP_Feedback.md file instead of hand-editing "
+                        "markdown.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -8458,103 +8437,37 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "title is a SUCCESS, so a rename is re-runnable; "
                             "refuses `no_h1` rather than inventing a heading "
                             "the format fixes the position of.");
-                    // ANTS-4707 — op:"set_format_version" only.
-                    QJsonObject versionProp; versionProp["type"] = "integer";
-                        versionProp["description"] = QStringLiteral(
-                            "op:\"set_format_version\" only. The version to "
-                            "stamp on the file's `ants-mcp-feedback` marker. "
-                            "The marker is a CLAIM ABOUT THE CONTENT, so the "
-                            "write happens only where the content already "
-                            "matches: stamping 2 needs the inline-`**Proposed "
-                            "ID:**` model, stamping 1 needs its absence, and "
-                            "either way round refuses `shape_mismatch` with a "
-                            "hint saying which. Refuses `unknown_version` above "
-                            "the highest version this build can read — a verb "
-                            "must not stamp one it cannot parse — and "
-                            "`no_marker` on a file that has none, which is "
-                            "op:\"migrate_v2\"'s job, since that also builds "
-                            "the shape the marker would claim. "
-                            "`changed:false` on an already-correct marker is a "
-                            "SUCCESS, so a corpus sweep is re-runnable; "
-                            "`dry_run` previews.");
                     QJsonObject opProp; opProp["type"] = "string";
                         { QJsonArray e; e.append(QStringLiteral("append_finding"));
-                          e.append(QStringLiteral("append_tracking"));
-                          e.append(QStringLiteral("compact_shipped"));
-                          e.append(QStringLiteral("prune_tracking"));
-                          e.append(QStringLiteral("compact_resolved"));
-                          e.append(QStringLiteral("migrate_v2"));
                           e.append(QStringLiteral("assign_id"));
                           e.append(QStringLiteral("assign_id_batch"));  // ANTS-4671
                           e.append(QStringLiteral("set_title"));   // ANTS-4646
-                          e.append(QStringLiteral("set_format_version"));  // ANTS-4707
+                          e.append(QStringLiteral("reimport"));    // ANTS-4513
                           opProp["enum"] = e; }
                         opProp["description"] = QStringLiteral(
-                            "Required. \"append_finding\" (contributor) "
-                            "or \"append_tracking\" (maintainer). ANTS-3421 — "
-                            "\"compact_shipped\" (maintainer) collapses each "
-                            "confirmed-shipped contributor block named in "
-                            "`targets` to a one-line \"→ shipped …\" stub "
-                            "(heading kept verbatim; gated on the id being ✅ "
-                            "in a tracking row + above the watermark; dry_run "
-                            "previews the byte savings). ANTS-3442 — "
-                            "\"prune_tracking\" (maintainer) removes superseded "
-                            "DUPLICATE maintainer tracking-table rows, keeping "
-                            "each id's authoritative last row + every heading/"
-                            "header/separator (dedup of the repeated rows an id "
-                            "accrues 📋→🚧→✅ across tables). Optional "
-                            "`scope_ids` restricts to given ids; `dry_run` "
-                            "previews `rows_removed`/`bytes_saved`. Idempotent; "
-                            "atomic. ANTS-3443 — \"compact_resolved\" "
-                            "(maintainer, v2 files only) auto-collapses every "
-                            "shipped finding's write-up to a \"→ shipped ✅ "
-                            "(write-up compacted, ANTS-3443)\" stub that keeps "
-                            "the heading + its `**Proposed ID:**` line (\"→ dropped 🚫 \" "
-                            "when every id is 🚫); gated "
-                            "per-finding on the id(s) being ✅ or 🚫 in the live "
-                            "ROADMAP.md (resolved from caller_cwd). No targets — "
-                            "auto-discovery; `dry_run` previews "
-                            "`findings_collapsed`/`bytes_saved`; per-finding "
-                            "skips (no_shippable_id / already_compacted / "
-                            "roadmap_unresolved_ids / has_open_id) in skipped[]. "
-                            "Idempotent; atomic. Refuses `not_v2` on a v1 file "
-                            "(run migrate_v2 first), `roadmap_unavailable` when "
-                            "ROADMAP.md is unreadable. ANTS-3446 — "
-                            "\"migrate_v2\" (maintainer) one-shot mechanical "
-                            "v1→v2 conversion: bumps the version marker to "
-                            "\"<!-- ants-mcp-feedback: 2 -->\" and stamps a "
-                            "blank \"- **Proposed ID:** _(maintainer to "
-                            "assign)_\" line on each finding-shaped, "
-                            "below-watermark `### ` block that lacks one; the "
-                            "v1 tracking tables are LEFT IN PLACE (not moved/"
-                            "collapsed). No roadmap read. Reports "
-                            "`stamped`/`orphans`/`unclassified`; `already_v2` "
-                            "true (byte-identical no-op) on a v2 file; `dry_run` "
-                            "previews. Idempotent; atomic. ANTS-3474 — pass "
-                            "`backfill_from_tracking:true` to carry each "
-                            "finding's id in from the file's own v1 tracking "
-                            "tables (confidence-gated; `backfilled[]` in the "
-                            "reply, blank on any uncertainty) instead of a blank "
-                            "stamp. ANTS-3447 — "
-                            "\"assign_id\" (maintainer, v2 triage) fills ONE "
+                            "Required. \"append_finding\" (contributor). "
+                            "ANTS-3447 — \"assign_id\" (maintainer) fills ONE "
                             "`### ` finding's `**Proposed ID:**` line: pass "
                             "`heading` (the verbatim `### ` line, + optional "
                             "`heading_line` to disambiguate a repeat) and "
                             "exactly one of `ids` (an ANTS-NNNN array → "
-                            "comma-joined) OR `closure` (a reason string → "
-                            "`n/a — <reason>`, or bare `n/a` when empty). "
-                            "Replaces the existing / placeholder id line, or "
-                            "inserts one when absent. No roadmap read. Reports "
+                            "comma-joined), `closure` (a reason string → "
+                            "`n/a — <reason>`, or bare `n/a` when empty) or "
+                            "`awaiting`. Replaces the existing / placeholder id "
+                            "line, or inserts one when absent. Reports "
                             "`value`/`inserted`/`changed`/`bytes_delta`; "
                             "idempotent (a re-assign of the same value is a "
-                            "byte-identical no-op); `dry_run` previews. Refuses "
+                            "no-op); `dry_run` previews. Refuses "
                             "`target_not_found` / `target_ambiguous` (+ "
                             "`candidates`). \"assign_id_batch\" applies "
                             "`assignments` (assign_id argument objects) in one "
                             "write; failures land in skipped[]. \"set_title\" "
                             "replaces the H1's project name with `title`. "
-                            "\"set_format_version\" stamps `version`, refusing "
-                            "where the content does not match it.");
+                            "ANTS-4513 — \"reimport\" settles `export_drift` by "
+                            "keeping the hand-edited file's text; it needs "
+                            "`confirm:true`, and without it refuses "
+                            "`confirm_required` with `store_bytes` and "
+                            "`file_bytes`.");
                     QJsonObject dateProp; dateProp["type"] = "string";
                         dateProp["description"] = QStringLiteral(
                             "Optional YYYY-MM-DD; defaults to today.");
@@ -8569,8 +8482,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "Optional finding heading level, default h2.");
                     QJsonObject noteProp; noteProp["type"] = "string";
                         noteProp["description"] = QStringLiteral(
-                            "Optional prose under the heading (append_finding / "
-                            "append_tracking). ANTS-3571 — on assign_id it is "
+                            "Optional prose under the heading (append_finding). "
+                            "ANTS-3571 — on assign_id it is "
                             "written as a single `- **Note:**` bullet under the "
                             "finding's Proposed ID line (newlines folded to "
                             "spaces; re-assign replaces it in place).");
@@ -8586,65 +8499,22 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "append_finding: ≥1 finding. Each: title "
                             "(required) + optional what/repro/impact/"
                             "suggested_fix.");
-                    QJsonObject rowsProp; rowsProp["type"] = "array";
-                        { QJsonObject it; it["type"] = "object";
-                          QJsonObject rp;
-                          QJsonObject s; s["type"] = "string";
-                          QJsonObject idsArr; idsArr["type"] = "array";
-                          QJsonObject idIt; idIt["type"] = "string";
-                          idsArr["items"] = idIt;
-                          rp["item"] = s; rp["ids"] = idsArr;
-                          rp["status"] = s; rp["notes"] = s;
-                          it["properties"] = rp;
-                          rowsProp["items"] = it; }
-                        rowsProp["description"] = QStringLiteral(
-                            "append_tracking: ≥1 row. Each: item "
-                            "(required), ids (ANTS-NNNN array, may be "
-                            "empty → n/a), status (📋🚧✅💭🔄❓), notes "
-                            "(optional).");
-                    QJsonObject sentinelProp; sentinelProp["type"] = "boolean";
-                        sentinelProp["description"] = QStringLiteral(
-                            "append_tracking: emit the trailing \"End of "
-                            "…\" breadcrumb (default true).");
-                    QJsonObject targetsProp; targetsProp["type"] = "array";
-                        { QJsonObject it; it["type"] = "object";
-                          QJsonObject tp;
-                          QJsonObject s; s["type"] = "string";
-                          QJsonObject i; i["type"] = "integer";
-                          tp["heading"] = s; tp["heading_line"] = i;
-                          tp["id"] = s; tp["session"] = s; tp["date"] = s;
-                          it["properties"] = tp;
-                          targetsProp["items"] = it; }
-                        targetsProp["description"] = QStringLiteral(
-                            "compact_shipped: ≥1 target block to collapse. "
-                            "Each: heading (required — the block's verbatim "
-                            "`#`/`## ` heading line), id (required — the "
-                            "ANTS-NNNN it shipped as, gated ✅), optional "
-                            "heading_line (1-based, disambiguates a repeated "
-                            "heading), optional session/date for the stub "
-                            "breadcrumb.");
+                    // ANTS-4513 — op:"reimport" only.
+                    QJsonObject confirmProp; confirmProp["type"] = "boolean";
+                        confirmProp["default"] = false;
+                        confirmProp["description"] = QStringLiteral(
+                            "op:\"reimport\" only: replace the store's text with "
+                            "the hand-edited file's. Without it the op refuses "
+                            "`confirm_required`.");
                     props["path"]          = pathProp;
                     props["op"]            = opProp;
                     props["title"]         = titleProp;           // ANTS-4646
-                    props["version"]       = versionProp;         // ANTS-4707
                     props["date"]          = dateProp;
                     props["session_label"] = labelProp;
                     props["heading_level"] = hlProp;
                     props["note"]          = noteProp;
                     props["findings"]      = findingsProp;
-                    props["rows"]          = rowsProp;
-                    props["sentinel"]      = sentinelProp;
-                    props["targets"]       = targetsProp;        // ANTS-3421
-                    QJsonObject scopeIdsProp; scopeIdsProp["type"] = "array";
-                        { QJsonObject idIt; idIt["type"] = "string";
-                          scopeIdsProp["items"] = idIt; }
-                        scopeIdsProp["description"] = QStringLiteral(
-                            "prune_tracking (ANTS-3442): optional ANTS-NNNN ids "
-                            "to restrict pruning to. OMIT to prune every "
-                            "superseded row; an explicitly EMPTY array is "
-                            "bad_args (restrict-to-nothing is a no-op you almost "
-                            "never mean).");
-                    props["scope_ids"]     = scopeIdsProp;        // ANTS-3442
+                    props["confirm"]       = confirmProp;         // ANTS-4513
                     // ANTS-3447 — assign_id top-level fields.
                     QJsonObject headingProp; headingProp["type"] = "string";
                         headingProp["description"] = QStringLiteral(
@@ -8687,8 +8557,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             "it is classified BEFORE the id and closure tests, "
                             "so a question quoting an id ('same as ANTS-1234?') "
                             "is not mistaken for an assignment. It contributes "
-                            "no ids to mapped_ids and compact_resolved refuses "
-                            "it (no_shippable_id). The reporter answers by "
+                            "no ids to mapped_ids. The reporter answers by "
                             "appending a new finding whose heading quotes the "
                             "original — never by editing the slot; you clear "
                             "the marker when you triage their answer. Supply "
@@ -8723,20 +8592,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "would.");
                     props["assignments"]   = assignmentsProp;    // ANTS-4671
                     props["awaiting"]      = awaitingProp;        // ANTS-3631
-                    // ANTS-3474 — migrate_v2 tracking-table backfill opt-in.
-                    QJsonObject backfillProp; backfillProp["type"] = "boolean";
-                        backfillProp["default"] = false;
-                        backfillProp["description"] = QStringLiteral(
-                            "migrate_v2 (ANTS-3474): when true, backfill each "
-                            "migrated finding's inline `**Proposed ID:**` from "
-                            "the file's own v1 tracking rows (token-match "
-                            "heading↔item; a single id clearing the confidence "
-                            "threshold with a clear margin is stamped inline, "
-                            "else left blank — never a wrong id). The reply's "
-                            "`backfilled[]` lists each {heading, line, id, "
-                            "confidence_pct}; `dry_run` previews them for review. "
-                            "Default false = the mechanical blank-stamp migrate.");
-                    props["backfill_from_tracking"] = backfillProp;  // ANTS-3474
                     props["dry_run"]       = makeDryRunProp();   // ANTS-2227
                     props["caller_cwd"]    = makeCallerCwdReadProp();
                     schema["properties"] = props;
@@ -17008,16 +16863,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("roadmap_log/value"), QStringLiteral("amend_field: the new value; lanes and evidence take an array; empty clears layman.")},
                         {QStringLiteral("feedback_log/assignments"), QStringLiteral("assign_id_batch: assign_id argument objects applied in one write; failures land in skipped[].")},
                         {QStringLiteral("feedback_log/awaiting"), QStringLiteral("assign_id: a question for the reporter; the finding stays untriaged. One of ids/closure/awaiting.")},
-                        {QStringLiteral("feedback_log/backfill_from_tracking"), QStringLiteral("migrate_v2: fill each Proposed ID from the file's v1 tracking rows where confident.")},
+                        {QStringLiteral("feedback_log/confirm"), QStringLiteral("reimport: replace the store's text with the hand-edited file's.")},
                         {QStringLiteral("feedback_log/heading"), QStringLiteral("assign_id: the finding's verbatim ### heading line.")},
                         {QStringLiteral("feedback_log/ids"), QStringLiteral("assign_id: the ANTS-NNNN ids to assign. One of ids/closure/awaiting.")},
                         {QStringLiteral("feedback_log/note"), QStringLiteral("Prose under the heading; on assign_id, a single Note line.")},
                         {QStringLiteral("feedback_log/op"), QStringLiteral("Required. Contributors use append_finding; the rest are maintainer ops. Detail: tool_info.")},
                         {QStringLiteral("feedback_log/path"), QStringLiteral("The feedback file; omitted, derived from caller_cwd's folder name at the shared root.")},
-                        {QStringLiteral("feedback_log/scope_ids"), QStringLiteral("prune_tracking: limit pruning to these ids; omit for all.")},
-                        {QStringLiteral("feedback_log/targets"), QStringLiteral("compact_shipped: blocks to collapse, each {heading, id, heading_line?, session?, date?}.")},
                         {QStringLiteral("feedback_log/title"), QStringLiteral("set_title: the project name, replacing the text after the H1's last em dash.")},
-                        {QStringLiteral("feedback_log/version"), QStringLiteral("set_format_version: the version to stamp; refuses where the content does not match it.")},
                         {QStringLiteral("roadmap_migrate/accept_deletions"), QStringLiteral("Allow a run deleting over a quarter of the project's items (else mass_deletion).")},
                         {QStringLiteral("roadmap_migrate/backup"), QStringLiteral("Snapshot the store first (default true); a failed snapshot refuses.")},
                         {QStringLiteral("roadmap_migrate/backup_to"), QStringLiteral("Snapshot path; default pre-migrate.sqlite in the snapshot folder. Overwritten each run.")},

@@ -1548,8 +1548,8 @@ private:
     RoadmapStore *roadmapStoreOrNull(RoadmapSource::ReadError *why,
                                      QString *error) const;
 
-    // ANTS-3802 — the cross-repo id resolver shared by feedback_query and
-    // feedback_log's compact_resolved. ANTS-3793 made it a member: the sibling
+    // ANTS-3802 — feedback_query's cross-repo id resolver (compact_resolved,
+    // its other caller, was retired by ANTS-4513). ANTS-3793 made it a member: the sibling
     // roadmaps it opens may themselves be migrated, so it reads through
     // roadmapBullets() and therefore needs the owner's store connection.
     // Returns id → {status, resolved_from, shipped_date?}.

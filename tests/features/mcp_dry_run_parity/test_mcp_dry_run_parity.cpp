@@ -108,8 +108,9 @@ TEST(McpDryRunParity, HandlerGatesWired) {
     // project_settings — writeOut dry_run early-return.
     EXPECT_TRUE(has(rc, "o[QStringLiteral(\"would_write\")] = true;"))
         << "project_settings writeOut must preview would_write";
-    // feedback_log — pre-write preview envelope.
-    EXPECT_TRUE(has(rc, "out[\"bytes_appended\"] = static_cast<qint64>(addedUtf8.size());"));
+    // feedback_log — ANTS-4513: the flag rides into the store's write, which
+    // rolls back before the first UPDATE on a dry run.
+    EXPECT_TRUE(has(rc, "*store, resolved, skeleton, dryRun,"));
     // audit_falsepos_log — passes the flag to appendEntry.
     EXPECT_TRUE(has(rc, "ants::falsepos::appendEntry(root, e, dryRun)"))
         << "audit_falsepos_log must thread dry_run into appendEntry";

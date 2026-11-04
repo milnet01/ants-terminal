@@ -406,34 +406,6 @@ TEST(RoadmapDroppedStatus, Inv7QueryFilters) {
     EXPECT_TRUE(found) << dump(idx);
 }
 
-// ------------------------------------------------------------------ INV-8 --
-TEST(RoadmapDroppedStatus, Inv8DroppedFindingCollapses) {
-    QTemporaryDir dir;
-    ASSERT_TRUE(dir.isValid());
-    ASSERT_TRUE(writeFile(dir.filePath(QStringLiteral("ROADMAP.md")),
-        "# Roadmap\n\n- \xF0\x9F\x9A\xAB [ANTS-1600] **Not doing this.**\n"
-        "- \xF0\x9F\x9A\xA7 [ANTS-1601] **Still open.**\n"));
-    const QString fb = dir.filePath(QStringLiteral("TEST_Ants_MCP_Feedback.md"));
-    ASSERT_TRUE(writeFile(fb,
-        "<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback TEST\n\n"
-        "## 2026-09-19 \xE2\x80\x94 session\n\n"
-        "### Issue #1 \xE2\x80\x94 declined\n"
-        "- **Proposed ID:** ANTS-1600\n- **What:** the unwanted-thing text.\n\n"
-        "### Issue #2 \xE2\x80\x94 open\n"
-        "- **Proposed ID:** ANTS-1601\n- **What:** the open-thing text.\n"));
-    RemoteControl rc(nullptr);
-    QJsonObject req;
-    req[QStringLiteral("op")]         = QStringLiteral("compact_resolved");
-    req[QStringLiteral("path")]       = fb;
-    req[QStringLiteral("caller_cwd")] = dir.path();
-    const QJsonObject env = rc.cmdFeedbackLog(req).object();
-    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool()) << dump(env);
-    EXPECT_EQ(env.value(QStringLiteral("findings_collapsed")).toInt(), 1) << dump(env);
-    const QString md = readAll(fb);
-    EXPECT_FALSE(md.contains(QStringLiteral("the unwanted-thing text")));
-    EXPECT_TRUE(md.contains(QStringLiteral("the open-thing text")));
-}
-
 // ----------------------------------------------------------------- INV-10 --
 TEST(RoadmapDroppedStatus, Inv10DroppedFirstBulletDetectsAsAntsV1) {
     const QByteArray body = "# Roadmap\n\n- \xF0\x9F\x9A\xAB [DEMO-0001] **Gone.**\n"

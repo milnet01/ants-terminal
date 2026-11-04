@@ -4,6 +4,7 @@
 #include "build_info.h"    // ANTS-4741 — the stale-binary comparison
 #include "guithread.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
+#include "feedbackstore.h"       // ANTS-4513
 #include "markdownscan.h"
 #include "readlog.h"
 #include "readregion.h"          // ANTS-4983 — the shared candidate ranker
@@ -33,14 +34,11 @@ static QString fbIdPrefix(const QString &id) {
     return dash > 0 ? id.left(dash) : id;
 }
 
-// ANTS-3802 — the cross-repo id resolver, lifted out of cmdFeedbackQuery so
-// compact_resolved uses the SAME one. Extracting it is the fix, not a tidy-up:
-// a *_Ants_MCP_Feedback.md file is by construction written from one project
-// ABOUT another project's tooling, so its ids are never the caller's. A verb
-// that resolves only against caller_cwd's ROADMAP can therefore never collapse
-// a shipped finding in the very file it exists to compact — it succeeds only
-// when pointed at a file whose ids happen to be the caller's, which is the Ants
-// Terminal maintainer case and nothing else.
+// ANTS-3802 — the cross-repo id resolver feedback_query uses (compact_resolved
+// shared it until ANTS-4513 retired that op). A *_Ants_MCP_Feedback.md file is
+// by construction written from one project ABOUT another project's tooling, so
+// its ids are never the caller's, and resolving only against caller_cwd's
+// ROADMAP would leave them unresolved.
 //
 // Cost-gated on a foreign id being present; RAM-bounded — at most ONE full
 // roadmap parse per distinct foreign prefix, retaining only the mapped foreign
@@ -172,6 +170,37 @@ static void fbMarkDerived(QJsonObject &out, const QString &reason) {
         out[QStringLiteral("path_derived_reason")] = reason;
 }
 
+// ANTS-4513 § 4.7 — the store every feedback verb reads and writes. A fresh
+// connection per call, as session_message opens one: § 4.4's BEGIN IMMEDIATE
+// needs a connection with no transaction of its own already open. A store
+// that does not open is a refusal; there is no file fallback, which would be
+// the second storage path § 3 rules out.
+static std::unique_ptr<RoadmapStore> fbOpenStore(const QString &verb,
+                                                 QJsonObject *refusal) {
+    auto store = std::make_unique<RoadmapStore>(RoadmapStore::defaultPath());
+    QString err;
+    if (store->open(&err)) return store;
+    *refusal = fbErr(QStringLiteral("store_failed"),
+                     QStringLiteral("%1: cannot open the roadmap store: %2")
+                         .arg(verb, err));
+    return nullptr;
+}
+
+// A FeedbackStore refusal as the verb's envelope. `notFound` is the op's own
+// wording for a reporter with neither a row nor a file.
+static QJsonObject fbStoreRefusal(const FeedbackStore::Result &r,
+                                  const QString &verb, const QString &notFound,
+                                  const QString &path, const QString &callerLeaf) {
+    if (r.code == QStringLiteral("not_found"))
+        return fbNotFound(notFound, path, callerLeaf);
+    QJsonObject e = fbErr(r.code, verb + QStringLiteral(": ") + r.message);
+    if (r.code == QStringLiteral("confirm_required")) {
+        e[QStringLiteral("store_bytes")] = r.storeBytes;
+        e[QStringLiteral("file_bytes")]  = r.fileBytes;
+    }
+    return e;
+}
+
 QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
@@ -183,7 +212,16 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
                              &derivedReason)) {
         return QJsonDocument(err);
     }
-    if (!exists) {
+    // ANTS-4513 § 4.6 — the answer comes from the store, importing the file on
+    // first touch. A reporter is found when it has a row, file or not.
+    QJsonObject storeRefusal;
+    const auto fbStore = fbOpenStore(QStringLiteral("feedback_query"), &storeRefusal);
+    if (!fbStore) return QJsonDocument(storeRefusal);
+    const FeedbackStore::Result loaded = FeedbackStore::load(*fbStore, resolved);
+    if (!loaded.code.isEmpty())
+        return QJsonDocument(fbErr(loaded.code,
+                                   QStringLiteral("feedback_query: ") + loaded.message));
+    if (!loaded.found) {
         QJsonObject nf = fbNotFound(
             QStringLiteral("feedback_query: \"%1\" does not exist")
                 .arg(resolved),
@@ -214,17 +252,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
         nf[QStringLiteral("truncated")]              = false;
         return QJsonDocument(nf);
     }
-    QFile f(resolved);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return QJsonDocument(fbErr(
-            QStringLiteral("read_failed"),
-            QStringLiteral("feedback_query: cannot open \"%1\"")
-                .arg(resolved)));
-    }
-    const QString content = QString::fromUtf8(f.readAll());
-    f.close();
-
-    const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
+    const FeedbackFile::ParseResult pr = FeedbackFile::parse(loaded.content);
 
     // Byte cap on the emitted delta (default 512 KiB, 4 MiB ceiling —
     // ANTS-1855 read-tool defaults). Keep the HEAD of the delta.
@@ -264,6 +292,8 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     out["maintainer_block_count"] = pr.maintainerBlockCount;
     out["last_maintainer_line"]  = pr.lastMaintainerLine;
     out["truncated"]             = truncated;
+    // § 4.5 — the file was edited outside the verbs; this answer is the store's.
+    if (loaded.drift) out["export_drift"] = true;
 
     // ANTS-3478 — resolve each mapped id's LIVE status from the caller
     // project's ROADMAP.md, so the triager sees at a glance which assigned
@@ -557,10 +587,10 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
-// ANTS-1962 — test seam for the atomic write in cmdFeedbackLog.
-static bool g_forceFeedbackWriteFail = false;
+// ANTS-1962 — test seam for the export write. ANTS-4513 moved the write into
+// FeedbackStore, so the seam forwards there.
 void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
-    g_forceFeedbackWriteFail = on;
+    FeedbackStore::setForceExportFailForTest(on);
 }
 
 // The ids these ops write are the ones the Ants MCP maintainer assigns at
@@ -604,46 +634,6 @@ static bool fbIsAntsId(const QString &id) {
     return re.match(id).hasMatch();
 }
 
-// The one read and the one atomic write behind every feedback_log op. Each
-// returns the refusal to send, or an empty object on success; the write
-// owns the test seam above, so every op's write is covered by it.
-static QJsonObject fbReadFile(const QString &path, QString *content) {
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return fbErr(QStringLiteral("read_failed"),
-                     QStringLiteral("feedback_log: cannot open \"%1\"")
-                         .arg(path));
-    }
-    *content = QString::fromUtf8(f.readAll());
-    return {};
-}
-
-static QJsonObject fbAtomicWrite(const QString &path, const QString &content) {
-    const QByteArray utf8 = content.toUtf8();
-    QSaveFile sf(path);
-    if (!sf.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        return fbErr(QStringLiteral("write_failed"),
-                     QStringLiteral("feedback_log: cannot open \"%1\" for "
-                                    "writing").arg(path));
-    }
-    bool committed = (sf.write(utf8) == utf8.size());
-    if (committed) {
-        if (g_forceFeedbackWriteFail) {
-            sf.cancelWriting();
-            committed = false;
-        } else {
-            committed = sf.commit();
-        }
-    }
-    if (!committed) {
-        return fbErr(QStringLiteral("write_failed"),
-                     QStringLiteral("feedback_log: atomic write of \"%1\" "
-                                    "failed").arg(path));
-    }
-    return {};
-}
-
-// ANTS-1962 — feedback_log: append a contributor or maintainer block.
 // ANTS-4671 — the disposition composition, extracted so op:"assign_id" and
 // op:"assign_id_batch" cannot answer one assignment differently. Every rule
 // here was previously inline in assign_id and is unchanged: exactly one of
@@ -716,6 +706,8 @@ static bool fbComposeAssignValue(const QJsonObject &a, QString *value,
     return true;
 }
 
+// ANTS-1962 — feedback_log. ANTS-4513 — every write goes through the store
+// (FeedbackStore::write, § 4.4); the text edits are FeedbackFile's, unchanged.
 QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     QString resolved;
     bool exists = false;
@@ -729,506 +721,61 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     }
 
     const QString op = req.value(QStringLiteral("op")).toString();
+    // ANTS-4513 § 4.6 — ops that kept a file tidy or served format version 1.
+    // The store made each unnecessary, so each refuses and writes nothing.
+    static const QStringList kRetired = {
+        QStringLiteral("compact_resolved"), QStringLiteral("compact_shipped"),
+        QStringLiteral("prune_tracking"),   QStringLiteral("append_tracking"),
+        QStringLiteral("migrate_v2"),       QStringLiteral("set_format_version")};
+    if (kRetired.contains(op)) {
+        return QJsonDocument(fbErr(
+            QStringLiteral("retired"),
+            QStringLiteral("feedback_log: op \"%1\" is retired. The feedback "
+                           "corpus now lives in the roadmap store (ANTS-4513), "
+                           "which made it unnecessary.").arg(op)));
+    }
     if (op != QStringLiteral("append_finding") &&
-        op != QStringLiteral("append_tracking") &&
-        op != QStringLiteral("compact_shipped") &&
-        op != QStringLiteral("prune_tracking") &&
-        op != QStringLiteral("compact_resolved") &&
-        op != QStringLiteral("migrate_v2") &&
         op != QStringLiteral("assign_id") &&
         op != QStringLiteral("assign_id_batch") &&   // ANTS-4671
-        op != QStringLiteral("set_format_version") &&   // ANTS-4707
-        op != QStringLiteral("set_title")) {
+        op != QStringLiteral("set_title") &&
+        op != QStringLiteral("reimport")) {           // ANTS-4513 § 4.5
         return QJsonDocument(fbErr(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
-                           "\"append_tracking\", \"compact_shipped\", "
-                           "\"prune_tracking\", \"compact_resolved\", "
-                           "\"migrate_v2\", \"assign_id\", "
-                           "\"assign_id_batch\", "
-                           "\"set_format_version\" or "
-                           "\"set_title\"")));
+                           "\"assign_id\", \"assign_id_batch\", \"set_title\" "
+                           "or \"reimport\"")));
     }
-
-    // ANTS-3421 — maintainer compaction: collapse confirmed-shipped
-    // contributor blocks to a one-line stub. Distinct request shape (targets[]
-    // + batch outcomes + in-place rewrite), so it returns early before the
-    // append-specific date/render path below.
-    if (op == QStringLiteral("compact_shipped")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: compact_shipped on an absent "
-                               "file (nothing to compact)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        const QJsonArray targetsArr =
-            req.value(QStringLiteral("targets")).toArray();
-        if (targetsArr.isEmpty()) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("bad_args"),
-                QStringLiteral("feedback_log: compact_shipped requires a "
-                               "non-empty \"targets\" array")));
-        }
-        // Project token (basename minus suffix) — the per-target `session`
-        // default; today for `date`.
-        QString projectToken = QFileInfo(resolved).fileName();
-        projectToken.chop(static_cast<int>(qstrlen(kFeedbackSuffix)));
-        const QString today =
-            QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
-        static const QRegularExpression compactDateRe(
-            QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
-        QVector<FeedbackFile::CompactTarget> targets;
-        for (const QJsonValue &v : targetsArr) {
-            const QJsonObject to = v.toObject();
-            FeedbackFile::CompactTarget tg;
-            tg.heading = to.value(QStringLiteral("heading")).toString();
-            if (tg.heading.trimmed().isEmpty()) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_args"),
-                    QStringLiteral("feedback_log: every target needs a "
-                                   "non-empty \"heading\"")));
-            }
-            tg.id = to.value(QStringLiteral("id")).toString();
-            if (!fbIsAntsId(tg.id)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_args"),
-                    QStringLiteral("feedback_log: each target \"id\" must "
-                                   "match ANTS-NNNN (got \"%1\")").arg(tg.id)));
-            }
-            if (to.contains(QStringLiteral("heading_line")))
-                tg.headingLine =
-                    to.value(QStringLiteral("heading_line")).toInt(-1);
-            tg.session =
-                to.value(QStringLiteral("session")).toString(projectToken);
-            if (tg.session.isEmpty()) tg.session = projectToken;
-            tg.date = to.value(QStringLiteral("date")).toString(today);
-            if (tg.date.isEmpty()) tg.date = today;
-            if (!compactDateRe.match(tg.date).hasMatch()) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_args"),
-                    QStringLiteral("feedback_log: target \"date\" must be "
-                                   "YYYY-MM-DD (got \"%1\")").arg(tg.date)));
-            }
-            targets.append(tg);
-        }
-
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
-
-        const FeedbackFile::CompactResult cr =
-            FeedbackFile::compactShipped(content, targets);
-        const bool dryRunC = req.value(QStringLiteral("dry_run")).toBool();
-
-        QJsonArray outcomes;
-        QJsonArray skipped;
-        int appliedCount = 0;
-        for (const FeedbackFile::CompactOutcome &o : cr.results) {
-            if (o.applied) {
-                ++appliedCount;
-                QJsonObject e;
-                e[QStringLiteral("heading")]      = o.heading;
-                e[QStringLiteral("id")]           = o.id;
-                e[QStringLiteral("applied")]      = true;
-                e[QStringLiteral("start_line")]   = o.startLine;
-                e[QStringLiteral("end_line")]     = o.endLine;
-                e[QStringLiteral("bytes_before")] = o.bytesBefore;
-                e[QStringLiteral("bytes_after")]  = o.bytesAfter;
-                e[QStringLiteral("bytes_saved")]  =
-                    o.bytesBefore - o.bytesAfter;
-                outcomes.append(e);
-            } else {
-                QJsonObject e;
-                e[QStringLiteral("heading")] = o.heading;
-                e[QStringLiteral("id")]      = o.id;
-                e[QStringLiteral("code")]    = o.code;
-                e[QStringLiteral("reason")]  = o.reason;
-                if (!o.candidates.isEmpty()) {
-                    QJsonArray cands;
-                    for (int c : o.candidates) cands.append(c);
-                    e[QStringLiteral("candidates")] = cands;
-                }
-                skipped.append(e);
-            }
-        }
-
-        // Only write when something applied and this is not a dry run.
-        if (!dryRunC && appliedCount > 0) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, cr.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-
-        QJsonObject out;
-        out[QStringLiteral("ok")]            = true;
-        out[QStringLiteral("op")]            = op;
-        out[QStringLiteral("path")]          = resolved;
-        out[QStringLiteral("dry_run")]       = dryRunC;
-        out[QStringLiteral("applied_count")] = appliedCount;
-        out[QStringLiteral("bytes_saved")]   =
-            static_cast<qint64>(cr.bytesSaved);
-        out[QStringLiteral("outcomes")]      = outcomes;
-        out[QStringLiteral("skipped")]       = skipped;
+    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+    const QString leaf = feedbackCallerLeaf(req);
+    auto withPath = [&](QJsonObject out) {
+        out[QStringLiteral("ok")]   = true;
+        out[QStringLiteral("op")]   = op;
+        out[QStringLiteral("path")] = resolved;
         if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
         return QJsonDocument(out);
-    }
+    };
 
-    // ANTS-3442 — maintainer row-dedup: remove superseded duplicate tracking
-    // rows (keep the authoritative last-per-id row). Distinct request shape
-    // (scope_ids + removed[] + in-place rewrite), returns early like
-    // compact_shipped.
-    if (op == QStringLiteral("prune_tracking")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: prune_tracking on an absent "
-                               "file (nothing to prune)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        FeedbackFile::PruneOptions opts;
-        if (req.contains(QStringLiteral("scope_ids"))) {
-            const QJsonArray sc =
-                req.value(QStringLiteral("scope_ids")).toArray();
-            if (sc.isEmpty()) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_args"),
-                    QStringLiteral("feedback_log: prune_tracking \"scope_ids\" "
-                                   "must be non-empty (omit it to prune every "
-                                   "superseded row)")));
-            }
-            for (const QJsonValue &v : sc) {
-                const QString id = v.toString();
-                if (!fbIsAntsId(id)) {
-                    return QJsonDocument(fbErr(
-                        QStringLiteral("bad_args"),
-                        QStringLiteral("feedback_log: prune_tracking scope_ids "
-                                       "element must match ANTS-NNNN (got "
-                                       "\"%1\")").arg(id)));
-                }
-                opts.scopeIds.append(id);
-            }
-        }
-
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
-
-        const FeedbackFile::PruneResult prn =
-            FeedbackFile::pruneTracking(content, opts);
-        const bool dryRunP = req.value(QStringLiteral("dry_run")).toBool();
-
-        QJsonArray removed;
-        for (const FeedbackFile::PrunedRow &r : prn.removed) {
-            QJsonObject e;
-            QJsonArray ids;
-            for (const QString &id : r.ids) ids.append(id);
-            e[QStringLiteral("ids")]    = ids;
-            e[QStringLiteral("status")] = r.status;
-            e[QStringLiteral("line")]   = r.line;
-            removed.append(e);
-        }
-        const int rowsRemoved = static_cast<int>(prn.removed.size());
-
-        if (!dryRunP && rowsRemoved > 0) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, prn.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-
+    // ANTS-4513 § 4.5 — settle a hand-edited export by keeping the file's text.
+    if (op == QStringLiteral("reimport")) {
+        QJsonObject refusal;
+        const auto store = fbOpenStore(QStringLiteral("feedback_log"), &refusal);
+        if (!store) return QJsonDocument(refusal);
+        const FeedbackStore::Result r = FeedbackStore::reimport(
+            *store, resolved, req.value(QStringLiteral("confirm")).toBool());
+        if (!r.code.isEmpty())
+            return QJsonDocument(fbStoreRefusal(r, QStringLiteral("feedback_log"),
+                QStringLiteral("feedback_log: reimport on an absent file"),
+                resolved, leaf));
         QJsonObject out;
-        out[QStringLiteral("ok")]           = true;
-        out[QStringLiteral("op")]           = op;
-        out[QStringLiteral("path")]         = resolved;
-        out[QStringLiteral("dry_run")]      = dryRunP;
-        out[QStringLiteral("rows_removed")] = rowsRemoved;
-        out[QStringLiteral("bytes_saved")]  =
-            static_cast<qint64>(prn.bytesSaved);
-        out[QStringLiteral("removed")]      = removed;
-        if (!opts.scopeIds.isEmpty()) {
-            QJsonArray sc;
-            for (const QString &id : opts.scopeIds) sc.append(id);
-            out[QStringLiteral("scope_ids")] = sc;
-        } else {
-            out[QStringLiteral("scope_ids")] = QJsonValue(QJsonValue::Null);
-        }
-        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
-        return QJsonDocument(out);
-    }
-
-    // ANTS-3443 — maintainer v2 compaction: collapse each shipped finding's
-    // write-up to a roadmap-driven stub. Distinct request shape (auto-discovery
-    // + collapsed[]/skipped[] + in-place rewrite), returns early like the two
-    // v1 compaction ops above. It additionally reads ROADMAP.md (via the caller
-    // project) to resolve each finding's assigned id to its live status.
-    if (op == QStringLiteral("compact_resolved")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: compact_resolved on an absent "
-                               "file (nothing to compact)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
-
-        // Version gate — v2 or later (spec § 2.4). A v1 file's findings predate
-        // the structural `**Proposed ID:**` line, so none would be recognised as
-        // a finding; refuse and direct the caller to op:migrate_v2.
-        // ANTS-3621 — the floor is `< 2`, NOT `!= 2`. The parser gates on
-        // `formatVersion >= 2` (FeedbackFile::parse), so a future v3+ file is
-        // read with v2 inline-ID semantics; an `!= 2` gate here refused it as
-        // `not_v2` and told the caller to run migrate_v2 — which is a no-op on
-        // an already-migrated file, leaving no way forward. Keep the two
-        // version predicates agreeing.
-        static const QRegularExpression markerRe(
-            QStringLiteral("<!--\\s*ants-mcp-feedback:\\s*([0-9]+)\\s*-->"));
-        const auto mm = markerRe.match(content);
-        const int ver = mm.hasMatch() ? mm.captured(1).toInt() : 0;
-        if (ver < 2) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("not_v2"),
-                QStringLiteral("feedback_log: compact_resolved requires a v2 or "
-                               "later file (<!-- ants-mcp-feedback: 2 -->); this "
-                               "file is v%1 — run op:migrate_v2 first").arg(ver)));
-        }
-
-        // Roadmap resolution (spec § 2.3): build shippedIds (status ✅) +
-        // roadmapIds (every canonical id, any status) from the caller
-        // project's ROADMAP.md. Absent/unreadable roadmap ⟹ roadmap_unavailable
-        // (an unknowable "is it ✅?"); a readable-but-empty roadmap is fine
-        // (every finding then reads roadmap_unresolved_ids — the safe no-op).
-        const QString callerRaw =
-            req.value(QStringLiteral("caller_cwd")).toString();
-        const QString callerCanonical = callerRaw.isEmpty()
-            ? QString() : QFileInfo(callerRaw).canonicalFilePath();
-        const QString roadmapPath = callerCanonical.isEmpty()
-            ? QString() : findRoadmapUnder(callerCanonical);
-        FeedbackFile::ResolveOptions ropts;
-        // ANTS-4977 — 🚫 is closed too: its write-up collapses like a ✅'s.
-        // `shippedIds` is the resolver's CLOSED set; only ✅ carries a date.
-        static const QString kDropped = QString::fromUtf8("\xF0\x9F\x9A\xAB");  // 🚫
-        QSet<QString> callerPrefixes;
-
-        // The caller's own roadmap, when it has one. ANTS-3802 — an ABSENT one
-        // is no longer fatal: this file's ids are by construction another
-        // project's, so the cross-repo pass below is the path that matters and
-        // refusing before reaching it is what made this verb a no-op.
-        if (!roadmapPath.isEmpty()) {
-            auto rmText = RoadmapSource::RoadmapText::fromFile(roadmapPath);
-            // ANTS-3863 — openFailed() forces the open, so this guard is the
-            // QFile::open() one it replaces, in the same place.
-            if (!rmText.openFailed()) {
-                // ANTS-3793 — the caller project's store when it is migrated.
-                // A refusal leaves the id sets empty, which this verb already
-                // handles (every finding reads roadmap_unresolved_ids); it
-                // never reads markdown behind the store's back.
-                RoadmapSource::ReadError srcWhy =
-                    RoadmapSource::ReadError::None;
-                QString srcErr;
-                const auto rmBullets = roadmapBullets(callerCanonical,
-                                                      rmText,
-                                                      /*includeArchive=*/false,
-                                                      &srcWhy, &srcErr);
-                for (const auto &b : rmBullets) {
-                    if (b.id.isEmpty() || !RoadmapIndex::isCanonicalId(b.id)) continue;
-                    ropts.roadmapIds.insert(b.id);
-                    callerPrefixes.insert(fbIdPrefix(b.id));
-                    if (b.status == kDropped) {
-                        ropts.shippedIds.insert(b.id);
-                        ropts.droppedIds.insert(b.id);
-                    }
-                    if (b.status == fbShippedMark()) {
-                        ropts.shippedIds.insert(b.id);
-                        // ANTS-3504 — capture the ship-date from the same pass so
-                        // the collapse stub can carry it (shared extractor with
-                        // feedback_query).
-                        const QString shipDate =
-                            FeedbackFile::shipDateFromRoadmapBody(b.body);
-                        if (!shipDate.isEmpty()) ropts.shipDates.insert(b.id, shipDate);
-                    }
-                }
-            }
-        }
-
-        // ANTS-3802 — the cross-repo pass, through the SAME resolver
-        // feedback_query uses. Without it this verb could only ever collapse a
-        // finding whose id happened to live in the caller's own roadmap, which
-        // for a *_Ants_MCP_Feedback.md file is close to never.
-        const FeedbackFile::ParseResult prC = FeedbackFile::parse(content);
-        const QHash<QString, QJsonObject> foreignC =
-            rlResolveForeignFeedbackIds(resolved, roadmapPath, callerPrefixes,
-                                        prC.mappedIds, ropts.roadmapIds);
-        for (auto it = foreignC.constBegin(); it != foreignC.constEnd(); ++it) {
-            ropts.roadmapIds.insert(it.key());
-            if (it.value().value(QStringLiteral("status")).toString() == kDropped) {
-                ropts.shippedIds.insert(it.key());
-                ropts.droppedIds.insert(it.key());
-            }
-            if (it.value().value(QStringLiteral("status")).toString() == fbShippedMark()) {
-                ropts.shippedIds.insert(it.key());
-                const QString d =
-                    it.value().value(QStringLiteral("shipped_date")).toString();
-                if (!d.isEmpty()) ropts.shipDates.insert(it.key(), d);
-            }
-        }
-
-        // Only now is "nothing to resolve against" a real refusal — and it says
-        // WHICH roadmaps were searched, because "unresolved" previously read as
-        // "this id does not exist" when it meant "not in the file I opened".
-        if (ropts.roadmapIds.isEmpty()) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("roadmap_unavailable"),
-                QStringLiteral("feedback_log: compact_resolved found no roadmap ids — "
-                               "searched the caller project (%1) and the sibling "
-                               "projects under %2")
-                    .arg(roadmapPath.isEmpty() ? QStringLiteral("no ROADMAP.md found")
-                                               : roadmapPath,
-                         QFileInfo(resolved).absolutePath())));
-        }
-
-        const FeedbackFile::ResolveResult rr =
-            FeedbackFile::compactResolved(content, ropts);
-        const bool dryRunR = req.value(QStringLiteral("dry_run")).toBool();
-
-        QJsonArray collapsed, skipped;
-        int collapsedCount = 0;
-        for (const FeedbackFile::ResolvedFinding &f : rr.findings) {
-            if (f.collapsed) {
-                ++collapsedCount;
-                QJsonObject e;
-                e[QStringLiteral("heading")]      = f.heading;
-                e[QStringLiteral("ids")]          =
-                    QJsonArray::fromStringList(f.ids);
-                e[QStringLiteral("line")]         = f.line;
-                e[QStringLiteral("bytes_before")] = f.bytesBefore;
-                e[QStringLiteral("bytes_after")]  = f.bytesAfter;
-                e[QStringLiteral("bytes_saved")]  = f.bytesBefore - f.bytesAfter;
-                collapsed.append(e);
-            } else {
-                QJsonObject e;
-                e[QStringLiteral("heading")] = f.heading;
-                e[QStringLiteral("line")]    = f.line;
-                e[QStringLiteral("code")]    = f.code;
-                e[QStringLiteral("ids")]     =
-                    QJsonArray::fromStringList(f.ids);
-                if (!f.openIds.isEmpty())
-                    e[QStringLiteral("open_ids")] =
-                        QJsonArray::fromStringList(f.openIds);
-                if (!f.unresolvedIds.isEmpty())
-                    e[QStringLiteral("unresolved_ids")] =
-                        QJsonArray::fromStringList(f.unresolvedIds);
-                skipped.append(e);
-            }
-        }
-
-        // ANTS-4646(a) — retire any legacy v1 tracking heading whose every id
-        // has shipped, under the gate this verb already resolved. Runs on
-        // rr.newContent so one write carries both, and it is a no-op on a file
-        // carrying no such heading — which is every file born v2.
-        const FeedbackFile::RetireResult retire =
-            FeedbackFile::retireTrackingHeadings(rr.newContent, ropts);
-        QJsonArray retiredArr;
-        int retiredCount = 0;
-        for (const FeedbackFile::TrackingHeading &th : retire.headings) {
-            QJsonObject e;
-            e[QStringLiteral("heading")] = th.heading;
-            e[QStringLiteral("line")]    = th.line;
-            e[QStringLiteral("retired")] = th.retired;
-            e[QStringLiteral("ids")]     = QJsonArray::fromStringList(th.ids);
-            if (!th.code.isEmpty()) e[QStringLiteral("code")] = th.code;
-            if (!th.openIds.isEmpty())
-                e[QStringLiteral("open_ids")] =
-                    QJsonArray::fromStringList(th.openIds);
-            if (!th.unresolvedIds.isEmpty())
-                e[QStringLiteral("unresolved_ids")] =
-                    QJsonArray::fromStringList(th.unresolvedIds);
-            if (th.retired) ++retiredCount;
-            retiredArr.append(e);
-        }
-
-        if (!dryRunR && (collapsedCount > 0 || retiredCount > 0)) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, retire.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-
-        QJsonObject out;
-        out[QStringLiteral("ok")]                 = true;
-        out[QStringLiteral("op")]                 = op;
-        out[QStringLiteral("path")]               = resolved;
-        out[QStringLiteral("dry_run")]            = dryRunR;
-        out[QStringLiteral("findings_collapsed")] = collapsedCount;
-        out[QStringLiteral("bytes_saved")]        =
-            static_cast<qint64>(rr.bytesSaved + retire.bytesSaved);
-        out[QStringLiteral("collapsed")]          = collapsed;
-        out[QStringLiteral("skipped")]            = skipped;
-        // ANTS-4646(a) — always present, so "this build cannot retire one" is
-        // never confused with "there was none to retire".
-        out[QStringLiteral("headings_retired")]   = retiredCount;
-        out[QStringLiteral("retired_headings")]   = retiredArr;
-        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
-        return QJsonDocument(out);
-    }
-
-    // ANTS-4707 — correct the format-version marker. The only route before this
-    // was the hand edit the assign-id pipeline exists to avoid, and a real file
-    // declares a version that has never been defined.
-    if (op == QStringLiteral("set_format_version")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: set_format_version on an absent "
-                               "file (nothing to correct)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        const QJsonValue vv = req.value(QStringLiteral("version"));
-        if (!vv.isDouble()) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("bad_args"),
-                QStringLiteral("feedback_log: set_format_version requires an "
-                               "integer \"version\"")));
-        }
-        QString vcontent;
-        if (const QJsonObject e = fbReadFile(resolved, &vcontent); !e.isEmpty())
-            return QJsonDocument(e);
-
-        const FeedbackFile::SetFormatVersionResult vr =
-            FeedbackFile::setFormatVersion(vcontent, vv.toInt());
-        if (!vr.code.isEmpty()) {
-            QJsonObject e = fbErr(
-                vr.code,
-                QStringLiteral("feedback_log: set_format_version refused on "
-                               "\"%1\"").arg(resolved));
-            if (!vr.detail.isEmpty())
-                e[QStringLiteral("hint")] = vr.detail;
-            return QJsonDocument(e);
-        }
-        const bool dryRunV = req.value(QStringLiteral("dry_run")).toBool();
-        if (vr.changed && !dryRunV) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, vr.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-        QJsonObject out;
-        out[QStringLiteral("ok")]          = true;
-        out[QStringLiteral("op")]          = op;
-        out[QStringLiteral("path")]        = resolved;
-        out[QStringLiteral("dry_run")]     = dryRunV;
-        // An already-correct marker is a SUCCESS, not a refusal — a corpus
-        // sweep must be re-runnable.
-        out[QStringLiteral("changed")]     = vr.changed;
-        out[QStringLiteral("old_version")] = vr.oldVersion;
-        out[QStringLiteral("new_version")] = vr.newVersion;
-        if (derived) fbMarkDerived(out, derivedReason);
-        return QJsonDocument(out);
+        out[QStringLiteral("changed")]  = r.changed;
+        out[QStringLiteral("imported")] = r.imported;
+        return withPath(out);
     }
 
     // ANTS-4646(b) — set_title: rewrite the H1's project name. The FILENAME is
     // derived from caller_cwd's leaf and is always right; the H1 was writable
-    // by no op, so a rename left the title contradicting the filename and the
-    // only route was a hand edit — against the file's own instruction, at the
-    // moment a session is most likely to get it wrong.
+    // by no op, so a rename left the title contradicting the filename.
     if (op == QStringLiteral("set_title")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: set_title on an absent file "
-                               "(nothing to retitle)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
         const QString wanted =
             req.value(QStringLiteral("title")).toString().trimmed();
         if (wanted.isEmpty()) {
@@ -1238,13 +785,18 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "\"title\" (the project name, not the whole "
                                "heading)")));
         }
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
-
-        const FeedbackFile::SetTitleResult tr =
-            FeedbackFile::setTitle(content, wanted);
-        if (!tr.code.isEmpty()) {
+        QJsonObject refusal;
+        const auto store = fbOpenStore(QStringLiteral("feedback_log"), &refusal);
+        if (!store) return QJsonDocument(refusal);
+        FeedbackFile::SetTitleResult tr;
+        const FeedbackStore::Result r = FeedbackStore::write(
+            *store, resolved, QString(), dryRun,
+            [&](const QString &in, bool, QString *text) {
+                tr = FeedbackFile::setTitle(in, wanted);
+                *text = tr.newContent;
+                return tr.code.isEmpty();
+            });
+        if (r.code == QStringLiteral("edit_refused")) {
             return QJsonDocument(fbErr(
                 tr.code,
                 QStringLiteral("feedback_log: set_title found no `# ` heading "
@@ -1252,122 +804,24 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "position and this verb will not invent one")
                     .arg(resolved)));
         }
-        const bool dryRunT = req.value(QStringLiteral("dry_run")).toBool();
-        if (tr.changed && !dryRunT) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, tr.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
+        if (!r.code.isEmpty())
+            return QJsonDocument(fbStoreRefusal(r, QStringLiteral("feedback_log"),
+                QStringLiteral("feedback_log: set_title on an absent file "
+                               "(nothing to retitle)"), resolved, leaf));
         QJsonObject out;
-        out[QStringLiteral("ok")]        = true;
-        out[QStringLiteral("op")]        = op;
-        out[QStringLiteral("path")]      = resolved;
-        out[QStringLiteral("dry_run")]   = dryRunT;
+        out[QStringLiteral("dry_run")]   = dryRun;
         // `changed:false` on an already-correct title is a SUCCESS, not a
         // refusal — a rename script must be re-runnable.
         out[QStringLiteral("changed")]   = tr.changed;
         out[QStringLiteral("old_title")] = tr.oldTitle;
         out[QStringLiteral("new_title")] = tr.newTitle;
-        if (derived) fbMarkDerived(out, derivedReason);
-        return QJsonDocument(out);
+        return withPath(out);
     }
 
-    // ANTS-3446 — migrate_v2: one-shot mechanical v1→v2 migration. Bumps the
-    // version marker and stamps blank `**Proposed ID:**` placeholders on
-    // finding-shaped, below-watermark `### ` blocks; leaves the v1 tracking
-    // tables in place (spec § 1.1). Distinct whole-file request shape (no
-    // targets, no roadmap read), returns early like the sibling compaction ops.
-    if (op == QStringLiteral("migrate_v2")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: migrate_v2 on an absent file "
-                               "(nothing to migrate)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
-
-        // ANTS-3474 — opt-in: backfill inline Proposed-IDs from the file's own
-        // v1 tracking tables (confidence-gated; blank on any uncertainty).
-        const bool backfill =
-            req.value(QStringLiteral("backfill_from_tracking")).toBool();
-        const FeedbackFile::MigrateResult mr =
-            FeedbackFile::migrateV2(content, backfill);
-        const bool dryRunM = req.value(QStringLiteral("dry_run")).toBool();
-
-        auto stampArr = [](const QVector<FeedbackFile::MigrateStamp> &v) {
-            QJsonArray a;
-            for (const auto &s : v) {
-                QJsonObject e;
-                e[QStringLiteral("heading")] = s.heading;
-                e[QStringLiteral("line")]    = s.line;
-                a.append(e);
-            }
-            return a;
-        };
-        QJsonArray orphans;
-        for (const auto &o : mr.orphans) {
-            QJsonObject e;
-            e[QStringLiteral("heading")] = o.heading;
-            e[QStringLiteral("line")]    = o.line;
-            e[QStringLiteral("reason")]  = o.reason;
-            orphans.append(e);
-        }
-        // ANTS-3474 — findings whose id was carried in from the tracking tables.
-        QJsonArray backfilled;
-        for (const auto &b : mr.backfilled) {
-            QJsonObject e;
-            e[QStringLiteral("heading")]       = b.heading;
-            e[QStringLiteral("line")]          = b.line;
-            e[QStringLiteral("id")]            = b.id;
-            e[QStringLiteral("confidence_pct")] = b.confidencePct;
-            backfilled.append(e);
-        }
-
-        // Write only when there is something to change (marker bump and/or a
-        // stamp). An already-v2 file is a clean no-op — never re-written.
-        if (!dryRunM && !mr.alreadyV2) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, mr.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-
-        QJsonObject out;
-        out[QStringLiteral("ok")]            = true;
-        out[QStringLiteral("op")]            = op;
-        out[QStringLiteral("path")]          = resolved;
-        out[QStringLiteral("dry_run")]       = dryRunM;
-        out[QStringLiteral("already_v2")]    = mr.alreadyV2;
-        out[QStringLiteral("stamped_count")] = mr.stamped.size();
-        out[QStringLiteral("backfilled_count")] = mr.backfilled.size();  // ANTS-3474
-        out[QStringLiteral("bytes_delta")]   =
-            static_cast<qint64>(mr.bytesDelta);
-        out[QStringLiteral("stamped")]       = stampArr(mr.stamped);
-        out[QStringLiteral("backfilled")]    = backfilled;               // ANTS-3474
-        out[QStringLiteral("orphans")]       = orphans;
-        out[QStringLiteral("unclassified")]  = stampArr(mr.unclassified);
-        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
-        return QJsonDocument(out);
-    }
-
-    // ANTS-3447 — assign_id: v2 inline triage write. Fill ONE `### ` finding's
-    // `**Proposed ID:**` line with the maintainer's assigned id(s) or an
-    // `n/a — <reason>` closure. Distinct request shape (heading + ids|closure,
-    // no roadmap read); returns early like the sibling compaction ops.
-    // ANTS-4671 — assign_id_batch: N findings' slots in ONE read and ONE
-    // atomic write. The argument for it was already accepted three times on
-    // the roadmap side (flip_batch, annotate_batch, amend_batch's item), and
-    // the shape is stronger here: a triage is inherently a batch — findings
-    // are read together via feedback_query, decided together against one dedup
-    // sweep, and several legitimately share one id. Nothing between the calls
-    // can have changed the file, which is exactly where a per-call read and
-    // write is least justified.
-    //
-    // FeedbackFile::assignId() is pure (content -> content), so the batch is
-    // the single op's body with the read and write hoisted out of the loop and
-    // the content threaded through. Per-assignment failures land in skipped[]
-    // and cost only their own assignment — which matters more here than
-    // elsewhere, because a heading is matched verbatim and one mistyped
-    // heading must not cost the batch its other closures.
+    // ANTS-4671 — assign_id_batch: the single op's body with the content
+    // threaded through one write. Per-assignment failures land in skipped[]
+    // and cost only their own assignment, because a heading is matched
+    // verbatim and one mistyped heading must not cost the batch the rest.
     if (op == QStringLiteral("assign_id_batch")) {
         const QJsonArray assignments =
             req.value(QStringLiteral("assignments")).toArray();
@@ -1377,79 +831,75 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("feedback_log: assign_id_batch requires a "
                                "non-empty \"assignments\" array")));
         }
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: assign_id_batch on an absent file"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
+        QJsonObject refusal;
+        const auto store = fbOpenStore(QStringLiteral("feedback_log"), &refusal);
+        if (!store) return QJsonDocument(refusal);
 
-        const bool dryRunB = req.value(QStringLiteral("dry_run")).toBool();
         QJsonArray applied, skipped;
         bool anyChange = false;
-        int index = -1;
-        for (const QJsonValue &av : assignments) {
-            ++index;
-            const QJsonObject a = av.toObject();
-            auto skip = [&](const QJsonObject &e) {
-                QJsonObject row = e;
-                row[QStringLiteral("index")]   = index;
-                row[QStringLiteral("heading")] =
-                    a.value(QStringLiteral("heading")).toString();
-                skipped.append(row);
-            };
-
-            const QString heading = a.value(QStringLiteral("heading")).toString();
-            if (heading.trimmed().isEmpty()) {
-                skip(fbErr(QStringLiteral("bad_args"),
-                     QStringLiteral("feedback_log: assign_id requires a "
-                                    "non-empty \"heading\" (the target `### ` "
-                                    "finding line)")));
-                continue;
-            }
-            QString value, note;
-            bool isClosure = false;
-            QJsonObject cerr;
-            if (!fbComposeAssignValue(a, &value, &isClosure, &note, &cerr)) {
-                skip(cerr);
-                continue;
-            }
-
-            FeedbackFile::AssignTarget tgt;
-            tgt.heading     = heading;
-            tgt.headingLine = a.value(QStringLiteral("heading_line")).toInt(-1);
-            tgt.value       = value;
-            tgt.isClosure   = isClosure;
-            tgt.note        = note;
-            const FeedbackFile::AssignResult ar =
-                FeedbackFile::assignId(content, tgt);
-            if (!ar.code.isEmpty()) {
-                skip(fbAssignRefusal(ar, heading));
-                continue;
-            }
-
-            // Thread the content forward: each assignment sees the previous
-            // one's result, so two assignments to the same finding behave as
-            // they would in two separate calls.
-            content = ar.newContent;
-            if (ar.changed) anyChange = true;
-            QJsonObject row;
-            row[QStringLiteral("index")]    = index;
-            row[QStringLiteral("heading")]  = ar.heading;
-            row[QStringLiteral("line")]     = ar.line;
-            row[QStringLiteral("value")]    = ar.value;
-            row[QStringLiteral("inserted")] = ar.inserted;
-            row[QStringLiteral("changed")]  = ar.changed;
-            if (ar.noteWritten) row[QStringLiteral("note_written")] = true;
-            applied.append(row);
-        }
-
+        const FeedbackStore::Result r = FeedbackStore::write(
+            *store, resolved, QString(), dryRun,
+            [&](const QString &in, bool, QString *text) {
+                QString content = in;
+                int index = -1;
+                for (const QJsonValue &av : assignments) {
+                    ++index;
+                    const QJsonObject a = av.toObject();
+                    auto skip = [&](const QJsonObject &e) {
+                        QJsonObject row = e;
+                        row[QStringLiteral("index")]   = index;
+                        row[QStringLiteral("heading")] =
+                            a.value(QStringLiteral("heading")).toString();
+                        skipped.append(row);
+                    };
+                    const QString heading =
+                        a.value(QStringLiteral("heading")).toString();
+                    if (heading.trimmed().isEmpty()) {
+                        skip(fbErr(QStringLiteral("bad_args"),
+                             QStringLiteral("feedback_log: assign_id requires a "
+                                            "non-empty \"heading\" (the target "
+                                            "`### ` finding line)")));
+                        continue;
+                    }
+                    QString value, note;
+                    bool isClosure = false;
+                    QJsonObject cerr;
+                    if (!fbComposeAssignValue(a, &value, &isClosure, &note, &cerr)) {
+                        skip(cerr);
+                        continue;
+                    }
+                    FeedbackFile::AssignTarget tgt;
+                    tgt.heading     = heading;
+                    tgt.headingLine = a.value(QStringLiteral("heading_line")).toInt(-1);
+                    tgt.value       = value;
+                    tgt.isClosure   = isClosure;
+                    tgt.note        = note;
+                    const FeedbackFile::AssignResult ar =
+                        FeedbackFile::assignId(content, tgt);
+                    if (!ar.code.isEmpty()) {
+                        skip(fbAssignRefusal(ar, heading));
+                        continue;
+                    }
+                    // Each assignment sees the previous one's result, so two
+                    // to one finding behave as two separate calls would.
+                    content = ar.newContent;
+                    if (ar.changed) anyChange = true;
+                    QJsonObject row;
+                    row[QStringLiteral("index")]    = index;
+                    row[QStringLiteral("heading")]  = ar.heading;
+                    row[QStringLiteral("line")]     = ar.line;
+                    row[QStringLiteral("value")]    = ar.value;
+                    row[QStringLiteral("inserted")] = ar.inserted;
+                    row[QStringLiteral("changed")]  = ar.changed;
+                    if (ar.noteWritten) row[QStringLiteral("note_written")] = true;
+                    applied.append(row);
+                }
+                *text = content;
+                return !applied.isEmpty();
+            });
         // ANTS-4470's rule, kept: an all-failed batch is a refusal, not a
-        // success reporting nothing. A caller that reads only `ok` must not
-        // read "every heading was mistyped" as a completed triage.
-        if (applied.isEmpty()) {
+        // success reporting nothing.
+        if (r.code == QStringLiteral("edit_refused")) {
             QJsonObject e = fbErr(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: assign_id_batch applied no "
@@ -1457,24 +907,18 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             rcSetAllRefusedSkipped(e, skipped);
             return QJsonDocument(e);
         }
-
-        if (!dryRunB && anyChange) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, content); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-
+        if (!r.code.isEmpty())
+            return QJsonDocument(fbStoreRefusal(r, QStringLiteral("feedback_log"),
+                QStringLiteral("feedback_log: assign_id_batch on an absent file"),
+                resolved, leaf));
         QJsonObject out;
-        out[QStringLiteral("ok")]            = true;
-        out[QStringLiteral("op")]            = op;
-        out[QStringLiteral("path")]          = resolved;
-        out[QStringLiteral("dry_run")]       = dryRunB;
+        out[QStringLiteral("dry_run")]       = dryRun;
         out[QStringLiteral("applied")]       = applied;
         out[QStringLiteral("applied_count")] = applied.size();
         out[QStringLiteral("skipped")]       = skipped;
         out[QStringLiteral("skipped_count")] = skipped.size();
         out[QStringLiteral("changed")]       = anyChange;
-        if (derived) fbMarkDerived(out, derivedReason);   // ANTS-3376
-        return QJsonDocument(out);
+        return withPath(out);
     }
 
     if (op == QStringLiteral("assign_id")) {
@@ -1486,12 +930,9 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 QStringLiteral("feedback_log: assign_id requires a non-empty "
                                "\"heading\" (the target `### ` finding line)")));
         }
-
-        // ANTS-4671 — composition, validation and the control-char folds now
-        // live in fbComposeAssignValue so this op and assign_id_batch cannot
-        // answer one assignment differently. Behaviour is unchanged: exactly
-        // one of ids / closure / awaiting, the ^ANTS-[0-9]+$ gate, and the
-        // note fold that ANTS-3571 added.
+        // ANTS-4671 — composition, validation and the control-char folds live
+        // in fbComposeAssignValue so this op and assign_id_batch cannot answer
+        // one assignment differently.
         QString value, note;
         bool hasClosure = false;
         {
@@ -1499,60 +940,45 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
             if (!fbComposeAssignValue(req, &value, &hasClosure, &note, &cerr))
                 return QJsonDocument(cerr);
         }
-
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: assign_id on an absent file"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        QString content;
-        if (const QJsonObject e = fbReadFile(resolved, &content); !e.isEmpty())
-            return QJsonDocument(e);
+        QJsonObject refusal;
+        const auto store = fbOpenStore(QStringLiteral("feedback_log"), &refusal);
+        if (!store) return QJsonDocument(refusal);
 
         FeedbackFile::AssignTarget tgt;
         tgt.heading     = heading;
-        tgt.headingLine =
-            req.value(QStringLiteral("heading_line")).toInt(-1);
+        tgt.headingLine = req.value(QStringLiteral("heading_line")).toInt(-1);
         tgt.value       = value;
         tgt.isClosure   = hasClosure;
         tgt.note        = note;
-        const FeedbackFile::AssignResult ar =
-            FeedbackFile::assignId(content, tgt);
-
-        if (!ar.code.isEmpty()) return QJsonDocument(fbAssignRefusal(ar, heading));
-
-        const bool dryRunA = req.value(QStringLiteral("dry_run")).toBool();
-        // Write only on a real change (skip the byte-identical no-op so the
-        // mtime/ETag is untouched — INV-8).
-        if (!dryRunA && ar.changed) {
-            if (const QJsonObject e = fbAtomicWrite(resolved, ar.newContent); !e.isEmpty())
-                return QJsonDocument(e);
-        }
-
+        FeedbackFile::AssignResult ar;
+        const FeedbackStore::Result r = FeedbackStore::write(
+            *store, resolved, QString(), dryRun,
+            [&](const QString &in, bool, QString *text) {
+                ar = FeedbackFile::assignId(in, tgt);
+                *text = ar.newContent;
+                return ar.code.isEmpty();
+            });
+        if (r.code == QStringLiteral("edit_refused"))
+            return QJsonDocument(fbAssignRefusal(ar, heading));
+        if (!r.code.isEmpty())
+            return QJsonDocument(fbStoreRefusal(r, QStringLiteral("feedback_log"),
+                QStringLiteral("feedback_log: assign_id on an absent file"),
+                resolved, leaf));
         QJsonObject out;
-        out[QStringLiteral("ok")]          = true;
-        out[QStringLiteral("op")]          = op;
-        out[QStringLiteral("path")]        = resolved;
-        out[QStringLiteral("dry_run")]     = dryRunA;
+        out[QStringLiteral("dry_run")]     = dryRun;
         out[QStringLiteral("heading")]     = ar.heading;
         out[QStringLiteral("line")]        = ar.line;
         out[QStringLiteral("value")]       = ar.value;
         out[QStringLiteral("inserted")]    = ar.inserted;
         out[QStringLiteral("changed")]     = ar.changed;
-        // ANTS-3571 — echo whether a note bullet was rendered so the caller
-        // can confirm the note landed (only when a note was supplied).
+        // ANTS-3571 — echo whether a note bullet was rendered.
         if (ar.noteWritten) out[QStringLiteral("note_written")] = true;
-        out[QStringLiteral("bytes_delta")] =
-            static_cast<qint64>(ar.bytesDelta);
-        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
-        return QJsonDocument(out);
+        out[QStringLiteral("bytes_delta")] = static_cast<qint64>(ar.bytesDelta);
+        return withPath(out);
     }
 
-    // ANTS-2227 — dry_run preview: render the block + compute the would-be
-    // bytes/created, then return WITHOUT writing the file.
-    const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
-
-    // date: default to today; an explicit value must match YYYY-MM-DD.
+    // append_finding. date: default to today; an explicit value must match
+    // YYYY-MM-DD.
     QString date = req.value(QStringLiteral("date")).toString();
     if (date.isEmpty()) {
         date = QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
@@ -1566,191 +992,74 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                                "YYYY-MM-DD")));
         }
     }
-
-    bool created = false;
-    QString rendered;
-
-    if (op == QStringLiteral("append_finding")) {
-        const QJsonArray findingsArr =
-            req.value(QStringLiteral("findings")).toArray();
-        if (findingsArr.isEmpty()) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("bad_args"),
-                QStringLiteral("feedback_log: append_finding requires a "
-                               "non-empty \"findings\" array")));
-        }
-        QVector<FeedbackFile::Finding> findings;
-        for (const QJsonValue &v : findingsArr) {
-            const QJsonObject fo = v.toObject();
-            FeedbackFile::Finding fnd;
-            fnd.title        = fo.value(QStringLiteral("title")).toString();
-            if (fnd.title.isEmpty()) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_args"),
-                    QStringLiteral("feedback_log: every finding needs a "
-                                   "non-empty \"title\"")));
-            }
-            fnd.what         = fo.value(QStringLiteral("what")).toString();
-            fnd.repro        = fo.value(QStringLiteral("repro")).toString();
-            fnd.impact       = fo.value(QStringLiteral("impact")).toString();
-            fnd.suggestedFix =
-                fo.value(QStringLiteral("suggested_fix")).toString();
-            findings.append(fnd);
-        }
-        const QString sessionLabel =
-            req.value(QStringLiteral("session_label")).toString();
-        const QString headingLevel =
-            req.value(QStringLiteral("heading_level"))
-               .toString(QStringLiteral("h2"));
-        const bool h1 = (headingLevel == QStringLiteral("h1"));
-        const QString note = req.value(QStringLiteral("note")).toString();
-
-        if (!exists) {
-            // Create with a conforming skeleton; <Project> derived from
-            // the basename minus the suffix.
-            QString project = QFileInfo(resolved).fileName();
-            project.chop(static_cast<int>(
-                qstrlen(kFeedbackSuffix)));
-            rendered = FeedbackFile::skeleton(project);
-            created = true;
-        }
-        // Defer the on-disk content read to the append step below.
-        rendered += FeedbackFile::renderFindingBlock(
-            date, sessionLabel, h1, note, findings);
-    } else if (op == QStringLiteral("append_tracking")) {
-        if (!exists) {
-            return QJsonDocument(fbNotFound(
-                QStringLiteral("feedback_log: append_tracking on an "
-                               "absent file (nothing to triage)"),
-                resolved, feedbackCallerLeaf(req)));
-        }
-        // ANTS-3477 — append_tracking is the v1 (tracking-table) triage write.
-        // On a v2 (inline-ID) file it must not re-grow a maintainer table:
-        // refuse and point at op:assign_id (the v2 triage write that fills each
-        // finding's `**Proposed ID:**` line in place). A v1 / un-migrated file
-        // (`markerVersion < 2`, incl. an absent marker) stays valid.
-        {
-            QFile vf(resolved);
-            if (vf.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                const QString vcontent = QString::fromUtf8(vf.readAll());
-                vf.close();
-                if (FeedbackFile::markerVersion(vcontent) >= 2) {
-                    return QJsonDocument(fbErr(
-                        QStringLiteral("not_v1"),
-                        QStringLiteral(
-                            "feedback_log: append_tracking is the v1 "
-                            "tracking-table write and is retired on a v2 "
-                            "(<!-- ants-mcp-feedback: 2 -->) file — use "
-                            "op:assign_id to fill each finding's "
-                            "\"**Proposed ID:**\" line in place")));
-                }
-            }
-        }
-        const QJsonArray rowsArr =
-            req.value(QStringLiteral("rows")).toArray();
-        if (rowsArr.isEmpty()) {
-            return QJsonDocument(fbErr(
-                QStringLiteral("bad_args"),
-                QStringLiteral("feedback_log: append_tracking requires a "
-                               "non-empty \"rows\" array")));
-        }
-        static const QSet<QString> kStatusSet = {
-            QString::fromUtf8("\xF0\x9F\x93\x8B"),  // 📋
-            QString::fromUtf8("\xF0\x9F\x9A\xA7"),  // 🚧
-            QString::fromUtf8("\xE2\x9C\x85"),      // ✅
-            QString::fromUtf8("\xF0\x9F\x92\xAD"),  // 💭
-            QString::fromUtf8("\xF0\x9F\x94\x84"),  // 🔄
-            QString::fromUtf8("\xE2\x9D\x93"),      // ❓
-        };
-        QVector<FeedbackFile::TrackingRow> rows;
-        for (const QJsonValue &v : rowsArr) {
-            const QJsonObject ro = v.toObject();
-            FeedbackFile::TrackingRow row;
-            row.item   = ro.value(QStringLiteral("item")).toString();
-            if (row.item.isEmpty()) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_args"),
-                    QStringLiteral("feedback_log: every row needs a "
-                                   "non-empty \"item\"")));
-            }
-            row.status = ro.value(QStringLiteral("status")).toString();
-            if (!kStatusSet.contains(row.status)) {
-                return QJsonDocument(fbErr(
-                    QStringLiteral("bad_status"),
-                    QStringLiteral("feedback_log: row \"status\" must be "
-                                   "one of 📋 🚧 ✅ 💭 🔄 ❓")));
-            }
-            for (const QJsonValue &iv :
-                     ro.value(QStringLiteral("ids")).toArray()) {
-                const QString idv = iv.toString();
-                if (!fbIsAntsId(idv)) {
-                    return QJsonDocument(fbErr(
-                        QStringLiteral("bad_args"),
-                        QStringLiteral("feedback_log: each id must match "
-                                       "ANTS-NNNN (got \"%1\")").arg(idv)));
-                }
-                row.ids.append(idv);
-            }
-            row.notes = ro.value(QStringLiteral("notes")).toString();
-            rows.append(row);
-        }
-        const QString note = req.value(QStringLiteral("note")).toString();
-        const bool sentinel =
-            req.value(QStringLiteral("sentinel")).toBool(true);
-        rendered = FeedbackFile::renderTrackingBlock(
-            date, note, rows, sentinel);
-    } else {
-        // An op admitted by the guard above with no handler of its own.
+    const QJsonArray findingsArr =
+        req.value(QStringLiteral("findings")).toArray();
+    if (findingsArr.isEmpty()) {
         return QJsonDocument(fbErr(
-            QStringLiteral("bad_mode"),
-            QStringLiteral("feedback_log: op \"%1\" has no handler").arg(op)));
+            QStringLiteral("bad_args"),
+            QStringLiteral("feedback_log: append_finding requires a "
+                           "non-empty \"findings\" array")));
     }
-
-    // Read existing content (when the file exists) and append-at-end,
-    // ensuring a blank-line separator before the new block.
-    QString existing;
-    if (exists) {
-        if (const QJsonObject e = fbReadFile(resolved, &existing); !e.isEmpty())
-            return QJsonDocument(e);
+    QVector<FeedbackFile::Finding> findings;
+    for (const QJsonValue &v : findingsArr) {
+        const QJsonObject fo = v.toObject();
+        FeedbackFile::Finding fnd;
+        fnd.title = fo.value(QStringLiteral("title")).toString();
+        if (fnd.title.isEmpty()) {
+            return QJsonDocument(fbErr(
+                QStringLiteral("bad_args"),
+                QStringLiteral("feedback_log: every finding needs a "
+                               "non-empty \"title\"")));
+        }
+        fnd.what         = fo.value(QStringLiteral("what")).toString();
+        fnd.repro        = fo.value(QStringLiteral("repro")).toString();
+        fnd.impact       = fo.value(QStringLiteral("impact")).toString();
+        fnd.suggestedFix = fo.value(QStringLiteral("suggested_fix")).toString();
+        findings.append(fnd);
     }
+    const QString block = FeedbackFile::renderFindingBlock(
+        date, req.value(QStringLiteral("session_label")).toString(),
+        req.value(QStringLiteral("heading_level")).toString(QStringLiteral("h2"))
+            == QStringLiteral("h1"),
+        req.value(QStringLiteral("note")).toString(), findings);
 
-    QString full = existing;
-    if (!full.isEmpty()) {
-        if (!full.endsWith(QLatin1Char('\n'))) full += QLatin1Char('\n');
-        // Guarantee a blank-line separator between the prior content and
-        // the appended block.
-        if (!full.endsWith(QStringLiteral("\n\n")))
-            full += QLatin1Char('\n');
-    }
-    full += rendered;
+    // § 4.3 — a reporter with no row and no file is registered here, from the
+    // skeleton; <Project> is the basename minus the suffix.
+    QString project = QFileInfo(resolved).fileName();
+    project.chop(static_cast<int>(qstrlen(kFeedbackSuffix)));
+    const QString skeleton = FeedbackFile::skeleton(project);
 
-    const QByteArray addedUtf8 = rendered.toUtf8();
-
-    if (dryRun) {
-        QJsonObject out;
-        out["ok"]             = true;
-        out["dry_run"]        = true;
-        out["op"]             = op;
-        out["path"]           = resolved;
-        out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
-        out["date"]           = date;
-        out["created"]        = created;   // would-create
-        if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
-        return QJsonDocument(out);
-    }
-
-    if (const QJsonObject e = fbAtomicWrite(resolved, full); !e.isEmpty())
-        return QJsonDocument(e);
-
+    QJsonObject refusal;
+    const auto store = fbOpenStore(QStringLiteral("feedback_log"), &refusal);
+    if (!store) return QJsonDocument(refusal);
+    qint64 bytesAppended = 0;
+    const FeedbackStore::Result r = FeedbackStore::write(
+        *store, resolved, skeleton, dryRun,
+        [&](const QString &in, bool created, QString *text) {
+            // A new file is the skeleton with the block straight after it,
+            // byte for byte what the file-backed create wrote (INV-9).
+            QString full = in;
+            if (!created && !full.isEmpty()) {
+                if (!full.endsWith(QLatin1Char('\n'))) full += QLatin1Char('\n');
+                // A blank-line separator before the appended block.
+                if (!full.endsWith(QStringLiteral("\n\n")))
+                    full += QLatin1Char('\n');
+            }
+            full += block;
+            bytesAppended = (created ? skeleton + block : block).toUtf8().size();
+            *text = full;
+            return true;
+        });
+    if (!r.code.isEmpty())
+        return QJsonDocument(fbStoreRefusal(r, QStringLiteral("feedback_log"),
+            QStringLiteral("feedback_log: \"%1\" does not exist").arg(resolved),
+            resolved, leaf));
     QJsonObject out;
-    out["ok"]             = true;
-    out["op"]             = op;
-    out["path"]           = resolved;
-    out["bytes_appended"] = static_cast<qint64>(addedUtf8.size());
-    out["date"]           = date;
-    out["created"]        = created;
-    if (derived) fbMarkDerived(out, derivedReason);  // ANTS-3376
-    return QJsonDocument(out);
+    if (dryRun) out[QStringLiteral("dry_run")] = true;
+    out[QStringLiteral("bytes_appended")] = bytesAppended;
+    out[QStringLiteral("date")]           = date;
+    out[QStringLiteral("created")]        = r.created;   // would-create on a dry run
+    return withPath(out);
 }
 
 // ----- ANTS-1963 — spec_log MCP tool --------------------------------

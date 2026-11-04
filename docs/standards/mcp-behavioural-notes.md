@@ -693,7 +693,12 @@ which heading you expect it under.
 - **`feedback_query` / `feedback_log`** — read/write the
   `*_Ants_MCP_Feedback.md` files via the pure `FeedbackFile` module
   (delta parse + block render; ANTS-1961/1962); suffix-guarded on
-  `_Ants_MCP_Feedback.md`; append-only at EOF.
+  `_Ants_MCP_Feedback.md`; append-only at EOF. ANTS-4513: the text lives in
+  the roadmap store and the file is a read-only export. Both verbs import a
+  file on first touch, refuse `store_failed` when the store does not open,
+  and never fall back to the file. A hand-edited file makes every write
+  refuse `export_drift` until `op:"reimport"` with `confirm: true`; six
+  file-tidying ops refuse `retired`.
 - **`spec_log`** — writes a spec's Status line / cold-eyes loop log /
   `INV-N` via the pure `SpecLog` module (`op:"set_status"` /
   `"append_status"` / `"append_loop"` / `"append_inv"`), never renumbering; reuses

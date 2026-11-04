@@ -20,6 +20,7 @@
 #include "../../_support/xdg_guard.h"
 
 #include "config.h"
+#include "feedbackfile.h"    // ANTS-4513 INV-12 — the pre-store count
 #include "remotecontrol.h"
 
 #include <gtest/gtest.h>
@@ -462,4 +463,97 @@ TEST(feedback_query_shared_root, Ants4941TriagedFileStaysSilent) {
     EXPECT_EQ(fp.value(QStringLiteral("files")).toArray().size(), 0)
         << "ANTS-4941: a triaged file is not pending input";
     EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 0);
+}
+
+// ANTS-4513 INV-12 — the block now counts from the store's finding rows. For
+// a corpus whose files all import, its counts equal the ones parse() gives
+// over the same files, which is how the block counted before the store.
+namespace {
+
+const char *kPendingCorpus[][2] = {
+    {"Untriaged_Ants_MCP_Feedback.md",
+     "<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback — U\n\n"
+     "## 2026-10-01 — s\n\n### open one\n\n- **What:** a.\n"
+     "- **Proposed ID:** _(maintainer to assign)_\n\n"
+     "### asked one\n\n- **What:** b.\n"
+     "- **Proposed ID:** _(awaiting reporter — which?)_\n\n"
+     "### closed one\n\n- **What:** c.\n- **Proposed ID:** n/a — dup\n"},
+    {"AwaitingOnly_Ants_MCP_Feedback.md",
+     "<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback — A\n\n"
+     "## 2026-10-02 — s\n\n### asked\n\n- **What:** q.\n"
+     "- **Proposed ID:** _(awaiting reporter)_\n"},
+    {"Slotless_Ants_MCP_Feedback.md",
+     "<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback — S\n\n"
+     "## 2026-10-03 — s\n\n### no slot\n\n- **What:** w.\n- **Repro:** r.\n"},
+    {"Triaged_Ants_MCP_Feedback.md",
+     "<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback — T\n\n"
+     "## 2026-10-04 — s\n\n### done\n\n- **What:** d.\n"
+     "- **Proposed ID:** ANTS-1234\n"},
+};
+
+}  // namespace
+
+TEST(feedback_query_shared_root, Ants4513Inv12StoreCountsMatchParse) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+    int withPending = 0, pendingLines = 0, awaiting = 0, suspected = 0;
+    for (const auto &f : kPendingCorpus) {
+        const QString text = QString::fromUtf8(f[1]);
+        ASSERT_TRUE(writeFile(QDir(l.corpusDir).filePath(QString::fromUtf8(f[0])), text.toUtf8()));
+        // The pre-store count, from parse() alone.
+        const FeedbackFile::ParseResult pr = FeedbackFile::parse(text);
+        const int deltaFindings = pr.deltaPresent
+            ? int(pr.delta.count(QStringLiteral("\n### "))
+                  + (pr.delta.startsWith(QStringLiteral("### ")) ? 1 : 0))
+            : 0;
+        const bool inbox = pr.deltaPresent && deltaFindings != int(pr.awaiting.size());
+        awaiting  += int(pr.awaiting.size());
+        suspected += int(pr.suspectedUntagged.size());
+        if (inbox) pendingLines += pr.deltaLineCount;
+        if (inbox || !pr.suspectedUntagged.isEmpty()) ++withPending;
+    }
+    ASSERT_GT(withPending, 0) << "premise: the corpus has pending input";
+
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty());
+    EXPECT_EQ(fp.value(QStringLiteral("files_scanned")).toInt(), 4);
+    EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), withPending);
+    EXPECT_EQ(fp.value(QStringLiteral("total_pending_lines")).toInt(), pendingLines);
+    EXPECT_EQ(fp.value(QStringLiteral("total_awaiting")).toInt(), awaiting);
+    EXPECT_EQ(fp.value(QStringLiteral("total_suspected_untagged")).toInt(), suspected);
+    EXPECT_TRUE(fp.value(QStringLiteral("import_refused")).toArray().isEmpty());
+}
+
+// ANTS-4513 § 4.6 — a file whose import refuses is listed under
+// import_refused with its code, and counted nowhere.
+TEST(feedback_query_shared_root, Ants4513RefusedImportIsListedNotCounted) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Layout l = makeLayout(tmp);
+    ASSERT_TRUE(makeMaintainerProject(l.callerProj));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(l.corpusDir);
+    }
+    ASSERT_TRUE(writeFile(QDir(l.corpusDir).filePath(QStringLiteral("Old_Ants_MCP_Feedback.md")),
+                          "# Ants MCP Feedback — Old\n\n## 2026-01-01 — s\n\n"
+                          "### v1 finding\n\n- **What:** x.\n"));
+    const QJsonObject fp = feedbackPendingFor(l.callerProj);
+    ASSERT_FALSE(fp.isEmpty());
+    EXPECT_EQ(fp.value(QStringLiteral("files_scanned")).toInt(), 0);
+    EXPECT_EQ(fp.value(QStringLiteral("files_with_pending")).toInt(), 0);
+    const QJsonArray refused = fp.value(QStringLiteral("import_refused")).toArray();
+    ASSERT_EQ(refused.size(), 1);
+    EXPECT_EQ(refused.at(0).toObject().value(QStringLiteral("file")).toString(),
+              QStringLiteral("Old_Ants_MCP_Feedback.md"));
+    EXPECT_EQ(refused.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("not_v2"));
 }

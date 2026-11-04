@@ -6,6 +6,7 @@
 #include "remotecontrol_internal.h"
 #include "buildcache.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
+#include "feedbackstore.h"       // ANTS-4513 — feedback_pending from the store
 #include "findsources.h"
 #include "readregion.h"
 #include "secretredact.h"        // ANTS-4448 — strip credentials from a
@@ -1460,7 +1461,21 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
     if (!declaredCanon.isEmpty() && !roots.contains(declaredCanon))
         roots.append(declaredCanon);
 
+    // ANTS-4513 § 4.7 — the counts come from the store. A store that does not
+    // open leaves this block flagged and countless; orient itself still
+    // answers.
+    QJsonObject fp;
+    fp[QStringLiteral("shared_root")] =
+        declaredCanon.isEmpty() ? roots.first() : declaredCanon;
+    RoadmapStore store(RoadmapStore::defaultPath());
+    if (QString serr; !store.open(&serr)) {
+        fp[QStringLiteral("searched")]     = QJsonArray::fromStringList(roots);
+        fp[QStringLiteral("store_failed")] = true;
+        return fp;
+    }
+
     QJsonArray pendingFiles;
+    QJsonArray importRefused;   // § 4.6 — files whose import refused, uncounted
     QJsonArray searched;
     QSet<QString> seen;        // dedupe by file, not by directory: two roots
                                // can spell one directory two ways.
@@ -1485,13 +1500,28 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
             seen.insert(key);
             QFileInfo fi(full);
             if (fi.size() > kFeedbackScanCeiling) continue;
-            QFile f(full);
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-            const QString content = QString::fromUtf8(f.readAll());
-            f.close();
+            // ANTS-4513 § 4.3 — a file with no row is imported here, so the
+            // maintainer's next orient brings the whole corpus in.
+            const FeedbackStore::Result loaded = FeedbackStore::load(store, full);
+            QString rowErr;
+            const auto rows = loaded.code.isEmpty()
+                ? store.feedbackFindings(loaded.reporterId, &rowErr)
+                : std::nullopt;
+            if (!rows) {
+                importRefused.append(QJsonObject{
+                    {QStringLiteral("file"), name},
+                    {QStringLiteral("code"), loaded.code.isEmpty()
+                                                 ? QStringLiteral("store_failed")
+                                                 : loaded.code}});
+                continue;
+            }
             ++filesScanned;
-            const FeedbackFile::ParseResult pr = FeedbackFile::parse(content);
-            const int awaitingHere = int(pr.awaiting.size());
+            int awaitingHere = 0, suspectedHere = 0, untriagedHere = 0;
+            for (const auto &row : *rows) {
+                if (row.triage == QLatin1String("awaiting")) ++awaitingHere;
+                else if (row.triage == QLatin1String("untagged")) ++suspectedHere;
+                else if (row.triage == QLatin1String("untriaged")) ++untriagedHere;
+            }
             totalAwaiting += awaitingHere;
             // ANTS-4941 -- a finding with NO `**Proposed ID:**` line at all is
             // a THIRD state, and until now this block could not see it. The v2
@@ -1503,7 +1533,6 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
             // read `suspected_untagged` by hand. This block is the ONLY
             // always-on surface for "which files have new contributor input",
             // so what it cannot see, nothing else raises.
-            const int suspectedHere = int(pr.suspectedUntagged.size());
             totalSuspected += suspectedHere;
             // ANTS-3631 -- an awaiting marker is the MAINTAINER'S OUTBOX, not
             // their inbox: it is un-triaged so the question reaches the
@@ -1517,18 +1546,7 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
             // and NO `delta_line_count`, and the absence of that key is what
             // marks it as outbox. Dropping it entirely would leave the count
             // with no carrier in the one case the field exists for.
-            // "Does the delta hold anything that is NOT an awaiting marker?"
-            // The delta is a `\n`-joined concatenation of finding blocks, so
-            // its heading count is the finding count; every awaiting finding
-            // contributes exactly one. Equal counts mean awaiting-only.
-            const int deltaFindings = pr.deltaPresent
-                ? int(pr.delta.count(QStringLiteral("\n### "))
-                      + (pr.delta.startsWith(QStringLiteral("### ")) ? 1 : 0))
-                : 0;
-            const bool inboxOnlyAwaiting =
-                pr.deltaPresent && awaitingHere > 0 &&
-                deltaFindings > 0 && deltaFindings == awaitingHere;
-            if (!pr.deltaPresent && awaitingHere == 0 && suspectedHere == 0)
+            if (untriagedHere == 0 && awaitingHere == 0 && suspectedHere == 0)
                 continue;
             QJsonObject entry;
             entry[QStringLiteral("file")] = name;
@@ -1541,10 +1559,14 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
             // own. Folding them would make the remedy unguessable from the row.
             if (suspectedHere > 0)
                 entry[QStringLiteral("suspected_untagged_count")] = suspectedHere;
-            const bool hasDeltaInbox = pr.deltaPresent && !inboxOnlyAwaiting;
+            // The delta holds the untriaged and the awaiting findings; it is
+            // inbox work only when some of it is not an awaiting marker.
+            const bool hasDeltaInbox = untriagedHere > 0;
             if (hasDeltaInbox) {
-                entry[QStringLiteral("delta_line_count")] = pr.deltaLineCount;
-                totalPendingLines += pr.deltaLineCount;
+                // § 4.6 — the line count is parse()'s, on this reporter only.
+                const int lines = FeedbackFile::parse(loaded.content).deltaLineCount;
+                entry[QStringLiteral("delta_line_count")] = lines;
+                totalPendingLines += lines;
             }
             // A slotless finding IS pending input, so it counts toward
             // files_with_pending exactly as an unfilled slot does -- otherwise
@@ -1556,13 +1578,10 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
         }
     }
 
-    QJsonObject fp;
-    // ANTS-4896 -- the corpus a reader should go to: the declared one when a
-    // key names it, else the derived parent. `searched` carries the full list,
-    // so files_scanned:0 says WHERE it looked rather than only that it found
-    // nothing.
-    fp[QStringLiteral("shared_root")] =
-        declaredCanon.isEmpty() ? roots.first() : declaredCanon;
+    // ANTS-4896 -- shared_root (set above) is the corpus a reader should go
+    // to: the declared one when a key names it, else the derived parent.
+    // `searched` carries the full list, so files_scanned:0 says WHERE it
+    // looked rather than only that it found nothing.
     fp[QStringLiteral("searched")]           = searched;
     fp[QStringLiteral("files_scanned")]      = filesScanned;
     // ANTS-3631 -- `files_with_pending` counts INBOX files only. An
@@ -1579,6 +1598,7 @@ QJsonObject RemoteControl::buildFeedbackPendingBlock(const QString &rootCanonica
     // byte-identical here.
     fp[QStringLiteral("total_suspected_untagged")] = totalSuspected;
     fp[QStringLiteral("files")]              = pendingFiles;
+    fp[QStringLiteral("import_refused")]     = importRefused;
     return fp;
 }
 

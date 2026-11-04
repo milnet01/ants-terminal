@@ -662,6 +662,11 @@ add_library(ants_mcpcore_lib STATIC
     src/docfacts.cpp
     # ANTS-1961 / ANTS-1962 — feedback-file parse + render helpers.
     src/feedbackfile.cpp
+    # ANTS-4513 — the feedback corpus in the roadmap store: import, the
+    # locked write and the read-only export. Reaches the store through the
+    # PRIVATE ants_roadmapstore_lib link below; its header names RoadmapStore,
+    # so only this library's own sources and the tests include it.
+    src/feedbackstore.cpp
     # ANTS-1963 — spec_log pure markdown transforms (Qt6::Core-only).
     src/speclog.cpp
     # ANTS-3665 — spec-body parser, hoisted out of remotecontrol.cpp's anonymous
@@ -846,6 +851,7 @@ set_source_files_properties("${ANTS_BUILD_INFO_VALUES_CPP}" PROPERTIES
 # consumers. test_core already linked both and pays nothing new.
 add_library(ants_roadmapstore_lib STATIC
     src/roadmapstore.cpp
+    src/roadmapstore_feedback.cpp   # ANTS-4513 — the feedback corpus tables
     src/jsoncanonical.cpp   # ANTS-3761 — RFC 8785; Qt6::Core only, no Sql
     src/roadmapexport.cpp   # ANTS-3761 — the export writer + its rebuild half
     src/roadmapbackuphealth.cpp  # ANTS-3794 — is the store still backed up?
@@ -2870,13 +2876,10 @@ if(ANTS_TESTS)
                 # ANTS-4989 — the observable for 3.5.3's review-fix rule.
                 tests/features/roadmap_log_review_kind_advisory/test_roadmap_log_review_kind_advisory.cpp
                 tests/features/mcp_feedback_log/test_mcp_feedback_log.cpp
-                # ANTS-3421 feedback_log op:compact_shipped (maintainer compaction).
-                tests/features/feedback_log_compact_shipped/test_feedback_log_compact_shipped.cpp
-                tests/features/feedback_log_prune_tracking/test_feedback_log_prune_tracking.cpp
-                # ANTS-3443 feedback_log op:compact_resolved (v2 write-up shrinker).
+                # ANTS-4513 the feedback corpus in the roadmap store (INV-1..10).
+                tests/features/feedback_store/test_feedback_store.cpp
+                # ANTS-3504 feedback ship dates (held compact_resolved until ANTS-4513).
                 tests/features/feedback_log_compact_resolved/test_feedback_log_compact_resolved.cpp
-                # ANTS-3446 feedback_log op:migrate_v2 (mechanical v1→v2 migration).
-                tests/features/feedback_log_migrate_v2/test_feedback_log_migrate_v2.cpp
                 # ANTS-3447 feedback_log op:assign_id (v2 inline triage write).
                 tests/features/feedback_log_assign_id/test_feedback_log_assign_id.cpp
                 # ANTS-3571 feedback_log op:assign_id honours the `note` param.

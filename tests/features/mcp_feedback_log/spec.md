@@ -9,16 +9,12 @@ Invariants exercised (docs/specs/ANTS-1962.md §3 / §6):
 
 - T1 — append_finding renders the full template; omitting repro drops
   only the **Repro:** line; **Proposed ID:** always present + blank.
-- T2 — append_tracking renders the fully-qualified watermark; matches the
-  ANTS-1961 anchor regex.
-- T3 — round-trip: un-triaged delta → append_tracking with an ANTS id →
-  delta empties + id in mapped_ids.
-- T4 — empty ids → `n/a`; multi-id row joined; a 4th Notes column iff any
-  row has notes.
+- T2–T4 — retired with `append_tracking` (ANTS-4513). That op, and
+  `set_format_version`, now refuse `retired` and leave the file unchanged.
 - T5 — refusals: bad op → bad_mode; no findings → bad_args; empty title →
-  bad_args; bad status → bad_status; non-ANTS id → bad_args; bad date →
-  bad_args; non-feedback path → not_feedback_file; append_tracking on
-  absent file → not_found. ANTS-3366: that not_found envelope lists
+  bad_args; a retired op → retired; bad date → bad_args; non-feedback path
+  → not_feedback_file; assign_id on an absent file → not_found. After each
+  path refusal, no store row exists for that path (ANTS-4513 INV-13). ANTS-3366: that not_found envelope lists
   sibling `*_Ants_MCP_Feedback.md` files in the dir under `candidates`
   (+ a `hint`).
 - T6 — absent file + append_finding creates skeleton (marker + derived H1

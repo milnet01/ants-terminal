@@ -3,7 +3,7 @@
 ## Background
 
 On a derived-path miss `feedback_query` returned `found:false` and a
-reason, and nothing else. Its sibling `feedback_log op:"append_tracking"`
+reason, and nothing else. Its sibling `feedback_log` (then via `op:"append_tracking"`)
 has answered a missing file with `candidates` + `hint` since ANTS-3366,
 and `feedback_query` is usually the FIRST call a session makes — so it
 is where the hint would pay most.
@@ -103,3 +103,19 @@ Both roots are scanned, matching INV-3 on the query side, so setting the
 key cannot cost a project sitting beside its corpus. Files are deduped by
 canonical path, so one directory reachable by two spellings is counted
 once.
+
+## ANTS-4513 — the counts come from the store
+
+`feedback_pending` now counts from the roadmap store's finding rows
+([`docs/specs/ANTS-4513-feedback-corpus-store.md`](../../../docs/specs/ANTS-4513-feedback-corpus-store.md)).
+
+### INV-12 — the counts stay the same
+
+For a corpus whose files all import, `files_with_pending`,
+`total_pending_lines`, `total_awaiting` and `total_suspected_untagged` equal
+the counts `FeedbackFile::parse` gives over the same files.
+
+### A refused import is listed, not counted
+
+A file whose import refuses appears under `import_refused` with its file name
+and code (`not_v2` for a v1 file), and adds to no count.

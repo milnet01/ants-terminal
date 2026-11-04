@@ -30,8 +30,7 @@ flip_batch, store-backed and markdown-backed. An unknown status refuses
 `active` and `shipped` return none of them; `all` returns them.
 `section_index` counts them in `total_count`.
 
-**INV-8 — feedback.** A finding whose id is 🚫 collapses under
-`compact_resolved`.
+**INV-8 — feedback.** Retired with `compact_resolved` by ANTS-4513; no test.
 
 **INV-9 — dialog.** With Dropped unticked no 🚫 card renders. `History` is
 Done + Dropped. An absent `dropped` filter key reads as ticked. (Dialogs

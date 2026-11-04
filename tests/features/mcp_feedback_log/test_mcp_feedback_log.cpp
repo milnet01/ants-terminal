@@ -4,7 +4,8 @@
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"
-#include "../../_support/srcgrep.h"
+#include "feedbackstore.h"   // ANTS-4513 INV-13
+#include "roadmapstore.h"
 
 #include <string>
 
@@ -29,6 +30,13 @@ QByteArray readAll(const QString &path) {
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) return {};
     return f.readAll();
+}
+
+// ANTS-4513 INV-13 — a refused path leaves no store row. The verbs' store is
+// RoadmapStore::defaultPath(), under the bundle main's XDG_DATA_HOME sandbox.
+bool storeHasRow(const QString &path) {
+    RoadmapStore store(RoadmapStore::defaultPath());
+    return store.open() && store.feedbackReporter(FeedbackStore::exportKey(path));
 }
 
 QJsonObject finding(const QString &title, const QString &what = {},
@@ -70,81 +78,6 @@ TEST(McpFeedbackLog, RenderFindingH1) {
     const QString out = FeedbackFile::renderFindingBlock(
         "2026-06-03", QString(), /*h1=*/true, QString(), fs);
     EXPECT_TRUE(out.startsWith("# 2026-06-03\n"));  // date-only h1
-}
-
-// T2 — tracking watermark matches the ANTS-1961 anchor regex.
-TEST(McpFeedbackLog, RenderTrackingWatermark) {
-    QVector<FeedbackFile::TrackingRow> rows;
-    FeedbackFile::TrackingRow r;
-    r.item = "an item"; r.ids = {"ANTS-1961"};
-    r.status = QString::fromUtf8(kClip);
-    rows.append(r);
-    const QString out = FeedbackFile::renderTrackingBlock(
-        "2026-06-03", "prose", rows, /*sentinel=*/true);
-    static const QRegularExpression anchor(QString::fromUtf8(
-        "^## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking( update)? \\("));
-    EXPECT_TRUE(anchor.match(out.section('\n', 0, 0)).hasMatch())
-        << out.section('\n', 0, 0).toStdString();
-    EXPECT_TRUE(out.contains("| an item | ANTS-1961 |"));
-    EXPECT_TRUE(out.contains("End of 2026-06-03"));
-}
-
-// T4 — empty ids → n/a; multi-id joined; Notes column iff any notes.
-TEST(McpFeedbackLog, TrackingTableShapes) {
-    QVector<FeedbackFile::TrackingRow> rows;
-    FeedbackFile::TrackingRow r1;
-    r1.item = "x"; r1.status = QString::fromUtf8(kClip);  // empty ids
-    FeedbackFile::TrackingRow r2;
-    r2.item = "y"; r2.ids = {"ANTS-1961", "ANTS-1962"};
-    r2.status = QString::fromUtf8(kClip);
-    rows = {r1, r2};
-    const QString noNotes = FeedbackFile::renderTrackingBlock(
-        "2026-06-03", QString(), rows, false);
-    EXPECT_TRUE(noNotes.contains("| x | n/a |"));
-    EXPECT_TRUE(noNotes.contains("| y | ANTS-1961, ANTS-1962 |"));
-    EXPECT_FALSE(noNotes.contains("Notes"));
-
-    rows[1].notes = "some note";
-    const QString withNotes = FeedbackFile::renderTrackingBlock(
-        "2026-06-03", QString(), rows, false);
-    EXPECT_TRUE(withNotes.contains("| Item | ID(s) | Status | Notes |"));
-    // note-less row still has an empty 4th cell (well-formed GFM).
-    EXPECT_TRUE(withNotes.contains("| x | n/a | \xF0\x9F\x93\x8B |"));
-    EXPECT_TRUE(withNotes.contains("some note |"));
-}
-
-// ANTS-3469 — a `|` or newline in item/notes is escaped so the table row
-// keeps its column count. A raw pipe splits the cell, mis-aligning
-// Status/Notes and breaking compact_shipped's ✅-row detection. Mirrors
-// roadmap_log op:bundle_row's cell escaping.
-TEST(McpFeedbackLog, TrackingCellEscapesPipeAndNewline) {
-    QVector<FeedbackFile::TrackingRow> rows;
-    FeedbackFile::TrackingRow r;
-    r.item   = "regex a|b|c fails";
-    r.ids    = {"ANTS-3466"};
-    r.status = QString::fromUtf8(kClip);
-    r.notes  = "bearing | / .*\nsecond line";
-    rows.append(r);
-    const QString out = FeedbackFile::renderTrackingBlock(
-        "2026-07-09", QString(), rows, false);
-
-    EXPECT_TRUE(out.contains("regex a\\|b\\|c fails"));
-    EXPECT_TRUE(out.contains("bearing \\| / .*"));
-    EXPECT_TRUE(out.contains(".*<br>second line"));   // newline folded
-    EXPECT_FALSE(out.contains("bearing | /"));         // no bare pipe survives
-
-    // The data row keeps exactly 5 structural pipes (`| item | ids | status
-    // | notes |`) — escaped pipes (preceded by `\`) don't count.
-    QString rowLine;
-    for (const QString &ln : out.split(QChar('\n')))
-        if (ln.contains("ANTS-3466")) { rowLine = ln; break; }
-    ASSERT_FALSE(rowLine.isEmpty());
-    int barePipes = 0;
-    for (int i = 0; i < rowLine.size(); ++i)
-        if (rowLine.at(i) == QChar('|') &&
-            (i == 0 || rowLine.at(i - 1) != QChar('\\')))
-            ++barePipes;
-    EXPECT_EQ(barePipes, 5) << rowLine.toStdString();
 }
 
 // T6 — absent file + append_finding creates a skeleton; created:true.
@@ -197,46 +130,25 @@ QJsonObject trackingRow() {
 }
 }  // namespace
 
-// ANTS-3477 — op:append_tracking is the retired v1 tracking-table write. On a
-// v2 (inline-ID) file it must refuse with `not_v1` and point at op:assign_id,
-// so a v2 file can't re-grow a maintainer table.
-TEST(McpFeedbackLog, AppendTrackingRefusedOnV2File) {
-    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
-    const QString p = writeMarked(dir.path(), "Proj_Ants_MCP_Feedback.md", 2);
-    ASSERT_FALSE(p.isEmpty());
-
-    RemoteControl rc(nullptr);
-    QJsonObject req;
-    req["path"] = p; req["caller_cwd"] = dir.path();
-    req["op"] = "append_tracking"; req["date"] = "2026-07-10";
-    QJsonArray rows; rows.append(trackingRow());
-    req["rows"] = rows;
-    const QJsonObject env = rc.cmdFeedbackLog(req).object();
-
-    EXPECT_FALSE(env.value("ok").toBool());
-    EXPECT_EQ(env.value("code").toString().toStdString(), "not_v1");
-    // The file is not mutated — no tracking table appended.
-    EXPECT_FALSE(readAll(p).contains("roadmap tracking"));
-}
-
-// ANTS-3477 regression — a v1 / un-migrated file still accepts append_tracking
-// (the guard keys on marker >= 2, so v1 stays the legacy triage-write path).
-TEST(McpFeedbackLog, AppendTrackingStillValidOnV1File) {
-    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
-    const QString p = writeMarked(dir.path(), "Proj_Ants_MCP_Feedback.md", 1);
-    ASSERT_FALSE(p.isEmpty());
-
-    RemoteControl rc(nullptr);
-    QJsonObject req;
-    req["path"] = p; req["caller_cwd"] = dir.path();
-    req["op"] = "append_tracking"; req["date"] = "2026-07-10";
-    QJsonArray rows; rows.append(trackingRow());
-    req["rows"] = rows;
-    const QJsonObject env = rc.cmdFeedbackLog(req).object();
-
-    EXPECT_TRUE(env.value("ok").toBool())
-        << env.value("error").toString().toStdString();
-    EXPECT_TRUE(readAll(p).contains("| an item | ANTS-1962 |"));
+// ANTS-4513 § 4.6 / INV-10 — append_tracking (ANTS-3477's v1 write) is
+// retired, on a v2 file and a v1 file alike, and writes nothing.
+TEST(McpFeedbackLog, AppendTrackingIsRetired) {
+    for (const int ver : {1, 2}) {
+        QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+        const QString p = writeMarked(dir.path(), "Proj_Ants_MCP_Feedback.md", ver);
+        ASSERT_FALSE(p.isEmpty());
+        const QByteArray before = readAll(p);
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req["path"] = p; req["caller_cwd"] = dir.path();
+        req["op"] = "append_tracking"; req["date"] = "2026-07-10";
+        QJsonArray rows; rows.append(trackingRow());
+        req["rows"] = rows;
+        const QJsonObject env = rc.cmdFeedbackLog(req).object();
+        EXPECT_FALSE(env.value("ok").toBool());
+        EXPECT_EQ(env.value("code").toString().toStdString(), "retired");
+        EXPECT_EQ(readAll(p), before) << "version " << ver;
+    }
 }
 
 // ANTS-3426 — a fresh "_Ants"-suffixed project (fork checkout "DOOM_Ants")
@@ -269,7 +181,7 @@ TEST(McpFeedbackLog, AppendsBelowMaintainerBlock) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString p = dir.path() + "/P_Ants_MCP_Feedback.md";
     QString seed = QStringLiteral(
-        "# Title\n\n"
+        "<!-- ants-mcp-feedback: 2 -->\n# Title\n\n"
         "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
         "| a | ANTS-1 | 📋 |\n").arg(QString::fromUtf8(kClip));
     { QFile f(p); ASSERT_TRUE(f.open(QIODevice::WriteOnly));
@@ -290,46 +202,6 @@ TEST(McpFeedbackLog, AppendsBelowMaintainerBlock) {
     EXPECT_TRUE(r.deltaPresent);
     EXPECT_TRUE(r.delta.contains("Brand new finding"))
         << "new finding must land in the delta (below the watermark)";
-}
-
-// T3 — round-trip: un-triaged delta → append_tracking → delta empties +
-// id appears in mapped_ids.
-TEST(McpFeedbackLog, RoundTrip) {
-    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
-    const QString p = dir.path() + "/R_Ants_MCP_Feedback.md";
-    QString seed = QStringLiteral(
-        "# Title\n\n"
-        "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
-        "| a | ANTS-1 | 📋 |\n\n"
-        "## 2026-05-20 — session\n\n"
-        "### untriaged finding\n\n- **What:** x.\n")
-        .arg(QString::fromUtf8(kClip));
-    { QFile f(p); ASSERT_TRUE(f.open(QIODevice::WriteOnly));
-      f.write(seed.toUtf8()); f.close(); }
-
-    // Before: delta present.
-    {
-        const FeedbackFile::ParseResult before =
-            FeedbackFile::parse(QString::fromUtf8(readAll(p)));
-        EXPECT_TRUE(before.deltaPresent);
-    }
-
-    RemoteControl rc(nullptr);
-    QJsonObject req;
-    req["path"] = p; req["caller_cwd"] = dir.path();
-    req["op"] = "append_tracking"; req["date"] = "2026-06-03";
-    QJsonArray rows;
-    QJsonObject row; row["item"] = "untriaged finding";
-    QJsonArray ids; ids.append("ANTS-9001"); row["ids"] = ids;
-    row["status"] = QString::fromUtf8(kClip);
-    rows.append(row); req["rows"] = rows;
-    const QJsonObject env = rc.cmdFeedbackLog(req).object();
-    ASSERT_TRUE(env.value("ok").toBool()) << "append_tracking should succeed";
-
-    const FeedbackFile::ParseResult after =
-        FeedbackFile::parse(QString::fromUtf8(readAll(p)));
-    EXPECT_FALSE(after.deltaPresent) << "watermark advanced, delta empty";
-    EXPECT_TRUE(after.mappedIds.contains("ANTS-9001"));
 }
 
 // T5 — refusals.
@@ -358,20 +230,12 @@ TEST(McpFeedbackLog, Refusals) {
       QJsonArray fs; fs.append(finding(""));  r["findings"] = fs;
       EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
                 "bad_args"); }
-    // bad status → bad_status
+    // ANTS-4513 — a retired op refuses before reading its arguments.
     { QJsonObject r = base(); r["op"] = "append_tracking";
       QJsonArray rows; QJsonObject row; row["item"] = "x";
       row["status"] = "Z"; rows.append(row); r["rows"] = rows;
       EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
-                "bad_status"); }
-    // non-ANTS id → bad_args
-    { QJsonObject r = base(); r["op"] = "append_tracking";
-      QJsonArray rows; QJsonObject row; row["item"] = "x";
-      row["status"] = QString::fromUtf8(kClip);
-      QJsonArray ids; ids.append("1234"); row["ids"] = ids;
-      rows.append(row); r["rows"] = rows;
-      EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
-                "bad_args"); }
+                "retired"); }
     // bad date → bad_args
     { QJsonObject r = base(); r["op"] = "append_finding";
       r["date"] = "06-2026";
@@ -384,18 +248,18 @@ TEST(McpFeedbackLog, Refusals) {
       r["op"] = "append_finding";
       QJsonArray fs; fs.append(finding("T")); r["findings"] = fs;
       EXPECT_EQ(rc.cmdFeedbackLog(r).object().value("code").toString(),
-                "not_feedback_file"); }
-    // append_tracking on absent file → not_found. ANTS-3366: the dir
+                "not_feedback_file");
+      EXPECT_FALSE(storeHasRow(np)); }
+    // assign_id on absent file → not_found. ANTS-3366: the dir
     // holds a real sibling (F_Ants_MCP_Feedback.md, written above), so the
     // not_found envelope lists it under `candidates` + carries a `hint`.
     { const QString np = dir.path() + "/Gone_Ants_MCP_Feedback.md";
       QJsonObject r; r["path"] = np; r["caller_cwd"] = dir.path();
-      r["op"] = "append_tracking";
-      QJsonArray rows; QJsonObject row; row["item"] = "x";
-      row["status"] = QString::fromUtf8(kClip); rows.append(row);
-      r["rows"] = rows;
+      r["op"] = "assign_id"; r["heading"] = "### x";
+      QJsonArray ids; ids.append("ANTS-1"); r["ids"] = ids;
       const QJsonObject e = rc.cmdFeedbackLog(r).object();
       EXPECT_EQ(e.value("code").toString(), "not_found");
+      EXPECT_FALSE(storeHasRow(np));
       ASSERT_TRUE(e.contains("candidates"));
       const QJsonArray cands = e.value("candidates").toArray();
       ASSERT_EQ(cands.size(), 1);
@@ -407,7 +271,8 @@ TEST(McpFeedbackLog, Refusals) {
 TEST(McpFeedbackLog, AtomicWriteFailure) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString p = dir.path() + "/A_Ants_MCP_Feedback.md";
-    const QByteArray seed = "# Title\n\nexisting content.\n";
+    const QByteArray seed =
+        "<!-- ants-mcp-feedback: 2 -->\n# Title\n\nexisting content.\n";
     { QFile f(p); ASSERT_TRUE(f.open(QIODevice::WriteOnly));
       f.write(seed); f.close(); }
 
@@ -494,7 +359,7 @@ TEST(McpFeedbackLog, DotLeafRefusalOffersTheSiblings) {
     ASSERT_TRUE(QDir(root.path()).mkdir(".claude"));
     QFile sib(root.path() + "/claude_config_Ants_MCP_Feedback.md");
     ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
-    sib.write("# Ants MCP Feedback\n"); sib.close();
+    sib.write("<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback\n"); sib.close();
 
     RemoteControl rc(nullptr);
     QJsonObject req;
@@ -536,7 +401,7 @@ TEST(McpFeedbackLog, Ants5500DotLeafResolvesFromTheOriginRemote) {
     const QString file = root.path() + "/claude_config_Ants_MCP_Feedback.md";
     QFile sib(file);
     ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
-    sib.write("# Ants MCP Feedback\n"); sib.close();
+    sib.write("<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback\n"); sib.close();
     QFile other(root.path() + "/other_Ants_MCP_Feedback.md");
     ASSERT_TRUE(other.open(QIODevice::WriteOnly));
     other.write("# Ants MCP Feedback\n"); other.close();
@@ -821,7 +686,7 @@ TEST(McpFeedbackLog, Ants4647RefusesToDeriveForANestedProject) {
     // The real corpus lives at the top; the workspace between holds none.
     QFile sib(root.path() + "/Charls_Site_Ants_MCP_Feedback.md");
     ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
-    sib.write("# Ants MCP Feedback\n"); sib.close();
+    sib.write("<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback\n"); sib.close();
     ASSERT_TRUE(QDir(root.path()).mkpath("Charls_Site/Pressless"));
 
     RemoteControl rc(nullptr);
@@ -874,7 +739,7 @@ TEST(McpFeedbackLog, Ants4647DirectChildOfTheCorpusRootStillDerives) {
     QTemporaryDir root; ASSERT_TRUE(root.isValid());
     QFile sib(root.path() + "/Other_Ants_MCP_Feedback.md");
     ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
-    sib.write("# Ants MCP Feedback\n"); sib.close();
+    sib.write("<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback\n"); sib.close();
     ASSERT_TRUE(QDir(root.path()).mkdir("NewProject"));
 
     RemoteControl rc(nullptr);
@@ -891,112 +756,21 @@ TEST(McpFeedbackLog, Ants4647DirectChildOfTheCorpusRootStillDerives) {
         root.path() + "/NewProject_Ants_MCP_Feedback.md"));
 }
 
-// ANTS-4707 — the format-version marker had no verb that could correct it, so
-// the only route was the hand edit the assign-id pipeline exists to avoid. A
-// real file declares version 4, which has never been defined.
-//
-// The marker is a CLAIM ABOUT THE CONTENT, and the guard is symmetric: the item
-// asked to check downgrades, but stamping `: 2` on a file with no inline-ID
-// slots is exactly as false as stamping `: 1` on a file full of them.
-
-TEST(McpFeedbackLog, Ants4707CorrectsAnUndefinedVersionOnAV2ShapedFile) {
-    const QString before = QString::fromUtf8(
-        "<!-- ants-mcp-feedback: 4 -->\n"
-        "# Ants MCP Feedback \xE2\x80\x94 OneUp\n"
-        "\n"
-        "### A finding\n"
-        "**Proposed ID:** ANTS-1234\n");
-    const FeedbackFile::SetFormatVersionResult r =
-        FeedbackFile::setFormatVersion(before, 2);
-    EXPECT_TRUE(r.code.isEmpty()) << r.code.toStdString();
-    EXPECT_TRUE(r.changed);
-    EXPECT_EQ(r.oldVersion, 4);
-    EXPECT_EQ(r.newVersion, 2);
-    EXPECT_TRUE(r.newContent.contains(QStringLiteral("ants-mcp-feedback: 2")));
-    EXPECT_FALSE(r.newContent.contains(QStringLiteral("ants-mcp-feedback: 4")));
-    // Nothing but the marker moves.
-    EXPECT_TRUE(r.newContent.contains(QStringLiteral("**Proposed ID:** ANTS-1234")));
-}
-
-TEST(McpFeedbackLog, Ants4707RefusesAVersionItCannotRead) {
-    const QString before = QString::fromUtf8(
-        "<!-- ants-mcp-feedback: 2 -->\n### F\n**Proposed ID:** ANTS-1\n");
-    const FeedbackFile::SetFormatVersionResult r =
-        FeedbackFile::setFormatVersion(before, FeedbackFile::kMaxKnownFormatVersion + 1);
-    EXPECT_EQ(r.code, QStringLiteral("unknown_version"))
-        << "a verb must not stamp a version it cannot read";
-    EXPECT_FALSE(r.changed);
-    EXPECT_EQ(r.newContent, before);
-}
-
-// The upgrade direction the item did not ask to guard, and it is the same lie.
-TEST(McpFeedbackLog, Ants4707RefusesStampingV2OnAV1ShapedFile) {
-    const QString before = QString::fromUtf8(
-        "<!-- ants-mcp-feedback: 1 -->\n"
-        "# Ants MCP Feedback \xE2\x80\x94 Old\n"
-        "\n"
-        "### A finding\n"
-        "Some prose, and no inline id slot anywhere.\n");
-    const FeedbackFile::SetFormatVersionResult r =
-        FeedbackFile::setFormatVersion(before, 2);
-    EXPECT_EQ(r.code, QStringLiteral("shape_mismatch"));
-    EXPECT_FALSE(r.changed);
-    EXPECT_EQ(r.newContent, before);
-    EXPECT_FALSE(r.detail.isEmpty()) << "a refusal must say what did not match";
-}
-
-TEST(McpFeedbackLog, Ants4707RefusesStampingV1OnAV2ShapedFile) {
-    const QString before = QString::fromUtf8(
-        "<!-- ants-mcp-feedback: 2 -->\n"
-        "### A finding\n"
-        "**Proposed ID:** ANTS-9\n");
-    const FeedbackFile::SetFormatVersionResult r =
-        FeedbackFile::setFormatVersion(before, 1);
-    EXPECT_EQ(r.code, QStringLiteral("shape_mismatch"));
-    EXPECT_FALSE(r.changed);
-}
-
-TEST(McpFeedbackLog, Ants4707IsIdempotent) {
-    const QString before = QString::fromUtf8(
-        "<!-- ants-mcp-feedback: 2 -->\n### F\n**Proposed ID:** ANTS-2\n");
-    const FeedbackFile::SetFormatVersionResult r =
-        FeedbackFile::setFormatVersion(before, 2);
-    EXPECT_TRUE(r.code.isEmpty());
-    EXPECT_FALSE(r.changed) << "an already-correct marker must not report a write";
-    EXPECT_EQ(r.newContent, before);
-}
-
-// It corrects a marker; it never invents one. A file with no marker is
-// migrate_v2's job, which also builds the shape a marker would claim.
-TEST(McpFeedbackLog, Ants4707RefusesAFileWithNoMarker) {
-    const QString before = QString::fromUtf8(
-        "# Ants MCP Feedback \xE2\x80\x94 Unmarked\n### F\n**Proposed ID:** ANTS-3\n");
-    const FeedbackFile::SetFormatVersionResult r =
-        FeedbackFile::setFormatVersion(before, 2);
-    EXPECT_EQ(r.code, QStringLiteral("no_marker"));
-    EXPECT_FALSE(r.changed);
-    EXPECT_EQ(r.newContent, before);
-}
-
-// The op must be reachable, not merely implemented: a pure function nothing
-// dispatches leaves the hand edit as the only route, which is the finding.
-// Source-scraped — the handler needs a live RemoteControl.
-TEST(McpFeedbackLog, Ants4707OpIsWiredAndAdvertised) {
-    const std::string src = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(src.empty());
-    EXPECT_TRUE(src.find("op == QStringLiteral(\"set_format_version\")")
-                != std::string::npos)
-        << "the op must have a branch in cmdFeedbackLog";
-    EXPECT_TRUE(src.find("op != QStringLiteral(\"set_format_version\")")
-                != std::string::npos)
-        << "the op must be in the accepted-op guard, or the branch is dead";
-    EXPECT_TRUE(src.find("FeedbackFile::setFormatVersion") != std::string::npos)
-        << "the branch must call the engine, not re-implement the rule";
-    // The refusal detail has to reach the caller, or a shape_mismatch says
-    // nothing about which way the shape disagreed.
-    EXPECT_TRUE(src.find("e[QStringLiteral(\"hint\")] = vr.detail")
-                != std::string::npos)
-        << "a shape_mismatch must carry its reason";
+// ANTS-4513 § 4.6 / INV-10 — set_format_version (ANTS-4707) is retired: the
+// store keeps the text, so a marker no longer needs a verb of its own.
+TEST(McpFeedbackLog, Ants4513SetFormatVersionIsRetired) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeMarked(dir.path(), "Proj_Ants_MCP_Feedback.md", 2);
+    ASSERT_FALSE(p.isEmpty());
+    const QByteArray before = readAll(p);
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["path"] = p; req["caller_cwd"] = dir.path();
+    req["op"] = "set_format_version"; req["version"] = 2;
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "retired");
+    EXPECT_EQ(readAll(p), before);
 }
 
 // ANTS-4900 — the corpus one level BELOW the derivation root.
@@ -1019,7 +793,7 @@ TEST(McpFeedbackLog, Ants4900RefusesWhenTheCorpusIsASubdirectory) {
     QFile sib(root.path()
               + "/Ants_MCP_Feedback_Files/Neighbour_Ants_MCP_Feedback.md");
     ASSERT_TRUE(sib.open(QIODevice::WriteOnly));
-    sib.write("# Ants MCP Feedback\n"); sib.close();
+    sib.write("<!-- ants-mcp-feedback: 2 -->\n# Ants MCP Feedback\n"); sib.close();
     ASSERT_TRUE(QDir(root.path()).mkpath("Project"));
 
     RemoteControl rc(nullptr);

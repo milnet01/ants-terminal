@@ -56,6 +56,15 @@ for security-relevant changes.
 
 ### Changed
 
+- **The shared MCP feedback files now live in the roadmap store. Two sessions filing at once both land, and each file stays on disk as a read-only copy.** (ANTS-4513)
+  `feedback_log` and `feedback_query` take the same arguments as before.
+  A file is imported the first time a verb touches it. A file edited by
+  hand is refused until `feedback_log op:"reimport"` with `confirm: true`
+  keeps its text. `session_orient`'s `feedback_pending` counts from the
+  store and lists any file that would not import. The first build with
+  this change upgrades the store; an Ants Terminal built before it cannot
+  open the Roadmap window until it is relaunched.
+
 - **spec_lint's coverage-skip hint and project_conventions' dropped-conventions warning are shorter** (ANTS-6356)
   Both fire on every call for a project that lacks the documents they
   check. They keep what a reader needs to avoid a false pass, in less
@@ -165,6 +174,10 @@ for security-relevant changes.
 - **A section-slug refusal lists first the section whose slug starts with what the caller typed, in `roadmap_log`, `read_region` and every other verb that ranks sections.** (ANTS-6211)
 
 - **`roadmap_query` adds `body_match_hint` naming `body_match_regex:true` when a plain-text `body_match` that reads like a pattern matches no line.** (ANTS-6203)
+
+### Removed
+
+- **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
 

@@ -8,7 +8,7 @@ would change" pre-flight. This feature adds a uniform `dry_run`:
 
 - **Part 1** — verbs with bounded write seams: **apply_edits** (the biggest
   blast-radius verb), **project_settings** (init/set), **feedback_log**
-  (append_finding / append_tracking) and **audit_falsepos_log**.
+  (append_finding) and **audit_falsepos_log**.
 - **Part 2** — the ID-allocating ROADMAP fold-in family: **indie_review_fold_in**,
   **cold_eyes_fold_in** and **debt_sweep_defer**. These bump `.roadmap-counter`
   (allocateIds) AND insert into ROADMAP.md (insertBlock); dry_run must skip

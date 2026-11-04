@@ -338,23 +338,6 @@ TEST(FeedbackV2Delta, FenceOpenerIsSpaceIndentOnly) {
     EXPECT_TRUE(r.delta.contains(QStringLiteral("### AlsoReal")));
 }
 
-// INV-12 — migrate_v2 → parse round-trip agree on the version.
-TEST(FeedbackV2Delta, MigrateThenParseRoundTrip) {
-    const char *v1fix =
-        "<!-- ants-mcp-feedback: 1 -->\n"
-        "# T\n"
-        "\n"
-        "### Issue #1 \xE2\x80\x94 x\n"
-        "- **What:** y.\n";
-    const FeedbackFile::MigrateResult mr =
-        FeedbackFile::migrateV2(QString::fromUtf8(v1fix));
-    const FeedbackFile::ParseResult pr = FeedbackFile::parse(mr.newContent);
-    EXPECT_EQ(pr.formatVersion, 2);
-    // The stamped placeholder finding is un-triaged.
-    ASSERT_TRUE(pr.deltaPresent);
-    EXPECT_TRUE(pr.delta.contains(QStringLiteral("_(maintainer to assign)_")));
-}
-
 // INV-10 — parse() is pure: the input string is unchanged.
 TEST(FeedbackV2Delta, ReadPurity) {
     const QString in = v2();
@@ -448,7 +431,8 @@ TEST(FeedbackV2Delta, Ants4702KnownVersionIsQuiet) {
     EXPECT_FALSE(env.contains("format_version_hint"));
 }
 
-// INV-8 — a v1 file: format_version 1, suspected_untagged empty.
+// ANTS-4513 § 4.3 — a v1 file is refused not_v2: the store imports only v2
+// files. (Was ANTS-3448 INV-8: format_version 1, suspected_untagged empty.)
 TEST(FeedbackV2Delta, LiveV1Envelope) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString p = dir.path() + "/TEST_Ants_MCP_Feedback.md";
@@ -458,9 +442,8 @@ TEST(FeedbackV2Delta, LiveV1Envelope) {
     req["path"] = p;
     req["caller_cwd"] = dir.path();
     const QJsonObject env = rc.cmdFeedbackQuery(req).object();
-    ASSERT_TRUE(env.value("ok").toBool());
-    EXPECT_EQ(env.value("format_version").toInt(), 1);
-    EXPECT_TRUE(env.value("suspected_untagged").toArray().isEmpty());
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("not_v2"));
 }
 
 // INV-9 — feedback_pending count follows the v2 rule via parse(). The

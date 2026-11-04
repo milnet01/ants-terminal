@@ -5,6 +5,8 @@
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"
+#include "feedbackstore.h"   // ANTS-4513 INV-13
+#include "roadmapstore.h"
 
 #include <gtest/gtest.h>
 #include <QByteArray>
@@ -36,6 +38,13 @@ QString writeFeedback(const QTemporaryDir &dir, const QString &name,
     f.write(body.toUtf8());
     f.close();
     return path;
+}
+
+// ANTS-4513 INV-13 — a refused path leaves no store row. The verbs' store is
+// RoadmapStore::defaultPath(), under the bundle main's XDG_DATA_HOME sandbox.
+bool storeHasRow(const QString &path) {
+    RoadmapStore store(RoadmapStore::defaultPath());
+    return store.open() && store.feedbackReporter(FeedbackStore::exportKey(path));
 }
 
 QStringList idsOf(const QJsonObject &env) {
@@ -201,14 +210,16 @@ TEST(McpFeedbackQuery, DeeperHeadingsInert) {
 // T1 (handler) — envelope carries all INV-8 fields.
 TEST(McpFeedbackQuery, HandlerEnvelopeFields) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    // ANTS-4513 — v2: the store imports only v2 files.
     const QString body = QStringLiteral(
-        "# Title\n\n"
+        "<!-- ants-mcp-feedback: 2 -->\n# Title\n\n"
         "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
         "| Item | ID(s) | Status |\n"
         "|------|-------|--------|\n"
-        "| a | ANTS-8000 | 📋 |\n\n"
+        "| a | ANTS-7000 | 📋 |\n\n"
         "## 2026-05-20 — session\n\n"
-        "### finding\n\n- **What:** x.\n").arg(QString::fromUtf8(kClip));
+        "### mapped\n\n- **What:** m.\n- **Proposed ID:** ANTS-8000\n\n"
+        "### finding\n\n- **What:** x.\n- **Proposed ID:** _(maintainer to assign)_\n").arg(QString::fromUtf8(kClip));
     const QString p = writeFeedback(dir, "X_Ants_MCP_Feedback.md", body);
     ASSERT_FALSE(p.isEmpty());
 
@@ -246,14 +257,16 @@ TEST(McpFeedbackQuery, Refusals) {
       QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
       const QJsonObject e = rc.cmdFeedbackQuery(req).object();
       EXPECT_FALSE(e.value("ok").toBool());
-      EXPECT_EQ(e.value("code").toString(), "not_feedback_file"); }
+      EXPECT_EQ(e.value("code").toString(), "not_feedback_file");
+      EXPECT_FALSE(storeHasRow(p)); }
 
     // well-formed, non-existent feedback file → not_found
     { const QString p = dir.path() + "/Gone_Ants_MCP_Feedback.md";
       QJsonObject req; req["path"] = p; req["caller_cwd"] = dir.path();
       const QJsonObject e = rc.cmdFeedbackQuery(req).object();
       EXPECT_FALSE(e.value("ok").toBool());
-      EXPECT_EQ(e.value("code").toString(), "not_found"); }
+      EXPECT_EQ(e.value("code").toString(), "not_found");
+      EXPECT_FALSE(storeHasRow(p)); }
 }
 
 // ANTS-3366 — a not_found envelope lists sibling *_Ants_MCP_Feedback.md
@@ -304,8 +317,9 @@ TEST(McpFeedbackQuery, DerivesDefaultPathFromCallerCwd) {
     const QString caller = root.path() + "/RetroDB";
     const QString derived =
         writeFeedback(root, "RetroDB_Ants_MCP_Feedback.md",
-                      "<!-- ants-mcp-feedback: 1 -->\n# x\n\n"
-                      "## 2026-06-30 — s\n\n- **What:** new.\n");
+                      "<!-- ants-mcp-feedback: 2 -->\n# x\n\n"
+                      "## 2026-06-30 — s\n\n### f\n\n- **What:** new.\n"
+                      "- **Proposed ID:** _(maintainer to assign)_\n");
     ASSERT_FALSE(derived.isEmpty());
 
     RemoteControl rc(nullptr);
@@ -384,8 +398,9 @@ TEST(McpFeedbackQuery, DerivesDefaultAcrossLeafPackageMismatch) {
     // The file ships under the package name, not the checkout-dir leaf.
     const QString derived =
         writeFeedback(root, "finbreak_Ants_MCP_Feedback.md",
-                      "<!-- ants-mcp-feedback: 1 -->\n# x\n\n"
-                      "## 2026-07-04 — s\n\n- **What:** mismatch resolved.\n");
+                      "<!-- ants-mcp-feedback: 2 -->\n# x\n\n"
+                      "## 2026-07-04 — s\n\n### f\n\n- **What:** mismatch resolved.\n"
+                      "- **Proposed ID:** _(maintainer to assign)_\n");
     ASSERT_FALSE(derived.isEmpty());
 
     RemoteControl rc(nullptr);
@@ -434,8 +449,9 @@ TEST(McpFeedbackQuery, DerivesDefaultDeDoublesTrailingAnts) {
     const QString caller = root.path() + "/DOOM_Ants";
     const QString real =
         writeFeedback(root, "DOOM_Ants_MCP_Feedback.md",
-                      "<!-- ants-mcp-feedback: 1 -->\n# x\n\n"
-                      "## 2026-07-09 — s\n\n- **What:** de-doubled.\n");
+                      "<!-- ants-mcp-feedback: 2 -->\n# x\n\n"
+                      "## 2026-07-09 — s\n\n### f\n\n- **What:** de-doubled.\n"
+                      "- **Proposed ID:** _(maintainer to assign)_\n");
     ASSERT_FALSE(real.isEmpty());
 
     RemoteControl rc(nullptr);
@@ -476,15 +492,15 @@ TEST(McpFeedbackQuery, NotFoundDeDoubledOwnMatch) {
 TEST(McpFeedbackQuery, ByteCapKeepsHead) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     QString body = QStringLiteral(
-        "# Title\n\n"
+        "<!-- ants-mcp-feedback: 2 -->\n# Title\n\n"
         "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
         "| a | ANTS-1 | 📋 |\n\n"
-        "## 2026-05-20 — session\n\n").arg(QString::fromUtf8(kClip));
+        "## 2026-05-20 — session\n\n### big\n\n").arg(QString::fromUtf8(kClip));
     QString headMarker = QStringLiteral("- **What:** HEADMARKER line.\n");
     body += headMarker;
     for (int i = 0; i < 200; ++i)
         body += QStringLiteral("- filler line number %1 padding padding\n").arg(i);
-    body += QStringLiteral("- **What:** TAILMARKER line.\n");
+    body += QStringLiteral("- **What:** TAILMARKER line.\n- **Proposed ID:** _(maintainer to assign)_\n");
     const QString p = writeFeedback(dir, "Big_Ants_MCP_Feedback.md", body);
 
     RemoteControl rc(nullptr);
@@ -558,18 +574,24 @@ TEST(McpFeedbackQuery, TrackingRowsExtracted) {
     EXPECT_EQ(r.trackingRows.at(2).notes, "Shipped 2026-05-20.");
 }
 
-// ANTS-5108 — renderTrackingBlock escapes a `|` in a cell as `\|` (ANTS-3469);
+// ANTS-5108 — a tracking-table cell escapes a `|` as `\|` (ANTS-3469);
 // parse() split on every `|`, so the escape broke the row into extra cells
-// and the status and notes columns read the wrong text. A row the writer
-// emits must read back unchanged.
+// and the status and notes columns read the wrong text. The block below is
+// what the retired v1 writer emitted (ANTS-4513 removed it); such rows stay in
+// the corpus and must read back unchanged.
 TEST(McpFeedbackQuery, Ants5108EscapedPipeRoundTrips) {
     FeedbackFile::TrackingRow row;
     row.item   = QStringLiteral("Match a|b in one call");
     row.ids    = {QStringLiteral("ANTS-1000")};
     row.status = QString::fromUtf8(kClip);
     row.notes  = QStringLiteral("The pattern `x|y` is literal.");
-    const QString block = FeedbackFile::renderTrackingBlock(
-        QStringLiteral("2026-10-08"), QString(), {row}, false);
+    const QString block = QString::fromUtf8(
+        "## \xF0\x9F\x93\x8B Ants Terminal roadmap tracking update "
+        "(2026-10-08, maintainer)\n\n"
+        "| Item | ID(s) | Status | Notes |\n"
+        "|------|-------|--------|-------|\n"
+        "| Match a\\|b in one call | ANTS-1000 | \xF0\x9F\x93\x8B | "
+        "The pattern `x\\|y` is literal. |\n");
     const FeedbackFile::ParseResult r =
         FeedbackFile::parse(QStringLiteral("# Title\n\n") + block);
     ASSERT_EQ(r.trackingRows.size(), 1);
@@ -584,7 +606,7 @@ TEST(McpFeedbackQuery, Ants5108EscapedPipeRoundTrips) {
 TEST(McpFeedbackQuery, IncludeTrackingEnvelope) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString body = QStringLiteral(
-        "# Title\n\n"
+        "<!-- ants-mcp-feedback: 2 -->\n# Title\n\n"
         "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
         "| Item | ID(s) | Status |\n"
         "|------|-------|--------|\n"
@@ -740,13 +762,13 @@ TEST(McpFeedbackQuery, Ants5098MaxBytesTrimsToTheByte) {
     for (int i = 0; i < 400; ++i)
         tail += QString::fromUtf8("\xF0\x9F\x93\x8B \xC3\xA9");  // 4-, 1- and 2-byte
     const QString body = QStringLiteral(
-        "# Title\n\n"
+        "<!-- ants-mcp-feedback: 2 -->\n# Title\n\n"
         "## %1 Ants Terminal roadmap tracking update (2026-05-11, maintainer)\n\n"
         "| Item | ID(s) | Status |\n"
         "|------|-------|--------|\n"
         "| a | ANTS-8000 | 📋 |\n\n"
         "## 2026-05-20 — session\n\n"
-        "### finding\n\n- **What:** %2\n").arg(QString::fromUtf8(kClip), tail);
+        "### finding\n\n- **What:** %2\n- **Proposed ID:** _(maintainer to assign)_\n").arg(QString::fromUtf8(kClip), tail);
     const QString p = writeFeedback(dir, "X_Ants_MCP_Feedback.md", body);
     ASSERT_FALSE(p.isEmpty());
 
