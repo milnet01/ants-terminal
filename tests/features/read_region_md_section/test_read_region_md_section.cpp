@@ -294,6 +294,39 @@ TEST(ReadRegionMdSection, FullParentheticalTextStillResolves) {
               "7-build-order-cheapest-first-independently-verifiable");
 }
 
+// MD-13 (ANTS-5345) — a title without its section number resolves a numbered
+// heading, the trailing parenthetical included.
+TEST(ReadRegionMdSection, TitleResolvesPastLeadingSectionNumber) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Spec\n"
+        "## 4. Design\n"
+        "### 4.8 As built (2026-09-10)\n"
+        "As-built body.\n"
+        "## 5. Tests\n";
+    const QJsonObject env = extractFrom(writeDoc(dir, "l.md"), doc, "As built");
+    ASSERT_TRUE(env.value("ok").toBool()) << env.value("code").toString().toStdString();
+    EXPECT_EQ(env.value("start_line").toInt(), 3);
+    EXPECT_EQ(env.value("end_line").toInt(), 4);
+    EXPECT_EQ(env.value("section_slug").toString().toStdString(), "4-8-as-built-2026-09-10");
+}
+
+// MD-14 (ANTS-5345) — a title that matches two numbered headings once their
+// numbers are stripped refuses section_ambiguous, as MD-10 does.
+TEST(ReadRegionMdSection, StrippedNumberAmbiguityRefuses) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Spec\n"
+        "## 3. Setup\n"
+        "One.\n"
+        "## 7. Setup\n"
+        "Two.\n";
+    const QJsonObject env = extractFrom(writeDoc(dir, "m.md"), doc, "Setup");
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "section_ambiguous");
+    EXPECT_EQ(env.value("candidates").toArray().size(), 2);
+}
+
 // MD-8 — handler + schema wiring (the handler needs a live MainWindow).
 TEST(ReadRegionMdSection, WiringContract) {
     expect_reset();

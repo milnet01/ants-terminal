@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **read_region section: resolves a heading by its title alone, past a leading section number such as "4.8"** (ANTS-5345)
+
 - **invariant_check's scope note and hints say the same things in about half the bytes** (ANTS-5726)
   Measured on this repository: a reply's tip text falls from 685 to
   362 bytes on a typical match, and from 1213 to 610 with basename

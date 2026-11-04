@@ -430,6 +430,30 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
             return r;
         }
     }
+    // Tier 3 (ANTS-5345) — tiers 1 and 2 again with each heading's leading
+    // section number (`4-8-`, `7-`) stripped, under the same uniqueness rule.
+    if (idx < 0 && !wantSlug.isEmpty()) {
+        static const QRegularExpression kNumber(QStringLiteral("^\\d+(?:-\\d+)*-"));
+        const QString pfx = wantSlug + QLatin1Char('-');
+        for (const bool exact : {true, false}) {
+            QVector<int> cands;
+            for (int i = 0; i < heads.size(); ++i) {
+                const QString bare = QString(heads[i].slug).remove(kNumber);
+                if (bare.size() < heads[i].slug.size()
+                    && (exact ? bare == wantSlug : bare.startsWith(pfx)))
+                    cands.push_back(i);
+            }
+            if (cands.size() == 1) {
+                idx = cands.front();
+                break;
+            }
+            if (cands.size() > 1) {
+                r.ambiguous = true;
+                for (int i : cands) r.candidates << heads[i].slug;
+                return r;
+            }
+        }
+    }
     if (idx < 0) {
         // ANTS-4350 — not found, but not a dead end: the headings are already
         // parsed at this point and the old code discarded them.

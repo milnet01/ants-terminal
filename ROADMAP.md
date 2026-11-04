@@ -87102,12 +87102,16 @@ parse, not that file.
 Filed from the feedback corpus on 2026-09-25. Each item names the reporting
 project. Reported causes are claims until checked in source.
 
-- 📋 [ANTS-5345] **read_region `section` should resolve a title past a leading section number.**
+- ✅ [ANTS-5345] **read_region `section` should resolve a title past a leading section number.**
   Reported by UT_Ants: section:"As built" refused section_not_found on
   `### 4.8 As built (2026-09-10)`, though the ranker listed it first.
   ANTS-2234 forgives a trailing parenthetical only. Suggested: strip a
   leading `\d+(\.\d+)*\.?\s+` before the prefix match, keeping the
   uniqueness guard. Numbered headings are the norm in specs.
+  Shipped 2026-11-04: a third tier strips each heading's leading section
+  number and re-runs exact then prefix matching, under the same
+  uniqueness rule. MD-13, MD-14. Live: section:"Failure modes" resolves
+  "## 4. Failure modes" in ANTS-5734's spec.
   **Layman:** Asking for a document section by its name fails when the heading starts with a number like 4.8.
   Kind: enhancement.
   Source: feedback-UT_Ants-2026-09-12.

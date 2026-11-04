@@ -46,6 +46,13 @@ it is unique.
   prefixes a longer heading; the prefix fallback fires only on no exact match.
 - **MD-12 full text back-compat** — the full parenthetical heading text still
   resolves exactly (the prefix logic must not regress the exact path).
+- **MD-13 title past a section number (ANTS-5345)** — with no match from
+  MD-9 or MD-11, `section:"As built"` resolves `### 4.8 As built (2026-09-10)`:
+  the heading's leading number is stripped, then exact and prefix matching run
+  again, exact first.
+- **MD-14 stripped-number ambiguity** — when two headings match after the
+  strip (`## 3. Setup`, `## 7. Setup`), refuse with `section_ambiguous` as
+  MD-10 does.
 
 - **MD-9 inline fence example (ANTS-3674)** — a heading following an inline
   code span that *demonstrates* a fence (```` ```cpp ```` on one line) still
