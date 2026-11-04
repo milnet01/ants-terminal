@@ -4,6 +4,7 @@
 
 #include "buildtargets.h"
 #include "sourcescrapes.h"
+#include "../../_support/srcgrep.h"
 
 #include <QDir>
 #include <QFile>
@@ -412,7 +413,13 @@ TEST(SourceScrapes, Inv9Wiring) {
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"source_scrapes\"");
     ASSERT_NE(at, std::string::npos);
-    EXPECT_NE(reg.substr(at, 200).find("CallerCwdContract::Required"), std::string::npos);
+    // ANTS-3681 — this registration entry only, up to the next
+    // registerToolProvider( call, not a byte window that also read the
+    // neighbouring entry's contract.
+    const std::string entry = ants_test::regionBetween(
+        reg, "registerToolProvider(\"source_scrapes\"", "registerToolProvider(");
+    ASSERT_FALSE(entry.empty());
+    EXPECT_NE(entry.find("CallerCwdContract::Required"), std::string::npos);
     const auto scoped = reg.find("registerProjectScopedVerbs");
     ASSERT_NE(scoped, std::string::npos);
     EXPECT_LT(scoped, at);

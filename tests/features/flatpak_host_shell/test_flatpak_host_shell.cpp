@@ -160,10 +160,15 @@ static int runMain() {
     {
         auto flatpakBranchPos = src.find("execvpe(\"flatpak-spawn\"");
         if (flatpakBranchPos != std::string::npos) {
-            // Scan forward a bounded window for _exit(127) — it must
-            // appear before the next function/class boundary.
-            auto window = src.substr(flatpakBranchPos, 400);
-            if (window.find("_exit(127)") == std::string::npos) {
+            // ANTS-3681 — _exit(127) must appear between the Flatpak
+            // execvpe and the direct-exec execle that follows it, not
+            // within a fixed byte window.
+            const std::string window = ants_test::regionBetween(
+                src, "execvpe(\"flatpak-spawn\"", "::execle(");
+            if (window.empty()) {
+                fail("INV-6: no direct-exec ::execle( after the Flatpak "
+                     "execvpe to bound the Flatpak branch");
+            } else if (window.find("_exit(127)") == std::string::npos) {
                 fail("INV-6: Flatpak branch must fall through to "
                      "_exit(127) on execvp failure");
             }
@@ -176,9 +181,10 @@ static int runMain() {
     // raw parent environ. flatpak-spawn still forwards only --env= values
     // to the host shell, so this is an in-sandbox consistency fix.
     {
-        auto pos = src.find("execvpe(\"flatpak-spawn\"");
-        if (pos != std::string::npos) {
-            auto window = src.substr(pos, 200);
+        // ANTS-3681 — the execvpe call statement, bounded by its `;`.
+        const std::string window =
+            ants_test::regionBetween(src, "execvpe(\"flatpak-spawn\"", ";");
+        if (!window.empty()) {
             if (window.find("childEnvp") == std::string::npos) {
                 fail("INV-8: Flatpak execvpe must pass childEnvp as its envp "
                      "(ANTS-1994) so flatpak-spawn runs with the sanitised "

@@ -188,7 +188,9 @@ TEST(McpProviderRegistry, Inv9GetTextIsDoubleGate) {
     expect(pos != std::string::npos, "INV-9a",
            "mainwindow.cpp missing registerToolProvider(\"get_text\", …)");
     if (pos != std::string::npos) {
-        const std::string body = mw.substr(pos, 800);
+        // ANTS-3681 — the get_text lambda body, brace-matched.
+        const std::string body = ants_test::slurpFunctionBody(
+            mw, "registerToolProvider(\"get_text\"");
         expect(body.find("isDouble()") != std::string::npos, "INV-9b",
                "get_text lambda body does not use isDouble() to gate "
                "tab/lines extraction (spec INV-3 / ANTS-1244 INV-9)");
@@ -210,7 +212,10 @@ TEST(McpProviderRegistry, Inv10SessionInfoCarveoutPreserved) {
     expect(pos != std::string::npos, "INV-10a",
            "claudeintegration.cpp missing get_session_info inline branch");
     if (pos != std::string::npos) {
-        const std::string block = cpp.substr(pos, 600);
+        // ANTS-3681 — this arm of the inline if/else chain, bounded by
+        // the next arm.
+        const std::string block = ants_test::regionBetween(
+            cpp, "toolName == \"get_session_info\"", "} else if (");
         expect(block.find("m_state") != std::string::npos &&
                    block.find("m_currentTool") != std::string::npos &&
                    block.find("m_contextPercent") != std::string::npos,

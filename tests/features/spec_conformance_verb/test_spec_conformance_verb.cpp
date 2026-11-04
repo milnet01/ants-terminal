@@ -135,32 +135,34 @@ TEST(spec_conformance_verb, VerbContractMinimums) {
     const std::string mw =
         ants_test::stripComments(ants_test::slurpMainWindow());
     ASSERT_FALSE(mw.empty());
-    const std::size_t reg = mw.find("registerToolProvider(\"spec_conformance\"");
-    ASSERT_NE(reg, std::string::npos) << "verb is not registered";
-    EXPECT_TRUE(has(mw.substr(reg, 160), "CallerCwdContract::Required"));
+    // The registration statement, up to its terminating `;`.
+    const std::string reg = ants_test::regionBetween(
+        mw, "registerToolProvider(\"spec_conformance\"", ";");
+    ASSERT_FALSE(reg.empty()) << "verb is not registered";
+    EXPECT_TRUE(has(reg, "CallerCwdContract::Required"));
 
     const std::string ci = ciSource();
     ASSERT_FALSE(ci.empty());
-    const std::size_t cc =
-        ci.find("toolName == QStringLiteral(\"spec_conformance\")");
-    ASSERT_NE(cc, std::string::npos) << "no explicit CallerCwdContract entry";
-    EXPECT_TRUE(has(ci.substr(cc, 100), "C::Required"));
+    // The contract-table row, up to its `return ...;`.
+    const std::string cc = ants_test::regionBetween(
+        ci, "toolName == QStringLiteral(\"spec_conformance\")", ";");
+    ASSERT_FALSE(cc.empty()) << "no explicit CallerCwdContract entry";
+    EXPECT_TRUE(has(cc, "C::Required"));
     EXPECT_TRUE(has(ci, "specConf[\"name\"] = \"spec_conformance\""))
         << "no tools/list schema";
 
     // `path` is required — this verb runs one document, so an absent path has
     // no sane default (spec_lint's tree walk is what makes its path optional).
-    const std::size_t schema = ci.find("specConf[\"name\"] = \"spec_conformance\"");
-    ASSERT_NE(schema, std::string::npos);
-    // The window must cover the whole descriptor: name + description +
-    // schema. Widened 4000 → 7000 by ANTS-4370, which added the
-    // skipped_fences / executable_fences paragraph to the description ahead
-    // of the schema. Widening is the right repair — trimming the description
-    // to fit a test's magic number is the tail wagging the dog.
-    const std::string block = ci.substr(schema, 7000);
-    const std::size_t req = block.find("schema[\"required\"]");
-    ASSERT_NE(req, std::string::npos);
-    const std::string required = block.substr(req, 160);
+    // The whole descriptor — name + description + schema — up to the
+    // `tools.append(specConf);` that ends it, so description growth
+    // (ANTS-4370's fences paragraph) cannot push the schema out of view.
+    const std::string block = ants_test::regionBetween(
+        ci, "specConf[\"name\"] = \"spec_conformance\"", "tools.append(specConf);");
+    ASSERT_FALSE(block.empty());
+    // The required list, up to its terminating `;`.
+    const std::string required =
+        ants_test::regionBetween(block, "schema[\"required\"]", ";");
+    ASSERT_FALSE(required.empty());
     EXPECT_TRUE(has(required, "caller_cwd"));
     EXPECT_TRUE(has(required, "path"));
     EXPECT_TRUE(has(block, "max_cases"));

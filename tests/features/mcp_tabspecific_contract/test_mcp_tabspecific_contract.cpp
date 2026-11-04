@@ -42,12 +42,11 @@ TEST(McpTabSpecificContract, Inv1ErrorCodeDocumented) {
 TEST(McpTabSpecificContract, Inv2RefusalBlockPresent) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(pos, std::string::npos) << "tools/call branch missing";
-    // 12000→17000 (ANTS-1901): the master-MCP `mcp_disabled` guard
-    // inserted ahead of the caller_cwd block shifts the TabSpecific
-    // refusal down ~1.1 KiB.
-    const std::string region = cc.substr(pos, 17000);
+    // ANTS-3681 — the whole tools/call arm of the method dispatch chain,
+    // up to the next `} else if (method ==` arm, not a byte window.
+    const std::string region = ants_test::regionBetween(
+        cc, "else if (method == \"tools/call\")", "} else if (method ==");
+    ASSERT_FALSE(region.empty()) << "tools/call branch missing";
     EXPECT_TRUE(has(region, "\"tab_or_cwd_required\""))
         << "ANTS-1415 INV-2: code literal missing";
     EXPECT_TRUE(has(region, "contract == CallerCwdContract::TabSpecific"))
@@ -78,10 +77,11 @@ TEST(McpTabSpecificContract, Inv3OrderedAfterRequiredBeforeCache) {
 TEST(McpTabSpecificContract, Inv4TabRoutingHelperMembership) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("tabSpecificAcceptsTabIndex(const QString &toolName)");
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-3681 — the helper's brace-matched body, not a byte window.
+    const std::string body = ants_test::slurpFunctionBody(
+        cc, "tabSpecificAcceptsTabIndex(const QString &toolName)");
+    ASSERT_FALSE(body.empty())
         << "ANTS-1415 INV-4: tabSpecificAcceptsTabIndex helper missing";
-    const std::string body = cc.substr(pos, 220);
     EXPECT_TRUE(has(body, "\"get_text\""))
         << "ANTS-1415 INV-4: get_text must be a tab-routing tool";
     EXPECT_TRUE(has(body, "\"recent_errors\""))

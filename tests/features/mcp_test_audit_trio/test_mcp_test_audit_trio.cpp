@@ -245,11 +245,12 @@ TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // Locate the test_audit_partition descriptor region and
     // confirm the clarifier sentence is present.
-    const auto pos = ci.find("t[\"name\"] = \"test_audit_partition\"");
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-3681 — the descriptor block: from the name up to its own
+    // tools.append(t), not a byte window.
+    const std::string region = ants_test::regionBetween(
+        ci, "t[\"name\"] = \"test_audit_partition\"", "tools.append(t)");
+    ASSERT_FALSE(region.empty())
         << "test_audit_partition descriptor missing";
-    // Description string is set immediately after the name.
-    const std::string region = ci.substr(pos, 4000);
     // The clarifier sentence is wrapped across two source lines —
     // C++ concatenates "NOT a " + "finding-density predictor", but
     // grep sees them with the wrap. Search for the intact tail.

@@ -158,16 +158,17 @@ TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
     // ANTS-3567 added a second sparse_partition_hint in cmdIndieReviewPartition
     // (earlier in the file), so scope the lookup to cmdColdEyesPartition's body
     // rather than the global first occurrence.
-    const auto fn = rc.find("RemoteControl::cmdColdEyesPartition");
-    ASSERT_NE(fn, std::string::npos)
+    const std::string fn =
+        ants_test::slurpFunctionBody(rc, "RemoteControl::cmdColdEyesPartition");
+    ASSERT_FALSE(fn.empty())
         << "cmdColdEyesPartition body not found in remotecontrol.cpp";
-    const auto pos = rc.find("sparse_partition_hint", fn);
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-3681 — the hint literal alone: from the field name to the
+    // `.arg(` that closes it, so next_step_hint (which also names
+    // cold_eyes_brief and ANTS-1508) cannot satisfy these rows.
+    const std::string window =
+        ants_test::regionBetween(fn, "sparse_partition_hint", ".arg(");
+    ASSERT_FALSE(window.empty())
         << "sparse_partition_hint emission missing from remotecontrol.cpp";
-    // Scope the grep to a window of ~600 bytes after the field name —
-    // bounds the literal lookup to the hint string body and avoids
-    // matching unrelated occurrences elsewhere in the file.
-    const std::string window = rc.substr(pos, 600);
     EXPECT_NE(window.find("cold_eyes_brief"), std::string::npos)
         << "INV-1: hint should point at cold_eyes_brief";
     EXPECT_NE(window.find("ANTS-1508"), std::string::npos)

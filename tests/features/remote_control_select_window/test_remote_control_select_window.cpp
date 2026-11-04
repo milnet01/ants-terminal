@@ -42,7 +42,8 @@ static int runMain() {
     if (swPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdSelectWindow definition missing");
     } else {
-        std::string body = rc.substr(swPos, 1500);
+        std::string body = ants_test::slurpFunctionBody(
+            rc, "RemoteControl::cmdSelectWindow");
         if (body.find("isDouble()") == std::string::npos) {
             fail("INV-3: cmdSelectWindow must validate `tab` via isDouble() — "
                  "toInt()-based check silently accepts string-typed input as tab 0");
@@ -69,7 +70,8 @@ static int runMain() {
     if (impl == std::string::npos) {
         fail("INV-5a: MainWindow::selectTabForRemote definition missing");
     } else {
-        std::string body = mwc.substr(impl, 800);
+        std::string body = ants_test::slurpFunctionBody(
+            mwc, "MainWindow::selectTabForRemote");
         if (body.find("setFocus(") == std::string::npos) {
             fail("INV-5b: selectTabForRemote must call setFocus on the new active "
                  "terminal — without it, follow-up send-text calls hit a stale "

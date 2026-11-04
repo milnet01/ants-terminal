@@ -161,9 +161,11 @@ TEST(IndieReviewDispatch, G1_DispatcherDeclared) {
 TEST(IndieReviewDispatch, G2_ContractRequired) {
     const std::string cc = ants_test::slurpFile(kCiPath);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("// ANTS-1352: indie_review_dispatch");
-    ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 400);
+    // ANTS-3681 — the classification statement, bounded by its `;`, so a
+    // neighbouring verb's C::Required can no longer satisfy the row.
+    const std::string region = ants_test::regionBetween(
+        cc, "// ANTS-1352: indie_review_dispatch", ";");
+    ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find("\"indie_review_dispatch\""),
               std::string::npos);
     EXPECT_NE(region.find("C::Required"), std::string::npos);

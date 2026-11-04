@@ -44,17 +44,16 @@ TEST(RoadmapSectionCacheLru, LruMemberDeclared) {
 // INV-4: mtime-stale wipe clears the sibling caches in one block.
 // ANTS-1907 widened the wipe block to also clear
 // m_roadmapSectionEtags (the per-section ETag cache lives in
-// lockstep with the bullet cache); window widened to 400 chars to
-// cover the new clear-line without making the locality check
-// less meaningful (the original 200 covered three clears; we now
-// have four siblings sitting together).
+// lockstep with the bullet cache). The region runs from the index
+// clear to the cache-path restamp that follows the clears, so a new
+// sibling clear stays in view and the locality check keeps its meaning.
 TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
     const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty());
-    const auto idxPos = cpp.find("m_roadmapIndex.clear();");
-    ASSERT_NE(idxPos, std::string::npos)
-        << "m_roadmapIndex.clear() anchor missing";
-    const std::string region = cpp.substr(idxPos, 400);
+    const std::string region = ants_test::regionBetween(
+        cpp, "m_roadmapIndex.clear();", "m_roadmapCachePath = path;");
+    ASSERT_FALSE(region.empty())
+        << "m_roadmapIndex.clear() / m_roadmapCachePath anchor missing";
     EXPECT_TRUE(contains(region, "m_roadmapSectionCache.clear();"))
         << "section cache not cleared in same block as index";
     EXPECT_TRUE(contains(region, "m_roadmapSectionLru.clear();"))
@@ -67,15 +66,14 @@ TEST(RoadmapSectionCacheLru, StaleWipeClearsAllThree) {
 
 // Hit-path bump: the contains() branch must bump the slug to MRU.
 // ANTS-1907 widened the hit-path with a `sectionEtag = …` lookup
-// between the contains() check and the MRU bump; window widened
-// to 500 chars to accommodate it.
+// between the contains() check and the MRU bump. The region is the
+// hit arm itself, up to its `} else {`.
 TEST(RoadmapSectionCacheLru, HitPathBumpsToMru) {
     const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty());
-    const auto hitPos = cpp.find(
-        "m_roadmapSectionCache.contains(sec->slug)");
-    ASSERT_NE(hitPos, std::string::npos);
-    const std::string region = cpp.substr(hitPos, 500);
+    const std::string region = ants_test::regionBetween(
+        cpp, "m_roadmapSectionCache.contains(sec->slug)", "} else {");
+    ASSERT_FALSE(region.empty());
     EXPECT_TRUE(contains(region,
         "m_roadmapSectionLru.removeOne(sec->slug)"))
         << "hit-path missing removeOne bump";
@@ -91,9 +89,12 @@ TEST(RoadmapSectionCacheLru, InsertPathEvictsTail) {
     ASSERT_FALSE(cpp.empty());
     // ANTS-5094 — the inserted array is a body-stripped copy, so the anchor
     // names the call, not its argument.
-    const auto insPos = cpp.find("m_roadmapSectionCache.insert(sec->slug, ");
-    ASSERT_NE(insPos, std::string::npos);
-    const std::string region = cpp.substr(insPos, 600);
+    // The region runs to the section_etag_match short-circuit, the first
+    // statement after the insert block.
+    const std::string region = ants_test::regionBetween(
+        cpp, "m_roadmapSectionCache.insert(sec->slug, ",
+        "const QString sectionEtagMatch");
+    ASSERT_FALSE(region.empty());
     EXPECT_TRUE(contains(region,
         "m_roadmapSectionLru.size() > kRoadmapSectionCacheCap"))
         << "cap-overflow check missing";

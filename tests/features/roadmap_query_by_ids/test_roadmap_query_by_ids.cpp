@@ -217,7 +217,9 @@ TEST(roadmap_query_by_ids, Inv2IdsBranchKeepsInputIndex) {
         return;
     }
     const size_t projPos  = cpp.find("rcProjectHeadlineOnly(matches)", idsBranch);
-    const size_t annotPos = cpp.find("input_index", idsBranch);
+    // The key's write, not the first mention: comments above it name it too.
+    const size_t annotPos =
+        cpp.find("QStringLiteral(\"input_index\")", idsBranch);
     expect(projPos != std::string::npos,
            "INV-13: ids branch projects under mode:\"headline_only\"");
     expect(annotPos != std::string::npos,
@@ -229,8 +231,15 @@ TEST(roadmap_query_by_ids, Inv2IdsBranchKeepsInputIndex) {
            "to keep");
     // The annotation must not be gated on mode: it is owed on every
     // ids fetch, and a mode guard here is the shape a well-meaning
-    // four-key repair would take.
-    expect(!contains(cpp.substr(annotPos, 200), "headline_only"),
+    // four-key repair would take. The region runs from the field pass that
+    // follows the projection to the accounting arrays, so it holds the whole
+    // annotation block and any guard placed above it.
+    const std::string annotBlock = ants_test::regionBetween(
+        cpp.substr(idsBranch), "applyBulletFields(matches);",
+        "QJsonArray matchedIds;");
+    expect(!annotBlock.empty(),
+           "INV-13: annotation block bounded (both anchors present)");
+    expect(!contains(annotBlock, "headline_only"),
            "INV-13: the input_index annotation is not gated on mode");
     EXPECT_EQ(0, expect_failures());
 }

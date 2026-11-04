@@ -145,12 +145,12 @@ void testWiring() {
     // WI-3 — start() calls ensureSocketDir on the socket-containing
     // directory before listen().
     {
-        size_t startPos = rc.find("bool RemoteControl::start()");
-        expect(startPos != std::string::npos,
+        // ANTS-3681 — the brace-matched start() body, not a byte window.
+        const std::string body =
+            ants_test::slurpFunctionBody(rc, "bool RemoteControl::start()");
+        expect(!body.empty(),
                "WI-3 anchor: start() definition present");
-        if (startPos != std::string::npos) {
-            // Slurp a generous window of the start() body.
-            const std::string body = rc.substr(startPos, 2500);
+        if (!body.empty()) {
             expect(body.find("ensureSocketDir(") != std::string::npos,
                    "WI-3 start() calls ensureSocketDir before listen");
         }

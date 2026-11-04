@@ -388,9 +388,13 @@ TEST(SpecLintVerb, Ants4393BothSkippedChecksAreNamed) {
     // and this very project comes back surfaces_checked:true because it has
     // one. A false cause stated for a true skip is the class ANTS-4373 exists
     // to close, so the hint must name the real input instead.
-    const auto pos = rc.find("surfaces_skipped_hint");
-    ASSERT_NE(pos, std::string::npos);
-    const std::string body = rc.substr(pos, 900);
+    // The hint's assignment, up to the next sibling hint block. Anchored on
+    // the assignment, not the bare key: the key's first occurrence is a
+    // comment above the sibling surfaces_unresolved_hint.
+    const std::string body = ants_test::regionBetween(
+        rc, "o[QStringLiteral(\"surfaces_skipped_hint\")]",
+        "if (!testCoverageChecked)");
+    ASSERT_FALSE(body.empty());
     EXPECT_NE(body.find("tests/features/<name>/"), std::string::npos)
         << "the hint must name the input that turns the check on";
     EXPECT_EQ(body.find("NO documented input"), std::string::npos)

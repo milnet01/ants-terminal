@@ -1,6 +1,7 @@
 // ANTS-5787 — function_sizes. Contract: spec.md beside this file.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "functionsizes.h"
 
@@ -271,7 +272,11 @@ TEST(FunctionSizes, Inv8Wiring) {
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"function_sizes\"");
     ASSERT_NE(at, std::string::npos);
-    EXPECT_NE(reg.substr(at, 200).find("CallerCwdContract::Required"), std::string::npos);
+    // ANTS-3681 — the registration entry, bounded by the next one.
+    EXPECT_NE(ants_test::regionBetween(reg, "registerToolProvider(\"function_sizes\"",
+                                       "registerToolProvider(")
+                  .find("CallerCwdContract::Required"),
+              std::string::npos);
     const auto scoped = reg.find("registerProjectScopedVerbs");
     ASSERT_NE(scoped, std::string::npos);
     EXPECT_LT(scoped, at);

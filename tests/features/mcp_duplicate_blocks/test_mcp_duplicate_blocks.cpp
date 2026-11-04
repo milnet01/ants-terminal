@@ -1,6 +1,7 @@
 // ANTS-5785 — duplicate_blocks. Contract: spec.md beside this file.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "duplicateblocks.h"
 
@@ -247,7 +248,11 @@ TEST(DuplicateBlocks, Inv9Wiring) {
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"duplicate_blocks\"");
     ASSERT_NE(at, std::string::npos);
-    EXPECT_NE(reg.substr(at, 200).find("CallerCwdContract::Required"), std::string::npos);
+    // ANTS-3681 — the registration entry, bounded by the next one.
+    EXPECT_NE(ants_test::regionBetween(reg, "registerToolProvider(\"duplicate_blocks\"",
+                                       "registerToolProvider(")
+                  .find("CallerCwdContract::Required"),
+              std::string::npos);
     const auto scoped = reg.find("registerProjectScopedVerbs");
     ASSERT_NE(scoped, std::string::npos);
     EXPECT_LT(scoped, at);

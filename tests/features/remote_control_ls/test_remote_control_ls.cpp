@@ -79,12 +79,12 @@ static int runMain() {
     if (mwh.find("QJsonArray tabListForRemote() const") == std::string::npos) {
         fail("INV-5a: MainWindow::tabListForRemote() const declaration missing from mainwindow.h");
     }
-    // Locate the function body — a heuristic, not a full parser.
-    size_t bodyStart = mwc.find("MainWindow::tabListForRemote");
-    if (bodyStart == std::string::npos) {
+    // ANTS-3681 — the brace-matched function body, not a byte window.
+    const std::string body =
+        ants_test::slurpFunctionBody(mwc, "MainWindow::tabListForRemote");
+    if (body.empty()) {
         fail("INV-5b: MainWindow::tabListForRemote definition missing from mainwindow.cpp");
     } else {
-        std::string body = mwc.substr(bodyStart, 1400);
         for (const char *field : {"\"index\"", "\"title\"", "\"cwd\"", "\"active\""}) {
             if (body.find(field) == std::string::npos) {
                 std::string msg = "INV-5c: tabListForRemote must emit field ";

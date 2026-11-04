@@ -56,10 +56,11 @@ TEST(McpCallerCwdSuffixHelper, LambdaDeclaredNearReadProp) {
 TEST(McpCallerCwdSuffixHelper, ReturnsCanonicalLiteral) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("callerCwdSuffix");
-    ASSERT_NE(pos, std::string::npos);
-    // 600-byte window covers the lambda definition + return literal.
-    const std::string region = cc.substr(pos, 600);
+    // ANTS-3681 — the brace-matched lambda body, not a 600-byte window
+    // from the first mention (which is a comment above the lambda).
+    const std::string region =
+        ants_test::slurpFunctionBody(cc, "auto callerCwdSuffix = []");
+    ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find(
         "Pass `caller_cwd` to anchor to your tab (ANTS-1392)."),
               std::string::npos)

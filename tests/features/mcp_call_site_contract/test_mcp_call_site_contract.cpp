@@ -109,13 +109,12 @@ TEST(mcp_call_site_contract, Inv2EveryCallSitePassesContract) {
 TEST(mcp_call_site_contract, Inv3DriftAssertionPresent) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const auto pos = ci.find(
-        "void ClaudeIntegration::registerToolProvider(");
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-3681 — the registrar's brace-matched body, not a byte window.
+    const std::string region = ants_test::slurpFunctionBody(
+        ci, "void ClaudeIntegration::registerToolProvider(");
+    ASSERT_FALSE(region.empty())
         << "INV-3 precondition: registerToolProvider definition "
            "missing from claudeintegration.cpp";
-    // Window past the signature + drift assertion.
-    const std::string region = ci.substr(pos, 2000);
     expect(contains(region, "callerCwdContractFor(name)"),
            "INV-3: registerToolProvider must compare the passed "
            "contract against callerCwdContractFor (drift check)");
@@ -154,12 +153,13 @@ TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     // The dispatcher's contract-check region. Locate by anchor.
-    const auto pos = ci.find(
-        "per-tool caller_cwd contract check");
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-3681 — bounded by the statement after the contract lookup's
+    // if/else (the callerCwd read), not by a byte count.
+    const std::string region = ants_test::regionBetween(
+        ci, "per-tool caller_cwd contract check", "const QString callerCwd");
+    ASSERT_FALSE(region.empty())
         << "INV-5 precondition: dispatcher's contract-check "
            "anchor missing";
-    const std::string region = ci.substr(pos, 2000);
     expect(contains(region, "m_toolProviders.find(toolName)"),
            "INV-5: dispatcher must look up the stored contract "
            "via m_toolProviders before falling back to the "
@@ -183,12 +183,11 @@ TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
 TEST(mcp_call_site_contract, Inv6DriftRefusesInRelease) {
     expect_reset();
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
-    const auto pos = ci.find(
-        "void ClaudeIntegration::registerToolProvider(");
-    ASSERT_NE(pos, std::string::npos)
+    const std::string region = ants_test::slurpFunctionBody(   // ANTS-3681
+        ci, "void ClaudeIntegration::registerToolProvider(");
+    ASSERT_FALSE(region.empty())
         << "INV-6 precondition: registerToolProvider definition "
            "missing from claudeintegration.cpp";
-    const std::string region = ci.substr(pos, 2000);
     // Scope precisely to the drift `if` block: from the Q_ASSERT_X to
     // the next `}` (the if-close). A bare `return;` in that slice is
     // the compiled Release refusal. Bounding to the block avoids a

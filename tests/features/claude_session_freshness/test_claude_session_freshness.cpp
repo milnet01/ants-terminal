@@ -613,16 +613,12 @@ void testWiring() {
     // Locate the body of activeSessionPath.
     const std::string sigPrefix =
         "QString ClaudeIntegration::activeSessionPath(";
-    const auto start = cicpp.find(sigPrefix);
-    expect(start != std::string::npos,
+    // ANTS-3681 — brace-matched body, not a byte slice: the old 4096-byte
+    // slice ran far past this function into its neighbours.
+    const std::string body = ants_test::slurpFunctionBody(cicpp, sigPrefix);
+    expect(!body.empty(),
            "ANTS-1163-INV-9/10 setup: activeSessionPath signature locatable");
-    if (start == std::string::npos) return;
-
-    // Function body runs from `start` to the next top-level free or
-    // member function definition. The next definition starts at column
-    // 0 — we look for `\n}\n` followed by another C++ definition. The
-    // simplest reliable scan: grab a generous slice.
-    const std::string body = cicpp.substr(start, 4096);
+    if (body.empty()) return;
 
     expect(body.find("processStartTimeMs") != std::string::npos,
            "ANTS-1163-INV-9: activeSessionPath calls processStartTimeMs");

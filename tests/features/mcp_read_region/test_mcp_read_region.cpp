@@ -498,13 +498,16 @@ TEST(McpReadRegion, Ants4394GlobalSentinelIsDocumented) {
 
     // The documentation, which is what was missing. Scoped to each verb's own
     // descriptor block so a mention in a sibling cannot satisfy it.
-    const auto rrPos  = ci.find("rrTool[\"description\"]");
-    const auto rrsPos = ci.find("rrsTool[\"description\"]");
-    ASSERT_NE(rrPos, std::string::npos);
-    ASSERT_NE(rrsPos, std::string::npos);
-    EXPECT_NE(ci.substr(rrPos, 3000).find("~global"), std::string::npos)
+    // ANTS-3681 — each block runs to its own `tools.append(`.
+    const std::string rrBlock = ants_test::regionBetween(
+        ci, "rrTool[\"description\"]", "tools.append(");
+    const std::string rrsBlock = ants_test::regionBetween(
+        ci, "rrsTool[\"description\"]", "tools.append(");
+    ASSERT_FALSE(rrBlock.empty());
+    ASSERT_FALSE(rrsBlock.empty());
+    EXPECT_NE(rrBlock.find("~global"), std::string::npos)
         << "read_region's schema must name the sentinel — a capability the "
            "schema does not mention is one callers do not have";
-    EXPECT_NE(ci.substr(rrsPos, 3000).find("~global"), std::string::npos)
+    EXPECT_NE(rrsBlock.find("~global"), std::string::npos)
         << "and read_regions' too, since it shares the resolution path";
 }

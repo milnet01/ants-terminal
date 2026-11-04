@@ -190,8 +190,11 @@ TEST(McpBuildStatus, WiringContract) {
                "kindForName";
         const auto eol = fn.find('\n', branch);
         ASSERT_NE(eol, std::string::npos);
-        // The branch returns "build" in the next 1-2 lines.
-        const std::string region = fn.substr(branch, 200);
+        // ANTS-3681 — the branch's own if-statement, bounded by the `;` of
+        // its return. A 200-byte window lost "build" when ANTS-3745 put a
+        // comment and a second name inside this condition.
+        const std::string region =
+            ants_test::regionBetween(fn, "\"build_status\"", ";");
         expect(region.find("\"build\"") != std::string::npos,
                "INV-9",
                "kindForName(\"build_status\") must return \"build\"");

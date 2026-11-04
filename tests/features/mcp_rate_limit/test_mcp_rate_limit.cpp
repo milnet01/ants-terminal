@@ -95,13 +95,12 @@ TEST_F(RateLimitTestFixture, Inv5CacheHitsConsume) {
 
     const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(dispatchStart, std::string::npos);
-    // Bound the search to the dispatcher region for tools/call.
-    // Window widened to 16000 (ANTS-1415 Phase 3b added the
-    // TabSpecific refusal branch, pushing the cache gate past the
-    // original 9000-char window); 16000→21000 (ANTS-1901 inserted the
-    // master-MCP `mcp_disabled` guard ahead of the caller_cwd block,
-    // shifting the cache gate down a further ~1.1 KiB).
-    const std::string region = cc.substr(dispatchStart, 21000);
+    // ANTS-3681 — the tools/call arm of the method dispatch chain, bounded
+    // by the next arm rather than a byte window (widened 9000→16000→21000
+    // before this).
+    const std::string region = ants_test::regionBetween(
+        cc, "else if (method == \"tools/call\")", "} else if (method == ");
+    ASSERT_FALSE(region.empty());
 
     const auto rateLimitPos = region.find("rateLimitCheck(toolName");
     const auto cachePos     = region.find("isIdempotentReadTool(toolName)");
@@ -237,7 +236,12 @@ TEST_F(RateLimitTestFixture, Inv11EnvelopeShape) {
     const auto rateLimitStart = cc.find(
         "// ANTS-1356 — per-tool sliding-window rate-limit.");
     ASSERT_NE(rateLimitStart, std::string::npos);
-    const std::string region = cc.substr(rateLimitStart, 2000);
+    // ANTS-3681 — the brace-matched refusal block that follows the
+    // comment. (The comment itself holds a `{...}`, so it cannot be the
+    // brace anchor.)
+    const std::string region = ants_test::slurpFunctionBody(
+        cc.substr(rateLimitStart), "if (!toolHandled && toolKnown)");
+    ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find("env[\"ok\"]              = false"),
               std::string::npos);
     EXPECT_NE(region.find("\"rate_limited\""), std::string::npos);

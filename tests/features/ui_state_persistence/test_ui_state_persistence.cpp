@@ -477,20 +477,18 @@ TEST(UiStatePersistence, Inv13_auditDialogCtorSignature) {
            "ANTS-1150-INV-13: auditdialog.h ctor takes Config* third arg");
 
     // No `= nullptr` default for the Config arg. Heuristic: find the
-    // ctor signature line and verify it doesn't end with `= nullptr)`
-    // after the Config* token.
-    const auto cfgPos = ah.find("Config *config");
-    const auto altPos = ah.find("Config* config");
-    const auto pos = (cfgPos != std::string::npos) ? cfgPos
-                   : (altPos != std::string::npos) ? altPos
-                   : std::string::npos;
-    if (pos != std::string::npos) {
-        // Look forward up to 80 chars for `= nullptr` before the next semicolon.
-        const std::string tail = ah.substr(pos, 80);
-        const auto eq = tail.find("= nullptr");
-        const auto semi = tail.find(';');
-        const bool defaulted = (eq != std::string::npos)
-                            && (semi == std::string::npos || eq < semi);
+    // Config* token in the ctor signature and verify no `= nullptr`
+    // follows it before the declaration's `;`. Comments are stripped
+    // first: the header's own comment names `Config *config` above the
+    // declaration, and an anchor there never reached the signature.
+    const std::string ahCode = ants_test::stripComments(ah);
+    const char *cfgAnchor = contains(ahCode, "Config *config") ? "Config *config"
+                          : contains(ahCode, "Config* config") ? "Config* config"
+                          : nullptr;
+    if (cfgAnchor != nullptr) {
+        // From the Config* token to the end of the declaration.
+        const std::string tail = ants_test::regionBetween(ahCode, cfgAnchor, ";");
+        const bool defaulted = contains(tail, "= nullptr");
         expect(!defaulted,
                "ANTS-1150-INV-13: Config* third arg has no `= nullptr` "
                "default (cold-eyes HIGH #3 — single call site, no need)");

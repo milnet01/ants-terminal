@@ -215,7 +215,13 @@ TEST(McpTestResults, WiringContract) {
         ASSERT_NE(branch, std::string::npos)
             << "test_results must have an explicit branch in "
                "kindForName";
-        const std::string region = fn.substr(branch, 200);
+        // ANTS-3681 — this branch only, up to the next `if (name ==`, so a
+        // neighbouring verb's "test" return cannot satisfy the row.
+        const std::string region =
+            ants_test::regionBetween(fn, "\"test_results\"", "if (name ==");
+        ASSERT_FALSE(region.empty())
+            << "kindForName's test_results branch is not followed by "
+               "another branch";
         expect(region.find("\"test\"") != std::string::npos,
                "INV-10",
                "kindForName(\"test_results\") must return \"test\"");

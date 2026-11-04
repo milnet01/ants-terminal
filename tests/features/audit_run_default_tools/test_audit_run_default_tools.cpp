@@ -50,10 +50,11 @@ TEST(AuditRunDefaultTools, EmptyToolsDefaultsToAutoDetectSet) {
 
     // INV-3 — the empty-`tools` default in runAudit assigns the auto-detect
     // set (not the full kKnownTools()).
-    const auto pos = src.find("wantedTools.isEmpty()");
-    ASSERT_NE(pos, std::string::npos)
+    // ANTS-3681 — the defaulting statement, bounded by its `;`.
+    const std::string region =
+        ants_test::regionBetween(src, "wantedTools.isEmpty()", ";");
+    ASSERT_FALSE(region.empty())
         << "the empty-tools default assignment is gone/renamed";
-    const std::string region = src.substr(pos, 120);
     EXPECT_TRUE(contains(region, "kAutoDetectTools()"))
         << "empty tools must default to kAutoDetectTools(), not kKnownTools()";
 }

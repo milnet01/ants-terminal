@@ -43,10 +43,10 @@ static int runMain() {
     if (cstPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdSendText definition missing");
     } else {
-        // Window widened from 2000 → 4000 in 0.7.12 when the opt-in
-        // filter (remote_control_opt_in spec) expanded cmdSendText's
-        // body with the raw-bypass + filterControlChars delegation.
-        std::string body = rc.substr(cstPos, 4000);
+        // The whole brace-matched body, so growth (the 0.7.12 raw-bypass +
+        // filterControlChars delegation) cannot slide a target out of view.
+        std::string body = ants_test::slurpFunctionBody(
+            rc, "RemoteControl::cmdSendText");
         if (body.find("isString()") == std::string::npos) {
             fail("INV-2b: cmdSendText must validate the `text` field via isString() — "
                  "matches Kitty's \"text is required and must be a string\" contract");
@@ -84,7 +84,9 @@ static int runMain() {
         fail("INV-6a: main.cpp must branch on the \"send-text\" command to handle "
              "the stdin-read ergonomic");
     } else {
-        std::string sendBlock = mc.substr(mainSendPos, 1000);
+        // The send-text arm of the --remote dispatch chain, up to the next arm.
+        std::string sendBlock =
+            ants_test::regionBetween(mc, "\"send-text\"", "} else if (");
         if (sendBlock.find("stdin") == std::string::npos) {
             fail("INV-6b: the send-text client branch must read stdin when "
                  "--remote-text is absent — shell-pipe ergonomics");

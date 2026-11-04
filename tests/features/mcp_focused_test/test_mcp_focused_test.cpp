@@ -262,9 +262,11 @@ TEST(McpFocusedTest, WiringContract) {
     // INV-11
     EXPECT_TRUE(has(mwCpp, "registerToolProvider(\"focused_test\""));
     {
-        const auto p = mwCpp.find("registerToolProvider(\"focused_test\"");
-        ASSERT_NE(p, std::string::npos);
-        EXPECT_TRUE(has(mwCpp.substr(p, 180), "CallerCwdContract::Required"));
+        // ANTS-3681 — the registration entry, bounded by the next one.
+        const std::string entry = ants_test::regionBetween(
+            mwCpp, "registerToolProvider(\"focused_test\"", "registerToolProvider(");
+        ASSERT_FALSE(entry.empty());
+        EXPECT_TRUE(has(entry, "CallerCwdContract::Required"));
     }
 
     // INV-12

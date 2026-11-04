@@ -45,9 +45,9 @@ TEST(AuditRunScopedCheck, EngineRegistersClangTidyAsKnownTool) {
     // clang-tidy.
     EXPECT_TRUE(contains(src, "toolHonoursChecks"))
         << "toolHonoursChecks predicate missing";
-    const auto th = src.find("toolHonoursChecks(");
-    ASSERT_NE(th, std::string::npos);
-    const std::string thRegion = src.substr(th, 400);
+    const std::string thRegion = ants_test::slurpFunctionBody(
+        src, "bool toolHonoursChecks(");                       // ANTS-3681
+    ASSERT_FALSE(thRegion.empty()) << "toolHonoursChecks body not found";
     EXPECT_TRUE(contains(thRegion, "\"clang-tidy\""))
         << "toolHonoursChecks body must whitelist clang-tidy";
 }
@@ -69,10 +69,11 @@ TEST(AuditRunScopedCheck, RunAuditValidatesPathsAndChecks) {
 
     // INV-5 + INV-6 — runAudit walks req.paths + req.checks and refuses
     // with code:"bad_args" on unsafe entries or tool/check mismatch.
-    const auto fn = src.find("runAudit(const RunRequest");
-    ASSERT_NE(fn, std::string::npos);
-    // Body window: 6 KB.
-    const std::string fnRegion = src.substr(fn, 6000);
+    // ANTS-3681 — brace-matched body; the old 6 KB window saw about an
+    // eighth of it.
+    const std::string fnRegion =
+        ants_test::slurpFunctionBody(src, "runAudit(const RunRequest");
+    ASSERT_FALSE(fnRegion.empty()) << "runAudit body not found";
     EXPECT_TRUE(contains(fnRegion, "for (const QString &p : req.paths)"))
         << "runAudit must iterate req.paths";
     EXPECT_TRUE(contains(fnRegion, "for (const QString &c : req.checks)"))
@@ -91,20 +92,12 @@ TEST(AuditRunScopedCheck, ToolArgvBuildsScopedClangTidyInvocation) {
     // branch renders --checks=-*,...
     // NB: toolArgv's signature carries `= {}` default-argument braces, so
     // slurpFunctionBody() would latch onto the first `{}` default and return
-    // an empty body. A fixed byte-window is the correct tool here (ANTS-1474
-    // does not apply to brace-default signatures). Window widened
-    // 4000 → 5000 by ANTS-2185, whose scoped-positional guard added a
-    // normalisation block at the top of toolArgv that pushed the
-    // clang-tidy branch (`--checks=-*,`) past the old 4000-byte edge.
-    // Widened 5000 → 6500 by ANTS-2182, whose cppcheck compile-DB +
-    // suppression block grew the branch above clang-tidy by ~30 lines.
-    // Widened 6500 → 8000 by ANTS-3710, whose `excludePaths` parameter and
-    // cppcheck `-i` block put `--checks=-*,` at offset 6647 — 147 bytes past
-    // the old edge. The new figure is measured, not guessed, and carries
-    // headroom so the next branch added above clang-tidy does not re-break it.
-    const auto fn = src.find("QStringList toolArgv(");
-    ASSERT_NE(fn, std::string::npos);
-    const std::string region = src.substr(fn, 8000);
+    // an empty body. ANTS-3681 — bound it instead by the function's closing
+    // brace at column 0, replacing a byte window that had been widened three
+    // times as branches above clang-tidy grew.
+    const std::string region =
+        ants_test::regionBetween(src, "QStringList toolArgv(", "\n}\n");
+    ASSERT_FALSE(region.empty()) << "toolArgv not found";
     EXPECT_TRUE(contains(region, "scopedPaths"));
     EXPECT_TRUE(contains(region, "scopedChecks"));
     EXPECT_TRUE(contains(region, "--checks=-*,"))
@@ -118,9 +111,10 @@ TEST(AuditRunScopedCheck, MainWindowProviderExtractsParams) {
     ASSERT_FALSE(mw.empty());
 
     // Locate the audit_run provider lambda.
-    const auto reg = mw.find("registerToolProvider(\"audit_run\"");
-    ASSERT_NE(reg, std::string::npos);
-    const std::string region = mw.substr(reg, 5000);
+    // ANTS-3681 — the registration entry, bounded by the next one.
+    const std::string region = ants_test::regionBetween(
+        mw, "registerToolProvider(\"audit_run\"", "registerToolProvider(");
+    ASSERT_FALSE(region.empty()) << "audit_run registration not found";
 
     // INV-8 — extract both paths and checks from args.
     EXPECT_TRUE(contains(region, "\"paths\""))

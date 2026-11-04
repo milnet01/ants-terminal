@@ -148,21 +148,12 @@ static int runMain() {
     inv(6, setupPos != std::string::npos,
         "mainwindow.cpp: setupClaudeMcpProviders() definition not found");
     if (setupPos != std::string::npos) {
-        size_t braceOpen = mwCpp.find('{', setupPos);
-        std::string body = (braceOpen == std::string::npos)
-            ? std::string()
-            // Window bumped 16→32 KiB after ANTS-1351's audit_run
-            // dispatch lambda landed (~5 KiB inline), 32→48 KiB after
-            // ANTS-1500 fattened the get_scrollback provider with
-            // since_cursor handling (~3 KiB), 48→64 KiB after
-            // ANTS-1897 added the qputenv + mcp_orientation::install
-            // block right after startMcpServer (~1 KiB) which pushed
-            // get_text past the old window. 64→80 KiB after ANTS-3420
-            // added the query/max_body_bytes/section-etag forward block
-            // (~1.4 KiB) to the roadmap_query lambda, again pushing
-            // get_text past the old window. The window is a heuristic
-            // body-cap; raise as new providers slot in.
-            : mwCpp.substr(braceOpen, 80 * 1024);
+        // ANTS-3681 — brace-matched body. The old 80 KiB window had been
+        // raised four times (16→32→48→64→80) as providers slotted in.
+        const std::string body = ants_test::slurpFunctionBody(
+            mwCpp, "void MainWindow::setupClaudeMcpProviders()");
+        inv(6, !body.empty(),
+            "mainwindow.cpp: setupClaudeMcpProviders() body not found");
         // ANTS-4932 § 2.3 — the project-scoped verbs, roadmap_query among
         // them, are registered by mcp::registerProjectScopedVerbs(), which
         // setupClaudeMcpProviders() calls.
@@ -192,7 +183,9 @@ static int runMain() {
         std::fprintf(stderr,
             "[INV-7] FAIL: get_text registration not findable for isDouble() check\n");
     } else {
-        std::string block = mwCpp.substr(gtPos, 800);
+        // ANTS-3681 — the get_text lambda body, brace-matched.
+        const std::string block = ants_test::slurpFunctionBody(
+            mwCpp, "registerToolProvider(\"get_text\"");
         inv(7, contains(block, "isDouble()"),
             "get_text lambda does not use isDouble() to gate "
             "tab/lines extraction (spec INV-9)");

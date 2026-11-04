@@ -165,11 +165,11 @@ TEST(McpProjectConventions, WiringAndDriftGuard) {
     expect(has(mwCpp, "registerToolProvider(\"project_conventions\""),
            "INV-8", "project_conventions not registered");
     {
-        const auto pos =
-            mwCpp.find("registerToolProvider(\"project_conventions\"");
-        const std::string window =
-            pos == std::string::npos ? std::string()
-                                     : mwCpp.substr(pos, 180);
+        // ANTS-3681 — the registration entry, bounded by the next one;
+        // "" when the anchor is missing, which fails the row below.
+        const std::string window = ants_test::regionBetween(
+            mwCpp, "registerToolProvider(\"project_conventions\"",
+            "registerToolProvider(");
         expect(has(window, "CallerCwdContract::Required"),
                "INV-8", "registration not Required");
     }

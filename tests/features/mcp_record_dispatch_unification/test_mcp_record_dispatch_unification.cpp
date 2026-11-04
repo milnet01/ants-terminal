@@ -81,11 +81,12 @@ TEST(mcp_record_dispatch_unification, Inv3SuccessBranchSingleHook) {
     // Anchor the count to the toolHandled true-branch — locate
     // it and confirm m_tokenUsage.recordCall appears only inside
     // recordDispatch's own body, not at the dispatch site.
-    const auto dispatchPos = cc.find("ANTS-1402-INV-3");
-    ASSERT_NE(dispatchPos, std::string::npos);
-    // 2000 bytes from the anchor should cover the rest of the
-    // toolHandled true-branch (success-path observer block).
-    const std::string region = cc.substr(dispatchPos, 2000);
+    // ANTS-3681 — the rest of the toolHandled true-branch: from the anchor
+    // to the `} else {` that opens the failure branch, not a byte window.
+    const std::string region =
+        ants_test::regionBetween(cc, "ANTS-1402-INV-3", "} else {");
+    ASSERT_FALSE(region.empty())
+        << "INV-3: toolHandled true-branch not found after the anchor";
     expect(!contains(region, "m_tokenUsage.recordCall("),
            "INV-3: success branch must NOT call recordCall "
            "directly — must route through recordDispatch");
@@ -99,9 +100,12 @@ TEST(mcp_record_dispatch_unification, Inv4FailureBranchUsesHook) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     expect(contains(cc, "ANTS-1402-INV-4"),
            "INV-4 anchor comment present at dispatch failure site");
-    const auto pos = cc.find("ANTS-1402-INV-4");
-    ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 800);
+    // ANTS-3681 — the failure branch: from the anchor to the shared
+    // sendMcpResponse( that follows both branches, not a byte window.
+    const std::string region =
+        ants_test::regionBetween(cc, "ANTS-1402-INV-4", "sendMcpResponse(");
+    ASSERT_FALSE(region.empty())
+        << "INV-4: failure branch not found after the anchor";
     expect(contains(region, "recordDispatch"),
            "INV-4: failure branch routes through recordDispatch");
     expect(contains(region, "\"tool_not_found\""),

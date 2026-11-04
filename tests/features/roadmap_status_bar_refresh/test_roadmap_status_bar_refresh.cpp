@@ -61,15 +61,16 @@ TEST(RoadmapStatusBarRefresh, Main) {
          "&MainWindow::refreshRepoVisibility)` line");
 
     // INV-2 + INV-3b — startup singleShot(0) lambda calls both.
-    // Locate every `singleShot(0` occurrence; pass if at least one
-    // window of ~2000 chars after such an occurrence contains BOTH
-    // function names (a single startup lambda often dispatches
-    // many refresh calls).
+    // Locate every `QTimer::singleShot(0` call; pass if the brace-matched
+    // lambda body of at least one contains each function name (a single
+    // startup lambda often dispatches many refresh calls). The `QTimer::`
+    // prefix keeps prose mentions of singleShot(0) in comments out.
     bool inv2_ok = false;
     bool inv3b_ok = false;
     std::string::size_type pos = 0;
-    while ((pos = mw.find("singleShot(0", pos)) != std::string::npos) {
-        const std::string window = mw.substr(pos, 2000);
+    while ((pos = mw.find("QTimer::singleShot(0", pos)) != std::string::npos) {
+        const std::string window = ants_test::slurpFunctionBody(
+            mw.substr(pos), "QTimer::singleShot(0");
         if (contains(window, "refreshRoadmapButton")) inv2_ok = true;
         if (contains(window, "refreshRepoVisibility")) inv3b_ok = true;
         pos += 1;  // advance past this occurrence
@@ -88,12 +89,13 @@ TEST(RoadmapStatusBarRefresh, Main) {
     //   onTabChanged() -> refreshStatusBarForActiveTab() ->
     //                     refreshRoadmapButton() + refreshRepoVisibility()
     //
-    // Verify each link of the chain by source-grep within a window
-    // of the function definition.
+    // Verify each link of the chain by source-grep within the
+    // brace-matched body of the function definition.
     const auto otc = mw.find("void MainWindow::onTabChanged(");
     must(otc != std::string::npos,
          "INV-4: onTabChanged definition must exist (preconditions)");
-    const std::string otc_body = mw.substr(otc, 8000);
+    const std::string otc_body =
+        ants_test::slurpFunctionBody(mw, "void MainWindow::onTabChanged(");
     must(contains(otc_body, "refreshStatusBarForActiveTab"),
          "INV-4a: onTabChanged must still call "
          "refreshStatusBarForActiveTab (the dispatch to the per-widget "
@@ -102,7 +104,8 @@ TEST(RoadmapStatusBarRefresh, Main) {
     const auto rsfat = mw.find("void MainWindow::refreshStatusBarForActiveTab(");
     must(rsfat != std::string::npos,
          "INV-4b: refreshStatusBarForActiveTab definition must exist");
-    const std::string rsfat_body = mw.substr(rsfat, 8000);
+    const std::string rsfat_body = ants_test::slurpFunctionBody(
+        mw, "void MainWindow::refreshStatusBarForActiveTab(");
     must(contains(rsfat_body, "refreshRoadmapButton"),
          "INV-4c: refreshStatusBarForActiveTab must call "
          "refreshRoadmapButton (the existing tab-switch dispatch must "

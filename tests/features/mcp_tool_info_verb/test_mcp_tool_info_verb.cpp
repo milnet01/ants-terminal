@@ -125,13 +125,14 @@ TEST(mcp_tool_info_verb, Inv8DispatchedInline) {
     // Locate the get_session_info dispatch branch. tool_info
     // must be in the same `if/else if` chain — i.e. dispatched
     // before the m_toolProviders lookup.
-    const auto sessPos = ci.find(
-        "toolName == \"get_session_info\"");
-    ASSERT_NE(sessPos, std::string::npos)
+    // ANTS-3681 — the inline chain from get_session_info up to the
+    // m_toolProviders lookup that ends it, not a byte window.
+    const std::string region = ants_test::regionBetween(
+        ci, "toolName == \"get_session_info\"",
+        "m_toolProviders.find(toolName)");
+    ASSERT_FALSE(region.empty())
         << "INV-8 precondition: get_session_info inline branch "
            "missing — claudeintegration.cpp may have regressed";
-    // 4000-byte window covers a few following else-if branches.
-    const std::string region = ci.substr(sessPos, 4000);
     expect(contains(region, "tool_info"),
            "INV-8: tool_info must be dispatched inline next to "
            "get_session_info (same toolHandled-conditional block)");

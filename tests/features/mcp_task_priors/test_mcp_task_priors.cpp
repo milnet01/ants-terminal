@@ -132,10 +132,12 @@ TEST(McpTaskPriors, WiringAndLogicContract) {
     expect(has(mwCpp, "registerToolProvider(\"task_priors\""),
            "INV-8", "task_priors not registered in mainwindow.cpp");
     {
-        const auto pos = mwCpp.find("registerToolProvider(\"task_priors\"");
-        const std::string window =
-            pos == std::string::npos ? std::string()
-                                     : mwCpp.substr(pos, 160);
+        // ANTS-3681 — this one registration entry, up to the next
+        // registerToolProvider( call, not a byte window that also read
+        // the neighbouring entry's contract.
+        const std::string window = ants_test::regionBetween(
+            mwCpp, "registerToolProvider(\"task_priors\"",
+            "registerToolProvider(");
         expect(has(window, "CallerCwdContract::Required"),
                "INV-8", "task_priors registration not Required");
     }

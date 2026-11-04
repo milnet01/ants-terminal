@@ -6,6 +6,7 @@
 
 #include "terminalgrid.h"
 #include "vtparser.h"
+#include "../../_support/srcgrep.h"
 
 #include <cstdio>
 #include <gtest/gtest.h>
@@ -205,11 +206,13 @@ TEST(OriginModeCorrectness, Main) {
         }
 
         // I-SRC2: saveCursor stores m_originMode and m_autoWrap.
-        const auto saveAt = src.find("void TerminalGrid::saveCursor()");
-        if (saveAt == std::string::npos) {
+        // ANTS-3681 — brace-matched bodies, not byte windows that ran
+        // on into the next function.
+        const std::string saveBody =
+            ants_test::slurpFunctionBody(src, "void TerminalGrid::saveCursor()");
+        if (saveBody.empty()) {
             fail("I-SRC2", "saveCursor definition not found");
         } else {
-            const std::string saveBody = src.substr(saveAt, 400);
             if (saveBody.find("m_savedOriginMode = m_originMode") == std::string::npos)
                 fail("I-SRC2",
                      "saveCursor doesn't save m_originMode");
@@ -219,11 +222,12 @@ TEST(OriginModeCorrectness, Main) {
         }
 
         // I-SRC3: restoreCursor restores both flags.
-        const auto restoreAt = src.find("void TerminalGrid::restoreCursor()");
-        if (restoreAt == std::string::npos) {
+        const std::string restoreBody =
+            ants_test::slurpFunctionBody(src, "void TerminalGrid::restoreCursor()");
+        if (restoreBody.empty()) {
             fail("I-SRC3", "restoreCursor definition not found");
         } else {
-            const std::string body = src.substr(restoreAt, 500);
+            const std::string &body = restoreBody;
             if (body.find("m_originMode = m_savedOriginMode") == std::string::npos)
                 fail("I-SRC3",
                      "restoreCursor doesn't restore m_originMode");
@@ -233,11 +237,12 @@ TEST(OriginModeCorrectness, Main) {
         }
 
         // I-SRC4: setScrollRegion homes cursor in origin-mode aware fashion.
-        const auto stbmAt = src.find("void TerminalGrid::setScrollRegion(");
-        if (stbmAt == std::string::npos) {
+        const std::string stbmBody =
+            ants_test::slurpFunctionBody(src, "void TerminalGrid::setScrollRegion(");
+        if (stbmBody.empty()) {
             fail("I-SRC4", "setScrollRegion definition not found");
         } else {
-            const std::string body = src.substr(stbmAt, 500);
+            const std::string &body = stbmBody;
             if (body.find("m_originMode ? m_scrollTop : 0") == std::string::npos)
                 fail("I-SRC4",
                      "setScrollRegion doesn't home origin-mode-aware "

@@ -206,11 +206,10 @@ TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
     const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(ci.empty());
 
-    auto pos = ci.find("isControlPlane");
-    ASSERT_NE(pos, std::string::npos);
-
-    // Look forward 600 chars — the literal initialiser fits comfortably.
-    const std::string window = ci.substr(pos, 600);
+    // ANTS-3681 — the initialiser statement alone, up to its `;`, not a
+    // 600-char window that also read the wrap conditional after it.
+    const std::string window = ants_test::regionBetween(ci, "isControlPlane", ";");
+    ASSERT_FALSE(window.empty());
     EXPECT_NE(window.find("\"get_session_info\""), std::string::npos)
         << "control-plane bypass missing get_session_info entry";
     EXPECT_NE(window.find("\"token_usage\""), std::string::npos)

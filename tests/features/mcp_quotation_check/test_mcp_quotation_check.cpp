@@ -2,6 +2,7 @@
 // the test for each invariant is named in spec.md beside this file.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "quotationcheckverb.h"
 
@@ -343,7 +344,11 @@ TEST(QuotationCheck, Inv10Registration)
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"quotation_check\"");
     ASSERT_NE(at, std::string::npos);
-    EXPECT_NE(reg.substr(at, 200).find("CallerCwdContract::Required"), std::string::npos);
+    // ANTS-3681 — the registration entry, bounded by the next one.
+    EXPECT_NE(ants_test::regionBetween(reg, "registerToolProvider(\"quotation_check\"",
+                                       "registerToolProvider(")
+                  .find("CallerCwdContract::Required"),
+              std::string::npos);
     const auto scoped = reg.find("registerProjectScopedVerbs");
     ASSERT_NE(scoped, std::string::npos);
     EXPECT_LT(scoped, at);

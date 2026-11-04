@@ -6,6 +6,7 @@
 // a source scrape, because the provider registry is private.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "runtraceverb.h"
 
@@ -501,9 +502,11 @@ TEST(RunTrace, RegisteredRequiredWithStrictSchema) {
     const std::string ci = slurp("/claudeintegration.cpp");
     ASSERT_FALSE(mw.empty());
     ASSERT_FALSE(ci.empty());
-    const auto reg = mw.find("registerToolProvider(\"run_trace\"");
-    ASSERT_NE(reg, std::string::npos);
-    EXPECT_NE(mw.substr(reg, 200).find("CallerCwdContract::Required"), std::string::npos);
+    // The registration statement, up to its terminating `;`.
+    const std::string reg =
+        ants_test::regionBetween(mw, "registerToolProvider(\"run_trace\"", ";");
+    ASSERT_FALSE(reg.empty());
+    EXPECT_NE(reg.find("CallerCwdContract::Required"), std::string::npos);
     EXPECT_NE(ci.find("toolName == QStringLiteral(\"run_trace\"))"), std::string::npos);
     const auto schema = ci.find("t[\"name\"] = \"run_trace\";");
     ASSERT_NE(schema, std::string::npos);

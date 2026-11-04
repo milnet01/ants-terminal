@@ -76,12 +76,15 @@ static int runMain() {
     }
 
     // INV-6: Client CLI rejects malformed --remote-lines.
-    size_t mainGtPos = mc.find("\"get-text\"");
-    if (mainGtPos == std::string::npos) {
+    // ANTS-3681 — the get-text arm of the client's command chain, up to
+    // the RemoteControl::runClient( call that follows the chain, not a
+    // byte window.
+    const std::string block = ants_test::regionBetween(
+        mc, "\"get-text\"", "RemoteControl::runClient(");
+    if (block.empty()) {
         fail("INV-6a: main.cpp must branch on the \"get-text\" command to "
              "forward the lines arg");
     } else {
-        std::string block = mc.substr(mainGtPos, 1000);
         if (block.find("toInt(&ok)") == std::string::npos) {
             fail("INV-6b: get-text client branch must validate --remote-lines "
                  "via toInt(&ok) and reject malformed input — silently sending "

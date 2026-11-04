@@ -364,11 +364,12 @@ TEST(McpLastAuditSummary, Inv8FloorValidatedBeforeDiskScan) {
     const std::string rcc = ants_test::slurpRemoteControl();
     // Within cmdLastAuditSummary, the bad_severity_floor return must
     // come BEFORE the .audit_cache directory scan.
-    const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
-    expect(fnPos != std::string::npos, "INV-8",
+    // ANTS-3681 — brace-matched body, not a 4000-byte window.
+    const std::string body =
+        ants_test::slurpFunctionBody(rcc, "cmdLastAuditSummary(const QJsonObject");
+    expect(!body.empty(), "INV-8",
            "cmdLastAuditSummary not found");
-    if (fnPos == std::string::npos) FAIL();
-    const std::string body = rcc.substr(fnPos, 4000);
+    if (body.empty()) FAIL();
     const auto floorPos = body.find("bad_severity_floor");
     const auto cachePos = body.find(".audit_cache");
     expect(floorPos != std::string::npos && cachePos != std::string::npos,
@@ -574,12 +575,11 @@ TEST(Ants1576, ReaderFallbackWired) {
     // INV-6 — cmdLastAuditSummary's cache-miss branch contains the
     // read-time fallback: "rev-parse" + "symbolic-ref" calls and the
     // two branchSource literals.
-    // Window grown to 12 KiB after ANTS-1625 added the pickForeign
-    // lambda + pick_basis emission (~25 extra lines in the handler).
     const std::string rcc = ants_test::slurpRemoteControl();
-    const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
-    if (fnPos == std::string::npos) FAIL();
-    const std::string body = rcc.substr(fnPos, 12000);
+    // ANTS-3681 — brace-matched body, not a 12 KiB window.
+    const std::string body =
+        ants_test::slurpFunctionBody(rcc, "cmdLastAuditSummary(const QJsonObject");
+    if (body.empty()) FAIL();
     expect(body.find("\"read_time\"") != std::string::npos,
            "INV-6", "expected read_time literal in handler");
     expect(body.find("\"file_provenance\"") != std::string::npos,
@@ -595,12 +595,12 @@ TEST(Ants1576, ReaderFallbackBeforeCacheStore) {
     expect_reset();
     // INV-7 — the branchSource population runs BEFORE the assignment
     // to m_auditSummaryCache, so cache hits inherit the populated
-    // data for free. 12 KiB window covers the cache-miss block in
-    // cmdLastAuditSummary (~250 lines).
+    // data for free.
     const std::string rcc = ants_test::slurpRemoteControl();
-    const auto fnPos = rcc.find("cmdLastAuditSummary(const QJsonObject");
-    if (fnPos == std::string::npos) FAIL();
-    const std::string body = rcc.substr(fnPos, 12000);
+    // ANTS-3681 — brace-matched body, not a 12 KiB window.
+    const std::string body =
+        ants_test::slurpFunctionBody(rcc, "cmdLastAuditSummary(const QJsonObject");
+    if (body.empty()) FAIL();
     const auto branchSrcPos = body.find("branchSource = QStringLiteral");
     // Whitespace varies in the assignment alignment; match the
     // load-bearing token-pair instead of an exact spacing.

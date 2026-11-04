@@ -55,14 +55,12 @@ TEST(token_usage_no_ci_diagnostic, Inv1SimplifiedSignature) {
 TEST(token_usage_no_ci_diagnostic, Inv2DiagnosticEnvelopesRetired) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // Find cmdTokenUsage body bounds.
-    const auto start = cpp.find(
-        "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
-    ASSERT_NE(start, std::string::npos)
+    // The brace-matched cmdTokenUsage body: covers the whole function
+    // however it grows, and cannot bleed into the next one.
+    const std::string region = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
+    ASSERT_FALSE(region.empty())
         << "INV-2 precondition: cmdTokenUsage definition missing";
-    // 3000 bytes from the signature covers the full function body
-    // without bleeding into the next function.
-    const std::string region = cpp.substr(start, 3000);
     expect(!contains(region, "\"m_main_ptr\""),
            "INV-2: m_main_ptr debug field retired");
     expect(!contains(region, "\"ci_via_getter_null\""),
@@ -78,11 +76,10 @@ TEST(token_usage_no_ci_diagnostic, Inv2DiagnosticEnvelopesRetired) {
 TEST(token_usage_no_ci_diagnostic, Inv3FallbackRetired) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    const auto start = cpp.find(
-        "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
-    ASSERT_NE(start, std::string::npos)
+    const std::string region = ants_test::slurpFunctionBody(
+        cpp, "RemoteControl::cmdTokenUsage(const QJsonObject &req,");
+    ASSERT_FALSE(region.empty())
         << "INV-3 precondition: cmdTokenUsage definition missing";
-    const std::string region = cpp.substr(start, 3000);
     expect(!contains(region, "m_main->claudeIntegration()"),
            "INV-3: m_main->claudeIntegration() fallback retired "
            "(only the lambda calls this; explicitCi is canonical)");
@@ -129,13 +126,13 @@ TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
 TEST(token_usage_no_ci_diagnostic, Inv5LambdaPassesCiDirectly) {
     expect_reset();
     const std::string mw = ants_test::slurpMainWindow();
-    const auto pos = mw.find(
-        "registerToolProvider(\"token_usage\"");
-    ASSERT_NE(pos, std::string::npos)
+    // The whole registration call, capture list included, up to the
+    // `});` that closes it.
+    const std::string region = ants_test::regionBetween(
+        mw, "registerToolProvider(\"token_usage\"", "});");
+    ASSERT_FALSE(region.empty())
         << "INV-5 precondition: token_usage registration missing "
            "from mainwindow.cpp";
-    // 600-byte window covers the (now smaller) lambda body.
-    const std::string region = mw.substr(pos, 600);
     expect(contains(region,
         "cmdTokenUsage(args, m_claudeIntegration)"),
            "INV-5: lambda calls cmdTokenUsage with args + ci only");

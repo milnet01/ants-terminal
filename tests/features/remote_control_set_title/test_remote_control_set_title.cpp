@@ -41,7 +41,8 @@ static int runMain() {
     if (stPos == std::string::npos) {
         fail("INV-2a: RemoteControl::cmdSetTitle definition missing");
     } else {
-        std::string body = rc.substr(stPos, 1500);
+        std::string body = ants_test::slurpFunctionBody(
+            rc, "RemoteControl::cmdSetTitle");
         if (body.find("isString()") == std::string::npos) {
             fail("INV-2b: cmdSetTitle must validate `title` via isString()");
         }
@@ -96,7 +97,8 @@ static int runMain() {
     if (sttPos == std::string::npos) {
         fail("INV-8a: MainWindow::setTabTitleForRemote definition missing");
     } else {
-        std::string body = mwc.substr(sttPos, 2500);
+        std::string body = ants_test::slurpFunctionBody(
+            mwc, "MainWindow::setTabTitleForRemote");
         if (body.find("shellTitle()") == std::string::npos) {
             fail("INV-8b: empty-title clear path must call shellTitle() to "
                  "restore the natural label when tabTitleFormat == \"title\" — "

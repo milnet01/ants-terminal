@@ -2,6 +2,7 @@
 // each invariant is named there.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 
 #include "sessioncostverb.h"
 
@@ -271,7 +272,11 @@ TEST(SessionCost, Inv6Registration) {
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"session_cost\"");
     ASSERT_NE(at, std::string::npos);
-    EXPECT_NE(reg.substr(at, 200).find("CallerCwdContract::Required"), std::string::npos);
+    // The registration statement, up to its terminating `;`.
+    const std::string entry =
+        ants_test::regionBetween(reg, "registerToolProvider(\"session_cost\"", ";");
+    ASSERT_FALSE(entry.empty());
+    EXPECT_NE(entry.find("CallerCwdContract::Required"), std::string::npos);
     const auto scoped = reg.find("registerProjectScopedVerbs");
     ASSERT_NE(scoped, std::string::npos);
     EXPECT_LT(scoped, at);

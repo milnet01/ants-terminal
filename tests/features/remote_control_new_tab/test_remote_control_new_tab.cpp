@@ -120,7 +120,8 @@ static int runMain() {
         fail("INV-7b: main.cpp must branch on the \"new-tab\" command to forward "
              "the cwd + command args");
     } else {
-        std::string block = mc.substr(mainNtPos, 1000);
+        // The new-tab arm of the --remote dispatch chain, up to the next arm.
+        std::string block = ants_test::regionBetween(mc, "\"new-tab\"", "} else if (");
         if (block.find("args[\"cwd\"]")     == std::string::npos ||
             block.find("args[\"command\"]") == std::string::npos) {
             fail("INV-7c: new-tab client branch must forward cwd + command args "

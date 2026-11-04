@@ -16,6 +16,12 @@
 
 namespace {
 
+// ANTS-3681 — the brace-matched tools/call arm of the method dispatch chain.
+// It replaces byte windows that were widened five times (9000 → 23000) as
+// the arm grew; "" when the arm is missing.
+std::string toolsCallBranch(const std::string &cc) {
+    return ants_test::slurpFunctionBody(cc, "else if (method == \"tools/call\")");
+}
 
 }  // namespace
 
@@ -80,11 +86,9 @@ TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
     // Find the tools/call body.
-    const auto pos = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(pos, std::string::npos)
+    const std::string region = toolsCallBranch(cc);
+    ASSERT_FALSE(region.empty())
         << "tools/call dispatch branch missing";
-    // Take a generous window (the dispatch block is several hundred lines).
-    const std::string region = cc.substr(pos, 9000);
     EXPECT_NE(region.find("callerCwdContractFor(toolName)"),
               std::string::npos)
         << "ANTS-1404 DISP-1: dispatcher must consult "
@@ -95,9 +99,8 @@ TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
 TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(pos, std::string::npos);
-    const std::string region = cc.substr(pos, 9000);
+    const std::string region = toolsCallBranch(cc);
+    ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find("\"caller_cwd_required\""), std::string::npos)
         << "ANTS-1404 DISP-2: code:\"caller_cwd_required\" literal "
            "missing from refusal envelope";
@@ -111,14 +114,8 @@ TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
 TEST(McpCallerCwdContracts, RefusalBypassesCache) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(pos, std::string::npos);
-    // Window widened to 16000 (ANTS-1415 Phase 3b added the
-    // TabSpecific refusal branch, pushing the cache gate to ~offset
-    // 11000 from the tools/call branch start); 16000→21000 (ANTS-1901
-    // inserted the master-MCP `mcp_disabled` guard ahead of the
-    // caller_cwd check, shifting everything below it down ~1.1 KiB).
-    const std::string region = cc.substr(pos, 21000);
+    const std::string region = toolsCallBranch(cc);
+    ASSERT_FALSE(region.empty());
     // The cacheable assignment must depend on !toolHandled so a
     // refusal-set toolHandled value short-circuits the cache lookup.
     EXPECT_NE(region.find("!toolHandled && isIdempotentReadTool(toolName)"),
@@ -134,15 +131,8 @@ TEST(McpCallerCwdContracts, RefusalBypassesCache) {
 TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(pos, std::string::npos);
-    // Window 9000→11000 (ANTS-1853): the caller_cwd refusal branch grew
-    // an empty-arguments diagnostic (args_empty flag + DebugLog::Claude
-    // trace recording raw request length / args-key presence / fingerprint),
-    // pushing the branch close brace past the original 9000-char window.
-    // 11000→16000 (ANTS-1901): the master-MCP guard inserted ahead of
-    // the caller_cwd block shifts the close brace down ~1.1 KiB.
-    const std::string region = cc.substr(pos, 16000);
+    const std::string region = toolsCallBranch(cc);
+    ASSERT_FALSE(region.empty());
     // Locate the ANTS-1404 refusal block (anchored on the literal
     // code string already asserted by DISP-2) and walk forward to
     // the toolHandled = true that closes the branch; the
@@ -170,17 +160,8 @@ TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
 TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
     const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
     ASSERT_FALSE(cc.empty());
-    const auto pos = cc.find("else if (method == \"tools/call\")");
-    ASSERT_NE(pos, std::string::npos);
-    // Window widened to 16000 (ANTS-1415 Phase 3b grew the dispatch
-    // block; the provider-dispatch !toolHandled guard now sits past
-    // the original 9000-char window).
-    // ANTS-1857 widened 16000→18000: the size-aware empty-arguments
-    // steer added a few lines ahead of the provider-dispatch guard,
-    // pushing `if (!toolHandled) {` to offset ~16.5 KiB.
-    // ANTS-1901 widened 18000→23000: the master-MCP guard ahead of the
-    // caller_cwd block shifts the provider dispatch down a further ~1.1 KiB.
-    const std::string region = cc.substr(pos, 23000);
+    const std::string region = toolsCallBranch(cc);
+    ASSERT_FALSE(region.empty());
     // The provider-dispatch block historically guarded on `!cachedHit`;
     // ANTS-1404 widens that to `!toolHandled` so refusals also
     // short-circuit the provider lambda invocation.
