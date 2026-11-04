@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-4513 — Move the feedback corpus into the roadmap store
 
-**Status:** spec draft (2026-11-04).
+**Status:** accepted (2026-11-04).
 **Kind:** feature.
 **Source:** ROADMAP ANTS-4513 (user-request-2026-08-19).
 **Pairs with:** ANTS-3781 (the schema-upgrade ladder this adds a rung to),
@@ -128,9 +128,14 @@ empty for a missing file). One reporter is one file.
 
 When a verb resolves an `export_path` that has no row:
 
-- **The file exists** → it is imported inside the verb's write transaction.
-  `content` is the file's bytes, decoded as UTF-8; a file that does not decode
-  refuses `not_utf8` and nothing is written. The finding rows are derived,
+- **The file exists** → it is imported inside a `BEGIN IMMEDIATE`
+  transaction, on every path that imports: the write ops, `feedback_query` and
+  the pending scan. `content` is the file's bytes, decoded as UTF-8. A file
+  whose bytes do not survive decoding and re-encoding refuses `not_utf8`, and
+  nothing is written: invalid UTF-8, or a leading byte-order mark, which
+  `QString::fromUtf8` drops (Qt 6, measured 2026-11-04). A file whose format
+  marker is below 2 refuses `not_v2`: `parse` builds no per-finding list for
+  it, and `migrate_v2` is retired. The finding rows are derived,
   `export_sha256` is the file's hash, and the file is not rewritten.
 - **The file does not exist** → `append_finding` creates the row with
   `FeedbackFile::skeleton` as `content`, then proceeds. This is today's
@@ -153,6 +158,7 @@ BEGIN IMMEDIATE
   if the file exists and sha256(file) != row.export_sha256 → ROLLBACK, refuse export_drift
   // a missing file is not drift: the write below recreates it
   text    = <the op's existing text edit>(row.content, args)   // unchanged code
+  if text == row.content → ROLLBACK, answer changed:false        // today's no-op skip
   rebuild feedback_finding rows from text
   UPDATE feedback_reporter SET content=text, revision=revision+1, updated_at=now
   chmod u+w export_path if it exists; write text via QSaveFile; chmod 0444
@@ -207,13 +213,16 @@ keeps its meaning.
 reporters have pending findings, and the awaiting and untagged counts, come
 from the `feedback_finding` rows of the reporters whose files this scan
 globbed. `total_pending_lines` comes from `parse` on the
-`content` of those reporters only, not of every file.
+`content` of those reporters only, not of every file. A file whose import
+refuses is listed under `import_refused` with its name and refusal code, and
+is not counted.
 
 ### 4.7 Errors with no file fallback
 
 A store that does not open refuses `store_failed`. Neither verb falls back to
 reading or writing the file: that would be the second storage path § 3 rules
-out.
+out. In `session_orient`, `feedback_pending` then carries `store_failed: true`
+and no counts, and orient itself does not fail.
 
 ### 4.8 Reload
 
@@ -317,8 +326,8 @@ relaunch is due anyway.
   *Breaks when:* the rung carries its own copy of the DDL that drifts from
   `createSchema()`'s.
 
-- **INV-12 — `feedback_pending` counts stay the same.** For the same corpus,
-  the block's `files_with_pending`, `total_pending_lines`, `total_awaiting`
+- **INV-12 — `feedback_pending` counts stay the same.** For a corpus whose
+  files all import, the block's `files_with_pending`, `total_pending_lines`, `total_awaiting`
   and `total_suspected_untagged` equal those computed by `FeedbackFile::parse`
   over the same files.
   *Test:* `feedback_query_shared_root`, extended to compute both on its
@@ -372,9 +381,10 @@ The existing feedback bundles for retired ops (`feedback_log_compact_shipped`,
 `feedback_log_prune_tracking`, `feedback_log_compact_resolved`,
 `feedback_log_migrate_v2`) lose their op-level cases. Their pure text
 functions are unused after this, so the cases go with them. Of the
-`FeedbackShipDate` cases in that bundle, the ones on the compaction stub go;
-`LiveQueryEmitsShippedDate` stays, because `feedback_query` still reports
-ship dates (ANTS-3504). In `mcp_feedback_log`, every `append_tracking` and
+`FeedbackShipDate` cases in that bundle, the compaction ones go
+(`StubCarriesMaxDateAndDatelessFallback`, `DatedStubIsIdempotent`,
+`LiveCompactStampsShipDate`). The rest stay, because `feedback_query` still
+calls `shipDateFromRoadmapBody` (ANTS-3504). In `mcp_feedback_log`, every `append_tracking` and
 `set_format_version` case now expects `retired`.
 
 Must fail first: every invariant in the new bundle fails on today's build,
@@ -462,5 +472,7 @@ dependency.
 ## 14. Migration / compatibility
 
 There is no migration step: § 4.3 imports each file on first touch. Callers
-keep their arguments. Two observable changes: the six retired ops now refuse,
-and an edited export refuses writes until `reimport`.
+keep their arguments. Observable changes: the six retired ops now refuse; an
+edited export refuses writes until `reimport`; a file that fails import
+(`not_utf8`, `not_v2`) is refused by both verbs and listed under
+`feedback_pending.import_refused`.
