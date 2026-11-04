@@ -3471,7 +3471,6 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
     QJsonArray cArr;
     QJsonArray droppedArr;
     QStringList srcOrder;
-    QStringList missingSrc;
     for (const RS &rs : conv) {
         if (!srcOrder.contains(rs.second)) srcOrder.append(rs.second);
         QJsonObject e;
@@ -3481,7 +3480,6 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
             cArr.append(e);
         } else {
             droppedArr.append(e);
-            if (!missingSrc.contains(rs.second)) missingSrc.append(rs.second);
         }
     }
     result["conventions"]       = cArr;
@@ -3508,13 +3506,14 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
         // A non-empty STRING, deliberately: compact:true drops a false bool
         // by design (ANTS-2091), which is exactly how `sources[].exists`
         // false became invisible and left the answer with no hedge at all.
+        // ANTS-6356 — the missing paths are not repeated here: each
+        // conventions_dropped[] entry names its source already.
         result["warning"] = QStringLiteral(
-            "%1 of %2 curated conventions were dropped because the document "
-            "each cites is not present under this project root (%3). The "
-            "table is this tool's own, not read from your project.")
+            "%1 of %2 conventions dropped: their documents are not in this "
+            "project (see conventions_dropped). The table is this tool's "
+            "own, not your project's.")
             .arg(droppedArr.size())
-            .arg(droppedArr.size() + cArr.size())
-            .arg(missingSrc.join(QStringLiteral(", ")));
+            .arg(droppedArr.size() + cArr.size());
     }
     if (resolved == 0) {
         // The total-miss case: nothing here came from this project, and a

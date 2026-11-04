@@ -1261,14 +1261,9 @@ QJsonObject RemoteControl::specLintBuildResponse(
     }
     if (!testCoverageChecked) {
         o[QStringLiteral("test_coverage_skipped_hint")] = QStringLiteral(
-            "explains test_coverage_gap / test_coverage_unverifiable in "
-            "skipped[]: no document in this walk had a Tests section that "
-            "names invariant ids, so § Invariants was compared against "
-            "nothing. Two causes, and both are the document's: there is no "
-            "Tests section at all, or it describes coverage in prose without "
-            "citing an INV-N. Neither is configurable here. Treat "
-            "`findings:[]` as SILENT about coverage parity, not as a pass. "
-            "Tracked as ANTS-4623.");
+            "test_coverage_gap / test_coverage_unverifiable did NOT run: no "
+            "document here has a Tests section citing an INV-N id. "
+            "`findings:[]` is SILENT about coverage parity, not a pass.");
     }
     if (!sectionsChecked) {
         // Two causes, and the hint must name the right one. An empty walk

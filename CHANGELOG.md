@@ -56,6 +56,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **spec_lint's coverage-skip hint and project_conventions' dropped-conventions warning are shorter** (ANTS-6356)
+  Both fire on every call for a project that lacks the documents they
+  check. They keep what a reader needs to avoid a false pass, in less
+  than half the bytes.
+
 - **The source-search tip skips a plain file listing such as `find src -name '*.py' | sort`; a `find` piped into `xargs grep` still gets it** (ANTS-5520)
 
 - **read_region section: resolves a heading by its title alone, past a leading section number such as "4.8"** (ANTS-5345)

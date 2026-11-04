@@ -82366,9 +82366,18 @@ are closed inline in the feedback files rather than filed here.
   Source: review-contract-2026-10-12 (ANTS-3855 loop 13, out of radius).
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-6356] **Other verbs may repeat long fixed hints on every call, as spec_lint did before ANTS-5264.**
+- ✅ [ANTS-6356] **Other verbs may repeat long fixed hints on every call, as spec_lint did before ANTS-5264.**
   Measured 2026-11-02: spec_lint's test_coverage_skipped_hint is 441 bytes on a project with no Tests section, and it was left alone by ANTS-5264.
   Survey the hints a verb emits because of a project property that cannot change, then shorten the long ones the same way.
+  Resolved 2026-11-04. Surveyed repeated identical hint text across
+  all Claude Code transcripts. Fixed-property hints still long:
+  spec_lint test_coverage_skipped_hint 441 -> 175 bytes;
+  project_conventions warning ~278 -> 144 (the path list repeated
+  conventions_dropped[]). Left alone: invariant_check scope_note
+  (ANTS-5726 just halved it), surfaces/sections hints (ANTS-5264),
+  and session_orient stale_check_hint, which is load-bearing (it
+  stopped misfiled reports). Others in the survey depend on the
+  caller's input, not a fixed property.
   **Layman:** Some tools may repeat the same long advice on every run, which wastes tokens.
   Kind: optimize.
   Source: in-session-2026-11-02 ANTS-5264 build.
