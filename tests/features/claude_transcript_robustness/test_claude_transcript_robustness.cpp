@@ -758,6 +758,35 @@ int inv17LocalCommandDoesNotDecideState() {
     return ok ? 0 : 1;
 }
 
+// ANTS-6368: a record over the 16 MiB cap is skipped as one unit, and the
+// records on either side of it, a last one with no newline included, are read.
+int inv19OverCapRecordIsSkippedWhole() {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return 1;
+    const QString path = tmp.path() + "/overcap.jsonl";
+    {
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly)) return 1;
+        f.write(R"({"type":"user","n":1})" "\n");
+        f.write(QByteArray(R"({"type":"user","big":")")
+                + QByteArray(17LL * 1024 * 1024, 'x') + QByteArray(R"("})") + "\n");
+        f.write(R"({"type":"user","n":2})" "\n");
+        f.write(R"({"type":"user","n":3})");
+    }
+    ClaudeIntegration ci;
+    const QJsonArray all = ci.loadTranscript(path);
+    int total = -1;
+    const QJsonArray tail = ci.loadTranscriptTail(path, 50, kNoByteCap, &total);
+    const bool ok = all.size() == 3 && all.at(2).toObject().value("n").toInt() == 3 &&
+                    tail.size() == 3 && total == 3;
+    std::fprintf(stderr,
+                 "[inv19 over-cap-record-skipped-whole] loadTranscript=%d tail=%d "
+                 "total=%d (want 3, 3, 3)  %s\n",
+                 static_cast<int>(all.size()), static_cast<int>(tail.size()), total,
+                 ok ? "PASS" : "FAIL");
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 TEST(ClaudeTranscriptRobustness, Main) {
@@ -779,6 +808,7 @@ TEST(ClaudeTranscriptRobustness, Main) {
     failures += inv16StateSurvivesUnknownTrailingRecords();
     failures += inv17LocalCommandDoesNotDecideState();
     failures += inv18CompactDoesNotDecideState();
+    failures += inv19OverCapRecordIsSkippedWhole();
     if (failures) FAIL();
 }
 

@@ -90,9 +90,8 @@ on PATH.
 **INV-11** — A transcript record longer than the old 64 KiB readLine cap is
 read whole (ANTS-5089). `loadTranscript` returns all three records of a
 transcript whose middle record is 200 KiB, and `sessionSummary` finds a
-first user message longer than 64 KiB. A record over the 16 MiB cap is
-skipped as one unit rather than handed back in fragments; that case is not
-exercised here, because it needs a 16 MiB fixture.
+first user message longer than 64 KiB. INV-19 covers a record over the
+16 MiB cap.
 
 **INV-12** — `findClaudeChildPid(pid, scanOrphans=false)` skips the `/proc`
 ppid scan (ANTS-5089). A child forked from a live worker thread is still
@@ -151,6 +150,11 @@ session compacts itself: a `compact_boundary`, a `user` record with
 record before them decides. After `end_turn` the state is `Idle`, with a
 100 KiB attachment past the first window too; after a pending `tool_use` it is
 `ToolUse`. A prompt written after the compact gives `Thinking`.
+
+**INV-19** — A record over the 16 MiB cap is skipped as one unit (ANTS-6368).
+`loadTranscript` and `loadTranscriptTail` both return the three small records
+around a 17 MiB one, the last of which has no newline, and the tail loader
+counts three in total.
 
 ## Out of scope
 

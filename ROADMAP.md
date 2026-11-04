@@ -85683,7 +85683,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, found while measuring ANTS-6366.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-6368] **readJsonlRecord allocates 16 MiB for every transcript record it reads.**
+- ✅ [ANTS-6368] **readJsonlRecord allocates 16 MiB for every transcript record it reads.**
   src/claudeintegration.cpp readJsonlRecord calls
   file.readLine(kMaxTranscriptRecordBytes), which allocates the cap on
   every call (ANTS-6367 measured the Qt behaviour). trimmed() copies the
@@ -85692,6 +85692,14 @@ than re-filed; everything else lands here.
   a scratch buffer the caller keeps, but that buffer would need to
   outlive the five loops that call readJsonlRecord. Not measured at
   this site yet: time one transcript read under ASan first.
+  Shipped 2026-11-04: readJsonlRecord reads in 16 KiB chunks into a
+  growing buffer, so a record costs its own size, not 16 MiB. Same bound
+  (record + newline <= cap - 1), same whole-record skip. No scratch buffer
+  was needed, so the five callers are unchanged. Measured 2026-11-04 with
+  a throwaway -O2 harness on a 57 MiB real transcript (5,813 records):
+  old ~750 ms, new ~165 ms, identical records and bytes; boundary records
+  (cap-1, cap, over cap, no final newline) agree too. Not measured under
+  ASan. Locked by claude_transcript_robustness INV-19.
   **Layman:** Reading a Claude transcript sets aside 16 MiB of memory for each line, however short the line is.
   Kind: perf.
   Source: in-session-2026-11-04, found while fixing ANTS-6367.

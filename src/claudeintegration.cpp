@@ -75,13 +75,28 @@ static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
 // line (ANTS-1806).
 static constexpr qint64 kMaxTranscriptRecordBytes = 16LL * 1024 * 1024;
 
+// ANTS-6368 — read in small chunks: QIODevice::readLine(cap) allocates the
+// whole cap on every call, which made each record cost a 16 MiB
+// allocation. A record is kept when it and its newline fit in cap - 1
+// bytes, the bound readLine(cap) had.
 static QByteArray readJsonlRecord(QFile &file, qint64 cap) {
-    QByteArray line = file.readLine(cap);
-    if (line.endsWith('\n') || file.atEnd()) return line.trimmed();
-    while (!file.atEnd()) {
-        if (file.readLine(cap).endsWith('\n')) break;
+    QByteArray line;
+    char chunk[16 * 1024];
+    bool overCap = false;
+    for (;;) {
+        const qint64 n = file.readLine(chunk, sizeof chunk);
+        if (n <= 0) break;
+        if (!overCap) {
+            if (line.size() + n > cap - 1) {
+                overCap = true;  // drain to the newline; return nothing
+                line = QByteArray();
+            } else {
+                line.append(chunk, n);
+            }
+        }
+        if (chunk[n - 1] == '\n') break;
     }
-    return {};
+    return line.trimmed();
 }
 
 // The last `window` bytes of a `size`-byte file. A window that starts
