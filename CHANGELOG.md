@@ -145,6 +145,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review and audit fold-ins land in the release being worked: the lowest unfinished version block with open work, never a finished one** (ANTS-6353)
+  A dated fold-in block or an old released block is no longer chosen. A
+  fresh release with no items yet still receives findings.
+
 - **spec_lint says when none of a spec's test clauses resolved, so an empty result no longer reads as a pass** (ANTS-5273)
 
 - **feedback_log compact_resolved labels a finding whose ids were all dropped as dropped** (ANTS-5242)

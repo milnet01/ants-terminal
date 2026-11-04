@@ -3,6 +3,7 @@
 #include "markdownscan.h"
 #include "projectsettings.h"
 #include "roadmapclock.h"
+#include "roadmapindex.h"    // ANTS-6353 — buildIndex(), versionOfTitle()
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapmigrateverb.h"  // INV-1 — every production planFrom() is there
@@ -26,6 +27,7 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <limits>
 #include <utility>
 #include <fcntl.h>
 #include <sys/file.h>
@@ -691,31 +693,99 @@ QList<int> peekIds(const QString &projectPath, int n) {
     return ids;
 }
 
+namespace {
+
+// roadmap-format.md § 3.5.4 step 3: open, and not waiting on an item that
+// is still open. A Blocked-by naming an id this file does not hold counts
+// as open: nothing shows it closed.
+bool isWorkable(const RoadmapParse::BulletRecord &b,
+                const QHash<QString, QString> &statusById) {
+    static const QString planned = QString::fromUtf8(RoadmapParse::kEmojiPlanned);
+    static const QString inProgress = QString::fromUtf8(RoadmapParse::kEmojiInProgress);
+    static const QString done = QString::fromUtf8(RoadmapParse::kEmojiDone);
+    static const QString dropped = QString::fromUtf8(RoadmapParse::kEmojiDropped);
+    if (b.status != planned && b.status != inProgress) return false;
+    const auto links = RoadmapParse::extractLinkLines(b.body, true);
+    for (const QString &id : links.byType.value(QStringLiteral("blocked-by"))) {
+        const QString s = statusById.value(id);
+        if (s != done && s != dropped) return false;
+    }
+    return true;
+}
+
+// The integer ranks § 3.5.4 step 2 compares. A version block ranks as
+// (major, minor, patch), a patch stream `x` above every numbered patch; a
+// `P<NN>` block as (phase, sub). Each is empty for any other heading.
+QVector<int> versionRank(const QString &title) {
+    const QString v = RoadmapIndex::versionOfTitle(title);
+    if (v.isEmpty()) return {};
+    const QStringList parts = v.split(QLatin1Char('.'));
+    QVector<int> rank;
+    for (int i = 0; i < 3; ++i) {
+        const QString p = parts.value(i, QStringLiteral("0"));
+        rank << (p == QLatin1String("x") ? std::numeric_limits<int>::max() : p.toInt());
+    }
+    return rank;
+}
+
+QVector<int> phaseRank(const QString &title) {
+    static const QRegularExpression re(QStringLiteral(R"(^P(\d+)(?:\.(\d+))?\b)"));
+    const auto m = re.match(title);
+    if (!m.hasMatch()) return {};
+    return {m.captured(1).toInt(), m.captured(2).toInt()};
+}
+
+}  // namespace
+
+// ANTS-6353 — roadmap-format.md § 3.5.4 step 2: the lowest version block
+// holding a workable item whose heading does not read shipped, else the
+// lowest `P<NN>` block. This roadmap closes blocks as `— released <date>`
+// or `— archived`, where § 3.7 says `shipped`; all three read as finished.
+// Where no block of a shape holds work, the lowest unfinished one of that
+// shape is still chosen: a fresh release block has no items yet, and a
+// fold-in (§ 3.8) must land somewhere.
 QString findActiveReleaseHeading(const QString &projectPath) {
     QFile f(roadmapPath(projectPath));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
     const QString body = QString::fromUtf8(f.readAll());
     f.close();
 
-    static const QRegularExpression reInflight(
-        QStringLiteral(R"(\(target:\s*\d{4}-\d+\))"));
-    static const QRegularExpression reShipped(
-        QStringLiteral(R"(^\d+\.\d+(?:\.\d+)?\s*[—-])"));
+    const QString root = QFileInfo(projectPath).canonicalFilePath();
+    const auto bullets = RoadmapParse::parseBullets(
+        body, ProjectSettings::idFormatFor(root.isEmpty() ? projectPath : root));
+    QHash<QString, QString> statusById;
+    for (const auto &b : bullets)
+        if (!b.id.isEmpty()) statusById.insert(b.id, b.status);
 
-    QString firstShipped;
+    static const QRegularExpression reFinished(
+        QStringLiteral(R"(\b(shipped|released|archived)\b)"),
+        QRegularExpression::CaseInsensitiveOption);
+    // Tiers, in preference order: version with work, version without,
+    // phase with work, phase without. The lowest rank wins within a tier.
     const QStringList lines = body.split(QChar('\n'));
-    for (const QString &line : lines) {
-        if (!line.startsWith(QStringLiteral("## "))) continue;
-        const QString headingBody = line.mid(3).trimmed();
-        if (reInflight.match(line).hasMatch()) {
-            return line;
-        }
-        if (firstShipped.isEmpty()
-            && reShipped.match(headingBody).hasMatch()) {
-            firstShipped = line;
+    QString best[4];
+    QVector<int> bestRank[4];
+    for (const auto &s : RoadmapIndex::buildIndex(body)) {
+        if (s.level != 2 || reFinished.match(s.headingText).hasMatch()) continue;
+        QVector<int> rank = versionRank(s.headingText);
+        const bool isPhase = rank.isEmpty();
+        if (isPhase) rank = phaseRank(s.headingText);
+        if (rank.isEmpty()) continue;
+        const bool hasWork = std::any_of(bullets.cbegin(), bullets.cend(),
+            [&](const RoadmapParse::BulletRecord &b) {
+                const int line = b.firstLine - 1;
+                return line >= s.lineStart && line < s.lineEnd
+                    && isWorkable(b, statusById);
+            });
+        const int tier = (isPhase ? 2 : 0) + (hasWork ? 0 : 1);
+        if (best[tier].isEmpty() || rank < bestRank[tier]) {
+            best[tier] = lines.value(s.lineStart);
+            bestRank[tier] = rank;
         }
     }
-    return firstShipped;
+    for (const QString &heading : best)
+        if (!heading.isEmpty()) return heading;
+    return {};
 }
 
 namespace {

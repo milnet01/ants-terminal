@@ -42,9 +42,15 @@ and AuditEngine::templateRoadmapFoldInBlock.
 - INV-8: `insertBlock(path, heading, block)`:
   (a) heading found → block inserted on the line after.
   (b) heading not found → return false, file unchanged byte-for-byte.
-- INV-8b: `findActiveReleaseHeading` prefers `(target: …)` headings;
-  falls back to most-recent shipped; returns "" when no recognisable
-  release block exists.
+- INV-8b (amended by ANTS-6353): `findActiveReleaseHeading` returns
+  roadmap-format.md § 3.5.4's active release. That is the lowest version
+  `##` block, compared as integers, holding a workable 📋 or 🚧 item. A
+  workable item has no `Blocked-by:` naming an open item. A heading
+  reading shipped, released or archived is never chosen. With no such
+  block, the lowest unfinished version block is chosen, so a fresh,
+  empty release still receives a fold-in. With no version block, the
+  same two steps run over `## P<NN>` blocks. Otherwise it returns "".
+  A `(target: …)` date alone selects nothing.
 - INV-9 (ANTS-5102): `allocateIds` and `insertBlock` take a `LockWait`.
   `Interactive`, for a caller on the GUI thread, gives up on a held
   counter lock in about 1 s rather than `Standard`'s 5 s, and sets `busy`

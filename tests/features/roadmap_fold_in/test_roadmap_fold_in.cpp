@@ -335,40 +335,149 @@ TEST(RoadmapFoldIn, InsertBlockTrimsTrailingNewlineFromHeading) {
         QStringLiteral("### foo\n")));
 }
 
-// ---- INV-8b: findActiveReleaseHeading prefers in-flight ---------
+// ---- INV-8b: findActiveReleaseHeading picks § 3.5.4's active release ----
 
-TEST(RoadmapFoldIn, Inv8bFindPrefersInflight) {
+// ANTS-6353 — a dated fold-in block, a finished block with a stray open
+// item, and a block holding only 💭 are all passed over; 0.10.0 ranks above
+// 0.9.0 though it comes first in the file.
+TEST(RoadmapFoldIn, Inv8bFindPicksLowestOpenRelease) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     const QByteArray rm =
         "# Roadmap\n"
         "\n"
-        "## Distribution-adoption overview\n"
+        "## Review pass (target: 2026-05-21)\n"
         "\n"
-        "## 0.7.88 — audit fold (target: 2026-05)\n"
+        "- 📋 [ANTS-0001] **Fold-in item.**\n"
         "\n"
-        "## 0.7.87 — MCP pack — shipped 2026-05-13\n";
+        "## 0.7.87 — MCP pack — released 2026-05-13\n"
+        "\n"
+        "- 📋 [ANTS-0002] **Stray open item.**\n"
+        "\n"
+        "## 0.7.88 — older pack — shipped 2026-05-20\n"
+        "\n"
+        "- 📋 [ANTS-0003] **Another stray.**\n"
+        "\n"
+        "## 0.8.0 — ideas only (target: 2026-08)\n"
+        "\n"
+        "- 💭 [ANTS-0004] **An idea.**\n"
+        "\n"
+        "## 0.10.0 — later (target: 2026-12)\n"
+        "\n"
+        "- 📋 [ANTS-0005] **Later work.**\n"
+        "\n"
+        "## 0.9.0 — next (target: 2026-10)\n"
+        "\n"
+        "### Theme\n"
+        "\n"
+        "- 📋 [ANTS-0006] **Next work.**\n";
     writeFile(tmp.path(), "ROADMAP.md", rm);
 
-    const QString h = RoadmapFoldIn::findActiveReleaseHeading(tmp.path());
-    EXPECT_EQ(h, QStringLiteral("## 0.7.88 — audit fold (target: 2026-05)"));
+    EXPECT_EQ(RoadmapFoldIn::findActiveReleaseHeading(tmp.path()),
+              QStringLiteral("## 0.9.0 — next (target: 2026-10)"));
 }
 
-TEST(RoadmapFoldIn, Inv8bFindFallsBackToShipped) {
+// No block holds work yet — a fresh release: the lowest unfinished block
+// still receives the fold-in.
+TEST(RoadmapFoldIn, Inv8bFindTakesEmptyReleaseWhenNoneHasWork) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
     const QByteArray rm =
         "# Roadmap\n"
         "\n"
-        "## Some prose section\n"
+        "## 0.7.99 — done — released 2026-10-01\n"
+        "\n"
+        "- ✅ [ANTS-0001] **Done.**\n"
+        "\n"
+        "## 0.9.0 — after (target: 2026-12)\n"
+        "\n"
+        "## 0.8.0 — next (target: 2026-11)\n"
+        "\n"
+        "Theme prose, no items yet.\n";
+    writeFile(tmp.path(), "ROADMAP.md", rm);
+
+    EXPECT_EQ(RoadmapFoldIn::findActiveReleaseHeading(tmp.path()),
+              QStringLiteral("## 0.8.0 — next (target: 2026-11)"));
+}
+
+// An item waiting on an open item is not workable; once the blocker is
+// closed, it is.
+TEST(RoadmapFoldIn, Inv8bFindSkipsBlockedItems) {
+    const auto roadmap = [](const char *blockerStatus) {
+        return QByteArray(
+            "# Roadmap\n"
+            "\n"
+            "## 0.8.0 — blocked\n"
+            "\n"
+            "- 📋 [ANTS-0001] **Waits.**\n"
+            "  Blocked-by: ANTS-0009.\n"
+            "\n"
+            "## 0.9.0 — next\n"
+            "\n"
+            "- 📋 [ANTS-0002] **Free.**\n"
+            "\n"
+            "## Elsewhere\n"
+            "\n"
+            "- ") + blockerStatus + " [ANTS-0009] **The blocker.**\n";
+    };
+    QTemporaryDir open, closed;
+    ASSERT_TRUE(open.isValid() && closed.isValid());
+    writeFile(open.path(), "ROADMAP.md", roadmap("📋"));
+    writeFile(closed.path(), "ROADMAP.md", roadmap("✅"));
+
+    EXPECT_EQ(RoadmapFoldIn::findActiveReleaseHeading(open.path()),
+              QStringLiteral("## 0.9.0 — next"));
+    EXPECT_EQ(RoadmapFoldIn::findActiveReleaseHeading(closed.path()),
+              QStringLiteral("## 0.8.0 — blocked"));
+}
+
+// No version block: the lowest-numbered `## P<NN>` with work, compared as
+// integers; an `FP<NN>` fold-in block is never selected.
+TEST(RoadmapFoldIn, Inv8bFindFallsBackToPhase) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray rm =
+        "# Roadmap\n"
+        "\n"
+        "## FP01 — fold-in\n"
+        "\n"
+        "- 📋 [ANTS-0001] **Fold-in.**\n"
+        "\n"
+        "## P08 — later\n"
+        "\n"
+        "- 📋 [ANTS-0002] **Later.**\n"
+        "\n"
+        "## P07.5 — between\n"
+        "\n"
+        "- 🚧 [ANTS-0003] **Now.**\n";
+    writeFile(tmp.path(), "ROADMAP.md", rm);
+
+    EXPECT_EQ(RoadmapFoldIn::findActiveReleaseHeading(tmp.path()),
+              QStringLiteral("## P07.5 — between"));
+}
+
+// Only finished blocks: nothing qualifies, so nothing is returned — a
+// finished block is closed to new findings (§ 3.7).
+TEST(RoadmapFoldIn, Inv8bFindEmptyWhenOnlyFinishedBlocks) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray rm =
+        "# Roadmap\n"
         "\n"
         "## 0.7.87 — MCP pack — shipped 2026-05-13\n"
         "\n"
-        "## 0.7.86 — older — shipped 2026-05-10\n";
+        "- ✅ [ANTS-0001] **Done.**\n"
+        "\n"
+        "## 0.7.86 — older — released 2026-05-10\n"
+        "\n"
+        "- 📋 [ANTS-0002] **Stray.**\n"
+        "\n"
+        "## 0.5.x and 0.6.x — archived\n"
+        "\n"
+        "- 📋 [ANTS-0003] **Archived stray.**\n";
     writeFile(tmp.path(), "ROADMAP.md", rm);
 
-    const QString h = RoadmapFoldIn::findActiveReleaseHeading(tmp.path());
-    EXPECT_EQ(h, QStringLiteral("## 0.7.87 — MCP pack — shipped 2026-05-13"));
+    EXPECT_TRUE(RoadmapFoldIn::findActiveReleaseHeading(tmp.path()).isEmpty());
 }
 
 TEST(RoadmapFoldIn, Inv8bFindEmptyForNoMatches) {

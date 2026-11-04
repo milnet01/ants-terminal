@@ -19,12 +19,13 @@
 //       preserved (typically 0644 — it's a checked-in source file).
 //
 //   findActiveReleaseHeading(projectPath)
-//       Locate the "active" release block in <projectPath>/ROADMAP.md:
-//       first `^## ` heading whose body matches `\(target:\s*\d{4}-\d+\)`
-//       (in-flight); otherwise the first `^## ` heading whose body
-//       matches `^\d+\.\d+(\.\d+)?\s*[—-]` (most-recent shipped). Empty
-//       string if neither matches. Returns the FULL heading line so
-//       the caller can pass it directly to insertBlock.
+//       Locate roadmap-format.md § 3.5.4's active release block in
+//       <projectPath>/ROADMAP.md (ANTS-6353): the lowest version `##`
+//       holding a workable 📋/🚧 item whose heading does not read
+//       shipped, released or archived; else the lowest unfinished one;
+//       then the same over `## P<NN>` blocks. Empty string if none
+//       qualifies. Returns the FULL heading
+//       line so the caller can pass it directly to insertBlock.
 
 #pragma once
 

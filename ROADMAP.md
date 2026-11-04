@@ -89850,8 +89850,18 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-11-02.
   Lanes: mcp.
 
-- 📋 [ANTS-6353] **RoadmapFoldIn::findActiveReleaseHeading does not follow roadmap-format.md § 3.5.4's choice of active release.**
+- ✅ [ANTS-6353] **RoadmapFoldIn::findActiveReleaseHeading does not follow roadmap-format.md § 3.5.4's choice of active release.**
   Read 2026-11-02 in src/roadmapfoldin.cpp. It returns the first `##` holding `(target: YYYY-MM)` in document order, else the first numbered heading. Step 2 of § 3.5.4 picks the lowest-numbered version block with workable items whose heading does not read shipped. Callers: coldeyesdialog.cpp and indiereviewdialog.cpp through ReviewDialogBase::activeReleaseHeading. Not yet checked: which heading it returns on this roadmap today.
+  Shipped 2026-11-04. Checked on this roadmap: the old code returned
+  "## indie-review #4 + Ants MCP roadmap pass (target: 2026-05-21) (0.7.92
+  wave)", the first heading with a target date. Now: lowest unfinished
+  version block with a workable item (Blocked-by on an open item excluded),
+  else the lowest unfinished one, then the same over P<NN> blocks.
+  "released" and "archived" headings read as finished like "shipped".
+  The empty-block fallback is a fold-in addition to § 3.5.4: eight caller
+  tests modelled a fresh release with no items, and strict § 3.5.4 left
+  findings nowhere to go. INV-8b amended in
+  tests/features/roadmap_fold_in/spec.md; ANTS-1111 INV-8b points there.
   **Layman:** The review dialogs may file their findings under a different release block from the one the roadmap rules call active.
   Kind: fix.
   Source: in-session-2026-11-02, seen while working ANTS-5652.
