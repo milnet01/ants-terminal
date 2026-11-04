@@ -62809,6 +62809,7 @@ for the rotation contract.
   Kind: refactor.
   Source: user-request-2026-09-07.
   Lanes: mcp, build.
+  Supersedes: ANTS-1705.
 
 - ✅ [ANTS-5319] **Split remotecontrol_roadmap_query.cpp before it reaches the 6,000-line TU cap.**
   ANTS-4932 moved the roadmap_log helpers from TU 2 to the head of this
@@ -72543,7 +72544,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: deferred from ANTS-1351 § 9 Q1 (cold-eyes loop 3 2026-05-17).
   Lanes: audit_run, claudeintegration.
 
-- 📋 [ANTS-1705] **Narrow `ants_core_lib`'s `Qt6::Widgets` link to realize the ANTS-1444 split benefit.**
+- 🚫 [ANTS-1705] **Narrow `ants_core_lib`'s `Qt6::Widgets` link to realize the ANTS-1444 split benefit.**
   `ants_core_lib` links
   `Qt6::Widgets PUBLIC`, so every downstream lib — including the now
   TU-clean `ants_audit_lib` — still pulls the Widgets surface
@@ -72575,6 +72576,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   that header changed first, independently of any TU move. And the hub
   would have to be split before core can drop Widgets at all, which is a
   far larger job than this bullet describes. Re-scope before picking up.
+  Dropped 2026-11-05 (session 217): superseded by ANTS-4932. The payoff
+  this item named — an MCP/CI consumer that links the audit engine
+  without Qt6::Widgets — exists: ants_audit_lib links only the
+  window-free ants_mcpcore_lib (CMakeLists.txt, ANTS-4932 § 2.2), and
+  ants-mcpd has no GUI library in its link closure (spec INV-1).
+  Narrowing ants_core_lib itself would buy nothing further.
 
 - 📋 [ANTS-1449] **`audit_run` v2 — AuditDialog config-table integration + per-tool SARIF parsers.**
   ANTS-1351 v1 ships:
@@ -103761,6 +103768,7 @@ contributors don't duplicate research.
   Kind: refactor.
   Source: in-session-2026-05-26 (ANTS-1891 brainstorm; recommender opacity).
   Lanes: modelrecommender, modelautoswitch, claudestatuswidgets.
+  Blocked-by: ANTS-1894, ANTS-1895.
 
 - 💭 [ANTS-1872] **Auto thinking-level control (extends the ANTS-1735 auto-switcher).**
   Blocked by ANTS-1735. Once the effectiveness ledger shows a low regret+under-route rate, extend the controller to also tune the thinking budget per turn. Caveat (from the ANTS-1735 spec § 5): thinking level is a per-turn decision, but the model switcher is debounced to task boundaries (90 s dwell) — the extension needs a separate finer cadence and its own mechanism+cache research, so "reuse the same controller" understates the work.
