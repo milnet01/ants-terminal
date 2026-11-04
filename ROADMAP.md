@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6369 -->
+<!-- ants-roadmap-id-high-water: ANTS=6370 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84476,6 +84476,31 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   2. Add an optional `op` to `tool_info` ({name, op}) returning just that operation's block, which would make the deferral sentence literally true and give the long text a home paid for only when wanted.
 
   Measure the actual bytes before choosing. This is a per-session cost on practically every session on this machine, so it is worth costing properly rather than estimating.
+  Measured 2026-11-04 from ants-mcpd tools/list. The fields named above are fixed: ANTS-5271's kLeanVerbs/kLeanSummary (src/claudeintegration.cpp, the tools/list builder) summarise them, and op/old_text/new_text/note/body on the five writers are now 48-223 B. Remaining: argument texts over 200 B on verbs outside kLeanVerbs total ~29 KB of saving; top six: audit_run 3739, apply_edits 2995, doc_citations 2894 (quotes alone 2984 B), doc_lint 1996, spec_log 1818, invariant_check 1796. No test anchors on those texts (searched 2026-11-04).
+  NEXT: add the six to kLeanVerbs, with these kLeanSummary entries (drafted from the full texts; tool_info keeps the full text):
+  apply_edits/dry_run: Preview without writing; the reply says would_write / would_apply instead of files_written (default false).
+  apply_edits/edits: {path?, new} plus {old, replace_all?} or {start_line, end_line, expect_first_line, expect_last_line}; old_string/new_string accepted.
+  apply_edits/match_wrapped: Let `old` match across different line wraps; a wrap-caused not_found names this flag in its hint (default false).
+  apply_edits/path: Default path for every edit that omits one; a per-edit path wins.
+  doc_lint/checks: Checkers to run (default all): doc_integrity, doc_citations, doc_dedup, doc_symbols, spec_lint, doc_facts. Unknown refuses.
+  doc_lint/dry_run: With fix:true, compute the repair and write nothing; refuses without fix.
+  doc_lint/fix: Repair toc_gap findings in place (default false; all else is report-only). Adds fixed[], files_written, fix_errors[].
+  doc_lint/max_findings: Cap on findings[] (default 500, 1-5000); counts still cover the whole run.
+  doc_citations/quotes: Also check double-quoted spans against the document a nearby backticked path names; adds quotes[], quote_counts (default off).
+  spec_log/cells: append_loop on a table log: one string per column, in header order; a wrong count refuses column_mismatch.
+  spec_log/preserve_body: set_status only: keep the Status field's continuation lines, rewrite only its first line (default false).
+  spec_log/status: set_status: the new value, one line (continuations replaced unless preserve_body). append_status: text added at the field's end.
+  invariant_check/files: Project-relative paths to find citing specs for; pass src/foo.cpp, not foo.cpp. Read basename_matches too.
+  invariant_check/mode: summary (default: counts, no bodies) or full (adds invariant bodies; can exceed the reply cap).
+  invariant_check/paths: Alias for files; sending both refuses bad_op_combo.
+  audit_run/async: Return a job handle at once and poll audit_poll {job_id}; for scope:"full" or slow tools (default false).
+  audit_run/checks: Check ids for clang-tidy (e.g. ["bugprone-integer-division"]); other tools refuse bad_args.
+  audit_run/exclude_paths: Path prefixes to leave out (vendored code); exclude_paths_ignored_by names tools that cannot honour it.
+  audit_run/paths: Paths to narrow file-scoped tools to; gitleaks and trivy then skip.
+  audit_run/scope: auto (default), full (whole tracked src/, deterministic), files, since-last-run (adds delta), since-tag:<tag>, branch-diff.
+  audit_run/suppressions: auto (default: learned-FP ledger + allowlist), none, or path:<file>.
+  audit_run/tools: Subset of cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, gitleaks, trivy, shellcheck, mypy; default all but mypy.
+  Check first whether a test pins the kLeanVerbs set; verify each wire arg stays under 140 chars and tool_info still serves the full text.
   **Layman:** Long help text was moved out of one place and into another that is still sent every time, so the saving did not happen.
   Kind: perf.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.
@@ -85662,7 +85687,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-04, found while fixing ANTS-6367.
   Lanes: claude.
 
-- 📋 [ANTS-6369] **Two whole-tree scrape tests time out in the push gate when the disk cache is cold.**
+- ✅ [ANTS-6369] **Two whole-tree scrape tests time out in the push gate when the disk cache is cold.**
   RcTuSplit.InternalHeaderStaysInternal and
   SplitSources.InternalHeaderStaysInternal timed out at 60 s in the
   gate's build-asan step on 78a20c98. Measured after:
@@ -85676,10 +85701,29 @@ than re-filed; everything else lands here.
   intermittent.
   Options: scan only C/C++ files (1,285 of the 2,239), share one tree
   read between the two tests, or give both a perf-style timeout.
+  Cause proven 2026-11-04: with src/ and tests/ evicted from the page
+  cache (posix_fadvise DONTNEED, no root needed), RcTuSplit took 42.5 s
+  and SplitSources 4.5 s, against 0.29 s and 0.54 s warm. The gate
+  failed on it twice running (78a20c98, 73850771). Fix: TIMEOUT 180 for
+  both in tests/slow_test_timeouts.cmake, labels unchanged. Reading
+  fewer files (C/C++ only) was not done: it halves the reads but the
+  cold cost stays.
   **Layman:** Two tests read every file in the project; on the spinning disk, right after a big build, that takes over a minute and they time out.
   Kind: test.
   Source: in-session-2026-11-04, push gate on 78a20c98.
   Lanes: tests.
+
+- 📋 [ANTS-6370] **cc-job records no owning session, so a session cleaning its jobs by name prefix can delete a peer's logs.**
+  Groundwork cleaned "its" jobs by name prefix (vm-, wait-) and may have
+  deleted another session's finished logs; `cc-job status --all`
+  (packaging/cc-job/cc-job) shows no owner, confirmed 2026-11-04.
+  Asks: record the owning session at `start` (e.g. CLAUDE_SESSION_ID or
+  the parent PID's session), show it as a column in `status`, and add
+  `clean --mine`. Reply to claude-config with this id when it ships.
+  **Layman:** Background jobs don't record which Claude session started them, so one session tidying up can delete another session's job logs.
+  Kind: enhancement.
+  Source: claude-config relay 2026-11-04 (Groundwork message 1190).
+  Lanes: tooling.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

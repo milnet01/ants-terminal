@@ -63,3 +63,12 @@ set_tests_properties(RoadmapReadSeam.Ants3863Inv1DispatchReadsOnlyTheDetectorWin
 # (byte cap + off-thread render) this returns in well under the default.
 set_tests_properties(ReviewChangesDiffCap.LargeDiffIsCappedAndTruncated
                      PROPERTIES TIMEOUT 120)
+
+# ANTS-6369 — both read every file under src/ and tests/. On this host's
+# spinning disk a cold page cache makes that seek-bound: with those files
+# evicted (posix_fadvise DONTNEED), RcTuSplit took 42.5 s against 0.29 s
+# warm, and the push gate's ASan step, which runs them after a full build,
+# timed them out at 60 s. They are not slow code, so they keep their labels.
+set_tests_properties(RcTuSplit.InternalHeaderStaysInternal
+                     SplitSources.InternalHeaderStaysInternal
+                     PROPERTIES TIMEOUT 180)
