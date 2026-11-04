@@ -80955,6 +80955,12 @@ are closed inline in the feedback files rather than filed here.
   export, re-rendered from the store after every write; the store is
   primary. (2) An unregistered project is auto-registered on its first
   filing; there is one storage path. Unblocked: ANTS-4506 is shipped.
+  Spec gated (review-contract, 2026-11-04):
+  docs/specs/ANTS-4513-feedback-corpus-store.md, 2 loops at the two-loop
+  cap, 17 verified findings fixed (one found while building the packet),
+  status accepted. Loop log:
+  docs/reviews/ANTS-4513-feedback-corpus-store-loop-log.md. Loop 2's 7
+  fixes were read by no lane; the build is the next reader.
   **Layman:** Move the 19 shared feedback files into the same database as the roadmap, so all of them can be asked one question instead of nineteen.
   Kind: feature.
   Source: user-request-2026-08-19.
