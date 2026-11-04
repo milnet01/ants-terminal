@@ -2820,21 +2820,16 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
         result["basename_matches_count"] = nearMiss.size();
         if (specsScanned == 0) {
             result["basename_matches_hint"] = QStringLiteral(
-                "no spec was scanned, so the documents counted here are phase "
-                "documents or ADRs that mention a shorter form of the path, "
-                "usually in passing. Rows omitted; to read them, search the "
-                "file's basename with workspace_search.");
+                "no spec was scanned: these are phase documents or ADRs naming a "
+                "shorter form of the path. Rows omitted; search the basename with "
+                "workspace_search.");
         } else {
             result["basename_matches"]      = nearMiss;
             result["basename_matches_hint"] = QStringLiteral(
-                "these specs cite one of the files you passed by a SHORTER form — "
-                "a bare basename or a path suffix — and so are absent from "
-                "matched_specs, which matched the path as you wrote it. A spec "
-                "names a module the way its author writes it, so the spec that "
-                "GOVERNS the file is often in this list rather than that one: "
-                "read these before treating matched_specs as the contract. "
-                "Reported and never merged, because a shorter form can collide "
-                "between two like-named modules.");
+                "these specs cite a file by a SHORTER form (basename or path "
+                "suffix), so matched_specs missed them; the governing spec is "
+                "often here. Never merged: a short form can name a like-named "
+                "module.");
         }
     }
     result["fallback_match"] = !fallbackKind.isEmpty();
@@ -2857,15 +2852,12 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     const bool pathOnlyZero =
         matched.isEmpty() && totalScanned > 0 && nearMiss.isEmpty();
     QString scopeNote = QStringLiteral(
-        "scope: %1 + docs/phases + docs/decisions only — the ROADMAP was NOT consulted, so work "
-        "already planned there will not appear here. Use roadmap_query "
-        "(query=<keyword>) or task_priors for that.").arg(specsDir);
+        "scope: %1, docs/phases, docs/decisions; the ROADMAP was not read "
+        "(roadmap_query or task_priors).").arg(specsDir);
     if (!pathOnlyZero)
         scopeNote += QStringLiteral(
-            " Specs are matched by PATH only, so a spec that cites this module by "
-            "SYMBOL (a class or function name) does not appear even beside a "
-            "match: search the module's stem across %1 with workspace_search "
-            "before treating these results as the whole contract.").arg(specsDir);
+            " Specs are matched by PATH, so one citing this module by SYMBOL is "
+            "missed: search its stem across %1 with workspace_search.").arg(specsDir);
     result["scope_note"] = scopeNote;
 
     // Hints compose: a fallback hit in summary mode owes the caller both
@@ -2893,12 +2885,9 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     if (pathOnlyZero) {
         result["path_match_only"] = true;
         hints << QStringLiteral(
-            "specs WERE read and none mentioned these paths. Matching is by "
-            "PATH substring only, so a spec that cites the module by SYMBOL "
-            "(`vault_migration.resume`) rather than by path carries nothing "
-            "this can match, and a zero here does NOT establish that no spec "
-            "governs the file. Before treating it as uncontracted, search the "
-            "module's stem across the specs dir: workspace_search "
+            "specs were read and none names these paths. Matching is by PATH "
+            "substring, so a spec citing the module by SYMBOL is missed and a "
+            "zero does NOT mean uncontracted. Search its stem: workspace_search "
             "{pattern:\"<stem>\", glob:\"%1/*.md\", files_only:true}.")
                 .arg(specsDir);
     }
@@ -2916,10 +2905,8 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     }
     if (!wantBodies && !matched.isEmpty()) {
         hints << QStringLiteral(
-            "summary mode: invariant bodies omitted (invariants_count is the "
-            "real count). Drill into one spec with spec_query, or pass "
-            "mode:\"full\" for every body — which on a widely-referenced file "
-            "can exceed the response cap.");
+            "summary mode: bodies omitted. Read one spec with spec_query; "
+            "mode:\"full\" returns every body and can exceed the reply cap.");
     }
     if (!hints.isEmpty()) result["hint"] = hints.join(QLatin1Char('\n'));
     return QJsonDocument(result);

@@ -56,6 +56,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **invariant_check's scope note and hints say the same things in about half the bytes** (ANTS-5726)
+  Measured on this repository: a reply's tip text falls from 685 to
+  362 bytes on a typical match, and from 1213 to 610 with basename
+  matches.
+
 - **trace's not_covered gives a language's limits only where the symbol was found, and folds oversized files under one top-level directory into one row with a count** (ANTS-5799)
   On this repository a C++-only lookup's not_covered drops from about
   50 rows to 5. ANTS-6371 reported the same and is closed as its

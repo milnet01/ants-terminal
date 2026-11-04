@@ -88418,12 +88418,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config request 2026-10-16.
   Lanes: mcp.
 
-- 📋 [ANTS-5726] **Cut invariant_check's hint text, which is 17% of its replies against 1-2% for every other verb.**
+- ✅ [ANTS-5726] **Cut invariant_check's hint text, which is 17% of its replies against 1-2% for every other verb.**
   claude-config measured hint fields at 17% of invariant_check reply bytes
   over 491 calls, against 1-2% for every other verb (1.7% across all
   28,767 Ants replies, which they judged not worth touching). Find which
   hint repeats on every call and send it once, or only when the reply is
   empty or ambiguous.
+  Shipped 2026-11-04: scope_note, path_match_only, basename_matches and
+  summary-mode hints shortened, each keeping its facts and the phrases
+  the tests pin. Tip bytes per reply (built ants-mcpd, four files): 685
+  → 362 typical, 1213 → 610 with basename matches, 643 → 368 on a zero.
   **Layman:** One Ants tool repeats long tips in its answers; shortening them saves tokens.
   Kind: perf.
   Source: claude-config request 2026-10-16.
