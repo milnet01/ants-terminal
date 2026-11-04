@@ -489,6 +489,7 @@
       "name": "mcp-infra",
       "summary": "Orientation, projection, result spill, token accounting and JSON/redaction helpers.",
       "sourcePaths": [
+        "src/injectionhint.h",
         "src/jsoncanonical.cpp",
         "src/jsoncanonical.h",
         "src/jsonlfile.cpp",

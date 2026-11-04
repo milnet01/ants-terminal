@@ -272,6 +272,14 @@ for security-relevant changes.
 
 - **The status bar and tab dot say "waiting" while a helper agent's background shell runs, including after the helper has finished** (ANTS-6321)
 
+### Security
+
+- **Claude is warned when terminal text it reads looks like an attempt to give it orders** (ANTS-5184)
+  `get_text`, `get_scrollback`, `recent_errors` and `last_selection` add a
+  `possible_prompt_injection` list when the text holds a phrase such as
+  "ignore previous instructions" or a chat-template marker. The text is
+  sent unchanged; the warning is a signal, not a block.
+
 ## [0.7.115] - 2026-10-30
 
 **Theme:** The welcome window can install Claude Code on a fresh computer; the

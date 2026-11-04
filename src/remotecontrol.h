@@ -12,6 +12,7 @@
 #include "docintegrity.h"  // ANTS-3601 — DocIntegrity::Finding in helper sig
 #include "doccitations.h"  // ANTS-3636 — DocCitations::Options in helper sig
 #include "secretredact.h"  // ANTS-5169 — redactForClaude below
+#include "injectionhint.h"  // ANTS-5184 — redactForClaude below
 #include "docsymbols.h"    // ANTS-3661 — DocSymbols::Symbol in helper sig
                            // (pulls docfinding.h for DocFinding::Finding)
 #include "docdedup.h"
@@ -294,14 +295,26 @@ public:
     // ANTS-5169 — terminal text bound for Claude, with secrets replaced
     // when `enabled` (config claude.mcp_redact_secrets). Contract:
     // tests/features/mcp_secret_redaction/spec.md.
+    // ANTS-5184 — `injection` names the instruction-like phrases in the
+    // text, redaction on or off. Contract:
+    // tests/features/mcp_prompt_injection_hint/spec.md.
     struct ClaudeText {
-        QString text;
-        int     redacted = 0;
+        QString     text;
+        int         redacted = 0;
+        QStringList injection;
     };
     static inline ClaudeText redactForClaude(const QString &text, bool enabled) {
-        if (!enabled) return {text, 0};
+        QStringList injection = InjectionHint::scan(text);
+        if (!enabled) return {text, 0, std::move(injection)};
         SecretRedact::Result r = SecretRedact::scrub(text);
-        return {std::move(r.text), r.redactedCount};
+        return {std::move(r.text), r.redactedCount, std::move(injection)};
+    }
+    // ANTS-5184 — the reply field a terminal-reading verb carries when
+    // redactForClaude found instruction-like text; nothing when it found none.
+    static inline void addInjectionWarning(QJsonObject &out, const QStringList &kinds) {
+        if (!kinds.isEmpty())
+            out[QStringLiteral("possible_prompt_injection")] =
+                QJsonArray::fromStringList(kinds);
     }
 
     // ANTS-1293 — server-side byte cap for structured read-tool responses

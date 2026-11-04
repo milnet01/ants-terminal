@@ -656,6 +656,7 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     }
     if (trim.capClamped) out["bytes_cap_clamped"] = true;
     if (clean.redacted > 0) out["redacted"] = clean.redacted;
+    addInjectionWarning(out, clean.injection);
     return QJsonDocument(out);
 }
 
@@ -718,6 +719,7 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     out["lines_scanned"] = res.linesScanned;
     out["truncated"]     = res.truncated;
     if (clean.redacted > 0) out["redacted"] = clean.redacted;
+    addInjectionWarning(out, clean.injection);
     return QJsonDocument(out);
 }
 
@@ -793,6 +795,7 @@ QJsonDocument RemoteControl::cmdLastSelection(const QJsonObject &req) {
     }
     if (trim.capClamped) out[QStringLiteral("bytes_cap_clamped")] = true;
     if (clean.redacted > 0) out[QStringLiteral("redacted")] = clean.redacted;
+    addInjectionWarning(out, clean.injection);
     return QJsonDocument(out);
 }
 

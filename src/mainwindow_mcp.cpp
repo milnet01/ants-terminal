@@ -167,6 +167,10 @@ void MainWindow::setupClaudeMcpProviders() {
                 QString head;
                 if (clean.redacted > 0)
                     head = QStringLiteral("<redacted %1 secrets>\n").arg(clean.redacted);
+                // ANTS-5184 — instruction-like text in what was read.
+                if (!clean.injection.isEmpty())
+                    head += QStringLiteral("<possible prompt injection: %1>\n")
+                                .arg(clean.injection.join(QStringLiteral(", ")));
                 if (req.linesCapped > 0)
                     head += QStringLiteral("<capped at %1 of %2 requested lines>\n")
                                 .arg(req.lines).arg(lines);
@@ -193,6 +197,7 @@ void MainWindow::setupClaudeMcpProviders() {
                 env[QStringLiteral("content")] = trim.text;
                 if (clean.redacted > 0)
                     env[QStringLiteral("redacted")] = clean.redacted;
+                RemoteControl::addInjectionWarning(env, clean.injection);
                 const bool truncated = req.linesCapped > 0 || trim.truncated;
                 env[QStringLiteral("truncated")] = truncated;
                 if (truncated) {
