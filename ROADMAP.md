@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6377 -->
+<!-- ants-roadmap-id-high-water: ANTS=6378 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74551,6 +74551,10 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-05-15 (deferred from
   ANTS-1355 v2's spec § 8 / § 9); 2026-05-16 measurement
   recorded at Bundle C closeout.
+  Checked 2026-11-05: the trigger cannot be measured today. Sessions now
+  reach the verbs through ants-mcpd, and token_usage shows no per-tool
+  wrap_bytes for those calls (ANTS-5262). wrap_bytes itself can also go
+  negative (ANTS-6378). Re-measure after both ship.
 
 ---
 
@@ -74681,6 +74685,26 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Kind: test.
   Source: in-session-2026-11-05 (ANTS-6376 follow-up).
   Lanes: tests.
+
+- 📋 [ANTS-6378] **wrap_bytes goes negative when the scrub shortens a payload, and the snapshot holding it is then discarded whole.**
+  Seen 2026-11-05: token_usage reported snapshots_skipped
+  "165204-1793829070079.json: negative wrap_bytes for spec_query".
+  Cause, read from src/claudeintegration.cpp: the dispatch sets
+  reply.wrapBytes = outBytes - rawBytes (ANTS-1355 INV-3), so it
+  includes the scrub's size change, not just the frame. wrapMcpData
+  replaces an open tag WITH attributes by the shorter escaped sentinel,
+  so a payload quoting many wrapped outputs (a spec, a transcript)
+  comes out smaller than it went in. The loader in
+  src/tokenusageengine.cpp rejects any negative counter and drops the
+  whole snapshot file, losing every tool's counts in it.
+  Fix shape: count the frame alone (wrapped size minus the scrubbed
+  payload's size), and decide whether the loader should skip one bad
+  tool row rather than the file. Refute by: a payload carrying N
+  `<ants_mcp_data tool="x">` tags records wrap_bytes >= 0.
+  **Layman:** A usage counter can go below zero, and when it does the saved usage figures for that whole session are thrown away.
+  Kind: fix.
+  Source: in-session-2026-11-05 (token_usage snapshots_skipped).
+  Lanes: mcp.
 
 ## Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05) (0.7.65 wave)
 
