@@ -80879,7 +80879,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-08-18 (Vestige).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4513] **Migrate the cross-session feedback corpus into the roadmap store, where the schema already has a stub table waiting for it.**
+- ✅ [ANTS-4513] **Migrate the cross-session feedback corpus into the roadmap store, where the schema already has a stub table waiting for it.**
   Recommended after measuring the corpus rather than from taste. 19 files
   at /mnt/Games/Scripts/Linux/, 349 KB total, largest 98 KB, written by 19
   independent sessions.
@@ -80961,6 +80961,10 @@ are closed inline in the feedback files rather than filed here.
   status accepted. Loop log:
   docs/reviews/ANTS-4513-feedback-corpus-store-loop-log.md. Loop 2's 7
   fixes were read by no lane; the build is the next reader.
+  Resolved (2026-11-04): built from docs/specs/ANTS-4513-feedback-corpus-store.md
+  (commit dadbb81e). The store holds each feedback file's text; the file is a
+  read-only export. Schema 5. Six ops retired. Needs one terminal relaunch
+  after ants-mcpd is rebuilt: an older terminal cannot open the newer store.
   **Layman:** Move the 19 shared feedback files into the same database as the roadmap, so all of them can be asked one question instead of nineteen.
   Kind: feature.
   Source: user-request-2026-08-19.
