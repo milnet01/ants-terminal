@@ -89905,8 +89905,17 @@ measured Ants adding about 5,250 tokens to every request.
   Source: peer-session claude-config CFG-0885, message 1149, 2026-11-02.
   Lanes: packaging.
 
-- 📋 [ANTS-6355] **Running cc_job_bundle's test by hand from the repo root can leave `.local/state/gh/device-id` there, and the push gate then refuses.**
+- ✅ [ANTS-6355] **Running cc_job_bundle's test by hand from the repo root can leave `.local/state/gh/device-id` there, and the push gate then refuses.**
   Seen 2026-11-02 at 12:29: one stray file during a hand run of a copy of test_cc_job_bundle.sh from the repo root. The same run printed `/home/ants/.bashrc: line 15: /.cargo/env`, so a shell started with HOME empty and read .bashrc. Likely cause, not proved: `gh`, reached from .bashrc, wrote its state relative to the current folder. The ctest run left nothing in the repo. Check by running it from a scratch folder with HOME unset, and find which step starts that shell.
+  Shipped 2026-11-04. Cause, reproduced: ~/.bashrc line 19 runs
+  `gh auth token`; with HOME and XDG_STATE_HOME both unset, gh writes
+  .local/state/gh/device-id relative to the current folder. A test
+  started with HOME unset and BASH_ENV=~/.bashrc leaves it in the
+  caller's folder (red run 2026-11-04). The test's own startup shell
+  reads BASH_ENV before its first line, so no change inside the test can
+  prevent it (tried: cd into the scratch prefix; reverted). Fix: /.local/
+  in .gitignore, so the file can no longer block a push. ctest's runs
+  have HOME set and never wrote it.
   **Layman:** A test run by hand can leave a stray file in the project, which then blocks the next push until someone removes it.
   Kind: fix.
   Source: in-session-2026-11-02, hit while working ANTS-6354.

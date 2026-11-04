@@ -149,6 +149,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A stray `.local/` folder that `gh` can leave at the repo root is ignored, so it no longer blocks a push.** (ANTS-6355)
+
 - **Review and audit fold-ins land in the release being worked: the lowest unfinished version block with open work, never a finished one** (ANTS-6353)
   A dated fold-in block or an old released block is no longer chosen. A
   fresh release with no items yet still receives findings.

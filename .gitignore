@@ -171,3 +171,7 @@ build-obs/
 .ccache/
 # ANTS-5192 — tools/qt62-guard.sh's compile cache, one subdir per guarded job.
 .ccache-guard/
+# ANTS-6355 — gh writes .local/state/gh/device-id under the current folder when
+# a shell reads ~/.bashrc (it runs `gh auth token`) with HOME unset. Never
+# project content.
+/.local/
