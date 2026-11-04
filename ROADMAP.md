@@ -73807,7 +73807,7 @@ indie-review finding.
   Source: in-session-clangd-warning-2026-05-29.
   Resolved 2026-06-01: stale — ANTS-1924 already replaced csignal with signal.h (used by ::kill). Nothing to drop.
 
-- 📋 [ANTS-1923] **Auto-model-switcher: investigate dominant ticks_target_stable_insufficient near-miss blocker + 100% regret on measured downgrades.**
+- 💭 [ANTS-1923] **Auto-model-switcher: investigate dominant ticks_target_stable_insufficient near-miss blocker + 100% regret on measured downgrades.**
   model_switch_stats (project scope, 2026-05-29): switches=17, downgrades=10 (measured=2, inconclusive=8), regret_count=2, regret_rate=100, opus_turns_avoided=0, clean_end_count=0, weighted_avoided=0. near_misses.total_24h=96, ALL blocked by ticks_target_stable_insufficient. Two signals: (1) one gate dominates 96/96 near-misses — is the "target tier stable for N ticks" threshold too strict to ever pass? (2) both measured downgrades regretted — tiny sample (calibrating 2/10) but watch. Action: instrument why ticks_target_stable_insufficient fires so often; consider whether dwell + stability gates double-count. No config change yet — gather more data first.
   **Layman:** The auto model-picker is constantly evaluating but almost never allowed to act, and the few times it did downgrade in this project, both were later regretted. Worth checking whether the safety gate is mistuned — too strict to ever help, yet still firing the wrong picks when it does.
   Kind: investigate.
@@ -73815,6 +73815,9 @@ indie-review finding.
   Investigation 2026-06-01: the 100% regret (3/3 measured) and 7 rapid sonnet→opus upgrades in the live ledger are pre-ANTS-1916 thrash — captured on 2026-05-29 between 10:57–11:05 (one switch every ~90 s dwell). Post-ANTS-1916 fix the stale-model-state read is gone; the auto->upgrade path is confirmed working (all 28 ledger records are trigger:auto, no manual inflation). Current composer_not_empty near-misses (2/24h) are the post-fix baseline. Re-baseline tracked in ANTS-1935.
   Blocker cleared 2026-06-02: ANTS-1941 epoch filter shipped. The trust signal now counts only current-epoch switches; the ticks_target_stable_insufficient near-miss dominance question remains open but can now be measured cleanly.
   Answered 2026-06-03: post ANTS-1941 + ANTS-1946, ticks_target_stable_insufficient is 0% sole-blocker in the current epoch (2 near-misses total, dominant composer_not_empty; 775 pre-epoch records excluded). The "gate too strict to ever pass" hypothesis is disproven — the dominance was a telemetry artifact (target_equals_current co-fire), now fixed. The 100%-regret signal was pre-ANTS-1916 thrash; current-epoch regret is 0/4 measured. Hysteresis follow-up (ANTS-1948) demoted to considered on the same data. Keep open as the data anchor until ANTS-1935 reaches its 10-measured-downgrade floor.
+  Parked 2026-11-05 (user, session 217) with ANTS-1979 and ANTS-1935:
+  its premise was answered 2026-06-03; it stayed open only as 1935's
+  data anchor.
 
 - ✅ [ANTS-1929] **Auto-switcher scope expanded — Claude Code auto-mode now works on Sonnet + Opus (was Opus-only).**
   As of 2026-05-29, Claude Code's auto-mode feature works on Sonnet and Opus, not just Opus. This expands the auto-switcher's useful range: Haiku (never auto-switch into, floor-only) → Sonnet (auto-switch available) → Opus (auto-switch available).
@@ -73828,7 +73831,7 @@ indie-review finding.
   Source: user-feedback-2026-05-29.
   Resolved 2026-06-03: no Ants Terminal code required. The switcher already routes among all tiers >= floor (modelautoswitch decide() + ModelRecommender), so CC's auto-mode expansion to Sonnet+Opus is covered with no change. Closing as documented.
 
-- 📋 [ANTS-1935] **Auto-switcher post-fix re-baseline — measure effectiveness after ANTS-1912/1916/1918/1924/1930 fixes.**
+- 💭 [ANTS-1935] **Auto-switcher post-fix re-baseline — measure effectiveness after ANTS-1912/1916/1918/1924/1930 fixes.**
   Pre-fix ledger (28 records, all 2026-05-29) showed 100% regret and rapid\nthrash — both artefacts of the ANTS-1916 stale-model-read bug and the\nANTS-1912 CR/LF actuator bug. After a fresh session accumulates ≥10\nmeasured downgrades, re-read model_switch_stats to see whether:\n  (a) regret_rate drops below 50%\n  (b) auto upgrades (by_trigger.auto.upgrades) are non-zero\n  (c) composer_not_empty near-misses stay low\nIf regret_rate is still high, re-open ANTS-1923 for deeper scoring analysis.
   **Layman:** Check whether the auto-switcher is working well now that the bugs from May 29 have been fixed — look at regret rate, upgrades, and near-misses after a fresh batch of sessions.
   Kind: investigate.
@@ -73836,6 +73839,9 @@ indie-review finding.
   Re-baseline 2026-06-01 (this session): NOT yet evaluable — ledger is contaminated. 28/29 records are pre-fix (2 on 2026-05-26, 26 on 2026-05-29); only 1 post-fix record exists (2026-06-01 Ants_Terminal, opus->sonnet, 6 turns, CLEAN session-end, no regret). All 6 under-route regrets date 2026-05-26/29 — exactly the pre-ANTS-1916 thrash ANTS-1923 already explained. So: (a) regret_rate 66.7% global / 75% project is STALE contamination, not fresh harm — do NOT re-open ANTS-1923 on this signal; (b) auto upgrades non-zero ✓ (by_trigger.auto.upgrades=10 global/7 project — ANTS-1930 working); (c) composer_not_empty near-misses rose to 19/24h (was 2/24h this morning) — consistent with active interactive typing, not a regression. Blocker: statsForScope aggregates ALL ledger records with no recency window, so the 2026-05-29 thrash poisons regret_rate until 256KiB drop-oldest evicts them (~never at 11KB usage). This item cannot resolve until that's fixed — see new recency-window item.
   Blocker cleared 2026-06-02: ANTS-1941 epoch filter shipped. statsForScope now counts only kSwitcherEpoch=1 records at both dispatch sites; pre-fix contamination is excluded. Re-baseline is now evaluable once a fresh session accumulates measured downgrades.
   Clean re-baseline 2026-06-03 (current epoch only, post ANTS-1941): switches=6 (4 down / 2 up), regret_count=0, under_route_count=0, clean_end_count=4, opus_turns_avoided=24 (weighted 26), pending=0, inconclusive=0. Success criteria: (a) regret_rate 0% well below 50% ✓; (b) auto upgrades non-zero (by_trigger.auto.upgrades=2) ✓; (c) composer_not_empty near-misses low (2/24h) ✓ — all three trending green. But only 4/10 measured downgrades, so the headline still reads "calibrating". Keep open until the floor (10) is reached; note that the ANTS-1919 queue now suppresses most composer_not_empty misses, so measured downgrades will accrue slowly from here. Do NOT re-open ANTS-1923 — its premise is resolved.
+  Parked 2026-11-05 (user, session 217) with ANTS-1979: with
+  auto-switching parked, measured downgrades no longer accrue, so the
+  floor cannot be reached.
 
 - ✅ [ANTS-1943] **roadmap-format.md Kind taxonomy table is out of sync with the roadmap_log tool's kind enum (12 documented vs 21 accepted).**
   roadmap-format.md §3.5.3 (lines 217-232) lists 12 Kind values (implement, fix, audit-fix, review-fix, doc, doc-fix, refactor, test, chore, release, research, ux). The roadmap_log MCP tool's `kind` enum accepts 21 (adds perf, security, feature, enhancement, investigate, accessibility, optimize, package, marketing). specs.md §3 points Kind at the roadmap-format table, so specs using enhancement/feature/etc. are tool-valid but standard-undocumented. Reconcile: either extend the doc table to the full enum or narrow the enum; then sweep existing specs/bullets. Surfaced when ANTS-1941 used Kind: enhancement (corrected to implement).
@@ -74989,8 +74995,11 @@ gets one CHANGELOG section + one drift cycle + one push.
   Kind: security.
   Lanes: antshelper, ipc, claudeintegration.
 
-- 📋 [ANTS-1650] **Range-loop-detach sweep — 154 clazy sites.**
+- 🚫 [ANTS-1650] **Range-loop-detach sweep — 154 clazy sites.**
   Real perf class (Qt's COW container detach when range-for over a non-const lvalue container selects the non-const `begin()`). **Authoritative count confirmed 2026-05-20: 154** (corrects the 2026-05-19 "145" estimate). Get the exact list with `cd build && clazy-standalone -p . --checks=range-loop-detach ../src/*.cpp 2>&1 | grep range-loop-detach` — **clazy writes to stderr, so `2>&1` is mandatory** (a `2>/dev/null` pipe silently yields a false 0; this bit the ANTS-1647 pass). The fix is `for (const auto &x : c)` → `for (const auto &x : std::as_const(c))` (NOT the `for (auto &x …)` mutation loops — those legitimately need the non-const ref and must be left alone). Per-file distribution: mainwindow 37, remotecontrol 21, claudeintegration 18, settingsdialog 9, testauditengine 7, diffviewer 5, terminalwidget/roadmapdialog/pluginmanager/indiereviewengine/coldeyesengine 4 each, then a long tail of 1-3. Bulk + mechanical but high-churn across 32 files — best done file-by-file with a `clazy … 2>&1 | grep range-loop-detach` re-verify per file (target: 0) and a full `ctest` at the end. Consider clazy's `-export-fixes` + `clang-apply-replacements` for a tooling-assisted pass rather than 154 hand edits. Kind: perf. Lanes: cross-cutting.
+  Dropped 2026-11-05 (user confirmed the 2026-09-03 choice, session
+  217): duplicate of ANTS-4780, which measured the hot paths instead of
+  sweeping.
   **Layman:** 154 places where a loop accidentally copies a large list instead of just reading it.
   Kind: perf.
   Lanes: cross-cutting.
@@ -90195,7 +90204,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: investigate.
   Source: check-code-sweep-2026-09-01.
 
-- 📋 [ANTS-4780] **464 clazy range-loop-detach hits: Qt containers detach inside range-for.**
+- ✅ [ANTS-4780] **464 clazy range-loop-detach hits: Qt containers detach inside range-for.**
   clazy range-loop-detach, 464 unique hits (331 in src/) — 56% of clazy's output and its largest class. Iterating a non-const Qt container in a range-for triggers a detach (deep copy) under implicit sharing.
 
   The idiomatic fix is std::as_const(...) per site, which the codebase already uses in places (e.g. remotecontrol_state.cpp:2490). Real cost, but 331 mechanical edits in src/ is a dedicated pass with its own test run, not something to fold into an unrelated fix batch. Worth measuring one hot path first — the paint and VT loops — rather than sweeping alphabetically.
@@ -90251,6 +90260,10 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Verified: the same clazy invocation that reported the three reports none after; build clean; full suite 4359/4359.
 
   STILL NOT DONE, unchanged: the remaining sites across the rest of `src/`. They are cold by inspection and the sweep is still deliberately not run.
+  Closed 2026-11-05 (user confirmed the 2026-09-03 choice, session 217):
+  the hot paths named here — paint, VT and roadmap write — were measured
+  and fixed (cdc0786e, 4a9bfe31). The remaining sites are cold; a future
+  hot path found by profiling gets its own item.
   **Layman:** Loops over Qt lists quietly copy the whole list because the loop is not marked read-only.
   Kind: perf.
   Source: check-code-sweep-2026-09-01.
@@ -103748,22 +103761,28 @@ contributors don't duplicate research.
   Kind: research.
   Source: in-session-2026-05-25 (ANTS-1735 cooperative-handshake research).
 
-- 📋 [ANTS-1894] **Near-miss telemetry: log gate-hit-but-blocked decisions to diagnose why switches don't fire.**
+- 💭 [ANTS-1894] **Near-miss telemetry: log gate-hit-but-blocked decisions to diagnose why switches don't fire.**
   The current ledger only records *firings*: when `ModelAutoSwitch::decide` returns `Switch`. There is no observable record of decisions where the gate evaluated, the recommender disagreed with the current tier, the dwell was satisfied, but a specific INV blocked the switch (focusedState != Idle, composerEmpty=false, ticksTargetStable<2, override cool-down active, floor clamp produced no change). Without near-miss data, neither the user nor we can answer "why doesn't it switch in this project?" — it's indistinguishable from "the recommender silently agrees with the current tier" vs "the recommender disagrees but every tick gets blocked by composer-non-empty" vs "the override cool-down has been active for the last 30 minutes." Add a separate near-miss line written to a sibling JSONL (`~/.cache/ants-terminal/model-switch-nearmiss.jsonl`, same 256 KB cap, same per-process throttle to ≤1 line per 30 s per project) with `{ts, project, current_tier, recommended_tier, blocked_by:[…], dwell_ms, composer_empty, focused_state, ticks_stable}`. Surface via a new `mode:"near_misses"` arm of `model_switch_stats` (count by blocked_by reason, last 24 h window). Pairs with ANTS-1893 (visibility on firings) — together they fully observe the switcher's decision loop.
+  Parked 2026-11-05 (user, session 217) with ANTS-1979: auto-injection
+  of /model stays parked until Anthropic offers a model-switch API.
   **Layman:** Even when Ants *doesn't* switch the model, we should record *why* it almost did but held back — so you (and we) can tell whether the switcher is silently happy with the current model, or whether it keeps wanting to switch but is blocked every time by, say, "the user is typing." Without this we're guessing.
   Kind: feature.
   Source: in-session-2026-05-26 (ANTS-1891 brainstorm; diagnostic gap).
   Lanes: modelautoswitch, modelswitchledger.
 
-- 📋 [ANTS-1895] **Dry-run / phantom mode: run the switcher without injecting `/model`, just record what it would have done.**
+- 💭 [ANTS-1895] **Dry-run / phantom mode: run the switcher without injecting `/model`, just record what it would have done.**
   Trust-building feature. Today the auto-switcher is binary: either default-OFF (no records ever accumulate, §8 OQ-3 flip never trips) or default-ON (real `/model` injection on the user's live sessions, which is precisely the action they don't trust yet). Add a third state: `dry_run` (config: `claude.auto_model_switch_mode: "off" | "on" | "dry_run"`, default "off"; the existing `claude.auto_model_switch:bool` is a derived view for back-compat). In `dry_run`, the decide gate runs exactly as in "on" but `claudestatuswidgets.cpp:1429` (post-ANTS-1894) skips the PTY injection and instead writes a ledger record with `trigger:"dry_run"`. The outcome backfill (`computeOutcome`) still runs, but `turnsOnToTier` measures what *would have happened* on the current tier (the user's actual session) as a proxy. The `model_switch_stats` headline distinguishes the two: "dry-run: would have avoided 3 Opus turns, 0 regretted (regret 0.0%)" vs the live "on" headline. Lets the user audit the switcher's judgement for a week without disrupting their workflow before flipping to "on". Pairs with ANTS-1891 (honest trust signal) + ANTS-1893 (visibility): dry-run gives the user data without behavioural risk.
+  Parked 2026-11-05 (user, session 217) with ANTS-1979: auto-injection
+  of /model stays parked until Anthropic offers a model-switch API.
   **Layman:** A "preview mode" for the auto-switcher: it watches your sessions, decides what it *would* switch to, but never actually changes the model. After a few days you can look at the scorecard and decide whether to turn the real switcher on. Like watching the cruise control's recommendations on a road trip before letting it take the wheel.
   Kind: feature.
   Source: in-session-2026-05-26 (ANTS-1891 brainstorm; trust-building gap).
   Lanes: modelautoswitch, claudestatuswidgets, modelswitchledger.
 
-- 📋 [ANTS-1896] **Recommender confidence + top_signals — `score()` returns `{tier, confidence, top_signals[]}` instead of bare `Tier`.**
+- 💭 [ANTS-1896] **Recommender confidence + top_signals — `score()` returns `{tier, confidence, top_signals[]}` instead of bare `Tier`.**
   `ModelRecommender::score` (`modelrecommender.cpp`) returns a discrete `Tier` enum with no measure of *how confident* the recommendation is or *which signals drove it*. Two follow-on costs: (a) the decide gate can't skip a low-confidence switch — every recommendation is treated equally, contributing to noise in the regret signal; (b) the user can't see *why* the recommender picked what it picked (today the score_reason is one string like "mechanical" / "plan_keyword" / "commit_intent" — the first matching rule, not a ranked breakdown). Refactor `score()` to return `Recommendation{tier, confidence:0-100, top_signals:[{name, weight, contribution}]}`. Compute confidence as the margin between the chosen tier's aggregate score and the runner-up tier's aggregate score, normalised to 0-100. Wire `decide()` to skip switches with confidence < 60 (configurable; default chosen from a week of dry-run data per ANTS-1895). Wire the ANTS-1888 chip tooltip to show the top 3 signals with their contribution percentages — passive surface, no extra clicks. Invasive: changes the `score()` signature used by `claudestatuswidgets`, `modelautoswitch`, and the ANTS-1888 chip refresh path. Land after ANTS-1893/1894/1895 so the confidence threshold has dry-run data to calibrate against.
+  Parked 2026-11-05 (user, session 217) with ANTS-1979: auto-injection
+  of /model stays parked until Anthropic offers a model-switch API.
   **Layman:** The recommender currently says "use Haiku" with no measure of how sure it is. This change makes it say "use Haiku — I'm 78% sure, mostly because your last 5 turns are all small file edits" — letting Ants skip switches when it's only barely confident, and letting you see in the status-bar tooltip *why* it picked what it picked.
   Kind: refactor.
   Source: in-session-2026-05-26 (ANTS-1891 brainstorm; recommender opacity).
