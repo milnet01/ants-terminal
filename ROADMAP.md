@@ -80951,6 +80951,10 @@ are closed inline in the feedback files rather than filed here.
   The two NOs are the load-bearing half. Without them this rule reads as
   "put everything in the store", which is how a store stops being
   authoritative for anything.
+  Decided (2026-11-04, user): (1) the .md files stay as a read-only
+  export, re-rendered from the store after every write; the store is
+  primary. (2) An unregistered project is auto-registered on its first
+  filing; there is one storage path. Unblocked: ANTS-4506 is shipped.
   **Layman:** Move the 19 shared feedback files into the same database as the roadmap, so all of them can be asked one question instead of nineteen.
   Kind: feature.
   Source: user-request-2026-08-19.
