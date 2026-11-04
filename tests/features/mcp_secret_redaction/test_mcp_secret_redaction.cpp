@@ -105,6 +105,18 @@ TEST(McpSecretRedaction, Inv3EveryVerbRedacts) {
     EXPECT_TRUE(before(sb, "redactForClaude(", "trimScrollbackForGetText("));
     EXPECT_TRUE(has(sb, "<redacted %1 secrets>"));
     EXPECT_TRUE(has(sb, "env[QStringLiteral(\"redacted\")]"));
+
+    // ANTS-6375 — get_last_command redacts before building either mode,
+    // and reads the output nowhere else.
+    const std::string mw = ants_test::stripComments(ants_test::slurpMainWindow());
+    const std::string lc = between(mw, "registerToolProvider(\"get_last_command\"",
+                                   "registerToolProvider(");
+    ASSERT_FALSE(lc.empty());
+    EXPECT_TRUE(has(lc, kSwitch));
+    EXPECT_TRUE(before(lc, "redactForClaude(", "output.split("));
+    EXPECT_TRUE(before(lc, "redactForClaude(", "info[\"output\"]"));
+    EXPECT_TRUE(has(lc, "info[\"redacted\"]"));
+    EXPECT_TRUE(has(lc, "addInjectionWarning(info"));
 }
 
 // ANTS-5098 — last_selection had no size cap. It now goes through get_text's

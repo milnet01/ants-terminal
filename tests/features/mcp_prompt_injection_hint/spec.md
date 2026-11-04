@@ -29,8 +29,8 @@ sent unchanged, and an ordinary sentence can trip it.
 - **INV-2** — `RemoteControl::redactForClaude` returns those kinds in
   `ClaudeText::injection`, scanned from the text it was given, whether or
   not secret redaction is switched on.
-- **INV-3** — `get_text`, `recent_errors`, `last_selection` and
-  `get_scrollback`'s `since_cursor` envelope carry
+- **INV-3** — `get_text`, `recent_errors`, `last_selection`,
+  `get_last_command` and `get_scrollback`'s `since_cursor` envelope carry
   `possible_prompt_injection: [<kind>, …]` when the list is not empty.
   `get_scrollback`'s plain-text reply starts with a
   `<possible prompt injection: <kinds>>` line instead.

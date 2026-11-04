@@ -19,7 +19,8 @@ back on takes effect on the next launch).
 ## Secret redaction in reads (ANTS-5169)
 
 `claude.mcp_redact_secrets` (bool, default true). `get_scrollback`,
-`get_text`, `recent_errors`, `last_selection` and `read_log` replace each
+`get_text`, `recent_errors`, `last_selection`, `get_last_command` and
+`read_log` replace each
 secret `SecretRedact::scrub` recognises with `[REDACTED:<kind>]` and report
 how many they hid. `read_log` also blanks each line of a private-key block
 (ANTS-5707). Read on every call, so an edit applies with no relaunch.

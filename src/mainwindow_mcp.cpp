@@ -270,7 +270,12 @@ void MainWindow::setupClaudeMcpProviders() {
                 args.value("caller_cwd").toString();
             auto *t = terminalForCaller(callerCwd);
             const int   exitCode = t ? t->lastExitCode()      : 0;
-            const QString output = t ? t->lastCommandOutput() : QString();
+            // ANTS-6375 — redacted like the other terminal-reading verbs,
+            // before either mode is built from it.
+            const auto clean = RemoteControl::redactForClaude(
+                t ? t->lastCommandOutput() : QString(),
+                Config().claudeMcpRedactSecrets());
+            const QString &output = clean.text;
             // ANTS-1503 — mode:"summary" envelope cuts the typical
             // 2-4 KiB body to a few hundred bytes when the caller
             // only needs exit + tail + duration. Default stays
@@ -305,6 +310,8 @@ void MainWindow::setupClaudeMcpProviders() {
                 info["output"] = output;
                 info["mode"]   = QStringLiteral("full");
             }
+            if (clean.redacted > 0) info["redacted"] = clean.redacted;
+            RemoteControl::addInjectionWarning(info, clean.injection);
             return QString::fromUtf8(
                 QJsonDocument(info).toJson(QJsonDocument::Compact));
         });

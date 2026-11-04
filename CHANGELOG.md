@@ -274,6 +274,12 @@ for security-relevant changes.
 
 ### Security
 
+- **`get_last_command` hides secrets in the output it hands Claude** (ANTS-6375)
+  Like the other terminal-reading verbs, it now replaces keys and
+  passwords with `[REDACTED:<kind>]` (switch: `claude.mcp_redact_secrets`),
+  reports how many it hid, and carries the `possible_prompt_injection`
+  warning.
+
 - **Claude is warned when terminal text it reads looks like an attempt to give it orders** (ANTS-5184)
   `get_text`, `get_scrollback`, `recent_errors` and `last_selection` add a
   `possible_prompt_injection` list when the text holds a phrase such as
