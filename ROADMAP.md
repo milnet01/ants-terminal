@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6375 -->
+<!-- ants-roadmap-id-high-water: ANTS=6376 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72884,7 +72884,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   caller ever needs the payload separately. Do not treat this as work
   outstanding.
 
-- 📋 [ANTS-3681] **Replace fixed-byte source-scrape windows with structural bounds.**
+- ✅ [ANTS-3681] **Replace fixed-byte source-scrape windows with structural bounds.**
   Source-scrape tests bound their search region with a byte count —
   `ciCpp.substr(pos, 7000)` — so a literal drifts out of the window
   whenever an UNRELATED verb is added above it. The test then fails
@@ -72942,6 +72942,12 @@ fixes don't address. Roadmapped here as their own design tasks.
   Remaining sites are heterogeneous — arbitrary literal anchors, schema
   blocks, dispatch arms — and each needs its own end anchor chosen by
   reading it. A mechanical pass would change what some rows assert.
+  Shipped 2026-11-05 (3b5ade2d): the sweep is finished. Left on purpose:
+  failure-message snippets, runtime test data, and
+  crash_safe_session_persist's symmetric proximity scans (they accept
+  two connect() forms, so no single anchor keeps their meaning). Four
+  rows had been anchored on comments and one (mcp_build_status INV-9)
+  was failing silently; that test class is ANTS-6376.
 
 - ✅ [ANTS-3691] **`doc_dedup` and `spec_lint` state no finding-emission order, which ANTS-3663 INV-7 depends on.**
   ANTS-3663 INV-7 makes findings totally ordered, with the producer's own
@@ -74402,7 +74408,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: perf.
   Source: test-suite-audit-2026-05-15 (lane A residual).
 
-- 📋 [ANTS-1386] **Migrate remaining fixed-window source-grep tests to `tests/_support/srcgrep.h::slurpFunctionBody`.**
+- ✅ [ANTS-1386] **Migrate remaining fixed-window source-grep tests to `tests/_support/srcgrep.h::slurpFunctionBody`.**
   ANTS-1348
   surfaced that `tests/features/remote_control_get_text/` used
   `rc.substr(gtPos, 2500)` to slurp `cmdGetText`'s body for the
@@ -74423,6 +74429,9 @@ that shipped 6+ months ago — pure self-reference).
   functions grow, the assertions silently fall outside the
   slurped window. We added a brace-matched helper; migrate the
   remaining tests to use it.
+  Shipped 2026-11-05 (3b5ade2d) together with ANTS-3681: every
+  fixed-window scrape in tests/features now uses slurpFunctionBody or
+  regionBetween.
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1348 implementation).
 
@@ -74636,6 +74645,25 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   **Layman:** One test can leave a broken search path behind for the tests after it when it fails; two others repeat cleanup code the shared helper already does.
   Kind: fix.
   Source: ANTS-1379 close-out 2026-10-19.
+  Lanes: tests.
+
+- 📋 [ANTS-6376] **Six feature tests call expect() but never assert the failure count, so they cannot fail.**
+  `expect()` from tests/_support/expect.h only prints [FAIL] and counts.
+  A TEST must end with `EXPECT_EQ(0, expect_failures())` or
+  `ASSERT_EQ(0, expect_finish())`; these six do neither, so every
+  expect() row in them is advisory:
+  mcp_test_results, mcp_build_status, mcp_invariant_check,
+  review_button_untracked, mcp_tool_descriptor_version (test_tool_descriptor_version.cpp),
+  lua_handler_reentrancy.
+  Found 2026-11-05: mcp_build_status INV-9 had been printing [FAIL]
+  (its byte window ended inside a comment) while the test stayed green.
+  Measured by: test files including _support/expect.h, calling expect(,
+  and naming none of expect_failures / expect_finish / expect_scope_.
+  Fix: add the terminal assertion to each TEST, then fix whatever it
+  reveals. A lint row in the scrape-test checks would stop recurrence.
+  **Layman:** Some automated checks print a failure but still report success, so a real break would go unnoticed.
+  Kind: fix.
+  Source: in-session-2026-11-05 (ANTS-1386 sweep).
   Lanes: tests.
 
 ## Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05) (0.7.65 wave)
