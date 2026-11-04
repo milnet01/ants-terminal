@@ -740,6 +740,44 @@ TEST(RoadmapPassStoreWrite, Ants5641AppendBatchWritesThroughTheStore) {
     expectReimportIsANoOp(root);
 }
 
+// ANTS-6372 — the call-level status is the fallback for a bullet naming none;
+// a bullet's own status still wins.
+TEST(RoadmapPassStoreWrite, Ants6372CallLevelStatusIsTheBatchFallback) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId, kOpenEnd);
+    ASSERT_FALSE(root.isEmpty());
+
+    QJsonObject r = req(root, QStringLiteral("append_batch"));
+    r[QStringLiteral("section")] = QStringLiteral("phase-59");
+    r[QStringLiteral("status")]  = QStringLiteral("planned");
+    QJsonArray bullets;
+    for (const char *pass : {"59.43", "59.44"}) {
+        QJsonObject b;
+        b[QStringLiteral("pass")]     = QString::fromLatin1(pass);
+        b[QStringLiteral("headline")] = QStringLiteral("Batch pass %1.").arg(pass);
+        bullets.append(b);
+    }
+    QJsonObject own = bullets.at(1).toObject();
+    own[QStringLiteral("status")] = QStringLiteral("in-progress");
+    bullets[1] = own;
+    r[QStringLiteral("bullets")] = bullets;
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendBatchForTest(r).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("applied_count")).toInt(), 2)
+        << QJsonDocument(resp).toJson().toStdString();
+    const auto a = itemOf(QStringLiteral("PASS-59-43"), projectId);
+    const auto b = itemOf(QStringLiteral("PASS-59-44"), projectId);
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(a->status, QStringLiteral("planned"));
+    EXPECT_EQ(b->status, QStringLiteral("in-progress"));
+}
+
 // INV-11
 TEST(RoadmapPassStoreWrite, Ants5641BodyAndHeadlineEditsWriteThroughTheStore) {
     ants_test::XdgGuard guard;

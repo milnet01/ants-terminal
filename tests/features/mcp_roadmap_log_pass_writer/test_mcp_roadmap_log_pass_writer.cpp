@@ -620,3 +620,32 @@ TEST(McpRoadmapLogPassWriter, Ants4354CallLevelPassIsTheBatchFallback) {
                     .toString().contains(QStringLiteral("per bullet")))
         << "the refusal must name a slot the caller actually has";
 }
+
+// ANTS-6372 — the call-level status is the batch fallback too, as `pass` is;
+// a bullet's own status still wins.
+TEST(McpRoadmapLogPassWriter, Ants6372CallLevelStatusIsTheBatchFallback) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(seed(tmp.path(), kPass));
+    RemoteControl rc(nullptr);
+
+    QJsonObject batch = baseReq(tmp.path());
+    batch[QStringLiteral("section")] = QStringLiteral("active");
+    batch[QStringLiteral("pass")]    = QStringLiteral("2.1");
+    batch[QStringLiteral("status")]  = QStringLiteral("planned");
+    QJsonObject a, b;
+    a[QStringLiteral("headline")] = QStringLiteral("Takes the call's status.");
+    b[QStringLiteral("headline")] = QStringLiteral("Names its own.");
+    b[QStringLiteral("status")]   = QStringLiteral("in-progress");
+    batch[QStringLiteral("bullets")] = QJsonArray{a, b};
+
+    const QJsonObject out = rc.cmdRoadmapLogAppendBatchForTest(batch).object();
+    ASSERT_TRUE(okOf(out)) << "code=" << code(out).toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("applied_count")).toInt(), 2)
+        << QJsonDocument(out).toJson().toStdString();
+    const QByteArray md = readFile(rmPath(tmp.path()));
+    EXPECT_TRUE(md.contains("#### Pass 2.1 Takes the call's status.\n- **Status**: todo"))
+        << md.toStdString();
+    EXPECT_TRUE(md.contains("#### Pass 2.1 Names its own.\n- **Status**: in-progress"))
+        << md.toStdString();
+}

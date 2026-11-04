@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6371 -->
+<!-- ants-roadmap-id-high-water: ANTS=6372 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85762,6 +85762,19 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-04, while planning ANTS-6368.
   Lanes: mcp.
   Duplicate-of: ANTS-5799.
+
+- ✅ [ANTS-6372] **roadmap_log append_batch applies the call-level status to a bullet that names none, as its schema says.**
+  Reported by RetroDB 2026-11-04: on a pass-headings roadmap,
+  append_batch with call-level status:"planned" and 16 bullets carrying
+  pass but no status skipped all 16 with "status is required". Sending
+  status per bullet applied them. About 20 KB sent twice.
+  Shipped 2026-11-04: rcRenderPassBullet takes the call-level status as
+  a fallback beside pass, on both the file and store routes. The
+  ants-v1/GFM path already had it (ANTS-4982). Two red-first cases.
+  **Layman:** Adding several roadmap items at once ignored the shared status, so every item was refused until each was given its own.
+  Kind: fix.
+  Source: feedback-RetroDB-2026-11-04.
+  Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 

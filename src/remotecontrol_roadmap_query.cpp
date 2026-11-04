@@ -92,10 +92,13 @@ struct PassAppendItem {
 // (mirroring how `stable_id` is already per-bullet under
 // id_strategy:"stable_prefix"), AND the call-level one as the fallback, so a
 // batch of N passes can name N designators or share one.
+// ANTS-6372 — the call-level status falls back the same way.
 static PassAppendItem rcRenderPassBullet(const QJsonObject &b,
-                                         const QString &fallbackPass = {}) {
+                                         const QString &fallbackPass = {},
+                                         const QString &fallbackStatus = {}) {
     PassAppendItem it;
-    const QString status   = b.value(QStringLiteral("status")).toString();
+    const QString ownStatus = b.value(QStringLiteral("status")).toString();
+    const QString status    = ownStatus.isEmpty() ? fallbackStatus : ownStatus;
     const QString headline = b.value(QStringLiteral("headline")).toString();
     const QString perBullet = b.value(QStringLiteral("pass")).toString();
     const QString pass = perBullet.isEmpty() ? fallbackPass : perBullet;
@@ -339,7 +342,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
     for (int i = 0; i < bullets.size(); ++i) {
         const PassAppendItem it = rcRenderPassBullet(
             bullets.at(i).toObject(),
-            req.value(QStringLiteral("pass")).toString());   // ANTS-4354
+            req.value(QStringLiteral("pass")).toString(),     // ANTS-4354
+            req.value(QStringLiteral("status")).toString());  // ANTS-6372
         if (!it.ok) {
             QJsonObject s;
             s["bullet_index"] = i;
@@ -446,6 +450,8 @@ QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
         inputs.append(req);
     const QString fallbackPass =
         batch ? req.value(QStringLiteral("pass")).toString() : QString();
+    const QString fallbackStatus =
+        batch ? req.value(QStringLiteral("status")).toString() : QString();
 
     struct Planned {
         int index = 0;
@@ -457,7 +463,8 @@ QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
     QSet<QString> seen;
     for (int i = 0; i < inputs.size(); ++i) {
         QString code, message;
-        const PassAppendItem it = rcRenderPassBullet(inputs.at(i).toObject(), fallbackPass);
+        const PassAppendItem it = rcRenderPassBullet(inputs.at(i).toObject(), fallbackPass,
+                                                     fallbackStatus);
         RoadmapMigrate::MigrationPlan plan;
         if (!it.ok) {
             code = it.code;

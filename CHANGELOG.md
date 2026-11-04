@@ -161,6 +161,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log append_batch on a pass-headings roadmap gives a bullet with no status the call-level status, as the schema says** (ANTS-6372)
+
 - **A stray `.local/` folder that `gh` can leave at the repo root is ignored, so it no longer blocks a push.** (ANTS-6355)
 
 - **Review and audit fold-ins land in the release being worked: the lowest unfinished version block with open work, never a finished one** (ANTS-6353)
