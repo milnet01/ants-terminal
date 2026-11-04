@@ -109,6 +109,7 @@ TEST(McpEagerLoad, Ants5628WireArgumentsAreShort) {
 // always-loaded, but a session that loads one pays its whole schema for the
 // rest of the session. On the wire each argument description, nested item
 // fields included, is one line; tool_info still serves the full text.
+// ANTS-4931 — six more verbs with long argument prose join them.
 TEST(McpEagerLoad, Ants5271LeanVerbArgumentsAreShort) {
     ClaudeIntegration ci;
     const QJsonArray tools =
@@ -120,7 +121,10 @@ TEST(McpEagerLoad, Ants5271LeanVerbArgumentsAreShort) {
     const QStringList lean = {
         QStringLiteral("roadmap_log"), QStringLiteral("roadmap_query"),
         QStringLiteral("feedback_log"), QStringLiteral("changelog_log"),
-        QStringLiteral("roadmap_migrate")};
+        QStringLiteral("roadmap_migrate"), QStringLiteral("audit_run"),
+        QStringLiteral("apply_edits"), QStringLiteral("doc_citations"),
+        QStringLiteral("doc_lint"), QStringLiteral("spec_log"),
+        QStringLiteral("invariant_check")};
     int seen = 0;
     for (const auto &v : tools) {
         const QJsonObject t = v.toObject();
@@ -146,15 +150,22 @@ TEST(McpEagerLoad, Ants5271LeanVerbArgumentsAreShort) {
             }
         }
     }
-    EXPECT_EQ(seen, 5) << "the five lean verbs";
+    EXPECT_EQ(seen, lean.size()) << "every lean verb is registered";
 
     // The full text is one tool_info call away.
-    const QJsonObject info = mcpCall(ci,
-        R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"roadmap_log"}}})");
-    const QString text = info.value(QStringLiteral("content")).toArray()
-        .at(0).toObject().value(QStringLiteral("text")).toString();
-    EXPECT_TRUE(text.contains(QStringLiteral("the preview is not a simulation")))
-        << "tool_info no longer carries dry_run's full description";
+    const auto infoText = [&ci](const char *verb) {
+        return mcpCall(ci, QStringLiteral(
+            R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"tool_info","arguments":{"name":"%1"}}})")
+                .arg(QLatin1String(verb)).toUtf8())
+            .value(QStringLiteral("content")).toArray()
+            .at(0).toObject().value(QStringLiteral("text")).toString();
+    };
+    EXPECT_TRUE(infoText("roadmap_log").contains(
+        QStringLiteral("the preview is not a simulation")))
+        << "tool_info no longer carries roadmap_log dry_run's full description";
+    EXPECT_TRUE(infoText("audit_run").contains(
+        QStringLiteral("nothing to audit")))
+        << "tool_info no longer carries audit_run scope's full description";
 }
 
 // ANTS-5694 — the four always-loaded verbs keep a short description on the

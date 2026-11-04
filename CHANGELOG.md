@@ -54,6 +54,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **Ants MCP: audit_run, apply_edits, doc_citations, doc_lint, spec_log and invariant_check load with one-line argument descriptions** (ANTS-4931)
+  A session that loads one of them no longer carries pages of argument
+  prose for the rest of the session. `tool_info {name}` still returns the
+  full text.
+
 - **Search verb descriptions say which direction is the cheap one** (ANTS-5268)
   cited_by and find_caller say they start from names you hold;
   doc_symbols and workspace_search point to them when you hold a name;

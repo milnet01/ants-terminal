@@ -16895,12 +16895,20 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // session that loads one carries it to the end, and most
                     // calls use two or three of its arguments. Same treatment,
                     // nested item fields included ("verb/parent.child" first).
+                    // ANTS-4931 — the six verbs whose argument prose was
+                    // longest after those five (measured 2026-11-04).
                     static const QSet<QString> kLeanVerbs = {
                         QStringLiteral("roadmap_log"),
                         QStringLiteral("roadmap_query"),
                         QStringLiteral("feedback_log"),
                         QStringLiteral("changelog_log"),
                         QStringLiteral("roadmap_migrate"),
+                        QStringLiteral("audit_run"),
+                        QStringLiteral("apply_edits"),
+                        QStringLiteral("doc_citations"),
+                        QStringLiteral("doc_lint"),
+                        QStringLiteral("spec_log"),
+                        QStringLiteral("invariant_check"),
                     };
                     static const QHash<QString, QString> kLeanSummary = {
                         {QStringLiteral("dry_run"), QStringLiteral("Preview the result without writing (default false).")},
@@ -17015,6 +17023,37 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         {QStringLiteral("changelog_log/path"), QStringLiteral("A second, existing changelog (project-relative); omit for the root CHANGELOG.md.")},
                         {QStringLiteral("changelog_log/summary"), QStringLiteral("Bold one-line summary; on add_from_roadmap it replaces the cited headline.")},
                         {QStringLiteral("changelog_log/version"), QStringLiteral("release: the version, without brackets.")},
+                        {QStringLiteral("apply_edits/dry_run"), QStringLiteral("Preview without writing; the reply says would_write / would_apply instead of files_written (default false).")},
+                        {QStringLiteral("apply_edits/edits"), QStringLiteral("{path?, new} plus {old, replace_all?} or {start_line, end_line, expect_first_line, expect_last_line}; old_string/new_string accepted.")},
+                        {QStringLiteral("apply_edits/edits.expect_count"), QStringLiteral("old form only: how many times old must match; another count skips the edit as count_mismatch. Refused with a range.")},
+                        {QStringLiteral("apply_edits/edits.expect_first_line"), QStringLiteral("Verbatim text of line start_line; required on a range edit. A mismatch skips it as range_mismatch.")},
+                        {QStringLiteral("apply_edits/edits.expect_last_line"), QStringLiteral("Verbatim text of line end_line; required on a range edit, checked with expect_first_line.")},
+                        {QStringLiteral("apply_edits/edits.old_text"), QStringLiteral("Alias for old (roadmap_log amend_body's spelling). Sending two spellings refuses bad_op_combo.")},
+                        {QStringLiteral("apply_edits/match_wrapped"), QStringLiteral("Let `old` match across different line wraps; a wrap-caused not_found names this flag in its hint (default false).")},
+                        {QStringLiteral("apply_edits/path"), QStringLiteral("Default path for every edit that omits one; a per-edit path wins.")},
+                        {QStringLiteral("doc_lint/checks"), QStringLiteral("Checkers to run (default all): doc_integrity, doc_citations, doc_dedup, doc_symbols, spec_lint, doc_facts. Unknown refuses.")},
+                        {QStringLiteral("doc_lint/dry_run"), QStringLiteral("With fix:true, compute the repair and write nothing; refuses without fix.")},
+                        {QStringLiteral("doc_lint/fix"), QStringLiteral("Repair toc_gap findings in place (default false; all else is report-only). Adds fixed[], files_written, fix_errors[].")},
+                        {QStringLiteral("doc_lint/max_findings"), QStringLiteral("Cap on findings[] (default 500, 1-5000); counts still cover the whole run.")},
+                        {QStringLiteral("doc_citations/quotes"), QStringLiteral("Also check double-quoted spans against the document a nearby backticked path names; adds quotes[], quote_counts (default off).")},
+                        {QStringLiteral("spec_log/cells"), QStringLiteral("append_loop on a table log: one string per column, in header order; a wrong count refuses column_mismatch.")},
+                        {QStringLiteral("spec_log/dry_run"), QStringLiteral("Return the landing line and would-be file size (bytes) without writing (default false).")},
+                        {QStringLiteral("spec_log/preserve_body"), QStringLiteral("set_status only: keep the Status field's continuation lines, rewrite only its first line (default false).")},
+                        {QStringLiteral("spec_log/status"), QStringLiteral("set_status: the new value, one line (continuations replaced unless preserve_body). append_status: text added at the field's end.")},
+                        {QStringLiteral("invariant_check/files"), QStringLiteral("Project-relative paths to find citing specs for; pass src/foo.cpp, not foo.cpp. Read basename_matches too.")},
+                        {QStringLiteral("invariant_check/mode"), QStringLiteral("summary (default: counts, no bodies) or full (adds invariant bodies; can exceed the reply cap).")},
+                        {QStringLiteral("invariant_check/paths"), QStringLiteral("Alias for files; sending both refuses bad_op_combo.")},
+                        // Its own wording, kept: the shared caller_cwd summary is
+                        // shorter and would drop the mismatch refusal.
+                        {QStringLiteral("audit_run/caller_cwd"), QStringLiteral("Your $PWD. Mutating verbs refuse on mismatch with the focused tab's cwd (ANTS-1372).")},
+                        {QStringLiteral("audit_run/async"), QStringLiteral("Return a job handle at once and poll audit_poll {job_id}; for scope:\"full\" or slow tools (default false).")},
+                        {QStringLiteral("audit_run/cap_per_tool_seconds"), QStringLiteral("Per-tool wall-clock cap, 5-300 s (default 30); above ~60 s use async:true. Out of range refuses bad_args.")},
+                        {QStringLiteral("audit_run/checks"), QStringLiteral("Check ids for clang-tidy (e.g. [\"bugprone-integer-division\"]); other tools refuse bad_args.")},
+                        {QStringLiteral("audit_run/exclude_paths"), QStringLiteral("Path prefixes to leave out (vendored code); exclude_paths_ignored_by names tools that cannot honour it.")},
+                        {QStringLiteral("audit_run/paths"), QStringLiteral("Paths to narrow file-scoped tools to; gitleaks and trivy then skip.")},
+                        {QStringLiteral("audit_run/scope"), QStringLiteral("auto (default), full (whole tracked src/, deterministic), files, since-last-run (adds delta), since-tag:<tag>, branch-diff.")},
+                        {QStringLiteral("audit_run/suppressions"), QStringLiteral("auto (default: learned-FP ledger + allowlist), none, or path:<file>.")},
+                        {QStringLiteral("audit_run/tools"), QStringLiteral("Subset of cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, gitleaks, trivy, shellcheck, mypy; default all but mypy.")},
                     };
                     // ANTS-5725 — an always-loaded verb's arguments used in
                     // under 5% of its calls stay off the wire (user decision,

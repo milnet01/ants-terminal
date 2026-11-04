@@ -84460,7 +84460,7 @@ rather than refiled.
 Filed from a cross-session message from the claude-config (~/.claude) session,
 plus two gaps hit while sweeping stale spec citations under ANTS-4757.
 
-- 📋 [ANTS-4931] **The tool_info deferral moved per-op detail into the op parameter's description, which every session still pays for on every call.**
+- ✅ [ANTS-4931] **The tool_info deferral moved per-op detail into the op parameter's description, which every session still pays for on every call.**
   Several verbs end their description with "Full per-op detail via tool_info {name:...}" -- `changelog_log`, `workspace_search`, `roadmap_log`. The top-level descriptions really are short as a result.
 
   For the multi-op writers the detail did not move to `tool_info`. It moved DOWN, into the `op` parameter's own `description`, which is part of `inputSchema` and is therefore delivered in full on every tools/list. That is exactly what the deferral was meant to avoid.
@@ -84501,6 +84501,16 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   audit_run/suppressions: auto (default: learned-FP ledger + allowlist), none, or path:<file>.
   audit_run/tools: Subset of cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, gitleaks, trivy, shellcheck, mypy; default all but mypy.
   Check first whether a test pins the kLeanVerbs set; verify each wire arg stays under 140 chars and tool_info still serves the full text.
+  Shipped 2026-11-04: audit_run, apply_edits, doc_citations, doc_lint,
+  spec_log and invariant_check joined kLeanVerbs, with a kLeanSummary entry
+  for each argument over 140 chars (29 entries, nested apply_edits/edits
+  fields included; audit_run/caller_cwd keeps its own wording). Their wire
+  argument text fell from about 18 KB to about 3 KB. Locked by
+  Ants5271LeanVerbArgumentsAreShort, which now covers all eleven lean verbs
+  and checks tool_info still serves audit_run's full scope text.
+  Left, measured the same day: about 12 KB over the 140 mark, spread across
+  many verbs at under 1 KB each (largest find_caller, changelog_query,
+  feedback_query). Not filed: each costs only when a session loads it.
   **Layman:** Long help text was moved out of one place and into another that is still sent every time, so the saving did not happen.
   Kind: perf.
   Source: claude_config_Ants_MCP_Feedback.md, 2026-09-07.

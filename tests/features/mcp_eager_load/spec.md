@@ -45,13 +45,15 @@ deferred: most sessions call them rarely.
   verb-specific `caller_cwd` wording is kept. `tool_info {name}` still
   returns the full text. *Test:* `Ants5714SharedArgumentsAreShortOnEveryVerb`.
 
-- **ANTS-5271** — the same holds for five deferred verbs with the largest
-  schemas: `roadmap_log`, `roadmap_query`, `feedback_log`,
-  `changelog_log` and `roadmap_migrate`. Every argument description on the
-  wire, nested item fields included, is at most 140 characters, and
-  `tool_info {name}` still returns the full text. Breaks if one of the five
-  carries long argument prose on the wire, or if the shortening reaches
-  `tool_info`. *Test:* `Ants5271LeanVerbArgumentsAreShort`.
+- **ANTS-5271** — the same holds for the deferred verbs with the longest
+  argument prose: `roadmap_log`, `roadmap_query`, `feedback_log`,
+  `changelog_log` and `roadmap_migrate`, and since ANTS-4931 `audit_run`,
+  `apply_edits`, `doc_citations`, `doc_lint`, `spec_log` and
+  `invariant_check`. Every argument description on the wire, nested item
+  fields included, is at most 140 characters, and `tool_info {name}` still
+  returns the full text. Breaks if one of them carries long argument prose
+  on the wire, or if the shortening reaches `tool_info`. *Test:*
+  `Ants5271LeanVerbArgumentsAreShort`.
 
 - **ANTS-6325** — Claude Code sends an argument the wire schema leaves out as
   text. The dispatcher converts each string to the type the verb's full schema
