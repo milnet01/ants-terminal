@@ -29,6 +29,7 @@ TEST(mcp_tool_descriptor_version, Inv1FinalisationLoopPresent) {
                     "t[QStringLiteral(\"version\")] = "
                     "QStringLiteral(\"1.0\")"),
            "INV-1: default version 1.0 emitted for every tool entry");
+    EXPECT_EQ(0, expect_failures());
 }
 
 // INV-2 — SemVer-of-tools policy documented at the call site.
@@ -42,6 +43,7 @@ TEST(mcp_tool_descriptor_version, Inv2SemverPolicyDocumented) {
     expect(contains(cpp, "MAJOR") && contains(cpp, "MINOR") &&
            contains(cpp, "PATCH"),
            "INV-2: comment names MAJOR / MINOR / PATCH semantics");
+    EXPECT_EQ(0, expect_failures());
 }
 
 // INV-3 — per-tool override is non-destructive.
@@ -52,4 +54,5 @@ TEST(mcp_tool_descriptor_version, Inv3PerToolOverrideNonDestructive) {
            "INV-3: default-fill loop guards on the version field "
            "being absent, so a tool that explicitly set its own "
            "version isn't overwritten");
+    EXPECT_EQ(0, expect_failures());
 }

@@ -98,4 +98,5 @@ TEST(LuaHandlerReentrancy, Ants4441RegisterFromHandlerIsSafe) {
                           "dispatch, got %1").arg(countOf(log, "late")));
 
     engine.shutdown();
+    EXPECT_EQ(0, expect_failures());
 }

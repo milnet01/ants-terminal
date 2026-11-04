@@ -220,4 +220,5 @@ TEST(McpBuildStatus, WiringContract) {
            "INV-11",
            "Token-cost ledger must carry "
            "{QStringLiteral(\"build_status\"), {500, 2000}}");
+    EXPECT_EQ(0, expect_failures());
 }

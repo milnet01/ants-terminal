@@ -74,4 +74,5 @@ TEST(ReviewButtonUntracked, Main) {
         expect(!contains(src, "ln.startsWith(\"?? \")"),
                "I5/carve-out-removed");
     }
+    EXPECT_EQ(0, expect_failures());
 }

@@ -247,6 +247,7 @@ TEST(McpTestResults, WiringContract) {
            "INV-12",
            "Token-cost ledger must carry "
            "{QStringLiteral(\"test_results\"), {800, 3000}}");
+    EXPECT_EQ(0, expect_failures());
 }
 
 // ----- ANTS-5503 — runners other than ctest (INV-6, INV-8 of

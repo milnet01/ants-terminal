@@ -91,7 +91,7 @@ TEST(McpInvariantCheck, WiringContract) {
     // is not ANTS (LottoTracker 0 specs scanned where spec_query lists 8,
     // DOOM 0 where it lists 19, OneUp 0). Inverted deliberately — a
     // project-prefix-specific glob must never come back.
-    expect(!contains(body, "ANTS-*.md"),
+    expect(!contains(ants_test::stripComments(body), "ANTS-*.md"),
            "INV-4b",
            "cmdInvariantCheck must NOT filter specs by a project-specific "
            "prefix glob — it saw nothing on every project but this one");
@@ -163,6 +163,7 @@ TEST(McpInvariantCheck, WiringContract) {
                "INV-8",
                "invariant_check must be classified C::Required");
     }
+    EXPECT_EQ(0, expect_failures());
 }
 
 namespace {
