@@ -78,8 +78,7 @@ CREATE TABLE feedback_reporter (
 );
 
 CREATE TABLE feedback_finding (
-  reporter_id    INTEGER NOT NULL
-                   REFERENCES feedback_reporter(reporter_id) ON DELETE CASCADE,
+  reporter_id    INTEGER NOT NULL REFERENCES feedback_reporter(reporter_id),
   ordinal        INTEGER NOT NULL,       -- 0-based, document order
   heading        TEXT NOT NULL,          -- the ### line's text
   heading_line   INTEGER NOT NULL,       -- 1-based line in content
@@ -102,8 +101,13 @@ anything the document does not, and the document alone round-trips.
 **The classifier is `FeedbackFile::parse`, not a new one.** A `###` block
 `parse` counts as un-triaged is `untriaged`; one carrying the awaiting marker
 is `awaiting`; an `n/a` closure is `closed`; one with roadmap ids is `mapped`;
-one `parse` lists in `suspectedUntagged` is `untagged`. Block boundaries, the
-contributor-block heading and its date come from the same scanner.
+one `parse` lists in `suspectedUntagged` is `untagged`. Today `parse` returns
+no per-finding record, so `ParseResult` gains one: a list filled in `parse`'s
+v2 loop by the same tests that build `delta`, `awaiting` and
+`suspectedUntagged`. Each entry carries the heading, its line, the triage
+value, the ids and the enclosing contributor-block heading. `filed_on` is that
+heading's leading `YYYY-MM-DD`, NULL when it has none. The row builder copies
+the list and classifies nothing itself.
 
 `ids` holds the ids as written, whatever their prefix. Their status is
 resolved live from the roadmap, as `feedback_query` does today
@@ -115,8 +119,10 @@ resolved live from the roadmap, as `feedback_query` does today
 
 Path resolution is unchanged: `resolveFeedbackPath`
 (`src/remotecontrol_workspace.cpp`) turns `caller_cwd` and `path` into a file
-path, with every refusal it has today. The canonical absolute form of that
-path is the `export_path` key. One reporter is one file.
+path, with every refusal it has today. The `export_path` key is the canonical
+path of that file's directory joined with its file name, so a file not yet
+created keys the same as it will once it exists (`canonicalFilePath()` is
+empty for a missing file). One reporter is one file.
 
 ### 4.3 Import — on first touch
 
@@ -131,6 +137,9 @@ When a verb resolves an `export_path` that has no row:
   create-on-append, moved into the store. Every other op answers as today for
   a missing file.
 
+Once a row exists, every op and `feedback_query` treat the reporter as
+existing, whether or not its file is on disk.
+
 `buildFeedbackPendingBlock` imports every file it globs that has no row.
 Import is the only way a row comes into being, so a file is imported once.
 
@@ -141,7 +150,8 @@ Every surviving write op (§ 4.6) runs one shape:
 ```
 BEGIN IMMEDIATE
   row     = reporter for export_path (import per § 4.3 if absent)
-  if sha256(file on disk) != row.export_sha256 → ROLLBACK, refuse export_drift
+  if the file exists and sha256(file) != row.export_sha256 → ROLLBACK, refuse export_drift
+  // a missing file is not drift: the write below recreates it
   text    = <the op's existing text edit>(row.content, args)   // unchanged code
   rebuild feedback_finding rows from text
   UPDATE feedback_reporter SET content=text, revision=revision+1, updated_at=now
@@ -163,8 +173,8 @@ what § 2 item 1 lacks. The store already sets `busy_timeout` and WAL in
 The export is written inside the transaction, so a second writer cannot
 render between this commit and this file write. The owner-write bit comes
 back first because `QSaveFile::open` refuses a file that is not writable
-("Existing file … is not writable", Qt 6, measured 2026-11-04). A `dry_run` stops before
-the first `UPDATE` and rolls back.
+("Existing file … is not writable", Qt 6, measured 2026-11-04). A `dry_run`
+stops before the first `UPDATE` and rolls back.
 
 ### 4.5 Drift — a hand-edited export
 
@@ -190,13 +200,13 @@ no op: delete the file, and the next write recreates it.
 A `retired` refusal names the op and says the store made it unnecessary.
 
 `feedback_query` answers from the store: it runs `FeedbackFile::parse` on the
-row's `content` and returns the reply it returns today. Its `etag` derives
-from `export_path` and `revision`. `include_tracking` keeps its meaning; on a
-version 2 document it returns no rows, as now.
+row's `content` and returns the reply it returns today. `include_tracking`
+keeps its meaning.
 
 `session_orient`'s `feedback_pending` keeps its fields and its gate. Which
 reporters have pending findings, and the awaiting and untagged counts, come
-from `feedback_finding` rows. `total_pending_lines` comes from `parse` on the
+from the `feedback_finding` rows of the reporters whose files this scan
+globbed. `total_pending_lines` comes from `parse` on the
 `content` of those reporters only, not of every file.
 
 ### 4.7 Errors with no file fallback
@@ -337,7 +347,10 @@ relaunch is due anyway.
   with their old paths and no verb reaches them. They are not lost; cleaning
   them up is out of scope (§ 9).
 - **A file is deleted.** The next write recreates it from the store. A read
-  answers from the store.
+  answers from the store. A call whose path is derived from `caller_cwd` may
+  resolve a different name once the file is gone (`resolveFeedbackPath`'s
+  sibling-stem adoption, ANTS-3439). That name has no row, so it starts a new
+  reporter.
 - **A file is not valid UTF-8.** The import refuses `not_utf8` and creates
   no row. The file is left as it is.
 - **The terminal binary is older than the store.** Its Roadmap window fails
@@ -361,11 +374,12 @@ The existing feedback bundles for retired ops (`feedback_log_compact_shipped`,
 functions are unused after this, so the cases go with them. Of the
 `FeedbackShipDate` cases in that bundle, the ones on the compaction stub go;
 `LiveQueryEmitsShippedDate` stays, because `feedback_query` still reports
-ship dates (ANTS-3504).
+ship dates (ANTS-3504). In `mcp_feedback_log`, every `append_tracking` and
+`set_format_version` case now expects `retired`.
 
-Must fail first: every invariant in the new bundle, and INV-12, fail on
-today's build, which has no store path. INV-11 fails until rung 5 exists. INV-13 passes on both, and
-it guards against a regression.
+Must fail first: every invariant in the new bundle fails on today's build,
+which has no store path. INV-11 fails until rung 5 exists. INV-12 and INV-13
+pass on both, and guard against a regression.
 
 ## 8. Alternatives considered (and rejected)
 
