@@ -40,6 +40,16 @@ working unchanged.
 | `test_lua`     | luaengine + pluginmanager (gated `LUA_FOUND`) | shipped |
 | `test_core`    | session + pty + remote-control + config + debuglog + threading + packaging | shipped |
 
+**`test_core` links only `ants_core_lib`, `ants_roadmapstore_lib` and,
+with the helper CLI on, `ants_helper_lib`** (its `ants_add_core_bundle`
+call in `CMakeLists.txt`). Through `ants_core_lib` it also gets
+`ants_mcpcore_lib` and `ants_roadmapparse_lib`. A test there can call
+`RemoteControl`, `SessionManager`, `Pty` and the roadmap store. It cannot
+call code from the vt, claude, chrome, dialogs or audit libraries. One
+trap: `src/vtstream.cpp` is in `ants_core_lib`, but `VtStream` builds a
+`VtParser`, which lives in `ants_vt_lib`. `test_core` does not link
+that library, so a test that drives `VtStream` belongs in `test_vt`.
+
 ### Suite-name convention
 
 **Each subdirectory owns a unique Suite name** derived from the directory
