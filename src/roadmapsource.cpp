@@ -2,6 +2,7 @@
 
 #include "roadmapsource.h"
 
+#include "boundedreadline.h" // readTight() — no cap-sized buffer per line
 #include "roadmapindex.h"    // RoadmapIndex::uniqueSlug() — the stateful slugger
 #include "roadmaprender.h"   // bulletText() — ANTS-3808 § 2.4's export
 
@@ -281,13 +282,15 @@ void RoadmapText::readHead() {
     // memory, because the head then ended on a newline and the helper appended
     // the empty line that follows it.)
     int nonBlank = 0;
+    QByteArray scratch;
     while (nonBlank < kDetectorLineCap && m_head.size() <= kDetectorByteCap) {
         // A line at a time rather than a fixed chunk: a chunk overshoots the
         // last counted non-blank line by up to its own size, and INV-1's bound is
         // stated against that line's end plus one line. The per-call ceiling
         // bounds the OTHER pathological input — a file with no '\n' at all — so
         // the overshoot past the cap is one capped line and not the file.
-        const QByteArray line = m_file->readLine(kDetectorByteCap + 2);
+        const QByteArray line =
+            BoundedReadLine::readTight(*m_file, kDetectorByteCap + 2, scratch);
         if (line.isEmpty())
             break;   // EOF, or a read that failed — m_file->error() below
         m_head += line;

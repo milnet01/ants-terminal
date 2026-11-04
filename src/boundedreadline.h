@@ -31,4 +31,17 @@ inline QByteArray read(QIODevice &dev, qint64 keep, qint64 *fullBytes = nullptr)
     return line;
 }
 
+// ANTS-6367 — dev.readLine(maxSize), returned at the line's own size.
+// Qt's overload allocates maxSize bytes on every call and the result keeps
+// that capacity, so a 7-byte line read at a 1 MiB cap holds 1 MiB. Under
+// ASan, freeing that block once per line made a 100,000-line read take
+// 23 s instead of 0.1 s. This reads into `scratch`, which the caller keeps
+// across calls, and copies out only the bytes read. Like Qt's overload it
+// returns at most maxSize - 1 bytes.
+inline QByteArray readTight(QIODevice &dev, qint64 maxSize, QByteArray &scratch) {
+    if (scratch.size() < maxSize) scratch.resize(maxSize);
+    const qint64 n = dev.readLine(scratch.data(), maxSize);
+    return n > 0 ? QByteArray(scratch.constData(), n) : QByteArray();
+}
+
 }  // namespace BoundedReadLine

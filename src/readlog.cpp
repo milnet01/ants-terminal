@@ -4,6 +4,7 @@
 // peak heap stays near max_bytes regardless of file size. See docs/specs/ANTS-1855.md.
 
 #include "readlog.h"
+#include "boundedreadline.h"
 #include "secretredact.h"
 
 #include <QByteArray>
@@ -230,6 +231,9 @@ QJsonObject filter(const QString &path, const Options &opts) {
     // ANTS-5707 — key-block tracking over every scanned line, kept or not.
     PemTracker pems(opts.redactSecrets && startOffset > 0);
 
+    // Every read goes through one buffer, so a kept line holds only its
+    // own bytes and not a maxBytes-sized allocation (ANTS-6367).
+    QByteArray scratch;
     while (!f.atEnd()) {
         if (scanned > 0 && (scanned & 255) == 0 && clock.elapsed() > budgetMs) {
             budgetExhausted = true;
@@ -239,13 +243,13 @@ QJsonObject filter(const QString &path, const Options &opts) {
         // Never hold more than maxBytes of one line: a longer line is
         // drained in maxBytes pieces and skipped whole, its key-block
         // markers still tracked.
-        QByteArray raw = f.readLine(qint64(maxBytes) + 1);
+        QByteArray raw = BoundedReadLine::readTight(f, qint64(maxBytes) + 1, scratch);
         if (!raw.endsWith('\n') && !f.atEnd()) {
             PieceMarkers markers;
             markers.feed(raw);
             QByteArray piece;
             do {
-                piece = f.readLine(qint64(maxBytes) + 1);
+                piece = BoundedReadLine::readTight(f, qint64(maxBytes) + 1, scratch);
                 markers.feed(piece);
             } while (!piece.endsWith('\n') && !f.atEnd());
             if (!piece.endsWith('\n')) {   // oversized AND still being written

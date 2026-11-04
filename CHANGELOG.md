@@ -54,6 +54,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **read_log and roadmap format detection hold each line at its own size** (ANTS-6367)
+  A line read under a byte cap no longer carries a cap-sized buffer, so
+  read_log's kept lines cost their own bytes rather than about 1 MiB each at the default cap.
+  Three tests that took 60-200 s in the ASan build now take 4-6 s.
+
 - **roadmap_query, workspace_search, file_outline, codebase_index, co_change_family, find_sources and apply_edits refuse an argument sent under two of its names** (ANTS-6365)
   They answer `bad_op_combo` and list the names in `supplied[]`, as
   invariant_check and similar_code already do.

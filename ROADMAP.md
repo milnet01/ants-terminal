@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6367 -->
+<!-- ants-roadmap-id-high-water: ANTS=6368 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85616,7 +85616,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, found while fixing ANTS-6362.
   Lanes: mcp.
 
-- 📋 [ANTS-6367] **Three tests run hundreds of times slower under ASan than in the normal build, and none of them uses std::regex.**
+- ✅ [ANTS-6367] **Three tests run hundreds of times slower under ASan than in the normal build, and none of them uses std::regex.**
   Measured 2026-11-03, `ctest --test-dir build-asan -L fast -j4` (binary
   from 20:50) against `build` at f3b50a8d+:
   - RoadmapReadSeam.Ants3863Inv2BothProducersAgree: 201.7 s vs 0.21 s.
@@ -85626,10 +85626,31 @@ than re-filed; everything else lands here.
   They passed, so their limit is above the 60 s some tests carry; check
   what limit they run under. Cause not yet found. Start with gdb samples
   as ANTS-6362 did (perf is blocked by perf_event_paranoid).
+  Cause (gdb samples, 2026-11-04): QIODevice::readLine(maxSize)
+  allocates maxSize bytes per call and the result keeps that capacity,
+  so every line cost a 1 MiB (roadmap detection) or 512 KiB (read_log)
+  block, which ASan poisons and quarantines on free. Fixed with
+  BoundedReadLine::readTight (src/boundedreadline.h): one reused buffer,
+  results copied at their own size. Under ASan: 201.7 → 6.1 s, 198.9 →
+  5.5 s, 59.5 → 4.2 s. Follow-up for the transcript reader: ANTS-6368.
   **Layman:** A few tests take minutes in the memory-checking build when they take a fraction of a second normally.
   Kind: test.
   Source: in-session-2026-11-03, found while measuring ANTS-6366.
   Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-6368] **readJsonlRecord allocates 16 MiB for every transcript record it reads.**
+  src/claudeintegration.cpp readJsonlRecord calls
+  file.readLine(kMaxTranscriptRecordBytes), which allocates the cap on
+  every call (ANTS-6367 measured the Qt behaviour). trimmed() copies the
+  result tight, so nothing is held afterwards; the cost is one 16 MiB
+  allocate-and-free per record. BoundedReadLine::readTight fixes it with
+  a scratch buffer the caller keeps, but that buffer would need to
+  outlive the five loops that call readJsonlRecord. Not measured at
+  this site yet: time one transcript read under ASan first.
+  **Layman:** Reading a Claude transcript sets aside 16 MiB of memory for each line, however short the line is.
+  Kind: perf.
+  Source: in-session-2026-11-04, found while fixing ANTS-6367.
+  Lanes: claude.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
