@@ -131,6 +131,11 @@ ants_is_source_search() {
                 *" -delete"*|*" -exec"*|*" -ok"*|*" -fprint"*|*" -fls"*)
                     return 1 ;;
             esac
+            # ANTS-5520: a find alone only lists names, and the tip's verbs
+            # search contents. It is a search only when piped into an
+            # `xargs` that runs a content searcher.
+            local xargs_search='\|[[:space:]]*xargs[[:space:]]([^|]*[[:space:]])?(e|f)?(grep|rg|ag|ack)([[:space:]]|$)'
+            [[ "$cmd" =~ $xargs_search ]] || return 1
             ANTS_NUDGE_TOOL="find"
             return 0
             ;;

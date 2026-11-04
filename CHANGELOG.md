@@ -56,6 +56,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The source-search tip skips a plain file listing such as `find src -name '*.py' | sort`; a `find` piped into `xargs grep` still gets it** (ANTS-5520)
+
 - **read_region section: resolves a heading by its title alone, past a leading section number such as "4.8"** (ANTS-5345)
 
 - **invariant_check's scope note and hints say the same things in about half the bytes** (ANTS-5726)

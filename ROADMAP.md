@@ -87405,11 +87405,14 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-09-28 triage
 
-- 📋 [ANTS-5520] **The raw-source-search tip fires on a plain file listing such as `find src tests -name '*.py' | sort`.**
+- ✅ [ANTS-5520] **The raw-source-search tip fires on a plain file listing such as `find src tests -name '*.py' | sort`.**
   The PreToolUse tip meant for content searches (grep/rg over source)
   also fires on `find ... -name` listings, which read no file contents.
   Fire only when the command reads file contents; a name-only find or ls
   is a listing.
+  Shipped 2026-11-04: a find counts as a source search only when piped
+  into an xargs running grep/rg/ag/ack. Live sessions get it after
+  tools/install-hooks.sh refreshes ~/.claude/hooks.
   **Layman:** A hint telling you to use a faster search tool pops up even when you were only listing files, not searching inside them.
   Kind: fix.
   Source: claude-87 relay of Deedbox session, 2026-09-28.

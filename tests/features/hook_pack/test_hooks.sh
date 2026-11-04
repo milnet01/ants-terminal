@@ -378,13 +378,16 @@ if [ "$have_jq" -eq 1 ]; then
     assert_warn "grep -rn pathless"    '{"tool_input":{"command":"grep -rn foo"}}'
     assert_warn "rg"                    '{"tool_input":{"command":"rg foo"}}'
     assert_warn "git grep"             '{"tool_input":{"command":"git grep TerminalGrid"}}'
-    assert_warn "find src -name"       '{"tool_input":{"command":"find src -name x"}}'
+    assert_warn "find | xargs grep"    '{"tool_input":{"command":"find src -name x | xargs grep foo"}}'
     assert_warn "grep src/ | head"     '{"tool_input":{"command":"grep -rn x src/ | head"}}'
 
     assert_empty "piped grep"          '{"tool_input":{"command":"cmake b 2>&1 | grep error"}}'
     assert_empty "single-file grep"    '{"tool_input":{"command":"grep foo file.txt"}}'
     assert_empty "exempt /var/log"     '{"tool_input":{"command":"grep -r x /var/log"}}'
     assert_empty "exempt .log suffix"  '{"tool_input":{"command":"grep -rn x app.log"}}'
+    # ANTS-5520: a name-only find is a listing; it reads no file contents.
+    assert_empty "find src -name"      '{"tool_input":{"command":"find src -name x"}}'
+    assert_empty "find listing | sort" '{"tool_input":{"command":"find src tests -name '"'"'*.py'"'"' | sort"}}'
     assert_empty "non-elig find build" '{"tool_input":{"command":"find build -name x"}}'
     assert_empty "non-elig find -delete" '{"tool_input":{"command":"find . -name x -delete"}}'
     assert_empty "exempt --help"       '{"tool_input":{"command":"grep --help"}}'
@@ -407,7 +410,11 @@ if [ "$have_jq" -eq 1 ]; then
         [ "$(p 'grep -rn foo src/')" = m ] || e=1
         [ "$(p 'rg foo')" = m ] || e=1
         [ "$(p 'git grep x')" = m ] || e=1
-        [ "$(p 'find src -name x')" = m ] || e=1
+        [ "$(p 'find src -name x | xargs grep foo')" = m ] || e=1
+        [ "$(p 'find src -name x | xargs -0 rg foo')" = m ] || e=1
+        [ "$(p 'find src -name x')" = n ] || e=1
+        [ "$(p 'find src -name x | sort')" = n ] || e=1
+        [ "$(p 'find src -name x | xargs wc -l')" = n ] || e=1
         [ "$(p 'grep foo file')" = n ] || e=1
         [ "$(p 'cmake | grep x')" = n ] || e=1
         [ "$(p 'find build -name x')" = n ] || e=1

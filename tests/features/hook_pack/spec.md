@@ -67,13 +67,14 @@ Source spec: [docs/specs/ANTS-2141.md](../../../docs/specs/ANTS-2141.md).
 These run only when `jq` is present (skipped with a `[skip]` line otherwise).
 
 - **Warn class (INV-1/3/5/12).** `grep -rn … src/`, pathless `grep -rn`, `rg`,
-  `git grep`, `find src -name`, and `grep -rn x src/ | head` each emit a
+  `git grep`, `find src -name x | xargs grep foo`, and `grep -rn x src/ | head` each emit a
   PreToolUse `additionalContext` envelope with **no** `permissionDecision` and
   **no** top-level `decision`; the field is ≤ 400 B (measured 237 B).
 - **No-warn class (INV-4/5).** Empty stdout for: piped grep
   (`cmake … | grep`), single-file `grep foo file.txt`, exempt `/var/log` /
   `app.log` / `--help` / `# ants-bypass`, and non-eligible `find build -name x`
-  / `find . -name x -delete`.
+  / `find . -name x -delete`, and a name-only listing `find src -name x` or
+  `find src tests -name '*.py' | sort` (ANTS-5520).
 - **Predicate (INV-6).** `_common.sh::ants_is_source_search` is sourced and
   table-tested in-process (it `return`s, never `exit`s).
 - **Throttle (INV-7).** With `ANTS_GREP_NUDGE_THROTTLE_SEC=2` + a fixed

@@ -25,7 +25,8 @@ Design contract: [`docs/specs/ANTS-1252.md`](../docs/specs/ANTS-1252.md)
 
 **Soft-warn (ANTS-2141, non-blocking).** A *raw source search* — `grep -r`/`-R`,
 `rg`/`ag`/`ack` (recursive by default), `git grep`, or a `find` under
-`./`/`src`/`tests`/`include` with a `-name`/`-path` primary — gets a PreToolUse
+`./`/`src`/`tests`/`include` with a `-name`/`-path` primary whose output is
+piped into `xargs grep` (or `rg`/`ag`/`ack`) — gets a PreToolUse
 `additionalContext` reminder to prefer the indexed MCP verbs
 (`mcp__ants__workspace_search` / `find_definition` / `find_sources`). **The
 command still runs** — nothing is blocked. It is **not** warned when:
@@ -35,6 +36,7 @@ command still runs** — nothing is blocked. It is **not** warned when:
 - over a non-source location (`/tmp`, `/var`, `build/`, `node_modules`, a
   `*.log` file, an absolute path outside the repo …),
 - a destructive/exec `find` (`-delete`, `-exec`, …),
+- a `find` that only lists names (`find src -name '*.py' | sort`),
 - carrying `--help`/`--version`,
 - or carrying the `# ants-bypass` override (below).
 
