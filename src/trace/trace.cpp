@@ -400,7 +400,8 @@ struct Gathered {
     QHash<QString, QString> fileLang;           // rel -> language id
     QMap<QString, int> noGrammarFiles;          // lang -> files present
     QMap<QString, QString> noGrammarDetail;     // lang -> why
-    QMap<QString, QString> limitsByLang;        // vendored languages with files
+    QSet<QString> grammarLangs;                 // vendored languages with files
+    QMap<QString, QString> limitsByLang;        // ... of those, the ones with a hit
     QStringList tooLarge, timedOut, parseErrors;
     int filesParsed = 0, filesWithErrors = 0;
 };
@@ -664,10 +665,25 @@ void appendCoverageGaps(Gathered &g, QJsonArray &notCovered) {
             o.insert(QStringLiteral("detail"), g.noGrammarDetail.value(it.key()));
         notCovered.append(o);
     }
-    g.tooLarge.sort();
+    // ANTS-5799 — two or more under one top-level directory (vendored grammars,
+    // typically) fold to one row with a count; a file alone keeps its name.
+    QMap<QString, QStringList> tooLargeByDir;
     for (const QString &t : std::as_const(g.tooLarge))
-        notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("file_too_large")},
-                                      {QStringLiteral("file"), t}});
+        tooLargeByDir[t.contains(QLatin1Char('/')) ? t.section(QLatin1Char('/'), 0, 0)
+                                                   : QString()] << t;
+    for (auto it = tooLargeByDir.begin(); it != tooLargeByDir.end(); ++it) {
+        QStringList &list = it.value();
+        if (!it.key().isEmpty() && list.size() > 1) {
+            notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("file_too_large")},
+                                          {QStringLiteral("dir"), it.key()},
+                                          {QStringLiteral("files"), int(list.size())}});
+            continue;
+        }
+        list.sort();
+        for (const QString &t : std::as_const(list))
+            notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("file_too_large")},
+                                          {QStringLiteral("file"), t}});
+    }
     g.timedOut.sort();
     for (const QString &t : std::as_const(g.timedOut))
         notCovered.append(QJsonObject{{QStringLiteral("reason"), QStringLiteral("parse_timeout")},
@@ -823,7 +839,7 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         if (vendored) {
             q = queryFor(lang);
             if (q.query) {
-                if (!q.limits.isEmpty()) g.limitsByLang.insert(lang, q.limits);
+                g.grammarLangs.insert(lang);
             } else {
                 ++g.noGrammarFiles[lang];
                 g.noGrammarDetail.insert(lang, q.error);
@@ -835,6 +851,8 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         const QVector<int> hits = pathMode ? pathHits(text, req.relNeedle, req.baseNeedle)
                                            : wholeWordHits(text, req.needle);
         if (hits.isEmpty()) continue;
+        // ANTS-5799 — a language's limits bear on the answer only where it matched.
+        if (q.query && !q.limits.isEmpty()) g.limitsByLang.insert(lang, q.limits);
         const bool test = isTestFile(rel);
         const LineIndex lines(text);
 
@@ -913,7 +931,9 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         sections.append({QStringLiteral("roadmap_items"), &roadmapRows});
 
     QJsonArray langs;
-    for (const QString &l : g.limitsByLang.keys()) langs.append(l);
+    QStringList grammarLangs(g.grammarLangs.begin(), g.grammarLangs.end());
+    grammarLangs.sort();
+    for (const QString &l : std::as_const(grammarLangs)) langs.append(l);
 
     QJsonObject reply{{QStringLiteral("ok"), true},
                       {QStringLiteral("mode"), req.hasSymbol ? QStringLiteral("symbol")

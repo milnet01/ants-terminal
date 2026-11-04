@@ -520,6 +520,35 @@ TEST_F(TraceServe, Inv16OversizeFileReportedNotParsed) {
                 }).isEmpty());
 }
 
+// INV-24 — limits rows name only the languages the symbol was found in.
+TEST_F(TraceServe, Inv24LimitsOnlyForMatchedLanguages) {
+    const QJsonObject r = traceSymbol(QStringLiteral("afterError"));   // broken.cpp only
+    QStringList langs;
+    for (const QJsonValue &v : arr(r, "not_covered"))
+        if (v.toObject().value(QStringLiteral("reason")).toString() == QLatin1String("limits"))
+            langs << v.toObject().value(QStringLiteral("lang")).toString();
+    EXPECT_EQ(langs, QStringList{QStringLiteral("cpp")}) << dump(arr(r, "not_covered"));
+}
+
+// INV-25 — oversized files under one top-level directory fold into one row.
+TEST_F(TraceServe, Inv25OversizeFilesFoldPerTopLevelDirectory) {
+    QByteArray big = "x = 1\n";
+    const QByteArray filler(79, '#');
+    while (big.size() < 3 * 1024 * 1024) big += filler + '\n';
+    ASSERT_TRUE(write(QStringLiteral("vendor/a/parser.c"), big));
+    ASSERT_TRUE(write(QStringLiteral("vendor/b/parser.c"), big));
+
+    const QJsonObject r = traceSymbol(QStringLiteral("kindProbe"));
+    const QJsonArray rows = rowsWhere(arr(r, "not_covered"), [](const QJsonObject &o) {
+        return o.value(QStringLiteral("reason")).toString() == QLatin1String("file_too_large");
+    });
+    ASSERT_EQ(rows.size(), 1) << dump(rows);
+    const QJsonObject row = rows.at(0).toObject();
+    EXPECT_EQ(row.value(QStringLiteral("dir")).toString(), QStringLiteral("vendor")) << dump(rows);
+    EXPECT_EQ(row.value(QStringLiteral("files")).toInt(), 2) << dump(rows);
+    EXPECT_FALSE(row.contains(QStringLiteral("file"))) << dump(rows);
+}
+
 // INV-18 — ship 1 refuses depth above 1 and callees, rather than answering
 // at depth 1.
 TEST_F(TraceServe, Inv18ShipOneRefusesDepthAndCallees) {

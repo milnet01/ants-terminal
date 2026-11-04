@@ -85749,17 +85749,19 @@ than re-filed; everything else lands here.
   Source: claude-config relay 2026-11-04 (Groundwork message 1190).
   Lanes: tooling.
 
-- 📋 [ANTS-6371] **trace's not_covered lists every language's limits, even when the symbol matched in one language only.**
+- 🚫 [ANTS-6371] **trace's not_covered lists every language's limits, even when the symbol matched in one language only.**
   Seen 2026-11-04: `trace symbol:readJsonlRecord` (one C++ file matched)
   returned five callers and about 45 not_covered rows: 20 tree-sitter
   parser.c files too large, and a "limits" row for each of ~30
   languages. Only the cpp limits row and the parse_error row bear on the
   answer. Return limits only for languages that produced a match or a
   candidate, and fold the file_too_large rows into a count unless asked.
+  Closed 2026-11-04 as a duplicate of ANTS-5799, which shipped the fix.
   **Layman:** The code-tracing tool pads every answer with caveats about languages the question never touched.
   Kind: perf.
   Source: in-session-2026-11-04, while planning ANTS-6368.
   Lanes: mcp.
+  Duplicate-of: ANTS-5799.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
@@ -88963,7 +88965,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-20 (ANTS-5734 ship 3, batch 3).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5799] **trace repeats every language's limits and every oversized grammar file in not_covered on each call, though the symbol was found in one language.**
+- ✅ [ANTS-5799] **trace repeats every language's limits and every oversized grammar file in not_covered on each call, though the symbol was found in one language.**
   Seen 2026-10-21: two trace calls on C++ symbols (withIgnoredArgs,
   ignoredArgKeysFor) each returned the same not_covered block: a
   "limits" row for every one of 26 languages, plus a file_too_large row
@@ -88975,6 +88977,10 @@ measured Ants adding about 5,250 tokens to every request.
   rest; and leave the static per-language limits to tool_info, or emit
   them once behind an opt-in. A file skipped as too large inside a
   vendored directory could fold to one row per directory.
+  Shipped 2026-11-04: limits rows only for a language with a file naming
+  the symbol; two or more oversized files under one top-level directory
+  fold to one {dir, files} row. INV-24, INV-25. readJsonlRecord's
+  not_covered: 49 rows → 5.
   **Layman:** Each symbol lookup returns a long list of things it could not check in languages the question never touched, which costs tokens every time.
   Kind: optimize.
   Source: in-session-2026-10-21.

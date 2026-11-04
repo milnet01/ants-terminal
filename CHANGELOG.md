@@ -56,6 +56,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **trace's not_covered gives a language's limits only where the symbol was found, and folds oversized files under one top-level directory into one row with a count** (ANTS-5799)
+  On this repository a C++-only lookup's not_covered drops from about
+  50 rows to 5. ANTS-6371 reported the same and is closed as its
+  duplicate.
+
 - **Reading a Claude Code transcript uses memory in proportion to each line, and a large transcript loads about four times faster.** (ANTS-6368)
 
 - **Ants MCP: audit_run, apply_edits, doc_citations, doc_lint, spec_log and invariant_check load with one-line argument descriptions** (ANTS-4931)

@@ -94,7 +94,7 @@ The values in that example are illustrative, not measured. Rules on the shape:
 
   Markdown files are not `references`; they go to `docs[]` (§ 2.7).
 - **`counts`** carries `{total, returned}` for every section, so a capped reply says how much it left out.
-- **`not_covered[]`** names what the answer could not see: `no_grammar` (a language with files present but no grammar), `file_too_large`, `parse_timeout`, `parse_error` (a file holding a match whose parse has errors: callers may be missing, and a `name(` there that reads as a string is marked `possible_call`, ANTS-6342), `ambiguous_basename` (§ 2.7), `source_unreadable` (§ 4), and `limits` (a fixed sentence per language from its query file, such as "calls through function pointers and Qt signal connections are not followed").
+- **`not_covered[]`** names what the answer could not see: `no_grammar` (a language with files present but no grammar), `file_too_large` (two or more under one top-level directory fold to one `{dir, files}` row, ANTS-5799), `parse_timeout`, `parse_error` (a file holding a match whose parse has errors: callers may be missing, and a `name(` there that reads as a string is marked `possible_call`, ANTS-6342), `ambiguous_basename` (§ 2.7), `source_unreadable` (§ 4), and `limits` (a fixed sentence per language from its query file, such as "calls through function pointers and Qt signal connections are not followed", given only for a language with a file naming the symbol, ANTS-5799).
 - **`scanned`** is the "a zero says what it looked at" block (`docs/standards/mcp-tools.md` step 5a).
 
 **Ordering and paging.** Rows are emitted in a fixed order: section order as in the example, then file path, then line, then column. The byte cap cuts at a row boundary, never inside one, and sets `truncated:true` and `next_offset` to the index of the first row left out. A call repeating the same arguments with that `offset` returns the rows from there. Offset paging replaces spill offload for this verb, so `trace` is exempt from `mcp::offloadThresholdFor`'s threshold. The reply is never trimmed silently.
@@ -220,6 +220,8 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-21** — The script form reaches `trace`. *Test:* `tests/features/trace/` runs `ants-mcpd --call trace '{"symbol":"spanFn","include":["definitions"]}'` from the fixture's temporary copy, expecting exit `0` and one definition with `end_line:9`. *Breaks when:* `mcp::registerMcpdOnlyVerbs` runs after the `--call` early return in `src/mcpdmain.cpp`.
 - **INV-22** — In a git checkout, a git-ignored file is not walked and a symlink is not followed. *Test:* `tests/features/trace/` runs `git init` in a temporary copy of the fixture, writes a `.gitignore` holding `archive/`, writes `archive/hidden.py` defining `ignoredProbe`, and adds a symlink `linked` to a directory outside the copy whose file also defines it. Tracing `ignoredProbe` expects no definition. The same copy without the `.gitignore` gives one, from `archive/hidden.py`. *Breaks when:* the walk lists the directory instead of git's file list, or follows the symlink.
 - **INV-23** — A binary file is never reported as `file_too_large`. *Test:* `tests/features/trace/` writes a 3 MiB `blob.bin` holding NUL bytes and the text `kindProbe` into a temporary copy of the fixture, expecting no `not_covered` entry naming it. *Breaks when:* the size check runs before the binary check.
+- **INV-24** — `limits` rows name only languages with a file naming the symbol. *Test:* `tests/features/trace/` traces `afterError`, found only in `broken.cpp`, expecting exactly one `limits` row, for `cpp`. *Breaks when:* a language's limits are recorded for every file with a grammar.
+- **INV-25** — Two or more oversized files under one top-level directory fold to one row. *Test:* `tests/features/trace/` writes two 3 MiB files under `vendor/`, expecting one `file_too_large` row `{dir:"vendor", files:2}` with no `file` key. *Breaks when:* each file gets its own row. INV-16's lone file keeps its name.
 
 ## 4. Failure modes
 
@@ -251,7 +253,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 
 Feature test: `tests/features/trace/`, label `features`, its bundle taken from `build_target_for` once it exists. Every case runs against `tests/features/trace/fixture/`. Each case is run against the code before the change that makes it pass, and is seen to fail there.
 
-- INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16, INV-18, INV-22 and INV-23: one case each, calling `trace::serve` directly. INV-22's case needs `git` on the test host.
+- INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16, INV-18, INV-22, INV-23, INV-24 and INV-25: one case each, calling `trace::serve` directly. INV-22's case needs `git` on the test host.
 - INV-13: builds two `ClaudeIntegration` pipelines and compares their `tools/list` replies.
 - INV-14: the query re-read case, with `XDG_DATA_HOME` set for the test process.
 - INV-17: the `nm` and `ldd` commands, run by the bundle against the built `ants-mcpd`.
@@ -293,7 +295,7 @@ The fixture's `.dart` file is never parsed; it exists to be reported.
 | INV-1 to INV-16, INV-18 | `tests/features/trace/` |
 | INV-17 | **Partial:** `tests/features/trace/` (the `nm` and `ldd` checks) catches a shared link; nothing catches a `dlopen` of a system grammar |
 | INV-21 | `tests/features/trace/` |
-| INV-22, INV-23 | `tests/features/trace/` |
+| INV-22, INV-23, INV-24, INV-25 | `tests/features/trace/` |
 | INV-19, INV-20 | `tests/features/trace/`, from ship 2 |
 | § 2.3 grammar pins match the vendored files | **nothing** — `tools/vendor-grammars.sh` checks hashes only when it runs; deferred; not yet queued |
 | § 2.8 preamble stays within 500 bytes | ANTS-1252 INV-3's test |
