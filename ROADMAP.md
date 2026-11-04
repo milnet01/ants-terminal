@@ -85543,15 +85543,12 @@ than re-filed; everything else lands here.
   the batch with the gate downgraded and say so
   (`baseline_gate:"exit_code_only"`) instead of refusing.
 
-  NEEDS THE USER'S DECISION. ANTS-4401 made `baseline_unreadable` a
-  refusal on purpose: an exit code is weaker evidence than counts. A
-  downgrade reverses that default. A middle path is an opt-in flag the
-  caller sets, which keeps the default refusal and names the weaker
-  evidence in the reply.
-  Waiting-on: user (when the test tool's summary can't be read, may the
-  mutation tool fall back to the exit code alone? Recommended: yes, but
-  only when the caller sets an opt-in flag; the default stays a refusal
-  and the reply names the weaker evidence, 2026-11-04)
+  ANTS-4401 made `baseline_unreadable` a refusal on purpose: an exit
+  code is weaker evidence than counts.
+  Decided by the user 2026-11-04: add an opt-in flag the caller sets.
+  The default stays a refusal. With the flag, an unreadable baseline
+  gates on the exit code alone, and the reply names the weaker
+  evidence (`baseline_gate:"exit_code_only"`).
   **Layman:** For a test tool whose summary the mutation tool cannot read, there is no way to say "the exit code is good enough".
   Kind: enhancement.
   Source: ANTS-4950 split 2026-11-03 (UT_Ants_Ants_MCP_Feedback.md 2026-09-08).
