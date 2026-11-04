@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6370 -->
+<!-- ants-roadmap-id-high-water: ANTS=6371 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85740,6 +85740,18 @@ than re-filed; everything else lands here.
   Kind: enhancement.
   Source: claude-config relay 2026-11-04 (Groundwork message 1190).
   Lanes: tooling.
+
+- 📋 [ANTS-6371] **trace's not_covered lists every language's limits, even when the symbol matched in one language only.**
+  Seen 2026-11-04: `trace symbol:readJsonlRecord` (one C++ file matched)
+  returned five callers and about 45 not_covered rows: 20 tree-sitter
+  parser.c files too large, and a "limits" row for each of ~30
+  languages. Only the cpp limits row and the parse_error row bear on the
+  answer. Return limits only for languages that produced a match or a
+  candidate, and fold the file_too_large rows into a count unless asked.
+  **Layman:** The code-tracing tool pads every answer with caveats about languages the question never touched.
+  Kind: perf.
+  Source: in-session-2026-11-04, while planning ANTS-6368.
+  Lanes: mcp.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
