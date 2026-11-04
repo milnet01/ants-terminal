@@ -74082,7 +74082,7 @@ indie-review finding.
   Source: in-session-2026-10-13 (found during ANTS-1734).
   Lanes: dialogchrome, auditdialog, mainwindow, terminalwidget.
 
-- 📋 [ANTS-6375] **get_last_command redacts secrets and flags instruction-like text, as the other terminal-reading verbs do.**
+- ✅ [ANTS-6375] **get_last_command redacts secrets and flags instruction-like text, as the other terminal-reading verbs do.**
   Seen 2026-11-05 while building ANTS-5184: the get_last_command
   provider in src/mainwindow_mcp.cpp returns lastCommandOutput() as is,
   in both its full and summary modes. ANTS-5169 routed get_text,
@@ -74093,6 +74093,9 @@ indie-review finding.
   Fix: pass the output through redactForClaude with
   Config().claudeMcpRedactSecrets() before building either mode, report
   redacted, and call addInjectionWarning.
+  Shipped 2026-11-05 (0207f053): output redacted before either mode,
+  redacted reported, possible_prompt_injection carried. Test:
+  McpSecretRedaction.Inv3EveryVerbRedacts (red before, green after).
   **Layman:** The tool that shows Claude your last command's output can pass a password or key straight through; the other terminal-reading tools hide them.
   Kind: security.
   Source: in-session-2026-11-05 (ANTS-5184 build).
