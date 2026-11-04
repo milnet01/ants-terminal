@@ -81473,7 +81473,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).
   Lanes: mcp.
 
-- 📋 [ANTS-5268] **A verb description does not say whether it is the cheap reverse of a relation or the expensive forward one, so callers pick by experience.**
+- ✅ [ANTS-5268] **A verb description does not say whether it is the cheap reverse of a relation or the expensive forward one, so callers pick by experience.**
   The observation, and the reporter rates it above their two concrete asks:
   the verb set already contains BOTH directions of the same relation, and
   the price difference is enormous.
@@ -81535,6 +81535,12 @@ are closed inline in the feedback files rather than filed here.
   APPEND a line). "Make the expensive thing opt-in" would have destroyed
   it. So the default row's fix is USUALLY documentation and only sometimes
   inversion, and telling which needs the same judgement.
+  Shipped 2026-11-04: direction sentences on cited_by, doc_symbols,
+  find_caller, the always-loaded workspace_search text, and
+  roadmap_query's section_index gloss. The 800-byte budget test caught
+  roadmap_query and doc_symbols over; both trimmed, and roadmap_query's
+  (ANTS-4402) id dropped. The DEFAULT and REACH rows stay with ANTS-5263
+  and ANTS-5266.
   **Layman:** Some search commands start from a name you already have and are cheap; others start from the whole project and are expensive. Nothing says which is which, so people find out by paying.
   Kind: doc.
   Source: cc-feedback-2026-09-21 (ut-monsterhunt).

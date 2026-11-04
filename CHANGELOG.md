@@ -54,6 +54,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Search verb descriptions say which direction is the cheap one** (ANTS-5268)
+  cited_by and find_caller say they start from names you hold;
+  doc_symbols and workspace_search point to them when you hold a name;
+  roadmap_query says to fetch one item by id rather than list every
+  section.
+
 - **read_log and roadmap format detection hold each line at its own size** (ANTS-6367)
   A line read under a byte cap no longer carries a cap-sized buffer, so
   read_log's kept lines cost their own bytes rather than about 1 MiB each at the default cap.

@@ -3120,14 +3120,14 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "status (all|active|shipped), section=<slug>, "
                     "query=<keyword>, id / "
                     "ids[]. mode: "
-                    "bullets (default) | section_index (slugs) | "
+                    "bullets (default) | section_index (all slugs; one "
+                    "item's: fetch by id) | "
                     "headline_only | bundles | report | sources | "
                     "ledger. Opt-in: include_body, "
                     "compact, fields, etag_match. Refusals: bad_case, "
                     "bad_section, bad_mode_combo, no_roadmap_loaded. "
                     "caller_cwd Required. "
-                    "`source` = the backend that answered, not `path` "
-                    "(ANTS-4402).");
+                    "`source` = the backend that answered, not `path`.");
                 // ANTS-2079 — full per-op reference lives in `detail`,
                 // stripped from the tools/list wire and served on demand
                 // by tool_info {name:"roadmap_query"}.
@@ -5355,7 +5355,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "Returns {ok, cells:[{anchor, file, count, first_line}], "
                     "cells_count, anchors_matched, anchors_unmatched, files_count, "
                     "scope_resolved, truncated}. Anchors match literally. Refusals: "
-                    "bad_args, bad_path, rg_failed. caller_cwd Required.");
+                    "bad_args, bad_path, rg_failed. caller_cwd Required. "
+                    "Reverse lookup: it starts from names you hold, "
+                    "so it stays cheap; prefer it to doc_symbols when you have "
+                    "them.");
                 cbTool["detail"] = QStringLiteral(
                     "Given the anchors a change touched (symbols, flags, config "
                     "keys, paths), report which documents cite which of them — one "
@@ -7098,7 +7101,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     "REPORT-ONLY. Unresolved findings carry `shape` (call | "
                     "qualified | bare); read call-shaped ones first. not_checked "
                     "means never looked up. only narrows symbols[]. Read-only. "
-                    "caller_cwd required.");
+                    "caller_cwd required. Forward lookup, so it can be large; "
+                    "holding the names, use cited_by.");
                 docSym["detail"] = QStringLiteral(
                     "Resolve the identifiers a doc claims exist. Harvests inline code spans "
                     "that look like `Foo::bar()` and looks each up with find_definition's "
@@ -10692,7 +10696,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "files_only:true returns files:[{file, count, lines[]}] "
                         "instead; `lane` scopes the scan to one subdirectory. Refusals: "
                         "bad_args (symbol missing or not a valid identifier), "
-                        "no_project (caller_cwd unresolved).");
+                        "no_project (caller_cwd unresolved). Reverse lookup from "
+                        "one name: cheaper than an unscoped workspace_search.");
                     t["detail"] = QStringLiteral(
                         "Find what calls a symbol across the project, "
                         "without a full LSP. Regex-anchored scan over "
@@ -16881,7 +16886,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     // verbs) a one-line Etag tip. The kind prefix and the
                     // tool_info pointer are added below, as on every verb.
                     static const QHash<QString, QString> kEagerDescription = {
-                        {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}].")},
+                        {QStringLiteral("workspace_search"), QStringLiteral("Search a project for a literal string, or a regex with regex:true; use instead of Bash grep -r. ONE pattern, not AND-ed words. caller_cwd picks the tree (any directory). Returns matches[{file, line, text}]. Holding a symbol name? find_caller or trace is cheaper.")},
                         {QStringLiteral("find_definition"), QStringLiteral("Find where a symbol is defined (C++, Python, Lua, Shell, GLSL) instead of grep + Read. Returns definitions[{file, line, signature, kind}]; kind is definition, declaration or local.")},
                         {QStringLiteral("file_outline"), QStringLiteral("Outline a file (header comment + symbols {line, kind, name, signature}) instead of a full Read; paths:[...] outlines several. caller_cwd required, or \"~global\". Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
                         {QStringLiteral("read_region"), QStringLiteral("Return an exact slice of a file instead of a Read: a line range, a symbol's body, or a markdown section; exactly one. Several: read_regions. caller_cwd required, or \"~global\" for ~/.claude/. Does NOT satisfy Edit's read-precondition. Etag tip: pass a returned etag back as etag_match.")},
