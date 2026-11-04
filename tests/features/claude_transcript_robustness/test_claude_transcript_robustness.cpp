@@ -239,14 +239,20 @@ void dumpChildProcDiag(const char *tag, pid_t self, pid_t child) {
 // to land before asserting detection, else it races the kernel. Bounded poll,
 // ~1.5 s cap; returns false if argv never lands (the caller's assert then
 // fails loudly rather than hanging). This is why inv9 settles before probing.
+//
+// A non-empty cmdline is not enough: before execve starts, the forked child
+// still carries the PARENT's argv (test_claude ...), and CI caught inv7
+// probing in that window. So it waits for argv[0] to name the fake `claude`.
 bool waitForCmdlineReady(pid_t pid) {
     if (pid <= 0) return false;
     for (int i = 0; i < 150; ++i) {
         QFile f(QString("/proc/%1/cmdline").arg(pid));
         if (f.open(QIODevice::ReadOnly)) {
-            QByteArray raw = f.readAll();
+            const QByteArray argv0 = f.readAll().split('\0').value(0);
             f.close();
-            if (!raw.replace('\0', "").trimmed().isEmpty()) return true;
+            if (QFileInfo(QString::fromLocal8Bit(argv0)).fileName()
+                == QLatin1String("claude"))
+                return true;
         }
         QThread::msleep(10);
     }
