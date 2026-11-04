@@ -145,7 +145,7 @@ BEGIN IMMEDIATE
   text    = <the op's existing text edit>(row.content, args)   // unchanged code
   rebuild feedback_finding rows from text
   UPDATE feedback_reporter SET content=text, revision=revision+1, updated_at=now
-  write text to export_path via QSaveFile, then chmod 0444
+  chmod u+w export_path if it exists; write text via QSaveFile; chmod 0444
   UPDATE feedback_reporter SET export_sha256 = sha256(text)
 COMMIT
 ```
@@ -161,7 +161,9 @@ what § 2 item 1 lacks. The store already sets `busy_timeout` and WAL in
 `applyPragmas`.
 
 The export is written inside the transaction, so a second writer cannot
-render between this commit and this file write. A `dry_run` stops before
+render between this commit and this file write. The owner-write bit comes
+back first because `QSaveFile::open` refuses a file that is not writable
+("Existing file … is not writable", Qt 6, measured 2026-11-04). A `dry_run` stops before
 the first `UPDATE` and rolls back.
 
 ### 4.5 Drift — a hand-edited export
