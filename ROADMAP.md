@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6373 -->
+<!-- ants-roadmap-id-high-water: ANTS=6374 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89976,6 +89976,19 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: in-session-2026-11-02, hit while working ANTS-6354.
   Lanes: packaging.
+
+- 📋 [ANTS-6374] **source_scrapes reports 0 readers when tests build a path as MACRO "/file" or pass a bare basename to a helper.**
+  Reported by DOOM_Ants: 54 test files scanned, 0 readers; 22 tests use
+  DOOM_TESTS_ROOT "/<file>" and others slurp("<basename>"). Repro:
+  grep -l DOOM_TESTS_ROOT linuxdoom-1.10/tests/*_test.cpp.
+  Fix: read a literal adjacent to an identifier as a path, match a bare
+  basename literal against tree files, and report unresolved path
+  expressions instead of a bare 0. Related: ANTS-6292 (__FILE__-relative
+  helper), ANTS-6285 (.c missing from the suffix list).
+  **Layman:** The tool that finds tests reading a source file misses tests that spell the path in two common ways, and says "none" instead of "could not tell".
+  Kind: fix.
+  Source: DOOM_Ants_MCP_Feedback.md 2026-11-04.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
