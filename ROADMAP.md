@@ -73652,7 +73652,7 @@ indie-review finding.
   Kind: investigate.
   Source: user-request-2026-05-15.
 
-- 📋 [ANTS-1559] **PCH consolidation — one shared `target_precompile_headers` consumed via `REUSE_FROM` across libs.**
+- 🚫 [ANTS-1559] **PCH consolidation — one shared `target_precompile_headers` consumed via `REUSE_FROM` across libs.**
   Second leg of [ANTS-1556] option (a). The current
   `target_precompile_headers` block at CMakeLists.txt:412 attaches a
   distinct `cmake_pch.hxx.gch` to each of the 8 libs (ants_vt_lib,
@@ -73681,6 +73681,19 @@ indie-review finding.
   Kind: perf.
   Source: in-session-2026-05-18 (follow-up to [ANTS-1556]).
   Deferred (2026-05-29): the inline comment at CMakeLists.txt:499-503 (against ONE shared PCH) is correct but more nuanced than blanket-no. REUSE_FROM is safe within matching-flag profile groups: Profile-A (warnings-only) = {ants_core_lib, ants_audit_lib} — 1 compile saveable; Profile-D (transitive QT_OPENGL_LIB + ANTS_LUA_PLUGINS via chrome) = {ants_claude_lib, ants_dialogs_lib, ants_audit_dialog_lib} — 2 more saveable. Max ~3-5 PCH compiles saved × ~3-5s each = ~15-25s on cold builds only. The ROADMAP entry's own success criterion ("if < 10% wall-clock, the layout complexity isn't worth it") needs a baseline measurement we don't have. Picking up requires (a) cold-build wall-clock measurement against current per-lib layout, then (b) implement Profile-A first (lowest risk), measure, then Profile-D if win >= 10%.
+  Dropped 2026-11-05 (session 217) on the item's own criterion: the win is
+  well under 10%. Measured from build/.ninja_log (last run of each output,
+  -j4) and build.ninja's per-target DEFINES/FLAGS:
+  - 19 PCH compiles cost 510 CPU-s of 5176 CPU-s for the whole build.
+  - Since ANTS-2107 every lib shares one header list, but REUSE_FROM
+    needs identical defines and flags. Only two pairs match:
+    ants_vt_lib + ants_audit_dialog_lib, ants_audit_lib + ants_lua_lib.
+    The QtCore-only trio (ants_mcpcore_lib, ants-mcpd, test_trace)
+    differs in -fPIC / -fPIE / neither. Test bundles each carry their
+    own source-list defines.
+  - Best case saves 2 compiles (~52 CPU-s), 4 if the -fPIC trio could
+    be forced to match (~100 CPU-s): 1-2% of build CPU, ~15-25 s wall
+    at -j4. Reopen only if per-target defines converge.
 
 - 🚫 [ANTS-1560] **`build_info.h` HH:MM precision freezes the displayed build time across intra-minute rebuilds.**
   Withdrawn 2026-05-18 — phantom bug. The scenario
