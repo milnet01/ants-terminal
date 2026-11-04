@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6376 -->
+<!-- ants-roadmap-id-high-water: ANTS=6377 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74647,7 +74647,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: ANTS-1379 close-out 2026-10-19.
   Lanes: tests.
 
-- 📋 [ANTS-6376] **Six feature tests call expect() but never assert the failure count, so they cannot fail.**
+- ✅ [ANTS-6376] **Six feature tests call expect() but never assert the failure count, so they cannot fail.**
   `expect()` from tests/_support/expect.h only prints [FAIL] and counts.
   A TEST must end with `EXPECT_EQ(0, expect_failures())` or
   `ASSERT_EQ(0, expect_finish())`; these six do neither, so every
@@ -74661,9 +74661,25 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   and naming none of expect_failures / expect_finish / expect_scope_.
   Fix: add the terminal assertion to each TEST, then fix whatever it
   reveals. A lint row in the scrape-test checks would stop recurrence.
+  Shipped 2026-11-05 (e42951d7): each TEST ends with EXPECT_EQ(0,
+  expect_failures()). Revealed McpInvariantCheck INV-4b matching a
+  comment; now reads comment-stripped source. The lint row suggested
+  above was not built: nothing yet stops a new test from repeating this.
   **Layman:** Some automated checks print a failure but still report success, so a real break would go unnoticed.
   Kind: fix.
   Source: in-session-2026-11-05 (ANTS-1386 sweep).
+  Lanes: tests.
+
+- 📋 [ANTS-6377] **A test that calls expect() without asserting the failure count is caught before it lands.**
+  ANTS-6376 fixed six tests whose expect() rows were advisory. Nothing
+  stops a seventh. A meta-test (or a local-ci check) could list feature
+  test files that include _support/expect.h and call expect( but name
+  none of expect_failures / expect_finish / expect_scope_, and fail on
+  any hit. Per-TEST precision would need the awk walk used in
+  ANTS-6376's measurement.
+  **Layman:** Stop new automated checks from being written in a way that can never fail.
+  Kind: test.
+  Source: in-session-2026-11-05 (ANTS-6376 follow-up).
   Lanes: tests.
 
 ## Bundle G indie-review sweep + ANTS-1118 fix-pass (target: 2026-05) (0.7.65 wave)
