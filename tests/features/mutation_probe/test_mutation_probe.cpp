@@ -1174,3 +1174,90 @@ TEST(MutationProbe, Ants4950Catch2SummaryParses) {
     EXPECT_EQ(MutationProbe::judgeBaseline(false, 0, c),
               MutationProbe::BaselineVerdict::Empty);
 }
+
+// ANTS-6359 / ANTS-4835 — `allow_exit_code_baseline`. A suite whose only signal
+// is its exit code (a bash script, a bare binary) prints no summary this verb
+// reads, so `require_green_baseline` refused it as `baseline_unreadable`. The
+// opt-in lets that one verdict pass on exit 0 and says so in the reply; every
+// other refusal, and the default, are unchanged.
+namespace {
+
+QJsonObject probeBaseline(const QTemporaryDir &tmp, const QString &test,
+                          const QJsonValue &allowExitCode) {
+    QJsonArray muts;
+    muts.append(mutation(0));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = shArgv(test);
+    req[QStringLiteral("mutations")]    = muts;
+    req[QStringLiteral("require_green_baseline")] = true;
+    if (!allowExitCode.isUndefined())
+        req[QStringLiteral("allow_exit_code_baseline")] = allowExitCode;
+    return rc.cmdMutationProbe(req).object();
+}
+
+std::string codeOf(const QJsonObject &env) {
+    return env.value(QStringLiteral("code")).toString().toStdString();
+}
+
+}  // namespace
+
+TEST(MutationProbe, Ants6359ExitCodeBaselineIsOptIn) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QString unreadableGreen = QStringLiteral("echo all good; exit 0");
+
+    // Default: still refused.
+    EXPECT_EQ(codeOf(probeBaseline(tmp, unreadableGreen,
+                                   QJsonValue(QJsonValue::Undefined))),
+              "baseline_unreadable");
+
+    // Opted in: the batch runs, and the reply names the weaker evidence.
+    const QJsonObject env = probeBaseline(tmp, unreadableGreen, true);
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(env).toJson().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("baseline_gate")).toString().toStdString(),
+              "exit_code_only");
+    EXPECT_EQ(env.value(QStringLiteral("baseline_exit_code")).toInt(-1), 0);
+    EXPECT_TRUE(env.value(QStringLiteral("restored_clean")).toBool());
+}
+
+TEST(MutationProbe, Ants6359ExitCodeOptInRescuesOnlyUnreadable) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    EXPECT_EQ(codeOf(probeBaseline(tmp, QStringLiteral("echo broken; exit 1"), true)),
+              "baseline_not_green") << "a red exit is never rescued";
+    EXPECT_EQ(codeOf(probeBaseline(tmp, QStringLiteral("echo '0 passed'; exit 0"), true)),
+              "baseline_unreadable") << "a parsed run of nothing is not unreadable";
+
+    const QJsonObject green =
+        probeBaseline(tmp, QStringLiteral("echo '1 passed'; exit 0"), true);
+    ASSERT_TRUE(green.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(green.contains(QStringLiteral("baseline_gate")))
+        << "readable counts need no downgrade";
+}
+
+TEST(MutationProbe, Ants6359MalformedOrOrphanedFlagRefuses) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    EXPECT_EQ(codeOf(probeBaseline(tmp, QStringLiteral("exit 0"),
+                                   QStringLiteral("yes"))),
+              "bad_args") << "a non-boolean must not read as false";
+
+    // Without require_green_baseline the flag would do nothing; say so.
+    QJsonArray muts;
+    muts.append(mutation(0));
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = tmp.path();
+    req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+    req[QStringLiteral("test_command")] = shArgv(QStringLiteral("exit 0"));
+    req[QStringLiteral("mutations")]    = muts;
+    req[QStringLiteral("allow_exit_code_baseline")] = true;
+    EXPECT_EQ(codeOf(rc.cmdMutationProbe(req).object()), "bad_args");
+}

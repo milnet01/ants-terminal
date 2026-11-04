@@ -2060,6 +2060,24 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                                "\"build\"]."));
     }
 
+    // ANTS-6359 — a suite whose only signal is its exit code. Opt-in only:
+    // ANTS-4401 made an unreadable baseline a refusal on purpose. A value
+    // that is not a boolean refuses, since reading it as false would refuse
+    // the batch for a reason the caller thinks they switched off.
+    const QJsonValue exitCodeArg =
+        req.value(QStringLiteral("allow_exit_code_baseline"));
+    if (!exitCodeArg.isUndefined() && !exitCodeArg.isBool())
+        return mpErr(QStringLiteral("bad_args"),
+            QStringLiteral("mutation_probe: `allow_exit_code_baseline` must "
+                           "be true or false."));
+    const bool allowExitCodeBaseline = exitCodeArg.toBool(false);
+    if (allowExitCodeBaseline
+        && !req.value(QStringLiteral("require_green_baseline")).toBool(false))
+        return mpErr(QStringLiteral("bad_args"),
+            QStringLiteral("mutation_probe: `allow_exit_code_baseline` only "
+                           "changes what `require_green_baseline` accepts; "
+                           "set that too, or drop both."));
+
     const QJsonArray muts = req.value(QStringLiteral("mutations")).toArray();
     if (muts.isEmpty())
         return mpErr(QStringLiteral("bad_args"),
@@ -2323,7 +2341,13 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         // gated on green is better served by a refusal naming the reason than
         // by a batch whose premise was never checked — every mutant it then
         // reports `killed` is unfalsifiable.
-        if (verdict != MutationProbe::BaselineVerdict::Green) {
+        //
+        // ANTS-6359 — the caller may opt in to exit code 0 as the evidence
+        // for an unreadable run only. A run that parsed and executed nothing
+        // stays refused: its exit code adds nothing to what it printed.
+        const bool exitCodeOnly = allowExitCodeBaseline
+            && verdict == MutationProbe::BaselineVerdict::Unreadable;
+        if (verdict != MutationProbe::BaselineVerdict::Green && !exitCodeOnly) {
             const bool unreadable =
                 verdict == MutationProbe::BaselineVerdict::Unreadable;
             QJsonObject o2;
@@ -2338,7 +2362,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                            "A run that could not be read has not said the "
                            "suite is green. Point `test_command` at a runner "
                            "whose summary this verb recognises (ctest, pytest, "
-                           "gtest, Catch2, jest or vitest), or drop "
+                           "gtest, Catch2, jest or vitest), pass "
+                           "allow_exit_code_baseline:true if exit 0 is all "
+                           "this suite reports, or drop "
                            "require_green_baseline to probe "
                            "anyway.")
                      : QStringLiteral(
@@ -2356,6 +2382,10 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             // the caller can see what the runner actually printed.
             o2[QStringLiteral("baseline_output_tail")] = base.output.right(2048);
             return QJsonDocument(o2);
+        }
+        if (exitCodeOnly) {
+            out[QStringLiteral("baseline_gate")] = QStringLiteral("exit_code_only");
+            out[QStringLiteral("baseline_exit_code")] = base.exitCode;
         }
         out[QStringLiteral("baseline_passed")] = bc.passed;
         out[QStringLiteral("baseline_failed")] = bc.failed;

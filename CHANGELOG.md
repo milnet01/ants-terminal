@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe takes `allow_exit_code_baseline`, so a suite whose only signal is its exit code can use require_green_baseline** (ANTS-6359, ANTS-4835)
+  Opt-in only. The reply says `baseline_gate:"exit_code_only"` when exit 0
+  was the only evidence. A red or empty run is still refused.
+
 - **`cc-job` records which Claude Code session started each job, shows it in `status`, and `cc-job clean --mine` tidies only that session's finished jobs.** (ANTS-6370)
 
 - **spec_log's set_status and append_status return `new_status`, the Status as it reads after the edit, on the write and on a dry-run preview** (ANTS-6364)

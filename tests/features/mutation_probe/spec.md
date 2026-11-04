@@ -147,3 +147,17 @@ file also returns `paths`. A concurrent edit to any file stops the batch, and
 the restore hint names every file not put back. *Test:*
 `MutationProbe.Ants4975OneBatchProbesTwoFiles`,
 `…BadMutationPathRefusesTheBatch`.
+
+## ANTS-6359 — exit code as the baseline's evidence, by opt-in
+
+A suite whose only signal is its exit code, such as a bash script or a bare
+binary, prints no summary `parseCounts` reads. Under `require_green_baseline`
+its exit-0 run is `Unreadable`, refused as `baseline_unreadable`.
+
+`allow_exit_code_baseline:true` lets that one verdict pass. The reply then
+carries `baseline_gate:"exit_code_only"` and `baseline_exit_code`. The default
+stays a refusal, because an exit code is weaker evidence than counts
+(ANTS-4401). A red exit and an empty run (`0`/`0`) are still refused. A
+non-boolean value, or the flag without `require_green_baseline`, refuses
+`bad_args`. *Test:* `MutationProbe.Ants6359ExitCodeBaselineIsOptIn`,
+`…ExitCodeOptInRescuesOnlyUnreadable`, `…MalformedOrOrphanedFlagRefuses`.

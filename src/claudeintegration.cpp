@@ -5812,6 +5812,11 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "could not be read, and a run that executed nothing, "
                         "both used to read as a pass and make every later "
                         "verdict unfalsifiable. "
+                        "ANTS-6359: allow_exit_code_baseline:true lets an "
+                        "unparsable baseline pass on exit 0 alone, for a "
+                        "suite whose only signal is its exit code; the reply "
+                        "then carries baseline_gate:\"exit_code_only\". An "
+                        "empty run is still refused. "
                         "ANTS-4521: a mutation may carry "
                         "`expect_occurrences` — a mismatch refuses THAT "
                         "mutation (occurrence_mismatch) before any test runs, "
@@ -5951,6 +5956,13 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         props["test_command"]           = cmdP;
                         props["mutations"]              = mutsP;
                         props["require_green_baseline"] = grP;
+                        QJsonObject ecP; ecP["type"] = "boolean";
+                            ecP["default"] = false;
+                            ecP["description"] = QStringLiteral(
+                                "With require_green_baseline: accept exit 0 "
+                                "when the counts are unreadable. Reply says "
+                                "baseline_gate:\"exit_code_only\".");
+                        props["allow_exit_code_baseline"] = ecP;
                         props["timeout_sec"]            = toP;
                         props["caller_cwd"] = makeCallerCwdReadProp();
                         schema["properties"] = props;
