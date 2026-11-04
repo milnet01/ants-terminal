@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6368 -->
+<!-- ants-roadmap-id-high-water: ANTS=6369 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -85484,6 +85484,10 @@ than re-filed; everything else lands here.
   downgrade reverses that default. A middle path is an opt-in flag the
   caller sets, which keeps the default refusal and names the weaker
   evidence in the reply.
+  Waiting-on: user (when the test tool's summary can't be read, may the
+  mutation tool fall back to the exit code alone? Recommended: yes, but
+  only when the caller sets an opt-in flag; the default stays a refusal
+  and the reply names the weaker evidence, 2026-11-04)
   **Layman:** For a test tool whose summary the mutation tool cannot read, there is no way to say "the exit code is good enough".
   Kind: enhancement.
   Source: ANTS-4950 split 2026-11-03 (UT_Ants_Ants_MCP_Feedback.md 2026-09-08).
@@ -85651,6 +85655,25 @@ than re-filed; everything else lands here.
   Kind: perf.
   Source: in-session-2026-11-04, found while fixing ANTS-6367.
   Lanes: claude.
+
+- 📋 [ANTS-6369] **Two whole-tree scrape tests time out in the push gate when the disk cache is cold.**
+  RcTuSplit.InternalHeaderStaysInternal and
+  SplitSources.InternalHeaderStaysInternal timed out at 60 s in the
+  gate's build-asan step on 78a20c98. Measured after:
+  - straight after a full build-asan build: 60.09 s (timeout) and 37.7 s;
+  - rerun warm: 0.29 s via ctest, 0.23-0.29 s run directly, with or
+    without detect_leaks. Under gdb the test body took 117 ms.
+  They read every file under src/ and tests/ (2,239 files, 33 MB) from
+  /mnt/Games, a rotating disk (lsblk ROTA 1), one seek each. The gate ran
+  them after a build that churns the page cache. Not ASan: the CI-image
+  step passed them. The gate passed them on eefd168d, so it is
+  intermittent.
+  Options: scan only C/C++ files (1,285 of the 2,239), share one tree
+  read between the two tests, or give both a perf-style timeout.
+  **Layman:** Two tests read every file in the project; on the spinning disk, right after a big build, that takes over a minute and they time out.
+  Kind: test.
+  Source: in-session-2026-11-04, push gate on 78a20c98.
+  Lanes: tests.
 
 ### Ants MCP without a terminal relaunch (user request 2026-09-07)
 
