@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6372 -->
+<!-- ants-roadmap-id-high-water: ANTS=6373 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87449,11 +87449,17 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of MAME_Curator session, 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5525] **file_outline's default max_symbols of 200 is large for a first look at a file.**
+- 🚫 [ANTS-5525] **file_outline's default max_symbols of 200 is large for a first look at a file.**
   Measured 2026-09-28 over today's ten ants-mcpd sessions: file_outline
   was 13% of all reply bytes at 4.9 KB a call. Consider a smaller default
   with the envelope's existing truncated/symbols_dropped signal saying
   more exists.
+  Measured 2026-11-04 over 246 default calls in Claude Code
+  transcripts: median 18 symbols, 2.5 KB; p90 44, p99 93; none hit
+  200. A default of 50 cuts 9.6% of bytes but truncates 7% of calls,
+  each risking a second call; 100 cuts 1.7%. The size comes from
+  ordinary files, not the cap. No change. The real saving found
+  (name repeated inside signature) is filed separately.
   **Layman:** The tool that shows a file's layout sends a long list by default, which costs more than a first look needs.
   Kind: perf.
   Source: in-session-2026-09-28 (mcpd usage snapshots).
@@ -87676,6 +87682,17 @@ project. Reported causes are claims until checked in source.
   **Layman:** Tidy three out-of-date sentences in the design notes for how roadmap and changelog lookups split results into pages.
   Kind: doc-fix.
   Source: review-contract-2026-10-12 ANTS-5651 tail.
+  Lanes: mcp.
+
+- 💭 [ANTS-6373] **file_outline sends each symbol's name again inside its signature.**
+  Measured 2026-11-04 over 246 default calls: the name appears inside
+  the signature for 5150 of 5685 symbols; those name fields are 18% of
+  reply bytes. Dropping them changes the reply shape that callers and
+  filter= read, so it needs an opt-in or a contract decision first.
+  encoding:"tabular" already removes repeated keys.
+  **Layman:** The file-layout tool writes most names twice; saying them once would make its replies about a sixth smaller.
+  Kind: optimize.
+  Source: in-session-2026-11-04 ANTS-5525 measurement.
   Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage
