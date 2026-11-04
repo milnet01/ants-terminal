@@ -84088,12 +84088,14 @@ two projects).
   Kind: fix.
   Source: cc-feedback-2026-09-03 Games_Hub.
 
-- 📋 [ANTS-4835] **mutation_probe's require_green_baseline is unreachable for a suite whose only signal is the exit code.**
+- ✅ [ANTS-4835] **mutation_probe's require_green_baseline is unreachable for a suite whose only signal is the exit code.**
   Reported by a project whose verify_*.py scripts are the suite by design. baseline_unreadable fires when the baseline exits 0 with no parseable summary, and the documented workaround is to turn the gate off. ANTS-4401's reasoning holds as a DEFAULT; an explicit opt-in (require_green_baseline:"exit_code", or a caller-supplied summary regex) says which signal that runner gives without weakening it for anyone else.
   Reported again 2026-10-01 by doom-ants and oneup (session messages 318,
   324, 336, relayed by claude-config): mutation_probe cannot read a plain
   binary's or a bash script's output, so those projects cannot use it.
   Same root: the exit code is their only signal.
+  Resolved (2026-11-04) by ANTS-6359: allow_exit_code_baseline:true
+  gates on the exit code for a suite with no readable summary.
   **Layman:** The safety check that keeps a mutation result honest is refused on projects that do not use a recognised test runner.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
@@ -85537,7 +85539,7 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-03, found while building ANTS-4963.
   Lanes: mcp, indie-review.
 
-- 📋 [ANTS-6359] **require_green_baseline refuses an unreadable baseline outright, with no opt-in to gate on the exit code alone.**
+- ✅ [ANTS-6359] **require_green_baseline refuses an unreadable baseline outright, with no opt-in to gate on the exit code alone.**
   Split from ANTS-4950, whose Catch2 half shipped. The reporter's second
   ask: where counts are unparsable but the exit code is readable, run
   the batch with the gate downgraded and say so
@@ -85549,6 +85551,10 @@ than re-filed; everything else lands here.
   The default stays a refusal. With the flag, an unreadable baseline
   gates on the exit code alone, and the reply names the weaker
   evidence (`baseline_gate:"exit_code_only"`).
+  Resolved (2026-11-04): mutation_probe takes allow_exit_code_baseline
+  (boolean, opt-in). With require_green_baseline it lets an unparsable
+  exit-0 baseline pass; the reply says baseline_gate:"exit_code_only".
+  Red and empty runs are still refused.
   **Layman:** For a test tool whose summary the mutation tool cannot read, there is no way to say "the exit code is good enough".
   Kind: enhancement.
   Source: ANTS-4950 split 2026-11-03 (UT_Ants_Ants_MCP_Feedback.md 2026-09-08).
