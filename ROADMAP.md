@@ -74426,7 +74426,7 @@ that shipped 6+ months ago — pure self-reference).
   Kind: refactor.
   Source: in-session-2026-05-15 (ANTS-1348 implementation).
 
-- 📋 [ANTS-1387] **`test_core` link closure limitation — document or restructure.**
+- ✅ [ANTS-1387] **`test_core` link closure limitation — document or restructure.**
   `ants_core_lib` includes
   `vtstream.cpp` (which uses `VtParser` from `ants_vt_lib`),
   `remotecontrol.cpp` (which uses `AuditEngine`, `FeatureCoverage`
@@ -74458,6 +74458,8 @@ that shipped 6+ months ago — pure self-reference).
   half -- write down what test_core's link closure now actually covers,
   so the next person hitting a missing symbol does not rediscover it.
   Small.
+  Shipped 2026-11-05 (83b8f375): tests/features/README.md § Bundles
+  states test_core's link closure and the VtStream → ants_vt_lib trap.
 
 #### 🔌 MCP cross-project isolation (caller_cwd) — Phase 1 + Phase 2
 
