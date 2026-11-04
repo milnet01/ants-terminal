@@ -148,4 +148,46 @@ sed -n 1p <<<"$out" | grep -q 'oldrun: running' ||
     { echo "FAIL INV-10: a failed list-units hid a running job: $out"; exit 1; }
 [ -s "$calls" ] || { echo "FAIL INV-10: no per-job fallback ran"; exit 1; }
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply"
+# INV-11 — start records the starting session, and status shows it. The probe
+# above was started with CLAUDE_CODE_SESSION_ID=session-leak.
+grep -qx 'owner=session-leak' "$jobs/probe.info" ||
+    { echo "FAIL INV-11: start did not record the owning session"; exit 1; }
+out="$(env CC_JOB_DIR="$jobs" PATH="$fake:$PATH" "$bin" status probe)"
+case "$out" in
+    *"session session-"*) ;;
+    *) echo "FAIL INV-11: status does not show the owner: $out"; exit 1 ;;
+esac
+
+# INV-12 — clean --mine removes only this session's finished jobs whose output
+# was read; --force drops the read condition, never the running one.
+mine="$prefix/mine"
+mkdir "$mine"
+mkjob() { # <name> <owner, or empty> <read|unread>
+    echo out >"$mine/$1.log"; echo 0 >"$mine/$1.exit"
+    { echo "started=2026-01-01"; if [ -n "$2" ]; then echo "owner=$2"; fi; } >"$mine/$1.info"
+    if [ "$3" = read ]; then : >"$mine/$1.read"; fi
+}
+mkjob done-a A read; mkjob unread-a A unread; mkjob oldrun A read
+mkjob theirs B read; mkjob legacy "" read
+rm -f "$mine/oldrun.exit"   # oldrun is the job the stand-in systemctl reports running
+: >"$listing"
+rc=0
+env -u CLAUDE_CODE_SESSION_ID CC_JOB_DIR="$mine" PATH="$fake:$PATH" "$bin" clean --mine \
+    >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL INV-12: clean --mine with no session exited $rc, want 2"; exit 1; }
+[ -e "$mine/done-a.log" ] || { echo "FAIL INV-12: clean --mine with no session removed a job"; exit 1; }
+out="$(env CLAUDE_CODE_SESSION_ID=A CC_JOB_DIR="$mine" PATH="$fake:$PATH" "$bin" clean --mine 2>&1)"
+[ ! -e "$mine/done-a.log" ] || { echo "FAIL INV-12: this session's read job was kept: $out"; exit 1; }
+for kept in unread-a oldrun theirs legacy; do
+    [ -e "$mine/$kept.log" ] || { echo "FAIL INV-12: clean --mine removed '$kept': $out"; exit 1; }
+done
+for kept in unread-a oldrun; do
+    grep -q "kept $kept" <<<"$out" ||
+        { echo "FAIL INV-12: clean --mine does not name '$kept' as kept: $out"; exit 1; }
+done
+env CLAUDE_CODE_SESSION_ID=A CC_JOB_DIR="$mine" PATH="$fake:$PATH" "$bin" clean --mine --force >/dev/null 2>&1
+[ ! -e "$mine/unread-a.log" ] || { echo "FAIL INV-12: --force kept an unread job"; exit 1; }
+[ -e "$mine/oldrun.log" ] || { echo "FAIL INV-12: --force removed a running job"; exit 1; }
+case "$("$bin" --help)" in *"clean --mine"*) ;; *) echo "FAIL INV-12: --help omits clean --mine"; exit 1 ;; esac
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner"

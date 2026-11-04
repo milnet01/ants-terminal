@@ -85723,13 +85723,19 @@ than re-filed; everything else lands here.
   Source: in-session-2026-11-04, push gate on 78a20c98.
   Lanes: tests.
 
-- 📋 [ANTS-6370] **cc-job records no owning session, so a session cleaning its jobs by name prefix can delete a peer's logs.**
+- ✅ [ANTS-6370] **cc-job records no owning session, so a session cleaning its jobs by name prefix can delete a peer's logs.**
   Groundwork cleaned "its" jobs by name prefix (vm-, wait-) and may have
   deleted another session's finished logs; `cc-job status --all`
   (packaging/cc-job/cc-job) shows no owner, confirmed 2026-11-04.
   Asks: record the owning session at `start` (e.g. CLAUDE_SESSION_ID or
   the parent PID's session), show it as a column in `status`, and add
   `clean --mine`. Reply to claude-config with this id when it ships.
+  Shipped 2026-11-04: `start` writes owner=<CLAUDE_CODE_SESSION_ID> to
+  the job's .info; `status` shows "session <first 8>"; `clean --mine
+  [--force]` removes this session's finished, read jobs and lists the
+  ones it kept. Jobs started before this have no owner, so --mine never
+  touches them. Locked by cc_job_bundle INV-11/INV-12. Reaches a session
+  on the next install of cc-job; no terminal relaunch.
   **Layman:** Background jobs don't record which Claude session started them, so one session tidying up can delete another session's job logs.
   Kind: enhancement.
   Source: claude-config relay 2026-11-04 (Groundwork message 1190).

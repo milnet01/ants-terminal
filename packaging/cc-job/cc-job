@@ -29,6 +29,9 @@ cc-job stop <name>          stop the job
 cc-job clean <name> [--force]
                             delete a finished job's log and records; refused
                             until `tail` has shown the log, unless --force
+cc-job clean --mine [--force]
+                            the same for every finished job this Claude Code
+                            session started; names the jobs it kept
 
 A pipeline or shell syntax needs a shell:  cc-job start build -- bash -c 'make 2>&1 | tee out'
 Exported variables reach the job, except this session's own (CLAUDE*, ANTS_MCP_SOCKET and
@@ -113,6 +116,8 @@ start_job() {
         echo "cwd=$PWD"
         echo "started=$(date -Is)"
         echo "command=$(printf '%q ' "$@")"
+        # The owner lets a session clean its own jobs and no one else's.
+        if [[ -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then echo "owner=$CLAUDE_CODE_SESSION_ID"; fi
     } >"$STATE/$name.info"
 
     # A unit starts from the user manager's environment, not this shell's. A
@@ -148,13 +153,65 @@ status_one() {
     else
         echo "$name: no such job"; return 1
     fi
-    local started="" line
-    if [[ -f $STATE/$name.info ]]; then
-        while IFS= read -r line; do
-            if [[ $line == started=* ]]; then started=${line#started=}; break; fi
-        done <"$STATE/$name.info"
+    local started owner
+    started=$(info_field "$name" started)
+    owner=$(info_field "$name" owner)
+    echo "$name: $state${started:+ — started $started}${owner:+ — session ${owner:0:8}} — log: $STATE/$name.log"
+}
+
+# The value of <key>= in a job's .info file, or nothing.
+info_field() {
+    local line
+    [[ -f $STATE/$1.info ]] || return 0
+    while IFS= read -r line; do
+        if [[ $line == "$2="* ]]; then printf '%s' "${line#"$2"=}"; return 0; fi
+    done <"$STATE/$1.info"
+}
+
+# Remove one finished job. Returns 1 if it is running, 2 if its output is unread
+# and force is off; removes nothing in either case.
+clean_one() {
+    local name=$1 force=$2
+    running "$name" && return 1
+    # The log is the only copy of the output (CFG-0729: a clean before reading
+    # it forced a re-run). Refuse until tail has shown it.
+    if ((!force)) && [[ -s $STATE/$name.log && ! -e $STATE/$name.read ]]; then return 2; fi
+    # Close any watch window first, or it reports the log vanishing.
+    systemctl --user stop "cc-job-watch-$name-*" 2>/dev/null || true
+    rm -f "$STATE/$name".{log,exit,info,read,env}
+}
+
+clean_cmd() {
+    local force=0 rc=0
+    if [[ ${1:-} != --mine ]]; then
+        checkname "${1:-}"
+        [[ ${2:-} == --force ]] && force=1
+        clean_one "$1" "$force" || rc=$?
+        case $rc in
+            1) die "job '$1' is still running — stop it first" ;;
+            2) die "job '$1' has output nobody has read — run 'cc-job tail $1' first, or clean --force" ;;
+        esac
+        echo "removed '$1'"; return 0
     fi
-    echo "$name: $state${started:+ — started $started} — log: $STATE/$name.log"
+    [[ ${2:-} == --force ]] && force=1
+    local me=${CLAUDE_CODE_SESSION_ID:-}
+    [[ -n $me ]] || die "clean --mine needs CLAUDE_CODE_SESSION_ID, which only a Claude Code session sets"
+    shopt -s nullglob
+    local f name removed=0 kept=()
+    snapshot_running
+    for f in "$STATE"/*.info; do
+        name=${f##*/}; name=${name%.info}
+        [[ $(info_field "$name" owner) == "$me" ]] || continue
+        rc=0; clean_one "$name" "$force" || rc=$?
+        case $rc in
+            0) removed=$((removed + 1)) ;;
+            1) kept+=("$name (running)") ;;
+            *) kept+=("$name (unread; 'cc-job tail $name' or --force)") ;;
+        esac
+    done
+    echo "removed $removed of this session's jobs"
+    local k
+    for k in "${kept[@]}"; do echo "kept $k"; done
 }
 
 # Every job by name.
@@ -216,15 +273,7 @@ case $cmd in
     wait)   wait_job "$@" ;;
     watch)  checkname "${1:-}"; watch_job "$1" ;;
     stop)   checkname "${1:-}"; systemctl --user stop "$(unit "$1")" && status_one "$1" ;;
-    clean)  checkname "${1:-}"; running "$1" && die "job '$1' is still running — stop it first"
-            # The log is the only copy of the output (CFG-0729: a clean before
-            # reading it forced a re-run). Refuse until tail has shown it.
-            if [[ ${2:-} != --force && -s $STATE/$1.log && ! -e $STATE/$1.read ]]; then
-                die "job '$1' has output nobody has read — run 'cc-job tail $1' first, or clean --force"
-            fi
-            # Close any watch window first, or it reports the log vanishing.
-            systemctl --user stop "cc-job-watch-$1-*" 2>/dev/null || true
-            rm -f "$STATE/$1".{log,exit,info,read,env}; echo "removed '$1'" ;;
+    clean)  clean_cmd "$@" ;;
     ""|-h|--help|help) usage ;;
     *)      usage >&2; exit 2 ;;
 esac

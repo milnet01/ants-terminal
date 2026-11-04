@@ -32,6 +32,14 @@ source is `packaging/cc-job/cc-job`.
   dir is a symlink.
 - **INV-10** — If `list-units` fails, `status` asks per job, so a running job
   never reads as finished.
+- **INV-11** — `start` records `CLAUDE_CODE_SESSION_ID` as the job's owner,
+  and `status` shows its first eight characters.
+- **INV-12** — `clean --mine` removes only finished jobs this session owns
+  whose output `tail` has shown, and names each job it kept. `--force` drops
+  the shown condition, never the finished one. With no session id it exits
+  `2` and removes nothing. `--help` names it.
+  *Breaks when:* one session's tidy-up deletes another session's logs, as
+  reported 2026-11-04 (ANTS-6370).
 
 The test starts its job through a stand-in `systemd-run`, so it needs no
 `systemd --user`.

@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`cc-job` records which Claude Code session started each job, shows it in `status`, and `cc-job clean --mine` tidies only that session's finished jobs.** (ANTS-6370)
+
 - **spec_log's set_status and append_status return `new_status`, the Status as it reads after the edit, on the write and on a dry-run preview** (ANTS-6364)
 
 - **mutation_probe reads Catch2's test summary, so require_green_baseline works on Catch2 projects** (ANTS-4950)
