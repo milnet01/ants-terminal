@@ -217,7 +217,8 @@ the host's `gh`.
   `gh run list --json databaseId,headSha,headBranch,conclusion,event,workflowName,createdAt,attempt,status --limit 200`
   (runs older than the window are dropped);
   `gh api repos/{repo}/actions/runs/{id}/attempts/{n}/jobs` per run and per
-  attempt, newest run first, every page or none of that attempt; `gh api repos/{repo}/actions/cache/usage`;
+  attempt, newest run first, every page or none of that attempt, with up
+  to four attempts' first pages in flight at once; `gh api repos/{repo}/actions/cache/usage`;
   `gh api repos/{repo}/check-runs/{job}/annotations?per_page=100` for the jobs of each
   workflow's newest run; `gh api repos/{repo}/actions/jobs/{job}/logs` for
   logs (§ 4.3), at most 10 logs, keeping the first and last MiB of each:

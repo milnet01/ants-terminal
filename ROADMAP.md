@@ -79877,12 +79877,17 @@ in each bullet, not just the reporter's symptom.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
   Lanes: mcp.
 
-- 📋 [ANTS-6409] **ci_report: one serial gh call per run and attempt makes the default window hit the deadline.**
+- ✅ [ANTS-6409] **ci_report: one serial gh call per run and attempt makes the default window hit the deadline.**
   Lane 1 #1. 121 runs over 7 days took about 95 s; a 30-day window
   near 200 runs reaches the jobs reserve after about 110 runs.
   Candidates: actions/runs/{id}/jobs?filter=all (every attempt in one
   call), and a small bounded pool of parallel gh calls. MEASURE FIRST:
   call cost and whether filter=all returns every attempt's jobs.
+  Shipped 2026-11-05: Session::runAll and a kJobsWidth=4 pool in
+  Fetcher::jobs (src/cihistory.cpp). Measured filter=all live: it
+  returns every attempt with run_attempt, but re-runs are rare, so the
+  per-attempt path stays. Test Ants6409JobsCallsRunInParallel (4049 ms
+  serial, 1.07 s pooled). Spec § 4.5 amended (impl-7).
   **Layman:** The CI report asks GitHub one question at a time, so on a busy project it runs out of time before reading the whole month.
   Kind: perf.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).

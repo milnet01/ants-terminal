@@ -117,8 +117,9 @@ private:
 // A fake `gh` first on PATH. It logs every call, answers `repo view` and
 // `run list` from files in its directory, and an `api <path>` call from a file
 // named by the path with / ? = & turned to _. FAKE_FAIL=list fails the listing;
-// a file of that name plus ".fail" fails that api call, and plus ".sleep"
-// makes it outlast a short per-call limit.
+// a file of that name plus ".fail" fails that api call, plus ".sleep"
+// makes it outlast a short per-call limit, and plus ".delay" holding seconds
+// slows its answer by that much.
 struct FakeGh {
     QTemporaryDir dir;
     QString log() const { return dir.filePath(QStringLiteral("calls.log")); }
@@ -132,6 +133,7 @@ struct FakeGh {
         ASSERT_TRUE(gh.open(QIODevice::WriteOnly));
         gh.write("#!/bin/bash\n"
                  "echo \"$*\" >> \"$FAKE_DIR/calls.log\"\n"
+                 "d=\"$FAKE_DIR/${2//[\\/?=&]/_}.delay\"; [[ $1 == api && -f $d ]] && sleep \"$(<\"$d\")\"\n"
                  "if [[ $1 == repo ]]; then\n"
                  "  printf '%s' '{\"nameWithOwner\":\"o/r\",\"defaultBranchRef\":{\"name\":\"main\"}}'\n"
                  "elif [[ $1 == run ]]; then\n"
@@ -1090,4 +1092,35 @@ TEST(McpCiReport, Ants6410InvalidContinuationsStayUnread) {
                              "name: CI\njobs:\n  t:\n    if: a\n      b: c\n"}) {
         EXPECT_TRUE(workflow(QString::fromLatin1(yaml)).workflows.isEmpty()) << yaml;
     }
+}
+
+// ---- ANTS-6409: the jobs calls run a few at a time --------------------------
+
+// Eight runs whose jobs calls each take half a second are read in well under
+// the four seconds one call after another would take, and none is lost.
+TEST(McpCiReport, Ants6409JobsCallsRunInParallel) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    QJsonArray runs;
+    for (int id = 1; id <= 8; ++id) {
+        runs.append(runRow(id, "s", "push", "success", now.addSecs(-600 * id)));
+        const QString page = QStringLiteral("repos_o_r_actions_runs_%1_attempts_1_jobs_per_page_100").arg(id);
+        gh.put(page, QJsonDocument(QJsonObject{{"total_count", 1},
+                                               {"jobs", QJsonArray{jobRow(100 + id, "Leg", "success", now)}}})
+                         .toJson());
+        gh.put(page + QStringLiteral(".delay"), "0.5");
+    }
+    gh.put(QStringLiteral("runs.json"), QJsonDocument(runs).toJson());
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    QElapsedTimer t;
+    t.start();
+    const CiHistory::Result r = CiHistory::fetch(p.root, o, {});
+    const qint64 ms = t.elapsed();
+    EXPECT_TRUE(r.fetchErrors.isEmpty()) << dump(r.fetchErrors);
+    EXPECT_EQ(r.history.value("jobs").toObject().size(), 8);
+    EXPECT_LT(ms, 2500) << "serial jobs calls take at least 4000 ms here";
 }

@@ -70,6 +70,9 @@ for security-relevant changes.
 
 ### Changed
 
+- **ci_report asks GitHub for up to four runs' jobs at once** (ANTS-6409)
+  Reading a month of CI runs takes about a quarter of the time it did.
+
 - **ci_report reads a workflow value written across several lines** (ANTS-6410)
   A long `if:` condition, or a flow list such as `runs-on: [a,` wrapped
   onto the next line, no longer makes the whole workflow file unread.

@@ -13,7 +13,9 @@
 #include <QSet>
 
 #include <algorithm>
+#include <memory>
 #include <optional>
+#include <vector>
 
 namespace CiHistory {
 
@@ -23,6 +25,9 @@ constexpr int kStartMs = 5000;
 constexpr int kTailChars = 2000;
 constexpr int kErrBytes = 16 * 1024;  // stderr kept per call; its tail is all that is read
 constexpr int kMaxJobPages = 10;   // 1 000 jobs a run attempt
+// Jobs calls in flight at once. Each takes most of a second, nearly all of
+// it waiting on GitHub; four stay far inside GitHub's concurrency limit.
+constexpr int kJobsWidth = 4;
 
 struct Call {
     bool started = false;
@@ -53,53 +58,97 @@ public:
     // maxBytes/2 bytes and drops the middle: a job log's cache line is near
     // its start and ctest's failure list at its end.
     Call run(const QStringList &args, qint64 maxBytes = -1) {
-        ++m_calls;
-        Call c;
+        Running r(maxBytes);
+        start(r, args);
+        while (r.c.started && !pump(r, 100)) {}
+        return finish(r);
+    }
+
+    // Several `gh args` calls at once, each with its own time limit; the
+    // calls come back in the order given.
+    QList<Call> runAll(const QList<QStringList> &argsList) {
+        std::vector<std::unique_ptr<Running>> rs;
+        for (const QStringList &args : argsList) {
+            rs.push_back(std::make_unique<Running>(-1));
+            start(*rs.back(), args);
+        }
+        for (bool done = false; !done;) {
+            done = true;
+            for (const auto &r : rs)
+                if (r->c.started && !pump(*r, 10)) done = false;
+        }
+        QList<Call> out;
+        for (const auto &r : rs) out.append(finish(*r));
+        return out;
+    }
+
+private:
+    // One call in flight.
+    struct Running {
+        explicit Running(qint64 maxBytes) : maxBytes(maxBytes) {}
         QProcess p;
-        p.setWorkingDirectory(m_root);
+        Call c;
+        QElapsedTimer t;
+        qint64 budget = 0;
+        qint64 maxBytes;
+        QByteArray tail;
+        bool cut = false;
+    };
+
+    void start(Running &r, const QStringList &args) {
+        ++m_calls;
+        r.p.setWorkingDirectory(m_root);
         QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
         env.insert(QStringLiteral("GH_PROMPT_DISABLED"), QStringLiteral("1"));
         env.insert(QStringLiteral("GH_NO_UPDATE_NOTIFIER"), QStringLiteral("1"));
         env.insert(QStringLiteral("NO_COLOR"), QStringLiteral("1"));
-        p.setProcessEnvironment(env);
+        r.p.setProcessEnvironment(env);
         // The start wait counts against the call's own limit and the deadline.
-        const qint64 budget = std::min<qint64>(m_opts.perCallMs,
-                                               m_opts.deadlineMs - m_clock.elapsed());
-        QElapsedTimer t;
-        t.start();
-        HostExec::start(p, QStringLiteral("gh"), args);
-        if (!p.waitForStarted(int(std::clamp<qint64>(budget, 1, kStartMs)))) return c;
-        c.started = true;
-        bool killed = false, cut = false;
-        QByteArray tail;
-        const qint64 half = maxBytes / 2;
-        auto take = [&] {
-            QByteArray chunk = p.readAllStandardOutput();
-            c.err += p.readAllStandardError();
-            if (c.err.size() > kErrBytes) c.err = c.err.right(kErrBytes);
-            if (maxBytes <= 0) { c.out += chunk; return; }
-            if (c.out.size() < half) {
-                const qint64 n = std::min<qint64>(half - c.out.size(), chunk.size());
-                c.out += chunk.left(n);
-                chunk.remove(0, n);
-            }
-            tail += chunk;
-            if (tail.size() > half) { tail = tail.right(half); cut = true; }
-        };
-        while (p.state() != QProcess::NotRunning) {
-            const qint64 left = budget - t.elapsed();
-            if (left <= 0) { killed = true; break; }
-            p.waitForFinished(int(std::min<qint64>(left, 100)));
-            take();
-        }
-        if (killed) { p.kill(); p.waitForFinished(1000); c.timedOut = true; }
-        take();
-        c.out += cut ? QByteArray("\n[ci_report: middle of the log not kept]\n") + tail : tail;
-        if (!killed && p.exitStatus() == QProcess::NormalExit) c.exitCode = p.exitCode();
-        return c;
+        r.budget = std::min<qint64>(m_opts.perCallMs, m_opts.deadlineMs - m_clock.elapsed());
+        r.t.start();
+        HostExec::start(r.p, QStringLiteral("gh"), args);
+        r.c.started = r.p.waitForStarted(int(std::clamp<qint64>(r.budget, 1, kStartMs)));
     }
 
-private:
+    // Waits up to `waitMs` and keeps what the call wrote; kills it at its
+    // time limit. True once it has ended.
+    static bool pump(Running &r, int waitMs) {
+        if (r.p.state() != QProcess::NotRunning) {
+            const qint64 left = r.budget - r.t.elapsed();
+            if (left <= 0) {
+                r.p.kill();
+                r.p.waitForFinished(1000);
+                r.c.timedOut = true;
+            } else {
+                r.p.waitForFinished(int(std::min<qint64>(left, waitMs)));
+            }
+        }
+        take(r);
+        return r.p.state() == QProcess::NotRunning;
+    }
+
+    static void take(Running &r) {
+        QByteArray chunk = r.p.readAllStandardOutput();
+        r.c.err += r.p.readAllStandardError();
+        if (r.c.err.size() > kErrBytes) r.c.err = r.c.err.right(kErrBytes);
+        if (r.maxBytes <= 0) { r.c.out += chunk; return; }
+        const qint64 half = r.maxBytes / 2;
+        if (r.c.out.size() < half) {
+            const qint64 n = std::min<qint64>(half - r.c.out.size(), chunk.size());
+            r.c.out += chunk.left(n);
+            chunk.remove(0, n);
+        }
+        r.tail += chunk;
+        if (r.tail.size() > half) { r.tail = r.tail.right(half); r.cut = true; }
+    }
+
+    static Call finish(Running &r) {
+        if (!r.c.started) return r.c;
+        r.c.out += r.cut ? QByteArray("\n[ci_report: middle of the log not kept]\n") + r.tail : r.tail;
+        if (!r.c.timedOut && r.p.exitStatus() == QProcess::NormalExit) r.c.exitCode = r.p.exitCode();
+        return r.c;
+    }
+
     QString m_root;
     Options m_opts;
     QElapsedTimer m_clock;
@@ -159,19 +208,37 @@ public:
     Fetcher(Session &s, Result &res, const Options &opts)
         : m_s(s), m_res(res), m_opts(opts), m_api(QStringLiteral("repos/") + res.repo) {}
 
-    // Jobs, per run and per attempt, newest run first. Stops with the
-    // reserve left, so the calls after it still run (spec § 4.5).
+    // Jobs, per run and per attempt, newest run first, kJobsWidth first
+    // pages at a time. Stops with the reserve left, so the calls after it
+    // still run (spec § 4.5).
     QJsonObject jobs(const QJsonArray &runs) {
-        QJsonObject jobs;
+        QList<QPair<qint64, int>> todo;   // run id, attempt
         for (const QJsonValue &v : runs) {
             const QJsonObject r = v.toObject();
             if (!completed(r)) continue;
-            for (int a = 1; a <= attemptOf(r); ++a) {
+            for (int a = 1; a <= attemptOf(r); ++a) todo.append({runIdOf(r), a});
+        }
+        QJsonObject jobs;
+        bool stopped = false;
+        for (qsizetype i = 0; i < todo.size() && !stopped; i += kJobsWidth) {
+            QList<QStringList> batch;
+            for (qsizetype j = i; j < todo.size() && j < i + kJobsWidth; ++j) {
+                // Each call in the batch is counted against the reserve.
+                if (m_s.spent(&m_res.truncatedReason, m_opts.reserveCalls + int(batch.size()),
+                              m_opts.reserveMs)) {
+                    stopped = true;
+                    break;
+                }
+                batch.append(apiArgs(jobsPath(todo[j].first, todo[j].second)));
+            }
+            const QList<Call> firsts = m_s.runAll(batch);
+            for (qsizetype k = 0; k < firsts.size(); ++k) {
+                const auto [runId, a] = todo[i + k];
                 QJsonObject reply;
-                switch (attempt(runIdOf(r), a, &reply)) {
-                case Attempt::Stopped: return jobs;
+                switch (attempt(runId, a, batch[k], firsts[k], &reply)) {
+                case Attempt::Stopped: stopped = true; break;
                 case Attempt::Unknown: m_res.jobsComplete = false; break;
-                case Attempt::Read: jobs[jobsKey(runIdOf(r), a)] = reply; break;
+                case Attempt::Read: jobs[jobsKey(runId, a)] = reply; break;
                 }
             }
         }
@@ -226,26 +293,40 @@ private:
         return run.value(QStringLiteral("status")).toString() == QLatin1String("completed");
     }
 
-    // One `gh api` call; a failure is noted in fetch_errors.
-    std::optional<QByteArray> get(const QString &path, qint64 maxBytes = -1) {
+    static QStringList apiArgs(const QString &path) {
         QStringList args{QStringLiteral("api"), path};
         // gh refuses to print a job log holding terminal escape codes without it.
         if (path.endsWith(QLatin1String("/logs"))) args << QStringLiteral("--allow-escape-sequences");
-        const Call c = m_s.run(args, maxBytes);
+        return args;
+    }
+
+    // A finished call's output; a failure is noted in fetch_errors.
+    std::optional<QByteArray> output(const QStringList &args, const Call &c) {
         if (c.started && c.exitCode == 0) return c.out;
         noteError(m_res, args, c);
         return std::nullopt;
     }
 
+    // One `gh api` call.
+    std::optional<QByteArray> get(const QString &path, qint64 maxBytes = -1) {
+        const QStringList args = apiArgs(path);
+        return output(args, m_s.run(args, maxBytes));
+    }
+
+    QString jobsPath(qint64 runId, int attemptNo) const {
+        return m_api + QStringLiteral("/actions/runs/%1/attempts/%2/jobs?per_page=100")
+                           .arg(runId).arg(attemptNo);
+    }
+
     // One run attempt's jobs, every page or none: a run read without its
-    // later jobs could read a failed attempt as passed. Unknown when a call
-    // failed or the pages ran out short; Stopped when a limit's reserve is
-    // reached, which names it in truncated_reason.
-    Attempt attempt(qint64 runId, int attemptNo, QJsonObject *reply) {
-        if (spentJobs()) return Attempt::Stopped;
-        const QString path = m_api + QStringLiteral("/actions/runs/%1/attempts/%2/jobs?per_page=100")
-                                         .arg(runId).arg(attemptNo);
-        const auto body = get(path);
+    // later jobs could read a failed attempt as passed. `first` is the call
+    // `firstArgs` made for page 1; later pages are fetched here. Unknown
+    // when a call failed or the pages ran out short; Stopped when a limit's
+    // reserve is reached, which names it in truncated_reason.
+    Attempt attempt(qint64 runId, int attemptNo, const QStringList &firstArgs, const Call &first,
+                    QJsonObject *reply) {
+        const QString path = jobsPath(runId, attemptNo);
+        const auto body = output(firstArgs, first);
         if (!body) return Attempt::Unknown;
         *reply = QJsonDocument::fromJson(*body).object();
         QJsonArray all = reply->value(QStringLiteral("jobs")).toArray();
