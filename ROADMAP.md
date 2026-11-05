@@ -72840,7 +72840,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   shipped under ANTS-4642, which the CHANGELOG already cites. A second
   bullet would report one change twice.
 
-- 💭 [ANTS-3679] **Extract the tools/list payload from onMcpConnection into an accessor.**
+- 🚫 [ANTS-3679] **Extract the tools/list payload from onMcpConnection into an accessor.**
   The whole `tools/list` schema — ~74 verbs, each with its name,
   description, selection_hint and inputSchema — is constructed inline
   inside `ClaudeIntegration::onMcpConnection`, an ~8,000-line handler.
@@ -72892,6 +72892,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   shipped or deleted: the idea is sound and cheap to revive if a real
   caller ever needs the payload separately. Do not treat this as work
   outstanding.
+  Dropped 2026-11-05 (session 217): closes the 2026-09-07 'do not treat
+  this as work outstanding' ruling above, so it leaves the open queue.
 
 - ✅ [ANTS-3681] **Replace fixed-byte source-scrape windows with structural bounds.**
   Source-scrape tests bound their search region with a byte count —
@@ -78300,7 +78302,7 @@ against current source before filing.
   Kind: doc-fix.
   Source: in-session-2026-08-08 (surfaced by the first real roadmap_migrate run).
 
-- 📋 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
+- 💭 [ANTS-4073] **A pre-1.0 project using phase blocks can never rotate its roadmap.**
   Filed from the same loop-3 tail. `roadmap-format.md` § 3.2 tells a pre-1.0
   project to head its blocks `## P01 — Bootstrap` "since there's no real
   version to anchor to yet", but § 3.9 rotates only what sits under a
@@ -78539,6 +78541,9 @@ against current source before filing.
   isPlaceableSourcePath, planFrom's prefix, the render split) only when
   a phase-only roadmap appears. The § 3.2 version-default edit landed in
   b26bea58 and passed its gate's loop 1 (loop log row 16).
+  Parked 2026-11-05 (session 217) on the user's 2026-10-10 decision
+  above: the doc half landed (b26bea58); the migration half waits until
+  a phase-only roadmap appears.
 
 - ✅ [ANTS-4074] **`archiveNameRx()`'s "deliberately tighter" comment is stale — the standard now matches it exactly.**
   `src/roadmapmigrate.cpp:755` reads "The directory and the descending sort are
@@ -103936,7 +103941,7 @@ contributors don't duplicate research.
   Kind: feature.
   Source: user-request-2026-08-06.
 
-- 📋 [ANTS-4120] **One generated-file predicate, not three.**
+- ✅ [ANTS-4120] **One generated-file predicate, not three.**
   `AuditDialog::isGeneratedFile` (Widgets-linked, also carries
   audit-artifact rules), `findsources.cpp`'s inline `.pb.h` /
   `_generated.*` test, and now `indiereviewengine.cpp`'s
@@ -103958,6 +103963,11 @@ contributors don't duplicate research.
   ants_mcpcore_lib); indiereviewengine now uses it. auditdialog
   (Widgets-linked, with audit-artifact rules) and findsources still keep
   their own copies.
+  Shipped 2026-11-05 (session 217, 19d9790c). findsources.cpp and
+  AuditDialog::isGeneratedFile call CodeWalk::isGeneratedSource for the
+  file-name half; the audit dialog keeps its path and audit-artifact
+  rules. Test: McpFindSources.Ants4120SkipsEveryGeneratedSourceShape,
+  red before.
   **Layman:** Three parts of the app each keep their own list of "files a machine wrote"; they disagree, and one of those disagreements was a bug.
   Kind: refactor.
   Source: in-session-2026-08-12.

@@ -60,6 +60,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`find_sources` and the audit dialog skip generated files by one shared list, which now includes shader and font byte-array headers** (ANTS-4120)
+
 - **The shared MCP feedback files now live in the roadmap store. Two sessions filing at once both land, and each file stays on disk as a read-only copy.** (ANTS-4513)
   `feedback_log` and `feedback_query` take the same arguments as before.
   A file is imported the first time a verb touches it. A file edited by
