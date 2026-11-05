@@ -35,6 +35,7 @@
 //
 // Exit 0 = all assertions hold.
 
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
 #include <gtest/gtest.h>
@@ -426,13 +427,12 @@ int checkBashToolSurfacing() {
 // processes over several poll ticks to observe.
 int checkOrphanScanCadence() {
     QFile trackerFile(QString::fromUtf8(ANTS_SOURCE_DIR "/src/claudetabtracker.cpp"));
-    QFile ciFile(QString::fromUtf8(ANTS_SOURCE_DIR "/src/claudeintegration.cpp"));
-    if (!trackerFile.open(QIODevice::ReadOnly) || !ciFile.open(QIODevice::ReadOnly)) {
+    if (!trackerFile.open(QIODevice::ReadOnly)) {
         std::fprintf(stderr, "[ANTS-5089] FAIL cannot open the tracker or integration source\n");
         return 1;
     }
     const QByteArray tracker = trackerFile.readAll();
-    const QByteArray ci = ciFile.readAll();
+    const QByteArray ci = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     const bool trackerOk =
         tracker.contains("ClaudeIntegration::findClaudeChildPid(entry.shellPid, scanOrphans)") &&
         tracker.contains("entry.claudePid != 0 || entry.orphanScanCountdown <= 0") &&

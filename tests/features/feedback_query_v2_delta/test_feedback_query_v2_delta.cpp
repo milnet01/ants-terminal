@@ -22,8 +22,8 @@
 #include <string>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -92,12 +92,6 @@ bool writeStr(const QString &path, const QString &body) {
     const bool ok = (f.write(u) == u.size());
     f.close();
     return ok;
-}
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
 }
 
 }  // namespace
@@ -458,7 +452,7 @@ TEST(FeedbackV2Delta, FeedbackPendingCountRule) {
 
 // Schema — feedback_query description enumerates the new outputs.
 TEST(FeedbackV2Delta, SchemaDeclaresOutputs) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("format_version"), std::string::npos);
     EXPECT_NE(ci.find("suspected_untagged"), std::string::npos);

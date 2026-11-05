@@ -12,8 +12,8 @@
 
 ANTS_TEST_SCOPE();
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CMAKELISTS_PATH
 #error "SRC_CMAKELISTS_PATH compile definition required"
@@ -49,7 +49,7 @@ std::string between(const std::string &hay, const std::string &from,
 // hand-written extern-declaration header in src/, not a generated one).
 TEST(mcp_build_identity, Inv1IncludesBuildInfo) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "#include \"build_info.h\""),
            "INV-1: claudeintegration.cpp must #include build_info.h");
     EXPECT_EQ(0, expect_failures());
@@ -59,7 +59,7 @@ TEST(mcp_build_identity, Inv1IncludesBuildInfo) {
 // identity fields, each from the matching ANTS_BUILD_* macro.
 TEST(mcp_build_identity, Inv2InitializeServerInfoStamped) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // Scope to the initialize serverInfo construction so we are not
     // fooled by the get_session_info copy below.
     const std::string region =
@@ -85,7 +85,7 @@ TEST(mcp_build_identity, Inv2InitializeServerInfoStamped) {
 // server_build_* keys.
 TEST(mcp_build_identity, Inv3SessionInfoResurfacesIdentity) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string region =
         between(ci, "toolName == \"get_session_info\"", "toolHandled = true;");
     ASSERT_FALSE(region.empty())
@@ -150,7 +150,7 @@ TEST(mcp_build_identity, Inv5SessionOrientStampsServerBuild) {
 // INV-6 (ANTS-2073) — the tool_info catalog branch stamps server_build.
 TEST(mcp_build_identity, Inv6ToolInfoCatalogStampsServerBuild) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string region =
         between(ci, "env[\"category_count\"]", "reqName.isEmpty()");
     ASSERT_FALSE(region.empty())

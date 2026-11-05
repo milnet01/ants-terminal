@@ -28,8 +28,8 @@
 #include "../../_support/srcregex.h"
 #include "../../_support/xdg_guard.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
@@ -64,7 +64,7 @@ using ants_test::srcSearch;
 TEST(McpWorkspaceSearch, WiringContract) {
     expect_reset();
 
-    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpClaudeIntegration();
     const std::string ciHdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
@@ -422,7 +422,7 @@ TEST(McpWorkspaceSearch, WiringContract) {
 TEST(McpWorkspaceSearch, Ants3704ExcludeGlobWiring) {
     expect_reset();
     const std::string rcCpp = ants_test::slurpRemoteControl();
-    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpClaudeIntegration();
 
     expect(contains(rcCpp, "exclude_glob"),
            "INV-3704-1",

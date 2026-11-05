@@ -24,8 +24,8 @@
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -275,7 +275,7 @@ TEST(McpRecentErrors, WiringContract) {
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string mwCpp = ants_test::slurpMainWindow();
-    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpClaudeIntegration();
 
     // INV-9 — declaration + definition.
     expect(contains(rcHdr, "cmdRecentErrors"), "INV-9: declared in remotecontrol.h");

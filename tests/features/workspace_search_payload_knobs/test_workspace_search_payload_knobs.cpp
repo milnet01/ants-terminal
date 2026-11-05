@@ -30,8 +30,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -211,7 +211,7 @@ TEST(workspace_search_payload_knobs, Inv6NoEchoOnError) {
 // INV-7 — tools/list schema enumerates both new args.
 TEST(workspace_search_payload_knobs, Inv7ToolsListEnumerates) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     // Anchor: props["max_match_bytes"] and props["headline_only"]
     // populated in the workspace_search descriptor block.
     expect(contains(cpp, "props[\"max_match_bytes\"]"),
@@ -275,7 +275,7 @@ TEST(workspace_search_payload_knobs, Inv10CountUncappedFilesFromBegin) {
 // ANTS-3537 INV-11 — tools/list schema enumerates count_only.
 TEST(workspace_search_payload_knobs, Inv11CountOnlyInSchema) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "props[\"count_only\"]"),
            "INV-11: props[\"count_only\"] populated in "
            "workspace_search tools/list descriptor");
@@ -342,7 +342,7 @@ TEST(workspace_search_payload_knobs, Inv14FilesOnlyPerFileFromBegin) {
 // ANTS-3549 INV-15 — tools/list schema enumerates files_only.
 TEST(workspace_search_payload_knobs, Inv15FilesOnlyInSchema) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "props[\"files_only\"]"),
            "INV-15: props[\"files_only\"] populated in "
            "workspace_search tools/list descriptor");
@@ -397,7 +397,7 @@ TEST(workspace_search_payload_knobs, Inv18OffsetSkipPlacement) {
 // the workspace-search-unique wsOffsetProp builder).
 TEST(workspace_search_payload_knobs, Inv19OffsetInSchema) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "wsOffsetProp"),
            "INV-19: wsOffsetProp builder present");
     expect(contains(cpp, "props[\"offset\"]      = wsOffsetProp") ||
@@ -430,7 +430,7 @@ TEST(workspace_search_payload_knobs, Inv21ExplicitOptOut) {
     const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "requested <= 0"),
            "INV-21: explicit <= 0 opts out of the clip");
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "mmbProp[\"default\"] = 512"),
            "INV-21: schema advertises default 512");
     expect(contains(ci, "mmbProp[\"minimum\"] = 0"),

@@ -7,8 +7,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
@@ -38,7 +38,7 @@ size_t tokenUsageBlockEnd(const std::string &ci, size_t start) {
 
 // REG-1
 TEST(McpTokenUsageTool, ToolNameInToolsList) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("\"token_usage\""), std::string::npos)
         << "tool name token_usage missing from claudeintegration.cpp";
@@ -73,7 +73,7 @@ TEST(McpTokenUsageTool, CmdMethodDefinedInCpp) {
 
 // REG-5
 TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1284 — token_usage");
     ASSERT_NE(block_start, std::string::npos)
@@ -119,7 +119,7 @@ TEST(McpTokenUsageTool, V2PerCallEntryIncludesWrapAndLatency) {
 // ANTS-1355 REG-V2-3 — dispatch site computes wrapBytes + durUs and
 // passes both to recordCall (5-argument v2 signature).
 TEST(McpTokenUsageTool, V2DispatchSiteWiresFiveArgRecordCall) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     // Locate the `m_tokenUsage.recordCall(` invocation site.
     const auto recordCallPos = ci.find("m_tokenUsage.recordCall(");
@@ -139,7 +139,7 @@ TEST(McpTokenUsageTool, V2DispatchSiteWiresFiveArgRecordCall) {
 
 // ANTS-1355 REG-V2-4 — wrap delta is computed as outBytes - rawBytes.
 TEST(McpTokenUsageTool, V2WrapDeltaComputedAsOutMinusRaw) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("outBytes - rawBytes"), std::string::npos)
         << "wrap_bytes must be computed as outBytes - rawBytes per "
@@ -148,7 +148,7 @@ TEST(McpTokenUsageTool, V2WrapDeltaComputedAsOutMinusRaw) {
 
 // REG-6
 TEST(McpTokenUsageTool, SchemaListsOptionalArgsAndEmptyRequired) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1284 — token_usage");
     ASSERT_NE(block_start, std::string::npos);

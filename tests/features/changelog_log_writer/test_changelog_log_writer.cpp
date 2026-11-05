@@ -967,7 +967,7 @@ TEST(changelog_log_writer, Ants3723BytesWrittenIsDeltaNotWholeFile) {
 // INV-8 — contract + descriptor surface (source-scrape).
 TEST(changelog_log_writer, Inv8ContractAndDescriptor) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string mw = ants_test::slurpMainWindow();
     expect(contains(ci,
         "if (toolName == QStringLiteral(\"changelog_log\"))      return C::Required;"),
@@ -1424,7 +1424,7 @@ TEST(changelog_log_writer, Ants4833ReleaseReportsTheDateItStamped) {
 // the opposite.
 
 TEST(changelog_log_writer, Ants4888SchemaDoesNotCallSummaryIgnored) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
 
     EXPECT_EQ(ci.find("Ignored under add_from_roadmap"), std::string::npos)

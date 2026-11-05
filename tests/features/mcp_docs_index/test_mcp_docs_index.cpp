@@ -292,7 +292,7 @@ TEST(DocsIndex, IdAllStemMatchesCaseSensitive) {
 
 // INV-9/10/11/13 — wiring source-scrapes.
 TEST(DocsIndex, WiringRegistered) {
-    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string mw = ants_test::slurpMainWindow();
     const std::string mp = ants_test::slurpFile(srcPath("src/mcpprojection.cpp"));
     const std::string rc = ants_test::slurpRemoteControl();

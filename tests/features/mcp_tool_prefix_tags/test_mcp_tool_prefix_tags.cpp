@@ -161,7 +161,7 @@ bool descriptionFirstChar(const std::string &ci, const std::string &tool,
 TEST(mcp_tool_prefix_tags, Inv1SessionMemoryIsMcpState) {
     expect_reset();
     const std::string body =
-        extractKindForNameBody(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        extractKindForNameBody(ants_test::slurpClaudeIntegration());
     expect(!body.empty(),
            "INV-1 setup: kindForName lambda located in source");
     expect(contains(body, "\"session_memory\"") &&
@@ -178,7 +178,7 @@ TEST(mcp_tool_prefix_tags, Inv1SessionMemoryIsMcpState) {
 TEST(mcp_tool_prefix_tags, Inv2CallerCwdInfoIsMeta) {
     expect_reset();
     const std::string body =
-        extractKindForNameBody(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        extractKindForNameBody(ants_test::slurpClaudeIntegration());
     expect(!body.empty(),
            "INV-2 setup: kindForName lambda located in source");
     // The meta-bucket block must include caller_cwd_info.
@@ -204,7 +204,7 @@ TEST(mcp_tool_prefix_tags, Inv2CallerCwdInfoIsMeta) {
 TEST(mcp_tool_prefix_tags, Inv3EveryRegisteredToolHasBucket) {
     expect_reset();
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     const std::string mw =
         ants_test::slurpMainWindow();
     const std::string body = extractKindForNameBody(ci);
@@ -266,7 +266,7 @@ TEST(mcp_tool_prefix_tags, Inv3EveryRegisteredToolHasBucket) {
 TEST(mcp_tool_prefix_tags, Inv4NoDescriptionPreBracketed) {
     expect_reset();
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     const std::vector<std::string> names =
         collectAllToolNamesInClaudeIntegration(ci);
     // ANTS-5485 removed twenty verbs, taking the count from 93 to 73.

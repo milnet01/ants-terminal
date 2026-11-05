@@ -553,7 +553,7 @@ TEST(ProjectSettingsVerb, Inv22GitignoredDirsExcluded) {
 // exists to name.
 TEST(ProjectSettingsVerb, Inv20DetectEchoesDeclaration) {
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     EXPECT_TRUE(has(rc, "\"declared\""));
     EXPECT_TRUE(has(rc, "\"declared_missing\""));
@@ -576,7 +576,7 @@ TEST(ProjectSettingsVerb, Inv20DetectEchoesDeclaration) {
 
 TEST(ProjectSettingsVerb, VerbAndRegistrationWiring) {
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string mw = ants_test::slurpMainWindow();
 
     // INV-13 — Required contract registered in callerCwdContractFor(), and

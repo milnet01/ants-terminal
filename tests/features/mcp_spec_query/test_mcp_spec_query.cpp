@@ -24,8 +24,8 @@
 #include <QJsonObject>
 #include <QTemporaryDir>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
@@ -66,7 +66,7 @@ TEST(McpSpecQuery, WiringContract) {
 
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
-    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpClaudeIntegration();
     const std::string mwCpp = ants_test::slurpMainWindow();
 
     // INV-1 — declaration on RemoteControl.

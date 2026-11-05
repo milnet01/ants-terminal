@@ -16,8 +16,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -70,7 +70,7 @@ TEST(ProjectPathTraversalGate, Inv3RejectsNonAbsoluteEncoding) {
 }
 
 TEST(ProjectPathTraversalGate, Inv4And5DiscoverProjectsGates) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string src = ants_test::slurpClaudeIntegration();
     const std::string body =
         memberBody(src, "QList<ClaudeProject> ClaudeIntegration::discoverProjects()");
     ASSERT_FALSE(body.empty())

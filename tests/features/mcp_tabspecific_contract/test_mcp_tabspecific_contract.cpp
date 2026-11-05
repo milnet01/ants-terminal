@@ -12,8 +12,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_SOURCE_DIR
 #error "ANTS_SOURCE_DIR compile definition required"
@@ -40,7 +40,7 @@ TEST(McpTabSpecificContract, Inv1ErrorCodeDocumented) {
 
 // INV-2 — refusal block present in the tools/call dispatch.
 TEST(McpTabSpecificContract, Inv2RefusalBlockPresent) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // ANTS-3681 — the whole tools/call arm of the method dispatch chain,
     // up to the next `} else if (method ==` arm, not a byte window.
@@ -57,7 +57,7 @@ TEST(McpTabSpecificContract, Inv2RefusalBlockPresent) {
 
 // INV-3 — ordering: after caller_cwd_required, before the cache gate.
 TEST(McpTabSpecificContract, Inv3OrderedAfterRequiredBeforeCache) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto reqAt   = cc.find("env[\"code\"]  = QStringLiteral(\"caller_cwd_required\")");
     const auto tabAt   = cc.find("env[\"code\"] = QStringLiteral(\"tab_or_cwd_required\")");
@@ -75,7 +75,7 @@ TEST(McpTabSpecificContract, Inv3OrderedAfterRequiredBeforeCache) {
 
 // INV-4 — tabSpecificAcceptsTabIndex membership.
 TEST(McpTabSpecificContract, Inv4TabRoutingHelperMembership) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // ANTS-3681 — the helper's brace-matched body, not a byte window.
     const std::string body = ants_test::slurpFunctionBody(
@@ -98,7 +98,7 @@ TEST(McpTabSpecificContract, Inv4TabRoutingHelperMembership) {
 
 // INV-8 — refusal sets dispatchResult for the failed-call accumulator.
 TEST(McpTabSpecificContract, Inv8DispatchResultRouted) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     EXPECT_TRUE(has(cc, "dispatchResult = QStringLiteral(\"tab_or_cwd_required\")"))
         << "ANTS-1415 INV-8: refusal must set dispatchResult so "
@@ -107,7 +107,7 @@ TEST(McpTabSpecificContract, Inv8DispatchResultRouted) {
 
 // INV-9 — all six tools still classified TabSpecific (no reclassification).
 TEST(McpTabSpecificContract, Inv9SixToolsStillTabSpecific) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("callerCwdContractFor(const QString &toolName)");
     ASSERT_NE(pos, std::string::npos) << "callerCwdContractFor missing";

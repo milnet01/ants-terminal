@@ -570,6 +570,20 @@ list(JOIN _ants_rc_abs ";" _ants_rc_joined)
 # the one TU this whole item exists to stop the tests reading alone.
 string(REPLACE ";" "\\;" _ants_rc_joined "${_ants_rc_joined}")
 
+# ANTS-1677 — ClaudeIntegration's source list. Entry 1 is
+# src/claudeintegration.cpp; the pieces follow in ascending order of where
+# their text began in it. Tests read the class through
+# ANTS_CLAUDEINTEGRATION_SOURCES, built from this list; shell and Python
+# readers read the src/claudeintegration.cpp src/claudeintegration_*.cpp glob.
+set(ANTS_CLAUDEINTEGRATION_SOURCES_REL
+    src/claudeintegration.cpp
+)
+list(TRANSFORM ANTS_CLAUDEINTEGRATION_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
+     OUTPUT_VARIABLE _ants_claudeintegration_abs)
+list(JOIN _ants_claudeintegration_abs ";" _ants_claudeintegration_joined)
+# Escaped for the reason given beside _ants_rc_joined.
+string(REPLACE ";" "\\;" _ants_claudeintegration_joined "${_ants_claudeintegration_joined}")
+
 # ANTS-4932 § 2.2 — the project-scoped MCP verbs and every engine they call,
 # with no GUI library: ants-mcpd links this, and INV-1 checks its closure.
 # ants_core_lib links it PUBLIC, so every existing consumer keeps it.
@@ -771,8 +785,9 @@ add_library(ants_mcpcore_lib STATIC
     # that QFileSystemWatcher drops.
     src/treewatcher.cpp
     # ANTS-4932 § 2.2 — the MCP request pipeline and the shared registration
-    # list, both window-free; ants-mcpd hosts them whole.
-    src/claudeintegration.cpp
+    # list, both window-free; ants-mcpd hosts them whole. ANTS-1677 — the
+    # library consumes ClaudeIntegration's source list.
+    ${ANTS_CLAUDEINTEGRATION_SOURCES_REL}
     src/mcptoolregistry.cpp
     # ANTS-4932 § 2.5 — ants-mcpd's socket picker, peer checks and forwarder.
     # Here rather than in the executable so a test can call the uid checks.
@@ -3427,7 +3442,7 @@ if(ANTS_TESTS)
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_CLAUDESTATUSWIDGETS_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.cpp"
         SRC_CLAUDESTATUSWIDGETS_H_PATH="${CMAKE_SOURCE_DIR}/src/claudestatuswidgets.h"
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
         SRC_CLAUDE_INTEGRATION_H_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.h"
         # ANTS-4932 § 2.3 — the registration types moved out of
         # claudeintegration.h; ClaudeIntegration keeps aliases for them.
@@ -3864,7 +3879,7 @@ if(ANTS_TESTS)
         # ANTS-1455 — taxonomy doc for new error-code rows.
         MCP_ERROR_CODES_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/standards/mcp-error-codes.md"
         # ANTS-1579 — verify_changes description source-scrape (INV-4).
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp")
+        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\"")
 
     # ANTS-4797 — a per-TEST path define belongs on its own source, not on
     # the bundle. Every define in the block above lands on EVERY TU's command
@@ -4050,7 +4065,7 @@ if(ANTS_TESTS)
         ROADMAPDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/roadmapdialog.cpp"
         # ANTS-1405 — source-scrape against claudeintegration.cpp for the
         # roadmap_query descriptor sentence (INV-9).
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
         SRC_DIR="${CMAKE_SOURCE_DIR}/src"
         MAINWINDOW_H="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
         SRC_RC_HEADER="${CMAKE_SOURCE_DIR}/src/remotecontrol.h"
@@ -4126,6 +4141,7 @@ if(ANTS_TESTS)
             SRC_LUAENGINE_H_PATH="${CMAKE_SOURCE_DIR}/src/luaengine.h"
             SRC_PLUGINMANAGER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/pluginmanager.cpp"
             "ANTS_MAINWINDOW_SOURCES=\"${_ants_mainwindow_joined}\""
+            "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
             ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp")
 
     # ANTS-4797 — a per-TEST path define belongs on its own source, not on
@@ -4285,7 +4301,7 @@ if(ANTS_TESTS)
                 tests/features/ledger_write_safety/test_ledger_write_safety.cpp
                 # ANTS-1735 — model_switch_stats verb: behavioural aggregation +
                 # source-grep wiring contract (uses SRC_RC_HEADER / ANTS_RC_SOURCES /
-                # ANTS_MAINWINDOW_SOURCES / SRC_CLAUDE_INTEGRATION_CPP_PATH defs below).
+                # ANTS_MAINWINDOW_SOURCES / ANTS_CLAUDEINTEGRATION_SOURCES defs below).
                 tests/features/mcp_model_switch_stats/test_mcp_model_switch_stats.cpp
                 # ANTS-1891 — trust-signal v2: inconclusive bucket, regret-folds-
                 # under-route, weighted clean-end, headline floor, quiet-window
@@ -4501,7 +4517,7 @@ if(ANTS_TESTS)
         SRC_CONFIG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/config.cpp"
         SRC_CLAUDEALLOWLIST_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeallowlist.cpp"
         # ANTS-1720 — dispatch-ordering scrape for the fields= projection.
-        SRC_CLAUDE_INTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
         # ANTS-4524 — INV-8 scrapes for the ABSENCE of the retired `fields=`
         # allowlist; a dormant predicate is what the next verb-author reaches for.
         SRC_MCPPROJECTION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcpprojection.cpp"
@@ -4598,7 +4614,7 @@ if(ANTS_TESTS)
     # ANTS-5747 the tracker's detectClaudeChild.
     set_property(SOURCE tests/features/claude_context_meter/test_claude_context_meter.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
-        SRC_CLAUDEINTEGRATION_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudeintegration.cpp"
+        "ANTS_CLAUDEINTEGRATION_SOURCES=\"${_ants_claudeintegration_joined}\""
         SRC_CLAUDETABTRACKER_CPP_PATH="${CMAKE_SOURCE_DIR}/src/claudetabtracker.cpp")
     set_property(SOURCE tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS

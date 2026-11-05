@@ -305,12 +305,12 @@ TEST(RoadmapLogBundleRow, Inv12EnvelopeShape) {
 // missing_field. Every INV above exercises the handler test-seam, which
 // bypasses the schema — hence the gap shipped invisibly. This source-grep
 // locks the schema declaration so the op stays reachable end-to-end.
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 TEST(RoadmapLogBundleRow, Inv13SchemaDeclaresBundleRowParams) {
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     for (const char *key : {"props[\"cells\"]", "props[\"header\"]",
                             "props[\"position\"]", "props[\"sort_col\"]"}) {

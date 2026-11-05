@@ -656,7 +656,7 @@ TEST(CodebaseIndex, NoModuleMapFallbackDigest) {
 
 // INV-8/9/10 — wiring source-scrapes.
 TEST(CodebaseIndex, WiringRegistered) {
-    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string mw = ants_test::slurpMainWindow();
     const std::string mp = ants_test::slurpFile(srcPath("src/mcpprojection.cpp"));
     const std::string rc = ants_test::slurpRemoteControl();

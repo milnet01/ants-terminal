@@ -19,7 +19,7 @@
 #include "../../_support/srcgrep.h"
 
 #if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
-    !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
+    !defined(ANTS_CLAUDEINTEGRATION_SOURCES)
 #error "spec_conformance_verb test needs the test_claude source-path compile defs"
 #endif
 
@@ -52,7 +52,7 @@ QString rel() { return QStringLiteral("docs/specs/x.md"); }
 
 std::string ciSource() {
     return ants_test::stripComments(
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        ants_test::slurpClaudeIntegration());
 }
 
 bool has(const std::string &hay, const char *needle) {

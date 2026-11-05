@@ -325,9 +325,7 @@ TEST(McpProjection, Inv11CompactArgAndDefaultAreSeparate) {
 
 // ANTS-4524 — and the dispatcher must consult the new answer, not the old one.
 TEST(McpProjection, Ants4524DispatchGatesTheDefaultSeparately) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     EXPECT_TRUE(s.contains("mcp::isDefaultCompactTool(toolName)"))
         << "the terseDefault fallback must be gated on the compaction answer, "
            "not on the `fields=` allowlist it used to share";
@@ -361,9 +359,7 @@ TEST(McpProjection, Ants5585LintCallIsNotCompactedByDefault) {
 
 // ...and the dispatcher must consult it, beside the per-verb answer.
 TEST(McpProjection, Ants5585DispatchConsultsTheCallExemption) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     EXPECT_TRUE(s.contains("!mcp::isDefaultCompactExemptCall(toolName, argsObj)"))
         << "the terseDefault fallback must skip a call the exemption names";
 }
@@ -372,9 +368,7 @@ TEST(McpProjection, Ants5585DispatchConsultsTheCallExemption) {
 // applyEtagPattern and before wrapMcpData, and skipped on the etag
 // short-circuit. Source-scrape (the dispatch path is GUI-coupled).
 TEST(McpProjection, Inv9DispatchOrdering) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
 
     const int etag = s.indexOf("applyEtagPattern(");
     const int proj = s.indexOf("mcp::projectFields(");
@@ -412,9 +406,7 @@ TEST(McpProjection, Inv9DispatchOrdering) {
 // for ~150 verbs at once, so the declaration is injected in the tools/list
 // loop rather than hand-written per verb — and asserted here.
 TEST(McpProjection, Inv10SchemaDeclaresFieldsUniversally) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     EXPECT_TRUE(s.contains("auto makeFieldsProp"))
         << "the shared `fields` schema fragment must be defined once";
 
@@ -885,9 +877,7 @@ TEST(McpCompact, Ants2091NonObjectPassthrough) {
 // Dispatch wiring: compactEnvelope runs after fields= projection, gated on
 // the allowlist + the compact arg, and each in-scope tool declares the prop.
 TEST(McpCompact, Ants2091DispatchAndSchemaWiring) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     const int proj = s.indexOf("mcp::projectFields(");
     const int comp = s.indexOf("mcp::compactEnvelope(");
     ASSERT_GT(comp, 0) << "compactEnvelope dispatch call site not found";
@@ -966,9 +956,7 @@ TEST(McpTerseDefault, Ants3532DefaultOnAndOrderedBeforeOffload) {
     // (3) compaction runs BEFORE the offload/spill step: a body that
     // compacts under the spill threshold skips the read_spill round-trip
     // (ANTS-3532's ordering requirement — already satisfied).
-    QFile ci(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(ci.open(QIODevice::ReadOnly));
-    const QByteArray ciSrc = ci.readAll();
+        const QByteArray ciSrc = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     const int comp = ciSrc.indexOf("mcp::compactEnvelope(");
     const int offl = ciSrc.indexOf("mcp::offloadBody(");
     ASSERT_GT(comp, 0) << "compactEnvelope dispatch call site not found";
@@ -1149,9 +1137,7 @@ TEST(McpTabular, Ants2090MissingVsExplicitNull) {
 // asserted BY SYMBOL (never line number): appendReadHints < tabularize <
 // offloadBody, and the encoding:"tabular" guard precedes the tabularize call.
 TEST(McpTabular, Ants2090DispatchOrderingAndGuard) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
 
     const int hints = s.indexOf("mcp::appendReadHints(");
     const int tab   = s.indexOf("mcp::tabularize(");
@@ -1172,9 +1158,7 @@ TEST(McpTabular, Ants2090DispatchOrderingAndGuard) {
 
 // §2.4 — each of the 8 list-shaped read verbs declares the `encoding` prop.
 TEST(McpTabular, Ants2090SchemaDeclaresEncoding) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     EXPECT_TRUE(s.contains("auto makeEncodingProp"))
         << "the shared `encoding` schema fragment must be defined once";
     // One call site per advertised verb: roadmap_query, find_sources,
@@ -1474,9 +1458,7 @@ TEST(McpReadHints, Ants5072SkipDoesNotBurnTheLatch) {
 // field from an absent one. Each registration runs from its name to the
 // `tools.append(` that publishes it.
 TEST(McpCompact, Ants4657EveryCompactArgToolDeclaresIt) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
     for (const char *t : kCompactArgTools) {
         const QByteArray name = QByteArray("[\"name\"] = \"") + t + "\";";
         const int pos = s.indexOf(name);

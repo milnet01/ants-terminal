@@ -182,7 +182,7 @@ TEST(roadmap_query_section_index, Inv8UnrecognisedFormatGate) {
 // Schema — `mode` property advertised on the roadmap_query tool.
 TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "ANTS-1437 — mode arg"),
            "schema: mode property anchor present in claudeintegration");
     expect(contains(cpp, "\"section_index\""),

@@ -21,7 +21,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // across all TESTs instead of re-slurping it per case.
 const std::string &ciSource() {
     static const std::string s =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     return s;
 }
 

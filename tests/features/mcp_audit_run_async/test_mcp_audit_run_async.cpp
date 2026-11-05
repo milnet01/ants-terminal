@@ -19,8 +19,8 @@
 #ifndef ANTS_MAINWINDOW_SOURCES
 #  error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -29,7 +29,7 @@ std::string mainwindowSrc() {
     return ants_test::slurpMainWindow();
 }
 std::string ciSrc() {
-    return ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    return ants_test::slurpClaudeIntegration();
 }
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;

@@ -27,7 +27,7 @@
 #include "../../_support/xdg_guard.h"
 
 #if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
-    !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_SPECLINT_CPP_PATH)
+    !defined(ANTS_CLAUDEINTEGRATION_SOURCES) || !defined(SRC_SPECLINT_CPP_PATH)
 #error "spec_lint_verb test needs the test_claude source-path compile defs"
 #endif
 #if !defined(ANTS_SOURCE_DIR)
@@ -35,12 +35,6 @@
 #endif
 
 namespace {
-
-QString slurp(const char *path) {
-    QFile f(QString::fromUtf8(path));
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
-}
 
 }  // namespace
 
@@ -124,7 +118,7 @@ TEST(SpecLintVerb, Inv7RefusalMinimums) {
                     "registerToolProvider("))
                     .contains(QStringLiteral("CallerCwdContract::Required")));
 
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     const int cc = ci.indexOf(QStringLiteral("toolName == QStringLiteral(\"spec_lint\")"));
     ASSERT_GE(cc, 0);

@@ -21,8 +21,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -333,7 +333,7 @@ TEST(ReadRegionMdSection, WiringContract) {
     const std::string rc =
         ants_test::slurpRemoteControl();
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     expect(contains(rc, "opts.section") &&
            contains(rc, "QStringLiteral(\"section\")"),
            "MD-8a", "cmdReadRegion does not read the section arg");

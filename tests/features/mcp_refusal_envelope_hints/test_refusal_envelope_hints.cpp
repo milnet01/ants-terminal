@@ -31,7 +31,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 TEST(mcp_refusal_envelope_hints,
      Inv1DispatcherEnvelopeHasCallerCwdInfoHint) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // Anchor co-located with the caller_cwd_required envelope build.
     expect(contains(ci, "ANTS-1418"),
            "INV-1: ANTS-1418 anchor present in dispatcher refusal "
@@ -118,7 +118,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv5DispatcherCallerCwdRequiredHasExample) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "ANTS-1543"),
            "INV-5: ANTS-1543 anchor present (the original example-field "
            "introduction; reused for ANTS-1566 sweep)");
@@ -174,7 +174,7 @@ TEST(mcp_refusal_envelope_hints,
 TEST(mcp_refusal_envelope_hints,
      Inv8DispatcherFlagsEmptyArguments) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "ANTS-1853"),
            "INV-8: ANTS-1853 anchor present in the dispatcher gate");
     expect(contains(ci, "argumentsEmpty") &&
@@ -197,7 +197,7 @@ TEST(mcp_refusal_envelope_hints,
 // caller is warned BEFORE it builds an oversized append.
 TEST(mcp_refusal_envelope_hints, Inv9SizeAwareSteer) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "ANTS-1857") || contains(ci, "too large"),
            "INV-9: empty-args steer names the large-payload root cause");
     expect(contains(ci, "Edit tool"),

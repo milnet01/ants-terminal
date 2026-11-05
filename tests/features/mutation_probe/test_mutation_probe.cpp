@@ -13,8 +13,8 @@
 #include <QString>
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
@@ -126,7 +126,7 @@ TEST(MutationProbe, Inv3GuaranteesWired) {
     const std::string rc = ants_test::slurpRemoteControl();
     const std::string mw = ants_test::slurpMainWindow();
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
 
     // Registered, and on the rc delegate — ANTS-2132 dispatches every
     // rc-delegate verb off the GUI thread, so a batch of full test runs
@@ -452,7 +452,7 @@ TEST(MutationProbe, Ants4736DeadlineIsWiredIntoTheMutationLoop) {
     EXPECT_NE(body.find("budget_exhausted"), std::string::npos);
 
     // Discoverable, or it cannot be raised deliberately.
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_NE(ci.find("transport_budget_sec"), std::string::npos);
 }
 
@@ -462,7 +462,7 @@ TEST(MutationProbe, Ants4736DeadlineIsWiredIntoTheMutationLoop) {
 // reach the caller then, so it must say the outcome is unknown, name the file
 // at risk, and say to re-read rather than repair.
 TEST(MutationProbe, Ants4830DescriptionSaysATimeoutIsUnknown) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto start = ci.find("mp[\"name\"] = \"mutation_probe\"");
     ASSERT_NE(start, std::string::npos) << "mutation_probe descriptor not found";
     const auto end = ci.find("mp[\"selection_hint\"]", start);

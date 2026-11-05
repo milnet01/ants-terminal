@@ -36,7 +36,8 @@ struct SplitClass {
 const QList<SplitClass> kClasses = {
     {QStringLiteral("auditdialog"),       QStringLiteral("ants_audit_dialog_lib")},
     {QStringLiteral("mainwindow"),        QStringLiteral("ants_chrome_lib")},
-    {QStringLiteral("claudeintegration"), QStringLiteral("ants_claude_lib")},
+    // ANTS-4932 moved the class into ants_mcpcore_lib, which ants-mcpd links.
+    {QStringLiteral("claudeintegration"), QStringLiteral("ants_mcpcore_lib")},
 };
 
 // INV-9's classes. The last cut commit of a class's last item adds its stem.

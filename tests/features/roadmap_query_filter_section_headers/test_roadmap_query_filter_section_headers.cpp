@@ -68,7 +68,7 @@ TEST(roadmap_query_filter_section_headers, Inv3bSectionPathFilters) {
 // INV-4 — schema property advertised on the roadmap_query tool.
 TEST(roadmap_query_filter_section_headers, Inv4SchemaPropertyAdded) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // The roadmap_query descriptor must list the new opt-in flag.
     //
     // ANTS-3720 — this was a fixed-byte window from the tool name, widened

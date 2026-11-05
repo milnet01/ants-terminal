@@ -174,7 +174,7 @@ TEST(session_memory_read_caller_cwd, Inv5ProjectLayoutSamePattern) {
 // registry.
 TEST(session_memory_read_caller_cwd, Inv6ContractRegistryEntry) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "ANTS-1435 — session_memory"),
            "INV-6: session_memory anchor in callerCwdContractFor");
     expect(contains(cpp,

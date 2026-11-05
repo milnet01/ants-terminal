@@ -13,8 +13,8 @@
 #include "../../_support/srcgrep.h"
 #include "../../_support/srcregex.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
@@ -92,7 +92,7 @@ TEST(McpProviderRegistry, Inv4ExplicitMapInclude) {
 
 TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const char *outwardRe =
         R"((?:else )?if\s*\(\s*toolName\s*==\s*"[^"]+"\s*&&\s*m_\w+Provider\s*\))";
     const size_t outward = countMatches(cpp, outwardRe);
@@ -113,7 +113,7 @@ TEST(McpProviderRegistry, Inv5DispatcherCollapsed) {
 
 TEST(McpProviderRegistry, Inv6RegistryReferencedFromDispatch) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const char *reg = R"(\bm_toolProviders\b)";
     const size_t n = countMatches(cpp, reg);
     expect(n >= 2, "INV-6",
@@ -150,7 +150,7 @@ TEST(McpProviderRegistry, Inv8SchemaMatchesRegistry) {
     // must have a matching registerToolProvider("<name>", …) call
     // in mainwindow.cpp, mcptoolregistry.cpp or, for the verbs only
     // ants-mcpd serves (ANTS-5734 § 2.8), src/trace/traceverb.cpp.
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string mw = ants_test::slurpMainWindow() +
                            ants_test::slurpFile(SRC_TRACE_VERB_CPP_PATH);
     // Custom raw-string delimiter ("rx") because the regex literal
@@ -207,7 +207,7 @@ TEST(McpProviderRegistry, Inv10SessionInfoCarveoutPreserved) {
     expect_reset();
     // get_session_info is the lone inline branch — it reads
     // ClaudeIntegration's own private state, so it has no provider.
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const size_t pos = cpp.find("toolName == \"get_session_info\"");
     expect(pos != std::string::npos, "INV-10a",
            "claudeintegration.cpp missing get_session_info inline branch");

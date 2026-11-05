@@ -133,7 +133,7 @@ TEST(roadmap_query_external_project_ids, Inv8FirstMatchWins) {
 // src/claudeintegration.cpp for the descriptor anchor.
 TEST(roadmap_query_external_project_ids, Inv9DescriptorCitesStandard) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(cpp.find("roadmap-format.md") != std::string::npos,
            "INV-9: descriptor cites roadmap-format.md");
     expect(cpp.find("[PROJ-NNNN]") != std::string::npos,

@@ -12,8 +12,8 @@
 #include <cstdio>
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 #ifndef ANTS_MAINWINDOW_SOURCES
@@ -39,7 +39,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // the whole response.
 TEST(McpToolsListSchema, EmptySchemaTypeDeclared) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     expect(contains(ci, "emptySchema[\"type\"] = \"object\""),
            "INV-3",
@@ -53,7 +53,7 @@ TEST(McpToolsListSchema, EmptySchemaTypeDeclared) {
 // One assertion per tool so the failure message names the offending tool.
 TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     // Pattern: <toolVar>["inputSchema"] = <something>;
     // The pre-fix code had no such assignments for these tools. INV-2
@@ -103,7 +103,7 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
 // and "tools.append(" calls — they must be equal.
 TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     // Locate the tools/list block.
     const std::string kStart = "\"tools/list\"";

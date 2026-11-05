@@ -11,8 +11,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -134,7 +134,7 @@ TEST(roadmap_query_headline_only, Inv3CombinatorIdParity) {
 // payload bytes → different etag hash).
 TEST(roadmap_query_headline_only, Inv4SameModeShortCircuit) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "isEtagSupportedTool"),
            "INV-4: etag allowlist gate present");
     expect(contains(cpp, "\"roadmap_query\""),
@@ -144,7 +144,7 @@ TEST(roadmap_query_headline_only, Inv4SameModeShortCircuit) {
 
 TEST(roadmap_query_headline_only, Inv4CrossModeNoShortCircuit) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     // applyEtagPattern hashes responseText — different mode → different
     // payload bytes → different etag → no 304. No code change required;
     // the etag wiring is mode-agnostic by hash.
@@ -246,7 +246,7 @@ TEST(roadmap_query_headline_only, Inv6PaginationOnProjectedSet) {
 // INV-7 — tools/list schema enumerates the third value.
 TEST(roadmap_query_headline_only, Inv7ToolsListEnumerates) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     // The anchor must be the modeEnum.append("headline_only") site
     // (the descriptor's enum population), NOT the descriptor's
     // prose `description` string (which may also contain the literal

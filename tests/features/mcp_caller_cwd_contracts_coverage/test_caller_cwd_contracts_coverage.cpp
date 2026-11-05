@@ -55,7 +55,7 @@ TEST(mcp_caller_cwd_contracts_coverage,
      Inv1EveryRegisteredToolClassified) {
     expect_reset();
     const std::string mw = ants_test::slurpMainWindow();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     const auto registered = registeredToolNames(mw);
     const auto classified = classifiedToolNames(ci);
@@ -100,7 +100,7 @@ TEST(mcp_caller_cwd_contracts_coverage,
 TEST(mcp_caller_cwd_contracts_coverage,
      Inv2InlineDispatchedToolsStillClassified) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto classified = classifiedToolNames(ci);
 
     expect(classified.find("get_session_info") != classified.end(),

@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include "../../_support/srcgrep.h"
 #include "roadmapstore.h"
 #include "../../_support/roadmapstoreaccess.h"
 
@@ -653,7 +654,7 @@ static QString codeOnly(const QString &src) {
 // tools.append(t) so a property declared for a NEIGHBOURING verb cannot be
 // mistaken for one of ours.
 static QString sessionMessageToolBlock() {
-    const QString all = readSrc("claudeintegration.cpp");
+    const QString all = QString::fromStdString(ants_test::slurpClaudeIntegration());
     const int start = all.indexOf(QStringLiteral("t[\"name\"] = \"session_message\";"));
     if (start < 0)
         return QString();

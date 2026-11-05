@@ -62,7 +62,7 @@ TEST(roadmap_query_narrator_filter, Inv3SingleDropHelper) {
 // INV-4 — schema advertises the new property.
 TEST(roadmap_query_narrator_filter, Inv4SchemaAdvertises) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "include_narrator_bullets"),
            "INV-4: claudeintegration's tools/list descriptor "
            "advertises include_narrator_bullets");

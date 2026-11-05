@@ -457,7 +457,7 @@ TEST(roadmap_log_flip_batch, Inv8DryRunWritesNothing) {
 TEST(roadmap_log_flip_batch, SourceSurface) {
     expect_reset();
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     expect(contains(rc, "cmdRoadmapLogFlipBatch(req)"),
            "dispatch routes op:flip_batch to the handler");

@@ -7,8 +7,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
@@ -27,7 +27,7 @@ namespace {
 
 // REG-1
 TEST(McpVerifyChangesTool, ToolNameInToolsList) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("\"verify_changes\""), std::string::npos)
         << "tool name verify_changes missing from claudeintegration.cpp";
@@ -88,7 +88,7 @@ size_t verifyChangesBlockEnd(const std::string &ci, size_t start) {
 }  // namespace
 
 TEST(McpVerifyChangesTool, SchemaSetsAdditionalPropertiesFalse) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1289");
     ASSERT_NE(block_start, std::string::npos)
@@ -109,7 +109,7 @@ TEST(McpVerifyChangesTool, SchemaSetsAdditionalPropertiesFalse) {
 }
 
 TEST(McpVerifyChangesTool, SchemaListsOptionalArgs) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("// ANTS-1289");
     ASSERT_NE(block_start, std::string::npos);

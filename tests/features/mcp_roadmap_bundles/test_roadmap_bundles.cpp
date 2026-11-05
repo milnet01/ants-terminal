@@ -444,7 +444,7 @@ TEST(mcp_roadmap_bundles, Inv7Inv8BranchWiring) {
 // Schema — "bundles" advertised on the roadmap_query mode enum.
 TEST(mcp_roadmap_bundles, SchemaBundlesEnum) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "modeEnum.append(\"bundles\")"),
            "schema: bundles value in the mode enum");
     EXPECT_EQ(0, expect_failures());

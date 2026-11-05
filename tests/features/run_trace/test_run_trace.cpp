@@ -499,7 +499,7 @@ TEST(RunTrace, RegisteredRequiredWithStrictSchema) {
     };
     // ANTS-4932 § 2.3 — project-scoped verbs are registered in the shared list.
     const std::string mw = slurp("/mcptoolregistry.cpp");
-    const std::string ci = slurp("/claudeintegration.cpp");
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(mw.empty());
     ASSERT_FALSE(ci.empty());
     // The registration statement, up to its terminating `;`.

@@ -11,8 +11,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -55,7 +55,7 @@ std::string joinAdjacentLiterals(const std::string &in) {
 }  // namespace
 
 TEST(CallerCwdSchemaTruth, Main) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string src = ants_test::slurpClaudeIntegration();
     const std::string region = joinAdjacentLiterals(sharedPropRegion(src));
     ASSERT_FALSE(region.empty())
         << "precondition: the makeCallerCwdReadProp helper and its comment "

@@ -37,7 +37,7 @@ static int runMain() {
     const std::string rcSrc = ants_test::slurpRemoteControl();
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string ciSrc =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);   // ANTS-3698
+        ants_test::slurpClaudeIntegration();   // ANTS-3698
     if (rcSrc.empty()) fail("INV-7", "remotecontrol.cpp not readable");
     if (rcHdr.empty()) fail("INV-7", "remotecontrol.h not readable");
 

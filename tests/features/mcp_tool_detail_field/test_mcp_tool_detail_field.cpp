@@ -29,7 +29,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 
 const std::string &ciSource() {
     static const std::string s =
-        slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     return s;
 }
 

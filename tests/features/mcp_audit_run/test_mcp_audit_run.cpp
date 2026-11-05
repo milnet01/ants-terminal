@@ -62,7 +62,7 @@ TEST(mcp_audit_run, Inv2PathValidationCanonical) {
 // INV-3 — Required contract.
 TEST(mcp_audit_run, Inv3RequiredContract) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "QStringLiteral(\"audit_run\"))          return C::Required"),
            "INV-3: audit_run classified Required");
     EXPECT_EQ(0, expect_failures());
@@ -121,7 +121,7 @@ TEST(mcp_audit_run, Inv9bReapWindowsDeriveFromAggregateCap) {
 // a test, so this is a source scrape.
 TEST(mcp_audit_run, Inv9cReapersUseTheMonotonicClock) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const std::string acquire = ants_test::slurpFunctionBody(
         cpp, "ClaudeIntegration::verbInFlightTryAcquire(");
     const std::string reg = ants_test::slurpFunctionBody(
@@ -227,7 +227,7 @@ TEST(mcp_audit_run, Inv16CapRanges) {
 // Schema — descriptor block registered with audit_run name.
 TEST(mcp_audit_run, SchemaDescriptorRegistered) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "t[\"name\"] = \"audit_run\""),
            "schema: audit_run descriptor present");
     expect(contains(cpp, "ANTS-1351 — audit_run"),
@@ -284,7 +284,7 @@ TEST(mcp_audit_run, Ants1456SarifConfigWarningProperty) {
 // ANTS-1456 AR-6 — audit_run descriptor surfaces scope:"auto" semantics.
 TEST(mcp_audit_run, Ants1456ScopeDescriptorClarified) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // Locate the audit_run descriptor block by anchoring on its name.
     const auto pos = ci.find("t[\"name\"] = \"audit_run\"");
     ASSERT_NE(pos, std::string::npos);
@@ -532,7 +532,7 @@ TEST(mcp_audit_run, Ants2182ToolArgvUsesCompileDb) {
 // last_audit_summary (the run still completes server-side).
 TEST(mcp_audit_run, Ants2183TransportCapDocumented) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto pos = ci.find("t[\"name\"] = \"audit_run\"");
     ASSERT_NE(pos, std::string::npos);
     const auto blockEnd = ci.find("tools.append(t);", pos);

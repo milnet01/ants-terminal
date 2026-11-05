@@ -436,7 +436,7 @@ TEST(roadmap_log_amend_body, Ants3467FoundOutsideBodyHint) {
 TEST(roadmap_log_amend_body, Inv8Inv9SourceSurface) {
     expect_reset();
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     expect(contains(rc, "int amendBodyExact("),
            "INV-1: shared amendBodyExact helper present");

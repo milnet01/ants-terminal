@@ -22,8 +22,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -105,7 +105,7 @@ TEST(WorkspaceSearchEnclosing, WiringContract) {
         ants_test::slurpRemoteControl();
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string ciCpp =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
 
     // WI-1 — handler reads the arg, scans via FileOutline::compute, resolves
     // through the helper, and writes the `enclosing` field.

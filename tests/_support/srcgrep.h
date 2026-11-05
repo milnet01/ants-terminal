@@ -108,6 +108,15 @@ inline std::string slurpMainWindow() {
 }
 #endif
 
+// ANTS-1677 — the ClaudeIntegration class's text: every file of
+// ANTS_CLAUDEINTEGRATION_SOURCES, the list CMake builds from
+// ANTS_CLAUDEINTEGRATION_SOURCES_REL. Guarded for the reason slurpRemoteControl is.
+#if defined(ANTS_CLAUDEINTEGRATION_SOURCES)
+inline std::string slurpClaudeIntegration() {
+    return slurpSourceList(ANTS_CLAUDEINTEGRATION_SOURCES);
+}
+#endif
+
 // Return the body of the function whose signature starts with the
 // `signatureAnchor` substring (e.g. "RemoteControl::cmdGetText"). The
 // scan finds the first '{' at or after the anchor, then walks forward

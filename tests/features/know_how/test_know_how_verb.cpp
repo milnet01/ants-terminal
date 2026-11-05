@@ -4,6 +4,7 @@
 // Every store is a throwaway: XdgGuard points XDG_DATA_HOME into the
 // QTemporaryDir before anything resolves a default path.
 
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
 #include "knowhowstore.h"
@@ -103,7 +104,7 @@ QString readSource(const char *rel) {
 }
 
 QString toolBlock() {
-    const QString all = readSource("src/claudeintegration.cpp");
+    const QString all = QString::fromStdString(ants_test::slurpClaudeIntegration());
     const int start = all.indexOf(QStringLiteral("t[\"name\"] = \"know_how\";"));
     const int end = start < 0 ? -1 : all.indexOf(QStringLiteral("tools.append(t);"), start);
     return end < 0 ? QString() : all.mid(start, end - start);
@@ -262,5 +263,5 @@ TEST(KnowHowVerb, SchemaDeclaresEveryArgumentRead) {
     const int reg = registry.indexOf(QStringLiteral("registerToolProvider(\"know_how\""));
     ASSERT_GE(reg, 0);
     EXPECT_LT(registry.indexOf(QStringLiteral("registerProjectScopedVerbs")), reg);
-    EXPECT_TRUE(readSource("src/claudeintegration.cpp").contains(QStringLiteral("toolName == QStringLiteral(\"know_how\")")));
+    EXPECT_TRUE(QString::fromStdString(ants_test::slurpClaudeIntegration()).contains(QStringLiteral("toolName == QStringLiteral(\"know_how\")")));
 }

@@ -29,7 +29,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // inherit the audit trail automatically.
 TEST(mcp_dispatch_debug_log, Inv1LambdaEntryWrapper) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto pos = ci.find(
         "ClaudeIntegration::registerToolProvider(");
     ASSERT_NE(pos, std::string::npos)
@@ -56,7 +56,7 @@ TEST(mcp_dispatch_debug_log, Inv1LambdaEntryWrapper) {
 // counts every dispatch exactly once across success + failure.
 TEST(mcp_dispatch_debug_log, Inv2RecordDispatchEnd) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto pos = ci.find(
         "ClaudeIntegration::recordDispatch(");
     ASSERT_NE(pos, std::string::npos)

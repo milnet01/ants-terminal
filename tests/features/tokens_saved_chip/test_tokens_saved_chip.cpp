@@ -12,8 +12,8 @@
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES required"
 #endif
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH required"
@@ -44,7 +44,7 @@ size_t count(const std::string &hay, const std::string &needle) {
 // TSC-1 (INV-6) — signals declared; the report-valued emit is in recordDispatch.
 TEST(TokensSavedChip, SignalsAndSingleEmitHook) {
     const std::string h   = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     EXPECT_TRUE(has(h, "void tokensSavedUpdated(qint64"))
         << "ClaudeIntegration must declare tokensSavedUpdated(qint64)";
     EXPECT_TRUE(has(h, "void tokenSessionEnding()"))
@@ -62,7 +62,7 @@ TEST(TokensSavedChip, SignalsAndSingleEmitHook) {
 // reset), both reset sites delegate, MainWindow folds + connects (Direct).
 TEST(TokensSavedChip, UnifiedResetPathAndFoldWiring) {
     const std::string h   = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const std::string mw  = ants_test::slurpMainWindow();
 
     // Exactly one m_tokenUsage.reset() in production code — inside
@@ -121,7 +121,7 @@ TEST(TokensSavedChip, VisibilityGuardsAndPlacement) {
 
 // TSC-4 (INV-7) — no persistence in the dispatch layer.
 TEST(TokensSavedChip, NoPersistenceInDispatchLayer) {
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     EXPECT_FALSE(has(cpp, "setClaudeTokensSaved"))
         << "the dispatch layer must not write the aggregate (INV-7)";
 }
@@ -129,7 +129,7 @@ TEST(TokensSavedChip, NoPersistenceInDispatchLayer) {
 // TSC-5 (INV-10) — verb fields live in the response, not the input schema.
 TEST(TokensSavedChip, VerbFieldsInResponseNotSchema) {
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_TRUE(has(rc, "env[\"month_saved\"]"));
     EXPECT_TRUE(has(rc, "env[\"ytd_saved\"]"));
     EXPECT_TRUE(has(rc, "env[\"lifetime_saved\"]"));

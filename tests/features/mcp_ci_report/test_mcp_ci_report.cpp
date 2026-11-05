@@ -526,7 +526,7 @@ TEST(McpCiReport, Ants6399ServedByMcpdWithoutMainWindow) {
     const std::string verb = handler.substr(body, handler.find("\n}\n", body) - body);
     EXPECT_EQ(verb.find("m_main"), std::string::npos) << "cmdCiReport reaches MainWindow";
 
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_NE(ci.find("t[\"name\"] = \"ci_report\""), std::string::npos);
     EXPECT_NE(ci.find("toolName == QStringLiteral(\"ci_report\")) return C::Required"), std::string::npos);
     EXPECT_NE(ci.find("toolName == QStringLiteral(\"ci_report\"))                return R::Expensive"),

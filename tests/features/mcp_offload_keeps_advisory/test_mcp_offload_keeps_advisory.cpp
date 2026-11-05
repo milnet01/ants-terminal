@@ -1,6 +1,7 @@
 // ANTS-4626 — the unknown-arg advisory must survive the result offload.
 // See tests/features/mcp_offload_keeps_advisory/spec.md.
 
+#include "../../_support/srcgrep.h"
 #include "mcpprojection.h"
 #include "mcpspill.h"
 
@@ -91,9 +92,7 @@ TEST(McpOffloadKeepsAdvisory, Inv3CleanCallGainsNoKey) {
 // helpers above cannot see the call order, and the defect WAS the call
 // order. Source-scrape, since the dispatch path is GUI-coupled.
 TEST(McpOffloadKeepsAdvisory, Inv4DispatchAppliesAfterOffload) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QByteArray s = f.readAll();
+        const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
 
     const int offload = s.indexOf("mcp::offloadBody(");
     ASSERT_GT(offload, 0) << "offloadBody call site not found";

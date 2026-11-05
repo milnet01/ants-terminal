@@ -390,7 +390,7 @@ TEST_F(McpResultOffload, Inv1OffloadBodyHasNoInternalThresholdGuard) {
 // INV-1 — the dispatch gates offloadBody through mcp::shouldOffload (not an
 // inline compare), keeping the boundary in one behaviourally-tested predicate.
 TEST_F(McpResultOffload, Inv1DispatchUsesShouldOffload) {
-    const QString ci = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     EXPECT_TRUE(ci.contains(QStringLiteral("mcp::shouldOffload(")))
         << "the dispatch must gate offload via the shouldOffload predicate";
@@ -448,7 +448,7 @@ TEST_F(McpResultOffload, Inv7EvictionAndSweep) {
 // INV-9 — the offload runs before the recordDispatch byte capture (so trace
 // records the offloaded envelope's size). Source-scrape by symbol.
 TEST_F(McpResultOffload, Inv9OffloadPrecedesRecordDispatch) {
-    const QString src = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(src.isEmpty());
     const int offloadAt = src.indexOf(QStringLiteral("mcp::offloadBody("));
     ASSERT_GT(offloadAt, 0);
@@ -828,7 +828,7 @@ TEST_F(McpResultOffload, Inv14RowModeWiring) {
     EXPECT_TRUE(rc.contains(QStringLiteral("byte-page it via offset/max_bytes instead")))
         << "not_array refusal must redirect the caller to byte paging";
 
-    const QString ci = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     EXPECT_TRUE(ci.contains(QStringLiteral("props[\"row_offset\"]")));
     EXPECT_TRUE(ci.contains(QStringLiteral("props[\"row_count\"]")));

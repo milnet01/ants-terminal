@@ -17,8 +17,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
@@ -157,7 +157,7 @@ TEST(McpOutputSanitisationWiring, HelperDeclaredInHeader) {
 // at the helper site: the close tag of the wrap, and the
 // QString::replace target. The dispatch-site change adds none.
 TEST(McpOutputSanitisationWiring, HelperDefinitionContainsWrapTemplate) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
 
     // The helper's opening tag template (with the %1 placeholder).
@@ -179,7 +179,7 @@ TEST(McpOutputSanitisationWiring, HelperDefinitionContainsWrapTemplate) {
 // scan covers transformReply's body, and a refactor that moves the wrap
 // out of it is flagged.
 TEST(McpOutputSanitisationWiring, DispatchSiteCallsHelper) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
 
     auto blockStart = ci.find(
@@ -203,7 +203,7 @@ TEST(McpOutputSanitisationWiring, DispatchSiteCallsHelper) {
 // loudly if a future change adds or removes an exemption without
 // updating the test.
 TEST(McpOutputSanitisationWiring, ControlPlaneExemptSetExact) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
 
     // ANTS-3681 — the initialiser statement alone, up to its `;`, not a

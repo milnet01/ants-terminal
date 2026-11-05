@@ -24,7 +24,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // site appends an "Etag tip:" memo to every etag-supporting tool.
 TEST(mcp_etag_tip_memo, Inv1AppendBlockPresent) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "ANTS-1568"),
            "INV-1: ANTS-1568 anchor present in the post-processing "
            "block (same site as ANTS-1518 prefix injection)");
@@ -40,7 +40,7 @@ TEST(mcp_etag_tip_memo, Inv1AppendBlockPresent) {
 // negative emission against every tool).
 TEST(mcp_etag_tip_memo, Inv2GatedOnIsEtagSupportedTool) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // The block reads:  if (isEtagSupportedTool(name) && ... ) { ... }
     // — both halves of the && must appear together.
     expect(contains(ci, "isEtagSupportedTool(name) &&"),
@@ -54,7 +54,7 @@ TEST(mcp_etag_tip_memo, Inv2GatedOnIsEtagSupportedTool) {
 // repeated tools/list call doesn't double-append.
 TEST(mcp_etag_tip_memo, Inv3IdempotentSentinel) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "!desc.contains(QStringLiteral(\"Etag tip:\"))"),
            "INV-3: guard checks !desc.contains(\"Etag tip:\") so the "
            "append is idempotent across tools/list reissues");
@@ -66,7 +66,7 @@ TEST(mcp_etag_tip_memo, Inv3IdempotentSentinel) {
 // is meaningless if a tool was dropped from the whitelist).
 TEST(mcp_etag_tip_memo, Inv4EtagSupportedToolWhitelistIntact) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const char *expected[] = {
         "\"project_layout\"", "\"roadmap_query\"", "\"file_outline\"",
         "\"last_audit_summary\"", "\"get_environment\"",

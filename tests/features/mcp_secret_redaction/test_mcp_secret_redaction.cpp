@@ -208,7 +208,7 @@ TEST(McpSecretRedaction, Inv5SecretFileNames) {
 // INV-6
 TEST(McpSecretRedaction, Inv6ReadOfSecretFileWarns) {
     const std::string ci = ants_test::stripComments(
-        ants_test::slurpFile(ANTS_SOURCE_DIR "/src/claudeintegration.cpp"));
+        ants_test::slurpClaudeIntegration());
     const std::string body = between(ci, "void ClaudeIntegration::updateChangedFiles(",
                                      "\n}\n");
     ASSERT_FALSE(body.empty());

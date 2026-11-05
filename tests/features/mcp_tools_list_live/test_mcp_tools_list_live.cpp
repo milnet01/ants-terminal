@@ -122,7 +122,7 @@ TEST(McpToolsListLive, ReplyMatchesSourceAndDumpsWhenAsked) {
     QSet<QString> live;
     for (const auto &t : tools) live.insert(t.toObject().value("name").toString());
 
-    const QSet<QString> text = sourceToolNames(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+    const QSet<QString> text = sourceToolNames(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(live.isEmpty());
     ASSERT_FALSE(text.isEmpty());
     EXPECT_EQ(sorted(live - text), "") << "listed live, absent from the source";

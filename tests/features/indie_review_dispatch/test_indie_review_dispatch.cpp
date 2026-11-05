@@ -26,7 +26,6 @@
 namespace {
 
 const char *kEnginePath  = SRC_INDIE_REVIEW_DISPATCHER_CPP_PATH;
-const char *kCiPath      = SRC_CLAUDE_INTEGRATION_CPP_PATH;
 const char *kEngineHdr   = SRC_INDIE_REVIEW_DISPATCHER_H_PATH;
 const char *kIreHdr      = SRC_INDIE_REVIEW_ENGINE_H_PATH;
 const char *kIreCpp      = SRC_INDIE_REVIEW_ENGINE_CPP_PATH;
@@ -159,7 +158,7 @@ TEST(IndieReviewDispatch, G1_DispatcherDeclared) {
 
 // G-2 — contract Required.
 TEST(IndieReviewDispatch, G2_ContractRequired) {
-    const std::string cc = ants_test::slurpFile(kCiPath);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // ANTS-3681 — the classification statement, bounded by its `;`, so a
     // neighbouring verb's C::Required can no longer satisfy the row.
@@ -173,7 +172,7 @@ TEST(IndieReviewDispatch, G2_ContractRequired) {
 
 // G-3 — tier Expensive.
 TEST(IndieReviewDispatch, G3_TierExpensive) {
-    const std::string cc = ants_test::slurpFile(kCiPath);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // The tier classification has its own anchor in claudeintegration.cpp
     // — search for the tool name appearing on a line that also says
@@ -285,7 +284,7 @@ TEST(IndieReviewDispatch, G11_NewErrorCodesDocumented) {
 
 // G-12 — tools/list descriptor.
 TEST(IndieReviewDispatch, G12_ToolDescriptor) {
-    const std::string cc = ants_test::slurpFile(kCiPath);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // The descriptor block sets t["name"] = "indie_review_dispatch";
     EXPECT_NE(cc.find("t[\"name\"] = \"indie_review_dispatch\""),
@@ -294,7 +293,7 @@ TEST(IndieReviewDispatch, G12_ToolDescriptor) {
 
 // G-13 — not in idempotent-read cache allowlist.
 TEST(IndieReviewDispatch, G13_NotCacheable) {
-    const std::string cc = ants_test::slurpFile(kCiPath);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string isIdemBody =
         ants_test::slurpFunctionBody(

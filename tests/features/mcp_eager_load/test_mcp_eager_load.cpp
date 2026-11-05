@@ -28,8 +28,7 @@ bool has(const std::string &hay, const char *needle) {
 
 TEST(McpEagerLoad, AlwaysLoadMarkingWired) {
     const std::string ci =
-        ants_test::slurpFile(std::string(ANTS_SOURCE_DIR)
-                             + "/src/claudeintegration.cpp");
+        ants_test::slurpClaudeIntegration();
 
     // The exact, version-honoured field name + placement (Claude Code
     // v2.1.121+, code.claude.com/docs/en/mcp.md).
@@ -283,7 +282,7 @@ TEST(McpEagerLoad, Ants6325HiddenArgumentSentAsTextIsHonoured) {
     EXPECT_EQ(mcp::coerceArgTypes(bad, props), bad);
 
     // The dispatcher applies it to every call, from the saved full schema.
-    const std::string ci = ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/claudeintegration.cpp");
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_NE(ci.find("mcp::coerceArgTypes(params.value(\"arguments\").toObject(),"), std::string::npos);
 }
 

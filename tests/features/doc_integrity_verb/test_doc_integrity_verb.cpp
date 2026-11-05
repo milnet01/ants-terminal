@@ -20,7 +20,7 @@
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 #if !defined(ANTS_SOURCE_DIR) || !defined(ANTS_MAINWINDOW_SOURCES) || \
-    !defined(ANTS_RC_SOURCES) || !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
+    !defined(ANTS_RC_SOURCES) || !defined(ANTS_CLAUDEINTEGRATION_SOURCES)
 #error "doc_integrity_verb test needs the test_claude source-path compile defs"
 #endif
 
@@ -32,12 +32,6 @@ bool writeFile(const QString &path, const QString &content) {
     if (!f.open(QIODevice::WriteOnly)) return false;
     f.write(content.toUtf8());
     return true;
-}
-
-QString slurp(const char *path) {
-    QFile f(QString::fromUtf8(path));
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
 }
 
 }  // namespace
@@ -181,7 +175,7 @@ TEST(DocIntegrityVerb, WiringRegistered) {
                     "registerToolProvider("))
                     .contains("CallerCwdContract::Required"));
 
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     EXPECT_TRUE(ci.contains("\"doc_integrity\""));  // schema + registrations
     // callerCwdContractFor → Required for doc_integrity.

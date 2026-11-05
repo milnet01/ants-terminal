@@ -6,8 +6,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -36,7 +36,7 @@ std::string descriptorBlock(const std::string &src,
 
 // INV-1 — callerCwdSuffix lambda lives near makeCallerCwdReadProp.
 TEST(McpCallerCwdSuffixHelper, LambdaDeclaredNearReadProp) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto readPropPos = cc.find("makeCallerCwdReadProp");
     ASSERT_NE(readPropPos, std::string::npos)
@@ -54,7 +54,7 @@ TEST(McpCallerCwdSuffixHelper, LambdaDeclaredNearReadProp) {
 
 // INV-2 — lambda returns the canonical literal byte-for-byte.
 TEST(McpCallerCwdSuffixHelper, ReturnsCanonicalLiteral) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // ANTS-3681 — the brace-matched lambda body, not a 600-byte window
     // from the first mention (which is a comment above the lambda).
@@ -71,7 +71,7 @@ TEST(McpCallerCwdSuffixHelper, ReturnsCanonicalLiteral) {
 
 // INV-3a — get_last_command descriptor calls the helper.
 TEST(McpCallerCwdSuffixHelper, LastCommandUsesHelper) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_last_command");
     ASSERT_FALSE(block.empty())
@@ -85,7 +85,7 @@ TEST(McpCallerCwdSuffixHelper, LastCommandUsesHelper) {
 
 // INV-3c — get_environment descriptor calls the helper.
 TEST(McpCallerCwdSuffixHelper, EnvironmentUsesHelper) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_environment");
     ASSERT_FALSE(block.empty())
@@ -98,7 +98,7 @@ TEST(McpCallerCwdSuffixHelper, EnvironmentUsesHelper) {
 
 // INV-4a — get_scrollback keeps its long-form phrasing.
 TEST(McpCallerCwdSuffixHelper, ScrollbackKeepsLongForm) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_scrollback");
     ASSERT_FALSE(block.empty())
@@ -112,7 +112,7 @@ TEST(McpCallerCwdSuffixHelper, ScrollbackKeepsLongForm) {
 
 // INV-4b — get_text keeps its inline-arg-list form.
 TEST(McpCallerCwdSuffixHelper, GetTextKeepsInlineForm) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string block = descriptorBlock(cc, "get_text");
     ASSERT_FALSE(block.empty())

@@ -12,8 +12,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDESETUP_CPP
 #  error "SRC_CLAUDESETUP_CPP compile definition required"
@@ -77,7 +77,7 @@ TEST(HookEventsWired, Main) {
     // ANTS-5558 — claudeHookEvents() moved with the installer to
     // ants::claude_setup.
     const std::string settings = ants_test::slurpFile(SRC_CLAUDESETUP_CPP);
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     const std::set<std::string> installed = installedEvents(settings);
     const std::set<std::string> handled = handledEvents(ci);

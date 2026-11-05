@@ -173,7 +173,7 @@ TEST(McpDryRunParity, ApplyMechanicalFixDryRunNoWriteThenRealMutates) {
 
 // INV-5 — uniform schema prop factory, declared on the part-1 descriptors.
 TEST(McpDryRunParity, SchemaPropWired) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_TRUE(has(ci, "auto makeDryRunProp = []"))
         << "makeDryRunProp factory missing";

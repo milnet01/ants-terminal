@@ -157,7 +157,7 @@ TEST(roadmap_query_duplicate_ids, Inv8DetectorFiltersAndCaps) {
 // INV-6 — MCP descriptor advertises the field.
 TEST(roadmap_query_duplicate_ids, Inv6McpDescriptorMentionsField) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // ANTS-4575 — was a FIXED byte window from a bare `"roadmap_query"`
     // match, bumped 6→7→9 KiB, one bump per feature that touched the
     // schema. Adding the `id_inferred` paragraph pushed both anchors past

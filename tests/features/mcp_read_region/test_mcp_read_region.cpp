@@ -18,8 +18,8 @@
 #include <QStringList>
 #include <QTemporaryDir>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_RC_HEADER
 #error "SRC_RC_HEADER compile definition required"
@@ -80,7 +80,7 @@ TEST(McpReadRegion, WiringContract) {
     expect_reset();
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();
-    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpClaudeIntegration();
     const std::string mwCpp = ants_test::slurpMainWindow();
     const std::string projCpp =
         ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/mcpprojection.cpp");
@@ -490,7 +490,7 @@ TEST(McpReadRegion, Ants4700ClampsAndReportsTheLineCap) {
 TEST(McpReadRegion, Ants4394GlobalSentinelIsDocumented) {
     const std::string rc = ants_test::slurpRemoteControl();
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
 
     // The capability: both handlers resolve the sentinel.
     EXPECT_NE(rc.find("expandGlobalConfigSentinel"), std::string::npos)

@@ -9,8 +9,8 @@
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -60,7 +60,7 @@ TEST(CallerCwdInfoVerb, HandlerDelegatesToHelper) {
 // REG-3 — schema block lists the verb with caller_cwd and an
 // empty required array.
 TEST(CallerCwdInfoVerb, SchemaListed) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // ANTS-3681 — the descriptor block, bounded by its own
     // tools.append(t); rather than a byte window (widened once already).
@@ -83,7 +83,7 @@ TEST(CallerCwdInfoVerb, SchemaListed) {
 // `t["name"] = "caller_cwd_info"` line (the first occurrence in
 // the file) doesn't shadow the classification check.
 TEST(CallerCwdInfoVerb, ClassifiedAsOptional) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto helperPos = cc.find(
         "callerCwdContractFor(const QString &toolName)");

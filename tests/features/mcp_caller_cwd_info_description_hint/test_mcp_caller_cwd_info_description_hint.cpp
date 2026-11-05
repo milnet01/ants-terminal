@@ -36,7 +36,7 @@ std::string callerCwdInfoBlock(const std::string &src) {
 TEST(mcp_caller_cwd_info_description_hint, Inv1HintInDescription) {
     expect_reset();
     const std::string block =
-        callerCwdInfoBlock(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        callerCwdInfoBlock(ants_test::slurpClaudeIntegration());
     expect(!block.empty(),
            "INV-1 setup: caller_cwd_info descriptor block located");
     expect(contains(block, "Use this FIRST when"),
@@ -56,7 +56,7 @@ TEST(mcp_caller_cwd_info_description_hint, Inv1HintInDescription) {
 TEST(mcp_caller_cwd_info_description_hint, Inv2SelectionHintPreserved) {
     expect_reset();
     const std::string block =
-        callerCwdInfoBlock(ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH));
+        callerCwdInfoBlock(ants_test::slurpClaudeIntegration());
     expect(!block.empty(),
            "INV-2 setup: caller_cwd_info descriptor block located");
     expect(contains(block, "t[\"selection_hint\"] = QStringLiteral("),

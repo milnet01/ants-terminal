@@ -4,6 +4,7 @@
 // m_toolParamKeys cache population and the dispatch-site injection.
 // See tests/features/mcp_ignored_args/spec.md.
 
+#include "../../_support/srcgrep.h"
 #include "mcpprojection.h"   // mcp::ignoredArgs
 
 #include <gtest/gtest.h>
@@ -17,12 +18,6 @@
 #include <QStringList>
 
 namespace {
-
-QString readSource(const char *path) {
-    QFile f(QString::fromUtf8(path));
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
-}
 
 // The roadmap_query property set, as declared in its inputSchema.
 QSet<QString> roadmapQueryKnown() {
@@ -131,7 +126,7 @@ TEST(McpIgnoredArgs, Inv4EmptyKnownReportsNonUniversal) {
 // INV-5 — the tools/list handler populates m_toolParamKeys from each
 // tool's inputSchema.properties, alongside the m_lastToolsList snapshot.
 TEST(McpIgnoredArgs, Inv5CachePopulatedFromSchema) {
-    const QString src = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(src.isEmpty());
     EXPECT_TRUE(src.contains(QStringLiteral("m_toolParamKeys.insert")))
         << "tools/list must populate the param-key cache";
@@ -145,7 +140,7 @@ TEST(McpIgnoredArgs, Inv5CachePopulatedFromSchema) {
 // INV-6 — the dispatch site calls mcp::ignoredArgs, attaches ignored_args,
 // and is gated on a fresh (non-cached) call.
 TEST(McpIgnoredArgs, Inv6DispatchInjection) {
-    const QString src = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(src.isEmpty());
     EXPECT_TRUE(src.contains(QStringLiteral("mcp::ignoredArgs(")))
         << "dispatcher must call the shared diff";

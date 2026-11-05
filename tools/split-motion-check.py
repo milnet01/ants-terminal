@@ -61,7 +61,7 @@ STEMS = {
                    ("SRC_MAINWINDOW_CPP", "SRC_MAINWINDOW_CPP_PATH",
                     "SRC_MAINWINDOW_PATH", "MAINWINDOW_CPP")),
     "claudeintegration": ("slurpClaudeIntegration",
-                          ("SRC_CLAUDE_INTEGRATION_CPP_PATH",)),
+                          ("SRC_CLAUDE_INTEGRATION_CPP_PATH", "SRC_CLAUDEINTEGRATION_CPP_PATH")),
 }
 
 MAX_REPORTED = 40

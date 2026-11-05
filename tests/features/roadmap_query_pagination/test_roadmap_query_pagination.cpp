@@ -285,7 +285,7 @@ TEST(roadmap_query_pagination, DispatchForwardsVerbatim) {
 // Schema — offset/limit props advertised on roadmap_query tool.
 TEST(roadmap_query_pagination, SchemaPaginationPropsAdvertised) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "ANTS-1436 — offset/limit"),
            "schema: ANTS-1436 anchor in claudeintegration");
     expect(contains(cpp, "props[\"offset\"] = offsetProp"),

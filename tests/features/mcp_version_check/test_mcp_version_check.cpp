@@ -169,7 +169,7 @@ TEST(McpVersionCheck, Ants5510Refusals) {
 TEST(McpVersionCheck, Ants5510VerbIsWired) {
     const std::string reg = ants_test::slurpFile(ANTS_MCP_REGISTRY_SOURCE);
     EXPECT_NE(reg.find("registerToolProvider(\"version_check\""), std::string::npos);
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_NE(ci.find("t[\"name\"] = \"version_check\""), std::string::npos);
     EXPECT_NE(ci.find("toolName == QStringLiteral(\"version_check\")"), std::string::npos);
 

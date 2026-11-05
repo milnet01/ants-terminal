@@ -7,8 +7,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
@@ -27,7 +27,7 @@ std::string toolsCallBranch(const std::string &cc) {
 
 // CLS-1 — Required group classification.
 TEST(McpCallerCwdContracts, RequiredToolsClassified) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // Locate the helper definition.
     const auto pos = cc.find("callerCwdContractFor(const QString &toolName)");
@@ -64,7 +64,7 @@ TEST(McpCallerCwdContracts, RequiredToolsClassified) {
 
 // CLS-2 — TabSpecific + ProcessGlobal groups present.
 TEST(McpCallerCwdContracts, OtherCategoriesPresent) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto pos = cc.find("callerCwdContractFor(const QString &toolName)");
     ASSERT_NE(pos, std::string::npos);
@@ -83,7 +83,7 @@ TEST(McpCallerCwdContracts, OtherCategoriesPresent) {
 
 // DISP-1 — dispatch site calls callerCwdContractFor.
 TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // Find the tools/call body.
     const std::string region = toolsCallBranch(cc);
@@ -97,7 +97,7 @@ TEST(McpCallerCwdContracts, DispatchSiteInvokesContractCheck) {
 
 // DISP-2 — refusal envelope shape.
 TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string region = toolsCallBranch(cc);
     ASSERT_FALSE(region.empty());
@@ -112,7 +112,7 @@ TEST(McpCallerCwdContracts, RefusalEnvelopeShape) {
 
 // DISP-3 — cacheable gating on !toolHandled.
 TEST(McpCallerCwdContracts, RefusalBypassesCache) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string region = toolsCallBranch(cc);
     ASSERT_FALSE(region.empty());
@@ -129,7 +129,7 @@ TEST(McpCallerCwdContracts, RefusalBypassesCache) {
 // Pre-1454 the branch inherited the "ok" default and
 // token_usage.recordCall counted refusals as successes.
 TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string region = toolsCallBranch(cc);
     ASSERT_FALSE(region.empty());
@@ -158,7 +158,7 @@ TEST(McpCallerCwdContracts, RefusalSetsDispatchResult) {
 
 // DISP-4 — provider-dispatch guard widened to !toolHandled.
 TEST(McpCallerCwdContracts, ProviderDispatchGuardedByToolHandled) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const std::string region = toolsCallBranch(cc);
     ASSERT_FALSE(region.empty());

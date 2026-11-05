@@ -90,7 +90,7 @@ TEST_F(RateLimitTestFixture, Inv4ControlPlaneUncapped) {
 // before the cache lookup; behavioural side confirmed by the cap
 // firing on a cacheable tool (last_audit_summary is Cheap + cached).
 TEST_F(RateLimitTestFixture, Inv5CacheHitsConsume) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
 
     const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
@@ -204,7 +204,7 @@ TEST_F(RateLimitTestFixture, Inv9EmptyCwdSharesBucket) {
 
 // INV-10 — refusal routed through recordDispatch (source-grep).
 TEST_F(RateLimitTestFixture, Inv10RefusalRoutedThroughDispatch) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // dispatchResult variable must be declared and set on the
     // rate-limit branch + passed to recordDispatch.
@@ -229,7 +229,7 @@ TEST_F(RateLimitTestFixture, Inv10RefusalRoutedThroughDispatch) {
 
 // INV-11 — refusal envelope shape (source-grep).
 TEST_F(RateLimitTestFixture, Inv11EnvelopeShape) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // The refusal envelope sets ok=false, code="rate_limited",
     // retry_after_ms, and an error string in that block.
@@ -251,7 +251,7 @@ TEST_F(RateLimitTestFixture, Inv11EnvelopeShape) {
 
 // INV-12 — caller_cwd_required runs before rate-limit (source-grep).
 TEST_F(RateLimitTestFixture, Inv12OrderVsCallerCwdRequired) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto dispatchStart = cc.find("else if (method == \"tools/call\")");
     ASSERT_NE(dispatchStart, std::string::npos);
@@ -276,7 +276,7 @@ TEST_F(RateLimitTestFixture, Inv12OrderVsCallerCwdRequired) {
 // expected tool appears in the classification function within
 // the correct tier's surrounding context.
 TEST_F(RateLimitTestFixture, Inv13TierClassification) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // Isolate the rateLimitClassFor function body. The unqualified
     // identifier matches a call-site in processTools first; use the
@@ -415,7 +415,7 @@ TEST_F(RateLimitTestFixture, Inv15ProbeAccessors) {
 
 // INV-16 — monotonic clock declared at TU scope.
 TEST_F(RateLimitTestFixture, Inv16MonotonicClockDeclared) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     EXPECT_NE(cc.find("static QElapsedTimer s_rateLimitClock"),
               std::string::npos);

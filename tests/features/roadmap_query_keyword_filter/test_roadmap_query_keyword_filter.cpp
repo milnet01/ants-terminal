@@ -15,12 +15,6 @@
 
 namespace {
 
-QString readSource(const char *path) {
-    QFile f(QString::fromUtf8(path));
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
-}
-
 // A bullet object shaped like the ones cmdRoadmapQuery filters
 // (headline / headline_full / body are the matched surfaces).
 QJsonObject bullet(const QString &headline, const QString &body,
@@ -109,7 +103,7 @@ TEST(RoadmapQueryKeywordFilter, Inv5HandlerWiring) {
 // INV-6 — the inputSchema declares the `query` property so the dispatch
 // layer recognises it (no longer flagged in ignored_args).
 TEST(RoadmapQueryKeywordFilter, Inv6SchemaDeclaresQuery) {
-    const QString ci = readSource(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     EXPECT_TRUE(ci.contains(QStringLiteral("props[\"query\"]")))
         << "roadmap_query inputSchema must declare the query property";

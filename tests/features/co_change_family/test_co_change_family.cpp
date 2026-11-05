@@ -43,8 +43,8 @@
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -391,7 +391,7 @@ TEST(CoChangeFamily, RegistrationAndSchema) {
     ASSERT_FALSE(mw.empty());
     EXPECT_TRUE(has(mw, "registerToolProvider(\"co_change_family\""));
 
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_TRUE(has(ci, "\"co_change_family\""));
 

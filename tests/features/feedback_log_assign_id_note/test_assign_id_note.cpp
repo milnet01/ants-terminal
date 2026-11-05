@@ -3,6 +3,7 @@
 // synthetic v2 fixtures + a live RemoteControl::cmdFeedbackLog drive (the
 // exact repro: assign_id{ids, note} used to drop the note silently).
 
+#include "../../_support/srcgrep.h"
 #include "feedbackfile.h"
 #include "remotecontrol.h"
 
@@ -155,9 +156,7 @@ TEST(FeedbackAssignIdNote, LiveIdsPlusNoteWritesNote) {
 
 // Schema — the note property description names assign_id (ANTS-3571).
 TEST(FeedbackAssignIdNote, SchemaDocumentsAssignIdNote) {
-    QFile f(QStringLiteral(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    const QString ci = QString::fromUtf8(f.readAll());
+        const QString ci = QString::fromUtf8(QByteArray::fromStdString(ants_test::slurpClaudeIntegration()));
     EXPECT_TRUE(ci.contains(QStringLiteral("ANTS-3571")));
     EXPECT_TRUE(ci.contains(QStringLiteral("on assign_id it is")));
 }

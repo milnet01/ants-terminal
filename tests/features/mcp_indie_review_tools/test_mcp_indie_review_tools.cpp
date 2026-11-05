@@ -7,8 +7,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
@@ -38,7 +38,7 @@ constexpr const char *kCmdMethods[2] = {
 }  // namespace
 
 TEST(McpIndieReviewTools, Inv9AllToolNamesInToolsList) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     for (const char *name : kToolNames) {
         const std::string nameQuoted = std::string("\"") + name + "\"";
@@ -111,7 +111,7 @@ TEST(McpIndieReviewTools, Ants1288PartitionEmitsSuggestedMerges) {
 // descriptor via mcpToolDescriptor, because the sibling verb declares the
 // same property and a whole-file grep would false-green.
 TEST(McpIndieReviewTools, Ants3713CorroborateAllowsOutsideProject) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string desc =
         ants_test::mcpToolDescriptor(ci, "indie_review_corroborate");
     ASSERT_FALSE(desc.empty())
@@ -134,7 +134,7 @@ TEST(McpIndieReviewTools, Ants3713CorroborateAllowsOutsideProject) {
 // scoped to indie_review_dispatch, whose difference is the reviewer it runs
 // on rather than who calls it.
 TEST(McpIndieReviewTools, Inv14ParallelApiNoteReversedToDispatchOnly) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     // The old note steered readers away from every cold_eyes_ /
     // indie_review_ verb — the opposite of the standing rule that the MCP
@@ -159,7 +159,7 @@ TEST(McpIndieReviewTools, Inv14ParallelApiNoteReversedToDispatchOnly) {
 // picks a verb from, so it must not present the local-endpoint verb as the
 // entry point for a review.
 TEST(McpIndieReviewTools, Inv15DispatchSelectionHintNamesTheWeakerReviewer) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const std::string hint =
         ants_test::mcpToolDescriptor(ci, "indie_review_dispatch");
@@ -175,7 +175,7 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // so unknown keys are rejected. Region scoped to JUST the indie_review_*
     // block — start at indie_review_partition, end at the next non-indie
     // tool block (verify_changes, ANTS-1289).
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto block_start = ci.find("\"indie_review_partition\"");
     ASSERT_NE(block_start, std::string::npos);

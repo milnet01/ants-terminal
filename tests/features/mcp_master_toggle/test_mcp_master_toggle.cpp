@@ -24,8 +24,8 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_SETTINGSDIALOG_CPP_PATH
 #error "SRC_SETTINGSDIALOG_CPP_PATH compile definition required"
@@ -122,7 +122,7 @@ TEST(McpMasterToggle, Ants2195ParkedGuardPrecedesInjection) {
 
 // INV-5 — dispatcher refuses with mcp_disabled before the caller_cwd gate.
 TEST(McpMasterToggle, INV5_DispatcherRefusal) {
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto branch = ci.find("method == \"tools/call\"");
     ASSERT_NE(branch, std::string::npos);
     // Anchor every search at/after the tools/call branch so an earlier

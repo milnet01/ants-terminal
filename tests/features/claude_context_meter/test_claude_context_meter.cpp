@@ -19,8 +19,8 @@
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #  error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH compile definition required"
 #endif
-#ifndef SRC_CLAUDEINTEGRATION_CPP_PATH
-#  error "SRC_CLAUDEINTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDETABTRACKER_CPP_PATH
 #  error "SRC_CLAUDETABTRACKER_CPP_PATH compile definition required"
@@ -175,7 +175,7 @@ TEST(ClaudeContextMeter, Inv8ClearContextReadingHidesTheMeter) {
 // Claude process replaces it. Source scrape: the poll walks /proc for a real
 // child named claude, which a unit test cannot stage.
 TEST(ClaudeContextMeter, Inv8PollClearsOnExitAndOnNewProcess) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDEINTEGRATION_CPP_PATH);
+    const std::string src = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(src.empty());
     const size_t at = src.find("void ClaudeIntegration::pollClaudeProcess() {");
     ASSERT_NE(at, std::string::npos);

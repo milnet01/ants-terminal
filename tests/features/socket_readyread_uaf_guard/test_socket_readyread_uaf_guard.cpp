@@ -21,8 +21,8 @@
 #include <string>
 #include <gtest/gtest.h>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_RC_SOURCES
 #  error "ANTS_RC_SOURCES compile definition required"
@@ -52,7 +52,7 @@ TEST(SocketReadyreadUafGuard, Main) {
     expect_reset();
 
     const std::string claude =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     const std::string remote =
         ants_test::slurpRemoteControl();
     const std::string mainwin =
@@ -119,7 +119,7 @@ TEST(SocketReadyreadUafGuard, Main) {
 // read must empty it first: otherwise the ANTS-1659 256 KiB cap fires and the
 // disconnected handler parses the whole oversized payload anyway.
 TEST(SocketReadyreadUafGuard, Ants6397HookOverCapEmptiesTheBuffer) {
-    const std::string claude = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string claude = ants_test::slurpClaudeIntegration();
     const std::string marker = "&QLocalSocket::readyRead, this, [socket, buf, overCap]()";
     const size_t at = claude.find(marker);
     ASSERT_NE(at, std::string::npos) << "hook readyRead handler not found";

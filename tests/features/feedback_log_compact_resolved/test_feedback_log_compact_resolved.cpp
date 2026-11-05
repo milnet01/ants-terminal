@@ -21,8 +21,8 @@
 #include <string>
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -69,12 +69,6 @@ bool writeStr(const QString &path, const QString &body) {
     const bool ok = (f.write(u) == u.size());
     f.close();
     return ok;
-}
-std::string slurp(const char *path) {
-    std::ifstream in(path);
-    std::stringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
 }
 
 }  // namespace
@@ -162,7 +156,7 @@ TEST(FeedbackShipDate, WiringSharedExtractor) {
     ASSERT_FALSE(rc.empty());
     EXPECT_NE(rc.find("FeedbackFile::shipDateFromRoadmapBody"), std::string::npos);
     EXPECT_NE(rc.find("shipped_date"), std::string::npos);
-    const std::string ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     EXPECT_NE(ci.find("shipped_date"), std::string::npos)
         << "feedback_query description must document shipped_date";

@@ -183,12 +183,12 @@ TEST(McpDependencyInventory, Ants5515SilenceIsNamed) {
 TEST(McpDependencyInventory, Ants5515VerbIsWiredAndOffline) {
     const std::string reg = ants_test::slurpFile(ANTS_MCP_REGISTRY_SOURCE);
     EXPECT_NE(reg.find("registerToolProvider(\"dependency_inventory\""), std::string::npos);
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_NE(ci.find("t[\"name\"] = \"dependency_inventory\""), std::string::npos);
     EXPECT_NE(ci.find("toolName == QStringLiteral(\"dependency_inventory\")"), std::string::npos);
 
     // Nothing leaves the machine: lookups belong to the check-dependencies skill.
-    const QString srcDir = QFileInfo(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH)).path();
+    const QString srcDir = QString::fromUtf8(ANTS_SOURCE_DIR) + QStringLiteral("/src");
     const std::string seam =
         ants_test::slurpFile((srcDir + QStringLiteral("/dependencyinventory.cpp")).toUtf8().constData());
     ASSERT_FALSE(seam.empty());

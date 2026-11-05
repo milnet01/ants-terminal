@@ -31,7 +31,7 @@ QJsonObject argsB() {
 // wall-clock step backward cannot keep an entry fresh. A clock step cannot
 // be staged from a test, so this is a source scrape.
 TEST(McpIdempotentReadCache, TtlUsesTheMonotonicClock) {
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const std::string get = ants_test::slurpFunctionBody(
         cpp, "QString ClaudeIntegration::tryGetIdempotentReadCache(");
     const std::string put = ants_test::slurpFunctionBody(

@@ -13,8 +13,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -60,7 +60,7 @@ std::string guardOfSessionLookup(const std::string &body) {
 }  // namespace
 
 TEST(TranscriptResolutionRetry, Main) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string src = ants_test::slurpClaudeIntegration();
     int failures = 0;
     auto fail = [&](const char *msg) {
         std::fprintf(stderr, "FAIL: %s\n", msg);

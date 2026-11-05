@@ -242,7 +242,7 @@ TEST(mcp_test_audit_trio, Ants1461FileIndexBasenameDedup) {
 // claudeintegration.cpp.
 TEST(mcp_test_audit_trio, Ants1461DimensionHintsClarified) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // Locate the test_audit_partition descriptor region and
     // confirm the clarifier sentence is present.
     // ANTS-3681 — the descriptor block: from the name up to its own
@@ -272,7 +272,7 @@ TEST(mcp_test_audit_trio, AllVerbsRegistered) {
            "dispatch: test_audit_partition registered");
     expect(contains(mw, "registerToolProvider(\"test_audit_brief\""),
            "dispatch: test_audit_brief registered");
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "t[\"name\"] = \"test_audit_partition\""),
            "schema: test_audit_partition descriptor");
     expect(contains(ci, "t[\"name\"] = \"test_audit_brief\""),

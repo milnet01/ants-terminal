@@ -13,8 +13,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_CLAUDE_INTEGRATION_H_PATH
 #error "SRC_CLAUDE_INTEGRATION_H_PATH compile definition required"
@@ -54,7 +54,7 @@ bool contains(const std::string &hay, const char *needle) {
 TEST(McpGitState, WiringContract) {
     expect_reset();
 
-    const std::string ciCpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ciCpp = ants_test::slurpClaudeIntegration();
     const std::string ciHdr = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_H_PATH);
     const std::string rcHdr = ants_test::slurpFile(SRC_RC_HEADER);
     const std::string rcCpp = ants_test::slurpRemoteControl();

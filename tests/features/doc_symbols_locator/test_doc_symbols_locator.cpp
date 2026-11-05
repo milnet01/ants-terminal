@@ -197,7 +197,7 @@ TEST(DocSymbolsLocator, Inv7RefusalsAndSchema) {
         rc, "QJsonDocument RemoteControl::cmdDocSymbols(");
     expect(body.find("docSymbolsBuildLocatorResponse(") != std::string::npos,
            "INV-7: the handler routes mode:locator to the locator builder");
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string desc =
         ants_test::squashWhitespace(ants_test::mcpToolDescriptor(ci, "doc_symbols"));
     expect(desc.find("props[\"mode\"]") != std::string::npos,

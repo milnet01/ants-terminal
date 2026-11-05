@@ -10,13 +10,11 @@
 
 // INV-6: CallerCwdContract::Required registered
 TEST(McpWorkflowState, Inv6CallerCwdRequired) {
-    QFile f(QString::fromUtf8(SRC_CLAUDE_INTEGRATION_CPP_PATH));
-    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
-    // ANTS-2067 — match the actual contract row (proximity), not the two
+        // ANTS-2067 — match the actual contract row (proximity), not the two
     // tokens "workflow_state" and "Required" appearing anywhere in the
     // (large) file. Whitespace-normalised to survive `return` realignment.
     const std::string txt =
-        ants_test::squashWhitespace(f.readAll().toStdString());
+        ants_test::squashWhitespace(QByteArray::fromStdString(ants_test::slurpClaudeIntegration()).toStdString());
     EXPECT_NE(txt.find("if (toolName == QStringLiteral(\"workflow_state\")) "
                        "return C::Required;"),
               std::string::npos)

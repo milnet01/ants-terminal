@@ -108,7 +108,7 @@ TEST(mcp_call_site_contract, Inv2EveryCallSitePassesContract) {
 // INV-3 — drift assertion present in the registrar body.
 TEST(mcp_call_site_contract, Inv3DriftAssertionPresent) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // ANTS-3681 — the registrar's brace-matched body, not a byte window.
     const std::string region = ants_test::slurpFunctionBody(
         ci, "void ClaudeIntegration::registerToolProvider(");
@@ -151,7 +151,7 @@ TEST(mcp_call_site_contract, Inv4MapValueTypeCarriesContract) {
 // INV-5 — dispatcher prefers the stored contract.
 TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // The dispatcher's contract-check region. Locate by anchor.
     // ANTS-3681 — bounded by the statement after the contract lookup's
     // if/else (the callerCwd read), not by a byte count.
@@ -182,7 +182,7 @@ TEST(mcp_call_site_contract, Inv5DispatcherUsesStoredContract) {
 // bypass the caller_cwd_required refusal at dispatch).
 TEST(mcp_call_site_contract, Inv6DriftRefusesInRelease) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string region = ants_test::slurpFunctionBody(   // ANTS-3681
         ci, "void ClaudeIntegration::registerToolProvider(");
     ASSERT_FALSE(region.empty())

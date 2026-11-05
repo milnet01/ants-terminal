@@ -15,8 +15,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_MCP_REGISTRY_SOURCE
 #  error "ANTS_MCP_REGISTRY_SOURCE compile definition required"
@@ -69,7 +69,7 @@ TEST(McpRemovedVerbs, Inv2RemovedVerbErrorShape) {
 // INV-2 — the unknown-tool branch of finishToolDispatch consults the table
 // before the generic message.
 TEST(McpRemovedVerbs, Inv2DispatchUsesIt) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string src = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(src.empty());
     const size_t generic = src.find("QString(\"Unknown tool: %1\")");
     ASSERT_NE(generic, std::string::npos);
@@ -90,7 +90,7 @@ TEST(McpRemovedVerbs, Inv3OtherNamesUnchanged) {
 
 // INV-4
 TEST(McpRemovedVerbs, Inv4ToolInfoNamesReplacement) {
-    const std::string src = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string src = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(src.empty());
     const size_t msg = src.find("\"tool_info: no MCP tool registered \"");
     ASSERT_NE(msg, std::string::npos);

@@ -11,8 +11,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -46,7 +46,7 @@ TEST(McpLastAuditSummarySinceCommit, WiringContract) {
     expect_reset();
 
     const std::string ciCpp =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     const std::string rcCpp = ants_test::slurpRemoteControl();
     const std::string lasBody = lasSummaryBody(rcCpp);
 

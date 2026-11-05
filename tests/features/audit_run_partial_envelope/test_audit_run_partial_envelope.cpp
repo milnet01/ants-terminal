@@ -71,7 +71,7 @@ TEST(AuditRunPartialEnvelope, Inv3EnvelopeSerialisesPartial) {
         << "INV-3: provider writes the partial flag";
     EXPECT_TRUE(contains(mw, "incomplete_tools"))
         << "INV-3: provider writes incomplete_tools[]";
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_TRUE(contains(ci, "incomplete_tools"))
         << "INV-3: audit_run descriptor advertises incomplete_tools";
 }

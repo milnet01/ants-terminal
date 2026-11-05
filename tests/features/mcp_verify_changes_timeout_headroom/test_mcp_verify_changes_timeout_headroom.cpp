@@ -100,7 +100,7 @@ TEST(Ants1579TimeoutHeadroom, Inv1Through3GateCompletesUnderBudget) {
 // reading the description sees the asymmetry up front.
 TEST(Ants1579TimeoutHeadroom, Inv4DescriptionNamesBothSidesInProximity) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
 
     // Anchor at the verify_changes registration block.
     const size_t anchor = ci.find("t[\"name\"] = \"verify_changes\"");
@@ -154,7 +154,7 @@ TEST(Ants1628PhaseTiming, ImplEmitsThreeTimingFields) {
 // they're for.
 TEST(Ants1628PhaseTiming, DescriptionNamesPhaseTimingFields) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const size_t anchor = ci.find("t[\"name\"] = \"verify_changes\"");
     ASSERT_NE(anchor, std::string::npos);
     const size_t windowEnd = std::min(ci.size(), anchor + 5000);

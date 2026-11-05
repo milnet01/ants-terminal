@@ -608,7 +608,7 @@ void testEncodeProjectPath() {
 }
 
 void testWiring() {
-    const std::string cicpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cicpp = ants_test::slurpClaudeIntegration();
 
     // Locate the body of activeSessionPath.
     const std::string sigPrefix =

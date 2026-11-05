@@ -120,7 +120,7 @@ TEST(McpRawRead, EligibilitySet) {
 // INV-6 — dispatch wiring (source-scrape).
 TEST(McpRawRead, DispatchWiring) {
     const std::string ci =
-        ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+        ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
 
     // raw read flag, computed before the offload block.

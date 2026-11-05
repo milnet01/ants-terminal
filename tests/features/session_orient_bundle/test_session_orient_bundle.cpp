@@ -21,8 +21,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -116,7 +116,7 @@ TEST(session_orient_bundle, Inv2SectionsIndexModeAndStatus) {
 // INV-3 — etag allowlist membership.
 TEST(session_orient_bundle, Inv3EtagAllowlistMembership) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // Anchor on the function definition line, not the first mention
     // (which is a comment far above the actual body).
     const auto isEtagPos = ci.find(
@@ -135,7 +135,7 @@ TEST(session_orient_bundle, Inv3EtagAllowlistMembership) {
 // INV-4 — Required CallerCwdContract.
 TEST(session_orient_bundle, Inv4CallerCwdRequired) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto fnPos = ci.find(
         "ClaudeIntegration::callerCwdContractFor");
     if (fnPos == std::string::npos) {
@@ -152,7 +152,7 @@ TEST(session_orient_bundle, Inv4CallerCwdRequired) {
 // INV-5 — tools/list descriptor.
 TEST(session_orient_bundle, Inv5ToolsListDescribesBundle) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // Descriptor block must reference the verb name AND its three
     // composed children for caller orientation.
     expect(contains(ci, "\"session_orient\""),
@@ -200,7 +200,7 @@ TEST(session_orient_bundle, Ants3587AbsentRoadmapKeepsOkAddsNotice) {
 // INV-7 — tokenCostFor bucket.
 TEST(session_orient_bundle, Inv7TokenCostBucketRegistered) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto tcPos = ci.find("tokenCostFor");
     if (tcPos == std::string::npos) {
         // Fall back: look for the literal table pattern.

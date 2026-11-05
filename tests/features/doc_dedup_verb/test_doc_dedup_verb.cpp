@@ -20,7 +20,7 @@
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 #if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
-    !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH) || !defined(SRC_DOCDEDUP_CPP_PATH)
+    !defined(ANTS_CLAUDEINTEGRATION_SOURCES) || !defined(SRC_DOCDEDUP_CPP_PATH)
 #error "doc_dedup_verb test needs the test_claude source-path compile defs"
 #endif
 
@@ -92,7 +92,7 @@ TEST(DocDedupVerb, Inv8RefusalMinimums) {
                     "registerToolProvider("))
                     .contains(QStringLiteral("CallerCwdContract::Required")));
 
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     const int cc = ci.indexOf(QStringLiteral("toolName == QStringLiteral(\"doc_dedup\")"));
     ASSERT_GE(cc, 0);

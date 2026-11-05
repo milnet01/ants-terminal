@@ -24,8 +24,6 @@ ANTS_TEST_SCOPE();
 
 namespace {
 
-QString slurp(const char *path) { return QString::fromStdString(ants_test::slurpFile(path)); }
-
 bool writeFile(const QString &path, const QByteArray &content) {
     QDir().mkpath(QFileInfo(path).path());
     QFile f(path);
@@ -166,7 +164,7 @@ TEST(DocCitationsVerb, Inv21ClampAndCoerce) {
 TEST(DocCitationsVerb, Inv19RegisteredAtSevenSites) {
     expect_reset();
     const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     const QString rc = QString::fromStdString(ants_test::slurpRemoteControl());
     ASSERT_FALSE(mw.isEmpty());
     ASSERT_FALSE(ci.isEmpty());
@@ -227,7 +225,7 @@ TEST(DocCitationsVerb, Inv19RegisteredAtSevenSites) {
 // prohibitions that no existing test covers.
 TEST(DocCitationsVerb, Inv22DescriptorShape) {
     expect_reset();
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     const QString region = descriptorRegion(ci, QStringLiteral("doc_citations"));
     ASSERT_FALSE(region.isEmpty());
@@ -365,7 +363,7 @@ TEST(DocCitationsVerb, Ants5098MdScanCapsEntriesVisited) {
 
 TEST(DocCitationsVerb, Inv48CallerCwdRequired) {
     expect_reset();
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     const QString mw = QString::fromStdString(ants_test::slurpMainWindow());
     ASSERT_FALSE(ci.isEmpty());
     ASSERT_FALSE(mw.isEmpty());

@@ -18,8 +18,8 @@
 #ifndef SRC_REMOTECONTROL_H_PATH
 #error "SRC_REMOTECONTROL_H_PATH compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 ANTS_TEST_SCOPE();
@@ -97,7 +97,7 @@ TEST(roadmap_query_section_shape, Inv5ShapeCachedBySlug) {
 // INV-7 — schema description mentions section_shape hint.
 TEST(roadmap_query_section_shape, Inv7SchemaMentionsHint) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "ANTS-1696"),
            "INV-7: ANTS-1696 anchor in roadmap_query descriptor");
     expect(contains(cpp, "section_shape"),

@@ -101,7 +101,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv4ResponseEchoesTimeoutSec) {
 // an integer with default 5, minimum 1, maximum 30.
 TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos)
         << "workspace_search registration not found in claudeintegration.cpp";
@@ -129,7 +129,7 @@ TEST(mcp_workspace_search_timeout_sec, Inv5SchemaDeclaresTimeoutSec) {
 // timeout_sec arg and the 5 s default.
 TEST(mcp_workspace_search_timeout_sec, Inv6DescriptionMentionsTimeoutSec) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const size_t wsAnchor = ci.find("\"workspace_search\"");
     ASSERT_NE(wsAnchor, std::string::npos);
     // ANTS-3720 — self-sizing descriptor block; see INV-5a above.

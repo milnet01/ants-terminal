@@ -6,8 +6,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
@@ -31,7 +31,7 @@ size_t coldEyesBlockEnd(const std::string &ci, size_t start) {
 
 // REG-1
 TEST(McpColdEyes, ToolNamesRegisteredWithAnchor) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1319");
     ASSERT_NE(pos, std::string::npos)
@@ -49,7 +49,7 @@ TEST(McpColdEyes, ToolNamesRegisteredWithAnchor) {
 
 // REG-2
 TEST(McpColdEyes, SchemaRequiredArraysMatchInv10) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const auto pos = ci.find("// ANTS-1319");
     ASSERT_NE(pos, std::string::npos);
@@ -187,7 +187,7 @@ TEST(McpColdEyes, Ants1634SparsePartitionHintMentionsBriefAndOverride) {
 // orchestrator that depends on the field hits an `unknown_arg`-shape
 // refusal.
 TEST(McpColdEyes, Ants1634PriorLoopFixesSchemaDeclared) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     // Scope to the cold_eyes_brief block: starts at the name literal,
     // ends at the next `tools.append(t);`.

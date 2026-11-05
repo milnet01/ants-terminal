@@ -9,8 +9,8 @@
 #include <string>
 #include <vector>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 
 namespace {
@@ -46,7 +46,7 @@ std::vector<Site> collectNameSites(const std::string &region) {
 // HINT-1 — every registered MCP tool has a selection_hint set in
 // the same descriptor block.
 TEST(McpSelectionHint, EveryToolDeclaresSelectionHint) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
 
     const auto regionStart = cc.find("else if (method == \"tools/list\")");
@@ -87,7 +87,7 @@ TEST(McpSelectionHint, EveryToolDeclaresSelectionHint) {
 
 // HINT-2 — tool_info success envelope passes selection_hint through.
 TEST(McpSelectionHint, ToolInfoPassesSelectionHint) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // Locate the tool_info inline handler region.
     const auto pos = cc.find("else if (toolName == \"tool_info\")");
@@ -116,7 +116,7 @@ TEST(McpSelectionHint, ToolInfoPassesSelectionHint) {
 
 // HINT-3 — selection_hint strings stay under ~240 chars each.
 TEST(McpSelectionHint, HintsRespectSizeBudget) {
-    const std::string cc = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
 
     const auto regionStart = cc.find("else if (method == \"tools/list\")");

@@ -243,7 +243,7 @@ TEST(DuplicateBlocks, Inv9Wiring) {
         return ss.str();
     };
     const std::string reg = slurp("/mcptoolregistry.cpp");
-    const std::string ci = slurp("/claudeintegration.cpp");
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(reg.empty());
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"duplicate_blocks\"");

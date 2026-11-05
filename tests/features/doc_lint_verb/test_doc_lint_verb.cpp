@@ -44,7 +44,7 @@
 #include "../../_support/srcgrep.h"  // ANTS-3833 — slurpRemoteControl
 
 #if !defined(ANTS_MAINWINDOW_SOURCES) || !defined(ANTS_RC_SOURCES) || \
-    !defined(SRC_CLAUDE_INTEGRATION_CPP_PATH)
+    !defined(ANTS_CLAUDEINTEGRATION_SOURCES)
 #error "doc_lint_verb test needs the test_claude source-path compile defs"
 #endif
 #ifndef ANTS_MCPD_BIN
@@ -52,12 +52,6 @@
 #endif
 
 namespace {
-
-QString slurp(const char *path) {
-    QFile f(QString::fromUtf8(path));
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    return QString::fromUtf8(f.readAll());
-}
 
 // A throwaway project root. Canonical for the reason doc_citations' shared
 // fixture states: /tmp is a symlink on some distributions, and an
@@ -152,7 +146,7 @@ TEST(DocLintVerb, Inv8VerbContractMinimums) {
                     "registerToolProvider("))
                     .contains(QStringLiteral("CallerCwdContract::Required")));
 
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
     const int cc = ci.indexOf(QStringLiteral("toolName == QStringLiteral(\"doc_lint\")"));
     ASSERT_GE(cc, 0);
@@ -247,7 +241,7 @@ TEST(DocLintVerb, Inv11CapTruncatesAfterTheSort) {
 // for a verb that IS in the set. This is the row that fails against the obvious
 // registration, which is to add doc_lint alongside its five siblings.
 TEST(DocLintVerb, Inv13EtagNeverSkipsAFix) {
-    const QString ci = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString ci = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(ci.isEmpty());
 
     // (a) the registered schema carries no etag_match property.

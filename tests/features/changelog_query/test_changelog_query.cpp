@@ -511,7 +511,7 @@ TEST(ChangelogQueryWiring, RegisteredAndAllowlisted) {
         ants_test::slurpFunctionBody(proj, "isOffloadEligible");
     EXPECT_NE(offloadBody.find("changelog_query"), std::string::npos);
 
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
     const std::string etagBody =
         ants_test::slurpFunctionBody(ci, "ClaudeIntegration::isEtagSupportedTool");

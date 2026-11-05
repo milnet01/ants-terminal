@@ -13,8 +13,8 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#  error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef SRC_DOCCITATIONS_CPP_PATH
 #  error "SRC_DOCCITATIONS_CPP_PATH compile definition required"
@@ -86,7 +86,7 @@ TEST(EnvelopeCloseTagScrub, Inv5DocCitationsMirrorsTheScrub) {
     // disclose it. Its own comment says the rewrite must not be bypassed and
     // the citation discloses instead — so a divergence means a line is
     // rewritten with no disclosure, or disclosed and not rewritten.
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const std::string dc = ants_test::slurpFile(SRC_DOCCITATIONS_CPP_PATH);
 
     // The two regex literals as they appear in doccitations.cpp.

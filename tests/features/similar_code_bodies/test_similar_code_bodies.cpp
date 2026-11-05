@@ -32,9 +32,6 @@ namespace {
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
 }
-std::string srcPath(const char *rel) {
-    return std::string(ANTS_SOURCE_DIR) + "/" + rel;
-}
 // Mirror of remotecontrol.cpp's scSymbolFromSignature (func path) so the
 // test exercises the same parse → extract chain the verb performs.
 QString symFromFuncSig(const QString &sig) {
@@ -91,7 +88,7 @@ TEST(SimilarCodeBodies, FindThenExtractFullBody) {
 // reuses ReadRegion; the schema advertises the option.
 TEST(SimilarCodeBodies, VerbAndSchemaWiring) {
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(srcPath("src/claudeintegration.cpp"));
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_TRUE(has(rc, "include_bodies"));
     EXPECT_TRUE(has(rc, "ReadRegion::extract"));
     EXPECT_TRUE(has(rc, "scSymbolFromSignature"));

@@ -586,9 +586,6 @@ QString slurp(const char *path) {
 // Project source paths are baked in via CMake -D defines; provide a
 // fallback so the file compiles outside the bundle for development
 // convenience.
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#  define SRC_CLAUDE_INTEGRATION_CPP_PATH "src/claudeintegration.cpp"
-#endif
 #ifndef SRC_MCPORIENTATION_CPP
 #  define SRC_MCPORIENTATION_CPP "src/mcporientation.cpp"
 #endif
@@ -621,9 +618,9 @@ TEST(McpOrientation_Ants3562, SplitTreeInstallGuardPresent) {
 }
 
 TEST(McpOrientation_Inv7, SelectionHintFormat) {
-    const QString src = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(src.isEmpty())
-        << "could not read " SRC_CLAUDE_INTEGRATION_CPP_PATH;
+        << "could not read the ClaudeIntegration sources";
 
     // Find every selection_hint string literal: starts with
     // `["selection_hint"] = QStringLiteral(` and continues with
@@ -666,7 +663,7 @@ TEST(McpOrientation_Inv6, SelectionHintCoverage) {
     // env-row sites) must have a sibling `*Tool["selection_hint"] =`
     // assignment within the next ~60 lines (the typical descriptor
     // block size). Cheap approximation of the runtime tools/list test.
-    const QString src = slurp(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const QString src = QString::fromStdString(ants_test::slurpClaudeIntegration());
     ASSERT_FALSE(src.isEmpty());
 
     // Net counts: 70 name hits − 3 exclusions = 67 tools;

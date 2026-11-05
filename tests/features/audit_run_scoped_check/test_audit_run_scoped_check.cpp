@@ -126,7 +126,7 @@ TEST(AuditRunScopedCheck, MainWindowProviderExtractsParams) {
 }
 
 TEST(AuditRunScopedCheck, DescriptorDeclaresPropertiesAndClangTidy) {
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
 
     // Locate audit_run descriptor block.

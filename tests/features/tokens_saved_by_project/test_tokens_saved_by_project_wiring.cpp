@@ -12,8 +12,8 @@
 
 #include <string>
 
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES required"
 #endif
 #ifndef SRC_CLAUDESTATUSWIDGETS_CPP_PATH
 #error "SRC_CLAUDESTATUSWIDGETS_CPP_PATH required"
@@ -39,7 +39,7 @@ size_t count(const std::string &h, const std::string &n) {
 // MainWindow / resolveCallerCwdRoot.
 TEST(TokensSavedByProjectWiring, Inv1And11RecordDispatch) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const std::string body =
         ants_test::slurpFunctionBody(cpp, "ClaudeIntegration::recordDispatch");
     expect(!body.empty(), "recordDispatch body located");
@@ -60,7 +60,7 @@ TEST(TokensSavedByProjectWiring, Inv1And11RecordDispatch) {
 // INV-12 — endTokenSession clears the live map AFTER the synchronous fold emit.
 TEST(TokensSavedByProjectWiring, Inv12ClearAfterFold) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     const std::string body =
         ants_test::slurpFunctionBody(cpp, "ClaudeIntegration::endTokenSession");
     const auto emitPos  = body.find("emit tokenSessionEnding()");

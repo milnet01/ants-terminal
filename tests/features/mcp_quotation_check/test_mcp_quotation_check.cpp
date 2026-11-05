@@ -339,7 +339,7 @@ TEST(QuotationCheck, Inv10Registration)
         return ss.str();
     };
     const std::string reg = slurp("/mcptoolregistry.cpp");
-    const std::string ci = slurp("/claudeintegration.cpp");
+    const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(reg.empty());
     ASSERT_FALSE(ci.empty());
     const auto at = reg.find("registerToolProvider(\"quotation_check\"");
@@ -443,10 +443,7 @@ TEST(QuotationCheck, Inv12NoLineChangesNothingAndShapesRefuse)
     std::stringstream hs;
     hs << h.rdbuf();
     EXPECT_NE(hs.str().find("args[QStringLiteral(\"tolerance\")]"), std::string::npos);
-    std::ifstream c(std::string(ANTS_SRC_DIR) + "/claudeintegration.cpp");
-    std::stringstream cs;
-    cs << c.rdbuf();
-    const std::string ci = cs.str();
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto schema = ci.find("t[\"name\"] = \"quotation_check\";");
     ASSERT_NE(schema, std::string::npos);
     const std::string body = ci.substr(schema, ci.find("tools.append(t);", schema) - schema);

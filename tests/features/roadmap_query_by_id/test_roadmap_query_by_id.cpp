@@ -15,8 +15,8 @@
 #ifndef ANTS_RC_SOURCES
 #error "ANTS_RC_SOURCES compile definition required"
 #endif
-#ifndef SRC_CLAUDE_INTEGRATION_CPP_PATH
-#error "SRC_CLAUDE_INTEGRATION_CPP_PATH compile definition required"
+#ifndef ANTS_CLAUDEINTEGRATION_SOURCES
+#error "ANTS_CLAUDEINTEGRATION_SOURCES compile definition required"
 #endif
 #ifndef ANTS_MAINWINDOW_SOURCES
 #error "ANTS_MAINWINDOW_SOURCES compile definition required"
@@ -123,7 +123,7 @@ TEST(roadmap_query_by_id, Inv6BodyDefaultOn) {
 // INV-7 — schema advertises the id property.
 TEST(roadmap_query_by_id, Inv7SchemaAdvertisesId) {
     expect_reset();
-    const std::string cpp = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string cpp = ants_test::slurpClaudeIntegration();
     expect(contains(cpp, "props[\"id\"] = idProp"),
            "INV-7: id property registered on roadmap_query schema");
     expect(contains(cpp, "ANTS-1856"),

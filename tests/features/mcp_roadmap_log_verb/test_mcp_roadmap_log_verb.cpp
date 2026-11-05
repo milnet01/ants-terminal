@@ -23,7 +23,7 @@ bool contains(const std::string &hay, const std::string &needle) {
 // and enum constraints.
 TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto pos = ci.find("\"roadmap_log\"");
     ASSERT_NE(pos, std::string::npos)
         << "INV-1: roadmap_log name literal missing from "
@@ -96,7 +96,7 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
 // INV-2 — classified Required in callerCwdContractFor.
 TEST(mcp_roadmap_log_verb, Inv2ContractIsRequired) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     const auto helperPos = ci.find(
         "callerCwdContractFor(const QString &toolName)");
     ASSERT_NE(helperPos, std::string::npos);

@@ -14,6 +14,7 @@
 
 #include <gtest/gtest.h>
 
+#include "../../_support/srcgrep.h"
 #include "roadmapmigrateverb.h"
 #include "roadmaprender.h"
 #include "roadmapparse.h"
@@ -1954,10 +1955,7 @@ TEST(RoadmapMigrateVerb, Ants3857UnknownOrMissingSlugRefuses) {
 // assembled array lives inside ClaudeIntegration, which drags MainWindow behind
 // it, and this bundle links neither — the same reason INV-2(b) is a grep.
 static QString migrateToolBlock() {
-    QFile f(QStringLiteral(ANTS_SRC_DIR) + QStringLiteral("/claudeintegration.cpp"));
-    if (!f.open(QIODevice::ReadOnly))
-        return QString();
-    const QString all = QString::fromUtf8(f.readAll());
+    const QString all = QString::fromStdString(ants_test::slurpClaudeIntegration());
     const int start = all.indexOf(QStringLiteral("t[\"name\"] = \"roadmap_migrate\";"));
     if (start < 0)
         return QString();

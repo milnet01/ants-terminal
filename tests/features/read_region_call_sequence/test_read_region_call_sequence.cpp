@@ -153,7 +153,7 @@ TEST(ReadRegionCallSequence, CommentAndTypeCtorSuppressed) {
 // schema advertises it.
 TEST(ReadRegionCallSequence, Wiring) {
     const std::string rc = ants_test::slurpRemoteControl();
-    const std::string ci = ants_test::slurpFile(std::string(ANTS_SOURCE_DIR) + "/src/claudeintegration.cpp");
+    const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_TRUE(has(rc, "call_sequence"));
     EXPECT_TRUE(has(rc, "opts.callSequence"));
     EXPECT_TRUE(has(ci, "call_sequence"));

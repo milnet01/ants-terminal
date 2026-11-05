@@ -123,7 +123,7 @@ TEST(mcp_roadmap_status_filter, Inv7FilterEcho) {
 
 TEST(mcp_roadmap_status_filter, Inv8McpInputSchema) {
     expect_reset();
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     // ANTS-1247-INV-8: tools/list registration declares status enum.
     expect(contains(ci, "ANTS-1247-INV-8"),
            "INV-8 anchor comment present in claudeintegration.cpp");
@@ -155,7 +155,7 @@ TEST(mcp_roadmap_status_filter, Ants3400GranularLifecycleFilters) {
     expect(contains(cpp, "sectionFilter"),
            "ANTS-3400: section_index collapses granular names to aggregate");
     // Schema surfaces the granular enum values + max_body_bytes (ANTS-3402).
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "statusEnum.append(\"planned\")"),
            "ANTS-3400: inputSchema enum includes \"planned\"");
     expect(contains(ci, "statusEnum.append(\"considered\")"),
@@ -194,7 +194,7 @@ TEST(mcp_roadmap_status_filter, Ants3402TargetedBodyCap) {
            "ANTS-3402: emission-time re-truncation helper present");
     expect(contains(cpp, "idBodyCap"),
            "ANTS-3402: id/ids path honours max_body_bytes");
-    const std::string ci = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string ci = ants_test::slurpClaudeIntegration();
     expect(contains(ci, "max_body_bytes"),
            "ANTS-3402: max_body_bytes schema property declared");
     EXPECT_EQ(0, expect_failures());
