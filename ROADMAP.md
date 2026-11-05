@@ -80958,12 +80958,14 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6387] **roadmap_log's pass-headings flip and flip_batch scrub an uncapped `note`.**
+- ✅ [ANTS-6387] **roadmap_log's pass-headings flip and flip_batch scrub an uncapped `note`.**
   cmdRoadmapLogPassFlip and cmdRoadmapLogPassFlipBatch
   (src/remotecontrol_roadmap_query.cpp) run rcScrubLeakedToolXml on the
   note with no size check. The GFM path caps at kRcMaxNoteChars first,
   but both dispatchers return into the pass writer before their cap.
   Fix: refuse too_large above kRcMaxNoteChars, per note, before the scrub.
+  Shipped 2026-11-05 (d790b0eb). Test:
+  RoadmapPassStoreWrite.Ants6387OversizeNoteIsRefusedBeforeTheScrub.
   **Layman:** On roadmaps laid out by pass, a very long note can tie up the terminal while it is cleaned; the other layout already limits it.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
@@ -81026,11 +81028,13 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-6394] **indie_review_corroborate scans the process working directory when `reports_dir` does not exist.**
+- ✅ [ANTS-6394] **indie_review_corroborate scans the process working directory when `reports_dir` does not exist.**
   validatePath leaves `resolved` empty without setting `bad` for a
   missing path; corroborateWithRoot then builds QDir(""), which is the
   working directory. Fix: refuse reports_dir_missing when resolved is
   empty.
+  Shipped 2026-11-05 (bbacb0a7): refuses not_found. Test:
+  IndieReviewSharedSymbol.Ants6394MissingReportsDirIsRefused.
   **Layman:** Given a reports folder that does not exist, a review tool reads whatever folder the program happens to run in.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).

@@ -191,6 +191,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log` refuses an over-long note on pass-headings roadmaps too, before cleaning it** (ANTS-6387)
+
+- **`indie_review_corroborate` refuses a reports folder that does not exist instead of reading the folder it runs in** (ANTS-6394)
+
 - **The audit ignores a baseline saved in the old format and asks you to save a new one, instead of marking every finding as new** (ANTS-6385)
 
 - **The audit window's AI triage buttons use the settings already open, including changes not yet saved to disk** (ANTS-6386)
