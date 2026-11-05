@@ -35,8 +35,9 @@ explicit socket path and the GUI bundle's `main` already builds a
 - **INV-4** — a `TabSpecific` verb stays on the GUI thread however it was
   registered. It reads live terminal state through `MainWindow`.
 - **INV-5** — a handler registered through the bare `ToolHandler` overload
-  never runs off the GUI thread. That overload is what every hand-written
-  inline lambda in `mainwindow.cpp` uses, and those capture `MainWindow`.
+  never runs off the GUI thread. Hand-written lambdas that capture
+  `MainWindow` use that overload; a hand-written body wrapped as
+  `RcHandler{…}` takes the off-thread overload instead (ANTS-4682).
 
 *Amendment, 2026-09-13 (ANTS-5051, ANTS-5073, ANTS-5035, ANTS-5142):*
 

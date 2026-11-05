@@ -81,8 +81,8 @@ place when it saves a Claude session real tokens or round-trips
        ClaudeIntegration::CallerCwdContract::Required,   // step 2
        rcDelegate(rc, &RemoteControl::cmdFoo));
 
-   // A hand-written body — runs on the GUI thread (step 2a). It reaches the
-   // host through `host`, never through MainWindow.
+   // A bare hand-written body — runs on the GUI thread (step 2a). It reaches
+   // the host through `host`, never through MainWindow.
    sink.registerToolProvider("<name>",
        ClaudeIntegration::CallerCwdContract::Required,   // step 2
        [host](const QJsonObject &args) -> QString { /* … */ });
@@ -128,11 +128,12 @@ place when it saves a Claude session real tokens or round-trips
    used. So the word you pick here decides what your handler may touch.
 
 2a. **Know which thread your verb runs on (ANTS-2132).** Registration
-   decides it, from two facts step 1 already carries. A verb built by the
-   `rcDelegate` factory whose contract is **not** `TabSpecific` runs on the
-   shared MCP dispatch worker; everything else — every hand-written inline
-   lambda, and every `TabSpecific` verb — runs on the GUI thread. So a plain
-   `cmd*()` forward is off-thread by default, and that is the common case.
+   decides it, from two facts step 1 already carries. A handler passed as an
+   `RcHandler` — built by the `rcDelegate` factory, or written by hand as
+   `RcHandler{…}` (ANTS-4682) — whose contract is **not** `TabSpecific` runs
+   on the shared MCP dispatch worker. A bare `ToolHandler` lambda, and every
+   `TabSpecific` verb, runs on the GUI thread. So a plain `cmd*()` forward is
+   off-thread by default, and that is the common case.
 
    **An off-thread body must not touch a widget or a `MainWindow` accessor
    directly.** Marshal the read through `ants::onGuiThread`

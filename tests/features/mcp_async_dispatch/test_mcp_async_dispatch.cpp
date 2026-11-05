@@ -213,8 +213,8 @@ TEST(McpAsyncDispatch, Inv4TabSpecificStaysOnTheGuiThread) {
 }
 
 // INV-5 — a handler registered through the bare ToolHandler overload is never
-// dispatched off the GUI thread. That overload is what every hand-written
-// inline lambda in mainwindow.cpp uses, and those capture MainWindow.
+// dispatched off the GUI thread. Hand-written lambdas that capture MainWindow
+// use it; one wrapped as RcHandler{…} takes the off-thread overload (ANTS-4682).
 TEST(McpAsyncDispatch, Inv5BareToolHandlerStaysOnTheGuiThread) {
     Harness h;
     ASSERT_TRUE(h.dir.isValid());
