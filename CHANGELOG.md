@@ -60,6 +60,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`verify_changes` refusals put the error code under `code` and the message under `error`, like every other tool; `doc_citations` and `get_text` refusals now carry both too** (ANTS-6379)
+
 - **`workspace_search` allows 30 calls a minute per project instead of 10, so parallel review helpers are no longer turned away** (ANTS-5112)
 
 - **Each line of scrollback uses 48 fewer bytes when it has no accent marks, about 2.4 MB less per tab at the default size** (ANTS-6395)

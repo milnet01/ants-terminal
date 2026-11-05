@@ -75162,7 +75162,7 @@ gets one CHANGELOG section + one drift cycle + one push.
   Source: ANTS-1675 fold-out (verified in-session 2026-06-27).
   Lanes: auditrunner.
 
-- 📋 [ANTS-6379] **verify_changes refusals put the code under `error` and carry no `code` field; doc_citations refusals carry no `error` text.**
+- ✅ [ANTS-6379] **verify_changes refusals put the code under `error` and carry no `code` field; doc_citations refusals carry no `error` text.**
   vcErr (src/remotecontrol_review.cpp) builds {ok:false, error:<code>,
   message:<text>}; every other verb returns {ok:false, code, error:<text>}
   (docs/standards/mcp-error-codes.md). doccitations.cpp's refusal(code)
@@ -75179,6 +75179,12 @@ gets one CHANGELOG section + one drift cycle + one push.
   RemoteControl::cmdGetText (src/remotecontrol_terminal.cpp) refuses "no
   tab at index" and "no active terminal" with ok:false and error text
   but no `code`. Move both onto mcp::refusal.
+  Shipped 2026-11-05 (8709d05e): vcErr removed for mcp::refusal;
+  doc_citations and get_text refusals carry code + error. Left as
+  tidy-ups (not defects): the verb-prefix helpers (versioncheck,
+  knowhowstore, runtraceverb, quotationcheckverb) and the extra-field
+  ones (smErr, githooksreport) could call mcp::refusal and add their
+  part.
   **Layman:** Two tools report errors in a slightly different shape from all the others, so a client looking for the usual error code finds nothing.
   Kind: fix.
   Source: in-session-2026-11-05 (found closing ANTS-2216).
@@ -99289,7 +99295,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L22-F21).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6260] **verify_changes refusals swap error and code against mcp-error-codes.md.**
+- ✅ [ANTS-6260] **verify_changes refusals swap error and code against mcp-error-codes.md.**
   From ANTS-6132. vcErr (src/remotecontrol_review.cpp) writes the code
   into `error` and the text into `message`; mcp-error-codes.md says
   `error` is text and `code` is the code, as every other verb does.
@@ -99298,6 +99304,8 @@ worked after these.
   because it changes the wire. Fix: build the envelope as the others
   do, move the test to `code`, add a CHANGELOG line.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  Shipped 2026-11-05 with ANTS-6379 (8709d05e), which filed the same
+  defect without seeing this item.
   **Layman:** When the code-check tool refuses a request, it puts the short error code where every other tool puts the human message, so a caller reading the message gets a code instead.
   Kind: fix.
   Source: review-readability-2026-10-22 (L23-F3).
