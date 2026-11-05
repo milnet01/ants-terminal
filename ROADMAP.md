@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6396 -->
+<!-- ants-roadmap-id-high-water: ANTS=6397 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90441,6 +90441,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: cc-feedback-2026-11-05 (LocalWebServerManager).
   Lanes: spec-tools.
+
+- ✅ [ANTS-6397] **The hook socket parsed an over-cap payload after ANTS-2216, reopening the ANTS-1659 out-of-memory hole.**
+  19ace154 moved the hook buffer into a shared_ptr. The 256 KiB cap
+  disconnected the peer, but the over-cap bytes were already in the
+  buffer the disconnected handler parses, so one large burst of nested
+  JSON was parsed whole. Before, the property kept only the last
+  under-cap prefix. Fix: empty the buffer and latch on over-cap; later
+  reads are drained and ignored. Found by the contact-list session.
+  Shipped 2026-11-05 (f6d5737c). Test:
+  SocketReadyreadUafGuard.Ants6397HookOverCapEmptiesTheBuffer (source
+  scrape; no behavioural test writes past the cap and counts readyRead
+  emissions).
+  **Layman:** A change earlier today let an oversized message to the hook socket be read in full, which the size limit exists to stop.
+  Kind: security.
+  Source: cold read by the contact-list session 2026-11-05 of 19ace154 (ANTS-2216).
+  Lanes: claudeintegration.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

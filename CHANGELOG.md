@@ -311,6 +311,8 @@ for security-relevant changes.
 
 ### Security
 
+- **The Claude Code hook socket discards a message over its 256 KiB limit instead of reading it in full** (ANTS-6397)
+
 - **`get_last_command` hides secrets in the output it hands Claude** (ANTS-6375)
   Like the other terminal-reading verbs, it now replaces keys and
   passwords with `[REDACTED:<kind>]` (switch: `claude.mcp_redact_secrets`),
