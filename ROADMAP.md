@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6386 -->
+<!-- ants-roadmap-id-high-water: ANTS=6394 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -75136,6 +75136,10 @@ gets one CHANGELOG section + one drift cycle + one push.
   knowhowstore, runtraceverb, quotationcheckverb) or extra fields
   (smErr, githooksreport), and refusal objects still built inline. Each
   could call mcp::refusal and add its part.
+  Also (from the ANTS-4460 triage, 2026-11-05):
+  RemoteControl::cmdGetText (src/remotecontrol_terminal.cpp) refuses "no
+  tab at index" and "no active terminal" with ok:false and error text
+  but no `code`. Move both onto mcp::refusal.
   **Layman:** Two tools report errors in a slightly different shape from all the others, so a client looking for the usual error code finds nothing.
   Kind: fix.
   Source: in-session-2026-11-05 (found closing ANTS-2216).
@@ -80541,7 +80545,7 @@ whole files.
   Source: cold-sweep-2026-08-18 lanes audit-dialog + audit-engine + audit-ledgers (UNVERIFIED — triage before work).
   Lanes: auditdialog, auditengine, auditautofix, falseposledger.
 
-- 📋 [ANTS-4460] **Triage: MCP verb and IPC findings from the cold sweep.**
+- ✅ [ANTS-4460] **Triage: MCP verb and IPC findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
   source first. Filed separately as VERIFIED: ANTS-4447
   (`findRoadmapUnder`), ANTS-4449 (`fenceMask`), ANTS-4450
@@ -80771,6 +80775,20 @@ whole files.
   Release record (2026-09-10): the 0.7.109 CHANGELOG cites this
   umbrella for pieces it delivered. The umbrella stays open for the
   rest. That is a partial delivery, not a missed flip (ANTS-4995).
+  Triaged 2026-11-05 (session 217): every claim the notes above left
+  open was read against current source. REAL, filed: pass-headings note
+  uncapped (ANTS-6387), bundles drops source (6388), feature_coverage
+  dot-tail (6389), speclint specs wording (6390), pass-headings scrub
+  report unread (6391), failed batch note silent (6392), YAML changelog
+  no ancestor walk (6393), corroborate scans the cwd (6394), get_text
+  refusal has no code (folded into 6379). REAL, already tracked:
+  changelog race (ANTS-4881), invariant_check dedup (ANTS-5414), release
+  date unvalidated (ANTS-6030). FIXED since: changelog one-line fold
+  (ANTS-5108), feedback clamp (5098), mutation_probe QSaveFile (5096),
+  focused_test regex (5102) and GUI thread (5096), runGit timeout
+  (5101), corroborate envelope, forensic log forging (5093). Not
+  locatable from the claim text: the module-map verb, seventeen
+  includes, the two text-altering write paths.
 
 - 📋 [ANTS-4461] **Triage: roadmap store/export and plugin-manager findings from the cold sweep.**
   Reviewer claims carried forward as-is. NOT re-verified — check each against
@@ -80900,6 +80918,84 @@ whole files.
   Kind: refactor.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
+
+- 📋 [ANTS-6387] **roadmap_log's pass-headings flip and flip_batch scrub an uncapped `note`.**
+  cmdRoadmapLogPassFlip and cmdRoadmapLogPassFlipBatch
+  (src/remotecontrol_roadmap_query.cpp) run rcScrubLeakedToolXml on the
+  note with no size check. The GFM path caps at kRcMaxNoteChars first,
+  but both dispatchers return into the pass writer before their cap.
+  Fix: refuse too_large above kRcMaxNoteChars, per note, before the scrub.
+  **Layman:** On roadmaps laid out by pass, a very long note can tie up the terminal while it is cleaned; the other layout already limits it.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-6388] **roadmap_query mode:"bundles" drops the `source` and `file_ahead_of_store` fields.**
+  The bundles branch of cmdRoadmapQuery returns a fresh object from
+  buildRoadmapBundlesEnvelope; stampRoadmapSource wrote only to `out`,
+  which is discarded. Fix: stamp the bundles envelope too.
+  **Layman:** One way of asking for the roadmap leaves out the line that says where the answer came from.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-6389] **feature_coverage's dot-tail fallback lets a `config.json`-style literal match on its extension alone.**
+  containsWithTailFallback (src/featurecoverage.cpp) retries the text
+  after the last dot when it has four or more letters, so `config.json`
+  matches on `json`. Fix: skip the fallback when the token is a path or
+  its tail is a file extension; keep it for module.func.
+  **Layman:** A coverage check counts a file name as present in the code when only its ending, such as "json", appears.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: featurecoverage.
+
+- 📋 [ANTS-6390] **Three specs still call spec_lint's `sections_checked:false` the shipping default.**
+  docs/specs/ANTS-3662.md, ANTS-3663.md and
+  ANTS-4127-test-surface-resolution.md say false is the shipping
+  default; the section check now runs whenever docs/standards/specs.md
+  carries its required-sections block. Reword each as a condition.
+  **Layman:** Three design documents describe an old default the tool no longer has.
+  Kind: doc-fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: speclint.
+
+- 📋 [ANTS-6391] **Pass-headings roadmap writes collect the scrub report and never return it.**
+  cmdRoadmapLogPassFlip, cmdRoadmapLogPassFlipBatch and
+  rcRenderPassBullet fill a scrubbed list that nothing reads. Fix: emit
+  note_scrubbed_params / body_scrubbed_params when non-empty, as the GFM
+  path does (ANTS-5918).
+  **Layman:** When the roadmap tool cleans stray markup out of a note, one layout does not say it did.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-6392] **A pass-headings flip_batch locator whose note fails still reports the flip as clean.**
+  cmdRoadmapLogPassFlipBatch: in flip mode a failed annotate result
+  falls through to flipped.append(f). Fix: mark the row note_failed with
+  the code, or count it under skipped.
+  **Layman:** In a batch status change, a note that failed to save is dropped without a word.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-6393] **changelog_log never finds a YAML changelog above the project root, unlike the Markdown one.**
+  findYamlChangelogUnder (src/remotecontrol.cpp) checks only the root;
+  its sibling findChangelogUnder walks repoBoundedAncestors. Fix: walk
+  the same ancestors.
+  **Layman:** A project whose YAML changelog sits one folder up is not found, though a Markdown one there would be.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: remotecontrol.
+
+- 📋 [ANTS-6394] **indie_review_corroborate scans the process working directory when `reports_dir` does not exist.**
+  validatePath leaves `resolved` empty without setting `bad` for a
+  missing path; corroborateWithRoot then builds QDir(""), which is the
+  working directory. Fix: refuse reports_dir_missing when resolved is
+  empty.
+  **Layman:** Given a reports folder that does not exist, a review tool reads whatever folder the program happens to run in.
+  Kind: fix.
+  Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
+  Lanes: remotecontrol, indiereviewengine.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 
