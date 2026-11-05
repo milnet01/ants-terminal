@@ -10,6 +10,7 @@
 // a line scan for reads only: see analyseScript.
 
 #include "sourcescrapes.h"
+#include "mcprefusal.h"
 
 #include "buildtargets.h"
 #include "codewalk.h"
@@ -558,14 +559,6 @@ private:
     FileResult m_out;
 };
 
-QJsonObject refusal(const QString &code, const QString &error) {
-    QJsonObject e;
-    e[QStringLiteral("ok")] = false;
-    e[QStringLiteral("code")] = code;
-    e[QStringLiteral("error")] = error;
-    return e;
-}
-
 bool isCppSource(const QString &rel) {
     static const QStringList kSuffixes = {
         QStringLiteral("cpp"), QStringLiteral("cc"), QStringLiteral("cxx"), QStringLiteral("h"),
@@ -947,27 +940,27 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     QJsonArray asked = args.value(QStringLiteral("paths")).toArray();
     if (args.contains(QStringLiteral("path"))) asked.prepend(args.value(QStringLiteral("path")));
     if (asked.isEmpty())
-        return refusal(QStringLiteral("bad_args"),
+        return mcp::refusal(QStringLiteral("bad_args"),
                        QStringLiteral("source_scrapes: give \"path\" or \"paths\""));
     int limit = kDefaultLimit;
     if (args.contains(QStringLiteral("limit"))) {
         limit = args.value(QStringLiteral("limit")).toInt(0);
         if (limit < 1 || limit > kMaxLimit)
-            return refusal(QStringLiteral("bad_args"),
+            return mcp::refusal(QStringLiteral("bad_args"),
                            QStringLiteral("source_scrapes: \"limit\" must be 1 to %1").arg(kMaxLimit));
     }
     const QDir root(rootCanonical);
     QStringList wanted;
     for (const QJsonValue v : std::as_const(asked)) {
         if (!v.isString())
-            return refusal(QStringLiteral("bad_args"),
+            return mcp::refusal(QStringLiteral("bad_args"),
                            QStringLiteral("source_scrapes: \"paths\" entries must be strings"));
         const PathValidation::Check check =
             PathValidation::validatePath(v.toString(), rootCanonical, verb, QStringLiteral("paths"));
         if (check.bad) return check.err;
         const QFileInfo fi(check.resolved);
         if (check.resolved.isEmpty() || !fi.exists())
-            return refusal(QStringLiteral("bad_path"),
+            return mcp::refusal(QStringLiteral("bad_path"),
                            QStringLiteral("source_scrapes: \"%1\" does not exist").arg(v.toString()));
         wanted.append(root.relativeFilePath(fi.canonicalFilePath()));
     }

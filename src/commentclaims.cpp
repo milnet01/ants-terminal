@@ -7,6 +7,7 @@
 // name, a capped walk) is skipped or counted, never reported as dead.
 
 #include "commentclaims.h"
+#include "mcprefusal.h"
 
 #include "codewalk.h"
 #include "projectsettings.h"
@@ -239,14 +240,6 @@ QString readText(const QString &abs) {
     QFile f(abs);
     if (!f.open(QIODevice::ReadOnly)) return QString();
     return QString::fromUtf8(f.readAll());
-}
-
-QJsonObject refusal(const QString &code, const QString &error) {
-    QJsonObject e;
-    e[QStringLiteral("ok")] = false;
-    e[QStringLiteral("code")] = code;
-    e[QStringLiteral("error")] = error;
-    return e;
 }
 
 // True when the number at `at` names a place rather than counts anything:
@@ -558,7 +551,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     if (args.contains(QStringLiteral("limit"))) {
         limit = args.value(QStringLiteral("limit")).toInt(0);
         if (limit < 1 || limit > kMaxLimit)
-            return refusal(QStringLiteral("bad_args"),
+            return mcp::refusal(QStringLiteral("bad_args"),
                            QStringLiteral("comment_claims: \"limit\" must be 1 to %1").arg(kMaxLimit));
     }
     CodeWalk::Options walkOpts;

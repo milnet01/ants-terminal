@@ -1,5 +1,6 @@
 // ANTS-3833 TU 12/24 — Indie review verbs.
 #include "remotecontrol.h"
+#include "mcprefusal.h"
 #include "remotecontrol_internal.h"
 #include "guithread.h"
 #include "claudeintegration.h"
@@ -29,11 +30,11 @@
 using namespace rcdetail;  // ANTS-3833
 
 QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
-    if (!m_roots) return QJsonDocument(irErr(QStringLiteral("no_window"),
+    if (!m_roots) return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
         QStringLiteral("indie_review_partition: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
     const QString root = resolveRootCanonical(m_roots, req);
-    if (root.isEmpty()) return QJsonDocument(irErr(
+    if (root.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_partition: no focused project")));
 
@@ -346,7 +347,7 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
 
 
 QJsonDocument RemoteControl::cmdIndieReviewCorroborate(const QJsonObject &req) {
-    if (!m_roots) return QJsonDocument(irErr(QStringLiteral("no_window"),
+    if (!m_roots) return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
         QStringLiteral("indie_review_corroborate: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
     return corroborateWithRoot(req, resolveRootCanonical(m_roots, req));
@@ -365,7 +366,7 @@ QJsonDocument RemoteControl::cmdIndieReviewCorroborateForTest(
 
 QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
                                                  const QString &root) {
-    if (root.isEmpty()) return QJsonDocument(irErr(
+    if (root.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_corroborate: no focused project")));
 
@@ -375,7 +376,7 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
     const bool hasReports    = req.contains(QStringLiteral("reports"));
     const bool hasReportsDir = req.contains(QStringLiteral("reports_dir"));
     if (hasReports == hasReportsDir) {
-        return QJsonDocument(irErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral(
                 "indie_review_corroborate: provide exactly one of "
@@ -409,7 +410,7 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
     if (hasReportsDir) {
         reportsDir = req.value(QStringLiteral("reports_dir"))
                         .toString().trimmed();
-        if (reportsDir.isEmpty()) return QJsonDocument(irErr(
+        if (reportsDir.isEmpty()) return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral("indie_review_corroborate: reports_dir must be a "
                            "non-empty path (project-relative, or absolute "
@@ -699,20 +700,20 @@ const char *kReviewerSystemPrompt =
 
 QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
                                                     const QString &root) {
-    if (!m_roots) return QJsonDocument(irErr(QStringLiteral("no_window"),
+    if (!m_roots) return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
         QStringLiteral("indie_review_dispatch: no MainWindow")));
 
     // ANTS-1404 — caller_cwd Required. ANTS-5024 — the provider resolves it
     // on the GUI thread and passes it in: this runs on a worker the GUI thread
     // joins, so resolving it here marshalled to a thread that never answered.
-    if (root.isEmpty()) return QJsonDocument(irErr(
+    if (root.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_project"),
         QStringLiteral("indie_review_dispatch: no focused project")));
 
     // ANTS-1295 — anchor reports_dir.
     const QString reportsDir =
         req.value(QStringLiteral("reports_dir")).toString().trimmed();
-    if (reportsDir.isEmpty()) return QJsonDocument(irErr(
+    if (reportsDir.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("bad_args"),
         QStringLiteral(
             "indie_review_dispatch: reports_dir required "
@@ -728,7 +729,7 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
     if (req.value(QStringLiteral("concurrency")).isDouble()) {
         concurrency = req.value(QStringLiteral("concurrency")).toInt();
     }
-    if (concurrency < 1 || concurrency > 8) return QJsonDocument(irErr(
+    if (concurrency < 1 || concurrency > 8) return QJsonDocument(mcp::refusal(
         QStringLiteral("bad_args"),
         QStringLiteral("indie_review_dispatch: concurrency %1 out of "
                        "[1, 8]").arg(concurrency)));
@@ -737,14 +738,14 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
     if (req.value(QStringLiteral("max_tokens")).isDouble()) {
         maxTokens = req.value(QStringLiteral("max_tokens")).toInt();
     }
-    if (maxTokens < 4096 || maxTokens > 128000) return QJsonDocument(irErr(
+    if (maxTokens < 4096 || maxTokens > 128000) return QJsonDocument(mcp::refusal(
         QStringLiteral("bad_args"),
         QStringLiteral("indie_review_dispatch: max_tokens %1 out of "
                        "[4096, 128000]").arg(maxTokens)));
 
     const QString systemExtras =
         req.value(QStringLiteral("system_extras")).toString();
-    if (systemExtras.toUtf8().size() > 4 * 1024) return QJsonDocument(irErr(
+    if (systemExtras.toUtf8().size() > 4 * 1024) return QJsonDocument(mcp::refusal(
         QStringLiteral("bad_args"),
         QStringLiteral("indie_review_dispatch: system_extras must be "
                        "<= 4096 bytes")));
@@ -752,12 +753,12 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
     // AI configuration check (INV-15 partial — endpoint scheme validated
     // engine-side, but emptiness/disabled is here).
     Config cfg;
-    if (!cfg.aiEnabled()) return QJsonDocument(irErr(
+    if (!cfg.aiEnabled()) return QJsonDocument(mcp::refusal(
         QStringLiteral("ai_not_configured"),
         QStringLiteral("indie_review_dispatch: AI integration disabled "
                        "(Settings → AI)")));
     const QString endpoint = cfg.aiEndpoint();
-    if (endpoint.isEmpty()) return QJsonDocument(irErr(
+    if (endpoint.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("ai_not_configured"),
         QStringLiteral("indie_review_dispatch: ai_endpoint is empty "
                        "(Settings → AI)")));
@@ -770,7 +771,7 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
 
     // Resolve lanes via derivePartition.
     const auto allLanes = IndieReviewEngine::derivePartition(root);
-    if (allLanes.isEmpty()) return QJsonDocument(irErr(
+    if (allLanes.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_lanes"),
         QStringLiteral("indie_review_dispatch: partition resolved empty "
                        "(no ## Module map in docs/subsystems.md or "
@@ -793,7 +794,7 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
     } else {
         for (const QString &name : requestedLanes) {
             if (!laneByName.contains(name)) {
-                return QJsonDocument(irErr(
+                return QJsonDocument(mcp::refusal(
                     QStringLiteral("bad_args"),
                     QStringLiteral("indie_review_dispatch: unknown lane "
                                    "\"%1\" (not in partition)").arg(name)));
@@ -1402,14 +1403,6 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
 // ---------------------------------------------------------------------------
 
 namespace rcdetail {
-
-QJsonObject ceErr(const QString &code, const QString &msg) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = msg;
-    o["code"]  = code;
-    return o;
-}
 
 // ANTS-1319 INV-11: cap user-supplied echo at 64 bytes + substitute
 // control characters with '?'. Also session_memory's echo (ANTS-1283

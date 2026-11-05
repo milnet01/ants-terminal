@@ -267,11 +267,11 @@ TEST(IndieReviewDispatch, G10_RefusalEnvelopeShape) {
             ants_test::slurpRemoteControl(),
             "RemoteControl::cmdIndieReviewDispatch");
     ASSERT_FALSE(handler.empty());
-    // Every irErr call in this handler must pair (code, message).
-    // Count the irErr calls and require >= 6 (we have many refusal
+    // Every refusal in this handler goes through mcp::refusal(code, message)
+    // (ANTS-2216). Count them and require >= 6 (we have many refusal
     // branches: no_window, no_project, bad_args ×3+, no_lanes,
     // ai_not_configured ×2).
-    EXPECT_GE(ants_test::countOccurrences(handler, "irErr"),
+    EXPECT_GE(ants_test::countOccurrences(handler, "mcp::refusal("),
               std::size_t(6));
 }
 

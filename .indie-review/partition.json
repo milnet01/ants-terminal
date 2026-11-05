@@ -500,6 +500,7 @@
         "src/mcporientation.h",
         "src/mcpprojection.cpp",
         "src/mcpprojection.h",
+        "src/mcprefusal.h",
         "src/mcpspill.cpp",
         "src/mcpspill.h",
         "src/mcpundeclaredargs.cpp",

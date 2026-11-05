@@ -1,5 +1,6 @@
 // ANTS-3833 TU 10/24 — Feedback and audit verbs.
 #include "remotecontrol.h"
+#include "mcprefusal.h"
 #include "remotecontrol_internal.h"
 #include "build_info.h"    // ANTS-4741 — the stale-binary comparison
 #include "guithread.h"
@@ -180,7 +181,7 @@ static std::unique_ptr<RoadmapStore> fbOpenStore(const QString &verb,
     auto store = std::make_unique<RoadmapStore>(RoadmapStore::defaultPath());
     QString err;
     if (store->open(&err)) return store;
-    *refusal = fbErr(QStringLiteral("store_failed"),
+    *refusal = mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("%1: cannot open the roadmap store: %2")
                          .arg(verb, err));
     return nullptr;
@@ -193,7 +194,7 @@ static QJsonObject fbStoreRefusal(const FeedbackStore::Result &r,
                                   const QString &path, const QString &callerLeaf) {
     if (r.code == QStringLiteral("not_found"))
         return fbNotFound(notFound, path, callerLeaf);
-    QJsonObject e = fbErr(r.code, verb + QStringLiteral(": ") + r.message);
+    QJsonObject e = mcp::refusal(r.code, verb + QStringLiteral(": ") + r.message);
     if (r.code == QStringLiteral("confirm_required")) {
         e[QStringLiteral("store_bytes")] = r.storeBytes;
         e[QStringLiteral("file_bytes")]  = r.fileBytes;
@@ -219,7 +220,7 @@ QJsonDocument RemoteControl::cmdFeedbackQuery(const QJsonObject &req) {
     if (!fbStore) return QJsonDocument(storeRefusal);
     const FeedbackStore::Result loaded = FeedbackStore::load(*fbStore, resolved);
     if (!loaded.code.isEmpty())
-        return QJsonDocument(fbErr(loaded.code,
+        return QJsonDocument(mcp::refusal(loaded.code,
                                    QStringLiteral("feedback_query: ") + loaded.message));
     if (!loaded.found) {
         QJsonObject nf = fbNotFound(
@@ -602,7 +603,7 @@ void RemoteControl::setForceFeedbackWriteFailForTest(bool on) {
 static QJsonObject fbAssignRefusal(const FeedbackFile::AssignResult &ar,
                                    const QString &heading) {
     if (ar.code == QStringLiteral("target_ambiguous")) {
-        QJsonObject e = fbErr(ar.code,
+        QJsonObject e = mcp::refusal(ar.code,
             QStringLiteral("feedback_log: assign_id heading matches %1 `### ` "
                            "blocks; pass heading_line").arg(ar.candidates.size()));
         QJsonArray lines;
@@ -610,7 +611,7 @@ static QJsonObject fbAssignRefusal(const FeedbackFile::AssignResult &ar,
         e[QStringLiteral("candidates")] = lines;
         return e;
     }
-    QJsonObject e = fbErr(ar.code,
+    QJsonObject e = mcp::refusal(ar.code,
         QStringLiteral("feedback_log: assign_id found no `### ` finding matching "
                        "\"%1\"").arg(heading));
     QStringList slugs;   // file order, which the ranker breaks ties by
@@ -655,7 +656,7 @@ static bool fbComposeAssignValue(const QJsonObject &a, QString *value,
                              a.value(QStringLiteral("awaiting")).isString();
     const int dispositions = int(hasIds) + int(hasClosure) + int(hasAwaiting);
     if (dispositions != 1) {
-        *err = fbErr(
+        *err = mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral("feedback_log: assign_id needs exactly one of a "
                            "non-empty \"ids\" array, a \"closure\" string, "
@@ -669,7 +670,7 @@ static bool fbComposeAssignValue(const QJsonObject &a, QString *value,
         for (const QJsonValue &v : idsArr) {
             const QString id = v.toString().trimmed();
             if (!fbIsAntsId(id)) {
-                *err = fbErr(
+                *err = mcp::refusal(
                     QStringLiteral("bad_args"),
                     QStringLiteral("feedback_log: assign_id \"ids\" entries "
                                    "must match ^ANTS-[0-9]+$ (got \"%1\")")
@@ -728,7 +729,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         QStringLiteral("prune_tracking"),   QStringLiteral("append_tracking"),
         QStringLiteral("migrate_v2"),       QStringLiteral("set_format_version")};
     if (kRetired.contains(op)) {
-        return QJsonDocument(fbErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("retired"),
             QStringLiteral("feedback_log: op \"%1\" is retired. The feedback "
                            "corpus now lives in the roadmap store (ANTS-4513), "
@@ -739,7 +740,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         op != QStringLiteral("assign_id_batch") &&   // ANTS-4671
         op != QStringLiteral("set_title") &&
         op != QStringLiteral("reimport")) {           // ANTS-4513 § 4.5
-        return QJsonDocument(fbErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_mode"),
             QStringLiteral("feedback_log: op must be \"append_finding\", "
                            "\"assign_id\", \"assign_id_batch\", \"set_title\" "
@@ -779,7 +780,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QString wanted =
             req.value(QStringLiteral("title")).toString().trimmed();
         if (wanted.isEmpty()) {
-            return QJsonDocument(fbErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: set_title requires a non-empty "
                                "\"title\" (the project name, not the whole "
@@ -797,7 +798,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                 return tr.code.isEmpty();
             });
         if (r.code == QStringLiteral("edit_refused")) {
-            return QJsonDocument(fbErr(
+            return QJsonDocument(mcp::refusal(
                 tr.code,
                 QStringLiteral("feedback_log: set_title found no `# ` heading "
                                "in \"%1\" — the format fixes the H1's "
@@ -826,7 +827,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QJsonArray assignments =
             req.value(QStringLiteral("assignments")).toArray();
         if (assignments.isEmpty()) {
-            return QJsonDocument(fbErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: assign_id_batch requires a "
                                "non-empty \"assignments\" array")));
@@ -855,7 +856,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
                     const QString heading =
                         a.value(QStringLiteral("heading")).toString();
                     if (heading.trimmed().isEmpty()) {
-                        skip(fbErr(QStringLiteral("bad_args"),
+                        skip(mcp::refusal(QStringLiteral("bad_args"),
                              QStringLiteral("feedback_log: assign_id requires a "
                                             "non-empty \"heading\" (the target "
                                             "`### ` finding line)")));
@@ -900,7 +901,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         // ANTS-4470's rule, kept: an all-failed batch is a refusal, not a
         // success reporting nothing.
         if (r.code == QStringLiteral("edit_refused")) {
-            QJsonObject e = fbErr(
+            QJsonObject e = mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: assign_id_batch applied no "
                                "assignment — every one was refused"));
@@ -925,7 +926,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         const QString heading =
             req.value(QStringLiteral("heading")).toString();
         if (heading.trimmed().isEmpty()) {
-            return QJsonDocument(fbErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: assign_id requires a non-empty "
                                "\"heading\" (the target `### ` finding line)")));
@@ -986,7 +987,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         static const QRegularExpression dateRe(
             QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
         if (!dateRe.match(date).hasMatch()) {
-            return QJsonDocument(fbErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: \"date\" must be "
                                "YYYY-MM-DD")));
@@ -995,7 +996,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
     const QJsonArray findingsArr =
         req.value(QStringLiteral("findings")).toArray();
     if (findingsArr.isEmpty()) {
-        return QJsonDocument(fbErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral("feedback_log: append_finding requires a "
                            "non-empty \"findings\" array")));
@@ -1006,7 +1007,7 @@ QJsonDocument RemoteControl::cmdFeedbackLog(const QJsonObject &req) {
         FeedbackFile::Finding fnd;
         fnd.title = fo.value(QStringLiteral("title")).toString();
         if (fnd.title.isEmpty()) {
-            return QJsonDocument(fbErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("feedback_log: every finding needs a "
                                "non-empty \"title\"")));
@@ -2185,14 +2186,6 @@ QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
 // is the FINGERPRINT ledger the audit engine filters on.
 namespace {
 
-QJsonObject adErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = code;
-    return o;
-}
-
 struct AdParsed {
     ants::auditfp::RecordRequest request;
     bool computed = false;
@@ -2287,7 +2280,7 @@ QJsonObject adResultFields(const AdParsed &parsed,
 }
 
 QJsonObject adWriteFailed(const QString &path) {
-    return adErr(QStringLiteral("write_failed"),
+    return mcp::refusal(QStringLiteral("write_failed"),
         QStringLiteral("audit_dismiss: could not append to %1").arg(path));
 }
 
@@ -2298,7 +2291,7 @@ QJsonObject adRecordBatch(const QJsonObject &req, const QString &root,
                           const QString &path, bool dryRun) {
     for (const char *key : {"fingerprint", "file", "message"}) {
         if (req.contains(QLatin1String(key))) {
-            return adErr(QStringLiteral("bad_args"),
+            return mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("audit_dismiss: `%1` names one finding, so it "
                                "goes inside each entry, not beside `entries`")
                     .arg(QLatin1String(key)));
@@ -2306,7 +2299,7 @@ QJsonObject adRecordBatch(const QJsonObject &req, const QString &root,
     }
     const QJsonArray entries = req.value(QStringLiteral("entries")).toArray();
     if (entries.isEmpty()) {
-        return adErr(QStringLiteral("bad_args"),
+        return mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("audit_dismiss: `entries` must be a non-empty array"));
     }
 
@@ -2317,7 +2310,7 @@ QJsonObject adRecordBatch(const QJsonObject &req, const QString &root,
         AdParsed p;
         const QString error = adParse(entries.at(i).toObject(), req, &p);
         if (!error.isEmpty()) {
-            QJsonObject row = adErr(QStringLiteral("bad_args"), error);
+            QJsonObject row = mcp::refusal(QStringLiteral("bad_args"), error);
             row.remove(QStringLiteral("ok"));
             row["index"] = i;
             skipped.append(row);
@@ -2327,7 +2320,7 @@ QJsonObject adRecordBatch(const QJsonObject &req, const QString &root,
         indexes.append(i);
     }
     if (parsed.isEmpty()) {
-        QJsonObject e = adErr(QStringLiteral("bad_args"),
+        QJsonObject e = mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("audit_dismiss: applied no entry — every one was "
                            "refused"));
         rcSetAllRefusedSkipped(e, skipped);
@@ -2370,7 +2363,7 @@ QJsonDocument RemoteControl::cmdAuditDismiss(const QJsonObject &req) {
         req.value(QStringLiteral("caller_cwd")).toString();
     const QString root = QFileInfo(callerRaw).canonicalFilePath();
     if (root.isEmpty()) {
-        return QJsonDocument(adErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("audit_dismiss: caller_cwd does not resolve to "
                            "an existing project directory")));
     }
@@ -2386,7 +2379,7 @@ QJsonDocument RemoteControl::cmdAuditDismiss(const QJsonObject &req) {
     AdParsed parsed;
     const QString error = adParse(req, req, &parsed);
     if (!error.isEmpty())
-        return QJsonDocument(adErr(QStringLiteral("bad_args"), error));
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"), error));
 
     const auto results =
         ants::auditfp::recordEntries(root, {parsed.request}, dryRun);

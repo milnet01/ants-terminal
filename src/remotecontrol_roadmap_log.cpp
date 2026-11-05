@@ -1,5 +1,6 @@
 // ANTS-3833 TU 6/24 — Roadmap single-item write ops.
 #include "remotecontrol.h"
+#include "mcprefusal.h"
 #include "remotecontrol_internal.h"
 #include "roadmapfoldin.h"
 #include "roadmapclock.h"   // ANTS-4501 § 2.2 — the injectable "today"
@@ -3824,21 +3825,11 @@ struct RlFieldChange {
     QStringList evNotPath;  // ANTS-4527
 };
 
-// A refusal as a JSON object, so the single op returns it whole and the batch
-// files it in skipped[].
-QJsonObject rlFieldRefusal(const QString &code, const QString &message) {
-    QJsonObject env;
-    env[QStringLiteral("ok")]    = false;
-    env[QStringLiteral("code")]  = code;
-    env[QStringLiteral("error")] = message;
-    return env;
-}
-
 // Reads `id`, `field` and `value` from `src` — the request, or one batch
 // entry. Returns a refusal, or an empty object when `out` is filled.
 QJsonObject rlPrepareFieldChange(const QJsonObject &src, RlFieldChange *out) {
     auto rlErr = [](const QString &code, const QString &message) {
-        return rlFieldRefusal(code, message);
+        return mcp::refusal(code, message);
     };
     const QString id    = src.value(QStringLiteral("id")).toString().trimmed();
     const QString field = src.value(QStringLiteral("field")).toString().trimmed();
@@ -3976,7 +3967,7 @@ QJsonObject rlLocateFieldChange(RoadmapStore &store, qint64 projectId,
                                 const RlFieldChange &c, qint64 *pkOut,
                                 QString *oldValueOut) {
     auto rlErr = [](const QString &code, const QString &message) {
-        return rlFieldRefusal(code, message);
+        return mcp::refusal(code, message);
     };
     const QString &id    = c.id;
     const QString &field = c.field;
@@ -4161,12 +4152,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendField(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req) {
     const QJsonValue listVal = req.value(QStringLiteral("amendments"));
     if (!listVal.isArray() || listVal.toArray().isEmpty())
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("missing_field"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"amend_field_batch\" needs "
                            "`amendments`, a non-empty array of {id, field, value}")));
     const QJsonArray list = listVal.toArray();
     if (list.size() > 500)
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `amendments` holds at most 500 entries; "
                            "got %1").arg(list.size())));
 
@@ -4206,7 +4197,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
         const QString id = entry.value(QStringLiteral("id")).toString().trimmed();
         if (entry.value(QStringLiteral("field")).toString().trimmed()
                 == QLatin1String("section")) {
-            skip(i, id, rlFieldRefusal(QStringLiteral("bad_args"),
+            skip(i, id, mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: `section` is not a column; move "
                                "items with op:\"amend_field\" field:\"section\" "
                                "and `locators`")));
@@ -4219,7 +4210,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
         }
         const QString key = change.id + QLatin1Char('\n') + change.field;
         if (seen.contains(key)) {
-            skip(i, id, rlFieldRefusal(QStringLiteral("bad_args"),
+            skip(i, id, mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: an earlier entry already sets `%1` "
                                "on %2; one value per column per call")
                     .arg(change.field, change.id)));
@@ -4246,7 +4237,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
                 code = QStringLiteral("bad_args");
                 break;
             }
-        QJsonObject out = rlFieldRefusal(code,
+        QJsonObject out = mcp::refusal(code,
             QStringLiteral("roadmap_log op:\"amend_field_batch\": all %1 "
                            "amendment(s) were refused — nothing was written")
                 .arg(skipped.size()));
@@ -4398,12 +4389,12 @@ QJsonObject rlSectionNotFound(const RoadmapStore &store, qint64 projectId,
 QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
     const QJsonValue listVal = req.value(QStringLiteral("locators"));
     if (!listVal.isArray() || listVal.toArray().isEmpty())
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("missing_field"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"amend_batch\" needs `locators`, a "
                            "non-empty array of {id, old_text, new_text}")));
     const QJsonArray list = listVal.toArray();
     if (list.size() > 500)
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `locators` holds at most 500 entries; "
                            "got %1").arg(list.size())));
 
@@ -4510,7 +4501,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
                 code = QStringLiteral("bad_args");
                 break;
             }
-        QJsonObject out = rlFieldRefusal(code,
+        QJsonObject out = mcp::refusal(code,
             QStringLiteral("roadmap_log op:\"amend_batch\": all %1 edit(s) were "
                            "refused — nothing was written").arg(skipped.size()));
         out[QStringLiteral("op")]            = QStringLiteral("amend_batch");
@@ -4544,19 +4535,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
     const QString oldText = req.value(QStringLiteral("old_text")).toString();
     if (oldText.isEmpty() || !req.contains(QStringLiteral("new_text")))
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("missing_field"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("missing_field"),
             QStringLiteral("roadmap_log: op:\"replace_text\" needs a non-empty "
                            "`old_text` and `new_text`")));
     QString newText = req.value(QStringLiteral("new_text")).toString();
     if (oldText.size() > kRcMaxNoteChars || newText.size() > kRcMaxNoteChars)
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("too_large"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("too_large"),
             QStringLiteral("roadmap_log: old_text / new_text exceeds %1-char cap")
                 .arg(kRcMaxNoteChars)));
     QStringList scrubbed;
     rcScrubLeakedToolXml(newText, scrubbed);
     QString shadowErr;
     if (rlNoteDeclaresTrailer(newText, &shadowErr, "new_text"))
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("body_shadowed"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("body_shadowed"),
             QStringLiteral("roadmap_log: %1").arg(shadowErr)));
     const QString status = req.value(QStringLiteral("status")).toString();
     static const QStringList kStatuses{
@@ -4564,7 +4555,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
         QStringLiteral("shipped"), QStringLiteral("considered"),
         QStringLiteral("dropped")};
     if (!status.isEmpty() && !kStatuses.contains(status))
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: `status` must be one of %1; got \"%2\"")
                 .arg(kStatuses.join(QStringLiteral(", ")), status)));
 
@@ -4593,12 +4584,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
         const auto sectionId = store.findSection(target->projectId, slug, &err);
         if (!sectionId) {
             if (!err.isEmpty())
-                return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
+                return QJsonDocument(mcp::refusal(QStringLiteral("store_failed"), err));
             return QJsonDocument(rlSectionNotFound(store, target->projectId, slug));
         }
         const auto sections = store.listSectionsOrdered(target->projectId, &err);
         if (!sections)
-            return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
+            return QJsonDocument(mcp::refusal(QStringLiteral("store_failed"), err));
         QHash<qint64, QList<qint64>> childrenOf;
         for (const RoadmapStore::SectionRow &sr : *sections)
             if (sr.parentId)
@@ -4614,7 +4605,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
 
     const auto items = store.readItems(target->projectId, &err);
     if (!items)
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("store_failed"), err));
+        return QJsonDocument(mcp::refusal(QStringLiteral("store_failed"), err));
     QList<RlBodyEdit> edited;
     QHash<qint64, int> hitsOf;
     for (auto it = items->cbegin(); it != items->cend(); ++it) {
@@ -4629,11 +4620,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
         hitsOf.insert(it.key(), hits);
     }
     if (edited.isEmpty())
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("body_match_not_found"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("body_match_not_found"),
             QStringLiteral("roadmap_log: `old_text` occurs in no item body in "
                            "scope — nothing was written")));
     if (edited.size() > 500)
-        return QJsonDocument(rlFieldRefusal(QStringLiteral("too_many_matches"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("too_many_matches"),
             QStringLiteral("roadmap_log: `old_text` occurs in %1 item bodies; "
                            "op:\"replace_text\" edits at most 500 in one call. "
                            "Narrow it with `section` or `status`.")

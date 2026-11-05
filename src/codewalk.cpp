@@ -1,6 +1,7 @@
 // The source files a code-reading verb looks at (ANTS-5785, 5786, 5787).
 
 #include "codewalk.h"
+#include "mcprefusal.h"
 
 #include "codebaseindex.h"
 #include "pathvalidation.h"
@@ -16,14 +17,6 @@
 namespace CodeWalk {
 
 namespace {
-
-QJsonObject refusal(const QString &code, const QString &error) {
-    QJsonObject e;
-    e[QStringLiteral("ok")] = false;
-    e[QStringLiteral("code")] = code;
-    e[QStringLiteral("error")] = error;
-    return e;
-}
 
 // Every indexable file under `dir`, as root-relative paths, pruning noise
 // directories by name. Stops once `out` holds kMaxFiles + 1 entries, so the
@@ -111,7 +104,7 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
     QStringList requested;
     for (const QJsonValue v : paths) {
         if (!v.isString()) {
-            r.refusal = refusal(QStringLiteral("bad_args"),
+            r.refusal = mcp::refusal(QStringLiteral("bad_args"),
                                 QStringLiteral("%1: \"paths\" entries must be strings")
                                     .arg(verb));
             return r;
@@ -136,7 +129,7 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
         }
         const QFileInfo fi(check.resolved);
         if (check.resolved.isEmpty() || !fi.exists()) {
-            r.refusal = refusal(QStringLiteral("bad_path"),
+            r.refusal = mcp::refusal(QStringLiteral("bad_path"),
                                 QStringLiteral("%1: \"paths\" entry \"%2\" does not exist")
                                     .arg(verb, raw));
             return r;

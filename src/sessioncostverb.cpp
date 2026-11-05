@@ -1,6 +1,7 @@
 // ANTS-5698 — session_cost seam. Contract: tests/features/session_cost/spec.md.
 
 #include "sessioncostverb.h"
+#include "mcprefusal.h"
 
 #include <QDateTime>
 #include <QDir>
@@ -18,12 +19,6 @@
 namespace SessionCost {
 
 namespace {
-
-QJsonObject refuse(const char *code, const QString &message) {
-    return QJsonObject{{QStringLiteral("ok"), false},
-                       {QStringLiteral("code"), QString::fromLatin1(code)},
-                       {QStringLiteral("error"), message}};
-}
 
 struct Item {
     QString kind;
@@ -103,7 +98,7 @@ QStringList projectsDirs() {
 QJsonObject analyse(const QString &transcriptPath, int top) {
     QFile f(transcriptPath);
     if (!f.open(QIODevice::ReadOnly))
-        return refuse("not_found",
+        return mcp::refusal("not_found",
                       QStringLiteral("session_cost: cannot read %1").arg(transcriptPath));
 
     // ANTS-6189 — a helper agent's own transcript marks every line
@@ -222,7 +217,7 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
     const bool self = sessionId == QLatin1String("self");
     if (args.contains(QStringLiteral("session_id")) && !self
         && !sid.match(sessionId).hasMatch())
-        return refuse("bad_args",
+        return mcp::refusal("bad_args",
                       QStringLiteral("session_cost: session_id \"%1\" is not a session id")
                           .arg(sessionId));
     const int top = std::clamp(args.value(QStringLiteral("top")).toInt(kDefaultTop), 1, kMaxTop);
@@ -243,7 +238,7 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
         c = parent == c ? QString() : parent;
     }
     if (folder.isEmpty())
-        return refuse("not_found",
+        return mcp::refusal("not_found",
                       QStringLiteral("session_cost: no transcript folder for %1").arg(cwd));
 
     // ANTS-6189 — helper agents' transcripts: <session>/subagents/agent-<id>.jsonl.
@@ -263,14 +258,14 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
     if (sessionId.startsWith(QLatin1String("agent-"))) {
         const QFileInfoList hit = agentTranscripts(sessionId + QStringLiteral(".jsonl"));
         if (hit.isEmpty())
-            return refuse("not_found",
+            return mcp::refusal("not_found",
                           QStringLiteral("session_cost: no helper-agent transcript %1 "
                                          "under %2").arg(sessionId, folder));
         path = hit.first().absoluteFilePath();
     } else if (!sessionId.isEmpty() && !self) {
         path = QDir(folder).filePath(sessionId + QStringLiteral(".jsonl"));
         if (!QFileInfo(path).isFile())
-            return refuse("not_found",
+            return mcp::refusal("not_found",
                           QStringLiteral("session_cost: no transcript %1").arg(path));
     } else {
         // No id: the newest session. "self": the newest session or helper
@@ -284,7 +279,7 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
             return a.lastModified() > b.lastModified();
         });
         if (all.isEmpty())
-            return refuse("not_found",
+            return mcp::refusal("not_found",
                           QStringLiteral("session_cost: no transcript in %1").arg(folder));
         path = all.first().absoluteFilePath();
         inferred = true;

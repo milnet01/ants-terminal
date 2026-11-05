@@ -1,5 +1,6 @@
 // ANTS-3833 TU 11/24 — Session and state verbs.
 #include "remotecontrol.h"
+#include "mcprefusal.h"
 #include "antsversion.h"
 #include "gitwrap.h"   // ANTS-4352 — gate_drift
 #include "githooksreport.h"   // ANTS-5505 — git_state op:"hooks"
@@ -211,14 +212,6 @@ int RemoteControl::runClient(const QString &command,
 
 namespace rcdetail {
 
-QJsonObject subsystemErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]      = false;
-    o["code"]    = code;
-    o["error"]   = message;
-    return o;
-}
-
 // Locate `CLAUDE.md` for the focused tab's project: walk up from the
 // shellCwd looking for a file named CLAUDE.md; stop at filesystem root.
 // Returns absolute path or empty string.
@@ -300,7 +293,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     if (op != QLatin1String("map") &&
         op != QLatin1String("files") &&
         op != QLatin1String("recent_changes")) {
-        return QJsonDocument(subsystemErr("bad_op",
+        return QJsonDocument(mcp::refusal("bad_op",
             QStringLiteral("subsystem: \"op\" must be one of "
                            "{map, files, recent_changes}, got \"%1\"").arg(op)));
     }
@@ -356,7 +349,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     // ANTS-1251-INV-1: lane validation precedes any filesystem call.
     const QString lane = req.value("lane").toString();
     if (lane.isEmpty() || !laneIsKnown(lane, lanes)) {
-        QJsonObject err = subsystemErr("unknown_lane",
+        QJsonObject err = mcp::refusal("unknown_lane",
             QStringLiteral("subsystem: \"lane\" \"%1\" is not in the "
                            "parsed Module map").arg(lane));
         err["lanes"] = laneNamesArray(lanes);
@@ -460,14 +453,6 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
 // Reachability gate inherits from UDS + MCP socket (INV-5).
 
 namespace rcdetail {
-
-QJsonObject lasErr(const QString &code, const QString &msg) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["code"]  = code;
-    o["error"] = msg;
-    return o;
-}
 
 QJsonObject auditSummaryFindingAsJson(
     const AuditEngine::AuditSummaryFinding &f) {
@@ -692,7 +677,7 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     if (floor != QLatin1String("error") &&
         floor != QLatin1String("warning") &&
         floor != QLatin1String("note")) {
-        return QJsonDocument(lasErr(QStringLiteral("bad_severity_floor"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_severity_floor"),
             QStringLiteral("last_audit_summary: \"severity_floor\" "
                            "must be one of {error, warning, note}")));
     }
@@ -729,12 +714,12 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
     // ANTS-1391: caller_cwd anchors the root when present.
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("not_audited"),
             QStringLiteral("last_audit_summary: project root unresolved")));
     }
     QDir cacheDir(rootCanonical + QStringLiteral("/.audit_cache"));
     if (!cacheDir.exists()) {
-        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("not_audited"),
             QStringLiteral("last_audit_summary: no .audit_cache directory")));
     }
     const QStringList sarifNames = cacheDir.entryList(
@@ -785,7 +770,7 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
                     QStringLiteral("semgrep-json"));
     }
     if (reportPath.isEmpty()) {
-        return QJsonDocument(lasErr(QStringLiteral("not_audited"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("not_audited"),
             QStringLiteral("last_audit_summary: no audit-*.sarif, "
                            "cppcheck-*.xml, clang-tidy-*.txt, or "
                            "semgrep-*.json found under .audit_cache "
@@ -821,13 +806,13 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
         if (!parsed) {
             QFile f(reportPath);
             if (!f.open(QIODevice::ReadOnly)) {
-                return QJsonDocument(lasErr(QStringLiteral("read_failed"),
+                return QJsonDocument(mcp::refusal(QStringLiteral("read_failed"),
                     QStringLiteral("last_audit_summary: cannot read "
                                    "report")));
             }
             f.close();
             // INV-10: empty results / no runs[] → not_audited.
-            return QJsonDocument(lasErr(QStringLiteral("parse_failed"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("parse_failed"),
                 QStringLiteral("last_audit_summary: report malformed or "
                                "missing findings (%1)").arg(sourceFormat)));
         }
@@ -1069,14 +1054,6 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
 
 namespace rcdetail {
 
-QJsonObject csErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = code;
-    return o;
-}
-
 // Best-effort parse of .claude/workflow.md: locate first `## Status`
 // heading, return the first non-blank line below it. Empty string
 // when the file exists but the block is missing or empty.
@@ -1120,7 +1097,7 @@ QString readWorkflowStatusLine(const QString &rootCanonical,
 
 QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     if (!m_roots) {
-        return QJsonDocument(csErr(QStringLiteral("no_window"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
             QStringLiteral("current_state: no MainWindow")));
     }
 
@@ -1128,7 +1105,7 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
     // every Required tool uses. Empty result → `no_project` refusal.
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(csErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("current_state: project root unresolved")));
     }
 
@@ -1298,12 +1275,12 @@ QJsonDocument RemoteControl::cmdCurrentState(const QJsonObject &req) {
 // toggle changes.
 QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
     if (!m_roots) {
-        return QJsonDocument(csErr(QStringLiteral("no_window"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
             QStringLiteral("model_switch_stats: no MainWindow")));
     }
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(csErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("model_switch_stats: project root unresolved")));
     }
 
@@ -1314,7 +1291,7 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
         scope = req.value(QStringLiteral("scope")).toString();
         if (scope != QStringLiteral("project") &&
                 scope != QStringLiteral("global")) {
-            return QJsonDocument(csErr(QStringLiteral("bad_args"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("model_switch_stats: scope must be "
                                "\"project\" or \"global\"")));
         }
@@ -1333,7 +1310,7 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
         mode = req.value(QStringLiteral("mode")).toString();
         if (mode != QStringLiteral("firings") &&
                 mode != QStringLiteral("near_misses")) {
-            return QJsonDocument(csErr(QStringLiteral("bad_mode"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("bad_mode"),
                 QStringLiteral("model_switch_stats: mode must be "
                                "\"firings\" or \"near_misses\"")));
         }
@@ -1652,12 +1629,12 @@ QJsonObject RemoteControl::buildMailPendingBlock(const QString &rootCanonical) {
 QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 {
     if (!m_roots) {
-        return QJsonDocument(csErr(QStringLiteral("no_window"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
             QStringLiteral("session_orient: no MainWindow")));
     }
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(csErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("session_orient: project root unresolved")));
     }
 
@@ -2032,14 +2009,6 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 
 namespace rcdetail {
 
-QJsonObject sqErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = code;
-    return o;
-}
-
 // Strict id check accepting either <PREFIX>-NNNN (canonical
 // docs/specs/ layout) or phase_<NN>_<topic> (docs/phases/ layout
 // used by some sister projects — ANTS-1880). The two arms are
@@ -2350,7 +2319,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         // spec-side analogue of roadmap_query mode:section_index.
         const QString rootCanonical = resolveRootCanonical(m_roots, req);
         if (rootCanonical.isEmpty()) {
-            return QJsonDocument(sqErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("no_project"),
                 QStringLiteral("spec_query: project root unresolved")));
         }
@@ -2370,7 +2339,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         // Refuse instead, naming what was accepted — a list returned in answer
         // to a drift question is a confident wrong answer.
         if (!mode.isEmpty() && mode != QLatin1String("list")) {
-            return QJsonDocument(sqErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("spec_query: unknown mode \"%1\" — expected "
                                "\"gate_drift\", \"list\", or omit it with an "
@@ -2380,7 +2349,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         return QJsonDocument(specListEnvelope(rootCanonical));
     }
     if (!id.isEmpty() && pathArg.isEmpty() && !isValidSpecId(id)) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_id"),
             QStringLiteral("spec_query: id must match <PREFIX>-NNNN "
                            "(e.g. ANTS-1963, DOOM-0009), optionally with a "
@@ -2392,7 +2361,7 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     }
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("no_project"),
             QStringLiteral("spec_query: project root unresolved")));
     }
@@ -2448,13 +2417,13 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
     }
     QFileInfo fi(full);
     if (!fi.exists() || !fi.isFile()) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("not_found"),
             QStringLiteral("spec_query: %1 does not exist").arg(rel)));
     }
     QFile f(full);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("io_error"),
             QStringLiteral("spec_query: cannot open %1").arg(rel)));
     }
@@ -2532,7 +2501,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     if (filesArr.isEmpty())
         filesArr = req.value(QStringLiteral("paths")).toArray();
     if (filesArr.isEmpty()) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_files"),
             QStringLiteral("invariant_check: \"files\" (or its alias "
                            "\"paths\") must be a non-empty array of "
@@ -2540,7 +2509,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     }
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("no_project"),
             QStringLiteral("invariant_check: project root unresolved")));
     }
@@ -2554,7 +2523,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
         if (!needles.contains(s)) needles.append(s);
     }
     if (needles.isEmpty()) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_files"),
             QStringLiteral("invariant_check: \"files\" had no usable "
                            "entries after normalisation")));
@@ -2577,7 +2546,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     const QString mode = req.value(QStringLiteral("mode")).toString();
     if (!mode.isEmpty() && mode != QLatin1String("summary")
         && mode != QLatin1String("full")) {
-        return QJsonDocument(sqErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_mode"),
             QStringLiteral("invariant_check: mode must be \"summary\" "
                            "(default) or \"full\"")));
@@ -2943,14 +2912,6 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
 
 namespace rcdetail {
 
-QJsonObject tpErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = code;
-    return o;
-}
-
 // ANTS-1306 § 3.2.1 — v1 stopword set (English function words +
 // generic task verbs that carry no ranking signal). Process-static.
 const QSet<QString> &taskPriorStopwords() {
@@ -3099,18 +3060,18 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
     const QString description =
         req.value(QStringLiteral("description")).toString();
     if (description.trimmed().isEmpty()) {
-        return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("task_priors: missing or empty \"description\"")));
     }
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(tpErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("task_priors: project root unresolved")));
     }
     const TpTerms terms = tpExtract(description);
     if (terms.ids.isEmpty() && terms.paths.isEmpty() &&
         terms.terms.isEmpty()) {
-        return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("task_priors: \"description\" yielded no "
                            "searchable terms (all stopwords?)")));
     }
@@ -3369,13 +3330,13 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
         QStringLiteral("refactor"), QStringLiteral("docs"),
         QStringLiteral("test")};
     if (!kTypes.contains(taskType)) {
-        return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("project_conventions: \"task_type\" must be one "
                            "of feature, bugfix, refactor, docs, test")));
     }
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(tpErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("project_conventions: project root unresolved")));
     }
 
@@ -3590,14 +3551,14 @@ QJsonObject focusedRunRefusal(const FocusedRun &run, const QString &program,
                               int timeoutSec) {
     QJsonObject err;
     if (!run.started) {
-        return tpErr(QStringLiteral("runner_missing"),
+        return mcp::refusal(QStringLiteral("runner_missing"),
             QStringLiteral("focused_test: %1 not found on PATH").arg(program));
     }
     if (run.timedOut) {
-        err = tpErr(QStringLiteral("runner_failed"),
+        err = mcp::refusal(QStringLiteral("runner_failed"),
             QStringLiteral("focused_test: %1 exceeded %2 s budget").arg(program).arg(timeoutSec));
     } else if (run.crashed) {
-        err = tpErr(QStringLiteral("runner_failed"),
+        err = mcp::refusal(QStringLiteral("runner_failed"),
             QStringLiteral("focused_test: %1 crashed").arg(program));
     } else {
         return {};
@@ -3626,7 +3587,7 @@ QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &ev
         parsed = TestRunners::parse(runner, run.output);
     }
     if (!parsed.recognised) {
-        QJsonObject e = tpErr(QStringLiteral("unrecognised_output"),
+        QJsonObject e = mcp::refusal(QStringLiteral("unrecognised_output"),
             QStringLiteral("focused_test: %1 output not recognised").arg(TestRunners::name(runner)));
         e[QStringLiteral("output_tail")] = run.output.right(2000);
         return e;
@@ -3656,13 +3617,13 @@ QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &ev
 QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     const QString root = resolveRootCanonical(m_roots, req);
     if (root.isEmpty()) {
-        return QJsonDocument(tpErr(QStringLiteral("no_project"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_project"),
             QStringLiteral("focused_test: project root unresolved")));
     }
 
     // Re-entrancy gate (mirrors m_verifyInFlight).
     if (m_focusedTestInFlight) {
-        return QJsonDocument(tpErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("focused_test_in_flight"),
             QStringLiteral("focused_test: a previous call is still running")));
     }
@@ -3674,14 +3635,14 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     if (req.contains(QStringLiteral("runner"))) {
         detected.runner = TestRunners::fromName(req.value(QStringLiteral("runner")).toString());
         if (!detected.runner) {
-            return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("focused_test: \"runner\" must be one of: %1")
                     .arg(TestRunners::allNames())));
         }
     } else {
         detected = TestRunners::detect(root);
         if (!detected.runner) {
-            return QJsonDocument(tpErr(QStringLiteral("no_runner"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("no_runner"),
                 QStringLiteral("focused_test: no test runner marker under the "
                                "project root; pass \"runner\" (%1)")
                     .arg(TestRunners::allNames())));
@@ -3703,7 +3664,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
         const QString buildAbs = root + QLatin1Char('/') + buildRel;
         if (!QFileInfo(buildAbs).isDir() ||
             !QFileInfo(buildAbs + QStringLiteral("/CMakeCache.txt")).isFile()) {
-            return QJsonDocument(tpErr(QStringLiteral("no_build_dir"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("no_build_dir"),
                 QStringLiteral("focused_test: \"%1\" is not a configured CMake "
                                "build dir (no CMakeCache.txt)").arg(buildRel)));
         }
@@ -3715,7 +3676,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     if (haveArg) {
         const QJsonValue cfv = req.value(QStringLiteral("changed_files"));
         if (!cfv.isArray()) {
-            return QJsonDocument(tpErr(QStringLiteral("bad_args"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("focused_test: \"changed_files\" must be "
                                "an array of project-relative paths")));
         }
@@ -3787,14 +3748,14 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     // ANTS-5812 — ANTS-1302 § 3.4 step 7: a timeout or crash refuses with
     // the tail ctest printed, which usually names the cause.
     auto ctestFailed = [](const FocusedRun &r, const QString &message) {
-        QJsonObject e = tpErr(QStringLiteral("ctest_failed"), message);
+        QJsonObject e = mcp::refusal(QStringLiteral("ctest_failed"), message);
         e[QStringLiteral("output_tail")] = r.output.right(2000);
         return QJsonDocument(e);
     };
 
     FocusedRun run = runCtest(isFull ? QString() : filter);
     if (!run.started) {
-        return QJsonDocument(tpErr(QStringLiteral("ctest_missing"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("ctest_missing"),
             QStringLiteral("focused_test: ctest binary not found on PATH")));
     }
     if (run.timedOut) {
@@ -3815,7 +3776,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     if (!isFull && parsed.total == 0) {
         FocusedRun full = runCtest(QString());
         if (!full.started) {
-            return QJsonDocument(tpErr(QStringLiteral("ctest_missing"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("ctest_missing"),
                 QStringLiteral("focused_test: ctest binary not found on PATH")));
         }
         if (full.timedOut) {
@@ -3833,7 +3794,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     }
 
     if (!parsed.recognised) {
-        return QJsonDocument(tpErr(QStringLiteral("unrecognised_output"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("unrecognised_output"),
             QStringLiteral("focused_test: ctest output not recognised "
                            "(no summary footer or per-test lines)")));
     }
@@ -4300,18 +4261,3 @@ QJsonDocument RemoteControl::cmdSimilarCode(const QJsonObject &req) {
     }
     return QJsonDocument(out);
 }
-
-// ----- ANTS-1112 — five `indie_review_*` MCP-tool handlers ---------
-
-namespace rcdetail {
-
-QJsonObject irErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]      = false;
-    o["error"]   = message;
-    o["code"]    = code;
-    return o;
-}
-
-}  // namespace rcdetail
-

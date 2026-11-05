@@ -6,6 +6,7 @@
 // to point at a document.
 
 #include "specconformance.h"
+#include "mcprefusal.h"
 
 #include <QCryptographicHash>
 #include <QElapsedTimer>
@@ -20,14 +21,6 @@ namespace SpecConformance {
 namespace {
 
 // ---------------------------------------------------------------- helpers --
-
-QJsonObject refusal(const char *code, const QString &message) {
-    QJsonObject o;
-    o[QStringLiteral("ok")]    = false;
-    o[QStringLiteral("error")] = message;
-    o[QStringLiteral("code")]  = QString::fromLatin1(code);
-    return o;
-}
 
 void addRow(QJsonArray &a, const QJsonObject &o) { a.append(o); }
 
@@ -97,7 +90,7 @@ QString outcomeOf(const QRegularExpression &rx, const QString &input) {
 
 QJsonObject run(const QString &absPath, const Options &opt) {
     if (opt.maxCases < 1 || opt.maxCases > kMaxCasesCeiling) {
-        return refusal("bad_args",
+        return mcp::refusal("bad_args",
                        QStringLiteral("max_cases must be in [1, %1]; got %2")
                            .arg(kMaxCasesCeiling)
                            .arg(opt.maxCases));
@@ -105,14 +98,14 @@ QJsonObject run(const QString &absPath, const Options &opt) {
 
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return refusal("not_found",
+        return mcp::refusal("not_found",
                        QStringLiteral("cannot read %1").arg(absPath));
     }
     // ANTS-5100 — bounded: one byte past the cap says it is over.
     const QByteArray raw = f.read(kMaxSpecBytes + 1);
     f.close();
     if (raw.size() > kMaxSpecBytes) {
-        return refusal("too_large",
+        return mcp::refusal("too_large",
                        QStringLiteral("%1 is over %2 bytes")
                            .arg(absPath).arg(kMaxSpecBytes));
     }

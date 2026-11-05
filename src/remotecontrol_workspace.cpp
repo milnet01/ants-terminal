@@ -1,5 +1,6 @@
 // ANTS-3833 TU 8/24 — Workspace and code index verbs.
 #include "remotecontrol.h"
+#include "mcprefusal.h"
 #include "mutationprobe.h"   // ANTS-4398
 #include "mutationjournal.h" // ANTS-5096
 #include "findsources.h"
@@ -3493,14 +3494,6 @@ namespace rcdetail {
 // remotecontrol_state.cpp, declared in remotecontrol_internal.h, for id
 // routing parity with cmdSpecQuery.
 
-QJsonObject fbErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = code;
-    return o;
-}
-
 // ANTS-3376 — the caller's project leaf (the caller_cwd basename). Used to
 // (a) derive the conventional default path when `path` is omitted and
 // (b) rank the caller's own sibling first in a not_found candidate list.
@@ -3615,7 +3608,7 @@ QStringList feedbackConventionalNames(const QString &leaf) {
 // implying one fits.
 QJsonObject fbNotFound(const QString &message, const QString &resolved,
                        const QString &callerLeaf) {
-    QJsonObject e = fbErr(QStringLiteral("not_found"), message);
+    QJsonObject e = mcp::refusal(QStringLiteral("not_found"), message);
     QJsonArray cands = feedbackSiblingCandidates(resolved);
     if (cands.isEmpty()) {
         // ANTS-4471 — the reported dead end. `found:false` with no candidates
@@ -3766,7 +3759,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
             QFileInfo(callerRaw).canonicalFilePath();
         const QString leaf = QFileInfo(rootCanonical).fileName();
         if (rootCanonical.isEmpty() || leaf.isEmpty()) {
-            err = fbErr(QStringLiteral("bad_args"),
+            err = mcp::refusal(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required "
                         "(no resolvable caller_cwd to derive a default)"));
             return false;
@@ -3786,7 +3779,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
         // and the siblings are the actionable retry — the same shape
         // op:append_tracking's not_found already uses.
         if (leaf.startsWith(QChar('.'))) {
-            err = fbErr(QStringLiteral("bad_args"),
+            err = mcp::refusal(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required — "
                         "caller_cwd's leaf \"%1\" begins with a dot, and a "
                         "feedback name derived from it could never match the "
@@ -3947,7 +3940,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                     }
                 }
                 if (!corpus.isEmpty()) {
-                    err = fbErr(QStringLiteral("bad_args"),
+                    err = mcp::refusal(QStringLiteral("bad_args"),
                         toolName + QStringLiteral(": \"path\" is required — "
                         "caller_cwd's parent \"%1\" holds no "
                         "*%2 file, so the derived name would land where no "
@@ -4004,7 +3997,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                 rootCanonical + QLatin1Char('/') + rawPath);
         } else {
             // Relative path with no resolvable caller_cwd root.
-            err = fbErr(QStringLiteral("bad_path"),
+            err = mcp::refusal(QStringLiteral("bad_path"),
                         toolName + QStringLiteral(": relative \"path\" "
                         "needs a resolvable caller_cwd"));
             return false;
@@ -4016,7 +4009,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
     // already canonicalised existing paths into `check.resolved`).
     const QString base = QFileInfo(candidate).fileName();
     if (!base.endsWith(QLatin1String(kFeedbackSuffix))) {
-        err = fbErr(QStringLiteral("not_feedback_file"),
+        err = mcp::refusal(QStringLiteral("not_feedback_file"),
                     toolName + QStringLiteral(": \"path\" basename must "
                     "end in ") + QLatin1String(kFeedbackSuffix));
         return false;

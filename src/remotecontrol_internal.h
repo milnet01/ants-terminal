@@ -662,7 +662,6 @@ void applyAntsV1Flip(QStringList &lines, const AntsV1Bullet &b, const QString &t
 QJsonObject wsErr(const char *code, const QString &message);
 bool isValidSpecId(const QString &id);
 QString resolveSpecRelForId(const QString &rootCanonical, const QString &dirRel, const QString &id);
-QJsonObject fbErr(const QString &code, const QString &message);
 QString feedbackCallerLeaf(const QJsonObject &req);
 QJsonObject fbNotFound(const QString &message, const QString &resolved, const QString &callerLeaf = QString());
 // ANTS-5500 — `derivedReasonOut` says how a derived path was chosen, where
@@ -678,10 +677,7 @@ QJsonObject runDiffOp(const ants::RootProvider *roots, const QJsonObject &req);
 QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
                              const QJsonObject &req);   // ANTS-5508
 QByteArray runGit(const QString &root, const QStringList &argv);
-QJsonObject csErr(const QString &code, const QString &message);
-QJsonObject irErr(const QString &code, const QString &message);
 VerifyGitSnapshot collectGitSnapshot(const QString &root);
-QJsonObject ceErr(const QString &code, const QString &msg);
 QString ceSanitiseEcho(const QString &raw);
 QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes);
 // ANTS-6360/6365 — bad_op_combo when two or more names for one argument

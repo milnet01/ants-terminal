@@ -16,6 +16,7 @@
 // roadmapmigrateverb.h).
 
 #include "roadmapmigrateverb.h"
+#include "mcprefusal.h"
 
 #include "projectsettings.h"
 #include "roadmapmigrate.h"
@@ -36,14 +37,6 @@
 #include <optional>
 
 namespace {
-
-QJsonObject rmErr(const QString &code, const QString &message) {
-    QJsonObject e;
-    e[QStringLiteral("ok")]    = false;
-    e[QStringLiteral("code")]  = code;
-    e[QStringLiteral("error")] = message;
-    return e;
-}
 
 // § 2.4 — notes[] is bounded on BOTH axes, because capping the element count
 // alone bounds no bytes: RoadmapMigrate::Note::detail is a QString with no
@@ -344,7 +337,7 @@ QJsonObject openBulkStore(std::optional<RoadmapStore> &store, const QString &sto
     QString err;
     if (store->open(&err))
         return {};
-    return rmErr(QStringLiteral("store_failed"),
+    return mcp::refusal(QStringLiteral("store_failed"),
                  QStringLiteral("roadmap_migrate: could not open the roadmap "
                                 "store at \"%1\": %2").arg(storePath, err));
 }
@@ -675,7 +668,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // name would satisfy the column and identify nothing.
     const QString name = req.projectName.trimmed();
     if (name.isEmpty()) {
-        return rmErr(QStringLiteral("bad_args"),
+        return mcp::refusal(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: project_name must not be "
                                     "empty after trimming"));
     }
@@ -687,7 +680,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // is what INV-6 asserts by checking no file appeared.
     const QString slug = req.exportSlug;
     if (!isValidExportSlug(slug)) {
-        return rmErr(QStringLiteral("bad_args"),
+        return mcp::refusal(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: export_slug \"%1\" must be "
                                     "non-empty, start with [a-z0-9] and contain "
                                     "only [a-z0-9-]").arg(slug));
@@ -699,7 +692,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     const auto disc = RoadmapMigrate::findRoadmaps(req.projectRoot, &discErr);
     if (!disc) {
         const QString code = discoveryRefusalCode(discErr);
-        return rmErr(code, QStringLiteral("roadmap_migrate: no usable roadmap "
+        return mcp::refusal(code, QStringLiteral("roadmap_migrate: no usable roadmap "
                                           "under \"%1\" (%2)")
                                .arg(req.projectRoot, discErr));
     }
@@ -754,7 +747,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     const auto other = store.readProjectBySlug(
         slug, &sqlErr, RoadmapStore::Visibility::IncludeDeregistered);
     if (!sqlErr.isEmpty()) {
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: export_slug lookup failed: %1")
                          .arg(sqlErr));
     }
@@ -768,7 +761,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         // before a move, and op:"reroot" is the remedy; say so.
         const bool ownerGone = other->deregisteredAt.isEmpty()
             && !other->root.isEmpty() && !QFileInfo::exists(other->root);
-        QJsonObject e = rmErr(QStringLiteral("slug_collision"),
+        QJsonObject e = mcp::refusal(QStringLiteral("slug_collision"),
                      QStringLiteral("roadmap_migrate: export_slug \"%1\" already "
                                     "belongs to \"%2\"%3 — pass a different "
                                     "export_slug%4")
@@ -795,7 +788,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         req.projectRoot, &sqlErr, RoadmapStore::Visibility::IncludeDeregistered);
     const bool ownerDeregistered = owner && !owner->deregisteredAt.isEmpty();
     if (!sqlErr.isEmpty()) {
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: project lookup failed: %1")
                          .arg(sqlErr));
     }
@@ -843,7 +836,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     const QString rerun = ownerDeregistered ? QStringLiteral("revive it")
                                             : QStringLiteral("re-run");
     if (owner && owner->exportSlug != slug) {
-        return withOwner(rmErr(QStringLiteral("slug_collision"),
+        return withOwner(mcp::refusal(QStringLiteral("slug_collision"),
                      QStringLiteral("roadmap_migrate: \"%1\" %4 "
                                     "export_slug \"%2\"; re-running with "
                                     "\"%3\" would re-slug it — pass "
@@ -854,7 +847,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
                               ownerState(QLatin1String("under")), rerun)));
     }
     if (owner && owner->name != name) {
-        return withOwner(rmErr(QStringLiteral("bad_args"),
+        return withOwner(mcp::refusal(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: \"%1\" %4 "
                                     "project_name \"%2\"; re-running with "
                                     "\"%3\" would rename it")
@@ -1132,7 +1125,7 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
 QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
                                            const DeregisterRequest &req) {
     if (req.projectRoot.isEmpty() && req.exportSlug.isEmpty()) {
-        return rmErr(QStringLiteral("bad_args"),
+        return mcp::refusal(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: deregister needs a "
                                     "project root or an export_slug to key on"));
     }
@@ -1155,12 +1148,12 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     else
         row = store.readProjectByRoot(req.projectRoot, &err);
     if (!row && !err.isEmpty()) {
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: could not read the project "
                                     "row: %1").arg(err));
     }
     if (!row) {
-        return rmErr(QStringLiteral("not_found"),
+        return mcp::refusal(QStringLiteral("not_found"),
                      QStringLiteral("roadmap_migrate: the store holds no project "
                                     "for \"%1\"")
                          .arg(req.exportSlug.isEmpty() ? req.projectRoot
@@ -1177,7 +1170,7 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     const bool rootPresent =
         !row->root.isEmpty() && QFileInfo::exists(row->root);
     if (rootPresent && !req.confirm) {
-        QJsonObject e = rmErr(QStringLiteral("confirm_required"),
+        QJsonObject e = mcp::refusal(QStringLiteral("confirm_required"),
             QStringLiteral("roadmap_migrate: \"%1\" still exists on disk, so "
                            "deregistering it would discard the store's own copy "
                            "of this project's history, relationships and "
@@ -1206,11 +1199,11 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
         if (const auto items = store.countItems(row->projectId, &err))
             would.items = int(*items);
         else if (!err.isEmpty())
-            return rmErr(QStringLiteral("store_failed"), err);
+            return mcp::refusal(QStringLiteral("store_failed"), err);
         if (const auto secs = store.listSections(row->projectId, &err))
             would.sections = int(secs->size());
         else if (!err.isEmpty())
-            return rmErr(QStringLiteral("store_failed"), err);
+            return mcp::refusal(QStringLiteral("store_failed"), err);
         env[QStringLiteral("dry_run")]        = true;
         env[QStringLiteral("would_delete")]   = true;
         env[QStringLiteral("items")]          = would.items;
@@ -1221,7 +1214,7 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
     // ANTS-5086 — hold the root whose rows go, not the caller's (ANTS-2132
     // § 2.10). The handler owns the hold and releases it after this returns.
     if (req.holdRoot && !req.holdRoot(row->root)) {
-        QJsonObject e = rmErr(QStringLiteral("roadmap_busy"),
+        QJsonObject e = mcp::refusal(QStringLiteral("roadmap_busy"),
             QStringLiteral("roadmap_migrate: \"%1\" is being written by another "
                            "call; retry shortly").arg(row->root));
         e[QStringLiteral("retry_after_ms")] = 250;
@@ -1233,7 +1226,7 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
         ? QDateTime::currentDateTimeUtc().toString(Qt::ISODate)
         : req.deregisteredAt;
     if (!store.deregisterProject(row->projectId, stamp, &counts, &err)) {
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: deregister failed and was "
                                     "rolled back whole: %1").arg(err));
     }
@@ -1252,11 +1245,11 @@ QJsonObject RoadmapMigrateVerb::deregister(const QString &storePath,
 
 QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootRequest &req) {
     if (req.exportSlug.isEmpty())
-        return rmErr(QStringLiteral("missing_field"),
+        return mcp::refusal(QStringLiteral("missing_field"),
                      QStringLiteral("roadmap_migrate: reroot needs the export_slug of "
                                     "the project that moved"));
     if (req.newRoot.isEmpty())
-        return rmErr(QStringLiteral("bad_args"),
+        return mcp::refusal(QStringLiteral("bad_args"),
                      QStringLiteral("roadmap_migrate: reroot needs the new root"));
 
     std::optional<RoadmapStore> opened;
@@ -1267,11 +1260,11 @@ QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootReq
 
     const auto row = store.readProjectBySlug(req.exportSlug, &err);
     if (!row && !err.isEmpty())
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: could not read the project "
                                     "row: %1").arg(err));
     if (!row)
-        return rmErr(QStringLiteral("not_found"),
+        return mcp::refusal(QStringLiteral("not_found"),
                      QStringLiteral("roadmap_migrate: the store holds no registered "
                                     "project \"%1\"").arg(req.exportSlug));
 
@@ -1291,10 +1284,10 @@ QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootReq
     const auto holder = store.readProjectByRoot(
         req.newRoot, &err, RoadmapStore::Visibility::IncludeDeregistered);
     if (!holder && !err.isEmpty())
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: project lookup failed: %1").arg(err));
     if (holder) {
-        QJsonObject e = rmErr(QStringLiteral("bad_args"),
+        QJsonObject e = mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_migrate: \"%1\" is already the root of project "
                            "\"%2\"; deregister that one first if it is a stale copy")
                 .arg(req.newRoot, holder->exportSlug));
@@ -1307,7 +1300,7 @@ QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootReq
     const bool oldPresent = !row->root.isEmpty() && QFileInfo::exists(row->root);
     env[QStringLiteral("previous_root_exists")] = oldPresent;
     if (oldPresent && !req.confirm) {
-        QJsonObject e = rmErr(QStringLiteral("confirm_required"),
+        QJsonObject e = mcp::refusal(QStringLiteral("confirm_required"),
             QStringLiteral("roadmap_migrate: \"%1\" still exists on disk, so this "
                            "looks like a copy rather than a move; re-rooting would "
                            "take the project's rows from that tree. Pass "
@@ -1324,14 +1317,14 @@ QJsonObject RoadmapMigrateVerb::reroot(const QString &storePath, const RerootReq
         return env;
     }
     if (req.holdRoot && !req.holdRoot(row->root)) {
-        QJsonObject e = rmErr(QStringLiteral("roadmap_busy"),
+        QJsonObject e = mcp::refusal(QStringLiteral("roadmap_busy"),
             QStringLiteral("roadmap_migrate: \"%1\" is being written by another "
                            "call; retry shortly").arg(row->root));
         e[QStringLiteral("retry_after_ms")] = 250;
         return e;
     }
     if (!store.setProjectRoot(row->projectId, req.newRoot, &err))
-        return rmErr(QStringLiteral("store_failed"),
+        return mcp::refusal(QStringLiteral("store_failed"),
                      QStringLiteral("roadmap_migrate: reroot failed: %1").arg(err));
     env[QStringLiteral("rerooted")] = true;
     return env;

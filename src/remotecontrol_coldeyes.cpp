@@ -1,5 +1,6 @@
 // ANTS-3833 TU 13/24 — Cold eyes and test verbs.
 #include "remotecontrol.h"
+#include "mcprefusal.h"
 #include "remotecontrol_internal.h"
 #include "buildfixhint.h"   // ANTS-3374 — enrichLikelyFixes
 #include "buildcache.h"
@@ -19,19 +20,19 @@
 using namespace rcdetail;  // ANTS-3833
 
 QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
-    if (!m_roots) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_partition: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
     const QString root = resolveRootCanonical(m_roots, req);
-    if (root.isEmpty()) return QJsonDocument(ceErr(
+    if (root.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_partition: no focused project")));
 
     const QString scopeRaw = req.value(QStringLiteral("scope")).toString();
     ColdEyesEngine::Scope scope = ColdEyesEngine::Scope::Default;
     if (!ColdEyesEngine::parseScope(scopeRaw, &scope)) {
-        QJsonObject err = ceErr(
+        QJsonObject err = mcp::refusal(
             QStringLiteral("bad_scope"),
             QStringLiteral("cold_eyes_partition: scope must be one of "
                            "\"default\", \"docs_only\", \"contracts_only\""));
@@ -122,18 +123,18 @@ QJsonDocument RemoteControl::cmdColdEyesPartition(const QJsonObject &req) {
 }
 
 QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
-    if (!m_roots) return QJsonDocument(ceErr(
+    if (!m_roots) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_window"),
         QStringLiteral("cold_eyes_brief: no MainWindow")));
     // ANTS-1391: caller_cwd anchors the root when present.
     const QString root = resolveRootCanonical(m_roots, req);
-    if (root.isEmpty()) return QJsonDocument(ceErr(
+    if (root.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("no_project"),
         QStringLiteral("cold_eyes_brief: no focused project")));
 
     const QString laneNameRaw = req.value(QStringLiteral("lane")).toString();
     const QString laneName    = laneNameRaw.trimmed();
-    if (laneName.isEmpty()) return QJsonDocument(ceErr(
+    if (laneName.isEmpty()) return QJsonDocument(mcp::refusal(
         QStringLiteral("bad_args"),
         QStringLiteral("cold_eyes_brief: lane required")));
 
@@ -214,7 +215,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
         }
     }
     if (!match) {
-        QJsonObject err = ceErr(
+        QJsonObject err = mcp::refusal(
             QStringLiteral("not_found"),
             QStringLiteral("cold_eyes_brief: no such lane (and no "
                            "doc_paths[] override supplied)"));
@@ -538,7 +539,7 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
 {
     if (!m_roots) {
-        return QJsonDocument(csErr(QStringLiteral("no_window"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
             QStringLiteral("workflow_state: no MainWindow")));
     }
 
@@ -554,11 +555,11 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     else if (opRaw == QStringLiteral("set"))   op = Op::Set;
     else if (opRaw == QStringLiteral("clear")) op = Op::Clear;
     else if (opRaw.isEmpty()) {
-        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: op and skill are required "
                            "(op must be get/set/clear)")));
     } else {
-        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: op must be get/set/clear")));
     }
 
@@ -568,13 +569,13 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     // makes sense for a present-but-non-conforming value).
     const QString skill = req.value(QStringLiteral("skill")).toString();
     if (skill.isEmpty()) {
-        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: skill is required")));
     }
     static const QRegularExpression kSkillRe(
         QStringLiteral("^[A-Za-z0-9_-]{1,32}$"));
     if (!kSkillRe.match(skill).hasMatch()) {
-        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: invalid skill name — "
                            "must match ^[A-Za-z0-9_-]{1,32}$")));
     }
@@ -593,18 +594,18 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
         const QString rawCaller =
             req.value(QStringLiteral("caller_cwd")).toString();
         if (rawCaller.isEmpty()) {
-            return QJsonDocument(csErr(QStringLiteral("cwd_missing"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("cwd_missing"),
                 QStringLiteral("workflow_state: caller_cwd required")));
         }
         QString canon;
         if (canonicalCallerDir(rawCaller, &canon) != CallerDir::Ok) {
-            return QJsonDocument(csErr(QStringLiteral("cwd_bad"),
+            return QJsonDocument(mcp::refusal(QStringLiteral("cwd_bad"),
                 QStringLiteral("workflow_state: caller_cwd unresolvable")));
         }
         SessionMemoryEngine::OpResult r =
             SessionMemoryEngine::execute(canon,
                 SessionMemoryEngine::Op::Get, key, QJsonValue());
-        if (!r.ok) return QJsonDocument(csErr(r.code, r.error));
+        if (!r.ok) return QJsonDocument(mcp::refusal(r.code, r.error));
         if (!r.found) {
             QJsonObject out;
             out[QStringLiteral("ok")]    = true;
@@ -644,7 +645,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
         SessionMemoryEngine::OpResult r =
             SessionMemoryEngine::execute(cwd,
                 SessionMemoryEngine::Op::Delete, key, QJsonValue());
-        if (!r.ok) return QJsonDocument(csErr(r.code, r.error));
+        if (!r.ok) return QJsonDocument(mcp::refusal(r.code, r.error));
         QJsonObject out;
         out[QStringLiteral("ok")]      = true;
         out[QStringLiteral("deleted")] = r.found;
@@ -656,7 +657,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     const QJsonValue stepVal = req.value(QStringLiteral("step"));
     const QString    phase   = req.value(QStringLiteral("phase")).toString();
     if (!stepVal.isDouble() || phase.isEmpty()) {
-        return QJsonDocument(csErr(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
             QStringLiteral("workflow_state: set requires step (int) "
                            "and phase (non-empty string)")));
     }
@@ -673,7 +674,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
     const QByteArray payload =
         QJsonDocument(state).toJson(QJsonDocument::Compact);
     if (payload.size() > 4096) {
-        return QJsonDocument(csErr(QStringLiteral("payload_too_large"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("payload_too_large"),
             QStringLiteral("workflow_state: state payload exceeds 4 KiB")));
     }
 
@@ -703,7 +704,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
                 store.insert(key, QJsonValue(state));
                 return true;
             });
-    if (!wr.ok) return QJsonDocument(csErr(wr.code, wr.error));
+    if (!wr.ok) return QJsonDocument(mcp::refusal(wr.code, wr.error));
 
     QJsonObject out;
     out[QStringLiteral("ok")] = true;
@@ -796,22 +797,9 @@ QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
 
 // ----- ANTS-1299 + ANTS-1300 — build/test cache MCP tools -----------
 //
-// Shared helpers — small refusal envelope + op dispatcher. The two
-// tools live next to each other because they share the .audit_cache/
-// directory, the op surface ({read, record}), and the refusal-code
-// taxonomy (see docs/standards/mcp-error-codes.md § 2).
-
-namespace rcdetail {
-
-QJsonObject btErr(const QString &code, const QString &message) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = message;
-    o["code"]  = code;
-    return o;
-}
-
-}  // namespace rcdetail
+// The two tools live next to each other because they share the
+// .audit_cache/ directory, the op surface ({read, record}), and the
+// refusal-code taxonomy (see docs/standards/mcp-error-codes.md § 2).
 
 // ANTS-4932 § 2.2 — moved from TU 2, which went GUI-side: cmdBuildStatus
 // below and TU 2's cmdRecentErrors both call it, and it reads no window.
@@ -857,14 +845,14 @@ void RemoteControl::enrichLikelyFixes(QJsonArray &errors,
 QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("no_project"),
             QStringLiteral("build_status: project root unresolved")));
     }
     const QString op = req.value(QStringLiteral("op")).toString(
         QStringLiteral("read"));
     if (op != QLatin1String("read") && op != QLatin1String("record")) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral("build_status: \"op\" must be \"read\" or "
                            "\"record\"")));
@@ -874,21 +862,21 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
         // Validate args.
         const QJsonValue exitV = req.value(QStringLiteral("exit_code"));
         if (!exitV.isDouble()) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("build_status: \"exit_code\" must be an "
                                "integer (required for op=record)")));
         }
         const QJsonValue outV = req.value(QStringLiteral("output"));
         if (!outV.isString()) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("build_status: \"output\" must be a "
                                "string (required for op=record)")));
         }
         const QString output = outV.toString();
         if (output.isEmpty()) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("build_status: \"output\" must be "
                                "non-empty for op=record")));
@@ -904,7 +892,7 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
                 req.value(QStringLiteral("finished_at_ms")).toDouble(0));
         }
         if (!BuildCache::recordBuild(rootCanonical, build)) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("write_failed"),
                 QStringLiteral("build_status: failed to write "
                                ".audit_cache/build.json")));
@@ -917,7 +905,7 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
     // op == "read"
     auto loaded = BuildCache::loadBuild(rootCanonical);
     if (!loaded) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("not_cached"),
             QStringLiteral("build_status: no recorded build "
                            "(call op=record first)")));
@@ -941,14 +929,14 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("no_project"),
             QStringLiteral("test_results: project root unresolved")));
     }
     const QString op = req.value(QStringLiteral("op")).toString(
         QStringLiteral("read"));
     if (op != QLatin1String("read") && op != QLatin1String("record")) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral("test_results: \"op\" must be \"read\" or "
                            "\"record\"")));
@@ -956,28 +944,28 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
 
     if (op == QLatin1String("record")) {
         if (req.contains(QStringLiteral("detail"))) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("test_results: \"detail\" not allowed "
                                "on op=record (read-only argument)")));
         }
         const QJsonValue exitV = req.value(QStringLiteral("exit_code"));
         if (!exitV.isDouble()) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("test_results: \"exit_code\" must be "
                                "an integer (required for op=record)")));
         }
         const QJsonValue outV = req.value(QStringLiteral("output"));
         if (!outV.isString()) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("test_results: \"output\" must be a "
                                "string (required for op=record)")));
         }
         const QString output = outV.toString();
         if (output.isEmpty()) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("test_results: \"output\" must be "
                                "non-empty for op=record")));
@@ -989,7 +977,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
             runner = TestRunners::fromName(
                 req.value(QStringLiteral("runner")).toString());
             if (!runner) {
-                return QJsonDocument(btErr(
+                return QJsonDocument(mcp::refusal(
                     QStringLiteral("bad_args"),
                     QStringLiteral("test_results: \"runner\" must be one of: %1")
                         .arg(TestRunners::allNames())));
@@ -1000,7 +988,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
         TestResCache::ParsedTests tests;
         if (runner) tests = TestRunners::parse(*runner, output);
         if (!tests.recognised) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("bad_args"),
                 QStringLiteral("test_results: \"output\" does not look like "
                                "the output of %1 (ctest --output-on-failure, "
@@ -1022,7 +1010,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
                 req.value(QStringLiteral("duration_ms")).toDouble(-1));
         }
         if (!TestResCache::recordTests(rootCanonical, tests)) {
-            return QJsonDocument(btErr(
+            return QJsonDocument(mcp::refusal(
                 QStringLiteral("write_failed"),
                 QStringLiteral("test_results: failed to write "
                                ".audit_cache/tests.json")));
@@ -1034,14 +1022,14 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
 
     // op == "read"
     if (req.contains(QStringLiteral("runner"))) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_args"),
             QStringLiteral("test_results: \"runner\" not allowed on op=read "
                            "(record-only argument)")));
     }
     auto loaded = TestResCache::loadTests(rootCanonical);
     if (!loaded) {
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("not_cached"),
             QStringLiteral("test_results: no recorded test run "
                            "(call op=record first)")));
@@ -1059,7 +1047,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
                 return QJsonDocument(env);
             }
         }
-        return QJsonDocument(btErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("detail_not_found"),
             QStringLiteral("test_results: \"%1\" not in failing_tests[]")
                 .arg(detail)));
