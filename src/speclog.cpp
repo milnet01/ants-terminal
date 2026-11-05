@@ -579,15 +579,25 @@ EditResult appendLoop(const QString &content, const QString &label,
     // table.
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
     const int loopEnd = sectionEnd(lines, hdr);
+    // ANTS-6380 — a log split when its columns changed holds two tables that
+    // open with the same first column; rows go in the last of them, the live
+    // one. A table opening with another column is not the loop log (ANTS-5476).
     int headerLine = -1, sepLine = -1;
+    QString firstColumn;
     for (int i = hdr + 1; i + 1 < loopEnd && i + 1 < lines.size(); ++i) {
         if (fence.at(i)) continue;
-        if (lines.at(i).trimmed().startsWith(QLatin1Char('|')) &&
-            slIsTableSeparator(lines.at(i + 1))) {
-            headerLine = i;
-            sepLine    = i + 1;
-            break;
+        if (!lines.at(i).trimmed().startsWith(QLatin1Char('|')) ||
+            !slIsTableSeparator(lines.at(i + 1)))
+            continue;
+        const QStringList header = slRowCells(lines.at(i));
+        const QString column = header.isEmpty() ? QString() : header.first();
+        if (headerLine < 0) {
+            firstColumn = column;
+        } else if (column.compare(firstColumn, Qt::CaseInsensitive) != 0) {
+            continue;
         }
+        headerLine = i;
+        sepLine    = i + 1;
     }
 
     if (headerLine >= 0)

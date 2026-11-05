@@ -812,6 +812,39 @@ TEST(McpSpecLog, Ants5476BlankLineInsideTheLoopLogDoesNotSplitIt) {
         << "the row was written into the second table:\n" << b.content.toStdString();
 }
 
+// ANTS-6380 — a loop log split in two when its columns changed (the first
+// table frozen, the second live) takes the new row in the second table. Both
+// open with the same first column; the 5476 case above, whose second table
+// opens with a different one, still writes to the first.
+TEST(McpSpecLog, Ants6380SplitLoopLogAppendsToTheLiveTable) {
+    const QString split = QStringLiteral(
+        "# PROJ-1 — a spec\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "| Loop | Date | CRIT | Outcome |\n"
+        "|------|------|------|---------|\n"
+        "| 0 | 2026-08-01 | — | provenance |\n"
+        "\n"
+        "The columns changed, so the log is split rather than restated.\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n"
+        "| 1 | 2026-08-02 | 3 findings |\n"
+        "| 2 | 2026-08-03 | 0 findings |\n"
+        "\n"
+        "## 13. Resource cost\n");
+    const auto r = SpecLog::appendLoop(
+        split, QString(), QString(),
+        {QStringLiteral("3"), QStringLiteral("2026-11-05"), QStringLiteral("amendment")});
+    ASSERT_TRUE(r.ok) << r.error.toStdString();
+    const qsizetype row = r.content.indexOf(QStringLiteral("| 3 | 2026-11-05 | amendment |"));
+    EXPECT_GT(row, r.content.indexOf(QStringLiteral("| 2 | 2026-08-03")))
+        << "the row did not land after the live table's last row:\n"
+        << r.content.toStdString();
+    EXPECT_LT(row, r.content.indexOf(QStringLiteral("## 13.")));
+}
+
 TEST(McpSpecLog, Ants3651AppendsToLoopLogThatIsNotTheLastSection) {
     const QString before = QStringLiteral(
         "# ANTS-9999 — Fixture\n"

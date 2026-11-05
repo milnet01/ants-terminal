@@ -185,6 +185,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`spec_log op:"append_loop"` adds the row to the live table of a loop log that was split when its columns changed** (ANTS-6380)
+  A loop log whose second table opens with the same first column as the
+  first is one log; rows go in its last table. A table opening with a
+  different column is still left alone.
+
 - **roadmap_log append_batch on a pass-headings roadmap gives a bullet with no status the call-level status, as the schema says** (ANTS-6372)
 
 - **A stray `.local/` folder that `gh` can leave at the repo root is ignored, so it no longer blocks a push.** (ANTS-6355)

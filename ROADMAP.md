@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6379 -->
+<!-- ants-roadmap-id-high-water: ANTS=6380 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90159,6 +90159,26 @@ measured Ants adding about 5,250 tokens to every request.
   Source: DOOM_Ants_MCP_Feedback.md 2026-11-04.
   Lanes: mcp.
 
+### Ants MCP feedback from CC sessions — 2026-11-05 triage
+
+- ✅ [ANTS-6380] **spec_log append_loop writes to the first table in a loop log that holds two, not the live last one.**
+  appendLoop (src/speclog.cpp) scans the "Cold-eyes loop log" section
+  for a header row plus separator and stops at the first match. LWSM-1007's
+  loop log has two tables with different columns; the newer, live one is
+  the second. Fix: use the last table in the section, the one rows are
+  being added to; a cells count that does not fit it refuses with the
+  existing column_mismatch, naming that table's columns.
+  Shipped 2026-11-05 (session 217). appendLoop now writes to the last
+  table in the section whose first column header matches the first
+  table's; a table opening with another column (the ANTS-5476 case) is
+  still skipped. Test:
+  McpSpecLog.Ants6380SplitLoopLogAppendsToTheLiveTable, red before the
+  fix. Reaches sessions on their next ants-mcpd reconnect.
+  **Layman:** When a spec's review log has grown a second table, the tool that adds rows looks only at the first one, so sessions have to add rows by hand.
+  Kind: fix.
+  Source: cc-feedback-2026-11-05 (LocalWebServerManager).
+  Lanes: spec-tools.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -99204,6 +99224,10 @@ worked after these.
   the three 1000 ms bounds failed is unknown. Next time it fails, keep
   --output-on-failure, then decide whether the bound measures wall time
   the suite's load can exceed.
+  Seen again 2026-11-05 (session 217): full suite at -j4, the
+  firing-ledger append waited 1662 ms against the 1000 ms bound; passed
+  3/3 run alone. A second sighting, so the bound is load-sensitive, not
+  a one-off.
   **Layman:** One timing test failed once while every test ran at the same time, then passed three times on its own.
   Kind: test.
   Source: ctest-run-2026-10-24.
