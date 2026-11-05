@@ -279,7 +279,8 @@ void finishById(ClaudeBgTaskAccum &acc, const QString &id) {
 
 // ANTS-5773 — end every task a <task-notification> block with a non-empty
 // <status> names. A block without one (a monitor's per-event notice) ends
-// nothing.
+// nothing, except a monitor's expiry notice (ANTS-6404): Claude Code sends
+// it with no <status>, only an "[Monitor expired after …]" event.
 void applyNotifications(ClaudeBgTaskAccum &acc, const QString &text) {
     if (!text.contains(QLatin1String("<task-notification>"))) return;
     static const QRegularExpression block(
@@ -287,10 +288,11 @@ void applyNotifications(ClaudeBgTaskAccum &acc, const QString &text) {
         QRegularExpression::DotMatchesEverythingOption);
     static const QRegularExpression idRx(QStringLiteral("<task-id>\\s*([^<\\s]+)\\s*</task-id>"));
     static const QRegularExpression statusRx(QStringLiteral("<status>\\s*([^<]*?)\\s*</status>"));
+    static const QRegularExpression expiredRx(QStringLiteral("<event>\\s*\\[Monitor expired after "));
     for (auto m = block.globalMatch(text); m.hasNext();) {
         const QString body = m.next().captured(1);
         const QString status = statusRx.match(body).captured(1);
-        if (status.isEmpty()) continue;
+        if (status.isEmpty() && !expiredRx.match(body).hasMatch()) continue;
         // ANTS-6322 — a helper pausing on its own background work is reported
         // "completed" too, and then carries on. Its end is a later notice, or
         // its meta file (walkHelperTranscripts).

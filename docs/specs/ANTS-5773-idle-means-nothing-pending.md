@@ -36,7 +36,7 @@ The silence rule had a reason (`claude_bg_tasks_button` spec, INV-12): tasks who
 | user `tool_result`, `toolUseResult.backgroundTaskId` set | A flagged launch's task for this `tool_use_id` takes the id, as today. With no such task, start a `shell` task with that id. |
 | user `tool_result`, `toolUseResult.status == "async_launched"` and `agentId` set | Start an `agent` task, id = `agentId`, output path = `toolUseResult.outputFile`. |
 | user `tool_result` for a remembered `Monitor` call, `toolUseResult.taskId` set | Start a `monitor` task, id = `taskId`. |
-| `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from a `queue-operation` record's `content`; the first one seen ends it. A block without `<status>` (a monitor's per-event notice) ends nothing, and nor does one whose summary reads `is waiting on its own background work` (a helper pausing, ANTS-6322). |
+| `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from a `queue-operation` record's `content`; the first one seen ends it. A block without `<status>` (a monitor's per-event notice) ends nothing, except a monitor's expiry notice, whose `<event>` begins `[Monitor expired after` (ANTS-6404); nor does one whose summary reads `is waiting on its own background work` (a helper pausing, ANTS-6322). |
 | assistant `tool_use` named `TaskStop` (`input.task_id`, or the deprecated `input.shell_id`) | End that task, as `KillShell` already does. |
 
 The 60 s silence rule is removed from both `finalize` (§ 2.2) and `sweepLiveness`. A missing output file still ends a task.
@@ -120,9 +120,9 @@ A running helper also ends when `agent-<id>.meta.json` holds `finished: true` an
 - **INV-3** — `async_launched` with `agentId` starts an `agent` task, and a `Monitor` result with `taskId` starts a `monitor` task. Each counts in its own field.
   *Test:* same file, one fixture per kind.
   *Breaks when:* either kind is not recognised, or is counted under `shell`.
-- **INV-4** — A `<task-notification>` with a non-empty `<status>` ends the task it names, from a `user` record or a `queue-operation` record. One without `<status>` ends nothing.
-  *Test:* same file. Fixtures: a monitor with two status-less events, then a status block; and a shell ended only by a `queue-operation`.
-  *Breaks when:* a status-less event ends a monitor, or one record form is ignored.
+- **INV-4** — A `<task-notification>` with a non-empty `<status>` ends the task it names, from a `user` record or a `queue-operation` record. One without `<status>` ends nothing, except a monitor's expiry notice: its `<event>` begins `[Monitor expired after` and it ends the monitor (amended by ANTS-6404; Claude Code sends that notice with no `<status>`).
+  *Test:* same file. Fixtures: a monitor with two status-less events, then a status block; and a shell ended only by a `queue-operation`. ANTS-6404: `ClaudeBgTasksButton.Ants6404ExpiredMonitorEnds`.
+  *Breaks when:* a status-less event ends a monitor, or one record form is ignored, or an expired monitor stays pending.
 - **INV-5** — `TaskStop` ends the task named by `task_id` or `shell_id`.
   *Test:* same file.
   *Breaks when:* only `KillShell` is read.

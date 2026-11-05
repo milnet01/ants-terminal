@@ -1327,3 +1327,41 @@ TEST(ClaudeBgTasksButton, Ants6326PauseFlagDoesNotLatchAgentFinished) {
     EXPECT_EQ(tracker.runningCount(), 0) << "the flag with nothing else running is the end";
 }
 
+
+// ANTS-6404 — a Monitor that expires gets a notice with no <status>, only an
+// "[Monitor expired after …]" event; it must end the monitor. An ordinary
+// event notice still ends nothing (ANTS-5773 INV-4).
+TEST(ClaudeBgTasksButton, Ants6404ExpiredMonitorEnds) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    auto notice = [](const QString &ts, const QString &event) {
+        return QJsonObject{
+            {"type", "user"}, {"timestamp", ts},
+            {"message", QJsonObject{{"role", "user"}, {"content", QStringLiteral(
+                "<task-notification>\n<task-id>bh5643sks</task-id>\n"
+                "<summary>Monitor event: \"push gate\"</summary>\n<event>%1</event>\n"
+                "</task-notification>").arg(event)}}}};
+    };
+    QList<QJsonObject> lines{
+        assistantToolUse("2026-11-05T09:52:36.000Z", "Monitor", "toolu_01VT",
+                         QJsonObject{{"description", "push gate"}}),
+        userToolResult("2026-11-05T09:52:37.000Z", "toolu_01VT",
+                       QJsonObject{{"taskId", "bh5643sks"}, {"timeoutMs", 1800000}},
+                       "Monitor started (task bh5643sks, expires in 30m)."),
+        notice("2026-11-05T10:00:00.000Z", "[build] job 3 of 5 passed"),
+    };
+    const QString tp = dir.filePath(QStringLiteral("m.jsonl"));
+    writeLines(tp, lines);
+    auto running = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(running.size(), 1);
+    EXPECT_FALSE(running[0].finished) << "an ordinary event notice ends nothing";
+
+    lines << notice("2026-11-05T10:22:37.000Z",
+                    "[Monitor expired after 30m with 9 events delivered. "
+                    "Re-arm it if you still need the watch.]");
+    writeLines(tp, lines);
+    const auto expired = ClaudeBgTaskTracker::parseTranscript(tp);
+    ASSERT_EQ(expired.size(), 1);
+    EXPECT_TRUE(expired[0].finished) << "the expiry notice ends the monitor";
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(expired).monitors, 0);
+}

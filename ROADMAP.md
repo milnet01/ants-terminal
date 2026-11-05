@@ -69549,13 +69549,17 @@ remainder, captured so they don't drop on the floor.
   Kind: investigate.
   Source: user-request-2026-10-31.
 
-- 📋 [ANTS-6404] **Count an expired Monitor as ended, so the Background Tasks button and "waiting (N bg)" clear.**
+- ✅ [ANTS-6404] **Count an expired Monitor as ended, so the Background Tasks button and "waiting (N bg)" clear.**
   RetroArch transcript 1f900da6: Monitors bh5643sks and boj8a6jkq ended
   only with '[Monitor expired after 30m ...]' notices, which carry no
   <status>. applyNotifications (src/claudebgtasks.cpp) ends a task only
   on a non-empty <status>, per ANTS-5773 INV-4, so both stayed pending:
   'Background Tasks (2)' and 'Claude: waiting (2 bg)'. Fix the rule and
   amend INV-4 together.
+  Shipped 2026-11-05: applyNotifications ends a monitor on Claude Code's
+  status-less "[Monitor expired after" notice; ANTS-5773 INV-4 amended;
+  test Ants6404ExpiredMonitorEnds seen red first. Reaches a running
+  terminal only on relaunch: the tracker is terminal code.
   **Layman:** The status bar kept saying two background tasks were running after they had stopped.
   Kind: fix.
   Source: user-report-2026-11-05 (RetroArch tab screenshot).
