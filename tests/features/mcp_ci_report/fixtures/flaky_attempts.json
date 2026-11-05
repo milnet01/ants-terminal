@@ -1,0 +1,26 @@
+{
+  "_now": "2026-11-05T12:00:00Z",
+  "_cases": "aaa1: CI failed then passed on attempt 2 (flaky). bbb2: Docs failed, CI passed (two workflows, no flake). ccc3: CI failed twice. ddd4: CI passed twice.",
+  "runs": [
+    {"databaseId": 101, "headSha": "aaa1", "headBranch": "main", "conclusion": "success", "event": "push", "workflowName": "CI", "createdAt": "2026-11-04T10:00:00Z", "attempt": 2, "status": "completed"},
+    {"databaseId": 201, "headSha": "bbb2", "headBranch": "main", "conclusion": "failure", "event": "push", "workflowName": "Docs", "createdAt": "2026-11-04T11:00:00Z", "attempt": 1, "status": "completed"},
+    {"databaseId": 202, "headSha": "bbb2", "headBranch": "main", "conclusion": "success", "event": "push", "workflowName": "CI", "createdAt": "2026-11-04T11:00:05Z", "attempt": 1, "status": "completed"},
+    {"databaseId": 301, "headSha": "ccc3", "headBranch": "main", "conclusion": "failure", "event": "push", "workflowName": "CI", "createdAt": "2026-11-04T12:00:00Z", "attempt": 1, "status": "completed"},
+    {"databaseId": 302, "headSha": "ccc3", "headBranch": "main", "conclusion": "failure", "event": "push", "workflowName": "CI", "createdAt": "2026-11-04T13:00:00Z", "attempt": 1, "status": "completed"},
+    {"databaseId": 401, "headSha": "ddd4", "headBranch": "main", "conclusion": "success", "event": "push", "workflowName": "CI", "createdAt": "2026-11-04T14:00:00Z", "attempt": 1, "status": "completed"},
+    {"databaseId": 402, "headSha": "ddd4", "headBranch": "main", "conclusion": "success", "event": "push", "workflowName": "CI", "createdAt": "2026-11-04T15:00:00Z", "attempt": 1, "status": "completed"}
+  ],
+  "jobs": {
+    "101/1": {"jobs": [{"id": 1011, "name": "Build and test", "conclusion": "failure", "created_at": "2026-11-04T10:00:01Z", "started_at": "2026-11-04T10:00:05Z", "completed_at": "2026-11-04T10:10:00Z",
+      "steps": [{"name": "Build", "conclusion": "success", "started_at": "2026-11-04T10:00:10Z", "completed_at": "2026-11-04T10:05:00Z"},
+                {"name": "Test", "conclusion": "failure", "started_at": "2026-11-04T10:05:00Z", "completed_at": "2026-11-04T10:10:00Z"}]}]},
+    "101/2": {"jobs": [{"id": 1012, "name": "Build and test", "conclusion": "success", "created_at": "2026-11-04T10:20:01Z", "started_at": "2026-11-04T10:20:05Z", "completed_at": "2026-11-04T10:30:00Z", "steps": []}]},
+    "201/1": {"jobs": [{"id": 2011, "name": "Docs", "conclusion": "failure", "created_at": "2026-11-04T11:00:01Z", "started_at": "2026-11-04T11:00:05Z", "completed_at": "2026-11-04T11:01:00Z", "steps": []}]},
+    "202/1": {"jobs": [{"id": 2021, "name": "Build and test", "conclusion": "success", "created_at": "2026-11-04T11:00:06Z", "started_at": "2026-11-04T11:00:10Z", "completed_at": "2026-11-04T11:10:00Z", "steps": []}]},
+    "301/1": {"jobs": [{"id": 3011, "name": "Build and test", "conclusion": "failure", "created_at": "2026-11-04T12:00:01Z", "started_at": "2026-11-04T12:00:05Z", "completed_at": "2026-11-04T12:10:00Z", "steps": []}]},
+    "302/1": {"jobs": [{"id": 3021, "name": "Build and test", "conclusion": "failure", "created_at": "2026-11-04T13:00:01Z", "started_at": "2026-11-04T13:00:05Z", "completed_at": "2026-11-04T13:10:00Z", "steps": []}]}
+  },
+  "logs": {
+    "1011": "2026-11-04T10:09:58.0000000Z The following tests FAILED:\n2026-11-04T10:09:58.0000000Z \t 12 - test_sockets (Failed)\n2026-11-04T10:09:58.0000000Z Errors while running CTest\n"
+  }
+}

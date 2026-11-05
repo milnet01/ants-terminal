@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **`ci_report`: an Ants MCP verb that reads a project's GitHub Actions history and lists flaky tests, jobs near their time budget, and cache, queue and runner advice** (ANTS-6399)
+  Each finding names its runs, commits and the standard it cites. A live
+  call asks GitHub through `gh`, bounded at 120 s; `source:"saved"` reads
+  the last report with no network. `session_orient` shows a one-line
+  `ci_report` warning when the saved report holds a problem. Served by
+  `ants-mcpd`, so it reaches a session on its next reconnect with no
+  terminal relaunch.
+
 - **mutation_probe takes `allow_exit_code_baseline`, so a suite whose only signal is its exit code can use require_green_baseline** (ANTS-6359, ANTS-4835)
   Opt-in only. The reply says `baseline_gate:"exit_code_only"` when exit 0
   was the only evidence. A red or empty run is still refused.

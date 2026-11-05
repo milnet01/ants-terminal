@@ -1,4 +1,4 @@
-// ANTS-3833 TU 13/24 — Cold eyes and test verbs.
+// ANTS-3833 TU 13/25 — Cold eyes and test verbs.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"

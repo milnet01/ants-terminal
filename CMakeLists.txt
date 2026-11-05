@@ -547,6 +547,8 @@ set(ANTS_RC_SOURCES_REL
     src/remotecontrol_readability.cpp
     # ANTS-6310 — know_how's handler. Appended last, for the reason above.
     src/remotecontrol_know_how.cpp
+    # ANTS-6399 — ci_report's handler. Appended last, for the reason above.
+    src/remotecontrol_ci.cpp
 )
 # ANTS-4932 § 2.2 — the list splits in two here, derived rather than restated
 # (INV-11): the terminal TU, which holds dispatch(), the --remote socket and
@@ -611,6 +613,10 @@ add_library(ants_mcpcore_lib STATIC
     src/runtraceverb.cpp
     # ANTS-5515 — the dependency_inventory seam; its handler is in remotecontrol_docs.cpp.
     src/dependencyinventory.cpp
+    # ANTS-6399 — the ci_report seams; the handler is remotecontrol_ci.cpp.
+    src/ciworkflows.cpp
+    src/cireport.cpp
+    src/cihistory.cpp
     # ANTS-5510 — the version_check seam; its handler is in remotecontrol_docs.cpp.
     src/versioncheck.cpp
     # ANTS-5502 — the quotation_check seam, its own TU for the same reason;
@@ -3326,6 +3332,8 @@ if(ANTS_TESTS)
                 tests/features/mcp_invariant_check/test_mcp_invariant_check.cpp
                 # ANTS-5515 — dependency_inventory: the seam, and its handler.
                 tests/features/mcp_dependency_inventory/test_mcp_dependency_inventory.cpp
+                # ANTS-6399 — ci_report: the seams, and its handler through RemoteControl.
+                tests/features/mcp_ci_report/test_mcp_ci_report.cpp
                 # ANTS-5510 — version_check: the seam, and its handler through RemoteControl.
                 tests/features/mcp_version_check/test_mcp_version_check.cpp
                 # ANTS-1299 build_status MCP tool.

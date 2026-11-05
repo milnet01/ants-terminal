@@ -1,4 +1,4 @@
-// ANTS-6310 TU 24/24 — the `know_how` handler: the machine-global store of
+// ANTS-6310 TU 24/25 — the `know_how` handler: the machine-global store of
 // how-to facts. Contract: docs/specs/ANTS-6310-know-how-store.md.
 //
 // Thin by design, like its session_message sibling. Every op, refusal and reply

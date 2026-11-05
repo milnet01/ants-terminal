@@ -348,6 +348,11 @@ Listed only where behavior isn't obvious from the name.
   review run's trace-index row; the seam is `runtraceverb` (ANTS-5299).
 - `dependencyinventory` — `dependency_inventory`: what a project pins, read offline
   from tracked files; its handler is in `remotecontrol_docs` (ANTS-5515).
+- `remotecontrol_ci` — thin handler for `ci_report`, and `session_orient`'s
+  `ci_report` block (ANTS-6399). Its seams follow.
+- `ciworkflows` — reads budgets and cache steps from `.github/workflows`.
+- `cihistory` — every `gh` call `ci_report` makes, bounded.
+- `cireport` — the pure analyser: run history in, findings out.
 - `versioncheck` — `version_check`: does each file `.claude/bump.json` lists hold
   the source's version; its handler is in `remotecontrol_docs` (ANTS-5510).
 - `remotecontrol_quotation_check` — thin handler for `quotation_check`, which

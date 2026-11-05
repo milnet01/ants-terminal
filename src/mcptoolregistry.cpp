@@ -170,6 +170,12 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdDependencyInventory));
 
+    // ANTS-6399 — ci_report: CI run history through gh. Bulk: a live call
+    // holds its worker for up to 120 s.
+    sink.registerToolProvider("ci_report",
+        ClaudeIntegration::CallerCwdContract::Required,
+        rcDelegate(rc, &RemoteControl::cmdCiReport, ClaudeIntegration::DispatchLane::Bulk));
+
     // ANTS-5510 — version_check: lockstep against the project's bump recipe.
     // Required: the recipe and the files it lists resolve against the project.
     sink.registerToolProvider("version_check",

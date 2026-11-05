@@ -23,6 +23,7 @@
 #include "roadmapparse.h"  // ANTS-3793 — BulletRecord, roadmapBullets()'s return
 
 #include <QDate>       // ANTS-4501 — buildRoadmapReportEnvelope's window args
+#include <QDateTime>   // ANTS-6399 — buildCiReportBlock's clock
 #include <functional>  // ANTS-3543 — downshiftMatches lean-projector callback
 #include <limits>
 #include <memory>
@@ -516,6 +517,10 @@ public:
     // public on the same precedent. Returns {} when nothing is unacked or the
     // project has no mailbox, and the caller then omits the key.
     static QJsonObject buildMailPendingBlock(const QString &rootCanonical);
+    // ANTS-6399 § 4.6 — session_orient's ci_report block, from the saved
+    // report only: no process, no network. Returns {} unless the report holds
+    // a `problem` finding, and the caller then omits the key.
+    static QJsonObject buildCiReportBlock(const QString &rootCanonical, const QDateTime &nowUtc);
     // ANTS-5667 — rcdetail::findRoadmapUnder() for callers outside the
     // remotecontrol sources, which may not include remotecontrol_internal.h.
     // MainWindow's Roadmap button asks this, so it shows exactly where
@@ -1135,6 +1140,11 @@ public:
     // ANTS-5515 — dependency_inventory: what the project pins, read offline.
     // Seam: src/dependencyinventory.h.
     QJsonDocument cmdDependencyInventory(const QJsonObject &req);
+
+    // ANTS-6399 — ci_report: a project's GitHub Actions run history, read
+    // through gh and analysed. Seams: src/cihistory.h, src/cireport.h,
+    // src/ciworkflows.h. Handler: src/remotecontrol_ci.cpp.
+    QJsonDocument cmdCiReport(const QJsonObject &req);
 
     // ANTS-5510 — version_check: lockstep against .claude/bump.json. Seam:
     // src/versioncheck.h.

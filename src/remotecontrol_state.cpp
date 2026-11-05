@@ -1,4 +1,4 @@
-// ANTS-3833 TU 11/24 — Session and state verbs.
+// ANTS-3833 TU 11/25 — Session and state verbs.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "antsversion.h"
@@ -1988,6 +1988,14 @@ QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
     {
         const QJsonObject mp = buildMailPendingBlock(rootCanonical);
         if (!mp.isEmpty()) result[QStringLiteral("mail_pending")] = mp;
+    }
+
+    // --- ci_report: buildCiReportBlock (ANTS-6399 § 4.6) ---
+    // The saved report only; never a process or GitHub. Absent unless it holds
+    // a problem, like the blocks above.
+    {
+        const QJsonObject ci = buildCiReportBlock(rootCanonical, QDateTime::currentDateTimeUtc());
+        if (!ci.isEmpty()) result[QStringLiteral("ci_report")] = ci;
     }
 
     // ANTS-3587 — surface absent-but-optional artifacts (e.g. no ROADMAP.md on

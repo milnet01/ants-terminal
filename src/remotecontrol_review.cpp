@@ -1,4 +1,4 @@
-// ANTS-3833 TU 12/24 — Indie review verbs.
+// ANTS-3833 TU 12/25 — Indie review verbs.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"

@@ -14837,6 +14837,56 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     tools.append(t);
                 }
 
+                // ANTS-6399 — ci_report: CI run history through gh, analysed.
+                {
+                    QJsonObject t;
+                    t["name"] = "ci_report";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use instead of reading GitHub Actions runs by hand: flaky tests, "
+                        "jobs near their timeout, cache and queue problems.");
+                    t["description"] = QStringLiteral(
+                        "Read a project's GitHub Actions run history through gh and list "
+                        "CI problems: flaky (failed then passed on one commit), "
+                        "near_budget, budget_trend, scheduled_red, queue_wait, annotation, "
+                        "runner_latest, cache_size, cache_key_shared, cache_save_skipped, "
+                        "test_parallelism. Each finding names its runs, SHAs and the "
+                        "standard it cites. source:\"saved\" reads the last report with no "
+                        "network. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "ANTS-6399. Contract: docs/specs/ANTS-6399-ci-report-verb.md. A live "
+                        "call is bounded at 120 s and 300 gh calls; a stopped fetch says "
+                        "truncated_reason and still reports. No workflows or no GitHub "
+                        "remote answers ci:\"none\". Budgets come from today's workflow "
+                        "files; one it cannot read is listed in unread[], never guessed.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    props["caller_cwd"] = makeCallerCwdReadProp();
+                    props["source"] = QJsonObject{
+                        {"type", "string"},
+                        {"enum", QJsonArray{QStringLiteral("live"), QStringLiteral("saved")}},
+                        {"default", "live"},
+                        {"description", QStringLiteral(
+                             "live (default) asks GitHub and saves the report; saved returns "
+                             "the last saved report, no network.")}};
+                    props["days"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1}, {"maximum", 90},
+                        {"default", 30},
+                        {"description", QStringLiteral(
+                             "Window by run creation time (default 30). Only the default "
+                             "window is saved.")}};
+                    props["workflow"] = QJsonObject{
+                        {"type", "string"},
+                        {"description", QStringLiteral(
+                             "Keep runs of this workflow name only (exact). A filtered "
+                             "report is not saved.")}};
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+
                 // ANTS-5510 — version_check: lockstep against the bump recipe.
                 {
                     QJsonObject t;
@@ -16344,6 +16394,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         name == QLatin1String("quotation_check") ||
                         name == QLatin1String("version_check") ||   // ANTS-5510
                         name == QLatin1String("dependency_inventory") ||   // ANTS-5515
+                        name == QLatin1String("ci_report") ||   // ANTS-6399
                         name == QLatin1String("doc_symbols") ||
                         name == QLatin1String("spec_lint") ||   // ANTS-3662
                         // ANTS-4108 — spec_conformance: spec_lint's executable
@@ -18115,6 +18166,8 @@ ClaudeIntegration::callerCwdContractFor(const QString &toolName) {
     if (toolName == QStringLiteral("run_trace"))          return C::Required;
     // ANTS-5515 — dependency_inventory reads the caller's tracked files.
     if (toolName == QStringLiteral("dependency_inventory")) return C::Required;
+    // ANTS-6399 — ci_report reads the caller's workflows and saved report.
+    if (toolName == QStringLiteral("ci_report")) return C::Required;
     // ANTS-5510 — version_check reads the bump recipe and what it lists.
     if (toolName == QStringLiteral("version_check"))      return C::Required;
     // ANTS-5502 — quotation_check reads files under the caller's project root.
@@ -18453,6 +18506,8 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     // ANTS-1352: indie_review_dispatch
     if (toolName == QStringLiteral("indie_review_dispatch"))    return R::Expensive;
     if (toolName == QStringLiteral("test_audit_partition"))     return R::Expensive;
+    // ANTS-6399 — ci_report runs gh, up to 300 calls a live run.
+    if (toolName == QStringLiteral("ci_report"))                return R::Expensive;
     // Default — Cheap (60/min). All read verbs not classified above.
     return R::Cheap;
 }

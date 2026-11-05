@@ -79662,7 +79662,7 @@ in each bullet, not just the reporter's symptom.
   Kind: perf.
   Source: user-request-2026-11-05.
 
-- 📋 [ANTS-6399] **Add `ci_report`, an Ants MCP verb that warns any project about flaky tests, CI steps near their time budget, and changes that would speed its CI up.**
+- ✅ [ANTS-6399] **Add `ci_report`, an Ants MCP verb that warns any project about flaky tests, CI steps near their time budget, and changes that would speed its CI up.**
   User decisions 2026-11-05: an Ants MCP verb shipped with Ants Terminal
   (served by ants-mcpd); on demand, plus one session_orient line when a
   project's CI shows a real problem. Co-designed with claude-config.
@@ -79702,6 +79702,11 @@ in each bullet, not just the reporter's symptom.
   23 fixed, 1 surfaced and settled by amendment (shell timeout guards are
   step budgets, INV-12). Loop 2's fixes and the amendment were read by no
   lane; implementation is their reader. Next: build it.
+  Shipped 2026-11-05: src/ciworkflows, cihistory, cireport,
+  remotecontrol_ci; session_orient's ci_report block;
+  tests/features/mcp_ci_report (12 tests, each seen red against its rule
+  removed). Live on this repo: 121 runs over 7 days in about 95 s. Log
+  calls pass gh's --allow-escape-sequences, found on the live run.
   **Layman:** A tool every Claude session can ask: is this project's CI flaky, close to timing out, or slower than it needs to be?
   Kind: feature.
   Source: user-request-2026-11-05.

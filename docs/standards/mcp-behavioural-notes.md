@@ -1042,6 +1042,25 @@ The contract is `docs/specs/ANTS-6310-know-how-store.md`.
   another connection is inside a transaction, so the text stays on disk until
   the last connection closes.
 
+### `ci_report` (ANTS-6399)
+
+The contract is `docs/specs/ANTS-6399-ci-report-verb.md`.
+
+- **`source:"saved"` starts no process.** Nor does `session_orient`'s
+  `ci_report` block, which reads the same saved file.
+- **Only a whole default report is saved:** no `workflow`, the default
+  `days`, and an empty `fetch_errors`. A narrower or partly failed run never
+  replaces the warning `session_orient` shows.
+- **A live call is bounded** at 120 s and 300 `gh` calls. The jobs calls
+  stop with 30 calls or 30 s left, so cache usage, annotations and logs still
+  run. A stopped fetch sets `truncated_reason` and still reports.
+- **Budgets come from today's workflow files.** A value the reader cannot
+  read is listed in `unread[]` and no check uses it.
+- **One live run per project:** a second refuses `already_running` while the
+  first holds its lock beside the saved report.
+- **Log calls pass `--allow-escape-sequences`.** Without it `gh` refuses a
+  job log holding terminal escape codes.
+
 ## `model_switch_stats`
 
 (ANTS-1735, extended by ANTS-1889, sharpened by ANTS-1891.) Required
