@@ -14878,8 +14878,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     props["workflow"] = QJsonObject{
                         {"type", "string"},
                         {"description", QStringLiteral(
-                             "Keep runs of this workflow name only (exact). A filtered "
-                             "report is not saved.")}};
+                             "Keep this workflow only (exact name): its runs and its "
+                             "file's checks. A filtered report is not saved.")}};
                     schema["properties"] = props;
                     schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
                     schema["additionalProperties"] = false;

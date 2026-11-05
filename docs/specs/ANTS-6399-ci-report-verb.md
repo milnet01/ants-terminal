@@ -98,7 +98,8 @@ ci_report {caller_cwd, source?: "live"|"saved", days?: 1..90, workflow?: string}
   report where § 4.5 says so, and returns it. `source:"saved"` returns the saved report
   with no network and no `gh` call.
 - `days` (default 30) bounds the window by run creation time.
-- `workflow` keeps runs whose workflow name equals it exactly.
+- `workflow` keeps runs whose workflow name equals it exactly, and the
+  checks that read the workflow files read that workflow's file only.
 
 Reply:
 
@@ -275,7 +276,8 @@ changes.
 
 A later call failing (one run's jobs, a log, the annotations) does not
 refuse. The finding that needed it does not fire, and the reply's
-`fetch_errors` lists `{call, exit_code}` for each.
+`fetch_errors` lists `{call, exit_code}` for each, and `reason`
+(`not_started` or `timeout`) where `exit_code` is -1 for one of those.
 
 `github_unavailable` joins `docs/standards/mcp-error-codes.md`. The caller's
 next step differs from `runner_missing`'s (sign in or wait, against

@@ -39,9 +39,9 @@ using namespace rcdetail;  // resolveRootCanonical
 
 namespace {
 
-constexpr int kDefaultDays = 30;
+const int kDefaultDays = CiHistory::Options().days;
 constexpr int kMaxDays = 90;
-constexpr qint64 kLiveBudgetMs = qint64(120) * 1000;  // CiHistory::Options::deadlineMs
+const qint64 kLiveBudgetMs = CiHistory::Options().deadlineMs;
 
 QJsonDocument refuse(const char *code, const QString &message, QJsonObject extra = {}) {
     extra[QStringLiteral("ok")] = false;
@@ -189,7 +189,7 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
     const QJsonValue daysV = req.value(QStringLiteral("days"));
     const double daysD = daysV.isUndefined() ? kDefaultDays : daysV.toDouble(-1);
     if (daysD != std::floor(daysD) || daysD < 1 || daysD > kMaxDays)
-        return refuse("bad_args", QStringLiteral("days must be a whole number from 1 to 90"));
+        return refuse("bad_args", QStringLiteral("days must be a whole number from 1 to %1").arg(kMaxDays));
     const int days = int(daysD);
     const QJsonValue workflowV = req.value(QStringLiteral("workflow"));
     if (!workflowV.isUndefined() && !workflowV.isString())
@@ -218,11 +218,19 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
              {QStringLiteral("retry_after_ms"),
               double(std::max<qint64>(0, since + kLiveBudgetMs - now.toMSecsSinceEpoch()))}});
 
-    const CiWorkflows::Result wf = CiWorkflows::read(root);
+    CiWorkflows::Result wf = CiWorkflows::read(root);
+    // workflow= narrows the file-read checks to that workflow, as it narrows
+    // the runs (spec § 4.2).
+    if (!workflow.isEmpty())
+        wf.workflows.removeIf([&](const CiWorkflows::Workflow &w) {
+            return w.name != workflow && w.file != workflow;
+        });
     CiHistory::Options opts;
     opts.days = days;
     opts.workflow = workflow;
     opts.now = now;
+    // The analysis runs twice on purpose: once on the history before logs, to
+    // pick the logs its findings read, and once on the whole history.
     const CiHistory::Result fetched = CiHistory::fetch(root, opts, [&](const QJsonObject &h) {
         return CiReport::analyse(h, wf, now, days).logJobs;
     });
@@ -245,8 +253,7 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
                                                {QStringLiteral("runs"), a.runs},
                                                {QStringLiteral("workflows"), a.workflows}}},
         {QStringLiteral("truncated"), !fetched.truncatedReason.isEmpty()},
-        {QStringLiteral("truncated_reason"), fetched.truncatedReason.isEmpty()
-                                                 ? QJsonValue() : QJsonValue(fetched.truncatedReason)},
+        {QStringLiteral("truncated_reason"), CiWorkflows::orNull(fetched.truncatedReason)},
         {QStringLiteral("findings"), a.findings},
         {QStringLiteral("counts"), a.counts},
         {QStringLiteral("unread"), unread},

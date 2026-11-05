@@ -70,6 +70,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **ci_report's workflow argument also narrows the checks that read workflow files, and a fetch error says when gh did not start or ran out of time** (ANTS-6408)
+
 - **`verify_changes` refusals put the error code under `code` and the message under `error`, like every other tool; `doc_citations` and `get_text` refusals now carry both too** (ANTS-6379)
 
 - **`workspace_search` allows 30 calls a minute per project instead of 10, so parallel review helpers are no longer turned away** (ANTS-5112)

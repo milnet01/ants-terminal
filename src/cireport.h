@@ -18,7 +18,7 @@ namespace CiReport {
 //   jobs        — {"<runId>/<attempt>": the jobs API reply}
 //   cache_usage — the cache usage API reply
 //   annotations — {"<jobId>": the annotations API reply}
-//   logs        — {"<jobId>": the job log's first bytes}
+//   logs        — {"<jobId>": the job log's head and tail, its middle dropped}
 struct Analysis {
     QJsonArray findings;       // sorted per spec § 4.2
     QJsonObject counts;        // {problem, advice}

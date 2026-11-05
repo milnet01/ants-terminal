@@ -11,6 +11,7 @@
 #include <QList>
 #include <QString>
 
+#include <algorithm>
 #include <functional>
 
 namespace CiHistory {
@@ -42,6 +43,19 @@ struct Result {
     // findings that need jobs may be wrong, so the report must not save.
     bool jobsComplete = true;
 };
+
+// A `gh run list` row's run id, and its attempt (1 when absent).
+inline qint64 runIdOf(const QJsonObject &run) {
+    return qint64(run.value(QStringLiteral("databaseId")).toDouble());
+}
+inline int attemptOf(const QJsonObject &run) {
+    return std::max(1, run.value(QStringLiteral("attempt")).toInt(1));
+}
+// The `history.jobs` key of one run attempt, "<runId>/<attempt>": the
+// contract between fetch() and CiReport::analyse().
+inline QString jobsKey(qint64 runId, int attempt) {
+    return QStringLiteral("%1/%2").arg(runId).arg(attempt);
+}
 
 // Given the history before logs, the jobs whose logs a finding would read.
 using LogPicker = std::function<QList<qint64>(const QJsonObject &history)>;

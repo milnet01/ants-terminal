@@ -6,6 +6,7 @@
 // guess (spec § 4.4, INV-3). Contract: docs/specs/ANTS-6399-ci-report-verb.md.
 
 #include <QJsonArray>
+#include <QJsonValue>
 #include <QList>
 #include <QString>
 #include <QStringList>
@@ -58,5 +59,9 @@ const Step *matchStep(const Job &j, const QString &apiStepName);
 
 // A step's leading `timeout <N><s|m|h> ` in minutes, or -1 (spec § 4.4).
 double shellGuardMinutes(const QString &run);
+
+// JSON null for an empty string, the string otherwise: the reply's shape for
+// a field that may be absent. Shared by the three ci_report files.
+inline QJsonValue orNull(const QString &s) { return s.isEmpty() ? QJsonValue() : QJsonValue(s); }
 
 }  // namespace CiWorkflows

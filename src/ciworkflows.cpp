@@ -234,6 +234,8 @@ private:
             int spaces = 0;
             while (spaces < after.size() && after.at(spaces) == QLatin1Char(' ')) ++spaces;
             // The item's own keys sit at the column its first key starts in.
+            // This rewrites the line in place, so node() reads the item as a
+            // map starting there.
             m_l[i].indent = indent + 1 + spaces;
             m_l[i].text = item;
             m_i = i;
@@ -281,7 +283,7 @@ QStringList keysOf(const QVariant &v) {
 
 void addUnread(QJsonArray &unread, const QString &file, const QString &job, const QString &field) {
     unread.append(QJsonObject{{QStringLiteral("file"), file},
-                              {QStringLiteral("job"), job.isEmpty() ? QJsonValue() : QJsonValue(job)},
+                              {QStringLiteral("job"), orNull(job)},
                               {QStringLiteral("field"), field}});
 }
 

@@ -79840,7 +79840,7 @@ in each bullet, not just the reporter's symptom.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
   Lanes: mcp.
 
-- 📋 [ANTS-6408] **ci_report: small readability fixes from the cold review.**
+- ✅ [ANTS-6408] **ci_report: small readability fixes from the cold review.**
   Lane 2 #1 (cireport.h says logs hold first bytes), #4 (the
   <run>/<attempt> key built in three places), #7 (hand copies of
   Options defaults), #8 (orNull four times), #10, #11 (\x1f key
@@ -79850,6 +79850,9 @@ in each bullet, not just the reporter's symptom.
   the file-only checks (runner_latest, the cache checks,
   test_parallelism) still report every workflow. Narrow them to the
   named workflow, and say so in spec § 4.2.
+  Shipped 2026-11-05. Three Ants6408 tests: cache hit/miss (locks
+  existing behaviour), a timed-out call's reason and the workflow filter
+  (both red first). Spec § 4.2 and § 4.7 amended (impl-5).
   **Layman:** Tidies names, comments and repeated constants in the CI report tool so it is easier to follow.
   Kind: review-fix.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).

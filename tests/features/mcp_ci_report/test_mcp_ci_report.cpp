@@ -117,7 +117,8 @@ private:
 // A fake `gh` first on PATH. It logs every call, answers `repo view` and
 // `run list` from files in its directory, and an `api <path>` call from a file
 // named by the path with / ? = & turned to _. FAKE_FAIL=list fails the listing;
-// a file of that name plus ".fail" fails that api call.
+// a file of that name plus ".fail" fails that api call, and plus ".sleep"
+// makes it outlast a short per-call limit.
 struct FakeGh {
     QTemporaryDir dir;
     QString log() const { return dir.filePath(QStringLiteral("calls.log")); }
@@ -139,6 +140,8 @@ struct FakeGh {
                  // Real gh refuses a log holding escape codes without this flag.
                  "elif [[ $1 == api && $2 == */logs && \" $* \" != *' --allow-escape-sequences '* ]]; then\n"
                  "  echo 'the response contains terminal escape sequences' >&2; exit 1\n"
+                 "elif [[ $1 == api && -f \"$FAKE_DIR/${2//[\\/?=&]/_}.sleep\" ]]; then\n"
+                 "  sleep 5\n"
                  "elif [[ $1 == api && -f \"$FAKE_DIR/${2//[\\/?=&]/_}.fail\" ]]; then\n"
                  "  echo 'HTTP 500: Server Error' >&2; exit 1\n"
                  "elif [[ $1 == api ]]; then\n"
@@ -998,4 +1001,61 @@ TEST(McpCiReport, Ants6407CtestAfterShellKeywords) {
     EXPECT_TRUE(fires("until ctest --timeout 60; do sleep 1; done")) << "until";
     EXPECT_TRUE(fires("if false; then :; elif ctest --timeout 60; then :; fi")) << "elif";
     EXPECT_FALSE(fires("if ctest -j4 --timeout 60; then echo ok; fi"));
+}
+
+// ---- ANTS-6408: the cold review's small items --------------------------------
+
+// § 4.3: a timing finding reads its job's log for the cache line.
+TEST(McpCiReport, Ants6408TimingFindingReadsTheCacheLine) {
+    const CiWorkflows::Result wf = workflow(kBuild10);
+    auto cache = [&](const char *log) {
+        History h;
+        h.add(1, kNow.addSecs(-3600), QStringLiteral("Build"), 0, 480, QStringLiteral("success"));
+        QJsonObject history = h.json();
+        history["logs"] = QJsonObject{{"10", QString::fromLatin1(log)}};
+        const auto f = ofCheck(CiReport::analyse(history, wf, kNow, 30), "near_budget");
+        return f.isEmpty() ? QString() : f[0].value("cache").toString();
+    };
+    EXPECT_EQ(cache("x\nCache restored from key: Linux-abc\ny"), QStringLiteral("hit"));
+    EXPECT_EQ(cache("x\nCache not found for input keys: Linux-abc\ny"), QStringLiteral("miss"));
+    EXPECT_EQ(cache("no cache step"), QStringLiteral("unknown"));
+}
+
+// A call killed at its time limit says so in fetch_errors.
+TEST(McpCiReport, Ants6408TimedOutCallNamesItsReason) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    gh.put(QStringLiteral("repos_o_r_actions_cache_usage.sleep"), "");
+    Project p;
+    CiHistory::Options o;
+    o.now = QDateTime::currentDateTimeUtc();
+    o.perCallMs = 300;
+    const CiHistory::Result r = CiHistory::fetch(p.root, o, {});
+    ASSERT_EQ(r.fetchErrors.size(), 1) << dump(r.fetchErrors);
+    EXPECT_EQ(r.fetchErrors.at(0).toObject().value("reason").toString(), QStringLiteral("timeout"))
+        << dump(r.fetchErrors);
+}
+
+// With workflow= set, the checks that read the files read that workflow only.
+TEST(McpCiReport, Ants6408WorkflowArgumentNarrowsTheFileChecks) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    Project p;
+    env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+    p.write(QStringLiteral(".github/workflows/ci.yml"),
+            "name: CI\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make\n");
+    p.write(QStringLiteral(".github/workflows/docs.yml"),
+            "name: Docs\njobs:\n  d:\n    runs-on: ubuntu-latest\n    steps:\n      - run: make docs\n");
+    auto workflowsOf = [](const QJsonObject &r) {
+        QStringList names;
+        for (const QJsonValue &f : r.value("findings").toArray())
+            if (f.toObject().value("check").toString() == QLatin1String("runner_latest"))
+                names.append(f.toObject().value("workflow").toString());
+        names.sort();
+        return names.join(QLatin1Char(','));
+    };
+    EXPECT_EQ(workflowsOf(p.call()), QStringLiteral("CI,Docs"));
+    EXPECT_EQ(workflowsOf(p.call({{"workflow", "Docs"}})), QStringLiteral("Docs"));
 }

@@ -21,11 +21,13 @@ namespace {
 
 constexpr int kStartMs = 5000;
 constexpr int kTailChars = 2000;
+constexpr int kErrBytes = 16 * 1024;  // stderr kept per call; its tail is all that is read
 constexpr int kMaxJobPages = 10;   // 1 000 jobs a run attempt
 
 struct Call {
     bool started = false;
-    int exitCode = -1;   // -1: killed at its time limit, or crashed
+    bool timedOut = false;
+    int exitCode = -1;   // -1: not started, killed at its time limit, or crashed
     QByteArray out, err;
 };
 
@@ -74,6 +76,7 @@ public:
         auto take = [&] {
             QByteArray chunk = p.readAllStandardOutput();
             c.err += p.readAllStandardError();
+            if (c.err.size() > kErrBytes) c.err = c.err.right(kErrBytes);
             if (maxBytes <= 0) { c.out += chunk; return; }
             if (c.out.size() < half) {
                 const qint64 n = std::min<qint64>(half - c.out.size(), chunk.size());
@@ -89,7 +92,7 @@ public:
             p.waitForFinished(int(std::min<qint64>(left, 100)));
             take();
         }
-        if (killed) { p.kill(); p.waitForFinished(1000); }
+        if (killed) { p.kill(); p.waitForFinished(1000); c.timedOut = true; }
         take();
         c.out += cut ? QByteArray("\n[ci_report: middle of the log not kept]\n") + tail : tail;
         if (!killed && p.exitStatus() == QProcess::NormalExit) c.exitCode = p.exitCode();
@@ -103,7 +106,7 @@ private:
     int m_calls = 0;
 };
 
-QString tail(const Call &c) {
+QString errorTail(const Call &c) {
     const QString s = QString::fromUtf8(c.err.isEmpty() ? c.out : c.err).trimmed();
     return s.right(kTailChars);
 }
@@ -113,15 +116,20 @@ bool refuseOn(const Call &c, Result &res) {
     if (!c.started) { res.refusal = QStringLiteral("runner_missing"); return true; }
     if (c.exitCode != 0) {
         res.refusal = QStringLiteral("github_unavailable");
-        res.stderrTail = tail(c);
+        res.stderrTail = errorTail(c);
         return true;
     }
     return false;
 }
 
+// exit_code is -1 for a call that did not start, ran out of time or crashed;
+// `reason` tells the first two apart.
 void noteError(Result &res, const QStringList &args, const Call &c) {
-    res.fetchErrors.append(QJsonObject{{QStringLiteral("call"), QStringLiteral("gh ") + args.join(QLatin1Char(' '))},
-                                       {QStringLiteral("exit_code"), c.started ? c.exitCode : -1}});
+    QJsonObject e{{QStringLiteral("call"), QStringLiteral("gh ") + args.join(QLatin1Char(' '))},
+                  {QStringLiteral("exit_code"), c.exitCode}};
+    if (!c.started) e[QStringLiteral("reason")] = QStringLiteral("not_started");
+    else if (c.timedOut) e[QStringLiteral("reason")] = QStringLiteral("timeout");
+    res.fetchErrors.append(e);
 }
 
 // The listed runs inside the window and the workflow filter, newest first.
@@ -181,8 +189,8 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
     for (const QJsonValue &v : runs) {
         const QJsonObject r = v.toObject();
         if (r.value(QStringLiteral("status")).toString() != QLatin1String("completed")) continue;
-        const qint64 id = qint64(r.value(QStringLiteral("databaseId")).toDouble());
-        for (int a = 1; a <= std::max(1, r.value(QStringLiteral("attempt")).toInt(1)); ++a) {
+        const qint64 id = runIdOf(r);
+        for (int a = 1; a <= attemptOf(r); ++a) {
             stop = s.spent(&res.truncatedReason, opts.reserveCalls, opts.reserveMs);
             if (stop) break;
             const QString path =
@@ -217,7 +225,7 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
                 continue;
             }
             reply[QStringLiteral("jobs")] = all;
-            jobs[QStringLiteral("%1/%2").arg(id).arg(a)] = reply;
+            jobs[jobsKey(id, a)] = reply;
         }
         if (stop) break;
     }
@@ -236,10 +244,7 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
         if (r.value(QStringLiteral("status")).toString() != QLatin1String("completed") || seen.contains(wf))
             continue;
         seen.insert(wf);
-        const QString key = QStringLiteral("%1/%2")
-            .arg(qint64(r.value(QStringLiteral("databaseId")).toDouble()))
-            .arg(std::max(1, r.value(QStringLiteral("attempt")).toInt(1)));
-        for (const QJsonValue &j : jobs.value(key).toObject().value(QStringLiteral("jobs")).toArray()) {
+        for (const QJsonValue &j : jobs.value(jobsKey(runIdOf(r), attemptOf(r))).toObject().value(QStringLiteral("jobs")).toArray()) {
             // Leave the logs their calls and half the time reserve (spec § 4.5).
             if (s.spent(&res.truncatedReason, opts.maxLogs, opts.reserveMs / 2)) break;
             const qint64 jobId = qint64(j.toObject().value(QStringLiteral("id")).toDouble());

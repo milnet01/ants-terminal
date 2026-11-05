@@ -4,6 +4,8 @@
 
 #include "cireport.h"
 
+#include "cihistory.h"   // jobsKey, runIdOf, attemptOf
+
 #include <QHash>
 #include <QMap>
 #include <QRegularExpression>
@@ -21,9 +23,11 @@ constexpr double kNearBudget = 0.80;         // near_budget: share of the budget
 constexpr double kTrendRise = 1.25;          // budget_trend: newest median vs earlier
 constexpr int kTrendNewest = 5;              // budget_trend: newest successful runs
 constexpr qint64 kQueueWaitSecs = 5 * 60;    // queue_wait: median wait
-constexpr double kCacheLimitBytes = 10.0 * 1024 * 1024 * 1024;  // GitHub's 10 GB
+constexpr double kGiB = 1024.0 * 1024 * 1024;
+constexpr double kCacheLimitBytes = 10 * kGiB;  // GitHub's per-repository cache limit
 constexpr double kCacheFull = 0.80;          // cache_size: share of the limit
 constexpr int kMaxEvidence = 10;             // runs/shas per finding
+constexpr int kMaxTestNames = 10;            // failing ctest names quoted by flaky
 
 const QString kTimeoutCite = QStringLiteral("local-gate.md § 9 (timeout-minutes row)");
 const QString kCachesCite = QStringLiteral("local-gate.md § 9 (caches row)");
@@ -89,6 +93,12 @@ Evidence evidenceOf(const JobRec &j) {
 }
 Evidence evidenceOf(const RunRec &r) { return {r.created, r.id, r.sha}; }
 
+// One grouping key from several fields. U+001F, the unit separator, cannot
+// occur in a workflow, job, step, event or SHA, so two keys never collide.
+QString groupKey(std::initializer_list<QString> parts) {
+    return QStringList(parts).join(QChar(0x1f));
+}
+
 // ---- reading the history ----------------------------------------------
 
 QList<RunRec> readRuns(const QJsonObject &history, const QDateTime &now, int days) {
@@ -98,19 +108,18 @@ QList<RunRec> readRuns(const QJsonObject &history, const QDateTime &now, int day
     for (const QJsonValue &v : history.value(QStringLiteral("runs")).toArray()) {
         const QJsonObject o = v.toObject();
         RunRec r;
-        r.id = qint64(o.value(QStringLiteral("databaseId")).toDouble());
+        r.id = CiHistory::runIdOf(o);
         r.sha = o.value(QStringLiteral("headSha")).toString();
         r.conclusion = o.value(QStringLiteral("conclusion")).toString();
         r.status = o.value(QStringLiteral("status")).toString();
         r.event = o.value(QStringLiteral("event")).toString();
         r.workflow = o.value(QStringLiteral("workflowName")).toString();
         r.created = when(o.value(QStringLiteral("createdAt")));
-        r.attempt = std::max(1, o.value(QStringLiteral("attempt")).toInt(1));
+        r.attempt = CiHistory::attemptOf(o);
         if (!r.created.isValid() || r.created < cutoff) continue;
         for (int a = 1; a <= r.attempt; ++a) {
             QList<JobRec> list;
-            const QJsonObject reply =
-                jobs.value(QStringLiteral("%1/%2").arg(r.id).arg(a)).toObject();
+            const QJsonObject reply = jobs.value(CiHistory::jobsKey(r.id, a)).toObject();
             for (const QJsonValue &jv : reply.value(QStringLiteral("jobs")).toArray()) {
                 const QJsonObject jo = jv.toObject();
                 JobRec j;
@@ -147,7 +156,7 @@ void link(QList<RunRec> &runs) {
 }
 
 void noteLog(Finding &f, const JobRec &j) {
-    const QDateTime t = j.started.isValid() ? j.started : j.run->created;
+    const QDateTime t = evidenceOf(j).t;
     if (!f.logJob || t > f.logT) { f.logJob = j.id; f.logT = t; }
 }
 
@@ -158,14 +167,13 @@ struct Matched { const JobRec *job; const CiWorkflows::Job *wj; QString file; };
 QList<Matched> matchJobs(const QList<RunRec> &runs, const CiWorkflows::Result &wf,
                          QJsonArray &unread) {
     QSet<QString> named;
-    auto orNullStr = [](const QString &s) { return s.isEmpty() ? QJsonValue() : QJsonValue(s); };
     auto miss = [&](const QString &file, const QString &job, const QString &field,
                     const QString &workflow = QString()) {
-        const QString key = QStringList{file, job, field, workflow}.join(QLatin1Char('\x1f'));
+        const QString key = groupKey({file, job, field, workflow});
         if (named.contains(key)) return;
         named.insert(key);
-        QJsonObject u{{QStringLiteral("file"), orNullStr(file)},
-                      {QStringLiteral("job"), orNullStr(job)},
+        QJsonObject u{{QStringLiteral("file"), CiWorkflows::orNull(file)},
+                      {QStringLiteral("job"), CiWorkflows::orNull(job)},
                       {QStringLiteral("field"), field}};
         if (!workflow.isEmpty()) u[QStringLiteral("workflow")] = workflow;
         unread.append(u);
@@ -193,7 +201,7 @@ QStringList failingCtestNames(const QString &log) {
     if (at < 0) return names;
     static const QRegularExpression row(QStringLiteral(R"(^(?:\S+Z )?\s*\d+ - (\S+) \()"));
     const QStringList lines = log.mid(at).split(QLatin1Char('\n'));
-    for (int i = 1; i < lines.size() && names.size() < kMaxEvidence; ++i) {
+    for (int i = 1; i < lines.size() && names.size() < kMaxTestNames; ++i) {
         const auto m = row.match(lines[i]);
         if (!m.hasMatch()) break;
         names.append(m.captured(1));
@@ -212,7 +220,7 @@ void checkFlaky(const QList<RunRec> &runs, const QJsonObject &logs, QList<Findin
     for (const RunRec &r : runs)
         for (int a = 1; a <= r.attempts.size(); ++a)
             for (const JobRec &j : r.attempts.at(a - 1))
-                byJob[QStringList{r.workflow, r.event, r.sha, j.name}.join(QLatin1Char('\x1f'))]
+                byJob[groupKey({r.workflow, r.event, r.sha, j.name})]
                     .append({&j, a});
 
     QMap<QString, Finding> merged;
@@ -232,14 +240,16 @@ void checkFlaky(const QList<RunRec> &runs, const QJsonObject &logs, QList<Findin
             QString step;
             for (const StepRec &st : fj.steps)
                 if (failedConclusion(st.conclusion)) { step = st.name; break; }
-            const QString key = QStringList{fj.run->workflow, fj.name, step}.join(QLatin1Char('\x1f'));
+            const QString key = groupKey({fj.run->workflow, fj.name, step});
             Finding &f = merged[key];
-            f.check = QStringLiteral("flaky");
-            f.severity = QStringLiteral("problem");
-            f.workflow = fj.run->workflow;
-            f.job = fj.name;
-            f.step = step;
-            f.cites = {QStringLiteral("testing.md § 7"), QStringLiteral("local-gate.md § 9 rule 3")};
+            if (f.check.isEmpty()) {   // the first failure of this group
+                f.check = QStringLiteral("flaky");
+                f.severity = QStringLiteral("problem");
+                f.workflow = fj.run->workflow;
+                f.job = fj.name;
+                f.step = step;
+                f.cites = {QStringLiteral("testing.md § 7"), QStringLiteral("local-gate.md § 9 rule 3")};
+            }
             f.evidence.append(evidenceOf(fj));
             f.evidence.append(evidenceOf(*list[lastPass].job));
             shasOf[key].insert(fj.run->sha);
@@ -270,9 +280,7 @@ void checkNearBudget(const QList<Matched> &jobs, QList<Finding> &out) {
     QMap<QString, Acc> acc;
     auto measure = [&](const Matched &m, const QString &step, qint64 secs, double budgetMin) {
         if (secs < 0 || budgetMin <= 0) return;
-        const QString key = m.job->run->workflow + QLatin1Char('\x1f') + m.job->name
-                          + QLatin1Char('\x1f') + step;
-        Acc &a = acc[key];
+        Acc &a = acc[groupKey({m.job->run->workflow, m.job->name, step})];
         ++a.measured;
         const double ratio = double(secs) / (budgetMin * 60.0);
         if (ratio < kNearBudget) return;
@@ -311,7 +319,7 @@ void checkBudgetTrend(const QList<Matched> &jobs, QList<Finding> &out) {
     for (const Matched &m : jobs)
         if (m.wj && m.wj->budgetMin > 0 && m.job->conclusion == QLatin1String("success")
             && m.job->span() >= 0)
-            byJob[m.job->run->workflow + QLatin1Char('\x1f') + m.job->name].append(&m);
+            byJob[groupKey({m.job->run->workflow, m.job->name})].append(&m);
     for (QList<const Matched *> &list : byJob) {
         if (list.size() < 2 * kTrendNewest) continue;
         std::sort(list.begin(), list.end(), [](const Matched *a, const Matched *b) {
@@ -370,22 +378,24 @@ void checkScheduledRed(const QList<RunRec> &runs, QList<Finding> &out) {
 
 // queue_wait: a job's median wait from creation to start.
 void checkQueueWait(const QList<Matched> &jobs, QList<Finding> &out) {
-    QMap<QString, QList<const JobRec *>> byJob;
+    struct Waited { const JobRec *job; qint64 secs; };
+    QMap<QString, QList<Waited>> byJob;
     for (const Matched &m : jobs)
         if (m.job->created.isValid() && m.job->started.isValid())
-            byJob[m.job->run->workflow + QLatin1Char('\x1f') + m.job->name].append(m.job);
-    for (const QList<const JobRec *> &list : byJob) {
+            byJob[groupKey({m.job->run->workflow, m.job->name})]
+                .append({m.job, m.job->created.secsTo(m.job->started)});
+    for (const QList<Waited> &list : byJob) {
         QList<double> waits;
-        for (const JobRec *j : list) waits.append(double(j->created.secsTo(j->started)));
+        for (const Waited &w : list) waits.append(double(w.secs));
         const double med = median(waits);
         if (med <= kQueueWaitSecs) continue;
         Finding f;
         f.check = QStringLiteral("queue_wait");
         f.severity = QStringLiteral("advice");
-        f.workflow = list.first()->run->workflow;
-        f.job = list.first()->name;
-        for (const JobRec *j : list)
-            if (j->created.secsTo(j->started) > kQueueWaitSecs) f.evidence.append(evidenceOf(*j));
+        f.workflow = list.first().job->run->workflow;
+        f.job = list.first().job->name;
+        for (const Waited &w : list)
+            if (w.secs > kQueueWaitSecs) f.evidence.append(evidenceOf(*w.job));
         f.message = QStringLiteral("Jobs waited a median %1 between creation and start, over %2 runs.")
                         .arg(minutes(qint64(med))).arg(list.size());
         out.append(f);
@@ -452,9 +462,10 @@ void checkCacheSize(const QJsonObject &usage, QList<Finding> &out) {
     f.check = QStringLiteral("cache_size");
     f.severity = QStringLiteral("advice");
     f.cites = {QStringLiteral("local-gate.md § 9 (caches row, prune)")};
-    f.message = QStringLiteral("Actions caches hold %1 GB of GitHub's 10 GB (%2%); past the limit "
+    f.message = QStringLiteral("Actions caches hold %1 GB of GitHub's %2 GB (%3%); past the limit "
                                "GitHub evicts the least recently used.")
-                    .arg(bytes / (1024.0 * 1024 * 1024), 0, 'f', 1)
+                    .arg(bytes / kGiB, 0, 'f', 1)
+                    .arg(kCacheLimitBytes / kGiB, 0, 'f', 0)
                     .arg(int(std::floor(bytes / kCacheLimitBytes * 100)));
     out.append(f);
 }
@@ -673,8 +684,6 @@ QString cacheFromLog(const QString &log) {
     return QStringLiteral("unknown");
 }
 
-QJsonValue orNull(const QString &s) { return s.isEmpty() ? QJsonValue() : QJsonValue(s); }
-
 QJsonObject toJson(Finding f, const QJsonObject &logs) {
     std::stable_sort(f.evidence.begin(), f.evidence.end(),
                      [](const Evidence &a, const Evidence &b) { return a.t > b.t; });
@@ -686,9 +695,9 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
     }
     QJsonObject o{{QStringLiteral("check"), f.check},
                   {QStringLiteral("severity"), f.severity},
-                  {QStringLiteral("workflow"), orNull(f.workflow)},
-                  {QStringLiteral("job"), orNull(f.job)},
-                  {QStringLiteral("step"), orNull(f.step)},
+                  {QStringLiteral("workflow"), CiWorkflows::orNull(f.workflow)},
+                  {QStringLiteral("job"), CiWorkflows::orNull(f.job)},
+                  {QStringLiteral("step"), CiWorkflows::orNull(f.step)},
                   {QStringLiteral("message"), f.message},
                   {QStringLiteral("runs"), runs},
                   {QStringLiteral("shas"), shas},
@@ -706,8 +715,11 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
 Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflows,
                  const QDateTime &now, int days) {
     Analysis a;
-    QList<RunRec> runs = readRuns(history, now, days);
-    link(runs);
+    QList<RunRec> owned = readRuns(history, now, days);
+    link(owned);
+    // Jobs point into `owned`; read it only through this const view, so
+    // nothing detaches it and moves the jobs out from under them.
+    const QList<RunRec> &runs = owned;
     const QList<Matched> jobs = matchJobs(runs, workflows, a.unread);
     const QJsonObject logs = history.value(QStringLiteral("logs")).toObject();
 
