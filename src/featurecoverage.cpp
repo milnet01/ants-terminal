@@ -597,7 +597,19 @@ static bool containsWithTailFallback(const QString &token, Contains contains) {
         // identifier-shaped (4+ alpha chars) — otherwise we'd
         // match file extensions (`*.cpp` → `cpp`) and get false
         // non-drift passes on literal filename tokens.
-        if (tail.size() >= 4 && tail[0].isLetter() && contains(tail))
+        // ANTS-6389 — and never for a path or a four-plus-letter file
+        // extension: `config.json` must not pass because `parse_json` exists.
+        static const QSet<QString> kFileExtensions = {
+            QStringLiteral("json"), QStringLiteral("jsonl"), QStringLiteral("yaml"),
+            QStringLiteral("toml"), QStringLiteral("html"), QStringLiteral("conf"),
+            QStringLiteral("cmake"), QStringLiteral("lock"), QStringLiteral("proto"),
+            QStringLiteral("java"), QStringLiteral("bash"), QStringLiteral("desktop"),
+            QStringLiteral("service"), QStringLiteral("patch"), QStringLiteral("diff"),
+            QStringLiteral("sqlite"), QStringLiteral("spec"),
+        };
+        const bool fileShaped = token.contains(QLatin1Char('/')) ||
+                                kFileExtensions.contains(tail.toLower());
+        if (!fileShaped && tail.size() >= 4 && tail[0].isLetter() && contains(tail))
             return true;
     }
     return false;

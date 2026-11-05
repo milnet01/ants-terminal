@@ -597,3 +597,20 @@ TEST(FeatureCoverage, Ants5623SourceBlobHonoursGitignore) {
     EXPECT_TRUE(blob.contains(QStringLiteral("NestedToken")))
         << "a nested repo's files are walked as before, not dropped";
 }
+
+// ANTS-6389 — the `.`-tail fallback is for `module.func` shorthand. A file
+// name whose extension happens to appear in the source (`config.json` beside a
+// `parse_json` symbol) is not present, nor is a path.
+TEST(FeatureCoverage, Ants6389FileExtensionTailDoesNotMatch) {
+    const QString blob = QStringLiteral("void parse_json() {}\nint read_yaml;\n");
+    const auto index = FeatureCoverage::buildSourceIndex(blob);
+    for (const QString &tok : {QStringLiteral("config.json"),
+                               QStringLiteral("docs/settings.yaml"),
+                               QStringLiteral("data/config.json")}) {
+        EXPECT_FALSE(FeatureCoverage::existsInSource(blob, tok)) << tok.toStdString();
+        EXPECT_FALSE(FeatureCoverage::existsInSource(index, tok)) << tok.toStdString();
+    }
+    // The shorthand it exists for still resolves.
+    EXPECT_TRUE(FeatureCoverage::existsInSource(blob, QStringLiteral("codec.parse_json")));
+    EXPECT_TRUE(FeatureCoverage::existsInSource(index, QStringLiteral("codec.parse_json")));
+}
