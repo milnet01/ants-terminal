@@ -59,6 +59,15 @@ QList<QJsonObject> ofCheck(const CiReport::Analysis &a, const char *check) {
     return out;
 }
 
+// Whether test_parallelism fires on one step whose `run: |` block is `run`
+// (a newline in `run` starts the block's next line).
+bool parallelismFires(const char *run) {
+    const CiWorkflows::Result wf = workflow(QStringLiteral(
+        "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
+        .arg(QString::fromLatin1(run).replace(QLatin1Char('\n'), QStringLiteral("\n          "))));
+    return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
+}
+
 // gh-shaped history built in code, for the timing checks.
 struct History {
     QJsonArray runs;
@@ -177,6 +186,13 @@ struct Project {
     QString savedPath() const {
         return cache.path() + QStringLiteral("/ants-terminal/ci-report/")
              + SessionMemoryEngine::cwdHash(root) + QStringLiteral(".json");
+    }
+    // Writes `body` as this project's saved report.
+    void save(const QByteArray &body) const {
+        QDir().mkpath(QFileInfo(savedPath()).path());
+        QFile f(savedPath());
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(body);
     }
     QJsonObject call(const QJsonObject &extra = {}) const {
         QJsonObject req = extra;
@@ -438,12 +454,8 @@ TEST(McpCiReport, Ants6399SavedPathsStartNoProcess) {
     Project p;
     env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
     EXPECT_EQ(p.call({{"source", "saved"}}).value("code").toString(), QStringLiteral("not_cached"));
-    QDir().mkpath(QFileInfo(p.savedPath()).path());
-    QFile f(p.savedPath());
-    ASSERT_TRUE(f.open(QIODevice::WriteOnly));
-    f.write(R"({"ok":true,"ci":"github","generated_at":"2026-01-01T00:00:00Z","counts":{"problem":1,"advice":0},)"
-            R"("findings":[{"check":"flaky","workflow":"CI","job":"Build","runs":[1],"shas":["a"]}]})");
-    f.close();
+    p.save(R"({"ok":true,"ci":"github","generated_at":"2026-01-01T00:00:00Z","counts":{"problem":1,"advice":0},)"
+           R"("findings":[{"check":"flaky","workflow":"CI","job":"Build","runs":[1],"shas":["a"]}]})");
     EXPECT_EQ(p.call({{"source", "saved"}}).value("ci").toString(), QStringLiteral("github"));
     EXPECT_FALSE(RemoteControl::buildCiReportBlock(p.root, kNow).isEmpty());
     EXPECT_FALSE(gh.called()) << "a saved read refreshed itself";
@@ -454,17 +466,11 @@ TEST(McpCiReport, Ants6399OrientBlockOnlyForProblems) {
     Project p;
     env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
     EXPECT_TRUE(RemoteControl::buildCiReportBlock(p.root, kNow).isEmpty()) << "no saved report";
-    auto save = [&](const QByteArray &body) {
-        QDir().mkpath(QFileInfo(p.savedPath()).path());
-        QFile f(p.savedPath());
-        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
-        f.write(body);
-    };
-    save(R"({"generated_at":"2026-11-02T09:10:00Z","counts":{"problem":0,"advice":1},)"
-         R"("findings":[{"check":"queue_wait","severity":"advice","workflow":"CI","runs":[1]}]})");
+    p.save(R"({"generated_at":"2026-11-02T09:10:00Z","counts":{"problem":0,"advice":1},)"
+           R"("findings":[{"check":"queue_wait","severity":"advice","workflow":"CI","runs":[1]}]})");
     EXPECT_TRUE(RemoteControl::buildCiReportBlock(p.root, kNow).isEmpty()) << "advice only";
-    save(R"({"generated_at":"2026-11-02T09:10:00Z","counts":{"problem":1,"advice":0},)"
-         R"("findings":[{"check":"flaky","severity":"problem","workflow":"CI","job":"Build","runs":[1,2]}]})");
+    p.save(R"({"generated_at":"2026-11-02T09:10:00Z","counts":{"problem":1,"advice":0},)"
+           R"("findings":[{"check":"flaky","severity":"problem","workflow":"CI","job":"Build","runs":[1,2]}]})");
     const QJsonObject morning = RemoteControl::buildCiReportBlock(p.root, kNow);
     EXPECT_EQ(morning.value("problems").toInt(), 1);
     EXPECT_EQ(morning.value("first").toString(), QStringLiteral("flaky: CI / Build, 2 runs"));
@@ -555,6 +561,18 @@ QJsonObject jobRow(qint64 id, const char *name, const char *conclusion, const QD
             {"completed_at", iso(at.addSecs(60))}, {"steps", QJsonArray()}};
 }
 
+// One failed run `id` whose attempt 1 has 101 jobs, 100 of them on the page
+// written here. Returns that page's file name; page 2 is the caller's.
+QString putFirstJobsPage(const FakeGh &gh, qint64 id, const QDateTime &now) {
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(id, "s", "push", "failure", now.addSecs(-600))}).toJson());
+    QJsonArray first;
+    for (int i = 0; i < 100; ++i) first.append(jobRow(id * 100 + i, "Leg", "success", now.addSecs(-500)));
+    const QString page = QStringLiteral("repos_o_r_actions_runs_%1_attempts_1_jobs_per_page_100").arg(id);
+    gh.put(page, QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
+    return page;
+}
+
 }  // namespace
 
 TEST(McpCiReport, Ants6402FlakyNeedsTheSameJobToPass) {
@@ -621,16 +639,11 @@ TEST(McpCiReport, Ants6402SubmoduleUrlIsNoGithubRemote) {
 }
 
 TEST(McpCiReport, Ants6402TestParallelismReadsTheCtestCommand) {
-    auto fires = [](const char *run) {
-        const CiWorkflows::Result wf = workflow(QStringLiteral(
-            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: %1\n").arg(QLatin1String(run)));
-        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
-    };
-    EXPECT_FALSE(fires("CTEST_PARALLEL_LEVEL=4 ctest --timeout 60")) << "inline level";
-    EXPECT_TRUE(fires("cmake --build b --parallel && ctest --timeout 60")) << "cmake's --parallel is not ctest's";
-    EXPECT_FALSE(fires("./run-ctest.sh --timeout 60")) << "ctest inside another word";
-    EXPECT_FALSE(fires("ctest -j4 --timeout 60"));
-    EXPECT_TRUE(fires("ctest --timeout 60"));
+    EXPECT_FALSE(parallelismFires("CTEST_PARALLEL_LEVEL=4 ctest --timeout 60")) << "inline level";
+    EXPECT_TRUE(parallelismFires("cmake --build b --parallel && ctest --timeout 60")) << "cmake's --parallel is not ctest's";
+    EXPECT_FALSE(parallelismFires("./run-ctest.sh --timeout 60")) << "ctest inside another word";
+    EXPECT_FALSE(parallelismFires("ctest -j4 --timeout 60"));
+    EXPECT_TRUE(parallelismFires("ctest --timeout 60"));
     const CiWorkflows::Result flowEnv = workflow(QStringLiteral(
         "name: CI\njobs:\n  t:\n    env: {CTEST_PARALLEL_LEVEL: 4}\n    steps:\n"
         "      - run: ctest --timeout 60\n"));
@@ -661,13 +674,8 @@ TEST(McpCiReport, Ants6402JobsArePaginated) {
     FakeGh gh;
     gh.install(env);
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    gh.put(QStringLiteral("runs.json"),
-           QJsonDocument(QJsonArray{runRow(7, "s", "push", "failure", now.addSecs(-600))}).toJson());
-    QJsonArray first;
-    for (int i = 0; i < 100; ++i) first.append(jobRow(700 + i, "Leg", "success", now.addSecs(-500)));
-    gh.put(QStringLiteral("repos_o_r_actions_runs_7_attempts_1_jobs_per_page_100"),
-           QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
-    gh.put(QStringLiteral("repos_o_r_actions_runs_7_attempts_1_jobs_per_page_100_page_2"),
+    const QString page = putFirstJobsPage(gh, 7, now);
+    gh.put(page + QStringLiteral("_page_2"),
            QJsonDocument(QJsonObject{{"total_count", 101},
                                      {"jobs", QJsonArray{jobRow(900, "Last", "failure", now.addSecs(-500))}}})
                .toJson());
@@ -749,19 +757,13 @@ TEST(McpCiReport, Ants6402UnreadNamesAMissingWorkflowApart) {
 // ---- ANTS-6405: claude-d5's re-review of 85c4e720 ------------------------
 
 TEST(McpCiReport, Ants6405CtestCommandForms) {
-    auto fires = [](const char *run) {
-        const CiWorkflows::Result wf = workflow(QStringLiteral(
-            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
-            .arg(QString::fromLatin1(run).replace(QLatin1Char('\n'), QStringLiteral("\n          "))));
-        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
-    };
-    EXPECT_FALSE(fires("ctest --timeout 300 \\\n  -j4")) << "B1: a continued line is one command";
-    EXPECT_TRUE(fires("xvfb-run -a ctest --timeout 60")) << "B2";
-    EXPECT_TRUE(fires("sudo ctest --timeout 60")) << "B2";
-    EXPECT_TRUE(fires("if true; then ctest --timeout 60; fi")) << "B2";
-    EXPECT_TRUE(fires("(cd build && ctest --timeout 60)")) << "B2";
-    EXPECT_TRUE(fires("timeout -k 10 8m ctest --timeout 60")) << "B2";
-    EXPECT_FALSE(fires("xvfb-run -a ctest -j4 --timeout 60"));
+    EXPECT_FALSE(parallelismFires("ctest --timeout 300 \\\n  -j4")) << "B1: a continued line is one command";
+    EXPECT_TRUE(parallelismFires("xvfb-run -a ctest --timeout 60")) << "B2";
+    EXPECT_TRUE(parallelismFires("sudo ctest --timeout 60")) << "B2";
+    EXPECT_TRUE(parallelismFires("if true; then ctest --timeout 60; fi")) << "B2";
+    EXPECT_TRUE(parallelismFires("(cd build && ctest --timeout 60)")) << "B2";
+    EXPECT_TRUE(parallelismFires("timeout -k 10 8m ctest --timeout 60")) << "B2";
+    EXPECT_FALSE(parallelismFires("xvfb-run -a ctest -j4 --timeout 60"));
 }
 
 // ---- ANTS-6403: a fork whose gh has no default repository -------------------
@@ -800,20 +802,14 @@ TEST(McpCiReport, Ants6403AmbiguousRemotesNameTheRepoRead) {
 // ---- ANTS-6406: a wrapper option that takes a value ------------------------
 
 TEST(McpCiReport, Ants6406WrapperOptionValues) {
-    auto fires = [](const char *run) {
-        const CiWorkflows::Result wf = workflow(QStringLiteral(
-            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
-            .arg(QString::fromLatin1(run)));
-        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
-    };
-    EXPECT_TRUE(fires("sudo -u builder ctest --timeout 60")) << "sudo -u";
-    EXPECT_TRUE(fires("nice -n 10 ctest --timeout 60")) << "nice -n";
-    EXPECT_TRUE(fires("env -u HOME ctest --timeout 60")) << "env -u";
-    EXPECT_TRUE(fires("xvfb-run -s \"-screen 0 1024x768x24\" ctest --timeout 60")) << "quoted -s";
-    EXPECT_TRUE(fires("xvfb-run --server-args='-screen 0 640x480x8' ctest --timeout 60"))
+    EXPECT_TRUE(parallelismFires("sudo -u builder ctest --timeout 60")) << "sudo -u";
+    EXPECT_TRUE(parallelismFires("nice -n 10 ctest --timeout 60")) << "nice -n";
+    EXPECT_TRUE(parallelismFires("env -u HOME ctest --timeout 60")) << "env -u";
+    EXPECT_TRUE(parallelismFires("xvfb-run -s \"-screen 0 1024x768x24\" ctest --timeout 60")) << "quoted -s";
+    EXPECT_TRUE(parallelismFires("xvfb-run --server-args='-screen 0 640x480x8' ctest --timeout 60"))
         << "quoted long form";
-    EXPECT_FALSE(fires("sudo -u builder ctest -j4 --timeout 60"));
-    EXPECT_FALSE(fires("env echo ctest --timeout 60")) << "ctest as an argument is not ctest";
+    EXPECT_FALSE(parallelismFires("sudo -u builder ctest -j4 --timeout 60"));
+    EXPECT_FALSE(parallelismFires("env echo ctest --timeout 60")) << "ctest as an argument is not ctest";
 }
 
 TEST(McpCiReport, Ants6405IncompletePagesAreAFetchError) {
@@ -821,12 +817,7 @@ TEST(McpCiReport, Ants6405IncompletePagesAreAFetchError) {
     FakeGh gh;
     gh.install(env);
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    gh.put(QStringLiteral("runs.json"),
-           QJsonDocument(QJsonArray{runRow(9, "s", "push", "failure", now.addSecs(-600))}).toJson());
-    QJsonArray first;
-    for (int i = 0; i < 100; ++i) first.append(jobRow(900 + i, "Leg", "success", now.addSecs(-500)));
-    gh.put(QStringLiteral("repos_o_r_actions_runs_9_attempts_1_jobs_per_page_100"),
-           QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
+    putFirstJobsPage(gh, 9, now);
     // Page 2 answers with no jobs: the fake's default '{}'.
     Project p;
     CiHistory::Options o;
@@ -882,13 +873,8 @@ TEST(McpCiReport, Ants6407FailedPageIsOneFetchError) {
     FakeGh gh;
     gh.install(env);
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    gh.put(QStringLiteral("runs.json"),
-           QJsonDocument(QJsonArray{runRow(9, "s", "push", "failure", now.addSecs(-600))}).toJson());
-    QJsonArray first;
-    for (int i = 0; i < 100; ++i) first.append(jobRow(900 + i, "Leg", "success", now.addSecs(-500)));
-    gh.put(QStringLiteral("repos_o_r_actions_runs_9_attempts_1_jobs_per_page_100"),
-           QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
-    gh.put(QStringLiteral("repos_o_r_actions_runs_9_attempts_1_jobs_per_page_100_page_2.fail"), "");
+    const QString page = putFirstJobsPage(gh, 9, now);
+    gh.put(page + QStringLiteral("_page_2.fail"), "");
     Project p;
     CiHistory::Options o;
     o.now = now;
@@ -991,18 +977,12 @@ TEST(McpCiReport, Ants6407TwoUrlsOnOneRemoteAreOneRemote) {
 
 // ctest after the shell's own command-running words.
 TEST(McpCiReport, Ants6407CtestAfterShellKeywords) {
-    auto fires = [](const char *run) {
-        const CiWorkflows::Result wf = workflow(QStringLiteral(
-            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
-            .arg(QString::fromLatin1(run)));
-        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
-    };
-    EXPECT_TRUE(fires("if ctest --timeout 60; then echo ok; fi")) << "if";
-    EXPECT_TRUE(fires("! ctest --timeout 60")) << "!";
-    EXPECT_TRUE(fires("while ctest --timeout 60; do break; done")) << "while";
-    EXPECT_TRUE(fires("until ctest --timeout 60; do sleep 1; done")) << "until";
-    EXPECT_TRUE(fires("if false; then :; elif ctest --timeout 60; then :; fi")) << "elif";
-    EXPECT_FALSE(fires("if ctest -j4 --timeout 60; then echo ok; fi"));
+    EXPECT_TRUE(parallelismFires("if ctest --timeout 60; then echo ok; fi")) << "if";
+    EXPECT_TRUE(parallelismFires("! ctest --timeout 60")) << "!";
+    EXPECT_TRUE(parallelismFires("while ctest --timeout 60; do break; done")) << "while";
+    EXPECT_TRUE(parallelismFires("until ctest --timeout 60; do sleep 1; done")) << "until";
+    EXPECT_TRUE(parallelismFires("if false; then :; elif ctest --timeout 60; then :; fi")) << "elif";
+    EXPECT_FALSE(parallelismFires("if ctest -j4 --timeout 60; then echo ok; fi"));
 }
 
 // ---- ANTS-6408: the cold review's small items --------------------------------
@@ -1123,4 +1103,80 @@ TEST(McpCiReport, Ants6409JobsCallsRunInParallel) {
     EXPECT_TRUE(r.fetchErrors.isEmpty()) << dump(r.fetchErrors);
     EXPECT_EQ(r.history.value("jobs").toObject().size(), 8);
     EXPECT_LT(ms, 2500) << "serial jobs calls take at least 4000 ms here";
+}
+
+// ---- ANTS-6412: the threshold checks at their boundaries --------------------
+
+// budget_trend needs ten successful runs, and fires at a 25% rise exactly.
+TEST(McpCiReport, Ants6412BudgetTrendBoundaries) {
+    const CiWorkflows::Result wf = workflow(kBuild10);
+    auto fires = [&](int runs, int earlierSecs, int newestSecs) {
+        History h;
+        for (int i = 0; i < runs; ++i)
+            h.add(100 + i, kNow.addSecs(-86400 + i * 3600), QStringLiteral("Build"), 0,
+                  i >= runs - 5 ? newestSecs : earlierSecs);
+        return !ofCheck(CiReport::analyse(h.json(), wf, kNow, 30), "budget_trend").isEmpty();
+    };
+    EXPECT_TRUE(fires(10, 400, 500)) << "+25% exactly";
+    EXPECT_FALSE(fires(10, 400, 499));
+    EXPECT_FALSE(fires(9, 300, 600)) << "nine runs are too few";
+}
+
+// queue_wait fires on a median wait over five minutes, not at five.
+TEST(McpCiReport, Ants6412QueueWaitBoundary) {
+    auto fires = [](int waitSecs) {
+        History h;
+        for (int i = 0; i < 3; ++i)
+            h.add(100 + i, kNow.addSecs(-3600 * (i + 1)), QStringLiteral("Build"), waitSecs, 60);
+        return !ofCheck(CiReport::analyse(h.json(), workflow(kBuild10), kNow, 30), "queue_wait").isEmpty();
+    };
+    EXPECT_FALSE(fires(300));
+    EXPECT_TRUE(fires(301));
+}
+
+// scheduled_red names the last green scheduled run, or says there was none.
+TEST(McpCiReport, Ants6412ScheduledRedSinceText) {
+    auto message = [](bool green) {
+        History h;
+        const auto sched = QStringLiteral("schedule");
+        h.add(1, kNow.addSecs(-3600), QStringLiteral("N"), 0, 60, QStringLiteral("failure"), {}, sched);
+        h.add(2, kNow.addSecs(-2 * 86400), QStringLiteral("N"), 0, 60,
+              green ? QStringLiteral("success") : QStringLiteral("failure"), {}, sched);
+        const QList<QJsonObject> f =
+            ofCheck(CiReport::analyse(h.json(), CiWorkflows::Result(), kNow, 30), "scheduled_red");
+        return f.size() == 1 ? f[0].value("message").toString() : QString();
+    };
+    EXPECT_TRUE(message(true).contains(QStringLiteral("red since the green run of %1")
+                                           .arg(kNow.addSecs(-2 * 86400).toUTC().date().toString(Qt::ISODate))))
+        << message(true).toStdString();
+    EXPECT_TRUE(message(false).contains(QStringLiteral("no green run in the window")))
+        << message(false).toStdString();
+}
+
+// Only a warning-level annotation is read; a notice naming a deprecation is not.
+TEST(McpCiReport, Ants6412OnlyWarningAnnotationsCount) {
+    auto count = [](const char *level) {
+        History h;
+        h.add(300, kNow.addSecs(-900), QStringLiteral("Build"), 0, 60);
+        QJsonObject json = h.json();
+        json["annotations"] = QJsonObject{{QStringLiteral("3000"), QJsonArray{QJsonObject{
+            {"annotation_level", level}, {"message", "Node 16 actions are deprecated."}}}}};
+        return ofCheck(CiReport::analyse(json, CiWorkflows::Result(), kNow, 30), "annotation").size();
+    };
+    EXPECT_EQ(count("warning"), 1);
+    EXPECT_EQ(count("notice"), 0);
+}
+
+// CTEST_PARALLEL_LEVEL in the workflow's or the step's env silences
+// test_parallelism, as the job's env does.
+TEST(McpCiReport, Ants6412ParallelLevelInWorkflowOrStepEnv) {
+    auto fires = [](const char *yaml) {
+        return !ofCheck(CiReport::analyse(QJsonObject(), workflow(QString::fromLatin1(yaml)), kNow, 30),
+                        "test_parallelism").isEmpty();
+    };
+    EXPECT_TRUE(fires("name: CI\njobs:\n  t:\n    steps:\n      - run: ctest --timeout 60\n"));
+    EXPECT_FALSE(fires("name: CI\nenv:\n  CTEST_PARALLEL_LEVEL: 4\njobs:\n  t:\n    steps:\n"
+                       "      - run: ctest --timeout 60\n")) << "workflow env";
+    EXPECT_FALSE(fires("name: CI\njobs:\n  t:\n    steps:\n      - run: ctest --timeout 60\n"
+                       "        env:\n          CTEST_PARALLEL_LEVEL: 4\n")) << "step env";
 }

@@ -79929,12 +79929,17 @@ in each bullet, not just the reporter's symptom.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
   Lanes: mcp.
 
-- 📋 [ANTS-6412] **ci_report tests: boundary cases for the threshold checks, and shared helpers.**
+- ✅ [ANTS-6412] **ci_report tests: boundary cases for the threshold checks, and shared helpers.**
   Lane 2 #22: budget_trend's at-least-5 and 25% boundaries,
   queue_wait's 5-minute boundary, scheduled_red's since text, a
   non-warning annotation ignored, CTEST_PARALLEL_LEVEL in workflow or
   step env. #23: three near-identical fires lambdas, the repeated
   pagination setup and saved-report writes.
+  Shipped 2026-11-05: five Ants6412 boundary tests (budget_trend ten
+  runs and +25%, queue_wait 300 s, scheduled_red's since text,
+  warning-only annotations, CTEST_PARALLEL_LEVEL in workflow and step
+  env), each seen to fail against a mutated boundary. Folded
+  parallelismFires, putFirstJobsPage and Project::save.
   **Layman:** Some CI report checks are only tested for being present, not for firing at exactly the right point.
   Kind: test.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
