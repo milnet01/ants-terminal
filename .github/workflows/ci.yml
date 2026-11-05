@@ -191,8 +191,11 @@ jobs:
         # pre-push hook; --timeout 300 turns a hung test into one failure. The
         # step budget is ~2x the serial cost, so it holds even without speedup.
         # ANTS-5375 — perf-labelled tests run in their own serial step below,
-        # so a wall-clock budget never shares the machine with this -j2 run.
-        run: timeout 8m ctest -j2 --output-on-failure --timeout 300 -LE perf
+        # so a wall-clock budget never shares the machine with this run.
+        # -j4 (2026-11-05): one test per vCPU here, and the user's cap on the
+        # workstation, where the push gate replays this step. Measured on the
+        # workstation: 203 s at -j2, 92-97 s at -j4, three -j4 runs all green.
+        run: timeout 8m ctest -j4 --output-on-failure --timeout 300 -LE perf
 
       # ANTS-5375 — the pre-push hook sets ANTS_PUSH_GATE=1: a wall-clock
       # budget on a shared workstation fails on load, not on a regression, so
@@ -424,7 +427,13 @@ jobs:
         # took 889s to 1222s, and the 10-12 and 10-13 runs were killed at
         # exactly 22m with every finished test passing. 30m is ~1.4x the
         # slowest passing run.
-        run: timeout 30m ctest -j2 --output-on-failure --timeout 300 -LE perf
+        #
+        # -j4 (2026-11-05): the nightlies of 11-01 to 11-04 took 1166 s to
+        # 1585 s at -j2, up to 88% of this budget. Run 41285524795's tests sum
+        # to 3149 s, so -j2 was already a clean 2x: the cost is ~6000 sanitized
+        # process launches, not one slow test. -j4 restores the headroom
+        # without widening the budget.
+        run: timeout 30m ctest -j4 --output-on-failure --timeout 300 -LE perf
 
       - name: Smoke-test binary init paths
         working-directory: build-asan
