@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6401 -->
+<!-- ants-roadmap-id-high-water: ANTS=6404 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69549,6 +69549,18 @@ remainder, captured so they don't drop on the floor.
   Kind: investigate.
   Source: user-request-2026-10-31.
 
+- 📋 [ANTS-6404] **Count an expired Monitor as ended, so the Background Tasks button and "waiting (N bg)" clear.**
+  RetroArch transcript 1f900da6: Monitors bh5643sks and boj8a6jkq ended
+  only with '[Monitor expired after 30m ...]' notices, which carry no
+  <status>. applyNotifications (src/claudebgtasks.cpp) ends a task only
+  on a non-empty <status>, per ANTS-5773 INV-4, so both stayed pending:
+  'Background Tasks (2)' and 'Claude: waiting (2 bg)'. Fix the rule and
+  amend INV-4 together.
+  **Layman:** The status bar kept saying two background tasks were running after they had stopped.
+  Kind: fix.
+  Source: user-report-2026-11-05 (RetroArch tab screenshot).
+  Lanes: status-bar.
+
 ### 🎨 Claude Code UX — unified state-dot palette (user request 2026-04-27)
 
 - ✅ [ANTS-4254] **Single round dot per tab, colour-only differentiation, palette extended to status bar.**
@@ -79718,6 +79730,44 @@ in each bullet, not just the reporter's symptom.
   **Layman:** The CI checker also looks at the checks that run on this computer before a push, not only GitHub's.
   Kind: feature.
   Source: user-request-2026-11-05.
+
+- 📋 [ANTS-6402] **Fix ci_report's cold-review findings: flaky pairs a job with its own later pass, matrix names match one job, remotes only, paginated jobs.**
+  Findings from claude-d5's cold review, verified against the code:
+  1. flaky treats any later green run of the workflow as the job passing;
+     a PR run failing ASan then a push run skipping it reads as a flake.
+     Fix: the same job passes later, runs grouped by event too.
+  2. Matrix fallback picks the first prefix match: needs exactly one,
+     and none when a job name holds ${{.
+  3. hasGithubRemote reads url lines from any section: [remote] only.
+  4. test_parallelism: inline CTEST_PARALLEL_LEVEL, -j outside the ctest
+     command, ctest inside another word.
+  5. cache_save_skipped: !cancelled() and failure() also run after a fail.
+  6. A one-line `run: |` loses its newline and reads as a shell guard.
+  7. jobs?per_page=100 is not paginated.
+  8. Tab inside a block scalar fails the file; alias/merge keys lost
+     unnamed; \" cuts a quoted value.
+  9. Flow maps (with: {key: ...}, env: {...}) not read.
+  10. Block-map runs-on (labels:) not read.
+  12. flaky message blames only the test; logs read head only, so a
+      ctest FAILED block at a long log's end is lost.
+  13. Spec says sha256 where the code uses cwdHash; retry_after_ms
+      unspecified; unread puts a workflow name in `file`.
+  Checked, no change: 11 (a needs: job's created_at is set when its
+  prerequisites finish; cli/cli run 40384165451).
+  **Layman:** Makes ci_report stop calling real failures flaky and stop misreading a few workflow shapes.
+  Kind: review-fix.
+  Source: code-review-2026-11-05 (claude-d5, cold read of 8b1cb9c4).
+  Lanes: mcp.
+
+- 📋 [ANTS-6403] **Check two unverified ci_report edges: a Flatpak build's timeout kills flatpak-spawn, not the host gh; which remote gh picks in a fork.**
+  From the same review's Q2 notes. Neither was run. HostExec::start
+  wraps gh in flatpak-spawn --watch-bus, so killing it should end the host
+  process; confirm. In a fork with an upstream remote, gh repo view may
+  resolve the upstream repository; confirm which repo ci_report reads.
+  **Layman:** Two corner cases in ci_report nobody has tested yet.
+  Kind: investigate.
+  Source: code-review-2026-11-05 (claude-d5, cold read of 8b1cb9c4).
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
