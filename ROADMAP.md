@@ -75829,8 +75829,14 @@ template / mutate this state atomically" → movable. If it's
 
 #### 📦 Docs — user-facing surface
 
-- 💭 [ANTS-2083] **Auto-304 repeat-call short-circuit: dispatcher remembers the last etag per (tool, args) and skips re-emitting an identical call.**
+- 🚫 [ANTS-2083] **Auto-304 repeat-call short-circuit: dispatcher remembers the last etag per (tool, args) and skips re-emitting an identical call.**
   ETag-304 already exists but the CALLER must thread etag_match back; agents forget, especially after a /clear. Have the dispatcher remember the last etag it issued per (tool, normalised-args) within a session and auto-short-circuit an identical repeat call to {ok, unchanged, etag, repeat_of_call} WITHOUT re-emitting the body, provided the live state etag is unchanged. Saves the full re-emit on accidental duplicate reads (a common post-compaction pattern). Must honour docs/standards/mcp-caches.md keying — a cache may go cold but must never shadow.
+  Dropped 2026-11-05 (session 217): unsafe by design. The server cannot
+  know whether the caller still holds the earlier body. The case this
+  targets — a repeat call after /clear or compaction — is exactly the
+  case where the caller has lost it, so an auto-unchanged reply would
+  leave it with nothing. Only the caller knows what it holds, which is
+  why etag_match is caller-driven.
   **Layman:** If the assistant asks the exact same question twice, don't resend the whole answer — just say nothing changed.
   Kind: optimize.
   Source: in-session-2026-06-11 (token-saving brainstorm).
