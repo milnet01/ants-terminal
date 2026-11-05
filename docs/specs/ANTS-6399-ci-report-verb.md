@@ -1,6 +1,6 @@
 # ANTS-6399 — `ci_report`, a verb that reads a project's CI run history and warns about flakes, budgets and speed
 
-**Status:** spec draft (2026-11-05).
+**Status:** accepted (2026-11-05).
 **Kind:** feature.
 **Source:** ROADMAP ANTS-6399 (user-request-2026-11-05; scope agreed with the claude-config session the same day).
 **Composes with:** `~/.claude/tools/ci-gate`, which owns the workflow-file checks this verb defers (§ 3).
@@ -152,7 +152,7 @@ or hygiene change.
 | `cache_size` | advice | The repository's Actions cache usage is 80% or more of 10 GB. | `local-gate.md` § 9, caches row (prune) |
 | `cache_key_shared` | advice | Two jobs save `actions/cache` keys with the same prefix: the key with its last `${{ … }}` and everything after it removed, compared as text (`${{ runner.os }}-ccache-release-`). | `local-gate.md` § 9, caches row |
 | `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` lacks `always()`, or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
-| `test_parallelism` | advice | A test step's command runs `ctest` with no `-j`/`--parallel` and no `CTEST_PARALLEL_LEVEL` in the job's or step's `env`, and the same step carries `--timeout`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
+| `test_parallelism` | advice | A test step's command runs `ctest` with no `-j`/`--parallel` and no `CTEST_PARALLEL_LEVEL` in the workflow's, job's or step's `env`, and the same step carries `--timeout`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
 
 **Cache hit or miss beside timing findings.** For each `near_budget` and
 `budget_trend` finding, the verb reads the log of the newest run's job
@@ -167,11 +167,15 @@ missing timeout is the half that can.
 
 `CiWorkflows::read(root)` reads `<root>/.github/workflows/*.yml` and
 `*.yaml` from the working tree, line by line. It recognises, by
-indentation: the `jobs:` map, each job id, and in a job `name:`,
+indentation: the workflow's `name:` and `env:` keys, the `jobs:` map, each
+job id, and in a job `name:`,
 `runs-on:`, `timeout-minutes:`, `env:` keys, and `steps:` entries with
 their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
 `with: key:`, `env:` keys and `timeout-minutes:`.
 
+- A run's `workflowName` is matched to a file by the file's top-level
+  `name:`, else its path, which GitHub shows for an unnamed workflow. Its
+  jobs are matched only within that file.
 - A job is matched to the API's job name by its `name:`, else its id,
   exactly. Where none matches exactly, an API name beginning `<name> (`
   matches the job named `<name>`: a matrix job's API name is
@@ -196,7 +200,7 @@ the host's `gh`.
   `gh run list --json databaseId,headSha,headBranch,conclusion,event,workflowName,createdAt,attempt,status --limit 200`
   (runs older than the window are dropped);
   `gh api repos/{repo}/actions/runs/{id}/attempts/{n}/jobs` per run and per
-  attempt; `gh api repos/{repo}/actions/cache/usage`;
+  attempt, newest run first; `gh api repos/{repo}/actions/cache/usage`;
   `gh api repos/{repo}/check-runs/{job}/annotations` for the jobs of each
   workflow's newest run; `gh api repos/{repo}/actions/jobs/{job}/logs` for
   logs (§ 4.3), at most 10 logs and the first 2 MiB of each.
@@ -205,16 +209,20 @@ the host's `gh`.
   `truncated_reason` (`"deadline"` or `"call_cap"`), and the analysis runs
   on what was fetched. When the oldest of 200 listed runs is still inside
   the window, older runs are not seen, and the reply sets `truncated:true`
-  with `truncated_reason:"run_limit"`.
+  with `truncated_reason:"run_limit"`. The jobs calls stop when 30 calls or
+  30 s of the limits remain, so the calls after them still run.
 - **One live run per project at a time.** A live run holds an exclusive
-  lock on a file beside its saved report. Each Claude session runs its own
+  lock on a file beside its saved report, and writes its start time there
+  for `already_running`'s `running_since_ms`. Each Claude session runs its own
   `ants-mcpd`, and one process runs its Bulk calls one after another, so
   two overlapping runs are in two processes. A second `source:"live"`
   call for the same root refuses `already_running` while the lock is held.
 - **The saved report** is the reply, written atomically to
   `~/.cache/ants-terminal/ci-report/<sha256(canonical root)>.json`, mode
-  0600, after every live run that reached GitHub with no `workflow` and the
-  default `days`. A row joins
+  0600, after every live run that reached GitHub with no `workflow`, the
+  default `days` and an empty `fetch_errors`. The root, for the saved
+  report and for `CiWorkflows::read`, is `resolveRootCanonical(m_roots, req)`
+  on both the verb and `buildCiReportBlock`, as `session_orient` resolves it. A row joins
   `docs/standards/mcp-caches.md` § Cache inventory.
 
 ### 4.6 The `session_orient` line
@@ -228,7 +236,8 @@ or more `problem` findings:
 ```
 
 It runs no process and reads one file. A missing or unreadable file adds
-nothing. `age_days` is whole days from `generated_at` to `now`, so the
+nothing. `age_days` is the count of UTC calendar days from `generated_at`'s date
+to `now`'s date, so the
 block, and orient's ETag with it, changes only when the file or the day
 changes.
 
@@ -237,8 +246,8 @@ changes.
 | Code | When | Caller's next step |
 |---|---|---|
 | `no_project` | `caller_cwd` does not resolve to a directory (`ants::requiredCallerCwd`) | pass the project's path |
-| `runner_missing` | `gh` did not start | install `gh` |
-| `github_unavailable` (new) | `gh repo view` or `gh run list` exited non-zero: not signed in, offline, or rate-limited. Carries `stderr_tail`, the last 2 000 characters | `gh auth status`, or wait |
+| `runner_missing` | `gh` did not start (outside a Flatpak) | install `gh` |
+| `github_unavailable` (new) | `gh repo view` or `gh run list` exited non-zero: not signed in, offline, rate-limited, or, inside a Flatpak, not installed on the host (`flatpak-spawn` starts either way). Carries `stderr_tail`, the last 2 000 characters | `gh auth status`, or wait |
 | `already_running` | § 4.5 | wait |
 | `not_cached` | `source:"saved"` and no saved report | run `source:"live"` |
 | `bad_args` | `days` outside 1..90, or an unknown `source` | fix the call |
@@ -254,7 +263,7 @@ install), which is that file's test for a new code.
 ## 5. Invariants
 
 - **INV-1** — `CiReport::analyse()` reports `flaky` for a workflow and SHA
-  with a failed attempt followed by a successful one, naming both run ids
+  with a failed attempt followed by a successful one, naming its run ids
   and the failed job, and reports nothing for a SHA whose runs all failed
   or all passed. *Test:* `tests/features/mcp_ci_report`, fixture
   `flaky_attempts.json`. *Breaks when:* the check groups by SHA alone
@@ -281,14 +290,15 @@ install), which is that file's test for a new code.
   aggregate and drops the run list.
 - **INV-5** — no finding's `message` advises a push, a re-run, a retry, or
   a lower budget. *Test:* `tests/features/mcp_ci_report` asserts no
-  message across all fixtures matches `(?i)\b(re-?run|retry|push|lower|reduce)\b`.
+  message across all fixtures, with the names and annotation text it quotes
+  from the data masked, matches `(?i)\b(re-?run|retry|push|lower|reduce)\b`.
   *Breaks when:* a `flaky` message suggests re-running the job.
 - **INV-6** — `source:"saved"` and `buildCiReportBlock` start no process.
   *Test:* `tests/features/mcp_ci_report` puts a fake `gh` first on `PATH`
   that appends to a log file, calls both, and expects the log absent.
   *Breaks when:* the saved path refreshes a stale report on its own.
 - **INV-7** — `session_orient` carries `ci_report` exactly when the saved
-  report holds a `problem` finding, and two calls on one day over an
+  report holds a `problem` finding, and two calls on one UTC day over an
   unchanged file return the same ETag. *Test:* `tests/features/mcp_ci_report`,
   three saved files: none, advice only, one problem. *Breaks when:* the
   block carries a value that moves between calls (a time to the second).
@@ -301,8 +311,8 @@ install), which is that file's test for a new code.
 - **INV-9** — `gh` exiting non-zero on `run list` refuses
   `github_unavailable` with `stderr_tail`, and no `gh` on `PATH` refuses
   `runner_missing`. Neither writes the saved report. *Test:*
-  `tests/features/mcp_ci_report`, fake `gh` with `FAKE_FAIL=list`, then an
-  empty `PATH`. *Breaks when:* a failed fetch saves an empty report,
+  `tests/features/mcp_ci_report`, fake `gh` with `FAKE_FAIL=list`, then a
+  `PATH` with no `gh` on it. *Breaks when:* a failed fetch saves an empty report,
   which would clear a real warning from `session_orient`.
 - **INV-10** — a project with no `.github/workflows` returns `ok:true`,
   `ci:"none"`, `ci_none_reason:"no_workflows"`, and starts no process.
@@ -325,7 +335,7 @@ install), which is that file's test for a new code.
 | `gh` signed out or offline | `github_unavailable`; saved report kept |
 | Rate limit mid-fetch | later calls fail; `fetch_errors` lists them; findings needing them do not fire |
 | Workflow file edited since the runs | budgets judged against today's file (§ 4.4) |
-| A step renamed within the window | its older runs do not match by name; trend sees fewer runs and may not fire |
+| A job renamed within the window | its older runs do not match by name; trend sees fewer runs and may not fire |
 | GitHub changes its log line for cache hits | `cache` reads `unknown`; nothing else changes |
 | Saved report written by an older build | `buildCiReportBlock` reads `counts.problem` and the first finding only; a missing key adds nothing |
 
