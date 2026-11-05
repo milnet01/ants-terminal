@@ -28,6 +28,7 @@ constexpr double kCacheLimitBytes = 10 * kGiB;  // GitHub's per-repository cache
 constexpr double kCacheFull = 0.80;          // cache_size: share of the limit
 constexpr int kMaxEvidence = 10;             // runs/shas per finding
 constexpr int kMaxTestNames = 10;            // failing ctest names quoted by flaky
+constexpr int kAlternatingReturns = 3;       // alternating: red again after green, this often
 
 const QString kTimeoutCite = QStringLiteral("local-gate.md § 9 (timeout-minutes row)");
 const QString kCachesCite = QStringLiteral("local-gate.md § 9 (caches row)");
@@ -54,7 +55,7 @@ struct JobRec {
 
 struct RunRec {
     qint64 id = 0;
-    QString sha, conclusion, status, event, workflow;
+    QString sha, conclusion, status, event, workflow, branch;
     QDateTime created;
     int attempt = 1;
     QList<QList<JobRec>> attempts;  // [attempt-1]; empty where not fetched
@@ -76,6 +77,7 @@ struct Finding {
     qint64 logJob = 0;     // the newest job behind it, whose log it reads
     QDateTime logT;
     QStringList cites;
+    QJsonObject extra;     // check-specific reply keys
 };
 
 // A finding's fixed fields; each check fills in the rest.
@@ -136,6 +138,7 @@ QList<RunRec> readRuns(const QJsonObject &history, const QDateTime &now, int day
         r.status = o.value(QStringLiteral("status")).toString();
         r.event = o.value(QStringLiteral("event")).toString();
         r.workflow = o.value(QStringLiteral("workflowName")).toString();
+        r.branch = o.value(QStringLiteral("headBranch")).toString();
         r.created = when(o.value(QStringLiteral("createdAt")));
         r.attempt = CiHistory::attemptOf(o);
         if (!r.created.isValid() || r.created < cutoff) continue;
@@ -185,11 +188,14 @@ void noteLog(Finding &f, const JobRec &j) {
 }
 
 // Each job instance with its workflow file's job, where one matches. A miss
-// is named in `unread` once and leaves the job's budget unknown (INV-3).
+// is named in `unread` once and leaves the job's budget unknown (INV-3). The
+// job comes from the file as the run's commit held it where `atCommit` has
+// that file and job, so a budget is judged as it stood when the run ran
+// (ANTS-6417); today's file otherwise.
 struct Matched { const JobRec *job; const CiWorkflows::Job *wj; QString file; };
 
 QList<Matched> matchJobs(const QList<RunRec> &runs, const CiWorkflows::Result &wf,
-                         QJsonArray &unread) {
+                         const CiWorkflows::BySha &atCommit, QJsonArray &unread) {
     QSet<QString> named;
     auto miss = [&](const QString &file, const QString &job, const QString &field,
                     const QString &workflow = QString()) {
@@ -205,10 +211,24 @@ QList<Matched> matchJobs(const QList<RunRec> &runs, const CiWorkflows::Result &w
     QList<Matched> out;
     for (const RunRec &r : runs) {
         const CiWorkflows::Workflow *w = CiWorkflows::matchWorkflow(wf, r.workflow);
+        const auto then = atCommit.constFind(r.sha);
+        const CiWorkflows::Workflow *wThen =
+            then == atCommit.cend() ? nullptr : CiWorkflows::matchWorkflow(*then, r.workflow);
         for (const QList<JobRec> &list : r.attempts)
             for (const JobRec &j : list) {
-                // No file holds this workflow: `file` is null and `workflow` names it.
-                if (!w) { miss(QString(), QString(), QStringLiteral("workflow"), r.workflow); out.append({&j, nullptr, {}}); continue; }
+                if (const CiWorkflows::Job *wjThen = wThen ? CiWorkflows::matchJob(*wThen, j.name) : nullptr) {
+                    out.append({&j, wjThen, wThen->file});
+                    continue;
+                }
+                // No file holds this workflow: `file` is null and `workflow`
+                // names it. GitHub runs a "dynamic" workflow (Dependabot,
+                // Pages) from no file in the repository, so none is missing.
+                if (!w) {
+                    if (r.event != QLatin1String("dynamic"))
+                        miss(QString(), QString(), QStringLiteral("workflow"), r.workflow);
+                    out.append({&j, nullptr, {}});
+                    continue;
+                }
                 const CiWorkflows::Job *wj = CiWorkflows::matchJob(*w, j.name);
                 if (!wj) miss(w->file, j.name, QStringLiteral("job"));
                 out.append({&j, wj, w->file});
@@ -296,6 +316,55 @@ void checkFlaky(const QList<RunRec> &runs, const QJsonObject &logs, QList<Findin
     }
 }
 
+// alternating: one job, in one workflow, event and branch, whose result per
+// commit (the newest run's latest attempt) turned red again after green at
+// least kAlternatingReturns times (ANTS-6415). A break and its fix return to
+// red once. Advice, where flaky is a problem: no commit both failed and
+// passed, so nothing proves the test rather than the code changed.
+void checkAlternating(const QList<RunRec> &runs, QList<Finding> &out) {
+    QMap<QString, QList<const JobRec *>> byJob;    // one job per commit, oldest first
+    QMap<QString, QHash<QString, int>> slotOf;     // a commit's place in its list
+    for (auto it = runs.crbegin(); it != runs.crend(); ++it) {  // oldest run first
+        const RunRec &r = *it;
+        if (r.branch.isEmpty() || r.attempts.isEmpty()) continue;
+        for (const JobRec &j : r.attempts.last()) {
+            if (j.conclusion != QLatin1String("success") && !failedConclusion(j.conclusion)) continue;
+            const QString key = groupKey({r.workflow, r.event, r.branch, j.name});
+            QList<const JobRec *> &list = byJob[key];
+            QHash<QString, int> &slot = slotOf[key];
+            if (const auto s = slot.constFind(r.sha); s != slot.cend()) list[*s] = &j;
+            else { slot.insert(r.sha, int(list.size())); list.append(&j); }
+        }
+    }
+    for (const QList<const JobRec *> &list : byJob) {
+        Finding f = makeFinding("alternating", Severity::Advice, {QStringLiteral("testing.md § 7")});
+        int returns = 0;
+        const JobRec *newestRed = nullptr;
+        for (int i = 1; i < list.size(); ++i) {
+            if (!failedConclusion(list[i]->conclusion)
+                || list[i - 1]->conclusion != QLatin1String("success"))
+                continue;
+            ++returns;
+            newestRed = list[i];
+            f.evidence.append(evidenceOf(*list[i]));
+            f.evidence.append(evidenceOf(*list[i - 1]));
+        }
+        if (returns < kAlternatingReturns) continue;
+        f.workflow = newestRed->run->workflow;
+        f.job = newestRed->name;
+        for (const StepRec &st : newestRed->steps)
+            if (failedConclusion(st.conclusion)) { f.step = st.name; break; }
+        QString what = QStringLiteral("Job '%1'").arg(f.job);
+        if (!f.step.isEmpty()) what += QStringLiteral(" (step '%1')").arg(f.step);
+        f.message = QStringLiteral("%1 failed on a commit after passing on the one before, %2 times "
+                                   "across %3 commits on branch '%4'. No commit both failed and "
+                                   "passed, so each may be a break and its fix; a result that flips "
+                                   "this often usually comes from the test or the runner.")
+                        .arg(what).arg(returns).arg(list.size()).arg(newestRed->run->branch);
+        out.append(f);
+    }
+}
+
 // near_budget: a job or a step at 80% of its budget or more, measured from
 // its own start, never the run's creation (INV-2).
 void checkNearBudget(const QList<Matched> &jobs, QList<Finding> &out) {
@@ -335,8 +404,25 @@ void checkNearBudget(const QList<Matched> &jobs, QList<Finding> &out) {
     }
 }
 
+// Where `v` splits into a slower after than before, best: the split whose
+// halves sit closest to their own medians (least total absolute deviation),
+// among those whose after-median is the higher. -1 when none is.
+int riseStart(const QList<double> &v) {
+    int best = -1;
+    double bestCost = 0;
+    for (int k = 1; k < v.size(); ++k) {
+        const double before = median(v.mid(0, k)), after = median(v.mid(k));
+        if (after <= before) continue;
+        double cost = 0;
+        for (int i = 0; i < v.size(); ++i) cost += std::abs(v[i] - (i < k ? before : after));
+        if (best < 0 || cost < bestCost) { best = k; bestCost = cost; }
+    }
+    return best;
+}
+
 // budget_trend: a budgeted job's newest five successful runs against its
-// earlier ones in the window, five at least.
+// earlier ones in the window, five at least. Names the step whose median rose
+// most, the run where the rise starts, and the earlier runs (ANTS-6419).
 void checkBudgetTrend(const QList<Matched> &jobs, QList<Finding> &out) {
     QMap<QString, QList<const Matched *>> byJob;
     for (const Matched &m : jobs)
@@ -348,9 +434,17 @@ void checkBudgetTrend(const QList<Matched> &jobs, QList<Finding> &out) {
         std::sort(list.begin(), list.end(), [](const Matched *a, const Matched *b) {
             return a->job->started < b->job->started;
         });
-        QList<double> earlier, newest;
-        for (int i = 0; i < list.size(); ++i)
-            (i >= list.size() - kTrendNewest ? newest : earlier).append(double(list[i]->job->span()));
+        const int newestFrom = int(list.size()) - kTrendNewest;
+        QList<double> spans, earlier, newest;
+        QMap<QString, std::pair<QList<double>, QList<double>>> stepSecs;  // earlier, newest
+        for (int i = 0; i < list.size(); ++i) {
+            spans.append(double(list[i]->job->span()));
+            (i >= newestFrom ? newest : earlier).append(spans.last());
+            for (const StepRec &st : list[i]->job->steps)
+                if (st.secs >= 0)
+                    (i >= newestFrom ? stepSecs[st.name].second : stepSecs[st.name].first)
+                        .append(double(st.secs));
+        }
         const double before = median(earlier), after = median(newest);
         if (before <= 0 || after < before * kTrendRise) continue;
         Finding f = makeFinding("budget_trend", Severity::Advice);
@@ -359,13 +453,33 @@ void checkBudgetTrend(const QList<Matched> &jobs, QList<Finding> &out) {
         f.timing = true;
         f.logJob = list.last()->job->id;
         f.cites = {kTimeoutCite};
-        for (int i = int(list.size()) - kTrendNewest; i < list.size(); ++i)
+        for (int i = newestFrom; i < list.size(); ++i)
             f.evidence.append(evidenceOf(*list[i]->job));
         f.message = QStringLiteral("Median job time rose from %1 to %2 (+%3%) over its newest %4 "
                                    "successful runs, against a %5 budget.")
             .arg(minutes(qint64(before)), minutes(qint64(after)))
             .arg(int(std::lround((after / before - 1) * 100))).arg(kTrendNewest)
             .arg(minutes(qint64(std::llround(list.last()->wj->budgetMin * 60))));
+        double stepRise = 0, stepBefore = 0, stepAfter = 0;
+        for (auto it = stepSecs.cbegin(); it != stepSecs.cend(); ++it) {
+            if (it->first.isEmpty() || it->second.isEmpty()) continue;
+            const double b = median(it->first), a = median(it->second);
+            if (a - b > stepRise) { stepRise = a - b; stepBefore = b; stepAfter = a; f.step = it.key(); }
+        }
+        if (!f.step.isEmpty())
+            f.message += QStringLiteral(" Step '%1' rose most, from %2 to %3.")
+                .arg(f.step, minutes(qint64(stepBefore)), minutes(qint64(stepAfter)));
+        if (const int k = riseStart(spans); k >= 0) {
+            const RunRec &r = *list[k]->job->run;
+            f.extra[QStringLiteral("rise_from")] =
+                QJsonObject{{QStringLiteral("run"), double(r.id)}, {QStringLiteral("sha"), r.sha}};
+            f.message += QStringLiteral(" The rise starts at run %1 (%2).").arg(r.id).arg(r.sha.left(7));
+        }
+        QJsonArray baseline;
+        for (int i = newestFrom - 1; i >= 0 && baseline.size() < kMaxEvidence; --i)
+            if (const QJsonValue id(double(list[i]->job->run->id)); !baseline.contains(id))
+                baseline.append(id);
+        f.extra[QStringLiteral("baseline_runs")] = baseline;
         out.append(f);
     }
 }
@@ -456,14 +570,22 @@ void checkRunnerLatest(const CiWorkflows::Result &wf, QList<Finding> &out) {
     static const QRegularExpression latest(QStringLiteral(R"((?:^|[\s,\[])[\w.]+-latest\b)"));
     for (const CiWorkflows::Workflow &w : wf.workflows)
         for (const CiWorkflows::Job &j : w.jobs) {
-            if (!latest.match(j.runsOn).hasMatch()) continue;
+            // A label in a matrix the runs-on expression reads counts too (ANTS-6420).
+            QStringList viaMatrix;
+            for (const QString &v : j.matrixRunsOn)
+                if (latest.match(v).hasMatch()) viaMatrix.append(QLatin1Char('\'') + v + QLatin1Char('\''));
+            if (!latest.match(j.runsOn).hasMatch() && viaMatrix.isEmpty()) continue;
             Finding f = makeFinding("runner_latest", Severity::Advice);
             f.workflow = w.name;
             f.job = j.name;
             f.cites = {QStringLiteral("local-gate.md § 9 (warm-containers row, condition 1)")};
-            f.message = QStringLiteral("runs-on '%1' moves to a new image when GitHub says so; "
-                                       "a versioned label changes only with the workflow.")
-                            .arg(j.runsOn);
+            f.message = viaMatrix.isEmpty()
+                ? QStringLiteral("runs-on '%1' moves to a new image when GitHub says so; "
+                                 "a versioned label changes only with the workflow.").arg(j.runsOn)
+                : QStringLiteral("runs-on '%1' takes %2 from its matrix, which move%3 to a new image "
+                                 "when GitHub says so; a versioned label changes only with the workflow.")
+                      .arg(j.runsOn, viaMatrix.join(QStringLiteral(" and ")),
+                           viaMatrix.size() == 1 ? QStringLiteral("s") : QString());
             out.append(f);
         }
 }
@@ -712,6 +834,7 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
                   {QStringLiteral("shas"), shas},
                   {QStringLiteral("cites"), QJsonArray::fromStringList(f.cites)}};
     if (!earlier.isEmpty()) o[QStringLiteral("earlier_attempts")] = earlier;
+    for (auto it = f.extra.constBegin(); it != f.extra.constEnd(); ++it) o[it.key()] = it.value();
     if (f.timing) {
         const QJsonValue log = logs.value(QString::number(f.logJob));
         o[QStringLiteral("cache")] = log.isString() ? cacheFromLog(log.toString())
@@ -723,18 +846,19 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
 }  // namespace
 
 Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflows,
-                 const QDateTime &now, int days) {
+                 const QDateTime &now, int days, const CiWorkflows::BySha &atCommit) {
     Analysis a;
     QList<RunRec> owned = readRuns(history, now, days);
     link(owned);
     // Jobs point into `owned`; read it only through this const view, so
     // nothing detaches it and moves the jobs out from under them.
     const QList<RunRec> &runs = owned;
-    const QList<Matched> jobs = matchJobs(runs, workflows, a.unread);
+    const QList<Matched> jobs = matchJobs(runs, workflows, atCommit, a.unread);
     const QJsonObject logs = history.value(QStringLiteral("logs")).toObject();
 
     QList<Finding> found;
     checkFlaky(runs, logs, found);
+    checkAlternating(runs, found);
     checkNearBudget(jobs, found);
     checkBudgetTrend(jobs, found);
     checkScheduledRed(runs, found);
@@ -772,6 +896,8 @@ Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflow
         if (!names.contains(r.workflow)) names.append(r.workflow);
     names.sort();
     a.workflows = QJsonArray::fromStringList(names);
+    for (const CiWorkflows::Workflow &w : workflows.workflows)
+        a.files.append(QJsonObject{{QStringLiteral("file"), w.file}, {QStringLiteral("workflow"), w.name}});
     return a;
 }
 

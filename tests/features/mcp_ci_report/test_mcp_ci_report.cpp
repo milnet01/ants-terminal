@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QMap>
 #include <QRegularExpression>
 #include <QSet>
@@ -1220,4 +1221,153 @@ TEST(McpCiReport, Ants6414EvidenceNamesAnEarlierAttempt) {
         ofCheck(CiReport::analyse(one.json(), workflow(kBuild10), kNow, 30), "near_budget");
     ASSERT_EQ(latest.size(), 1);
     EXPECT_FALSE(latest[0].contains("earlier_attempts")) << "absent when every entry is a latest attempt";
+}
+
+// ---- ANTS-6415..6421: requests from the sessions that run ci_report --------
+
+// ANTS-6416 (LocalWebServerManager): GitHub runs Dependabot from no file in
+// the repository, with event "dynamic"; such a run is not a file left unread.
+TEST(McpCiReport, Ants6416DynamicWorkflowIsNotUnread) {
+    History h;
+    h.add(1, kNow.addSecs(-3600), QStringLiteral("Dependabot"), 0, 60, QStringLiteral("success"), {},
+          QStringLiteral("dynamic"), QStringLiteral("Dependabot Updates"));
+    h.add(2, kNow.addSecs(-3600), QStringLiteral("Build"), 0, 60, QStringLiteral("success"), {},
+          QStringLiteral("push"), QStringLiteral("Gone"));
+    const CiReport::Analysis a = CiReport::analyse(h.json(), CiWorkflows::Result(), kNow, 30);
+    ASSERT_EQ(a.unread.size(), 1) << dump(a.unread);
+    EXPECT_EQ(a.unread[0].toObject().value("workflow").toString(), QStringLiteral("Gone"));
+}
+
+// ANTS-6421 (Rolodex): the files the static checks read are listed apart
+// from the workflows that had runs, so "no runs" differs from "not read".
+TEST(McpCiReport, Ants6421FilesReadAreListed) {
+    CiWorkflows::Result wf = workflow(kBuild10);
+    CiWorkflows::parseInto(wf, QStringLiteral(".github/workflows/build.yml"),
+                           QStringLiteral("name: Build binaries\njobs:\n  b:\n    runs-on: ubuntu-24.04\n"));
+    const CiReport::Analysis a = CiReport::analyse(QJsonObject(), wf, kNow, 30);
+    EXPECT_EQ(a.files, (QJsonArray{
+        QJsonObject{{"file", ".github/workflows/ci.yml"}, {"workflow", "CI"}},
+        QJsonObject{{"file", ".github/workflows/build.yml"}, {"workflow", "Build binaries"}}}))
+        << dump(a.files);
+    EXPECT_TRUE(a.workflows.isEmpty());
+}
+
+// ANTS-6420 (Rolodex): `runs-on: ${{ matrix.os }}` names its runners through
+// the matrix, in an axis or in `include` entries.
+TEST(McpCiReport, Ants6420RunnerLatestThroughAMatrix) {
+    auto labels = [](const char *matrix) {
+        const CiWorkflows::Result wf = workflow(QStringLiteral(
+            "name: CI\njobs:\n  b:\n    runs-on: ${{ matrix.os }}\n    strategy:\n      matrix:\n%1"
+            "    steps:\n      - run: make\n").arg(QString::fromLatin1(matrix)));
+        const QList<QJsonObject> f = ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "runner_latest");
+        return f.size() == 1 ? f[0].value("message").toString() : QStringLiteral("<%1 findings>").arg(f.size());
+    };
+    const QString include = labels("        include:\n          - os: ubuntu-latest\n"
+                                   "          - os: windows-2022\n          - os: macos-latest\n");
+    EXPECT_TRUE(include.contains(QStringLiteral("ubuntu-latest")) && include.contains(QStringLiteral("macos-latest"))
+                && !include.contains(QStringLiteral("windows-2022"))) << include.toStdString();
+    const QString axis = labels("        os: [ubuntu-latest, ubuntu-22.04]\n");
+    EXPECT_TRUE(axis.contains(QStringLiteral("ubuntu-latest"))) << axis.toStdString();
+    EXPECT_EQ(labels("        os: [ubuntu-24.04, windows-2022]\n"), QStringLiteral("<0 findings>"));
+    EXPECT_EQ(labels("        os: ${{ fromJSON(inputs.oses) }}\n"), QStringLiteral("<0 findings>"))
+        << "a matrix it cannot read names no runner";
+}
+
+// ANTS-6417 (OneUp run 37813657203): a run is judged against the budget its
+// own commit's workflow file held. Before timeout-minutes was added, a 6 h
+// run broke no budget.
+TEST(McpCiReport, Ants6417BudgetIsTheRunsOwnCommits) {
+    History h;
+    h.add(1, kNow.addSecs(-86400), QStringLiteral("Build"), 0, 360 * 60);
+    const CiWorkflows::Result today = workflow(kBuild10);
+    auto fires = [&](const CiWorkflows::BySha &atCommit) {
+        return !ofCheck(CiReport::analyse(h.json(), today, kNow, 30, atCommit), "near_budget").isEmpty();
+    };
+    CiWorkflows::BySha before;
+    before.insert(QStringLiteral("sha1"), workflow(QString(kBuild10).remove(QStringLiteral("    timeout-minutes: 10\n"))));
+    EXPECT_FALSE(fires(before)) << "no budget at the run's commit";
+    CiWorkflows::BySha same;
+    same.insert(QStringLiteral("sha1"), today);
+    EXPECT_TRUE(fires(same));
+    EXPECT_TRUE(fires({})) << "a commit the clone lacks falls back to today's file";
+}
+
+// ANTS-6417: the reader takes each commit's files from the local clone.
+TEST(McpCiReport, Ants6417ReadAtCommitsReadsTheClone) {
+    QTemporaryDir tmp;
+    const QString root = tmp.path();
+    auto git = [&](const QStringList &args) {
+        QProcess p;
+        p.setWorkingDirectory(root);
+        p.start(QStringLiteral("git"), QStringList{QStringLiteral("-c"), QStringLiteral("user.name=t"),
+                QStringLiteral("-c"), QStringLiteral("user.email=t@t")} + args);
+        p.waitForFinished();
+        return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    };
+    git({QStringLiteral("init"), QStringLiteral("-q")});
+    QDir().mkpath(root + QStringLiteral("/.github/workflows"));
+    auto put = [&](const QString &yaml) {
+        QFile f(root + QStringLiteral("/.github/workflows/ci.yml"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(yaml.toUtf8());
+    };
+    put(QString(kBuild10).replace(QStringLiteral("timeout-minutes: 10"), QStringLiteral("timeout-minutes: 99")));
+    git({QStringLiteral("add"), QStringLiteral(".")});
+    git({QStringLiteral("commit"), QStringLiteral("-qm"), QStringLiteral("a")});
+    const QString first = git({QStringLiteral("rev-parse"), QStringLiteral("HEAD")});
+    put(kBuild10);
+    const CiWorkflows::BySha at = CiWorkflows::readAtCommits(
+        root, {first, QStringLiteral("0123456789abcdef0123456789abcdef01234567"), QStringLiteral("x\ny")});
+    ASSERT_EQ(at.size(), 1) << "a missing commit and a malformed SHA are absent";
+    ASSERT_EQ(at.value(first).workflows.size(), 1);
+    EXPECT_EQ(at.value(first).workflows[0].jobs[0].budgetMin, 99);
+    EXPECT_EQ(at.value(first).workflows[0].file, QStringLiteral(".github/workflows/ci.yml"));
+}
+
+// ANTS-6419 (Rolodex, b77c2ee -> 9fe4350): budget_trend names the step that
+// slowed, the first run of the rise, and the runs it was measured against.
+TEST(McpCiReport, Ants6419BudgetTrendNamesStepAndRise) {
+    History h;
+    for (int i = 0; i < 10; ++i)
+        h.add(100 + i, kNow.addSecs(-86400 + i * 3600), QStringLiteral("Build"), 0, 0, QStringLiteral("success"),
+              {{QStringLiteral("Build"), 33, QStringLiteral("success")},
+               {QStringLiteral("Test (pytest)"), i >= 5 ? 24 : 6, QStringLiteral("success")}});
+    const QList<QJsonObject> f =
+        ofCheck(CiReport::analyse(h.json(), workflow(kBuild10), kNow, 30), "budget_trend");
+    ASSERT_EQ(f.size(), 1);
+    EXPECT_EQ(f[0].value("step").toString(), QStringLiteral("Test (pytest)")) << dump(f[0]);
+    EXPECT_EQ(f[0].value("rise_from").toObject(), (QJsonObject{{"run", 105}, {"sha", "sha105"}})) << dump(f[0]);
+    EXPECT_EQ(f[0].value("baseline_runs").toArray(), (QJsonArray{104, 103, 102, 101, 100})) << dump(f[0]);
+    EXPECT_TRUE(f[0].value("message").toString().contains(QStringLiteral("0m06s to 0m24s"))) << dump(f[0]);
+}
+
+// ANTS-6415 (LocalWebServerManager, 9420868..5f9c154): a job whose result
+// flips red and green across commits on one branch, with no same-commit pass.
+TEST(McpCiReport, Ants6415AlternatingResultsAcrossCommits) {
+    auto findings = [](const char *pattern) {
+        History h;
+        const int n = int(qstrlen(pattern));
+        for (int i = 0; i < n; ++i) {
+            const bool red = pattern[i] == 'R';
+            h.add(200 + i, kNow.addSecs(-86400 + i * 3600), QStringLiteral("Build"), 0, 60,
+                  red ? QStringLiteral("failure") : QStringLiteral("success"),
+                  {{QStringLiteral("Test"), 60, red ? QStringLiteral("failure") : QStringLiteral("success")}});
+        }
+        QJsonObject json = h.json();
+        QJsonArray runs;
+        for (const QJsonValue &v : json.value("runs").toArray()) {
+            QJsonObject r = v.toObject();
+            r["headBranch"] = "main";
+            runs.append(r);
+        }
+        json["runs"] = runs;
+        return ofCheck(CiReport::analyse(json, workflow(kBuild10), kNow, 30), "alternating");
+    };
+    const QList<QJsonObject> f = findings("RGRGRGR");
+    ASSERT_EQ(f.size(), 1);
+    EXPECT_EQ(f[0].value("severity").toString(), QStringLiteral("advice"));
+    EXPECT_EQ(f[0].value("step").toString(), QStringLiteral("Test"));
+    EXPECT_TRUE(f[0].value("message").toString().contains(QStringLiteral("3 times"))) << dump(f[0]);
+    EXPECT_TRUE(findings("RGRGR").isEmpty()) << "two returns to red are a break and a fix, twice";
+    EXPECT_TRUE(findings("RRRGGG").isEmpty());
 }

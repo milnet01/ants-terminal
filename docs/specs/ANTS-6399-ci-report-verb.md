@@ -109,7 +109,8 @@ Reply:
   "ci": "github",
   "repo": "owner/name",
   "generated_at": "2026-11-05T09:10:00Z",
-  "window": {"days": 30, "runs": 41, "workflows": ["CI"]},
+  "window": {"days": 30, "runs": 41, "workflows": ["CI"],
+             "files": [{"file": ".github/workflows/ci.yml", "workflow": "CI"}]},
   "truncated": false,
   "truncated_reason": null,
   "findings": [
@@ -126,6 +127,10 @@ Reply:
   "counts": {"problem": 1, "advice": 0}
 }
 ```
+
+`window.workflows` names the workflows with runs in the window.
+`window.files` names each workflow file the checks read, with or without
+runs (ANTS-6421).
 
 `ci` is `"github"` or `"none"`. With `"none"` the reply carries
 `ci_none_reason` (`"no_workflows"` or `"no_github_remote"`), an empty
@@ -152,12 +157,13 @@ or hygiene change.
 | `check` | Severity | Fires when | Cites |
 |---|---|---|---|
 | `flaky` | problem | One job, in one workflow, event and SHA, fails in an attempt or run and passes in a later one. The event keeps a pull request's run apart from a push run of the same head SHA, which tests different code. Names the failed job and step; adds failing ctest names when the failed job's log carries ctest's `The following tests FAILED:` block. | `testing.md` § 7; `local-gate.md` § 9 rule 3 |
+| `alternating` | advice | One job, in one workflow, event and branch, turns red on a commit after passing on the commit before, three times or more in the window. A commit's result is its newest run's latest attempt. Advice, because no commit both failed and passed: a break and its fix look the same once (ANTS-6415). | `testing.md` § 7 |
 | `near_budget` | problem | A job or step with a budget (§ 4.4: `timeout-minutes`, or a step's shell guard) ran at 80% of it or more in any run in the window, or ended at its budget. | `local-gate.md` § 9, `timeout-minutes` row |
-| `budget_trend` | advice | A budgeted job's median time over its newest 5 successful runs is 25% or more above the median of its earlier ones in the window, with at least 5 earlier ones. | `local-gate.md` § 9, `timeout-minutes` row |
+| `budget_trend` | advice | A budgeted job's median time over its newest 5 successful runs is 25% or more above the median of its earlier ones in the window, with at least 5 earlier ones. Sets `step` to the step whose median rose most, `rise_from` to `{run, sha}` where the rise starts (the split of the job's times whose two halves deviate least from their own medians), and `baseline_runs` to the earlier runs, newest first (ANTS-6419). | `local-gate.md` § 9, `timeout-minutes` row |
 | `scheduled_red` | problem | A workflow's newest `schedule` run failed. The message says since when it has been red: the newest successful scheduled run's date, or "no green run in the window". | `local-gate.md` § 9, slow-legs row |
 | `queue_wait` | advice | A job's median wait from creation to start exceeds 5 minutes. | none |
 | `annotation` | advice | A warning annotation on the newest run of a workflow mentions deprecation or a runner image being retired (case-insensitive `deprecat`, `retire`, `will be removed`, `brownout`). Quotes the annotation. | none |
-| `runner_latest` | advice | A job's `runs-on` is a `*-latest` label. | `local-gate.md` § 9, warm-containers row, condition 1 |
+| `runner_latest` | advice | A job's `runs-on` is a `*-latest` label, or is `${{ matrix.<key> }}` and `<key>`'s axis or `include` entries hold one (ANTS-6420). | `local-gate.md` § 9, warm-containers row, condition 1 |
 | `cache_size` | advice | The repository's Actions cache usage is 80% or more of 10 GB. | `local-gate.md` § 9, caches row (prune) |
 | `cache_key_shared` | advice | Two jobs save `actions/cache` keys with the same prefix: the key with its last `${{ … }}` and everything after it removed, compared as text (`${{ runner.os }}-ccache-release-`). | `local-gate.md` § 9, caches row |
 | `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` does not run after a failure (it holds none of `always()`, `failure()` or `!cancelled()`), or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
@@ -183,7 +189,7 @@ missing timeout is the half that can.
 `*.yaml` from the working tree, line by line. It recognises, by
 indentation: the workflow's `name:` and `env:` keys, the `jobs:` map, each
 job id, and in a job `name:`,
-`runs-on:`, `timeout-minutes:`, `env:` keys, and `steps:` entries with
+`runs-on:`, `strategy: matrix:`, `timeout-minutes:`, `env:` keys, and `steps:` entries with
 their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
 `with: key:`, `env:` keys and `timeout-minutes:`.
 
@@ -200,7 +206,8 @@ their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
   cannot parse leaves that budget unknown. A check needing an unknown value
   does not fire. The reply's `unread` array lists each `{file, job, field}`
   it skipped; a workflow no file matches has `file` null and names itself
-  in `workflow`.
+  in `workflow`. A run whose event is `dynamic` is not listed: GitHub
+  runs it (Dependabot, Pages) from no file in the repository (ANTS-6416).
 - **An alias or a merge key (`<<: *x`) makes the file unread**, because the
   keys it brings would be lost unnamed. Flow maps and lists
   (`with: {key: …}`) are read, and a block-map `runs-on:` names its runner
@@ -214,8 +221,12 @@ their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
   block, inside a script) is not read. Such a step that ran its full
   budget fails rather than being cancelled, and counts as reaching it.
 
-The working tree is read, not each run's commit. Budgets are judged against
-today's file, which is what a fix changes.
+**A run is judged against its own commit's budgets** (ANTS-6417).
+`CiWorkflows::readAtCommits` reads the files the working tree names, as
+each run's commit held them, from the local clone with one
+`git cat-file --batch`. A job matched there takes its budgets from there.
+Where the clone lacks the commit, the file, or the job, today's file is
+used. The other checks that read workflow files read the working tree.
 
 ### 4.5 Fetching, limits and the saved report
 
@@ -320,7 +331,7 @@ install), which is that file's test for a new code.
   the reader falls back to a default budget (GitHub's 360 minutes or any
   other), which would produce or hide a finding from a guess.
 - **INV-4** — every finding's `runs` and `shas` are non-empty for checks
-  read from run history (`flaky`, `near_budget`, `budget_trend`,
+  read from run history (`flaky`, `alternating`, `near_budget`, `budget_trend`,
   `scheduled_red`, `queue_wait`, `annotation`), and hold at most 10
   entries. *Test:* `tests/features/mcp_ci_report`, every fixture's
   findings walked. *Breaks when:* a check builds its message from an
@@ -380,7 +391,7 @@ install), which is that file's test for a new code.
 |---|---|
 | `gh` signed out or offline | `github_unavailable`; saved report kept |
 | Rate limit mid-fetch | later calls fail; `fetch_errors` lists them; findings needing them do not fire |
-| Workflow file edited since the runs | budgets judged against today's file (§ 4.4) |
+| Workflow file edited since the runs | each run judged against its own commit's file; today's where the clone lacks that commit (§ 4.4) |
 | A job renamed within the window | its older runs do not match by name; trend sees fewer runs and may not fire |
 | GitHub changes its log line for cache hits | `cache` reads `unknown`; nothing else changes |
 | Saved report written by an older build | `buildCiReportBlock` reads `counts.problem` and the first finding only; a missing key adds nothing |
@@ -399,6 +410,7 @@ removed and seen to fail before it lands.
 |---|---|
 | analyser tests on fixtures | INV-1, INV-2, INV-3, INV-4, INV-5, INV-12 |
 | ANTS-6402 tests (`McpCiReport.Ants6402*`) | INV-1's amendment; § 4.4's matrix, alias, flow-map and block-map rules; § 4.5's pages and log ends |
+| `McpCiReport.Ants6415*` to `Ants6421*` | § 4.2's `window.files`; § 4.3's `alternating`, `budget_trend` detail and matrix `runner_latest`; § 4.4's `dynamic` runs and budgets at a run's commit |
 | fake-`gh` verb tests | INV-6, INV-8, INV-9, INV-10 |
 | `session_orient` block test | INV-7 |
 | source checks, with `tests/features/standalone_mcp_server` | INV-11 |

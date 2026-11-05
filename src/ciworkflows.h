@@ -1,10 +1,12 @@
 #pragma once
 
 // ci_report (ANTS-6399) — the workflow files' budgets and the keys its
-// file-read checks need, read line by line from the working tree. No YAML
+// file-read checks need, read line by line from the working tree, or from a
+// run's commit in the local clone (ANTS-6417). No YAML
 // library: a value it cannot read is unknown and listed in `unread`, never a
 // guess (spec § 4.4, INV-3). Contract: docs/specs/ANTS-6399-ci-report-verb.md.
 
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonValue>
 #include <QList>
@@ -31,6 +33,9 @@ struct Job {
     QString id;
     QString name;           // `name:`, else the id
     QString runsOn;         // raw text, a list joined by ", "
+    // The labels a `runs-on: ${{ matrix.<key> }}` expands to: <key>'s axis
+    // values and its `include` entries' values (ANTS-6420). Empty otherwise.
+    QStringList matrixRunsOn;
     double budgetMin = -1;  // timeout-minutes; -1 absent or unreadable
     QStringList envKeys;
     QList<Step> steps;
@@ -55,6 +60,13 @@ QStringList files(const QString &root);
 Result read(const QString &root);
 // One file's text; `rel` names it in `unread`.
 void parseInto(Result &out, const QString &rel, const QString &text);
+
+// The workflow files as given commits held them, by SHA (ANTS-6417).
+using BySha = QHash<QString, Result>;
+// Each of `shas`, with the files files(root) names as that commit held them,
+// read from the local clone by one `git cat-file --batch`. A SHA the clone
+// lacks, one holding none of those files, or one that is not hex, is absent.
+BySha readAtCommits(const QString &root, const QStringList &shas);
 
 // The file GitHub's `workflowName` came from: its `name:`, else its path.
 const Workflow *matchWorkflow(const Result &r, const QString &workflowName);

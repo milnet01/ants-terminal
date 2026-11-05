@@ -31,3 +31,8 @@ a fake `gh` and reads the saved report back through `session_orient`'s block.
 (spec § 4.2): two GitHub remotes and no `gh-resolved` carry it; a set
 default or one GitHub remote does not. `McpCiReport.Ants6406WrapperOptionValues`
 reads ctest past a wrapper option that takes a value, and past quoting.
+
+The `McpCiReport.Ants6415*` to `Ants6421*` tests lock what other sessions
+asked for (spec §§ 4.2 to 4.4): `alternating`, `dynamic` runs left out of
+`unread`, budgets at a run's commit, `budget_trend`'s step and rise,
+matrix runners, and `window.files`.

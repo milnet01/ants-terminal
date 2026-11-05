@@ -14857,7 +14857,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["description"] = QStringLiteral(
                         "Read a project's GitHub Actions run history through gh and list "
                         "CI problems: flaky (failed then passed on one commit), "
-                        "near_budget, budget_trend, scheduled_red, queue_wait, annotation, "
+                        "alternating (flips red/green across commits), near_budget, "
+                        "budget_trend, scheduled_red, queue_wait, annotation, "
                         "runner_latest, cache_size, cache_key_shared, cache_save_skipped, "
                         "test_parallelism. Each finding names its runs, SHAs and the "
                         "standard it cites. source:\"saved\" reads the last report with no "
@@ -14866,8 +14867,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         "ANTS-6399. Contract: docs/specs/ANTS-6399-ci-report-verb.md. A live "
                         "call is bounded at 120 s and 300 gh calls; a stopped fetch says "
                         "truncated_reason and still reports. No workflows or no GitHub "
-                        "remote answers ci:\"none\". Budgets come from today's workflow "
-                        "files; one it cannot read is listed in unread[], never guessed.");
+                        "remote answers ci:\"none\". A run's budgets come from its commit's "
+                        "workflow files, else today's; one it cannot read is listed in "
+                        "unread[], never guessed.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;

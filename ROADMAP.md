@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6421 -->
+<!-- ants-roadmap-id-high-water: ANTS=6422 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79988,7 +79988,7 @@ in each bullet, not just the reporter's symptom.
   Source: album-builder msg 1461, 2026-11-05.
   Lanes: mcp.
 
-- 📋 [ANTS-6415] **ci_report reports a job whose result flips red and green across consecutive commits.**
+- ✅ [ANTS-6415] **ci_report reports a job whose result flips red and green across consecutive commits.**
   Today the flaky rule fires only on a fail-then-pass on the SAME
   commit. LocalWebServerManager had 7 red commits alternating with green
   on main on 2026-11-05 (9420868 .. 5f9c154) and got 0 findings.
@@ -79999,7 +79999,7 @@ in each bullet, not just the reporter's symptom.
   Kind: enhancement.
   Source: LocalWebServerManager feedback, msg 1473, 2026-11-05.
 
-- 📋 [ANTS-6416] **ci_report leaves GitHub-managed workflows that have no file out of unread.**
+- ✅ [ANTS-6416] **ci_report leaves GitHub-managed workflows that have no file out of unread.**
   LocalWebServerManager saw 'Dependabot Updates' (file:null) in unread.
   A workflow with no file in the repo cannot be read, so listing it is
   noise.
@@ -80007,7 +80007,7 @@ in each bullet, not just the reporter's symptom.
   Kind: enhancement.
   Source: LocalWebServerManager feedback, msg 1473, 2026-11-05.
 
-- 📋 [ANTS-6417] **ci_report judges each run's time budget against the workflow file at that run's commit.**
+- ✅ [ANTS-6417] **ci_report judges each run's time budget against the workflow file at that run's commit.**
   For milnet01/OneUp it reported "appimage ran 360m13s against a 30m
   budget (1200%)" for run 37813657203 (v1.4.6, 2026-10-08, cancelled at
   GitHub's 6h default). timeout-minutes: 30 was added later (4b8c134,
@@ -80018,7 +80018,7 @@ in each bullet, not just the reporter's symptom.
   Kind: fix.
   Source: OneUp msg 1478, 2026-11-05.
 
-- 📋 [ANTS-6419] **ci_report's budget_trend names the step that slowed, the first commit after the jump, and the baseline runs.**
+- ✅ [ANTS-6419] **ci_report's budget_trend names the step that slowed, the first commit after the jump, and the baseline runs.**
   On milnet01/rolodex it reported a median rise 0m39s -> 0m52s (+32%)
   with step: null. The cause was the Test (pytest) step, 6s at b77c2ee
   -> 24s at 9fe4350 (Argon2id KDF landed).
@@ -80026,7 +80026,7 @@ in each bullet, not just the reporter's symptom.
   Kind: enhancement.
   Source: Rolodex via claude-config msg 1482, 2026-11-05.
 
-- 📋 [ANTS-6420] **ci_report's runner_latest checks runners named through a matrix.**
+- ✅ [ANTS-6420] **ci_report's runner_latest checks runners named through a matrix.**
   rolodex build.yml has `runs-on: ${{ matrix.os }}` with matrix.include
   ubuntu/windows/macos-latest; only literal runs-on lines were flagged.
   Resolve the expression against matrix values (include entries and
@@ -80035,13 +80035,24 @@ in each bullet, not just the reporter's symptom.
   Kind: fix.
   Source: Rolodex via claude-config msg 1482, 2026-11-05.
 
-- 📋 [ANTS-6421] **ci_report lists the workflow files it checked statically apart from the workflows that had runs.**
+- ✅ [ANTS-6421] **ci_report lists the workflow files it checked statically apart from the workflows that had runs.**
   On rolodex window.workflows was ["CI"], yet findings named "Build
   binaries", which had no runs. A separate list keeps "no runs" apart
   from "not looked at".
   **Layman:** The CI report makes clear which workflows it looked at, even ones that never ran.
   Kind: enhancement.
   Source: Rolodex via claude-config msg 1482, 2026-11-05.
+
+- 📋 [ANTS-6422] **Find why CI's 'Run perf tests (serial)' step turns red after green on main.**
+  ci_report (days 29, run 2026-11-05) said: job 'Build and test (Release)',
+  step 'Run perf tests (serial)', failed on a commit after passing on the
+  one before, 7 times across 165 commits on main. No commit both failed
+  and passed. Read the failing runs' logs (ci_report's runs[]) for which
+  perf test fails and by how much; a timing threshold on a shared runner
+  is the first suspect.
+  **Layman:** A speed test in CI keeps failing and passing on different commits; find out whether the test or the CI machine is to blame.
+  Kind: investigate.
+  Source: ci_report alternating finding on this repo, 2026-11-05.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 

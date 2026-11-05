@@ -26,9 +26,12 @@ struct Analysis {
     QJsonArray workflows;      // names seen in the window, sorted
     QList<qint64> logJobs;     // jobs whose log a finding reads, most useful first
     QJsonArray unread;         // [{file, job, field}]: a workflow or job no file matched
+    QJsonArray files;          // [{file, workflow}]: the workflow files the checks read
 };
 
+// `atCommit` holds the workflow files as each run's commit held them; a
+// run's budgets come from there, else from `workflows` (ANTS-6417).
 Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflows,
-                 const QDateTime &now, int days);
+                 const QDateTime &now, int days, const CiWorkflows::BySha &atCommit = {});
 
 }  // namespace CiReport

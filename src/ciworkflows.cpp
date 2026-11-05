@@ -2,15 +2,21 @@
 
 #include "ciworkflows.h"
 
+#include "gitwrap.h"    // readOnlyEnvironment
+#include "hostexec.h"   // git runs on the host inside a Flatpak
+
 #include <QDir>
 #include <QFile>
 #include <QJsonObject>
+#include <QProcess>
 #include <QRegularExpression>
+#include <QSet>
 #include <QVariant>
 #include <QVector>
 
 #include <algorithm>
 #include <climits>
+#include <utility>
 
 // A `|` or `>` scalar, kept apart from a plain one: a shell guard is read
 // from a single-line plain `run:` only (spec § 4.4).
@@ -334,6 +340,25 @@ double budgetOf(const QVariantMap &m, Result &out, const QString &file,
     return -1;
 }
 
+// The values `runs-on: ${{ matrix.<key> }}` takes: <key>'s axis list and each
+// `include` entry's <key>. A matrix held in an expression gives none.
+QStringList matrixValues(const QString &runsOn, const QVariant &strategy) {
+    static const QRegularExpression ref(QStringLiteral(R"(^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$)"));
+    const auto m = ref.match(runsOn.trimmed());
+    if (!m.hasMatch()) return {};
+    const QString key = m.captured(1);
+    const QVariantMap matrix = strategy.toMap().value(QStringLiteral("matrix")).toMap();
+    QStringList out;
+    auto add = [&](const QVariant &v) {
+        const QString t = text(v).trimmed();
+        if (!t.isEmpty() && !out.contains(t)) out.append(t);
+    };
+    for (const QVariant &v : matrix.value(key).toList()) add(v);
+    for (const QVariant &e : matrix.value(QStringLiteral("include")).toList())
+        if (e.toMap().contains(key)) add(e.toMap().value(key));
+    return out;
+}
+
 }  // namespace
 
 QString Step::displayName() const {
@@ -386,6 +411,7 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
         const QVariant runsOn = jm.value(QStringLiteral("runs-on"));
         j.runsOn = text(runsOn.typeId() == QMetaType::QVariantMap
                             ? runsOn.toMap().value(QStringLiteral("labels")) : runsOn);
+        j.matrixRunsOn = matrixValues(j.runsOn, jm.value(QStringLiteral("strategy")));
         j.budgetMin = budgetOf(jm, out, rel, j.id, QStringLiteral("timeout-minutes"));
         j.envKeys = keysOf(jm.value(QStringLiteral("env")));
         for (const QVariant &sv : jm.value(QStringLiteral("steps")).toList()) {
@@ -424,6 +450,51 @@ Result read(const QString &root) {
             continue;
         }
         parseInto(out, rel, QString::fromUtf8(file.readAll()));
+    }
+    return out;
+}
+
+BySha readAtCommits(const QString &root, const QStringList &shas) {
+    static const QRegularExpression hex(QStringLiteral("^[0-9a-f]{7,64}$"));
+    const QStringList names = files(root);
+    QList<std::pair<QString, QString>> asked;   // {sha, file} per request line, in order
+    QByteArray input;
+    QSet<QString> seen;
+    for (const QString &sha : shas) {
+        if (!hex.match(sha).hasMatch() || seen.contains(sha)) continue;
+        seen.insert(sha);
+        for (const QString &f : names) {
+            asked.append({sha, f});
+            // `./` resolves against the working directory, so a project
+            // below its clone's top reads its own .github.
+            input += (sha + QStringLiteral(":./.github/workflows/") + f + QLatin1Char('\n')).toUtf8();
+        }
+    }
+    BySha out;
+    if (asked.isEmpty()) return out;
+    QProcess p;
+    p.setWorkingDirectory(root);
+    p.setProcessEnvironment(GitWrap::readOnlyEnvironment());
+    HostExec::start(p, QStringLiteral("git"), {QStringLiteral("cat-file"), QStringLiteral("--batch")});
+    if (!p.waitForStarted(5000)) return out;
+    p.write(input);
+    p.closeWriteChannel();
+    if (!p.waitForFinished(20000)) { p.kill(); p.waitForFinished(500); return out; }
+    // Each answer is "<oid> <type> <size>\n<bytes>\n", or "<name> missing\n"
+    // (or "ambiguous") with no bytes.
+    const QByteArray reply = p.readAllStandardOutput();
+    qsizetype at = 0;
+    for (const auto &[sha, file] : asked) {
+        const qsizetype nl = reply.indexOf('\n', at);
+        if (nl < 0) break;
+        const QList<QByteArray> head = reply.mid(at, nl - at).split(' ');
+        at = nl + 1;
+        if (head.size() != 3) continue;
+        const qsizetype size = head[2].toLongLong();
+        if (head[1] == "blob")
+            parseInto(out[sha], QStringLiteral(".github/workflows/") + file,
+                      QString::fromUtf8(reply.mid(at, size)));
+        at += size + 1;
     }
     return out;
 }

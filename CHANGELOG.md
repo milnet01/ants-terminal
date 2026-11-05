@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **ci_report reports `alternating`: a job that turns red after passing on the commit before, three times or more on one branch (ANTS-6415).**
+
+- **ci_report's `budget_trend` names the step that slowed most, the run where the rise starts (`rise_from`), and the runs it compared against (`baseline_runs`) (ANTS-6419).**
+
+- **ci_report's `window.files` lists every workflow file it checked, including ones with no runs (ANTS-6421).**
+
 - **ci_report names the retried attempt a finding came from** (ANTS-6414)
   When the slow or failed job was an earlier try of a re-run, the finding
   lists it under `earlier_attempts`, so you know to open that attempt.
@@ -73,6 +79,8 @@ for security-relevant changes.
 - **workspace_search runs a regex with look-around or a backreference through ripgrep's PCRE2 engine** (ANTS-6207)
 
 ### Changed
+
+- **ci_report leaves runs of GitHub-managed workflows with no file, such as Dependabot, out of `unread` (ANTS-6416).**
 
 - **ci_report asks GitHub for up to four runs' jobs at once** (ANTS-6409)
   Reading a month of CI runs takes about a quarter of the time it did.
@@ -215,6 +223,10 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **ci_report judges each run against the time budgets its own commit's workflow file held, read from the local clone (ANTS-6417).**
+
+- **ci_report's `runner_latest` also checks runners named through a build matrix (ANTS-6420).**
 
 - **ci_report times a job by its steps** (ANTS-6413)
   A job now ends when its last step ends. GitHub's own finish time, which

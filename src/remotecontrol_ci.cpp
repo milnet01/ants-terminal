@@ -217,10 +217,23 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
     opts.days = days;
     opts.workflow = workflow;
     opts.now = now;
+    // Each run's budgets come from its own commit's workflow files, read
+    // once from the local clone (ANTS-6417).
+    CiWorkflows::BySha atCommit;
+    bool readCommits = false;
+    auto commitsOf = [&](const QJsonObject &h) -> const CiWorkflows::BySha & {
+        if (readCommits) return atCommit;
+        readCommits = true;
+        QStringList shas;
+        for (const QJsonValue &v : h.value(QStringLiteral("runs")).toArray())
+            shas.append(v.toObject().value(QStringLiteral("headSha")).toString());
+        atCommit = CiWorkflows::readAtCommits(root, shas);
+        return atCommit;
+    };
     // The analysis runs twice on purpose: once on the history before logs, to
     // pick the logs its findings read, and once on the whole history.
     const CiHistory::Result fetched = CiHistory::fetch(root, opts, [&](const QJsonObject &h) {
-        return CiReport::analyse(h, wf, now, days).logJobs;
+        return CiReport::analyse(h, wf, now, days, commitsOf(h)).logJobs;
     });
     if (fetched.refusal == QLatin1String("runner_missing"))
         return refuse("runner_missing", QStringLiteral("gh did not start; install the GitHub CLI"));
@@ -229,7 +242,8 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
                       QStringLiteral("gh could not reach GitHub; see stderr_tail (gh auth status)"),
                       {{QStringLiteral("stderr_tail"), fetched.stderrTail}});
 
-    const CiReport::Analysis a = CiReport::analyse(fetched.history, wf, now, days);
+    const CiReport::Analysis a =
+        CiReport::analyse(fetched.history, wf, now, days, commitsOf(fetched.history));
     QJsonArray unread = wf.unread;
     for (const QJsonValue &v : a.unread) unread.append(v);
     QJsonObject reply{
@@ -239,7 +253,8 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
         {QStringLiteral("generated_at"), now.toString(Qt::ISODate)},
         {QStringLiteral("window"), QJsonObject{{QStringLiteral("days"), days},
                                                {QStringLiteral("runs"), a.runs},
-                                               {QStringLiteral("workflows"), a.workflows}}},
+                                               {QStringLiteral("workflows"), a.workflows},
+                                               {QStringLiteral("files"), a.files}}},
         {QStringLiteral("truncated"), !fetched.truncatedReason.isEmpty()},
         {QStringLiteral("truncated_reason"), CiWorkflows::orNull(fetched.truncatedReason)},
         {QStringLiteral("findings"), a.findings},
