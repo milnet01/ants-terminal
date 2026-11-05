@@ -79731,7 +79731,7 @@ in each bullet, not just the reporter's symptom.
   Kind: feature.
   Source: user-request-2026-11-05.
 
-- 📋 [ANTS-6402] **Fix ci_report's cold-review findings: flaky pairs a job with its own later pass, matrix names match one job, remotes only, paginated jobs.**
+- ✅ [ANTS-6402] **Fix ci_report's cold-review findings: flaky pairs a job with its own later pass, matrix names match one job, remotes only, paginated jobs.**
   Findings from claude-d5's cold review, verified against the code:
   1. flaky treats any later green run of the workflow as the job passing;
      a PR run failing ASan then a push run skipping it reads as a flake.
@@ -79754,6 +79754,9 @@ in each bullet, not just the reporter's symptom.
       unspecified; unread puts a workflow name in `file`.
   Checked, no change: 11 (a needs: job's created_at is set when its
   prerequisites finish; cli/cli run 40384165451).
+  Shipped 2026-11-05 in 85c4e720: findings 1-10, 12 and 13 fixed, each
+  with an Ants6402 test seen red first; 11 checked against cli/cli run
+  40384165451 and left as is. Spec ANTS-6399 amended to match.
   **Layman:** Makes ci_report stop calling real failures flaky and stop misreading a few workflow shapes.
   Kind: review-fix.
   Source: code-review-2026-11-05 (claude-d5, cold read of 8b1cb9c4).
