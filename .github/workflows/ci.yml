@@ -195,6 +195,7 @@ jobs:
         # -j4 (2026-11-05): one test per vCPU here, and the user's cap on the
         # workstation, where the push gate replays this step. Measured on the
         # workstation: 203 s at -j2, 92-97 s at -j4, three -j4 runs all green.
+        # On GitHub: 187 s at -j2, 115-118 s at -j4 (2026-11-05).
         run: timeout 8m ctest -j4 --output-on-failure --timeout 300 -LE perf
 
       # ANTS-5375 — the pre-push hook sets ANTS_PUSH_GATE=1: a wall-clock
@@ -278,7 +279,7 @@ jobs:
     # locally when build-asan/ is warm (tools/ci_workflow.py runs it there).
     if: github.event_name != 'push'
     # ANTS-4533 — this cap is a BACKSTOP, not the gate. It must stay above
-    # the sum of the per-step `timeout` guards below (34m + 30m), because a
+    # the sum of the per-step `timeout` guards below (34m + 38m), because a
     # job killed by timeout-minutes concludes `cancelled` rather than
     # `failure`: the run does not read as red and nothing notifies. That is
     # how this job went 36-of-40 cancelled over two days unnoticed. The step
@@ -425,15 +426,16 @@ jobs:
         #
         # ANTS-5680 — re-measured 2026-10-13 over the nightlies: passing runs
         # took 889s to 1222s, and the 10-12 and 10-13 runs were killed at
-        # exactly 22m with every finished test passing. 30m is ~1.4x the
+        # exactly 22m with every finished test passing. 30m was ~1.4x the
         # slowest passing run.
         #
-        # -j4 (2026-11-05): the nightlies of 11-01 to 11-04 took 1166 s to
-        # 1585 s at -j2, up to 88% of this budget. Run 41285524795's tests sum
-        # to 3149 s, so -j2 was already a clean 2x: the cost is ~6000 sanitized
-        # process launches, not one slow test. -j4 restores the headroom
-        # without widening the budget.
-        run: timeout 30m ctest -j4 --output-on-failure --timeout 300 -LE perf
+        # ANTS-6398 — the nightlies of 11-01 to 11-04 took 1166 s to 1585 s
+        # at -j2, up to 88% of the 30m budget. -j4 did NOT shorten it here:
+        # 1288 s at -j2 against 1237 s at -j4 on 2026-11-05 (runs 41990732360,
+        # 41993542921), likely because the 4 vCPUs are 2 cores. -j4 stays for
+        # the push gate, which replays this step: 532 s on the workstation.
+        # 38m is ~1.4x the slowest passing run, as ANTS-5680 sized it.
+        run: timeout 38m ctest -j4 --output-on-failure --timeout 300 -LE perf
 
       - name: Smoke-test binary init paths
         working-directory: build-asan
