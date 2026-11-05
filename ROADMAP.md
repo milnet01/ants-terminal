@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6399 -->
+<!-- ants-roadmap-id-high-water: ANTS=6400 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -81105,6 +81105,20 @@ whole files.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol, indiereviewengine.
+
+- 📋 [ANTS-6400] **A `cppcheck-suppress` or `nosemgrep` comment at the END of a code line hides a finding on the next line.**
+  Follow-up to ANTS-6382, from a cold review of 7fa261b7 + 5dd4fedc.
+  AuditDialog::inlineSuppressed step 3 reads line N-1 through
+  commentBody(), which falls back to a trailing comment on a code line.
+  So `foo(); // nosemgrep` hides line N's finding, and the bare form
+  matches commentSuppresses for ANY check. Both tools apply a trailing
+  marker to its own line only. Fix: for these two tokens, accept line N-1
+  only when it is comment-only. Low notes (not bugs): suppressed findings
+  are uncapped per check; per-check corroborated count and checkHasNew
+  include suppressed findings.
+  **Layman:** A "silence this warning" note written after code on one line also silences warnings on the line below it.
+  Kind: review-fix.
+  Source: review-localwebservermanager-2026-11-05.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-18 triage
 
