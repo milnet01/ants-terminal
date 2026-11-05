@@ -509,3 +509,24 @@ TEST(changelog_log_add_batch, Ants5673FixEntryDropsTheDefectLayman) {
     EXPECT_EQ(a.value(QStringLiteral("layman_body_omitted")).toString(),
               QStringLiteral("The picker quietly ignores the choice; it should say so."));
 }
+
+// ANTS-6393 — a YAML changelog above the caller, inside the repo, is found
+// the way a Markdown one is (findChangelogUnder walks the same ancestors).
+TEST(changelog_log_add_batch, Ants6393YamlChangelogInAnAncestorIsFound) {
+    RemoteControl rc(nullptr);
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral(".git")));
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("sub")));
+    ASSERT_TRUE(writeFile(QDir(tmp.path()).filePath(QStringLiteral("CHANGELOG.yaml")),
+                          QByteArray("- version: 1.0.0\n")));
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = QDir(tmp.path()).filePath(QStringLiteral("sub"));
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    req[QStringLiteral("entries")]    = QJsonArray{addEntry(
+        QStringLiteral("x."), QStringLiteral("fix"))};
+    const auto resp = rc.cmdChangelogLog(req).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+              QStringLiteral("format_mismatch"))
+        << QJsonDocument(resp).toJson().toStdString();
+}

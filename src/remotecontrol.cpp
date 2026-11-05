@@ -306,9 +306,13 @@ QString findYamlChangelogUnder(const QString &canonicalRoot) {
         QStringLiteral("data/CHANGELOG.yaml"),
         QStringLiteral("data/CHANGELOG.yml"),
     };
-    for (const QString &n : kYamlCandidates) {
-        const QString c = canonicalRoot + QLatin1Char('/') + n;
-        if (QFileInfo::exists(c)) return c;
+    // ANTS-6393 — the same repo-bounded walk findChangelogUnder takes, so a
+    // YAML changelog above the caller reads as format_mismatch, not as none.
+    for (const QString &dir : repoBoundedAncestors(canonicalRoot)) {
+        for (const QString &n : kYamlCandidates) {
+            const QString c = dir + QLatin1Char('/') + n;
+            if (QFileInfo::exists(c)) return c;
+        }
     }
     return {};
 }
