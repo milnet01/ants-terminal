@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6397 -->
+<!-- ants-roadmap-id-high-water: ANTS=6399 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79646,6 +79646,52 @@ in each bullet, not just the reporter's symptom.
   **Layman:** After a Qt update the build can break, or silently mix old and new Qt, until the cached header files are deleted by hand.
   Kind: fix.
   Source: push gate failure 2026-10-23.
+
+- 🚧 [ANTS-6398] **CI's two test steps run four tests at a time, so the nightly sanitizer run keeps its headroom.**
+  Measured 2026-11-05. Nightly ASan test step: 1166 s to 1585 s at -j2
+  against a 30 m budget (up to 88%). Run 41285524795's tests sum to
+  3149 s, so -j2 was already a clean 2x. Workstation Release suite: 203 s
+  at -j2, 92-97 s at -j4, three -j4 runs green. -j4 is one test per vCPU
+  on GitHub's runner and the user's ctest cap on the workstation.
+  Verify: two local sanitized -j4 runs green, then workflow_dispatch runs.
+  **Layman:** Tests in CI and in the local push check run four at a time instead of two, roughly halving their wait.
+  Kind: perf.
+  Source: user-request-2026-11-05.
+
+- 📋 [ANTS-6399] **Add `ci_report`, an Ants MCP verb that warns any project about flaky tests, CI steps near their time budget, and changes that would speed its CI up.**
+  User decisions 2026-11-05: an Ants MCP verb shipped with Ants Terminal
+  (served by ants-mcpd); on demand, plus one session_orient line when a
+  project's CI shows a real problem. Co-designed with claude-config.
+  Checks: flakiness (fail-then-pass on one SHA, re-runs, intermittent
+  tests), timing (step time vs its timeout budget and its trend, jobs
+  with no budget, queue wait), speed (missing caches, test parallelism
+  below runner vCPUs, needless needs: chains, docs paths-ignore,
+  cancel-in-progress, fetch-depth), hygiene (tag-pinned actions, retiring
+  runner images, deprecation annotations, unwatched scheduled runs,
+  permissions). Needs a spec (write-spec) before building.
+  Scope agreed with claude-config 2026-11-05. §1: spec needed (contract
+  trigger: claude-config routing and session_orient bind to it; design
+  choices), so rule 14's review-contract gate applies.
+  - Verb owns RUN-HISTORY findings only: flakiness, time vs budget and
+    trend, queue wait, red scheduled runs (how long red), deprecation
+    annotations, retiring runner images, cache size vs the 10 GB limit.
+    Also: cache hit/miss beside every timing finding; `*-latest` runners;
+    a cache key two jobs share; cache save without `if: always()`; a test
+    step with wall time far above CPU time.
+  - Defers to ci-gate (no timeout-minutes, no concurrency, no cache),
+    zizmor/check-code (unpinned-uses, permissions), check-dependencies
+    (behind/deprecated actions and images). One owner per check.
+  - Every finding names its run ids and SHAs. Speed findings cite
+    local-gate.md § 9 rows. Flake findings cite testing.md § 7 and § 9
+    rule 3; the fix is in the test, never a retry. Never suggest a push or
+    re-run (commits.md § 4.1). Budgets are sized for a COLD build.
+  - Parallelism advice for tests only, and only where tests are isolated
+    and each has a timeout; build -j is sized from memory, not vCPUs.
+  - Once shipped, claude-config adds routing in check-code and
+    local-gate.md § 9; send it the verb name and refusal shapes.
+  **Layman:** A tool every Claude session can ask: is this project's CI flaky, close to timing out, or slower than it needs to be?
+  Kind: feature.
+  Source: user-request-2026-11-05.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
