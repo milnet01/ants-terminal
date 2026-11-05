@@ -986,3 +986,45 @@ TEST(RoadmapPassStoreWrite, Ants6387OversizeNoteIsRefusedBeforeTheScrub) {
     EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
               QStringLiteral("too_large"));
 }
+
+// ANTS-6391 — pass-headings writes say what the leaked-tool-XML scrub removed,
+// as the GFM path does (note_scrubbed_params / body_scrubbed_params).
+TEST(RoadmapPassStoreWrite, Ants6391ScrubReportIsReturned) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, false);
+    ASSERT_FALSE(root.isEmpty());
+    const QString leaky = QStringLiteral("Landed.<parameter name=\"lanes\">a</parameter>");
+    const auto hasLanes = [](const QJsonObject &o, const char *key) {
+        return o.value(QString::fromLatin1(key)).toArray()
+                .contains(QJsonValue(QStringLiteral("lanes")));
+    };
+
+    QJsonObject one = req(root, QStringLiteral("annotate"));
+    one[QStringLiteral("id")]   = QStringLiteral("PASS-44-1");
+    one[QStringLiteral("note")] = leaky;
+    QJsonObject batch = req(root, QStringLiteral("annotate_batch"));
+    batch[QStringLiteral("locators")] = QJsonArray{
+        QJsonObject{{QStringLiteral("id"), QStringLiteral("PASS-43-5")},
+                    {QStringLiteral("note"), leaky}}};
+    QJsonObject add = req(root, QStringLiteral("append"));
+    add[QStringLiteral("section")]  = QStringLiteral("phase-5");
+    add[QStringLiteral("pass")]     = QStringLiteral("44.2");
+    add[QStringLiteral("status")]   = QStringLiteral("planned");
+    add[QStringLiteral("headline")] = QStringLiteral("Drop the shim.");
+    add[QStringLiteral("body")]     = leaky;
+    QJsonObject r1, r2, r3;
+    {
+        RemoteControl rc(nullptr);
+        r1 = rc.cmdRoadmapLogFlipForTest(one).object();
+        r2 = rc.cmdRoadmapLogFlipBatchForTest(batch).object();
+        r3 = rc.cmdRoadmapLogAppendForTest(add).object();
+    }
+    EXPECT_TRUE(hasLanes(r1, "note_scrubbed_params")) << QJsonDocument(r1).toJson().toStdString();
+    const QJsonArray rows = r2.value(QStringLiteral("flipped")).toArray();
+    ASSERT_EQ(rows.size(), 1) << QJsonDocument(r2).toJson().toStdString();
+    EXPECT_TRUE(hasLanes(rows.at(0).toObject(), "note_scrubbed_params"))
+        << QJsonDocument(r2).toJson().toStdString();
+    EXPECT_TRUE(hasLanes(r3, "body_scrubbed_params")) << QJsonDocument(r3).toJson().toStdString();
+}

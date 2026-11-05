@@ -76,7 +76,18 @@ struct PassAppendItem {
     QString error;    // message iff !ok
     QString block;    // rendered `#### Pass …` block iff ok
     QString synthId;  // reader-synthesised id iff ok
+    QStringList bodyScrubbed;   // ANTS-6391 — what the body scrub removed
 };
+
+// ANTS-6391 — name what the leaked-tool-XML scrub removed, in the GFM path's
+// key and shape (note_scrubbed_params / body_scrubbed_params).
+static void rcPutScrubbed(QJsonObject &o, const QString &key,
+                          const QStringList &names) {
+    if (names.isEmpty()) return;
+    QJsonArray dropped;
+    for (const QString &n : names) dropped.append(n);
+    o[key] = dropped;
+}
 // ANTS-4354 — `fallbackPass` is the CALL-level `pass`, used when a bullet
 // carries none. On the single-append path the bullet object IS the request,
 // so nothing changed there. On `append_batch` the bullet is one `bullets[]`
@@ -134,8 +145,7 @@ static PassAppendItem rcRenderPassBullet(const QJsonObject &b,
         it.code = QStringLiteral("bad_args");
         it.error = QStringLiteral("headline is required"); return it;
     }
-    QStringList scrubbed;
-    rcScrubLeakedToolXml(body, scrubbed);
+    rcScrubLeakedToolXml(body, it.bodyScrubbed);
     it.block   = PassHeadingWrite::formatPassBlock(pass, headline, keyword, body);
     it.synthId = PassHeadingWrite::passIdFromDesignator(pass);
     it.ok = true;
@@ -301,6 +311,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         out["format"]  = QStringLiteral("pass-headings");
         const QJsonArray ignored = rcPassIgnoredFields(req);
         if (!ignored.isEmpty()) out["ignored_fields"] = ignored;  // ANTS-4357
+        rcPutScrubbed(out, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
         return QJsonDocument(out);
     }
     if (!rcAtomicWriteRoadmap(roadmapPath, updated))
@@ -309,6 +320,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
 
     QJsonObject out;
     out["ok"]            = true;
+    rcPutScrubbed(out, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
     out["id"]            = it.synthId;
     out["file"]          = QFileInfo(roadmapPath).fileName();   // ANTS-4116
     out["line"]          = headingIdx0 + 1;
@@ -359,6 +371,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
         a["bullet_index"] = i;
         a["id"]           = it.synthId;
         a["bullet"]       = block;   // ANTS-4117
+        rcPutScrubbed(a, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
         applied.append(a);
     }
 
@@ -652,6 +665,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
 
     PassHeadingWrite::WriteResult r;
     QString toKeyword;
+    QStringList scrubbed;   // ANTS-6391 — reported in the reply below
     if (annotateMode) {
         QString note = req.value(QStringLiteral("note")).toString();
         // ANTS-6387 — the GFM path's ANTS-1995 cap, before the backtracking scrub.
@@ -659,7 +673,6 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
             return err(QStringLiteral("too_large"),
                 QStringLiteral("note exceeds %1-char cap (got %2)")
                     .arg(kRcMaxNoteChars).arg(note.size()));
-        QStringList scrubbed;
         rcScrubLeakedToolXml(note, scrubbed);
         // INV-8 — empty note → bad_args (deliberately the documented code,
         // diverging from the GFM annotate guard's missing_field; ANTS-2128).
@@ -704,6 +717,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
             out["note_appended"] = true;
             out["note_line"]     = r.changedLine + 1;
         }
+        rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), scrubbed);
         return QJsonDocument(out);
     }
 
@@ -728,6 +742,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
     } else {
         out["to_status"] = toKeyword;
     }
+    rcPutScrubbed(out, QStringLiteral("note_scrubbed_params"), scrubbed);
     return QJsonDocument(out);
 }
 
@@ -802,8 +817,10 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
             md = r.markdown;
             matchedId = r.matchedId;
         }
+        QStringList sc;   // ANTS-6391 — reported on this locator's row
+        bool noteFailed = false;
+        QString noteCode;
         if (!note.isEmpty()) {
-            QStringList sc;
             rcScrubLeakedToolXml(note, sc);
             PassHeadingWrite::WriteResult an =
                 PassHeadingWrite::annotatePass(md, locId, locHeadline, note);
@@ -818,11 +835,20 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
             if (an.ok) {
                 md = an.markdown;
                 if (matchedId.isEmpty()) matchedId = an.matchedId;
+            } else {
+                // ANTS-6392 — the flip landed but its note did not; say so.
+                noteFailed = true;
+                noteCode   = an.code;
             }
         }
         QJsonObject f;
         f["locator_index"] = i;
         f["id"]            = matchedId;
+        rcPutScrubbed(f, QStringLiteral("note_scrubbed_params"), sc);
+        if (noteFailed) {
+            f["note_failed"] = true;
+            f["note_code"]   = noteCode;
+        }
         flipped.append(f);
     }
 
