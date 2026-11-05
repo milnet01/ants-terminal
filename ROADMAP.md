@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6416 -->
+<!-- ants-roadmap-id-high-water: ANTS=6418 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70522,10 +70522,25 @@ minor tag (next: pre-0.8.0).
   through claudeEnv), so src/claudeintegration.cpp ends under 4000
   lines. Re-take the INV-6 baseline first: 41debc3f changed the
   ci_report descriptor text.
+  2026-11-05 (session 224): promotion commit adea147d landed. 12 helpers
+  (not 13) in claudeintegrationdetail; INV-6 cmp identical. INV-10 flags
+  three tools/list..tools/call windows (mcp_selection_hint x2,
+  mcp_tools_list_schema) whose subject did not move; re-point them in
+  the carve commit. Next: the kind B carve into appendToolSchemas*
+  pieces.
   **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
   Kind: refactor.
   Source: adr-0005-gate-loop-3-2026-09-07.
   Lanes: claude, structural.
+
+- 📋 [ANTS-6418] **GCC's -Wnull-dereference fires ten times in claudeintegration.cpp, inlined from McpReplyChannel::isOpen().**
+  Inlined through sendMcpResponse and the tools/call reply lambda in
+  handleMcpRequest (claudeintegration.h, McpReplyChannel::isOpen).
+  Pre-existing: HEAD 25730e97's copy gives the same ten. Same class as
+  ANTS-1554/3358/3505/4544: decide guard or silence.
+  **Layman:** Clear a compiler warning that shows up in every build of the MCP server code.
+  Kind: fix.
+  Source: build warning seen in ANTS-4919, session 224, 2026-11-05.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
@@ -79991,6 +80006,17 @@ in each bullet, not just the reporter's symptom.
   **Layman:** The CI report stops listing GitHub's built-in Dependabot workflow as something it failed to read.
   Kind: enhancement.
   Source: LocalWebServerManager feedback, msg 1473, 2026-11-05.
+
+- 📋 [ANTS-6417] **ci_report judges each run's time budget against the workflow file at that run's commit.**
+  For milnet01/OneUp it reported "appimage ran 360m13s against a 30m
+  budget (1200%)" for run 37813657203 (v1.4.6, 2026-10-08, cancelled at
+  GitHub's 6h default). timeout-minutes: 30 was added later (4b8c134,
+  ONEUP-0116), so a fixed problem reads as live. Read timeout-minutes
+  from the workflow at the run's head SHA, or mark runs older than the
+  budget's commit.
+  **Layman:** The CI report stops blaming an old run for breaking a time limit that was only added after it ran.
+  Kind: fix.
+  Source: OneUp msg 1478, 2026-11-05.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
