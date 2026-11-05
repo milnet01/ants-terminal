@@ -70503,6 +70503,25 @@ minor tag (next: pre-0.8.0).
   docs/specs/ANTS-1677-large-file-decomposition.md (accepted). Last in
   order; tools/list keeps today's order, so its pieces are consecutive
   runs of the existing descriptors.
+  Progress 2026-11-05 (session 222): row 1 (5bf7b3de,
+  tests/features/mcp_tools_list_live) and row 2 groundwork (b59f86bc)
+  landed. Spec drift found: the class is in ants_mcpcore_lib, not
+  ants_claude_lib; a second macro, SRC_CLAUDEINTEGRATION_CPP_PATH,
+  existed (both deleted). Next: (1) a promotion commit moving the 13
+  non-capturing helper lambdas at the top of the tools/list branch
+  (makeCallerCwdReadProp through makeEncodingProp, callerCwdSuffix) into
+  claudeintegrationdetail functions in a new
+  src/claudeintegration_internal.h; (2) the kind B carve of the
+  descriptor run into six appendToolSchemas<Part>(QJsonArray&) pieces:
+  terminal+roadmap, code navigation (from find_sources), docs+project
+  (codebase_index), orientation/specs/build/review (session_orient),
+  roadmap store+session (roadmap_log, up to trace), reports+changelog
+  (dependency_inventory). The trace descriptor reads m_toolProviders, so
+  it stays inline between two carved calls. (3) the kind A cut into
+  files, plus a transcript/process piece and a tail piece (wrapMcpData
+  through claudeEnv), so src/claudeintegration.cpp ends under 4000
+  lines. Re-take the INV-6 baseline first: 41debc3f changed the
+  ci_report descriptor text.
   **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
   Kind: refactor.
   Source: adr-0005-gate-loop-3-2026-09-07.
