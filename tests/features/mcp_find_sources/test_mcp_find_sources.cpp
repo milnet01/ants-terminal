@@ -171,6 +171,23 @@ TEST(McpFindSources, FindSourcesGoldenPath) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-4120 — the generated-file skip is CodeWalk::isGeneratedSource, so a
+// shader byte-array header (the ANTS-4096 omission) is skipped like moc_.
+TEST(McpFindSources, Ants4120SkipsEveryGeneratedSourceShape) {
+    Sandbox s;
+    s.build();
+    ASSERT_TRUE(s.ok);
+    s.write("src/frag.spv.h", "// audit_run pretend match (skip me)\n");
+    s.write("src/font.ttf.h", "// audit_run pretend match (skip me)\n");
+    const auto r = FindSources::findSources(QStringLiteral("audit run"), s.root);
+    ASSERT_FALSE(r.files.isEmpty());
+    for (const auto &h : r.files) {
+        EXPECT_FALSE(h.path.endsWith(QLatin1String(".spv.h")) ||
+                     h.path.endsWith(QLatin1String(".ttf.h")))
+            << "generated file returned: " << h.path.toStdString();
+    }
+}
+
 TEST(McpFindSources, FindSourcesBadRoot) {
     expect_reset();
     auto r = FindSources::findSources(

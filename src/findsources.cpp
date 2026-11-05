@@ -1,6 +1,7 @@
 // ANTS-1636 — find_sources implementation. See header for contract.
 
 #include "findsources.h"
+#include "codewalk.h"           // ANTS-4120 — the generated-file predicate
 #include "projectsettings.h"   // ANTS-3489 — source_roots / test_roots override
 
 #include <QDir>
@@ -115,21 +116,12 @@ void maybeAddSource(QVector<QString> *out, const QString &relPath) {
         if (relPath.endsWith(ext)) { ok = true; break; }
     }
     if (!ok) return;
-    // INV-6 — skip generated files (moc/ui/qrc/protobuf/anything
-    // under a /generated/ path). Mirrors the audit-engine skip list.
-    // The moc_/ui_/qrc_ markers are basename prefixes: matched anywhere in
-    // the path they dropped hand-written files such as src/gui_main.cpp.
+    // INV-6 — skip generated files: anything under a /generated/ path, and
+    // every file name CodeWalk::isGeneratedSource calls generated (ANTS-4120).
     const QString base = relPath.mid(relPath.lastIndexOf(QLatin1Char('/')) + 1);
-    if (relPath.contains(QLatin1String("/generated/"))
-        || base.startsWith(QLatin1String("moc_"))
-        || base.startsWith(QLatin1String("ui_"))
-        || base.startsWith(QLatin1String("qrc_"))
-        || relPath.endsWith(QLatin1String(".pb.cc"))
-        || relPath.endsWith(QLatin1String(".pb.h"))
-        || relPath.endsWith(QLatin1String("_generated.cpp"))
-        || relPath.endsWith(QLatin1String("_generated.h"))) {
+    if (relPath.contains(QLatin1String("/generated/")) ||
+        CodeWalk::isGeneratedSource(base))
         return;
-    }
     out->append(relPath);
 }
 

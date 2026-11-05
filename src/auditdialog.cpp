@@ -3,6 +3,7 @@
 #include "auditdialog_internal.h"
 #include "auditautofix.h"
 #include "auditcache.h"
+#include "codewalk.h"        // ANTS-4120 — the generated-file predicate
 #include "auditfpledger.h"
 #include "audithygiene.h"
 #include "roadmapfoldin.h"
@@ -662,23 +663,9 @@ bool AuditDialog::isGeneratedFile(const QString &path) {
     if (path.isEmpty()) return false;
     const QString base = QFileInfo(path).fileName();
 
-    // Qt MOC / UIC / RCC outputs
-    if (base.startsWith("moc_"))         return true;
-    if (base.startsWith("qrc_"))         return true;
-    if (base.startsWith("ui_"))          return true;
-    if (base.endsWith(".moc"))           return true;
-
-    // Protobuf / gRPC
-    if (base.endsWith(".pb.cc") || base.endsWith(".pb.h"))   return true;
-    if (base.endsWith(".grpc.pb.cc") || base.endsWith(".grpc.pb.h")) return true;
-
-    // Flex/Bison/ANTLR
-    if (base.endsWith(".yy.cc") || base.endsWith(".tab.cc")) return true;
-
-    // `*_generated.*` — gRPC-lite, flatbuffers, etc.
-    static const QRegularExpression reGenerated(
-        R"(_generated\.[a-z0-9]+$)", QRegularExpression::CaseInsensitiveOption);
-    if (reGenerated.match(base).hasMatch()) return true;
+    // Generated source by file name — moc/uic/rcc, protobuf, flex/bison,
+    // shader byte arrays, `*_generated.*` (ANTS-4120: the one shared list).
+    if (CodeWalk::isGeneratedSource(base)) return true;
 
     // /generated/ directory anywhere in the path
     if (path.contains("/generated/", Qt::CaseInsensitive)) return true;
