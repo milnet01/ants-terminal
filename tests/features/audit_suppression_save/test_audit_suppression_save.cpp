@@ -69,13 +69,34 @@ TEST(AuditSuppressionSave, LineAboveMarkersReachTheMatcher) {
     const QString body = functionBody(auditSource(),
         QStringLiteral("bool AuditDialog::inlineSuppressed(const Finding &f) const"));
     ASSERT_FALSE(body.isEmpty()) << "inlineSuppressed not found";
-    const int step3 = body.indexOf(QStringLiteral("const int prevIdx"));
-    ASSERT_GE(step3, 0);
-    const QString prev = body.mid(step3);
-    EXPECT_TRUE(prev.contains(QStringLiteral("\"cppcheck-suppress\"")))
-        << "a line-above cppcheck-suppress never reaches commentSuppresses";
-    EXPECT_TRUE(prev.contains(QStringLiteral("\"nosemgrep\"")))
-        << "a line-above nosemgrep never reaches commentSuppresses";
+    EXPECT_TRUE(body.contains(QStringLiteral("AuditEngine::lineAboveSuppresses(")))
+        << "inlineSuppressed no longer asks lineAboveSuppresses about line N-1";
+
+    using AuditEngine::lineAboveSuppresses;
+    EXPECT_TRUE(lineAboveSuppresses(QStringLiteral("// cppcheck-suppress nullPointer"),
+                                    QStringLiteral("cppcheck-suppress nullPointer"),
+                                    QStringLiteral("nullpointer")));
+    EXPECT_TRUE(lineAboveSuppresses(QStringLiteral("    # nosemgrep"),
+                                    QStringLiteral("nosemgrep"),
+                                    QStringLiteral("any-rule")));
+    EXPECT_TRUE(lineAboveSuppresses(QStringLiteral("x(); // NOLINTNEXTLINE"),
+                                    QStringLiteral("NOLINTNEXTLINE"),
+                                    QStringLiteral("any-rule")))
+        << "a next-line marker counts wherever its comment sits";
+}
+
+// INV-8 — ANTS-6400: a trailing cppcheck-suppress or nosemgrep covers its
+// own line only, so it says nothing about the line below.
+TEST(AuditSuppressionSave, TrailingLineAboveMarkerDoesNotReachTheNextLine) {
+    using AuditEngine::lineAboveSuppresses;
+    EXPECT_FALSE(lineAboveSuppresses(QStringLiteral("foo(); // nosemgrep"),
+                                     QStringLiteral("nosemgrep"),
+                                     QStringLiteral("any-rule")))
+        << "a trailing nosemgrep hid the next line's finding";
+    EXPECT_FALSE(lineAboveSuppresses(QStringLiteral("int *p = q; // cppcheck-suppress nullPointer"),
+                                     QStringLiteral("cppcheck-suppress nullPointer"),
+                                     QStringLiteral("nullpointer")))
+        << "a trailing cppcheck-suppress hid the next line's finding";
 }
 
 // INV-5 — ANTS-6383: suppressed findings take no slot under the cap.

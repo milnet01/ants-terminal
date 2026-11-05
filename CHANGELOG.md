@@ -193,6 +193,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Project Audit honours a `cppcheck-suppress` or `nosemgrep` marker on the line above only when that line is a comment; a marker at the end of a code line covers that line alone** (ANTS-6400)
+
 - **The coverage check no longer counts a file name such as `config.json` as present just because its ending appears in the code** (ANTS-6389)
 
 - **`roadmap_log` on pass-headings roadmaps says when it cleaned stray tool markup out of a note or body, as it does elsewhere** (ANTS-6391)

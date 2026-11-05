@@ -663,6 +663,28 @@ int applyLearnedFpSuppressions(QList<Finding> &findings,
     return marked;
 }
 
+bool lineAboveSuppresses(const QString &rawLine, const QString &commentText,
+                         const QString &ruleId) {
+    if (commentText.isEmpty()) return false;
+    const bool nextLineMarker =
+        commentText.contains("next-line", Qt::CaseInsensitive) ||
+        commentText.contains("NOLINTNEXTLINE") ||
+        commentText.contains("disable-next");
+    const bool lineAboveMarker =
+        commentText.contains("cppcheck-suppress") ||
+        commentText.contains("nosemgrep");
+    if (!nextLineMarker && !lineAboveMarker) return false;
+    if (!nextLineMarker) {
+        // The comment openers AuditDialog's commentBody strips.
+        static const char *const kOpeners[] = {"<!--", "/*", "//", "--", "#", ";"};
+        const QString trimmed = rawLine.trimmed();
+        const bool commentOnly = std::any_of(std::begin(kOpeners), std::end(kOpeners),
+            [&](const char *op) { return trimmed.startsWith(QLatin1String(op)); });
+        if (!commentOnly) return false;
+    }
+    return commentSuppresses(commentText, ruleId);
+}
+
 // ANTS-3506 — moved verbatim from AuditDialog::commentSuppresses (the
 // pure predicate was trapped in the GUI TU). Body unchanged.
 bool commentSuppresses(const QString &commentText, const QString &ruleId) {

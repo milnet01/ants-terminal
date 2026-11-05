@@ -652,19 +652,11 @@ bool AuditDialog::inlineSuppressed(const Finding &f) const {
     }
 
     // 3. previous-line: disable-next-line / NOLINTNEXTLINE / eslint-disable-next-line,
-    //    cppcheck-suppress, nosemgrep.
+    //    and (ANTS-6382) a cppcheck-suppress or nosemgrep line above.
     const int prevIdx = f.line - 2;
     if (prevIdx >= 0 && prevIdx < lines.size()) {
-        const QString body = commentBody(lines[prevIdx]);
-        if (!body.isEmpty() &&
-            (body.contains("next-line", Qt::CaseInsensitive) ||
-             body.contains("NOLINTNEXTLINE") ||
-             body.contains("disable-next") ||
-             // ANTS-6382 — both tools document a marker on the line above.
-             body.contains("cppcheck-suppress") ||
-             body.contains("nosemgrep"))) {
-            if (AuditEngine::commentSuppresses(body, f.checkId)) return true;
-        }
+        const QString &raw = lines[prevIdx];
+        if (AuditEngine::lineAboveSuppresses(raw, commentBody(raw), f.checkId)) return true;
     }
     return false;
 }

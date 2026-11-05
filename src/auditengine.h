@@ -207,6 +207,15 @@ int applyLearnedFpSuppressions(QList<Finding> &findings,
 // engine-only tests (test_audit).
 bool commentSuppresses(const QString &commentText, const QString &ruleId);
 
+// ANTS-6400 — the line-above step of AuditDialog::inlineSuppressed. Does
+// line N-1 (`rawLine` as written, `commentText` its comment body) suppress
+// `ruleId` on line N? A next-line marker counts wherever its comment sits.
+// A `cppcheck-suppress` or `nosemgrep` marker counts only on a line that
+// holds nothing but the comment: both tools apply a trailing marker to its
+// own line, not the next.
+bool lineAboveSuppresses(const QString &rawLine, const QString &commentText,
+                         const QString &ruleId);
+
 // ANTS-1343 — mypy "Library stubs not installed" consolidator. When
 // `r.checkId == "mypy"` and ≥ 2 distinct missing stub packages are
 // present, collapse the per-package findings into a single synthetic

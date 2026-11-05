@@ -17,8 +17,9 @@ false.
 and counts each check's total and corroborated tag from what is left.
 
 **INV-4 — a line-above `cppcheck-suppress` or `nosemgrep` is honoured.**
-`AuditDialog::inlineSuppressed` passes a previous-line comment carrying either
-marker to `AuditEngine::commentSuppresses`, as it does `NOLINTNEXTLINE`.
+`AuditDialog::inlineSuppressed` asks `AuditEngine::lineAboveSuppresses` about
+line N-1. A comment-only line carrying either marker reaches
+`AuditEngine::commentSuppresses`, as a `NOLINTNEXTLINE` does.
 
 **INV-5 — suppressed findings are not counted as shown ones.**
 `AuditEngine::capFindings` caps only unsuppressed findings and keeps the
@@ -35,6 +36,12 @@ learned-false-positive entry and the "Suppressed" status.
 key; a file that is not version 2 is ignored and the status line asks for a
 new baseline.
 
+**INV-8 — a trailing `cppcheck-suppress` or `nosemgrep` covers its own line
+only (ANTS-6400).** `AuditEngine::lineAboveSuppresses` returns false for
+either marker when line N-1 holds code before the comment. Both tools apply
+a trailing marker to its own line. A next-line marker still counts wherever
+its comment sits.
+
 ## Rationale
 
 `inlineSuppressed()` reads source lines through `m_fileLineCache`, which only
@@ -46,7 +53,8 @@ then marked the key suppressed regardless.
 
 `test_audit_suppression_save.cpp` reads the AuditDialog sources and checks the
 function bodies named above; INV-5's cap half runs `AuditEngine::capFindings`
-on a synthetic result. The existing
+on a synthetic result, and INV-4 and INV-8 call
+`AuditEngine::lineAboveSuppresses` directly. The existing
 `audit_sarif_suppressions` and `audit_dedup_96bit` checks on the same bodies
 still hold.
 
@@ -58,3 +66,5 @@ still hold.
   were ignored; a failed save still reported success. Locked by INV-3..6.
 - **ANTS-6385:** a v1 baseline loaded as v2 and marked every finding new.
   Locked by INV-7.
+- **ANTS-6400:** a trailing `nosemgrep` or `cppcheck-suppress` hid the next
+  line's finding. Locked by INV-8.
