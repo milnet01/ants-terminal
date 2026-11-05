@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6405 -->
+<!-- ants-roadmap-id-high-water: ANTS=6406 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79794,6 +79794,17 @@ in each bullet, not just the reporter's symptom.
   **Layman:** Smaller corrections to ci_report found on a second read.
   Kind: review-fix.
   Source: code-review-2026-11-05 (claude-d5, re-review of 85c4e720).
+  Lanes: mcp.
+
+- 📋 [ANTS-6406] **Let test_parallelism find ctest after a wrapper option that takes a value, such as sudo -u builder, nice -n 10 or xvfb-run -s "…".**
+  serialCtestWithTimeout's dropOptions removes `-u` but leaves its value,
+  so `builder` reads as the command; a quoted xvfb-run -s value splits at
+  its spaces. Misses only, never a false finding. Suggested fix: after a
+  wrapper, skip words up to the first `ctest` or `*/ctest`. Add a test
+  per form, red first.
+  **Layman:** ci_report misses a few ways of starting tests, and stays silent there.
+  Kind: review-fix.
+  Source: code-review-2026-11-05 (claude-d5, check of 917e8b41).
   Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
