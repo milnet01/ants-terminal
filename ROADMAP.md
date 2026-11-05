@@ -79647,13 +79647,17 @@ in each bullet, not just the reporter's symptom.
   Kind: fix.
   Source: push gate failure 2026-10-23.
 
-- 🚧 [ANTS-6398] **CI's two test steps run four tests at a time, so the nightly sanitizer run keeps its headroom.**
+- ✅ [ANTS-6398] **CI's two test steps run four tests at a time, and the nightly sanitizer step's budget fits its measured length.**
   Measured 2026-11-05. Nightly ASan test step: 1166 s to 1585 s at -j2
   against a 30 m budget (up to 88%). Run 41285524795's tests sum to
   3149 s, so -j2 was already a clean 2x. Workstation Release suite: 203 s
   at -j2, 92-97 s at -j4, three -j4 runs green. -j4 is one test per vCPU
   on GitHub's runner and the user's ctest cap on the workstation.
   Verify: two local sanitized -j4 runs green, then workflow_dispatch runs.
+  Shipped 2026-11-05 (c0de1b2d, plus the budget commit). GitHub: Release
+  suite 187 s -> 115-118 s. Sanitizer suite unchanged on GitHub (1288 s
+  -j2 vs 1237 s -j4; likely 2 physical cores), so its budget went 30m ->
+  38m. Push gate's sanitizer leg: 532 s at -j4. All runs green.
   **Layman:** Tests in CI and in the local push check run four at a time instead of two, roughly halving their wait.
   Kind: perf.
   Source: user-request-2026-11-05.
