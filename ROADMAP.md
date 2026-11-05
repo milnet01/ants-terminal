@@ -71107,12 +71107,14 @@ deferred 0.8.x), ANTS-1781 (span-cache wipe + resize BlockingQueuedConnection).
   Source: user-request-2026-07-09.
   Resolved (2026-07-13, commit f5228361). The command-timestamp loop and the sticky-command-header loop now binary-search (std::lower_bound / std::upper_bound) to only the viewport-relevant region(s) instead of scanning all prompt regions (O(#commands)) every paint, relying on the existing ascending-startLine invariant (append at prompt-start 'A', front-eviction on cap). The command-mark gutter (3rd loop) is left O(#regions) by design — it is a full-scrollback minimap that maps every region across the whole widget height and cannot be viewport-bounded; documented in place. Full suite green.
 
-- 💭 [ANTS-3459] **Per-cell linear scan over URL/highlight spans → index spans by column.**
+- 🚫 [ANTS-3459] **Per-cell linear scan over URL/highlight spans → index spans by column.**
   paintEvent scans urlSpans (:837) and hlSpans (:849) per cell → O(cols×spans) nested in the full cell walk. Usually few spans/line so low impact; if it shows up, build a per-row column→span lookup once per line.
   **Layman:** Minor drawing speedup on lines with many links or highlights.
   Kind: perf.
   Source: user-request-2026-07-09.
   Resolved (2026-07-13) as won't-fix / no code change. The expensive work (URL + highlight regex) is already cached per-row (urlSpansForLine / m_hlSpanCache), so paintEvent's residual per-cell cost is only a walk of the row's span vector — which is EMPTY in the common case (no URLs, no highlight rules), i.e. zero iterations per cell already. The roadmap's suggested per-row column→span index would ADD a cols-sized allocation + fill per row even when there are 0 spans, pessimizing the overwhelmingly-common case. The ANTS-3462 baseline already measured the per-cell lookup at ~0.05ms and confirmed it is NOT a freeze contributor (the per-frame re-shape is). Closing 💭 rather than over-engineer a confirmed-negligible path (Simplicity First). Reopen only if a real many-spans profile (heavy user highlight rules) ever shows it.
+  Dropped 2026-11-05 (session 217): closes the 2026-07-13 won't-fix
+  finding above, so it leaves the open queue.
 
 - 📋 [ANTS-3464] **Output-path dirty-row repaint — narrow onVtBatch update() to changed rows + cursor damage (ANTS-3454 follow-up).**
   ANTS-3454 shipped the safe half (paintEvent honours event->rect()), but
@@ -75104,8 +75106,16 @@ gets one CHANGELOG section + one drift cycle + one push.
   Source: ANTS-1671 fold-out (verified in-session 2026-06-27).
   Lanes: remotecontrol, claudeintegration.
 
-- 📋 [ANTS-2217] **Bound the `compile_commands.json` parse transient in audit validation (ANTS-1675 M4).**
+- 🚫 [ANTS-2217] **Bound the `compile_commands.json` parse transient in audit validation (ANTS-1675 M4).**
   `validateCompileCommandsImpl` (`auditrunner.cpp` ~1080-1097) reads up to 32 MiB of raw bytes then builds a full `QJsonDocument` DOM in the same scope, so `raw` and the DOM are co-resident and a string-heavy max-size file peaks at ~100+ MB transient. Simply lowering `kCompileCommandsMaxBytes` would reject legitimately large monorepo databases (the 50k-entry cap implies ~32 MiB is a valid size), so the real fix is an iterative/streaming scan that enumerates only the `-I` / include arguments without retaining the whole DOM. Lowest-priority of the ANTS-1675 set; M1/M2/M3 were verified already-fixed.
+  Dropped 2026-11-05 (session 217). The peak is a one-off on the audit
+  worker thread, once per audit, and only for a database near the 32 MiB
+  cap. Most of it is inside QJsonDocument::fromJson itself (raw bytes
+  and DOM live together during the parse), so only a hand-written
+  streaming parser would remove it, and that parser would sit inside the
+  include-path escape check, a security gate. A brief transient on a
+  worker thread does not justify that risk. Reopen if a real audit is
+  seen hitting memory pressure.
   **Layman:** When checking a project's build database, the audit step can briefly use 100+ MB of memory for a big file; make it scan the file leanly instead.
   Kind: perf.
   Source: ANTS-1675 fold-out (verified in-session 2026-06-27).
@@ -76436,12 +76446,14 @@ server build id so clients can self-diagnose this.
   Kind: investigate.
   Source: cc-feedback-2026-06-30 (Vestige Sug-D, niche).
 
-- 💭 [ANTS-3398] **Pre-warm / cache semgrep registry rules so a cold audit_run doesn't pay the network fetch inside the sweep.**
+- 🚫 [ANTS-3398] **Pre-warm / cache semgrep registry rules so a cold audit_run doesn't pay the network fetch inside the sweep.**
   Split out of ANTS-3396 (the async-audit work shipped 2026-07-01; that spec was deliberately scoped to the async contract only — Karpathy: no orthogonal edits). A cold `semgrep --config auto` fetches registry rules over the network at sweep time, which is a large slice of the wall-clock that ANTS-3396's async mode hides but does not remove. Options: (a) pre-fetch rules on a background timer / at session start into semgrep's cache dir; (b) pin a vendored rule set under the project so `--config <local>` never touches the network; (c) surface a one-time "warming rules" status so the first run's latency is explained. Orthogonal network-caching optimisation; non-blocking.
   **Layman:** The first scan of the day is slow because it downloads rule updates mid-run; pre-download them so the scan itself is fast.
   Kind: optimize.
   Source: cc-feedback-2026-06-30 (split from ANTS-3396).
   Considered, measured, not pursued (2026-07-01). Measured the premise directly on this host (semgrep 1.161.0): fetching `p/security-audit` from semgrep.dev takes ~90 ms on a healthy connection, not the \"large slice of wall-clock\" the split-out note assumed — negligible against a multi-minute full-tree sweep. Also found semgrep keeps NO persistent registry cache: it re-fetches every run (confirmed by cutting the network — a config resolve then hangs to the 60 s timeout). So option (a) \"pre-warm semgrep's cache at startup\" is ineffective by construction (nothing to warm), and the only mechanism that removes the per-run network dependency is vendoring/locally-caching the pack YAML and pointing --config at the local file (option b) — a real maintenance surface whose sole payoff is offline/slow-network resilience, not speed. On an always-online workstation that stall case rarely bites. Deliberately not building it; the roadmap premise was an unverified assumption (rule #13). Un-park if offline audits become a real need — the fix would be a background-refreshed local rules file, not a startup pre-warm.
+  Dropped 2026-11-05 (session 217): closes the 2026-07-01
+  measured-and-not-pursued finding above, so it leaves the open queue.
 
 ### 🔌 Ants-MCP feedback from CC sessions (DOOM 2026-06-28)
 
