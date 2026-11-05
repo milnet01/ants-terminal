@@ -191,6 +191,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log` on pass-headings roadmaps says when it cleaned stray tool markup out of a note or body, as it does elsewhere** (ANTS-6391)
+
 - **`roadmap_query mode:"bundles"` says whether its answer came from the store or the file, like every other mode** (ANTS-6388)
 
 - **`changelog_log` finds a YAML changelog in a folder above the caller, as it does a Markdown one** (ANTS-6393)

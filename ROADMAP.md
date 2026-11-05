@@ -81002,20 +81002,27 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: speclint.
 
-- 📋 [ANTS-6391] **Pass-headings roadmap writes collect the scrub report and never return it.**
+- ✅ [ANTS-6391] **Pass-headings roadmap writes collect the scrub report and never return it.**
   cmdRoadmapLogPassFlip, cmdRoadmapLogPassFlipBatch and
   rcRenderPassBullet fill a scrubbed list that nothing reads. Fix: emit
   note_scrubbed_params / body_scrubbed_params when non-empty, as the GFM
   path does (ANTS-5918).
+  Shipped 2026-11-05 (e84a0850) for flip, annotate, their batches and
+  the file-backed append paths. Not done: the store-backed pass append
+  (cmdRoadmapLogPassAppend's plan path) still drops its body report.
+  Test: RoadmapPassStoreWrite.Ants6391ScrubReportIsReturned.
   **Layman:** When the roadmap tool cleans stray markup out of a note, one layout does not say it did.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-6392] **A pass-headings flip_batch locator whose note fails still reports the flip as clean.**
+- ✅ [ANTS-6392] **A pass-headings flip_batch locator whose note fails still reports the flip as clean.**
   cmdRoadmapLogPassFlipBatch: in flip mode a failed annotate result
   falls through to flipped.append(f). Fix: mark the row note_failed with
   the code, or count it under skipped.
+  Shipped 2026-11-05 (e84a0850): the row carries note_failed +
+  note_code. Defensive: annotatePass fails only with bullet_not_found on
+  a locator the flip just resolved, so no test can make it fire today.
   **Layman:** In a batch status change, a note that failed to save is dropped without a word.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
