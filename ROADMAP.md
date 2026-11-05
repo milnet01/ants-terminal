@@ -81118,7 +81118,7 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol, indiereviewengine.
 
-- 📋 [ANTS-6400] **A `cppcheck-suppress` or `nosemgrep` comment at the END of a code line hides a finding on the next line.**
+- ✅ [ANTS-6400] **A `cppcheck-suppress` or `nosemgrep` comment at the END of a code line hides a finding on the next line.**
   Follow-up to ANTS-6382, from a cold review of 7fa261b7 + 5dd4fedc.
   AuditDialog::inlineSuppressed step 3 reads line N-1 through
   commentBody(), which falls back to a trailing comment on a code line.
