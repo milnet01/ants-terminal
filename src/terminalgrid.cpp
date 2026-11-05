@@ -1980,10 +1980,10 @@ void TerminalGrid::deleteChars(int count) {
         // yet-to-be-processed old keys since shift is strictly leftward.
         std::sort(toShift.begin(), toShift.end());
         for (int oldKey : toShift) {
-            auto nh = comb.extract(oldKey);
+            auto nh = comb.ensure().extract(oldKey);
             if (!nh.empty()) {
                 nh.key() = oldKey - count;
-                comb.insert(std::move(nh));
+                comb.ensure().insert(std::move(nh));
             }
         }
     }
@@ -2015,10 +2015,10 @@ void TerminalGrid::insertBlanks(int count) {
         // yet-to-be-processed old keys since shift is strictly rightward.
         std::sort(toShift.begin(), toShift.end(), std::greater<int>());
         for (int oldKey : toShift) {
-            auto nh = comb.extract(oldKey);
+            auto nh = comb.ensure().extract(oldKey);
             if (!nh.empty()) {
                 nh.key() = oldKey + count;
-                comb.insert(std::move(nh));
+                comb.ensure().insert(std::move(nh));
             }
         }
     }

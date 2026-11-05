@@ -9,6 +9,7 @@
 #include <deque>
 #include <unordered_map>
 #include <functional>
+#include <memory>
 #include <QColor>
 #include <QElapsedTimer>
 #include <QImage>
@@ -56,6 +57,56 @@ struct Cell {
 };
 
 // A line stored in scrollback or screen, with wrap metadata
+// ANTS-6395 — a line's combining characters, col -> codepoints. Most lines
+// have none, so the map lives behind a pointer: an empty table costs 8 bytes
+// where an unordered_map header costs 56 on every line. Copying deep-copies,
+// so TermLine stays copyable. view() is the map, or a shared empty one.
+class CombiningMap {
+public:
+    using Map = std::unordered_map<int, std::vector<uint32_t>>;
+
+    CombiningMap() = default;
+    CombiningMap(const CombiningMap &o) : m_map(cloneOf(o)) {}
+    CombiningMap &operator=(const CombiningMap &o) {
+        if (this != &o) m_map = cloneOf(o);
+        return *this;
+    }
+    CombiningMap(CombiningMap &&) noexcept = default;
+    CombiningMap &operator=(CombiningMap &&) noexcept = default;
+    // Takes a whole map, keeping nothing allocated when it is empty.
+    CombiningMap &operator=(Map &&m) {
+        m_map = m.empty() ? nullptr : std::make_unique<Map>(std::move(m));
+        return *this;
+    }
+
+    bool empty() const { return !m_map || m_map->empty(); }
+    const Map &view() const {
+        static const Map s_empty;
+        return m_map ? *m_map : s_empty;
+    }
+    Map::const_iterator begin() const { return view().begin(); }
+    Map::const_iterator end() const { return view().end(); }
+    // The map itself, allocated on first use — for edits view() cannot make.
+    Map &ensure() {
+        if (!m_map) m_map = std::make_unique<Map>();
+        return *m_map;
+    }
+    std::vector<uint32_t> &operator[](int col) { return ensure()[col]; }
+    void emplace(int col, const std::vector<uint32_t> &cps) { ensure().emplace(col, cps); }
+    void erase(int col) {
+        if (!m_map) return;
+        m_map->erase(col);
+        if (m_map->empty()) m_map.reset();
+    }
+    void clear() { m_map.reset(); }
+
+private:
+    static std::unique_ptr<Map> cloneOf(const CombiningMap &o) {
+        return o.empty() ? nullptr : std::make_unique<Map>(*o.m_map);
+    }
+    std::unique_ptr<Map> m_map;
+};
+
 struct TermLine {
     std::vector<Cell> cells;
     bool softWrapped = false; // true if line was wrapped at right edge (not \n)
@@ -64,8 +115,8 @@ struct TermLine {
     // lines. Scoped to screen lines only; scrollback is treated as immutable
     // once pushed.
     bool dirty = true;
-    // Combining characters: col -> list of combining codepoints (zero overhead when empty)
-    std::unordered_map<int, std::vector<uint32_t>> combining;
+    // Combining characters: col -> list of combining codepoints.
+    CombiningMap combining;
 };
 
 // OSC 9;4 progress state (ConEmu / Microsoft Terminal convention)
@@ -264,12 +315,12 @@ public:
     const std::unordered_map<int, std::vector<uint32_t>> &screenCombining(int row) const {
         static const std::unordered_map<int, std::vector<uint32_t>> s_empty;
         if (row < 0 || row >= m_rows) return s_empty;
-        return m_screenLines[row].combining;
+        return m_screenLines[row].combining.view();
     }
     const std::unordered_map<int, std::vector<uint32_t>> &scrollbackCombining(int idx) const {
         static const std::unordered_map<int, std::vector<uint32_t>> s_empty;
         if (idx < 0 || idx >= static_cast<int>(m_scrollback.size())) return s_empty;
-        return m_scrollback[idx].combining;
+        return m_scrollback[idx].combining.view();
     }
 
     // Mouse reporting modes

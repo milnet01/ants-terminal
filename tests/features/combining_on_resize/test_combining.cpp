@@ -123,3 +123,21 @@ TEST(CombiningOnResize, Main) {
 
 }
 
+
+// ANTS-6395 — an empty combining table costs one pointer, not an
+// unordered_map header, on every line; a set one copies deeply.
+TEST(CombiningOnResize, Ants6395EmptyTableIsOnePointer) {
+    static_assert(sizeof(TermLine) <= sizeof(std::vector<Cell>) + 2 * sizeof(void *),
+                  "TermLine carries more than its cells, two flags and one pointer");
+    TermLine a;
+    EXPECT_TRUE(a.combining.empty());
+    a.combining[3].push_back(0x0301);
+    TermLine b = a;                       // copy
+    b.combining[3].push_back(0x0302);
+    EXPECT_EQ(a.combining.view().at(3).size(), 1u) << "the copy shares the original's table";
+    EXPECT_EQ(b.combining.view().at(3).size(), 2u);
+    TermLine c = std::move(b);
+    EXPECT_EQ(c.combining.view().at(3).size(), 2u);
+    a.combining.erase(3);
+    EXPECT_TRUE(a.combining.empty());
+}

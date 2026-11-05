@@ -403,7 +403,11 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
         for (int j = 0; j < cellCount; ++j) {
             if (!readCell(line.cells[j])) return false;
         }
-        if (!readCombining(line.combining)) return false;
+        {   // ANTS-6395 — an empty table stays unallocated.
+            CombiningMap::Map comb;
+            if (!readCombining(comb)) return false;
+            line.combining = std::move(comb);
+        }
 
         scrollback.push_back(std::move(line));
     }
@@ -435,7 +439,11 @@ bool SessionManager::restore(TerminalGrid *grid, const QByteArray &input,
             Cell skip;
             if (!readCell(skip)) return false;
         }
-        if (!readCombining(screenLine.combining)) return false;
+        {   // ANTS-6395 — an empty table stays unallocated.
+            CombiningMap::Map comb;
+            if (!readCombining(comb)) return false;
+            screenLine.combining = std::move(comb);
+        }
     }
     // Skip extra rows if saved grid was taller
     for (int row = rows; row < screenRows; ++row) {
