@@ -1378,7 +1378,7 @@ void ClaudeIntegration::onHookConnection() {
         // restart this timer inside readyRead to "extend on activity."
         // The 5 s cap is the only wall-clock bound on a single
         // hook-server RPC; the JSON parse happens once on
-        // disconnect against up to 10 MiB of buffered data. A peer
+        // disconnect against up to 256 KiB of buffered data. A peer
         // that dribbled 1 byte every 4.9 s with a restart-on-read
         // would hold the connection indefinitely and pay one
         // expensive parse at the end. setSingleShot keeps the
@@ -1393,12 +1393,21 @@ void ClaudeIntegration::onHookConnection() {
         // ANTS-2216 — the buffer is shared by the two lambdas, not held in a
         // socket property: a property round-trip copied it on every readyRead.
         auto buf = std::make_shared<QByteArray>();
-        connect(socket, &QLocalSocket::readyRead, this, [socket, buf]() {
+        auto overCap = std::make_shared<bool>(false);
+        connect(socket, &QLocalSocket::readyRead, this, [socket, buf, overCap]() {
+            if (*overCap) { socket->readAll(); return; }
             *buf += socket->readAll();
             // ANTS-1659 — hook events are <8 KiB; cap at 256 KiB to close a
             // same-UID OOM vector (deeply-nested JSON balloons 3-5× in QJson
             // tree allocation). Was 10 MiB.
-            if (buf->size() > 256 * 1024) { socket->disconnectFromServer(); return; }
+            // ANTS-6397 — empty the buffer and latch: the disconnected handler
+            // below parses it, so over-cap bytes left in it would be parsed.
+            if (buf->size() > 256 * 1024) {
+                buf->clear();
+                *overCap = true;
+                socket->disconnectFromServer();
+                return;
+            }
         });
         connect(socket, &QLocalSocket::disconnected, this, [this, socket, buf]() {
             QJsonDocument doc = QJsonDocument::fromJson(*buf);

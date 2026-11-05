@@ -64,7 +64,7 @@ TEST(SocketReadyreadUafGuard, Main) {
 
     // INV-1 — the MCP readyRead handler (the one capturing idleTimer)
     // stops the slow-loris timer and QPointer-guards the socket before
-    // dispatch. The hook handler (`[socket, buf]`) is short-op-only and is
+    // dispatch. The hook handler (`[socket, buf, overCap]`) is short-op-only and is
     // intentionally not required to carry these. (ANTS-2101)
     // ANTS-4932 — the reply goes through the connection's McpReplyChannel, a
     // child of the socket, so a QPointer to the channel goes null exactly when
@@ -113,4 +113,21 @@ TEST(SocketReadyreadUafGuard, Main) {
     }
 
     EXPECT_EQ(0, expect_failures());
+}
+
+// ANTS-6397 — the hook path parses its buffer on disconnect, so an over-cap
+// read must empty it first: otherwise the ANTS-1659 256 KiB cap fires and the
+// disconnected handler parses the whole oversized payload anyway.
+TEST(SocketReadyreadUafGuard, Ants6397HookOverCapEmptiesTheBuffer) {
+    const std::string claude = ants_test::slurpFile(SRC_CLAUDE_INTEGRATION_CPP_PATH);
+    const std::string marker = "&QLocalSocket::readyRead, this, [socket, buf, overCap]()";
+    const size_t at = claude.find(marker);
+    ASSERT_NE(at, std::string::npos) << "hook readyRead handler not found";
+    const size_t cap = claude.find("buf->size() > 256 * 1024", at);
+    ASSERT_NE(cap, std::string::npos);
+    const size_t clear = claude.find("buf->clear()", cap);
+    const size_t disc = claude.find("disconnectFromServer()", cap);
+    ASSERT_NE(disc, std::string::npos);
+    EXPECT_TRUE(clear != std::string::npos && clear < disc)
+        << "the over-cap branch disconnects with the oversized bytes still buffered";
 }

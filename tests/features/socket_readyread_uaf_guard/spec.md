@@ -48,7 +48,7 @@ that exist are all safe:
 |---|---|---|---|
 | MCP | `claudeintegration.cpp` (`[this, socket, idleTimer, channel, buf]`) | yes (`audit_run` et al.) | `idleTimer->stop()` + `QPointer<McpReplyChannel>`, the socket's child (ANTS-2101, ANTS-4932) |
 | remote-control | `remotecontrol.cpp` | yes (`audit_run` et al.) | `idleTimer->stop()` + `QPointer<QLocalSocket>` (ANTS-2026) |
-| hook | `claudeintegration.cpp` (`[socket, buf]`) | **no** — buffers only; dispatch (`processHookEvent`) runs in the `disconnected` handler, no nested loop | n/a (short-op) |
+| hook | `claudeintegration.cpp` (`[socket, buf, overCap]`) | **no** — buffers only; dispatch (`processHookEvent`) runs in the `disconnected` handler, no nested loop | n/a (short-op) |
 
 `QNetworkReply::readyRead` in `llmclient.cpp` connects to a short
 `drain()` slot — it is a client reply, not a server accept loop, and
