@@ -79698,6 +79698,10 @@ in each bullet, not just the reporter's symptom.
   built and green, idle peer sessions review the code cold for bugs and
   improvements (not the spec; review-contract gates that).
   Spec: docs/specs/ANTS-6399-ci-report-verb.md.
+  Spec accepted 2026-11-05 after review-contract's 2-loop cap: 24 verified,
+  23 fixed, 1 surfaced and settled by amendment (shell timeout guards are
+  step budgets, INV-12). Loop 2's fixes and the amendment were read by no
+  lane; implementation is their reader. Next: build it.
   **Layman:** A tool every Claude session can ask: is this project's CI flaky, close to timing out, or slower than it needs to be?
   Kind: feature.
   Source: user-request-2026-11-05.
