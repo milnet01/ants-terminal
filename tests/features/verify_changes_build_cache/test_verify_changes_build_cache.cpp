@@ -158,7 +158,8 @@ TEST(VerifyChangesBuildCache, ReentrancyRejectedWhenFlagSet) {
     rc.setVerifyInFlightForTest(true);
     const QJsonObject env = runVerify(rc, tmp.path());
     EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool(true));
-    EXPECT_EQ(env.value(QStringLiteral("error")).toString(),
+    // ANTS-6379 — the code is under `code`, as on every other verb.
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
               QStringLiteral("verify_in_flight"));
     // Flag still set — no RAII triggered because the call short-
     // circuits before the guard is installed (early-return path).
@@ -307,7 +308,8 @@ TEST(VerifyChangesBuildCache, BadConfigNotCached) {
     RemoteControl rc(nullptr);
     const QJsonObject env = runVerify(rc, tmp.path());
     EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool(true));
-    EXPECT_EQ(env.value(QStringLiteral("error")).toString(),
+    // ANTS-6379 — the code is under `code`, as on every other verb.
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
               QStringLiteral("bad_config"));
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 0)
         << "bad_config should never insert into the cache";
@@ -480,7 +482,8 @@ TEST(VerifyChangesBuildCache, ForceAndCacheOnlyIncompatible) {
     extra[QStringLiteral("cache_only")]    = true;
     const QJsonObject env = runVerify(rc, tmp.path(), extra);
     EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool(true));
-    EXPECT_EQ(env.value(QStringLiteral("error")).toString(),
+    // ANTS-6379 — the code is under `code`, as on every other verb.
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
               QStringLiteral("incompatible_args"));
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 0);
 }

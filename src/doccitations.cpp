@@ -2,6 +2,7 @@
 // the grammar.
 
 #include "doccitations.h"
+#include "mcprefusal.h"
 
 #include "fileoutline.h"
 #include "markdownscan.h"
@@ -822,9 +823,6 @@ QString relativeTo(const QString &root, const QString &abs) {
     return abs;
 }
 
-QJsonObject refusal(const QString &code) {
-    return QJsonObject{{QStringLiteral("ok"), false}, {QStringLiteral("code"), code}};
-}
 
 }  // namespace
 
@@ -1475,9 +1473,11 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         lines = splitLines(*opts.docText);   // ANTS-5294 — never opened
     } else if (docInfo.exists() && docInfo.isFile()) {
         QFile f(docAbsPath);
-        if (!f.open(QIODevice::ReadOnly)) return refusal(QStringLiteral("read_failed"));
+        if (!f.open(QIODevice::ReadOnly)) return mcp::refusal(QStringLiteral("read_failed"),
+            QStringLiteral("doc_citations: cannot open %1").arg(docAbsPath));
         QString text;
-        if (!decodeChecked(f.readAll(), &text)) return refusal(QStringLiteral("read_failed"));
+        if (!decodeChecked(f.readAll(), &text)) return mcp::refusal(QStringLiteral("read_failed"),
+            QStringLiteral("doc_citations: %1 is not valid UTF-8").arg(docAbsPath));
         lines = splitLines(text);
     }
 

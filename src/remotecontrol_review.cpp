@@ -892,16 +892,6 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
 
 namespace rcdetail {
 
-// Not the shared refusal shape: `error` holds the code and `message` the
-// text, against mcp-error-codes.md. test_verify_changes_build_cache reads
-// `error` as the code. The fix is a wire change, queued as ANTS-6260.
-QJsonObject vcErr(const QString &code, const QString &msg) {
-    QJsonObject o;
-    o["ok"]    = false;
-    o["error"] = code;
-    o["message"] = msg;
-    return o;
-}
 
 QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
     QJsonObject o;
@@ -1109,7 +1099,7 @@ bool anyGateNotNaturallyCompleted(const VerifyEngine::VerifyReport &rep) {
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
-    if (!m_roots) return QJsonDocument(vcErr(QStringLiteral("no_window"),
+    if (!m_roots) return QJsonDocument(mcp::refusal(QStringLiteral("no_window"),
         QStringLiteral("verify_changes: no MainWindow")));
     // ANTS-1497: cache_only:true is a pure read (returns cached response
     // or {ok:true, cache_miss:true} without running gates). The
@@ -1123,7 +1113,7 @@ QJsonDocument RemoteControl::cmdVerifyChanges(const QJsonObject &req) {
         && !req.value(QStringLiteral("force_refresh")).toBool(false);
     if (isReadOnly) {
         const QString root = resolveRootCanonical(m_roots, req);
-        if (root.isEmpty()) return QJsonDocument(vcErr(
+        if (root.isEmpty()) return QJsonDocument(mcp::refusal(
             QStringLiteral("cwd_unreachable"),
             QStringLiteral("verify_changes: caller_cwd does not "
                            "canonicalise to an existing directory")));
@@ -1187,7 +1177,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     qint64 gateMs    = -1;
 
     const QFileInfo rootInfo(root);
-    if (!rootInfo.isDir()) return QJsonDocument(vcErr(
+    if (!rootInfo.isDir()) return QJsonDocument(mcp::refusal(
         QStringLiteral("cwd_unreachable"),
         QStringLiteral("verify_changes: project root not a directory")));
 
@@ -1195,14 +1185,14 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     const bool force = req.value(QStringLiteral("force_refresh")).toBool(false);
     const bool probe = req.value(QStringLiteral("cache_only")).toBool(false);
     if (force && probe) {
-        return QJsonDocument(vcErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("incompatible_args"),
             QStringLiteral("force_refresh and cache_only are mutually exclusive")));
     }
 
     // INV-11 — reentrancy gate with RAII reset.
     if (m_verifyInFlight) {
-        return QJsonDocument(vcErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("verify_in_flight"),
             QStringLiteral("verify_changes: a previous call is still running")));
     }
@@ -1249,7 +1239,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     if (cfgSource == QLatin1String("bad_config")) {
         // Excluded by INV-4 class 1; early return is sound under
         // inFlightGuard (resets the flag on this return path too).
-        return QJsonDocument(vcErr(
+        return QJsonDocument(mcp::refusal(
             QStringLiteral("bad_config"),
             QStringLiteral("verify.json: malformed JSON or schema mismatch")));
     }

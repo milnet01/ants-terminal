@@ -2,6 +2,7 @@
 // window verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "mcprefusal.h"
 #include "projectsettings.h"   // ANTS-3771 — the declared id format
 #include "findsources.h"
 #include "mainwindow.h"
@@ -600,12 +601,9 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
     if (tabVal.isDouble()) {
         const int idx = tabVal.toInt();
         target = m_main->terminalAtTab(idx);
-        if (!target) {
-            out["ok"] = false;
-            out["error"] = QStringLiteral(
-                "get-text: no tab at index %1").arg(idx);
-            return QJsonDocument(out);
-        }
+        if (!target)   // ANTS-6379 — the shared refusal shape
+            return QJsonDocument(mcp::refusal(QStringLiteral("not_found"),
+                QStringLiteral("get-text: no tab at index %1").arg(idx)));
     } else {
         // ANTS-1392 — when `tab` is omitted, prefer the caller_cwd
         // anchor over the focused tab. terminalForCaller falls back
@@ -614,11 +612,9 @@ QJsonDocument RemoteControl::cmdGetText(const QJsonObject &req) {
         const QString callerCwd =
             req.value(QStringLiteral("caller_cwd")).toString();
         target = m_main->terminalForCaller(callerCwd);
-        if (!target) {
-            out["ok"] = false;
-            out["error"] = QStringLiteral("get-text: no active terminal");
-            return QJsonDocument(out);
-        }
+        if (!target)
+            return QJsonDocument(mcp::refusal(QStringLiteral("not_found"),
+                QStringLiteral("get-text: no active terminal")));
     }
 
     int lines = 100;
