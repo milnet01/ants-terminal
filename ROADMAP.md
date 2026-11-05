@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6414 -->
+<!-- ants-roadmap-id-high-water: ANTS=6416 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79972,6 +79972,25 @@ in each bullet, not just the reporter's symptom.
   Kind: enhancement.
   Source: album-builder msg 1461, 2026-11-05.
   Lanes: mcp.
+
+- 📋 [ANTS-6415] **ci_report reports a job whose result flips red and green across consecutive commits.**
+  Today the flaky rule fires only on a fail-then-pass on the SAME
+  commit. LocalWebServerManager had 7 red commits alternating with green
+  on main on 2026-11-05 (9420868 .. 5f9c154) and got 0 findings.
+  Suggested: an 'alternating' finding, lower confidence than the
+  same-SHA rule, when a job flips red/green across consecutive commits
+  on one branch at least K times in the window; name the runs and SHAs.
+  **Layman:** The CI report flags a test that keeps failing and passing on different commits, the usual sign of a flaky test.
+  Kind: enhancement.
+  Source: LocalWebServerManager feedback, msg 1473, 2026-11-05.
+
+- 📋 [ANTS-6416] **ci_report leaves GitHub-managed workflows that have no file out of unread.**
+  LocalWebServerManager saw 'Dependabot Updates' (file:null) in unread.
+  A workflow with no file in the repo cannot be read, so listing it is
+  noise.
+  **Layman:** The CI report stops listing GitHub's built-in Dependabot workflow as something it failed to read.
+  Kind: enhancement.
+  Source: LocalWebServerManager feedback, msg 1473, 2026-11-05.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
