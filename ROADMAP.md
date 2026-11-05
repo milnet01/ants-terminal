@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6400 -->
+<!-- ants-roadmap-id-high-water: ANTS=6401 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79694,6 +79694,14 @@ in each bullet, not just the reporter's symptom.
   - Once shipped, claude-config adds routing in check-code and
     local-gate.md § 9; send it the verb name and refusal shapes.
   **Layman:** A tool every Claude session can ask: is this project's CI flaky, close to timing out, or slower than it needs to be?
+  Kind: feature.
+  Source: user-request-2026-11-05.
+
+- 📋 [ANTS-6401] **Extend `ci_report` to the local push gate, so a project with no GitHub CI also learns when its gate legs run near their budget.**
+  Deferred from ANTS-6399 by the user, 2026-11-05: the first version covers
+  GitHub Actions only. Needs somewhere the local gate saves each leg's
+  timing, which does not exist yet. ~/.claude is one project this serves.
+  **Layman:** The CI checker also looks at the checks that run on this computer before a push, not only GitHub's.
   Kind: feature.
   Source: user-request-2026-11-05.
 
