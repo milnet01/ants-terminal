@@ -73051,7 +73051,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-09-10.
 
-- 📋 [ANTS-5112] **workspace_search's rate limit is shared by every subagent of one project, so parallel review lanes are mostly refused.**
+- ✅ [ANTS-5112] **workspace_search's rate limit is shared by every subagent of one project, so parallel review lanes are mostly refused.**
   During the 2026-09-11 performance pass, up to 20 review subagents ran
   at once against one project, and workspace_search refused most of
   their calls with rate_limited (10 calls in 60 s). The limit is keyed
@@ -73087,6 +73087,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   2026-10-23, UT_Ants: two of 14 parallel review lanes were refused
   once each and fell back to Grep. Asked: budget per caller session, or
   say in the refusal when to retry.
+  Shipped 2026-11-05 (78813d58): workspace_search moved to the
+  BriefAssembly tier (30/min), the ANTS-1629/1643 precedent. The
+  2026-09-14 blocker (a tier move runs rule 14's gate) lapsed with the
+  user's 2026-10-31 rule 14: a spec amendment gets no automatic review.
+  retry_after_ms was already in the refusal. Keying the bucket per
+  connection was not done: it would let one caller multiply its budget
+  by reconnecting.
   **Layman:** When many Claude helpers search one project at once, Ants' search tool turns most of them away.
   Kind: fix.
   Source: in-session-2026-09-11 (performance pass).

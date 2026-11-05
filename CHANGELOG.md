@@ -60,6 +60,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`workspace_search` allows 30 calls a minute per project instead of 10, so parallel review helpers are no longer turned away** (ANTS-5112)
+
 - **Each line of scrollback uses 48 fewer bytes when it has no accent marks, about 2.4 MB less per tab at the default size** (ANTS-6395)
 
 - **`find_sources` and the audit dialog skip generated files by one shared list, which now includes shader and font byte-array headers** (ANTS-4120)
