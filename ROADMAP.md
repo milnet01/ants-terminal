@@ -79888,11 +79888,14 @@ in each bullet, not just the reporter's symptom.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
   Lanes: mcp.
 
-- 📋 [ANTS-6410] **ci_report's workflow reader fails a whole file on a plain scalar continued on the next line.**
+- ✅ [ANTS-6410] **ci_report's workflow reader fails a whole file on a plain scalar continued on the next line.**
   Lane 1 #5. `if: a &&` with an indented `b` on the next line is
   valid YAML. ciworkflows.cpp fails the file, so every budget in it
   reads as unread. Safe under INV-3 (never guesses) but loses
   coverage. Same for multi-line flow lists.
+  Shipped 2026-11-05: Parser::continued() in src/ciworkflows.cpp; tests
+  Ants6410ContinuedValuesAreRead and
+  Ants6410InvalidContinuationsStayUnread; spec § 4.4 amended (impl-6).
   **Layman:** A common way of writing a long condition across two lines makes the CI report skip that whole workflow file.
   Kind: enhancement.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).

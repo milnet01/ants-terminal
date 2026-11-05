@@ -1059,3 +1059,35 @@ TEST(McpCiReport, Ants6408WorkflowArgumentNarrowsTheFileChecks) {
     EXPECT_EQ(workflowsOf(p.call()), QStringLiteral("CI,Docs"));
     EXPECT_EQ(workflowsOf(p.call({{"workflow", "Docs"}})), QStringLiteral("Docs"));
 }
+
+// ---- ANTS-6410: values continued on the lines below their key -------------
+
+// A plain scalar continued on deeper lines folds into one value, and a flow
+// list over several lines is read whole; the file is not unread.
+TEST(McpCiReport, Ants6410ContinuedValuesAreRead) {
+    const CiWorkflows::Result wf = workflow(QStringLiteral(
+        "name: CI\njobs:\n  t:\n    runs-on: [self-hosted,\n      linux]\n    timeout-minutes: 30\n"
+        "    steps:\n      - uses: actions/cache/save@v4\n"
+        "        if: github.ref == 'refs/heads/main' &&\n"
+        "          github.event_name == 'push'  # main only\n"
+        "        with:\n          key: k\n"
+        "      - run: make\n\n          check\n"));
+    ASSERT_EQ(wf.workflows.size(), 1) << dump(wf.unread);
+    const CiWorkflows::Job &j = wf.workflows[0].jobs[0];
+    EXPECT_EQ(j.runsOn, QStringLiteral("self-hosted, linux"));
+    EXPECT_EQ(j.budgetMin, 30);
+    ASSERT_EQ(j.steps.size(), 2);
+    EXPECT_EQ(j.steps[0].ifExpr,
+              QStringLiteral("github.ref == 'refs/heads/main' && github.event_name == 'push'"));
+    EXPECT_EQ(j.steps[0].cacheKey, QStringLiteral("k"));
+    EXPECT_EQ(j.steps[1].run, QStringLiteral("make\ncheck")) << "an empty line folds to a newline";
+}
+
+// What YAML itself rejects stays unread: a comment line inside a plain scalar,
+// and a continuation line that reads as a key.
+TEST(McpCiReport, Ants6410InvalidContinuationsStayUnread) {
+    for (const char *yaml : {"name: CI\njobs:\n  t:\n    if: a &&\n    # note\n      b\n",
+                             "name: CI\njobs:\n  t:\n    if: a\n      b: c\n"}) {
+        EXPECT_TRUE(workflow(QString::fromLatin1(yaml)).workflows.isEmpty()) << yaml;
+    }
+}

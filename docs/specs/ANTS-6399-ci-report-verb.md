@@ -193,9 +193,10 @@ their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
   it skipped; a workflow no file matches has `file` null and names itself
   in `workflow`.
 - **An alias or a merge key (`<<: *x`) makes the file unread**, because the
-  keys it brings would be lost unnamed. One-line flow maps and lists
+  keys it brings would be lost unnamed. Flow maps and lists
   (`with: {key: …}`) are read, and a block-map `runs-on:` names its runner
-  in `labels:`.
+  in `labels:`. A map value's plain scalar or flow collection may continue
+  on lines indented deeper than its key (ANTS-6410).
 - **A shell guard is a step budget.** A step whose single-line `run:`
   begins `timeout <N><s|m|h> ` has that duration as its budget, as
   `run: timeout 34m cmake --build build-asan --parallel` in this project's

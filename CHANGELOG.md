@@ -70,6 +70,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **ci_report reads a workflow value written across several lines** (ANTS-6410)
+  A long `if:` condition, or a flow list such as `runs-on: [a,` wrapped
+  onto the next line, no longer makes the whole workflow file unread.
+
 - **ci_report's workflow argument also narrows the checks that read workflow files, and a fetch error says when gh did not start or ran out of time** (ANTS-6408)
 
 - **`verify_changes` refusals put the error code under `code` and the message under `error`, like every other tool; `doc_citations` and `get_text` refusals now carry both too** (ANTS-6379)

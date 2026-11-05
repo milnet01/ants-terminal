@@ -22,8 +22,9 @@ namespace CiWorkflows {
 namespace {
 
 // The YAML subset a workflow file is written in: block maps, block lists,
-// plain and quoted scalars, `|`/`>` block scalars, and one-line flow maps and
-// lists. An alias or a merge key, which would lose keys unnamed, and anything
+// plain and quoted scalars, `|`/`>` block scalars, and flow maps and lists. A
+// map value's plain scalar or flow collection may continue on deeper lines;
+// a quoted scalar or a list item's scalar may not. An alias or a merge key, which would lose keys unnamed, and anything
 // else marks the file unparseable.
 class Parser {
 public:
@@ -168,6 +169,41 @@ private:
         const int hash = rest.indexOf(QLatin1String(" #"));
         return (hash >= 0 ? rest.left(hash) : rest).trimmed();
     }
+    // A value may run on below its key, on lines indented deeper than the
+    // key. Returns its whole text and moves past the lines it took: a plain
+    // scalar's lines folded with a space (an empty line between them is a
+    // newline, as YAML folds them), a flow collection's lines joined until its
+    // brackets close. A comment line, or a line reading as a key, ends a plain
+    // scalar; YAML rejects what follows, so map() fails the file there.
+    QString continued(int indent, const QString &rest) {
+        if (rest.startsWith(QLatin1Char('"')) || rest.startsWith(QLatin1Char('\''))) return rest;
+        const bool flow = rest.startsWith(QLatin1Char('{')) || rest.startsWith(QLatin1Char('['));
+        const auto open = [](const QString &s) {
+            int d = 0;
+            scanFlow(s, [&](int, QChar, int depth) { d = depth; return true; });
+            return d > 0;
+        };
+        const auto ends = [&](const QString &s) {
+            return flow ? !open(s) : s.contains(QLatin1String(" #"));
+        };
+        QString out = rest;
+        if (ends(out)) return out;
+        QString gap = QStringLiteral(" ");
+        for (int j = m_i; j < m_l.size(); ++j) {
+            const Line &l = m_l[j];
+            if (l.text.isEmpty()) {
+                if (!flow) gap = gap == QLatin1String(" ") ? QStringLiteral("\n") : gap + QLatin1Char('\n');
+                continue;
+            }
+            QString k, r;
+            if (l.skip || l.tabIndent || l.indent <= indent || (!flow && splitKey(l.text, &k, &r))) break;
+            out += gap + l.text;
+            gap = QStringLiteral(" ");
+            m_i = j + 1;
+            if (ends(out)) break;
+        }
+        return out;
+    }
     // An anchor (`&name`) names a value and changes nothing this reader reads.
     static QString dropAnchor(const QString &rest) {
         if (!rest.startsWith(QLatin1Char('&'))) return rest;
@@ -209,7 +245,7 @@ private:
             } else if (rest.startsWith(QLatin1Char('|')) || rest.startsWith(QLatin1Char('>'))) {
                 m.insert(key, QVariant::fromValue(BlockText{block(indent)}));
             } else {
-                m.insert(key, value(rest));
+                m.insert(key, value(continued(indent, rest)));
             }
         }
         return m;
