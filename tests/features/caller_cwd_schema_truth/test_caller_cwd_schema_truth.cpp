@@ -17,16 +17,16 @@
 
 namespace {
 
-// The lambda that builds the shared property, plus the comment block
+// The helper that builds the shared property, plus the comment block
 // immediately above it: from the ANTS-1520 comment anchor to the end of
-// the lambda body.
+// the function body.
 std::string sharedPropRegion(const std::string &src) {
     const size_t anchor = src.find("makeCallerCwdReadProp");
     if (anchor == std::string::npos) return {};
     // Walk back to the start of the comment block that introduces it.
     const size_t commentStart = src.rfind("// ANTS-1520", anchor);
     const size_t begin = (commentStart == std::string::npos) ? anchor : commentStart;
-    const size_t end = src.find("};", anchor);
+    const size_t end = src.find("\n}\n", anchor);
     if (end == std::string::npos) return {};
     return src.substr(begin, end - begin);
 }

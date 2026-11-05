@@ -222,6 +222,7 @@
       "sourcePaths": [
         "src/claudeintegration.cpp",
         "src/claudeintegration.h",
+        "src/claudeintegration_internal.h",
         "src/mcptoolregistry.cpp",
         "src/mcptoolregistry.h",
         "src/mcptoolsink.h"

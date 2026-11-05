@@ -11,10 +11,10 @@ list (`get_text`) sites keep their non-canonical phrasing.
 
 ## Invariants checked
 
-- **INV-1.** `callerCwdSuffix` lambda present in
+- **INV-1.** `callerCwdSuffix` helper present in
   `claudeintegration.cpp` within ~5000 bytes after
-  `makeCallerCwdReadProp` (same `tools/list` block).
-- **INV-2.** Lambda body returns the exact canonical literal
+  `makeCallerCwdReadProp` (both in `claudeintegrationdetail`).
+- **INV-2.** The helper returns the exact canonical literal
   `"Pass \`caller_cwd\` to anchor to your tab (ANTS-1392)."`.
 - **INV-3a.** `get_last_command` descriptor calls
   `callerCwdSuffix()`.

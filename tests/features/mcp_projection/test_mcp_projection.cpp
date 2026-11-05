@@ -407,7 +407,7 @@ TEST(McpProjection, Inv9DispatchOrdering) {
 // loop rather than hand-written per verb — and asserted here.
 TEST(McpProjection, Inv10SchemaDeclaresFieldsUniversally) {
         const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
-    EXPECT_TRUE(s.contains("auto makeFieldsProp"))
+    EXPECT_TRUE(s.contains("QJsonObject makeFieldsProp()"))
         << "the shared `fields` schema fragment must be defined once";
 
     const int inject = s.indexOf("props[QStringLiteral(\"fields\")] = p;");
@@ -1159,7 +1159,7 @@ TEST(McpTabular, Ants2090DispatchOrderingAndGuard) {
 // §2.4 — each of the 8 list-shaped read verbs declares the `encoding` prop.
 TEST(McpTabular, Ants2090SchemaDeclaresEncoding) {
         const QByteArray s = QByteArray::fromStdString(ants_test::slurpClaudeIntegration());
-    EXPECT_TRUE(s.contains("auto makeEncodingProp"))
+    EXPECT_TRUE(s.contains("QJsonObject makeEncodingProp()"))
         << "the shared `encoding` schema fragment must be defined once";
     // One call site per advertised verb: roadmap_query, find_sources,
     // workspace_search, file_outline, codebase_index, docs_index, find_caller,

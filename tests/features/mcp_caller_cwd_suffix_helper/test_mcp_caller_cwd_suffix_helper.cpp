@@ -34,32 +34,32 @@ std::string descriptorBlock(const std::string &src,
 
 }  // namespace
 
-// INV-1 — callerCwdSuffix lambda lives near makeCallerCwdReadProp.
-TEST(McpCallerCwdSuffixHelper, LambdaDeclaredNearReadProp) {
+// INV-1 — callerCwdSuffix helper lives near makeCallerCwdReadProp.
+TEST(McpCallerCwdSuffixHelper, HelperDeclaredNearReadProp) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     const auto readPropPos = cc.find("makeCallerCwdReadProp");
     ASSERT_NE(readPropPos, std::string::npos)
         << "ANTS-1409 INV-1 precondition: makeCallerCwdReadProp "
-           "lambda missing — ANTS-1391 may have regressed";
+           "helper missing — ANTS-1391 may have regressed";
     const auto suffixPos = cc.find("callerCwdSuffix", readPropPos);
     ASSERT_NE(suffixPos, std::string::npos)
         << "ANTS-1409 INV-1: callerCwdSuffix helper missing from "
            "claudeintegration.cpp";
     EXPECT_LT(suffixPos - readPropPos, static_cast<size_t>(5000))
-        << "ANTS-1409 INV-1: callerCwdSuffix lambda not adjacent "
+        << "ANTS-1409 INV-1: callerCwdSuffix helper not adjacent "
            "to makeCallerCwdReadProp (must share the tools/list "
-           "handler scope)";
+           "helpers in claudeintegrationdetail)";
 }
 
-// INV-2 — lambda returns the canonical literal byte-for-byte.
+// INV-2 — the helper returns the canonical literal byte-for-byte.
 TEST(McpCallerCwdSuffixHelper, ReturnsCanonicalLiteral) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
-    // ANTS-3681 — the brace-matched lambda body, not a 600-byte window
-    // from the first mention (which is a comment above the lambda).
+    // ANTS-3681 — the brace-matched function body, not a 600-byte window
+    // from the first mention (which is a comment above the helper).
     const std::string region =
-        ants_test::slurpFunctionBody(cc, "auto callerCwdSuffix = []");
+        ants_test::slurpFunctionBody(cc, "QString callerCwdSuffix()");
     ASSERT_FALSE(region.empty());
     EXPECT_NE(region.find(
         "Pass `caller_cwd` to anchor to your tab (ANTS-1392)."),

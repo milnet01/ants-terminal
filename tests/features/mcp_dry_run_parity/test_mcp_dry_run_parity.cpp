@@ -175,7 +175,7 @@ TEST(McpDryRunParity, ApplyMechanicalFixDryRunNoWriteThenRealMutates) {
 TEST(McpDryRunParity, SchemaPropWired) {
     const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
-    EXPECT_TRUE(has(ci, "auto makeDryRunProp = []"))
+    EXPECT_TRUE(has(ci, "QJsonObject makeDryRunProp()"))
         << "makeDryRunProp factory missing";
     // 4 part-1 (apply_edits/project_settings/feedback_log/audit_falsepos_log).
     // ANTS-5485 removed the part-2 and part-3 verbs.

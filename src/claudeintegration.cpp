@@ -1,4 +1,5 @@
 #include "claudeintegration.h"
+#include "claudeintegration_internal.h"  // ANTS-4919 — promoted helpers
 #include "antsversion.h"
 #include "guithread.h"
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
@@ -2632,6 +2633,287 @@ void ClaudeIntegration::handleMcpLine(const QByteArray &line, McpReplyChannel *o
     handleMcpRequest(doc, line, QPointer<McpReplyChannel>(out));
 }
 
+// ANTS-4919 — the schema-property helpers more than one piece of the
+// tools/list branch uses, promoted from local lambdas (ANTS-1677 § 2.4).
+// Declared in claudeintegration_internal.h.
+namespace claudeintegrationdetail {
+
+// ANTS-1520 — shared schema property for tools that
+// anchor on caller_cwd. Most project-scoped read and
+// write tools REQUIRE this (refused at the dispatcher
+// with code `caller_cwd_required` when absent).
+//
+// ANTS-4457 — the SEVEN verbs classified TabSpecific are
+// get_scrollback, get_text, recent_errors,
+// last_selection, get_last_command, get_environment and
+// get_cwd. They are a refusal gate too, not a routing
+// hint: ANTS-1415 Phase 3b removed the focused-tab
+// fallback and refuses `tab_or_cwd_required` when
+// neither caller_cwd nor a usable `tab` index is
+// present, because falling back to whichever tab is
+// focused is the cross-tenant leak ANTS-1404 closed for
+// the Required tools. Three of the seven — get_text,
+// recent_errors, last_selection — take `tab` as the
+// alternative key; on the other four the handler
+// ignores it, so it is not a routing key there.
+//
+// This comment is the enumeration; the wire description
+// below stays short because it rides on nearly every
+// tool in the catalogue.
+// tests/features/caller_cwd_schema_truth keeps the two
+// honest against the classifier.
+// Uniform schema opener so consumers see one
+// canonical statement instead of N variants
+// (ANTS-1520 spec: "per-tool docstring opens with
+// the same line"). Original ANTS-1391 rationale
+// (don't return project A's data when a session is
+// asking about project B) drove the uniform-Required
+// upgrade.
+// Write tools use it too, despite "Read" in the name;
+// the name stays because dated specs cite it.
+QJsonObject makeCallerCwdReadProp() {
+    QJsonObject p;
+    p["type"] = "string";
+    p["description"] = QStringLiteral(
+        "Your $PWD. Required by the dispatcher for "
+        "project-scoped read and write tools "
+        "(refuses with code `caller_cwd_required` "
+        "when absent — ANTS-1520). The per-tab "
+        "terminal-state verbs refuse "
+        "`tab_or_cwd_required` instead (ANTS-1415); "
+        "three of them (get_text, recent_errors, "
+        "last_selection) also accept a `tab` index. "
+        "There is no focused-tab fallback.");
+    return p;
+}
+
+// ANTS-1409 — canonical "Pass caller_cwd to anchor"
+// suffix used verbatim by the get_last_command and
+// get_environment descriptions.
+// The helper keeps the phrasing in one place so
+// future MCP tools opt in via `+ callerCwdSuffix()`
+// rather than re-typing it. INV-4 of the spec
+// explicitly excludes get_scrollback and get_text —
+// those carry tool-specific phrasing the canonical
+// short suffix doesn't.
+QString callerCwdSuffix() {
+    return QStringLiteral(
+        "Pass `caller_cwd` to anchor to your tab (ANTS-1392).");
+}
+
+// ANTS-1499 — `etag_match` input prop for read tools
+// that opt into the "304 Not Modified" pattern (the
+// tools allowlisted in isEtagSupportedTool()); the same
+// schema fragment is reused for each so the field
+// description stays in lockstep.
+QJsonObject makeEtagMatchProp() {
+    QJsonObject p;
+    p["type"] = "string";
+    p["description"] = QStringLiteral(
+        "Optional. Server-issued etag from a prior "
+        "call. If the server's current etag equals "
+        "this value, the response is short-circuited "
+        "to {ok:true, unchanged:true, etag:\"<same>\"} "
+        "— saves the full response body. Otherwise the "
+        "current response carries a fresh `etag` field "
+        "for the next call (ANTS-1499 \"304 Not "
+        "Modified\" pattern). ANTS-4859 — the etag "
+        "hashes the whole reply, so send the same "
+        "arguments as the call that issued it: any "
+        "argument that changes the reply (a mode, a "
+        "cap, an include_* flag) changes the etag. "
+        "`fields` is the exception, applied after the "
+        "etag.");
+    return p;
+}
+
+// find_definition's and find_caller's `lang`: the language
+// families their scan supports (ANTS-2150 / ANTS-3558).
+QJsonObject makeSymbolLangProp() {
+    QJsonObject p;
+    p["type"]    = "string";
+    p["enum"]    = QJsonArray{
+        QStringLiteral("auto"), QStringLiteral("cpp"),
+        QStringLiteral("py"), QStringLiteral("lua"),
+        QStringLiteral("sh"), QStringLiteral("generic"),
+        QStringLiteral("glsl")};
+    p["default"] = "auto";
+    p["description"] = QStringLiteral(
+        "Restrict the scan to one language family. "
+        "\"auto\" (default) scans every supported family "
+        "(cpp, py, lua, sh, generic, glsl).");
+    return p;
+}
+
+// ANTS-1720 — `fields` projection input prop: the response
+// carries only the named top-level fields. ANTS-4524 — the
+// property is now injected into EVERY verb's schema in the
+// tools/list loop below, with a terse description. This full
+// one is what the high-volume read verbs keep, because they
+// are where a caller is most likely to reach for it; the
+// injection skips a schema that already declares its own.
+QJsonObject makeFieldsProp() {
+    QJsonObject p;
+    p["type"] = "array";
+    QJsonObject items;
+    items["type"] = "string";
+    p["items"] = items;
+    p["description"] = QStringLiteral(
+        "Optional. Return only these top-level response "
+        "fields (e.g. [\"bullets\"], [\"branch\","
+        "\"files\"]). A name the envelope does not carry is "
+        "listed in `fields_unmatched` (ANTS-4567), emitted only "
+        "when non-empty — so a narrowed reply that comes back "
+        "nearly empty says WHY, and a correct probe of an "
+        "inapplicable field is distinguishable from a misspelling "
+        "or from the argument being dropped. ANTS-4930: it "
+        "arrives with `fields_available`, the top-level keys the "
+        "envelope DOES carry, because `fields_unmatched` alone "
+        "collapses three facts into one array — a name this verb "
+        "never carries, one it carries only on another backend, "
+        "and one it carries only when there is something to "
+        "report. Read the two together: a misspelling shows up as "
+        "the right name sitting in `fields_available`, and for "
+        "the others the envelope's real shape is there to branch "
+        "on instead of an absence. An all-unknown list "
+        "yields that field alone. Omit for the full "
+        "payload — fully backwards-compatible (ANTS-1720). "
+        "To keep the etag for a follow-up 304 call, "
+        "include \"etag\" in the list: the etag is "
+        "computed on the unfiltered body, so a narrowed "
+        "call still short-circuits when state is "
+        "unchanged (composes with etag_match).");
+    return p;
+}
+
+// ANTS-2091 — `compact` opt-in flag, added alongside
+// `fields` on the same read tools. When true, the response
+// is stripped of dead-weight fields (null / false / "" /
+// [] / {}) the model never reads; protected keys (ok, code,
+// error, etag, found, unchanged) always survive.
+QJsonObject makeCompactProp() {
+    QJsonObject p;
+    p["type"] = "boolean";
+    p["default"] = false;
+    p["description"] = QStringLiteral(
+        "Optional (ANTS-2091). When true, drop dead-weight "
+        "fields (null / false / empty string / empty array "
+        "/ empty object) the model never reads — recursively, "
+        "including per-element empties. Protected keys (ok, "
+        "code, error, etag, found, unchanged) always survive. "
+        "Absent ⟺ default, so a reader that treats a dropped "
+        "field as its zero-value sees no change; omit it when "
+        "you must distinguish empty from absent. Composes "
+        "with fields= and etag_match.");
+    return p;
+}
+
+// ANTS-2218 — `raw` opt-in flag on the content-read verbs
+// (read_region / read_regions / workspace_search). When true
+// the body is returned VERBATIM inside an unforgeable nonce
+// frame instead of the default scrub that neutralises literal
+// </ants_mcp_data> and `<!--`/`-->` markers — so an agent
+// reading frame-sensitive source (this file, a spec, an HTML/
+// markdown file with comments) gets true bytes to Edit from.
+QJsonObject makeRawProp() {
+    QJsonObject p;
+    p["type"] = "boolean";
+    p["default"] = false;
+    p["description"] = QStringLiteral(
+        "Optional (ANTS-2218). When true, return the file "
+        "content VERBATIM. The default framing neutralises any "
+        "literal MCP envelope close-tag and `<!--`/`-->` "
+        "comment markers in the bytes (lossy, to protect the "
+        "response frame) — which corrupts an Edit/apply_edits "
+        "built from a file that itself contains those tokens "
+        "(this MCP source, a spec, HTML/markdown with "
+        "comments). Raw mode wraps the bytes in a unique "
+        "per-call frame instead, so they round-trip unmodified. "
+        "Set it when you will Edit from the output; omit "
+        "otherwise.");
+    return p;
+}
+
+// ANTS-6125 — what the verbs that walk a project's source
+// files share: function_sizes, source_scrapes, comment_claims
+// and duplicate_blocks.
+QJsonObject makeWalkCallerCwdProp() {
+    QJsonObject p;
+    p["type"] = "string";
+    p["description"] = QStringLiteral(
+        "Your $PWD. REQUIRED — the project the paths resolve in.");
+    return p;
+}
+QJsonObject makeWalkPathsProp(const QString &description) {
+    QJsonObject item;
+    item["type"] = "string";
+    QJsonObject p;
+    p["type"] = "array";
+    p["items"] = item;
+    p["description"] = description;
+    return p;
+}
+QJsonObject makeWalkIncludeProp(const QString &files) {
+    QJsonObject p;
+    p["type"] = "boolean";
+    p["description"] = QStringLiteral("Also read %1 (default false).").arg(files);
+    return p;
+}
+// ANTS-2227 — uniform `dry_run` flag for mutating verbs. When
+// true the verb computes the would-be result envelope (carrying
+// dry_run:true) WITHOUT writing to disk. The per-verb
+// descriptions on roadmap_log / changelog_log / spec_log
+// (ANTS-2077 / 2136) predate this factory and keep their
+// tailored copies; new write verbs share this one.
+QJsonObject makeDryRunProp() {
+    QJsonObject p;
+    p["type"] = "boolean";
+    p["default"] = false;
+    p["description"] = QStringLiteral(
+        "Optional (ANTS-2227). When true, return the would-be "
+        "result (carrying `dry_run:true`) WITHOUT writing to "
+        "disk — a free pre-flight that shares the real write "
+        "path up to the point of no return, so the preview "
+        "cannot drift from the actual result on anything it "
+        "reaches. ANTS-4548 — it stops SHORT of the commit and "
+        "of the write to disk, so a green preview is evidence "
+        "the request is valid, never that the write landed. "
+        "Defaults false.");
+    return p;
+}
+
+// ANTS-2090 — `encoding` selector, declared on the
+// list-shaped read verbs. "tabular" packs each eligible
+// top-level array-of-objects into a columnar
+// {__cols__,__rows__} form (one header row + one value-row
+// per element), 30–60% smaller on big lists. Opt-in only —
+// the caller must decode it — so there is no session default.
+QJsonObject makeEncodingProp() {
+    QJsonObject p;
+    p["type"] = "string";
+    QJsonArray enumVals;
+    enumVals.append("json");
+    enumVals.append("tabular");
+    p["enum"] = enumVals;
+    p["default"] = "json";
+    p["description"] = QStringLiteral(
+        "Optional (ANTS-2090). \"tabular\" packs each "
+        "top-level array-of-objects into a columnar "
+        "{__cols__:[names], __rows__:[[values]]} form — "
+        "the per-row keys are dropped, so big list replies "
+        "(bullets[], matches[], symbols[]) are 30–60% "
+        "smaller. Decode by zipping __cols__ with each "
+        "__rows__ entry (a null cell = key absent on that "
+        "element). Opt-in because you must decode it; "
+        "never made bigger than plain JSON. Default "
+        "\"json\" (unchanged).");
+    return p;
+}
+
+}  // namespace claudeintegrationdetail
+
+using namespace claudeintegrationdetail;
+
 // ANTS-4932 — the request body below keeps the indentation it had inside
 // onMcpConnection's readyRead lambda, so the move changed no line of it.
 // `buf` is the request line; `guard` is its reply channel.
@@ -2679,278 +2961,6 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 haveResult = true;
             } else if (method == "tools/list") {
                 QJsonArray tools;
-
-                // ANTS-1520 — shared schema property for tools that
-                // anchor on caller_cwd. Most project-scoped read and
-                // write tools REQUIRE this (refused at the dispatcher
-                // with code `caller_cwd_required` when absent).
-                //
-                // ANTS-4457 — the SEVEN verbs classified TabSpecific are
-                // get_scrollback, get_text, recent_errors,
-                // last_selection, get_last_command, get_environment and
-                // get_cwd. They are a refusal gate too, not a routing
-                // hint: ANTS-1415 Phase 3b removed the focused-tab
-                // fallback and refuses `tab_or_cwd_required` when
-                // neither caller_cwd nor a usable `tab` index is
-                // present, because falling back to whichever tab is
-                // focused is the cross-tenant leak ANTS-1404 closed for
-                // the Required tools. Three of the seven — get_text,
-                // recent_errors, last_selection — take `tab` as the
-                // alternative key; on the other four the handler
-                // ignores it, so it is not a routing key there.
-                //
-                // This comment is the enumeration; the wire description
-                // below stays short because it rides on nearly every
-                // tool in the catalogue.
-                // tests/features/caller_cwd_schema_truth keeps the two
-                // honest against the classifier.
-                // Uniform schema opener so consumers see one
-                // canonical statement instead of N variants
-                // (ANTS-1520 spec: "per-tool docstring opens with
-                // the same line"). Original ANTS-1391 rationale
-                // (don't return project A's data when a session is
-                // asking about project B) drove the uniform-Required
-                // upgrade.
-                // Write tools use it too, despite "Read" in the name;
-                // the name stays because dated specs cite it.
-                auto makeCallerCwdReadProp = []{
-                    QJsonObject p;
-                    p["type"] = "string";
-                    p["description"] = QStringLiteral(
-                        "Your $PWD. Required by the dispatcher for "
-                        "project-scoped read and write tools "
-                        "(refuses with code `caller_cwd_required` "
-                        "when absent — ANTS-1520). The per-tab "
-                        "terminal-state verbs refuse "
-                        "`tab_or_cwd_required` instead (ANTS-1415); "
-                        "three of them (get_text, recent_errors, "
-                        "last_selection) also accept a `tab` index. "
-                        "There is no focused-tab fallback.");
-                    return p;
-                };
-
-                // ANTS-1409 — canonical "Pass caller_cwd to anchor"
-                // suffix used verbatim by the get_last_command and
-                // get_environment descriptions.
-                // The helper keeps the phrasing in one place so
-                // future MCP tools opt in via `+ callerCwdSuffix()`
-                // rather than re-typing it. INV-4 of the spec
-                // explicitly excludes get_scrollback and get_text —
-                // those carry tool-specific phrasing the canonical
-                // short suffix doesn't.
-                auto callerCwdSuffix = []{
-                    return QStringLiteral(
-                        "Pass `caller_cwd` to anchor to your tab (ANTS-1392).");
-                };
-
-                // ANTS-1499 — `etag_match` input prop for read tools
-                // that opt into the "304 Not Modified" pattern (the
-                // tools allowlisted in isEtagSupportedTool()); the same
-                // schema fragment is reused for each so the field
-                // description stays in lockstep.
-                auto makeEtagMatchProp = []{
-                    QJsonObject p;
-                    p["type"] = "string";
-                    p["description"] = QStringLiteral(
-                        "Optional. Server-issued etag from a prior "
-                        "call. If the server's current etag equals "
-                        "this value, the response is short-circuited "
-                        "to {ok:true, unchanged:true, etag:\"<same>\"} "
-                        "— saves the full response body. Otherwise the "
-                        "current response carries a fresh `etag` field "
-                        "for the next call (ANTS-1499 \"304 Not "
-                        "Modified\" pattern). ANTS-4859 — the etag "
-                        "hashes the whole reply, so send the same "
-                        "arguments as the call that issued it: any "
-                        "argument that changes the reply (a mode, a "
-                        "cap, an include_* flag) changes the etag. "
-                        "`fields` is the exception, applied after the "
-                        "etag.");
-                    return p;
-                };
-
-                // find_definition's and find_caller's `lang`: the language
-                // families their scan supports (ANTS-2150 / ANTS-3558).
-                auto makeSymbolLangProp = []{
-                    QJsonObject p;
-                    p["type"]    = "string";
-                    p["enum"]    = QJsonArray{
-                        QStringLiteral("auto"), QStringLiteral("cpp"),
-                        QStringLiteral("py"), QStringLiteral("lua"),
-                        QStringLiteral("sh"), QStringLiteral("generic"),
-                        QStringLiteral("glsl")};
-                    p["default"] = "auto";
-                    p["description"] = QStringLiteral(
-                        "Restrict the scan to one language family. "
-                        "\"auto\" (default) scans every supported family "
-                        "(cpp, py, lua, sh, generic, glsl).");
-                    return p;
-                };
-
-                // ANTS-1720 — `fields` projection input prop: the response
-                // carries only the named top-level fields. ANTS-4524 — the
-                // property is now injected into EVERY verb's schema in the
-                // tools/list loop below, with a terse description. This full
-                // one is what the high-volume read verbs keep, because they
-                // are where a caller is most likely to reach for it; the
-                // injection skips a schema that already declares its own.
-                auto makeFieldsProp = []{
-                    QJsonObject p;
-                    p["type"] = "array";
-                    QJsonObject items;
-                    items["type"] = "string";
-                    p["items"] = items;
-                    p["description"] = QStringLiteral(
-                        "Optional. Return only these top-level response "
-                        "fields (e.g. [\"bullets\"], [\"branch\","
-                        "\"files\"]). A name the envelope does not carry is "
-                        "listed in `fields_unmatched` (ANTS-4567), emitted only "
-                        "when non-empty — so a narrowed reply that comes back "
-                        "nearly empty says WHY, and a correct probe of an "
-                        "inapplicable field is distinguishable from a misspelling "
-                        "or from the argument being dropped. ANTS-4930: it "
-                        "arrives with `fields_available`, the top-level keys the "
-                        "envelope DOES carry, because `fields_unmatched` alone "
-                        "collapses three facts into one array — a name this verb "
-                        "never carries, one it carries only on another backend, "
-                        "and one it carries only when there is something to "
-                        "report. Read the two together: a misspelling shows up as "
-                        "the right name sitting in `fields_available`, and for "
-                        "the others the envelope's real shape is there to branch "
-                        "on instead of an absence. An all-unknown list "
-                        "yields that field alone. Omit for the full "
-                        "payload — fully backwards-compatible (ANTS-1720). "
-                        "To keep the etag for a follow-up 304 call, "
-                        "include \"etag\" in the list: the etag is "
-                        "computed on the unfiltered body, so a narrowed "
-                        "call still short-circuits when state is "
-                        "unchanged (composes with etag_match).");
-                    return p;
-                };
-
-                // ANTS-2091 — `compact` opt-in flag, added alongside
-                // `fields` on the same read tools. When true, the response
-                // is stripped of dead-weight fields (null / false / "" /
-                // [] / {}) the model never reads; protected keys (ok, code,
-                // error, etag, found, unchanged) always survive.
-                auto makeCompactProp = []{
-                    QJsonObject p;
-                    p["type"] = "boolean";
-                    p["default"] = false;
-                    p["description"] = QStringLiteral(
-                        "Optional (ANTS-2091). When true, drop dead-weight "
-                        "fields (null / false / empty string / empty array "
-                        "/ empty object) the model never reads — recursively, "
-                        "including per-element empties. Protected keys (ok, "
-                        "code, error, etag, found, unchanged) always survive. "
-                        "Absent ⟺ default, so a reader that treats a dropped "
-                        "field as its zero-value sees no change; omit it when "
-                        "you must distinguish empty from absent. Composes "
-                        "with fields= and etag_match.");
-                    return p;
-                };
-
-                // ANTS-2218 — `raw` opt-in flag on the content-read verbs
-                // (read_region / read_regions / workspace_search). When true
-                // the body is returned VERBATIM inside an unforgeable nonce
-                // frame instead of the default scrub that neutralises literal
-                // </ants_mcp_data> and `<!--`/`-->` markers — so an agent
-                // reading frame-sensitive source (this file, a spec, an HTML/
-                // markdown file with comments) gets true bytes to Edit from.
-                auto makeRawProp = []{
-                    QJsonObject p;
-                    p["type"] = "boolean";
-                    p["default"] = false;
-                    p["description"] = QStringLiteral(
-                        "Optional (ANTS-2218). When true, return the file "
-                        "content VERBATIM. The default framing neutralises any "
-                        "literal MCP envelope close-tag and `<!--`/`-->` "
-                        "comment markers in the bytes (lossy, to protect the "
-                        "response frame) — which corrupts an Edit/apply_edits "
-                        "built from a file that itself contains those tokens "
-                        "(this MCP source, a spec, HTML/markdown with "
-                        "comments). Raw mode wraps the bytes in a unique "
-                        "per-call frame instead, so they round-trip unmodified. "
-                        "Set it when you will Edit from the output; omit "
-                        "otherwise.");
-                    return p;
-                };
-
-                // ANTS-6125 — what the verbs that walk a project's source
-                // files share: function_sizes, source_scrapes, comment_claims
-                // and duplicate_blocks.
-                auto makeWalkCallerCwdProp = []{
-                    QJsonObject p;
-                    p["type"] = "string";
-                    p["description"] = QStringLiteral(
-                        "Your $PWD. REQUIRED — the project the paths resolve in.");
-                    return p;
-                };
-                auto makeWalkPathsProp = [](const QString &description){
-                    QJsonObject item;
-                    item["type"] = "string";
-                    QJsonObject p;
-                    p["type"] = "array";
-                    p["items"] = item;
-                    p["description"] = description;
-                    return p;
-                };
-                auto makeWalkIncludeProp = [](const QString &files){
-                    QJsonObject p;
-                    p["type"] = "boolean";
-                    p["description"] = QStringLiteral("Also read %1 (default false).").arg(files);
-                    return p;
-                };
-                // ANTS-2227 — uniform `dry_run` flag for mutating verbs. When
-                // true the verb computes the would-be result envelope (carrying
-                // dry_run:true) WITHOUT writing to disk. The per-verb
-                // descriptions on roadmap_log / changelog_log / spec_log
-                // (ANTS-2077 / 2136) predate this factory and keep their
-                // tailored copies; new write verbs share this one.
-                auto makeDryRunProp = []{
-                    QJsonObject p;
-                    p["type"] = "boolean";
-                    p["default"] = false;
-                    p["description"] = QStringLiteral(
-                        "Optional (ANTS-2227). When true, return the would-be "
-                        "result (carrying `dry_run:true`) WITHOUT writing to "
-                        "disk — a free pre-flight that shares the real write "
-                        "path up to the point of no return, so the preview "
-                        "cannot drift from the actual result on anything it "
-                        "reaches. ANTS-4548 — it stops SHORT of the commit and "
-                        "of the write to disk, so a green preview is evidence "
-                        "the request is valid, never that the write landed. "
-                        "Defaults false.");
-                    return p;
-                };
-
-                // ANTS-2090 — `encoding` selector, declared on the
-                // list-shaped read verbs. "tabular" packs each eligible
-                // top-level array-of-objects into a columnar
-                // {__cols__,__rows__} form (one header row + one value-row
-                // per element), 30–60% smaller on big lists. Opt-in only —
-                // the caller must decode it — so there is no session default.
-                auto makeEncodingProp = []{
-                    QJsonObject p;
-                    p["type"] = "string";
-                    QJsonArray enumVals;
-                    enumVals.append("json");
-                    enumVals.append("tabular");
-                    p["enum"] = enumVals;
-                    p["default"] = "json";
-                    p["description"] = QStringLiteral(
-                        "Optional (ANTS-2090). \"tabular\" packs each "
-                        "top-level array-of-objects into a columnar "
-                        "{__cols__:[names], __rows__:[[values]]} form — "
-                        "the per-row keys are dropped, so big list replies "
-                        "(bullets[], matches[], symbols[]) are 30–60% "
-                        "smaller. Decode by zipping __cols__ with each "
-                        "__rows__ entry (a null cell = key absent on that "
-                        "element). Opt-in because you must decode it; "
-                        "never made bigger than plain JSON. Default "
-                        "\"json\" (unchanged).");
-                    return p;
-                };
 
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";

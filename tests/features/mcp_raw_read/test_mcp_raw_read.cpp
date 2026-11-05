@@ -133,6 +133,6 @@ TEST(McpRawRead, DispatchWiring) {
     EXPECT_TRUE(contains(ci, "wrapMcpDataRaw(toolName, responseText)"))
         << "dispatch must route raw reads to wrapMcpDataRaw";
     // Schema prop factory present.
-    EXPECT_TRUE(contains(ci, "auto makeRawProp = []"))
+    EXPECT_TRUE(contains(ci, "QJsonObject makeRawProp()"))
         << "makeRawProp factory missing";
 }
