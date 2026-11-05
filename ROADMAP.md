@@ -79693,6 +79693,11 @@ in each bullet, not just the reporter's symptom.
     and each has a timeout; build -j is sized from memory, not vCPUs.
   - Once shipped, claude-config adds routing in check-code and
     local-gate.md § 9; send it the verb name and refusal shapes.
+  User, 2026-11-05: other projects with failed CI jobs WAIT for ci_report
+  before fixing and speeding up their CI, so tell them when it ships. Once
+  built and green, idle peer sessions review the code cold for bugs and
+  improvements (not the spec; review-contract gates that).
+  Spec: docs/specs/ANTS-6399-ci-report-verb.md.
   **Layman:** A tool every Claude session can ask: is this project's CI flaky, close to timing out, or slower than it needs to be?
   Kind: feature.
   Source: user-request-2026-11-05.
