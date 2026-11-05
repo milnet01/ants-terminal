@@ -202,7 +202,15 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
                 if (next.isEmpty()) break;
                 for (const QJsonValue &j : next) all.append(j);
             }
-            if (all.size() < total) { if (stop) break; continue; }
+            if (all.size() < total) {
+                if (stop) break;
+                // Pages ran out short of total_count: the attempt is unknown,
+                // and the report must not save as complete.
+                res.fetchErrors.append(QJsonObject{{QStringLiteral("call"), QStringLiteral("gh api ") + path},
+                                                   {QStringLiteral("exit_code"), 0},
+                                                   {QStringLiteral("reason"), QStringLiteral("incomplete_pages")}});
+                continue;
+            }
             reply[QStringLiteral("jobs")] = all;
             jobs[QStringLiteral("%1/%2").arg(id).arg(a)] = reply;
         }

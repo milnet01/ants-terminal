@@ -99,10 +99,13 @@ private:
         QStringList items;
         int depth = 0;
         QChar inQuote;
+        bool escaped = false;
         QString cur;
         for (const QChar c : inner) {
             if (!inQuote.isNull()) {
-                if (c == inQuote) inQuote = QChar();
+                if (escaped) escaped = false;
+                else if (c == QLatin1Char('\\') && inQuote == QLatin1Char('"')) escaped = true;
+                else if (c == inQuote) inQuote = QChar();
             } else if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
                 inQuote = c;
             } else if (c == QLatin1Char('{') || c == QLatin1Char('[')) {
@@ -119,10 +122,36 @@ private:
         if (!cur.trimmed().isEmpty()) items.append(cur.trimmed());
         return items;
     }
+    // A flow collection followed by ` # comment`: the collection alone.
+    // Anything else comes back unchanged.
+    static QString flowText(const QString &rest) {
+        if (!rest.startsWith(QLatin1Char('{')) && !rest.startsWith(QLatin1Char('['))) return rest;
+        int depth = 0;
+        QChar inQuote;
+        bool escaped = false;
+        for (int i = 0; i < rest.size(); ++i) {
+            const QChar c = rest.at(i);
+            if (!inQuote.isNull()) {
+                if (escaped) escaped = false;
+                else if (c == QLatin1Char('\\') && inQuote == QLatin1Char('"')) escaped = true;
+                else if (c == inQuote) inQuote = QChar();
+            } else if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
+                inQuote = c;
+            } else if (c == QLatin1Char('{') || c == QLatin1Char('[')) {
+                ++depth;
+            } else if ((c == QLatin1Char('}') || c == QLatin1Char(']')) && --depth == 0) {
+                const QString after = rest.mid(i + 1).trimmed();
+                return after.isEmpty() || after.startsWith(QLatin1Char('#')) ? rest.left(i + 1) : rest;
+            }
+        }
+        return rest;
+    }
     QVariant value(const QString &rest) {
         if (rest.startsWith(QLatin1Char('*'))) { fail(); return {}; }  // an alias
         if (rest.startsWith(QLatin1Char('"')) || rest.startsWith(QLatin1Char('\'')))
             return quoted(rest);
+        const QString flow = flowText(rest);
+        if (flow != rest) return value(flow);  // a flow collection with a comment after it
         if (rest.startsWith(QLatin1Char('{')) && rest.endsWith(QLatin1Char('}'))) {
             QVariantMap m;
             for (const QString &item : flowItems(rest.mid(1, rest.size() - 2))) {

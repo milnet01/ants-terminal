@@ -151,8 +151,8 @@ or hygiene change.
 | `runner_latest` | advice | A job's `runs-on` is a `*-latest` label. | `local-gate.md` § 9, warm-containers row, condition 1 |
 | `cache_size` | advice | The repository's Actions cache usage is 80% or more of 10 GB. | `local-gate.md` § 9, caches row (prune) |
 | `cache_key_shared` | advice | Two jobs save `actions/cache` keys with the same prefix: the key with its last `${{ … }}` and everything after it removed, compared as text (`${{ runner.os }}-ccache-release-`). | `local-gate.md` § 9, caches row |
-| `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` lacks `always()`, or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
-| `test_parallelism` | advice | A test step's command runs `ctest` with no `-j`/`--parallel` and no `CTEST_PARALLEL_LEVEL` in the workflow's, job's or step's `env`, and the same step carries `--timeout`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
+| `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` does not run after a failure (it holds none of `always()`, `failure()` or `!cancelled()`), or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
+| `test_parallelism` | advice | A step runs a `ctest` command that carries `--timeout` and no `-j`/`--parallel`, and `CTEST_PARALLEL_LEVEL` is set neither in the step's command nor in the workflow's, job's or step's `env`. The ctest command is read on its own, past wrappers such as `timeout`, `env`, `sudo` and `xvfb-run`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
 
 **Cache hit or miss beside timing findings.** For each `near_budget` and
 `budget_trend` finding, the verb reads the log of the newest run's job

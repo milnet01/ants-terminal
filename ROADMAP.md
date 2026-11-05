@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6404 -->
+<!-- ants-roadmap-id-high-water: ANTS=6405 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79774,6 +79774,26 @@ in each bullet, not just the reporter's symptom.
   **Layman:** Two corner cases in ci_report nobody has tested yet.
   Kind: investigate.
   Source: code-review-2026-11-05 (claude-d5, cold read of 8b1cb9c4).
+  Lanes: mcp.
+
+- ✅ [ANTS-6405] **Fix ci_report's re-review findings: continued ctest lines, wrapped ctest commands, dropped job pages, !failure(), flow-map comments.**
+  B1 a `\` continuation splits one ctest command in two.
+  B2 ctest after xvfb-run, sudo, then, `(`, or `timeout -k 10 8m` is missed.
+  B3 an attempt dropped for missing pages leaves no fetch_errors entry, so
+     the report saves as complete.
+  B4 runsAfterFailure counts `!failure()` as running after a failure.
+  B5 spec § 4.3's cache_save_skipped and test_parallelism rows and the save
+     message lag ANTS-6402.
+  B6 a flow map followed by a comment reads as plain text.
+  B7 `\"` inside a flow item splits at a comma.
+  Test gaps: two literal names both matching a matrix prefix; a tab after
+  spaces inside a `|` block.
+  Shipped 2026-11-05: B1-B7 and both test gaps, each with an Ants6405
+  test (red first, except the two coverage gaps, which already held).
+  Spec § 4.3 rows amended.
+  **Layman:** Smaller corrections to ci_report found on a second read.
+  Kind: review-fix.
+  Source: code-review-2026-11-05 (claude-d5, re-review of 85c4e720).
   Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage

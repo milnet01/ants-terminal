@@ -737,3 +737,78 @@ TEST(McpCiReport, Ants6402UnreadNamesAMissingWorkflowApart) {
     EXPECT_EQ(u.value("field").toString(), QStringLiteral("workflow"));
     EXPECT_EQ(u.value("workflow").toString(), QStringLiteral("CI"));
 }
+
+// ---- ANTS-6405: claude-d5's re-review of 85c4e720 ------------------------
+
+TEST(McpCiReport, Ants6405CtestCommandForms) {
+    auto fires = [](const char *run) {
+        const CiWorkflows::Result wf = workflow(QStringLiteral(
+            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
+            .arg(QString::fromLatin1(run).replace(QLatin1Char('\n'), QStringLiteral("\n          "))));
+        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
+    };
+    EXPECT_FALSE(fires("ctest --timeout 300 \\\n  -j4")) << "B1: a continued line is one command";
+    EXPECT_TRUE(fires("xvfb-run -a ctest --timeout 60")) << "B2";
+    EXPECT_TRUE(fires("sudo ctest --timeout 60")) << "B2";
+    EXPECT_TRUE(fires("if true; then ctest --timeout 60; fi")) << "B2";
+    EXPECT_TRUE(fires("(cd build && ctest --timeout 60)")) << "B2";
+    EXPECT_TRUE(fires("timeout -k 10 8m ctest --timeout 60")) << "B2";
+    EXPECT_FALSE(fires("xvfb-run -a ctest -j4 --timeout 60"));
+}
+
+TEST(McpCiReport, Ants6405IncompletePagesAreAFetchError) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(9, "s", "push", "failure", now.addSecs(-600))}).toJson());
+    QJsonArray first;
+    for (int i = 0; i < 100; ++i) first.append(jobRow(900 + i, "Leg", "success", now.addSecs(-500)));
+    gh.put(QStringLiteral("repos_o_r_actions_runs_9_attempts_1_jobs_per_page_100"),
+           QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
+    // Page 2 answers with no jobs: the fake's default '{}'.
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    const CiHistory::Result r = CiHistory::fetch(p.root, o, {});
+    EXPECT_FALSE(r.history.value("jobs").toObject().contains("9/1"));
+    EXPECT_FALSE(r.fetchErrors.isEmpty()) << "a dropped attempt must stop the report saving as complete";
+}
+
+TEST(McpCiReport, Ants6405NotFailureIsNotAfterFailure) {
+    const CiWorkflows::Result wf = workflow(QStringLiteral(
+        "name: CI\njobs:\n  t:\n    steps:\n      - uses: actions/cache/save@v4\n"
+        "        if: ${{ !failure() && github.ref == 'refs/heads/main' }}\n"
+        "        with:\n          key: k-${{ github.sha }}\n"));
+    EXPECT_EQ(ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "cache_save_skipped").size(), 1);
+}
+
+TEST(McpCiReport, Ants6405FlowMapEdges) {
+    const CiWorkflows::Result commented = workflow(QStringLiteral(
+        "name: CI\njobs:\n  t:\n    env: {CTEST_PARALLEL_LEVEL: 4}  # parallel\n    steps:\n"
+        "      - run: ctest --timeout 60\n"));
+    ASSERT_EQ(commented.workflows.size(), 1);
+    EXPECT_EQ(commented.workflows[0].jobs[0].envKeys, QStringList{QStringLiteral("CTEST_PARALLEL_LEVEL")})
+        << "B6: a comment after a flow map";
+    const CiWorkflows::Result escaped = workflow(QStringLiteral(
+        "name: CI\njobs:\n  t:\n    steps:\n      - uses: actions/cache@v4\n"
+        "        with: {key: \"a\\\"b, c\", path: x}\n"));
+    ASSERT_EQ(escaped.workflows.size(), 1);
+    EXPECT_EQ(escaped.workflows[0].jobs[0].steps[0].cacheKey, QStringLiteral("a\"b, c")) << "B7";
+}
+
+TEST(McpCiReport, Ants6405MatrixPrefixAndBlockTab) {
+    // Two literal names both fit "Build (x)": no match, so no budget is guessed.
+    const CiWorkflows::Result two = workflow(QStringLiteral(
+        "name: CI\njobs:\n  a:\n    name: Build\n    timeout-minutes: 10\n"
+        "  b:\n    name: Build (x)\n    timeout-minutes: 10\n"));
+    ASSERT_EQ(two.workflows.size(), 1) << dump(two.unread);
+    History h;
+    h.add(1, kNow.addSecs(-3600), QStringLiteral("Build (x) (y)"), 0, 540);
+    EXPECT_TRUE(ofCheck(CiReport::analyse(h.json(), two, kNow, 30), "near_budget").isEmpty());
+    // Spaces then a tab inside a | block is text.
+    const CiWorkflows::Result tab = workflow(QStringLiteral(
+        "name: CI\njobs:\n  a:\n    steps:\n      - run: |\n          make\n          \tindented\n"));
+    EXPECT_EQ(tab.workflows.size(), 1) << dump(tab.unread);
+}

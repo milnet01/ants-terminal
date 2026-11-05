@@ -494,9 +494,10 @@ void checkCacheKeys(const CiWorkflows::Result &wf, QList<Finding> &out) {
 
 // An `if:` that still runs after an earlier step failed.
 bool runsAfterFailure(QString ifExpr) {
+    static const QRegularExpression afterFailure(
+        QStringLiteral(R"(always\(\)|!cancelled\(\)|(?<!!)failure\(\))"));
     ifExpr.remove(QLatin1Char(' '));
-    return ifExpr.contains(QLatin1String("always()")) || ifExpr.contains(QLatin1String("failure()"))
-        || ifExpr.contains(QLatin1String("!cancelled()"));
+    return afterFailure.match(ifExpr).hasMatch();
 }
 
 void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
@@ -509,8 +510,9 @@ void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
                                          "not run when the job fails, so the next run starts cold.");
                 else if (s.uses.startsWith(QLatin1String("actions/cache/save@"))
                          && !runsAfterFailure(s.ifExpr))
-                    why = QStringLiteral("This save step has no if: always(), so a failed step "
-                                         "before it skips the save and the next run starts cold.");
+                    why = QStringLiteral("This save step's if: does not run after a failure, so a "
+                                         "failed step before it skips the save and the next run "
+                                         "starts cold.");
                 if (why.isEmpty()) continue;
                 Finding f;
                 f.check = QStringLiteral("cache_save_skipped");
@@ -524,27 +526,53 @@ void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
             }
 }
 
-// A ctest command in `run` that sets --timeout and runs serially. Each
-// command between &&, ||, ;, | and newlines is read on its own, past leading
-// VAR=value words and a `timeout <duration>` or `env` wrapper, so cmake's
-// --parallel or a script named run-ctest.sh says nothing about ctest.
-bool serialCtestWithTimeout(const QString &run) {
+// The words that run another command after them: a shell keyword, or a
+// wrapper whose own options come first.
+bool isWrapper(const QString &w) {
+    static const QStringList words{
+        QStringLiteral("env"), QStringLiteral("time"), QStringLiteral("sudo"),
+        QStringLiteral("nice"), QStringLiteral("exec"), QStringLiteral("command"),
+        QStringLiteral("stdbuf"), QStringLiteral("xvfb-run"), QStringLiteral("then"),
+        QStringLiteral("do"), QStringLiteral("else")};
+    return words.contains(w);
+}
+
+// A ctest command in `run` that sets --timeout and runs serially. A `\`
+// continuation is joined first; then each command between &&, ||, ;, | and
+// newlines is read on its own, past VAR=value words, a `(`, wrappers and
+// their options, and `timeout [options] <duration>`. So cmake's --parallel,
+// or a script named run-ctest.sh, says nothing about ctest.
+bool serialCtestWithTimeout(QString run) {
     static const QRegularExpression sep(QStringLiteral(R"(\n|&&|\|\||;|\|)"));
     static const QRegularExpression space(QStringLiteral(R"(\s+)"));
+    run.replace(QStringLiteral("\\\n"), QStringLiteral(" "));
     for (const QString &command : run.split(sep)) {
         QStringList words = command.split(space, Qt::SkipEmptyParts);
-        for (;;) {
-            if (words.isEmpty()) break;
-            const QString &w = words.first();
-            if (w.contains(QLatin1Char('=')) && !w.startsWith(QLatin1Char('-'))) { words.removeFirst(); continue; }
-            if (w == QLatin1String("env") || w == QLatin1String("time")) { words.removeFirst(); continue; }
-            if (w == QLatin1String("timeout")) {
-                words.removeFirst();
-                while (!words.isEmpty() && words.first().startsWith(QLatin1Char('-'))) words.removeFirst();
-                if (!words.isEmpty()) words.removeFirst();  // the duration
-                continue;
+        auto dropOptions = [&words](bool timeoutArgs) {
+            while (!words.isEmpty() && words.first().startsWith(QLatin1Char('-'))) {
+                const QString opt = words.takeFirst();
+                // timeout's -k/-s take a value of their own.
+                if (timeoutArgs && !words.isEmpty()
+                    && (opt == QLatin1String("-k") || opt == QLatin1String("-s")
+                        || opt == QLatin1String("--kill-after") || opt == QLatin1String("--signal")))
+                    words.removeFirst();
             }
-            break;
+        };
+        while (!words.isEmpty()) {
+            QString &w = words.first();
+            while (w.startsWith(QLatin1Char('('))) w.remove(0, 1);
+            if (w.isEmpty() || (w.contains(QLatin1Char('=')) && !w.startsWith(QLatin1Char('-')))) {
+                words.removeFirst();
+            } else if (isWrapper(w)) {
+                words.removeFirst();
+                dropOptions(false);
+            } else if (w == QLatin1String("timeout")) {
+                words.removeFirst();
+                dropOptions(true);
+                if (!words.isEmpty()) words.removeFirst();  // the duration
+            } else {
+                break;
+            }
         }
         if (words.isEmpty() || (words.first() != QLatin1String("ctest")
                                 && !words.first().endsWith(QLatin1String("/ctest"))))
