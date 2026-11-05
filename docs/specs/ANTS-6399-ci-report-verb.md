@@ -159,6 +159,11 @@ or hygiene change.
 | `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` does not run after a failure (it holds none of `always()`, `failure()` or `!cancelled()`), or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
 | `test_parallelism` | advice | A step runs a `ctest` command that carries `--timeout` and no `-j`/`--parallel`, and `CTEST_PARALLEL_LEVEL` is set neither in the step's command nor in the workflow's, job's or step's `env`. The ctest command is read on its own, past wrappers such as `timeout`, `env`, `sudo` and `xvfb-run`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
 
+**A job's time** runs from its `started_at` to its last step's
+`completed_at`. The job's own `completed_at` counts only when no step
+carries a time: on run 41285524795 it fell an hour after the last step
+(ANTS-6413).
+
 **Cache hit or miss beside timing findings.** For each `near_budget` and
 `budget_trend` finding, the verb reads the log of the newest run's job
 behind it and reports `hit` on `Cache restored from key`, `miss` on

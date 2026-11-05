@@ -212,6 +212,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report times a job by its steps** (ANTS-6413)
+  A job now ends when its last step ends. GitHub's own finish time, which
+  was an hour late on one run, no longer makes a job look near its limit.
+
 - **ci_report keeps the job logs a share of its limits, reads annotations 100 to a page, saves its report when only a log or annotation call failed, and reads ctest after if, while, until and !** (ANTS-6407)
 
 - **ci_report's test_parallelism check now finds ctest after a wrapper option that takes a value, such as sudo -u builder, nice -n 10 or a quoted xvfb-run -s** (ANTS-6406)

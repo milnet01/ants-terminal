@@ -39,10 +39,15 @@ struct JobRec {
     qint64 id = 0;
     QString name, conclusion;
     QDateTime created, started, completed;
+    QDateTime lastStepEnd;   // the latest step completed_at, if any step has one
     QList<StepRec> steps;
     const RunRec *run = nullptr;
+    // From started_at to the end of its last step. GitHub's own completed_at
+    // has been seen an hour past that (run 41285524795, 2026-11-01), so it
+    // counts only when no step carries a time.
     qint64 span() const {
-        return started.isValid() && completed.isValid() ? started.secsTo(completed) : -1;
+        const QDateTime end = lastStepEnd.isValid() ? lastStepEnd : completed;
+        return started.isValid() && end.isValid() ? started.secsTo(end) : -1;
     }
 };
 
@@ -146,6 +151,7 @@ QList<RunRec> readRuns(const QJsonObject &history, const QDateTime &now, int day
                     const QJsonObject so = sv.toObject();
                     const QDateTime s0 = when(so.value(QStringLiteral("started_at")));
                     const QDateTime s1 = when(so.value(QStringLiteral("completed_at")));
+                    if (s1.isValid() && (!j.lastStepEnd.isValid() || s1 > j.lastStepEnd)) j.lastStepEnd = s1;
                     j.steps.append({so.value(QStringLiteral("name")).toString(),
                                     so.value(QStringLiteral("conclusion")).toString(),
                                     s0.isValid() && s1.isValid() ? s0.secsTo(s1) : -1});

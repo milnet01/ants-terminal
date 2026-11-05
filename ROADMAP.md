@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6412 -->
+<!-- ants-roadmap-id-high-water: ANTS=6414 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79943,6 +79943,31 @@ in each bullet, not just the reporter's symptom.
   **Layman:** Some CI report checks are only tested for being present, not for firing at exactly the right point.
   Kind: test.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
+  Lanes: mcp.
+
+- ✅ [ANTS-6413] **ci_report: a job's time trusts GitHub's completed_at even when it runs an hour past the job's last step.**
+  Measured 2026-11-05: run 41285524795, job Build and test (ASan/UBSan):
+  steps 07:37:21-08:05:06Z, job started_at 07:37:20Z, completed_at
+  09:05:07Z. near_budget reported 87m47s against 75m (a problem
+  finding). JobRec::span() in src/cireport.cpp reads the job's
+  completed_at. Fix: end the span at the last step's completed_at when
+  the steps carry times.
+  Shipped 2026-11-05: JobRec::lastStepEnd; span() ends there. Test
+  Ants6413JobTimeEndsAtItsLastStep (red first). Spec § 4.3 amended
+  (impl-8).
+  **Layman:** The CI report said a test job ran 88 minutes when it really ran 28, because GitHub recorded the wrong finish time.
+  Kind: fix.
+  Source: ci-tune-request-2026-11-05 (claude-config msg 1433).
+  Lanes: mcp.
+
+- 📋 [ANTS-6414] **ci_report: evidence names a run but not the attempt it measured.**
+  album-builder read near_budget on run 38038388285 as a false
+  positive: attempt 1 hit its 15m timeout, but `gh run view` shows
+  attempt 2 (52 s). Name the attempt in a finding's evidence when it is
+  not the run's latest (spec § 4.6 output shape).
+  **Layman:** When a CI run was retried, the report points at the run but not at which try was slow, so the default GitHub view shows the wrong one.
+  Kind: enhancement.
+  Source: album-builder msg 1461, 2026-11-05.
   Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage

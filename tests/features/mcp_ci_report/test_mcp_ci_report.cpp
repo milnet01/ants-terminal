@@ -1180,3 +1180,16 @@ TEST(McpCiReport, Ants6412ParallelLevelInWorkflowOrStepEnv) {
     EXPECT_FALSE(fires("name: CI\njobs:\n  t:\n    steps:\n      - run: ctest --timeout 60\n"
                        "        env:\n          CTEST_PARALLEL_LEVEL: 4\n")) << "step env";
 }
+
+// ---- ANTS-6413: a job's time ends with its last step ------------------------
+
+// Run 41285524795 (2026-11-01): the ASan job's steps ended at 08:05:06Z and
+// GitHub's completed_at said 09:05:07Z. The job's time is its steps' time.
+TEST(McpCiReport, Ants6413JobTimeEndsAtItsLastStep) {
+    History h;
+    h.add(1, kNow.addSecs(-7200), QStringLiteral("Build"), 0, 300 + 3600, QStringLiteral("success"),
+          {{QStringLiteral("Set up job"), 60, QStringLiteral("success")},
+           {QStringLiteral("Build"), 240, QStringLiteral("success")}});
+    const CiReport::Analysis a = CiReport::analyse(h.json(), workflow(kBuild10), kNow, 30);
+    EXPECT_TRUE(ofCheck(a, "near_budget").isEmpty()) << dump(a.findings);
+}
