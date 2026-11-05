@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6418 -->
+<!-- ants-roadmap-id-high-water: ANTS=6421 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -80017,6 +80017,31 @@ in each bullet, not just the reporter's symptom.
   **Layman:** The CI report stops blaming an old run for breaking a time limit that was only added after it ran.
   Kind: fix.
   Source: OneUp msg 1478, 2026-11-05.
+
+- 📋 [ANTS-6419] **ci_report's budget_trend names the step that slowed, the first commit after the jump, and the baseline runs.**
+  On milnet01/rolodex it reported a median rise 0m39s -> 0m52s (+32%)
+  with step: null. The cause was the Test (pytest) step, 6s at b77c2ee
+  -> 24s at 9fe4350 (Argon2id KDF landed).
+  **Layman:** When CI gets slower, the report says which step slowed down and which commit caused it.
+  Kind: enhancement.
+  Source: Rolodex via claude-config msg 1482, 2026-11-05.
+
+- 📋 [ANTS-6420] **ci_report's runner_latest checks runners named through a matrix.**
+  rolodex build.yml has `runs-on: ${{ matrix.os }}` with matrix.include
+  ubuntu/windows/macos-latest; only literal runs-on lines were flagged.
+  Resolve the expression against matrix values (include entries and
+  plain axes).
+  **Layman:** The CI report also spots floating runner versions hidden inside a build matrix.
+  Kind: fix.
+  Source: Rolodex via claude-config msg 1482, 2026-11-05.
+
+- 📋 [ANTS-6421] **ci_report lists the workflow files it checked statically apart from the workflows that had runs.**
+  On rolodex window.workflows was ["CI"], yet findings named "Build
+  binaries", which had no runs. A separate list keeps "no runs" apart
+  from "not looked at".
+  **Layman:** The CI report makes clear which workflows it looked at, even ones that never ran.
+  Kind: enhancement.
+  Source: Rolodex via claude-config msg 1482, 2026-11-05.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
