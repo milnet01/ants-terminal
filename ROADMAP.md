@@ -79846,6 +79846,10 @@ in each bullet, not just the reporter's symptom.
   Options defaults), #8 (orNull four times), #10, #11 (\x1f key
   separator), #13, #14, #15, #16, #17, #18 (fetch error reason), #19,
   #20, #21 (no cache hit/miss test); lane 1 #9 (stderr uncapped).
+  Also (review open question 2, decided 2026-11-05): with workflow= set,
+  the file-only checks (runner_latest, the cache checks,
+  test_parallelism) still report every workflow. Narrow them to the
+  named workflow, and say so in spec § 4.2.
   **Layman:** Tidies names, comments and repeated constants in the CI report tool so it is easier to follow.
   Kind: review-fix.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
