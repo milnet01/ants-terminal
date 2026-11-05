@@ -74081,7 +74081,7 @@ indie-review finding.
   Kind: doc-fix.
   Source: in-session-2026-09-04.
 
-- 📋 [ANTS-5140] **Three documents still say every hand-written inline MCP handler runs on the GUI thread, which ANTS-4682 made false.**
+- ✅ [ANTS-5140] **Three documents still say every hand-written inline MCP handler runs on the GUI thread, which ANTS-4682 made false.**
   ANTS-4682 moved GUI-free inline handlers off the GUI thread by wrapping
   them in `ClaudeIntegration::RcHandler{`, so an inline lambda can now run
   on the dispatch worker. These still say otherwise:
@@ -74094,6 +74094,8 @@ indie-review finding.
   The rule is the overload: the bare ToolHandler overload stays on the GUI
   thread, and the RcHandler overload runs off it unless TabSpecific.
   mcp-tools.md is a standard, so its edit runs its own gate.
+  Shipped 2026-11-05 (fc08e358): all three passages now name the
+  overload, not the authoring style, as what picks the thread.
   **Layman:** The notes for people adding Claude commands still say something that stopped being true.
   Kind: doc-fix.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 1 sweep).
