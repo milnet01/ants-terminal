@@ -2691,6 +2691,8 @@ if(ANTS_TESTS)
                 # ANTS-2131 — blocking MCP verbs dispatch off the main thread.
                 tests/features/mcp_verb_offthread_guard/test_mcp_verb_offthread_guard.cpp
     tests/features/mcp_async_dispatch/test_mcp_async_dispatch.cpp
+                # ANTS-1677 INV-6 — the live tools/list reply, for ANTS-4919.
+                tests/features/mcp_tools_list_live/test_mcp_tools_list_live.cpp
                 # ANTS-5144 — one socket listener per path, shared by windows.
                 tests/features/shared_socket_listener/test_shared_socket_listener.cpp
                 # ANTS-4932 — ants-mcpd, run as a child process.
