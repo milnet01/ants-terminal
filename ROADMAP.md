@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6394 -->
+<!-- ants-roadmap-id-high-water: ANTS=6395 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71474,10 +71474,27 @@ they are one change.
   so 1M lines is several GB per tab. Levers the lane suggests: store
   rows trimmed to content width, a compact attribute encoding, or a byte
   budget alongside the line cap.
+  Progress 2026-11-05 (session 217): lever (a) shipped as ANTS-6395
+  (TermLine 88 -> 40 bytes). Levers (b) trimmed scrollback rows and (c)
+  a compact Cell remain; both need the measurement pass this item asks
+  for first.
   **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
   Kind: perf.
   Source: user-request-2026-08-19.
   Lanes: terminalgrid, performance.
+
+- ✅ [ANTS-6395] **Every terminal line carries an empty 56-byte combining-character map; hold it behind a pointer.**
+  TermLine.combining is a std::unordered_map, whose header costs 56
+  bytes on every line, set or not. A copyable wrapper holding a
+  unique_ptr to the map costs 8 when empty and deep-copies when set, so
+  TermLine stays copyable and the screenCombining / scrollbackCombining
+  accessors keep returning the map. Lever (a) of ANTS-4534.
+  Shipped 2026-11-05 (c672b6c9): CombiningMap; TermLine 88 -> 40 bytes.
+  Test: CombiningOnResize.Ants6395EmptyTableIsOnePointer.
+  **Layman:** Each line of scrollback reserves room for accent marks even when it has none; this makes the empty case cost one pointer.
+  Kind: perf.
+  Source: ANTS-4534 lever (a), split 2026-11-05.
+  Lanes: terminalgrid.
 
 ### ⚡ Local-subagent framework — Claude offloads to the local machine (user request 2026-04-30)
 
@@ -84193,7 +84210,7 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-27 (suggested after a near-miss the existing hint prevented).
   Lanes: mcp.
 
-- 💭 [ANTS-4734] **Move check-shipped-coverage.sh off the sqlite schema and onto roadmap_query, once a build carrying ANTS-4715 ships.**
+- 🚫 [ANTS-4734] **Move check-shipped-coverage.sh off the sqlite schema and onto roadmap_query, once a build carrying ANTS-4715 ships.**
   BLOCKED ON A RELEASE, not on design. ANTS-4715 added `shipped_since` /
   `shipped_until` to roadmap_query's list path, which is the interface the
   script was working around. The migration is straightforward once the verb
@@ -84255,6 +84272,10 @@ envelope dropped `source`/`path`/`etag`/`total`/`filter`.
   cited by no CHANGELOG bullet. Surfaced to the user, not fixed here —
   each is either release-note-worthy or deliberately internal, and that is
   a per-item call.
+  Dropped 2026-11-05 (session 217): its own notes above conclude the
+  migration would make the release gate depend on a running GUI
+  instance, a robustness regression; the stale fact it was filed for was
+  corrected instead.
   **Layman:** A release check reads the database file directly; now that the tool can answer the question, it should ask the tool instead.
   Kind: refactor.
   Source: in-session-2026-08-27, deferred half of ANTS-4715.

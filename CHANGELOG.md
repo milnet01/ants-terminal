@@ -60,6 +60,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Each line of scrollback uses 48 fewer bytes when it has no accent marks, about 2.4 MB less per tab at the default size** (ANTS-6395)
+
 - **`find_sources` and the audit dialog skip generated files by one shared list, which now includes shader and font byte-array headers** (ANTS-4120)
 
 - **The shared MCP feedback files now live in the roadmap store. Two sessions filing at once both land, and each file stays on disk as a read-only copy.** (ANTS-4513)
