@@ -18424,10 +18424,14 @@ ClaudeIntegration::rateLimitClassFor(const QString &toolName) {
     // Expensive. ANTS-1643 added test_audit_brief.
     if (toolName == QStringLiteral("cold_eyes_brief"))          return R::BriefAssembly;
     if (toolName == QStringLiteral("test_audit_brief"))         return R::BriefAssembly;
+    // ANTS-5112 — review lanes fan workspace_search out the same way, and
+    // every lane of one project shares the bucket, so at 10/min most were
+    // refused and fell back to raw Grep. Since ANTS-4932 it runs in
+    // ants-mcpd, not on the terminal's GUI thread.
+    if (toolName == QStringLiteral("workspace_search"))         return R::BriefAssembly;
     // Expensive — 10/min. Heavy verbs (shell-out, subagent dispatch,
     // cmake/ctest, full-corpus scan).
     if (toolName == QStringLiteral("audit_run"))                return R::Expensive;
-    if (toolName == QStringLiteral("workspace_search"))         return R::Expensive;
     if (toolName == QStringLiteral("verify_changes"))           return R::Expensive;
     // ANTS-1302 — focused_test shells out to ctest.
     if (toolName == QStringLiteral("focused_test"))             return R::Expensive;

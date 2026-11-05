@@ -311,9 +311,19 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
     // (cold_eyes_brief, test_audit_brief) moved out of Expensive into
     // BriefAssembly (30/min). Sibling partition / corroborate /
     // dispatch verbs stay Expensive.
+    // ANTS-5112 — workspace_search moved to BriefAssembly too: review lanes
+    // fan it out the same way, and every lane of one project shares a bucket.
+    for (const char *needle : {"\"cold_eyes_brief\")", "\"test_audit_brief\")",
+                               "\"workspace_search\")"}) {
+        const auto pos = classBody.find(needle);
+        ASSERT_NE(pos, std::string::npos) << "INV-13: tier list missing " << needle;
+        const auto lineEnd = classBody.find('\n', pos);
+        EXPECT_NE(classBody.substr(pos, lineEnd - pos).find("R::BriefAssembly"),
+                  std::string::npos)
+            << "INV-13: " << needle << " must map to R::BriefAssembly";
+    }
     const std::string exp[] = {
         "\"audit_run\")",
-        "\"workspace_search\")",
         "\"verify_changes\")",
         "\"indie_review_partition\")",
         "\"test_audit_partition\")"};
