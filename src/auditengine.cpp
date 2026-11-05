@@ -634,8 +634,15 @@ QList<Finding> parseFindings(const QString &body, const AuditCheck &check) {
 
 void capFindings(CheckResult &r, int cap) {
     if (cap <= 0 || r.findings.size() <= cap) return;
-    r.omittedCount = r.findings.size() - cap;
-    r.findings.erase(r.findings.begin() + cap, r.findings.end());
+    // ANTS-6383 — suppressed findings stay for the SARIF export but are never
+    // shown, so they take no slot: cap the shown ones and keep the rest after.
+    const auto firstHidden = std::stable_partition(
+        r.findings.begin(), r.findings.end(),
+        [](const Finding &f) { return !f.suppressed; });
+    const qsizetype shown = firstHidden - r.findings.begin();
+    if (shown <= cap) return;
+    r.omittedCount = shown - cap;
+    r.findings.erase(r.findings.begin() + cap, r.findings.begin() + shown);
 }
 
 int applyLearnedFpSuppressions(QList<Finding> &findings,

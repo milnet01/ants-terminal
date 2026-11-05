@@ -617,7 +617,12 @@ QString AuditDialog::plainTextResults() const {
                          typeLabel(r.type), r.category, r.source, r.output);
             continue;
         }
-        if (r.findings.isEmpty() && r.omittedCount == 0) continue;
+        // ANTS-6381 — the report goes to an agent told to fix what it is
+        // handed, so a suppressed finding never reaches it.
+        QList<Finding> shown;
+        for (const Finding &f : r.findings)
+            if (!isSuppressed(f)) shown.append(f);
+        if (shown.isEmpty() && r.omittedCount == 0) continue;
 
         // Count cross-tool-corroborated findings for the category header.
         // A finding is corroborated when ≥2 distinct tools flagged the same
@@ -625,7 +630,7 @@ QString AuditDialog::plainTextResults() const {
         // computeConfidence(). Surfaced here so the downstream consumer can
         // prioritise triage without having to read every finding tag first.
         int corroborated = 0;
-        for (const Finding &f : r.findings)
+        for (const Finding &f : shown)
             if (f.highConfidence) ++corroborated;
         const QString corroTag = corroborated > 0
             ? QString(" (%1 corroborated)").arg(corroborated)
@@ -634,9 +639,9 @@ QString AuditDialog::plainTextResults() const {
         body += QString("--- [%1] %2 (%3 / %4) [%5] — %6 finding(s)%7 ---\n")
                 .arg(severityLabel(r.severity), r.checkName,
                      typeLabel(r.type), r.category, r.source)
-                .arg(r.findings.size() + r.omittedCount)
+                .arg(shown.size() + r.omittedCount)
                 .arg(corroTag);
-        for (const Finding &f : r.findings) {
+        for (const Finding &f : shown) {
             QString line;
             if (!f.file.isEmpty() && f.line >= 0)
                 line = QString("%1:%2  %3").arg(f.file, QString::number(f.line)).arg(f.message);

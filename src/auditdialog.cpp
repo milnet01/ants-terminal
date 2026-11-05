@@ -641,14 +641,18 @@ bool AuditDialog::inlineSuppressed(const Finding &f) const {
         if (!body.isEmpty() && AuditEngine::commentSuppresses(body, f.checkId)) return true;
     }
 
-    // 3. previous-line: disable-next-line / NOLINTNEXTLINE / eslint-disable-next-line.
+    // 3. previous-line: disable-next-line / NOLINTNEXTLINE / eslint-disable-next-line,
+    //    cppcheck-suppress, nosemgrep.
     const int prevIdx = f.line - 2;
     if (prevIdx >= 0 && prevIdx < lines.size()) {
         const QString body = commentBody(lines[prevIdx]);
         if (!body.isEmpty() &&
             (body.contains("next-line", Qt::CaseInsensitive) ||
              body.contains("NOLINTNEXTLINE") ||
-             body.contains("disable-next"))) {
+             body.contains("disable-next") ||
+             // ANTS-6382 — both tools document a marker on the line above.
+             body.contains("cppcheck-suppress") ||
+             body.contains("nosemgrep"))) {
             if (AuditEngine::commentSuppresses(body, f.checkId)) return true;
         }
     }
@@ -1427,11 +1431,11 @@ QString AuditDialog::hardenUserRegex(const QString &pattern) {
     return AuditEngine::hardenUserRegex(pattern);
 }
 
-void AuditDialog::saveSuppression(const QString &dedupKey,
+bool AuditDialog::saveSuppression(const QString &dedupKey,
                                   const QString &ruleId,
                                   const QString &reason) {
-    if (dedupKey.isEmpty()) return;
-    if (m_suppressedKeys.contains(dedupKey)) return;
+    if (dedupKey.isEmpty()) return false;
+    if (m_suppressedKeys.contains(dedupKey)) return true;
 
     // Build the new JSONL entry.
     QJsonObject entry;
@@ -1530,11 +1534,12 @@ void AuditDialog::saveSuppression(const QString &dedupKey,
         if (m_statusLabel)
             m_statusLabel->setFullText(
                 QStringLiteral("Could not save the suppression to %1").arg(path));
-        return;
+        return false;
     }
     m_suppressedKeys.insert(dedupKey);
     if (!reason.isEmpty())
         m_suppressionReasons.insert(dedupKey, reason);
+    return true;
 }
 
 void AuditDialog::onResultAnchorClicked(const QUrl &url) {
@@ -1614,7 +1619,8 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     if (!ok) return;
 
     const QString ruleId = f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId;
-    saveSuppression(key, ruleId, reason);
+    // ANTS-6384 — a failed save has already said so; record nothing more.
+    if (!saveSuppression(key, ruleId, reason)) return;
 
     // ANTS-1708 — also record a drift-resilient learned-FP entry keyed by the
     // line-independent content fingerprint, so the suppression survives later
@@ -3197,11 +3203,11 @@ void AuditDialog::renderResults() {
     int bySev[5] = {0, 0, 0, 0, 0};
     int totalFindings = 0;
     int totalNew = 0;
-    int totalSuppressed = 0;    // kept for display; not sure how many the file hid
+    int totalSuppressed = 0;    // ANTS-6383 — findings this run's suppressions hid
     for (const auto &r : sorted) {
         if (r.warning) continue;
         for (const Finding &f : r.findings) {
-            if (isSuppressed(f)) continue;
+            if (isSuppressed(f)) { ++totalSuppressed; continue; }
             if (m_sinceBaseline) {
                 if (!sinceBaselineVisible(f))
                     continue;
@@ -3218,7 +3224,6 @@ void AuditDialog::renderResults() {
             totalFindings += r.omittedCount;
         }
     }
-    totalSuppressed = m_suppressedKeys.size();
 
     // Compute trend delta against the last saved snapshot BEFORE writing our
     // own, so the user sees "vs previous run" rather than "vs this run".
@@ -3357,7 +3362,7 @@ void AuditDialog::renderResults() {
      .arg(bySev[(int)Severity::Info])
      .arg((totalSuppressed > 0
           ? QString("<br><span style='color:#888; font-size:10px;'>"
-                    "%1 suppression(s) loaded from .audit_suppress · "
+                    "%1 finding(s) suppressed · "
                     "%2 new since baseline</span>")
               .arg(totalSuppressed).arg(m_hasBaseline ? totalNew : 0)
           : (m_hasBaseline ? QString("<br><span style='color:#888; font-size:10px;'>"

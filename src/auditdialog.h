@@ -306,7 +306,7 @@ private:
 
     // Append a suppression entry — always writes JSONL v2. If the file is
     // still in v1 format it's converted in-place on first write.
-    void saveSuppression(const QString &dedupKey,
+    bool saveSuppression(const QString &dedupKey,
                          const QString &ruleId,
                          const QString &reason);
 

@@ -187,6 +187,14 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit's "Review with Claude" report leaves out findings you have suppressed** (ANTS-6381)
+
+- **A `cppcheck-suppress` or `nosemgrep` comment on the line above a finding now suppresses it in the audit** (ANTS-6382)
+
+- **Suppressed audit findings no longer use up the per-check limit, and the noise figure counts the findings they hid this run** (ANTS-6383)
+
+- **When saving an audit suppression fails, the error stays on screen and nothing else is recorded** (ANTS-6384)
+
 - **`spec_log op:"append_loop"` adds the row to the live table of a loop log that was split when its columns changed** (ANTS-6380)
   A loop log whose second table opens with the same first column as the
   first is one log; rows go in its last table. A table opening with a

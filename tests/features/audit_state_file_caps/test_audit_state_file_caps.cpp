@@ -93,7 +93,7 @@ TEST_F(AuditStateFileCaps, EveryReaderUsesTheCappedRead) {
     const char *const readers[] = {
         "int AuditDialog::loadUserRules()",
         "void AuditDialog::loadSuppressions()",
-        "void AuditDialog::saveSuppression(",
+        "bool AuditDialog::saveSuppression(",
         "void AuditDialog::loadBaseline()",
         "AuditDialog::TrendSnapshot AuditDialog::loadLastSnapshot() const",
         "void AuditDialog::appendSnapshot(",

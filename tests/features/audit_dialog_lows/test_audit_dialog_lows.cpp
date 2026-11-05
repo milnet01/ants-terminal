@@ -113,7 +113,7 @@ TEST(AuditDialogLows, FilterTypingIsDebounced) {
 // INV-9
 TEST(AuditDialogLows, SuppressionSaveIsLocked) {
     const QString region = between(auditSource(),
-        QStringLiteral("void AuditDialog::saveSuppression("),
+        QStringLiteral("bool AuditDialog::saveSuppression("),
         QStringLiteral("QByteArray existingBytes;"));
     ASSERT_FALSE(region.isEmpty()) << "saveSuppression not found";
     EXPECT_TRUE(region.contains(QStringLiteral("ConfigWriteLock lock(path);")))
