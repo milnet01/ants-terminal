@@ -31,7 +31,7 @@ permissions:
 jobs:
   audit:
     name: Are the current release's downloads real?
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Audit published downloads
@@ -130,7 +130,7 @@ jobs:
     # newer ships. Daily rather than per push: it needs the network, and an
     # upstream release must not block an unrelated push.
     name: Is every dependency at latest, or held on record?
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - name: Check out source
