@@ -478,7 +478,7 @@ TEST(McpCiReport, Ants6399LiveRunSavesTheReport) {
     gh.put(QStringLiteral("runs.json"),
            QJsonDocument(shifted(fx.value("runs"), shift).toArray()).toJson());
     const QJsonObject jobs = shifted(fx.value("jobs"), shift).toObject();
-    for (auto it = jobs.cbegin(); it != jobs.cend(); ++it) {
+    for (auto it = jobs.constBegin(); it != jobs.constEnd(); ++it) {
         const QStringList ra = it.key().split(QLatin1Char('/'));
         gh.put(QStringLiteral("repos_o_r_actions_runs_%1_attempts_%2_jobs_per_page_100").arg(ra[0], ra[1]),
                QJsonDocument(it.value().toObject()).toJson());

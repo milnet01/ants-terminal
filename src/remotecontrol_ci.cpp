@@ -133,8 +133,10 @@ public:
             return false;
         }
         const QByteArray stamp = QByteArray::number(nowMs);
-        if (::ftruncate(m_fd, 0) == 0)
-            (void)::pwrite(m_fd, stamp.constData(), size_t(stamp.size()), 0);
+        // Best effort: a missing stamp only reads as running_since_ms 0.
+        if (::ftruncate(m_fd, 0) == 0
+            && ::pwrite(m_fd, stamp.constData(), size_t(stamp.size()), 0) < 0)
+            qWarning("ci_report: could not stamp the live-run lock");
         return true;
     }
 
