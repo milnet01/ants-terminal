@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6395 -->
+<!-- ants-roadmap-id-high-water: ANTS=6396 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74113,6 +74113,19 @@ indie-review finding.
   is a misuse rather than a race. Fix candidates: reset m_roadmapStore on
   the worker before the join (a queued job from shutdown), or open the
   store on the thread that will destroy it.
+  Re-checked 2026-11-05 (session 217). Still live: ~RemoteControl leaves
+  m_roadmapStore to the unique_ptr, so ~RoadmapStore (PRAGMA optimize,
+  close, removeDatabase) runs on the GUI thread after
+  ClaudeIntegration::shutdownDispatchWorker has joined both lanes.
+  Narrower than feared: the Bulk-lane verbs (roadmap_migrate,
+  mutation_probe, focused_test, verify_changes) open their own
+  Access::Bulk stores and never touch m_roadmapStore, so runtime use is
+  the dispatch lane only and there is no runtime race. Fix direction: a
+  blocking release job on the dispatch lane before its quit(), e.g. a
+  RemoteControl::releaseRoadmapStore() that MainWindow posts and waits
+  on before calling shutdownDispatchWorker. The poster refuses once
+  shutting down, so the order matters. Not built this session: it needs
+  a blocking post the poster API does not offer.
   **Layman:** When Ants closes, it tidies the roadmap database from a different thread than the one that opened it, which Qt does not support.
   Kind: fix.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 2 lane question).
@@ -86616,6 +86629,7 @@ finish it and to make it the default rather than the alternative.
   Kind: doc-fix.
   Source: user-request-2026-09-07.
   Lanes: docs, standards, specs.
+  Blocked-by: ANTS-4934.
 
 ### 🎨 UI polish (user request 2026-09-04)
 
@@ -105604,6 +105618,20 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-10-13 (doc_lint while shipping ANTS-1061).
   Lanes: terminal-grid, tests.
+
+- 📋 [ANTS-6396] **ClaudeTabStatusIndicator INV-10 failed once in the Qt 6.2 container leg: the tracker saw no claude child yet.**
+  2026-11-05, push gate's qt62-guard leg (ubuntu 24.04 image), machine
+  load about 15: "[INV-10] FAIL before any transcript: state=0 want Idle"
+  (test_claude_tab_tracker.cpp). The test waits until the fake claude's
+  /proc cmdline names claude, then calls trackShell and reads the state
+  once. Earlier pushes the same day passed the same leg, and the host run
+  passes. Likely the tracker's own detection lags the cmdline check; a
+  bounded qWaitFor on the state, not a single read, would make the test
+  say what it means.
+  **Layman:** A test that starts a pretend Claude process sometimes checks too early in the slower build container and fails.
+  Kind: test.
+  Source: in-session-2026-11-05 (push gate, qt62 container leg).
+  Lanes: tests, claudetabtracker.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
