@@ -143,7 +143,7 @@ or hygiene change.
 | `check` | Severity | Fires when | Cites |
 |---|---|---|---|
 | `flaky` | problem | One workflow on one SHA has a failed attempt or run and a later successful one. Names the failed job and step; adds failing ctest names when the failed job's log carries ctest's `The following tests FAILED:` block. | `testing.md` § 7; `local-gate.md` § 9 rule 3 |
-| `near_budget` | problem | A job or step with a `timeout-minutes` budget ran at 80% of it or more in any run in the window, or was cancelled at its budget. | `local-gate.md` § 9, `timeout-minutes` row |
+| `near_budget` | problem | A job or step with a budget (§ 4.4: `timeout-minutes`, or a step's shell guard) ran at 80% of it or more in any run in the window, or ended at its budget. | `local-gate.md` § 9, `timeout-minutes` row |
 | `budget_trend` | advice | A budgeted job's median time over its newest 5 successful runs is 25% or more above the median of its earlier ones in the window, with at least 5 earlier ones. | `local-gate.md` § 9, `timeout-minutes` row |
 | `scheduled_red` | problem | A workflow's newest `schedule` run failed. The message says since when it has been red: the newest successful scheduled run's date, or "no green run in the window". | `local-gate.md` § 9, slow-legs row |
 | `queue_wait` | advice | A job's median wait from creation to start exceeds 5 minutes. | none |
@@ -185,8 +185,13 @@ their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
   cannot parse leaves that budget unknown. A check needing an unknown value
   does not fire. The reply's `unread` array lists each `{file, job, field}`
   it skipped.
-- A budget enforced inside a step's shell (`timeout 38m …`) is not read.
-  `near_budget` sees only `timeout-minutes`.
+- **A shell guard is a step budget.** A step whose single-line `run:`
+  begins `timeout <N><s|m|h> ` has that duration as its budget, as
+  `run: timeout 34m cmake --build build-asan --parallel` in this project's
+  `ci.yml` does. Where the step also has `timeout-minutes`, the smaller
+  counts. A guard anywhere else in the command (after `&&`, in a `|`
+  block, inside a script) is not read. Such a step that ran its full
+  budget fails rather than being cancelled, and counts as reaching it.
 
 The working tree is read, not each run's commit. Budgets are judged against
 today's file, which is what a fix changes.
@@ -327,6 +332,15 @@ install), which is that file's test for a new code.
   `registerProjectScopedVerbs` and `cmdCiReport`'s body holds no `m_main`.
   *Breaks when:* `cmdCiReport` uses tab
   state, or is registered among the terminal-scoped verbs.
+- **INV-12** — a step whose `run:` begins `timeout 10m ` has a 10-minute
+  budget: `near_budget` fires when it ran 8 minutes, and when it failed at
+  10 minutes. A step running `cd build && timeout 10m ctest` for 9 minutes
+  gets no budget and no finding. *Test:* `tests/features/mcp_ci_report`,
+  fixtures with neither step carrying `timeout-minutes` and the job's
+  budget at 60 minutes, so only the shell guard can make the finding.
+  *Breaks when:* the reader ignores shell guards (the first two fixtures
+  stay silent), or matches `timeout` anywhere in the command (the third
+  fires).
 
 ## 6. Failure modes
 
@@ -351,7 +365,7 @@ removed and seen to fail before it lands.
 
 | Test | Covers |
 |---|---|
-| analyser tests on fixtures | INV-1, INV-2, INV-3, INV-4, INV-5 |
+| analyser tests on fixtures | INV-1, INV-2, INV-3, INV-4, INV-5, INV-12 |
 | fake-`gh` verb tests | INV-6, INV-8, INV-9, INV-10 |
 | `session_orient` block test | INV-7 |
 | source checks, with `tests/features/standalone_mcp_server` | INV-11 |
@@ -398,6 +412,7 @@ project without workflows and one signed out of `gh`.
 | A failed fetch saves nothing | INV-9 |
 | No workflows, no process | INV-10 |
 | Served by `ants-mcpd`, no `MainWindow` | INV-11 |
+| A shell guard is a budget; only at the start of `run:` | INV-12 |
 | No push, re-run or lower-budget advice | INV-5, over the fixtures' messages only. **Partial:** a message from live data is not checked |
 | Orient never contacts GitHub | INV-6 |
 | Unknown budgets never guessed | INV-3 |
