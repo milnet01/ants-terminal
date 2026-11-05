@@ -39,6 +39,7 @@
 #include <atomic>
 #include <climits>
 #include <limits>
+#include <memory>
 #include <utility>
 #include <sys/socket.h>
 
@@ -1388,20 +1389,19 @@ void ClaudeIntegration::onHookConnection() {
         connect(idleTimer, &QTimer::timeout, socket,
                 [socket]() { socket->abort(); });
         idleTimer->start();
-        // Buffer incoming data — readyRead may fire with partial JSON
-        socket->setProperty("_buf", QByteArray());
-        connect(socket, &QLocalSocket::readyRead, this, [socket]() {
-            QByteArray buf = socket->property("_buf").toByteArray();
-            buf += socket->readAll();
+        // Buffer incoming data — readyRead may fire with partial JSON.
+        // ANTS-2216 — the buffer is shared by the two lambdas, not held in a
+        // socket property: a property round-trip copied it on every readyRead.
+        auto buf = std::make_shared<QByteArray>();
+        connect(socket, &QLocalSocket::readyRead, this, [socket, buf]() {
+            *buf += socket->readAll();
             // ANTS-1659 — hook events are <8 KiB; cap at 256 KiB to close a
             // same-UID OOM vector (deeply-nested JSON balloons 3-5× in QJson
             // tree allocation). Was 10 MiB.
-            if (buf.size() > 256 * 1024) { socket->disconnectFromServer(); return; }
-            socket->setProperty("_buf", buf);
+            if (buf->size() > 256 * 1024) { socket->disconnectFromServer(); return; }
         });
-        connect(socket, &QLocalSocket::disconnected, this, [this, socket]() {
-            QByteArray data = socket->property("_buf").toByteArray();
-            QJsonDocument doc = QJsonDocument::fromJson(data);
+        connect(socket, &QLocalSocket::disconnected, this, [this, socket, buf]() {
+            QJsonDocument doc = QJsonDocument::fromJson(*buf);
             // ANTS-5144 § 2.4 — one window processes the event: the one whose
             // tabs track its session, else this connection's target.
             if (doc.isObject())
@@ -2573,8 +2573,9 @@ void ClaudeIntegration::onMcpConnection() {
         // ANTS-5089 — one request per line: the request is the bytes before
         // the first newline. Until one arrives, scan only the bytes that just
         // came in and wait; nothing is parsed, so a slow sender no longer
-        // costs a re-parse of the whole buffer on every readyRead.
-        socket->setProperty("_buf", QByteArray());
+        // costs a re-parse of the whole buffer on every readyRead. ANTS-2216 —
+        // nor a copy of it: the buffer lives in the lambda, not a property.
+        auto buf = std::make_shared<QByteArray>();
         socket->setProperty("_handled", false);
         // ANTS-4932 — the reply channel for this connection: one reply, then
         // close. A child of the socket, so it dies with it.
@@ -2587,20 +2588,16 @@ void ClaudeIntegration::onMcpConnection() {
             [socket] { socket->disconnectFromServer(); },
             [socket] { return socket->state() == QLocalSocket::ConnectedState; },
             socket);
-        connect(socket, &QLocalSocket::readyRead, this, [this, socket, idleTimer, channel]() {
+        connect(socket, &QLocalSocket::readyRead, this, [this, socket, idleTimer, channel, buf]() {
             if (socket->property("_handled").toBool()) return;
-            QByteArray buf = socket->property("_buf").toByteArray();
-            const qsizetype scanFrom = buf.size();
-            buf += socket->readAll();
+            const qsizetype scanFrom = buf->size();
+            *buf += socket->readAll();
             // ANTS-1659 — MCP requests are small (tool name + args); cap at
             // 256 KiB to close the same nested-JSON OOM vector as the hook
             // path. Was 10 MiB.
-            if (buf.size() > 256 * 1024) { socket->disconnectFromServer(); return; }
-            const qsizetype newline = buf.indexOf('\n', scanFrom);
-            if (newline < 0) {
-                socket->setProperty("_buf", buf);
-                return;
-            }
+            if (buf->size() > 256 * 1024) { socket->disconnectFromServer(); return; }
+            const qsizetype newline = buf->indexOf('\n', scanFrom);
+            if (newline < 0) return;
             // ANTS-4932 — a complete request is in hand. Mark it handled and
             // stop the 5 s slow-loris idle timer BEFORE dispatching (ANTS-2101:
             // a dispatch can run a nested event loop, and a still-armed timer
@@ -2608,7 +2605,7 @@ void ClaudeIntegration::onMcpConnection() {
             // line to the shared entry point.
             socket->setProperty("_handled", true);
             idleTimer->stop();
-            handleMcpLine(buf.left(newline), channel);
+            handleMcpLine(buf->left(newline), channel);
         });
         connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
     }

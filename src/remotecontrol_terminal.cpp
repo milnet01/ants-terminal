@@ -32,6 +32,7 @@
 #include <QTimer>
 
 #include <cerrno>
+#include <memory>
 #include <cstring>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -248,23 +249,25 @@ void RemoteControl::onNewConnection() {
         // Line-buffer incoming data. Each connection handles exactly
         // one request/response round-trip today — simpler than a
         // persistent-session protocol and good enough for the full
-        // Kitty command set (which is also one-shot).
-        socket->setProperty("_buf", QByteArray());
+        // Kitty command set (which is also one-shot). ANTS-2216 — the buffer
+        // lives in the lambda, not a socket property: a property round-trip
+        // copied the whole buffer on every readyRead.
+        auto buf = std::make_shared<QByteArray>();
         // ANTS-2202 — re-entrancy latch, mirroring the MCP twin
         // (claudeintegration.cpp). Once a complete line is dispatched, _handled
         // blocks a second readyRead (e.g. fired from inside a nested event loop)
         // from re-dispatching buffered bytes.
         socket->setProperty("_handled", false);
         connect(socket, &QLocalSocket::readyRead, this,
-                [this, socket, idleTimer]() { handleSocketLine(socket, idleTimer); });
+                [this, socket, idleTimer, buf]() { handleSocketLine(socket, idleTimer, *buf); });
         connect(socket, &QLocalSocket::disconnected,
                 socket, &QLocalSocket::deleteLater);
     }
 }
 
-void RemoteControl::handleSocketLine(QLocalSocket *socket, QTimer *idleTimer) {
+void RemoteControl::handleSocketLine(QLocalSocket *socket, QTimer *idleTimer,
+                                     QByteArray &buf) {
     if (socket->property("_handled").toBool()) return;
-    QByteArray buf = socket->property("_buf").toByteArray();
     buf += socket->readAll();
     // Bound the in-memory buffer for defence-in-depth against
     // a malicious client on the same machine. 1 MB is far
@@ -273,16 +276,16 @@ void RemoteControl::handleSocketLine(QLocalSocket *socket, QTimer *idleTimer) {
         socket->disconnectFromServer();
         return;
     }
-    socket->setProperty("_buf", buf);
 
     int nlIdx = buf.indexOf('\n');
     if (nlIdx < 0) return;  // partial line, wait for more
 
     // ANTS-2202 — a complete line is in hand. Latch _handled and drop the
-    // consumed line from _buf so a re-entrant readyRead (should a future
-    // RC verb pump a nested event loop) can't re-dispatch it.
+    // consumed line from the buffer so a re-entrant readyRead (should a
+    // future RC verb pump a nested event loop) can't re-dispatch it.
     socket->setProperty("_handled", true);
-    socket->setProperty("_buf", buf.mid(nlIdx + 1));
+    const QByteArray line = buf.left(nlIdx);
+    buf.remove(0, nlIdx + 1);
 
     // ANTS-2026 — stop the slow-loris idle timer BEFORE dispatching. No
     // current RC verb runs a nested event loop, but if one is added a
@@ -292,7 +295,6 @@ void RemoteControl::handleSocketLine(QLocalSocket *socket, QTimer *idleTimer) {
     // below. Defensive, and parity with the MCP path (ANTS-2101).
     idleTimer->stop();
 
-    const QByteArray line = buf.left(nlIdx);
     QJsonParseError err;
     QJsonDocument req = QJsonDocument::fromJson(line, &err);
     QJsonDocument resp;

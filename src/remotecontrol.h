@@ -1325,7 +1325,8 @@ private:
     void onNewConnection();
     // One readyRead on a --remote connection: buffer, and once a whole line
     // is in, parse it and reply, inline or through the dispatch worker.
-    void handleSocketLine(QLocalSocket *socket, QTimer *idleTimer);
+    // `buf` is the connection's own buffer, owned by its readyRead lambda.
+    void handleSocketLine(QLocalSocket *socket, QTimer *idleTimer, QByteArray &buf);
 
     // ANTS-3661 — see setMcpVerbVocabularyProvider.
     std::function<QStringList()> m_mcpVerbVocabularyProvider;
