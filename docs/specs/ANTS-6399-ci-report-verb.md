@@ -82,7 +82,9 @@ GitHub.
 All four join the library the other project-scoped verbs link
 (`dependency_inventory`'s files are the model). The verb is registered in
 `mcp::registerProjectScopedVerbs()` (`src/mcptoolregistry.cpp`) with
-`CallerCwdContract::Required`, and listed in `callerCwdContractFor` and the
+`CallerCwdContract::Required` on `DispatchLane::Bulk`, because a live call
+holds its worker for up to 120 s (§ 4.5). It is listed in
+`callerCwdContractFor`, in `rateLimitClassFor` as `Expensive`, and in the
 verb-family list in `src/claudeintegration.cpp`. Its schema sits beside
 `dependency_inventory`'s in `ClaudeIntegration::handleMcpRequest`.
 
@@ -93,7 +95,7 @@ ci_report {caller_cwd, source?: "live"|"saved", days?: 1..90, workflow?: string}
 ```
 
 - `source:"live"` (default) fetches history, analyses it, writes the saved
-  report (§ 4.5) and returns it. `source:"saved"` returns the saved report
+  report where § 4.5 says so, and returns it. `source:"saved"` returns the saved report
   with no network and no `gh` call.
 - `days` (default 30) bounds the window by run creation time.
 - `workflow` keeps runs whose workflow name equals it exactly.
@@ -126,7 +128,8 @@ Reply:
 
 `ci` is `"github"` or `"none"`. With `"none"` the reply carries
 `ci_none_reason` (`"no_workflows"` or `"no_github_remote"`), an empty
-`findings`, and writes no saved report. `cache` is `"hit"`, `"miss"` or
+`findings`, and writes no saved report. Both reasons are decided before any
+`gh` call: `no_github_remote` when no git remote's URL names `github.com`. `cache` is `"hit"`, `"miss"` or
 `"unknown"` and is present on timing findings only (§ 4.3). `runs` and
 `shas` hold at most 10 entries each, newest first. `findings` is sorted
 by severity (`problem` first), then `check`, then `workflow`, `job`,
@@ -147,7 +150,7 @@ or hygiene change.
 | `annotation` | advice | A warning annotation on the newest run of a workflow mentions deprecation or a runner image being retired (case-insensitive `deprecat`, `retire`, `will be removed`, `brownout`). Quotes the annotation. | none |
 | `runner_latest` | advice | A job's `runs-on` is a `*-latest` label. | `local-gate.md` § 9, warm-containers row, condition 1 |
 | `cache_size` | advice | The repository's Actions cache usage is 80% or more of 10 GB. | `local-gate.md` § 9, caches row (prune) |
-| `cache_key_shared` | advice | Two jobs save `actions/cache` keys with the same literal prefix (the text before the first `${{`). | `local-gate.md` § 9, caches row |
+| `cache_key_shared` | advice | Two jobs save `actions/cache` keys with the same prefix: the key with its last `${{ … }}` and everything after it removed, compared as text (`${{ runner.os }}-ccache-release-`). | `local-gate.md` § 9, caches row |
 | `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` lacks `always()`, or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
 | `test_parallelism` | advice | A test step's command runs `ctest` with no `-j`/`--parallel` and no `CTEST_PARALLEL_LEVEL` in the job's or step's `env`, and the same step carries `--timeout`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
 
@@ -167,11 +170,12 @@ missing timeout is the half that can.
 indentation: the `jobs:` map, each job id, and in a job `name:`,
 `runs-on:`, `timeout-minutes:`, `env:` keys, and `steps:` entries with
 their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
-`with: key:` and `timeout-minutes:`.
+`with: key:`, `env:` keys and `timeout-minutes:`.
 
-- A job is matched to the API's job name by its `name:`, else its id. A
-  matrix job's API name is `<name> (<values>)`; it matches on the prefix
-  before ` (`.
+- A job is matched to the API's job name by its `name:`, else its id,
+  exactly. Where none matches exactly, an API name beginning `<name> (`
+  matches the job named `<name>`: a matrix job's API name is
+  `<name> (<values>)`.
 - **A value it cannot read is unknown, never a guess.** A `timeout-minutes`
   holding an expression (`${{ … }}`), a job it cannot match, or a file it
   cannot parse leaves that budget unknown. A check needing an unknown value
@@ -199,12 +203,18 @@ the host's `gh`.
 - **Limits.** Each call times out at 20 s. The whole fetch stops at 120 s
   or 300 calls, whichever comes first. Stopping sets `truncated:true`,
   `truncated_reason` (`"deadline"` or `"call_cap"`), and the analysis runs
-  on what was fetched.
-- **One live run per project at a time.** A second `source:"live"` call for
-  the same root while one runs refuses `already_running`.
+  on what was fetched. When the oldest of 200 listed runs is still inside
+  the window, older runs are not seen, and the reply sets `truncated:true`
+  with `truncated_reason:"run_limit"`.
+- **One live run per project at a time.** A live run holds an exclusive
+  lock on a file beside its saved report. Each Claude session runs its own
+  `ants-mcpd`, and one process runs its Bulk calls one after another, so
+  two overlapping runs are in two processes. A second `source:"live"`
+  call for the same root refuses `already_running` while the lock is held.
 - **The saved report** is the reply, written atomically to
   `~/.cache/ants-terminal/ci-report/<sha256(canonical root)>.json`, mode
-  0600, after every live run that reached GitHub. A row joins
+  0600, after every live run that reached GitHub with no `workflow` and the
+  default `days`. A row joins
   `docs/standards/mcp-caches.md` § Cache inventory.
 
 ### 4.6 The `session_orient` line
@@ -226,7 +236,7 @@ changes.
 
 | Code | When | Caller's next step |
 |---|---|---|
-| `no_project` | `caller_cwd` is not a registered project | register it |
+| `no_project` | `caller_cwd` does not resolve to a directory (`ants::requiredCallerCwd`) | pass the project's path |
 | `runner_missing` | `gh` did not start | install `gh` |
 | `github_unavailable` (new) | `gh repo view` or `gh run list` exited non-zero: not signed in, offline, or rate-limited. Carries `stderr_tail`, the last 2 000 characters | `gh auth status`, or wait |
 | `already_running` | § 4.5 | wait |
@@ -304,8 +314,8 @@ install), which is that file's test for a new code.
   name `registerProjectScopedVerbs` registers is outside
   `terminalScopedVerbNames()`), plus a source check in
   `tests/features/mcp_ci_report` that the registration sits in
-  `registerProjectScopedVerbs` and `cmdCiReport`'s body holds no `m_main`,
-  as `tests/features/know_how` does. *Breaks when:* `cmdCiReport` uses tab
+  `registerProjectScopedVerbs` and `cmdCiReport`'s body holds no `m_main`.
+  *Breaks when:* `cmdCiReport` uses tab
   state, or is registered among the terminal-scoped verbs.
 
 ## 6. Failure modes
@@ -349,9 +359,9 @@ project without workflows and one signed out of `gh`.
 - **A YAML library.** Rejected: one new dependency for the handful of keys
   § 4.4 reads. The reader reports what it skips (INV-3), so a missed key
   costs a finding, never a wrong one.
-- **Thresholds in a data file re-read on each call.** Rejected: there are
-  four numbers, each tested at its edge (INV-2), and a change to one is a
-  change to its test.
+- **Thresholds in a data file re-read on each call.** Rejected: the
+  thresholds are a few constants beside their checks, and INV-2 tests
+  `near_budget`'s at its edge.
 - **Calling the REST API directly with Qt networking.** Rejected: it would
   need its own token handling. `gh` already holds the user's sign-in.
 
@@ -386,7 +396,8 @@ project without workflows and one signed out of `gh`.
 
 ## 11. Cross-doc impact
 
-- `docs/standards/mcp-error-codes.md`: `github_unavailable`.
+- `docs/standards/mcp-error-codes.md`: `github_unavailable`, and
+  `runner_missing`'s row widened from `focused_test` to `ci_report`'s `gh`.
 - `docs/standards/mcp-caches.md`: the saved-report row.
 - `docs/standards/mcp-behavioural-notes.md`: a `ci_report` entry.
 - `README.md`: the verb count (`tools/check-readme-claims.sh`).
