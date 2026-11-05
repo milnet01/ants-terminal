@@ -2850,8 +2850,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         const int cap = (m_bundleSoftCapOverride > 0)
                             ? m_bundleSoftCapOverride
                             : PaginationEngine::softCapBytes();
-        return QJsonDocument(
-            buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap));
+        QJsonObject env = buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap);
+        // ANTS-6388 — the bundles envelope is built fresh, so carry the
+        // backend witness every other mode stamps onto `out`.
+        stampRoadmapSource();
+        for (const char *key : {"source", "file_ahead_of_store",
+                                "file_highest_id", "store_high_water"}) {
+            const QString k = QString::fromLatin1(key);
+            if (out.contains(k)) env[k] = out.value(k);
+        }
+        return QJsonDocument(env);
     }
 
     // ANTS-6129 — the bullet-list tail the section= and full-file paths

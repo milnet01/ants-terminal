@@ -412,3 +412,20 @@ TEST(ProjectRepoRoot, CounterPrefixFromOuterFolder) {
               want)
         << "the outer folder would allocate under its own folder-name prefix";
 }
+
+// ANTS-6388 — mode:"bundles" names its backend like every other mode.
+TEST(ProjectRepoRoot, BundlesModeNamesTheStore) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Layout l = seed(guard, tmp);
+    ASSERT_FALSE(l.clone.isEmpty());
+    QJsonObject q;
+    q[QStringLiteral("caller_cwd")] = l.outer;
+    q[QStringLiteral("mode")]       = QStringLiteral("bundles");
+    RemoteControl reader(nullptr);
+    const QJsonObject r = reader.cmdRoadmapQueryForTest(q).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r).toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("source")).toString(), QStringLiteral("store"))
+        << dump(r).toStdString();
+}
