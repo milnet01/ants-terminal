@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6378 -->
+<!-- ants-roadmap-id-high-water: ANTS=6379 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -75089,8 +75089,16 @@ gets one CHANGELOG section + one drift cycle + one push.
   Resolved (2026-06-27): verified all four. M1 (16-char dedup band) ALREADY-FIXED — live key is 24 hex; the 16-char path is an intentional legacy-suppression back-compat shim, not a mis-dedup hazard. M2 (noiseRatePct zombie) ALREADY-FIXED — genuinely computed (auditrunner.cpp:1695) and consumed (mainwindow.cpp:4607), no dead copy. M3 (QProcess lambda lifetime) ALREADY-FIXED — process captured by-value as shared_ptr + synchronous loop.exec() make every capture lifetime-safe. M4 (compile_commands.json transient) is the only still-present item; folded out to ANTS-2217 (needs a streaming scan, not a cap reduction which would reject valid large DBs).
   Kind: implement.
 
-- 📋 [ANTS-2216] **IPC hardening residual from ANTS-1671 — refusal-envelope drift + `_buf` O(N²) round-trip.**
+- ✅ [ANTS-2216] **IPC hardening residual from ANTS-1671 — refusal-envelope drift + `_buf` O(N²) round-trip.**
   Fold-out of the two still-present sub-issues from ANTS-1671 (the rest were already fixed or bounded). M2 — `remotecontrol.cpp` builds `{ok:false, code, error}` refusal envelopes inconsistently across ~40 hand-rolled sites plus three per-family helpers (`csErr` ~11470, `smErr` ~15908, `subsystemErr` ~10681); introduce one shared `rcRefuse(code, msg, extra={})` and migrate the families + hand-rolled sites (large mechanical sweep — stage across commits). M3 — the Kitty rc_protocol `readyRead` (`remotecontrol.cpp` ~1593-1611) and its MCP twin in `claudeintegration.cpp` round-trip the accumulation buffer through `QLocalSocket::property("_buf")` every readyRead (copy-out → append → copy-in), an O(N²) accumulate if a request arrives in many small reads. Bounded at 1 MiB and connections are one-shot, so low severity; move both twins to a member `QHash<QLocalSocket*, QByteArray>` with disconnect-time cleanup.
+  Shipped 2026-11-05 (session 217).
+  M3 (19ace154): the --remote, hook and MCP socket handlers keep their
+  line buffer in a shared_ptr captured by the connection's own lambdas,
+  not a QLocalSocket property, so no read copies the whole buffer.
+  M2 (27123626): src/mcprefusal.h holds mcp::refusal(code, message); the
+  seventeen identical per-family helpers are gone and their call sites
+  use it. Replies are byte-identical (QJsonObject sorts keys).
+  Remaining drift and the tidy-ups: ANTS-6379.
   **Layman:** Two leftover code-tidy jobs from a security sweep: make all the Claude-link error replies use one shared shape, and stop a socket buffer from copying itself over and over.
   Kind: refactor.
   Source: ANTS-1671 fold-out (verified in-session 2026-06-27).
@@ -75102,6 +75110,24 @@ gets one CHANGELOG section + one drift cycle + one push.
   Kind: perf.
   Source: ANTS-1675 fold-out (verified in-session 2026-06-27).
   Lanes: auditrunner.
+
+- 📋 [ANTS-6379] **verify_changes refusals put the code under `error` and carry no `code` field; doc_citations refusals carry no `error` text.**
+  vcErr (src/remotecontrol_review.cpp) builds {ok:false, error:<code>,
+  message:<text>}; every other verb returns {ok:false, code, error:<text>}
+  (docs/standards/mcp-error-codes.md). doccitations.cpp's refusal(code)
+  returns {ok:false, code} with no message. Move both onto mcp::refusal
+  (src/mcprefusal.h, ANTS-2216), check which tests pin the old vcErr
+  keys, and say the shape change in the CHANGELOG.
+
+  Also left by ANTS-2216 stage 1, as tidy-ups rather than defects:
+  helpers that add a verb-name prefix to the message (versioncheck,
+  knowhowstore, runtraceverb, quotationcheckverb) or extra fields
+  (smErr, githooksreport), and refusal objects still built inline. Each
+  could call mcp::refusal and add its part.
+  **Layman:** Two tools report errors in a slightly different shape from all the others, so a client looking for the usual error code finds nothing.
+  Kind: fix.
+  Source: in-session-2026-11-05 (found closing ANTS-2216).
+  Lanes: remotecontrol, mcp-infra.
 
 ### 🏗 Tier 3 — structural
 
