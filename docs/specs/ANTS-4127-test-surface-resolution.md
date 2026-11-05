@@ -748,8 +748,9 @@ Two invariants and one subsection are genuine Q3/Q1 gaps that added where
 nothing stood; the remainder replaced text rather than sitting beside it.
 
 **Not machine-checked, and not to be read as clean:** `spec_lint` returns
-`sections_checked: false` — no format standard in this project ships a
-`<!-- required-sections -->` block, so required-section structure was
+`sections_checked: false` — when this spec was written no format standard in
+this project carried a `<!-- required-sections -->` block (ANTS-3829 has since
+added one to `docs/standards/specs.md`), so required-section structure was
 verified by hand against `docs/standards/specs.md` § 3 + § 4, not by a tool.
 **This is not specific to this spec: the check has never run on any spec in
 this corpus**, and the missing block is tracked as **ANTS-3829** (with
