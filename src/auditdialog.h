@@ -40,6 +40,7 @@ public:
     AuditDialog(const QString &projectPath,
                 QWidget *parent,
                 Config *config);
+    ~AuditDialog() override;   // out of line: m_ownConfig's Config is incomplete here
 
     // ANTS-1677 INV-5 — the check catalogue, for the case comparing the
     // audit_fixture_coverage command's rule ids with audit_self_test.sh's.
@@ -335,6 +336,7 @@ private:
     //   <projectPath>/.audit_cache/baseline.json
     // On next run, highlight new findings (not present in baseline).
     void loadBaseline();
+    static QString outdatedBaselineText();
     void saveBaseline();
     // 0.6.31 self-learning — modal dialog showing the per-rule
     // fire/suppression history sorted by 30-day FP rate. Includes the
@@ -365,12 +367,18 @@ private:
     // Baseline: the per-finding dedupKeys saved by the last saveBaseline (v2).
     QSet<QString> m_baselineFingerprints;
     bool m_hasBaseline = false;
+    bool m_baselineOutdated = false;   // ANTS-6385 — a pre-v2 file was found
     bool m_showNewOnly = false;  // UI toggle
 
     // ANTS-1150 — persisted UI state. Severity-filter pill states +
     // show-new-only restored from m_config on ctor; saved on every
     // toggle. Required (non-null) per HIGH #3.
     Config *m_config = nullptr;
+    // ANTS-6386 — every read of settings goes through liveConfig(): m_config,
+    // or, for a dialog given none, one Config loaded once. A fresh Config per
+    // call re-reads the file and misses in-memory changes (ANTS-2003).
+    Config &liveConfig();
+    std::unique_ptr<Config> m_ownConfig;
 
     // Persistent per-project suppressions (by Finding::dedupKey) — read from
     // <project>/.audit_suppress at load time, suppressed findings are hidden

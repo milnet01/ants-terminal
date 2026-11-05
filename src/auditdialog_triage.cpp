@@ -120,7 +120,7 @@ void AuditDialog::requestAiTriage(const QString &dedupKey) {
             f.snippet = readSnippet(abs, f.line, 5, &f.snippetStart);
     }
 
-    Config cfg;
+    Config &cfg = liveConfig();   // ANTS-6386
     const QString endpoint = cfg.aiEndpoint();
     const QString apiKey   = cfg.aiApiKey();
     const QString model    = cfg.aiModel().isEmpty() ? QStringLiteral("gpt-4o-mini")
@@ -308,7 +308,7 @@ QStringList AuditDialog::visibleUntriagedKeys() const {
 void AuditDialog::refreshBatchTriageButton() {
     if (!m_batchTriageBtn) return;
     const int n = visibleUntriagedKeys().size();
-    Config cfg;
+    Config &cfg = liveConfig();   // ANTS-6386
     m_batchTriageBtn->setVisible(aiConfigured(cfg));
     m_batchTriageBtn->setEnabled(n > 0);
     m_batchTriageBtn->setText(n > 0
@@ -320,7 +320,7 @@ void AuditDialog::onBatchTriageClicked() {
     const QStringList keys = visibleUntriagedKeys();
     if (keys.isEmpty()) return;
 
-    Config cfg;
+    Config &cfg = liveConfig();   // ANTS-6386
     if (!aiConfigured(cfg)) {
         QMessageBox::information(this, "AI triage",
             "Configure an AI endpoint in Settings → AI first.");
@@ -400,7 +400,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     }
     if (batch.isEmpty()) return;
 
-    Config cfg;
+    Config &cfg = liveConfig();   // ANTS-6386
     const QString endpoint = cfg.aiEndpoint();
     const QString apiKey   = cfg.aiApiKey();
     const QString model    = cfg.aiModel().isEmpty() ? QStringLiteral("gpt-4o-mini")

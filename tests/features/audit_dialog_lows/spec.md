@@ -43,6 +43,11 @@ a `ConfigWriteLock` on the suppression file before it reads it, as
 `textChanged` handler stores the text and restarts `m_filterDebounce`, a
 single-shot timer; the render runs on its timeout, not on every keystroke.
 
+**INV-11 — settings come from the live Config (ANTS-6386).** The AuditDialog
+sources declare no local `Config`; every read goes through
+`AuditDialog::liveConfig()`, which returns `m_config`, or one Config the
+dialog loaded for itself when it was given none.
+
 ## Rationale
 
 The ANTS-5084 performance pass found each of these. The detection walk

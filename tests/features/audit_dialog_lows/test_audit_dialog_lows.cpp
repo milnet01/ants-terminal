@@ -119,3 +119,13 @@ TEST(AuditDialogLows, SuppressionSaveIsLocked) {
     EXPECT_TRUE(region.contains(QStringLiteral("ConfigWriteLock lock(path);")))
         << "two instances saving suppressions can interleave the read and the rewrite";
 }
+
+// ANTS-6386 — settings are read through liveConfig(), never a fresh local
+// Config, which re-reads the file and misses in-memory changes (ANTS-2003).
+TEST(AuditDialogLows, SettingsComeFromTheLiveConfig) {
+    const QString src = auditSource();
+    static const QRegularExpression freshLocal(QStringLiteral(R"(\bConfig\s+\w+\s*;)"));
+    const QRegularExpressionMatch m = freshLocal.match(src);
+    EXPECT_FALSE(m.hasMatch()) << "a fresh Config local: " << m.captured().toStdString();
+    EXPECT_TRUE(src.contains(QStringLiteral("Config &AuditDialog::liveConfig()")));
+}

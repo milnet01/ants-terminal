@@ -30,6 +30,11 @@ keys in `.audit_suppress`.
 whether the save worked, and its caller returns on false, before the
 learned-false-positive entry and the "Suppressed" status.
 
+**INV-7 — an old-format baseline is not read as current (ANTS-6385).**
+`AuditDialog::loadBaseline` checks the file's `version` before loading any
+key; a file that is not version 2 is ignored and the status line asks for a
+new baseline.
+
 ## Rationale
 
 `inlineSuppressed()` reads source lines through `m_fileLineCache`, which only
@@ -51,3 +56,5 @@ still hold.
 - **ANTS-6381..6384:** suppressed findings reached the Claude export, took
   cap slots and inflated the noise floor; line-above cppcheck/semgrep markers
   were ignored; a failed save still reported success. Locked by INV-3..6.
+- **ANTS-6385:** a v1 baseline loaded as v2 and marked every finding new.
+  Locked by INV-7.

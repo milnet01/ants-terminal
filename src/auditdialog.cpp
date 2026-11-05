@@ -239,6 +239,16 @@ AuditDialog::AuditDialog(const QString &projectPath,
                                .arg(m_skippedUntrustedRules);
     }
     buildUI();
+    // ANTS-6385 — loadBaseline ran before the status label existed.
+    if (m_baselineOutdated) m_statusLabel->setFullText(outdatedBaselineText());
+}
+
+AuditDialog::~AuditDialog() = default;
+
+Config &AuditDialog::liveConfig() {
+    if (m_config) return *m_config;
+    if (!m_ownConfig) m_ownConfig = std::make_unique<Config>();
+    return *m_ownConfig;
 }
 
 QList<AuditCheck> AuditDialog::checksForTest() const {
@@ -975,8 +985,7 @@ int AuditDialog::loadUserRules() {
     // ANTS-2003 — reuse the live m_config so a rule-pack trusted mid-session
     // (in-memory, not yet flushed to disk) is honoured. A fresh Config would
     // re-read the on-disk store and wrongly deny the just-trusted pack.
-    Config fallbackCfg;
-    Config &cfg = m_config ? *m_config : fallbackCfg;
+    Config &cfg = liveConfig();
     const bool commandRulesTrusted =
         (qEnvironmentVariable("ANTS_AUDIT_TRUST_UNSAFE") == "1")
         || cfg.isAuditRulePackTrusted(m_projectPath, rulesBytes);
@@ -1733,13 +1742,26 @@ QString AuditDialog::baselinePath() const {
     return m_projectPath + "/.audit_cache/baseline.json";
 }
 
+QString AuditDialog::outdatedBaselineText() {
+    return QStringLiteral("The saved baseline is in an old format; save a new one");
+}
+
 void AuditDialog::loadBaseline() {
     m_baselineFingerprints.clear();
     m_hasBaseline = false;
+    m_baselineOutdated = false;
     QByteArray baselineBytes;
     if (!readAuditStateFile(baselinePath(), &baselineBytes)) return;
     const QJsonDocument doc = QJsonDocument::fromJson(baselineBytes);
     if (!doc.isObject()) return;
+    // ANTS-6385 — a v1 baseline (before 2026-04-13) holds per-check
+    // fingerprints, which match no dedupKey: read as v2, every finding
+    // would show as new. Ignore it and say so.
+    m_baselineOutdated = doc.object().value("version").toInt() != 2;
+    if (m_baselineOutdated) {
+        if (m_statusLabel) m_statusLabel->setFullText(outdatedBaselineText());
+        return;
+    }
     const QJsonArray arr = doc.object().value("fingerprints").toArray();
     for (const QJsonValue &v : arr) m_baselineFingerprints.insert(v.toString());
     m_hasBaseline = !m_baselineFingerprints.isEmpty();

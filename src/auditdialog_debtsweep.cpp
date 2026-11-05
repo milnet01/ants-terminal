@@ -229,7 +229,7 @@ void AuditDialog::renderDebtResults() {
     for (const DebtSweepEngine::Finding &d : std::as_const(m_debtFindings))
         if (!d.autoFixable) { hasLlmShaped = true; break; }
     if (m_debtTriageBtn) {
-        Config cfg;
+        Config &cfg = liveConfig();   // ANTS-6386
         m_debtTriageBtn->setEnabled(hasLlmShaped && aiConfigured(cfg));
     }
 
@@ -354,7 +354,7 @@ void AuditDialog::onDebtTriageClicked() {
             "No non-mechanical findings to triage.");
         return;
     }
-    Config cfg;
+    Config &cfg = liveConfig();   // ANTS-6386
     if (!aiConfigured(cfg)) {
         QMessageBox::information(this, "Triage with AI",
             "Configure an AI endpoint in Settings → AI first.");

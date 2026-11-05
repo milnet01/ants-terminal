@@ -187,6 +187,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit ignores a baseline saved in the old format and asks you to save a new one, instead of marking every finding as new** (ANTS-6385)
+
+- **The audit window's AI triage buttons use the settings already open, including changes not yet saved to disk** (ANTS-6386)
+
 - **The audit's "Review with Claude" report leaves out findings you have suppressed** (ANTS-6381)
 
 - **A `cppcheck-suppress` or `nosemgrep` comment on the line above a finding now suppresses it in the audit** (ANTS-6382)

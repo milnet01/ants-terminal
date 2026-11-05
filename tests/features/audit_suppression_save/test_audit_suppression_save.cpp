@@ -113,3 +113,15 @@ TEST(AuditSuppressionSave, FailedSaveStopsTheCaller) {
     EXPECT_TRUE(src.contains(QStringLiteral("if (!saveSuppression(key, ruleId, reason)) return;")))
         << "the caller reports Suppressed after a failed save";
 }
+
+// INV-7 — ANTS-6385: a baseline in another format is not read as v2.
+TEST(AuditSuppressionSave, OldBaselineIsNotReadAsCurrent) {
+    const QString body = functionBody(auditSource(),
+        QStringLiteral("void AuditDialog::loadBaseline()"));
+    ASSERT_FALSE(body.isEmpty()) << "loadBaseline not found";
+    const int version = body.indexOf(QStringLiteral("value(\"version\")"));
+    const int insert = body.indexOf(QStringLiteral("m_baselineFingerprints.insert("));
+    ASSERT_GE(version, 0) << "loadBaseline never checks the baseline's version";
+    ASSERT_GE(insert, 0);
+    EXPECT_LT(version, insert) << "the version is checked after the keys are loaded";
+}
