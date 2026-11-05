@@ -38,6 +38,9 @@ struct Result {
     QJsonObject history;           // CiReport::analyse()'s input
     QString truncatedReason;       // "", "deadline", "call_cap" or "run_limit"
     QJsonArray fetchErrors;        // [{call, exit_code}]
+    // False when a jobs call failed or an attempt's pages ran out: the
+    // findings that need jobs may be wrong, so the report must not save.
+    bool jobsComplete = true;
 };
 
 // Given the history before logs, the jobs whose logs a finding would read.

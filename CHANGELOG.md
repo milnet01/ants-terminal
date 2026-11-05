@@ -203,6 +203,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report keeps the job logs a share of its limits, reads annotations 100 to a page, saves its report when only a log or annotation call failed, and reads ctest after if, while, until and !** (ANTS-6407)
+
 - **ci_report's test_parallelism check now finds ctest after a wrapper option that takes a value, such as sudo -u builder, nice -n 10 or a quoted xvfb-run -s** (ANTS-6406)
 
 - **The Background Tasks button and "Claude: waiting (N bg)" now clear when a Claude Code Monitor expires** (ANTS-6404)

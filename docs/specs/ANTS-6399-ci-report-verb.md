@@ -216,7 +216,7 @@ the host's `gh`.
   (runs older than the window are dropped);
   `gh api repos/{repo}/actions/runs/{id}/attempts/{n}/jobs` per run and per
   attempt, newest run first, every page or none of that attempt; `gh api repos/{repo}/actions/cache/usage`;
-  `gh api repos/{repo}/check-runs/{job}/annotations` for the jobs of each
+  `gh api repos/{repo}/check-runs/{job}/annotations?per_page=100` for the jobs of each
   workflow's newest run; `gh api repos/{repo}/actions/jobs/{job}/logs` for
   logs (§ 4.3), at most 10 logs, keeping the first and last MiB of each:
   the cache line is near a log's start and ctest's failure list at its end.
@@ -226,7 +226,8 @@ the host's `gh`.
   on what was fetched. When the oldest of 200 listed runs is still inside
   the window, older runs are not seen, and the reply sets `truncated:true`
   with `truncated_reason:"run_limit"`. The jobs calls stop when 30 calls or
-  30 s of the limits remain, so the calls after them still run.
+  30 s of the limits remain, so the calls after them still run. The
+  annotations calls stop when 10 calls or 15 s remain, so the logs still run.
 - **One live run per project at a time.** A live run holds an exclusive
   lock on a file beside its saved report, and writes its start time there
   for `already_running`'s `running_since_ms`; `retry_after_ms` is the time
@@ -238,7 +239,9 @@ the host's `gh`.
   `~/.cache/ants-terminal/ci-report/<cwdHash(canonical root)>.json`
   (`SessionMemoryEngine::cwdHash`, as the other per-project caches), mode
   0600, after every live run that reached GitHub with no `workflow`, the
-  default `days` and an empty `fetch_errors`. The root, for the saved
+  default `days` and no failed jobs call. A failed log, annotation or
+  cache call loses a detail or an advice finding, never a problem, so it
+  does not block the save. The root, for the saved
   report and for `CiWorkflows::read`, is `resolveRootCanonical(m_roots, req)`
   on both the verb and `buildCiReportBlock`, as `session_orient` resolves it. A row joins
   `docs/standards/mcp-caches.md` § Cache inventory.

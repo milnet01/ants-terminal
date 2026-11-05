@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6406 -->
+<!-- ants-roadmap-id-high-water: ANTS=6412 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79822,6 +79822,77 @@ in each bullet, not just the reporter's symptom.
   **Layman:** ci_report misses a few ways of starting tests, and stays silent there.
   Kind: review-fix.
   Source: code-review-2026-11-05 (claude-d5, check of 917e8b41).
+  Lanes: mcp.
+
+- ✅ [ANTS-6407] **ci_report: a failed page call reports twice, annotations starve the logs, and a log error blocks the save.**
+  Verified in the code, 2026-11-05. Lane 1 #2 (annotations take no
+  reserve, so logs can get none), #3 (annotations read 30 to a page),
+  #4 (any fetch error blocks the saved report, including a log 410
+  past retention), #6 (url lines counted, not remotes), #7 (if, !,
+  while, until, elif missing from the ctest wrapper words), #10 (the
+  start wait sits outside the limits). Lane 2 #2 (a failed page call
+  is also reported as incomplete_pages with exit_code 0).
+  Shipped 2026-11-05 with six Ants6407 tests, each red before the fix.
+  Spec § 4.5 amended (impl-4). Kill wait left as is: SIGKILL reaps at
+  once, so the 1 s is a ceiling never reached.
+  **Layman:** Fixes six small mistakes a reviewer found in the CI report tool, each with a test.
+  Kind: review-fix.
+  Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
+  Lanes: mcp.
+
+- 📋 [ANTS-6408] **ci_report: small readability fixes from the cold review.**
+  Lane 2 #1 (cireport.h says logs hold first bytes), #4 (the
+  <run>/<attempt> key built in three places), #7 (hand copies of
+  Options defaults), #8 (orNull four times), #10, #11 (\x1f key
+  separator), #13, #14, #15, #16, #17, #18 (fetch error reason), #19,
+  #20, #21 (no cache hit/miss test); lane 1 #9 (stderr uncapped).
+  **Layman:** Tidies names, comments and repeated constants in the CI report tool so it is easier to follow.
+  Kind: review-fix.
+  Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
+  Lanes: mcp.
+
+- 📋 [ANTS-6409] **ci_report: one serial gh call per run and attempt makes the default window hit the deadline.**
+  Lane 1 #1. 121 runs over 7 days took about 95 s; a 30-day window
+  near 200 runs reaches the jobs reserve after about 110 runs.
+  Candidates: actions/runs/{id}/jobs?filter=all (every attempt in one
+  call), and a small bounded pool of parallel gh calls. MEASURE FIRST:
+  call cost and whether filter=all returns every attempt's jobs.
+  **Layman:** The CI report asks GitHub one question at a time, so on a busy project it runs out of time before reading the whole month.
+  Kind: perf.
+  Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
+  Lanes: mcp.
+
+- 📋 [ANTS-6410] **ci_report's workflow reader fails a whole file on a plain scalar continued on the next line.**
+  Lane 1 #5. `if: a &&` with an indented `b` on the next line is
+  valid YAML. ciworkflows.cpp fails the file, so every budget in it
+  reads as unread. Safe under INV-3 (never guesses) but loses
+  coverage. Same for multi-line flow lists.
+  **Layman:** A common way of writing a long condition across two lines makes the CI report skip that whole workflow file.
+  Kind: enhancement.
+  Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
+  Lanes: mcp.
+
+- 📋 [ANTS-6411] **ci_report: fold the repeated scanners and parsers the cold review found.**
+  Lane 2 #3 (fetch() is about 110 lines over six phases), #5
+  (flowItems and flowText share one quote/escape/depth scanner), #6
+  (the .git file parser duplicates remotecontrol.cpp's), #9 (the
+  workflow glob in three files), #12 (a Finding factory and a
+  severity enum). Lane 1 #8 (matchStep builds displayName() per
+  comparison) and #9 (logs held as UTF-16, about 40 MiB for 10).
+  **Layman:** The same small pieces of code are written several times in the CI report tool; one copy each would stop them drifting apart.
+  Kind: refactor.
+  Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
+  Lanes: mcp.
+
+- 📋 [ANTS-6412] **ci_report tests: boundary cases for the threshold checks, and shared helpers.**
+  Lane 2 #22: budget_trend's at-least-5 and 25% boundaries,
+  queue_wait's 5-minute boundary, scheduled_red's since text, a
+  non-warning annotation ignored, CTEST_PARALLEL_LEVEL in workflow or
+  step env. #23: three near-identical fires lambdas, the repeated
+  pagination setup and saved-report writes.
+  **Layman:** Some CI report checks are only tested for being present, not for firing at exactly the right point.
+  Kind: test.
+  Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
   Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage

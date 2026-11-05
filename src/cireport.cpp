@@ -533,7 +533,9 @@ bool isWrapper(const QString &w) {
         QStringLiteral("env"), QStringLiteral("time"), QStringLiteral("sudo"),
         QStringLiteral("nice"), QStringLiteral("exec"), QStringLiteral("command"),
         QStringLiteral("stdbuf"), QStringLiteral("xvfb-run"), QStringLiteral("then"),
-        QStringLiteral("do"), QStringLiteral("else")};
+        QStringLiteral("do"), QStringLiteral("else"), QStringLiteral("if"),
+        QStringLiteral("elif"), QStringLiteral("while"), QStringLiteral("until"),
+        QStringLiteral("!")};
     return words.contains(w);
 }
 

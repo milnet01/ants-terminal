@@ -104,13 +104,18 @@ GithubRemotes githubRemotes(const QString &root) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) continue;
         // Only a [remote "…"] section's url: a submodule's is another repository.
-        bool inRemote = false;
+        // A remote counts once, however many url lines it has.
+        bool inRemote = false, counted = false;
         while (!f.atEnd()) {
             const QString line = QString::fromUtf8(f.readLine()).trimmed();
-            if (line.startsWith(QLatin1Char('['))) inRemote = line.startsWith(QLatin1String("[remote "));
-            else if (!inRemote) continue;
-            else if (line.startsWith(QLatin1String("url")) && line.contains(QLatin1String("github.com")))
-                ++found.count;
+            if (line.startsWith(QLatin1Char('['))) {
+                inRemote = line.startsWith(QLatin1String("[remote "));
+                counted = false;
+            } else if (!inRemote) continue;
+            else if (line.startsWith(QLatin1String("url")) && line.contains(QLatin1String("github.com"))) {
+                if (!counted) ++found.count;
+                counted = true;
+            }
             else if (line.startsWith(QLatin1String("gh-resolved")))
                 found.resolved = true;
         }
@@ -253,8 +258,10 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
             "This project has %1 GitHub remotes and gh has no default, so gh chose %2. "
             "To read another, run: gh repo set-default <owner/name>").arg(remotes.count).arg(fetched.repo);
     // Only a whole, default-window report replaces the saved one, so a narrow
-    // or partly failed run never clears a real warning from session_orient.
-    if (workflow.isEmpty() && days == kDefaultDays && fetched.fetchErrors.isEmpty())
+    // run, or one missing jobs, never clears a real warning from
+    // session_orient. A failed log, annotation or cache call loses a detail
+    // or an advice finding, never a problem, so it does not block the save.
+    if (workflow.isEmpty() && days == kDefaultDays && fetched.jobsComplete)
         writeSaved(savedPath, reply);
     return QJsonDocument(reply);
 }

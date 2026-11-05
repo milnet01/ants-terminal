@@ -60,13 +60,14 @@ public:
         env.insert(QStringLiteral("GH_NO_UPDATE_NOTIFIER"), QStringLiteral("1"));
         env.insert(QStringLiteral("NO_COLOR"), QStringLiteral("1"));
         p.setProcessEnvironment(env);
-        HostExec::start(p, QStringLiteral("gh"), args);
-        if (!p.waitForStarted(kStartMs)) return c;
-        c.started = true;
+        // The start wait counts against the call's own limit and the deadline.
         const qint64 budget = std::min<qint64>(m_opts.perCallMs,
                                                m_opts.deadlineMs - m_clock.elapsed());
         QElapsedTimer t;
         t.start();
+        HostExec::start(p, QStringLiteral("gh"), args);
+        if (!p.waitForStarted(int(std::clamp<qint64>(budget, 1, kStartMs)))) return c;
+        c.started = true;
         bool killed = false, cut = false;
         QByteArray tail;
         const qint64 half = maxBytes / 2;
@@ -187,25 +188,29 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
             const QString path =
                 api + QStringLiteral("/actions/runs/%1/attempts/%2/jobs?per_page=100").arg(id).arg(a);
             const auto body = get(path);
-            if (!body) continue;
+            if (!body) { res.jobsComplete = false; continue; }
             // Every page, or none: a run read without its later jobs could
             // read a failed attempt as passed.
             QJsonObject reply = QJsonDocument::fromJson(*body).object();
             QJsonArray all = reply.value(QStringLiteral("jobs")).toArray();
             const int total = reply.value(QStringLiteral("total_count")).toInt(int(all.size()));
+            bool pageFailed = false;
             for (int page = 2; all.size() < total && page <= kMaxJobPages; ++page) {
                 stop = s.spent(&res.truncatedReason, opts.reserveCalls, opts.reserveMs);
-                const auto more = stop ? std::nullopt : get(path + QStringLiteral("&page=%1").arg(page));
-                const QJsonArray next = more ? QJsonDocument::fromJson(*more).object()
-                                                   .value(QStringLiteral("jobs")).toArray()
-                                             : QJsonArray();
+                if (stop) break;
+                const auto more = get(path + QStringLiteral("&page=%1").arg(page));
+                if (!more) { pageFailed = true; break; }   // get() noted the error
+                const QJsonArray next =
+                    QJsonDocument::fromJson(*more).object().value(QStringLiteral("jobs")).toArray();
                 if (next.isEmpty()) break;
                 for (const QJsonValue &j : next) all.append(j);
             }
             if (all.size() < total) {
                 if (stop) break;
-                // Pages ran out short of total_count: the attempt is unknown,
-                // and the report must not save as complete.
+                // The attempt is unknown, so the report must not save.
+                res.jobsComplete = false;
+                if (pageFailed) continue;
+                // Pages ran out short of total_count with no failed call.
                 res.fetchErrors.append(QJsonObject{{QStringLiteral("call"), QStringLiteral("gh api ") + path},
                                                    {QStringLiteral("exit_code"), 0},
                                                    {QStringLiteral("reason"), QStringLiteral("incomplete_pages")}});
@@ -235,9 +240,11 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
             .arg(qint64(r.value(QStringLiteral("databaseId")).toDouble()))
             .arg(std::max(1, r.value(QStringLiteral("attempt")).toInt(1)));
         for (const QJsonValue &j : jobs.value(key).toObject().value(QStringLiteral("jobs")).toArray()) {
-            if (s.spent(&res.truncatedReason)) break;
+            // Leave the logs their calls and half the time reserve (spec § 4.5).
+            if (s.spent(&res.truncatedReason, opts.maxLogs, opts.reserveMs / 2)) break;
             const qint64 jobId = qint64(j.toObject().value(QStringLiteral("id")).toDouble());
-            if (const auto body = get(api + QStringLiteral("/check-runs/%1/annotations").arg(jobId)))
+            if (const auto body =
+                    get(api + QStringLiteral("/check-runs/%1/annotations?per_page=100").arg(jobId)))
                 annotations[QString::number(jobId)] = QJsonDocument::fromJson(*body).array();
         }
     }

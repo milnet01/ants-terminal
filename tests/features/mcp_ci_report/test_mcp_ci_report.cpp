@@ -116,7 +116,8 @@ private:
 
 // A fake `gh` first on PATH. It logs every call, answers `repo view` and
 // `run list` from files in its directory, and an `api <path>` call from a file
-// named by the path with / ? = & turned to _. FAKE_FAIL=list fails the listing.
+// named by the path with / ? = & turned to _. FAKE_FAIL=list fails the listing;
+// a file of that name plus ".fail" fails that api call.
 struct FakeGh {
     QTemporaryDir dir;
     QString log() const { return dir.filePath(QStringLiteral("calls.log")); }
@@ -138,6 +139,8 @@ struct FakeGh {
                  // Real gh refuses a log holding escape codes without this flag.
                  "elif [[ $1 == api && $2 == */logs && \" $* \" != *' --allow-escape-sequences '* ]]; then\n"
                  "  echo 'the response contains terminal escape sequences' >&2; exit 1\n"
+                 "elif [[ $1 == api && -f \"$FAKE_DIR/${2//[\\/?=&]/_}.fail\" ]]; then\n"
+                 "  echo 'HTTP 500: Server Error' >&2; exit 1\n"
                  "elif [[ $1 == api ]]; then\n"
                  "  f=\"$FAKE_DIR/${2//[\\/?=&]/_}\"; [[ -f $f ]] && printf '%s' \"$(<\"$f\")\" || printf '{}'\n"
                  "fi\n");
@@ -863,4 +866,136 @@ TEST(McpCiReport, Ants6405MatrixPrefixAndBlockTab) {
     const CiWorkflows::Result tab = workflow(QStringLiteral(
         "name: CI\njobs:\n  a:\n    steps:\n      - run: |\n          make\n          \tindented\n"));
     EXPECT_EQ(tab.workflows.size(), 1) << dump(tab.unread);
+}
+
+// ---- ANTS-6407: claude-config's cold review of 2026-11-05 ------------------
+
+// A page call that fails is one fetch error, with gh's own exit code; it is
+// not also reported as an attempt whose pages ran out.
+TEST(McpCiReport, Ants6407FailedPageIsOneFetchError) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(9, "s", "push", "failure", now.addSecs(-600))}).toJson());
+    QJsonArray first;
+    for (int i = 0; i < 100; ++i) first.append(jobRow(900 + i, "Leg", "success", now.addSecs(-500)));
+    gh.put(QStringLiteral("repos_o_r_actions_runs_9_attempts_1_jobs_per_page_100"),
+           QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
+    gh.put(QStringLiteral("repos_o_r_actions_runs_9_attempts_1_jobs_per_page_100_page_2.fail"), "");
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    const CiHistory::Result r = CiHistory::fetch(p.root, o, {});
+    EXPECT_FALSE(r.history.value("jobs").toObject().contains("9/1"));
+    ASSERT_EQ(r.fetchErrors.size(), 1) << dump(r.fetchErrors);
+    EXPECT_EQ(r.fetchErrors.at(0).toObject().value("exit_code").toInt(), 1) << dump(r.fetchErrors);
+}
+
+// The annotations calls leave the logs their share of the limits (spec § 4.5).
+TEST(McpCiReport, Ants6407AnnotationsLeaveRoomForLogs) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(7, "s", "push", "failure", now.addSecs(-600))}).toJson());
+    QJsonArray jobs;
+    for (int i = 0; i < 20; ++i) jobs.append(jobRow(700 + i, "Leg", "success", now.addSecs(-500)));
+    gh.put(QStringLiteral("repos_o_r_actions_runs_7_attempts_1_jobs_per_page_100"),
+           QJsonDocument(QJsonObject{{"total_count", 20}, {"jobs", jobs}}).toJson());
+    gh.put(QStringLiteral("repos_o_r_actions_jobs_705_logs"), "log body");
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    o.callCap = 12;
+    o.reserveCalls = 8;
+    o.maxLogs = 2;
+    const CiHistory::Result r =
+        CiHistory::fetch(p.root, o, [](const QJsonObject &) { return QList<qint64>{705}; });
+    EXPECT_TRUE(r.history.value("logs").toObject().contains("705"))
+        << "the annotations spent the logs' calls";
+    EXPECT_EQ(r.truncatedReason, QStringLiteral("call_cap"));
+}
+
+// Annotations are read 100 to a page, so a warning past the 30th is seen.
+TEST(McpCiReport, Ants6407AnnotationsAskForAFullPage) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(7, "s", "push", "success", now.addSecs(-600))}).toJson());
+    gh.put(QStringLiteral("repos_o_r_actions_runs_7_attempts_1_jobs_per_page_100"),
+           QJsonDocument(QJsonObject{{"total_count", 1},
+                                     {"jobs", QJsonArray{jobRow(701, "Leg", "success", now.addSecs(-500))}}})
+               .toJson());
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    CiHistory::fetch(p.root, o, {});
+    QFile log(gh.log());
+    ASSERT_TRUE(log.open(QIODevice::ReadOnly));
+    EXPECT_TRUE(log.readAll().contains("check-runs/701/annotations?per_page=100"));
+}
+
+// A failed log call loses a detail, not a problem finding, so the report
+// still saves; a failed jobs call does not (spec § 4.5).
+TEST(McpCiReport, Ants6407OnlyAJobsErrorBlocksTheSave) {
+    auto saves = [](const char *failing) {
+        Env env;
+        FakeGh gh;
+        gh.install(env);
+        Project p;
+        env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        gh.put(QStringLiteral("runs.json"),
+               QJsonDocument(QJsonArray{runRow(7, "s", "push", "failure", now.addSecs(-600)),
+                                        runRow(8, "s", "push", "success", now.addSecs(-300))})
+                   .toJson());
+        for (int run : {7, 8})
+            gh.put(QStringLiteral("repos_o_r_actions_runs_%1_attempts_1_jobs_per_page_100").arg(run),
+                   QJsonDocument(QJsonObject{{"total_count", 1},
+                                             {"jobs", QJsonArray{jobRow(run * 100, "Build", run == 7 ? "failure" : "success",
+                                                                        now.addSecs(-200))}}})
+                       .toJson());
+        gh.put(QString::fromLatin1(failing) + QStringLiteral(".fail"), "");
+        const QJsonObject r = p.call();
+        EXPECT_TRUE(r.value("ok").toBool()) << dump(r);
+        EXPECT_FALSE(r.value("fetch_errors").toArray().isEmpty()) << dump(r);
+        return QFileInfo::exists(p.savedPath());
+    };
+    EXPECT_TRUE(saves("repos_o_r_actions_jobs_700_logs")) << "a log error blocked the save";
+    EXPECT_FALSE(saves("repos_o_r_actions_runs_8_attempts_1_jobs_per_page_100"));
+}
+
+// One remote with two url lines is one remote.
+TEST(McpCiReport, Ants6407TwoUrlsOnOneRemoteAreOneRemote) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    Project p(/*withWorkflow=*/true, /*withRemote=*/false);
+    env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+    p.write(QStringLiteral(".git/config"), "[remote \"origin\"]\n\turl = https://github.com/o/r.git\n"
+                                           "\turl = git@github.com:o/r.git\n");
+    const QJsonObject r = p.call();
+    EXPECT_TRUE(r.value("ok").toBool()) << dump(r);
+    EXPECT_TRUE(r.value("repo_note").isUndefined()) << dump(r);
+}
+
+// ctest after the shell's own command-running words.
+TEST(McpCiReport, Ants6407CtestAfterShellKeywords) {
+    auto fires = [](const char *run) {
+        const CiWorkflows::Result wf = workflow(QStringLiteral(
+            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
+            .arg(QString::fromLatin1(run)));
+        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
+    };
+    EXPECT_TRUE(fires("if ctest --timeout 60; then echo ok; fi")) << "if";
+    EXPECT_TRUE(fires("! ctest --timeout 60")) << "!";
+    EXPECT_TRUE(fires("while ctest --timeout 60; do break; done")) << "while";
+    EXPECT_TRUE(fires("until ctest --timeout 60; do sleep 1; done")) << "until";
+    EXPECT_TRUE(fires("if false; then :; elif ctest --timeout 60; then :; fi")) << "elif";
+    EXPECT_FALSE(fires("if ctest -j4 --timeout 60; then echo ok; fi"));
 }
