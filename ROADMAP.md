@@ -79771,11 +79771,18 @@ in each bullet, not just the reporter's symptom.
   Source: code-review-2026-11-05 (claude-d5, cold read of 8b1cb9c4).
   Lanes: mcp.
 
-- 📋 [ANTS-6403] **Check two unverified ci_report edges: a Flatpak build's timeout kills flatpak-spawn, not the host gh; which remote gh picks in a fork.**
+- ✅ [ANTS-6403] **Check two unverified ci_report edges: a Flatpak build's timeout kills flatpak-spawn, not the host gh; which remote gh picks in a fork.**
   From the same review's Q2 notes. Neither was run. HostExec::start
   wraps gh in flatpak-spawn --watch-bus, so killing it should end the host
   process; confirm. In a fork with an upstream remote, gh repo view may
   resolve the upstream repository; confirm which repo ci_report reads.
+  Checked 2026-11-05 (session 221). Flatpak: inside org.ants.Terminal,
+  SIGKILL of `flatpak-spawn --host --watch-bus sleep` ended the host sleep;
+  without --watch-bus (control) it survived. No change needed. Fork: with
+  origin and upstream GitHub remotes and no `gh repo set-default`, gh
+  2.103.3 reads upstream for both calls. Fixed by a `repo_note` in the live
+  reply naming the repo read and the set-default command (spec § 4.2).
+  Test: McpCiReport.Ants6403AmbiguousRemotesNameTheRepoRead, red then green.
   **Layman:** Two corner cases in ci_report nobody has tested yet.
   Kind: investigate.
   Source: code-review-2026-11-05 (claude-d5, cold read of 8b1cb9c4).

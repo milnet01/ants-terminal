@@ -756,6 +756,39 @@ TEST(McpCiReport, Ants6405CtestCommandForms) {
     EXPECT_FALSE(fires("xvfb-run -a ctest -j4 --timeout 60"));
 }
 
+// ---- ANTS-6403: a fork whose gh has no default repository -------------------
+
+// With two GitHub remotes and no `gh repo set-default`, gh reads `upstream`
+// (measured 2026-11-05, gh 2.103.3), so the reply says which repo it read
+// and how to pick the other. A set default, or one remote, says nothing.
+TEST(McpCiReport, Ants6403AmbiguousRemotesNameTheRepoRead) {
+    auto note = [](const QByteArray &config) {
+        Env env;
+        FakeGh gh;
+        gh.install(env);
+        Project p(/*withWorkflow=*/true, /*withRemote=*/false);
+        env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+        p.write(QStringLiteral(".git/config"), config);
+        const QJsonObject r = p.call();
+        EXPECT_TRUE(r.value("ok").toBool()) << dump(r);
+        return r.value("repo_note");
+    };
+    const QByteArray two = "[remote \"origin\"]\n\turl = https://github.com/me/r.git\n"
+                           "[remote \"upstream\"]\n\turl = https://github.com/o/r.git\n";
+    const QJsonValue ambiguous = note(two);
+    ASSERT_TRUE(ambiguous.isString()) << "two GitHub remotes, no default";
+    EXPECT_TRUE(ambiguous.toString().contains(QLatin1String("o/r")));
+    EXPECT_TRUE(ambiguous.toString().contains(QLatin1String("gh repo set-default")));
+
+    const QByteArray resolved = "[remote \"origin\"]\n\turl = https://github.com/me/r.git\n"
+                                "\tgh-resolved = base\n"
+                                "[remote \"upstream\"]\n\turl = https://github.com/o/r.git\n";
+    EXPECT_TRUE(note(resolved).isUndefined()) << "gh repo set-default chose";
+    EXPECT_TRUE(note("[remote \"origin\"]\n\turl = https://github.com/o/r.git\n"
+                     "[remote \"mirror\"]\n\turl = https://gitlab.com/o/r.git\n").isUndefined())
+        << "one GitHub remote";
+}
+
 // ---- ANTS-6406: a wrapper option that takes a value ------------------------
 
 TEST(McpCiReport, Ants6406WrapperOptionValues) {

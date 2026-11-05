@@ -596,7 +596,18 @@ no `timeout-minutes`, and a workflow run on branch pushes or pull requests
 with no `concurrency` or no dependency or compiler cache. It asks each such
 workflow separately, and does not ask a tag-only release workflow, which
 must never be cancelled. It reports, and never decides; whether a lever applies is the
-project's judgement. **Nothing checks the other rows mechanically.**
+project's judgement.
+
+**Ants MCP's `ci_report` reads the run history**, which a workflow file
+cannot show. It reports a job, or a step's shell guard, running near its
+budget or slowing (`timeout-minutes` row). It reports a red nightly (slow-legs
+row) and a `*-latest` runner (warm-containers row, condition 1). It reports a
+cache near GitHub's limit, a key prefix two jobs share, or a save that skips
+on failure (caches row). It reports a `ctest` with `--timeout` and no `-j`
+(test-parallelism row). And it reports a job that failed and then passed on
+one commit (rule 3). GitHub Actions only. A live call can take two minutes;
+`source:"saved"` reads the last report with no network. It reports, and
+never decides. **Nothing checks the other rows mechanically.**
 
 ## What checks this
 
@@ -610,7 +621,7 @@ project's judgement. **Nothing checks the other rows mechanically.**
 | § 6.2 a repository sets `ants.gate.docsGlob` | **nothing** — the machine-wide hook falls back to a built-in list with no word said, and § 6.2 says so in its own text. **It is the one of the three whose absence is always silent.** An unset `ants.gate.command` is named where no gate script is discoverable (`NO LOCAL GATE, BUT THIS REPO HAS A PIPELINE`, then the key), so for that key an unset and a set one do not produce the same push. **`ants.gate.docsMode` is named only where the hook's `--docs`/`--lint` grep ALSO finds nothing** — a gate spelling its flag either of those ways gets documentation mode with the key unset, and the push is identical to the configured one. So unset-versus-set is visible for `command` alone, and `docsGlob` is the only one that reaches § 2's breach unannounced |
 | § 7 all three conditions hold before the skip | **nothing** — the shared hook does not implement this skip; DOOM_Ants' and Contact List's own hooks do, and nothing checks theirs. `~/.claude/githooks/pre-push` classifies a push as documentation-only, but it does that to select § 6's documentation mode: it holds no `gh` call, and after classifying it always runs the gate. So condition 1 is checked by nothing, condition 2 is a read of the pipeline's definition, and the skip is taken by hand or not at all |
 | § 7.1 a gate that skips a leg declares it | **nothing** — a gate that skips a leg and exits 0 looks the same as one that ran it |
-| § 9 speed-ups taken, failing closed | `~/.claude/tools/ci-gate` reports three GitHub rows as advisories: a job with no `timeout-minutes`, and a push or pull-request workflow with no `concurrency` or no cache. A comment line in that workflow naming a cache with `declined`, `by measurement` or `not worth` records the decline, and silences the cache row. **Nothing** checks the rest, or that a speed-up fails closed |
+| § 9 speed-ups taken, failing closed | `~/.claude/tools/ci-gate` reports three GitHub rows as advisories: a job with no `timeout-minutes`, and a push or pull-request workflow with no `concurrency` or no cache. A comment line in that workflow naming a cache with `declined`, `by measurement` or `not worth` records the decline, and silences the cache row. Ants MCP's `ci_report` reports the rows § 9 lists for it from the run history. Neither runs on a push. **Nothing** checks the rest, or that a speed-up fails closed |
 
 ## Cold-eyes loop log
 

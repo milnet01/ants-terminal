@@ -26,3 +26,8 @@ pages; reader edges; a log's head and tail; a missing workflow in `unread`.
 
 `McpCiReport.Ants6399LiveRunSavesTheReport` runs the whole live path against
 a fake `gh` and reads the saved report back through `session_orient`'s block.
+
+`McpCiReport.Ants6403AmbiguousRemotesNameTheRepoRead` locks `repo_note`
+(spec § 4.2): two GitHub remotes and no `gh-resolved` carry it; a set
+default or one GitHub remote does not. `McpCiReport.Ants6406WrapperOptionValues`
+reads ctest past a wrapper option that takes a value, and past quoting.

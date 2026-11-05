@@ -68,9 +68,16 @@ bool hasWorkflowFiles(const QString &root) {
                 .isEmpty();
 }
 
-// A git remote whose URL names github.com, read from the config files with no
-// process: the repository's own, and a worktree's common one.
-bool hasGithubRemote(const QString &root) {
+// The git remotes whose URL names github.com, read from the config files with
+// no process: the repository's own, and a worktree's common one. `resolved`
+// is true when `gh repo set-default` marked one (`gh-resolved`).
+struct GithubRemotes {
+    int count = 0;
+    bool resolved = false;
+};
+
+GithubRemotes githubRemotes(const QString &root) {
+    GithubRemotes found;
     QDir dir(root);
     QString gitPath;
     for (;;) {
@@ -78,14 +85,14 @@ bool hasGithubRemote(const QString &root) {
             gitPath = dir.filePath(QStringLiteral(".git"));
             break;
         }
-        if (!dir.cdUp()) return false;
+        if (!dir.cdUp()) return found;
     }
     QString gitDir = gitPath;
     if (QFileInfo(gitPath).isFile()) {   // a worktree or submodule: "gitdir: <path>"
         QFile f(gitPath);
-        if (!f.open(QIODevice::ReadOnly)) return false;
+        if (!f.open(QIODevice::ReadOnly)) return found;
         const QString line = QString::fromUtf8(f.readLine()).trimmed();
-        if (!line.startsWith(QLatin1String("gitdir:"))) return false;
+        if (!line.startsWith(QLatin1String("gitdir:"))) return found;
         gitDir = QDir(QFileInfo(gitPath).path()).absoluteFilePath(line.mid(7).trimmed());
     }
     QStringList configs{gitDir + QStringLiteral("/config")};
@@ -101,12 +108,14 @@ bool hasGithubRemote(const QString &root) {
         while (!f.atEnd()) {
             const QString line = QString::fromUtf8(f.readLine()).trimmed();
             if (line.startsWith(QLatin1Char('['))) inRemote = line.startsWith(QLatin1String("[remote "));
-            else if (inRemote && line.startsWith(QLatin1String("url"))
-                     && line.contains(QLatin1String("github.com")))
-                return true;
+            else if (!inRemote) continue;
+            else if (line.startsWith(QLatin1String("url")) && line.contains(QLatin1String("github.com")))
+                ++found.count;
+            else if (line.startsWith(QLatin1String("gh-resolved")))
+                found.resolved = true;
         }
     }
-    return false;
+    return found;
 }
 
 QJsonDocument noCi(const char *reason) {
@@ -192,7 +201,8 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
 
     // Both "none" answers come before any process (INV-10).
     if (!hasWorkflowFiles(root)) return noCi("no_workflows");
-    if (!hasGithubRemote(root)) return noCi("no_github_remote");
+    const GithubRemotes remotes = githubRemotes(root);
+    if (remotes.count == 0) return noCi("no_github_remote");
 
     const QDateTime now = QDateTime::currentDateTimeUtc();
     LiveLock lock;
@@ -236,6 +246,12 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
         {QStringLiteral("counts"), a.counts},
         {QStringLiteral("unread"), unread},
         {QStringLiteral("fetch_errors"), fetched.fetchErrors}};
+    // In a fork gh reads the `upstream` remote unless told otherwise, so say
+    // which repository this is and how to read the other.
+    if (remotes.count > 1 && !remotes.resolved)
+        reply[QStringLiteral("repo_note")] = QStringLiteral(
+            "This project has %1 GitHub remotes and gh has no default, so gh chose %2. "
+            "To read another, run: gh repo set-default <owner/name>").arg(remotes.count).arg(fetched.repo);
     // Only a whole, default-window report replaces the saved one, so a narrow
     // or partly failed run never clears a real warning from session_orient.
     if (workflow.isEmpty() && days == kDefaultDays && fetched.fetchErrors.isEmpty())

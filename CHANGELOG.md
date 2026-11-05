@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **ci_report says which repository it read when a fork has two GitHub remotes and gh has no default (repo_note), with the gh repo set-default command that picks the other** (ANTS-6403)
+
 - **`ci_report`: an Ants MCP verb that reads a project's GitHub Actions history and lists flaky tests, jobs near their time budget, and cache, queue and runner advice** (ANTS-6399)
   Each finding names its runs, commits and the standard it cites. A live
   call asks GitHub through `gh`, bounded at 120 s; `source:"saved"` reads

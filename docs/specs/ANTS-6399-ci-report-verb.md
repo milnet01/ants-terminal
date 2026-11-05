@@ -129,7 +129,11 @@ Reply:
 `ci` is `"github"` or `"none"`. With `"none"` the reply carries
 `ci_none_reason` (`"no_workflows"` or `"no_github_remote"`), an empty
 `findings`, and writes no saved report. Both reasons are decided before any
-`gh` call: `no_github_remote` when no git remote's URL names `github.com`. `cache` is `"hit"`, `"miss"` or
+`gh` call: `no_github_remote` when no git remote's URL names `github.com`.
+A live reply also carries `repo_note` when two or more remotes name
+`github.com` and none has `gh-resolved` (set by `gh repo set-default`):
+`gh` then reads the `upstream` remote, so the note names the repository
+read and the command that picks another (ANTS-6403). `cache` is `"hit"`, `"miss"` or
 `"unknown"` and is present on timing findings only (§ 4.3). `runs` and
 `shas` hold at most 10 entries each, newest first. `findings` is sorted
 by severity (`problem` first), then `check`, then `workflow`, `job`,
