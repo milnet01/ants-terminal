@@ -191,6 +191,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query mode:"bundles"` says whether its answer came from the store or the file, like every other mode** (ANTS-6388)
+
+- **`changelog_log` finds a YAML changelog in a folder above the caller, as it does a Markdown one** (ANTS-6393)
+
 - **`roadmap_log` refuses an over-long note on pass-headings roadmaps too, before cleaning it** (ANTS-6387)
 
 - **`indie_review_corroborate` refuses a reports folder that does not exist instead of reading the folder it runs in** (ANTS-6394)

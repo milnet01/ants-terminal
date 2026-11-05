@@ -80971,10 +80971,12 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-6388] **roadmap_query mode:"bundles" drops the `source` and `file_ahead_of_store` fields.**
+- ✅ [ANTS-6388] **roadmap_query mode:"bundles" drops the `source` and `file_ahead_of_store` fields.**
   The bundles branch of cmdRoadmapQuery returns a fresh object from
   buildRoadmapBundlesEnvelope; stampRoadmapSource wrote only to `out`,
   which is discarded. Fix: stamp the bundles envelope too.
+  Shipped 2026-11-05 (3dcc8e7e). Test:
+  ProjectRepoRoot.BundlesModeNamesTheStore.
   **Layman:** One way of asking for the roadmap leaves out the line that says where the answer came from.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
@@ -81019,10 +81021,12 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-6393] **changelog_log never finds a YAML changelog above the project root, unlike the Markdown one.**
+- ✅ [ANTS-6393] **changelog_log never finds a YAML changelog above the project root, unlike the Markdown one.**
   findYamlChangelogUnder (src/remotecontrol.cpp) checks only the root;
   its sibling findChangelogUnder walks repoBoundedAncestors. Fix: walk
   the same ancestors.
+  Shipped 2026-11-05 (09e4d1e0). Test:
+  changelog_log_add_batch.Ants6393YamlChangelogInAnAncestorIsFound.
   **Layman:** A project whose YAML changelog sits one folder up is not found, though a Markdown one there would be.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
