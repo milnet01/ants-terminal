@@ -182,3 +182,25 @@ TEST(IndieReviewSharedSymbol, Inv4AbsentWhenNothingIsShared) {
         << "the envelope must stay byte-identical when nothing is shared";
     EXPECT_FALSE(env.contains(QStringLiteral("shared_symbols_count")));
 }
+
+// ANTS-6394 — a reports_dir that does not exist is refused. validatePath
+// leaves `resolved` empty for it, and QDir("") is the process's working
+// directory, so the pass would otherwise read whatever folder it ran in.
+TEST(IndieReviewSharedSymbol, Ants6394MissingReportsDirIsRefused) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    for (const bool outside : {false, true}) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = tmp.path();
+        req[QStringLiteral("reports_dir")] =
+            outside ? tmp.path() + QStringLiteral("/no-such-dir")
+                    : QStringLiteral("no-such-dir");
+        if (outside) req[QStringLiteral("allow_outside_project")] = true;
+        RemoteControl rc(nullptr);
+        const QJsonObject r = rc.cmdIndieReviewCorroborateForTest(req).object();
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool(true))
+            << (outside ? "absolute" : "relative") << ": "
+            << QJsonDocument(r).toJson().toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString(), QStringLiteral("not_found"));
+    }
+}

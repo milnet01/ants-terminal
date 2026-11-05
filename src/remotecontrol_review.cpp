@@ -434,6 +434,12 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
             QStringLiteral("reports_dir"),
             /*allowOutsideRoot=*/allowOutside);
         if (check.bad) return QJsonDocument(check.err);
+        // ANTS-6394 — validatePath leaves `resolved` empty for a path that does
+        // not exist, and QDir("") below would walk the working directory.
+        if (check.resolved.isEmpty()) return QJsonDocument(mcp::refusal(
+            QStringLiteral("not_found"),
+            QStringLiteral("indie_review_corroborate: reports_dir does not "
+                           "exist: %1").arg(reportsDir)));
         found = allowOutside
             ? IndieReviewEngine::corroboratedFindingsFromCanonicalDir(
                   root, check.resolved, minLanes, &reportsRead, &stats,
