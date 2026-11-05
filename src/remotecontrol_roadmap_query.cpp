@@ -654,6 +654,11 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
     QString toKeyword;
     if (annotateMode) {
         QString note = req.value(QStringLiteral("note")).toString();
+        // ANTS-6387 — the GFM path's ANTS-1995 cap, before the backtracking scrub.
+        if (note.size() > kRcMaxNoteChars)
+            return err(QStringLiteral("too_large"),
+                QStringLiteral("note exceeds %1-char cap (got %2)")
+                    .arg(kRcMaxNoteChars).arg(note.size()));
         QStringList scrubbed;
         rcScrubLeakedToolXml(note, scrubbed);
         // INV-8 — empty note → bad_args (deliberately the documented code,
@@ -756,6 +761,17 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
             continue;
         }
         QString note = loc.value(QStringLiteral("note")).toString();
+        // ANTS-6387 — the GFM path's ANTS-1995 cap, per locator, before the
+        // backtracking scrub further down.
+        if (note.size() > kRcMaxNoteChars) {
+            QJsonObject s;
+            s["locator_index"] = i;
+            s["code"]          = QStringLiteral("too_large");
+            s["error"]         = QStringLiteral("note exceeds %1-char cap (got %2)")
+                                     .arg(kRcMaxNoteChars).arg(note.size());
+            skipped.append(s);
+            continue;
+        }
         // ANTS-4470 — an annotate with no note writes nothing; refused per
         // locator, as on the GFM/ants-v1 batch path.
         if (annotateMode && note.isEmpty()) {

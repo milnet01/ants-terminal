@@ -955,3 +955,34 @@ TEST(RoadmapPassStoreWrite, Ants5678IdFetchReturnsThePassBody) {
     EXPECT_TRUE(body.contains(QStringLiteral("  record both; compare the warm times")))
         << body.toStdString();
 }
+
+// ANTS-6387 — the pass-headings writers cap a note before the backtracking
+// scrub, as the GFM path does (ANTS-1995).
+TEST(RoadmapPassStoreWrite, Ants6387OversizeNoteIsRefusedBeforeTheScrub) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, false);
+    ASSERT_FALSE(root.isEmpty());
+    const QString huge(5000, QLatin1Char('x'));   // above kRcMaxNoteChars (4096)
+
+    QJsonObject one = req(root, QStringLiteral("annotate"));
+    one[QStringLiteral("id")]   = QStringLiteral("PASS-44-1");
+    one[QStringLiteral("note")] = huge;
+    QJsonObject batch = req(root, QStringLiteral("annotate_batch"));
+    batch[QStringLiteral("locators")] = QJsonArray{
+        QJsonObject{{QStringLiteral("id"), QStringLiteral("PASS-44-1")},
+                    {QStringLiteral("note"), huge}}};
+    QJsonObject r1, r2;
+    {
+        RemoteControl rc(nullptr);
+        r1 = rc.cmdRoadmapLogFlipForTest(one).object();
+        r2 = rc.cmdRoadmapLogFlipBatchForTest(batch).object();
+    }
+    EXPECT_EQ(r1.value(QStringLiteral("code")).toString(), QStringLiteral("too_large"))
+        << QJsonDocument(r1).toJson().toStdString();
+    const QJsonArray skipped = r2.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << QJsonDocument(r2).toJson().toStdString();
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("too_large"));
+}
