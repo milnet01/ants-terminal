@@ -529,3 +529,211 @@ TEST(McpCiReport, Ants6399ServedByMcpdWithoutMainWindow) {
     EXPECT_NE(ci.find("toolName == QStringLiteral(\"ci_report\"))                return R::Expensive"),
               std::string::npos);
 }
+
+// ---- ANTS-6402: claude-d5's cold review of 8b1cb9c4 ----------------------
+
+namespace {
+
+QJsonObject runRow(qint64 id, const char *sha, const char *event, const char *conclusion,
+                   const QDateTime &created, int attempt = 1) {
+    return {{"databaseId", double(id)}, {"headSha", sha}, {"event", event},
+            {"conclusion", conclusion}, {"workflowName", "CI"}, {"createdAt", iso(created)},
+            {"attempt", attempt}, {"status", "completed"}};
+}
+
+QJsonObject jobRow(qint64 id, const char *name, const char *conclusion, const QDateTime &at) {
+    return {{"id", double(id)}, {"name", name}, {"conclusion", conclusion},
+            {"created_at", iso(at)}, {"started_at", iso(at)},
+            {"completed_at", iso(at.addSecs(60))}, {"steps", QJsonArray()}};
+}
+
+}  // namespace
+
+TEST(McpCiReport, Ants6402FlakyNeedsTheSameJobToPass) {
+    const QDateTime t = kNow.addSecs(-86400);
+    QJsonObject jobs;
+    // s1: a PR run fails ASan; the push run on that SHA skips ASan.
+    jobs["1/1"] = QJsonObject{{"jobs", QJsonArray{jobRow(11, "ASan", "failure", t),
+                                                  jobRow(12, "Build", "success", t)}}};
+    jobs["2/1"] = QJsonObject{{"jobs", QJsonArray{jobRow(21, "ASan", "skipped", t.addSecs(600)),
+                                                  jobRow(22, "Build", "success", t.addSecs(600))}}};
+    // s2: two push runs; ASan fails, then is skipped. It never passed.
+    jobs["3/1"] = QJsonObject{{"jobs", QJsonArray{jobRow(31, "ASan", "failure", t.addSecs(1200))}}};
+    jobs["4/1"] = QJsonObject{{"jobs", QJsonArray{jobRow(41, "ASan", "skipped", t.addSecs(1800)),
+                                                  jobRow(42, "Build", "success", t.addSecs(1800))}}};
+    // s3: Build fails, then the same job passes on the same SHA: a flake.
+    jobs["5/1"] = QJsonObject{{"jobs", QJsonArray{jobRow(51, "Build", "failure", t.addSecs(2400))}}};
+    jobs["6/1"] = QJsonObject{{"jobs", QJsonArray{jobRow(61, "Build", "success", t.addSecs(3000))}}};
+    const QJsonObject h{
+        {"runs", QJsonArray{runRow(1, "s1", "pull_request", "failure", t),
+                            runRow(2, "s1", "push", "success", t.addSecs(600)),
+                            runRow(3, "s2", "push", "failure", t.addSecs(1200)),
+                            runRow(4, "s2", "push", "success", t.addSecs(1800)),
+                            runRow(5, "s3", "push", "failure", t.addSecs(2400)),
+                            runRow(6, "s3", "push", "success", t.addSecs(3000))}},
+        {"jobs", jobs}};
+    const CiReport::Analysis a = CiReport::analyse(h, CiWorkflows::Result(), kNow, 30);
+    const auto flaky = ofCheck(a, "flaky");
+    ASSERT_EQ(flaky.size(), 1) << dump(a.findings) << "only s3's Build failed and then passed";
+    EXPECT_EQ(flaky[0].value("shas").toArray(), QJsonArray{QStringLiteral("s3")});
+    EXPECT_EQ(flaky[0].value("job").toString(), QStringLiteral("Build"));
+    EXPECT_TRUE(flaky[0].value("message").toString().contains(QLatin1String("runner")))
+        << "a lost runner fails a job too; the message must not blame only the test";
+}
+
+TEST(McpCiReport, Ants6402MatrixNameMatchesOneJobOnly) {
+    const CiWorkflows::Result wf = workflow(QStringLiteral(
+        "name: CI\n"
+        "jobs:\n"
+        "  a:\n"
+        "    name: Build\n"
+        "    timeout-minutes: 10\n"
+        "  b:\n"
+        "    name: Build (${{ matrix.san }})\n"
+        "    timeout-minutes: 60\n"));
+    History h;
+    h.add(1, kNow.addSecs(-3600), QStringLiteral("Build (asan)"), 0, 30 * 60);
+    const CiReport::Analysis a = CiReport::analyse(h.json(), wf, kNow, 30);
+    EXPECT_TRUE(ofCheck(a, "near_budget").isEmpty())
+        << "\"Build (asan)\" is job b's matrix leg, not job a" << dump(a.findings);
+}
+
+TEST(McpCiReport, Ants6402SubmoduleUrlIsNoGithubRemote) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    Project p(/*withWorkflow=*/true, /*withRemote=*/false);
+    env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+    p.write(QStringLiteral(".git/config"),
+            "[remote \"origin\"]\n\turl = https://gitlab.com/o/r.git\n"
+            "[submodule \"lib\"]\n\turl = https://github.com/a/b.git\n");
+    const QJsonObject r = p.call();
+    EXPECT_EQ(r.value("ci_none_reason").toString(), QStringLiteral("no_github_remote")) << dump(r);
+    EXPECT_FALSE(gh.called());
+}
+
+TEST(McpCiReport, Ants6402TestParallelismReadsTheCtestCommand) {
+    auto fires = [](const char *run) {
+        const CiWorkflows::Result wf = workflow(QStringLiteral(
+            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: %1\n").arg(QLatin1String(run)));
+        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
+    };
+    EXPECT_FALSE(fires("CTEST_PARALLEL_LEVEL=4 ctest --timeout 60")) << "inline level";
+    EXPECT_TRUE(fires("cmake --build b --parallel && ctest --timeout 60")) << "cmake's --parallel is not ctest's";
+    EXPECT_FALSE(fires("./run-ctest.sh --timeout 60")) << "ctest inside another word";
+    EXPECT_FALSE(fires("ctest -j4 --timeout 60"));
+    EXPECT_TRUE(fires("ctest --timeout 60"));
+    const CiWorkflows::Result flowEnv = workflow(QStringLiteral(
+        "name: CI\njobs:\n  t:\n    env: {CTEST_PARALLEL_LEVEL: 4}\n    steps:\n"
+        "      - run: ctest --timeout 60\n"));
+    EXPECT_TRUE(ofCheck(CiReport::analyse(QJsonObject(), flowEnv, kNow, 30), "test_parallelism").isEmpty())
+        << "a flow-map env sets the level too";
+}
+
+TEST(McpCiReport, Ants6402SaveAfterFailureIsNotSkipped) {
+    for (const char *cond : {"${{ !cancelled() }}", "success() || failure()", "always()"}) {
+        const CiWorkflows::Result wf = workflow(QStringLiteral(
+            "name: CI\njobs:\n  t:\n    steps:\n      - uses: actions/cache/save@v4\n"
+            "        if: %1\n        with:\n          key: k-${{ github.sha }}\n").arg(QLatin1String(cond)));
+        EXPECT_TRUE(ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "cache_save_skipped").isEmpty())
+            << cond;
+    }
+}
+
+TEST(McpCiReport, Ants6402BlockRunIsNoShellGuard) {
+    const CiWorkflows::Result wf = workflow(QStringLiteral(
+        "name: CI\njobs:\n  build:\n    name: Build\n    timeout-minutes: 60\n    steps:\n"
+        "      - name: Guarded\n        run: |\n          timeout 10m ctest\n"));
+    ASSERT_EQ(wf.workflows.size(), 1);
+    EXPECT_LT(wf.workflows[0].jobs[0].steps[0].budgetMin, 0) << "a guard in a | block is not read";
+}
+
+TEST(McpCiReport, Ants6402JobsArePaginated) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(7, "s", "push", "failure", now.addSecs(-600))}).toJson());
+    QJsonArray first;
+    for (int i = 0; i < 100; ++i) first.append(jobRow(700 + i, "Leg", "success", now.addSecs(-500)));
+    gh.put(QStringLiteral("repos_o_r_actions_runs_7_attempts_1_jobs_per_page_100"),
+           QJsonDocument(QJsonObject{{"total_count", 101}, {"jobs", first}}).toJson());
+    gh.put(QStringLiteral("repos_o_r_actions_runs_7_attempts_1_jobs_per_page_100_page_2"),
+           QJsonDocument(QJsonObject{{"total_count", 101},
+                                     {"jobs", QJsonArray{jobRow(900, "Last", "failure", now.addSecs(-500))}}})
+               .toJson());
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    const CiHistory::Result r = CiHistory::fetch(p.root, o, {});
+    EXPECT_EQ(r.history.value("jobs").toObject().value("7/1").toObject().value("jobs").toArray().size(), 101)
+        << "the 101st job was dropped";
+}
+
+TEST(McpCiReport, Ants6402ReaderEdgeCases) {
+    // A tab inside a block scalar is text, not indentation.
+    const CiWorkflows::Result tabbed = workflow(QStringLiteral(
+        "name: CI\njobs:\n  a:\n    timeout-minutes: 5\n    steps:\n      - run: |\n"
+        "          cat <<EOF\n\tindented\n          EOF\n"));
+    EXPECT_EQ(tabbed.workflows.size(), 1) << dump(tabbed.unread);
+    // A merge key loses keys silently, so the file is unread instead.
+    const CiWorkflows::Result merged = workflow(QStringLiteral(
+        "name: CI\njobs:\n  a: &base\n    timeout-minutes: 5\n  b:\n    <<: *base\n"));
+    EXPECT_TRUE(merged.workflows.isEmpty());
+    ASSERT_EQ(merged.unread.size(), 1);
+    EXPECT_EQ(merged.unread.at(0).toObject().value("field").toString(), QStringLiteral("file"));
+    // An escaped quote does not end a double-quoted value.
+    const CiWorkflows::Result quoted = workflow(QStringLiteral(
+        "name: \"say \\\"hi\\\" now\"\njobs:\n  a:\n    timeout-minutes: 5\n"));
+    ASSERT_EQ(quoted.workflows.size(), 1);
+    EXPECT_EQ(quoted.workflows[0].name, QStringLiteral("say \"hi\" now"));
+    // A flow map is read.
+    const CiWorkflows::Result flow = workflow(QStringLiteral(
+        "name: CI\njobs:\n  a:\n    steps:\n"
+        "      - uses: actions/cache@v4\n        with: {path: x, key: \"${{ runner.os }}-cc-${{ github.sha }}\"}\n"));
+    ASSERT_EQ(flow.workflows.size(), 1) << dump(flow.unread);
+    EXPECT_EQ(flow.workflows[0].jobs[0].steps[0].cacheKey,
+              QStringLiteral("${{ runner.os }}-cc-${{ github.sha }}"));
+    // A block-map runs-on names its labels.
+    const CiWorkflows::Result group = workflow(QStringLiteral(
+        "name: CI\njobs:\n  a:\n    runs-on:\n      group: big\n      labels: ubuntu-latest\n"));
+    EXPECT_EQ(ofCheck(CiReport::analyse(QJsonObject(), group, kNow, 30), "runner_latest").size(), 1);
+}
+
+TEST(McpCiReport, Ants6402LogKeepsHeadAndTail) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    gh.put(QStringLiteral("runs.json"),
+           QJsonDocument(QJsonArray{runRow(8, "s", "push", "failure", now.addSecs(-600))}).toJson());
+    gh.put(QStringLiteral("repos_o_r_actions_runs_8_attempts_1_jobs_per_page_100"),
+           QJsonDocument(QJsonObject{{"total_count", 1},
+                                     {"jobs", QJsonArray{jobRow(80, "Build", "failure", now.addSecs(-500))}}})
+               .toJson());
+    gh.put(QStringLiteral("repos_o_r_actions_jobs_80_logs"),
+           "Cache restored from key: k\n" + QByteArray(20000, 'x') + "\nThe following tests FAILED:\n");
+    Project p;
+    CiHistory::Options o;
+    o.now = now;
+    o.maxLogBytes = 4096;
+    const CiHistory::Result r = CiHistory::fetch(p.root, o, [](const QJsonObject &) {
+        return QList<qint64>{80};
+    });
+    const QString log = r.history.value("logs").toObject().value("80").toString();
+    EXPECT_TRUE(log.contains(QLatin1String("Cache restored from key"))) << "the head holds the cache line";
+    EXPECT_TRUE(log.contains(QLatin1String("The following tests FAILED:"))) << "the tail holds ctest's list";
+    EXPECT_LE(log.size(), 4096 + 64);
+}
+
+TEST(McpCiReport, Ants6402UnreadNamesAMissingWorkflowApart) {
+    History h;
+    h.add(1, kNow.addSecs(-3600), QStringLiteral("Build"), 0, 60);
+    const CiReport::Analysis a = CiReport::analyse(h.json(), CiWorkflows::Result(), kNow, 30);
+    ASSERT_EQ(a.unread.size(), 1) << dump(a.unread);
+    const QJsonObject u = a.unread.at(0).toObject();
+    EXPECT_TRUE(u.value("file").isNull());
+    EXPECT_EQ(u.value("field").toString(), QStringLiteral("workflow"));
+    EXPECT_EQ(u.value("workflow").toString(), QStringLiteral("CI"));
+}

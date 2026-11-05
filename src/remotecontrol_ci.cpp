@@ -96,9 +96,13 @@ bool hasGithubRemote(const QString &root) {
     for (const QString &path : configs) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) continue;
+        // Only a [remote "…"] section's url: a submodule's is another repository.
+        bool inRemote = false;
         while (!f.atEnd()) {
             const QString line = QString::fromUtf8(f.readLine()).trimmed();
-            if (line.startsWith(QLatin1String("url")) && line.contains(QLatin1String("github.com")))
+            if (line.startsWith(QLatin1Char('['))) inRemote = line.startsWith(QLatin1String("[remote "));
+            else if (inRemote && line.startsWith(QLatin1String("url"))
+                     && line.contains(QLatin1String("github.com")))
                 return true;
         }
     }

@@ -142,7 +142,7 @@ or hygiene change.
 
 | `check` | Severity | Fires when | Cites |
 |---|---|---|---|
-| `flaky` | problem | One workflow on one SHA has a failed attempt or run and a later successful one. Names the failed job and step; adds failing ctest names when the failed job's log carries ctest's `The following tests FAILED:` block. | `testing.md` § 7; `local-gate.md` § 9 rule 3 |
+| `flaky` | problem | One job, in one workflow, event and SHA, fails in an attempt or run and passes in a later one. The event keeps a pull request's run apart from a push run of the same head SHA, which tests different code. Names the failed job and step; adds failing ctest names when the failed job's log carries ctest's `The following tests FAILED:` block. | `testing.md` § 7; `local-gate.md` § 9 rule 3 |
 | `near_budget` | problem | A job or step with a budget (§ 4.4: `timeout-minutes`, or a step's shell guard) ran at 80% of it or more in any run in the window, or ended at its budget. | `local-gate.md` § 9, `timeout-minutes` row |
 | `budget_trend` | advice | A budgeted job's median time over its newest 5 successful runs is 25% or more above the median of its earlier ones in the window, with at least 5 earlier ones. | `local-gate.md` § 9, `timeout-minutes` row |
 | `scheduled_red` | problem | A workflow's newest `schedule` run failed. The message says since when it has been red: the newest successful scheduled run's date, or "no green run in the window". | `local-gate.md` § 9, slow-legs row |
@@ -179,12 +179,18 @@ their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
 - A job is matched to the API's job name by its `name:`, else its id,
   exactly. Where none matches exactly, an API name beginning `<name> (`
   matches the job named `<name>`: a matrix job's API name is
-  `<name> (<values>)`.
+  `<name> (<values>)`. That fallback applies only when exactly one job
+  fits and no job's `name:` holds an expression.
 - **A value it cannot read is unknown, never a guess.** A `timeout-minutes`
   holding an expression (`${{ … }}`), a job it cannot match, or a file it
   cannot parse leaves that budget unknown. A check needing an unknown value
   does not fire. The reply's `unread` array lists each `{file, job, field}`
-  it skipped.
+  it skipped; a workflow no file matches has `file` null and names itself
+  in `workflow`.
+- **An alias or a merge key (`<<: *x`) makes the file unread**, because the
+  keys it brings would be lost unnamed. One-line flow maps and lists
+  (`with: {key: …}`) are read, and a block-map `runs-on:` names its runner
+  in `labels:`.
 - **A shell guard is a step budget.** A step whose single-line `run:`
   begins `timeout <N><s|m|h> ` has that duration as its budget, as
   `run: timeout 34m cmake --build build-asan --parallel` in this project's
@@ -205,10 +211,11 @@ the host's `gh`.
   `gh run list --json databaseId,headSha,headBranch,conclusion,event,workflowName,createdAt,attempt,status --limit 200`
   (runs older than the window are dropped);
   `gh api repos/{repo}/actions/runs/{id}/attempts/{n}/jobs` per run and per
-  attempt, newest run first; `gh api repos/{repo}/actions/cache/usage`;
+  attempt, newest run first, every page or none of that attempt; `gh api repos/{repo}/actions/cache/usage`;
   `gh api repos/{repo}/check-runs/{job}/annotations` for the jobs of each
   workflow's newest run; `gh api repos/{repo}/actions/jobs/{job}/logs` for
-  logs (§ 4.3), at most 10 logs and the first 2 MiB of each.
+  logs (§ 4.3), at most 10 logs, keeping the first and last MiB of each:
+  the cache line is near a log's start and ctest's failure list at its end.
 - **Limits.** Each call times out at 20 s. The whole fetch stops at 120 s
   or 300 calls, whichever comes first. Stopping sets `truncated:true`,
   `truncated_reason` (`"deadline"` or `"call_cap"`), and the analysis runs
@@ -218,12 +225,14 @@ the host's `gh`.
   30 s of the limits remain, so the calls after them still run.
 - **One live run per project at a time.** A live run holds an exclusive
   lock on a file beside its saved report, and writes its start time there
-  for `already_running`'s `running_since_ms`. Each Claude session runs its own
+  for `already_running`'s `running_since_ms`; `retry_after_ms` is the time
+  left of that run's 120 s. Each Claude session runs its own
   `ants-mcpd`, and one process runs its Bulk calls one after another, so
   two overlapping runs are in two processes. A second `source:"live"`
   call for the same root refuses `already_running` while the lock is held.
 - **The saved report** is the reply, written atomically to
-  `~/.cache/ants-terminal/ci-report/<sha256(canonical root)>.json`, mode
+  `~/.cache/ants-terminal/ci-report/<cwdHash(canonical root)>.json`
+  (`SessionMemoryEngine::cwdHash`, as the other per-project caches), mode
   0600, after every live run that reached GitHub with no `workflow`, the
   default `days` and an empty `fetch_errors`. The root, for the saved
   report and for `CiWorkflows::read`, is `resolveRootCanonical(m_roots, req)`
@@ -274,6 +283,9 @@ install), which is that file's test for a new code.
   `flaky_attempts.json`. *Breaks when:* the check groups by SHA alone
   across workflows, so a failed docs workflow and a green CI on one SHA
   read as a flake; the fixture holds that case and expects no finding.
+  Amended by ANTS-6402: it also breaks when a later green run in which
+  the job was skipped, or a run for another event, reads as the job
+  passing. *Test:* `McpCiReport.Ants6402FlakyNeedsTheSameJobToPass`.
 - **INV-2** — `near_budget` fires at 80% of a job's `timeout-minutes` and
   not below it, and fires for a job `cancelled` at its budget. *Test:*
   `tests/features/mcp_ci_report`, fixtures at 79% and 80% of a 10-minute
@@ -366,6 +378,7 @@ removed and seen to fail before it lands.
 | Test | Covers |
 |---|---|
 | analyser tests on fixtures | INV-1, INV-2, INV-3, INV-4, INV-5, INV-12 |
+| ANTS-6402 tests (`McpCiReport.Ants6402*`) | INV-1's amendment; § 4.4's matrix, alias, flow-map and block-map rules; § 4.5's pages and log ends |
 | fake-`gh` verb tests | INV-6, INV-8, INV-9, INV-10 |
 | `session_orient` block test | INV-7 |
 | source checks, with `tests/features/standalone_mcp_server` | INV-11 |

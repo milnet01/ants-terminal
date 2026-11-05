@@ -158,20 +158,25 @@ struct Matched { const JobRec *job; const CiWorkflows::Job *wj; QString file; };
 QList<Matched> matchJobs(const QList<RunRec> &runs, const CiWorkflows::Result &wf,
                          QJsonArray &unread) {
     QSet<QString> named;
-    auto miss = [&](const QString &file, const QString &job, const QString &field) {
-        const QString key = file + QLatin1Char('\x1f') + job + QLatin1Char('\x1f') + field;
+    auto orNullStr = [](const QString &s) { return s.isEmpty() ? QJsonValue() : QJsonValue(s); };
+    auto miss = [&](const QString &file, const QString &job, const QString &field,
+                    const QString &workflow = QString()) {
+        const QString key = QStringList{file, job, field, workflow}.join(QLatin1Char('\x1f'));
         if (named.contains(key)) return;
         named.insert(key);
-        unread.append(QJsonObject{{QStringLiteral("file"), file},
-                                  {QStringLiteral("job"), job.isEmpty() ? QJsonValue() : QJsonValue(job)},
-                                  {QStringLiteral("field"), field}});
+        QJsonObject u{{QStringLiteral("file"), orNullStr(file)},
+                      {QStringLiteral("job"), orNullStr(job)},
+                      {QStringLiteral("field"), field}};
+        if (!workflow.isEmpty()) u[QStringLiteral("workflow")] = workflow;
+        unread.append(u);
     };
     QList<Matched> out;
     for (const RunRec &r : runs) {
         const CiWorkflows::Workflow *w = CiWorkflows::matchWorkflow(wf, r.workflow);
         for (const QList<JobRec> &list : r.attempts)
             for (const JobRec &j : list) {
-                if (!w) { miss(r.workflow, QString(), QStringLiteral("workflow")); out.append({&j, nullptr, {}}); continue; }
+                // No file holds this workflow: `file` is null and `workflow` names it.
+                if (!w) { miss(QString(), QString(), QStringLiteral("workflow"), r.workflow); out.append({&j, nullptr, {}}); continue; }
                 const CiWorkflows::Job *wj = CiWorkflows::matchJob(*w, j.name);
                 if (!wj) miss(w->file, j.name, QStringLiteral("job"));
                 out.append({&j, wj, w->file});
@@ -196,77 +201,59 @@ QStringList failingCtestNames(const QString &log) {
     return names;
 }
 
-// flaky: one workflow on one SHA failed, then passed. Grouped by the job and
-// step that failed, so one flaky test across many commits is one finding.
+// flaky: one job, in one workflow, event and SHA, failed and later passed.
+// The event keeps a pull request's merge-ref run apart from a push run of the
+// same head SHA, which tests different code; the job keeps a skipped job's
+// green run from reading as a pass. Grouped by the job and step that failed,
+// so one flaky test across many commits is one finding.
 void checkFlaky(const QList<RunRec> &runs, const QJsonObject &logs, QList<Finding> &out) {
-    struct Outcome { const RunRec *run; int attempt; bool failed, passed; const JobRec *failedJob; };
-    QMap<QString, QList<Outcome>> bySha;
+    struct Inst { const JobRec *job; int attempt; };
+    QMap<QString, QList<Inst>> byJob;
     for (const RunRec &r : runs)
-        for (int a = 1; a <= r.attempt; ++a) {
-            const QList<JobRec> &jobs = r.attempts.at(a - 1);
-            Outcome o{&r, a, false, false, nullptr};
-            if (!jobs.isEmpty()) {
-                bool anyPass = false, allOk = true;
-                for (const JobRec &j : jobs) {
-                    if (failedConclusion(j.conclusion) && !o.failedJob) o.failedJob = &j;
-                    anyPass |= j.conclusion == QLatin1String("success");
-                    allOk &= j.conclusion == QLatin1String("success")
-                          || j.conclusion == QLatin1String("skipped")
-                          || j.conclusion == QLatin1String("neutral");
-                }
-                o.failed = o.failedJob != nullptr;
-                o.passed = anyPass && allOk;
-            } else if (a == r.attempt) {
-                o.failed = failedConclusion(r.conclusion);
-                o.passed = r.conclusion == QLatin1String("success");
-            } else {
-                continue;
-            }
-            bySha[r.workflow + QLatin1Char('\x1f') + r.sha].append(o);
-        }
+        for (int a = 1; a <= r.attempts.size(); ++a)
+            for (const JobRec &j : r.attempts.at(a - 1))
+                byJob[QStringList{r.workflow, r.event, r.sha, j.name}.join(QLatin1Char('\x1f'))]
+                    .append({&j, a});
 
     QMap<QString, Finding> merged;
     QMap<QString, QSet<QString>> shasOf;
-    for (QList<Outcome> &list : bySha) {
-        std::sort(list.begin(), list.end(), [](const Outcome &a, const Outcome &b) {
-            return a.run->created != b.run->created ? a.run->created < b.run->created
-                                                    : a.attempt < b.attempt;
+    for (QList<Inst> &list : byJob) {
+        std::sort(list.begin(), list.end(), [](const Inst &a, const Inst &b) {
+            return a.job->run->created != b.job->run->created
+                       ? a.job->run->created < b.job->run->created
+                       : a.attempt < b.attempt;
         });
         int lastPass = -1;
         for (int i = 0; i < list.size(); ++i)
-            if (list[i].passed) lastPass = i;
+            if (list[i].job->conclusion == QLatin1String("success")) lastPass = i;
         for (int i = 0; i < lastPass; ++i) {
-            if (!list[i].failed) continue;
-            const JobRec *fj = list[i].failedJob;
+            const JobRec &fj = *list[i].job;
+            if (!failedConclusion(fj.conclusion)) continue;
             QString step;
-            if (fj)
-                for (const StepRec &s : fj->steps)
-                    if (failedConclusion(s.conclusion)) { step = s.name; break; }
-            const QString job = fj ? fj->name : QString();
-            const QString key = list[i].run->workflow + QLatin1Char('\x1f') + job
-                              + QLatin1Char('\x1f') + step;
+            for (const StepRec &st : fj.steps)
+                if (failedConclusion(st.conclusion)) { step = st.name; break; }
+            const QString key = QStringList{fj.run->workflow, fj.name, step}.join(QLatin1Char('\x1f'));
             Finding &f = merged[key];
             f.check = QStringLiteral("flaky");
             f.severity = QStringLiteral("problem");
-            f.workflow = list[i].run->workflow;
-            f.job = job;
+            f.workflow = fj.run->workflow;
+            f.job = fj.name;
             f.step = step;
             f.cites = {QStringLiteral("testing.md § 7"), QStringLiteral("local-gate.md § 9 rule 3")};
-            f.evidence.append(evidenceOf(*list[i].run));
-            f.evidence.append(evidenceOf(*list[lastPass].run));
-            shasOf[key].insert(list[i].run->sha);
-            // The newest failed job names the tests, if its log is read.
-            if (fj) noteLog(f, *fj);
+            f.evidence.append(evidenceOf(fj));
+            f.evidence.append(evidenceOf(*list[lastPass].job));
+            shasOf[key].insert(fj.run->sha);
+            noteLog(f, fj);  // the newest failed job names the tests, if its log is read
         }
     }
     for (auto it = merged.begin(); it != merged.end(); ++it) {
         Finding &f = it.value();
         const int commits = int(shasOf[it.key()].size());
-        QString what = f.job.isEmpty() ? QStringLiteral("A run")
-                                       : QStringLiteral("Job '%1'").arg(f.job);
+        QString what = QStringLiteral("Job '%1'").arg(f.job);
         if (!f.step.isEmpty()) what += QStringLiteral(" (step '%1')").arg(f.step);
         f.message = QStringLiteral("%1 failed and then passed on the same commit, on %2 commit%3. "
-                                   "The cause is in the test or the code it runs.")
+                                   "The cause is in the test, the code it runs, or the runner "
+                                   "it ran on.")
                         .arg(what).arg(commits).arg(commits == 1 ? QString() : QStringLiteral("s"));
         const QStringList tests =
             failingCtestNames(logs.value(QString::number(f.logJob)).toString());
@@ -505,6 +492,13 @@ void checkCacheKeys(const CiWorkflows::Result &wf, QList<Finding> &out) {
     }
 }
 
+// An `if:` that still runs after an earlier step failed.
+bool runsAfterFailure(QString ifExpr) {
+    ifExpr.remove(QLatin1Char(' '));
+    return ifExpr.contains(QLatin1String("always()")) || ifExpr.contains(QLatin1String("failure()"))
+        || ifExpr.contains(QLatin1String("!cancelled()"));
+}
+
 void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
     for (const CiWorkflows::Workflow &w : wf.workflows)
         for (const CiWorkflows::Job &j : w.jobs)
@@ -514,7 +508,7 @@ void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
                     why = QStringLiteral("The combined actions/cache saves in a post step that does "
                                          "not run when the job fails, so the next run starts cold.");
                 else if (s.uses.startsWith(QLatin1String("actions/cache/save@"))
-                         && !s.ifExpr.contains(QLatin1String("always()")))
+                         && !runsAfterFailure(s.ifExpr))
                     why = QStringLiteral("This save step has no if: always(), so a failed step "
                                          "before it skips the save and the next run starts cold.");
                 if (why.isEmpty()) continue;
@@ -530,16 +524,51 @@ void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
             }
 }
 
+// A ctest command in `run` that sets --timeout and runs serially. Each
+// command between &&, ||, ;, | and newlines is read on its own, past leading
+// VAR=value words and a `timeout <duration>` or `env` wrapper, so cmake's
+// --parallel or a script named run-ctest.sh says nothing about ctest.
+bool serialCtestWithTimeout(const QString &run) {
+    static const QRegularExpression sep(QStringLiteral(R"(\n|&&|\|\||;|\|)"));
+    static const QRegularExpression space(QStringLiteral(R"(\s+)"));
+    for (const QString &command : run.split(sep)) {
+        QStringList words = command.split(space, Qt::SkipEmptyParts);
+        for (;;) {
+            if (words.isEmpty()) break;
+            const QString &w = words.first();
+            if (w.contains(QLatin1Char('=')) && !w.startsWith(QLatin1Char('-'))) { words.removeFirst(); continue; }
+            if (w == QLatin1String("env") || w == QLatin1String("time")) { words.removeFirst(); continue; }
+            if (w == QLatin1String("timeout")) {
+                words.removeFirst();
+                while (!words.isEmpty() && words.first().startsWith(QLatin1Char('-'))) words.removeFirst();
+                if (!words.isEmpty()) words.removeFirst();  // the duration
+                continue;
+            }
+            break;
+        }
+        if (words.isEmpty() || (words.first() != QLatin1String("ctest")
+                                && !words.first().endsWith(QLatin1String("/ctest"))))
+            continue;
+        bool timeout = false, parallel = false;
+        for (const QString &w : words) {
+            timeout |= w == QLatin1String("--timeout") || w.startsWith(QLatin1String("--timeout="));
+            parallel |= w.startsWith(QLatin1String("-j")) || w == QLatin1String("--parallel")
+                     || w.startsWith(QLatin1String("--parallel="));
+        }
+        if (timeout && !parallel) return true;
+    }
+    return false;
+}
+
 void checkTestParallelism(const CiWorkflows::Result &wf, QList<Finding> &out) {
-    static const QRegularExpression ctest(QStringLiteral(R"(\bctest\b)"));
-    static const QRegularExpression par(QStringLiteral(R"((?:^|\s)(?:-j|--parallel))"));
     const QString level = QStringLiteral("CTEST_PARALLEL_LEVEL");
     for (const CiWorkflows::Workflow &w : wf.workflows)
         for (const CiWorkflows::Job &j : w.jobs)
             for (const CiWorkflows::Step &s : j.steps) {
-                if (!ctest.match(s.run).hasMatch() || !s.run.contains(QLatin1String("--timeout"))
-                    || par.match(s.run).hasMatch() || w.envKeys.contains(level)
-                    || j.envKeys.contains(level) || s.envKeys.contains(level))
+                // The level set in any env, inline, or exported earlier in the step.
+                if (!serialCtestWithTimeout(s.run) || s.run.contains(level)
+                    || w.envKeys.contains(level) || j.envKeys.contains(level)
+                    || s.envKeys.contains(level))
                     continue;
                 Finding f;
                 f.check = QStringLiteral("test_parallelism");

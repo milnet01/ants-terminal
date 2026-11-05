@@ -21,6 +21,7 @@ namespace {
 
 constexpr int kStartMs = 5000;
 constexpr int kTailChars = 2000;
+constexpr int kMaxJobPages = 10;   // 1 000 jobs a run attempt
 
 struct Call {
     bool started = false;
@@ -46,8 +47,9 @@ public:
         return true;
     }
 
-    // `gh args`; stdout past `maxBytes` (when positive) is cut and the call
-    // stopped, which is a success.
+    // `gh args`. With `maxBytes` positive, stdout keeps its first and last
+    // maxBytes/2 bytes and drops the middle: a job log's cache line is near
+    // its start and ctest's failure list at its end.
     Call run(const QStringList &args, qint64 maxBytes = -1) {
         ++m_calls;
         Call c;
@@ -65,19 +67,30 @@ public:
                                                m_opts.deadlineMs - m_clock.elapsed());
         QElapsedTimer t;
         t.start();
-        bool killed = false, capped = false;
+        bool killed = false, cut = false;
+        QByteArray tail;
+        const qint64 half = maxBytes / 2;
+        auto take = [&] {
+            QByteArray chunk = p.readAllStandardOutput();
+            c.err += p.readAllStandardError();
+            if (maxBytes <= 0) { c.out += chunk; return; }
+            if (c.out.size() < half) {
+                const qint64 n = std::min<qint64>(half - c.out.size(), chunk.size());
+                c.out += chunk.left(n);
+                chunk.remove(0, n);
+            }
+            tail += chunk;
+            if (tail.size() > half) { tail = tail.right(half); cut = true; }
+        };
         while (p.state() != QProcess::NotRunning) {
             const qint64 left = budget - t.elapsed();
             if (left <= 0) { killed = true; break; }
             p.waitForFinished(int(std::min<qint64>(left, 100)));
-            c.out += p.readAllStandardOutput();
-            c.err += p.readAllStandardError();
-            if (maxBytes > 0 && c.out.size() >= maxBytes) { capped = true; break; }
+            take();
         }
-        if (killed || capped) { p.kill(); p.waitForFinished(1000); }
-        c.out += p.readAllStandardOutput();
-        c.err += p.readAllStandardError();
-        if (capped) { c.out.truncate(int(maxBytes)); c.exitCode = 0; return c; }
+        if (killed) { p.kill(); p.waitForFinished(1000); }
+        take();
+        c.out += cut ? QByteArray("\n[ci_report: middle of the log not kept]\n") + tail : tail;
         if (!killed && p.exitStatus() == QProcess::NormalExit) c.exitCode = p.exitCode();
         return c;
     }
@@ -171,9 +184,27 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
         for (int a = 1; a <= std::max(1, r.value(QStringLiteral("attempt")).toInt(1)); ++a) {
             stop = s.spent(&res.truncatedReason, opts.reserveCalls, opts.reserveMs);
             if (stop) break;
-            const QString key = QStringLiteral("%1/%2").arg(id).arg(a);
-            if (const auto body = get(api + QStringLiteral("/actions/runs/%1/attempts/%2/jobs?per_page=100").arg(id).arg(a)))
-                jobs[key] = QJsonDocument::fromJson(*body).object();
+            const QString path =
+                api + QStringLiteral("/actions/runs/%1/attempts/%2/jobs?per_page=100").arg(id).arg(a);
+            const auto body = get(path);
+            if (!body) continue;
+            // Every page, or none: a run read without its later jobs could
+            // read a failed attempt as passed.
+            QJsonObject reply = QJsonDocument::fromJson(*body).object();
+            QJsonArray all = reply.value(QStringLiteral("jobs")).toArray();
+            const int total = reply.value(QStringLiteral("total_count")).toInt(int(all.size()));
+            for (int page = 2; all.size() < total && page <= kMaxJobPages; ++page) {
+                stop = s.spent(&res.truncatedReason, opts.reserveCalls, opts.reserveMs);
+                const auto more = stop ? std::nullopt : get(path + QStringLiteral("&page=%1").arg(page));
+                const QJsonArray next = more ? QJsonDocument::fromJson(*more).object()
+                                                   .value(QStringLiteral("jobs")).toArray()
+                                             : QJsonArray();
+                if (next.isEmpty()) break;
+                for (const QJsonValue &j : next) all.append(j);
+            }
+            if (all.size() < total) { if (stop) break; continue; }
+            reply[QStringLiteral("jobs")] = all;
+            jobs[QStringLiteral("%1/%2").arg(id).arg(a)] = reply;
         }
         if (stop) break;
     }

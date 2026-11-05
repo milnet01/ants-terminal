@@ -12,13 +12,19 @@
 #include <algorithm>
 #include <climits>
 
+// A `|` or `>` scalar, kept apart from a plain one: a shell guard is read
+// from a single-line plain `run:` only (spec § 4.4).
+struct BlockText { QString text; };
+Q_DECLARE_METATYPE(BlockText)
+
 namespace CiWorkflows {
 
 namespace {
 
 // The YAML subset a workflow file is written in: block maps, block lists,
-// plain and quoted scalars, `|`/`>` block scalars. A flow collection
-// (`[a, b]`) stays one string. Anything else marks the file unparseable.
+// plain and quoted scalars, `|`/`>` block scalars, and one-line flow maps and
+// lists. An alias or a merge key, which would lose keys unnamed, and anything
+// else marks the file unparseable.
 class Parser {
 public:
     explicit Parser(const QString &text) {
@@ -28,7 +34,9 @@ public:
             l.raw = raw;
             while (l.indent < raw.size() && raw.at(l.indent) == QLatin1Char(' ')) ++l.indent;
             l.text = raw.mid(l.indent).trimmed();
-            if (l.indent < raw.size() && raw.at(l.indent) == QLatin1Char('\t')) m_ok = false;
+            // A tab is bad indentation only on a line the structure reads;
+            // inside a block scalar it is text.
+            l.tabIndent = l.indent < raw.size() && raw.at(l.indent) == QLatin1Char('\t');
             l.skip = l.text.isEmpty() || l.text.startsWith(QLatin1Char('#'))
                   || l.text == QLatin1String("---") || l.text == QLatin1String("...");
             m_l.append(l);
@@ -45,18 +53,19 @@ public:
     bool ok() const { return m_ok; }
 
 private:
-    struct Line { QString raw; QString text; int indent = 0; bool skip = false; };
+    struct Line { QString raw; QString text; int indent = 0; bool skip = false; bool tabIndent = false; };
 
     int next(int from) const {
         while (from < m_l.size() && m_l[from].skip) ++from;
         return from;
     }
+    void fail() { m_ok = false; m_i = int(m_l.size()); }
     static bool isDash(const QString &t) {
         return t == QLatin1String("-") || t.startsWith(QLatin1String("- "));
     }
     static bool splitKey(const QString &t, QString *key, QString *rest) {
         static const QRegularExpression re(QStringLiteral(
-            R"re(^("([^"]*)"|'([^']*)'|[^\s:#"'][^:#]*?)\s*:(?:\s+(.*))?$)re"));
+            R"re(^("([^"]*)"|'([^']*)'|[^\s:#"'{\[][^:#]*?)\s*:(?:\s+(.*))?$)re"));
         const auto m = re.match(t);
         if (!m.hasMatch()) return false;
         *key = !m.captured(2).isEmpty() ? m.captured(2)
@@ -64,24 +73,89 @@ private:
         *rest = m.captured(4).trimmed();
         return true;
     }
-    static QString scalar(const QString &rest) {
-        if (rest.startsWith(QLatin1Char('"')) || rest.startsWith(QLatin1Char('\''))) {
-            const QChar q = rest.at(0);
-            const int end = rest.indexOf(q, 1);
-            return end > 0 ? rest.mid(1, end - 1) : rest.mid(1);
+    static QString quoted(const QString &rest) {
+        const QChar q = rest.at(0);
+        QString out;
+        for (int i = 1; i < rest.size(); ++i) {
+            const QChar c = rest.at(i);
+            if (q == QLatin1Char('"') && c == QLatin1Char('\\') && i + 1 < rest.size()) {
+                out += rest.at(++i);
+            } else if (c == q) {
+                if (q == QLatin1Char('\'') && i + 1 < rest.size() && rest.at(i + 1) == q) {
+                    out += q;  // '' is one quote
+                    ++i;
+                } else {
+                    break;
+                }
+            } else {
+                out += c;
+            }
+        }
+        return out;
+    }
+    // A flow collection's top-level items: commas inside ${{ }}, nested
+    // brackets or quotes do not split.
+    static QStringList flowItems(const QString &inner) {
+        QStringList items;
+        int depth = 0;
+        QChar inQuote;
+        QString cur;
+        for (const QChar c : inner) {
+            if (!inQuote.isNull()) {
+                if (c == inQuote) inQuote = QChar();
+            } else if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
+                inQuote = c;
+            } else if (c == QLatin1Char('{') || c == QLatin1Char('[')) {
+                ++depth;
+            } else if (c == QLatin1Char('}') || c == QLatin1Char(']')) {
+                --depth;
+            } else if (c == QLatin1Char(',') && depth == 0) {
+                items.append(cur.trimmed());
+                cur.clear();
+                continue;
+            }
+            cur += c;
+        }
+        if (!cur.trimmed().isEmpty()) items.append(cur.trimmed());
+        return items;
+    }
+    QVariant value(const QString &rest) {
+        if (rest.startsWith(QLatin1Char('*'))) { fail(); return {}; }  // an alias
+        if (rest.startsWith(QLatin1Char('"')) || rest.startsWith(QLatin1Char('\'')))
+            return quoted(rest);
+        if (rest.startsWith(QLatin1Char('{')) && rest.endsWith(QLatin1Char('}'))) {
+            QVariantMap m;
+            for (const QString &item : flowItems(rest.mid(1, rest.size() - 2))) {
+                QString k, r;
+                if (!splitKey(item, &k, &r)) { fail(); return {}; }
+                m.insert(k, value(r));
+            }
+            return m;
+        }
+        if (rest.startsWith(QLatin1Char('[')) && rest.endsWith(QLatin1Char(']'))) {
+            QVariantList l;
+            for (const QString &item : flowItems(rest.mid(1, rest.size() - 2))) l.append(value(item));
+            return l;
         }
         const int hash = rest.indexOf(QLatin1String(" #"));
         return (hash >= 0 ? rest.left(hash) : rest).trimmed();
+    }
+    // An anchor (`&name`) names a value and changes nothing this reader reads.
+    static QString dropAnchor(const QString &rest) {
+        if (!rest.startsWith(QLatin1Char('&'))) return rest;
+        const int sp = rest.indexOf(QLatin1Char(' '));
+        return sp < 0 ? QString() : rest.mid(sp + 1).trimmed();
     }
 
     QVariant node(int indent) {
         const int i = next(m_i);
         if (i >= m_l.size()) return QString();
+        if (m_l[i].tabIndent) { fail(); return {}; }
         QString k, r;
         if (isDash(m_l[i].text)) return list(indent);
         if (splitKey(m_l[i].text, &k, &r)) return map(indent);
         m_i = i + 1;
-        return scalar(m_l[i].text);
+        return value(m_l[i].text);
     }
 
     QVariant map(int indent) {
@@ -89,10 +163,12 @@ private:
         for (;;) {
             const int i = next(m_i);
             if (i >= m_l.size() || m_l[i].indent < indent) break;
-            if (m_l[i].indent > indent) { m_ok = false; m_i = m_l.size(); break; }
+            if (m_l[i].indent > indent || m_l[i].tabIndent) { fail(); break; }
             if (isDash(m_l[i].text)) break;
             QString key, rest;
-            if (!splitKey(m_l[i].text, &key, &rest)) { m_ok = false; m_i = m_l.size(); break; }
+            if (!splitKey(m_l[i].text, &key, &rest)) { fail(); break; }
+            if (key == QLatin1String("<<")) { fail(); break; }  // a merge key
+            rest = dropAnchor(rest);
             m_i = i + 1;
             if (rest.isEmpty() || rest.startsWith(QLatin1Char('#'))) {
                 const int j = next(m_i);
@@ -103,9 +179,9 @@ private:
                 else
                     m.insert(key, QString());
             } else if (rest.startsWith(QLatin1Char('|')) || rest.startsWith(QLatin1Char('>'))) {
-                m.insert(key, block(indent));
+                m.insert(key, QVariant::fromValue(BlockText{block(indent)}));
             } else {
-                m.insert(key, scalar(rest));
+                m.insert(key, value(rest));
             }
         }
         return m;
@@ -116,6 +192,7 @@ private:
         for (;;) {
             const int i = next(m_i);
             if (i >= m_l.size() || m_l[i].indent != indent || !isDash(m_l[i].text)) break;
+            if (m_l[i].tabIndent) { fail(); break; }
             const QString after = m_l[i].text.mid(1);
             const QString item = after.trimmed();
             if (item.isEmpty()) {
@@ -142,8 +219,8 @@ private:
         while (m_i < m_l.size()) {
             const Line &l = m_l[m_i];
             const bool blank = l.raw.trimmed().isEmpty();
-            if (!blank && l.indent <= parentIndent) break;
-            if (!blank) minIndent = std::min(minIndent, l.indent);
+            if (!blank && !l.tabIndent && l.indent <= parentIndent) break;
+            if (!blank && !l.tabIndent) minIndent = std::min(minIndent, l.indent);
             lines.append(l.raw);
             ++m_i;
         }
@@ -157,7 +234,10 @@ private:
     bool m_ok = true;
 };
 
+bool isBlock(const QVariant &v) { return v.userType() == qMetaTypeId<BlockText>(); }
+
 QString text(const QVariant &v) {
+    if (isBlock(v)) return v.value<BlockText>().text;
     if (v.typeId() == QMetaType::QVariantList) {
         QStringList parts;
         for (const QVariant &e : v.toList()) parts.append(e.toString());
@@ -226,7 +306,10 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
         j.id = it.key();
         j.name = text(jm.value(QStringLiteral("name")));
         if (j.name.isEmpty()) j.name = j.id;
-        j.runsOn = text(jm.value(QStringLiteral("runs-on")));
+        // A block-map runs-on (group, labels) names its runner in `labels`.
+        const QVariant runsOn = jm.value(QStringLiteral("runs-on"));
+        j.runsOn = text(runsOn.typeId() == QMetaType::QVariantMap
+                            ? runsOn.toMap().value(QStringLiteral("labels")) : runsOn);
         j.budgetMin = budgetOf(jm, out, rel, j.id, QStringLiteral("timeout-minutes"));
         j.envKeys = keysOf(jm.value(QStringLiteral("env")));
         for (const QVariant &sv : jm.value(QStringLiteral("steps")).toList()) {
@@ -240,7 +323,7 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
             s.envKeys = keysOf(sm.value(QStringLiteral("env")));
             const double own = budgetOf(sm, out, rel, j.id,
                 QStringLiteral("steps[%1].timeout-minutes").arg(j.steps.size()));
-            const double guard = shellGuardMinutes(s.run);
+            const double guard = isBlock(sm.value(QStringLiteral("run"))) ? -1 : shellGuardMinutes(s.run);
             s.budgetMin = own < 0 ? guard : guard < 0 ? own : std::min(own, guard);
             j.steps.append(s);
         }
@@ -277,9 +360,17 @@ const Workflow *matchWorkflow(const Result &r, const QString &workflowName) {
 const Job *matchJob(const Workflow &w, const QString &apiJobName) {
     for (const Job &j : w.jobs)
         if (j.name == apiJobName) return &j;
-    for (const Job &j : w.jobs)
-        if (apiJobName.startsWith(j.name + QStringLiteral(" ("))) return &j;
-    return nullptr;
+    // A matrix leg's API name is "<name> (<values>)". Fall back to that only
+    // when no job's name holds an expression, which GitHub would expand into
+    // the same shape, and exactly one job fits.
+    const Job *only = nullptr;
+    for (const Job &j : w.jobs) {
+        if (j.name.contains(QLatin1String("${{"))) return nullptr;
+        if (!apiJobName.startsWith(j.name + QStringLiteral(" ("))) continue;
+        if (only) return nullptr;
+        only = &j;
+    }
+    return only;
 }
 
 const Step *matchStep(const Job &j, const QString &apiStepName) {

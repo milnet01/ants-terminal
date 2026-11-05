@@ -18,5 +18,11 @@ trimmed to the fields read. No test touches the network.
 | INV-11 | `McpCiReport.Ants6399ServedByMcpdWithoutMainWindow` |
 | INV-12 | `McpCiReport.Ants6399ShellGuardIsAStepBudget` |
 
+ANTS-6402 (claude-d5's cold review) added `McpCiReport.Ants6402*`: a flake
+needs the same job to pass later; a matrix name matches one job; a
+submodule URL is no GitHub remote; ctest is read as its own command; a save
+step that runs after a failure; a `|` block holds no shell guard; jobs
+pages; reader edges; a log's head and tail; a missing workflow in `unread`.
+
 `McpCiReport.Ants6399LiveRunSavesTheReport` runs the whole live path against
 a fake `gh` and reads the saved report back through `session_orient`'s block.
