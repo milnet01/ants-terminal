@@ -201,6 +201,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report's test_parallelism check now finds ctest after a wrapper option that takes a value, such as sudo -u builder, nice -n 10 or a quoted xvfb-run -s** (ANTS-6406)
+
 - **The Background Tasks button and "Claude: waiting (N bg)" now clear when a Claude Code Monitor expires** (ANTS-6404)
 
 - **The Project Audit honours a `cppcheck-suppress` or `nosemgrep` marker on the line above only when that line is a comment; a marker at the end of a code line covers that line alone** (ANTS-6400)

@@ -756,6 +756,25 @@ TEST(McpCiReport, Ants6405CtestCommandForms) {
     EXPECT_FALSE(fires("xvfb-run -a ctest -j4 --timeout 60"));
 }
 
+// ---- ANTS-6406: a wrapper option that takes a value ------------------------
+
+TEST(McpCiReport, Ants6406WrapperOptionValues) {
+    auto fires = [](const char *run) {
+        const CiWorkflows::Result wf = workflow(QStringLiteral(
+            "name: CI\njobs:\n  t:\n    steps:\n      - name: T\n        run: |\n          %1\n")
+            .arg(QString::fromLatin1(run)));
+        return !ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "test_parallelism").isEmpty();
+    };
+    EXPECT_TRUE(fires("sudo -u builder ctest --timeout 60")) << "sudo -u";
+    EXPECT_TRUE(fires("nice -n 10 ctest --timeout 60")) << "nice -n";
+    EXPECT_TRUE(fires("env -u HOME ctest --timeout 60")) << "env -u";
+    EXPECT_TRUE(fires("xvfb-run -s \"-screen 0 1024x768x24\" ctest --timeout 60")) << "quoted -s";
+    EXPECT_TRUE(fires("xvfb-run --server-args='-screen 0 640x480x8' ctest --timeout 60"))
+        << "quoted long form";
+    EXPECT_FALSE(fires("sudo -u builder ctest -j4 --timeout 60"));
+    EXPECT_FALSE(fires("env echo ctest --timeout 60")) << "ctest as an argument is not ctest";
+}
+
 TEST(McpCiReport, Ants6405IncompletePagesAreAFetchError) {
     Env env;
     FakeGh gh;

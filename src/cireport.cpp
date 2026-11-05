@@ -537,24 +537,77 @@ bool isWrapper(const QString &w) {
     return words.contains(w);
 }
 
+// A wrapper's options that take the next word as their value, so
+// `sudo -u builder ctest` reaches ctest rather than stopping at `builder`.
+// timeout's own value options are handled where timeout is.
+bool takesValue(const QString &wrapper, const QString &opt) {
+    static const QHash<QString, QStringList> options{
+        {QStringLiteral("sudo"), {QStringLiteral("-u"), QStringLiteral("-g"), QStringLiteral("-C"),
+                                  QStringLiteral("-D"), QStringLiteral("-h"), QStringLiteral("-p"),
+                                  QStringLiteral("-r"), QStringLiteral("-t"), QStringLiteral("-T"),
+                                  QStringLiteral("-U"), QStringLiteral("--user"),
+                                  QStringLiteral("--group"), QStringLiteral("--chdir")}},
+        {QStringLiteral("nice"), {QStringLiteral("-n"), QStringLiteral("--adjustment")}},
+        {QStringLiteral("env"), {QStringLiteral("-u"), QStringLiteral("-C"), QStringLiteral("-S"),
+                                 QStringLiteral("--unset"), QStringLiteral("--chdir"),
+                                 QStringLiteral("--split-string")}},
+        {QStringLiteral("time"), {QStringLiteral("-f"), QStringLiteral("-o"),
+                                  QStringLiteral("--format"), QStringLiteral("--output")}},
+        {QStringLiteral("stdbuf"), {QStringLiteral("-i"), QStringLiteral("-o"), QStringLiteral("-e")}},
+        {QStringLiteral("xvfb-run"), {QStringLiteral("-e"), QStringLiteral("-f"), QStringLiteral("-n"),
+                                      QStringLiteral("-p"), QStringLiteral("-s"), QStringLiteral("-w"),
+                                      QStringLiteral("--error-file"), QStringLiteral("--auth-file"),
+                                      QStringLiteral("--server-num"), QStringLiteral("--xauth-protocol"),
+                                      QStringLiteral("--server-args"), QStringLiteral("--wait")}}};
+    return options.value(wrapper).contains(opt);
+}
+
+// Shell words, with a quoted span kept inside its word and its quotes
+// dropped, so `-s "-screen 0 640x480x8"` is two words, not four.
+QStringList shellWords(const QString &command) {
+    QStringList words;
+    QString word;
+    bool inWord = false;
+    QChar quote;
+    for (const QChar c : command) {
+        if (!quote.isNull()) {
+            if (c == quote) quote = QChar();
+            else word += c;
+        } else if (c == QLatin1Char('\'') || c == QLatin1Char('"')) {
+            quote = c;
+            inWord = true;
+        } else if (c.isSpace()) {
+            if (inWord) words.append(word);
+            word.clear();
+            inWord = false;
+        } else {
+            word += c;
+            inWord = true;
+        }
+    }
+    if (inWord) words.append(word);
+    return words;
+}
+
 // A ctest command in `run` that sets --timeout and runs serially. A `\`
 // continuation is joined first; then each command between &&, ||, ;, | and
 // newlines is read on its own, past VAR=value words, a `(`, wrappers and
-// their options, and `timeout [options] <duration>`. So cmake's --parallel,
+// their options (with the value an option takes), and
+// `timeout [options] <duration>`. Words follow shell quoting. So cmake's --parallel,
 // or a script named run-ctest.sh, says nothing about ctest.
 bool serialCtestWithTimeout(QString run) {
     static const QRegularExpression sep(QStringLiteral(R"(\n|&&|\|\||;|\|)"));
-    static const QRegularExpression space(QStringLiteral(R"(\s+)"));
     run.replace(QStringLiteral("\\\n"), QStringLiteral(" "));
     for (const QString &command : run.split(sep)) {
-        QStringList words = command.split(space, Qt::SkipEmptyParts);
-        auto dropOptions = [&words](bool timeoutArgs) {
+        QStringList words = shellWords(command);
+        auto dropOptions = [&words](const QString &wrapper) {
             while (!words.isEmpty() && words.first().startsWith(QLatin1Char('-'))) {
                 const QString opt = words.takeFirst();
                 // timeout's -k/-s take a value of their own.
-                if (timeoutArgs && !words.isEmpty()
+                const bool timeoutValue = wrapper == QLatin1String("timeout")
                     && (opt == QLatin1String("-k") || opt == QLatin1String("-s")
-                        || opt == QLatin1String("--kill-after") || opt == QLatin1String("--signal")))
+                        || opt == QLatin1String("--kill-after") || opt == QLatin1String("--signal"));
+                if (!words.isEmpty() && (timeoutValue || takesValue(wrapper, opt)))
                     words.removeFirst();
             }
         };
@@ -564,11 +617,9 @@ bool serialCtestWithTimeout(QString run) {
             if (w.isEmpty() || (w.contains(QLatin1Char('=')) && !w.startsWith(QLatin1Char('-')))) {
                 words.removeFirst();
             } else if (isWrapper(w)) {
-                words.removeFirst();
-                dropOptions(false);
+                dropOptions(words.takeFirst());
             } else if (w == QLatin1String("timeout")) {
-                words.removeFirst();
-                dropOptions(true);
+                dropOptions(words.takeFirst());
                 if (!words.isEmpty()) words.removeFirst();  // the duration
             } else {
                 break;

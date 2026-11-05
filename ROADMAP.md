@@ -78256,6 +78256,11 @@ against current source before filing.
   Held (2026-09-29): measure only on an idle machine. Every push here
   runs the full suite, so a figure taken during a working session is
   noise, and the item asks for a quiet-machine number.
+  Measured (2026-11-05, session 221, load ~1): three dry runs on
+  Ants_Terminal (4041 items) took 1.73, 1.68 and 1.70 s end to end
+  (mcp_trace duration), backup off. Over § 4's 1 s target. A real run adds
+  the commit and the backup snapshot. Still to do: record the figure in
+  ANTS-3855 § 4 and decide whether to add a latency invariant.
   **Layman:** We know how long the roadmap import takes once it's started, but not how long the whole command takes. Measure it properly before promising a number.
   Kind: perf.
   Source: in-session-2026-08-07, ANTS-3855 § 4.
@@ -79796,12 +79801,17 @@ in each bullet, not just the reporter's symptom.
   Source: code-review-2026-11-05 (claude-d5, re-review of 85c4e720).
   Lanes: mcp.
 
-- 📋 [ANTS-6406] **Let test_parallelism find ctest after a wrapper option that takes a value, such as sudo -u builder, nice -n 10 or xvfb-run -s "…".**
+- ✅ [ANTS-6406] **Let test_parallelism find ctest after a wrapper option that takes a value, such as sudo -u builder, nice -n 10 or xvfb-run -s "…".**
   serialCtestWithTimeout's dropOptions removes `-u` but leaves its value,
   so `builder` reads as the command; a quoted xvfb-run -s value splits at
   its spaces. Misses only, never a false finding. Suggested fix: after a
   wrapper, skip words up to the first `ctest` or `*/ctest`. Add a test
   per form, red first.
+  Shipped 2026-11-05 (session 221). Built differently from the
+  suggested fix: skipping every word to the first ctest would also match
+  `env echo ctest --timeout 60`. Instead each wrapper lists its options
+  that take a value, and words are split with shell quoting.
+  Test: McpCiReport.Ants6406WrapperOptionValues (red before, green after).
   **Layman:** ci_report misses a few ways of starting tests, and stays silent there.
   Kind: review-fix.
   Source: code-review-2026-11-05 (claude-d5, check of 917e8b41).
