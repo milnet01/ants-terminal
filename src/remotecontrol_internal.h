@@ -166,6 +166,10 @@ QJsonDocument rlPassStoreAppend(const QJsonObject &req, bool batch,
                                 const QString &roadmapPath,
                                 const QString &markdown);
 bool rcRoadmapIdLess(const QString &a, const QString &b);
+// The git directory a `.git` path names: the path itself for a directory; for
+// a worktree's or submodule's `.git` FILE, its `gitdir:` line, resolved against
+// the file's own directory. Empty when the file holds no gitdir.
+QString rcGitDirOf(const QString &dotGit);
 QString rcExtractGateNote(const QString &body);
 bool rcRoadmapSourceRefused(QJsonObject &out, RoadmapSource::ReadError why, const QString &err);
 // ANTS-4593 — `previewOwnIds` names the rows THIS call would create and then

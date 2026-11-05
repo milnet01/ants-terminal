@@ -35,7 +35,7 @@
 #include <sys/file.h>
 #include <unistd.h>
 
-using namespace rcdetail;  // resolveRootCanonical
+using namespace rcdetail;  // resolveRootCanonical, rcGitDirOf
 
 namespace {
 
@@ -62,12 +62,6 @@ QJsonObject readSaved(const QString &path) {
     return QJsonDocument::fromJson(f.readAll()).object();
 }
 
-bool hasWorkflowFiles(const QString &root) {
-    return !QDir(root + QStringLiteral("/.github/workflows"))
-                .entryList({QStringLiteral("*.yml"), QStringLiteral("*.yaml")}, QDir::Files)
-                .isEmpty();
-}
-
 // The git remotes whose URL names github.com, read from the config files with
 // no process: the repository's own, and a worktree's common one. `resolved`
 // is true when `gh repo set-default` marked one (`gh-resolved`).
@@ -87,14 +81,8 @@ GithubRemotes githubRemotes(const QString &root) {
         }
         if (!dir.cdUp()) return found;
     }
-    QString gitDir = gitPath;
-    if (QFileInfo(gitPath).isFile()) {   // a worktree or submodule: "gitdir: <path>"
-        QFile f(gitPath);
-        if (!f.open(QIODevice::ReadOnly)) return found;
-        const QString line = QString::fromUtf8(f.readLine()).trimmed();
-        if (!line.startsWith(QLatin1String("gitdir:"))) return found;
-        gitDir = QDir(QFileInfo(gitPath).path()).absoluteFilePath(line.mid(7).trimmed());
-    }
+    const QString gitDir = rcGitDirOf(gitPath);   // a worktree's .git is a file
+    if (gitDir.isEmpty()) return found;
     QStringList configs{gitDir + QStringLiteral("/config")};
     QFile common(gitDir + QStringLiteral("/commondir"));
     if (common.open(QIODevice::ReadOnly))
@@ -205,7 +193,7 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
     }
 
     // Both "none" answers come before any process (INV-10).
-    if (!hasWorkflowFiles(root)) return noCi("no_workflows");
+    if (CiWorkflows::files(root).isEmpty()) return noCi("no_workflows");
     const GithubRemotes remotes = githubRemotes(root);
     if (remotes.count == 0) return noCi("no_github_remote");
 

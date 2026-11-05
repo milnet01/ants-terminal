@@ -93,58 +93,57 @@ private:
         }
         return out;
     }
-    // A flow collection's top-level items: commas inside ${{ }}, nested
-    // brackets or quotes do not split.
-    static QStringList flowItems(const QString &inner) {
-        QStringList items;
+    // Walks flow-collection text: quoted spans (with \" escapes inside double
+    // quotes) are passed over, and brackets move the depth. Calls
+    // visit(i, c, depth) for each character outside quotes, with the depth
+    // after that character; visit returns false to stop.
+    template <typename Visit>
+    static void scanFlow(const QString &s, Visit visit) {
         int depth = 0;
         QChar inQuote;
         bool escaped = false;
-        QString cur;
-        for (const QChar c : inner) {
+        for (int i = 0; i < s.size(); ++i) {
+            const QChar c = s.at(i);
             if (!inQuote.isNull()) {
                 if (escaped) escaped = false;
                 else if (c == QLatin1Char('\\') && inQuote == QLatin1Char('"')) escaped = true;
                 else if (c == inQuote) inQuote = QChar();
-            } else if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
-                inQuote = c;
-            } else if (c == QLatin1Char('{') || c == QLatin1Char('[')) {
-                ++depth;
-            } else if (c == QLatin1Char('}') || c == QLatin1Char(']')) {
-                --depth;
-            } else if (c == QLatin1Char(',') && depth == 0) {
-                items.append(cur.trimmed());
-                cur.clear();
                 continue;
             }
-            cur += c;
+            if (c == QLatin1Char('"') || c == QLatin1Char('\'')) { inQuote = c; continue; }
+            if (c == QLatin1Char('{') || c == QLatin1Char('[')) ++depth;
+            else if (c == QLatin1Char('}') || c == QLatin1Char(']')) --depth;
+            if (!visit(i, c, depth)) return;
         }
-        if (!cur.trimmed().isEmpty()) items.append(cur.trimmed());
+    }
+    // A flow collection's top-level items: commas inside ${{ }}, nested
+    // brackets or quotes do not split.
+    static QStringList flowItems(const QString &inner) {
+        QStringList items;
+        int start = 0;
+        scanFlow(inner, [&](int i, QChar c, int depth) {
+            if (c == QLatin1Char(',') && depth == 0) {
+                items.append(inner.mid(start, i - start).trimmed());
+                start = i + 1;
+            }
+            return true;
+        });
+        const QString last = inner.mid(start).trimmed();
+        if (!last.isEmpty()) items.append(last);
         return items;
     }
     // A flow collection followed by ` # comment`: the collection alone.
     // Anything else comes back unchanged.
     static QString flowText(const QString &rest) {
         if (!rest.startsWith(QLatin1Char('{')) && !rest.startsWith(QLatin1Char('['))) return rest;
-        int depth = 0;
-        QChar inQuote;
-        bool escaped = false;
-        for (int i = 0; i < rest.size(); ++i) {
-            const QChar c = rest.at(i);
-            if (!inQuote.isNull()) {
-                if (escaped) escaped = false;
-                else if (c == QLatin1Char('\\') && inQuote == QLatin1Char('"')) escaped = true;
-                else if (c == inQuote) inQuote = QChar();
-            } else if (c == QLatin1Char('"') || c == QLatin1Char('\'')) {
-                inQuote = c;
-            } else if (c == QLatin1Char('{') || c == QLatin1Char('[')) {
-                ++depth;
-            } else if ((c == QLatin1Char('}') || c == QLatin1Char(']')) && --depth == 0) {
-                const QString after = rest.mid(i + 1).trimmed();
-                return after.isEmpty() || after.startsWith(QLatin1Char('#')) ? rest.left(i + 1) : rest;
-            }
-        }
-        return rest;
+        int close = -1;
+        scanFlow(rest, [&](int i, QChar c, int depth) {
+            if ((c == QLatin1Char('}') || c == QLatin1Char(']')) && depth == 0) close = i;
+            return close < 0;
+        });
+        if (close < 0) return rest;
+        const QString after = rest.mid(close + 1).trimmed();
+        return after.isEmpty() || after.startsWith(QLatin1Char('#')) ? rest.left(close + 1) : rest;
     }
     QVariant value(const QString &rest) {
         if (rest.startsWith(QLatin1Char('*'))) { fail(); return {}; }  // an alias
@@ -307,6 +306,16 @@ QString Step::displayName() const {
     return QStringLiteral("Run ") + run.section(QLatin1Char('\n'), 0, 0).trimmed();
 }
 
+bool Step::isNamed(QStringView apiName) const {
+    if (!name.isEmpty()) return apiName == name;
+    static const QLatin1String kRun("Run ");
+    if (!apiName.startsWith(kRun)) return false;
+    const QStringView rest = apiName.mid(kRun.size());
+    if (!uses.isEmpty()) return rest == uses;
+    const qsizetype nl = run.indexOf(QLatin1Char('\n'));
+    return rest == QStringView(run).left(nl < 0 ? run.size() : nl).trimmed();
+}
+
 double shellGuardMinutes(const QString &run) {
     if (run.contains(QLatin1Char('\n'))) return -1;
     static const QRegularExpression re(QStringLiteral(R"(^timeout (\d+(?:\.\d+)?)([smh]) )"));
@@ -363,12 +372,15 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
     out.workflows.append(w);
 }
 
+QStringList files(const QString &root) {
+    return QDir(root + QStringLiteral("/.github/workflows"))
+        .entryList({QStringLiteral("*.yml"), QStringLiteral("*.yaml")}, QDir::Files, QDir::Name);
+}
+
 Result read(const QString &root) {
     Result out;
     const QDir dir(root + QStringLiteral("/.github/workflows"));
-    const QStringList files = dir.entryList({QStringLiteral("*.yml"), QStringLiteral("*.yaml")},
-                                            QDir::Files, QDir::Name);
-    for (const QString &f : files) {
+    for (const QString &f : files(root)) {
         const QString rel = QStringLiteral(".github/workflows/") + f;
         QFile file(dir.filePath(f));
         if (!file.open(QIODevice::ReadOnly)) {
@@ -406,7 +418,7 @@ const Job *matchJob(const Workflow &w, const QString &apiJobName) {
 
 const Step *matchStep(const Job &j, const QString &apiStepName) {
     for (const Step &s : j.steps)
-        if (s.displayName() == apiStepName) return &s;
+        if (s.isNamed(apiStepName)) return &s;
     return nullptr;
 }
 

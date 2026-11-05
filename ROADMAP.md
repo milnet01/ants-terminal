@@ -79879,13 +79879,24 @@ in each bullet, not just the reporter's symptom.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).
   Lanes: mcp.
 
-- 📋 [ANTS-6411] **ci_report: fold the repeated scanners and parsers the cold review found.**
+- ✅ [ANTS-6411] **ci_report: fold the repeated scanners and parsers the cold review found.**
   Lane 2 #3 (fetch() is about 110 lines over six phases), #5
   (flowItems and flowText share one quote/escape/depth scanner), #6
   (the .git file parser duplicates remotecontrol.cpp's), #9 (the
   workflow glob in three files), #12 (a Finding factory and a
   severity enum). Lane 1 #8 (matchStep builds displayName() per
   comparison) and #9 (logs held as UTF-16, about 40 MiB for 10).
+  Shipped 2026-11-05: fetch() split into Fetcher phases (jobs,
+  cacheUsage, annotations, logs; one attempt() returns
+  Read/Unknown/Stopped); one scanFlow() under flowItems and flowText;
+  rcdetail::rcGitDirOf() shared by rcMainCheckoutOf and githubRemotes;
+  CiWorkflows::files() is the one workflow glob (ciworkflows,
+  remotecontrol_ci, githooksreport); makeFinding() and a Severity enum;
+  Step::isNamed() matches with no string built. Not changed, by
+  decision: logs stay UTF-16 QStrings (bounded at about 40 MiB for 10
+  logs, short-lived, and history is a QJsonObject); mainwindow_repo's
+  parseGithubOriginSlug stays apart (it reads origin's slug, not a
+  remote count).
   **Layman:** The same small pieces of code are written several times in the CI report tool; one copy each would stop them drifting apart.
   Kind: refactor.
   Source: review-code-2026-11-05 (claude-config cold review of ci_report, msg 1420).

@@ -23,6 +23,8 @@ struct Step {
     double budgetMin = -1;  // smaller of timeout-minutes and a leading shell guard; -1 unknown
     // GitHub's display name: `name:`, else "Run <uses>", else "Run <first run line>".
     QString displayName() const;
+    // displayName() == apiName, without building the name.
+    bool isNamed(QStringView apiName) const;
 };
 
 struct Job {
@@ -46,7 +48,10 @@ struct Result {
     QJsonArray unread;      // [{file, job, field}]
 };
 
-// Every *.yml / *.yaml under <root>/.github/workflows, sorted by path.
+// The *.yml and *.yaml file names in <root>/.github/workflows, sorted: what
+// counts as a workflow file, for every reader of the directory.
+QStringList files(const QString &root);
+// Every file files() names, read.
 Result read(const QString &root);
 // One file's text; `rel` names it in `unread`.
 void parseInto(Result &out, const QString &rel, const QString &text);

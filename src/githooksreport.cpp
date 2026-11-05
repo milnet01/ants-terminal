@@ -2,6 +2,8 @@
 
 #include "githooksreport.h"
 
+#include "ciworkflows.h"
+
 #include "gitwrap.h"
 
 #include <QDir>
@@ -214,8 +216,7 @@ QJsonObject run(const QString &root, const QString &machineHooksDir) {
 
     QJsonObject gate = resolveGate(root, keys, machinePrePush);
     const QDir wfDir(absUnder(root, QStringLiteral(".github/workflows")));
-    const QStringList workflows = wfDir.entryList(
-        {QStringLiteral("*.yml"), QStringLiteral("*.yaml")}, QDir::Files, QDir::Name);
+    const QStringList workflows = CiWorkflows::files(root);
     out[QStringLiteral("workflows")] = QJsonArray::fromStringList(workflows);
     // ci-gate's workflow_calls: a workflow naming the script's basename.
     const QString gatePath = gate.value(QStringLiteral("path")).toString();

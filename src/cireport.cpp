@@ -56,8 +56,12 @@ struct RunRec {
 
 struct Evidence { QDateTime t; qint64 run; QString sha; };
 
+enum class Severity { Problem, Advice };
+
 struct Finding {
-    QString check, severity, workflow, job, step;
+    QString check;
+    Severity severity = Severity::Advice;
+    QString workflow, job, step;
     QString message;
     QList<Evidence> evidence;
     bool timing = false;   // carries `cache`
@@ -65,6 +69,15 @@ struct Finding {
     QDateTime logT;
     QStringList cites;
 };
+
+// A finding's fixed fields; each check fills in the rest.
+Finding makeFinding(const char *check, Severity severity, QStringList cites = {}) {
+    Finding f;
+    f.check = QString::fromLatin1(check);
+    f.severity = severity;
+    f.cites = std::move(cites);
+    return f;
+}
 
 QDateTime when(const QJsonValue &v) {
     return QDateTime::fromString(v.toString(), Qt::ISODate);
@@ -243,12 +256,11 @@ void checkFlaky(const QList<RunRec> &runs, const QJsonObject &logs, QList<Findin
             const QString key = groupKey({fj.run->workflow, fj.name, step});
             Finding &f = merged[key];
             if (f.check.isEmpty()) {   // the first failure of this group
-                f.check = QStringLiteral("flaky");
-                f.severity = QStringLiteral("problem");
+                f = makeFinding("flaky", Severity::Problem,
+                                {QStringLiteral("testing.md § 7"), QStringLiteral("local-gate.md § 9 rule 3")});
                 f.workflow = fj.run->workflow;
                 f.job = fj.name;
                 f.step = step;
-                f.cites = {QStringLiteral("testing.md § 7"), QStringLiteral("local-gate.md § 9 rule 3")};
             }
             f.evidence.append(evidenceOf(fj));
             f.evidence.append(evidenceOf(*list[lastPass].job));
@@ -301,7 +313,7 @@ void checkNearBudget(const QList<Matched> &jobs, QList<Finding> &out) {
     for (Acc &a : acc) {
         if (a.f.evidence.isEmpty()) continue;
         a.f.check = QStringLiteral("near_budget");
-        a.f.severity = QStringLiteral("problem");
+        a.f.severity = Severity::Problem;
         a.f.timing = true;
         a.f.cites = {kTimeoutCite};
         a.f.message = QStringLiteral("%1 ran %2 against a %3 budget (%4%) in %5 of the last %6 runs.")
@@ -330,9 +342,7 @@ void checkBudgetTrend(const QList<Matched> &jobs, QList<Finding> &out) {
             (i >= list.size() - kTrendNewest ? newest : earlier).append(double(list[i]->job->span()));
         const double before = median(earlier), after = median(newest);
         if (before <= 0 || after < before * kTrendRise) continue;
-        Finding f;
-        f.check = QStringLiteral("budget_trend");
-        f.severity = QStringLiteral("advice");
+        Finding f = makeFinding("budget_trend", Severity::Advice);
         f.workflow = list.last()->job->run->workflow;
         f.job = list.last()->job->name;
         f.timing = true;
@@ -357,9 +367,7 @@ void checkScheduledRed(const QList<RunRec> &runs, QList<Finding> &out) {
             byWf[r.workflow].append(&r);
     for (const QList<const RunRec *> &list : byWf) {
         if (!failedConclusion(list.first()->conclusion)) continue;
-        Finding f;
-        f.check = QStringLiteral("scheduled_red");
-        f.severity = QStringLiteral("problem");
+        Finding f = makeFinding("scheduled_red", Severity::Problem);
         f.workflow = list.first()->workflow;
         f.cites = {QStringLiteral("local-gate.md § 9 (slow-legs row)")};
         QString since = QStringLiteral("no green run in the window");
@@ -389,9 +397,7 @@ void checkQueueWait(const QList<Matched> &jobs, QList<Finding> &out) {
         for (const Waited &w : list) waits.append(double(w.secs));
         const double med = median(waits);
         if (med <= kQueueWaitSecs) continue;
-        Finding f;
-        f.check = QStringLiteral("queue_wait");
-        f.severity = QStringLiteral("advice");
+        Finding f = makeFinding("queue_wait", Severity::Advice);
         f.workflow = list.first().job->run->workflow;
         f.job = list.first().job->name;
         for (const Waited &w : list)
@@ -425,9 +431,7 @@ void checkAnnotations(const QList<RunRec> &runs, const QJsonObject &annotations,
                     || quoted.contains(text))
                     continue;
                 quoted.insert(text);
-                Finding f;
-                f.check = QStringLiteral("annotation");
-                f.severity = QStringLiteral("advice");
+                Finding f = makeFinding("annotation", Severity::Advice);
                 f.workflow = r.workflow;
                 f.job = j.name;
                 f.evidence.append(evidenceOf(r));
@@ -442,9 +446,7 @@ void checkRunnerLatest(const CiWorkflows::Result &wf, QList<Finding> &out) {
     for (const CiWorkflows::Workflow &w : wf.workflows)
         for (const CiWorkflows::Job &j : w.jobs) {
             if (!latest.match(j.runsOn).hasMatch()) continue;
-            Finding f;
-            f.check = QStringLiteral("runner_latest");
-            f.severity = QStringLiteral("advice");
+            Finding f = makeFinding("runner_latest", Severity::Advice);
             f.workflow = w.name;
             f.job = j.name;
             f.cites = {QStringLiteral("local-gate.md § 9 (warm-containers row, condition 1)")};
@@ -458,9 +460,7 @@ void checkRunnerLatest(const CiWorkflows::Result &wf, QList<Finding> &out) {
 void checkCacheSize(const QJsonObject &usage, QList<Finding> &out) {
     const double bytes = usage.value(QStringLiteral("active_caches_size_in_bytes")).toDouble(-1);
     if (bytes < kCacheLimitBytes * kCacheFull) return;
-    Finding f;
-    f.check = QStringLiteral("cache_size");
-    f.severity = QStringLiteral("advice");
+    Finding f = makeFinding("cache_size", Severity::Advice);
     f.cites = {QStringLiteral("local-gate.md § 9 (caches row, prune)")};
     f.message = QStringLiteral("Actions caches hold %1 GB of GitHub's %2 GB (%3%); past the limit "
                                "GitHub evicts the least recently used.")
@@ -491,9 +491,7 @@ void checkCacheKeys(const CiWorkflows::Result &wf, QList<Finding> &out) {
             }
     for (auto it = jobsByPrefix.cbegin(); it != jobsByPrefix.cend(); ++it) {
         if (it.value().size() < 2) continue;
-        Finding f;
-        f.check = QStringLiteral("cache_key_shared");
-        f.severity = QStringLiteral("advice");
+        Finding f = makeFinding("cache_key_shared", Severity::Advice);
         f.workflow = wfOf.value(it.key());
         f.job = it.value().join(QStringLiteral(", "));
         f.cites = {kCachesCite};
@@ -525,9 +523,7 @@ void checkCacheSave(const CiWorkflows::Result &wf, QList<Finding> &out) {
                                          "failed step before it skips the save and the next run "
                                          "starts cold.");
                 if (why.isEmpty()) continue;
-                Finding f;
-                f.check = QStringLiteral("cache_save_skipped");
-                f.severity = QStringLiteral("advice");
+                Finding f = makeFinding("cache_save_skipped", Severity::Advice);
                 f.workflow = w.name;
                 f.job = j.name;
                 f.step = s.displayName();
@@ -662,9 +658,7 @@ void checkTestParallelism(const CiWorkflows::Result &wf, QList<Finding> &out) {
                     || w.envKeys.contains(level) || j.envKeys.contains(level)
                     || s.envKeys.contains(level))
                     continue;
-                Finding f;
-                f.check = QStringLiteral("test_parallelism");
-                f.severity = QStringLiteral("advice");
+                Finding f = makeFinding("test_parallelism", Severity::Advice);
                 f.workflow = w.name;
                 f.job = j.name;
                 f.step = s.displayName();
@@ -694,7 +688,8 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
         if (shas.size() < kMaxEvidence && !shas.contains(QJsonValue(e.sha))) shas.append(e.sha);
     }
     QJsonObject o{{QStringLiteral("check"), f.check},
-                  {QStringLiteral("severity"), f.severity},
+                  {QStringLiteral("severity"), f.severity == Severity::Problem
+                                                   ? QStringLiteral("problem") : QStringLiteral("advice")},
                   {QStringLiteral("workflow"), CiWorkflows::orNull(f.workflow)},
                   {QStringLiteral("job"), CiWorkflows::orNull(f.job)},
                   {QStringLiteral("step"), CiWorkflows::orNull(f.step)},
@@ -744,7 +739,7 @@ Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflow
 
     std::stable_sort(found.begin(), found.end(), [](const Finding &x, const Finding &y) {
         const auto key = [](const Finding &f) {
-            return std::make_tuple(f.severity != QLatin1String("problem"), f.check, f.workflow,
+            return std::make_tuple(f.severity != Severity::Problem, f.check, f.workflow,
                                    f.job, f.step);
         };
         return key(x) < key(y);
@@ -752,7 +747,7 @@ Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflow
     int problems = 0;
     for (const Finding &f : found) {
         a.findings.append(toJson(f, logs));
-        problems += f.severity == QLatin1String("problem");
+        problems += f.severity == Severity::Problem;
     }
     a.counts = {{QStringLiteral("problem"), problems},
                 {QStringLiteral("advice"), int(found.size()) - problems}};

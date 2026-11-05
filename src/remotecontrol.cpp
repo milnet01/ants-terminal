@@ -199,25 +199,27 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
 // gitdir, a `/worktrees/<name>` tail, and a main checkout that actually holds a
 // roadmap. So a non-worktree, and a worktree whose main checkout is gone,
 // behave exactly as before.
+QString rcGitDirOf(const QString &dotGit) {
+    const QFileInfo gi(dotGit);
+    if (!gi.isFile()) return dotGit;
+    QFile f(dotGit);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
+    const QString first = QString::fromUtf8(f.readLine()).trimmed();
+    static const QLatin1String kGitdir("gitdir:");
+    if (!first.startsWith(kGitdir)) return QString();
+    const QString gitDir = first.mid(kGitdir.size()).trimmed();
+    if (gitDir.isEmpty()) return QString();
+    // git may write it relative to the file's directory.
+    return QDir(gi.absolutePath()).absoluteFilePath(gitDir);
+}
+
 static QString rcMainCheckoutOf(const QString &dir) {
     const QString dotGit = dir + QStringLiteral("/.git");
-    const QFileInfo gi(dotGit);
-    if (!gi.exists() || !gi.isFile())
+    if (!QFileInfo(dotGit).isFile())
         return dir;                       // ordinary checkout, or no repo
-    QFile f(dotGit);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
-        return dir;
-    const QString first =
-        QString::fromUtf8(f.readLine()).trimmed();
-    f.close();
-    if (!first.startsWith(QStringLiteral("gitdir:")))
-        return dir;
-    QString gitDir = first.mid(7).trimmed();
+    const QString gitDir = rcGitDirOf(dotGit);
     if (gitDir.isEmpty())
         return dir;
-    // git may write it relative to the worktree.
-    if (QFileInfo(gitDir).isRelative())
-        gitDir = QDir(dir).filePath(gitDir);
     const QFileInfo wt(gitDir);
     // <main>/.git/worktrees/<name> — the parent's own parent is <main>/.git.
     if (wt.dir().dirName() != QStringLiteral("worktrees"))
