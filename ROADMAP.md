@@ -80827,62 +80827,75 @@ whole files.
   Source: in-session-2026-09-10.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6381] **The "Review with Claude" export includes suppressed findings.**
+- ✅ [ANTS-6381] **The "Review with Claude" export includes suppressed findings.**
   AuditDialog::plainTextResults (src/auditdialog_export.cpp) loops over
   r.findings with no isSuppressed(f) test, though suppressed findings are
   kept in the list, flagged, and the summary renderer skips them. Fix:
   skip them, and count the per-check total and corroborated tag from the
   filtered list.
+  Shipped 2026-11-05 (7fa261b7). Test:
+  AuditSuppressionSave.ClaudeExportSkipsSuppressedFindings.
   **Layman:** Findings you told the audit to ignore still go into the report handed to Claude, which may then try to fix them.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6382] **A `cppcheck-suppress` or `nosemgrep` comment on the line above a finding does not suppress it.**
+- ✅ [ANTS-6382] **A `cppcheck-suppress` or `nosemgrep` comment on the line above a finding does not suppress it.**
   AuditDialog::inlineSuppressed step 3 passes a previous-line comment to
   AuditEngine::commentSuppresses only when it contains next-line,
   NOLINTNEXTLINE or disable-next. Both markers have a documented
   line-above form. cppcheck and semgrep honour their own markers, so the
   gap hits other tools' findings carrying them.
+  Shipped 2026-11-05 (7fa261b7). Test:
+  AuditSuppressionSave.LineAboveMarkersReachTheMatcher.
   **Layman:** Two kinds of 'ignore this' comment only work on the same line, not on the line above as their tools document.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6383] **Suppressed findings count against the per-check cap and the noise floor uses the suppression file's size.**
+- ✅ [ANTS-6383] **Suppressed findings count against the per-check cap and the noise floor uses the suppression file's size.**
   AuditEngine::capFindings runs while suppressed findings are still in
   r.findings, so real ones are pushed into omittedCount. The summary's
   noise floor uses m_suppressedKeys.size() (keys in .audit_suppress)
   as totalSuppressed, not the findings suppressed this run.
+  Shipped 2026-11-05 (7fa261b7). Tests:
+  AuditSuppressionSave.SuppressedFindingsDoNotCountAgainstTheCap
+  (behavioural) and .NoiseFloorCountsThisRunsSuppressions.
   **Layman:** Ignored findings take up room in the 100-per-check limit, and the 'noise' figure counts the ignore list rather than what it hid this run.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6384] **A failed suppression save still reports "Suppressed" and writes the learned-false-positive entry.**
+- ✅ [ANTS-6384] **A failed suppression save still reports "Suppressed" and writes the learned-false-positive entry.**
   saveSuppression (src/auditdialog.cpp) shows the save error and returns,
   but returns void. Its caller then appends the learned-FP entry and
   overwrites the status with "Suppressed ...". Fix: return bool; the
   caller stops on false.
+  Shipped 2026-11-05 (7fa261b7). Test:
+  AuditSuppressionSave.FailedSaveStopsTheCaller.
   **Layman:** If saving an 'ignore' fails, the error flashes and is then replaced by a success message.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6385] **A version-1 audit baseline loads as version 2, so every finding shows as new.**
+- ✅ [ANTS-6385] **A version-1 audit baseline loads as version 2, so every finding shows as new.**
   AuditDialog::loadBaseline reads `fingerprints` and never checks
   `version`; saveBaseline writes version 2 (per-finding dedupKey). Fix:
   refuse a baseline whose version is not 2 and say to re-save it.
+  Shipped 2026-11-05 (5dd4fedc). Test:
+  AuditSuppressionSave.OldBaselineIsNotReadAsCurrent.
   **Layman:** An old saved baseline is read as if it were the new format, and the audit then marks everything as new.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
   Lanes: auditdialog.
 
-- 📋 [ANTS-6386] **Six audit-dialog sites read AI settings from a fresh Config instead of the dialog's live one.**
+- ✅ [ANTS-6386] **Six audit-dialog sites read AI settings from a fresh Config instead of the dialog's live one.**
   auditdialog_triage.cpp and auditdialog_debtsweep.cpp build local
   `Config cfg;` objects (batch-triage button refresh and handler, the
   debt-triage button and AI triage). AuditDialog::loadUserRules shows
   the ANTS-2003 pattern: `Config &cfg = m_config ? *m_config : fallback`.
+  Shipped 2026-11-05 (5dd4fedc): AuditDialog::liveConfig(). Test:
+  AuditDialogLows.SettingsComeFromTheLiveConfig.
   **Layman:** Parts of the audit window read a new copy of the settings instead of the one already open, the same slip fixed once before.
   Kind: refactor.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4459 triage).
