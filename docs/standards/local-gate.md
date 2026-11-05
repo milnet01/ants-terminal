@@ -255,7 +255,9 @@ its own hook owes the same check.
 **A local pass answers for this machine only.** Where the push starts CI, read
 that commit's result before calling the work done: `gh run list --commit <sha>`.
 GitHub failed twice while demoreel's local gate passed (2026-10-31). Nothing
-checks this.
+checks this. Test scratch on tmpfs is one such gap: its inode reuse differs
+from the runner's ext4. Album Builder had tests that passed only on tmpfs
+(2026-11-05).
 
 ### 5.1 Route 1 — check the pushed commits out somewhere else
 
