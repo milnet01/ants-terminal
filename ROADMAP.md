@@ -80982,21 +80982,24 @@ whole files.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: remotecontrol.
 
-- 📋 [ANTS-6389] **feature_coverage's dot-tail fallback lets a `config.json`-style literal match on its extension alone.**
+- ✅ [ANTS-6389] **feature_coverage's dot-tail fallback lets a `config.json`-style literal match on its extension alone.**
   containsWithTailFallback (src/featurecoverage.cpp) retries the text
   after the last dot when it has four or more letters, so `config.json`
   matches on `json`. Fix: skip the fallback when the token is a path or
   its tail is a file extension; keep it for module.func.
+  Shipped 2026-11-05 (f7a026b2). Test:
+  FeatureCoverage.Ants6389FileExtensionTailDoesNotMatch.
   **Layman:** A coverage check counts a file name as present in the code when only its ending, such as "json", appears.
   Kind: fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
   Lanes: featurecoverage.
 
-- 📋 [ANTS-6390] **Three specs still call spec_lint's `sections_checked:false` the shipping default.**
+- ✅ [ANTS-6390] **Three specs still call spec_lint's `sections_checked:false` the shipping default.**
   docs/specs/ANTS-3662.md, ANTS-3663.md and
   ANTS-4127-test-surface-resolution.md say false is the shipping
   default; the section check now runs whenever docs/standards/specs.md
   carries its required-sections block. Reword each as a condition.
+  Shipped 2026-11-05 (7de1ce95).
   **Layman:** Three design documents describe an old default the tool no longer has.
   Kind: doc-fix.
   Source: cold-sweep-2026-08-18, verified 2026-11-05 (ANTS-4460 triage).
