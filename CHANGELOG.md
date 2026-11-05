@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **ci_report names the retried attempt a finding came from** (ANTS-6414)
+  When the slow or failed job was an earlier try of a re-run, the finding
+  lists it under `earlier_attempts`, so you know to open that attempt.
+
 - **ci_report says which repository it read when a fork has two GitHub remotes and gh has no default (repo_note), with the gh repo set-default command that picks the other** (ANTS-6403)
 
 - **`ci_report`: an Ants MCP verb that reads a project's GitHub Actions history and lists flaky tests, jobs near their time budget, and cache, queue and runner advice** (ANTS-6399)

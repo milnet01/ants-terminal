@@ -1193,3 +1193,31 @@ TEST(McpCiReport, Ants6413JobTimeEndsAtItsLastStep) {
     const CiReport::Analysis a = CiReport::analyse(h.json(), workflow(kBuild10), kNow, 30);
     EXPECT_TRUE(ofCheck(a, "near_budget").isEmpty()) << dump(a.findings);
 }
+
+// ---- ANTS-6414: evidence names an attempt that is not the run's latest ------
+
+// album-builder's run 38038388285: attempt 1 hit its budget, attempt 2 took
+// a minute, and `gh run view` shows attempt 2. The finding names attempt 1.
+TEST(McpCiReport, Ants6414EvidenceNamesAnEarlierAttempt) {
+    const QDateTime t = kNow.addSecs(-7200);
+    auto job = [&](qint64 id, const char *conclusion, int startSecs, int secs) {
+        return QJsonObject{{"jobs", QJsonArray{QJsonObject{
+            {"id", double(id)}, {"name", "Build"}, {"conclusion", conclusion},
+            {"created_at", iso(t.addSecs(startSecs))}, {"started_at", iso(t.addSecs(startSecs))},
+            {"completed_at", iso(t.addSecs(startSecs + secs))}, {"steps", QJsonArray()}}}}};
+    };
+    const QJsonObject history{
+        {"runs", QJsonArray{runRow(5, "s", "push", "success", t, 2)}},
+        {"jobs", QJsonObject{{"5/1", job(51, "cancelled", 0, 600)}, {"5/2", job(52, "success", 700, 60)}}}};
+    const QList<QJsonObject> f =
+        ofCheck(CiReport::analyse(history, workflow(kBuild10), kNow, 30), "near_budget");
+    ASSERT_EQ(f.size(), 1);
+    EXPECT_EQ(f[0].value("earlier_attempts").toArray(),
+              (QJsonArray{QJsonObject{{"run", 5}, {"attempt", 1}}})) << dump(f[0]);
+    History one;
+    one.add(6, t, QStringLiteral("Build"), 0, 590);
+    const QList<QJsonObject> latest =
+        ofCheck(CiReport::analyse(one.json(), workflow(kBuild10), kNow, 30), "near_budget");
+    ASSERT_EQ(latest.size(), 1);
+    EXPECT_FALSE(latest[0].contains("earlier_attempts")) << "absent when every entry is a latest attempt";
+}

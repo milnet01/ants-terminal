@@ -136,7 +136,11 @@ A live reply also carries `repo_note` when two or more remotes name
 `gh` then reads the `upstream` remote, so the note names the repository
 read and the command that picks another (ANTS-6403). `cache` is `"hit"`, `"miss"` or
 `"unknown"` and is present on timing findings only (§ 4.3). `runs` and
-`shas` hold at most 10 entries each, newest first. `findings` is sorted
+`shas` hold at most 10 entries each, newest first. A finding whose
+evidence includes a job from an attempt older than its run's latest
+carries `earlier_attempts`, `[{run, attempt}]`, for runs listed in `runs`:
+`gh run view` shows the latest attempt unless `--attempt` names another
+(ANTS-6414). `findings` is sorted
 by severity (`problem` first), then `check`, then `workflow`, `job`,
 `step`.
 

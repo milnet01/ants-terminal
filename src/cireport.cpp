@@ -37,6 +37,7 @@ struct RunRec;
 
 struct JobRec {
     qint64 id = 0;
+    int attempt = 1;
     QString name, conclusion;
     QDateTime created, started, completed;
     QDateTime lastStepEnd;   // the latest step completed_at, if any step has one
@@ -59,7 +60,9 @@ struct RunRec {
     QList<QList<JobRec>> attempts;  // [attempt-1]; empty where not fetched
 };
 
-struct Evidence { QDateTime t; qint64 run; QString sha; };
+// `attempt` is set only for a job from an attempt older than its run's latest,
+// which `gh run view` does not show by default; 0 otherwise.
+struct Evidence { QDateTime t; qint64 run; QString sha; int attempt = 0; };
 
 enum class Severity { Problem, Advice };
 
@@ -107,7 +110,8 @@ double median(QList<double> v) {
 }
 
 Evidence evidenceOf(const JobRec &j) {
-    return {j.started.isValid() ? j.started : j.run->created, j.run->id, j.run->sha};
+    return {j.started.isValid() ? j.started : j.run->created, j.run->id, j.run->sha,
+            j.attempt < j.run->attempt ? j.attempt : 0};
 }
 Evidence evidenceOf(const RunRec &r) { return {r.created, r.id, r.sha}; }
 
@@ -141,6 +145,7 @@ QList<RunRec> readRuns(const QJsonObject &history, const QDateTime &now, int day
             for (const QJsonValue &jv : reply.value(QStringLiteral("jobs")).toArray()) {
                 const QJsonObject jo = jv.toObject();
                 JobRec j;
+                j.attempt = a;
                 j.id = qint64(jo.value(QStringLiteral("id")).toDouble());
                 j.name = jo.value(QStringLiteral("name")).toString();
                 j.conclusion = jo.value(QStringLiteral("conclusion")).toString();
@@ -687,11 +692,14 @@ QString cacheFromLog(const QString &log) {
 QJsonObject toJson(Finding f, const QJsonObject &logs) {
     std::stable_sort(f.evidence.begin(), f.evidence.end(),
                      [](const Evidence &a, const Evidence &b) { return a.t > b.t; });
-    QJsonArray runs, shas;
+    QJsonArray runs, shas, earlier;
     for (const Evidence &e : f.evidence) {
         if (runs.size() < kMaxEvidence && !runs.contains(QJsonValue(double(e.run))))
             runs.append(double(e.run));
         if (shas.size() < kMaxEvidence && !shas.contains(QJsonValue(e.sha))) shas.append(e.sha);
+        const QJsonObject at{{QStringLiteral("run"), double(e.run)}, {QStringLiteral("attempt"), e.attempt}};
+        if (e.attempt > 0 && runs.contains(QJsonValue(double(e.run))) && !earlier.contains(at))
+            earlier.append(at);
     }
     QJsonObject o{{QStringLiteral("check"), f.check},
                   {QStringLiteral("severity"), f.severity == Severity::Problem
@@ -703,6 +711,7 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
                   {QStringLiteral("runs"), runs},
                   {QStringLiteral("shas"), shas},
                   {QStringLiteral("cites"), QJsonArray::fromStringList(f.cites)}};
+    if (!earlier.isEmpty()) o[QStringLiteral("earlier_attempts")] = earlier;
     if (f.timing) {
         const QJsonValue log = logs.value(QString::number(f.logJob));
         o[QStringLiteral("cache")] = log.isString() ? cacheFromLog(log.toString())

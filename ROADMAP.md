@@ -79960,11 +79960,14 @@ in each bullet, not just the reporter's symptom.
   Source: ci-tune-request-2026-11-05 (claude-config msg 1433).
   Lanes: mcp.
 
-- 📋 [ANTS-6414] **ci_report: evidence names a run but not the attempt it measured.**
+- ✅ [ANTS-6414] **ci_report: evidence names a run but not the attempt it measured.**
   album-builder read near_budget on run 38038388285 as a false
   positive: attempt 1 hit its 15m timeout, but `gh run view` shows
   attempt 2 (52 s). Name the attempt in a finding's evidence when it is
   not the run's latest (spec § 4.6 output shape).
+  Shipped 2026-11-05: Evidence.attempt and the earlier_attempts field
+  (src/cireport.cpp). Test Ants6414EvidenceNamesAnEarlierAttempt (red
+  first). Spec § 4.2 amended (impl-9).
   **Layman:** When a CI run was retried, the report points at the run but not at which try was slow, so the default GitHub view shows the wrong one.
   Kind: enhancement.
   Source: album-builder msg 1461, 2026-11-05.
