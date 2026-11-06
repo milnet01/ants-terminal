@@ -1346,7 +1346,9 @@ void AuditDialog::populateChecks() {
             "find . -name '*.py'" + kFindExcl + " | head -20"
             " | xargs pylint --errors-only 2>&1 | head -100",
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
-            hasPylint, hasPylint, nullptr
+            // ANTS-6446 — off by default: the project's pylint config can
+            // run Python (init-hook, load-plugins).
+            false, hasPylint, nullptr
         });
         const bool hasBandit = toolExists("bandit");
         // Respect project-local pyproject.toml ruff `ignore` S-codes
@@ -1413,7 +1415,9 @@ void AuditDialog::populateChecks() {
             hasCargo ? "Rust lint checks" : "(cargo not installed)", "Rust",
             "cargo clippy 2>&1 | head -100",
             CheckType::CodeSmell, Severity::Minor, { {}, "", {}, 100 },
-            hasCargo, hasCargo, nullptr
+            // ANTS-6446 — off by default: building runs the project's
+            // build.rs and procedural macros.
+            false, hasCargo, nullptr
         });
         const bool hasAudit = toolExists("cargo-audit");
         m_checks.append({

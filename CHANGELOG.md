@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **The Audit dialog no longer pre-selects Cargo Clippy and Pylint, which run code from the project being audited; switch them on for a project you trust** (ANTS-6446)
+
 - **SSH bookmarks can no longer set `XAuthLocation` or `UserKnownHostsFile`, which let a bookmark run a program or write to a file of its choosing** (ANTS-6443)
 
 - **Pasted text can no longer end bracketed-paste mode early by nesting one paste marker inside another** (ANTS-6442)

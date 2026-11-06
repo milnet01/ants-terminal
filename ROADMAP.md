@@ -91206,7 +91206,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6446] **auditdialog_catalogue.cpp: (pylint) and `hasCargo, hasCargo` (cargo_clippy) are auto-selected.**
+- ✅ [ANTS-6446] **auditdialog_catalogue.cpp: (pylint) and `hasCargo, hasCargo` (cargo_clippy) are auto-selected.**
   `auditdialog_catalogue.cpp:1349` — (pylint) and `hasCargo, hasCargo`
   (cargo_clippy) are auto-selected. `cargo clippy` runs the project's
   `build.rs` and proc-macros.
@@ -91215,6 +91215,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   off, or gate every lane that runs project code behind the same per-
   project trust check.
   Ledger row 290, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06 with the reviewer's first remedy: cargo_clippy and
+  pylint default off (autoSelect false), like eslint and mypy already
+  were. The existing trust check is per rule-pack hash and does not fit
+  a lane. New feature test audit_project_code_lanes_off, red before for
+  both lanes. The headless audit_run path runs neither tool.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 26-audit-dialog (High).
