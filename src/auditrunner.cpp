@@ -370,8 +370,10 @@ bool isAuditCheckSafe(const QString &check) {
 // them across runs. A `--` end-of-options separator is deliberately NOT
 // used: ruff/bandit/shellcheck/mypy append flags AFTER the path list,
 // and everything after `--` would be swallowed as a positional.
+// ANTS-6447 — a leading `@` is rewritten too: clang-tidy, gcc and javac
+// read `@file` as a response file of further options.
 QString flagSafeScopedPathImpl(const QString &p) {
-    return p.startsWith(QLatin1Char('-'))
+    return p.startsWith(QLatin1Char('-')) || p.startsWith(QLatin1Char('@'))
                ? QStringLiteral("./") + p
                : p;
 }

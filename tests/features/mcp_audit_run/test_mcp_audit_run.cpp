@@ -409,6 +409,11 @@ TEST(mcp_audit_run, Ants2185FlagSafeScopedPathTransform) {
     expect(flagSafeScopedPath(QStringLiteral("--config=evil"))
                == QStringLiteral("./--config=evil"),
            "INV-18: a long-option-shaped name is ./-prefixed");
+    // ANTS-6447 — clang-tidy, gcc and javac read `@file` as a response file
+    // of further options.
+    expect(flagSafeScopedPath(QStringLiteral("@opts"))
+               == QStringLiteral("./@opts"),
+           "INV-18: an @-leading relative path is ./-prefixed");
     expect(flagSafeScopedPath(QStringLiteral("src/a.py"))
                == QStringLiteral("src/a.py"),
            "INV-18: an ordinary relative path passes through unchanged");

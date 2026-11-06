@@ -56,8 +56,9 @@ in v2 (roadmap follow-up).
   scoped positional path that begins with `-` (a file named e.g.
   `-rf.cpp` in a hostile-clone tree) would be parsed as a flag by the
   child tool. `toolArgv` normalises every scoped path through
-  `flagSafeScopedPathImpl`, which prefixes `./` to dash-leading relative
-  paths so they are unambiguously paths; absolute and ordinary relative
+  `flagSafeScopedPathImpl`, which prefixes `./` to relative paths that
+  begin with `-` or `@` (a response file, ANTS-6447) so they are
+  unambiguously paths; absolute and ordinary relative
   paths pass through byte-identical (so the since-last-run delta keeps
   matching them). No tool branch may append the raw `scopedPaths`. A
   `--` end-of-options separator is *not* used: ruff/bandit/shellcheck/

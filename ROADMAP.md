@@ -91225,7 +91225,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 26-audit-dialog (High).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6447] **auditrunner.cpp: the argv-injection guard only defuses a leading `-`.**
+- ✅ [ANTS-6447] **auditrunner.cpp: the argv-injection guard only defuses a leading `-`.**
   `auditrunner.cpp:373-376` — the argv-injection guard only defuses a
   leading `-`. `isAuditArgSafe` (`:343`, `^[A-Za-z0-9._/=:,+@~\-]+$`)
   allows a leading `@`.
@@ -91234,6 +91234,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): prefix `./` for a
   leading `@` as well (or reject `@` in `isAuditArgSafe`).
   Ledger row 308, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06: flagSafeScopedPathImpl prefixes ./ to a leading @ as
+  well as a leading -. Test
+  mcp_audit_run.Ants2185FlagSafeScopedPathTransform, red before.
+  isAuditArgSafe still admits @ inside an argument; every scoped path
+  goes through the ./ guard.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 27-audit-engine (High).

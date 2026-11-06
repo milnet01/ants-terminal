@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **A file whose name starts with `@` can no longer feed extra options to an audit tool as a response file** (ANTS-6447)
+
 - **The Audit dialog no longer pre-selects Cargo Clippy and Pylint, which run code from the project being audited; switch them on for a project you trust** (ANTS-6446)
 
 - **SSH bookmarks can no longer set `XAuthLocation` or `UserKnownHostsFile`, which let a bookmark run a program or write to a file of its choosing** (ANTS-6443)
