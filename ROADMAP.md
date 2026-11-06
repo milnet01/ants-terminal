@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6439 -->
+<!-- ants-roadmap-id-high-water: ANTS=6694 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71353,6 +71353,9 @@ extends an existing item, that item carries it instead.
   else. So scrollDown, insertLines and deleteLines shift rows under an open
   link without moving its start row. Unverified: whether real output opens a
   link across those operations, and what span results.
+  The 2026-11-06 reviews also found this: row 21
+  `terminalgrid.cpp:2041–2048`; row 1295
+  `src/terminalgrid.cpp:2128-2167`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A clickable link might point at the wrong line if the screen scrolls backwards while it is being printed.
   Kind: fix.
   Source: in-session-2026-09-14.
@@ -73449,6 +73452,8 @@ fixes don't address. Roadmapped here as their own design tasks.
   ptyhandler.h, so make it public or mirror it with a static_assert) and
   report a drop the way writeLost does. Leave a single paste whole: the
   feed already slices it.
+  The 2026-11-06 reviews also found this: row 6 `vtstream.cpp:81,89`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** If a big paste stalls, extra input queued behind it should not grow memory without limit.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code RC-14; draft by retroarch-1c).
@@ -73496,6 +73501,9 @@ fixes don't address. Roadmapped here as their own design tasks.
   first. Store-served projects are unaffected. Fix direction: take an
   exclusive per-file hold (or compare-and-retry on the file's mtime/hash)
   around the markdown read-modify-write.
+  The 2026-11-06 reviews also found this: row 99
+  `remotecontrol_roadmap_query_verb.cpp:4072`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** If two sessions edit an old-style roadmap file at the same moment, one edit can vanish while both are told it worked.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code RC-49).
@@ -91092,6 +91100,3945 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: close-findings sweep 2026-11-06 (ANTS-6436).
   Lanes: claude-integration, mcp-infra.
 
+### Security (2026-11-06 review)
+
+- 📋 [ANTS-6440] **vtparser.cpp: One extra byte gets around the ANTS-1777 hardening against ESC sequences that end a string.**
+  `vtparser.cpp:240-241` — One extra byte gets around the ANTS-1777
+  hardening against ESC sequences that end a string.
+  Quote: `if (m_state == OscString || m_state == DcsString || m_state ==
+  ApcString || m_state == IgnoreString) {`
+  Remedy (the reviewer's; check it before building): add the four `*Esc`
+  states to the condition at line 240, so that an ESC in a peek state
+  goes to `processString` and is discarded to Ground. Add `ESC ESC c`
+  and `ESC ESC [2J` cases to the INV-5/INV-6 tests.
+  Ledger row 1, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 01-vt-parser-pty (High).
+  Lanes: vt-parser-pty.
+
+- 📋 [ANTS-6441] **terminalgrid.cpp: The verifier's key is an exported environment variable.**
+  `terminalgrid.cpp:174–176` — The verifier's key is an exported
+  environment variable. The README setup puts it in `~/.profile` /
+  `~/.zshenv` as `export ANTS_OSC133_KEY=…`, and neither hook script un-
+  exports it (searched `packaging/shell-integration/` for `export -n`,
+  `typeset +x` and `unset`: no hits).
+  Quote: `if (const char *envKey = std::getenv("ANTS_OSC133_KEY"))
+  m_osc133Key = QByteArray(envKey);`
+  Remedy (the reviewer's; check it before building): have the hook take
+  the key into a shell-local variable and `export -n` / `typeset +x` it.
+  Alternatively, hand the key to the shell through an inherited file
+  descriptor rather than the environment.
+  Ledger row 8, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 02-terminal-grid (High).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6442] **terminalwidget.cpp: the bracketed-paste sanitiser can be bypassed by nesting.**
+  `terminalwidget.cpp:2996-3001` — the bracketed-paste sanitiser can be
+  bypassed by nesting.
+  Quote: `sanitized.replace("\x1B[201~", "");`
+  Remedy (the reviewer's; check it before building): repeat the
+  replacements until nothing changes, or strip every ESC, 0x9B and `C2
+  9B` byte from the payload before wrapping it.
+  Ledger row 31, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 03-terminal-widget-a (High).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6443] **sshdialog.cpp: the denylist leaves out `XAuthLocation`, and `-X`/`-Y` (or `-o ForwardX11=yes`) pass the filter.**
+  `sshdialog.cpp:94-105` — the denylist leaves out `XAuthLocation`, and
+  `-X`/`-Y` (or `-o ForwardX11=yes`) pass the filter.
+  Quote: `static const QStringList kDangerous = { … ProxyCommand,
+  LocalCommand, … SecurityKeyProvider };`
+  Remedy (the reviewer's; check it before building): add `XAuthLocation`
+  to `kDangerous`, and review the remaining path- or program-valued
+  keywords as a class (or switch to an allowlist).
+  Ledger row 238, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 22-app-entry-dialogs (High).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6444] **README.md: "Untrusted inner processes don't [know the key], so they cannot mint a valid HMAC.".**
+  `packaging/shell-integration/README.md:32-33` — "Untrusted inner
+  processes don't [know the key], so they cannot mint a valid HMAC."
+  Ledger row 270, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6445] **ants-osc133.bash: The fallback signer puts the secret in argv, where any local user can read it with `ps` on every prompt draw.**
+  `packaging/shell-integration/ants-osc133.bash:68` — The fallback
+  signer puts the secret in argv, where any local user can read it with
+  `ps` on every prompt draw. This is documented (`README:99-105`), but
+  it is still a runtime secret leak on the AppImage and Flatpak
+  installs, where the helper is absent.
+  Quote: `ants-osc133.zsh:59`
+  Remedy (the reviewer's; check it before building): Ship `ants-
+  osc133-sign` in the AppImage and Flatpak bundles. Failing that,
+  disable signing rather than fall back to argv.
+  Ledger row 271, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6446] **auditdialog_catalogue.cpp: (pylint) and `hasCargo, hasCargo` (cargo_clippy) are auto-selected.**
+  `auditdialog_catalogue.cpp:1349` — (pylint) and `hasCargo, hasCargo`
+  (cargo_clippy) are auto-selected. `cargo clippy` runs the project's
+  `build.rs` and proc-macros.
+  Quote: `:1416`
+  Remedy (the reviewer's; check it before building): default these lanes
+  off, or gate every lane that runs project code behind the same per-
+  project trust check.
+  Ledger row 290, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 26-audit-dialog (High).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6447] **auditrunner.cpp: the argv-injection guard only defuses a leading `-`.**
+  `auditrunner.cpp:373-376` — the argv-injection guard only defuses a
+  leading `-`. `isAuditArgSafe` (`:343`, `^[A-Za-z0-9._/=:,+@~\-]+$`)
+  allows a leading `@`.
+  Quote: `return p.startsWith(QLatin1Char('-')) ? QStringLiteral("./") +
+  p : p;`
+  Remedy (the reviewer's; check it before building): prefix `./` for a
+  leading `@` as well (or reject `@` in `isAuditArgSafe`).
+  Ledger row 308, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 27-audit-engine (High).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6448] **auditrunner.cpp: .**
+  `auditrunner.cpp:1378-1383` — . The ANTS-1446 escape check misses
+  `-imacros`, `-idirafter`, `--include=`/`--include`, `-include-pch`,
+  `-iwithprefix` and `--sysroot`. A hostile compile DB line such as
+  `-imacros /home/u/.ssh/id_rsa` passes validation. fix: extend the flag
+  set, covering `--` and `=` forms.
+  Quote: `kFlags = {"-I","-isystem","-iquote","-include"}`
+  Remedy (the reviewer's; check it before building): extend the flag
+  set, covering `--` and `=` forms.
+  Ledger row 313, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A gap that a hostile project or hostile terminal output could use against you.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 27-audit-engine (Medium).
+  Lanes: audit-engine.
+
+### Path containment (2026-11-06 review)
+
+- 📋 [ANTS-6449] **remotecontrol_docs.cpp: The doc walk used by `doc_integrity`, `doc_symbols`, `spec_lint`, `doc_dedup` and `doc_lint` has no `QDir::NoSymLinks`.**
+  `remotecontrol_docs.cpp:233-246` — The doc walk used by
+  `doc_integrity`, `doc_symbols`, `spec_lint`, `doc_dedup` and
+  `doc_lint` has no `QDir::NoSymLinks`. A symlinked `*.md` therefore
+  yields a file outside the root, and it is read; `doc_symbols`' locator
+  returns lines from it.
+  Quote: `QDirIterator it(dirAbs, QDir::Files | QDir::Dirs |
+  QDir::NoDotAndDotDot, …)`
+  Remedy (the reviewer's; check it before building): add
+  `QDir::NoSymLinks`, or check each yielded path with `isInsideProject`.
+  Ledger row 136, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 12-mcp-content-verbs-a (Low).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6450] **dependencyinventory.cpp: a tracked file that is a symlink is followed with no check that its target is under the root.**
+  `dependencyinventory.cpp:29-30` — a tracked file that is a symlink is
+  followed with no check that its target is under the root.
+  Quote: `QFile f(root + QLatin1Char('/') + rel); if (f.size() >
+  kMaxFileBytes || !f.open(QIODevice::ReadOnly)) return {};`
+  Remedy (the reviewer's; check it before building): skip any tracked
+  path whose canonical path is not under `root`.
+  Ledger row 139, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6451] **roadmapstore.cpp: with `remotecontrol_roadmap_migrate.cpp:253` `r.backupTo = req.value(QStringLiteral("backup_to")).toString();` (comment: "Not validated against the project root, deliberately"), and…**
+  `roadmapstore.cpp:451` — with `remotecontrol_roadmap_migrate.cpp:253`
+  `r.backupTo = req.value(QStringLiteral("backup_to")).toString();`
+  (comment: "Not validated against the project root, deliberately"), and
+  `roadmapmigrateverb.cpp:879-881` `backupPath = req.backupTo; … taken =
+  store.snapshotTo(backupPath, &backupErr);`.
+  Quote: `if (QFile::exists(destPath) && !QFile::remove(destPath)) {`
+  Remedy (the reviewer's; check it before building): refuse a `destPath`
+  whose canonical path equals `m_path` or its `-wal`/`-shm`. Refuse to
+  replace an existing database that is not a previous `pre-
+  migrate`/`backup_to` snapshot, for example by requiring the `.sqlite`
+  name or a marker.
+  Ledger row 150, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 14-roadmap-store (High).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6452] **roadmapmigrate.cpp: the live roadmap (declared or root) is opened through `QFileInfo` and `QDir::Files`, which follow symlinks.**
+  `roadmapmigrate.cpp:1014-1026` — the live roadmap (declared or root)
+  is opened through `QFileInfo` and `QDir::Files`, which follow
+  symlinks. Archives explicitly refuse symlinks (line 1078); the live
+  file does not, so a symlinked `ROADMAP.md` can import a file from
+  outside the project into the machine-global store. The comment at
+  998-1000 relies on that symlink behaviour, so this may be intended.
+  Recorded as an open question, not…
+  Quote: `QFileInfo`
+  Ledger row 158, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 14-roadmap-store (Low).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6453] **commentclaims.cpp: comment_claims can read files outside the project.**
+  `commentclaims.cpp:307` — comment_claims can read files outside the
+  project.
+  Quote: `if (QFileInfo::exists(root.filePath(p))) return
+  QDir::cleanPath(p);`
+  Remedy (the reviewer's; check it before building): reject a
+  `..`/absolute result, or a canonical path outside the root, in both
+  branches of `resolve()`.
+  Ledger row 159, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 15-code-index-search-a (Medium).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6454] **Several files are opened again after `PathValidation`/walk time with no new containment check (`functionsizes.cpp:166`, `duplicateblocks.cpp:310`, `codebaseindex.cpp:205`).**
+  `functionsizes.cpp:166` — Several files are opened again after
+  `PathValidation`/walk time with no new containment check
+  (`functionsizes.cpp:166`, `duplicateblocks.cpp:310`,
+  `codebaseindex.cpp:205`). `security.md` § 3 asks for that check inside
+  every open. The race needs a symlink swapped inside the user's own
+  tree.
+  Quote: `functionsizes.cpp:166`
+  Ledger row 171, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 15-code-index-search-a (Low).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6455] **trace.cpp: Bug 1 — empty path accepted.**
+  `trace.cpp:336-342` — Bug 1 — empty path accepted. `validatePath`
+  returns `bad=false` for an empty path (`pathvalidation.cpp:223`). So
+  `path:""`, or a non-string `path` (whose `toString()` is `""`), is
+  accepted, which breaks INV-1's "exactly one of" rule.
+  Quote: `const QString abs =
+  QDir::cleanPath(QDir(root).absoluteFilePath(raw)); req.pathRel =
+  abs.mid(prefixLen);`
+  Remedy (the reviewer's; check it before building): refuse an empty or
+  non-string `path` with `bad_args`. Derive `pathRel` from
+  `check.resolved`.
+  Ledger row 176, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 16-code-index-search-b (Medium).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6456] **symbolquery.cpp: A `lane` that is a symlink to a directory outside the root passes the check (`isDir` follows the link), and the walk then runs outside the root.**
+  `symbolquery.cpp:1016-1020` — A `lane` that is a symlink to a
+  directory outside the root passes the check (`isDir` follows the
+  link), and the walk then runs outside the root.
+  Quote: `if ((cand == scanRoot || cand.startsWith(scanRoot + '/')) &&
+  QFileInfo(cand).isDir()) scanRoot = cand;`
+  Remedy (the reviewer's; check it before building): canonicalise `cand`
+  and re-check it against the root, or refuse when
+  `QFileInfo(cand).isSymLink()`.
+  Ledger row 177, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6457] **tokenusageengine.cpp: The symlink check and the open are separate steps (a check-then-use race, TOCTOU).**
+  `src/tokenusageengine.cpp:340-347` — The symlink check and the open
+  are separate steps (a check-then-use race, TOCTOU).
+  Quote: `if (fi.isSymLink()) … QFile f(path); f.open(...)`
+  Remedy (the reviewer's; check it before building): `open(O_NOFOLLOW)`,
+  then `fstat`.
+  Ledger row 191, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6458] **pathvalidation.cpp: A path to a missing file can still escape the root through a symlink.**
+  `pathvalidation.cpp:275` — A path to a missing file can still escape
+  the root through a symlink.
+  Quote: `const QString cleaned = QDir::cleanPath(joined);`
+  Remedy (the reviewer's; check it before building): refuse `..`
+  segments in the missing-path branch (or resolve prefixes one component
+  at a time without the text cleanup), and return the landing path in
+  `Check` for callers to write to.
+  Ledger row 216, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 20-shared-utilities (Medium).
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6459] **ants-drift-check.sh: The temp file has a fixed name in a repository working tree, and the redirect follows a symlink.**
+  `hooks/ants-drift-check.sh:59` — The temp file has a fixed name in a
+  repository working tree, and the redirect follows a symlink.
+  Quote: `printf '%s\n' "$out" > "$marker.tmp"`
+  Remedy (the reviewer's; check it before building): Create the temp
+  file with `mktemp "$project_root/.ants-audit-pending.XXXXXX"`, or
+  refuse when `[ -L "$marker.tmp" ]` or `[ -L "$marker" ]`.
+  Ledger row 269, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6460] **roadmapfoldin.cpp: The symlink check (`counterStaysInProject`) runs before the open, and the open does not use `O_NOFOLLOW`.**
+  `roadmapfoldin.cpp:131` — The symlink check (`counterStaysInProject`)
+  runs before the open, and the open does not use `O_NOFOLLOW`. A
+  symlink swapped in between is followed.
+  Quote: `::open(utf8.constData(), O_RDWR | O_CREAT, 0644)`
+  Remedy (the reviewer's; check it before building): add `O_NOFOLLOW`.
+  Ledger row 336, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Low).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6461] **indiereviewengine.cpp: `assembleThreatModelExtras` reads `CLAUDE.md`, `SECURITY.md` and `.semgrep.yml` with no check that their real location is inside the project.**
+  `indiereviewengine.cpp:1537-1538` — `assembleThreatModelExtras` reads
+  `CLAUDE.md`, `SECURITY.md` and `.semgrep.yml` with no check that their
+  real location is inside the project. A repo whose `CLAUDE.md` is a
+  symlink to any file the user can read (for example `~/.config/ants-
+  terminal/config.json`) has that file's contents put in the synthesis
+  prompt and sent to the AI endpoint.
+  Quote: `const QString abs = projectPath + QChar('/') + relPath; const
+  QString body = slurpUtf8(abs);`
+  Remedy (the reviewer's; check it before building): run each path
+  through the same `canonicalFilePath().startsWith(rootCanon + '/')`
+  check.
+  Ledger row 385, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 34-review-engines (Medium).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6462] **verifyengine.cpp: the walk follows directory symlinks.**
+  `verifyengine.cpp:565-570` — the walk follows directory symlinks. The
+  `visited` set stops loops, but a link to `/` or `$HOME` still walks
+  and reads all of it.
+  Quote: `QDir(dir).entryInfoList(QDir::Files | QDir::Dirs |
+  QDir::NoDotAndDotDot)`
+  Remedy (the reviewer's; check it before building): add
+  `QDir::NoSymLinks`, or require the canonical path to stay under the
+  root.
+  Ledger row 407, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-code 2026-11-06, lane 35-test-audit-verify (Low).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6463] **auditengine.cpp: `resolveProjectPathLocal` has no project containment check.**
+  `src/auditengine.cpp:310` — `resolveProjectPathLocal` has no project
+  containment check. A tool output line like `./../../x.h:N:` makes
+  `applyFilter` read a file outside the project (only to search it for
+  words).
+  Ledger row 1329, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-readability 2026-11-06, lane 11-audit-engine-b (Info).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6464] **- `src/remotecontrol_workspace.cpp:4069`: `rel.startsWith(rootCanonical)` without a trailing `/` could strip a sibling-prefix path ("/a/b" vs "/a/bc").**
+  `src/remotecontrol_workspace.cpp:4069` — -
+  `src/remotecontrol_workspace.cpp:4069`:
+  `rel.startsWith(rootCanonical)` without a trailing `/` could strip a
+  sibling-prefix path ("/a/b" vs "/a/bc"). It is probably unreachable
+  after validatePath.
+  Ledger row 1402, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A tool could read or write a file outside the project it was asked to work on.
+  Kind: security.
+  Source: review-readability 2026-11-06, lane 26-mcp-state-workspace-a (Info).
+  Lanes: mcp-state-workspace.
+
+### Settings and records a write can lose (2026-11-06 review)
+
+- 📋 [ANTS-6465] **mainwindow_tabs.cpp: this writes `config.json` through a second `Config` object.**
+  `mainwindow_tabs.cpp:554-558` — this writes `config.json` through a
+  second `Config` object. That breaks `docs/standards/config-hot-reload.md` C1/C2, which require writes to go through the same object
+  the watcher reads. Two effects:
+  Quote: `Config cfg; cfg.setClaudeAutoModelNudgeShown(true); …
+  cfg.setClaudeAutoModelSwitch(true);`
+  Remedy (the reviewer's; check it before building): use `m_config`
+  setters.
+  Ledger row 60, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 05-mainwindow (Medium).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6466] **remotecontrol_roadmap_log.cpp: Store append allocates its id and runs the duplicate check outside the transaction.**
+  `remotecontrol_roadmap_log.cpp:485-487` — Store append allocates its
+  id and runs the duplicate check outside the transaction.
+  Remedy (the reviewer's; check it before building): re-read
+  `allocationFloor` and redo the duplicate check inside `mutate`.
+  Ledger row 100, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Medium).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6467] **apply_edits: has no check for a concurrent edit between the read (`:3328`) and `commit` (`:3404`).**
+  `apply_edits` — has no check for a concurrent edit between the read
+  (`:3328`) and `commit` (`:3404`). `mutation_probe` has one (RC-33). An
+  edit made in that window is overwritten.
+  Quote: `:3328`
+  Ledger row 129, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6468] **remotecontrol_changelog.cpp: (and `:1667`→`:1833`, `clAmend`, `release`, `normalize`) — `clReadFile(clPath, &clMarkdown)` … `clAtomicWrite(clPath, utf8)` every `changelog_log` op reads, edits and writ**
+  `remotecontrol_changelog.cpp:1368-1421` — (and `:1667`→`:1833`,
+  `clAmend`, `release`, `normalize`) — `clReadFile(clPath, &clMarkdown)`
+  … `clAtomicWrite(clPath, utf8)` every `changelog_log` op reads, edits
+  and writes the file with no guard against a second writer.
+  `remotecontrol_ci.cpp:122` itself says each Claude session runs its
+  own `ants-mcpd`. So two sessions on one project can both append; the
+  later rename silently drops the other en…
+  Quote: `:1667`
+  Remedy (the reviewer's; check it before building): take an `flock` on
+  a sidecar file (the same shape as `ci`'s `LiveLock`) around read →
+  write, and refuse `busy` when it cannot be taken.
+  Ledger row 131, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 12-mcp-content-verbs-a (Medium).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6469] **runtraceverb.cpp: `finish` reads, changes and rewrites `gate-log.md` and `run-costs.tsv` (`:333-363`, `:574`) with no lock.**
+  `runtraceverb.cpp:558-579` — `finish` reads, changes and rewrites
+  `gate-log.md` and `run-costs.tsv` (`:333-363`, `:574`) with no lock.
+  Quote: `ix.lines.insert(rowLine, row); ... if
+  (!writeText(indexPath(p), indexText, &err))`
+  Remedy (the reviewer's; check it before building): take a `QLockFile`
+  beside the index around the read-modify-write.
+  Ledger row 145, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6470] **mcpundeclaredargs.cpp: After the timeout, the read-modify-write goes ahead without the lock.**
+  `src/mcpundeclaredargs.cpp:39-43` — After the timeout, the read-
+  modify-write goes ahead without the lock. The header
+  (`mcpundeclaredargs.h:33-34`) says the lock is held because the
+  terminal and `ants-mcpd` both append. So when the two compete, records
+  are lost.
+  Quote: `ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);`
+  Remedy (the reviewer's; check it before building): skip the append
+  when the lock is not acquired; tell "missing" apart from "unreadable"
+  in `readLines`.
+  Ledger row 187, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6471] **mcporientation.cpp: `~/.claude/settings.json` is read, changed and rewritten with no lock against a live Claude Code writing the same file.**
+  `src/mcporientation.cpp:249-381` — `~/.claude/settings.json` is read,
+  changed and rewritten with no lock against a live Claude Code writing
+  the same file.
+  Ledger row 193, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6472] **secureio.h: the return value is ignored, and so are errors at close.**
+  `secureio.h:147` — the return value is ignored, and so are errors at
+  close. The code then renames the temp file over the target anyway.
+  Quote: `::fsync(file.handle());`
+  Remedy (the reviewer's; check it before building): if `fsync` returns
+  non-zero, take the `fail()` path and remove the temp file.
+  Ledger row 204, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6473] **config.cpp: the comment says flock stops "last-rename-wins silently drops one process's … settings changes".**
+  `config.cpp:194-201` — the comment says flock stops "last-rename-wins
+  silently drops one process's … settings changes".
+  Remedy (the reviewer's; check it before building): inside the lock,
+  re-read the file and merge only the keys this process changed.
+  Otherwise, correct the comment and `configbackup.h:73-80`.
+  Ledger row 205, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6474] **selfupdate.cpp: there is no `fsync` of the temp file before the rename, and none of the directory after it.**
+  `selfupdate.cpp:304-315` — there is no `fsync` of the temp file before
+  the rename, and none of the directory after it. If the machine crashes
+  or loses power after the rename, `$APPIMAGE` can be left empty or
+  truncated on filesystems without ext4's rename heuristic. That file is
+  the user's only copy of the program. `verifytrust.cpp:353` already
+  does the parent-directory sync for a much smaller file. — fix:
+  `::fsync(m_file->…
+  Quote: `if (!m_file->flush()) … std::rename(…m_tempPath…,
+  …m_targetPath…)`
+  Remedy (the reviewer's; check it before building):
+  `::fsync(m_file->handle())` before `close()`, and
+  `fsyncParentDir(m_targetPath)` after the rename.
+  Ledger row 228, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6475] **verifytrust.cpp: every writer uses the same temp file name, opens it with `Truncate`, and runs reload → modify → save with no lock between processes.**
+  `verifytrust.cpp:332-352` — every writer uses the same temp file name,
+  opens it with `Truncate`, and runs reload → modify → save with no lock
+  between processes. With two Ants instances (brief dim 16 case), one
+  can rename the other's half-written temp file. The next load then sees
+  corrupt JSON and moves the file aside, so every stored trust is
+  dropped. Or one instance's save silently wipes the other's new entry.
+  Both failure…
+  Quote: `const QString tmp = m_path + QStringLiteral(".tmp");`
+  Remedy (the reviewer's; check it before building): write through a
+  unique temp file (`QSaveFile` or `QTemporaryFile` in the same
+  directory), and take an `flock` on a lock file around reload-modify-
+  save.
+  Ledger row 231, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6476] **claudesetup.cpp: a file that exists but cannot be read looks the same as a missing file.**
+  `claudesetup.cpp:153-156` — a file that exists but cannot be read
+  looks the same as a missing file.
+  Quote: `return f.open(QIODevice::ReadOnly) ? f.readAll() :
+  QByteArray();`
+  Remedy (the reviewer's; check it before building): have `readBytes`
+  report failure separately from absence; refuse to write when the file
+  exists but cannot be read.
+  Ledger row 239, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6477] **modelswitchledger.cpp: the comment's claim is false; another instance's append can be lost.**
+  `modelswitchledger.cpp:158-161` — the comment's claim is false;
+  another instance's append can be lost.
+  Quote: `// ANTS-1989 — same lock as appendRecord so a full rewrite
+  (outcome backfill) can't interleave with a concurrent append's read-
+  modify-write.`
+  Remedy (the reviewer's; check it before building): take
+  `ConfigWriteLock` around the read as well (e.g. a locked
+  `updateRecords(path, fn)` helper), or re-read and merge inside the
+  lock before writing.
+  Ledger row 258, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 23-model-switching (Medium).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6478] **auditdialog.cpp: If `.audit_allowlist.json` fails to parse, the code writes back only the one new entry.**
+  `auditdialog.cpp:1133–1139` — If `.audit_allowlist.json` fails to
+  parse, the code writes back only the one new entry. Every existing
+  entry is silently lost.
+  Quote: `if (doc.isObject()) { … }`
+  Remedy (the reviewer's; check it before building): refuse the write on
+  a parse failure, and hold the lock across the read and the write.
+  Ledger row 291, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 26-audit-dialog (Medium).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6479] **auditdialog.cpp: a corrupt `trend.json` is replaced, losing its history.**
+  `auditdialog.cpp:1706` — a corrupt `trend.json` is replaced, losing
+  its history. `sf.write` is unchecked.
+  Quote: `trend.json`
+  Ledger row 304, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 26-audit-dialog (Low).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6480] **auditrulequality.cpp: .**
+  `auditrulequality.cpp:234` — . A whole-file rewrite with no lock. Two
+  dialogs open on one project each load at construction and save on
+  close, so the last writer wins and the other's suppression history is
+  lost. fix: take `ConfigWriteLock` and merge on save, as
+  `auditfpledger` does.
+  Quote: `QSaveFile f(m_path);`
+  Remedy (the reviewer's; check it before building): take
+  `ConfigWriteLock` and merge on save, as `auditfpledger` does.
+  Ledger row 314, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 27-audit-engine (Medium).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6481] **auditcache.cpp: a newer-version `index.json` is treated as empty, then overwritten as v1.**
+  `auditcache.cpp:116-121` — a newer-version `index.json` is treated as
+  empty, then overwritten as v1. Its history is lost and its artefacts
+  orphaned on downgrade. `auditrulequality.cpp:266` likewise ignores
+  `schema_version` and rewrites the file as v2.
+  Quote: `:293`
+  Ledger row 321, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 27-audit-engine (Low).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6482] **roadmapfoldin.cpp: The stale-lock steal checks the lock's age, then renames whatever file is at that path.**
+  `roadmapfoldin.cpp:196-204` — The stale-lock steal checks the lock's
+  age, then renames whatever file is at that path. Those are two
+  separate steps.
+  Quote: `if (mtime.secsTo(QDateTime::currentDateTime()) <
+  kStaleLockSeconds) return false; … ::rename(lockPath…, aside…)`
+  Remedy (the reviewer's; check it before building): rename to a unique
+  name (add pid and a random suffix). Re-check the moved file's age. If
+  it is fresh, restore it and wait.
+  Ledger row 326, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6483] **roadmapwrite.cpp: The publish re-reads the store after the commit, outside any lock.**
+  `roadmapwrite.cpp:860-872` — The publish re-reads the store after the
+  commit, outside any lock. Nothing serialises the file write.
+  Quote: `if (!store.commit(error)) … opts.dryRun = false; const auto
+  published = RoadmapRender::render(…)`
+  Remedy (the reviewer's; check it before building): hold a per-file
+  advisory lock from step 0 through the publish, or re-check the store
+  digest before committing the file and re-render if it changed.
+  Ledger row 330, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6484] **claudeallowlist.cpp: Saving deletes other permission settings.**
+  `claudeallowlist.cpp:327-335` — Saving deletes other permission
+  settings.
+  Quote: `QJsonObject perms; … root["permissions"] = perms;`
+  Remedy (the reviewer's; check it before building): start `perms` from
+  `root.value("permissions").toObject()` and overwrite or remove only
+  the three arrays.
+  Ledger row 345, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 30-claude-session-widgets (High).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6485] **claudestatuswidgets.cpp: runs outside the ledger lock, and `writeRecords` takes the lock only for its own write.**
+  `claudestatuswidgets.cpp:2828-2921` — runs outside the ledger lock,
+  and `writeRecords` takes the lock only for its own write. A record
+  appended by another instance in between is overwritten by the stale
+  list. This is rare while the actuator is parked. Fix: one locked read-
+  modify-write helper in `ModelSwitchLedger`.
+  Quote: `readRecords`
+  Remedy (the reviewer's; check it before building): one locked read-
+  modify-write helper in `ModelSwitchLedger`.
+  Ledger row 350, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 30-claude-session-widgets (Low).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6486] **mutationjournal.cpp: any failure to open the file is treated as "file missing": permission denied (EACCES), too many open files (EMFILE) or an I/O error (EIO), as well as a file that is really gone.**
+  `mutationjournal.cpp:85-86` — any failure to open the file is treated
+  as "file missing": permission denied (EACCES), too many open files
+  (EMFILE) or an I/O error (EIO), as well as a file that is really gone.
+  The journal is then deleted.
+  Quote: `:104`
+  Remedy (the reviewer's; check it before building): report
+  `left_missing` only when `!QFileInfo::exists(path)`. In every other
+  case keep the journal, as `restore_failed`.
+  Ledger row 403, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 35-test-audit-verify (Medium).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6487] **feedbackstore.cpp: a hand edit made between the drift check and `writeExport` is overwritten, against INV-6.**
+  `feedbackstore.cpp:192` — a hand edit made between the drift check and
+  `writeExport` is overwritten, against INV-6. The window is short.
+  Quote: `:239`
+  Ledger row 429, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 36-changelog-feedback (Low).
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6488] **install-hooks.sh: an invalid `settings.json` is replaced with an empty file.**
+  `tools/install-hooks.sh:108` — an invalid `settings.json` is replaced
+  with an empty file.
+  Quote: `current="$(read_settings)"`
+  Remedy (the reviewer's; check it before building): check `jq '.'
+  "$target"` in the main shell and abort if it fails. Also refuse an
+  empty `new_content` (`[ -n "$new_content" ] || abort`) before calling
+  `atomic_write_settings`.
+  Ledger row 446, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 38-dev-shell-tools (High).
+  Lanes: dev-shell-tools.
+
+- 📋 [ANTS-6489] **mainwindow.cpp: When an auto-profile rule matches, it calls `applyTheme`, which saves the theme to the config (`m_config.setTheme`, 1316).**
+  `src/mainwindow.cpp:3114-3116` — When an auto-profile rule matches, it
+  calls `applyTheme`, which saves the theme to the config
+  (`m_config.setTheme`, 1316). A profile switch therefore **permanently
+  overwrites the user's saved theme**.
+  Ledger row 1307, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-readability 2026-11-06, lane 05-mainwindow-a (Info).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6490] **claudeallowlist.cpp: If the settings file exists but cannot be opened, `loadSettings` returns silently with three empty lists and no hint.**
+  `src/claudeallowlist.cpp:222` — If the settings file exists but cannot
+  be opened, `loadSettings` returns silently with three empty lists and
+  no hint. The parse-failure case does show a hint. `saveSettings` then
+  refuses with a generic "check permissions".
+  Ledger row 1372, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Saving could lose some of your settings or records.
+  Kind: review-fix.
+  Source: review-readability 2026-11-06, lane 21-claude-session-widgets-b (Info).
+  Lanes: claude-session-widgets.
+
+### Memory caps applied too late or missing (2026-11-06 review)
+
+- 📋 [ANTS-6491] **terminalgrid.cpp: A link that is opened, then followed by a cursor move (`CSI 10 C` or `CSI B`) with no text printed, then closed, still pushes spans.**
+  `terminalgrid.cpp:2296` — A link that is opened, then followed by a
+  cursor move (`CSI 10 C` or `CSI B`) with no text printed, then closed,
+  still pushes spans. Nothing ever drops them, because only printing and
+  clearing call `dropHyperlinkSpans`.
+  Quote: `2301–2315`
+  Remedy (the reviewer's; check it before building): call
+  `dropHyperlinkSpans(row, sCol, eCol + 1)` before each push, or cap
+  spans per row.
+  Ledger row 13, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 02-terminal-grid (Medium).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6492] **terminalwidget.cpp: the URL span cache has no named cap.**
+  `terminalwidget.cpp:1020` — the URL span cache has no named cap.
+  Quote: `invalidateSpanCaches`
+  Remedy (the reviewer's; check it before building): give it an LRU cap,
+  or drop entries outside the viewport ± N rows.
+  Ledger row 38, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6493] **terminalwidget.cpp: the session log grows with no size limit.**
+  `terminalwidget.cpp:2431-2433` — the session log grows with no size
+  limit. It may be by design as a user-requested capture; see Open
+  questions.
+  Quote: `m_logFile->write(batch->rawBytes);`
+  Ledger row 39, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6494] **terminalwidget.cpp: the match list has no cap.**
+  `terminalwidget.cpp:4780-4806` — the match list has no cap. A one-
+  character query over the 1M-line maximum scrollback can store hundreds
+  of millions of 12-byte matches, about 1–2 GB, and it is all built on
+  the GUI thread.
+  Quote: `m_searchMatches.push_back({gl, startCol, lastCol - startCol +
+  1});`
+  Remedy (the reviewer's; check it before building): cap the match count
+  (for example 100k) and show "N+" in the label.
+  Ledger row 48, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 04-terminal-widget-b (Medium).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6495] **mainwindow_repo.cpp: and `m_repoVisibilityProbeInFlight` gain one entry per repo root visited and never evict.**
+  `mainwindow_repo.cpp:180` — and `m_repoVisibilityProbeInFlight` gain
+  one entry per repo root visited and never evict. Their TTL is checked
+  only on read. The spec standard requires a named cap.
+  Quote: `:223`
+  Ledger row 68, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 05-mainwindow (Low).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6496] **(`remotecontrol_roadmap_query_verb.cpp:3958`) is keyed on the raw, uncanonicalised `caller_cwd`, has no cap or eviction, and lives for the whole process.**
+  `remotecontrol_roadmap_query_verb.cpp:3958` —
+  (`remotecontrol_roadmap_query_verb.cpp:3958`) is keyed on the raw,
+  uncanonicalised `caller_cwd`, has no cap or eviction, and lives for
+  the whole process. The shared context's spec-format rule says no
+  unbounded growth ships without a named cap.
+  Quote: `remotecontrol_roadmap_query_verb.cpp:3958`
+  Ledger row 110, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Low).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6497] **remotecontrol_workspace.cpp: `mutation_probe` keeps the child's merged output in QProcess's buffer for up to `timeoutSec` (default 300, maximum 1800).**
+  `remotecontrol_workspace.cpp:2194-2202` — `mutation_probe` keeps the
+  child's merged output in QProcess's buffer for up to `timeoutSec`
+  (default 300, maximum 1800). The 512 KiB cap only applies after the
+  process has finished.
+  Quote: `if (!p.waitForFinished(timeoutSec * 1000)) {…} QByteArray out
+  = p.readAllStandardOutput(); … if (out.size() > kCap) out =
+  out.right(kCap);`
+  Remedy (the reviewer's; check it before building): drain in a
+  `waitForReadyRead` loop, keep a rolling tail, and kill the child once
+  its total output passes a ceiling.
+  Ledger row 122, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Medium).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6498] **Whole-file `readAll()` with no size cap at `remotecontrol_state.cpp:2219`, `:2438`, `:2594`, `:3132` and `:3299`.**
+  `remotecontrol_state.cpp:2219` — Whole-file `readAll()` with no size
+  cap at `remotecontrol_state.cpp:2219`, `:2438`, `:2594`, `:3132` and
+  `:3299`. a large `.md` file (or a symlink to a large file, see above)
+  is read whole, up to four times per `invariant_check`.
+  Quote: `remotecontrol_state.cpp:2219`
+  Remedy (the reviewer's; check it before building): cap the read size,
+  as `specListEnvelope` does with its 8 KiB read.
+  Ledger row 128, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6499] **remotecontrol_workspace.cpp: rg's stderr is only read after the run, so QProcess keeps it in memory for up to 30 s, for example when searching `/` produces a flood of "permission denied".**
+  `remotecontrol_workspace.cpp:197` — rg's stderr is only read after the
+  run, so QProcess keeps it in memory for up to 30 s, for example when
+  searching `/` produces a flood of "permission denied". This is a
+  suspicion: I did not confirm how Qt buffers stderr during
+  `waitForReadyRead`.
+  Quote: `/`
+  Ledger row 130, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6500] **quotationcheckverb.cpp: and `:497` keeps every subject until the call ends.**
+  `quotationcheckverb.cpp:424` — and `:497` keeps every subject until
+  the call ends. each subject holds its raw bytes plus a `Normalised`,
+  which is the text plus an 8-byte offset for every byte. That is about
+  9× the file size, and the per-step intermediates are higher still
+  while normalising.
+  Quote: `std::map<std::pair<QString, QString>, Subject> subjects;`
+  Remedy (the reviewer's; check it before building): cap the total bytes
+  of subjects per call (reason `too_large` past it), or drop a subject
+  after the last item that names it.
+  Ledger row 140, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6501] **functionsizes.cpp: Whole-file reads with no size limit, held together in memory:.**
+  `functionsizes.cpp:169` — Whole-file reads with no size limit, held
+  together in memory:
+  Remedy (the reviewer's; check it before building): a per-file byte
+  cap, reported in `scanned`. In source_scrapes, analyse each file once
+  and do not keep `texts`.
+  Ledger row 163, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 15-code-index-search-a (Medium).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6502] **readregion.cpp: ANTS-2021 INV-9 and § 2.5 promise that peak heap stays within `max_bytes` (≤ 4 MiB) "regardless of the requested range or file size".**
+  `readregion.cpp:602` — ANTS-2021 INV-9 and § 2.5 promise that peak
+  heap stays within `max_bytes` (≤ 4 MiB) "regardless of the requested
+  range or file size". The code breaks that in three places:
+  Quote: `QByteArray raw = f.readLine();`
+  Remedy (the reviewer's; check it before building): use
+  `BoundedReadLine::read(f, maxBytes+…)` here, as `symbolquery.cpp:685`
+  already does. Stream the brace scan and the heading scan rather than
+  loading the file.
+  Ledger row 173, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 16-code-index-search-b (Medium).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6503] **trace.cpp: every whole-word hit in every walked file (up to 5000 files × 2 MiB) becomes a `Row`.**
+  `trace.cpp:851` — every whole-word hit in every walked file (up to
+  5000 files × 2 MiB) becomes a `Row`. Each row is a `QJsonObject`
+  carrying up to 200 bytes of line text (`:540-552`). All rows are built
+  before `pageInto` applies `max_bytes`.
+  Quote: `const QVector<int> hits = pathMode ? pathHits(…) :
+  wholeWordHits(text, req.needle);`
+  Remedy (the reviewer's; check it before building): cap the gathered
+  rows (stop at `offset` + one page's worth and record `total` as a
+  count only), or name a cap in the spec.
+  Ledger row 174, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 16-code-index-search-b (Medium).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6504] **queries.cpp: every distinct user `.scm` text compiles a new `TSQuery` that is never freed.**
+  `queries.cpp:23` — every distinct user `.scm` text compiles a new
+  `TSQuery` that is never freed. Repeated edits grow the table without a
+  cap. Fix: name a cap, or free superseded entries per language once no
+  cursor holds them.
+  Quote: `:140`
+  Remedy (the reviewer's; check it before building): name a cap, or free
+  superseded entries per language once no cursor holds them.
+  Ledger row 182, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6505] **trace.cpp: the 2 MiB check uses the size from the walk-time stat, then `f.readAll()` reads without a bound.**
+  `trace.cpp:824-828` — the 2 MiB check uses the size from the walk-time
+  stat, then `f.readAll()` reads without a bound. A file that grew in
+  between is read whole. Fix: use `f.read(kMaxFileBytes + 1 -
+  text.size())` and treat any overflow as too large.
+  Quote: `f.readAll()`
+  Remedy (the reviewer's; check it before building): use
+  `f.read(kMaxFileBytes + 1 - text.size())` and treat any overflow as
+  too large.
+  Ledger row 183, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6506] **luaengine.cpp: `ants.palette.register` needs no permission.**
+  `luaengine.cpp:920-950` — `ants.palette.register` needs no permission.
+  It only replaces an entry with the same title and action, so new names
+  make new entries, and nothing caps how many. A plugin running `for
+  i=1,1e6 do ants.palette.register{title=tostring(i),
+  action=tostring(i), hotkey="Ctrl+F"..i} end` inside its 1.5 s budget
+  fills `UiUpdates::palette`.
+  Quote: `mainwindow.cpp`
+  Remedy (the reviewer's; check it before building): cap entries per
+  plugin (for example 64, like the handler cap) at
+  `lua_ants_palette_register`, and raise a Lua error past the cap.
+  Ledger row 194, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 18-plugins-lua (High).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6507] **luaengine.cpp: `ants.send` needs no permission and has neither a rate cap nor a size cap.**
+  `luaengine.cpp:669-676` — `ants.send` needs no permission and has
+  neither a rate cap nor a size cap. Each call copies a string of up to
+  about 10 MiB, which doubles to about 20 MiB once converted to Qt's
+  two-byte text format, into the main thread's queue. A loop within one
+  handler's budget can queue gigabytes.
+  Quote: `emit engine->sendToTerminal(QString::fromUtf8(text));`
+  Remedy (the reviewer's; check it before building): cap bytes per
+  message and per second for every call that crosses to the main thread,
+  and count what is dropped, as `admitMessage` does.
+  Ledger row 196, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 18-plugins-lua (Medium).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6508] **sessionmanager.cpp: `loadSession` copies each refused blob to `session_<id>.dat.corrupt-<ms>`.**
+  `sessionmanager.cpp:594` — `loadSession` copies each refused blob to
+  `session_<id>.dat.corrupt-<ms>`. Each copy can be up to 100 MiB, and a
+  file over the cap is copied too.
+  Quote: `:698`
+  Remedy (the reviewer's; check it before building): add
+  `session_*.dat.corrupt-*` to the age sweep.
+  Ledger row 207, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6509] **projectsettings.cpp: The file is committed in the repo, so a cloned repo controls it (ANTS-2160 § 8 calls this a trust boundary).**
+  `projectsettings.cpp:113-115` — The file is committed in the repo, so
+  a cloned repo controls it (ANTS-2160 § 8 calls this a trust boundary).
+  There is no size cap.
+  Quote: `QFile f(rootCanonical + "/.ants/project.json"); … const
+  QByteArray raw = f.readAll();`
+  Remedy (the reviewer's; check it before building): check `f.size()`
+  against a small cap (for example 64 KiB) before reading, and treat a
+  larger file as malformed.
+  Ledger row 208, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6510] **projectlayoutengine.cpp: The whole roadmap is read and copied line by line, with no size bound.**
+  `projectlayoutengine.cpp:243` — The whole roadmap is read and copied
+  line by line, with no size bound. The roadmap path can be declared by
+  a repo-committed file.
+  Quote: `:89`
+  Remedy (the reviewer's; check it before building): stream the file
+  with `readLine`, or cap it.
+  Ledger row 209, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6511] **config.cpp: (`roadmap_view_state`), `:1085` (`audit_rule_pack_trust`), `:600` (`tokens_saved_by_project`) — per-path maps in `config.json` with no eviction.**
+  `config.cpp:428-435` — (`roadmap_view_state`), `:1085`
+  (`audit_rule_pack_trust`), `:600` (`tokens_saved_by_project`) — per-
+  path maps in `config.json` with no eviction. Entries for projects that
+  no longer exist stay forever. I did not check whether ANTS-3579 or
+  ANTS-1150 name a cap.
+  Quote: `roadmap_view_state`
+  Ledger row 215, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 19-config-session-project (Low).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6512] **gitwrap.cpp: The 1 MiB stdout cap does not limit memory.**
+  `gitwrap.cpp:29,39-44` — The 1 MiB stdout cap does not limit memory.
+  Quote: `p.waitForFinished(kHardKillMs); … r.stdoutBytes =
+  p.readAllStandardOutput(); if (… > maxStdoutBytes) truncate`
+  Remedy (the reviewer's; check it before building): read in a loop with
+  `waitForReadyRead`, and kill the process once the cap is reached.
+  Ledger row 218, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 20-shared-utilities (Medium).
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6513] **updatedialog.cpp: the `.manifest` and `.manifest.sig` downloads have no size limit.**
+  `updatedialog.cpp:207` — the `.manifest` and `.manifest.sig` downloads
+  have no size limit. Spec § 4 says memory "holds one network buffer,
+  not the file", but that is only true of the AppImage download. A wrong
+  release asset served under the manifest's name (an AppImage uploaded
+  by mistake, say) would be read into RAM whole. — fix: abort from
+  `downloadProgress` above a small cap (for example 4 KiB for the
+  manifest), and r…
+  Quote: `*into = reply->readAll();`
+  Remedy (the reviewer's; check it before building): abort from
+  `downloadProgress` above a small cap (for example 4 KiB for the
+  manifest), and require exactly 64 bytes for the signature.
+  Ledger row 229, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6514] **diffviewer.cpp: every untracked file is read (up to 200 KB each) and turned into HTML on the GUI thread, with no limit on how many files.**
+  `diffviewer.cpp:676-733` — every untracked file is read (up to 200 KB
+  each) and turned into HTML on the GUI thread, with no limit on how
+  many files.
+  Quote: `for (const QString &rel : newFiles) { … nf.read(kCap + 1) …`
+  Remedy (the reviewer's; check it before building): cap the number of
+  files and the total bytes rendered in New files, and show a "… N more"
+  line.
+  Ledger row 241, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6515] **diffviewer.cpp: the whole output of `git diff --stat --patch HEAD` is buffered by QProcess and converted to UTF-16, and that copy is trimmed into a second one.**
+  `diffviewer.cpp:836` — the whole output of `git diff --stat --patch
+  HEAD` is buffered by QProcess and converted to UTF-16, and that copy
+  is trimmed into a second one. The 1 MiB cap (`:433-438`) only applies
+  after all of that.
+  Quote: `st_ptr->*slot =
+  QString::fromUtf8(pg->readAllStandardOutput()).trimmed();`
+  Remedy (the reviewer's; check it before building): read incrementally
+  (`readyReadStandardOutput`) and stop or kill the process once the cap
+  is reached.
+  Ledger row 242, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6516] **claudesetup.cpp: .**
+  `claudesetup.cpp:480-488` — . One state file per Claude session, never
+  removed. On the `/tmp` fallback it persists across logins, which
+  breaks the named-cap rule. fix: prune files older than N days on
+  write.
+  Quote: `state="$state_dir/$sid"`
+  Remedy (the reviewer's; check it before building): prune files older
+  than N days on write.
+  Ledger row 252, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Low).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6517] **aidialog.cpp: the chat history is kept across re-opens on purpose and has no cap.**
+  `aidialog.cpp:233` — the chat history is kept across re-opens on
+  purpose and has no cap. Each reply adds up to 64 K characters. The
+  project's spec standard says "no unbounded growth ships without a
+  named cap". fix: cap the number of document blocks, or set
+  `QTextDocument::setMaximumBlockCount`.
+  Quote: `m_chatHistory->append(html)`
+  Remedy (the reviewer's; check it before building): cap the number of
+  document blocks, or set `QTextDocument::setMaximumBlockCount`.
+  Ledger row 264, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 23-model-switching (Low).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6518] **ants-drift-check.sh: `drift-check.log` is appended on every Stop event (every turn) that has helper stderr or an error rc.**
+  `hooks/ants-drift-check.sh:52,59,63,65-66` — `drift-check.log` is
+  appended on every Stop event (every turn) that has helper stderr or an
+  error rc. It is never capped or rotated.
+  Quote: `2>>"$logfile"`
+  Remedy (the reviewer's; check it before building): Before appending,
+  cap it the way `ants_grep_nudge_record` does (keep the last N lines).
+  Ledger row 273, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6519] **_common.sh: Per-session files, one per session or process, with no eviction anywhere:.**
+  `_common.sh:256,268` — Per-session files, one per session or process,
+  with no eviction anywhere:
+  Remedy (the reviewer's; check it before building): Prune files older
+  than N days on write.
+  Ledger row 274, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 24-shell-surface (Low).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6520] **auditdialog.cpp: limits each file to 4 MB but has no cap on how many files it holds during a run, which happens before `capFindings`.**
+  `auditdialog.cpp:609–623` — limits each file to 4 MB but has no cap on
+  how many files it holds during a run, which happens before
+  `capFindings`. `spec-format`'s "named cap" rule asks for one.
+  Quote: `m_fileLineCache`
+  Ledger row 307, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 26-audit-dialog (Low).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6521] **claudestatuswidgets.h: the near-miss and conservatism hashes, and `m_lastOverrideMsByProject`, are keyed by `shellCwd()`, which changes on every `cd`.**
+  `claudestatuswidgets.h:462-473` — the near-miss and conservatism
+  hashes, and `m_lastOverrideMsByProject`, are keyed by `shellCwd()`,
+  which changes on every `cd`. "Bounded by distinct shellCwd() values"
+  is not the named cap that `spec-format.md` requires. Fix: cap the
+  hashes, or key them on the repository root.
+  Quote: `m_lastOverrideMsByProject`
+  Remedy (the reviewer's; check it before building): cap the hashes, or
+  key them on the repository root.
+  Ledger row 351, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 30-claude-session-widgets (Low).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6522] **remotecontrol_review.cpp: Every untracked, non-ignored directory is walked recursively with no file cap, no byte budget and no time limit.**
+  `remotecontrol_review.cpp:1022-1030` — Every untracked, non-ignored
+  directory is walked recursively with no file cap, no byte budget and
+  no time limit. This happens twice per `verify_changes` call (before
+  and after the run), and on `cache_only` probes too.
+  Quote: `QDirIterator it(abs, QDir::Files | QDir::Hidden,
+  QDirIterator::Subdirectories); while (it.hasNext())
+  inner.append(it.next());`
+  Remedy (the reviewer's; check it before building): cap the entries
+  walked. When the cap trips, mark the snapshot invalid (uncacheable),
+  the same way ANTS-5097 handles a failed git status.
+  Ledger row 357, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 31-mcp-review-verbs (Medium).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6523] **featurecoverage.cpp: Every file in every `tests/features/*` directory, binary fixtures included, is read whole with no cap.**
+  `featurecoverage.cpp:933-946` — Every file in every `tests/features/*`
+  directory, binary fixtures included, is read whole with no cap. So are
+  the spec and doc bodies and the allowlist.
+  Quote: `776`
+  Remedy (the reviewer's; check it before building): apply
+  `maxFileBytes`.
+  Ledger row 379, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 33-spec-engines (Low).
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6524] **indiereviewdialog.cpp: the synthesis prompt has no size cap.**
+  `indiereviewdialog.cpp:206-207` — the synthesis prompt has no size
+  cap. It concatenates every lane report (each can be up to 10 MiB per
+  ANTS-1258 §4, across about 30 lanes) plus three whole project files.
+  Lane prompts are capped at 200 KiB (INV-3); this one is not. The spec-
+  format rule "no unbounded growth ships without a named cap" is broken.
+  Quote: `job.request.userPrompt =
+  IndieReviewEngine::synthesisPrompt(m_lastReports, extras);`
+  Remedy (the reviewer's; check it before building): pass it through
+  `clipToCapClosingFence` against `kPromptCapBytes`.
+  Ledger row 386, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 34-review-engines (Medium).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6525] **debtsweepengine.cpp: the "stdout cap" is applied after QProcess has buffered the whole output.**
+  `debtsweepengine.cpp:85-86` — the "stdout cap" is applied after
+  QProcess has buffered the whole output. The comment above it says the
+  cap prevents "a massive diff or log [pinning] RAM", and it does not.
+  Both `git log --all --format=%s` (`:973`) and `git diff --unified=0`
+  over a tag window are fully buffered first. The same pattern is at
+  `:1340`.
+  Quote: `QByteArray out = p.readAllStandardOutput(); if (out.size() >
+  stdoutCap) out.truncate(stdoutCap);`
+  Remedy (the reviewer's; check it before building): read in chunks on
+  `readyReadStandardOutput`, and kill the process once the cap is
+  reached.
+  Ledger row 387, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 34-review-engines (Medium).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6526] **testauditengine.cpp: this map gains one entry per token briefed and never evicts.**
+  `testauditengine.cpp:234` — this map gains one entry per token briefed
+  and never evicts. The partition cache it sits beside is capped at 16.
+  It breaks the "no unbounded growth" rule.
+  Quote: `:1555`
+  Remedy (the reviewer's; check it before building): evict inside
+  `cachePartition`'s LRU loop.
+  Ledger row 406, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 35-test-audit-verify (Low).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6527] **feedbackstore.cpp: has no size cap, and the store keeps each reporter's full text.**
+  `feedbackstore.cpp:53` — has no size cap, and the store keeps each
+  reporter's full text. With the compaction ops retired, the corpus only
+  grows. Spec § 13 gives today's sizes but names no cap or eviction,
+  which the project's "named cap" rule requires.
+  Quote: `readAll()`
+  Ledger row 430, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 36-changelog-feedback (Low).
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6528] **buildcache.cpp: and `fromJson` at `:292` (`for (const auto &v2 : errs)`) is not capped either.**
+  `buildcache.cpp:175` — and `fromJson` at `:292` (`for (const auto &v2
+  : errs)`) is not capped either. loading applies no size cap, no
+  50-entry cap and no 240-character cap. Spec § 5 says the cache file is
+  "≤ ~50 KiB in the worst case", but only the writer enforces that.
+  Quote: `const QByteArray bytes = f.readAll();`
+  Remedy (the reviewer's; check it before building): refuse a file over
+  about 64 KiB, and re-apply `kMaxErrors` and `kMessageCharCap` in
+  `fromJson`.
+  Ledger row 434, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** A large file or a long output could use far more memory than it should.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 37-diagnostics-logging (Medium).
+  Lanes: diagnostics-logging.
+
+### High bugs (2026-11-06 review)
+
+- 📋 [ANTS-6529] **terminalgrid.cpp: , then `placeInlineImage` adds the same cost again, and `canFit` is `return bytes <= MAX_BYTES - used;`.**
+  `terminalgrid.cpp:3649–3650` — , then `placeInlineImage` adds the same
+  cost again, and `canFit` is `return bytes <= MAX_BYTES - used;`. A
+  Kitty `a=T,i=N` image is checked once with `canFit(c)` but charged
+  twice (once for the cache, once for the inline copy).
+  Quote: `:2543`
+  Remedy (the reviewer's; check it before building): guard `used <=
+  MAX_BYTES` inside `canFit`, and charge a shared pixel buffer once on
+  the incremental path, as `recomputeImageBudget` already does.
+  Ledger row 7, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 02-terminal-grid (High).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6530] **terminalgrid.cpp: A height-only shrink (cols unchanged) keeps the top rows and throws away the bottom `m_rows - rows` rows.**
+  `terminalgrid.cpp:2956–2976` — A height-only shrink (cols unchanged)
+  keeps the top rows and throws away the bottom `m_rows - rows` rows.
+  Those rows hold the cursor line and the newest output, and none of
+  them goes to scrollback. The cursor is then clamped onto unrelated
+  content.
+  Quote: `int copyRows = std::min(rows, m_rows); for (int r = 0; r <
+  copyRows; ++r) …`
+  Remedy (the reviewer's; check it before building): when rows shrink,
+  push the top `max(0, cursorRow - rows + 1)` rows into scrollback (with
+  `++m_scrollbackPushed` and hyperlink lockstep) before copying.
+  Ledger row 9, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 02-terminal-grid (High).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6531] **terminalwidget.cpp: legacy key encoding ignores Alt everywhere, and Shift on cursor and function keys.**
+  `terminalwidget.cpp:3085-3118` — legacy key encoding ignores Alt
+  everywhere, and Shift on cursor and function keys.
+  Quote: `:3069`
+  Remedy (the reviewer's; check it before building): add an ESC prefix
+  for Alt on text keys and Ctrl chords, and modifier parameters on
+  arrow, Home/End and F-keys. Intent is under Open questions.
+  Ledger row 32, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 03-terminal-widget-a (High).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6532] **terminalwidget.cpp: Qt delivers the second press of a double-click as a double-click event.**
+  `terminalwidget.cpp:3895` — Qt delivers the second press of a double-
+  click as a double-click event. The base
+  `QWidget::mouseDoubleClickEvent` would forward it to
+  `mousePressEvent`, but this override doesn't, and it never checks
+  `mouseReportingActive()`.
+  Quote: `void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event)
+  {`
+  Remedy (the reviewer's; check it before building): start the function
+  with `if (mouseReportingActive() && !(event->modifiers() &
+  Qt::ShiftModifier)) { sendMouseEvent(event, true, false); return; }`.
+  Ledger row 42, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 04-terminal-widget-b (High).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6533] **claudeintegration.cpp: together with `src/claudeintegration_sessions.cpp:276` `m_transcriptPath.clear();` (the branch for "no Claude under the focused shell").**
+  `src/claudeintegration.cpp:312-314` — together with
+  `src/claudeintegration_sessions.cpp:276` `m_transcriptPath.clear();`
+  (the branch for "no Claude under the focused shell").
+  Quote: `const bool coldStart = m_transcriptPath.isEmpty(); … if
+  (coldStart && isColdStartDroppable) { … return; }`
+  Remedy (the reviewer's; check it before building): tell the transient
+  window apart from "no Claude here". For example, set a
+  `m_coldStartPending` flag in `setShellPid` and clear it on the first
+  poll. Drop `PermissionRequest` only while that flag is set; otherwise
+  route it by `session_id` alone.
+  Ledger row 82, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 07-claude-integration-a (High).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6534] **remotecontrol_workspace.cpp: `apply_edits` decodes the whole file as UTF-8 and writes the whole buffer back.**
+  `remotecontrol_workspace.cpp:3328` — `apply_edits` decodes the whole
+  file as UTF-8 and writes the whole buffer back. Qt replaces every
+  invalid UTF-8 byte with U+FFFD, which is written as `EF BF BD`. So
+  editing one line of a Latin-1 or partly binary file silently corrupts
+  every non-UTF-8 byte in it, and the reply says `ok:true`.
+  Quote: `QString working = QString::fromUtf8(in.readAll());`
+  Remedy (the reviewer's; check it before building): decode with
+  `QStringDecoder` and check `hasError()`. On error, skip the edit with
+  reason `not_utf8` and never write.
+  Ledger row 121, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 11-mcp-state-workspace (High).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6535] **pluginmanager.cpp: The chain: the plugin manager is created as `new PluginManager(this)`, a child of the main window, and `~MainWindow` neither unloads nor deletes it.**
+  `pluginmanager.cpp:186-191` — The chain: the plugin manager is created
+  as `new PluginManager(this)`, a child of the main window, and
+  `~MainWindow` neither unloads nor deletes it. So it is destroyed
+  during `~QWidget`'s cleanup of children, after `MainWindow`'s own
+  members, such as `m_config`, have already been destroyed.
+  Quote: `:101-103`
+  Remedy (the reviewer's; check it before building): in `~MainWindow`
+  (or `closeEvent`), call an explicit `m_pluginManager->shutdown()` (it
+  would need to be made public) or `delete m_pluginManager` before the
+  members die.
+  Ledger row 195, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 18-plugins-lua (High).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6536] **dialogfocus.h: Qt counts a minimised (iconified) window as visible.**
+  `dialogfocus.h:100` — Qt counts a minimised (iconified) window as
+  visible. Every chromed dialog has a working Minimise button:
+  `dialogchrome.cpp:203-204` connects `minimizeRequested` to
+  `showMinimized`. So once the user minimises any dialog,
+  `shouldSuppressEventForDialog` keeps returning true, and MainWindow's
+  filter (`mainwindow.cpp:2098`) swallows every click, key and wheel
+  event sent to the terminal. A frameless di…
+  Quote: `if (!d || !d->isVisible()) continue;`
+  Remedy (the reviewer's; check it before building): skip dialogs where
+  `d->isMinimized()`, here and in `shouldRefocusOnDialogClose` (line
+  38). Or hide the chrome's minimise button.
+  Ledger row 227, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (High).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6537] **ants-session-preamble.sh: The resume line that ANTS-1252 §1.1 promises ("even when the resume snapshot from PreCompact is present") keys on `CLAUDE_SESSION_ID`.**
+  `hooks/ants-session-preamble.sh:32` — The resume line that ANTS-1252
+  §1.1 promises ("even when the resume snapshot from PreCompact is
+  present") keys on `CLAUDE_SESSION_ID`. Nothing in the tree sets that
+  variable.
+  Quote: `sid="$(printf '%s' "${CLAUDE_SESSION_ID:-}" | …)"`
+  Remedy (the reviewer's; check it before building): Read `.session_id`
+  from the SessionStart stdin payload with `jq`, as precompact already
+  does. Fall back to `CLAUDE_CODE_SESSION_ID`.
+  Ledger row 266, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 24-shell-surface (High).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6538] **cc-job: Starting a job under a reused name truncates the previous job's log without any check.**
+  `packaging/cc-job/cc-job:113-114` — Starting a job under a reused name
+  truncates the previous job's log without any check.
+  Quote: `rm -f "$rec" "$STATE/$name.read"`
+  Remedy (the reviewer's; check it before building): Before truncating,
+  refuse when `-s log && ! -e .read`, with the same message as `clean`
+  and a `--force` flag.
+  Ledger row 267, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 24-shell-surface (High).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6539] **auditdialog.cpp: the dialog is created with `WA_DeleteOnClose` (`mainwindow_menus.cpp:472`), so closing it mid-check destroys it.**
+  `auditdialog.cpp:184` — the dialog is created with `WA_DeleteOnClose`
+  (`mainwindow_menus.cpp:472`), so closing it mid-check destroys it. The
+  members (`m_checks`, `m_completedResults` and so on) are destroyed
+  first; the child `QProcess` only later, in `~QWidget`. `~QProcess`
+  kills the running child, waits for it, and emits `finished` and
+  `readyRead*` along the way.
+  Quote: `:246`
+  Remedy (the reviewer's; check it before building): in `~AuditDialog`,
+  before the members go, `disconnect(m_process, nullptr, this, nullptr)`
+  and do the same for every blame `QProcess`, then stop them with
+  `releaseProcess`.
+  Ledger row 289, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 26-audit-dialog (High).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6540] **auditdelta.cpp: , fed from `auditrunner.cpp:2645`.**
+  `auditdelta.cpp:56-57` — , fed from `auditrunner.cpp:2645`. Any
+  earlier finding in a changed file whose tool did not run this time is
+  classed as removed and dropped from the recorded baseline
+  (`d.merged`). That covers: gitleaks and trivy, which are always
+  skipped under narrowing (`not_file_scoped`)
+  Quote: `if (!currentFps.contains(fpOf(v))) d.removed.append(v);`
+  Remedy (the reviewer's; check it before building): limit
+  `priorOnChanged` to tools that ran and finished "ok". Carry the rest
+  forward.
+  Ledger row 310, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 27-audit-engine (High).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6541] **roadmapdialog.cpp: the open cards and sections, and the scroll position, are saved only in `closeEvent`.**
+  `roadmapdialog.cpp:2588-2598` — the open cards and sections, and the
+  scroll position, are saved only in `closeEvent`. Closing with Esc or
+  the title-bar × goes through `QDialog::reject`, and
+  `dialogchrome.cpp`'s ChromeGuard says *"reject(), accept() and done()
+  hide the dialog without a Close reaching this filter"* (ANTS-5037).
+  `install` also wires `TitleBar::closeRequested` to `QDialog::reject`.
+  Quote: `if (m_config) { captureScrollAnchor(); saveViewState(); }`
+  Remedy (the reviewer's; check it before building): do the capture and
+  save in `done()` or `hideEvent`, or call `saveViewState()` from
+  `handleAnchorClicked`.
+  Ledger row 337, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 29-roadmap-dialog (High).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6542] **doclint.cpp: What goes wrong.**
+  `doclint.cpp:294` — What goes wrong. The duplicate-TOC repair deletes
+  the whole physical line at the walk-time line number. It never re-
+  locates the entry.
+  Quote: `deletions.insert(g.line);`
+  Remedy (the reviewer's; check it before building): re-locate the
+  duplicate's entry from the freshly detected `toc.entries` (the second
+  entry with that slug). Remove only that link's list item. Refuse when
+  that item shares its line with another entry.
+  Ledger row 365, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 32-doc-engines (High).
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6543] **testauditengine.cpp: a paginated partition caches only the page it was asked for.**
+  `testauditengine.cpp:1484-1485` — a paginated partition caches only
+  the page it was asked for. The pre-pass map is also cut to that page
+  at `:1494`. Every page has the same token (`computeToken` takes no
+  offset), so each page call overwrites the cache entry.
+  Quote: `:1510`
+  Remedy (the reviewer's; check it before building): cache the full
+  result before slicing, and slice a copy for the envelope.
+  Ledger row 398, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 35-test-audit-verify (High).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6544] **testauditengine.cpp: this excludes every directory whose name starts with `build`, not just build trees.**
+  `testauditengine.cpp:437-439` — this excludes every directory whose
+  name starts with `build`, not just build trees.
+  Quote: `"/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"`
+  Remedy (the reviewer's; check it before building): match `build`,
+  `build-*` and `cmake-build-*` only, or exclude a directory only when
+  it contains `CMakeCache.txt`.
+  Ledger row 399, docs/reviews/close-findings-2026-11-06.md.
+  **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
+  Kind: review-fix.
+  Source: review-code 2026-11-06, lane 35-test-audit-verify (High).
+  Lanes: test-audit-verify.
+
+### One-edit comment fixes (2026-11-06 review)
+
+- 📋 [ANTS-6545] **Correct the false or stale comments the 2026-11-06 reviews found in app-entry-dialogs.**
+  12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1179 `src/settingsdialog.cpp:641-643` (Medium)
+  - row 1180 `src/settingsdialog.cpp:441-443` (Low)
+  - row 1181 `src/settingsdialog.cpp:1112` (Low)
+  - row 1184 `src/diffviewer.cpp:346` (Low)
+  - row 1185 `src/diffviewer.cpp:102` (Low)
+  - row 1187 `src/antshelpermain.cpp:8` (Low)
+  - row 1557 `src/main.cpp:257` (Low)
+  - row 1558 `src/main.cpp:425` (Low)
+  - row 1618 `src/settingsdialog.cpp:676` (Low)
+  - row 1619 `src/settingsdialog.cpp:1320` (Low)
+  - row 1622 `src/sshdialog.cpp:284` (Low)
+  - row 1623 `src/sshdialog.h:76` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6546] **Correct the false or stale comments the 2026-11-06 reviews found in audit-dialog.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 590 `src/auditdialog_catalogue.cpp:858` (Medium)
+  - row 596 `src/auditdialog_triage.cpp:170` (Low)
+  - row 597 `src/auditdialog.h:38` (Low)
+  - row 598 `src/auditdialog.cpp:3395` (Low)
+  - row 599 `src/auditdialog_catalogue.cpp:1182` (Low)
+  - row 600 `src/auditdialog.cpp:447` (Low)
+  - row 601 `src/auditdialog_catalogue.cpp:103` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6547] **Correct the false or stale comments the 2026-11-06 reviews found in audit-engine.**
+  14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 325 `auditdelta.cpp:52-53` (Low)
+  - row 611 `src/auditrunner.cpp:1506` (Medium)
+  - row 612 `src/auditrunner.cpp:666` (Low)
+  - row 613 `src/auditrunner.cpp:2467` (Low)
+  - row 614 `src/auditrunner.cpp:39` (Low)
+  - row 615 `src/auditrunner.cpp:2489` (Low)
+  - row 616 `src/auditrulequality.h:106` (Low)
+  - row 618 `src/auditscope.h:47` (Medium)
+  - row 622 `src/auditcache.h:55` (Medium)
+  - row 623 `src/auditcache.h:23` (Low)
+  - row 624 `src/auditengine.h:514` (Medium)
+  - row 631 `src/auditengine.h:133` (Low)
+  - row 632 `src/auditengine.h:411` (Low)
+  - row 636 `src/audithygiene.h:1` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6548] **Correct the false or stale comments the 2026-11-06 reviews found in build-system.**
+  12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1217 `CMakeLists.txt:1670` (Medium)
+  - row 1218 `CMakeLists.txt:30` (Medium)
+  - row 1219 `CMakeLists.txt:420` (Medium)
+  - row 1224 `CMakeLists.txt:4172` (Low)
+  - row 1225 `CMakeLists.txt:3463` (Low)
+  - row 1226 `CMakeLists.txt:1640` (Low)
+  - row 1227 `CMakeLists.txt:973` (Low)
+  - row 1228 `CMakeLists.txt:2320` (Low)
+  - row 1229 `CMakeLists.txt:3941` (Low)
+  - row 1230 `CMakeLists.txt:1598` (Low)
+  - row 1232 `cmake/GenerateBuildInfoValues.cmake:23` (Low)
+  - row 1233 `cmake/build_info_values.cpp.in:4` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: build-system.
+
+- 📋 [ANTS-6549] **Correct the false or stale comments the 2026-11-06 reviews found in changelog-feedback.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 423 `src/changelogquery.h:109` (High)
+  - row 1169 `src/changeloglog.cpp:556` (Low)
+  - row 1170 `src/changeloglog.cpp:504` (Low)
+  - row 1171 `src/changeloglog.cpp:822` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6550] **Correct the false or stale comments the 2026-11-06 reviews found in chrome-widgets.**
+  18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 565 `src/globalshortcutsportal.cpp:111` (Medium)
+  - row 570 `src/coloredtabbar.cpp:184` (Low)
+  - row 571 `src/coloredtabbar.cpp:368` (Low)
+  - row 573 `src/coloredtabbar.cpp:108` (Low)
+  - row 574 `src/coloredtabbar.h:157` (Low)
+  - row 575 `src/coloredtabbar.h:190` (Low)
+  - row 576 `src/kwinpositiontracker.h:8` (Low)
+  - row 1520 `src/coloredtabbar.cpp:437` (Low)
+  - row 1536 `src/globalshortcutsportal.cpp:77` (Low)
+  - row 1537 `src/globalshortcutsportal.cpp:85` (Low)
+  - row 1538 `src/globalshortcutsportal.cpp:119` (Low)
+  - row 1539 `src/globalshortcutsportal.cpp:144` (Low)
+  - row 1540 `src/globalshortcutsportal.cpp:223` (Low)
+  - row 1541 `src/globalshortcutsportal.cpp:238` (Low)
+  - row 1542 `src/globalshortcutsportal.cpp:244` (Low)
+  - row 1543 `src/globalshortcutsportal.cpp:325` (Low)
+  - row 1544 `src/globalshortcutsportal.cpp:346` (Low)
+  - row 1545 `src/globalshortcutsportal.h:117` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-6551] **Correct the false or stale comments the 2026-11-06 reviews found in claude-integration.**
+  26 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 90 `claudeintegration_store.cpp:1912-1915` (Medium)
+  - row 94 `claudeintegration_docs.cpp:761` (Low)
+  - row 95 `orientation.cpp:342-345` (Low)
+  - row 713 `src/claudeintegration.cpp:505` (Medium)
+  - row 719 `src/claudeintegration.cpp:1117` (Low)
+  - row 720 `src/claudeintegration.cpp:71` (Low)
+  - row 721 `src/claudeintegration.h:554` (Low)
+  - row 722 `src/claudeintegration.h:482` (Low)
+  - row 723 `src/mcptoolregistry.cpp:1073` (Low)
+  - row 724 `src/claudeintegration_codenav.cpp:237` (Medium)
+  - row 728 `src/claudeintegration_reports.cpp:577` (Medium)
+  - row 733 `src/claudeintegration_orientation.cpp:1076` (Low)
+  - row 734 `src/claudeintegration_orientation.cpp:288` (Low)
+  - row 741 `src/claudeintegration_docs.cpp:639-644` (Medium)
+  - row 743 `src/claudeintegration_sessions.cpp:88-89` (Low)
+  - row 744 `src/claudeintegration_sessions.cpp:209` (Low)
+  - row 745 `src/claudeintegration_sessions.cpp:828` (Low)
+  - row 746 `src/claudeintegration_sessions.cpp:389-391` (Low)
+  - row 747 `src/claudeintegration_callpolicy.cpp:549-550` (Low)
+  - row 1512 `src/claudeintegration.cpp:159` (Low)
+  - row 1513 `src/claudeintegration.cpp:189` (Low)
+  - row 1514 `src/claudeintegration.cpp:1370` (Low)
+  - row 1515 `src/claudeintegration.h:240` (Low)
+  - row 1516 `src/claudeintegration_sessions.cpp:125` (Low)
+  - row 1517 `src/claudeintegration_sessions.cpp:331` (Low)
+  - row 1518 `src/claudeintegration_sessions.cpp:804` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6552] **Correct the false or stale comments the 2026-11-06 reviews found in claude-session-widgets.**
+  24 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 352 `docs/subsystems.md:616` (Low)
+  - row 353 `claudestateresolver.cpp:39-42` (Low)
+  - row 749 `src/claudestatuswidgets.h:297` (High)
+  - row 753 `src/claudestatuswidgets.cpp:1887-1888` (Medium)
+  - row 754 `src/claudestatuswidgets.cpp:2460` (Medium)
+  - row 762 `src/claudestatuswidgets.cpp:2508` (Low)
+  - row 763 `src/claudestatuswidgets.h:114-115` (Low)
+  - row 764 `src/claudestatuswidgets.cpp:108-114` (Low)
+  - row 765 `src/claudestatuswidgets.cpp:1318-1329` (Low)
+  - row 767 `src/claudetabtracker.cpp:126` (High)
+  - row 768 `src/claudetabtracker.h:120-121` (Medium)
+  - row 769 `src/claudepromptdetect.h:11-13` (Medium)
+  - row 781 `src/claudeallowlist.cpp:257-263` (Low)
+  - row 782 `src/claudebgtasks.h:154-158` (Low)
+  - row 783 `src/claudebgtasks.cpp:120-121` (Low)
+  - row 784 `src/claudebgtasks.h:104` (Low)
+  - row 785 `src/claudebgtasksdialog.cpp:26-30` (Low)
+  - row 786 `src/claudebgtasksdialog.cpp:60-61` (Low)
+  - row 787 `src/claudebgtasksdialog.cpp:285-287` (Low)
+  - row 788 `src/claudetranscriptwalker.h:77-79` (Low)
+  - row 790 `src/claudetasklist.cpp:108-119` (Low)
+  - row 1510 `src/claudeallowlist.cpp:164` (Low)
+  - row 1511 `src/claudebgtasksdialog.cpp:56` (Low)
+  - row 1519 `src/claudetranscript.h:18` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6553] **Correct the false or stale comments the 2026-11-06 reviews found in code-index-search.**
+  17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1063 `src/readregion.cpp:575` (Medium)
+  - row 1064 `src/applyedits.cpp:79` (Medium)
+  - row 1065 `src/applyedits.cpp:16` (Low)
+  - row 1066 `src/codebaseindex.cpp:30` (Low)
+  - row 1067 `src/fileoutline.cpp:436` (Low)
+  - row 1068 `src/fileoutline.cpp:576` (Low)
+  - row 1069 `src/fileoutline.h:7` (Low)
+  - row 1070 `src/readregion.cpp:162` (Low)
+  - row 1071 `src/findsources.cpp:306` (Low)
+  - row 1072 `src/similarcode.h:40` (Low)
+  - row 1082 `src/paginationengine.h:58-60` (Medium)
+  - row 1083 `src/paginationengine.h:1` (Low)
+  - row 1084 `src/symbolquery.cpp:437` (Low)
+  - row 1085 `src/symbolquery.cpp:196` (Low)
+  - row 1086 `src/trace/extract.h:73` (Low)
+  - row 1521 `src/commentclaims.cpp:522` (Low)
+  - row 1522 `src/commentclaims.cpp:522` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6554] **Correct the false or stale comments the 2026-11-06 reviews found in config-session-project.**
+  18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 210 `src/projectlayoutengine.cpp:363` (High)
+  - row 1133 `src/projectlayoutengine.h:141` (Medium)
+  - row 1134 `src/projectlayoutengine.cpp:154` (Medium)
+  - row 1135 `src/config.h:103` (Medium)
+  - row 1138 `src/configbackup.h:21` (Low)
+  - row 1139 `src/sessionmanager.cpp:199` (Low)
+  - row 1140 `src/sessionmanager.cpp:705` (Low)
+  - row 1141 `src/config.cpp:1030` (Low)
+  - row 1142 `src/projectsettings.cpp:256` (Low)
+  - row 1143 `src/projectsettings.h:157` (Low)
+  - row 1523 `src/config.cpp:22` (Low)
+  - row 1524 `src/config.cpp:42` (Low)
+  - row 1525 `src/config.cpp:88` (Low)
+  - row 1526 `src/config.cpp:216` (Low)
+  - row 1527 `src/config.cpp:252` (Low)
+  - row 1528 `src/config.cpp:394` (Low)
+  - row 1529 `src/config.cpp:985` (Low)
+  - row 1530 `src/config.h:599` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6555] **Correct the false or stale comments the 2026-11-06 reviews found in dev-python-ci-packaging.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 468 `flatpak/…AntsTerminal.yml:12` (Low)
+  - row 469 `ci.yml:109` (Low)
+  - row 470 `tools/measure/filemap_prototype.py:356` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: dev-python-ci-packaging.
+
+- 📋 [ANTS-6556] **Correct the false or stale comments the 2026-11-06 reviews found in diagnostics-logging.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1193 `src/buildcache.h:61` (Low)
+  - row 1196 `src/readlog.h:42-44` (Low)
+  - row 1197 `src/debuglog.h:57` (Low)
+  - row 1200 `src/debuglog.cpp:17-18` (Low)
+  - row 1201 `src/debuglog.cpp:47` (Low)
+  - row 1531 `src/debuglog.cpp:17` (Low)
+  - row 1532 `src/debuglog.cpp:95` (Low)
+  - row 1533 `src/debuglog.h:145` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6557] **Correct the false or stale comments the 2026-11-06 reviews found in dialog-chrome-theme.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 577 `src/verifytrust.cpp:223` (High)
+  - row 579 `src/verifytrust.h:97` (Medium)
+  - row 581 `src/updatedialog.h:4` (Low)
+  - row 583 `src/reviewdialogbase.cpp:428-430` (Low)
+  - row 584 `src/verifytrustmodal.h:1` (Low)
+  - row 1506 `src/aboutdialogs.cpp:1` (Low)
+  - row 1507 `src/aboutdialogs.h:1` (Low)
+  - row 1646 `src/themes.cpp:361` (Low)
+  - row 1647 `src/verifytrust.cpp:223` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6558] **Correct the false or stale comments the 2026-11-06 reviews found in doc-engines.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 969 `src/doclint.cpp:390` (Medium)
+  - row 971 `src/doccitations.h:49` (Low)
+  - row 972 `src/docsindex.h:4` (Low)
+  - row 973 `src/docfacts.cpp:144` (Low)
+  - row 974 `src/docfacts.cpp:71` (Low)
+  - row 975 `src/docsymbols.cpp:279` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6559] **Correct the false or stale comments the 2026-11-06 reviews found in hooks-packaging.**
+  12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1271 `packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml:12` (Medium)
+  - row 1276 `packaging/opensuse/ants-terminal.spec:317` (Medium)
+  - row 1277 `packaging/opensuse/ants-terminal.spec:139` (Medium)
+  - row 1278 `hooks/ants-precompact-snapshot.sh:6` (Medium)
+  - row 1283 `hooks/_common.sh:6` (Low)
+  - row 1284 `hooks/_common.sh:45` (Low)
+  - row 1285 `hooks/ants-bash-veto.sh:30` (Low)
+  - row 1286 `hooks/ants-drift-check.sh:37` (Low)
+  - row 1287 `launch.sh:17` (Low)
+  - row 1288 `packaging/check-version-drift.sh:57` (Low)
+  - row 1289 `packaging/debian/rules:6` (Low)
+  - row 1290 `packaging/obs/obs-status.sh:5` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: hooks-packaging.
+
+- 📋 [ANTS-6560] **Correct the false or stale comments the 2026-11-06 reviews found in mainwindow.**
+  40 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 71 `docs/standards/menus.md (docs/standards/menus.md)` (Low)
+  - row 533 `src/mainwindow.h:403` (High)
+  - row 534 `src/mainwindow.cpp:2345` (Medium)
+  - row 537 `src/mainwindow.cpp:1657` (Low)
+  - row 540 `src/mainwindow.cpp:1857` (Low)
+  - row 541 `src/mainwindow.cpp:2408` (Low)
+  - row 542 `src/mainwindow.h:711` (Low)
+  - row 544 `src/mainwindow_menus.cpp:955` (Medium)
+  - row 545 `src/mainwindow_repo.cpp:174` (Medium)
+  - row 546 `src/mainwindow_tabs.cpp:1061` (Medium)
+  - row 553 `src/mainwindow_mcp.cpp:357` (Low)
+  - row 554 `src/mainwindow_menus.cpp:847` (Low)
+  - row 555 `src/mainwindow_menus.cpp:981` (Low)
+  - row 556 `src/mainwindow_menus.cpp:45` (Low)
+  - row 557 `src/mainwindow_tabs.cpp:1205` (Low)
+  - row 558 `src/mainwindow_sessions.cpp:217` (Low)
+  - row 559 `src/mainwindow_tabcolors.cpp:87` (Low)
+  - row 560 `src/mainwindow_tabcolors.cpp:262` (Low)
+  - row 561 `src/mainwindow_repo.cpp:207` (Low)
+  - row 562 `src/mainwindow_quake.cpp:162` (Low)
+  - row 1559 `src/mainwindow.cpp:9` (Low)
+  - row 1560 `src/mainwindow.cpp:56` (Low)
+  - row 1561 `src/mainwindow.cpp:1615` (Low)
+  - row 1562 `src/mainwindow.cpp:1922` (Low)
+  - row 1563 `src/mainwindow.cpp:3300` (Low)
+  - row 1564 `src/mainwindow.h:122` (Low)
+  - row 1565 `src/mainwindow.h:315` (Low)
+  - row 1566 `src/mainwindow.h:333` (Low)
+  - row 1567 `src/mainwindow_menus.cpp:10` (Low)
+  - row 1568 `src/mainwindow_menus.cpp:20` (Low)
+  - row 1569 `src/mainwindow_menus.cpp:45` (Low)
+  - row 1570 `src/mainwindow_menus.cpp:452` (Low)
+  - row 1571 `src/mainwindow_menus.cpp:538` (Low)
+  - row 1572 `src/mainwindow_menus.cpp:844` (Low)
+  - row 1573 `src/mainwindow_repo.cpp:6` (Low)
+  - row 1574 `src/mainwindow_tabs.cpp:5` (Low)
+  - row 1575 `src/mainwindow_tabs.cpp:81` (Low)
+  - row 1576 `src/mainwindow_tabs.cpp:173` (Low)
+  - row 1577 `src/mainwindow_tabs.cpp:190` (Low)
+  - row 1578 `src/mainwindow_tabs.cpp:201` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6561] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-content-verbs.**
+  10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 928 `src/remotecontrol_docs.cpp:973-974` (High)
+  - row 933 `src/remotecontrol_terminal.cpp:188-190` (Medium)
+  - row 942 `src/cihistory.h:41` (Low)
+  - row 943 `src/remotecontrol_docs.cpp:102-111` (Low)
+  - row 944 `src/remotecontrol_feedback.cpp:1639-1644` (High)
+  - row 952 `src/remotecontrol_feedback.cpp:354-364` (Low)
+  - row 953 `src/remotecontrol_feedback.cpp:597-602` (Low)
+  - row 1587 `src/remotecontrol_feedback.cpp:30` (Low)
+  - row 1588 `src/remotecontrol_feedback.cpp:1418` (Low)
+  - row 1599 `src/remotecontrol_terminal.cpp:382` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6562] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-infra.**
+  16 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1087 `src/mcpprojection.h:75` (Medium)
+  - row 1090 `src/jsonlfile.cpp:36` (Medium)
+  - row 1091 `src/jsonlfile.h:29` (Low)
+  - row 1092 `src/mcpprojection.h:236` (Low)
+  - row 1093 `src/mcpprojection.h:200` (Low)
+  - row 1094 `src/mcpspill.h:77` (Low)
+  - row 1095 `src/mcpspill.cpp:657` (Low)
+  - row 1096 `src/mcpspill.cpp:593` (Low)
+  - row 1098 `src/tokenusageengine.h:18` (Low)
+  - row 1101 `src/mcporientation.cpp:87` (Low)
+  - row 1102 `src/secretredact.h:72` (Low)
+  - row 1103 `src/resolvedroot.h:8` (Low)
+  - row 1104 `src/mcpdeprecation.cpp:52` (Low)
+  - row 1105 `src/jsoncanonical.h:9` (Low)
+  - row 1616 `src/secretredact.h:144` (Low)
+  - row 1617 `src/secretredact.h:150` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6563] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-review-verbs.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 364 `remotecontrol_review.cpp:1279-1280` (Low)
+  - row 921 `src/remotecontrol_review.cpp:159` (Medium)
+  - row 923 `src/remotecontrol_review.cpp:666` (Low)
+  - row 924 `src/remotecontrol_review.cpp:775` (Low)
+  - row 926 `src/remotecontrol_coldeyes.cpp:1` (Low)
+  - row 1586 `src/remotecontrol_coldeyes.cpp:399` (Low)
+  - row 1591 `src/remotecontrol_review.cpp:1106` (Low)
+  - row 1592 `src/remotecontrol_review.cpp:1122` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6564] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-roadmap-batch.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 120 `migrate.cpp:301-308` (Low)
+  - row 863 `src/remotecontrol_roadmap_log_batch.cpp:3368-3373` (Low)
+  - row 877 `src/remotecontrol_roadmap_log_batch.cpp:1158-1161` (Low)
+  - row 878 `src/remotecontrol_roadmap_log_batch.cpp:4422-4432` (Low)
+  - row 879 `src/remotecontrol_roadmap_log_batch.cpp:245-260` (Low)
+  - row 880 `src/remotecontrol_roadmap_migrate.cpp:105-113` (Low)
+  - row 1593 `src/remotecontrol_roadmap_log_batch.cpp:95` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6565] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+  14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 817 `src/remotecontrol_roadmap_log.cpp:855` (Medium)
+  - row 818 `src/remotecontrol_roadmap_log.cpp:3720` (Medium)
+  - row 819 `src/remotecontrol_roadmap_log.cpp:2282` (Medium)
+  - row 820 `src/remotecontrol_roadmap_log.cpp:2791` (Medium)
+  - row 821 `src/remotecontrol_roadmap_log.cpp:33` (Low)
+  - row 828 `src/remotecontrol_roadmap_log.cpp:2041` (Medium)
+  - row 836 `src/remotecontrol_roadmap_log.cpp:1557` (Low)
+  - row 852 `src/remotecontrol_roadmap_query_verb.cpp:292` (Low)
+  - row 853 `src/remotecontrol_roadmap_query_verb.cpp:2472` (Low)
+  - row 855 `src/remotecontrol_roadmap_query.cpp:58` (Low)
+  - row 1594 `src/remotecontrol_roadmap_query.cpp:887` (Low)
+  - row 1595 `src/remotecontrol_roadmap_query.cpp:887` (Low)
+  - row 1596 `src/remotecontrol_roadmap_query.cpp:2284` (Low)
+  - row 1597 `src/remotecontrol_roadmap_query.cpp:2414` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6566] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-state-workspace.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 892 `src/remotecontrol_workspace.cpp:1247` (Medium)
+  - row 893 `src/remotecontrol_workspace.cpp:83` (Low)
+  - row 894 `src/remotecontrol_workspace.cpp:1852` (Low)
+  - row 895 `src/remotecontrol_workspace.cpp:3493` (Low)
+  - row 896 `src/remotecontrol_workspace.cpp:1331` (Low)
+  - row 912 `src/remotecontrol_state.cpp:109` (Low)
+  - row 913 `src/remotecontrol_state.cpp:1865` (Low)
+  - row 1598 `src/remotecontrol_state.cpp:135` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6567] **Correct the false or stale comments the 2026-11-06 reviews found in mcp-transport.**
+  26 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 80 `src/remotecontrolgate.h:28` (Medium)
+  - row 81 `mcpdsocket.cpp:20` (Low)
+  - row 797 `src/remotecontrol.cpp:198` (Medium)
+  - row 799 `src/remotecontrol_internal.h:188` (Medium)
+  - row 800 `src/remotecontrol_internal.h:553` (Medium)
+  - row 801 `src/remotecontrol_internal.h:7` (Medium)
+  - row 802 `src/remotecontrol.cpp:1925` (Medium)
+  - row 804 `src/mcpdmain.cpp:275` (Low)
+  - row 805 `src/remotecontrol.cpp:2137` (Low)
+  - row 806 `src/remotecontrol.cpp:666` (Low)
+  - row 807 `src/remotecontrol.cpp:609` (Low)
+  - row 808 `src/remotecontrol.cpp:501` (Low)
+  - row 809 `src/remotecontrol.cpp:1307` (Low)
+  - row 810 `src/remotecontrol.cpp:7` (Low)
+  - row 811 `src/remotecontrol.h:1350` (Low)
+  - row 812 `src/remotecontrolgate.h:47` (Low)
+  - row 813 `src/remotecontrol_internal.h:144` (Low)
+  - row 814 `src/remotecontrol.cpp:2290` (Low)
+  - row 1584 `src/remotecontrol.h:145` (Low)
+  - row 1585 `src/remotecontrol.h:1291` (Low)
+  - row 1589 `src/remotecontrol_internal.h:423` (Low)
+  - row 1590 `src/remotecontrol_internal.h:443` (Low)
+  - row 1600 `src/remotecontrolgate.cpp:1` (Low)
+  - row 1601 `src/remotecontrolgate.cpp:2` (Low)
+  - row 1602 `src/remotecontrolgate.h:1` (Low)
+  - row 1603 `src/remotecontrolgate.h:11` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6568] **Correct the false or stale comments the 2026-11-06 reviews found in model-switching.**
+  11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 265 `docs/subsystems.md (docs/subsystems.md)` (Low)
+  - row 1106 `src/modelrecommender.h:34` (High)
+  - row 1112 `src/modelautoswitch.cpp:108-122` (Medium)
+  - row 1113 `src/llmclient.h:65-66` (Medium)
+  - row 1117 `src/modelautoswitch.h:144` (Low)
+  - row 1118 `src/modelautoswitch.cpp:198-199` (Low)
+  - row 1122 `src/modelswitchledger.h:256-258` (Low)
+  - row 1123 `src/aidialog.h:42` (Low)
+  - row 1124 `src/aidialog.cpp:160-163` (Low)
+  - row 1508 `src/aidialog.cpp:139` (Low)
+  - row 1509 `src/aidialog.h:27` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6569] **Correct the false or stale comments the 2026-11-06 reviews found in other.**
+  24 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1487 `CMakeLists.txt:252` (Low)
+  - row 1488 `CMakeLists.txt:374` (Low)
+  - row 1489 `CMakeLists.txt:418` (Low)
+  - row 1490 `CMakeLists.txt:440` (Low)
+  - row 1491 `CMakeLists.txt:1190` (Low)
+  - row 1492 `CMakeLists.txt:1594` (Low)
+  - row 1493 `CMakeLists.txt:1606` (Low)
+  - row 1494 `CMakeLists.txt:1653` (Low)
+  - row 1495 `CMakeLists.txt:2228` (Low)
+  - row 1496 `CMakeLists.txt:2363` (Low)
+  - row 1497 `CMakeLists.txt:2667` (Low)
+  - row 1498 `CMakeLists.txt:3722` (Low)
+  - row 1499 `CMakeLists.txt:3870` (Low)
+  - row 1500 `CMakeLists.txt:3940` (Low)
+  - row 1501 `CMakeLists.txt:4129` (Low)
+  - row 1502 `CMakeLists.txt:4170` (Low)
+  - row 1503 `CMakeLists.txt:4177` (Low)
+  - row 1504 `CMakeLists.txt:4373` (Low)
+  - row 1505 `packaging/check-version-drift.sh:58` (Low)
+  - row 1648 `tools/check-shipped-coverage.sh:214` (Low)
+  - row 1649 `tools/check-shipped-coverage.sh:214` (Low)
+  - row 1650 `tools/check-shipped-coverage.sh:214` (Low)
+  - row 1651 `tools/check-shipped-coverage.sh:215` (Low)
+  - row 1652 `tools/safe-build.sh:2` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: other.
+
+- 📋 [ANTS-6570] **Correct the false or stale comments the 2026-11-06 reviews found in plugins-lua.**
+  25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 201 `PLUGINS.md (PLUGINS.md)` (Low)
+  - row 202 `pluginmanager.cpp:208` (Low)
+  - row 1146 `src/luaengine.cpp:1165` (Medium)
+  - row 1148 `src/pluginmanager.cpp:463` (Medium)
+  - row 1152 `src/pluginmanager.cpp:572` (Low)
+  - row 1153 `src/pluginmanager.h:92` (Low)
+  - row 1154 `src/pluginmanager.cpp:64` (Low)
+  - row 1155 `src/luaengine.cpp:276` (Low)
+  - row 1157 `src/luaengine.cpp:314` (Low)
+  - row 1158 `src/luaengine.cpp:41` (Low)
+  - row 1160 `src/luaengine.h:298` (Low)
+  - row 1546 `src/luaengine.cpp:228` (Low)
+  - row 1547 `src/luaengine.cpp:240` (Low)
+  - row 1548 `src/luaengine.cpp:272` (Low)
+  - row 1549 `src/luaengine.cpp:295` (Low)
+  - row 1550 `src/luaengine.cpp:307` (Low)
+  - row 1551 `src/luaengine.cpp:540` (Low)
+  - row 1552 `src/luaengine.h:26` (Low)
+  - row 1553 `src/luaengine.h:67` (Low)
+  - row 1554 `src/luaengine.h:236` (Low)
+  - row 1555 `src/luaengine.h:275` (Low)
+  - row 1556 `src/luaengine.h:306` (Low)
+  - row 1579 `src/pluginmanager.cpp:115` (Low)
+  - row 1580 `src/pluginmanager.cpp:676` (Low)
+  - row 1581 `src/pluginmanager.h:57` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6571] **Correct the false or stale comments the 2026-11-06 reviews found in review-engines.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1007 `src/indiereviewengine.cpp:976` (Medium)
+  - row 1016 `src/debtsweepengine.cpp:1060` (Low)
+  - row 1017 `src/indiereviewdialog.cpp:150` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6572] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-dialog.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 701 `src/roadmapdialog.h:422` (Medium)
+  - row 702 `src/roadmapdialog.cpp:1146` (Low)
+  - row 703 `src/roadmapdialog.h:14` (Low)
+  - row 704 `src/roadmapdialog.h:656` (Low)
+  - row 705 `src/roadmapdialog.cpp:1493` (Low)
+  - row 706 `src/roadmapdialog.cpp:3422` (Low)
+  - row 707 `src/roadmapdialog.cpp:173` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6573] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-parse-render.**
+  26 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 335 `roadmaprender.cpp:56-63` (Low)
+  - row 660 `src/roadmapparse.h:475` (High)
+  - row 671 `src/roadmapwrite.cpp:86` (Low)
+  - row 672 `src/roadmapwrite.cpp:765` (Low)
+  - row 673 `src/roadmapparse.cpp:7` (Low)
+  - row 674 `src/roadmapparse.cpp:36` (Low)
+  - row 675 `src/roadmapparse.cpp:430` (Low)
+  - row 676 `src/roadmapparse.cpp:1935` (Low)
+  - row 677 `src/roadmapparse.h:385` (Low)
+  - row 678 `src/roadmapparse.h:12` (Low)
+  - row 682 `src/roadmapclock.h:1` (Low)
+  - row 683 `src/roadmaprender.h:8-9` (Medium)
+  - row 684 `src/roadmapfoldin.cpp:593` (Medium)
+  - row 685 `src/roadmapsource.h:296-297` (Medium)
+  - row 686 `src/roadmapsource.h:176-177` (Low)
+  - row 688 `src/roadmaprender.cpp:138-161` (Low)
+  - row 693 `src/roadmapfoldin.cpp:106-107` (Low)
+  - row 694 `src/roadmapfoldin.h:140-141` (Low)
+  - row 1604 `src/roadmapfoldin.cpp:49` (Low)
+  - row 1605 `src/roadmapfoldin.cpp:82` (Low)
+  - row 1606 `src/roadmapfoldin.cpp:517` (Low)
+  - row 1607 `src/roadmapfoldin.cpp:617` (Low)
+  - row 1608 `src/roadmapfoldin.cpp:1022` (Low)
+  - row 1609 `src/roadmapfoldin.h:77` (Low)
+  - row 1613 `src/roadmapparse.cpp:1377` (Low)
+  - row 1614 `src/roadmapparse.cpp:1401` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6574] **Correct the false or stale comments the 2026-11-06 reviews found in roadmap-store.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 637 `src/roadmapstore.cpp:2280` (High)
+  - row 641 `src/roadmapstore.cpp:3894` (Medium)
+  - row 645 `src/roadmapmigrateload.h:60` (High)
+  - row 647 `src/roadmapmigrateverb.h:96` (Medium)
+  - row 658 `src/roadmapmigrateverb.cpp:393` (Low)
+  - row 1610 `src/roadmapmigrate.cpp:187` (Low)
+  - row 1611 `src/roadmapmigrate.cpp:206` (Low)
+  - row 1612 `src/roadmapmigrate.cpp:1307` (Low)
+  - row 1615 `src/roadmapstore.h:1123` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6575] **Correct the false or stale comments the 2026-11-06 reviews found in shared-utilities.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 225 `pathvalidation.cpp:252` (Low)
+  - row 1203 `src/pathvalidation.cpp:44-58` (Low)
+  - row 1205 `src/gitwrap.cpp:28` (Low)
+  - row 1210 `src/subsystemmap.h:7` (Low)
+  - row 1213 `src/guithread.h:106-107` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6576] **Correct the false or stale comments the 2026-11-06 reviews found in shell-surface.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 282 `None` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6577] **Correct the false or stale comments the 2026-11-06 reviews found in spec-engines.**
+  18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 985 `src/speclog.h:40` (Medium)
+  - row 990 `src/specparse.cpp:164` (Medium)
+  - row 991 `src/specparse.cpp:118` (Low)
+  - row 992 `src/specparse.cpp:1` (Low)
+  - row 993 `src/specconformance.h:37` (Low)
+  - row 994 `src/specconformance.cpp:177` (Low)
+  - row 995 `src/featurecoverage.h:104` (Low)
+  - row 996 `src/featurecoverage.h:183` (Low)
+  - row 997 `src/featurecoverage.cpp:144` (Low)
+  - row 998 `src/featurecoverage.cpp:464` (Low)
+  - row 999 `src/featurecoverage.h:141` (Low)
+  - row 1000 `src/featurecoverage.cpp:29` (Low)
+  - row 1001 `src/speclint.h:28` (Low)
+  - row 1002 `src/speclint.cpp:193` (Low)
+  - row 1534 `src/featurecoverage.h:123` (Low)
+  - row 1535 `src/featurecoverage.h:123` (Low)
+  - row 1620 `src/speclint.cpp:667` (Low)
+  - row 1621 `src/speclint.cpp:668` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6578] **Correct the false or stale comments the 2026-11-06 reviews found in terminal-grid.**
+  19 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 483 `src/terminalgrid.h:787` (High)
+  - row 485 `src/terminalgrid.cpp:2285` (Medium)
+  - row 490 `src/terminalgrid.cpp:1016` (Medium)
+  - row 492 `src/terminalgrid.cpp:1466` (Low)
+  - row 493 `src/terminalgrid.h:59` (Low)
+  - row 494 `src/terminalgrid.cpp:3074` (Low)
+  - row 498 `src/terminalgrid.cpp:2153` (Low)
+  - row 1624 `src/terminalgrid.cpp:772` (Low)
+  - row 1625 `src/terminalgrid.cpp:855` (Low)
+  - row 1626 `src/terminalgrid.cpp:1430` (Low)
+  - row 1627 `src/terminalgrid.cpp:1809` (Low)
+  - row 1628 `src/terminalgrid.cpp:2379` (Low)
+  - row 1629 `src/terminalgrid.cpp:3512` (Low)
+  - row 1630 `src/terminalgrid.cpp:3671` (Low)
+  - row 1631 `src/terminalgrid.h:138` (Low)
+  - row 1632 `src/terminalgrid.h:178` (Low)
+  - row 1633 `src/terminalgrid.h:203` (Low)
+  - row 1634 `src/terminalgrid.h:809` (Low)
+  - row 1635 `src/terminalgrid.h:968` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6579] **Correct the false or stale comments the 2026-11-06 reviews found in terminal-widget.**
+  21 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 499 `src/terminalwidget.h:1005` (Medium)
+  - row 500 `src/terminalwidget.cpp:2645-2647` (Medium)
+  - row 501 `src/terminalwidget.cpp:1486` (Low)
+  - row 502 `src/terminalwidget.cpp:890-891` (Low)
+  - row 503 `src/terminalwidget.cpp:2227` (Low)
+  - row 504 `src/terminalwidget.cpp:2846` (Low)
+  - row 505 `src/terminalwidget.cpp:2715-2746` (Low)
+  - row 519 `src/terminalwidget.cpp:5968` (Medium)
+  - row 521 `src/terminalwidget.cpp:6231` (Medium)
+  - row 527 `src/terminalwidget.cpp:5582` (Low)
+  - row 528 `src/terminalwidget.cpp:6441` (Low)
+  - row 1636 `src/terminalwidget.cpp:160` (Low)
+  - row 1637 `src/terminalwidget.cpp:1085` (Low)
+  - row 1638 `src/terminalwidget.cpp:1170` (Low)
+  - row 1639 `src/terminalwidget.cpp:1348` (Low)
+  - row 1640 `src/terminalwidget.cpp:3458` (Low)
+  - row 1641 `src/terminalwidget.cpp:6224` (Low)
+  - row 1642 `src/terminalwidget.cpp:6281` (Low)
+  - row 1643 `src/terminalwidget.cpp:6300` (Low)
+  - row 1644 `src/terminalwidget.cpp:6312` (Low)
+  - row 1645 `src/terminalwidget.cpp:6324` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6580] **Correct the false or stale comments the 2026-11-06 reviews found in test-audit-verify.**
+  10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1025 `src/mutationprobe.cpp:167` (Medium)
+  - row 1028 `src/verifyengine.h:79` (Medium)
+  - row 1033 `src/testauditengine.cpp:2168` (Low)
+  - row 1034 `src/testauditengine.cpp:2258` (Low)
+  - row 1037 `src/testauditengine.h:53` (Low)
+  - row 1038 `src/testrescache.h:53` (Low)
+  - row 1039 `src/mutationprobe.h:86` (Low)
+  - row 1040 `src/testauditdialog.cpp:438` (Low)
+  - row 1043 `src/verifyengine.cpp:439` (Low)
+  - row 1044 `src/testauditdialog.cpp:209` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6581] **Correct the false or stale comments the 2026-11-06 reviews found in tools-ci-gate.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1243 `tools/check-roadmap.sh:15` (Medium)
+  - row 1244 `tools/check-standard-mirrors.sh:213` (Medium)
+  - row 1246 `tools/ci_workflow.py:11` (Low)
+  - row 1248 `tools/qt62-guard.sh:318` (Low)
+  - row 1249 `tools/local-ci.sh:8` (Low)
+  - row 1250 `tools/check-standard-mirrors.sh:7` (Low)
+  - row 1251 `tools/hooks/pre-commit:10` (Low)
+  - row 1253 `tools/install-hooks.sh:184` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: tools-ci-gate.
+
+- 📋 [ANTS-6582] **Correct the false or stale comments the 2026-11-06 reviews found in tools-roadmap-surveys.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1258 `tools/roadmap-backup-lib.sh:7` (Low)
+  - row 1259 `tools/roadmap-corpus-survey.py:304` (Low)
+  - row 1260 `tools/roadmap-conformance.py:130` (Low)
+  - row 1261 `tools/mcp-arg-usage-survey.py:13` (Low)
+  - row 1268 `tools/roadmap-roundtrip-diff.py:37` (Low)
+  - row 1269 `tools/quote-displacement-survey.py:10` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: tools-roadmap-surveys.
+
+- 📋 [ANTS-6583] **Correct the false or stale comments the 2026-11-06 reviews found in vt-parser-pty.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 474 `src/vtstream.cpp:20-21` (Medium)
+  - row 475 `src/vtstream.cpp:35-36` (Low)
+  - row 476 `src/vtparser.cpp:481-483` (Low)
+  - row 477 `src/ptyhandler.cpp:659-670` (Low)
+  - row 478 `src/vtparser.h:52-53` (Low)
+  - row 479 `src/ptyhandler.cpp:357-358` (Low)
+  - row 1582 `src/ptyhandler.cpp:440` (Low)
+  - row 1583 `src/ptyhandler.cpp:667` (Low)
+  **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
+  Kind: doc-fix.
+  Source: review-code + review-readability 2026-11-06 (comment-fix).
+  Lanes: vt-parser-pty.
+
+### Duplicate folding (2026-11-06 review)
+
+- 📋 [ANTS-6584] **Fold the duplicated logic the 2026-11-06 reviews found in app-entry-dialogs.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1176 `src/diffviewer.cpp:474-480` (Medium)
+  - row 1177 `src/diffviewer.cpp:531-534` (Low)
+  - row 1182 `src/settingsdialog.cpp:1356` (Low)
+  - row 1183 `src/diffviewer.cpp:319-322` (Low)
+  - row 1189 `src/claudesetup.cpp:169-171` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6585] **Fold the duplicated logic the 2026-11-06 reviews found in audit-dialog.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 594 `src/auditdialog_debtsweep.cpp:243` (Medium)
+  - row 595 `src/auditdialog.cpp:2173` (Medium)
+  - row 602 `src/auditdialog.cpp:1227` (Low)
+  - row 603 `src/auditdialog_catalogue.cpp:115` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6586] **Fold the duplicated logic the 2026-11-06 reviews found in audit-engine.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 318 `auditrunner.cpp:1007-1008` (Low)
+  - row 605 `src/auditrunner.cpp:1614` (Medium)
+  - row 606 `src/auditrunner.cpp:2754` (Medium)
+  - row 607 `src/auditrunner.cpp:954-988` (Medium)
+  - row 617 `src/auditscope.cpp:83` (High)
+  - row 619 `src/auditengine.cpp:308` (High)
+  - row 620 `src/auditcache.cpp:348` (Medium)
+  - row 626 `src/auditengine.cpp:1337` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6587] **Fold the duplicated logic the 2026-11-06 reviews found in build-system.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1215 `CMakeLists.txt:2057` (High)
+  - row 1216 `CMakeLists.txt:1678` (Medium)
+  - row 1221 `CMakeLists.txt:4559` (Medium)
+  - row 1222 `CMakeLists.txt:132` (Medium)
+  - row 1234 `CMakeLists.txt:1368` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: build-system.
+
+- 📋 [ANTS-6588] **Fold the duplicated logic the 2026-11-06 reviews found in changelog-feedback.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 419 `changeloglog.cpp:514` (Low)
+  - row 1161 `src/changelogquery.cpp:501` (Medium)
+  - row 1163 `src/changeloglog.cpp:70` (Medium)
+  - row 1164 `src/changeloglog.cpp:775` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6589] **Fold the duplicated logic the 2026-11-06 reviews found in chrome-widgets.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 566 `src/kwinpositiontracker.cpp:25` (Medium)
+  - row 567 `src/opaquemenubar.h:58` (Low)
+  - row 568 `src/titlebar.cpp:95` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-6590] **Fold the duplicated logic the 2026-11-06 reviews found in claude-integration.**
+  17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 91 `src/claudeintegration_terminal.cpp:1691` (Medium)
+  - row 710 `src/claudeintegration.cpp:172` (Medium)
+  - row 711 `src/mcptoolregistry.cpp:515` (Medium)
+  - row 712 `src/claudeintegration.cpp:2436` (Medium)
+  - row 717 `src/claudeintegration.cpp:2501` (Low)
+  - row 725 `src/claudeintegration_reports.cpp:476` (Medium)
+  - row 726 `src/claudeintegration_orientation.cpp:342` (Medium)
+  - row 727 `src/claudeintegration_codenav.cpp:892` (Medium)
+  - row 729 `src/claudeintegration_orientation.cpp:2052` (Medium)
+  - row 730 `src/claudeintegration_orientation.cpp:515-521` (Medium)
+  - row 731 `src/claudeintegration_orientation.cpp:893` (Low)
+  - row 732 `src/claudeintegration_orientation.cpp:2478` (Low)
+  - row 735 `src/claudeintegration_sessions.cpp:885-886` (Medium)
+  - row 736 `src/claudeintegration_sessions.cpp:663` (Medium)
+  - row 737 `src/claudeintegration_callpolicy.cpp:270-293` (Medium)
+  - row 738 `src/claudeintegration_store.cpp:2270-2276` (Medium)
+  - row 742 `src/claudeintegration_store.cpp:1834-1837` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6591] **Fold the duplicated logic the 2026-11-06 reviews found in claude-session-widgets.**
+  14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 750 `src/claudestatuswidgets.cpp:388-389` (Medium)
+  - row 751 `src/claudestatuswidgets.cpp:364-372` (Medium)
+  - row 752 `src/claudestatuswidgets.cpp:2543-2545` (Medium)
+  - row 756 `src/claudestatuswidgets.cpp:1411` (Medium)
+  - row 757 `src/claudestatuswidgets.cpp:2233-2237` (Low)
+  - row 758 `src/claudestatuswidgets.cpp:1052-1055` (Low)
+  - row 760 `src/claudestatuswidgets.cpp:590` (Low)
+  - row 771 `src/claudetabtracker.cpp:269-274` (Medium)
+  - row 773 `src/claudebgtasks.cpp:392-403` (Low)
+  - row 774 `src/claudebgtasks.cpp:112-114` (Low)
+  - row 777 `src/claudeallowlist.cpp:66-93` (Medium)
+  - row 778 `src/claudeallowlist.cpp:466-468` (Low)
+  - row 779 `src/claudeallowlist.cpp:669` (Low)
+  - row 789 `src/claudetranscript.cpp:134-141` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6592] **Fold the duplicated logic the 2026-11-06 reviews found in code-index-search.**
+  15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1046 `src/findsources.cpp:110` (Medium)
+  - row 1047 `src/findsources.cpp:167` (Medium)
+  - row 1049 `src/codebaseindex.cpp:709` (Medium)
+  - row 1050 `src/trace/languages.cpp:160` (Medium)
+  - row 1051 `src/fileoutline.cpp:21` (Low)
+  - row 1052 `src/similarcode.cpp:26` (Low)
+  - row 1054 `src/fileoutline.cpp:1179` (Low)
+  - row 1055 `src/fileoutline.cpp:162` (Low)
+  - row 1056 `src/readregion.cpp:332` (Low)
+  - row 1074 `src/codewalk.cpp:53-54` (Medium)
+  - row 1075 `src/symbolquery.cpp:53-55` (Medium)
+  - row 1076 `src/sourcescrapes.cpp:187` (Medium)
+  - row 1077 `src/cochangefamily.cpp:44` (Medium)
+  - row 1078 `src/commentclaims.cpp:557-559` (Low)
+  - row 1080 `src/symbolquery.cpp:903-908` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6593] **Fold the duplicated logic the 2026-11-06 reviews found in config-session-project.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1129 `src/sessionmanager.cpp:44` (High)
+  - row 1130 `src/sessionmanager.cpp:398` (Medium)
+  - row 1131 `src/projectsettings.cpp:514` (High)
+  - row 1132 `src/projectsettings.cpp:630` (Medium)
+  - row 1145 `src/sessionmemoryengine.cpp:191` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6594] **Fold the duplicated logic the 2026-11-06 reviews found in dev-python-ci-packaging.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 464 `tools/rc-namespace-scan.py:107-114` (Low)
+  - row 465 `tools/roadmap-archive-survey.py:65-71` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: dev-python-ci-packaging.
+
+- 📋 [ANTS-6595] **Fold the duplicated logic the 2026-11-06 reviews found in dev-shell-tools.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 448 `tools/local-ci.sh:364-369` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: dev-shell-tools.
+
+- 📋 [ANTS-6596] **Fold the duplicated logic the 2026-11-06 reviews found in diagnostics-logging.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 431 `buildcache.cpp:43` (High)
+  - row 1190 `src/buildcache.cpp:157` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6597] **Fold the duplicated logic the 2026-11-06 reviews found in dialog-chrome-theme.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 578 `src/themes.cpp:374` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6598] **Fold the duplicated logic the 2026-11-06 reviews found in doc-engines.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 366 `doclint.cpp:567` (Medium)
+  - row 367 `docfacts.cpp:136-150` (Medium)
+  - row 963 `src/docdedup.cpp:52` (Medium)
+  - row 964 `src/docsindex.cpp:710` (Medium)
+  - row 965 `src/doccitations.cpp:1121` (Medium)
+  - row 980 `src/doccitations.cpp:380` (Low)
+  - row 981 `src/doccitations.cpp:1550` (Low)
+  - row 1425 `src/doclint.cpp:671` (Info)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6599] **Fold the duplicated logic the 2026-11-06 reviews found in hooks-packaging.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1272 `packaging/flatpak/make-flathub-manifest.sh:44` (Medium)
+  - row 1274 `hooks/ants-inbox-notice.sh:41` (Medium)
+  - row 1275 `packaging/archlinux/PKGBUILD:66` (Medium)
+  - row 1293 `packaging/completions/ants-terminal.bash:24` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: hooks-packaging.
+
+- 📋 [ANTS-6600] **Fold the duplicated logic the 2026-11-06 reviews found in mainwindow.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 538 `src/mainwindow.cpp:2374-2376` (Low)
+  - row 539 `src/mainwindow.cpp:1467` (Low)
+  - row 548 `src/mainwindow_menus.cpp:382` (Medium)
+  - row 550 `src/mainwindow_sessions.cpp:300` (Low)
+  - row 551 `src/mainwindow_tabs.cpp:904` (Low)
+  - row 552 `src/mainwindow_menus.cpp:93` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6601] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-content-verbs.**
+  17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 929 `src/remotecontrol_docs.cpp:2290-2299` (High)
+  - row 930 `src/remotecontrol_docs.cpp:345-369` (Medium)
+  - row 931 `src/remotecontrol_docs.cpp:233-234` (Medium)
+  - row 932 `src/remotecontrol_terminal.cpp:204-237` (Medium)
+  - row 936 `src/remotecontrol_terminal.cpp:668-680` (Low)
+  - row 939 `src/remotecontrol_know_how.cpp:21-27` (Low)
+  - row 940 `src/remotecontrol_docs.cpp:2390-2394` (Low)
+  - row 941 `src/remotecontrol_terminal.cpp:979-988` (Low)
+  - row 945 `src/remotecontrol_changelog.cpp:1387-1457` (Medium)
+  - row 946 `src/remotecontrol_changelog.cpp:1189-1197` (Medium)
+  - row 947 `src/remotecontrol_feedback.cpp:1244-1308` (Medium)
+  - row 948 `src/remotecontrol_changelog.cpp:420-426` (Medium)
+  - row 955 `src/remotecontrol_changelog.cpp:1130-1132` (Low)
+  - row 957 `src/remotecontrol_session_message.cpp:146-150` (Low)
+  - row 958 `src/remotecontrol_feedback.cpp:1601-1605` (Low)
+  - row 959 `src/remotecontrol_feedback.cpp:205-215` (Low)
+  - row 960 `src/githooksreport.cpp:218` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6602] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-review-verbs.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 917 `src/remotecontrol_review.cpp:465` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6603] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-roadmap-batch.**
+  10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 861 `src/remotecontrol_roadmap_log_batch.cpp:3089-3127` (High)
+  - row 864 `src/remotecontrol_roadmap_release.cpp:48-55` (Medium)
+  - row 865 `src/remotecontrol_roadmap_log_batch.cpp:1576-1589` (Medium)
+  - row 866 `src/remotecontrol_roadmap_log_batch.cpp:1399-1420` (Medium)
+  - row 869 `src/remotecontrol_roadmap_log_batch.cpp:531-601` (Low)
+  - row 870 `src/remotecontrol_roadmap_log_batch.cpp:1712-1722` (Medium)
+  - row 873 `src/remotecontrol_roadmap_log_batch.cpp:2223-2236` (Low)
+  - row 874 `src/remotecontrol_roadmap_log_batch.cpp:223-241` (Low)
+  - row 875 `src/remotecontrol_roadmap_log_batch.cpp:1106-1116` (Low)
+  - row 876 `src/remotecontrol_roadmap_log_batch.cpp:2138-2150` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6604] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+  17 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 815 `src/remotecontrol_roadmap_log.cpp:2795` (High)
+  - row 823 `src/remotecontrol_roadmap_log.cpp:1239` (Medium)
+  - row 824 `src/remotecontrol_roadmap_log.cpp:2097-2121` (Medium)
+  - row 826 `src/remotecontrol_roadmap_log.cpp:922` (Medium)
+  - row 831 `src/remotecontrol_roadmap_log.cpp:2284` (Low)
+  - row 832 `src/remotecontrol_roadmap_log.cpp:1157` (Low)
+  - row 833 `src/remotecontrol_roadmap_log.cpp:1598` (Low)
+  - row 834 `src/remotecontrol_roadmap_log.cpp:1644` (Low)
+  - row 835 `src/remotecontrol_roadmap_log.cpp:4072` (Low)
+  - row 842 `src/remotecontrol_roadmap_query_verb.cpp:3428` (High)
+  - row 843 `src/remotecontrol_roadmap_query_verb.cpp:3464` (Medium)
+  - row 845 `src/remotecontrol_roadmap_query_verb.cpp:1620` (Medium)
+  - row 846 `src/remotecontrol_roadmap_query_verb.cpp:1169` (Medium)
+  - row 847 `src/remotecontrol_roadmap_query.cpp:712` (Medium)
+  - row 858 `src/remotecontrol_roadmap_query.cpp:1853` (Low)
+  - row 860 `src/remotecontrol_roadmap_query_verb.cpp:3066` (Low)
+  - row 1388 `src/remotecontrol_roadmap_query_verb.cpp:3253-3309` (Info)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6605] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-state-workspace.**
+  11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 884 `src/remotecontrol_workspace.cpp:699` (Medium)
+  - row 897 `src/remotecontrol_workspace.cpp:252` (Low)
+  - row 898 `src/remotecontrol_workspace.cpp:1260` (Low)
+  - row 899 `src/remotecontrol_workspace.cpp:2010` (Low)
+  - row 900 `src/remotecontrol_workspace.cpp:3354` (Low)
+  - row 902 `src/remotecontrol_state.cpp:599` (Medium)
+  - row 903 `src/remotecontrol_state.cpp:2589` (Medium)
+  - row 904 `src/remotecontrol_state.cpp:4070` (Medium)
+  - row 905 `src/remotecontrol_state.cpp:3804-3807` (Low)
+  - row 906 `src/remotecontrol_state.cpp:3152-3156` (Low)
+  - row 907 `src/remotecontrol_state.cpp:333` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6606] **Fold the duplicated logic the 2026-11-06 reviews found in mcp-transport.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 792 `src/remotecontrol.cpp:712` (High)
+  - row 795 `src/remotecontrol.cpp:1891` (Medium)
+  - row 796 `src/remotecontrol.cpp:1552` (Medium)
+  - row 1378 `src/roadmapmigrateload.cpp:913` (Info)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6607] **Fold the duplicated logic the 2026-11-06 reviews found in model-switching.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1107 `src/modelswitchledger.cpp:298` (Medium)
+  - row 1109 `src/modelnearmissledger.cpp:25` (Medium)
+  - row 1111 `src/modelswitchledger.cpp:375-382` (Medium)
+  - row 1115 `src/modelautoswitch.cpp:317-319` (Low)
+  - row 1116 `src/modelrecommender.cpp:272-277` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6608] **Fold the duplicated logic the 2026-11-06 reviews found in plugins-lua.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 199 `src/luaengine.cpp:719` (High)
+  - row 1147 `src/pluginmanager.cpp:307` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6609] **Fold the duplicated logic the 2026-11-06 reviews found in review-engines.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1006 `src/indiereviewengine.cpp:907` (Medium)
+  - row 1009 `src/coldeyesengine.cpp:393` (Medium)
+  - row 1019 `src/debtsweepengine.cpp:2275` (Low)
+  - row 1021 `src/debtsweepengine.cpp:599` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6610] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-dialog.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 341 `src/roadmapdialog.cpp:1848` (Medium)
+  - row 696 `src/roadmapdialog.cpp:216` (Medium)
+  - row 697 `src/roadmapdialog.cpp:2217` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6611] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-parse-render.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 661 `src/roadmapparse.cpp:1783` (Medium)
+  - row 664 `src/roadmapparse.cpp:1223` (Medium)
+  - row 665 `src/roadmapparse.cpp:117` (Medium)
+  - row 680 `src/roadmapparse.cpp:887` (Low)
+  - row 681 `src/roadmapparse.cpp:867` (Low)
+  - row 689 `src/roadmapfoldin.cpp:310-313` (Medium)
+  - row 692 `src/roadmaprender.cpp:396` (Low)
+  - row 1347 `src/passheadingwrite.cpp:269` (Info)
+  - row 1349 `src/passheadingwrite.cpp:94` (Info)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6612] **Fold the duplicated logic the 2026-11-06 reviews found in roadmap-store.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 638 `src/roadmapstore.cpp:2781` (Medium)
+  - row 639 `src/roadmapstore.cpp:2908` (Medium)
+  - row 652 `src/roadmapmigrateload.cpp:85` (Medium)
+  - row 653 `src/roadmapmigrateverb.cpp:416` (Medium)
+  - row 656 `src/roadmapmigrateload.cpp:977` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6613] **Fold the duplicated logic the 2026-11-06 reviews found in spec-engines.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 374 `specconformance.cpp:45-52` (Medium)
+  - row 376 `speclog.cpp:626` (Low)
+  - row 381 `specparse.cpp:191-194` (Low)
+  - row 982 `src/speclog.cpp:200` (High)
+  - row 983 `src/speclog.cpp:211` (Medium)
+  - row 984 `src/speclint.cpp:641` (Medium)
+  - row 1429 `src/speclog.cpp:319` (Info)
+  - row 1432 `src/specparse.cpp:107` (Info)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6614] **Fold the duplicated logic the 2026-11-06 reviews found in terminal-grid.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 486 `src/terminalgrid.cpp:477` (Medium)
+  - row 487 `src/terminalgrid.cpp:2993` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6615] **Fold the duplicated logic the 2026-11-06 reviews found in terminal-widget.**
+  12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 506 `src/terminalwidget.cpp:1913-1916` (Medium)
+  - row 507 `src/terminalwidget.cpp:1472-1474` (Low)
+  - row 508 `src/terminalwidget.cpp:2443-2454` (Low)
+  - row 509 `src/terminalwidget.cpp:1965-1974` (Low)
+  - row 513 `src/terminalwidget.cpp:4026` (Medium)
+  - row 514 `src/terminalwidget.cpp:3287` (Medium)
+  - row 515 `src/terminalwidget.cpp:5949` (Medium)
+  - row 517 `src/terminalwidget.cpp:6469` (Medium)
+  - row 518 `src/terminalwidget.cpp:5408` (Medium)
+  - row 524 `src/terminalaccessible.cpp:92` (Medium)
+  - row 525 `src/terminalwidget.cpp:6409` (Low)
+  - row 526 `src/terminalwidget.cpp:4595` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6616] **Fold the duplicated logic the 2026-11-06 reviews found in test-audit-verify.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1024 `src/testauditdialog.cpp:56` (Medium)
+  - row 1027 `src/testrunners.cpp:658` (Medium)
+  - row 1030 `src/testauditengine.cpp:1188` (Low)
+  - row 1031 `src/testauditengine.cpp:2218` (Low)
+  - row 1041 `src/testauditdialog.cpp:304` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6617] **Fold the duplicated logic the 2026-11-06 reviews found in tools-ci-gate.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1235 `tools/install-hooks.sh:125` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: tools-ci-gate.
+
+- 📋 [ANTS-6618] **Fold the duplicated logic the 2026-11-06 reviews found in tools-roadmap-surveys.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1254 `tools/roadmap-conformance.py:39` (Medium)
+  - row 1262 `tools/spec-header-survey.py:285` (Low)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: tools-roadmap-surveys.
+
+- 📋 [ANTS-6619] **Fold the duplicated logic the 2026-11-06 reviews found in vt-parser-pty.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 473 `src/vtparser.cpp:240-241` (Medium)
+  **Layman:** The same logic is written more than once here, so the copies drift apart.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (duplicate).
+  Lanes: vt-parser-pty.
+
+### Other bugs (2026-11-06 review)
+
+- 📋 [ANTS-6620] **Fix the smaller bugs the 2026-11-06 reviews found in app-entry-dialogs.**
+  14 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 240 `claudesetup.cpp:181-187` (Medium)
+  - row 243 `diffviewer.cpp:852` (Medium)
+  - row 244 `claudesetup.cpp:238-239` (Low)
+  - row 245 `settingsdialog.cpp:375-376` (Low)
+  - row 246 `settingsdialog.cpp:1332-1335` (Low)
+  - row 247 `claudesetup.cpp:686-688` (Low)
+  - row 248 `antshelpermain.cpp:157-158` (Low)
+  - row 249 `antshelpermain.cpp:119-123` (Low)
+  - row 250 `main.cpp:163-189` (Low)
+  - row 251 `diffviewer.cpp:972-976` (Low)
+  - row 253 `main.cpp:90-96` (Low)
+  - row 1460 `src/main.cpp:438` (Info)
+  - row 1461 `src/sshdialog.cpp:176` (Info)
+  - row 1462 `src/settingsdialog.cpp:1087` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6621] **Fix the smaller bugs the 2026-11-06 reviews found in audit-dialog.**
+  16 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 292 `auditdialog.cpp:3400` (Medium)
+  - row 293 `auditdialog.cpp:2556` (Medium)
+  - row 294 `auditdialog.cpp:828` (Medium)
+  - row 295 `auditdialog_debtsweep.cpp:322` (Medium)
+  - row 296 `auditdialog.cpp:1291–1299` (Medium)
+  - row 298 `auditdialog.cpp:2252–2272` (Low)
+  - row 299 `auditdialog_export.cpp:153` (Low)
+  - row 300 `auditdialog_export.cpp:99` (Low)
+  - row 301 `auditdialog.cpp:1861` (Low)
+  - row 302 `auditdialog.cpp:1968` (Low)
+  - row 303 `auditdialog.cpp:2709–2713` (Low)
+  - row 305 `auditdialog_export.cpp:647` (Low)
+  - row 306 `auditdialog_triage.cpp:516–531` (Low)
+  - row 1322 `src/auditdialog_triage.cpp:408` (Info)
+  - row 1323 `src/auditdialog_triage.cpp:436` (Info)
+  - row 1324 `src/auditdialog.cpp:115` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6622] **Fix the smaller bugs the 2026-11-06 reviews found in audit-engine.**
+  18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 311 `auditdelta.cpp:41` (Medium)
+  - row 312 `auditscope.cpp:247-249` (Medium)
+  - row 315 `auditautofix.cpp:74-85` (Medium)
+  - row 316 `auditengine.cpp:411` (Low)
+  - row 317 `audithygiene.cpp:101` (Low)
+  - row 319 `auditrunner.cpp:2554-2560` (Low)
+  - row 320 `auditrunner.cpp:1664-1680` (Low)
+  - row 323 `auditrunner.cpp:2711-2732` (Low)
+  - row 324 `falseposledger.cpp:206` (Low)
+  - row 1325 `src/auditrunner.cpp:1614-1631` (Info)
+  - row 1326 `src/auditrunner.cpp:993-995` (Info)
+  - row 1327 `src/auditrulequality.cpp:260-264` (Info)
+  - row 1328 `src/auditscope.cpp:35` (Info)
+  - row 1330 `src/falseposledger.cpp:301` (Info)
+  - row 1331 `src/auditengine.cpp:1231` (Info)
+  - row 1332 `src/auditengine.cpp:1038` (Info)
+  - row 1333 `src/debtsweepengine.cpp:1574` (Info)
+  - row 1334 `src/auditcache.h:99` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6623] **Fix the smaller bugs the 2026-11-06 reviews found in build-system.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1468 `CMakeLists.txt:305` (Info)
+  - row 1469 `CMakeLists.txt:2088` (Info)
+  - row 1470 `CMakeLists.txt:2150` (Info)
+  - row 1471 `CMakeLists.txt:2716` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: build-system.
+
+- 📋 [ANTS-6624] **Fix the smaller bugs the 2026-11-06 reviews found in changelog-feedback.**
+  12 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 416 `changeloglog.cpp:946–947` (Medium)
+  - row 417 `feedbackfile.cpp:490` (Medium)
+  - row 418 `feedbackfile.cpp:568` (Medium)
+  - row 421 `changeloglog.cpp:1069–1076` (Low)
+  - row 422 `changeloglog.cpp:560–566` (Low)
+  - row 424 `feedbackfile.cpp:668` (Low)
+  - row 425 `feedbackfile.cpp:331–334` (Low)
+  - row 426 `feedbackstore.cpp:203,220–223` (Low)
+  - row 427 `feedbackstore.cpp:115` (Low)
+  - row 428 `feedbackstore.cpp:95,108` (Low)
+  - row 1458 `src/changeloglog.cpp:541-548` (Info)
+  - row 1459 `src/changelogquery.cpp:506` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6625] **Fix the smaller bugs the 2026-11-06 reviews found in chrome-widgets.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 284 `titlebar.cpp:101` (Medium)
+  - row 285 `coloredtabbar.cpp:319` (Medium)
+  - row 286 `globalshortcutsportal.cpp:279` (Low)
+  - row 287 `kwinpositiontracker.cpp:83` (Low)
+  - row 288 `commandpalette.cpp:28` (Low)
+  - row 1314 `src/titlebar.cpp:38` (Info)
+  - row 1315 `src/toggleswitch.cpp:79` (Info)
+  - row 1316 `src/coloredtabbar.cpp:118` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-6626] **Fix the smaller bugs the 2026-11-06 reviews found in claude-integration.**
+  23 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 83 `src/claudeintegration.cpp:2882` (Medium)
+  - row 84 `src/claudeintegration.cpp:1426` (Medium)
+  - row 85 `src/claudeintegration.cpp:1176-1183` (Medium)
+  - row 86 `src/claudeintegration_sessions.cpp:1146-1149` (Low)
+  - row 87 `src/claudeintegration_sessions.cpp:275-291` (Low)
+  - row 88 `src/claudeintegration.cpp:3438` (Low)
+  - row 89 `claudeintegration_codenav.cpp:729` (Medium)
+  - row 92 `claudeintegration_store.cpp:294-295` (Low)
+  - row 93 `claudeintegration_terminal.cpp:479-481` (Low)
+  - row 96 `claudeintegration_orientation.cpp:2717-2718` (Low)
+  - row 1354 `src/claudeintegration_terminal.cpp:1569` (Info)
+  - row 1355 `src/claudeintegration.cpp:2785` (Info)
+  - row 1357 `src/claudeintegration_callpolicy.cpp:240` (Info)
+  - row 1358 `src/claudeintegration_terminal.cpp:283` (Info)
+  - row 1359 `src/claudeintegration_terminal.cpp:1557` (Info)
+  - row 1360 `src/auditrunner.cpp:1621` (Info)
+  - row 1361 `src/claudeintegration_reports.cpp:922` (Info)
+  - row 1362 `src/claudeintegration_codenav.cpp:103` (Info)
+  - row 1363 `src/claudeintegration_orientation.cpp:2507` (Info)
+  - row 1364 `src/claudeintegration_sessions.cpp:1025,1093` (Info)
+  - row 1365 `src/claudeintegration_callpolicy.cpp:893-898` (Info)
+  - row 1366 `src/claudeintegration_callpolicy.cpp:912-915` (Info)
+  - row 1367 `src/claudeintegration_callpolicy.cpp:276-277` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6627] **Fix the smaller bugs the 2026-11-06 reviews found in claude-session-widgets.**
+  10 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 346 `claudestatuswidgets.cpp:1129` (Medium)
+  - row 347 `claudetabtracker.cpp:212` (Medium)
+  - row 348 `claudestatuswidgets.cpp:2421-2431` (Medium)
+  - row 349 `claudeallowlist.cpp:209` (Low)
+  - row 354 `claudebgtasks.cpp:575` (Low)
+  - row 1368 `src/claudestatuswidgets.cpp:2537-2548` (Info)
+  - row 1369 `src/claudestatuswidgets.cpp:944-974` (Info)
+  - row 1370 `src/claudebgtasks.cpp:455-491` (Info)
+  - row 1371 `src/claudetabtracker.cpp:126` (Info)
+  - row 1373 `src/claudeallowlist.cpp:169` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6628] **Fix the smaller bugs the 2026-11-06 reviews found in code-index-search.**
+  25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 160 `findsources.cpp:338` (Medium)
+  - row 161 `duplicateblocks.cpp:181` (Medium)
+  - row 162 `fileoutline.cpp:1389` (Medium)
+  - row 164 `applyedits.cpp:249` (Low)
+  - row 165 `fileoutline.cpp:1322` (Low)
+  - row 166 `functionsizes.cpp:94` (Low)
+  - row 167 `commentclaims.cpp:318` (Low)
+  - row 168 `sourcescrapes.cpp:1030-1034` (Low)
+  - row 169 `codewalk.cpp:140` (Low)
+  - row 170 `fileoutline.cpp:778-780` (Low)
+  - row 172 `readregion.cpp:213` (Medium)
+  - row 175 `extract.cpp:178` (Medium)
+  - row 178 `regexharden.cpp:26` (Low)
+  - row 179 `trace.cpp:319` (Low)
+  - row 180 `trace.cpp:324-328` (Low)
+  - row 181 `symbolquery.cpp:963` (Low)
+  - row 1439 `src/findsources.cpp:110` (Info)
+  - row 1440 `src/findsources.cpp:167` (Info)
+  - row 1441 `src/fileoutline.cpp:966` (Info)
+  - row 1442 `src/trace/languages.cpp:160` (Info)
+  - row 1443 `src/readregion.cpp:313` (Info)
+  - row 1444 `src/commentclaims.cpp:490` (Info)
+  - row 1445 `src/indiereviewengine.cpp:62-76` (Info)
+  - row 1446 `src/trace/extract.cpp:66-67` (Info)
+  - row 1447 `src/sourcescrapes.cpp:988` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6629] **Fix the smaller bugs the 2026-11-06 reviews found in config-session-project.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 206 `secureio.h:274-276` (Medium)
+  - row 211 `projectlayoutengine.cpp:706` (Low)
+  - row 213 `projectsettings.cpp:139-145` (Low)
+  - row 214 `sessionmanager.cpp:383` (Low)
+  - row 1454 `src/config.cpp:687` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6630] **Fix the smaller bugs the 2026-11-06 reviews found in dev-python-ci-packaging.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 455 `release-audit.yml:145-152` (Medium)
+  - row 456 `release.yml:172-176` (Medium)
+  - row 460 `PKGBUILD:30` (Medium)
+  - row 462 `release.yml:84` (Medium)
+  - row 463 `tools/ci_workflow.py:74-77` (Low)
+  - row 466 `tools/roadmap-corpus-survey.py:288` (Low)
+  - row 467 `tools/token-bench/bench.py:30-31,173` (Low)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: dev-python-ci-packaging.
+
+- 📋 [ANTS-6631] **Fix the smaller bugs the 2026-11-06 reviews found in dev-shell-tools.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 447 `tools/local-ci.sh:275` (Medium)
+  - row 449 `packaging/release.sh:120` (Medium)
+  - row 450 `tools/check-shipped-coverage.sh:47` (Low)
+  - row 451 `tools/check-shipped-coverage.sh:86,173` (Low)
+  - row 452 `tools/vendor-grammars.sh:80-81` (Low)
+  - row 453 `tools/local-ci.sh:407-414` (Low)
+  - row 454 `tools/asan-nightly.sh:84-87` (Low)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: dev-shell-tools.
+
+- 📋 [ANTS-6632] **Fix the smaller bugs the 2026-11-06 reviews found in diagnostics-logging.**
+  15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 432 `buildcache.cpp:200` (Medium)
+  - row 435 `readlog.cpp:163` (Medium)
+  - row 436 `readlog.cpp:246` (Low)
+  - row 437 `readlog.cpp:288` (Low)
+  - row 438 `readlog.cpp:251-254` (Low)
+  - row 439 `readlog.cpp:64` (Low)
+  - row 440 `debuglog.cpp:163-166` (Low)
+  - row 441 `debuglog.cpp:120` (Low)
+  - row 442 `debuglog.cpp:100-103` (Low)
+  - row 443 `tooldetectionengine.cpp:51` (Low)
+  - row 444 `buildcache.cpp:190-193` (Low)
+  - row 445 `buildcache.cpp:63` (Low)
+  - row 1463 `src/buildcache.cpp:87-89` (Info)
+  - row 1464 `src/debuglog.cpp:200-202` (Info)
+  - row 1465 `src/tooldetectionengine.cpp:53-55` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6633] **Fix the smaller bugs the 2026-11-06 reviews found in dialog-chrome-theme.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 230 `verifytrustmodal.cpp:176` (Medium)
+  - row 232 `updatedialog.cpp:80-82` (Low)
+  - row 234 `updatedialog.cpp:199,230` (Low)
+  - row 235 `dialogchrome.cpp:63-68` (Low)
+  - row 236 `dialogshowtracer.cpp:42-49` (Low)
+  - row 237 `verifytrustmodal.cpp:71-76,128` (Low)
+  - row 1319 `src/themes.cpp:357-374` (Info)
+  - row 1320 `src/reviewdialogbase.cpp:433` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6634] **Fix the smaller bugs the 2026-11-06 reviews found in doc-engines.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 370 `doccitations.cpp:1106` (Medium)
+  - row 371 `markdownscan.cpp:222-227` (Low)
+  - row 372 `doccitations.cpp:1474` (Low)
+  - row 1426 `src/docintegrity.cpp:875` (Info)
+  - row 1427 `src/doccitations.cpp:1120` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6635] **Fix the smaller bugs the 2026-11-06 reviews found in hooks-packaging.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1482 `packaging/flatpak/make-flathub-manifest.sh:44` (Info)
+  - row 1483 `packaging/obs/obs-submit.sh:142` (Info)
+  - row 1484 `hooks/ants-bash-veto.sh:131` (Info)
+  - row 1485 `packaging/obs/obs-setup.sh:19` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: hooks-packaging.
+
+- 📋 [ANTS-6636] **Fix the smaller bugs the 2026-11-06 reviews found in mainwindow.**
+  18 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 57 `mainwindow_tabs.cpp:825` (Medium)
+  - row 58 `mainwindow.cpp:2298` (Medium)
+  - row 59 `mainwindow_tabs.cpp:454-461` (Medium)
+  - row 61 `mainwindow_tabs.cpp:719` (Medium)
+  - row 62 `mainwindow.cpp:2224-2225` (Medium)
+  - row 63 `mainwindow_tabs.cpp:1006` (Medium)
+  - row 64 `mainwindow.h:770` (Low)
+  - row 65 `mainwindow_sessions.cpp:243-247` (Low)
+  - row 66 `mainwindow_menus.cpp:94` (Low)
+  - row 67 `mainwindow_menus.cpp:370-389` (Low)
+  - row 69 `mainwindow_internal.h:47` (Low)
+  - row 70 `qt.md` (Low)
+  - row 1306 `src/mainwindow.cpp:3249-3264` (Info)
+  - row 1308 `src/mainwindow.cpp:3059-3073` (Info)
+  - row 1309 `src/mainwindow.cpp:2734-2739` (Info)
+  - row 1310 `src/mainwindow.cpp:1119-1125` (Info)
+  - row 1311 `src/mainwindow.cpp:2893-3010` (Info)
+  - row 1313 `src/mainwindow_menus.cpp:1023` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6637] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-content-verbs.**
+  21 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 132 `remotecontrol_terminal.cpp:522-524` (Medium)
+  - row 134 `remotecontrol_changelog.cpp:633-636` (Low)
+  - row 135 `remotecontrol_docs.cpp:1344` (Low)
+  - row 137 `remotecontrol_feedback.cpp:1794` (Low)
+  - row 138 `feedback.cpp:827` (Low)
+  - row 141 `quotationcheckverb.cpp:152-157` (Medium)
+  - row 142 `ciworkflows.cpp:161-173` (Medium)
+  - row 143 `cireport.cpp:563` (Medium)
+  - row 146 `runtraceverb.cpp:423` (Low)
+  - row 147 `quotationcheckverb.cpp:354-364` (Low)
+  - row 148 `sessioncostverb.cpp:111,184` (Low)
+  - row 149 `cihistory.cpp:239` (Info)
+  - row 1416 `src/remotecontrol_docs.cpp:2290-2299` (Info)
+  - row 1417 `src/dependencyinventory.cpp:245-249` (Info)
+  - row 1418 `src/versioncheck.cpp:80-121` (Info)
+  - row 1419 `src/remotecontrol_terminal.cpp:1162-1165` (Info)
+  - row 1420 `src/remotecontrol_changelog.cpp:1189-1197` (Info)
+  - row 1421 `src/remotecontrol_changelog.cpp:1131` (Info)
+  - row 1422 `src/runtraceverb.cpp:557-559` (Info)
+  - row 1423 `src/remotecontrol_run_trace.cpp:97` (Info)
+  - row 1424 `src/remotecontrol_session_message.cpp:146-150` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6638] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-infra.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 184 `src/secretredact.h:179` (Medium)
+  - row 185 `src/mcpspill.cpp:73-92` (Medium)
+  - row 186 `src/mcpprojection.cpp:229-257` (Medium)
+  - row 188 `src/mcpundeclaredargs.cpp:40-43` (Low)
+  - row 190 `src/tokenusageengine.cpp:520-526` (Low)
+  - row 192 `src/secretredact.h:80` (Low)
+  - row 1448 `src/mcpspill.cpp:427` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6639] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-review-verbs.**
+  11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 355 `remotecontrol_review.cpp:1111-1120` (Medium)
+  - row 359 `remotecontrol_coldeyes.cpp:885` (Low)
+  - row 360 `remotecontrol_coldeyes.cpp:668` (Low)
+  - row 361 `remotecontrol_coldeyes.cpp:461` (Low)
+  - row 362 `remotecontrol_coldeyes.cpp:172` (Low)
+  - row 363 `remotecontrol_coldeyes.cpp:47` (Low)
+  - row 1411 `src/remotecontrol_review.cpp:802` (Info)
+  - row 1412 `src/remotecontrol_review.cpp:264` (Info)
+  - row 1413 `src/remotecontrol_review.cpp:465` (Info)
+  - row 1414 `src/remotecontrol_review.cpp:1032` (Info)
+  - row 1415 `src/remotecontrol_coldeyes.cpp:745` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6640] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-batch.**
+  13 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 112 `remotecontrol_roadmap_log_batch.cpp:1316-1317` (Medium)
+  - row 113 `remotecontrol_roadmap_migrate.cpp:180` (Medium)
+  - row 114 `log_batch.cpp:1754` (Medium)
+  - row 115 `remotecontrol_roadmap_repair.cpp:385-394` (Low)
+  - row 116 `remotecontrol_roadmap_backfill.cpp:98-99` (Low)
+  - row 118 `log_batch.cpp:2857-2876` (Low)
+  - row 119 `log_batch.cpp:756-782` (Low)
+  - row 1392 `src/remotecontrol_roadmap_log_batch.cpp:3089-3127` (Info)
+  - row 1393 `src/remotecontrol_roadmap_log_batch.cpp:3258-3267` (Info)
+  - row 1394 `src/remotecontrol_roadmap_log_batch.cpp:797-800` (Info)
+  - row 1395 `src/remotecontrol_roadmap_log_batch.cpp:1712-1717` (Info)
+  - row 1396 `src/remotecontrol_roadmap_log_batch.cpp:2138-2150` (Info)
+  - row 1397 `src/remotecontrol_roadmap_log_batch.cpp:1576-1584` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6641] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-roadmap-query-log.**
+  22 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 97 `remotecontrol_roadmap_query_verb.cpp:1059-1065` (Medium)
+  - row 98 `ROADMAP.md` (Medium)
+  - row 101 `remotecontrol_roadmap_query.cpp:268-338` (Medium)
+  - row 102 `remotecontrol_roadmap_query.cpp:2667-2669` (Medium)
+  - row 103 `remotecontrol_roadmap_log.cpp:412` (Low)
+  - row 104 `remotecontrol_roadmap_log.cpp:4447-4448` (Low)
+  - row 105 `const bool alreadyPresent = !note.isEmpty() && before->body.contains(note); (remotecontrol_roadmap_log.cpp:1390)` (Low)
+  - row 106 `remotecontrol_roadmap_log.cpp:1447-1462` (Low)
+  - row 107 `remotecontrol_roadmap_query_verb.cpp:1824` (Low)
+  - row 108 `if (plan && !doc.object().value("ok").toBool()) rlRestorePlan(...) (remotecontrol_roadmap_query_verb.cpp:4087)` (Low)
+  - row 109 `remotecontrol_roadmap_log.cpp:1926-1934` (Low)
+  - row 111 `remotecontrol_roadmap_log.cpp:4685` (Low)
+  - row 1380 `src/remotecontrol_roadmap_log.cpp:1049` (Info)
+  - row 1381 `src/remotecontrol_roadmap_log.cpp:2097` (Info)
+  - row 1382 `src/remotecontrol_roadmap_log.cpp:2626` (Info)
+  - row 1383 `src/remotecontrol_roadmap_log.cpp:2252` (Info)
+  - row 1384 `src/remotecontrol_roadmap_log.cpp:3211` (Info)
+  - row 1385 `src/remotecontrol_roadmap_log.cpp:2049` (Info)
+  - row 1386 `src/remotecontrol_roadmap_log.cpp:3099` (Info)
+  - row 1387 `src/remotecontrol_roadmap_log.cpp:3839` (Info)
+  - row 1390 `src/remotecontrol_roadmap_query.cpp:1011` (Info)
+  - row 1391 `src/remotecontrol_roadmap_query_verb.cpp:4317` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6642] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-state-workspace.**
+  15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 123 `remotecontrol_workspace.cpp:3323-3324` (Medium)
+  - row 124 `remotecontrol_workspace.cpp:2764` (Medium)
+  - row 125 `remotecontrol_workspace.cpp:2187` (Medium)
+  - row 126 `remotecontrol_state.cpp:691` (Low)
+  - row 127 `remotecontrol_state.cpp:864` (Low)
+  - row 1399 `src/remotecontrol_workspace.cpp:3892` (Info)
+  - row 1400 `src/remotecontrol_workspace.cpp:1803` (Info)
+  - row 1401 `src/remotecontrol_workspace.cpp:2743` (Info)
+  - row 1403 `src/remotecontrol_state.cpp:815` (Info)
+  - row 1404 `src/remotecontrol_state.cpp:2171` (Info)
+  - row 1406 `src/remotecontrol_state.cpp:4004` (Info)
+  - row 1407 `src/remotecontrol_state.cpp:4237-4246` (Info)
+  - row 1408 `src/remotecontrol_state.cpp:2967` (Info)
+  - row 1409 `src/remotecontrol_state.cpp:547` (Info)
+  - row 1410 `src/remotecontrol_state.cpp:3804` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6643] **Fix the smaller bugs the 2026-11-06 reviews found in mcp-transport.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 74 `mcpdmain.cpp:197-202` (Medium)
+  - row 75 `remotecontrol.cpp:202-213` (Medium)
+  - row 76 `remotecontrol.cpp:1412-1427` (Low)
+  - row 77 `remotecontrol.cpp:1098-1102` (Low)
+  - row 78 `mcpdsocket.cpp:84-90` (Low)
+  - row 79 `mcpdcall.cpp:68` (Low)
+  - row 1376 `src/remotecontrol.cpp:740` (Info)
+  - row 1377 `src/remotecontrol.cpp:285` (Info)
+  - row 1379 `src/remotecontrol.cpp:772` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6644] **Fix the smaller bugs the 2026-11-06 reviews found in model-switching.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 255 `aidialog.cpp:349` (Medium)
+  - row 256 `aidialog.cpp:104-106` (Medium)
+  - row 257 `aidialog.cpp:63` (Medium)
+  - row 259 `llmdispatcher.cpp:23-32` (Low)
+  - row 260 `llmclient.cpp:348-353` (Low)
+  - row 261 `llmclient.cpp:135-143` (Low)
+  - row 262 `modelrecommender.cpp:39-41` (Low)
+  - row 1450 `src/modelnearmissledger.cpp:269-272` (Info)
+  - row 1453 `src/modelnearmissledger.cpp:182-191` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6645] **Fix the smaller bugs the 2026-11-06 reviews found in plugins-lua.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 197 `pluginmanager.cpp:482-504` (Medium)
+  - row 198 `pluginmanager.cpp:645` (Medium)
+  - row 200 `luaengine.cpp:529-531` (Low)
+  - row 1455 `src/luaengine.cpp:351-353` (Info)
+  - row 1456 `src/pluginmanager.cpp:307` (Info)
+  - row 1457 `src/pluginmanager.cpp:220` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6646] **Fix the smaller bugs the 2026-11-06 reviews found in review-engines.**
+  13 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 383 `coldeyesdialog.cpp:188-189` (Medium)
+  - row 384 `indiereviewengine.cpp:913` (Medium)
+  - row 388 `debtsweepengine.cpp:1022` (Medium)
+  - row 389 `indiereviewengine.cpp:926` (Low)
+  - row 390 `debtsweepengine.cpp:982` (Low)
+  - row 391 `debtsweepengine.cpp:1483` (Low)
+  - row 392 `indiereviewdispatcher.cpp:213-214` (Low)
+  - row 393 `indiereviewengine.cpp:760` (Low)
+  - row 395 `coldeyesdialog.cpp:306-308` (Low)
+  - row 396 `coldeyesdialog.cpp:412` (Low)
+  - row 397 `filecontentcache.h:45` (Low)
+  - row 1434 `src/indiereviewengine.cpp:985` (Info)
+  - row 1435 `src/indiereviewengine.cpp:904` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6647] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-dialog.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 338 `roadmapdialog.cpp:501` (Medium)
+  - row 339 `roadmapdialog.cpp:2858-2864` (Medium)
+  - row 340 `roadmapdialog.cpp:1564` (Low)
+  - row 342 `roadmapdialog.cpp:2394-2410` (Low)
+  - row 344 `roadmapdialog.cpp:2365` (Low)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6648] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-parse-render.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 327 `roadmapparse.cpp:2385-2398` (Medium)
+  - row 329 `roadmapsource.cpp:539-541` (Medium)
+  - row 331 `roadmapfoldin.cpp:45-46` (Medium)
+  - row 332 `roadmapfoldin.cpp:654` (Low)
+  - row 334 `roadmapparse.cpp:2509` (Low)
+  - row 1348 `src/passheadingwrite.cpp:284-290` (Info)
+  - row 1350 `src/roadmapparse.h:472-477` (Info)
+  - row 1351 `src/roadmapexport.cpp:1193-1198` (Info)
+  - row 1352 `src/roadmapfoldin.cpp:915` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6649] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-store.**
+  19 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 151 `knowhowstore.cpp:460-463` (Medium)
+  - row 152 `roadmapmigrateload.cpp:1199-1201` (Medium)
+  - row 153 `roadmapstore.cpp:432-445` (Medium)
+  - row 154 `roadmapstore.cpp:2780-2802` (Low)
+  - row 155 `roadmapstore.cpp:2038-2079` (Low)
+  - row 156 `roadmapmigrateload.cpp:1093-1096` (Low)
+  - row 157 `roadmapmigrateload.cpp:912-914` (Low)
+  - row 1335 `src/roadmapstore.cpp:2280` (Info)
+  - row 1336 `src/roadmapstore.cpp:2880` (Info)
+  - row 1337 `src/roadmapstore.cpp:2956-2970` (Info)
+  - row 1338 `src/roadmapstore.cpp:2943` (Info)
+  - row 1339 `src/roadmapstore.cpp:3896-3900` (Info)
+  - row 1340 `src/roadmapstore.cpp:2146-2151` (Info)
+  - row 1341 `src/roadmapmigrateload.cpp:363` (Info)
+  - row 1342 `src/roadmapmigrateload.cpp:212` (Info)
+  - row 1343 `src/roadmapmigrateload.cpp:495` (Info)
+  - row 1344 `src/roadmapmigrateverb.cpp:820` (Info)
+  - row 1345 `src/knowhowstore.cpp:285` (Info)
+  - row 1346 `src/roadmapmigrateverb.cpp:1045` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6650] **Fix the smaller bugs the 2026-11-06 reviews found in shared-utilities.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 217 `gitwrap.cpp:99-109` (Medium)
+  - row 219 `pathvalidation.cpp:225,234-239` (Medium)
+  - row 220 `treewatcher.cpp:116` (Medium)
+  - row 221 `treewatcher.cpp:75-80` (Low)
+  - row 222 `treewatcher.h:91` (Low)
+  - row 223 `clipboardguard.h:43-44` (Low)
+  - row 224 `gitwrap.cpp:22` (Low)
+  - row 226 `remotecontrol_docs.cpp:862-868` (Info)
+  - row 1467 `src/terminalwidget.cpp:3317` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6651] **Fix the smaller bugs the 2026-11-06 reviews found in shell-surface.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 268 `hooks/ants-inbox-notice.sh:89` (Medium)
+  - row 275 `_common.sh:108` (Low)
+  - row 276 `_common.sh:95,186` (Low)
+  - row 278 `precompact:6,8` (Low)
+  - row 279 `cc-job:180` (Low)
+  - row 280 `cc-job:128-140` (Low)
+  - row 281 `ants-terminal.bash:24-27` (Low)
+  - row 283 `decision:"block"` (Low)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: shell-surface.
+
+- 📋 [ANTS-6652] **Fix the smaller bugs the 2026-11-06 reviews found in spec-engines.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 373 `featurecoverage.cpp:755-756` (Medium)
+  - row 375 `specconformance.cpp:28-32` (Medium)
+  - row 377 `speclog.cpp:150` (Low)
+  - row 378 `speclint.cpp:443-452` (Low)
+  - row 380 `speclog.cpp:535-540` (Low)
+  - row 382 `speclint.cpp:654-655` (Low)
+  - row 1430 `src/specconformance.cpp:175` (Info)
+  - row 1431 `src/speclog.cpp:503` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6653] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-grid.**
+  19 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 10 `terminalgrid.cpp:672–673, 797–800` (Medium)
+  - row 11 `terminalgrid.cpp:3157` (Medium)
+  - row 12 `terminalgrid.cpp:3538–3541, 3620–3623, 3692–3695` (Medium)
+  - row 14 `terminalgrid.cpp:2540` (Medium)
+  - row 15 `terminalgrid.cpp:2470–2478` (Medium)
+  - row 16 `terminalgrid.cpp:2912–2955` (Medium)
+  - row 17 `terminalgrid.cpp:2786–2887` (Medium)
+  - row 19 `inlineimagedecode.cpp:97` (Medium)
+  - row 20 `terminalgrid.cpp:1953–2025` (Low)
+  - row 22 `inlineimagedecode.cpp:93` (Low)
+  - row 23 `terminalgrid.cpp:348` (Low)
+  - row 24 `terminalgrid.cpp:3507–3536` (Low)
+  - row 25 `terminalgrid.h:713` (Low)
+  - row 26 `terminalgrid.cpp:1470` (Low)
+  - row 27 `terminalgrid.cpp:1559–1566` (Low)
+  - row 28 `terminalgrid.cpp:917` (Low)
+  - row 29 `terminalgrid.h:963` (Low)
+  - row 1296 `src/terminalgrid.cpp:1045` (Info)
+  - row 1299 `src/osc133signmain.cpp:60` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6654] **Fix the smaller bugs the 2026-11-06 reviews found in terminal-widget.**
+  25 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 33 `terminalwidget.cpp:3227-3238` (Medium)
+  - row 34 `terminalwidget.cpp:3233` (Medium)
+  - row 35 `terminalwidget.cpp:2242-2245` (Medium)
+  - row 36 `terminalwidget.cpp:2529-2535` (Medium)
+  - row 37 `terminalwidget.cpp:2770` (Low)
+  - row 40 `terminalwidget.cpp:2185-2200` (Low)
+  - row 41 `terminalwidget.cpp:2887` (Low)
+  - row 44 `terminalwidget.cpp:3664` (Medium)
+  - row 45 `terminalwidget.cpp:3686-3694` (Medium)
+  - row 46 `terminalaccessible.cpp:91-95` (Medium)
+  - row 47 `terminalaccessible.cpp:20-21` (Medium)
+  - row 49 `terminalwidget.cpp:5242` (Medium)
+  - row 50 `terminalwidget.cpp:4674` (Medium)
+  - row 51 `terminalwidget.cpp:3309` (Low)
+  - row 52 `terminalwidget.cpp:4677` (Low)
+  - row 53 `terminalwidget.cpp:5218` (Low)
+  - row 54 `terminalwidget.cpp:3353-3355` (Low)
+  - row 55 `terminalwidget.cpp:6136-6146` (Low)
+  - row 56 `terminalwidget.cpp:4529-4532` (Low)
+  - row 1300 `src/terminalwidget.cpp:897` (Info)
+  - row 1301 `src/terminalwidget.cpp:5642` (Info)
+  - row 1302 `src/terminalwidget.cpp:3287` (Info)
+  - row 1303 `src/terminalwidget.cpp:6233` (Info)
+  - row 1304 `src/terminalwidget.cpp:5730` (Info)
+  - row 1305 `src/terminalwidget.cpp:5654` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6655] **Fix the smaller bugs the 2026-11-06 reviews found in test-audit-verify.**
+  15 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 400 `verifyengine.cpp:287` (Medium)
+  - row 401 `testauditdialog.cpp:415-422` (Medium)
+  - row 402 `testauditdialog.cpp:324-327` (Medium)
+  - row 404 `mutationprobe.cpp:196-198` (Medium)
+  - row 405 `testauditdialog.cpp:64-66` (Low)
+  - row 408 `testauditengine.cpp:1005-1006` (Low)
+  - row 409 `testauditengine.cpp:2208-2209` (Low)
+  - row 410 `testauditengine.cpp:1749-1752` (Low)
+  - row 411 `mutationprobe.cpp:23` (Low)
+  - row 412 `testrescache.cpp:79-80` (Low)
+  - row 413 `buildtargets.cpp:180` (Low)
+  - row 414 `testrunners.cpp:325-326` (Low)
+  - row 1436 `src/testauditengine.cpp:1936` (Info)
+  - row 1437 `src/mutationjournal.cpp:53` (Info)
+  - row 1438 `src/verifyengine.cpp:359-360` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6656] **Fix the smaller bugs the 2026-11-06 reviews found in tools-ci-gate.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1474 `tools/local-ci.sh:271-289` (Info)
+  - row 1475 `tools/check-roadmap.sh:69` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: tools-ci-gate.
+
+- 📋 [ANTS-6657] **Fix the smaller bugs the 2026-11-06 reviews found in tools-roadmap-surveys.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1476 `tools/roadmap-conformance.py:128` (Info)
+  - row 1477 `tools/spec-header-survey.py:256` (Info)
+  - row 1478 `tools/split-motion-check.py:1037-1038` (Info)
+  - row 1479 `tools/measure/doc_symbols_locator_sample.py:37` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: tools-roadmap-surveys.
+
+- 📋 [ANTS-6658] **Fix the smaller bugs the 2026-11-06 reviews found in vt-parser-pty.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 2 `ptyhandler.cpp:621-625` (Medium)
+  - row 3 `ptyhandler.cpp:624` (Low)
+  - row 4 `vtparser.cpp:445` (Low)
+  - row 5 `ptyhandler.cpp:651-671` (Low)
+  - row 1294 `src/vtparser.cpp:375` (Info)
+  **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
+  Kind: review-fix.
+  Source: review-code + review-readability 2026-11-06 (bug).
+  Lanes: vt-parser-pty.
+
+### Readability (2026-11-06 review)
+
+- 📋 [ANTS-6659] **Make the app-entry-dialogs code the 2026-11-06 reviews flagged easier to follow.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1172 `src/diffviewer.cpp:416` (Medium)
+  - row 1178 `src/settingsdialog.cpp:1339` (Medium)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: app-entry-dialogs.
+
+- 📋 [ANTS-6660] **Make the audit-dialog code the 2026-11-06 reviews flagged easier to follow.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 604 `src/auditdialog.h:656` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: audit-dialog.
+
+- 📋 [ANTS-6661] **Make the audit-engine code the 2026-11-06 reviews flagged easier to follow.**
+  11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 608 `src/auditrunner.cpp:993` (Medium)
+  - row 609 `src/auditrunner.cpp:914` (Low)
+  - row 621 `src/auditcache.cpp:324` (Low)
+  - row 625 `src/auditengine.cpp:829` (Medium)
+  - row 627 `src/auditengine.h:379` (Medium)
+  - row 628 `src/audithygiene.cpp:310` (Medium)
+  - row 629 `src/falseposledger.cpp:83` (Low)
+  - row 630 `src/falseposledger.cpp:300` (Low)
+  - row 633 `src/auditengine.cpp:1035` (Low)
+  - row 634 `src/auditengine.cpp:534` (Low)
+  - row 635 `src/auditdelta.cpp:80` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6662] **Make the build-system code the 2026-11-06 reviews flagged easier to follow.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1220 `CMakeLists.txt:4623` (Medium)
+  - row 1223 `CMakeLists.txt:2550` (Medium)
+  - row 1231 `CMakeLists.txt:306` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: build-system.
+
+- 📋 [ANTS-6663] **Make the changelog-feedback code the 2026-11-06 reviews flagged easier to follow.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1166 `src/changeloglog.cpp:119` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: changelog-feedback.
+
+- 📋 [ANTS-6664] **Make the chrome-widgets code the 2026-11-06 reviews flagged easier to follow.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 572 `src/coloredtabbar.cpp:403` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: chrome-widgets.
+
+- 📋 [ANTS-6665] **Make the claude-integration code the 2026-11-06 reviews flagged easier to follow.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 714 `src/claudeintegration_terminal.cpp:186` (Medium)
+  - row 715 `src/claudeintegration.cpp:2396` (Medium)
+  - row 716 `src/mcptoolregistry.cpp:435` (Medium)
+  - row 718 `src/claudeintegration.cpp:2791` (Low)
+  - row 739 `src/claudeintegration_store.cpp:17-1708` (Medium)
+  - row 740 `src/claudeintegration_sessions.cpp:842-845` (Medium)
+  - row 748 `src/claudeintegration_callpolicy.cpp:890-898` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: claude-integration.
+
+- 📋 [ANTS-6666] **Make the claude-session-widgets code the 2026-11-06 reviews flagged easier to follow.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 755 `src/claudestatuswidgets.cpp:2029-2052` (Medium)
+  - row 761 `src/claudestateresolver.cpp:39-42` (Low)
+  - row 766 `src/claudestatuswidgets.cpp:341` (Low)
+  - row 775 `src/claudebgtasks.h:51` (Medium)
+  - row 776 `src/claudetasklist.cpp:107` (Medium)
+  - row 780 `src/claudeallowlist.cpp:418` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6667] **Make the code-index-search code the 2026-11-06 reviews flagged easier to follow.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1057 `src/readregion.cpp:686` (Medium)
+  - row 1058 `src/codebaseindex.cpp:492` (Medium)
+  - row 1059 `src/duplicateblocks.cpp:371` (Medium)
+  - row 1060 `src/applyedits.cpp:81` (Low)
+  - row 1061 `src/duplicateblocks.cpp:30` (Low)
+  - row 1062 `src/readregion.cpp:176` (Low)
+  - row 1073 `src/fileoutline.cpp:966` (Low)
+  - row 1081 `src/sourcescrapes.cpp:687-714` (Medium)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: code-index-search.
+
+- 📋 [ANTS-6668] **Make the config-session-project code the 2026-11-06 reviews flagged easier to follow.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1144 `src/projectsettings.cpp:394` (Medium)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: config-session-project.
+
+- 📋 [ANTS-6669] **Make the diagnostics-logging code the 2026-11-06 reviews flagged easier to follow.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1194 `src/readlog.cpp:265` (Medium)
+  - row 1195 `src/readlog.cpp:238` (Low)
+  - row 1199 `src/debuglog.cpp:81-82` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6670] **Make the dialog-chrome-theme code the 2026-11-06 reviews flagged easier to follow.**
+  1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 585 `src/themedstylesheet.cpp:208-213` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6671] **Make the doc-engines code the 2026-11-06 reviews flagged easier to follow.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 966 `src/doccitations.cpp:1692` (Medium)
+  - row 967 `src/doccitations.cpp:1571` (Medium)
+  - row 968 `src/doccitations.cpp:1176` (Medium)
+  - row 976 `src/doccitations.cpp:1561` (Low)
+  - row 977 `src/docsymbols.h:131` (Low)
+  - row 979 `src/docsymbols.cpp:473` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: doc-engines.
+
+- 📋 [ANTS-6672] **Make the hooks-packaging code the 2026-11-06 reviews flagged easier to follow.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1279 `hooks/ants-bash-veto.sh:135` (Medium)
+  - row 1280 `packaging/release.sh:239` (Medium)
+  - row 1282 `hooks/_common.sh:246` (Low)
+  - row 1291 `packaging/obs/obs-setup.sh:19` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: hooks-packaging.
+
+- 📋 [ANTS-6673] **Make the mainwindow code the 2026-11-06 reviews flagged easier to follow.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 536 `src/mainwindow.cpp:1663` (Medium)
+  - row 547 `src/mainwindow_mcp.cpp:136` (Medium)
+  - row 549 `src/mainwindow_menus.cpp:938` (Low)
+  - row 563 `src/mainwindow_menus.cpp:121` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mainwindow.
+
+- 📋 [ANTS-6674] **Make the mcp-content-verbs code the 2026-11-06 reviews flagged easier to follow.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 934 `src/remotecontrol_docs.cpp:221` (Medium)
+  - row 935 `src/remotecontrol_docs.cpp:1068-1075` (Medium)
+  - row 937 `src/quotationcheckverb.cpp:528-535` (Low)
+  - row 938 `src/remotecontrol_docs.cpp:1436` (Low)
+  - row 949 `src/remotecontrol_feedback.cpp:1` (Medium)
+  - row 950 `src/remotecontrol_changelog.cpp:1016-1134` (Medium)
+  - row 951 `src/remotecontrol_feedback.cpp:308-514` (Medium)
+  - row 954 `src/remotecontrol_changelog.cpp:1085-1088` (Low)
+  - row 956 `src/runtraceverb.cpp:556` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6675] **Make the mcp-infra code the 2026-11-06 reviews flagged easier to follow.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1088 `src/mcpprojection.cpp:297` (Medium)
+  - row 1089 `src/mcpspill.cpp:410` (Medium)
+  - row 1097 `src/tokenusageengine.cpp:305` (Low)
+  - row 1099 `src/mcporientation.cpp:262` (Low)
+  - row 1100 `src/mcporientation.cpp:482` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6676] **Make the mcp-review-verbs code the 2026-11-06 reviews flagged easier to follow.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 919 `src/remotecontrol_review.cpp:195` (Medium)
+  - row 920 `src/remotecontrol_review.cpp:613` (Medium)
+  - row 925 `src/remotecontrol_review.cpp:900` (Low)
+  - row 927 `src/remotecontrol_review.cpp:1406` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-review-verbs.
+
+- 📋 [ANTS-6677] **Make the mcp-roadmap-batch code the 2026-11-06 reviews flagged easier to follow.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 881 `src/remotecontrol_roadmap_repair.cpp:372-373` (Low)
+  - row 882 `src/remotecontrol_roadmap_backfill.cpp:119-120` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6678] **Make the mcp-roadmap-query-log code the 2026-11-06 reviews flagged easier to follow.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 822 `src/remotecontrol_roadmap_log.cpp:1009` (Medium)
+  - row 827 `src/remotecontrol_roadmap_log.cpp:2030` (Medium)
+  - row 837 `src/remotecontrol_roadmap_log.cpp:2549` (Low)
+  - row 838 `src/remotecontrol_roadmap_log.cpp:503` (Low)
+  - row 839 `src/remotecontrol_roadmap_log.cpp:3836` (Low)
+  - row 840 `src/remotecontrol_roadmap_log.cpp:4096` (Low)
+  - row 849 `src/remotecontrol_roadmap_query.cpp:1478` (Medium)
+  - row 857 `src/remotecontrol_roadmap_query.cpp:1` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6679] **Make the mcp-state-workspace code the 2026-11-06 reviews flagged easier to follow.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 885 `src/remotecontrol_workspace.cpp:766` (High)
+  - row 886 `src/remotecontrol_workspace.cpp:869` (Medium)
+  - row 887 `src/remotecontrol_workspace.cpp:3767` (Medium)
+  - row 889 `src/remotecontrol_workspace.cpp:3877` (Medium)
+  - row 891 `src/remotecontrol_workspace.cpp:2395` (Medium)
+  - row 901 `src/remotecontrol_workspace.cpp:2532` (Low)
+  - row 908 `src/remotecontrol_state.cpp:2639` (Medium)
+  - row 915 `src/remotecontrol_state.cpp:547` (Low)
+  - row 916 `src/remotecontrol_state.cpp:2167` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6680] **Make the mcp-transport code the 2026-11-06 reviews flagged easier to follow.**
+  2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 798 `src/remotecontrol.cpp:68` (Medium)
+  - row 803 `src/mcpdmain.cpp:249` (Medium)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: mcp-transport.
+
+- 📋 [ANTS-6681] **Make the model-switching code the 2026-11-06 reviews flagged easier to follow.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1119 `src/modelautoswitch.cpp:302-303` (Low)
+  - row 1126 `src/llmdispatcher.cpp:9` (Low)
+  - row 1128 `src/aidialog.cpp:73` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6682] **Make the plugins-lua code the 2026-11-06 reviews flagged easier to follow.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1149 `src/pluginmanager.cpp:519` (Medium)
+  - row 1150 `src/pluginmanager.cpp:609` (Low)
+  - row 1151 `src/pluginmanager.cpp:471` (Low)
+  - row 1159 `src/luaengine.cpp:1214` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: plugins-lua.
+
+- 📋 [ANTS-6683] **Make the review-engines code the 2026-11-06 reviews flagged easier to follow.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1011 `src/indiereviewdispatcher.cpp:326` (Medium)
+  - row 1012 `src/indiereviewengine.cpp:1182` (Low)
+  - row 1022 `src/indiereviewengine.cpp:1015` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: review-engines.
+
+- 📋 [ANTS-6684] **Make the roadmap-dialog code the 2026-11-06 reviews flagged easier to follow.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 698 `src/roadmapdialog.cpp:2392` (Medium)
+  - row 700 `src/roadmapdialog.cpp:2489` (Medium)
+  - row 708 `src/roadmapdialog.cpp:916` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: roadmap-dialog.
+
+- 📋 [ANTS-6685] **Make the roadmap-parse-render code the 2026-11-06 reviews flagged easier to follow.**
+  9 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 662 `src/roadmapparse.cpp:472` (Medium)
+  - row 663 `src/passheadingwrite.cpp:74` (Medium)
+  - row 667 `src/roadmapwrite.cpp:735` (Medium)
+  - row 668 `src/passheadingwrite.cpp:284` (Medium)
+  - row 669 `src/passheadingwrite.cpp:260` (Low)
+  - row 670 `src/roadmapwrite.cpp:567` (Low)
+  - row 679 `src/roadmapparse.cpp:192` (Low)
+  - row 687 `src/roadmaprender.cpp:679-821` (Medium)
+  - row 691 `src/roadmapexport.cpp:463` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6686] **Make the roadmap-store code the 2026-11-06 reviews flagged easier to follow.**
+  11 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 640 `src/roadmapstore.cpp:766` (Medium)
+  - row 642 `src/roadmapstore.cpp:2815` (Low)
+  - row 643 `src/roadmapstore.cpp:1582` (Low)
+  - row 646 `src/roadmapmigrateverb.cpp:820` (Medium)
+  - row 648 `src/knowhowstore.cpp:432` (Medium)
+  - row 649 `src/knowhowstore.cpp:352` (Medium)
+  - row 650 `src/knowhowstore.cpp:285` (Medium)
+  - row 651 `src/roadmapmigrate.cpp:230` (Medium)
+  - row 654 `src/roadmapmigrate.cpp:755` (Medium)
+  - row 655 `src/roadmapmigrateverb.cpp:873` (Low)
+  - row 657 `src/roadmapmigrateload.cpp:745` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6687] **Make the shared-utilities code the 2026-11-06 reviews flagged easier to follow.**
+  3 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1204 `src/gitwrap.h:39` (Low)
+  - row 1208 `src/gitwrap.cpp:154` (Low)
+  - row 1214 `src/prunedwalk.h:22` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: shared-utilities.
+
+- 📋 [ANTS-6688] **Make the spec-engines code the 2026-11-06 reviews flagged easier to follow.**
+  6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 986 `src/speclog.cpp:377` (Medium)
+  - row 987 `src/featurecoverage.cpp:453` (Medium)
+  - row 988 `src/specconformance.cpp:130` (Medium)
+  - row 989 `src/specparse.cpp:318` (Medium)
+  - row 1003 `src/speclint.cpp:634` (Low)
+  - row 1004 `src/speclog.cpp:504` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: spec-engines.
+
+- 📋 [ANTS-6689] **Make the terminal-grid code the 2026-11-06 reviews flagged easier to follow.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 484 `src/terminalgrid.h:355` (Medium)
+  - row 488 `src/terminalgrid.cpp:2786` (Medium)
+  - row 489 `src/terminalgrid.cpp:1226` (Medium)
+  - row 491 `src/terminalgrid.cpp:1314` (Medium)
+  - row 495 `src/terminalgrid.cpp:218` (Low)
+  - row 496 `src/scrollbackexporter.cpp:204` (Low)
+  - row 497 `src/scrollbackexporter.cpp:101` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: terminal-grid.
+
+- 📋 [ANTS-6690] **Make the terminal-widget code the 2026-11-06 reviews flagged easier to follow.**
+  8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 511 `src/terminalwidget.cpp:2481` (Low)
+  - row 512 `src/terminalwidget.h:112` (Low)
+  - row 520 `src/terminalwidget.cpp:4215` (Medium)
+  - row 522 `src/terminalwidget.cpp:5654` (Medium)
+  - row 523 `src/terminalwidget.cpp:3532` (Medium)
+  - row 529 `src/stickycommandtext.h:27` (Low)
+  - row 530 `src/terminalwidget.cpp:3354` (Low)
+  - row 531 `src/terminalwidget.cpp:4019` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: terminal-widget.
+
+- 📋 [ANTS-6691] **Make the test-audit-verify code the 2026-11-06 reviews flagged easier to follow.**
+  7 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1026 `src/testauditengine.cpp:954` (Medium)
+  - row 1029 `src/testauditengine.cpp:1861` (Medium)
+  - row 1032 `src/testauditengine.cpp:1936` (Low)
+  - row 1035 `src/testauditengine.cpp:2273` (Low)
+  - row 1036 `src/testauditengine.cpp:1693` (Low)
+  - row 1042 `src/testauditdialog.h:107` (Low)
+  - row 1045 `src/testauditengine.cpp:880` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: test-audit-verify.
+
+- 📋 [ANTS-6692] **Make the tools-ci-gate code the 2026-11-06 reviews flagged easier to follow.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1238 `tools/local-ci.sh:289` (Medium)
+  - row 1239 `tools/qt62-guard.sh:341` (Low)
+  - row 1240 `tools/qt62-guard.sh:213` (Medium)
+  - row 1245 `tools/ci_workflow.py:75` (Medium)
+  - row 1247 `tools/ci_workflow.py:82` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: tools-ci-gate.
+
+- 📋 [ANTS-6693] **Make the tools-roadmap-surveys code the 2026-11-06 reviews flagged easier to follow.**
+  5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 1256 `tools/split-motion-check.py:136` (Medium)
+  - row 1257 `tools/split-motion-check.py:977` (Medium)
+  - row 1264 `tools/roadmap-slug-oracle.py:98` (Low)
+  - row 1266 `tools/measure/filemap_prototype.py:266` (Low)
+  - row 1270 `tools/measure/doc_symbols_locator_sample.py:21` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: tools-roadmap-surveys.
+
+- 📋 [ANTS-6694] **Make the vt-parser-pty code the 2026-11-06 reviews flagged easier to follow.**
+  4 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
+  - row 471 `src/ptyhandler.cpp:367` (High)
+  - row 472 `src/ptyhandler.cpp:163-435` (Medium)
+  - row 480 `src/vtparser.cpp:375` (Low)
+  - row 481 `src/vtparser.h:113` (Low)
+  **Layman:** Code here is harder to follow than it needs to be.
+  Kind: refactor.
+  Source: review-code + review-readability 2026-11-06 (readability).
+  Lanes: vt-parser-pty.
+
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
 Whole-tree static-analysis sweep: 13 tools ran, 5 were correctly skipped (no
@@ -98317,6 +102264,13 @@ worked after these.
   the INV-13 comment says the fallback reads projectRoot, pointing at
   the bug ANTS-5923. Queued: F10 ANTS-6240, F11 ANTS-6241 (with
   ANTS-5924), F12 ANTS-6242, F13 ANTS-6243, F14 ANTS-6244. LOWs remain.
+  The 2026-11-06 reviews also found this: row 841
+  `src/remotecontrol_roadmap_query_verb.cpp:3253`; row 851
+  `src/remotecontrol_roadmap_query_verb.cpp:4168`; row 854
+  `src/remotecontrol_roadmap_query.cpp:759`; row 856
+  `src/remotecontrol_roadmap_query_verb.cpp:506`; row 859
+  `src/remotecontrol_roadmap_query_verb.cpp:4318`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98362,6 +102316,10 @@ worked after these.
   declarations that remotecontrol_internal.h already makes. Queued F4
   ANTS-6252, F2 ANTS-6253, F5 ANTS-6254, F6 ANTS-6255, F15 ANTS-6256,
   F16 ANTS-6257, F20 ANTS-6258, F21 ANTS-6259. LOWs open.
+  The 2026-11-06 reviews also found this: row 909
+  `src/remotecontrol_state.cpp:2023`; row 910
+  `src/remotecontrol_state.cpp:814`; row 911
+  `src/remotecontrol_state.cpp:1394`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the project and search tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98467,6 +102425,13 @@ worked after these.
   dcPathTokenPass split out of check(), F4 floor shared via
   Options::quoteMinChars and the comment corrected, F7 and F8 comments.
   Queued: ANTS-6275 (F3 heading rules), 6276 (F4 rest). LOWs open.
+  The 2026-11-06 reviews also found this: row 962 `src/doclint.cpp:148`;
+  row 970 `src/doccitations.cpp:1053`; row 978 `src/docfacts.cpp:22`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
+  The 2026-11-06 reviews also found this: rows 961 and 1428, both
+  `src/docfacts.cpp:294`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5958 and ANTS-6135.)
   **Layman:** Tidy the document checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98522,6 +102487,13 @@ worked after these.
   siblings, F16 ReviewDialogBase::aiRequest for the five request
   fills, F18 F24 comments. Queued: F11 on ANTS-5974, F16 rest as
   ANTS-6279. LOWs open.
+  The 2026-11-06 reviews also found this: row 1008
+  `src/indiereviewengine.cpp:421`; row 1010
+  `src/indiereviewengine.cpp:1444`; row 1013
+  `src/indiereviewengine.cpp:1270`; row 1014 `src/coldeyesengine.h:4`;
+  row 1015 `src/debtsweepengine.cpp:1421`; row 1018
+  `src/coldeyesdialog.cpp:242`; row 1020 `src/debtsweepengine.cpp:161`;
+  row 1023 `src/coldeyesengine.cpp:517`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the review helpers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98576,6 +102548,9 @@ worked after these.
   what the code does. Every tracked file outlined with the old and new
   ants-mcpd (both doc modes, sizes on): 0 differences. No MEDIUM left;
   the LOWs remain.
+  The 2026-11-06 reviews also found this: row 1048
+  `src/codebaseindex.cpp:85`; row 1053 `src/findsources.cpp:397`; row
+  1079 `src/paginationengine.cpp:86-90`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98656,6 +102631,15 @@ worked after these.
   header lists the four settlement clauses. F7: aidialog.h lists the
   real strip set. F8: kScoreWindowTurns names the window, and the
   many_writes threshold is derived from it (still 8 at 20). LOWs remain.
+  The 2026-11-06 reviews also found this: row 1108
+  `src/modelnearmissledger.cpp:103-112`; row 1110
+  `src/modelautoswitch.h:40`; row 1120 `src/llmclient.h:57`; row 1121
+  `src/modelswitchledger.h:10`; row 1125 `src/modelswitchledger.h:63`;
+  row 1127 `src/llmclient.cpp:468-478`. Details: docs/reviews/close-findings-2026-11-06.md.
+  The 2026-11-06 reviews also found this: row 1114
+  `src/aidialog.cpp:371`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-6142 and ANTS-6015.)
   **Layman:** Tidy the automatic model switching so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98678,6 +102662,8 @@ worked after these.
   LOWs F14-F26 open.
   2026-10-29: F11 done (user decision: apply all for the session,
   save none); 4e110c60. All MEDIUMs closed. LOWs F14-F26 open.
+  The 2026-11-06 reviews also found this: row 1136 `src/config.h:78`;
+  row 1137 `src/config.cpp:109`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy settings, saved sessions and project settings so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98717,6 +102703,9 @@ worked after these.
   merging. F8/F10: one blockEnd() serves parse, compactShipped and
   pruneTracking; parse's v1-only work moved to the v1 path. F7, F11, F12,
   F4, F5: comments. F9 queued on ANTS-6029. LOWs F13-F18 remain.
+  The 2026-11-06 reviews also found this: row 1165
+  `src/feedbackfile.cpp:306`; row 1167 `src/changelogquery.cpp:23`; row
+  1168 `src/changeloglog.h:16`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98747,6 +102736,10 @@ worked after these.
   the header names DirTreeWatcher; F11 `pending` says what it must
   match; F2's stray mkpath in readClaudeSettings removed. Queued: F2's
   shared helper ANTS-6296, F6 ANTS-6297, F10 ANTS-6298. LOWs remain.
+  The 2026-11-06 reviews also found this: row 1174
+  `src/diffviewer.cpp:788`; row 1175 `src/diffviewer.cpp:675`; row 1186
+  `src/antshelper.cpp:81-82`; row 1188 `src/claudesetup.cpp:625`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy app start-up and the settings window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98766,6 +102759,9 @@ worked after these.
   tracker is the PemTracker class. F2 fixed: ErrorEntry::text comment,
   and ANTS-1301's struct copy now points to its § 3.3. F3 queued as
   ANTS-6299. LOWs (F5-F15) still open.
+  The 2026-11-06 reviews also found this: row 1191
+  `src/buildcache.cpp:29`; row 1192 `src/buildcache.h:22`; row 1198
+  `src/debuglog.h:64`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the logs and error reports so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98790,6 +102786,11 @@ worked after these.
   function does not set the refusal itself. LOWs (F8-F22) still open.
   Out of scope, seen: tests/features/mcp_path_anchor/spec.md PV-9 still
   says "lexical fallback".
+  The 2026-11-06 reviews also found this: row 1202
+  `src/pathvalidation.cpp:249`; row 1206 `src/gitwrap.h:8`; row 1207
+  `src/gitwrap.h:80`; row 1209 `src/subsystemmap.h:3-4`; row 1211
+  `src/subsystemmap.cpp:152`; row 1212 `src/treewatcher.h:45`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy shared helper code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98819,6 +102820,9 @@ worked after these.
   (ids L02-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  The 2026-11-06 reviews also found this: row 1241 `tools/perf-
+  report.sh:205`; row 1242 `tools/perf-report.sh:23`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the check scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98850,6 +102854,9 @@ worked after these.
   ANTS-5796" also closes part of that item.
   2026-10-23, the HIGH fixed (3de1a08e): the header lists Pattern G
   and no longer calls the stream form refused. Mediums and lows remain.
+  The 2026-11-06 reviews also found this: row 1263
+  `tools/migrate_expect_helper.py:477`; row 1265 `tools/rc-namespace-
+  scan.py:200`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the migration and survey scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98867,6 +102874,8 @@ worked after these.
   srcgrep.h points back. One scrape window it could not place before
   is now evaluated. The stale spec sample it exposed is ANTS-6170.
   Mediums and lows remain.
+  The 2026-11-06 reviews also found this: row 1267 `tools/split-motion-
+  check.py:297`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the split-motion checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98894,6 +102903,9 @@ worked after these.
   2026-10-23, the HIGH fixed (00e85789): the theme lane's comment says
   it cycles a fixed sample of themes, not every one. Mediums and lows
   remain.
+  The 2026-11-06 reviews also found this: row 1236
+  `tools/e2e/smoke.sh:15`; row 1252 `tools/e2e/run.sh:2`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the end-to-end and measuring scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98930,6 +102942,9 @@ worked after these.
   (ids L10-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  The 2026-11-06 reviews also found this: row 1273
+  `packaging/release.sh:167`; row 1281 `packaging/obs/obs-
+  submit.sh:219`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the release scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98947,6 +102962,8 @@ worked after these.
   as twins, and the false "GUI-free" comment is gone. A shared
   test-environment script was not chosen: none of the three build
   systems runs here. Other mediums and lows remain.
+  The 2026-11-06 reviews also found this: row 1292 `packaging/cc-job/cc-
+  job:146`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Tidy the package recipes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98963,6 +102980,9 @@ worked after these.
   rewrite of the verb rather than a finding-sized change, and needs
   its own plan (write-spec decides whether a spec is owed).
   Hot reload: refactor; reaches clients on an ants-mcpd rebuild.
+  The 2026-11-06 reviews also found this: row 848
+  `src/remotecontrol_roadmap_query_verb.cpp:2894`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The roadmap search code is one very long function; break it into smaller named pieces a newcomer can follow.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -98992,6 +103012,8 @@ worked after these.
   restoreSessions), plugin_tab_title_events, shell_command_wiring,
   tab_rename_pin. Hazard: moving the calls into a helper fails those
   scrapes unless each spec is amended and gated first.
+  The 2026-11-06 reviews also found this: row 543
+  `src/mainwindow_tabs.cpp:1229`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Opening a tab is written out three times and the copies have drifted; make it one piece of code.
   Kind: refactor.
   Source: review-readability-2026-10-22 L04.
@@ -99008,6 +103030,8 @@ worked after these.
   Quake, plugins), and tab_list_panel pins applyTabListPanelConfig()
   inside both bodies. Needs a decision on which differences are
   intended, then the tab_list_panel spec amended.
+  The 2026-11-06 reviews also found this: row 532
+  `src/mainwindow.cpp:2893`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The two ways settings get reloaded are separate lists that disagree; make them one.
   Kind: refactor.
   Source: review-readability-2026-10-22 L04.
@@ -99029,6 +103053,8 @@ worked after these.
   LlmClient::chatCompletionsUrl, used by both triage POSTs and
   indie_review_dispatch (L28-F5, ANTS-6137). The egress check,
   headers, timeouts and redirect policy are still per path.
+  The 2026-11-06 reviews also found this: row 587
+  `src/auditdialog_triage.cpp:477`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The two AI-triage paths still each set up their network request by hand; make that one piece of code once the tests allow it.
   Kind: refactor.
   Source: review-readability-2026-10-22 L07.
@@ -99063,6 +103089,9 @@ worked after these.
   (mcp_roadmap_log_append_batch alone 34 times). Hazard: the roadmap
   store is live and machine-global; work on a throwaway store and
   check each scrape's spec before moving text out of the body.
+  The 2026-11-06 reviews also found this: row 872
+  `src/remotecontrol_roadmap_log_batch.cpp:2986`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** One very long function writes new roadmap items two different ways; split it so each way can be read and fixed on its own.
   Kind: refactor.
   Source: review-readability-2026-10-22 L21.
@@ -99078,6 +103107,8 @@ worked after these.
   persistence and every reader of screenHyperlinks(), so it needs its
   own change and ANTS-1333's spec checked first.
   Hot reload: none needed; a refactor with no new running state.
+  The 2026-11-06 reviews also found this: row 482
+  `src/terminalgrid.cpp:2152`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Store each line's web links with the line itself, so they can't drift onto the wrong line when the screen scrolls.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L02-F9).
@@ -99094,6 +103125,8 @@ worked after these.
   nextBookmark and prevBookmark bodies, so the test's contract changes
   with the fold.
   Hot reload: none needed; a refactor with no new running state.
+  The 2026-11-06 reviews also found this: row 516
+  `src/terminalwidget.cpp:5256`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Jumping to a prompt, a bookmark or a search hit would all use one piece of code, so a fix to scrolling lands everywhere at once.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F7).
@@ -99111,6 +103144,8 @@ worked after these.
   vr = firstRow, event->rect(), m_hlSpanCache.find(, the drawImage
   calls), so those anchors move with the split.
   Hot reload: none needed; a refactor with no new running state.
+  The 2026-11-06 reviews also found this: row 510
+  `src/terminalwidget.cpp:1109`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The function that draws the terminal is about a thousand lines long; splitting it lets a newcomer change one part without breaking another.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L03-F9).
@@ -99126,6 +103161,8 @@ worked after these.
   newTab; the comment near the plugin palette that gets the order
   wrong), so it needs its own change and a full launch check.
   Hot reload: none needed; a refactor with no new running state.
+  The 2026-11-06 reviews also found this: row 535
+  `src/mainwindow.cpp:970`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The window's start-up code is one very long function; splitting it shows a newcomer where each part goes and which order matters.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L04-F14).
@@ -99182,6 +103219,8 @@ worked after these.
   `m_permanentlyFailed = true;` and `emit sessionFailed(` inside each
   handler's own body, so its test contract moves with the fold.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 564
+  `src/globalshortcutsportal.cpp:325`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** When the desktop's global-shortcut service fails, six places each clean up slightly differently; one shared routine would make them agree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L05-F3).
@@ -99197,6 +103236,8 @@ worked after these.
   at least seven `if (isSuppressed(f))` sites across the audit sources,
   so the fold moves its test contract.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 586
+  `src/auditdialog.cpp:1213`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Three places in the audit window decide which findings are on screen, each with its own copy of the rule; a new filter would make their counts disagree.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F3).
@@ -99234,6 +103275,8 @@ worked after these.
   tests/features/audit_scope_and_triage/spec.md names
   sinceBaselineVisible, and its test's INV-3 message does too.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 588
+  `src/auditdialog.h:182`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Two audit functions have near-identical names but behave differently while git is still running; a clearer name stops the wrong one being used.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F20).
@@ -99248,6 +103291,8 @@ worked after these.
   audit_dialog_lows and audit_scope_and_triage read renderResults'
   body, so their contracts move with the split.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 589
+  `src/auditdialog.cpp:3245`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** One long audit-window routine does six jobs, including saving a file on every filter keystroke; splitting it makes each job findable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F22).
@@ -99260,6 +103305,8 @@ worked after these.
   (silent_catch, conflict_markers, bash_c_non_literal,
   ssh_argv_dash_host and others), none of which has a recorded reason.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 593
+  `src/auditdialog.cpp:3036`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A hidden list decides which audit checks ignore matches inside comments; a new check is easy to leave off it by mistake.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F23).
@@ -99273,6 +103320,8 @@ worked after these.
   200 characters of a slow tool's id literal, so its test contract
   moves with the fold.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 592
+  `src/auditdialog_catalogue.cpp:1507`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Slow audit tools get their longer time limit in two different ways, so a new slow tool may get neither.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L07-F24).
@@ -99315,6 +103364,8 @@ worked after these.
   `auto finish = [&](const QString &tool`, writeSarif before `return
   r;`), so their contracts move with the split.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 610
+  `src/auditrunner.cpp:2199`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The headless audit's main routine is very long, with braces that are hard to match; splitting it into named steps makes it followable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L08-F8).
@@ -99345,6 +103396,8 @@ worked after these.
   Not done in the lane pass: it is the core of every roadmap read, so the
   split wants its own commit and the round-trip suites as its gate.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 666
+  `src/roadmapparse.cpp:1472`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The routine that reads one roadmap line is very long and juggles five possible ids at once; splitting it into named steps makes it followable.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L11-F8).
@@ -99384,6 +103437,12 @@ worked after these.
   section ordering in published files, so the merge wants its own commit
   and the render round-trip suites as its gate.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 644
+  `src/roadmapmigrate.cpp:165`; row 659 `src/roadmapparse.cpp:974`; row
+  690 `src/roadmaprender.cpp:313`; row 695 `src/roadmapdialog.cpp:958`;
+  row 816 `src/remotecontrol_roadmap_log.cpp:1773`; row 867
+  `src/remotecontrol_roadmap_log_batch.cpp:33-36`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The five roadmap statuses are listed by hand in several files; one shared list would stop a new status being missed in one of them.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L12-F3).
@@ -99400,6 +103459,8 @@ worked after these.
   `dp.setColor(QPalette::Base, th.bgPrimary)`, so those assertions move
   with the change. Feeds ANTS-5796 (dup:35e422da99c0).
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 580
+  `src/dialogchrome.cpp:169-176`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Two roadmap windows set their own background colours on top of the shared theme code, so a theme change has three places to edit.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F4).
@@ -99425,6 +103486,8 @@ worked after these.
   renderer and test_roadmap_dialog_cards pins many of its literals, so
   the restructure wants its own commit.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 699
+  `src/roadmapdialog.cpp:1177`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The roadmap card renderer is very long and its helper pieces quietly change shared state, which makes it hard to follow.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F6).
@@ -99450,6 +103513,8 @@ worked after these.
   names `currentBullets`, and test_roadmap_dialog_cards' messages use
   the name.
   Hot reload: none needed; no new running state.
+  The 2026-11-06 reviews also found this: row 709
+  `src/roadmapdialog.h:521`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A roadmap window function is named as if it returns roadmap items, but it returns recent changelog lines and commits.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L13-F23).
@@ -99557,6 +103622,8 @@ worked after these.
   pins the inline provider -> shellCwd -> activeSessionPath(cwd)
   sequence with a regex; move that test to the helper in the same commit.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 759
+  `src/claudestatuswidgets.cpp:1690-1696`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Five places each work out which Claude conversation belongs to the focused tab, and one of them notes it can pick the wrong one.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F4).
@@ -99570,6 +103637,8 @@ worked after these.
   Keep only the per-event fold separate. Queued: a new class across two
   subsystems' files; run source_scrapes on both first.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 770
+  `src/claudebgtasks.cpp:60-76`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The two trackers that read Claude's background tasks and its task list repeat the same file-following code, so each fix has to be made twice.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F5).
@@ -99598,6 +103667,8 @@ worked after these.
   Queued: merging them changes one of those two behaviours; decide which
   is right and lock it with a test first.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 772
+  `src/claudebgtasks.cpp:450`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The background-task reader creates and finishes tasks in two different ways, which makes it hard to follow and lets the two drift.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L17-F24).
@@ -99612,6 +103683,8 @@ worked after these.
   findRoadmapUnder's body for each probe and the .git walk; move those
   anchors with the code.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 793
+  `src/remotecontrol.cpp:282`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Two pieces of code that find a project's roadmap and changelog walk the folders the same way, and a fix to one already missed the other.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L18-F2).
@@ -99625,6 +103698,9 @@ worked after these.
   roadmap_log_flip_ants_v1.Inv1 pin the literal regex text; those tests
   must follow the fold.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 791
+  `src/remotecontrol.cpp:701`; row 794 `src/remotecontrol.cpp:674`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The rule for what a roadmap id looks like is copied six times in one file, so changing it means finding every copy.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L18-F3).
@@ -99696,6 +103772,8 @@ worked after these.
   ANTS-1424-INV-6 and INV-8 comment tokens (test_mcp_roadmap_log_verb)
   and the append/flip bounding that mcp_roadmap_unrecognised_format uses.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 830
+  `src/remotecontrol_roadmap_log.cpp:392`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The function that adds a roadmap item is over a thousand lines and is really two functions joined together.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F13).
@@ -99706,6 +103784,8 @@ worked after these.
   unindented and closes with `}   // !storeLocated`. Return the located
   fields from a named function instead.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 829
+  `src/remotecontrol_roadmap_log.cpp:3152`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A long block in the roadmap body editor is conditional but not indented, so a reader cannot see that it only sometimes runs.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L19-F14).
@@ -99741,6 +103821,9 @@ worked after these.
   remotecontrol_roadmap_query_verb.cpp. kRcStatuses (remotecontrol.cpp)
   is the table append and flip now use.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 844
+  `src/remotecontrol_roadmap_query_verb.cpp:1006`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The list of roadmap statuses is written out five times in the query tool.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F12).
@@ -99751,6 +103834,8 @@ worked after these.
   roadmapBullets resolves rcProjectRootFor before its empty check; the
   other two check the raw path. Decide which is meant first.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 825
+  `src/remotecontrol_roadmap_log.cpp:427`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Three functions repeat the same check before opening the roadmap store, and they differ in a way nobody wrote down.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L20-F13).
@@ -99776,6 +103861,9 @@ worked after these.
   the resolved targets. Queued: a large move inside a function tests
   exercise heavily; one commit of its own.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 871
+  `src/remotecontrol_roadmap_log_batch.cpp:690`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** One roadmap tool's main function holds a whole second implementation in its middle, so a reader loses the numbered steps.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L21-F5).
@@ -99817,6 +103905,9 @@ worked after these.
   path leaves unset. Queued: the sort order is observable in the reply,
   so say which order store targets should come back in first.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 868
+  `src/remotecontrol_roadmap_log_batch.cpp:335`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A field named as a line number sometimes holds a database row number, so the sort order is not what its comment says.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L21-F15).
@@ -99843,6 +103934,9 @@ worked after these.
   Fix: one resolver returning root, path and text. Queued: six call
   sites across two files, with a known divergence; feeds ANTS-5796.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 862
+  `src/remotecontrol_roadmap_backfill.cpp:368-386`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Six roadmap tools each repeat the steps for finding a project's roadmap, and two past fixes had to find all six.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L21-F18).
@@ -99868,6 +103962,8 @@ worked after these.
   comment says whether on purpose. Check each refusal text against
   tests before merging. Feeds ANTS-5796.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 883
+  `src/remotecontrol_workspace.cpp:4116`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Six search tools each repeat the steps for finding which project they work on.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L22-F2).
@@ -99879,6 +103975,8 @@ worked after these.
   order is the mode precedence, mirrored by hand in the reply ladder.
   Do after the files_only/matches_only precedence fix (L22-F4).
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 890
+  `src/remotecontrol_workspace.cpp:697`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** One block of the code search serves five output modes, and the order of its early exits silently decides which mode wins.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L22-F5).
@@ -99903,6 +104001,8 @@ worked after these.
   isValidSpecId uses. Behaviour change; needs a test on a non-ANTS
   project.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  The 2026-11-06 reviews also found this: row 914
+  `src/remotecontrol_state.cpp:2967`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A tool that gathers context for a task only recognises this project's item numbers, so it ranks worse on every other project.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F15).
@@ -99940,6 +104040,8 @@ worked after these.
   name in this directory" helper for both paths, with a test for the
   redirect case.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  The 2026-11-06 reviews also found this: row 888
+  `src/remotecontrol_workspace.cpp:3894`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** One way of finding a project's feedback file skips a matching step the other way uses, so the two can pick different files.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F21).
@@ -99987,6 +104089,8 @@ worked after these.
   neutral name; test_mcp_cold_eyes pins `ceSanitiseEcho`.
   Feeds ANTS-5796.
   Hot reload: none needed.
+  The 2026-11-06 reviews also found this: row 918
+  `src/remotecontrol_review.cpp:1405`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Four places clean up user text before echoing it in an error, each with its own copy of the same code.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L23-F4).
@@ -100078,6 +104182,10 @@ worked after these.
   and does not walk up to a parent folder, so with CLAUDE_CONFIG_DIR set,
   or from a subdirectory, it misses a transcript session_cost finds. Make
   it resolve as SessionCost::run does. Behaviour change; needs a test.
+  The 2026-11-06 reviews also found this: row 133
+  `remotecontrol_run_trace.cpp:97`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5953/ANTS-6271.)
   **Layman:** Two cost tools look for a session's log in different places, so one can miss a log the other finds.
   Kind: fix.
   Source: review-readability-2026-10-22 L25.
@@ -100088,6 +104196,10 @@ worked after these.
   every line with no message id again; SessionCost::analyse skips both.
   One shared sum, with a test pinning which rule is right. Behaviour
   change for one of the two verbs.
+  The 2026-11-06 reviews also found this: row 144
+  `runtraceverb.cpp:246-263`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5954/ANTS-6272.)
   **Layman:** Two tools that add up a session's tokens disagree on what to count.
   Kind: fix.
   Source: review-readability-2026-10-22 L25.
@@ -100114,6 +104226,8 @@ worked after these.
   MarkdownScan::headings) and check each spec that names a heading rule
   before moving the others onto it. docsindex headingRx is exempt by
   ANTS-3786 INV-7's test; reconsider that exemption with the merge.
+  The 2026-11-06 reviews also found this: row 368 `docintegrity.cpp:33`;
+  row 369 `docintegrity.cpp:27`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The document checkers disagree about what counts as a heading, so one can flag a heading another ignores.
   Kind: refactor.
   Source: review-readability-2026-10-22 L26.
@@ -100173,6 +104287,8 @@ worked after these.
   lane dialogs differ in "docs" vs "files" and in the engine's Lane
   type. FoldInMode, m_perFindingRadio and m_narrativeEdit are
   per-dialog members today, so the move takes them into the base.
+  The 2026-11-06 reviews also found this: row 1005
+  `src/indiereviewdialog.cpp:214`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The three review windows still each build the same fold-in controls and lane list by hand; make that one piece of code.
   Kind: refactor.
   Source: review-readability-2026-10-22 L28.
@@ -100231,6 +104347,8 @@ worked after these.
   Amend and gate the spec first. The stray mkpath in readClaudeSettings
   was removed in the lane pass.
   Hot reload: none needed; no running state.
+  The 2026-11-06 reviews also found this: row 1173
+  `src/claudesetup.cpp:380`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** Two setup buttons each repeat the same careful steps before editing Claude Code's settings file; one shared copy means a fix lands in both.
   Kind: refactor.
   Source: review-readability-2026-10-22 (L37-F2).
@@ -100351,6 +104469,8 @@ worked after these.
   readability pass: a hand conversion of that many multi-line literals
   is its own change, and audit feature tests read the catalogue, so run
   the audit fixtures and feature tests after it.
+  The 2026-11-06 reviews also found this: row 591
+  `src/auditdialog_catalogue.cpp:771`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** The audit checks set their output filters by position, so a reader cannot tell which value is which; label each one.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -100436,6 +104556,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 18
+  `terminalgrid.cpp:1045`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5818/ANTS-5819, partial.)
   **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100448,6 +104572,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 18
+  `terminalgrid.cpp:1045`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5818/ANTS-5819, partial.)
   **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100484,6 +104612,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1297
+  `src/scrollbackexporter.cpp:224`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100496,6 +104626,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1298
+  `src/inlineimagedecode.cpp:61`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code that holds the text on screen and in scrollback, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100508,6 +104640,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 43
+  `terminalwidget.cpp:5059-5060`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100532,6 +104666,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: UNCHECKED — `sed -n 1915,1935p terminalwidget.cpp`: item states no checkable claim about the code
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 30
+  `terminalwidget.cpp:1910-1916`, a High use-after-free: `ql` is a
+  reference into `m_quickSelectLabels`, which `exitUrlQuickSelect`
+  clears. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code that draws the terminal and handles typing and the mouse, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100609,6 +104747,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1312
+  `src/mainwindow_tabs.cpp:1227`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the main window, its tabs and menus, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100705,6 +104845,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 569 `src/titlebar.h:44`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the tab bar, side panels and other window parts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100741,6 +104883,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 233
+  `updatedialog.cpp:225-226`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100753,6 +104897,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1318
+  `src/selfupdate.cpp:85-91`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100765,6 +104911,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 582
+  `src/selfupdate.cpp:113-116`; row 1317 `src/selfupdate.cpp:113`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the dialog windows and the colour themes, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100801,6 +104950,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 297 `auditdialog.cpp:106`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100885,6 +105036,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1321
+  `src/auditdialog.cpp:3487`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100909,6 +105062,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 309
+  `auditrunner.cpp:925-976`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -100933,6 +105088,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 322
+  `auditrunner.cpp:2717,2727`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code-audit checker, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101125,6 +105282,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 328
+  `roadmapparse.cpp:1642-1643`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101177,6 +105336,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 333
+  `roadmaprender.cpp:888`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the code that reads and writes the ROADMAP.md file, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101237,6 +105398,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 343
+  `roadmapdialog.cpp:3329`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101249,6 +105412,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1353
+  `src/roadmapdialog.cpp:1500`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the roadmap window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101285,6 +105450,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: PARTLY — `sed mcptoolregistry.cpp 1010-1066`: line 1015 does check if (!rc()) return kRcUnavailable; the worker lambda at :1061 calls rc() again unchecked, from another thread
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1356
+  `src/mcptoolregistry.cpp:1040`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the link between the terminal and Claude Code, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101525,6 +105692,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1374
+  `src/claudebgtasksdialog.cpp:71-73`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the Claude status bar and task list, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101577,6 +105746,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 72
+  `mcpdforwarder.cpp:117-126`; row 1375 `src/mcpdforwarder.cpp:106`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the connection Claude Code sessions use to talk to the terminal, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101685,6 +105857,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 73
+  `remotecontrol.cpp:710-714`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5921/ANTS-5936.)
   **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101745,6 +105921,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 850
+  `src/remotecontrol_roadmap_query_verb.cpp:1900`; row 1389
+  `src/remotecontrol_roadmap_query_verb.cpp:1900`. Details:
+  docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101865,6 +106045,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 117 `log_batch.cpp:948`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
+  The 2026-11-06 reviews also found this: row 73
+  `remotecontrol.cpp:710-714`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5921/ANTS-5936.)
   **Layman:** A possible bug in the bulk roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101877,6 +106063,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1398
+  `src/remotecontrol_workspace.cpp:996`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101913,6 +106101,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: UNCHECKED — `none`: did not read remotecontrol_state.cpp:1948
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1405
+  `src/remotecontrol_state.cpp:1935`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the project and search tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101949,6 +106139,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 358
+  `src/remotecontrol_review.cpp:779`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the review tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -101961,6 +106153,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 356
+  `remotecontrol_review.cpp:51-57`; row 922
+  `src/remotecontrol_review.cpp:137`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the review tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102073,6 +106268,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 133
+  `remotecontrol_run_trace.cpp:97`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5953/ANTS-6271.)
   **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102085,6 +106284,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 144
+  `runtraceverb.cpp:246-263`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5954/ANTS-6272.)
   **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102142,6 +106345,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   real. Hazard: that changes ANTS-3663 INV-22 (an under-counted list
   would stop being reported), so the spec is amended through
   review-contract before the code changes.
+  The 2026-11-06 reviews also found this: rows 961 and 1428, both
+  `src/docfacts.cpp:294`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-5958 and ANTS-6135.)
   **Layman:** A possible bug in the document checkers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102412,6 +106619,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 394
+  `indiereviewengine.cpp:1367`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102424,6 +106633,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1433
+  `src/debtsweepengine.cpp:434`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the review helpers, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102779,6 +106990,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1449
+  `src/mcporientation.cpp:339-345`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102803,6 +107016,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 189
+  `src/tokenusageengine.cpp:427`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the shared plumbing behind the Claude Code tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102858,6 +107073,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 254
+  `modelswitchledger.cpp:239-244`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102885,6 +107102,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1451
+  `src/aidialog.cpp:114-121`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102897,6 +107116,12 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1452
+  `src/aidialog.cpp:371`. Details: docs/reviews/close-findings-2026-11-06.md.
+  The 2026-11-06 reviews also found this: row 1114
+  `src/aidialog.cpp:371`. Details:
+  docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
+  ANTS-6142 and ANTS-6015.)
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102909,6 +107134,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 263
+  `src/modelnearmissledger.cpp:141`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102945,6 +107172,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 212
+  `src/sessionmemoryengine.cpp:128`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -102969,6 +107198,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 203
+  `projectlayoutengine.cpp:203-208`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in settings, saved sessions and project settings, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103029,6 +107260,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1156
+  `src/luaengine.cpp:254`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the plugin system, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103071,6 +107304,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   releaseLint take `## [` only, fenced or not. Queued here, not fixed in
   ANTS-6145, because choosing the rule changes what three readers report.
   lint now carries a comment naming the difference.
+  The 2026-11-06 reviews also found this: row 415
+  `changelogquery.cpp:106`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103083,6 +107318,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 420
+  `changeloglog.cpp:629–632`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103119,6 +107356,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1162
+  `src/changelogquery.cpp:370`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the changelog and feedback-file tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103191,6 +107430,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 433
+  `buildcache.cpp:122-123`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the logs and error reports, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103239,6 +107480,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1466
+  `src/hostexec.h:41-45`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in shared helper code, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -103327,6 +107570,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1472 `tools/local-
+  ci.sh:369`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103418,6 +107663,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1473 `tools/perf-
+  report.sh:209-220`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103509,6 +107756,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓ src/roadmapparse.cpp:323-326
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 457 `tools/roadmap-import-
+  verify.py:41`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103522,6 +107771,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1255 `tools/roadmap-
+  import-verify.py:40`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103600,6 +107851,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 461
+  `tools/migrate_expect_helper.py:221-254`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103756,6 +108009,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1480 `tools/token-
+  bench/project/tally/csvio.py:30`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103769,6 +108024,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1481 `tools/token-
+  bench/project/tally/report.py:12`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103886,6 +108143,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓ see L08-F3
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 277 `_common.sh:291-293`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103938,6 +108197,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1486 `hooks/ants-session-
+  preamble.sh:32`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -103951,6 +108212,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 1237 `tools/install-
+  hooks.sh:188`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -104029,6 +108292,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓ see L11-F1
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 458
+  `packaging/debian/rules:21-25`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -104042,6 +108307,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a; spec claims unchecked
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 459 `PKGBUILD:40-48`.
+  Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -104068,6 +108335,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: unchecked against terminalgrid.cpp
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  The 2026-11-06 reviews also found this: row 272 `packaging/shell-
+  integration/ants-osc133.zsh:96-98`. Details: docs/reviews/close-findings-2026-11-06.md.
   **Layman:** A possible bug in the packaging and release scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
