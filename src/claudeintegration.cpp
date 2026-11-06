@@ -4,8 +4,6 @@
 #include "guithread.h"
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 
-#include "auditrunner.h"   // audit_run schema: the tool lists
-#include "testrunners.h"   // test_results, focused_test: the runner enum
 #include "build_info.h"  // ANTS-1952 — git SHA + build time for serverInfo
 #include "debuglog.h"
 #include "mcpdeprecation.h"         // ANTS-5485
