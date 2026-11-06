@@ -236,9 +236,13 @@ void VtParser::processChar(uint32_t ch) {
             // The string states handle ESC themselves: they dispatch
             // their End action, and the *Esc peek state consumes the next
             // byte so a hostile payload cannot end in a live ESC sequence
-            // such as RIS. See tests/features/vt_osc_esc_discard/spec.md.
+            // such as RIS. A second ESC in a peek state is that byte, so
+            // the peek states are listed too (ANTS-6440). See
+            // tests/features/vt_osc_esc_discard/spec.md.
             if (m_state == OscString || m_state == DcsString ||
-                m_state == ApcString || m_state == IgnoreString) {
+                m_state == ApcString || m_state == IgnoreString ||
+                m_state == OscStringEsc || m_state == DcsStringEsc ||
+                m_state == ApcStringEsc || m_state == IgnoreStringEsc) {
                 break;  // exit the C0 switch — per-state switch handles it
             }
             transition(Escape);

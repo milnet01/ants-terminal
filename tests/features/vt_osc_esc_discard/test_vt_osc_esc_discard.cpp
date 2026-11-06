@@ -194,6 +194,29 @@ TEST(VtOscEscDiscard, parserReturnsToGroundAfterEscDiscard) {
     expect(prints >= 1, "INV-5: at least one Print dispatched");
 }
 
+// INV-1 / INV-3 with X = ESC (ANTS-6440). A second ESC in the peek
+// state must be discarded like any other X. Before the fix it reached
+// the C0 switch's ESC case, which opened a live Escape state, so
+// `ESC ESC c` dispatched RIS and `ESC ESC [2J` erased the screen.
+TEST(VtOscEscDiscard, secondEscInPeekStateIsDiscarded) {
+    const char *intros[] = {"\x1B]0;t", "\x1BP1;2|p", "\x1B_Gp", "\x1BXsos"};
+    const std::string tails[] = {std::string("\x1B\x1B") + "c",
+                                 std::string("\x1B\x1B") + "[2J"};
+    for (const char *intro : intros) {
+        for (const auto &tail : tails) {
+            const auto actions = collectActions(std::string(intro) + tail);
+            const int escs = countByType(actions, VtAction::EscDispatch);
+            const int csis = countByType(actions, VtAction::CsiDispatch);
+            char detail[128];
+            std::snprintf(detail, sizeof(detail),
+                          "intro=%s escDispatches=%d csiDispatches=%d",
+                          intro + 1, escs, csis);
+            expect(escs == 0 && csis == 0,
+                   "ESC ESC after a string dispatches nothing", detail);
+        }
+    }
+}
+
 }  // namespace
 
 

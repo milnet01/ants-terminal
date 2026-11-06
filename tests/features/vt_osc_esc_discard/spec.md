@@ -57,7 +57,9 @@ After feeding `ESC ] 0 ; t i t l e ESC c` to the parser:
   X is (`c` for RIS, `D` for IND, `7` for DECSC, etc.).
 - The parser is back in Ground state.
 
-The trailing byte is consumed silently.
+The trailing byte is consumed silently. That includes X = ESC:
+`ESC ESC c` and `ESC ESC [2J` dispatch nothing, for every string type
+in Invariant 3.
 
 ### Invariant 2 — `OscString + ESC + \` is the same path
 
@@ -88,6 +90,9 @@ payload matches it byte-for-byte.
   `DcsStringEsc` / `ApcStringEsc` / `IgnoreStringEsc` peek-states to
   `enum State` and matching cases in `processChar`. Trailing byte
   dropped on the floor.
+- **ANTS-6440** (2026-11-06) — a second ESC in a peek state still
+  opened a live Escape state. The peek states now take ESC through
+  `processString` like any other trailing byte.
 
 ## Test strategy
 

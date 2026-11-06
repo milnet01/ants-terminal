@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **Output that ends a title, image or other string sequence with two ESC bytes can no longer reset or clear the terminal** (ANTS-6440)
+
 - **`version_check` reads only files inside the project; a recipe pointing outside it is refused.** (ANTS-6432)
 
 - **The "Switch model?" auto-confirm presses Enter only in a tab running Claude Code with no permission prompt waiting.** (ANTS-6433)

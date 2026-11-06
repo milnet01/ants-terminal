@@ -91102,7 +91102,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
 
 ### Security (2026-11-06 review)
 
-- 📋 [ANTS-6440] **vtparser.cpp: One extra byte gets around the ANTS-1777 hardening against ESC sequences that end a string.**
+- ✅ [ANTS-6440] **vtparser.cpp: One extra byte gets around the ANTS-1777 hardening against ESC sequences that end a string.**
   `vtparser.cpp:240-241` — One extra byte gets around the ANTS-1777
   hardening against ESC sequences that end a string.
   Quote: `if (m_state == OscString || m_state == DcsString || m_state ==
@@ -91112,6 +91112,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   goes to `processString` and is discarded to Ground. Add `ESC ESC c`
   and `ESC ESC [2J` cases to the INV-5/INV-6 tests.
   Ledger row 1, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06: the four *StringEsc peek states join the ESC guard
+  in processChar, so a second ESC goes to processString and is discarded
+  to Ground. Test VtOscEscDiscard.secondEscInPeekStateIsDiscarded (red
+  before: EscDispatch for ESC ESC c, CsiDispatch for ESC ESC [2J, on
+  OSC/DCS/APC/SOS).
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 01-vt-parser-pty (High).
