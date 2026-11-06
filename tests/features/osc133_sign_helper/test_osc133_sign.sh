@@ -9,16 +9,17 @@ dir="$here/../../../packaging/shell-integration"
 fail=0
 
 real_openssl="$(command -v openssl)" || { echo "SKIP: openssl not installed"; exit 77; }
+real_python="$(command -v python3)" || { echo "SKIP: python3 not installed"; exit 77; }
 [ -x "$helper" ] || { echo "FAIL: helper not built: $helper"; exit 1; }
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
 
-# Two PATH dirs: one holding the helper, one holding an openssl stub that
-# records each call and then does the real work.
+# Two PATH dirs: one holding the helper, one holding openssl and python3
+# stubs that record each call (python3: its argv) and then do the real work.
 mkdir -p "$tmp/helperbin" "$tmp/stubbin" "$tmp/tools"
 # The shells get a PATH of these dirs only, so an installed helper or
-# openssl elsewhere cannot leak in. The scripts need awk and nothing else.
+# python3 elsewhere cannot leak in. The scripts need awk and nothing else.
 ln -s "$(command -v awk)" "$tmp/tools/awk"
 ln -s "$(cd "$(dirname "$helper")" && pwd)/$(basename "$helper")" "$tmp/helperbin/ants-osc133-sign"
 cat > "$tmp/stubbin/openssl" <<EOF
@@ -26,7 +27,12 @@ cat > "$tmp/stubbin/openssl" <<EOF
 echo called >> "$tmp/openssl-calls"
 exec "$real_openssl" "\$@"
 EOF
-chmod +x "$tmp/stubbin/openssl"
+cat > "$tmp/stubbin/python3" <<EOF
+#!/bin/sh
+printf '%s\n' "\$@" >> "$tmp/python-argv"
+exec "$real_python" "\$@"
+EOF
+chmod +x "$tmp/stubbin/openssl" "$tmp/stubbin/python3"
 
 ok()   { echo "ok   $1"; }
 bad()  { echo "FAIL $1"; fail=1; }
@@ -57,10 +63,15 @@ refuses "empty key" "" "A|1"
 refuses "key over 4 KiB" "$(head -c 4097 /dev/zero | tr '\0' k)" "A|1"
 
 # INV-3 and INV-4, per shell.
+# The shells run in a folder holding a hostile hmac.py, as a cloned
+# project could: the python3 fallback must not import it.
+mkdir -p "$tmp/plant"
+echo 'raise SystemExit("planted hmac.py imported")' > "$tmp/plant/hmac.py"
 sign_in() {  # <shell> <script> <PATH>
-    rm -f "$tmp/openssl-calls"
-    TERM_PROGRAM=ants-terminal ANTS_OSC133_KEY="$key" PATH="$3" "$(command -v "$1")" -c \
-        'source "$1"; __ants_osc133_promptid=7; __ants_osc133_hmac D 0' _ "$2" 2>&1
+    rm -f "$tmp/openssl-calls" "$tmp/python-argv"
+    (cd "$tmp/plant" && TERM_PROGRAM=ants-terminal ANTS_OSC133_KEY="$key" PATH="$3" \
+        "$(command -v "$1")" -c \
+        'source "$1"; __ants_osc133_promptid=7; __ants_osc133_hmac D 0' _ "$2" 2>&1)
 }
 check_shell() {  # <shell> <script>
     local sh="$1" script="$2" got
@@ -71,10 +82,11 @@ check_shell() {  # <shell> <script>
         bad "INV-3 $sh gave '$got', openssl called: $([ -e "$tmp/openssl-calls" ] && echo yes || echo no)"
     fi
     got="$(sign_in "$sh" "$script" "$tmp/stubbin:$tmp/tools")"
-    if [ "$got" = "$(expect 'D|7|0')" ] && [ -e "$tmp/openssl-calls" ]; then
-        ok "INV-4 $sh falls back to openssl"
+    if [ "$got" = "$(expect 'D|7|0')" ] && [ -e "$tmp/python-argv" ] \
+        && ! grep -q "$key" "$tmp/python-argv" && [ ! -e "$tmp/openssl-calls" ]; then
+        ok "INV-4 $sh falls back to python3, key off its argv"
     else
-        bad "INV-4 $sh fallback gave '$got'"
+        bad "INV-4 $sh fallback gave '$got'; python3 called: $([ -e "$tmp/python-argv" ] && echo yes || echo no); openssl called: $([ -e "$tmp/openssl-calls" ] && echo yes || echo no)"
     fi
 }
 

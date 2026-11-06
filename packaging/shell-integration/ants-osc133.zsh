@@ -17,12 +17,12 @@
 # This hook does nothing (preserves vanilla shell behaviour) when:
 #   - ANTS_OSC133_KEY is unset, OR
 #   - the parent terminal isn't Ants (TERM_PROGRAM != "ants-terminal"), OR
-#   - neither ants-osc133-sign nor openssl is on PATH (silently degrades)
+#   - neither ants-osc133-sign nor python3 is on PATH (silently degrades)
 #
 # Signing goes through ants-osc133-sign, which reads the key from stdin, so
 # the key never appears in a process's argv (ANTS-5428). Where the helper is
-# not installed (Flatpak, AppImage) it falls back to openssl, whose -hmac
-# argument shows the key to `ps` while each prompt is drawn.
+# not installed (Flatpak, AppImage) it falls back to python3, which also
+# reads the key from stdin (ANTS-6445).
 #
 # zsh has both preexec and precmd, so we get the cleanest separation of
 # A (precmd, before PS1), B (preexec, after Enter), C (preexec, just
@@ -32,11 +32,15 @@
 [ "${TERM_PROGRAM:-}" != "ants-terminal" ] && return 0
 if command -v ants-osc133-sign >/dev/null 2>&1; then
     __ants_osc133_signer=helper
-elif command -v openssl >/dev/null 2>&1; then
-    __ants_osc133_signer=openssl
+elif command -v python3 >/dev/null 2>&1; then
+    __ants_osc133_signer=python
 else
     return 0
 fi
+
+typeset -g __ants_osc133_py='import hmac, hashlib, os, sys
+print(hmac.new(sys.stdin.buffer.read(), os.fsencode(sys.argv[1]),
+               hashlib.sha256).hexdigest())'
 
 # Audit TL-28 — kept across a re-source, or the open block's D is skipped.
 typeset -g __ants_osc133_promptid="${__ants_osc133_promptid:-}"
@@ -55,9 +59,9 @@ __ants_osc133_hmac() {
         printf '%s' "$ANTS_OSC133_KEY" | ants-osc133-sign "$msg" 2>/dev/null
         return
     fi
-    print -nr -- "$msg" \
-        | openssl dgst -sha256 -hmac "$ANTS_OSC133_KEY" -hex 2>/dev/null \
-        | awk '{print $NF}'
+    # Fallback: python3 reads the key from stdin too. -I stops it importing
+    # a planted hmac.py from the current directory.
+    printf '%s' "$ANTS_OSC133_KEY" | python3 -I -c "$__ants_osc133_py" "$msg" 2>/dev/null
 }
 
 __ants_osc133_emit() {

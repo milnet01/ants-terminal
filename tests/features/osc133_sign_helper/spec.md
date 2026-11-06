@@ -21,8 +21,10 @@ process's argv.
   helper when it is on `PATH`, and never call openssl then. Their
   signature equals openssl's for the same key and message.
 - **INV-4** — Where the helper is not on `PATH` (the Flatpak and the
-  AppImage), the scripts fall back to openssl and still sign.
-  `packaging/shell-integration/README.md` says so.
+  AppImage), the scripts fall back to `python3 -I`, which reads the key
+  from standard input, and still sign. The key is in no argument, openssl
+  is never called, and a `hmac.py` in the current folder is not imported
+  (ANTS-6445). `packaging/shell-integration/README.md` names the helper.
 - **INV-5** — `cmake --install` installs the helper beside
   `ants-terminal`, and the openSUSE spec lists it.
 

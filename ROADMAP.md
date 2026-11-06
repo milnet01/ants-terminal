@@ -91176,7 +91176,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6445] **ants-osc133.bash: The fallback signer puts the secret in argv, where any local user can read it with `ps` on every prompt draw.**
+- ✅ [ANTS-6445] **ants-osc133.bash: The fallback signer puts the secret in argv, where any local user can read it with `ps` on every prompt draw.**
   `packaging/shell-integration/ants-osc133.bash:68` — The fallback
   signer puts the secret in argv, where any local user can read it with
   `ps` on every prompt draw. This is documented (`README:99-105`), but
@@ -91187,6 +91187,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   osc133-sign` in the AppImage and Flatpak bundles. Failing that,
   disable signing rather than fall back to argv.
   Ledger row 271, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06 (user chose python3 over dropping the fallback): both
+  hooks fall back to `python3 -I`, key on stdin; openssl is no longer
+  called. osc133_sign_helper INV-4 amended; its test checks the key is
+  in no python3 argument and a planted hmac.py is not imported (red
+  before: openssl called; red with -I removed).
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).

@@ -17,12 +17,12 @@
 # This hook does nothing (preserves vanilla shell behaviour) when:
 #   - ANTS_OSC133_KEY is unset, OR
 #   - the parent terminal isn't Ants (TERM_PROGRAM != "ants-terminal"), OR
-#   - neither ants-osc133-sign nor openssl is on PATH (silently degrades)
+#   - neither ants-osc133-sign nor python3 is on PATH (silently degrades)
 #
 # Signing goes through ants-osc133-sign, which reads the key from stdin, so
 # the key never appears in a process's argv (ANTS-5428). Where the helper is
-# not installed (Flatpak, AppImage) it falls back to openssl, whose -hmac
-# argument shows the key to `ps` while each prompt is drawn.
+# not installed (Flatpak, AppImage) it falls back to python3, which also
+# reads the key from stdin (ANTS-6445).
 #
 # Without this hook installed, Ants's command-block UI still works — but
 # any process inside the terminal can spoof OSC 133 markers and pollute it.
@@ -34,8 +34,8 @@
 [ "${TERM_PROGRAM:-}" != "ants-terminal" ] && return 0
 if command -v ants-osc133-sign >/dev/null 2>&1; then
     __ants_osc133_signer=helper
-elif command -v openssl >/dev/null 2>&1; then
-    __ants_osc133_signer=openssl
+elif command -v python3 >/dev/null 2>&1; then
+    __ants_osc133_signer=python
 else
     return 0
 fi
@@ -44,6 +44,10 @@ fi
 # can't be replayed against prompt N+1 (different message → different HMAC).
 # Audit TL-28 — kept across a re-source, or the open block's D is skipped.
 __ants_osc133_promptid="${__ants_osc133_promptid:-}"
+
+__ants_osc133_py='import hmac, hashlib, os, sys
+print(hmac.new(sys.stdin.buffer.read(), os.fsencode(sys.argv[1]),
+               hashlib.sha256).hexdigest())'
 
 # HMAC helper. Args: <marker> [<exit-code-for-D>]
 # Echoes the canonical message's hex HMAC-SHA256.
@@ -61,12 +65,9 @@ __ants_osc133_hmac() {
         printf '%s' "$ANTS_OSC133_KEY" | ants-osc133-sign "$msg" 2>/dev/null
         return
     fi
-    # Fallback: openssl takes the key as a CLI arg, visible to `ps` while it
-    # runs. -binary | xxd would also work but xxd isn't always installed;
-    # openssl hex-encodes itself ("(stdin)= <hex>").
-    printf '%s' "$msg" \
-        | openssl dgst -sha256 -hmac "$ANTS_OSC133_KEY" -hex 2>/dev/null \
-        | awk '{print $NF}'
+    # Fallback: python3 reads the key from stdin too. -I stops it importing
+    # a planted hmac.py from the current directory.
+    printf '%s' "$ANTS_OSC133_KEY" | python3 -I -c "$__ants_osc133_py" "$msg" 2>/dev/null
 }
 
 # Emit OSC 133 ; <marker> [ ; <extra> ] ; aid=<id> ; ahmac=<hex>  ST(=BEL)

@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **Where the signing helper is missing (AppImage, Flatpak), the shell integration now signs with python3, which reads the key from a pipe, instead of openssl, which showed the key to `ps`** (ANTS-6445)
+
 - **Output that ends a title, image or other string sequence with two ESC bytes can no longer reset or clear the terminal** (ANTS-6440)
 
 - **`version_check` reads only files inside the project; a recipe pointing outside it is refused.** (ANTS-6432)
