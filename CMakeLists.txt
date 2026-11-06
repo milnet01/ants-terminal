@@ -1943,6 +1943,23 @@ if(ANTS_TESTS)
         LABELS "perf"
         TIMEOUT 120)
 
+    # bench_scrollback_memory — ANTS-4534: heap per scrollback line, split
+    # into cell storage, trailing blanks and line headers.
+    add_executable(bench_scrollback_memory
+        tests/perf/bench_scrollback_memory.cpp
+        src/terminalgrid.cpp
+        src/inlineimagedecode.cpp
+        src/vtparser.cpp
+    )
+    target_link_libraries(bench_scrollback_memory PRIVATE Qt6::Core Qt6::Gui)
+    target_include_directories(bench_scrollback_memory PRIVATE
+        src ${CMAKE_SOURCE_DIR}/tests/perf)
+    target_compile_options(bench_scrollback_memory PRIVATE -Wall -Wextra -Wpedantic -O2)
+    add_test(NAME scrollback_memory COMMAND bench_scrollback_memory)
+    set_tests_properties(scrollback_memory PROPERTIES
+        LABELS "perf"
+        TIMEOUT 120)
+
     # bench_paint_throughput — shaping + draw throughput for the QPainter /
     # QTextLayout text path paintEvent runs per frame (ANTS-3462, the
     # baseline for the ANTS-3453 shaped-run cache). Pure Qt micro-benchmark:

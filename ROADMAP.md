@@ -71569,6 +71569,14 @@ they are one change.
   (TermLine 88 -> 40 bytes). Levers (b) trimmed scrollback rows and (c)
   a compact Cell remain; both need the measurement pass this item asks
   for first.
+  Measured 2026-11-06 with tests/perf/bench_scrollback_memory (perf
+  label; refute by rerunning it). 200 columns, 50,000 lines of mixed
+  output (short ls lines, coloured compiler lines, full-width lines):
+  614 MiB heap per tab, 12,884 B per line. Cell storage is 610 MiB
+  (99%); line headers plus the hyperlink side table are 3 MiB. Only 38%
+  of stored cells come before a row's last non-blank one. So lever (b)
+  alone keeps ~38% of cell bytes (~234 MiB), lever (c) alone scales them
+  by newCellSize/64, and both multiply. Next: choose (b), (c) or both.
   **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
   Kind: perf.
   Source: user-request-2026-08-19.
