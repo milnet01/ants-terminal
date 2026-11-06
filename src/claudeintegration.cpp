@@ -51,8 +51,11 @@
 static QElapsedTimer s_rateLimitClock;
 // ANTS-5090 — the same monotonic clock for the read-cache TTL and the
 // in-flight and audit-job reapers, so a suspend or a wall-clock step can
-// neither reap a live slot nor serve a stale read.
-static qint64 monotonicNowMs() { return s_rateLimitClock.elapsed(); }
+// neither reap a live slot nor serve a stale read. Declared in
+// claudeintegration_internal.h.
+namespace claudeintegrationdetail {
+qint64 monotonicNowMs() { return s_rateLimitClock.elapsed(); }
+}  // namespace claudeintegrationdetail
 #include <unistd.h>
 
 // ANTS-1415 — the CallerCwdContract::TabSpecific tools whose handler

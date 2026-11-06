@@ -17,6 +17,10 @@
 
 namespace claudeintegrationdetail {
 
+// The monotonic clock the rate limits, the read-cache TTL and the in-flight
+// and audit-job reapers share (ANTS-5090). Defined beside s_rateLimitClock.
+qint64 monotonicNowMs();
+
 // tools/list schema-property helpers, shared by its descriptor pieces.
 QJsonObject makeCallerCwdReadProp();
 QString     callerCwdSuffix();
