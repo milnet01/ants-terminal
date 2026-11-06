@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6422 -->
+<!-- ants-roadmap-id-high-water: ANTS=6423 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70541,6 +70541,20 @@ minor tag (next: pre-0.8.0).
   **Layman:** Clear a compiler warning that shows up in every build of the MCP server code.
   Kind: fix.
   Source: build warning seen in ANTS-4919, session 224, 2026-11-05.
+
+- 📋 [ANTS-6423] **split-motion-check --scrapes flags the untaken arm of a ternary window as changed.**
+  tests/features/mcp_roadmap_log_verb's window is
+  `endPos == npos ? ci.substr(pos) : ci.substr(pos, endPos - pos)`.
+  The ANTS-4919 kind B carve changed the rest-of-file text, so INV-10
+  listed `ci.substr(pos)` as changed and exited 1, though endPos is
+  found at both revisions and the bounded arm was reported unchanged.
+  Fix: when the condition evaluates, judge only the taken arm; report
+  the other as not cut. Test: a scrape pair where only the untaken
+  arm's content differs exits 0.
+  **Layman:** The tool that checks code moves raised a false alarm on a test line that only runs when something is missing.
+  Kind: fix.
+  Source: self-found-2026-11-06 (ANTS-4919 carve).
+  Lanes: tools.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
