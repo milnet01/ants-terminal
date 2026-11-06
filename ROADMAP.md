@@ -71618,6 +71618,15 @@ they are one change.
   non-blank one (bench_scrollback_memory, 2026-11-06). Watch
   returnCellsRow's recycling pool and the reflow path that rebuilds
   every scrollback line on a column resize; each needs a test.
+  In progress 2026-11-06 on local branch wip/ANTS-6703-trim (commit
+  8f1d340a, not pushed, not on main). Feature test
+  scrollback_trim_blank_tails green; default suite 6,108/6,109:
+  ScrollbackExportStreaming.Inv2HtmlMatchesExportAsHtml fails because
+  the streaming HTML export and exportAsHtml no longer agree on a
+  trimmed row (one pads to the screen width). Next: read both export
+  paths, decide which output is right (trailing default blanks carry no
+  information), make them agree, rerun the suite and
+  bench_scrollback_memory, then merge to main.
   **Layman:** Short lines in the scroll history stop paying for the empty space to their right.
   Kind: perf.
   Source: user decision 2026-11-06 on ANTS-4534.
@@ -91244,6 +91253,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Alternatively, hand the key to the shell through an inherited file
   descriptor rather than the environment.
   Ledger row 8, docs/reviews/close-findings-2026-11-06.md.
+  User decision 2026-11-06: fix with a key FILE, not un-export alone and
+  not README only. ~/.config/ants-terminal/osc133.key (0600) read by the
+  terminal (each new TerminalGrid, so a new key reaches new tabs without
+  a relaunch) and by both hooks into a non-exported shell variable;
+  nested shells read the file too, so they keep command blocks.
+  $ANTS_OSC133_KEY stays honoured for old setups; the hooks un-export
+  it. Touches terminalgrid.cpp, both hooks, the setup wizard
+  (src/claudesetup.cpp writes the key into ~/.profile today;
+  tests/features/welcome_dialog/test_claude_setup.cpp and
+  test_welcome_dialog.cpp lock that) and osc133_hmac_verification Test 4
+  (pins getenv as the only source). Four subsystems: write a short spec
+  first (spec-format.md § 1; no review-contract gate unless it proves
+  expensive). Closes ANTS-6444 with it.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).
@@ -91289,6 +91311,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `packaging/shell-integration/README.md:32-33` — "Untrusted inner
   processes don't [know the key], so they cannot mint a valid HMAC."
   Ledger row 270, docs/reviews/close-findings-2026-11-06.md.
+  User decision 2026-11-06: closes together with ANTS-6441 (key file).
+  The README claim is false today; rewrite it to say the HMAC stops
+  forged markers in printed output (cat, remote output), not programs
+  the user runs as themselves, which can read the key file.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).

@@ -28,6 +28,18 @@ finding and the remedy against current code before building it.
   continuation (ANTS-6438); three more `/proc` stat parsers (ANTS-6439).
 - **surfaced, falsified:** none.
 
+## Second run — roadmap section security-2026-11-06-review
+
+- **Fixed:** ANTS-6440, 6442, 6443, 6445 (python3 fallback, user's choice),
+  6446, 6447, 6448. Each commit names its red run.
+- **Queued:** ANTS-6441 with ANTS-6444. The user chose a key file
+  (2026-11-06); the design note is on ANTS-6441. It touches four subsystems,
+  so it gets a short spec first.
+- **Out of scope:** ANTS-6695 (compile-DB plugin flags), ANTS-6696 (checkov
+  and luacheck config files).
+- **Collateral:** `src/bracketedpaste.h` added to the terminal-widget lane.
+- **swept:** not yet. The group's one sweep runs after ANTS-6441/6444 land.
+
 ## Security
 
 ### Row 1 — High — `vtparser.cpp:240-241`
