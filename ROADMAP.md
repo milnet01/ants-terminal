@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6431 -->
+<!-- ants-roadmap-id-high-water: ANTS=6436 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90972,6 +90972,80 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: ux.
   Source: self-found 2026-11-06 codebase review run.
   Lanes: mcp.
+
+## Code review fixes (2026-11-06)
+
+Findings from review-code and review-readability, 2026-11-06, closed by
+close-findings in subject groups, security first. Each item names its lane and
+keeps the reviewer's remedy, which is a claim to check before building.
+
+- 📋 [ANTS-6432] **`version_check` reads only files inside the project root.**
+  `versioncheck.cpp:211-214`: `version_source` and `version_pattern` come
+  from the repo's own `.claude/bump.json`, unchecked. A source of
+  `../../.config/gh/hosts.yml` with pattern `oauth_token: (\S+)` returns
+  the token in `version`. `files[].path` (`:89`) and the tracked-file scan
+  have the same traversal, and `readFile` follows symlinks.
+  Remedy: resolve each path canonically; refuse or skip anything outside
+  the root.
+  **Layman:** A downloaded project could make the version checker read a private file, such as a login token, and pass it to the AI.
+  Kind: security.
+  Source: review-code 2026-11-06 lane 13 (High, calibrated Critical).
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6433] **The "Switch model?" auto-confirm presses Enter only when Claude Code is running and no permission prompt is waiting.**
+  `claudestatuswidgets.cpp:2290-2292`: when the last 12 lines hold
+  "Switch model?" and "Yes, switch to", `sendUnarmedConfirm` (`:2402`)
+  sends `\r` to the focused tab. Unlike the chip-click, deferred-switch,
+  undo and auto-switch paths, it never checks `awaitingInput` or that
+  Claude Code runs in the tab. On by default. `cat` of a file holding both
+  phrases, while a permission dialog shows, accepts "1. Yes".
+  Remedy: confirm only when the tracker state is not `NotRunning`, not
+  `awaitingInput`, and shortly after the user typed `/model` there.
+  **Layman:** Text shown in a terminal could make Ants press Enter on a Claude Code permission prompt, approving a command.
+  Kind: security.
+  Source: review-code 2026-11-06 lane 30 (High, calibrated Critical).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6434] **`spec_log` and `changelog_log` refuse to write through a symlink that leaves the project root.**
+  `remotecontrol_feedback.cpp:1136-1137,1271` (`spec_log` id route, via
+  `resolveSpecRelForId`) and `remotecontrol_changelog.cpp:118`
+  (`changelog_log` discovery route, via `findChangelogUnder`, including the
+  `.ants/project.json` override) skip the `validatePath` the `path` route
+  runs. A cloned repo's `CHANGELOG.md` symlinked outside is then read and
+  rewritten. Unsettled: whether `QSaveFile` writes through a symlink.
+  Remedy: run the resolved default path through `validatePath(...,
+  allowOutsideRoot=false)` on every route.
+  **Layman:** A downloaded project could trick the spec or changelog tool into overwriting a file elsewhere on the computer.
+  Kind: security.
+  Source: review-code 2026-11-06 lane 12 (High, calibrated Critical if QSaveFile writes through) + lane 11.
+  Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6435] **The allowlist generaliser never widens a `sudo -A rm` or `sudo -A <shell>` rule to any arguments.**
+  `claudeallowlist.cpp:494-504`: `normalizeRule` turns `sudo rm -rf
+  /var/x` into the `SUDO_ASKPASS=… sudo -A rm -rf /var/x` form; the
+  denylist at `:489-491` passes anything starting `SUDO_ASKPASS=`; then
+  `sudoSpecific` yields `Bash(SUDO_ASKPASS=… sudo -A rm *)`. `sudo -A bash
+  -c` becomes `sudo -A bash *`. Pre-filled by the permission prompt's "Add
+  to allowlist" (`claudestatuswidgets.cpp:666-668`) and `prefillRule`.
+  Remedy: run the denylist on the command after the `sudo -A` prefix;
+  refuse to generalise `rm`, a shell or an interpreter.
+  **Layman:** "Add to allowlist" could offer a rule letting Claude delete any file as root.
+  Kind: security.
+  Source: review-code 2026-11-06 lane 30 (High).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6436] **The tab's foreground-process name reads `tpgid` from `/proc/<pid>/stat`, not `tty_nr`.**
+  `terminalwidget.cpp:5844` read `fields[4]`, which is `tty_nr` (proc(5):
+  state, ppid, pgrp, session, tty_nr, tpgid). `foregroundProcess()` then
+  opened `/proc/<tty device number>/comm`: empty, or an unrelated process.
+  Callers: `mainwindow.cpp` tab titles and close confirmation.
+  The same stat parse has three more copies (`claudeintegration_sessions.cpp`
+  `findClaudeChildPid` and `processStartTimeMs`, `mcpdversion.cpp`
+  `parentOf`); folding them onto `src/procstat.h` is a separate item.
+  **Layman:** The name of the program running in a tab was read from the wrong number, so it was usually missing.
+  Kind: fix.
+  Source: review-readability 2026-11-06 lane terminal-widget-b (possible bug, confirmed).
+  Lanes: terminal-widget.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
