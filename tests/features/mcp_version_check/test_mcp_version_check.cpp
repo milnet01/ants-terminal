@@ -166,6 +166,42 @@ TEST(McpVersionCheck, Ants5510Refusals) {
               "version_unreadable");
 }
 
+TEST(McpVersionCheck, Ants5510ReadsNothingOutsideRoot) {
+    QTemporaryDir outside;
+    write(outside, "secret.txt", "VERSION 9.9.9-SECRET\n");
+    QTemporaryDir tmp;
+    const QString escape =
+        QDir(tmp.path()).relativeFilePath(outside.filePath("secret.txt"));
+    write(tmp, "version.txt", "VERSION 1.2.3\n");
+    ASSERT_TRUE(QFile::link(outside.filePath("secret.txt"), tmp.filePath("link.txt")));
+
+    // version_source escaping by `..` and by an in-root symlink.
+    for (const QString &source : {escape, QStringLiteral("link.txt")}) {
+        QJsonObject o{{"version_source", source}, {"version_pattern", "VERSION (\\S+)"}};
+        write(tmp, ".claude/bump.json", QJsonDocument(o).toJson());
+        const QJsonObject env = VersionCheck::run(tmp.path(), {"a"});
+        EXPECT_FALSE(env.value("ok").toBool()) << dump(env);
+        EXPECT_EQ(env.value("code").toString(), QStringLiteral("bad_recipe")) << dump(env);
+        EXPECT_EQ(dump(env).find("SECRET"), std::string::npos) << dump(env);
+    }
+
+    // A listed file and a tracked file behind the symlink are not read.
+    write(tmp, ".claude/bump.json", recipe({{"link.txt", "VERSION {OLD}"}}));
+    const QJsonObject env = VersionCheck::run(tmp.path(), {"link.txt"});
+    ASSERT_TRUE(env.value("ok").toBool()) << dump(env);
+    EXPECT_EQ(ofKind(env, "file_missing").size(), 1) << dump(env);
+    EXPECT_EQ(ofKind(env, "version_drift").size(), 0) << dump(env);
+    EXPECT_EQ(dump(env).find("SECRET"), std::string::npos) << dump(env);
+
+    // A tracked file the recipe does not name, behind a symlink, is not scanned.
+    write(outside, "stray.txt", "1.2.3\n");
+    ASSERT_TRUE(QFile::link(outside.filePath("stray.txt"), tmp.filePath("stray.txt")));
+    write(tmp, ".claude/bump.json", recipe({}));
+    const QJsonObject unlisted = VersionCheck::run(tmp.path(), {"stray.txt"});
+    ASSERT_TRUE(unlisted.value("ok").toBool()) << dump(unlisted);
+    EXPECT_EQ(ofKind(unlisted, "unlisted_version_file").size(), 0) << dump(unlisted);
+}
+
 TEST(McpVersionCheck, Ants5510VerbIsWired) {
     const std::string reg = ants_test::slurpFile(ANTS_MCP_REGISTRY_SOURCE);
     EXPECT_NE(reg.find("registerToolProvider(\"version_check\""), std::string::npos);

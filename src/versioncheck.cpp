@@ -2,7 +2,10 @@
 
 #include "versioncheck.h"
 
+#include "pathvalidation.h"
+
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -20,8 +23,15 @@ QJsonObject refuse(const QString &code, const QString &message) {
             {QStringLiteral("error"), QStringLiteral("version_check: ") + message}};
 }
 
-bool readFile(const QString &path, QByteArray *out) {
-    QFile f(path);
+// The recipe and the tracked list come from the repository, so a path in
+// either may climb out by `..` or a symlink. Nothing outside the root is read.
+bool insideRoot(const QString &root, const QString &rel) {
+    return PathValidation::isInsideProject(root, root + QLatin1Char('/') + rel);
+}
+
+bool readFile(const QString &root, const QString &rel, QByteArray *out) {
+    if (!insideRoot(root, rel)) return false;
+    QFile f(root + QLatin1Char('/') + rel);
     if (!f.open(QIODevice::ReadOnly)) return false;
     *out = f.readAll();
     return true;
@@ -86,7 +96,7 @@ void checkListedFile(const QString &root, const QJsonObject &entry,
     if (!pattern.contains(QLatin1String("{OLD}"))) {
         // Nothing here says which version the line holds.
         row[QStringLiteral("status")] = QStringLiteral("not_checked");
-    } else if (!readFile(root + QLatin1Char('/') + path, &bytes)) {
+    } else if (!readFile(root, path, &bytes)) {
         report(QStringLiteral("file_missing"),
                finding(QStringLiteral("file_missing"), path, 0,
                        QStringLiteral("the recipe lists this file and it cannot be read")));
@@ -149,7 +159,7 @@ void scanUnlisted(const QString &root, const QStringList &tracked, const QString
     int reported = 0;
     bool capped = false;
     for (const QString &path : tracked) {
-        if (skipForUnlisted(path, recipeText)) continue;
+        if (skipForUnlisted(path, recipeText) || !insideRoot(root, path)) continue;
         QFile f(root + QLatin1Char('/') + path);
         if (f.size() > kMaxUnlistedFileBytes || !f.open(QIODevice::ReadOnly)) continue;
         const QByteArray bytes = f.readAll();
@@ -181,7 +191,7 @@ void scanUnlisted(const QString &root, const QStringList &tracked, const QString
 QJsonObject run(const QString &root, const QStringList &trackedFiles) {
     QJsonObject out;
     QByteArray recipeBytes;
-    if (!readFile(root + QStringLiteral("/.claude/bump.json"), &recipeBytes)) {
+    if (!readFile(root, QStringLiteral(".claude/bump.json"), &recipeBytes)) {
         out[QStringLiteral("ok")] = true;
         out[QStringLiteral("recipe_present")] = false;
         out[QStringLiteral("findings")] = QJsonArray();
@@ -207,8 +217,11 @@ QJsonObject run(const QString &root, const QStringList &trackedFiles) {
     if (!versionRe.isValid() || versionRe.captureCount() < 1)
         return refuse(QStringLiteral("bad_recipe"),
                       QStringLiteral("version_pattern must be a valid regex with a capture group"));
+    if (QFileInfo::exists(root + QLatin1Char('/') + source) && !insideRoot(root, source))
+        return refuse(QStringLiteral("bad_recipe"),
+                      QStringLiteral("version_source %1 is outside the project").arg(source));
     QByteArray sourceBytes;
-    if (!readFile(root + QLatin1Char('/') + source, &sourceBytes))
+    if (!readFile(root, source, &sourceBytes))
         return refuse(QStringLiteral("version_unreadable"),
                       QStringLiteral("cannot read version_source %1").arg(source));
     const QString version = versionRe.match(QString::fromUtf8(sourceBytes)).captured(1);

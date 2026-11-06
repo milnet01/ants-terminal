@@ -16,3 +16,4 @@ its own list. This reads the recipe, so it serves any project that has one.
 | INV-5 | No recipe is `ok:true`, `recipe_present:false`, with both checks in `skipped`. No tracked-file list names `unlisted` in `skipped`. Neither reads as clean. *Test:* `McpVersionCheck.Ants5510SilenceIsNamed` |
 | INV-6 | A recipe outside the format refuses `bad_recipe`, including bump-recipe.md's foreign-dialect tells. A `version_source` that yields no version refuses `version_unreadable`. *Test:* `McpVersionCheck.Ants5510Refusals` |
 | INV-7 | The verb is registered and declared, with `caller_cwd` required. *Test:* `McpVersionCheck.Ants5510VerbIsWired` |
+| INV-8 | The verb reads nothing outside the project root. A `version_source` resolving outside it, by `..` or a symlink, refuses `bad_recipe`. A listed or tracked file resolving outside it is not read, and a listed one draws `file_missing`. *Test:* `McpVersionCheck.Ants5510ReadsNothingOutsideRoot` |
