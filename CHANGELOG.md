@@ -80,6 +80,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Claude Code integration's source is split into nine files of under 4,000 lines each, so separate sessions can work on it in parallel. Behaviour is unchanged.** (ANTS-4919)
+
 - **ci_report leaves runs of GitHub-managed workflows with no file, such as Dependabot, out of `unread` (ANTS-6416).**
 
 - **ci_report asks GitHub for up to four runs' jobs at once** (ANTS-6409)

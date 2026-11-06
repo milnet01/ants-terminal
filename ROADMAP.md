@@ -70478,7 +70478,7 @@ minor tag (next: pre-0.8.0).
   Kind: implement.
   Source: user-request-2026-08-06.
 
-- 📋 [ANTS-4919] **`claudeintegration.cpp` decomposition — the largest file, and the only big one with no item.**
+- ✅ [ANTS-4919] **`claudeintegration.cpp` decomposition — the largest file, and the only big one with no item.**
   Found while sweeping ADR-0005's blast radius: the ADR argued file size is
   a Colony throughput variable and named ANTS-1043 (mainwindow.cpp) and
   ANTS-1044 (auditdialog.cpp) as the enablers. Measured 2026-09-07,
@@ -70528,6 +70528,14 @@ minor tag (next: pre-0.8.0).
   mcp_tools_list_schema) whose subject did not move; re-point them in
   the carve commit. Next: the kind B carve into appendToolSchemas*
   pieces.
+  2026-11-06 (sessions 227-228): kind A move of the six descriptor pieces
+  (80506ecc); promotion of monotonicNowMs (4bf36e27); the last cut
+  (ea1ca9e9) moved process/transcript/project discovery into
+  src/claudeintegration_sessions.cpp and reply wrapping, in-flight caps,
+  audit jobs, ETags, the read cache and rate limits into
+  src/claudeintegration_callpolicy.cpp. src/claudeintegration.cpp is 3461
+  lines; split_sources caps the class at 4000 (INV-9). Follow-ups:
+  08b6d6af (GCC -Wnull-dereference), 5046e561 (orphaned includes).
   **Layman:** Split the biggest source file so parallel sessions can work on it without blocking each other.
   Kind: refactor.
   Source: adr-0005-gate-loop-3-2026-09-07.
