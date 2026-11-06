@@ -2,13 +2,17 @@
 // dialog for user-typed /model commands. See spec.md.
 //
 // Pure gate: ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(dialogVisible,
-// enabled, handshakeInFlight, alreadyConfirmed) returns true only when a dialog
-// is visible, the feature is on, no Ants-initiated handshake is already polling
-// it, and we have not already pressed ENTER for this dialog instance.
+// enabled, handshakeInFlight, alreadyConfirmed, claudeRunning,
+// permissionPending) returns true only when a dialog is visible, the feature is
+// on, no Ants-initiated handshake is already polling it, we have not already
+// pressed ENTER for this dialog instance, Claude Code runs in the tab, and no
+// permission prompt is pending.
 
 #include <gtest/gtest.h>
 #include <QString>
 #include "modelautoswitch.h"
+
+#include "../../_support/srcgrep.h"
 
 using ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch;
 using ModelAutoSwitch::shouldContinueAfterUnarmedConfirm;
@@ -20,27 +24,58 @@ using ModelAutoSwitch::shouldContinueAfterDirectSwitch;
 TEST(UnarmedConfirm, FiresOnlyWhenAllConditionsHold) {
     EXPECT_TRUE(shouldAutoConfirmUnarmedSwitch(
         /*dialogVisible=*/true, /*enabled=*/true,
-        /*handshakeInFlight=*/false, /*alreadyConfirmed=*/false));
+        /*handshakeInFlight=*/false, /*alreadyConfirmed=*/false,
+        /*claudeRunning=*/true, /*permissionPending=*/false));
 }
 
 // No dialog on screen → nothing to confirm.
 TEST(UnarmedConfirm, NoDialogNoFire) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(false, true, false, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(false, true, false, false, true, false));
 }
 
 // Feature toggled off → never acts, even with a dialog present.
 TEST(UnarmedConfirm, DisabledNeverFires) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, false, false, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, false, false, false, true, false));
 }
 
 // An Ants-initiated handshake owns this dialog → stand down (no double ENTER).
 TEST(UnarmedConfirm, HandshakeInFlightStandsDown) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, true, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, true, false, true, false));
 }
 
 // Already pressed ENTER for this dialog instance → don't press again.
 TEST(UnarmedConfirm, LatchPreventsDoublePress) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, true));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, true, true, false));
+}
+
+// ANTS-6433 — the dialog's words can come from any output, such as `cat` of a
+// file in a bare shell. Without Claude Code in the tab, never press ENTER.
+TEST(UnarmedConfirm, NoClaudeInTabNeverFires) {
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, false,
+                                                /*claudeRunning=*/false, false));
+}
+
+// ANTS-6433 — a pending permission prompt takes ENTER as "1. Yes", so the words
+// shown inside it (a command quoting them) must not make Ants approve it.
+TEST(UnarmedConfirm, PermissionPromptNeverFires) {
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, false, true,
+                                                /*permissionPending=*/true));
+}
+
+// ANTS-6433 — both callers feed the gate the focused shell's tracked state,
+// not constants.
+TEST(UnarmedConfirm, CallersPassTheTrackedState) {
+    const std::string src = ants_test::slurpFile(ANTS_SRC_DIR "/claudestatuswidgets.cpp");
+    const std::string call = "ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(";
+    int calls = 0;
+    for (size_t at = src.find(call); at != std::string::npos; at = src.find(call, at + 1)) {
+        const std::string args = src.substr(at, src.find(')', src.find("awaitingInput", at)) - at);
+        EXPECT_NE(args.find("ss.state != ClaudeState::NotRunning, ss.awaitingInput"),
+                  std::string::npos) << args;
+        EXPECT_LT(args.size(), 300u) << "call does not pass ss.awaitingInput: " << args;
+        ++calls;
+    }
+    EXPECT_EQ(calls, 2);
 }
 
 // ANTS-1969 — continuation after a user-typed confirm.

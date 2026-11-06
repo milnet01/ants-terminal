@@ -139,6 +139,15 @@ bool inActiveTurn(const ClaudeTabTracker *tracker, pid_t pid) {
     return st == ClaudeState::Thinking || st == ClaudeState::ToolUse;
 }
 
+// ANTS-6433 — the focused shell's Claude state; NotRunning when there is no
+// tracker or no shell, so a gate reading it fails closed.
+ClaudeTabTracker::ShellState shellStateOf(const ClaudeTabTracker *tracker,
+                                          const TerminalWidget *term) {
+    const pid_t pid = term ? term->shellPid() : 0;
+    if (!tracker || pid <= 0) return {};
+    return tracker->shellState(pid);
+}
+
 // ANTS-1974 — the recommender's home/baseline tier, read from config and mapped
 // to a ModelRecommender::Tier. Config already clamps home up to the floor and
 // normalises unrecognised strings to "sonnet" (see Config::claudeAutoModel).
@@ -2289,9 +2298,11 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
 
     const bool visible = ModelAutoSwitch::switchConfirmVisible(
         focused->recentOutput(kSwitchConfirmScanLines));
+    const ClaudeTabTracker::ShellState ss = shellStateOf(m_tracker, focused);
     if (!ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
-            m_unarmedSwitchConfirmed)) {
+            m_unarmedSwitchConfirmed,
+            ss.state != ClaudeState::NotRunning, ss.awaitingInput)) {
         if (!visible) {
             m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
             // ANTS-1975 — also clear the direct-switch latch once the banner
@@ -2337,9 +2348,11 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
     const bool visible = ModelAutoSwitch::switchConfirmVisible(
         focused->recentOutput(kSwitchConfirmScanLines));
 
+    const ClaudeTabTracker::ShellState ss = shellStateOf(m_tracker, focused);
     if (ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
-            m_unarmedSwitchConfirmed)) {
+            m_unarmedSwitchConfirmed,
+            ss.state != ClaudeState::NotRunning, ss.awaitingInput)) {
         sendUnarmedConfirm(focused);
         m_unarmedSwitchConfirmed = true;
         m_unarmedPollActive = false;

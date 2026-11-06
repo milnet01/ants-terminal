@@ -256,10 +256,15 @@ bool switchConfirmVisible(const QString &recentOutput) {
 bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
                                     bool enabled,
                                     bool handshakeInFlight,
-                                    bool alreadyConfirmed) {
+                                    bool alreadyConfirmed,
+                                    bool claudeRunning,
+                                    bool permissionPending) {
     // An Ants-initiated handshake (auto-switch / chip-click / undo) already
     // polls and confirms its own dialog — never double-press over it.
-    return dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed;
+    // ANTS-6433 — the dialog's words alone prove nothing; ENTER goes to Claude
+    // Code only, and never onto a pending permission prompt.
+    return dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed
+        && claudeRunning && !permissionPending;
 }
 
 bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {

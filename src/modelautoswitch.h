@@ -196,12 +196,17 @@ bool shouldContinueAfterDirectSwitch(bool autoModeOn, bool activeTurn);
 // dialog is visible, the feature is enabled, no Ants-initiated handshake is
 // already polling for this dialog (handshakeInFlight — that path confirms it),
 // and we have not already pressed ENTER for the current dialog instance
-// (alreadyConfirmed latch, cleared by the caller when the dialog clears). Pure
-// so the four-way gate is table-testable without a live terminal.
+// (alreadyConfirmed latch, cleared by the caller when the dialog clears).
+// ANTS-6433 — also only when Claude Code runs in the tab (claudeRunning) and no
+// permission prompt is pending (permissionPending): any output can show the
+// dialog's words, and ENTER on a permission prompt approves the command. Pure
+// so the gate is table-testable without a live terminal.
 bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
                                     bool enabled,
                                     bool handshakeInFlight,
-                                    bool alreadyConfirmed);
+                                    bool alreadyConfirmed,
+                                    bool claudeRunning,
+                                    bool permissionPending);
 
 // ANTS-1969 — after auto-confirming a user-typed /model dialog, should Ants also
 // inject the continuation prompt so Claude Code resumes the task on its own?
