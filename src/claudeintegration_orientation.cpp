@@ -1,4 +1,4 @@
-// ANTS-1677 claudeintegration piece 5/7 — the orientation and project tool descriptors
+// ANTS-1677 claudeintegration piece 6/9 — the orientation and project tool descriptors
 #include "claudeintegration_internal.h"
 #include "testrunners.h"   // test_results, focused_test: the runner enum
 #include "auditrunner.h"   // audit_run schema: the tool lists

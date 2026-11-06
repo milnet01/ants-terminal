@@ -1,4 +1,4 @@
-// ANTS-1677 claudeintegration piece 4/7 — the document and index tool descriptors
+// ANTS-1677 claudeintegration piece 5/9 — the document and index tool descriptors
 #include "claudeintegration_internal.h"
 
 #include <QJsonArray>

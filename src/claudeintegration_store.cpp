@@ -1,4 +1,4 @@
-// ANTS-1677 claudeintegration piece 6/7 — the roadmap and store tool descriptors
+// ANTS-1677 claudeintegration piece 7/9 — the roadmap and store tool descriptors
 #include "claudeintegration_internal.h"
 
 #include <QJsonArray>

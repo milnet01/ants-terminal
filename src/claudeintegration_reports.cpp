@@ -1,4 +1,4 @@
-// ANTS-1677 claudeintegration piece 7/7 — the report tool descriptors
+// ANTS-1677 claudeintegration piece 8/9 — the report tool descriptors
 #include "claudeintegration_internal.h"
 
 #include <QJsonArray>

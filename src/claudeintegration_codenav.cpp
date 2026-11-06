@@ -1,4 +1,4 @@
-// ANTS-1677 claudeintegration piece 3/7 — the code navigation tool descriptors
+// ANTS-1677 claudeintegration piece 4/9 — the code navigation tool descriptors
 #include "claudeintegration_internal.h"
 
 #include <QJsonArray>

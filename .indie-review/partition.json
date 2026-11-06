@@ -218,15 +218,17 @@
     },
     {
       "name": "claude-integration",
-      "summary": "MCP tool registry and dispatch. claudeintegration.cpp holds the server and dispatch; the claudeintegration_*.cpp pieces hold the tools/list descriptors, one tool family each.",
+      "summary": "MCP tool registry and dispatch. claudeintegration.cpp holds the servers and dispatch; claudeintegration_sessions.cpp the Claude Code process, transcript and project reading; claudeintegration_callpolicy.cpp reply wrapping, ETags, the read cache and rate limits; the other claudeintegration_*.cpp pieces hold the tools/list descriptors, one tool family each.",
       "sourcePaths": [
         "src/claudeintegration.cpp",
         "src/claudeintegration.h",
+        "src/claudeintegration_callpolicy.cpp",
         "src/claudeintegration_codenav.cpp",
         "src/claudeintegration_docs.cpp",
         "src/claudeintegration_internal.h",
         "src/claudeintegration_orientation.cpp",
         "src/claudeintegration_reports.cpp",
+        "src/claudeintegration_sessions.cpp",
         "src/claudeintegration_store.cpp",
         "src/claudeintegration_terminal.cpp",
         "src/mcptoolregistry.cpp",

@@ -42,6 +42,7 @@ const QList<SplitClass> kClasses = {
 
 // INV-9's classes. The last cut commit of a class's last item adds its stem.
 const QStringList kCappedClasses = {QStringLiteral("auditdialog"),
+                                    QStringLiteral("claudeintegration"),
                                     QStringLiteral("mainwindow")};
 constexpr qsizetype kLineCap = 4000;
 

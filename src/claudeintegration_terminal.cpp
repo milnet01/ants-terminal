@@ -1,4 +1,4 @@
-// ANTS-1677 claudeintegration piece 2/7 — the terminal and tab tool descriptors
+// ANTS-1677 claudeintegration piece 3/9 — the terminal and tab tool descriptors
 #include "claudeintegration_internal.h"
 
 #include <QJsonArray>

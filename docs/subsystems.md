@@ -411,8 +411,10 @@ Listed only where behavior isn't obvious from the name.
   foreign-tab events). PermissionRequest routes via `m_lastHookSessionId`,
   not the gate. Its implementation is `src/claudeintegration.cpp` plus the
   `src/claudeintegration_*.cpp` pieces named in
-  `ANTS_CLAUDEINTEGRATION_SOURCES_REL`, each holding one family of
-  `tools/list` descriptors, with shared helpers in
+  `ANTS_CLAUDEINTEGRATION_SOURCES_REL`: `_sessions` (process detection,
+  transcripts, project discovery), `_callpolicy` (reply wrapping, in-flight
+  caps, audit jobs, ETags, the read cache, rate limits), and one piece per
+  family of `tools/list` descriptors. Shared helpers are in
   `src/claudeintegration_internal.h` (ANTS-4919, ANTS-1677).
 - `claudestatuswidgets` — `ClaudeStatusBarController` owns the bottom-bar
   Claude chips (review-changes, bg-tasks, tasks, context-bar, error,

@@ -577,12 +577,14 @@ string(REPLACE ";" "\\;" _ants_rc_joined "${_ants_rc_joined}")
 # readers read the src/claudeintegration.cpp src/claudeintegration_*.cpp glob.
 set(ANTS_CLAUDEINTEGRATION_SOURCES_REL
     src/claudeintegration.cpp
+    src/claudeintegration_sessions.cpp
     src/claudeintegration_terminal.cpp
     src/claudeintegration_codenav.cpp
     src/claudeintegration_docs.cpp
     src/claudeintegration_orientation.cpp
     src/claudeintegration_store.cpp
     src/claudeintegration_reports.cpp
+    src/claudeintegration_callpolicy.cpp
 )
 list(TRANSFORM ANTS_CLAUDEINTEGRATION_SOURCES_REL PREPEND "${CMAKE_SOURCE_DIR}/"
      OUTPUT_VARIABLE _ants_claudeintegration_abs)
