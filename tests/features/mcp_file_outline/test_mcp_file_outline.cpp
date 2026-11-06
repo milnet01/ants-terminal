@@ -138,7 +138,10 @@ TEST(McpFileOutline, WiringContract) {
     // `paths` form satisfies the verb without it. The schema must register
     // `paths` + `etags` props instead.
     {
-        const size_t reqPos = ciCpp.find("\"file_outline\"");
+        // ANTS-4919 — the descriptors live in their own files, after the
+        // handler code, so search only the descriptor pieces.
+        const std::string desc = ants_test::toolSchemaPiecesText(ciCpp);
+        const size_t reqPos = desc.find("\"file_outline\"");
         bool ok = false;
         if (reqPos != std::string::npos) {
             // The window exists only to keep this assertion inside
@@ -151,9 +154,9 @@ TEST(McpFileOutline, WiringContract) {
             // repeatedly and reads as a real wiring failure every time.
             // Widened 9000 → 12000 by ANTS-4384/4365, which added the `sizes`
             // and `raw` props ahead of the props[] assignments.
-            const size_t windowEnd = std::min(ciCpp.size(),
+            const size_t windowEnd = std::min(desc.size(),
                                               reqPos + 12000);
-            const std::string window = ciCpp.substr(reqPos,
+            const std::string window = desc.substr(reqPos,
                                                     windowEnd - reqPos);
             ok = contains(window, "\"paths\"") &&
                  contains(window, "\"etags\"");

@@ -22,9 +22,13 @@
 namespace {
 
 
-// Region: `// ANTS-1319` cold-eyes registration block end.
+// Region end for the `// ANTS-1319` cold-eyes registration block: the
+// `tools.append(t);` closing cold_eyes_brief, the block's last descriptor.
+// ANTS-4919 — the block now sits in a descriptor piece, after the handler
+// code that holds the old end marker, `// ANTS-1284 — hoist`.
 size_t coldEyesBlockEnd(const std::string &ci, size_t start) {
-    return ci.find("// ANTS-1284 — hoist", start);
+    const size_t brief = ci.find("t[\"name\"] = \"cold_eyes_brief\"", start);
+    return brief == std::string::npos ? brief : ci.find("tools.append(t);", brief);
 }
 
 }  // namespace

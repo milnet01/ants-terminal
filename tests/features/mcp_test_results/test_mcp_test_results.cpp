@@ -151,16 +151,19 @@ TEST(McpTestResults, WiringContract) {
            "INV-8a",
            "tools/list block must register a \"test_results\" entry");
     {
-        const auto anchorPos = ciCpp.find("ANTS-1300 — test_results");
+        // ANTS-4919 — the descriptors live in their own files, after the
+        // handler code, so search only the descriptor pieces.
+        const std::string desc = ants_test::toolSchemaPiecesText(ciCpp);
+        const auto anchorPos = desc.find("ANTS-1300 — test_results");
         ASSERT_NE(anchorPos, std::string::npos);
         // Bound the region to the test_results tool block (anchor → next
         // tools.append) rather than a fixed byte budget: the block grows as
         // schema knobs are added (ANTS-2029), and generic props like
         // "etag_match"/"detail" recur in every tool's schema, so a too-small
         // window under-reaches while a too-large one matches the NEXT tool.
-        const auto blockEnd = ciCpp.find("tools.append(", anchorPos);
+        const auto blockEnd = desc.find("tools.append(", anchorPos);
         ASSERT_NE(blockEnd, std::string::npos);
-        const std::string region = ciCpp.substr(anchorPos, blockEnd - anchorPos);
+        const std::string region = desc.substr(anchorPos, blockEnd - anchorPos);
         expect(contains(region, "req.append(\"caller_cwd\")"),
                "INV-8b",
                "test_results schema must mark \"caller_cwd\" as "

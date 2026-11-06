@@ -131,12 +131,15 @@ TEST(McpGitState, WiringContract) {
         // next tool's `["name"] =`. A fixed size was widened twice
         // (ANTS-3365, ANTS-3377) and broke again when ANTS-5098 lengthened
         // the detail text, so it is bounded by structure instead.
-        const size_t pos = ciCpp.find("\"git_state\"");
+        // ANTS-4919 — the descriptors live in their own files, after the
+        // handler code, so search only the descriptor pieces.
+        const std::string desc = ants_test::toolSchemaPiecesText(ciCpp);
+        const size_t pos = desc.find("\"git_state\"");
         bool ok = false;
         if (pos != std::string::npos) {
-            const size_t next = ciCpp.find("[\"name\"] =", pos + 1);
-            const size_t windowEnd = next == std::string::npos ? ciCpp.size() : next;
-            const std::string window = ciCpp.substr(pos, windowEnd - pos);
+            const size_t next = desc.find("[\"name\"] =", pos + 1);
+            const size_t windowEnd = next == std::string::npos ? desc.size() : next;
+            const std::string window = desc.substr(pos, windowEnd - pos);
             ok = contains(window, "\"status\"") &&
                  contains(window, "\"log\"") &&
                  contains(window, "\"diff\"") &&

@@ -24,7 +24,10 @@ bool contains(const std::string &hay, const std::string &needle) {
 TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     expect_reset();
     const std::string ci = ants_test::slurpClaudeIntegration();
-    const auto pos = ci.find("\"roadmap_log\"");
+    // ANTS-4919 — the descriptors live in their own files, after the
+    // handler code, so search only the descriptor pieces.
+    const std::string desc = ants_test::toolSchemaPiecesText(ci);
+    const auto pos = desc.find("\"roadmap_log\"");
     ASSERT_NE(pos, std::string::npos)
         << "INV-1: roadmap_log name literal missing from "
            "claudeintegration.cpp";
@@ -44,10 +47,10 @@ TEST(mcp_roadmap_log_verb, Inv1SchemaDeclared) {
     // becomes, and a property that genuinely goes MISSING still fails. Falls
     // back to the rest of the file if the terminator is not found, which keeps
     // a refactor of the builder from turning this into a silent pass.
-    const auto endPos = ci.find("tools.append(t);", pos);
+    const auto endPos = desc.find("tools.append(t);", pos);
     const std::string region =
-        endPos == std::string::npos ? ci.substr(pos)
-                                    : ci.substr(pos, endPos - pos);
+        endPos == std::string::npos ? desc.substr(pos)
+                                    : desc.substr(pos, endPos - pos);
     expect(contains(region, "\"caller_cwd\""),
            "INV-1: caller_cwd schema property present");
     expect(contains(region, "\"section\""),

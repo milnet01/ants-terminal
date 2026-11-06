@@ -142,19 +142,24 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
         }
     }
 
+    // ANTS-4919 — the descriptors live in their own files, after the
+    // handler code, so the three windows below search only the
+    // descriptor pieces.
+    const std::string desc = ants_test::toolSchemaPiecesText(ciCpp);
+
     // INV-14 (ANTS-4565) — doc_citations' description documents the sentinel,
     // as its siblings' do. A capability nothing announces is one a caller
     // reaches for only by accident.
     {
-        const size_t dcToolPos = ciCpp.find("\"doc_citations\"");
+        const size_t dcToolPos = desc.find("\"doc_citations\"");
         expect(dcToolPos != std::string::npos,
                "INV-14 location",
                "doc_citations tool descriptor not found");
         if (dcToolPos != std::string::npos) {
             const size_t windowEnd =
-                std::min(ciCpp.size(), dcToolPos + 6000);
+                std::min(desc.size(), dcToolPos + 6000);
             const std::string window =
-                ciCpp.substr(dcToolPos, windowEnd - dcToolPos);
+                desc.substr(dcToolPos, windowEnd - dcToolPos);
             expect(contains(window, "~global"),
                    "INV-14 doc-~global",
                    "doc_citations description does not mention the "
@@ -164,15 +169,15 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
 
     // INV-6 — workspace_search description documents the sentinel.
     {
-        const size_t wsToolPos = ciCpp.find("\"workspace_search\"");
+        const size_t wsToolPos = desc.find("\"workspace_search\"");
         expect(wsToolPos != std::string::npos,
                "INV-6 location",
                "tools/list missing workspace_search registration");
         if (wsToolPos != std::string::npos) {
             const size_t windowEnd =
-                std::min(ciCpp.size(), wsToolPos + 8000);
+                std::min(desc.size(), wsToolPos + 8000);
             const std::string window =
-                ciCpp.substr(wsToolPos, windowEnd - wsToolPos);
+                desc.substr(wsToolPos, windowEnd - wsToolPos);
             expect(contains(window, "~global"),
                    "INV-6 doc-~global",
                    "workspace_search description does not mention "
@@ -187,15 +192,15 @@ TEST(McpGlobalConfigSentinel, WiringContract) {
     // INV-7 — file_outline description documents the sentinel.
     {
         const size_t foToolPos =
-            ciCpp.find("foTool[\"name\"] = \"file_outline\"");
+            desc.find("foTool[\"name\"] = \"file_outline\"");
         expect(foToolPos != std::string::npos,
                "INV-7 location",
                "tools/list missing file_outline name registration");
         if (foToolPos != std::string::npos) {
             const size_t windowEnd =
-                std::min(ciCpp.size(), foToolPos + 4000);
+                std::min(desc.size(), foToolPos + 4000);
             const std::string window =
-                ciCpp.substr(foToolPos, windowEnd - foToolPos);
+                desc.substr(foToolPos, windowEnd - foToolPos);
             expect(contains(window, "~global"),
                    "INV-7 doc-~global",
                    "file_outline description does not mention "

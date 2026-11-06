@@ -409,7 +409,11 @@ Listed only where behavior isn't obvious from the name.
   `sessionPathForCwd` (project-scoped JSONL resolver, ANTS-1163),
   `processHookEvent` with the `isFocusedTabSession` gate (ANTS-1161 drops
   foreign-tab events). PermissionRequest routes via `m_lastHookSessionId`,
-  not the gate.
+  not the gate. Its implementation is `src/claudeintegration.cpp` plus the
+  `src/claudeintegration_*.cpp` pieces named in
+  `ANTS_CLAUDEINTEGRATION_SOURCES_REL`, each holding one family of
+  `tools/list` descriptors, with shared helpers in
+  `src/claudeintegration_internal.h` (ANTS-4919, ANTS-1677).
 - `claudestatuswidgets` — `ClaudeStatusBarController` owns the bottom-bar
   Claude chips (review-changes, bg-tasks, tasks, context-bar, error,
   model-recommender). The repo-visibility label lives in `MainWindow`;

@@ -216,6 +216,23 @@ inline std::string regionBetween(const std::string &text,
     return text.substr(s, e - s);
 }
 
+// ANTS-4919 — the body of each `void appendToolSchemas<Part>(QJsonArray &tools)`
+// piece in `cc`, in text order, each preceded by '\n'. Every descriptor except
+// the inline `trace` one, and none of the branch's tail, whose lookup tables
+// name every tool: a scrape anchoring on one verb's descriptor reads this, so
+// its first match is that descriptor wherever the pieces' files sit in the list.
+inline std::string toolSchemaPiecesText(const std::string &cc) {
+    std::string out;
+    const std::string sig = "\nvoid appendToolSchemas";
+    for (auto p = cc.find(sig); p != std::string::npos; p = cc.find(sig, p + 1)) {
+        const std::size_t paren = cc.find('(', p);
+        if (paren == std::string::npos) break;
+        out += '\n';
+        out += slurpFunctionBody(cc, cc.substr(p + 1, paren - p));
+    }
+    return out;
+}
+
 // ANTS-4919 — every tools/list descriptor in ClaudeIntegration's text `cc`:
 // the tools/list..tools/call branch of handleMcpRequest (the piece calls, the
 // inline `trace` descriptor, and the tail that post-processes the array), then
@@ -228,14 +245,7 @@ inline std::string toolsListDescriptorText(const std::string &cc) {
     std::string out = regionBetween(cc, "else if (method == \"tools/list\")",
                                     "else if (method == \"tools/call\")");
     if (out.empty()) return {};
-    const std::string sig = "\nvoid appendToolSchemas";
-    for (auto p = cc.find(sig); p != std::string::npos; p = cc.find(sig, p + 1)) {
-        const std::size_t paren = cc.find('(', p);
-        if (paren == std::string::npos) break;
-        out += '\n';
-        out += slurpFunctionBody(cc, cc.substr(p + 1, paren - p));
-    }
-    return out;
+    return out + toolSchemaPiecesText(cc);
 }
 
 // Convenience overload: combines slurpFile + slurpFunctionBody.

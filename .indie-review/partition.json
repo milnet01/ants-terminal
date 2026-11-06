@@ -218,11 +218,17 @@
     },
     {
       "name": "claude-integration",
-      "summary": "MCP tool registry and dispatch. OVERSIZE: claudeintegration.cpp is 16,111 lines in one TU; split it by concern (schema block / verb handlers / helpers) when dispatching, this format has no line-range field.",
+      "summary": "MCP tool registry and dispatch. claudeintegration.cpp holds the server and dispatch; the claudeintegration_*.cpp pieces hold the tools/list descriptors, one tool family each.",
       "sourcePaths": [
         "src/claudeintegration.cpp",
         "src/claudeintegration.h",
+        "src/claudeintegration_codenav.cpp",
+        "src/claudeintegration_docs.cpp",
         "src/claudeintegration_internal.h",
+        "src/claudeintegration_orientation.cpp",
+        "src/claudeintegration_reports.cpp",
+        "src/claudeintegration_store.cpp",
+        "src/claudeintegration_terminal.cpp",
         "src/mcptoolregistry.cpp",
         "src/mcptoolregistry.h",
         "src/mcptoolsink.h"

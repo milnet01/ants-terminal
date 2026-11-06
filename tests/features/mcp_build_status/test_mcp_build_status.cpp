@@ -126,7 +126,10 @@ TEST(McpBuildStatus, WiringContract) {
            "INV-7a",
            "tools/list block must register a \"build_status\" entry");
     {
-        const auto anchorPos = ciCpp.find("ANTS-1299 — build_status");
+        // ANTS-4919 — the descriptors live in their own files, after the
+        // handler code, so search only the descriptor pieces.
+        const std::string desc = ants_test::toolSchemaPiecesText(ciCpp);
+        const auto anchorPos = desc.find("ANTS-1299 — build_status");
         ASSERT_NE(anchorPos, std::string::npos);
         // Bounded STRUCTURALLY, not by a byte count. A fixed window has
         // false-failed this test every time an unrelated verb was added near
@@ -134,9 +137,9 @@ TEST(McpBuildStatus, WiringContract) {
         // which is a defect in the test rather than in the code under test.
         // One tool's block ends where it is appended to the array, so that is
         // the end marker: it cannot drift as neighbouring verbs grow.
-        const auto blockEnd = ciCpp.find("tools.append(", anchorPos);
+        const auto blockEnd = desc.find("tools.append(", anchorPos);
         ASSERT_NE(blockEnd, std::string::npos);
-        const std::string region = ciCpp.substr(anchorPos, blockEnd - anchorPos);
+        const std::string region = desc.substr(anchorPos, blockEnd - anchorPos);
         expect(contains(region, "req.append(\"caller_cwd\")"),
                "INV-7b",
                "build_status schema must mark \"caller_cwd\" as "

@@ -383,11 +383,14 @@ TEST(McpWorkspaceSearch, WiringContract) {
     // description blurb lives in the workspace_search registration
     // block — anchor by name, then scan ~3 KiB forward.
     {
-        const auto p = ciCpp.find("\"workspace_search\"");
+        // ANTS-4919 — the descriptors live in their own files, after the
+        // handler code, so search only the descriptor pieces.
+        const std::string desc = ants_test::toolSchemaPiecesText(ciCpp);
+        const auto p = desc.find("\"workspace_search\"");
         bool ok = false;
         if (p != std::string::npos) {
-            const auto windowEnd = std::min(ciCpp.size(), p + 4000);
-            const std::string window = ciCpp.substr(p,
+            const auto windowEnd = std::min(desc.size(), p + 4000);
+            const std::string window = desc.substr(p,
                                                     windowEnd - p);
             ok = contains(window, "context_before") &&
                  contains(window, "context_after") &&

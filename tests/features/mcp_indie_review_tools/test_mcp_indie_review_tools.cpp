@@ -177,14 +177,17 @@ TEST(McpIndieReviewTools, AllSchemasUseAdditionalPropertiesFalse) {
     // tool block (verify_changes, ANTS-1289).
     const std::string ci = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(ci.empty());
-    const auto block_start = ci.find("\"indie_review_partition\"");
+    // ANTS-4919 — the descriptors live in their own files, after the
+    // handler code, so search only the descriptor pieces.
+    const std::string desc = ants_test::toolSchemaPiecesText(ci);
+    const auto block_start = desc.find("\"indie_review_partition\"");
     ASSERT_NE(block_start, std::string::npos);
     // End: the next tool series after indie_review_dispatch.
-    const auto dispatch_pos = ci.find("\"indie_review_dispatch\"", block_start);
+    const auto dispatch_pos = desc.find("\"indie_review_dispatch\"", block_start);
     ASSERT_NE(dispatch_pos, std::string::npos);
-    const auto block_end = ci.find("// ANTS-1289", dispatch_pos);
+    const auto block_end = desc.find("// ANTS-1289", dispatch_pos);
     ASSERT_NE(block_end, std::string::npos);
-    const std::string region = ci.substr(block_start, block_end - block_start);
+    const std::string region = desc.substr(block_start, block_end - block_start);
     int count = 0;
     size_t pos = 0;
     while ((pos = region.find("additionalProperties", pos)) != std::string::npos) {

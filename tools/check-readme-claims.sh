@@ -35,11 +35,13 @@ check "version" "${claim_version:-none}" "${real_version:-none}" "CMakeLists.txt
 # --- MCP tool count ----------------------------------------------------
 # Registration is `<var>["name"] = "<tool>";` and the variable name varies
 # (t, wsTool, ...), so the pattern keys on the assignment, not the var.
+# ANTS-1677 INV-4 — read the class's whole glob: the descriptors live in the
+# src/claudeintegration_*.cpp pieces.
 claim_tools=$(grep -oE '[0-9]+ ready-made tools' README.md \
                 | grep -oE '^[0-9]+' | head -1)
-real_tools=$(grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\["name"\][[:space:]]*=[[:space:]]*"[a-z_]+";' \
-                src/claudeintegration.cpp)
-check "MCP tools" "${claim_tools:-none}" "${real_tools}" "claudeintegration.cpp"
+real_tools=$(cat src/claudeintegration.cpp src/claudeintegration_*.cpp \
+                | grep -cE '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*\["name"\][[:space:]]*=[[:space:]]*"[a-z_]+";')
+check "MCP tools" "${claim_tools:-none}" "${real_tools}" "claudeintegration sources"
 
 # --- built-in colour themes -------------------------------------------
 # Literal `th.name = "X";` are the built-ins; the loader's
