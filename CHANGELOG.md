@@ -80,6 +80,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **Short lines in the scroll history no longer use memory for the empty space to their right** (ANTS-6703)
+  A tab holding 50,000 history lines at 200 columns now uses 105.6 MiB
+  of heap (measured 2026-11-07 with bench_scrollback_memory), down from
+  614 MiB before this and the smaller-cell change. HTML export of a short
+    line looks the same as before.
+
 - **Scrollback uses less than half the memory: each character now stores its colours in 12 bytes instead of 48, so a full 50,000-line tab at 200 columns takes about 271 MiB instead of 614 MiB** (ANTS-6702)
 
 - **The Claude Code integration's source is split into nine files of under 4,000 lines each, so separate sessions can work on it in parallel. Behaviour is unchanged.** (ANTS-4919)

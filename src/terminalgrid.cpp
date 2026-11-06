@@ -145,6 +145,31 @@ void TerminalGrid::returnCellsRow(std::vector<Cell> &&cells) {
     }
 }
 
+TermLine TerminalGrid::trimmedForScrollback(TermLine &&line) {
+    if (line.softWrapped) return std::move(line);
+    const CellColor defaultBg(m_defaultBg);
+    // A plain blank draws exactly like a cell past the row's end.
+    auto plainBlank = [&defaultBg](const Cell &c) {
+        const CellAttrs &a = c.attrs;
+        return c.codepoint == ' ' && !c.isWideChar && !c.isWideCont
+            && !a.underline && !a.inverse && !a.strikethrough
+            && (!a.bg.isValid() || a.bg == defaultBg);
+    };
+    const int size = static_cast<int>(line.cells.size());
+    int keep = size;
+    while (keep > 0 && plainBlank(line.cells[keep - 1])) --keep;
+    for (const auto &kv : line.combining)
+        keep = std::max(keep, std::min(size, kv.first + 1));
+    if (keep >= size) return std::move(line);
+
+    TermLine out;
+    out.cells.assign(line.cells.begin(), line.cells.begin() + keep);
+    out.dirty = line.dirty;
+    out.combining = std::move(line.combining);
+    returnCellsRow(std::move(line.cells));
+    return out;
+}
+
 TerminalGrid::TerminalGrid(int rows, int cols)
     : m_rows(rows), m_cols(cols)
 {
@@ -2086,7 +2111,7 @@ void TerminalGrid::scrollUp(int count) {
     for (int i = 0; i < count; ++i) {
         const int srcRow = m_scrollTop + i;
         if (pushToScrollback) {
-            m_scrollback.push_back(std::move(m_screenLines[srcRow]));
+            m_scrollback.push_back(trimmedForScrollback(std::move(m_screenLines[srcRow])));
             ++m_scrollbackPushed;
             if (hlInRange) {
                 m_scrollbackHyperlinks.push_back(
@@ -2799,7 +2824,7 @@ void TerminalGrid::resize(int rows, int cols) {
             std::vector<TermLine> reflowed;
             for (auto &L : logicals) rewrap(L, reflowed);
             for (auto &tl : reflowed) {
-                newScrollback.push_back(std::move(tl));
+                newScrollback.push_back(trimmedForScrollback(std::move(tl)));
                 newScrollbackHyperlinks.emplace_back();  // INV-3
             }
             pending.clear();
@@ -2857,8 +2882,10 @@ void TerminalGrid::resize(int rows, int cols) {
             } else {
                 int cw = contentWidth(tl);
                 if (cw <= cols) {
-                    inPlaceResize(tl);
-                    newScrollback.push_back(std::move(tl));
+                    // ANTS-6703 — narrow a row that is too wide; never pad
+                    // one out to a wider screen.
+                    if (static_cast<int>(tl.cells.size()) > cols) inPlaceResize(tl);
+                    newScrollback.push_back(trimmedForScrollback(std::move(tl)));
                     // INV-2: carry spans across with clipping.
                     if (srcIdx < srcHlSize)
                         newScrollbackHyperlinks.push_back(
@@ -2913,7 +2940,7 @@ void TerminalGrid::resize(int rows, int cols) {
         for (int k = 0; k < overflow; ++k) {
             TermLine front = std::move(reflowed[k]);
             if (!isBlankLine(front)) {
-                m_scrollback.push_back(std::move(front));
+                m_scrollback.push_back(trimmedForScrollback(std::move(front)));
                 // ANTS-2119 M1 — count reflow overflow as "pushed" so the
                 // scrollbackPushed() contract holds (get_scrollback's
                 // since_cursor diff must see these lines).

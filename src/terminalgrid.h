@@ -506,7 +506,7 @@ public:
     // Session restore: direct access for SessionManager (respects max scrollback)
     void pushScrollbackLine(TermLine &&line) {
         ++m_contentRevision;  // ANTS-5030
-        m_scrollback.push_back(std::move(line));
+        m_scrollback.push_back(trimmedForScrollback(std::move(line)));  // ANTS-6703
         // ANTS-2119 M1 — restore counts as "pushed" too, so a restored session's
         // scrollbackPushed() reflects its scrollback depth (the get_scrollback
         // since_cursor cursor is this counter).
@@ -673,6 +673,11 @@ private:
     // Returns a cells buffer to the pool if it's the right size and the pool
     // isn't full. Otherwise discards (letting the vector destruct naturally).
     void returnCellsRow(std::vector<Cell> &&cells);
+    // ANTS-6703 — a row as scrollback stores it: a row that ends a line loses
+    // its plain-blank tail (see tests/features/scrollback_trim_blank_tails);
+    // a soft-wrapped row is kept whole so reflow can rejoin it. The
+    // full-width buffer a trimmed row leaves goes back to the row pool.
+    TermLine trimmedForScrollback(TermLine &&line);
     void trimScrollbackToCap();
     // Background-Color Erase (BCE): the colour newly-exposed/cleared cells
     // pick up. xterm-compatible — current SGR bg if set, default otherwise.

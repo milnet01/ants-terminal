@@ -71577,6 +71577,11 @@ they are one change.
   of stored cells come before a row's last non-blank one. So lever (b)
   alone keeps ~38% of cell bytes (~234 MiB), lever (c) alone scales them
   by newCellSize/64, and both multiply. Next: choose (b), (c) or both.
+  Progress 2026-11-07: levers (b) ANTS-6703 and (c) ANTS-6702 both
+  shipped. bench_scrollback_memory, 200 columns, 50,000 lines: 105.6 MiB
+  heap per tab (was 614 MiB on 2026-11-06), 2,215 B per line, sizeof(Cell)
+  28. Left: the rule this item sets, a per-tab scrollback ceiling the
+  default configuration honours, made checkable.
   **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
   Kind: perf.
   Source: user-request-2026-08-19.
@@ -71612,7 +71617,7 @@ they are one change.
   Source: user decision 2026-11-06 on ANTS-4534.
   Lanes: terminalgrid, performance.
 
-- 📋 [ANTS-6703] **Store scrollback rows without their trailing blank cells.**
+- ✅ [ANTS-6703] **Store scrollback rows without their trailing blank cells.**
   ANTS-4534 lever (b), second of two (user, 2026-11-06), after the
   compact-cell item. 38% of stored cells come before a row's last
   non-blank one (bench_scrollback_memory, 2026-11-06). Watch
@@ -71627,6 +71632,14 @@ they are one change.
   paths, decide which output is right (trailing default blanks carry no
   information), make them agree, rerun the suite and
   bench_scrollback_memory, then merge to main.
+  Resolved 2026-11-07: the red test was not two exporters disagreeing
+  (exportAsHtml no longer exists; INV-2 pins fixed bytes). The streaming
+  HTML exporter padded a short row with a colourless kBlankCell, so a
+  trimmed row would have exported its padding on a black background. A
+  cell past a row's stored cells now exports as a space in the request's
+  default colours, and INV-2 passes with its bytes unchanged. Suite
+  6,116/6,116. bench_scrollback_memory (200 cols, 50,000 lines): 105.6
+  MiB heap, 2,215 B/line, content cells 100% of stored cells.
   **Layman:** Short lines in the scroll history stop paying for the empty space to their right.
   Kind: perf.
   Source: user decision 2026-11-06 on ANTS-4534.

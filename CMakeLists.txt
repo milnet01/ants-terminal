@@ -2268,6 +2268,8 @@ if(ANTS_TESTS)
                 tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
                 # ANTS-6702 — a cell stores its colours in 4 bytes each.
                 tests/features/compact_cell_color/test_compact_cell_color.cpp
+                # ANTS-6703 — scrollback rows drop their blank tails.
+                tests/features/scrollback_trim_blank_tails/test_scrollback_trim_blank_tails.cpp
                 tests/features/vt_string_rearm/test_vt_string_rearm.cpp
                 tests/features/vt_escape_recovery/test_vt_escape_recovery.cpp
                 tests/features/scrollback_hyperlink_restore_sync/test_scrollback_hyperlink_restore_sync.cpp

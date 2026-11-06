@@ -211,9 +211,15 @@ bool ScrollbackExporter::writeLine(const std::vector<Cell> &cells,
         QString html;
         QColor lastFg, lastBg;
         bool inSpan = false;
+        // ANTS-6703 — a cell past a row's stored cells (scrollback drops a
+        // row's plain-blank tail) exports as the blank the grid would have
+        // held there: a space in the default colours.
+        Cell blank = kBlankCell;
+        blank.attrs.fg = CellColor(m_request.defaultFg);
+        blank.attrs.bg = CellColor(m_request.defaultBg);
         const int stored = static_cast<int>(cells.size());
         for (int c = 0; c < m_cols; ++c) {
-            const Cell &cell = c < stored ? cells[c] : kBlankCell;
+            const Cell &cell = c < stored ? cells[c] : blank;
             if (cell.isWideCont) continue;
 
             QColor fg = cell.attrs.fg;
