@@ -1319,11 +1319,13 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<McpReplyChannel> &socket,
     // ANTS-2101 — the peer can disconnect mid-dispatch, freeing this socket
     // via disconnected -> deleteLater. Bail before touching a dangling
     // pointer. ANTS-2132 widens that window: the reply may now be written a
-    // whole verb-duration after the request arrived.
-    if (!socket || !socket->isOpen()) return;
+    // whole verb-duration after the request arrived. Read the QPointer once:
+    // each `->` re-reads it, and GCC then warns the later calls may see null.
+    McpReplyChannel *const channel = socket.data();
+    if (!channel || !channel->isOpen()) return;
     // Notifications (no id) must NOT receive a response per JSON-RPC 2.0.
     if (requestId.isUndefined() || requestId.isNull()) {
-        socket->finish();
+        channel->finish();
         return;
     }
     QJsonObject envelope;
@@ -1335,7 +1337,7 @@ void ClaudeIntegration::sendMcpResponse(const QPointer<McpReplyChannel> &socket,
     // ANTS-1769 — '\n' end-of-reply terminator; compact JSON carries no raw
     // newline, so it is an unambiguous "reply complete" marker.
     resp.append('\n');
-    socket->reply(resp);
+    channel->reply(resp);
 }
 
 // ANTS-5089 — the JSON-RPC error for a complete request line the MCP socket
@@ -3125,8 +3127,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     const QPointer<ClaudeIntegration> self(this);
                     m_forwarder(buf,
                         [fctx](const QByteArray &replyLine) {
-                            if (fctx.socket && fctx.socket->isOpen())
-                                fctx.socket->reply(replyLine);
+                            McpReplyChannel *const channel = fctx.socket.data();
+                            if (channel && channel->isOpen())
+                                channel->reply(replyLine);
                         },
                         [self, fctx](const QString &envelope) {
                             if (!self) return;
