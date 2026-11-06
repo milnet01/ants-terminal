@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6701 -->
+<!-- ants-roadmap-id-high-water: ANTS=6703 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71595,6 +71595,34 @@ they are one change.
   Source: ANTS-4534 lever (a), split 2026-11-05.
   Lanes: terminalgrid.
 
+- ✅ [ANTS-6702] **Store each cell's three colours in 4 bytes, so a Cell drops from 64 bytes to about 24.**
+  ANTS-4534 lever (c), first of two (user, 2026-11-06). The three
+  QColor members of CellAttrs are 48 of a Cell's 64 bytes. A compact
+  colour type holding QRgb, converting to and from QColor, keeps most
+  call sites. Saved sessions already write rgba(), so their format does
+  not change. Measure with bench_scrollback_memory before and after.
+  Shipped 2026-11-06: CellColor (terminalgrid.h) holds one QRgb with a
+  transparent "unset" value, converting to and from QColor. sizeof(Cell)
+  64 -> 28. bench_scrollback_memory, 200 cols x 50,000 lines: 614.4 ->
+  271.0 MiB, 12,884 -> 5,684 B per line. Feature test compact_cell_color
+  (INV-1 red at 64 bytes; the unset-collision case red with encode()
+  removed). Default suite green, 6,104 tests.
+  **Layman:** Each character on screen and in history stores its colours far more compactly, cutting the terminal's memory use by more than half.
+  Kind: perf.
+  Source: user decision 2026-11-06 on ANTS-4534.
+  Lanes: terminalgrid, performance.
+
+- 📋 [ANTS-6703] **Store scrollback rows without their trailing blank cells.**
+  ANTS-4534 lever (b), second of two (user, 2026-11-06), after the
+  compact-cell item. 38% of stored cells come before a row's last
+  non-blank one (bench_scrollback_memory, 2026-11-06). Watch
+  returnCellsRow's recycling pool and the reflow path that rebuilds
+  every scrollback line on a column resize; each needs a test.
+  **Layman:** Short lines in the scroll history stop paying for the empty space to their right.
+  Kind: perf.
+  Source: user decision 2026-11-06 on ANTS-4534.
+  Lanes: terminalgrid, performance.
+
 ### ⚡ Local-subagent framework — Claude offloads to the local machine (user request 2026-04-30)
 
 > **Strategic theme.** Inverse of ANTS-1108..ANTS-1114 (which
@@ -91006,6 +91034,13 @@ measured Ants adding about 5,250 tokens to every request.
   cost in the local pre-push gate, which ci_report cannot see. CFG-0891
   will record per-leg wall time, CPU and peak memory. Once those records
   exist, decide whether ci_report (or a new verb) reads them.
+  claude-config, 2026-11-06: CFG-0891 shipped (b760e4a).
+  `~/.claude/tools/ci-gate --time [<dir>]` writes
+  <git-common-dir>/ci-gate/time.json (latest run only): gate, args,
+  started, exit, total_wall, total_cpu, peak_rss_mb, steps[{name, wall,
+  cpu, peak_rss_mb, flags}], flags BIG / WAITS / ONE CORE. Asked for a
+  per-push history layout: history.jsonl beside it, one record per push
+  plus the pushed sha, last 50 kept.
   **Layman:** Maybe let the CI report also show how long the local checks before a push take.
   Kind: feature.
   Source: claude-config session message 2026-11-06.

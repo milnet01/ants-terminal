@@ -80,6 +80,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Scrollback uses less than half the memory: each character now stores its colours in 12 bytes instead of 48, so a full 50,000-line tab at 200 columns takes about 271 MiB instead of 614 MiB** (ANTS-6702)
+
 - **The Claude Code integration's source is split into nine files of under 4,000 lines each, so separate sessions can work on it in parallel. Behaviour is unchanged.** (ANTS-4919)
 
 - **ci_report leaves runs of GitHub-managed workflows with no file, such as Dependabot, out of `unread` (ANTS-6416).**

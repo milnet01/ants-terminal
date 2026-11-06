@@ -1278,7 +1278,7 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
                 ((c.attrs.underline && !suppressUl) || isHoveredUrl) &&
                 (isHoveredUrl || isGlyphCell);   // hover hints draw on space too
             if (drawUnderline) {
-                QColor ulColor = c.attrs.underlineColor.isValid() ? c.attrs.underlineColor : fg;
+                QColor ulColor = c.attrs.underlineColor.isValid() ? QColor(c.attrs.underlineColor) : fg;
                 // Position underline at the font's underline position (under baseline)
                 // This matches Konsole behavior and makes decorative underlines (used by
                 // TUI apps like Claude Code on every cell) blend with character glyphs

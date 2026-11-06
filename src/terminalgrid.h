@@ -36,10 +36,36 @@ enum class UnderlineStyle : uint8_t {
     Dashed = 5,
 };
 
+// ANTS-6702 — a cell's colour in 4 bytes: one RGBA value, or "unset" (an
+// invalid QColor, meaning use the default). QColor is 16 bytes and a cell has
+// three, so this cuts a Cell from 64 bytes to 28. It converts to and from
+// QColor, so call sites read and write QColor as before. 8 bits per channel,
+// which is all a terminal colour carries.
+class CellColor {
+public:
+    CellColor() = default;
+    CellColor(const QColor &c)  // NOLINT(google-explicit-constructor) — drop-in for QColor
+        : m_rgba(c.isValid() ? encode(c.rgba()) : kUnset) {}
+    operator QColor() const {  // NOLINT(google-explicit-constructor)
+        return isValid() ? QColor::fromRgba(m_rgba) : QColor();
+    }
+    bool isValid() const { return m_rgba != kUnset; }
+    QRgb rgba() const { return QColor(*this).rgba(); }
+    friend bool operator==(CellColor a, CellColor b) { return a.m_rgba == b.m_rgba; }
+    friend bool operator!=(CellColor a, CellColor b) { return a.m_rgba != b.m_rgba; }
+
+private:
+    // "Unset" is one fully transparent value. A real colour equal to it is
+    // stored as transparent black instead; both draw as nothing.
+    static constexpr QRgb kUnset = 0x00010203u;
+    static constexpr QRgb encode(QRgb v) { return v == kUnset ? 0u : v; }
+    QRgb m_rgba = kUnset;
+};
+
 struct CellAttrs {
-    QColor fg;
-    QColor bg;
-    QColor underlineColor;  // CSI 58;2;r;g;b m — invalid means use fg
+    CellColor fg;
+    CellColor bg;
+    CellColor underlineColor;  // CSI 58;2;r;g;b m — invalid means use fg
     bool bold = false;
     bool italic = false;
     bool underline = false;
@@ -650,7 +676,7 @@ private:
     // deleteChars / insertBlanks so `\e[44mCSI L` leaves a blue gap, not
     // default-bg (vim/less/tmux depend on this).
     QColor eraseBg() const {
-        return m_currentAttrs.bg.isValid() ? m_currentAttrs.bg : m_defaultBg;
+        return m_currentAttrs.bg.isValid() ? QColor(m_currentAttrs.bg) : m_defaultBg;
     }
 
     QColor m_defaultFg{0xCD, 0xD6, 0xF4};  // Light text

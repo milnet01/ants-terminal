@@ -2266,6 +2266,8 @@ if(ANTS_TESTS)
                 tests/features/sgr_attribute_reset/test_sgr_reset.cpp
                 tests/features/vtparser_simd_scan/test_vtparser_simd.cpp
                 tests/features/vt_osc_esc_discard/test_vt_osc_esc_discard.cpp
+                # ANTS-6702 — a cell stores its colours in 4 bytes each.
+                tests/features/compact_cell_color/test_compact_cell_color.cpp
                 tests/features/vt_string_rearm/test_vt_string_rearm.cpp
                 tests/features/vt_escape_recovery/test_vt_escape_recovery.cpp
                 tests/features/scrollback_hyperlink_restore_sync/test_scrollback_hyperlink_restore_sync.cpp
