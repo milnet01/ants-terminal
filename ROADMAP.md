@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6696 -->
+<!-- ants-roadmap-id-high-water: ANTS=6697 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71619,7 +71619,7 @@ they are one change.
 > swap ANTS-1116 / ANTS-1117 priority order. Specs at
 > `docs/specs/ANTS-1119.md` and `docs/specs/ANTS-1120.md`.
 
-- 📋 [ANTS-1120] **MEDIUM — Companion-instrumentation gate.**
+- ✅ [ANTS-1120] **MEDIUM — Companion-instrumentation gate.**
   Before any further companion bullet beyond ANTS-1117 v1 +
   ANTS-1116 v1 ships, run a side-by-side measurement (N≥3 replays
   per configuration) of one Claude task with the existing flow
@@ -71657,8 +71657,30 @@ they are one change.
   already on disk with session_cost, and reports what Ants costs and
   saves. No new test runs. It compares sessions as they happened, so it
   is not a controlled test.
+  Measured 2026-11-06, as decided 2026-11-01: twelve past long sessions
+  (101-610 requests, eight projects) read with session_cost. Ants rent
+  is 2.0-7.2% of each session's cache reads, 3.2% overall; no saving is
+  backed by a number (Ants search and read verbs return more bytes per
+  call than grep and Read). SIGN-1's 20% is not met. Not a controlled
+  comparison: whether Ants calls cut the number of requests needs a
+  bench. Journal: docs/journal/ANTS-1120-long-sessions-2026-11-06.md.
+  session_cost gaps: ANTS-6697.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
+
+- 📋 [ANTS-6697] **session_cost: report per-tool and per-server totals and each session's Ants rent.**
+  The ANTS-1120 read (docs/journal/ANTS-1120-long-sessions-2026-11-06.md)
+  needed a script beside session_cost. Gaps: no per-tool call count or
+  total bytes; start-up shows only the first request's tools, with no
+  per-server subtotal and nothing loaded later through ToolSearch; no
+  figure for hook-injected text, the deferred-tool list, rent (bytes held
+  x requests) or compaction; transcripts without an api-request-shape line
+  return startup:null; helper-agent transcripts are not added to their
+  session.
+  **Layman:** The tool that reports what a Claude session cost should also say how much of that cost came from Ants.
+  Kind: enhancement.
+  Source: ANTS-1120 long-session read 2026-11-06.
+  Lanes: mcp-meta.
 
 ### 🔍 Audit fold-in — feature code (2026-04-30)
 

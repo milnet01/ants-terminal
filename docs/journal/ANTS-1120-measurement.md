@@ -1,6 +1,8 @@
 # ANTS-1120 — Token measurement, 2026-10-15
 
-**Status:** measured; verdict inconclusive (user, 2026-10-15).
+**Status:** measured; verdict inconclusive (user, 2026-10-15). Followed by
+a read of past long sessions:
+[`ANTS-1120-long-sessions-2026-11-06.md`](ANTS-1120-long-sessions-2026-11-06.md).
 
 ## What was measured
 
