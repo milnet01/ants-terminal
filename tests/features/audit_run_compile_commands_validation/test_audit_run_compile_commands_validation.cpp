@@ -72,6 +72,52 @@ TEST(AuditRunCompileCommandsValidation, Inv1ExtractIncludeArgsGluedForm) {
     EXPECT_EQ(incl.at(3), QString("/d/file.h"));
 }
 
+// ── INV-1b (ANTS-6448) — every flag that names a file or directory the
+// compiler reads, in its split, glued, `--` and `=` forms. A leading `=`
+// (sysroot-relative in GCC) is stripped so the path is checked as read.
+TEST(AuditRunCompileCommandsValidation, Inv1bEveryIncludeFlagForm) {
+    struct Case { QStringList args; QString path; };
+    const QList<Case> cases = {
+        {{"-imacros", "/h/a"}, "/h/a"},
+        {{"-imacros/h/a"}, "/h/a"},
+        {{"-idirafter", "/h/a"}, "/h/a"},
+        {{"-include-pch", "/h/a"}, "/h/a"},
+        {{"-iwithprefix", "/h/a"}, "/h/a"},
+        {{"-iwithprefixbefore", "/h/a"}, "/h/a"},
+        {{"-iprefix", "/h/a"}, "/h/a"},
+        {{"-isysroot", "/h/a"}, "/h/a"},
+        {{"--sysroot", "/h/a"}, "/h/a"},
+        {{"--sysroot=/h/a"}, "/h/a"},
+        {{"--include", "/h/a"}, "/h/a"},
+        {{"--include=/h/a"}, "/h/a"},
+        {{"--include-directory=/h/a"}, "/h/a"},
+        {{"--include-directory-after=/h/a"}, "/h/a"},
+        {{"--imacros=/h/a"}, "/h/a"},
+        {{"-I=/h/a"}, "/h/a"},
+        {{"-I", "=/h/a"}, "/h/a"},
+        {{"-isystem=/h/a"}, "/h/a"},
+    };
+    for (const Case &c : cases) {
+        const QStringList got = AuditRunner::internal::extractIncludeArgs(c.args);
+        EXPECT_EQ(got, QStringList{c.path}) << c.args.join(' ').toStdString()
+                                            << " -> " << got.join('|').toStdString();
+    }
+}
+
+TEST(AuditRunCompileCommandsValidation, Inv11bHostileImacrosRefused) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QDir(tmp.path()).mkpath("build");
+    const QByteArray json =
+        "[{\"directory\":\"" + tmp.path().toUtf8() + "/build\","
+        "\"file\":\"" + tmp.path().toUtf8() + "/src/x.cpp\","
+        "\"arguments\":[\"/usr/bin/c++\",\"-imacros\",\"/home/user/.ssh/id_rsa\","
+        "\"-c\",\"src/x.cpp\"]}]";
+    ASSERT_TRUE(writeFile(tmp.path(), "build/compile_commands.json", json));
+    QString reason;
+    EXPECT_FALSE(AuditRunner::internal::validateCompileCommands(tmp.path(), &reason));
+}
+
 // ── INV-2 — non-include flags are ignored.
 
 TEST(AuditRunCompileCommandsValidation, Inv2ExtractIgnoresUnrelatedFlags) {

@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **The audit's check of a project's compile_commands.json now covers every flag that makes the compiler read a file, including `-imacros`, `--include=` and `--sysroot`, so the database cannot point an audit at files outside the project** (ANTS-6448)
+
 - **A file whose name starts with `@` can no longer feed extra options to an audit tool as a response file** (ANTS-6447)
 
 - **The Audit dialog no longer pre-selects Cargo Clippy and Pylint, which run code from the project being audited; switch them on for a project you trust** (ANTS-6446)

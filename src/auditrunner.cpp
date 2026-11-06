@@ -1372,35 +1372,63 @@ const QStringList &kSystemIncludePrefixes() {
     return v;
 }
 
-// Extract include-style paths from a clang/gcc argument list. Handles
-// both `-I/abs/path` (glued) and `-I /abs/path` (split) forms; same
-// for -isystem / -iquote / -include. Returns the raw path strings.
+// Extract the paths a clang/gcc argument list makes the compiler read:
+// include and macro files, include directories and sysroots. A `-x` flag
+// takes its path split (`-I /p`) or glued (`-I/p`, `-I=/p`); a `--x` flag
+// split (`--sysroot /p`) or after `=` (`--sysroot=/p`). ANTS-6448 widened
+// the set beyond -I/-isystem/-iquote/-include. Returns the path strings,
+// less a leading `=`, which GCC reads as sysroot-relative.
 QStringList extractIncludeArgsImpl(const QStringList &args) {
-    QStringList out;
-    static const QStringList kFlags = {
-        QStringLiteral("-I"),
-        QStringLiteral("-isystem"),
-        QStringLiteral("-iquote"),
-        QStringLiteral("-include"),
+    // Longest first, so -iwithprefixbefore is not read as -iwithprefix
+    // with a glued path "before…".
+    static const QStringList kFlags = [] {
+        QStringList v = {
+            QStringLiteral("-I"), QStringLiteral("-isystem"),
+            QStringLiteral("-iquote"), QStringLiteral("-include"),
+            QStringLiteral("-imacros"), QStringLiteral("-idirafter"),
+            QStringLiteral("-include-pch"), QStringLiteral("-iprefix"),
+            QStringLiteral("-iwithprefix"), QStringLiteral("-iwithprefixbefore"),
+            QStringLiteral("-isysroot"), QStringLiteral("-iframework"),
+            QStringLiteral("-isystem-after"), QStringLiteral("-cxx-isystem"),
+            QStringLiteral("-ivfsoverlay"),
+            QStringLiteral("--include"), QStringLiteral("--imacros"),
+            QStringLiteral("--include-directory"),
+            QStringLiteral("--include-directory-after"),
+            QStringLiteral("--include-prefix"),
+            QStringLiteral("--include-with-prefix"),
+            QStringLiteral("--include-with-prefix-after"),
+            QStringLiteral("--include-with-prefix-before"),
+            QStringLiteral("--sysroot"),
+        };
+        std::sort(v.begin(), v.end(), [](const QString &a, const QString &b) {
+            return a.size() > b.size();
+        });
+        return v;
+    }();
+    auto stripSysrootMark = [](const QString &p) {
+        return p.startsWith(QLatin1Char('=')) ? p.mid(1) : p;
     };
+    QStringList out;
     for (int i = 0; i < args.size(); ++i) {
         const QString &a = args.at(i);
         for (const QString &f : kFlags) {
             if (a == f) {
                 if (i + 1 < args.size()) {
-                    out << args.at(i + 1);
+                    out << stripSysrootMark(args.at(i + 1));
                     ++i;
                 }
                 break;
             }
-            if (a.startsWith(f) && a.size() > f.size()
-                // Don't match `-isystem-something-else`; the next char
-                // must be `/`, `.`, `~`, or an alnum for a glued arg.
-                && (a.at(f.size()) == QLatin1Char('/')
-                 || a.at(f.size()) == QLatin1Char('.')
-                 || a.at(f.size()) == QLatin1Char('~')
-                 || a.at(f.size()).isLetterOrNumber())) {
-                out << a.mid(f.size());
+            if (!a.startsWith(f) || a.size() == f.size()) continue;
+            const QChar next = a.at(f.size());
+            const bool longFlag = f.startsWith(QLatin1String("--"));
+            // A long flag takes its path only after `=`. A short flag takes
+            // a glued path that starts like one, so `-isystem-x` is no match.
+            if (longFlag ? next == QLatin1Char('=')
+                         : (next == QLatin1Char('/') || next == QLatin1Char('.')
+                            || next == QLatin1Char('~') || next == QLatin1Char('=')
+                            || next.isLetterOrNumber())) {
+                out << stripSysrootMark(a.mid(f.size() + (longFlag ? 1 : 0)));
                 break;
             }
         }

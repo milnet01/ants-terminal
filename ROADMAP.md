@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6694 -->
+<!-- ants-roadmap-id-high-water: ANTS=6696 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91244,7 +91244,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 27-audit-engine (High).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6448] **auditrunner.cpp: .**
+- ✅ [ANTS-6448] **auditrunner.cpp: .**
   `auditrunner.cpp:1378-1383` — . The ANTS-1446 escape check misses
   `-imacros`, `-idirafter`, `--include=`/`--include`, `-include-pch`,
   `-iwithprefix` and `--sysroot`. A hostile compile DB line such as
@@ -91254,10 +91254,41 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): extend the flag
   set, covering `--` and `=` forms.
   Ledger row 313, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06: extractIncludeArgsImpl covers every path-reading
+  flag in split, glued, `--` and `=` forms, longest match first, and
+  strips a leading `=` (sysroot-relative; `-I =/home/x` used to resolve
+  inside the project and pass). Tests Inv1bEveryIncludeFlagForm and
+  Inv11bHostileImacrosRefused, red before. Plugin-loading flags filed
+  separately (ANTS-6695).
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 27-audit-engine (Medium).
   Lanes: audit-engine.
+
+- 📋 [ANTS-6695] **auditrunner.cpp: compile_commands.json flags that load a plugin pass validation.**
+  validateCompileCommands checks only the paths a compiler reads
+  (ANTS-6448). A compile DB entry carrying `-fplugin=/tmp/x.so`,
+  `-Xclang -load -Xclang /tmp/x.so` or `-fpass-plugin=` reaches
+  clang-tidy and clazy through `-p`, and the frontend loads the library:
+  code execution from a cloned project. Not verified against a live
+  clang-tidy yet; check that first. Likely fix: refuse the run on any
+  plugin-loading flag, as compile_commands_escape does for paths.
+  **Layman:** A project's build file could make the audit load a program library of the project's choosing.
+  Kind: security.
+  Source: close-findings 2026-11-06, found next door to ANTS-6446/6448.
+  Lanes: audit-engine.
+
+- 📋 [ANTS-6696] **auditdialog_catalogue.cpp: check whether checkov and luacheck run project code from their config files.**
+  Found while closing ANTS-6446 (cargo_clippy and pylint now start off).
+  checkov reads `.checkov.yaml` from the project, and its keys mirror
+  the CLI, which suggests `external-checks-dir` (Python checks) can be
+  set there. luacheck runs `.luacheckrc` as Lua. Both lanes start
+  selected. Not verified: confirm each tool's behaviour, then start any
+  that runs project code off, as ANTS-6446 did.
+  **Layman:** Two more audit checks may run code from the project being audited; check and switch them off by default if so.
+  Kind: security.
+  Source: close-findings 2026-11-06, found next door to ANTS-6446/6448.
+  Lanes: audit-dialog.
 
 ### Path containment (2026-11-06 review)
 
@@ -104448,6 +104479,10 @@ worked after these.
   reads best is the user's call (partially sighted; see
   tests/features/claude_state_dot_palette/spec.md for the palette
   record). Then name the pair once and use it in both places.
+  User decision 2026-11-06: use the gutter pair, green 0x9FE064 and red
+  0xE06464, in both places. The true red keeps clear of the Background
+  pink 0xF07AB4 on the Claude status dot. Not waiting on the user any
+  more.
   **Layman:** The green and red that mark a command's result are two slightly different shades in two places; pick one pair.
   Kind: ux.
   Source: review-readability-2026-10-22.

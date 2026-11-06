@@ -18,6 +18,14 @@ prefix (`/usr/include`, `/usr/lib`, `/opt`, …).
 - INV-1: `extractIncludeArgs` returns the path argument for the
   `-I` / `-isystem` / `-iquote` / `-include` flags in both their
   split form (`-I /abs/path`) and their glued form (`-I/abs/path`).
+- INV-1b (ANTS-6448): the same holds for every flag that makes the
+  compiler read a file or directory: `-imacros`, `-idirafter`,
+  `-include-pch`, the `-iprefix`/`-iwithprefix` family, `-isysroot`,
+  `-iframework`, `-ivfsoverlay` and their `--` long forms, including
+  `--include`, `--include-directory` and `--sysroot`. A long flag takes
+  its path split or after `=`; a short flag also glued, including after
+  `=`. A leading `=` on the path (sysroot-relative) is removed before
+  the check.
 - INV-2: `extractIncludeArgs` ignores other flags (e.g. `-O3`,
   `-std=c++20`, `-DFOO=bar`).
 - INV-3: `splitCommandString` honours plain whitespace, double-
