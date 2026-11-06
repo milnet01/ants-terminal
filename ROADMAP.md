@@ -91157,7 +91157,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (High).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6443] **sshdialog.cpp: the denylist leaves out `XAuthLocation`, and `-X`/`-Y` (or `-o ForwardX11=yes`) pass the filter.**
+- ✅ [ANTS-6443] **sshdialog.cpp: the denylist leaves out `XAuthLocation`, and `-X`/`-Y` (or `-o ForwardX11=yes`) pass the filter.**
   `sshdialog.cpp:94-105` — the denylist leaves out `XAuthLocation`, and
   `-X`/`-Y` (or `-o ForwardX11=yes`) pass the filter.
   Quote: `static const QStringList kDangerous = { … ProxyCommand,
@@ -91166,6 +91166,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   to `kDangerous`, and review the remaining path- or program-valued
   keywords as a class (or switch to an allowlist).
   Ledger row 238, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06: XAuthLocation and UserKnownHostsFile join kDangerous
+  (the class review of path- and program-valued ssh_config keys found
+  the second: ssh appends to it, like -E). -X alone stays allowed; it
+  runs the system xauth. Test SshExtraArgsSanitize.BypassForms red
+  before for both keys.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (High).

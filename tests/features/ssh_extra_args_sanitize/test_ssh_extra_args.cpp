@@ -174,6 +174,15 @@ void testBypassForms() {
     // Options that load a shared library run local code as well.
     rejected("-oPKCS11Provider=/tmp/x.so", "bypass: PKCS11Provider");
     rejected("-o SecurityKeyProvider=/tmp/x.so", "bypass: SecurityKeyProvider");
+    // ANTS-6443 — with -X, ssh runs the program XAuthLocation names; ssh
+    // writes new host keys to UserKnownHostsFile.
+    for (const char *key : {"XAuthLocation", "UserKnownHostsFile"}) {
+        const QString extra = QStringLiteral("-X -o %1=/home/u/.bashrc").arg(key);
+        const QStringList safe = SshBookmark::sanitizeExtraArgs(extra);
+        expect(!safe.join(' ').contains(QLatin1String(key), Qt::CaseInsensitive),
+               "bypass: path-valued key rejected",
+               QString("survived: %1").arg(safe.join(QStringLiteral(" | "))));
+    }
     {
         QStringList rej;
         const auto safe = SshBookmark::sanitizeExtraArgs("-I /tmp/x.so", &rej);

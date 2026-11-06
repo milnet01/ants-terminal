@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **SSH bookmarks can no longer set `XAuthLocation` or `UserKnownHostsFile`, which let a bookmark run a program or write to a file of its choosing** (ANTS-6443)
+
 - **Pasted text can no longer end bracketed-paste mode early by nesting one paste marker inside another** (ANTS-6442)
 
 - **Where the signing helper is missing (AppImage, Flatpak), the shell integration now signs with python3, which reads the key from a pipe, instead of openssl, which showed the key to `ps`** (ANTS-6445)

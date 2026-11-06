@@ -65,7 +65,10 @@ The check reads options the way ssh does, so none of these reaches ssh:
   `SecurityKeyProvider`, because each runs a command, loads a file or loads
   a library;
 - `-I <library>` and `-E <file>`, which load a library and append to a file
-  of the bookmark's choosing.
+  of the bookmark's choosing;
+- the keys `XAuthLocation`, a program ssh runs under `-X`, and
+  `UserKnownHostsFile`, a file ssh appends host keys to (ANTS-6443).
+  `-X` alone stays allowed: it runs the system `xauth`.
 
 ### Invariant 4 — safe options pass through
 

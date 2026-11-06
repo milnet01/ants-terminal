@@ -102,6 +102,11 @@ QStringList SshBookmark::sanitizeExtraArgs(const QString &extraArgs,
         QStringLiteral("Include"),
         QStringLiteral("PKCS11Provider"),
         QStringLiteral("SecurityKeyProvider"),
+        // ANTS-6443 — with -X or ForwardX11, ssh runs the XAuthLocation
+        // program; ssh appends new host keys to UserKnownHostsFile, a write
+        // to a file of the bookmark's choosing like -E.
+        QStringLiteral("XAuthLocation"),
+        QStringLiteral("UserKnownHostsFile"),
     };
 
     // ANTS-5060 — ssh_config splits a keyword from its value at `=` OR
