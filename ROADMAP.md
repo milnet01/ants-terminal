@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6697 -->
+<!-- ants-roadmap-id-high-water: ANTS=6701 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90958,6 +90958,50 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-11-06.
   Lanes: mcp.
+
+### Ants MCP feedback from CC sessions — 2026-11-06 triage
+
+- 📋 [ANTS-6698] **workspace_search: accept an array `glob`, as exclude_glob does.**
+  `glob` takes one string capped at 256 bytes (re-checked by
+  claude-config, 2026-11-06). review-contract-set's allowlist over a
+  28-document set exceeded it, so every lane's cross-set search was
+  refused (OneUp, 2026-11-06). An array glob, OR-ed like exclude_glob,
+  removes the need to split patterns. The review skill now tells lanes to
+  split meanwhile.
+  **Layman:** Let the project search take a list of file patterns, so a review over many documents can search all of them at once.
+  Kind: enhancement.
+  Source: claude-config session message 2026-11-06.
+  Lanes: mcp-workspace.
+
+- 📋 [ANTS-6699] **ci_report: `rise_from` names one commit for a rise that grew over many.**
+  Pressless (via claude-config, 2026-11-06): rise_from dated a slowdown
+  to f319b31, a docs-only commit; the rise was the suite growing over
+  many commits. Reply should say when a rise is gradual (no single step
+  accounts for it) rather than name the commit where it crossed the line.
+  **Layman:** The CI report blamed a slowdown on one harmless commit when the tests had grown slowly over many.
+  Kind: fix.
+  Source: claude-config session message 2026-11-06.
+  Lanes: mcp-ci.
+
+- 📋 [ANTS-6700] **ci_report: matrix jobs named `${{ matrix.name }}` come back with job "unread".**
+  UT_Ants (via claude-config, 2026-11-06, not filed by UT_Ants): jobs
+  whose name is a matrix expression return job:"unread", so per-job
+  checks may skip them. Resolve the name from the run's job list, which
+  carries the expanded name, before falling back to the workflow text.
+  **Layman:** The CI report could not name jobs that get their names from a build matrix.
+  Kind: fix.
+  Source: claude-config session message 2026-11-06.
+  Lanes: mcp-ci.
+
+- 💭 [ANTS-6701] **Consider a verb that reads the local pre-push gate's per-leg timings, as ci_report reads Actions.**
+  claude-config, 2026-11-06: OneUp and LottoTracker found their real
+  cost in the local pre-push gate, which ci_report cannot see. CFG-0891
+  will record per-leg wall time, CPU and peak memory. Once those records
+  exist, decide whether ci_report (or a new verb) reads them.
+  **Layman:** Maybe let the CI report also show how long the local checks before a push take.
+  Kind: feature.
+  Source: claude-config session message 2026-11-06.
+  Lanes: mcp-ci.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
