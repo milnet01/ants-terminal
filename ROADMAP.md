@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6423 -->
+<!-- ants-roadmap-id-high-water: ANTS=6424 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70554,6 +70554,22 @@ minor tag (next: pre-0.8.0).
   **Layman:** The tool that checks code moves raised a false alarm on a test line that only runs when something is missing.
   Kind: fix.
   Source: self-found-2026-11-06 (ANTS-4919 carve).
+  Lanes: tools.
+
+- 📋 [ANTS-6424] **split-motion-check --scrapes flags an open-ended window when text is only appended after its subject.**
+  tests/features/mcp_rate_limit's `cc.substr(rateLimitStart)` and
+  `cc.substr(dispatchStart)` run from an anchor to the end of the class
+  text. The ANTS-4919 kind A move appended six pieces after entry 1, so
+  INV-10 listed both as changed and exited 1. Their anchor and every
+  first match their assertions take sit in entry 1 and did not move.
+  Fix: for a window with no end bound, compare the parent's window with
+  the cut's window truncated to the parent's length; report a change
+  only when that prefix differs. Test: a scrape pair whose only change
+  is text appended after the window's subject exits 0.
+  Related: ANTS-6423 (the untaken ternary arm).
+  **Layman:** The tool that checks code moves raised a false alarm on two tests that read to the end of the file, when new files were only added after what they check.
+  Kind: fix.
+  Source: self-found-2026-11-06 (ANTS-4919 kind A move).
   Lanes: tools.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
