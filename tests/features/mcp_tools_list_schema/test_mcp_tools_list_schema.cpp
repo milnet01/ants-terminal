@@ -98,27 +98,20 @@ TEST(McpToolsListSchema, ZeroArgToolsHaveInputSchema) {
 // in the same source region so future tool additions cannot sneak in
 // without a schema.
 //
-// Strategy: bound the search to the tools/list handler block (from
-// "tools/list" to "tools/call"), then count "inputSchema" assignments
+// Strategy: bound the search to the tools/list descriptors (the handler
+// branch and its appendToolSchemas pieces), then count "inputSchema" assignments
 // and "tools.append(" calls — they must be equal.
 TEST(McpToolsListSchema, AllRegisteredToolsHaveInputSchema) {
     expect_reset();
     const std::string ci = ants_test::slurpClaudeIntegration();
 
-    // Locate the tools/list block.
-    const std::string kStart = "\"tools/list\"";
-    const std::string kEnd   = "\"tools/call\"";
-    const size_t startPos = ci.find(kStart);
-    const size_t endPos   = (startPos == std::string::npos)
-                                ? std::string::npos
-                                : ci.find(kEnd, startPos);
-
-    if (startPos == std::string::npos || endPos == std::string::npos) {
-        FAIL() << "Cannot locate tools/list…tools/call block in claudeintegration.cpp; "
-               << "check that the MCP handler is still present";
+    // The tools/list branch plus every carved appendToolSchemas piece
+    // (ANTS-4919).
+    const std::string block = ants_test::toolsListDescriptorText(ci);
+    if (block.empty()) {
+        FAIL() << "Cannot locate the tools/list…tools/call branch in the "
+               << "claudeintegration sources; check that the MCP handler is still present";
     }
-
-    const std::string block = ci.substr(startPos, endPos - startPos);
 
     // Count tools.append( and ["inputSchema"] =
     auto countOccurrences = [](const std::string &hay,

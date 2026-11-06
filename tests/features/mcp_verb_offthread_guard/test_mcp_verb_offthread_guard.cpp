@@ -143,8 +143,13 @@ TEST(McpVerbOffthreadGuard, Main) {
 
     // ANTS-4932 § 2.3 — the request body moved out of onMcpConnection() into
     // handleMcpRequest(), which both hosts run.
-    const std::string dispatcher =
+    // ANTS-4919 — its tools/list branch calls the appendToolSchemas pieces,
+    // which are part of the path this scans.
+    const std::string handler =
         bodyAfter(ci, "void ClaudeIntegration::handleMcpRequest(");
+    const std::string dispatcher =
+        handler.empty() ? std::string()
+                        : handler + "\n" + ants_test::toolsListDescriptorText(ci);
     const std::string finish =
         bodyAfter(ci, "void ClaudeIntegration::finishToolDispatch(");
     const std::string post =

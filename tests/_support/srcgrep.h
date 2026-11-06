@@ -216,6 +216,28 @@ inline std::string regionBetween(const std::string &text,
     return text.substr(s, e - s);
 }
 
+// ANTS-4919 — every tools/list descriptor in ClaudeIntegration's text `cc`:
+// the tools/list..tools/call branch of handleMcpRequest (the piece calls, the
+// inline `trace` descriptor, and the tail that post-processes the array), then
+// the body of each `void appendToolSchemas<Part>(QJsonArray &tools)` piece in
+// text order (ANTS-1677 § 2.2 kind B). The branch comes first so the inline
+// descriptor is followed by a descriptor, as it was before the carve. Found by
+// definition, not by file, so it holds when a piece moves to another file of
+// the class. "" when the branch is missing.
+inline std::string toolsListDescriptorText(const std::string &cc) {
+    std::string out = regionBetween(cc, "else if (method == \"tools/list\")",
+                                    "else if (method == \"tools/call\")");
+    if (out.empty()) return {};
+    const std::string sig = "\nvoid appendToolSchemas";
+    for (auto p = cc.find(sig); p != std::string::npos; p = cc.find(sig, p + 1)) {
+        const std::size_t paren = cc.find('(', p);
+        if (paren == std::string::npos) break;
+        out += '\n';
+        out += slurpFunctionBody(cc, cc.substr(p + 1, paren - p));
+    }
+    return out;
+}
+
 // Convenience overload: combines slurpFile + slurpFunctionBody.
 inline std::string slurpFunctionBody(const char *path,
                                      const std::string &signatureAnchor) {

@@ -49,15 +49,10 @@ TEST(McpSelectionHint, EveryToolDeclaresSelectionHint) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
 
-    const auto regionStart = cc.find("else if (method == \"tools/list\")");
-    ASSERT_NE(regionStart, std::string::npos)
-        << "tools/list dispatch branch missing";
-    const auto regionEnd = cc.find(
-        "else if (method == \"tools/call\")", regionStart);
-    ASSERT_NE(regionEnd, std::string::npos)
-        << "tools/call branch must follow tools/list";
-    const std::string region = cc.substr(
-        regionStart, regionEnd - regionStart);
+    // ANTS-4919 — the branch plus every carved appendToolSchemas piece.
+    const std::string region = ants_test::toolsListDescriptorText(cc);
+    ASSERT_FALSE(region.empty())
+        << "tools/list branch, or the tools/call branch after it, missing";
 
     const auto sites = collectNameSites(region);
     ASSERT_GE(sites.size(), 42u)
@@ -119,13 +114,10 @@ TEST(McpSelectionHint, HintsRespectSizeBudget) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
 
-    const auto regionStart = cc.find("else if (method == \"tools/list\")");
-    ASSERT_NE(regionStart, std::string::npos);
-    const auto regionEnd = cc.find(
-        "else if (method == \"tools/call\")", regionStart);
-    ASSERT_NE(regionEnd, std::string::npos);
-    const std::string region = cc.substr(
-        regionStart, regionEnd - regionStart);
+    // ANTS-4919 — the branch plus every carved appendToolSchemas piece.
+    const std::string region = ants_test::toolsListDescriptorText(cc);
+    ASSERT_FALSE(region.empty())
+        << "tools/list branch, or the tools/call branch after it, missing";
 
     // For each selection_hint assignment, collect the concatenated
     // QStringLiteral content (the assignment opens with `(` and

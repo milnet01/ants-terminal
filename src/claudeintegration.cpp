@@ -2910,58 +2910,7 @@ QJsonObject makeEncodingProp() {
     return p;
 }
 
-}  // namespace claudeintegrationdetail
-
-using namespace claudeintegrationdetail;
-
-// ANTS-4932 — the request body below keeps the indentation it had inside
-// onMcpConnection's readyRead lambda, so the move changed no line of it.
-// `buf` is the request line; `guard` is its reply channel.
-void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
-                                         const QByteArray &buf,
-                                         const QPointer<McpReplyChannel> &guard) {
-    {
-        {
-            QJsonObject request = doc.object();
-            QString method = request.value("method").toString();
-            QJsonValue reqId = request.value("id");
-
-            // Build either `result` (success) or `error` (failure). The
-            // envelope ({jsonrpc, id, result/error}) is added at the end.
-            QJsonObject result;
-            QJsonObject error;
-            bool haveResult = false;
-
-            if (method == "initialize") {
-                // ANTS-1284 — reset per-tool dispatch counters on
-                // session-start handshake. See docs/specs/ANTS-1284.md.
-                // ANTS-3572 — fold the previous session into the persisted
-                // aggregate before clearing (endTokenSession emits first).
-                endTokenSession();
-                QJsonObject caps;
-                caps["tools"] = QJsonObject();
-                QJsonObject serverInfo;
-                serverInfo["name"] = m_serverName;  // ANTS-4932 — "ants-mcpd" there
-                serverInfo["version"] = QStringLiteral(ANTS_VERSION);
-                // ANTS-1952 — build identity so a caller can detect a
-                // ship-vs-live binary gap (same SemVer, rebuilt with a fix).
-                // SemVer alone can't distinguish it; the git SHA can. Lets a
-                // session compare against `git log` and flag "server predates
-                // commit X" instead of chasing stale telemetry (cf. the
-                // ANTS-1632/1903/1947 stale-binary investigations).
-                // ANTS-3582: ANTS_BUILD_* are extern const char[] (build_info_values.cpp),
-                // so read via fromLatin1 — not compile-time literals.
-                serverInfo["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);
-                serverInfo["build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
-                serverInfo["build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
-                serverInfo["build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
-                result["protocolVersion"] = "2025-11-25";
-                result["capabilities"] = caps;
-                result["serverInfo"] = serverInfo;
-                haveResult = true;
-            } else if (method == "tools/list") {
-                QJsonArray tools;
-
+void appendToolSchemasTerminal(QJsonArray &tools) {
                 QJsonObject scrollbackTool;
                 scrollbackTool["name"] = "get_scrollback";
                 scrollbackTool["description"] = QStringLiteral(
@@ -4652,7 +4601,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+}
 
+void appendToolSchemasCodeNav(QJsonArray &tools) {
                 // ANTS-1636 — find_sources: topic-to-files discovery.
                 {
                     QJsonObject t;
@@ -6837,7 +6788,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     aeTool["inputSchema"] = schema;
                 }
                 tools.append(aeTool);
+}
 
+void appendToolSchemasDocs(QJsonArray &tools) {
                 // ANTS-1637 — codebase_index: serve a pre-computed project
                 // structural map (symbols-per-file, lane→files) so a session
                 // stops re-deriving the project shape with grep/file_outline.
@@ -9247,7 +9200,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     lasTool["inputSchema"] = schema;
                 }
                 tools.append(lasTool);
+}
 
+void appendToolSchemasOrientation(QJsonArray &tools) {
                 // ANTS-1883 — session_orient: bundle of current_state +
                 // project_layout + roadmap_query (section_index, active).
                 {
@@ -12159,6 +12114,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+}
+
+void appendToolSchemasStore(QJsonArray &tools) {
                 // ANTS-1424 — roadmap_log: append a new bullet to
                 // ROADMAP.md. Mutates project state (counter +
                 // markdown), so Required-contract gated and path-
@@ -14732,88 +14690,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
-                // ANTS-5734 — trace: a symbol's definitions, callers,
-                // references, tests, documents, spec invariants and roadmap
-                // items in one call. Listed only by a process that registered
-                // it (INV-13): ants-mcpd does, the terminal cannot, since it
-                // does not link the parser. Every property below is read by
-                // trace::serve (ANTS-4621).
-                if (m_toolProviders.count(QStringLiteral("trace"))) {
-                    QJsonObject t;
-                    t["name"] = "trace";
-                    t["selection_hint"] = QStringLiteral(
-                        "Use instead of grep + Read to learn where a symbol is "
-                        "defined, who calls it, and which tests and documents "
-                        "name it.");
-                    t["description"] = QStringLiteral(
-                        "One call for a symbol: definitions with end_line, depth-1 "
-                        "callers, references by kind, tests, doc lines, spec "
-                        "invariants and roadmap items. path= traces a file instead. "
-                        "Syntactic; not_covered says what it missed. Refusals: "
-                        "bad_args, bad_path, no_project. caller_cwd Required.");
-                    t["detail"] = QStringLiteral(
-                        "One call for a symbol: definitions (file, line, end_line, "
-                        "signature, kind, scope, is_declaration), depth-1 callers "
-                        "with the calling line, every other reference by kind "
-                        "(import, code, comment, string_or_config, test, unparsed), "
-                        "the test files that hit it with ctest patterns, doc lines "
-                        "with their nearest heading, spec invariants and roadmap "
-                        "items naming it. With path instead of symbol: the tests, "
-                        "docs and config that name that file. Matching is syntactic "
-                        "(tree-sitter queries, no type resolution), so precision is "
-                        "\"syntactic\". not_covered lists languages with no "
-                        "grammar, files too large or timed out, an ambiguous "
-                        "basename, an unreadable roadmap or spec, and each "
-                        "language's limits. Rows page under max_bytes: pass "
-                        "next_offset back as offset. depth above 1 and "
-                        "include:[\"callees\"] refuse bad_args until ship 2. "
-                        "Refusals: bad_args, bad_path, no_project. caller_cwd "
-                        "Required. Spec: docs/specs/ANTS-5734-trace-verb.md.");
-                    QJsonObject schema;
-                    schema["type"] = "object";
-                    QJsonObject props;
-                    const auto str = [](const char *d) {
-                        return QJsonObject{{"type", "string"},
-                                           {"description", QString::fromUtf8(d)}};
-                    };
-                    props["caller_cwd"] = str("Your $PWD (required); picks the project.");
-                    props["symbol"] = str(
-                        "A name, or up to four joined by :: or . (Foo::bar); "
-                        "the leading parts narrow definitions, callers and references.");
-                    props["path"] = str(
-                        "A file to trace instead of a symbol: what tests, docs and "
-                        "config name it.");
-                    props["lang"] = str(
-                        "Parse only this language id (cpp, python, ...).");
-                    {
-                        QJsonArray members;
-                        for (const char *m : {"definitions", "callers", "references",
-                                              "tests", "docs", "spec_invariants",
-                                              "roadmap_items"})
-                            members.append(QString::fromLatin1(m));
-                        props["include"] = QJsonObject{
-                            {"type", "array"},
-                            {"items", QJsonObject{{"type", "string"}, {"enum", members}}},
-                            {"description", QStringLiteral(
-                                 "Only these sections; default all.")}};
-                    }
-                    props["depth"] = QJsonObject{
-                        {"type", "integer"}, {"minimum", 1}, {"maximum", 3},
-                        {"default", 1},
-                        {"description", QStringLiteral("Caller depth; only 1 is served yet.")}};
-                    props["max_bytes"] = QJsonObject{
-                        {"type", "integer"}, {"minimum", 1},
-                        {"description", QStringLiteral("Reply cap (default 512 KiB).")}};
-                    props["offset"] = QJsonObject{
-                        {"type", "integer"}, {"minimum", 0},
-                        {"description", QStringLiteral(
-                             "Row cursor: pass back next_offset.")}};
-                    schema["properties"] = props;
-                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
-                    schema["additionalProperties"] = false;
-                    t["inputSchema"] = schema;
-                    tools.append(t);
-                }
+}
+
+void appendToolSchemasReports(QJsonArray &tools) {
                 // ANTS-5515 — dependency_inventory: what the project pins, offline.
                 {
                     QJsonObject t;
@@ -16179,6 +16058,151 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                     t["inputSchema"] = schema;
                     tools.append(t);
                 }
+}
+
+}  // namespace claudeintegrationdetail
+
+using namespace claudeintegrationdetail;
+
+// ANTS-4932 — the request body below keeps the indentation it had inside
+// onMcpConnection's readyRead lambda, so the move changed no line of it.
+// `buf` is the request line; `guard` is its reply channel.
+void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
+                                         const QByteArray &buf,
+                                         const QPointer<McpReplyChannel> &guard) {
+    {
+        {
+            QJsonObject request = doc.object();
+            QString method = request.value("method").toString();
+            QJsonValue reqId = request.value("id");
+
+            // Build either `result` (success) or `error` (failure). The
+            // envelope ({jsonrpc, id, result/error}) is added at the end.
+            QJsonObject result;
+            QJsonObject error;
+            bool haveResult = false;
+
+            if (method == "initialize") {
+                // ANTS-1284 — reset per-tool dispatch counters on
+                // session-start handshake. See docs/specs/ANTS-1284.md.
+                // ANTS-3572 — fold the previous session into the persisted
+                // aggregate before clearing (endTokenSession emits first).
+                endTokenSession();
+                QJsonObject caps;
+                caps["tools"] = QJsonObject();
+                QJsonObject serverInfo;
+                serverInfo["name"] = m_serverName;  // ANTS-4932 — "ants-mcpd" there
+                serverInfo["version"] = QStringLiteral(ANTS_VERSION);
+                // ANTS-1952 — build identity so a caller can detect a
+                // ship-vs-live binary gap (same SemVer, rebuilt with a fix).
+                // SemVer alone can't distinguish it; the git SHA can. Lets a
+                // session compare against `git log` and flag "server predates
+                // commit X" instead of chasing stale telemetry (cf. the
+                // ANTS-1632/1903/1947 stale-binary investigations).
+                // ANTS-3582: ANTS_BUILD_* are extern const char[] (build_info_values.cpp),
+                // so read via fromLatin1 — not compile-time literals.
+                serverInfo["build_commit"] = QString::fromLatin1(ANTS_BUILD_COMMIT);
+                serverInfo["build_date"] = QString::fromLatin1(ANTS_BUILD_DATE);
+                serverInfo["build_time"] = QString::fromLatin1(ANTS_BUILD_TIME);
+                serverInfo["build_type"] = QString::fromLatin1(ANTS_BUILD_TYPE);
+                result["protocolVersion"] = "2025-11-25";
+                result["capabilities"] = caps;
+                result["serverInfo"] = serverInfo;
+                haveResult = true;
+            } else if (method == "tools/list") {
+                QJsonArray tools;
+
+                appendToolSchemasTerminal(tools);
+
+                appendToolSchemasCodeNav(tools);
+
+                appendToolSchemasDocs(tools);
+
+                appendToolSchemasOrientation(tools);
+                appendToolSchemasStore(tools);
+                // ANTS-5734 — trace: a symbol's definitions, callers,
+                // references, tests, documents, spec invariants and roadmap
+                // items in one call. Listed only by a process that registered
+                // it (INV-13): ants-mcpd does, the terminal cannot, since it
+                // does not link the parser. Every property below is read by
+                // trace::serve (ANTS-4621).
+                if (m_toolProviders.count(QStringLiteral("trace"))) {
+                    QJsonObject t;
+                    t["name"] = "trace";
+                    t["selection_hint"] = QStringLiteral(
+                        "Use instead of grep + Read to learn where a symbol is "
+                        "defined, who calls it, and which tests and documents "
+                        "name it.");
+                    t["description"] = QStringLiteral(
+                        "One call for a symbol: definitions with end_line, depth-1 "
+                        "callers, references by kind, tests, doc lines, spec "
+                        "invariants and roadmap items. path= traces a file instead. "
+                        "Syntactic; not_covered says what it missed. Refusals: "
+                        "bad_args, bad_path, no_project. caller_cwd Required.");
+                    t["detail"] = QStringLiteral(
+                        "One call for a symbol: definitions (file, line, end_line, "
+                        "signature, kind, scope, is_declaration), depth-1 callers "
+                        "with the calling line, every other reference by kind "
+                        "(import, code, comment, string_or_config, test, unparsed), "
+                        "the test files that hit it with ctest patterns, doc lines "
+                        "with their nearest heading, spec invariants and roadmap "
+                        "items naming it. With path instead of symbol: the tests, "
+                        "docs and config that name that file. Matching is syntactic "
+                        "(tree-sitter queries, no type resolution), so precision is "
+                        "\"syntactic\". not_covered lists languages with no "
+                        "grammar, files too large or timed out, an ambiguous "
+                        "basename, an unreadable roadmap or spec, and each "
+                        "language's limits. Rows page under max_bytes: pass "
+                        "next_offset back as offset. depth above 1 and "
+                        "include:[\"callees\"] refuse bad_args until ship 2. "
+                        "Refusals: bad_args, bad_path, no_project. caller_cwd "
+                        "Required. Spec: docs/specs/ANTS-5734-trace-verb.md.");
+                    QJsonObject schema;
+                    schema["type"] = "object";
+                    QJsonObject props;
+                    const auto str = [](const char *d) {
+                        return QJsonObject{{"type", "string"},
+                                           {"description", QString::fromUtf8(d)}};
+                    };
+                    props["caller_cwd"] = str("Your $PWD (required); picks the project.");
+                    props["symbol"] = str(
+                        "A name, or up to four joined by :: or . (Foo::bar); "
+                        "the leading parts narrow definitions, callers and references.");
+                    props["path"] = str(
+                        "A file to trace instead of a symbol: what tests, docs and "
+                        "config name it.");
+                    props["lang"] = str(
+                        "Parse only this language id (cpp, python, ...).");
+                    {
+                        QJsonArray members;
+                        for (const char *m : {"definitions", "callers", "references",
+                                              "tests", "docs", "spec_invariants",
+                                              "roadmap_items"})
+                            members.append(QString::fromLatin1(m));
+                        props["include"] = QJsonObject{
+                            {"type", "array"},
+                            {"items", QJsonObject{{"type", "string"}, {"enum", members}}},
+                            {"description", QStringLiteral(
+                                 "Only these sections; default all.")}};
+                    }
+                    props["depth"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1}, {"maximum", 3},
+                        {"default", 1},
+                        {"description", QStringLiteral("Caller depth; only 1 is served yet.")}};
+                    props["max_bytes"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1},
+                        {"description", QStringLiteral("Reply cap (default 512 KiB).")}};
+                    props["offset"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 0},
+                        {"description", QStringLiteral(
+                             "Row cursor: pass back next_offset.")}};
+                    schema["properties"] = props;
+                    schema["required"] = QJsonArray{QStringLiteral("caller_cwd")};
+                    schema["additionalProperties"] = false;
+                    t["inputSchema"] = schema;
+                    tools.append(t);
+                }
+                appendToolSchemasReports(tools);
 
                 // ANTS-1354 — default `version: "1.0"` on every tool
                 // descriptor unless one already set its own. SemVer-
