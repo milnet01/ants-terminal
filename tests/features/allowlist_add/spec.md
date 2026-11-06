@@ -38,7 +38,9 @@ pattern. Return an empty string when no sensible generalisation applies
 - **Safety denylist:** NEVER auto-generalise `rm`, `sudo` (bare, not
   the SUDO_ASKPASS form), or any command starting with `SUDO`
   (keep specific so users review destructive patterns explicitly).
-  Return empty for these.
+  Return empty for these. The same holds for the command after
+  `SUDO_ASKPASS=… sudo -A`: `rm`, a shell, an interpreter or `env`
+  (by name, with or without a path) is never widened to `*` (ANTS-6435).
 - Already-wildcard patterns (`Bash(cmd *)` or `Bash(cmd **)`) return
   empty — nothing useful to do.
 

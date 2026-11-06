@@ -74,6 +74,18 @@ const GenCase kGeneralize[] = {
     {"sudo-askpass-specific",
      "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A zypper install foo)",
      "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A zypper *)"},
+    // ANTS-6435 — under sudo -A, rm, a shell or an interpreter stays specific:
+    // `sudo -A rm *` would be root rm with any arguments.
+    {"sudo-askpass-rm",
+     "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A rm -rf /var/x)",  ""},
+    {"sudo-askpass-abs-rm",
+     "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A /usr/bin/rm -f x)", ""},
+    {"sudo-askpass-bash",
+     "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A bash -c x)",       ""},
+    {"sudo-askpass-python",
+     "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A python3 -c x)",    ""},
+    {"sudo-askpass-env",
+     "Bash(SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A env rm -rf x)",    ""},
 
     // `&&` chains — preserve structure, wildcard each side.
     {"cd-and-cmd",           "Bash(cd /mnt/Storage && cmake --build build)",

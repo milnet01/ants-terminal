@@ -500,6 +500,12 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
         auto m = sudoSpecific.match(content);
         if (m.hasMatch()) {
             const QString cmd = m.captured(1);
+            // ANTS-6435 — the denylist above sees only the SUDO_ASKPASS
+            // prefix. Under root, rm or anything that runs other code (a
+            // shell, an interpreter, env) widened to `*` grants everything.
+            static const QRegularExpression rootDeny(
+                R"(^(rm|sh|bash|zsh|dash|ksh|fish|env|python[0-9.]*|perl|ruby|node)$)");
+            if (rootDeny.match(cmd.section(QLatin1Char('/'), -1)).hasMatch()) return {};
             return QStringLiteral("Bash(") + s_sudoPrefix + cmd + " *)";
         }
     }
