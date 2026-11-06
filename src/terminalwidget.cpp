@@ -3,6 +3,7 @@
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
 #include "luaengine.h"  // ANTS-4272 — PluginEvent values
+#include "procstat.h"         // fields of /proc/<pid>/stat by name
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
 #include "secureio.h"        // ANTS-4456 — ensurePrivateDir / setOwnerOnlyPerms
 #include "selectiontail.h"   // ANTS-5623 — tail-capped selection assembly
@@ -5833,16 +5834,7 @@ QString TerminalWidget::foregroundProcess() const {
     // Read /proc/PID/stat to get the foreground process group
     QFile statFile(QString("/proc/%1/stat").arg(pid));
     if (!statFile.open(QIODevice::ReadOnly)) return {};
-    QString stat = QString::fromUtf8(statFile.readAll());
-
-    // Find the foreground process group (field 8, 1-indexed)
-    // Format: pid (comm) state ppid pgrp session tpgid ...
-    int closeParenIdx = stat.lastIndexOf(')');
-    if (closeParenIdx < 0) return {};
-    QStringList fields = stat.mid(closeParenIdx + 2).split(' ');
-    if (fields.size() < 5) return {};
-    int tpgid = fields[4].toInt(); // terminal foreground process group
-
+    const int tpgid = procstat::tpgid(QString::fromUtf8(statFile.readAll()));
     if (tpgid <= 0 || tpgid == pid) return {};
 
     // Read the foreground process name from /proc/tpgid/comm

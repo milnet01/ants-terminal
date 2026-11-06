@@ -4195,6 +4195,8 @@ if(ANTS_TESTS)
                 tests/features/pty_write_eagain_queue/test_pty_write_eagain_queue.cpp
                 # ANTS-4456 — child PID is read cross-thread; must be atomic.
                 tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
+                # tty_nr read as tpgid in foregroundProcess (review-code 2026-11-06).
+                tests/features/proc_stat_fields/test_proc_stat_fields.cpp
                 tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
                 tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
                 tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
