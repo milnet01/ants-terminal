@@ -53,6 +53,10 @@ public:
     QRgb rgba() const { return QColor(*this).rgba(); }
     friend bool operator==(CellColor a, CellColor b) { return a.m_rgba == b.m_rgba; }
     friend bool operator!=(CellColor a, CellColor b) { return a.m_rgba != b.m_rgba; }
+    // Exact matches for a QColor operand, so older compilers do not find
+    // CellColor == QColor ambiguous (the Qt 6.2 floor build did).
+    friend bool operator==(CellColor a, const QColor &b) { return a == CellColor(b); }
+    friend bool operator!=(CellColor a, const QColor &b) { return a != CellColor(b); }
 
 private:
     // "Unset" is one fully transparent value. A real colour equal to it is
