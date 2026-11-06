@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6436 -->
+<!-- ants-roadmap-id-high-water: ANTS=6439 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90979,7 +90979,7 @@ Findings from review-code and review-readability, 2026-11-06, closed by
 close-findings in subject groups, security first. Each item names its lane and
 keeps the reviewer's remedy, which is a claim to check before building.
 
-- 📋 [ANTS-6432] **`version_check` reads only files inside the project root.**
+- ✅ [ANTS-6432] **`version_check` reads only files inside the project root.**
   `versioncheck.cpp:211-214`: `version_source` and `version_pattern` come
   from the repo's own `.claude/bump.json`, unchecked. A source of
   `../../.config/gh/hosts.yml` with pattern `oauth_token: (\S+)` returns
@@ -90987,12 +90987,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   have the same traversal, and `readFile` follows symlinks.
   Remedy: resolve each path canonically; refuse or skip anything outside
   the root.
+  Shipped 2026-11-06 (742ee57d). Every read passes
+  PathValidation::isInsideProject; INV-8, red run showed the outside
+  file's text in the reply.
   **Layman:** A downloaded project could make the version checker read a private file, such as a login token, and pass it to the AI.
   Kind: security.
   Source: review-code 2026-11-06 lane 13 (High, calibrated Critical).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6433] **The "Switch model?" auto-confirm presses Enter only when Claude Code is running and no permission prompt is waiting.**
+- ✅ [ANTS-6433] **The "Switch model?" auto-confirm presses Enter only when Claude Code is running and no permission prompt is waiting.**
   `claudestatuswidgets.cpp:2290-2292`: when the last 12 lines hold
   "Switch model?" and "Yes, switch to", `sendUnarmedConfirm` (`:2402`)
   sends `\r` to the focused tab. Unlike the chip-click, deferred-switch,
@@ -91001,12 +91004,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   phrases, while a permission dialog shows, accepts "1. Yes".
   Remedy: confirm only when the tracker state is not `NotRunning`, not
   `awaitingInput`, and shortly after the user typed `/model` there.
+  Shipped 2026-11-06 (04a6de24). The gate now needs claudeRunning and
+  !permissionPending. The remedy's third part, a window after the user
+  typed /model, is a design change filed separately.
   **Layman:** Text shown in a terminal could make Ants press Enter on a Claude Code permission prompt, approving a command.
   Kind: security.
   Source: review-code 2026-11-06 lane 30 (High, calibrated Critical).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6434] **`spec_log` and `changelog_log` refuse to write through a symlink that leaves the project root.**
+- ✅ [ANTS-6434] **`spec_log` and `changelog_log` refuse to write through a symlink that leaves the project root.**
   `remotecontrol_feedback.cpp:1136-1137,1271` (`spec_log` id route, via
   `resolveSpecRelForId`) and `remotecontrol_changelog.cpp:118`
   (`changelog_log` discovery route, via `findChangelogUnder`, including the
@@ -91015,12 +91021,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   rewritten. Unsettled: whether `QSaveFile` writes through a symlink.
   Remedy: run the resolved default path through `validatePath(...,
   allowOutsideRoot=false)` on every route.
+  Shipped 2026-11-06 (314368be). The red run settled the open question:
+  QSaveFile writes through the symlink. The project.json override was
+  already contained by ProjectSettings::load (validEntry).
   **Layman:** A downloaded project could trick the spec or changelog tool into overwriting a file elsewhere on the computer.
   Kind: security.
   Source: review-code 2026-11-06 lane 12 (High, calibrated Critical if QSaveFile writes through) + lane 11.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6435] **The allowlist generaliser never widens a `sudo -A rm` or `sudo -A <shell>` rule to any arguments.**
+- ✅ [ANTS-6435] **The allowlist generaliser never widens a `sudo -A rm` or `sudo -A <shell>` rule to any arguments.**
   `claudeallowlist.cpp:494-504`: `normalizeRule` turns `sudo rm -rf
   /var/x` into the `SUDO_ASKPASS=… sudo -A rm -rf /var/x` form; the
   denylist at `:489-491` passes anything starting `SUDO_ASKPASS=`; then
@@ -91029,12 +91038,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   to allowlist" (`claudestatuswidgets.cpp:666-668`) and `prefillRule`.
   Remedy: run the denylist on the command after the `sudo -A` prefix;
   refuse to generalise `rm`, a shell or an interpreter.
+  Shipped 2026-11-06 (f33671c0). The command after sudo -A is checked by
+  name: rm, shells, interpreters and env stay specific.
   **Layman:** "Add to allowlist" could offer a rule letting Claude delete any file as root.
   Kind: security.
   Source: review-code 2026-11-06 lane 30 (High).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6436] **The tab's foreground-process name reads `tpgid` from `/proc/<pid>/stat`, not `tty_nr`.**
+- ✅ [ANTS-6436] **The tab's foreground-process name reads `tpgid` from `/proc/<pid>/stat`, not `tty_nr`.**
   `terminalwidget.cpp:5844` read `fields[4]`, which is `tty_nr` (proc(5):
   state, ppid, pgrp, session, tty_nr, tpgid). `foregroundProcess()` then
   opened `/proc/<tty device number>/comm`: empty, or an unrelated process.
@@ -91042,10 +91053,44 @@ keeps the reviewer's remedy, which is a claim to check before building.
   The same stat parse has three more copies (`claudeintegration_sessions.cpp`
   `findClaudeChildPid` and `processStartTimeMs`, `mcpdversion.cpp`
   `parentOf`); folding them onto `src/procstat.h` is a separate item.
+  Shipped 2026-11-06 (23dd9695). src/procstat.h names the fields; the
+  three other stat parsers are a separate duplicate-folding item.
   **Layman:** The name of the program running in a tab was read from the wrong number, so it was usually missing.
   Kind: fix.
   Source: review-readability 2026-11-06 lane terminal-widget-b (possible bug, confirmed).
   Lanes: terminal-widget.
+
+- 📋 [ANTS-6437] **The user-typed `/model` auto-confirm fires only shortly after the user typed `/model` in that tab.**
+  ANTS-6433 closed the permission-prompt and bare-shell cases. Left
+  open: in a Claude tab at idle with no prompt pending, output showing
+  "Switch model?" and "Yes, switch to" still makes Ants press Enter
+  into the composer. Remedy from the review: arm the confirm only within
+  a short window after the user typed `/model` into that tab. Needs a
+  signal for "user typed /model"; none exists yet.
+  **Layman:** Ants should only answer the model-switch question just after you asked for a switch.
+  Kind: security.
+  Source: review-code 2026-11-06 lane 30, remedy part 3 (follow-up to ANTS-6433).
+  Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6438] **`mcp-config-keys.md` says the user-switch auto-confirm sends no continuation prompt; since ANTS-1969 it can.**
+  `docs/standards/mcp-config-keys.md`, `claude.auto_model_confirm_user_switch`:
+  "sends only ENTER (no continuation prompt)". `sendUnarmedConfirm` sends
+  the continuation when auto mode is on and a turn is active
+  (shouldContinueAfterUnarmedConfirm). Reword to say when it does.
+  **Layman:** One settings note says a model switch never sends a follow-up message, but sometimes it does.
+  Kind: doc-fix.
+  Source: close-findings sweep 2026-11-06 (out of scope, found next door).
+  Lanes: model-switching.
+
+- 📋 [ANTS-6439] **Fold the three other `/proc/<pid>/stat` parsers onto `src/procstat.h`.**
+  `claudeintegration_sessions.cpp` `findClaudeChildPid` and
+  `processStartTimeMs`, and `mcpdversion.cpp` `parentOf`, each split
+  the stat line after the last `)` and index by hand. ANTS-6436 was a
+  wrong index in a fourth copy.
+  **Layman:** Four places read the same system file by hand; one of them got it wrong, so they should share one reader.
+  Kind: refactor.
+  Source: close-findings sweep 2026-11-06 (ANTS-6436).
+  Lanes: claude-integration, mcp-infra.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 

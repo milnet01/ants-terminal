@@ -706,6 +706,8 @@ which heading you expect it under.
   `<PREFIX>-NNNN` id (e.g. `DOOM-0009`, not just `ANTS-NNNN`) and resolves
   the file via `resolveSpecRelForId` — exact `<id>.md`, then a `<id>-*.md`
   glob for topic-suffixed specs (`DOOM-0009-path-tracer.md`), ANTS-3356.
+  A file it finds that resolves outside the project root refuses `bad_path`
+  (ANTS-6434).
 - **`spec_query` list mode (ANTS-3360)** — called with neither `id` nor
   `path`, enumerates the specs dir → `{mode:"list", specs_dir,
   specs:[{id, title, status, path, size_bytes, mtime_ms}], count,

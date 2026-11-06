@@ -226,6 +226,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A tab's foreground program name is read from the right `/proc` field, so it shows the running program.** (ANTS-6436)
+
 - **ci_report judges each run against the time budgets its own commit's workflow file held, read from the local clone (ANTS-6417).**
 
 - **ci_report's `runner_latest` also checks runners named through a build matrix (ANTS-6420).**
@@ -359,6 +361,14 @@ for security-relevant changes.
 - **The status bar and tab dot say "waiting" while a helper agent's background shell runs, including after the helper has finished** (ANTS-6321)
 
 ### Security
+
+- **`version_check` reads only files inside the project; a recipe pointing outside it is refused.** (ANTS-6432)
+
+- **The "Switch model?" auto-confirm presses Enter only in a tab running Claude Code with no permission prompt waiting.** (ANTS-6433)
+
+- **`spec_log`, `spec_query`, `changelog_log` and `changelog_query` refuse a spec or changelog that is a symlink leading out of the project.** (ANTS-6434)
+
+- **"Add to allowlist" keeps a `sudo -A rm`, shell or interpreter rule specific instead of widening it to any arguments.** (ANTS-6435)
 
 - **The Claude Code hook socket discards a message over its 256 KiB limit instead of reading it in full** (ANTS-6397)
 
