@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6424 -->
+<!-- ants-roadmap-id-high-water: ANTS=6426 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90916,6 +90916,18 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: security.
   Source: cold read by the contact-list session 2026-11-05 of 19ace154 (ANTS-2216).
   Lanes: claudeintegration.
+
+- 📋 [ANTS-6425] **`ci_report` reports per-workflow run durations (median, p90, max, queue wait), on a clean report too.**
+  **Layman:** The CI report says how long builds take, so nobody needs a second command to find out.
+  Kind: enhancement.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-11-06.
+  Lanes: mcp.
+
+- 📋 [ANTS-6426] **`ci_report` static findings such as `runner_latest` carry the workflow file, line and matrix entry they mean.**
+  **Layman:** A CI warning points at the exact line it is about.
+  Kind: enhancement.
+  Source: LottoTracker_Ants_MCP_Feedback.md 2026-11-06.
+  Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
 
