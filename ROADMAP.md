@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6426 -->
+<!-- ants-roadmap-id-high-water: ANTS=6431 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90927,6 +90927,50 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A CI warning points at the exact line it is about.
   Kind: enhancement.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-11-06.
+  Lanes: mcp.
+
+### Ants MCP verb gaps found during the 2026-11-06 codebase review
+
+- 📋 [ANTS-6427] **Let `duplicate_blocks`, `function_sizes` and `comment_claims` write a whole-tree result to a spill file and return only a summary.**
+  The readability orchestrator ran these three verbs over all of src/ through a
+  scripted stdio client of build/ants-mcpd, because their replies were too
+  large to take into its context. A spill-to-file option (read back with
+  read_spill) would make that route unnecessary.
+  **Layman:** Whole-project scans can save their big results to a file instead of flooding the session.
+  Kind: enhancement.
+  Source: self-found 2026-11-06 codebase review run.
+  Lanes: mcp.
+
+- 📋 [ANTS-6428] **Give `source_scrapes` a multi-file or directory mode, so a whole-tree sweep is one call, not one call per file under the rate limit.**
+  The 2026-11-06 readability run called source_scrapes once per file and had to
+  pace itself under the 60-calls-per-minute limit.
+  **Layman:** Checking which tests read source files takes one call for the whole project.
+  Kind: enhancement.
+  Source: self-found 2026-11-06 codebase review run.
+  Lanes: mcp.
+
+- 📋 [ANTS-6429] **`function_sizes` reports which symbols it could not measure, by name, and lets a caller page past its top-500 cap.**
+  The 2026-11-06 run got the top 500 of 5,059 functions and a count of 72
+  unmeasured symbols, with no way to list them.
+  **Layman:** The function-size report can list every function, including the ones it could not measure.
+  Kind: enhancement.
+  Source: self-found 2026-11-06 codebase review run.
+  Lanes: mcp.
+
+- 📋 [ANTS-6430] **`comment_claims` reads comments in PKGBUILD, debian/rules, RPM .spec and CMake `.in` templates.**
+  The 2026-11-06 run reported four files with no readable comment syntax:
+  cmake/build_info_values.cpp.in, PKGBUILD, debian/rules and the openSUSE .spec.
+  **Layman:** Comment checks also cover the packaging files.
+  Kind: enhancement.
+  Source: self-found 2026-11-06 codebase review run.
+  Lanes: mcp.
+
+- 📋 [ANTS-6431] **`roadmap_log` with `plan_id` accepts an `op` equal to the previewed one instead of refusing `bad_args`.**
+  Applying a create_section dry run with plan_id plus the same op refused
+  bad_args, costing a retry. A matching op adds no ambiguity.
+  **Layman:** Applying a previewed roadmap change does not fail over a harmless repeated argument.
+  Kind: ux.
+  Source: self-found 2026-11-06 codebase review run.
   Lanes: mcp.
 
 ## check-code whole-tree sweep fold-in (2026-09-01)
