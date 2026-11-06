@@ -1,4 +1,5 @@
 #include "terminalwidget.h"
+#include "bracketedpaste.h"   // stripBracketedPasteMarkers
 #include "claudepromptdetect.h" // ANTS-1993 — permission-prompt structural gate
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
@@ -2983,24 +2984,10 @@ void TerminalWidget::performPaste(const QByteArray &data) {
 
     QByteArray payload = data;
     if (m_grid->bracketedPaste()) {
-        // Strip embedded bracket paste markers that could inject escape sequences
-        // (CVE-2021-28848 class: \e[201~ ends paste; \e[200~ starts a nested paste)
-        //
-        // 0.7.53 (2026-04-27 indie-review HIGH) — also strip the 8-bit
-        // C1 form. The grid's VT parser accepts both 7-bit `\e[` (ESC
-        // + [) and 8-bit `\x9B` (single CSI byte) as CSI introducers,
-        // so a payload containing `\x9B 200~` would close the bracket
-        // paste mode mid-stream just like `\x1B[200~` does. The 7-bit
-        // sanitiser above missed this 8-bit form. Strip both before
-        // wrapping the paste.
-        QByteArray sanitized = data;
-        sanitized.replace("\x1B[200~", "");
-        sanitized.replace("\x1B[201~", "");
-        sanitized.replace("\xC2\x9B" "200~", "");  // UTF-8-encoded 8-bit CSI
-        sanitized.replace("\xC2\x9B" "201~", "");
-        sanitized.replace("\x9B" "200~", "");      // raw single-byte C1
-        sanitized.replace("\x9B" "201~", "");
-        payload = QByteArray("\x1B[200~") + sanitized + QByteArray("\x1B[201~");
+        // Embedded start/end markers would let the paste end early and run
+        // the rest as typed input; stripBracketedPasteMarkers removes them.
+        payload = QByteArray("\x1B[200~") + stripBracketedPasteMarkers(data) +
+                  QByteArray("\x1B[201~");
     }
     // ANTS-5075 — one call hands the whole paste to the worker, which feeds the
     // PTY in slices as its write queue drains, so no tail and no end marker is

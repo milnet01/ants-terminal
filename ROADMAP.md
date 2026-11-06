@@ -91140,7 +91140,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6442] **terminalwidget.cpp: the bracketed-paste sanitiser can be bypassed by nesting.**
+- ✅ [ANTS-6442] **terminalwidget.cpp: the bracketed-paste sanitiser can be bypassed by nesting.**
   `terminalwidget.cpp:2996-3001` — the bracketed-paste sanitiser can be
   bypassed by nesting.
   Quote: `sanitized.replace("\x1B[201~", "");`
@@ -91148,6 +91148,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   replacements until nothing changes, or strip every ESC, 0x9B and `C2
   9B` byte from the payload before wrapping it.
   Ledger row 31, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-06: the stripping moved to stripBracketedPasteMarkers
+  (src/bracketedpaste.h), which repeats until nothing is removed. New
+  feature test bracketed_paste_sanitize (INV-2 red on the single pass:
+  three nested cases left a live marker).
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (High).

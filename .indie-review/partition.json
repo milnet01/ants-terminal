@@ -30,6 +30,7 @@
       "name": "terminal-widget",
       "summary": "QPainter/QTextLayout renderer, ligature shaping, mouse and focus reporting, accessibility.",
       "sourcePaths": [
+        "src/bracketedpaste.h",
         "src/pluginoutputcoalescer.h",
         "src/procstat.h",
         "src/selectiontail.h",

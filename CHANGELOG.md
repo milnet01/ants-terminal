@@ -362,6 +362,8 @@ for security-relevant changes.
 
 ### Security
 
+- **Pasted text can no longer end bracketed-paste mode early by nesting one paste marker inside another** (ANTS-6442)
+
 - **Where the signing helper is missing (AppImage, Flatpak), the shell integration now signs with python3, which reads the key from a pipe, instead of openssl, which showed the key to `ps`** (ANTS-6445)
 
 - **Output that ends a title, image or other string sequence with two ESC bytes can no longer reset or clear the terminal** (ANTS-6440)

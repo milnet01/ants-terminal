@@ -2433,6 +2433,8 @@ if(ANTS_TESTS)
                 tests/features/vtstream_clear_hint/test_vtstream_clear_hint.cpp
                 # ANTS-5075 — behavioural: a paste over the PTY write cap arrives whole.
                 tests/features/pty_paste_chunked/test_pty_paste_chunked.cpp
+                # ANTS-6442 — a paste cannot end bracketed-paste mode early.
+                tests/features/bracketed_paste_sanitize/test_bracketed_paste_sanitize.cpp
                 # ANTS-5077 — a stuck parse thread is detached on tab close, never terminated.
                 tests/features/parse_thread_detach_on_close/test_parse_thread_detach_on_close.cpp
                 tests/features/pty_foreground_attr_reset/test_pty_foreground_attr_reset.cpp
