@@ -600,6 +600,13 @@ workflow separately, and does not ask a tag-only release workflow, which
 must never be cancelled. It reports, and never decides; whether a lever applies is the
 project's judgement.
 
+**`ci-gate --time` measures the local gate, for rule 1.** It runs the gate
+once and prints each step's wall time, CPU time and peak memory. It flags a
+step taking over 20% of the run. It flags one whose wall time is over three
+times its CPU time: it waits on the network, a sleep or a lock, which is also
+a flake risk. It flags one busy on a single core. A nested script's steps
+count as one step. The record is `.git/ci-gate/time.json`.
+
 **Ants MCP's `ci_report` reads the run history**, which a workflow file
 cannot show. It reports a job, or a step's shell guard, running near its
 budget or slowing (`timeout-minutes` row). It reports a red nightly (slow-legs
