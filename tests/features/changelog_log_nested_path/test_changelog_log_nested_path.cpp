@@ -205,3 +205,39 @@ TEST(changelog_log_nested_path, Inv5AbsentPathStillWritesRoot) {
     EXPECT_FALSE(contains(readFileStd(nestedCl(tmp.path())), "Root default."))
         << "the nested changelog must not absorb a default-routed write";
 }
+
+// INV-6 (ANTS-6434) — discovery never settles on a changelog that resolves
+// outside the folder it was found in. A cloned repository's CHANGELOG.md
+// symlinked to a file elsewhere is neither rewritten nor read.
+TEST(changelog_log_nested_path, Inv6DiscoveryRefusesASymlinkOutOfTheRoot) {
+    QTemporaryDir outside;
+    ASSERT_TRUE(outside.isValid());
+    const QString victim = QDir(outside.path()).filePath(QStringLiteral("victim.md"));
+    ASSERT_TRUE(writeFile(victim, kSeed));
+
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QFile::link(victim, rootCl(tmp.path())));
+
+    const QJsonObject resp =
+        RemoteControl(nullptr).cmdChangelogLog(addReq(tmp.path(), QStringLiteral("Hijack."))).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("no_changelog"));
+    EXPECT_EQ(readFileStd(victim), std::string(kSeed)) << "the outside file must be untouched";
+
+    // The .ants/project.json override climbing out is refused too; ProjectSettings::load
+    // holds it inside the root.
+    ASSERT_TRUE(QFile::remove(rootCl(tmp.path())));
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral(".ants")));
+    ASSERT_TRUE(writeFile(QDir(tmp.path()).filePath(QStringLiteral(".ants/project.json")),
+        QByteArray("{\"changelog\": \"") + QDir(tmp.path()).relativeFilePath(victim).toUtf8() + "\"}"));
+    const QJsonObject over =
+        RemoteControl(nullptr).cmdChangelogLog(addReq(tmp.path(), QStringLiteral("Hijack."))).object();
+    EXPECT_FALSE(over.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(readFileStd(victim), std::string(kSeed));
+
+    QJsonObject qreq;
+    qreq[QStringLiteral("caller_cwd")] = tmp.path();
+    const QJsonObject q = RemoteControl(nullptr).cmdChangelogQuery(qreq).object();
+    EXPECT_FALSE(q.value(QStringLiteral("ok")).toBool());
+}

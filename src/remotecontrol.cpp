@@ -14,6 +14,7 @@
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 #include "mcpspill.h"        // ANTS-2094 — read_spill
 #include "mcpprojection.h"
+#include "pathvalidation.h"     // ANTS-6434 — changelog containment
 #include "projectsettings.h"    // ANTS-2160 — .ants/project.json overrides
 #include "resolvedroot.h"
 #include "roadmapparse.h"
@@ -260,7 +261,14 @@ QString rcProjectRootFor(const QString &path) {
 // ANTS-1548 — CHANGELOG.md resolver, same shape as findRoadmapUnder.
 QString findChangelogUnder(const QString &canonicalRoot) {
     if (canonicalRoot.isEmpty()) return {};
+    // ANTS-6434 — a candidate counts only when it resolves inside the folder it
+    // was found in: a cloned repository's CHANGELOG.md can be a symlink to any
+    // file, and the writers rewrite through it. The project.json override is
+    // already held inside the root by ProjectSettings::load.
     auto probeDir = [](const QString &dir) -> QString {
+        const auto inside = [&dir](const QString &c) {
+            return PathValidation::isInsideProject(dir, c);
+        };
         // ANTS-2160 — .ants/project.json changelog override.
         if (const auto cl = ProjectSettings::load(dir).changelog) {
             const QString c = dir + QLatin1Char('/') + *cl;
@@ -275,7 +283,7 @@ QString findChangelogUnder(const QString &canonicalRoot) {
         };
         for (const QString &n : kCandidates) {
             const QString c = dir + QLatin1Char('/') + n;
-            if (QFileInfo::exists(c)) return c;
+            if (QFileInfo::exists(c) && inside(c)) return c;
         }
         return {};
     };

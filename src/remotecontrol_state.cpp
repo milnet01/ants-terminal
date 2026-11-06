@@ -2419,6 +2419,11 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
         // topic-suffixed project spec (DOOM-0009-path-tracer.md) resolves.
         rel  = resolveSpecRelForId(rootCanonical, dirRel, id);
         full = rootCanonical + QLatin1Char('/') + rel;
+        // ANTS-6434 — the spec the id names may be a symlink out of the root.
+        if (QFileInfo::exists(full) && !PathValidation::isInsideProject(rootCanonical, full))
+            return QJsonDocument(mcp::refusal(
+                QStringLiteral("bad_path"),
+                QStringLiteral("spec_query: %1 resolves outside the project").arg(rel)));
         sourceTag = isPhase
             ? QStringLiteral("phases")
             : QStringLiteral("specs");

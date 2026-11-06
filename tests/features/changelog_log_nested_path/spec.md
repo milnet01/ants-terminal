@@ -62,6 +62,13 @@ wrote if only one of them can be aimed.
   byte-identical.
   *Test:* `Inv5AbsentPathStillWritesRoot`. Passes before and after.
 
+- **INV-6** — discovery never settles on a changelog that resolves outside
+  the folder it was found in, whether by a symlinked `CHANGELOG.md` or a
+  `.ants/project.json` `changelog` climbing out. `changelog_log` refuses
+  and leaves the outside file byte-identical; `changelog_query` refuses
+  too (ANTS-6434).
+  *Test:* `Inv6DiscoveryRefusesASymlinkOutOfTheRoot`.
+
 ## Deliberately not covered
 
 `op:"release"` and the other ops against a nested file. They share the one

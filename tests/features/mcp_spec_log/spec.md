@@ -38,6 +38,9 @@ Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
   value, space-joined across the field's continuation lines (a wrapped
   Status reports its whole extent, not just the opener), on the write
   envelope AND the `dry_run` preview, as does `append_status`.
+- T14 — (ANTS-6434) a spec the `id` route finds that resolves outside the
+  project root, by a symlink, refuses `bad_path` from `spec_log` and from
+  `spec_query`, and the outside file is left byte-identical.
   `append_loop` and `append_inv` omit the key — an
   empty string there would read as "the Status was blank". The verb
   validates no vocabulary, so this is the caller's only project-agnostic

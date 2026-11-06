@@ -1198,3 +1198,38 @@ TEST(McpSpecLog, Ants5100AppendLoopSectionScanSkipsFences) {
     EXPECT_GT(r.content.indexOf(QStringLiteral("| 2 | 2026-08-02 | y |")),
               r.content.indexOf(QStringLiteral("| 1 | 2026-08-01 | x |")));
 }
+
+// T14 (ANTS-6434) — a spec found by id that is a symlink leaving the project is
+// neither read nor rewritten, by spec_log or by spec_query.
+TEST(McpSpecLog, IdRouteRefusesASymlinkOutOfTheRoot) {
+    QTemporaryDir outside; ASSERT_TRUE(outside.isValid());
+    const QString target = outside.path() + "/victim.md";
+    {
+        QFile f(target);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kSpec);
+    }
+    const QByteArray before = readAll(target);
+
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(QDir(dir.path()).mkpath("docs/specs"));
+    ASSERT_TRUE(QFile::link(target, dir.path() + "/docs/specs/ANTS-9999.md"));
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req["caller_cwd"] = dir.path();
+    req["id"] = "ANTS-9999";
+    req["op"] = "set_status";
+    req["status"] = "hijacked";
+    const QJsonObject env = rc.cmdSpecLog(req).object();
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), "bad_path");
+    EXPECT_EQ(readAll(target), before) << "the outside file must be untouched";
+
+    QJsonObject q;
+    q["caller_cwd"] = dir.path();
+    q["id"] = "ANTS-9999";
+    const QJsonObject qenv = rc.cmdSpecQuery(q).object();
+    EXPECT_FALSE(qenv.value("ok").toBool());
+    EXPECT_EQ(qenv.value("code").toString(), "bad_path");
+}
