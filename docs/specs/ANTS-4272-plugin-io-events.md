@@ -299,7 +299,7 @@ relaunch like any other build.
   `PluginLineJoiner` given `"ab"` soft-wrapped then `"c"` returns nothing,
   then `"abc"`.
 
-- **INV-7** — With `ANTS_OSC133_KEY` set, a marker with a wrong `ahmac`
+- **INV-7** — With an OSC 133 key set, a marker with a wrong `ahmac`
   reaches no prompt callback; a correct one does, as does every marker
   with the key unset, and `D` carries its exit code. Breaks when the
   callback runs before `verifyOsc133Hmac`.

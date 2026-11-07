@@ -2,8 +2,9 @@
 
 ## Contract
 
-When the `TerminalGrid` is constructed with `$ANTS_OSC133_KEY` set
-(or the test backdoor `setOsc133KeyForTest()` populates `m_osc133Key`),
+When the `TerminalGrid` is constructed with a key (the key file, else
+`$ANTS_OSC133_KEY`, read by `osc133KeyFromSetup()` — ANTS-6441), or the
+test backdoor `setOsc133KeyForTest()` populates `m_osc133Key`,
 every OSC 133 marker (`A`, `B`, `C`, `D`) MUST carry a matching
 `ahmac=<hex>` parameter to take effect.
 
@@ -40,12 +41,12 @@ The HMAC verifier is a 0.7.0 ROADMAP item (§0.7.0 → 🔒 Security):
 
 > **Shell-side HMAC verification** for OSC 133 markers — protects the
 > command-block UI from forged markers written by an inner TTY process.
-> Key passed via `ANTS_OSC133_KEY` env; shell hook computes HMAC over
-> `(prompt_id, command, exit_code)`.
+> Shell hook computes HMAC over `(prompt_id, command, exit_code)`.
 
-The user's actual shell knows `$ANTS_OSC133_KEY` (via the hook scripts
-shipped under `packaging/shell-integration/`). Untrusted inner processes
-do not, so they cannot mint a valid HMAC.
+The user's shell reads the key through the hook scripts shipped under
+`packaging/shell-integration/`. Printed output (`cat`, remote output)
+cannot mint a valid HMAC; a program running as the user can read the key
+file (`docs/specs/ANTS-6441-osc133-key-file.md`).
 
 ## Scope
 
@@ -61,7 +62,7 @@ do not, so they cannot mint a valid HMAC.
   against an A wire form claiming prompt 'p2'.
 - The forgery counter increments on every rejected marker (not
   throttled — only the callback firing is).
-- Backward compatibility: when `ANTS_OSC133_KEY` is not set, the
+- Backward compatibility: with no key, the
   pre-0.7.0 OSC 133 form (`OSC 133 ; A` with no `aid=`/`ahmac=`)
   continues to work unchanged.
 
@@ -90,6 +91,6 @@ The test does NOT instantiate TerminalWidget — it uses TerminalGrid +
 VtParser only, the same approach as scrollback_redraw and
 sgr_attribute_reset. Headless, fast, no Qt GUI dependencies.
 
-A small source-grep tail check asserts the `ANTS_OSC133_KEY` env var is
-still the only knob that activates the verifier in production code —
-guards against accidental policy drift.
+A small source-grep tail check asserts that `osc133KeyFromSetup()` is
+still the only source of the production key, and that it reads the key
+file before `$ANTS_OSC133_KEY` — guards against accidental policy drift.

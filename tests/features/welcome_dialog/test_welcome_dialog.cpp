@@ -435,10 +435,13 @@ TEST(WelcomeDialog, ConfirmBeforeWriting) {
     pump();
     const QByteArray p = readFile(profile);
     const QByteArray r = readFile(bashrc);
-    expect(p.contains("ANTS_OSC133_KEY") && p.startsWith(profSeed),
-           "INV9f/profile-written-after-accept",
-           QStringLiteral("after accepting, ~/.profile must export the key and "
-                          "keep its text; actual: %1").arg(clip(p)));
+    const QString keyFile =
+        sb.home + QStringLiteral("/.config/ants-terminal/osc133.key");
+    expect(readFile(keyFile).trimmed().size() == 64 && p == profSeed,
+           "INV9f/key-file-written-after-accept",
+           QStringLiteral("ANTS-6441: after accepting, %1 must hold the key and "
+                          "~/.profile stay unchanged; profile: %2")
+               .arg(keyFile, clip(p)));
     expect(r.contains("source") && r.contains(script.toUtf8()) &&
                r.startsWith(rcSeed),
            "INV9g/bashrc-written-after-accept",

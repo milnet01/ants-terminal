@@ -489,11 +489,22 @@ namespace {
 const QByteArray kShBegin = "# >>> ants-terminal shell integration >>>";
 const QByteArray kShEnd = "# <<< ants-terminal shell integration <<<";
 
-QByteArray keyOf(const QByteArray &profile) {
-    static const QRegularExpression re(
-        QStringLiteral("export ANTS_OSC133_KEY=\"([0-9A-Fa-f]{64})\""));
-    const auto m = re.match(QString::fromUtf8(profile));
-    return m.hasMatch() ? m.captured(1).toUtf8() : QByteArray();
+// ANTS-6441 — the key file under the sandbox's XDG_CONFIG_HOME.
+QString keyFilePath(const Sandbox &sb) {
+    return sb.home + QStringLiteral("/.config/ants-terminal/osc133.key");
+}
+
+// The key file's 64-hex-digit key; empty when absent or malformed.
+QByteArray keyFileKey(const Sandbox &sb) {
+    const QByteArray k = readFile(keyFilePath(sb)).trimmed();
+    static const QRegularExpression re(QStringLiteral("^[0-9a-f]{64}$"));
+    return re.match(QString::fromUtf8(k)).hasMatch() ? k : QByteArray();
+}
+
+bool keyFileIsPrivate(const Sandbox &sb) {
+    return QFileInfo(keyFilePath(sb)).permissions() ==
+           (QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+            QFileDevice::ReadUser | QFileDevice::WriteUser);
 }
 
 // `[ -f X ] && source Y` inside the rc file; false when absent.
@@ -547,10 +558,9 @@ TEST(ClaudeSetup, ShellIntegrationBlocksAndKey) {
                QStringLiteral("expected ok=true, message: %1").arg(o1.message));
         const QByteArray p1 = readFile(profile);
         const QByteArray r1 = readFile(bashrc);
-        expect(countOf(p1, kShBegin) == 1 && countOf(p1, kShEnd) == 1,
-               "INV8c/profile-one-block",
-               QStringLiteral("~/.profile must hold one marked block; actual: %1")
-                   .arg(clip(p1)));
+        expect(p1 == profSeed, "INV8c/profile-untouched",
+               QStringLiteral("ANTS-6441: ~/.profile must not change; expected "
+                              "%1, actual %2").arg(clip(profSeed), clip(p1)));
         expect(countOf(r1, kShBegin) == 1 && countOf(r1, kShEnd) == 1,
                "INV8d/bashrc-one-block",
                QStringLiteral("~/.bashrc must hold one marked block; actual: %1")
@@ -560,10 +570,11 @@ TEST(ClaudeSetup, ShellIntegrationBlocksAndKey) {
                QStringLiteral("bytes before the blocks must be unchanged; "
                               "profile %1 / bashrc %2")
                    .arg(clip(p1), clip(r1)));
-        const QByteArray key1 = keyOf(p1);
-        expect(!key1.isEmpty(), "INV8f/profile-exports-64-hex-key",
-               QStringLiteral("~/.profile must export ANTS_OSC133_KEY=\"<64 hex "
-                              "digits>\"; actual: %1").arg(clip(p1)));
+        const QByteArray key1 = keyFileKey(sb);
+        expect(!key1.isEmpty() && keyFileIsPrivate(sb), "INV8f/key-file-64-hex-0600",
+               QStringLiteral("ANTS-6441: %1 must hold 64 hex digits at mode "
+                              "0600; actual: %2")
+                   .arg(keyFilePath(sb), clip(readFile(keyFilePath(sb)))));
         QString fileArg, srcArg;
         const bool haveSrc = sourceLine(r1, &fileArg, &srcArg);
         expect(haveSrc && fileArg == script && srcArg == script,
@@ -580,36 +591,65 @@ TEST(ClaudeSetup, ShellIntegrationBlocksAndKey) {
         ASSERT_TRUE(writeFile(profile, p1 + "# user tail P\n"));
         ASSERT_TRUE(writeFile(bashrc, r1 + "# user tail R\n"));
         const QByteArray p1b = readFile(profile), r1b = readFile(bashrc);
-        QByteArray pbA, paA, rbA, raA;
-        const bool haveOut = outsideBlock(p1b, &pbA, &paA) &&
-                             outsideBlock(r1b, &rbA, &raA);
+        QByteArray rbA, raA;
+        const bool haveOut = outsideBlock(r1b, &rbA, &raA);
 
         const Outcome o2 = installShellIntegration(dirs);
         const QByteArray p2 = readFile(profile), r2 = readFile(bashrc);
         expect(o2.ok, "INV8i/reinstall-ok",
                QStringLiteral("expected ok=true, message: %1").arg(o2.message));
-        expect(countOf(p2, kShBegin) == 1 && countOf(r2, kShBegin) == 1,
+        expect(countOf(p2, kShBegin) == 0 && countOf(r2, kShBegin) == 1,
                "INV8j/reinstall-leaves-one-block-per-file",
                QStringLiteral("a reinstall must replace, not append; begin "
-                              "markers profile=%1 bashrc=%2 (expected 1 each)")
+                              "markers profile=%1 bashrc=%2 (expected 0 and 1)")
                    .arg(countOf(p2, kShBegin)).arg(countOf(r2, kShBegin)));
-        expect(!key1.isEmpty() && keyOf(p2) == key1, "INV8k/reinstall-keeps-key",
+        expect(!key1.isEmpty() && keyFileKey(sb) == key1, "INV8k/reinstall-keeps-key",
                QStringLiteral("the key must not be regenerated; expected %1, "
                               "actual %2").arg(QString::fromUtf8(key1),
-                                               QString::fromUtf8(keyOf(p2))));
-        QByteArray pbB, paB, rbB, raB;
-        const bool haveOut2 = outsideBlock(p2, &pbB, &paB) &&
-                              outsideBlock(r2, &rbB, &raB);
-        expect(haveOut && haveOut2 && pbA == pbB && paA == paB && rbA == rbB &&
-                   raA == raB,
+                                               QString::fromUtf8(keyFileKey(sb))));
+        QByteArray rbB, raB;
+        const bool haveOut2 = outsideBlock(r2, &rbB, &raB);
+        expect(haveOut && haveOut2 && p2 == p1b && rbA == rbB && raA == raB,
                "INV8l/bytes-outside-blocks-unchanged",
                QStringLiteral("bytes outside the blocks must survive a "
-                              "reinstall; profile before/after expected %1 / %2, "
-                              "actual %3 / %4")
-                   .arg(clip(pbA), clip(paA), clip(pbB), clip(paB)));
+                              "reinstall; profile expected %1, actual %2")
+                   .arg(clip(p1b), clip(p2)));
         expect(countOf(p2, "# user tail P") == 1 && countOf(r2, "# user tail R") == 1,
                "INV8m/tail-kept-once",
                QStringLiteral("the user's trailing lines must appear exactly once"));
+    }
+
+    // --- ANTS-6441: an old ~/.profile key block moves into the key file.
+    {
+        Sandbox sb;
+        ASSERT_TRUE(sb.valid());
+        const QString fx = sb.path(QStringLiteral("scripts"));
+        ASSERT_TRUE(writeFile(fx + QStringLiteral("/ants-osc133.bash"), "# fixture\n"));
+        const QStringList dirs{fx};
+        const QString profile = sb.home + QStringLiteral("/.profile");
+        const QByteArray oldKey(64, 'c');
+        ASSERT_TRUE(writeFile(profile, "keep above\n" + kShBegin +
+                                           "\nexport ANTS_OSC133_KEY=\"" + oldKey +
+                                           "\"\n" + kShEnd + "\nkeep below\n"));
+
+        const Status s0 = shellIntegrationStatus(dirs);
+        expect(s0.state == State::Partial, "INV8q/old-profile-block-is-partial",
+               QStringLiteral("an old profile key block alone: expected Partial, "
+                              "actual %1 (%2)")
+                   .arg(QLatin1String(stateName(s0.state)), s0.detail));
+        const Outcome o = installShellIntegration(dirs);
+        expect(o.ok, "INV8r/migrating-install-ok",
+               QStringLiteral("expected ok=true, message: %1").arg(o.message));
+        expect(keyFileKey(sb) == oldKey && keyFileIsPrivate(sb),
+               "INV8s/old-key-moves-to-key-file",
+               QStringLiteral("the old block's key must be the key written at "
+                              "0600; actual: %1").arg(clip(readFile(keyFilePath(sb)))));
+        const QByteArray p = readFile(profile);
+        expect(!p.contains(kShBegin) && !p.contains("ANTS_OSC133_KEY") &&
+                   p.contains("keep above") && p.contains("keep below"),
+               "INV8t/old-profile-block-removed",
+               QStringLiteral("the old block must go and the user's lines stay; "
+                              "actual: %1").arg(clip(p)));
     }
 
     // --- an unsupported shell: Unavailable, nothing written.

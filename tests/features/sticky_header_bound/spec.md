@@ -7,7 +7,7 @@ on every paint by joining `lineText()` for every global line from a prompt
 region's A marker to its B marker, and truncates to `maxChars` only *after*
 the whole span has been read. `B` lands wherever the cursor happened to be
 when the region closed, and the forgery check that would otherwise cap it is
-off unless `ANTS_OSC133_KEY` is set — so any program that prints enough
+off unless the terminal has a key (ANTS-6441) — so any program that prints enough
 output stretches the span across the whole scrollback. The cost is every
 cell of every line in the span, read on the GUI thread, once per paint.
 Filed as ANTS-5027.

@@ -1,4 +1,5 @@
 #include "terminalgrid.h"
+#include "osc133keyfile.h"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -191,14 +192,13 @@ TerminalGrid::TerminalGrid(int rows, int cols)
     m_screenHyperlinks.resize(m_rows);
     initTabStops();
 
-    // Load the OSC 133 HMAC key from $ANTS_OSC133_KEY at construction. Empty
-    // key = verifier disabled (legacy behaviour: any process inside the
-    // terminal can emit OSC 133 markers). Non-empty key = every OSC 133
-    // marker must carry a matching ahmac= param (see verifyOsc133Hmac and
-    // packaging/shell-integration/ants-osc133.{bash,zsh}).
-    if (const char *envKey = std::getenv("ANTS_OSC133_KEY")) {
-        m_osc133Key = QByteArray(envKey);
-    }
+    // Load the OSC 133 HMAC key at construction: the key file, else
+    // $ANTS_OSC133_KEY (ANTS-6441). Each new tab builds a grid, so it reads
+    // the file afresh. Empty key = verifier disabled (legacy behaviour: any
+    // process inside the terminal can emit OSC 133 markers). Non-empty key =
+    // every OSC 133 marker must carry a matching ahmac= param (see
+    // verifyOsc133Hmac and packaging/shell-integration/ants-osc133.{bash,zsh}).
+    m_osc133Key = osc133KeyFromSetup();
 }
 
 // ---------------------------------------------------------------------------
@@ -209,7 +209,7 @@ TerminalGrid::TerminalGrid(int rows, int cols)
 // A/B/C/D markers and pollute the command-block UI — spoofing prompt
 // regions, exit codes, and the command_finished plugin event. With a key
 // installed, only OSC 133 markers signed by the user's actual shell
-// (which knows $ANTS_OSC133_KEY via the precmd/preexec hook) are honoured.
+// (whose hook reads the key file, ANTS-6441) are honoured.
 //
 // Message form (canonical, before HMAC):
 //   A → "A|<promptId>"
@@ -1255,11 +1255,10 @@ void TerminalGrid::handleOsc(const std::string &payload, bool truncated) {
     // 0.7.0: parse extends from the legacy `OSC 133;<marker>[;<exitCode>]`
     // form to also accept trailing `key=value` params separated by ';'.
     // Recognised params: `aid=<promptId>` and `ahmac=<hex>` (HMAC-SHA256
-    // over the canonical message — see verifyOsc133Hmac). When
-    // $ANTS_OSC133_KEY is set, missing/invalid HMACs cause the marker to
-    // be dropped so untrusted in-terminal processes can't forge prompt
-    // regions or exit codes. Without the env var the legacy permissive
-    // behaviour is unchanged.
+    // over the canonical message — see verifyOsc133Hmac). With a key
+    // (osc133KeyFromSetup), missing/invalid HMACs cause the marker to be
+    // dropped so printed output can't forge prompt regions or exit codes.
+    // Without one the legacy permissive behaviour is unchanged.
     else if (oscNum == "133" && semi != std::string::npos && semi + 1 < payload.size()) {
         const char marker = payload[semi + 1];
         // ANTS-1209 — bound the marker set BEFORE the HMAC verifier

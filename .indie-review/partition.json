@@ -19,6 +19,7 @@
       "sourcePaths": [
         "src/inlineimagedecode.cpp",
         "src/inlineimagedecode.h",
+        "src/osc133keyfile.h",
         "src/osc133signmain.cpp",
         "src/scrollbackexporter.cpp",
         "src/scrollbackexporter.h",

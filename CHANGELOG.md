@@ -383,6 +383,15 @@ for security-relevant changes.
 
 ### Security
 
+- **The shell-integration key now lives in a private key file, and programs your shell runs no longer inherit it**
+  The terminal and both shell hooks read `~/.config/ants-terminal/osc133.key`
+  (mode 0600), falling back to an exported `$ANTS_OSC133_KEY`, which the
+  hooks now un-export. New tabs pick up a new key without a restart. The
+  welcome dialog writes the key file and removes the old `~/.profile` /
+  `~/.zshenv` block, keeping your key. The shell-integration README now says
+  what the key defends against: forged markers in printed output, not
+  programs you run yourself. (ANTS-6441, ANTS-6444)
+
 - **Ants answers Claude Code's "Switch model?" question only within 10 seconds of you typing `/model` in that tab** (ANTS-6437)
   Output that merely shows the question's words no longer gets Enter
   pressed into the composer. A `/model` pasted rather than typed is not

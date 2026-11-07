@@ -4,7 +4,7 @@ Re-run Last Command types the newest finished OSC 133 command block into the
 shell and presses Enter. Two defects made that unsafe.
 
 1. Program output can print its own OSC 133 markers. The HMAC verifier is off
-   unless `$ANTS_OSC133_KEY` is set, so a crafted file could plant a forged
+   unless the terminal has a key (ANTS-6441), so a crafted file could plant a forged
    block, and re-run would type its text unconfirmed.
 2. Prompt regions store global line numbers (scrollback index plus screen
    row). Once the scrollback is full, each new line evicts the oldest, and the

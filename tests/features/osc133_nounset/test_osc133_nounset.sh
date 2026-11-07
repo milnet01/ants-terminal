@@ -18,7 +18,8 @@ check() {  # <shell-label> <output> <status>
     fi
 }
 
-export TERM_PROGRAM=ants-terminal ANTS_OSC133_KEY=test-key
+# ANTS-6441 — an empty config dir, so the user's real key file is never read.
+export TERM_PROGRAM=ants-terminal ANTS_OSC133_KEY=test-key XDG_CONFIG_HOME=/nonexistent-ants-test
 
 out="$(bash -c 'set -u; source "$1"; __ants_osc133_emit A' _ "$dir/ants-osc133.bash" 2>&1)"
 check bash "$out" $?

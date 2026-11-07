@@ -233,19 +233,29 @@ TEST(Osc133HmacVerification, VerifierOnRejectsForged) {
              "forged D must NOT mark commandEnd (region remains open)");
 }
 
-// --- Test 4 — production binding: ANTS_OSC133_KEY is the only env knob. ---
-TEST(Osc133HmacVerification, EnvKnobIsTheOnlyKnob) {
+// --- Test 4 — production binding: osc133KeyFromSetup() is the only source
+// of the key (ANTS-6441: the key file, then $ANTS_OSC133_KEY). ---
+TEST(Osc133HmacVerification, KeyFromSetupIsTheOnlySource) {
     QFile f(QStringLiteral(SRC_TERMINALGRID_PATH));
     ASSERT_TRUE(f.open(QIODevice::ReadOnly | QIODevice::Text))
         << "cannot open " << qUtf8Printable(f.fileName());
     const QString src = QString::fromUtf8(f.readAll());
 
-    // The constructor must read ANTS_OSC133_KEY exactly once via getenv.
-    CHECK(src.contains(QStringLiteral("std::getenv(\"ANTS_OSC133_KEY\")")) ||
-          src.contains(QStringLiteral("getenv(\"ANTS_OSC133_KEY\")")),
-          "TerminalGrid constructor no longer reads ANTS_OSC133_KEY from env "
-          "— either env knob renamed (update spec + docs) or removed (HMAC "
-          "verifier won't activate in production)");
+    CHECK(src.contains(QStringLiteral("m_osc133Key = osc133KeyFromSetup();")),
+          "TerminalGrid's constructor no longer takes its key from "
+          "osc133KeyFromSetup() — the HMAC verifier won't activate in "
+          "production, or reads a second source");
+    CHECK(!src.contains(QStringLiteral("getenv(\"ANTS_OSC133_KEY\")")),
+          "src/terminalgrid.cpp reads $ANTS_OSC133_KEY itself; only "
+          "osc133KeyFromSetup() may, after the key file");
+
+    QFile h(QStringLiteral(ANTS_SRC_DIR "/osc133keyfile.h"));
+    ASSERT_TRUE(h.open(QIODevice::ReadOnly | QIODevice::Text))
+        << "cannot open " << qUtf8Printable(h.fileName());
+    const QString hdr = QString::fromUtf8(h.readAll());
+    CHECK(hdr.contains(QStringLiteral("\"/ants-terminal/osc133.key\"")) &&
+              hdr.contains(QStringLiteral("qgetenv(\"ANTS_OSC133_KEY\")")),
+          "osc133keyfile.h no longer reads the key file and then the env var");
 
     // The setOsc133KeyForTest backdoor is test-only; it must not appear
     // anywhere outside the test harness or its own definition.

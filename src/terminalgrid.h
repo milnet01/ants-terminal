@@ -924,7 +924,7 @@ private:
     quint64 m_nextPromptRegionId = 1;  // ANTS-5078 — next PromptRegion::id; never reused
 
     // OSC 133 HMAC verifier state (0.7.0 shell-integration HMAC item).
-    // m_osc133Key is read once from $ANTS_OSC133_KEY at construction. When
+    // m_osc133Key is read once at construction (osc133KeyFromSetup). When
     // empty, verification is disabled and OSC 133 markers are processed as
     // before (backward-compatible behaviour for users without the shell
     // hook installed). When non-empty, every OSC 133 marker must carry a

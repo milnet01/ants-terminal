@@ -69,7 +69,10 @@ mkdir -p "$tmp/plant"
 echo 'raise SystemExit("planted hmac.py imported")' > "$tmp/plant/hmac.py"
 sign_in() {  # <shell> <script> <PATH>
     rm -f "$tmp/openssl-calls" "$tmp/python-argv"
+    # ANTS-6441 — no key file, so the hooks sign with $ANTS_OSC133_KEY, not
+    # the user's real key file.
     (cd "$tmp/plant" && TERM_PROGRAM=ants-terminal ANTS_OSC133_KEY="$key" PATH="$3" \
+        XDG_CONFIG_HOME="$tmp/no-config" \
         "$(command -v "$1")" -c \
         'source "$1"; __ants_osc133_promptid=7; __ants_osc133_hmac D 0' _ "$2" 2>&1)
 }

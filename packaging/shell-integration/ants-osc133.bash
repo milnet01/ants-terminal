@@ -5,17 +5,22 @@
 #     [ -f /usr/share/ants-terminal/shell-integration/ants-osc133.bash ] && \
 #         source /usr/share/ants-terminal/shell-integration/ants-osc133.bash
 #
-# Then export a per-user secret in your login shell config (e.g. ~/.profile):
+# Then put a per-user secret in the key file, readable only by you
+# (the welcome dialog's shell-integration button does this for you):
 #
-#     export ANTS_OSC133_KEY="$(openssl rand -hex 32)"
+#     mkdir -p ~/.config/ants-terminal
+#     (umask 077; openssl rand -hex 32 > ~/.config/ants-terminal/osc133.key)
 #
 # Generate the key ONCE per machine and keep it secret. Anyone who knows the
-# key can forge OSC 133 markers in your Ants Terminal session. The key is
-# read by the terminal at process start (not per-tab), so set it before
-# launching ants-terminal.
+# key can forge OSC 133 markers in your Ants Terminal session. The terminal
+# reads the file for each new tab, and this hook when it is sourced
+# (ANTS-6441). An exported $ANTS_OSC133_KEY still works where there is no
+# key file; this hook un-exports it, so programs the shell runs do not
+# inherit it. The key stops forged markers in printed output (cat, remote
+# output); a program you run as yourself can read the key file.
 #
 # This hook does nothing (preserves vanilla shell behaviour) when:
-#   - ANTS_OSC133_KEY is unset, OR
+#   - there is no key (no key file and no $ANTS_OSC133_KEY), OR
 #   - the parent terminal isn't Ants (TERM_PROGRAM != "ants-terminal"), OR
 #   - neither ants-osc133-sign nor python3 is on PATH (silently degrades)
 #
@@ -26,11 +31,21 @@
 #
 # Without this hook installed, Ants's command-block UI still works — but
 # any process inside the terminal can spoof OSC 133 markers and pollute it.
-# The HMAC verifier (terminalgrid.cpp) drops unsigned markers when
-# ANTS_OSC133_KEY is set in the terminal's own environment.
+# The HMAC verifier (terminalgrid.cpp) drops unsigned markers when the
+# terminal has a key.
+
+# ANTS-6441 — the key: the key file's first line, else $ANTS_OSC133_KEY. The
+# terminal applies the same rule (src/osc133keyfile.h); change them together.
+# Neither variable stays exported, so no program this shell runs inherits it.
+__ants_osc133_keyfile="${XDG_CONFIG_HOME:-${HOME:-}/.config}/ants-terminal/osc133.key"
+__ants_osc133_key=""
+[ -r "$__ants_osc133_keyfile" ] && { read -r __ants_osc133_key < "$__ants_osc133_keyfile" || true; }
+[ -z "$__ants_osc133_key" ] && __ants_osc133_key="${ANTS_OSC133_KEY:-}"
+export -n __ants_osc133_key ANTS_OSC133_KEY
+unset __ants_osc133_keyfile
 
 # Bail early if the verifier wouldn't run anyway.
-[ -z "${ANTS_OSC133_KEY:-}" ] && return 0
+[ -z "$__ants_osc133_key" ] && return 0
 [ "${TERM_PROGRAM:-}" != "ants-terminal" ] && return 0
 if command -v ants-osc133-sign >/dev/null 2>&1; then
     __ants_osc133_signer=helper
@@ -62,12 +77,12 @@ __ants_osc133_hmac() {
     fi
     if [ "$__ants_osc133_signer" = helper ]; then
         # printf is a builtin: the key reaches no argv.
-        printf '%s' "$ANTS_OSC133_KEY" | ants-osc133-sign "$msg" 2>/dev/null
+        printf '%s' "$__ants_osc133_key" | ants-osc133-sign "$msg" 2>/dev/null
         return
     fi
     # Fallback: python3 reads the key from stdin too. -I stops it importing
     # a planted hmac.py from the current directory.
-    printf '%s' "$ANTS_OSC133_KEY" | python3 -I -c "$__ants_osc133_py" "$msg" 2>/dev/null
+    printf '%s' "$__ants_osc133_key" | python3 -I -c "$__ants_osc133_py" "$msg" 2>/dev/null
 }
 
 # Emit OSC 133 ; <marker> [ ; <extra> ] ; aid=<id> ; ahmac=<hex>  ST(=BEL)

@@ -8,6 +8,7 @@
 #include "configbackup.h"
 #include "configpaths.h"
 #include "mcpdversion.h"
+#include "osc133keyfile.h"
 #include "secureio.h"
 
 #include <QCoreApplication>
@@ -626,7 +627,8 @@ struct ShellPlan {
     QString shell;         // bash or zsh
     QString script;        // the script found in the search list
     QString sourced;       // the path the rc file sources
-    QString keyFile;       // ~/.profile or ~/.zshenv
+    QString keyFile;       // ANTS-6441: osc133KeyFilePath()
+    QString profileFile;   // ~/.profile or ~/.zshenv: an old setup's key block
     QString rcFile;        // ~/.bashrc or ~/.zshrc
 };
 
@@ -657,18 +659,33 @@ ShellPlan planShell(const QStringList &scriptDirs) {
         : home + QStringLiteral("/.local/share/ants-terminal/shell-integration/"
                                 "ants-osc133.") + p.shell;
     const bool bash = p.shell == QLatin1String("bash");
-    p.keyFile = home + (bash ? QStringLiteral("/.profile") : QStringLiteral("/.zshenv"));
+    p.keyFile = osc133KeyFilePath();
+    p.profileFile = home + (bash ? QStringLiteral("/.profile") : QStringLiteral("/.zshenv"));
     p.rcFile  = home + (bash ? QStringLiteral("/.bashrc")  : QStringLiteral("/.zshrc"));
     return p;
 }
 
-// The key an existing block exports, so a reinstall does not regenerate it.
-QByteArray existingKey(const QString &keyFile) {
+// The key a key file holds, else the one an old profile block exports, so a
+// reinstall never changes a working key (ANTS-6441).
+QByteArray existingKey(const ShellPlan &p) {
+    static const QRegularExpression hex(QStringLiteral("^[0-9a-f]{64}$"));
+    const QByteArray inFile = readBytes(p.keyFile).trimmed();
+    if (hex.match(QString::fromUtf8(inFile)).hasMatch()) return inFile;
     static const QRegularExpression re(
         QStringLiteral(R"re(ANTS_OSC133_KEY="([0-9a-f]{64})")re"));
     const auto m = re.match(QString::fromUtf8(
-        blockBody(readBytes(keyFile), kShBegin, kShEnd)));
+        blockBody(readBytes(p.profileFile), kShBegin, kShEnd)));
     return m.hasMatch() ? m.captured(1).toUtf8() : QByteArray();
+}
+
+// The key file at mode 0600 from the moment it exists.
+bool writeKeyFile(const QString &path, const QByteArray &key) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f;
+    if (!openOwnerOnlyForWrite(f, path)) return false;
+    const bool ok = f.write(key + '\n') == key.size() + 1 && setOwnerOnlyPerms(f);
+    f.close();
+    return ok;
 }
 
 QByteArray newKey() {
@@ -677,10 +694,6 @@ QByteArray newKey() {
         reinterpret_cast<quint32 *>(raw.data()),
         reinterpret_cast<quint32 *>(raw.data() + raw.size()));
     return raw.toHex();
-}
-
-QByteArray keyLine(const QByteArray &key) {
-    return "export ANTS_OSC133_KEY=\"" + key + '"';
 }
 
 QByteArray sourceLine(const QString &sourced) {
@@ -700,25 +713,29 @@ QStringList defaultShellScriptDirs() {
 QString shellIntegrationPreview(const QStringList &scriptDirs) {
     const ShellPlan p = planShell(scriptDirs);
     if (p.unavailable.state == State::Unavailable) return p.unavailable.detail;
-    const QByteArray key = existingKey(p.keyFile);
-    return QStringLiteral("In %1:\n%2\n%3\n%4\n\nIn %5:\n%2\n%6\n%4\n\n"
-                          "The key takes effect at your next login; the source "
-                          "line in a new shell.")
-        .arg(p.keyFile, QString::fromUtf8(kShBegin),
-             QString::fromUtf8(keyLine(key.isEmpty() ? QByteArray("<a new random key>")
-                                                     : key)),
-             QString::fromUtf8(kShEnd), p.rcFile,
-             QString::fromUtf8(sourceLine(p.sourced)));
+    const bool reuse = !existingKey(p).isEmpty();
+    QString text = QStringLiteral("%1, readable only by you:\n%2\n\nIn %3:\n%4\n%5\n%6\n")
+        .arg(p.keyFile,
+             reuse ? QStringLiteral("your existing key")
+                   : QStringLiteral("a new random key"),
+             p.rcFile, QString::fromUtf8(kShBegin),
+             QString::fromUtf8(sourceLine(p.sourced)), QString::fromUtf8(kShEnd));
+    if (!blockBody(readBytes(p.profileFile), kShBegin, kShEnd).isNull())
+        text += QStringLiteral("\nThe old key block in %1 is removed.\n").arg(p.profileFile);
+    return text + QStringLiteral("\nNew tabs pick up the key; the source line "
+                                 "takes effect in a new shell.");
 }
 
 Status shellIntegrationStatus(const QStringList &scriptDirs) {
     const ShellPlan p = planShell(scriptDirs);
     if (p.unavailable.state == State::Unavailable) return p.unavailable;
-    const bool keyBlock = !blockBody(readBytes(p.keyFile), kShBegin, kShEnd).isNull();
+    const bool haveKey  = !readBytes(p.keyFile).trimmed().isEmpty();
+    const bool oldBlock = !blockBody(readBytes(p.profileFile), kShBegin, kShEnd).isNull();
     const bool rcBlock  = !blockBody(readBytes(p.rcFile), kShBegin, kShEnd).isNull();
-    if (keyBlock && rcBlock && QFileInfo(p.sourced).isFile())
+    const bool script   = QFileInfo(p.sourced).isFile();
+    if (haveKey && rcBlock && script && !oldBlock)
         return {State::Installed, QStringLiteral("✓ Installed for %1.").arg(p.shell)};
-    if (keyBlock || rcBlock)
+    if (haveKey || rcBlock || oldBlock)
         return {State::Partial,
                 QStringLiteral("Partly installed; reinstall to repair it.")};
     return {State::Missing, QStringLiteral("Not installed.")};
@@ -732,16 +749,20 @@ Outcome installShellIntegration(const QStringList &scriptDirs) {
         if (body.isEmpty() || !writeBytes(p.sourced, body))
             return fail(QStringLiteral("Could not copy %1 to %2").arg(p.script, p.sourced));
     }
-    QByteArray key = existingKey(p.keyFile);
+    QByteArray key = existingKey(p);
     if (key.isEmpty()) key = newKey();
-    if (!writeBytes(p.keyFile, withBlock(readBytes(p.keyFile), kShBegin, kShEnd,
-                                         keyLine(key))))
+    if (!writeKeyFile(p.keyFile, key))
         return fail(QStringLiteral("Could not write %1").arg(p.keyFile));
+    // ANTS-6441 — the old block exports the key to every program; drop it.
+    const QByteArray profile = readBytes(p.profileFile);
+    if (!blockBody(profile, kShBegin, kShEnd).isNull() &&
+        !writeBytes(p.profileFile, withoutBlock(profile, kShBegin, kShEnd)))
+        return fail(QStringLiteral("Could not write %1").arg(p.profileFile));
     if (!writeBytes(p.rcFile, withBlock(readBytes(p.rcFile), kShBegin, kShEnd,
                                         sourceLine(p.sourced))))
         return fail(QStringLiteral("Could not write %1").arg(p.rcFile));
-    return {true, QStringLiteral("Shell integration installed for %1. The key takes "
-                                 "effect at your next login; the source line in a "
+    return {true, QStringLiteral("Shell integration installed for %1. New tabs pick "
+                                 "up the key; the source line takes effect in a "
                                  "new shell.").arg(p.shell)};
 }
 

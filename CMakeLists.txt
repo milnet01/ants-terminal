@@ -1835,6 +1835,15 @@ if(ANTS_TESTS)
         SKIP_RETURN_CODE 77
         TIMEOUT 60)
 
+    # ANTS-6441 INV-4/INV-5 — the hooks sign with the key file's key and no
+    # child process inherits a key variable.
+    add_test(NAME osc133_key_file_hooks
+             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/osc133_key_file/test_osc133_key_file.sh")
+    set_tests_properties(osc133_key_file_hooks PROPERTIES
+        LABELS "features;fast"
+        SKIP_RETURN_CODE 77
+        TIMEOUT 60)
+
     # ANTS-5428 — the scripts sign through ants-osc133-sign, key on stdin.
     add_test(NAME osc133_sign_helper
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/osc133_sign_helper/test_osc133_sign.sh"
@@ -2272,6 +2281,8 @@ if(ANTS_TESTS)
                 tests/features/scrollback_trim_blank_tails/test_scrollback_trim_blank_tails.cpp
                 # ANTS-4534 — a per-tab scrollback memory cap.
                 tests/features/scrollback_memory_cap/test_scrollback_memory_cap.cpp
+                # ANTS-6441 — the OSC 133 key file wins over the environment.
+                tests/features/osc133_key_file/test_osc133_key_file.cpp
                 tests/features/vt_string_rearm/test_vt_string_rearm.cpp
                 tests/features/vt_escape_recovery/test_vt_escape_recovery.cpp
                 tests/features/scrollback_hyperlink_restore_sync/test_scrollback_hyperlink_restore_sync.cpp

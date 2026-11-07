@@ -91316,7 +91316,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 01-vt-parser-pty (High).
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-6441] **terminalgrid.cpp: The verifier's key is an exported environment variable.**
+- ✅ [ANTS-6441] **terminalgrid.cpp: The verifier's key is an exported environment variable.**
   `terminalgrid.cpp:174–176` — The verifier's key is an exported
   environment variable. The README setup puts it in `~/.profile` /
   `~/.zshenv` as `export ANTS_OSC133_KEY=…`, and neither hook script un-
@@ -91342,6 +91342,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   (pins getenv as the only source). Four subsystems: write a short spec
   first (spec-format.md § 1; no review-contract gate unless it proves
   expensive). Closes ANTS-6444 with it.
+  Shipped 2026-11-07 to docs/specs/ANTS-6441-osc133-key-file.md: key
+  file read by the terminal per tab and by both hooks; hooks un-export
+  the key; wizard writes the file. Amends ANTS-5558 § 2.6.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).
@@ -91383,7 +91386,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (High).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6444] **README.md: "Untrusted inner processes don't [know the key], so they cannot mint a valid HMAC.".**
+- ✅ [ANTS-6444] **README.md: "Untrusted inner processes don't [know the key], so they cannot mint a valid HMAC.".**
   `packaging/shell-integration/README.md:32-33` — "Untrusted inner
   processes don't [know the key], so they cannot mint a valid HMAC."
   Ledger row 270, docs/reviews/close-findings-2026-11-06.md.
@@ -91391,6 +91394,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   The README claim is false today; rewrite it to say the HMAC stops
   forged markers in printed output (cat, remote output), not programs
   the user runs as themselves, which can read the key file.
+  Shipped 2026-11-07 with ANTS-6441:
+  packaging/shell-integration/README.md now says the HMAC stops forged
+  markers in printed output, not programs run as the user.
   **Layman:** A gap that a hostile project or hostile terminal output could use against you.
   Kind: security.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).

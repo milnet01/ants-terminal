@@ -20,8 +20,8 @@ The following integration-layer handles MUST survive a RIS:
 7. `m_userVarCallback` — OSC 1337 SetUserVar reports.
 8. `m_osc133ForgeryCallback` — OSC 133 HMAC-failure alarm.
 
-Additionally `m_osc133Key` (the HMAC secret read from
-`$ANTS_OSC133_KEY` at process start) MUST survive, since it is a
+Additionally `m_osc133Key` (the HMAC secret read at
+construction by `osc133KeyFromSetup()`, ANTS-6441) MUST survive, since it is a
 process-level security configuration independent of grid state.
 
 ## Rationale

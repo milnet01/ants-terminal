@@ -22,35 +22,44 @@ regions, exit codes, and the command-finished plugin event, polluting the
 UI and potentially tricking the user about which command actually ran.
 
 The HMAC verifier (in `src/terminalgrid.cpp`) closes that gap: when the
-terminal is launched with `ANTS_OSC133_KEY` set in its environment, every
-OSC 133 marker must carry a matching `ahmac=<hex>` parameter computed as
+terminal has a key, every OSC 133 marker must carry a matching `ahmac=<hex>` parameter computed as
 `HMAC-SHA256(key, "<marker>|<promptId>[|<exitCode>]")`. Markers without a
 matching HMAC are dropped (no UI side-effects) and a forgery counter
 increments, surfaced as a status-bar warning the first time per 5-second
 cooldown window.
 
-The user's actual shell knows the key (via these hook scripts). Untrusted
-inner processes don't, so they cannot mint a valid HMAC.
+The key lives in `~/.config/ants-terminal/osc133.key` (under
+`$XDG_CONFIG_HOME` when that is set), readable only by you. The terminal
+reads it for each new tab; these hooks read it when the shell starts. If
+there is no key file, both fall back to an exported `$ANTS_OSC133_KEY`, and
+the hooks un-export it, so programs the shell runs do not inherit the key.
+
+What this stops: forged markers in printed output — `cat` of a hostile
+file, output from a remote machine. What it does not stop: a program you
+run as yourself, which can read the key file and sign markers.
 
 ## Setup (bash)
 
+The welcome dialog's shell-integration button does both steps for you.
+By hand:
+
 ```bash
 # 1. Generate a per-machine secret. Run ONCE; keep it secret.
-echo "export ANTS_OSC133_KEY=\"$(openssl rand -hex 32)\"" >> ~/.profile
+mkdir -p ~/.config/ants-terminal
+(umask 077; openssl rand -hex 32 > ~/.config/ants-terminal/osc133.key)
 
 # 2. Source the hook in ~/.bashrc (typically the last line):
 echo '[ -f /usr/share/ants-terminal/shell-integration/ants-osc133.bash ] && \
     source /usr/share/ants-terminal/shell-integration/ants-osc133.bash' \
     >> ~/.bashrc
-
-# 3. Re-login (so the new env var is in the session that launches ants-terminal).
 ```
 
 ## Setup (zsh)
 
 ```zsh
-# 1. Generate the secret. Same key as bash if you use both shells.
-echo "export ANTS_OSC133_KEY=\"$(openssl rand -hex 32)\"" >> ~/.zshenv
+# 1. The same key file as bash: skip this if you already made it.
+mkdir -p ~/.config/ants-terminal
+(umask 077; openssl rand -hex 32 > ~/.config/ants-terminal/osc133.key)
 
 # 2. Source the hook in ~/.zshrc:
 echo '[ -f /usr/share/ants-terminal/shell-integration/ants-osc133.zsh ] && \
@@ -60,7 +69,7 @@ echo '[ -f /usr/share/ants-terminal/shell-integration/ants-osc133.zsh ] && \
 
 ## Verifying it works
 
-After re-login + opening a new tab in Ants:
+Open a new tab in Ants:
 
 ```bash
 # This should print nothing visibly — the OSC sequences are consumed by
@@ -76,20 +85,18 @@ printf '\033]133;A\007'
 If you see `⚠ OSC 133 forgery detected (count: N)` in the status bar, the
 verifier is working. If you don't see the warning AND the spoofed marker
 silently created a new (empty) prompt block, the verifier isn't active —
-likely `ANTS_OSC133_KEY` isn't set in the terminal's environment. Check
-with `echo $ANTS_OSC133_KEY` inside an Ants tab.
+likely the key file is missing or empty. Check with
+`ls -l ~/.config/ants-terminal/osc133.key`.
 
 ## Caveats
 
 - **No backward compatibility risk**: the hook is a strict no-op when
-  `ANTS_OSC133_KEY` is unset. Without the env var, OSC 133 behaves as
-  before (unverified, permissive — the legacy mode).
+  there is no key. Without one, OSC 133 behaves as before (unverified,
+  permissive — the legacy mode).
 
-- **Per-machine key**: the key lives in your `~/.profile` /
-  `~/.zshenv`. Same machine + same user = same key everywhere. If you ssh
-  to a remote box and want shell integration there too, you need to set
-  `ANTS_OSC133_KEY` on the remote *and* in the local terminal — the
-  local terminal verifies, but the remote shell needs the key to sign.
+- **Per-machine key**: one key file per user. If you ssh to a remote box
+  and want shell integration there too, copy the key file to the remote —
+  the local terminal verifies, but the remote shell needs the key to sign.
 
 - **Replay scope**: the HMAC binds to a per-prompt UUID (regenerated on
   every PROMPT_COMMAND firing), so a captured HMAC for prompt N can't be
