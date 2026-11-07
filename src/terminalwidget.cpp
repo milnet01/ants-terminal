@@ -620,6 +620,10 @@ void TerminalWidget::setMaxScrollback(int lines) {
     m_grid->setMaxScrollback(lines);
 }
 
+void TerminalWidget::setMaxScrollbackMib(int mib) {
+    m_grid->setMaxScrollbackMib(mib);
+}
+
 void TerminalWidget::setSessionLogging(bool enabled) {
     m_loggingEnabled = enabled;
     if (enabled && !m_logFile) {

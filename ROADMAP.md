@@ -71514,7 +71514,7 @@ The named candidates below each become their own id when picked up — they are
 filed together because they share one measurement and one budget, not because
 they are one change.
 
-- 📋 [ANTS-4534] **Cut Ants Terminal's resident memory, starting with the 64-byte Cell that sets every scrollback ceiling.**
+- ✅ [ANTS-4534] **Cut Ants Terminal's resident memory, starting with the 64-byte Cell that sets every scrollback ceiling.**
   Measured 2026-08-19, not estimated. The live instance was 366.4 MiB
   RSS across 14 tabs after 7h11m uptime. That is what it costs today;
   the number worth acting on is the ceiling, and it comes from one
@@ -71586,6 +71586,9 @@ they are one change.
   tab drops its oldest history lines once its history passes a size limit,
   default 256 MiB, set in settings and applied without a restart; a test
   checks it.
+  Shipped 2026-11-07: a per-tab scrollback memory cap, default 256 MiB,
+  in Settings → Terminal and `scrollback_max_mib`, hot-reloaded.
+  Contract and test: tests/features/scrollback_memory_cap.
   **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
   Kind: perf.
   Source: user-request-2026-08-19.

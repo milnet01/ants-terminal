@@ -133,6 +133,7 @@ private:
 
     // Terminal
     QSpinBox *m_scrollbackLines;
+    QSpinBox *m_scrollbackMaxMib;  // ANTS-4534
     QCheckBox *m_showCommandMarks;
     QCheckBox *m_quakeMode;
     QLineEdit *m_quakeHotkey;

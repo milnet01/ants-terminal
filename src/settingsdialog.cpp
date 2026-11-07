@@ -591,6 +591,16 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     m_scrollbackLines->setSingleStep(10000);
     layout->addRow("Scrollback Lines:", m_scrollbackLines);
 
+    // ANTS-4534 — the per-tab memory cap beside the line cap.
+    m_scrollbackMaxMib = new QSpinBox(tab);
+    m_scrollbackMaxMib->setRange(16, 65536);
+    m_scrollbackMaxMib->setSingleStep(64);
+    m_scrollbackMaxMib->setSuffix(" MiB");
+    m_scrollbackMaxMib->setToolTip(
+        "Most memory each tab's scrollback may use. Past it, the oldest "
+        "lines are dropped.");
+    layout->addRow("Scrollback Memory per Tab:", m_scrollbackMaxMib);
+
     m_showCommandMarks = new QCheckBox("Show command markers in scrollbar gutter", tab);
     m_showCommandMarks->setToolTip(
         "Draw a tick next to the scrollbar for each OSC 133 prompt region. "
@@ -654,6 +664,7 @@ void SettingsDialog::setupTerminalTab(QWidget *tab) {
     terminalDefaultsBtn->setObjectName(QStringLiteral("restoreDefaultsTerminal"));
     connect(terminalDefaultsBtn, &QPushButton::clicked, this, [this]() {
         m_scrollbackLines->setValue(50000);
+        m_scrollbackMaxMib->setValue(256);
         m_showCommandMarks->setChecked(true);
         m_quakeMode->setChecked(false);
         m_quakeHotkey->setText(QStringLiteral("F12"));
@@ -1157,6 +1168,7 @@ void SettingsDialog::loadSettings() {
 
     // Terminal
     m_scrollbackLines->setValue(m_config->scrollbackLines());
+    m_scrollbackMaxMib->setValue(m_config->scrollbackMaxMib());
     m_showCommandMarks->setChecked(m_config->showCommandMarks());
     m_quakeMode->setChecked(m_config->quakeMode());
     m_quakeHotkey->setText(m_config->quakeHotkey());
@@ -1306,6 +1318,7 @@ void SettingsDialog::applySettings() {
 
     // Terminal
     m_config->setScrollbackLines(m_scrollbackLines->value());
+    m_config->setScrollbackMaxMib(m_scrollbackMaxMib->value());
     m_config->setShowCommandMarks(m_showCommandMarks->isChecked());
     m_config->setQuakeMode(m_quakeMode->isChecked());
     m_config->setQuakeHotkey(m_quakeHotkey->text().trimmed());

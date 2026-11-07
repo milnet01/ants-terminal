@@ -316,11 +316,21 @@ void TerminalGrid::setMaxScrollback(int lines) {
     trimScrollbackToCap();
 }
 
-// The one place scrollback is evicted down to m_maxScrollback.
+void TerminalGrid::setMaxScrollbackMib(int mib) {
+    ++m_contentRevision;  // ANTS-5030 — may evict scrollback the blob holds
+    m_maxScrollbackMib = std::clamp(mib, 16, 65536);
+    trimScrollbackToCap();
+}
+
+// The one place scrollback is evicted down to m_maxScrollback lines and
+// m_maxScrollbackMib of cell storage (ANTS-4534).
 // ANTS-1999 — pop both deques in lockstep so OSC 8 spans never misalign
 // with their lines. Evicted cells go back to the reuse pool.
 void TerminalGrid::trimScrollbackToCap() {
-    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback) {
+    const qint64 byteCap = static_cast<qint64>(m_maxScrollbackMib) * 1024 * 1024;
+    while (static_cast<int>(m_scrollback.size()) > m_maxScrollback
+           || (m_scrollbackBytes > byteCap && !m_scrollback.empty())) {
+        m_scrollbackBytes -= cellBytes(m_scrollback.front());
         returnCellsRow(std::move(m_scrollback.front().cells));
         m_scrollback.pop_front();
         ++m_promptRegionShift;  // ANTS-5029
@@ -1067,6 +1077,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             const QColor cfgFg     = m_defaultFg;
             const QColor cfgBg     = m_defaultBg;
             const int cfgScrollback = m_maxScrollback;
+            const int cfgScrollbackMib = m_maxScrollbackMib;  // ANTS-4534 INV-4
             *this = TerminalGrid(m_rows, m_cols);
             m_responseCallback        = std::move(responseCb);
             m_clipboardCallback       = std::move(clipboardCb);
@@ -1087,6 +1098,7 @@ void TerminalGrid::handleEsc(const VtAction &a) {
             setDefaultFg(cfgFg);
             setDefaultBg(cfgBg);
             setMaxScrollback(cfgScrollback);
+            setMaxScrollbackMib(cfgScrollbackMib);
             break;
         }
         }
@@ -1877,6 +1889,7 @@ void TerminalGrid::eraseInDisplay(int mode) {
             // same bookkeeping an eviction does (ANTS-5029).
             m_promptRegionShift += static_cast<qint64>(m_scrollback.size());
             m_scrollback.clear();
+            m_scrollbackBytes = 0;  // ANTS-4534
             // ANTS-1799 — keep the parallel hyperlink side-table lockstep.
             // Clearing m_scrollback alone leaves stale OSC 8 spans (with
             // their old URIs) that re-attach to unrelated post-clear rows.
@@ -2112,6 +2125,7 @@ void TerminalGrid::scrollUp(int count) {
         const int srcRow = m_scrollTop + i;
         if (pushToScrollback) {
             m_scrollback.push_back(trimmedForScrollback(std::move(m_screenLines[srcRow])));
+            m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
             ++m_scrollbackPushed;
             if (hlInRange) {
                 m_scrollbackHyperlinks.push_back(
@@ -2909,6 +2923,9 @@ void TerminalGrid::resize(int rows, int cols) {
 
         m_scrollback = std::move(newScrollback);
         m_scrollbackHyperlinks = std::move(newScrollbackHyperlinks);
+        m_scrollbackBytes = 0;  // ANTS-4534 — reflow rebuilt every line
+        for (const TermLine &tl : m_scrollback)
+            m_scrollbackBytes += cellBytes(tl);
 
         trimScrollbackToCap();  // ANTS-1333 INV-5
     }
@@ -2941,6 +2958,7 @@ void TerminalGrid::resize(int rows, int cols) {
             TermLine front = std::move(reflowed[k]);
             if (!isBlankLine(front)) {
                 m_scrollback.push_back(trimmedForScrollback(std::move(front)));
+                m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
                 // ANTS-2119 M1 — count reflow overflow as "pushed" so the
                 // scrollbackPushed() contract holds (get_scrollback's
                 // since_cursor diff must see these lines).

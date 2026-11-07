@@ -70,8 +70,9 @@ public:
     void setAutoCopyOnSelect(bool enabled) { m_autoCopyOnSelect = enabled; }
     bool autoCopyOnSelect() const { return m_autoCopyOnSelect; }
 
-    // Scrollback limit
+    // Scrollback limits: lines, and MiB of cell storage (ANTS-4534)
     void setMaxScrollback(int lines);
+    void setMaxScrollbackMib(int mib);
 
     // Editor command for opening file paths
     void setEditorCommand(const QString &cmd) { m_editorCommand = cmd; }

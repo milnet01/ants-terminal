@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **Each tab's scrollback now has a memory limit, 256 MiB by default, set in Settings → Terminal** (ANTS-4534)
+  Once a tab's stored history passes the limit, its oldest lines are
+  dropped. The limit is `scrollback_max_mib` in `config.json` (16 to
+  65,536 MiB) and reaches open tabs without a restart.
+
 - **`session_cost` shows what each tool, MCP server and hook costs a session** (ANTS-6697)
   The reply now gives rent (bytes times the requests that carry them) per
   tool and per MCP server, for tool results, tool definitions and names in

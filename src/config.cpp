@@ -906,6 +906,16 @@ void Config::setScrollbackLines(int lines) {
     save();
 }
 
+// ANTS-4534 — the per-tab scrollback memory cap, in MiB of cell storage.
+int Config::scrollbackMaxMib() const {
+    return qBound(16, m_data.value("scrollback_max_mib").toInt(256), 65536);
+}
+
+void Config::setScrollbackMaxMib(int mib) {
+    if (!storeIfChanged("scrollback_max_mib", qBound(16, mib, 65536))) return;
+    save();
+}
+
 double Config::opacity() const {
     return qBound(0.1, m_data.value("opacity").toDouble(1.0), 1.0);
 }

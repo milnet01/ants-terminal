@@ -51,6 +51,7 @@ TerminalWidget *MainWindow::createTerminal() {
 void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setFontSize(m_config.fontSize());
     terminal->setMaxScrollback(m_config.scrollbackLines());
+    terminal->setMaxScrollbackMib(m_config.scrollbackMaxMib());
     terminal->setSessionLogging(m_config.sessionLogging());
     terminal->setAutoCopyOnSelect(m_config.autoCopyOnSelect());
     terminal->setConfirmMultilinePaste(m_config.confirmMultilinePaste());

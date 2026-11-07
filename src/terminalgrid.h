@@ -307,6 +307,12 @@ public:
     // Configurable scrollback limit
     void setMaxScrollback(int lines);
     int maxScrollback() const { return m_maxScrollback; }
+    // ANTS-4534 — the memory cap beside the line cap: once the scrollback's
+    // cell storage passes it, the oldest lines go. Clamped to [16, 65536] MiB.
+    void setMaxScrollbackMib(int mib);
+    int maxScrollbackMib() const { return m_maxScrollbackMib; }
+    // Cell storage the scrollback holds: sizeof(Cell) per stored cell.
+    qint64 scrollbackBytes() const { return m_scrollbackBytes; }
 
     // Default colors (set by theme) -- recolors existing cells
     void setDefaultFg(const QColor &c);
@@ -507,6 +513,7 @@ public:
     void pushScrollbackLine(TermLine &&line) {
         ++m_contentRevision;  // ANTS-5030
         m_scrollback.push_back(trimmedForScrollback(std::move(line)));  // ANTS-6703
+        m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
         // ANTS-2119 M1 — restore counts as "pushed" too, so a restored session's
         // scrollbackPushed() reflects its scrollback depth (the get_scrollback
         // since_cursor cursor is this counter).
@@ -651,6 +658,13 @@ private:
 
     std::deque<TermLine> m_scrollback;
     int m_maxScrollback = 50000;
+    // ANTS-4534 — kept equal to the sum of cellBytes() over m_scrollback by
+    // every push, pop, clear and reassignment of it.
+    int m_maxScrollbackMib = 256;
+    qint64 m_scrollbackBytes = 0;
+    static qint64 cellBytes(const TermLine &line) {
+        return static_cast<qint64>(line.cells.size()) * static_cast<qint64>(sizeof(Cell));
+    }
     // Monotonic — total lines ever pushed (for scroll-anchor drift correction when capped)
     uint64_t m_scrollbackPushed = 0;
     uint64_t m_contentRevision = 0;  // ANTS-5030

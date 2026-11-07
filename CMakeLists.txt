@@ -2270,6 +2270,8 @@ if(ANTS_TESTS)
                 tests/features/compact_cell_color/test_compact_cell_color.cpp
                 # ANTS-6703 — scrollback rows drop their blank tails.
                 tests/features/scrollback_trim_blank_tails/test_scrollback_trim_blank_tails.cpp
+                # ANTS-4534 — a per-tab scrollback memory cap.
+                tests/features/scrollback_memory_cap/test_scrollback_memory_cap.cpp
                 tests/features/vt_string_rearm/test_vt_string_rearm.cpp
                 tests/features/vt_escape_recovery/test_vt_escape_recovery.cpp
                 tests/features/scrollback_hyperlink_restore_sync/test_scrollback_hyperlink_restore_sync.cpp
@@ -2349,7 +2351,10 @@ if(ANTS_TESTS)
         # verbs through this list, so ants_test::slurpMainWindow() reads it too.
         ANTS_MCP_REGISTRY_SOURCE="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp"
         SRC_MAINWINDOW_H_PATH="${CMAKE_SOURCE_DIR}/src/mainwindow.h"
-        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp")
+        SRC_THEMEDSTYLESHEET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/themedstylesheet.cpp"
+        # ANTS-4534 INV-5/INV-6 scrape config.cpp, mainwindow_tabs.cpp and
+        # settingsdialog.cpp.
+        ANTS_SRC_DIR="${CMAKE_SOURCE_DIR}/src")
 
     # ANTS-4797 — a per-TEST path define belongs on its own source, not on
     # the bundle. Every define in the block above lands on EVERY TU's command

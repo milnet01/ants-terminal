@@ -321,6 +321,8 @@ public:
 
     int scrollbackLines() const;
     void setScrollbackLines(int lines);
+    int scrollbackMaxMib() const;
+    void setScrollbackMaxMib(int mib);
 
     double opacity() const;
     void setOpacity(double value);
