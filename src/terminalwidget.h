@@ -5,6 +5,7 @@
 #include "vtstream.h"
 #include "shapedruncache.h"
 #include "pluginoutputcoalescer.h"
+#include "modelcommandtracker.h"   // ANTS-6437
 
 #include <QWidget>
 #include <QClipboard>
@@ -148,6 +149,11 @@ public:
     // which (combined with ShellState::idleSinceMs default 0) makes a
     // fresh post-turn composer read empty.
     qint64 lastUserKeystrokeMs() const { return m_lastUserKeystrokeMs; }
+
+    // ANTS-6437 — epoch-ms when the user last pressed Enter on a typed line
+    // starting with "/mo" (ModelAutoSwitch::feedModelCommandKey); -1 for
+    // never. The user-typed "Switch model?" auto-confirm keys on it.
+    qint64 lastModelCommandMs() const { return m_lastModelCommandMs; }
 
     // ANTS-1858 follow-up — reliably drop the AskUserQuestion "awaiting
     // input" state from outside the footer scanner. The footer-gone
@@ -422,6 +428,9 @@ private:
 
     // ANTS-1735 §2.4 — see lastUserKeystrokeMs() getter above.
     qint64 m_lastUserKeystrokeMs = -1;
+    // ANTS-6437 — see lastModelCommandMs(). Fed from sendKeyData.
+    ModelAutoSwitch::ModelCommandTracker m_modelCommandTracker;
+    qint64 m_lastModelCommandMs = -1;
     // See lastShellPid(). Set by startShell once the shell is forked.
     pid_t m_lastShellPid = -1;
 
@@ -631,6 +640,8 @@ private:
     // selection, writes, and copies the bytes to the other panes in
     // broadcast mode. keyPressEvent sends keys through here only.
     void sendKeyData(const QByteArray &data, const QKeyEvent *event);
+    // ANTS-6437 — feeds m_modelCommandTracker; see lastModelCommandMs().
+    void noteModelCommandKey(const QKeyEvent &event);
 
     // "Is a PTY available to write to?" — true once startShell() has
     // succeeded. Call sites must guard on this rather than m_vtStream

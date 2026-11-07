@@ -48,17 +48,20 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   times so a dialog that never renders cannot loop forever.
 - **INV-7 — user-typed /model auto-confirm gate (ANTS-1951).**
   `ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(dialogVisible, enabled,
-  handshakeInFlight, alreadyConfirmed, claudeRunning, permissionPending)`
-  returns true *only* when all six hold:
+  handshakeInFlight, alreadyConfirmed, claudeRunning, permissionPending,
+  userTypedModel)` returns true *only* when all seven hold:
   a dialog is visible, the feature is enabled, no Ants-initiated handshake is
   already polling it (`handshakeInFlight` false), ENTER has not yet been
   pressed for the current dialog instance (`alreadyConfirmed` false), Claude
   Code runs in the focused tab (`claudeRunning`), and no permission prompt is
-  pending there (`permissionPending` false; ANTS-6433). Any output can show
-  the dialog's words, and ENTER on a permission prompt approves the command.
-  Both callers pass the focused shell's tracked state. This is
-  the gate `maybeAutoConfirmUserModelSwitch` uses to confirm a dialog the user
-  raised by typing `/model` directly, without double-pressing over an
+  pending there (`permissionPending` false; ANTS-6433), and the user
+  submitted a line starting with `/mo` in that tab within
+  `kUserModelCommandWindowMs` (`userTypedModel`; ANTS-6437). Any output can
+  show the dialog's words, and ENTER on a permission prompt approves the
+  command. Both callers pass the focused shell's tracked state and
+  `userTypedModelRecently(focused)`. This is the gate
+  `maybeAutoConfirmUserModelSwitch` uses to confirm a dialog the user raised
+  by typing `/model` directly, without double-pressing over an
   auto-switch/chip/undo handshake.
 - **INV-8 — continuation after a user-typed confirm (ANTS-1969).**
   `ModelAutoSwitch::shouldContinueAfterUnarmedConfirm(autoModeOn, activeTurn)`
@@ -82,13 +85,19 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
   AND a turn active. ANTS-2186 added the `activeTurn` gate: `/model` typed at idle
   to pre-pick a model is not consent to start a billable turn (ANTS-1959), so it
   now mirrors INV-8 exactly.
+- **INV-10 — typed `/model` tracker (ANTS-6437).**
+  `ModelAutoSwitch::feedModelCommandKey` (`src/modelcommandtracker.h`)
+  reports a submitted line only when Enter ends a typed line starting with
+  `/mo`. Backspace erases, Tab keeps the line, and any other key makes it
+  unknown. It stores no typed text. `TerminalWidget::sendKeyData` feeds it
+  and stamps `lastModelCommandMs()`.
 
 ## Tests
 
 - `test_switch_confirm_visible.cpp` (pure, on the core bundle) — INV-1..INV-4.
 - `test_switch_confirm_actuator.cpp` (source-grep on
   `src/claudestatuswidgets.cpp` + `src/modelautoswitch.h`) — INV-5, INV-6.
-- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7, INV-8.
+- `test_unarmed_confirm.cpp` (pure, on the core bundle) — INV-7, INV-8, INV-10.
 
 To confirm the source-grep test would catch a real regression: reverting
 `performModelSwitchHandshake` to the blind `\r@400` sequence reintroduces the

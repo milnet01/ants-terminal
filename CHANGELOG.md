@@ -364,6 +364,11 @@ for security-relevant changes.
 
 ### Security
 
+- **Ants answers Claude Code's "Switch model?" question only within 10 seconds of you typing `/model` in that tab** (ANTS-6437)
+  Output that merely shows the question's words no longer gets Enter
+  pressed into the composer. A `/model` pasted rather than typed is not
+  seen, so its question waits for you to answer it.
+
 - **The audit's check of a project's compile_commands.json now covers every flag that makes the compiler read a file, including `-imacros`, `--include=` and `--sysroot`, so the database cannot point an audit at files outside the project** (ANTS-6448)
 
 - **A file whose name starts with `@` can no longer feed extra options to an audit tool as a response file** (ANTS-6447)

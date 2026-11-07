@@ -3,10 +3,11 @@
 //
 // Pure gate: ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(dialogVisible,
 // enabled, handshakeInFlight, alreadyConfirmed, claudeRunning,
-// permissionPending) returns true only when a dialog is visible, the feature is
-// on, no Ants-initiated handshake is already polling it, we have not already
-// pressed ENTER for this dialog instance, Claude Code runs in the tab, and no
-// permission prompt is pending.
+// permissionPending, userTypedModel) returns true only when a dialog is
+// visible, the feature is on, no Ants-initiated handshake is already polling
+// it, we have not already pressed ENTER for this dialog instance, Claude Code
+// runs in the tab, no permission prompt is pending, and the user just
+// submitted /model there (ANTS-6437, with the tracker that sees it).
 
 #include <gtest/gtest.h>
 #include <QString>
@@ -25,57 +26,139 @@ TEST(UnarmedConfirm, FiresOnlyWhenAllConditionsHold) {
     EXPECT_TRUE(shouldAutoConfirmUnarmedSwitch(
         /*dialogVisible=*/true, /*enabled=*/true,
         /*handshakeInFlight=*/false, /*alreadyConfirmed=*/false,
-        /*claudeRunning=*/true, /*permissionPending=*/false));
+        /*claudeRunning=*/true, /*permissionPending=*/false,
+        /*userTypedModel=*/true));
 }
 
 // No dialog on screen → nothing to confirm.
 TEST(UnarmedConfirm, NoDialogNoFire) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(false, true, false, false, true, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(false, true, false, false, true, false, true));
 }
 
 // Feature toggled off → never acts, even with a dialog present.
 TEST(UnarmedConfirm, DisabledNeverFires) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, false, false, false, true, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, false, false, false, true, false, true));
 }
 
 // An Ants-initiated handshake owns this dialog → stand down (no double ENTER).
 TEST(UnarmedConfirm, HandshakeInFlightStandsDown) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, true, false, true, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, true, false, true, false, true));
 }
 
 // Already pressed ENTER for this dialog instance → don't press again.
 TEST(UnarmedConfirm, LatchPreventsDoublePress) {
-    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, true, true, false));
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, true, true, false, true));
 }
 
 // ANTS-6433 — the dialog's words can come from any output, such as `cat` of a
 // file in a bare shell. Without Claude Code in the tab, never press ENTER.
 TEST(UnarmedConfirm, NoClaudeInTabNeverFires) {
     EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, false,
-                                                /*claudeRunning=*/false, false));
+                                                /*claudeRunning=*/false, false, true));
 }
 
 // ANTS-6433 — a pending permission prompt takes ENTER as "1. Yes", so the words
 // shown inside it (a command quoting them) must not make Ants approve it.
 TEST(UnarmedConfirm, PermissionPromptNeverFires) {
     EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, false, true,
-                                                /*permissionPending=*/true));
+                                                /*permissionPending=*/true, true));
 }
 
-// ANTS-6433 — both callers feed the gate the focused shell's tracked state,
-// not constants.
+// ANTS-6437 — at idle, with no prompt pending, output can still show the
+// dialog's words. Without a /model the user just typed, never press ENTER.
+TEST(UnarmedConfirm, NoRecentUserModelCommandNeverFires) {
+    EXPECT_FALSE(shouldAutoConfirmUnarmedSwitch(true, true, false, false, true,
+                                                false, /*userTypedModel=*/false));
+}
+
+// ANTS-6433 / ANTS-6437 — both callers feed the gate the focused shell's
+// tracked state and the tab's /model stamp, not constants.
 TEST(UnarmedConfirm, CallersPassTheTrackedState) {
     const std::string src = ants_test::slurpFile(ANTS_SRC_DIR "/claudestatuswidgets.cpp");
     const std::string call = "ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(";
     int calls = 0;
     for (size_t at = src.find(call); at != std::string::npos; at = src.find(call, at + 1)) {
-        const std::string args = src.substr(at, src.find(')', src.find("awaitingInput", at)) - at);
-        EXPECT_NE(args.find("ss.state != ClaudeState::NotRunning, ss.awaitingInput"),
+        const size_t end = src.find(';', at);
+        const std::string args = src.substr(at, end - at);
+        EXPECT_NE(args.find("ss.state != ClaudeState::NotRunning, ss.awaitingInput,"),
                   std::string::npos) << args;
-        EXPECT_LT(args.size(), 300u) << "call does not pass ss.awaitingInput: " << args;
+        EXPECT_NE(args.find("userTypedModelRecently(focused)"), std::string::npos) << args;
+        EXPECT_LT(args.size(), 400u) << args;
         ++calls;
     }
     EXPECT_EQ(calls, 2);
+}
+
+// ANTS-6437 — the per-tab tracker of a typed `/model` line.
+namespace {
+using ModelAutoSwitch::ModelCommandTracker;
+using ModelAutoSwitch::feedModelCommandKey;
+using K = ModelAutoSwitch::TypedKey;
+
+// Types `text` then Enter; returns whether the tracker saw a /model line.
+bool typeAndSubmit(ModelCommandTracker &t, const QString &text) {
+    for (const QChar c : text) feedModelCommandKey(t, K::Text, QString(c));
+    return feedModelCommandKey(t, K::Enter, QString());
+}
+}  // namespace
+
+TEST(UnarmedConfirm, TrackerSeesTypedModelCommands) {
+    ModelCommandTracker t;
+    EXPECT_TRUE(typeAndSubmit(t, QStringLiteral("/model")));
+    EXPECT_TRUE(typeAndSubmit(t, QStringLiteral("/model sonnet")));
+    // `/mo` picked from Claude Code's slash menu with Enter.
+    EXPECT_TRUE(typeAndSubmit(t, QStringLiteral("/mo")));
+}
+
+TEST(UnarmedConfirm, TrackerIgnoresOtherLines) {
+    ModelCommandTracker t;
+    EXPECT_FALSE(typeAndSubmit(t, QStringLiteral("")));
+    EXPECT_FALSE(typeAndSubmit(t, QStringLiteral("/m")));
+    EXPECT_FALSE(typeAndSubmit(t, QStringLiteral("/mcp")));
+    EXPECT_FALSE(typeAndSubmit(t, QStringLiteral("please /model")));
+    EXPECT_FALSE(typeAndSubmit(t, QStringLiteral("ls /mo")));
+    // Enter resets the line: the next empty Enter is not a /model.
+    EXPECT_TRUE(typeAndSubmit(t, QStringLiteral("/model")));
+    EXPECT_FALSE(feedModelCommandKey(t, K::Enter, QString()));
+}
+
+TEST(UnarmedConfirm, TrackerFollowsBackspace) {
+    ModelCommandTracker t;
+    // "/x", erase the x, then "mo" → the line reads "/mo".
+    feedModelCommandKey(t, K::Text, QStringLiteral("/"));
+    feedModelCommandKey(t, K::Text, QStringLiteral("x"));
+    feedModelCommandKey(t, K::Backspace, QString());
+    EXPECT_TRUE(typeAndSubmit(t, QStringLiteral("mo")));
+    // "/mo", erase back to "/m", then "cp" → "/mcp".
+    for (const QChar c : QStringLiteral("/mo")) feedModelCommandKey(t, K::Text, QString(c));
+    feedModelCommandKey(t, K::Backspace, QString());
+    EXPECT_FALSE(typeAndSubmit(t, QStringLiteral("cp")));
+}
+
+TEST(UnarmedConfirm, TrackerTabKeepsTheLine) {
+    ModelCommandTracker t;
+    for (const QChar c : QStringLiteral("/mo")) feedModelCommandKey(t, K::Text, QString(c));
+    feedModelCommandKey(t, K::Tab, QString());
+    EXPECT_TRUE(feedModelCommandKey(t, K::Enter, QString()));
+}
+
+// A cursor move or control key makes the line unknown, so it never counts.
+TEST(UnarmedConfirm, TrackerOtherKeyMakesTheLineUnknown) {
+    ModelCommandTracker t;
+    for (const QChar c : QStringLiteral("/mo")) feedModelCommandKey(t, K::Text, QString(c));
+    feedModelCommandKey(t, K::Other, QString());
+    EXPECT_FALSE(feedModelCommandKey(t, K::Enter, QString()));
+}
+
+// The window opens at a stamp and closes kUserModelCommandWindowMs later.
+TEST(UnarmedConfirm, ModelCommandWindow) {
+    using ModelAutoSwitch::modelCommandRecent;
+    using ModelAutoSwitch::kUserModelCommandWindowMs;
+    EXPECT_FALSE(modelCommandRecent(/*stampMs=*/-1, /*nowMs=*/1000));
+    EXPECT_TRUE(modelCommandRecent(1000, 1000));
+    EXPECT_TRUE(modelCommandRecent(1000, 1000 + kUserModelCommandWindowMs));
+    EXPECT_FALSE(modelCommandRecent(1000, 1001 + kUserModelCommandWindowMs));
+    EXPECT_FALSE(modelCommandRecent(5000, 1000));  // a stamp in the future
 }
 
 // ANTS-1969 — continuation after a user-typed confirm.

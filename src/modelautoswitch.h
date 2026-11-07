@@ -18,6 +18,7 @@
 
 #include "claudeintegration.h"   // ClaudeState
 #include "modelrecommender.h"    // ModelRecommender::Tier + tierName
+#include "modelcommandtracker.h" // ANTS-6437
 
 namespace ModelAutoSwitch {
 
@@ -199,14 +200,26 @@ bool shouldContinueAfterDirectSwitch(bool autoModeOn, bool activeTurn);
 // (alreadyConfirmed latch, cleared by the caller when the dialog clears).
 // ANTS-6433 — also only when Claude Code runs in the tab (claudeRunning) and no
 // permission prompt is pending (permissionPending): any output can show the
-// dialog's words, and ENTER on a permission prompt approves the command. Pure
-// so the gate is table-testable without a live terminal.
+// dialog's words, and ENTER on a permission prompt approves the command.
+// ANTS-6437 — and only when the user submitted a `/model` line in that tab
+// within kUserModelCommandWindowMs (userTypedModel), so output alone never
+// gets ENTER pressed into the composer. Pure so the gate is table-testable
+// without a live terminal.
 bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
                                     bool enabled,
                                     bool handshakeInFlight,
                                     bool alreadyConfirmed,
                                     bool claudeRunning,
-                                    bool permissionPending);
+                                    bool permissionPending,
+                                    bool userTypedModel);
+
+// ANTS-6437 — how long after the user submits `/model` a "Switch model?"
+// dialog may be auto-confirmed. The dialog renders within about a second.
+constexpr qint64 kUserModelCommandWindowMs = 10'000;   // 10 s
+
+// ANTS-6437 — true when `stampMs` (a tab's last submitted `/model`, -1 for
+// none) is no older than kUserModelCommandWindowMs at `nowMs`.
+bool modelCommandRecent(qint64 stampMs, qint64 nowMs);
 
 // ANTS-1969 — after auto-confirming a user-typed /model dialog, should Ants also
 // inject the continuation prompt so Claude Code resumes the task on its own?

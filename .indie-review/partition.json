@@ -542,6 +542,7 @@
         "src/llmdispatcher.h",
         "src/modelautoswitch.cpp",
         "src/modelautoswitch.h",
+        "src/modelcommandtracker.h",
         "src/modelnearmissledger.cpp",
         "src/modelnearmissledger.h",
         "src/modelrecommender.cpp",

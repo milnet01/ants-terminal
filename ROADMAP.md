@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6705 -->
+<!-- ants-roadmap-id-high-water: ANTS=6706 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91212,13 +91212,22 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-readability 2026-11-06 lane terminal-widget-b (possible bug, confirmed).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6437] **The user-typed `/model` auto-confirm fires only shortly after the user typed `/model` in that tab.**
+- ✅ [ANTS-6437] **The user-typed `/model` auto-confirm fires only shortly after the user typed `/model` in that tab.**
   ANTS-6433 closed the permission-prompt and bare-shell cases. Left
   open: in a Claude tab at idle with no prompt pending, output showing
   "Switch model?" and "Yes, switch to" still makes Ants press Enter
   into the composer. Remedy from the review: arm the confirm only within
   a short window after the user typed `/model` into that tab. Needs a
   signal for "user typed /model"; none exists yet.
+  Resolved 2026-11-07: TerminalWidget feeds each user key to
+  ModelAutoSwitch::feedModelCommandKey (src/modelcommandtracker.h), which
+  holds no typed text, only the line's length and where it stopped matching
+  "/mo". Enter on a matching line stamps lastModelCommandMs(); the gate's new
+  userTypedModel argument requires that stamp within
+  kUserModelCommandWindowMs (10 s). Pasted and input-method text is not seen
+  (the dialog then waits for the user). Tests: UnarmedConfirm.NoRecent* (red
+  with the condition removed, green with it) and the Tracker*/Window cases.
+  Spec: model_switch_confirm INV-7 amended, INV-10 added.
   **Layman:** Ants should only answer the model-switch question just after you asked for a switch.
   Kind: security.
   Source: review-code 2026-11-06 lane 30, remedy part 3 (follow-up to ANTS-6433).
@@ -93624,6 +93633,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: vt-parser-pty.
+
+- 📋 [ANTS-6706] **mcp-config-keys.md says the user-typed /model confirm sends no continuation prompt; it does when auto mode is on and a turn is active.**
+  docs/standards/mcp-config-keys.md, claude.auto_model_confirm_user_switch:
+  "sends only ENTER (no continuation prompt)". sendUnarmedConfirm injects
+  the continuation when shouldContinueAfterUnarmedConfirm holds
+  (model_switch_confirm spec INV-8, ANTS-1969). Rewrite the clause.
+  **Layman:** A settings document says Ants never sends a follow-up message after confirming a model switch, but sometimes it does.
+  Kind: doc-fix.
+  Source: self-found 2026-11-07 (ANTS-6437 edit).
+  Lanes: claude-session-widgets.
 
 ### Duplicate folding (2026-11-06 review)
 

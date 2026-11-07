@@ -111,7 +111,8 @@ tuning keys:
   `performModelSwitchHandshake`). Runs on the 2 s tick independently of the
   master gate; stands down while an Ants-initiated handshake owns the dialog;
   acts only in a tab running Claude Code with no permission prompt pending
-  (ANTS-6433); sends only ENTER (no continuation prompt).
+  (ANTS-6433), and only within 10 s of the user submitting `/model` in that
+  tab (ANTS-6437); sends only ENTER (no continuation prompt).
 - `claude.auto_model_debug` (bool, default false) — ANTS-1976: toggleable
   per-tick switcher trace. When true, force-enables the DebugLog `autoswitch`
   category so every gate evaluation + switch decision is logged to `debug.log`

@@ -258,13 +258,20 @@ bool shouldAutoConfirmUnarmedSwitch(bool dialogVisible,
                                     bool handshakeInFlight,
                                     bool alreadyConfirmed,
                                     bool claudeRunning,
-                                    bool permissionPending) {
+                                    bool permissionPending,
+                                    bool userTypedModel) {
     // An Ants-initiated handshake (auto-switch / chip-click / undo) already
     // polls and confirms its own dialog — never double-press over it.
     // ANTS-6433 — the dialog's words alone prove nothing; ENTER goes to Claude
     // Code only, and never onto a pending permission prompt.
+    // ANTS-6437 — and only just after the user asked for the switch.
     return dialogVisible && enabled && !handshakeInFlight && !alreadyConfirmed
-        && claudeRunning && !permissionPending;
+        && claudeRunning && !permissionPending && userTypedModel;
+}
+
+bool modelCommandRecent(qint64 stampMs, qint64 nowMs) {
+    return stampMs >= 0 && nowMs >= stampMs
+        && nowMs - stampMs <= kUserModelCommandWindowMs;
 }
 
 bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {

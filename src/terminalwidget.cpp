@@ -700,6 +700,7 @@ void TerminalWidget::sendKeyData(const QByteArray &data, const QKeyEvent *event)
     // modes, and a plain shell given Kitty codes runs them as commands.
     if (m_hasSelection) clearSelection();
     ptyWrite(data);
+    if (event) noteModelCommandKey(*event);
     if (m_broadcastCallback) m_broadcastCallback(this, event);
     // ANTS-4272 — watch-only: the key is already written. Withheld while the
     // PTY is at a password prompt, or before the first read says it is not.
@@ -708,6 +709,28 @@ void TerminalWidget::sendKeyData(const QByteArray &data, const QKeyEvent *event)
         && takeEventBudget(m_pluginKeyBudget, kPluginKeysPerSecond))
         emit pluginKey(QKeySequence(event->keyCombination())
                            .toString(QKeySequence::PortableText));
+}
+
+// ANTS-6437 — see lastModelCommandMs(). Sorts the key for the tracker; only
+// a plain key counts as typed text, Enter or Tab.
+void TerminalWidget::noteModelCommandKey(const QKeyEvent &event) {
+    using ModelAutoSwitch::TypedKey;
+    const bool plain = !(event.modifiers()
+        & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier));
+    const QString text = event.text();
+    const bool printable = !text.isEmpty()
+        && std::all_of(text.begin(), text.end(), [](QChar c) { return c.isPrint(); });
+    TypedKey kind = TypedKey::Other;
+    if ((event.key() == Qt::Key_Return || event.key() == Qt::Key_Enter) && plain)
+        kind = TypedKey::Enter;
+    else if (event.key() == Qt::Key_Backspace && plain)
+        kind = TypedKey::Backspace;
+    else if (event.key() == Qt::Key_Tab && plain)
+        kind = TypedKey::Tab;
+    else if (printable && !(event.modifiers() & (Qt::ControlModifier | Qt::AltModifier)))
+        kind = TypedKey::Text;
+    if (ModelAutoSwitch::feedModelCommandKey(m_modelCommandTracker, kind, text))
+        m_lastModelCommandMs = QDateTime::currentMSecsSinceEpoch();
 }
 
 bool TerminalWidget::startShell(const QString &workDir, const QString &shell) {

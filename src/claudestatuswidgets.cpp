@@ -148,6 +148,13 @@ ClaudeTabTracker::ShellState shellStateOf(const ClaudeTabTracker *tracker,
     return tracker->shellState(pid);
 }
 
+// ANTS-6437 — whether the user submitted `/model` in this tab within
+// ModelAutoSwitch::kUserModelCommandWindowMs; false for no tab.
+bool userTypedModelRecently(const TerminalWidget *term) {
+    return term && ModelAutoSwitch::modelCommandRecent(
+        term->lastModelCommandMs(), QDateTime::currentMSecsSinceEpoch());
+}
+
 // ANTS-1974 — the recommender's home/baseline tier, read from config and mapped
 // to a ModelRecommender::Tier. Config already clamps home up to the floor and
 // normalises unrecognised strings to "sonnet" (see Config::claudeAutoModel).
@@ -2302,7 +2309,8 @@ void ClaudeStatusBarController::maybeAutoConfirmUserModelSwitch() {
     if (!ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed,
-            ss.state != ClaudeState::NotRunning, ss.awaitingInput)) {
+            ss.state != ClaudeState::NotRunning, ss.awaitingInput,
+            userTypedModelRecently(focused))) {
         if (!visible) {
             m_unarmedSwitchConfirmed = false;  // dialog gone — re-arm
             // ANTS-1975 — also clear the direct-switch latch once the banner
@@ -2352,7 +2360,8 @@ void ClaudeStatusBarController::pollUnarmedSwitchConfirm(int attempt) {
     if (ModelAutoSwitch::shouldAutoConfirmUnarmedSwitch(
             visible, enabled, m_modelHandshakeInFlight,
             m_unarmedSwitchConfirmed,
-            ss.state != ClaudeState::NotRunning, ss.awaitingInput)) {
+            ss.state != ClaudeState::NotRunning, ss.awaitingInput,
+            userTypedModelRecently(focused))) {
         sendUnarmedConfirm(focused);
         m_unarmedSwitchConfirmed = true;
         m_unarmedPollActive = false;
