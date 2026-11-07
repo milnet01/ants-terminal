@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6703 -->
+<!-- ants-roadmap-id-high-water: ANTS=6705 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91002,6 +91002,32 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A CI warning points at the exact line it is about.
   Kind: enhancement.
   Source: LottoTracker_Ants_MCP_Feedback.md 2026-11-06.
+  Lanes: mcp.
+
+- 📋 [ANTS-6704] **ci_report's runner_latest can be declined per project, so a project that tracks *-latest on purpose stops seeing it.**
+  Contact_List tracks the latest runner image on purpose (DESIGN.md
+  § 3) and has no container parity leg, yet runner_latest fires on all
+  7 jobs every run. ci-gate's cache row honours a 'declined' comment;
+  runner_latest has no equivalent. Fix: honour a recorded decline, or
+  raise runner_latest only where a container parity leg exists.
+  Hot reload: ci_report is served by ants-mcpd; a rebuild reaches
+  clients on their next /mcp reconnect.
+  **Layman:** A CI check keeps repeating advice that a project has already decided not to follow.
+  Kind: enhancement.
+  Source: contact-list feedback 2026-11-06.
+  Lanes: mcp.
+
+- 📋 [ANTS-6705] **ci_report's description states queue_wait's threshold and what it measures.**
+  queue_wait fires when a job's MEDIAN wait from the job's own
+  created_at to started_at exceeds 5 minutes (kQueueWaitSecs,
+  src/cireport.cpp). Contact_List saw two runs wait 8-16 minutes
+  measured from RUN creation with no finding: a median over many fast
+  runs, and job-level created_at, both hide them. Fix: state both in
+  the description; consider an outlier finding for a single long wait.
+  Hot reload: ants-mcpd rebuild, then /mcp reconnect.
+  **Layman:** The CI report never says how long a wait must be before it warns.
+  Kind: doc-fix.
+  Source: contact-list feedback 2026-11-06.
   Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-11-06 triage
