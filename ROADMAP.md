@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6707 -->
+<!-- ants-roadmap-id-high-water: ANTS=6710 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -29370,7 +29370,6 @@ for the rotation contract.
   stale claims (the caller list, and the existence/size stat as a candidate) are
   corrected there.
 
-
 - ✅ [ANTS-4080] **spec_lint cannot see the global spec-format standard, so a project without a local copy is linted against nothing.**
   `~/.claude/standards/spec-format.md` became authoritative on 2026-08-08,
   with projects carrying deltas only. A project with no local copy therefore
@@ -33702,8 +33701,8 @@ for the rotation contract.
   recommended, not taken unilaterally.
   **Layman:** Saving the roadmap and reading it back adds one stray line to 363 items — once each, not repeatedly.
   Kind: fix.
-  Lanes: roadmap-store, mcp.
   Source: in-session-2026-08-13 (ANTS-4065 Phase D3 acceptance run).
+  Lanes: roadmap-store, mcp.
 
 - ✅ [ANTS-4412] **Roadmap dialog — the filter bar is three dense rows of checkboxes and needs collapsing.**
   User request 2026-08-15, with a screenshot of the "Next" tab. The
@@ -70998,6 +70997,18 @@ minor tag (next: pre-0.8.0).
   Kind: feature.
   Source: user-request-2026-06-25.
 
+- 📋 [ANTS-6708] **Preferences installs the hook pack, not only the two status-bar and git-context hooks.**
+  After a reinstall, ~/.claude/settings.json still named the ants-*.sh hook pack, but the scripts were gone from ~/.claude/hooks/, and Preferences could not restore them: only tools/install-hooks.sh copies them. The status check should flag a hook entry whose script is missing, and the install button should put the pack back.
+  **Layman:** The Preferences hook button now restores every Ants hook, so a reinstall leaves none missing.
+  Kind: fix.
+  Source: user report 2026-11-07.
+
+- 📋 [ANTS-6709] **Connecting the MCP from Preferences uses an ants-mcpd that can read the roadmap store.**
+  The terminal launch.sh runs has no ants-mcpd beside it, so mcpLaunchCommand falls back to PATH: /usr/bin/ants-mcpd from the 0.7.115 package, which refuses the store as schema 5 > 4. It should prefer the build launch.sh copied from (the binary ants-mcpd.path names), or say the found one is too old.
+  **Layman:** Connecting the MCP from Preferences no longer picks an old copy that cannot open your roadmap.
+  Kind: fix.
+  Source: user report 2026-11-07.
+
 ### 🎨 Claude Code companion offload (user request 2026-04-30)
 
 > **Strategic theme.** Make Ants Terminal the recommended
@@ -88433,7 +88444,8 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of Deedbox session, 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the **Theme:** line by hand.**
+- 📋 [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the**
+  Theme:** line by hand.**
   cut-release adds a **Theme:** line under the new version heading on
   every cut. A `theme` argument on op:"release" would write it in the
   same edit.
@@ -90194,7 +90206,8 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: cc-feedback-2026-10-21 demoreel.
 
-- ✅ [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (- **INV-N — title.**).**
+- ✅ [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (-**
+  INV-N — title.**).**
   Reported by finbreak (2026-10-22). docs/specs/FIBR-0097-transactions-table-model.md
   holds INV-1 to INV-7 as bullets opening `- **INV-N — <title>.**`.
   spec_lint on that file returns invariants_found: 0 and skips both
@@ -92159,6 +92172,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: review-fix.
   Source: review-readability 2026-11-06, lane 21-claude-session-widgets-b (Info).
   Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6710] **The roadmap render keeps bold text inside a headline on one line.**
+  A roadmap_log append on 2026-11-07 re-rendered ANTS-5522 ("adds the **Theme:** line") and ANTS-6046 ("(- **INV-N") by moving the inner ** to the line end and wrapping, which breaks their bold.
+  **Layman:** Roadmap headlines that contain bold words no longer get split and garbled when the file is rewritten.
+  Kind: fix.
+  Source: user report 2026-11-07.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 
@@ -100719,7 +100738,7 @@ here.)
   Lanes: auditdialog, auditengine, mainwindow (Project Audit
   menu wiring), claudeintegration (sidecar-JSON consumption),
   remotecontrol (audit-history-query IPC verb), docs/standards/.
-  Layman: Show the history of code-quality checks over time and across projects, instead of only the most recent run.
+  **Layman:** Show the history of code-quality checks over time and across projects, instead of only the most recent run.
   Kind: implement.
   Source: user-2026-05-02.
 
