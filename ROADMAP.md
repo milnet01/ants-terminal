@@ -71582,6 +71582,10 @@ they are one change.
   heap per tab (was 614 MiB on 2026-11-06), 2,215 B per line, sizeof(Cell)
   28. Left: the rule this item sets, a per-tab scrollback ceiling the
   default configuration honours, made checkable.
+  User decision 2026-11-07: add a per-tab scrollback memory cap. Each
+  tab drops its oldest history lines once its history passes a size limit,
+  default 256 MiB, set in settings and applied without a restart; a test
+  checks it.
   **Layman:** Ants keeps a lot of your scrolled-back text in memory, and each character costs far more than it needs to — this is the plan to shrink that.
   Kind: perf.
   Source: user-request-2026-08-19.
