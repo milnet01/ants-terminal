@@ -21,6 +21,8 @@ on its next `/mcp` reconnect; no terminal relaunch.
   `<folder>/<session>/subagents/agent-<id>.jsonl`. `"self"` reads the
   newest transcript among the sessions and their helper agents (ANTS-6189).
 - `top` (optional, default 8, 1 to 50) caps each list.
+- `include_agents` (optional, default false) adds the session's helper
+  agents' totals (INV-16).
 
 ## Invariants
 
@@ -62,5 +64,46 @@ on its next `/mcp` reconnect; no terminal relaunch.
   transcript is the caller's when the caller is the one writing. With no
   `session_id`, helper agents are never read.
   *Test:* `SessionCost.Inv9SelfIsTheNewestSessionOrHelper`.
+
+### Rent by tool, server and hook (ANTS-6697)
+
+**Rent** is bytes held times the requests that carry them. A tool's
+**server** is `<server>` in `mcp__<server>__<verb>`, and `builtin` for any
+other name. An item arriving before request *p* is held from *p* to the
+last request before the next compaction, or to the last request.
+
+- **INV-10** — a request whose context is under half the previous
+  request's starts a new segment: a compaction. `compactions` counts them.
+  The rule is inferred from token counts: no transcript on disk on
+  2026-11-07 carried an explicit compaction marker. Broken by holding an
+  item past a compaction. *Test:* `SessionCost.Inv10RentStopsAtACompaction`.
+- **INV-11** — `tools` lists each tool that returned a result, with
+  `name`, `server`, `calls`, `result_bytes` and `rent_bytes`, largest rent
+  first, capped by `top`. *Test:* `SessionCost.Inv11ToolsAndServers`.
+- **INV-12** — each request rents the tool definitions of the newest
+  `api-request-shape` line before it. `startup.servers` gives each server's
+  `tool_count` and `bytes` in the first shape; `startup.loaded_later` gives
+  the same for tools named in a later shape and absent from the first.
+  *Test:* `SessionCost.Inv11ToolsAndServers`.
+- **INV-13** — `attachment` lines of type `hook_success` or
+  `hook_additional_context` are hook text, and `deferred_tools_delta` lines
+  are the deferred-tool list, each sized by its `rendered` content; a line
+  with no rendered text is skipped.
+  `hooks` gives `count`, `bytes`, `rent_bytes` and `by_hook` (per
+  `hookName`, capped by `top`); `deferred_tools` gives `count`, `bytes`
+  and `rent_bytes`. Each added name in a deferred-tool list (its length
+  plus one) rents for its server. *Test:* `SessionCost.Inv11ToolsAndServers`.
+- **INV-14** — `servers` lists each server with `calls`, `result_bytes`,
+  `result_rent_bytes`, `definition_rent_bytes`, `deferred_name_rent_bytes`
+  and their sum `rent_bytes`, largest first, capped by `top`. `rent` sums
+  `results`, `definitions`, `hooks` and `deferred_tools` into `total`.
+  *Test:* `SessionCost.Inv11ToolsAndServers`.
+- **INV-15** — a transcript with no `api-request-shape` line has
+  `startup: null`, zero definition rent, and a `notices` entry saying so.
+  *Test:* `SessionCost.Inv15NoShapeSaysWhy`.
+- **INV-16** — `include_agents: true` on a session (not a helper) adds
+  `agents`: the `count` of its helper transcripts and their summed
+  `requests`, `totals` and `rent_total`. *Test:*
+  `SessionCost.Inv16IncludeAgentsSumsHelpers`.
 
 Label: `features;fast`.

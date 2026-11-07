@@ -26,10 +26,12 @@ QString folderNameFor(const QString &cwd);
 // test passes its own list.
 QStringList projectsDirs();
 
-// The whole report for one transcript (INV-1 to INV-3). `top` caps each list.
+// The whole report for one transcript (INV-1 to INV-3, INV-10 to INV-15).
+// `top` caps each list.
 QJsonObject analyse(const QString &transcriptPath, int top);
 
-// Resolves the transcript from cwd and args (INV-4, INV-5), then analyse().
+// Resolves the transcript from cwd and args (INV-4, INV-5), then analyse();
+// `include_agents` adds the helper agents (INV-16).
 // `projectsDirs` are tried in order; `nowMs` dates "active".
 QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
                 const QJsonObject &args, qint64 nowMs);

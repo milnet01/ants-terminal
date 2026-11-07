@@ -259,6 +259,171 @@ TEST(SessionCost, Inv9SelfIsTheNewestSessionOrHelper) {
     EXPECT_EQ(r.value("session_id").toString(), "main1234");
 }
 
+// INV-16
+TEST(SessionCost, Inv16IncludeAgentsSumsHelpers) {
+    HelperFixture f;
+    ASSERT_TRUE(f.write(60, 60));
+    const auto runWith = [&f](const QJsonObject &args) {
+        return SessionCost::run({f.dir.path()}, f.cwd, args, f.now.toMSecsSinceEpoch());
+    };
+    const QJsonObject r = runWith({{"session_id", "main1234"}, {"include_agents", true}});
+    ASSERT_TRUE(r.value("ok").toBool()) << r.value("error").toString().toStdString();
+    const QJsonObject agents = r.value("agents").toObject();
+    EXPECT_EQ(agents.value("count").toInt(), 1);
+    EXPECT_EQ(agents.value("requests").toInt(), 2);
+    EXPECT_EQ(agents.value("totals").toObject().value("cache_read").toInt(), 400);
+    EXPECT_TRUE(agents.contains("rent_total"));
+    EXPECT_FALSE(runWith({{"session_id", "main1234"}}).contains("agents"));
+    EXPECT_FALSE(runWith({{"session_id", "agent-a7487c40babb"}, {"include_agents", true}})
+                     .contains("agents")) << "a helper has no helpers of its own";
+}
+
+// ANTS-6697 — rent by tool, server and hook.
+namespace {
+
+QJsonObject toolDef(const QString &name, int descBytes) {
+    return QJsonObject{{"name", name}, {"description", QString(descBytes, 'd')}};
+}
+qint64 defBytes(const QJsonObject &def) {
+    return QJsonDocument(def).toJson(QJsonDocument::Compact).size();
+}
+QJsonObject shapeLine(const QJsonArray &tools) {
+    return QJsonObject{{"type", "api-request-shape"},
+                       {"shape", QJsonObject{{"system", QJsonArray{}}, {"tools", tools}}}};
+}
+QJsonObject attachment(const QJsonObject &a, int renderedBytes) {
+    return QJsonObject{
+        {"type", "attachment"}, {"attachment", a}, {"renderedRole", "system"},
+        {"rendered", QJsonArray{QJsonObject{{"content", QString(renderedBytes, 'h')}}}}};
+}
+QJsonObject findRow(const QJsonArray &rows, const QString &key, const QString &value) {
+    for (const auto &v : rows)
+        if (v.toObject().value(key).toString() == value) return v.toObject();
+    return {};
+}
+
+// Five requests; the fourth's context (400) is under half the third's
+// (1300), so requests 1-3 and 4-5 are two segments.
+struct RentFixture {
+    QTemporaryDir dir;
+    QString path = dir.filePath("s.jsonl");
+    QJsonObject a = toolDef("mcp__ants__a", 100);
+    QJsonObject read = toolDef("Read", 50);
+    QJsonObject b = toolDef("mcp__ants__b", 70);
+
+    bool write() {
+        QByteArray t;
+        t += line(shapeLine(QJsonArray{a, read}));
+        t += line(attachment(QJsonObject{{"type", "hook_additional_context"},
+                                         {"hookName", "SessionStart"}}, 200));
+        t += line(attachment(QJsonObject{{"type", "deferred_tools_delta"},
+                                         {"addedNames", QJsonArray{"mcp__ants__b", "Cron"}}},
+                             40));
+        t += line(assistant("m1", 0, 1000, 0, 1,
+                            QJsonArray{toolUse("u1", "mcp__ants__a"), toolUse("u2", "Read")}));
+        t += line(toolResult("u1", QString(300, 'x')));
+        t += line(toolResult("u2", QString(100, 'x')));
+        t += line(shapeLine(QJsonArray{a, read, b}));
+        t += line(assistant("m2", 0, 1200, 0, 1, QJsonArray{toolUse("u3", "mcp__ants__a")}));
+        t += line(toolResult("u3", QString(50, 'x')));
+        t += line(assistant("m3", 0, 1300, 0, 1));
+        t += line(assistant("m4", 0, 400, 0, 1));
+        t += line(assistant("m5", 0, 500, 0, 1));
+        return writeFile(path, t);
+    }
+};
+
+}  // namespace
+
+// INV-10
+TEST(SessionCost, Inv10RentStopsAtACompaction) {
+    RentFixture f;
+    ASSERT_TRUE(f.write());
+    const QJsonObject r = SessionCost::analyse(f.path, 8);
+    EXPECT_EQ(r.value("compactions").toInt(), 1);
+    // The hook text arrives before request 1 and is held for requests 1-3.
+    EXPECT_EQ(r.value("hooks").toObject().value("rent_bytes").toInt(), 200 * 3);
+    // u3 arrives before request 3, the segment's last.
+    const QJsonObject a = findRow(r.value("tools").toArray(), "name", "mcp__ants__a");
+    EXPECT_EQ(a.value("rent_bytes").toInt(), 300 * 2 + 50 * 1);
+}
+
+// INV-11 to INV-14
+TEST(SessionCost, Inv11ToolsAndServers) {
+    RentFixture f;
+    ASSERT_TRUE(f.write());
+    const QJsonObject r = SessionCost::analyse(f.path, 8);
+
+    const QJsonArray tools = r.value("tools").toArray();
+    ASSERT_EQ(tools.size(), 2);
+    const QJsonObject a = tools.at(0).toObject();  // largest rent first
+    EXPECT_EQ(a.value("name").toString(), "mcp__ants__a");
+    EXPECT_EQ(a.value("server").toString(), "ants");
+    EXPECT_EQ(a.value("calls").toInt(), 2);
+    EXPECT_EQ(a.value("result_bytes").toInt(), 350);
+    const QJsonObject rd = tools.at(1).toObject();
+    EXPECT_EQ(rd.value("server").toString(), "builtin");
+    EXPECT_EQ(rd.value("rent_bytes").toInt(), 100 * 2);
+    EXPECT_EQ(SessionCost::analyse(f.path, 1).value("tools").toArray().size(), 1);
+
+    const QJsonObject su = r.value("startup").toObject();
+    const QJsonObject suAnts = findRow(su.value("servers").toArray(), "server", "ants");
+    EXPECT_EQ(suAnts.value("tool_count").toInt(), 1);
+    EXPECT_EQ(suAnts.value("bytes").toInt(), defBytes(f.a));
+    const QJsonArray later = su.value("loaded_later").toArray();
+    ASSERT_EQ(later.size(), 1);
+    EXPECT_EQ(later.at(0).toObject().value("server").toString(), "ants");
+    EXPECT_EQ(later.at(0).toObject().value("tool_count").toInt(), 1);
+    EXPECT_EQ(later.at(0).toObject().value("bytes").toInt(), defBytes(f.b));
+
+    const QJsonObject hooks = r.value("hooks").toObject();
+    EXPECT_EQ(hooks.value("count").toInt(), 1);
+    EXPECT_EQ(hooks.value("bytes").toInt(), 200);
+    EXPECT_EQ(findRow(hooks.value("by_hook").toArray(), "hook", "SessionStart")
+                  .value("rent_bytes").toInt(), 600);
+    const QJsonObject dt = r.value("deferred_tools").toObject();
+    EXPECT_EQ(dt.value("count").toInt(), 1);
+    EXPECT_EQ(dt.value("bytes").toInt(), 40);
+    EXPECT_EQ(dt.value("rent_bytes").toInt(), 40 * 3);
+
+    // Request 1 carries the first shape; requests 2-5 the second.
+    const qint64 antsDefs = defBytes(f.a) * 5 + defBytes(f.b) * 4;
+    const qint64 builtinDefs = defBytes(f.read) * 5;
+    const QJsonObject ants = findRow(r.value("servers").toArray(), "server", "ants");
+    EXPECT_EQ(ants.value("calls").toInt(), 2);
+    EXPECT_EQ(ants.value("result_bytes").toInt(), 350);
+    EXPECT_EQ(ants.value("result_rent_bytes").toInt(), 650);
+    EXPECT_EQ(ants.value("definition_rent_bytes").toInt(), antsDefs);
+    EXPECT_EQ(ants.value("deferred_name_rent_bytes").toInt(), 13 * 3);  // "mcp__ants__b\n"
+    EXPECT_EQ(ants.value("rent_bytes").toInt(), 650 + antsDefs + 39);
+    const QJsonObject builtin = findRow(r.value("servers").toArray(), "server", "builtin");
+    EXPECT_EQ(builtin.value("deferred_name_rent_bytes").toInt(), 5 * 3);  // "Cron\n"
+
+    const QJsonObject rent = r.value("rent").toObject();
+    EXPECT_EQ(rent.value("results").toInt(), 850);
+    EXPECT_EQ(rent.value("definitions").toInt(), antsDefs + builtinDefs);
+    EXPECT_EQ(rent.value("hooks").toInt(), 600);
+    EXPECT_EQ(rent.value("deferred_tools").toInt(), 120);
+    EXPECT_EQ(rent.value("total").toInt(), 850 + antsDefs + builtinDefs + 600 + 120);
+}
+
+// INV-15
+TEST(SessionCost, Inv15NoShapeSaysWhy) {
+    QTemporaryDir dir;
+    const QString bare = dir.filePath("bare.jsonl");
+    ASSERT_TRUE(writeFile(bare, line(assistant("m1", 1, 100, 0, 1))));
+    const QJsonObject r = SessionCost::analyse(bare, 8);
+    EXPECT_TRUE(r.value("startup").isNull());
+    EXPECT_EQ(r.value("rent").toObject().value("definitions").toInt(), 0);
+    const QJsonArray notices = r.value("notices").toArray();
+    ASSERT_EQ(notices.size(), 1);
+    EXPECT_TRUE(notices.at(0).toString().contains("api-request-shape"));
+
+    RentFixture f;
+    ASSERT_TRUE(f.write());
+    EXPECT_FALSE(SessionCost::analyse(f.path, 8).contains("notices"));
+}
+
 TEST(SessionCost, Inv6Registration) {
     const auto slurp = [](const char *rel) {
         std::ifstream f(std::string(ANTS_SRC_DIR) + rel);

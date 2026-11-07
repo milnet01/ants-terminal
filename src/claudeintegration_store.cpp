@@ -2540,7 +2540,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "payload (system prompt and tool definitions, in bytes, "
                         "largest tools first) and the largest items the session "
                         "holds (tool results by tool, text blocks; bytes). Images "
-                        "are counted, not sized. Without session_id it reads the "
+                        "are counted, not sized. Also rent (bytes x requests held) "
+                        "per tool, MCP server and hook. Without session_id it reads the "
                         "newest transcript for caller_cwd and says "
                         "session_inferred. session_id \"agent-<id>\" reads a helper "
                         "agent's transcript; \"self\" reads the newest session or "
@@ -2573,6 +2574,15 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         p["default"] = 8;
                         p["description"] = QStringLiteral("Cap on each list.");
                         props["top"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "Add the session's helper agents' summed requests, "
+                            "token totals and rent (ANTS-6697).");
+                        props["include_agents"] = p;
                     }
                     schema["properties"] = props;
                     QJsonArray req;

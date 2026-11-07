@@ -25,7 +25,7 @@ QJsonDocument RemoteControl::cmdSessionCost(const QJsonObject &req) {
         return QJsonDocument(refusal);
 
     QJsonObject args;
-    for (const char *k : {"session_id", "top"}) {
+    for (const char *k : {"session_id", "top", "include_agents"}) {
         const QString key = QLatin1String(k);
         if (req.contains(key))
             args[key] = req.value(key);

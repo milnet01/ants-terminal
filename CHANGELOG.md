@@ -14,6 +14,14 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_cost` shows what each tool, MCP server and hook costs a session** (ANTS-6697)
+  The reply now gives rent (bytes times the requests that carry them) per
+  tool and per MCP server, for tool results, tool definitions and names in
+  the deferred-tool list, plus hook text and inferred compactions. Start-up
+  is split by server, and tools loaded later are listed. `include_agents`
+  adds the session's helper agents. A transcript with no start-up record
+  says so.
+
 - **ci_report reports `alternating`: a job that turns red after passing on the commit before, three times or more on one branch (ANTS-6415).**
 
 - **ci_report's `budget_trend` names the step that slowed most, the run where the rise starts (`rise_from`), and the runs it compared against (`baseline_runs`) (ANTS-6419).**

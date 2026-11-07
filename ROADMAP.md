@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6706 -->
+<!-- ants-roadmap-id-high-water: ANTS=6707 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -71726,7 +71726,7 @@ they are one change.
   Source: cold-eyes-review-2026-04-30.
   Lanes: scripts, docs/journal, ROADMAP.
 
-- 📋 [ANTS-6697] **session_cost: report per-tool and per-server totals and each session's Ants rent.**
+- ✅ [ANTS-6697] **session_cost: report per-tool and per-server totals and each session's Ants rent.**
   The ANTS-1120 read (docs/journal/ANTS-1120-long-sessions-2026-11-06.md)
   needed a script beside session_cost. Gaps: no per-tool call count or
   total bytes; start-up shows only the first request's tools, with no
@@ -71735,6 +71735,16 @@ they are one change.
   x requests) or compaction; transcripts without an api-request-shape line
   return startup:null; helper-agent transcripts are not added to their
   session.
+  Resolved 2026-11-07: session_cost adds tools, servers, hooks,
+  deferred_tools, rent, compactions, startup.servers, startup.loaded_later,
+  notices and include_agents (spec tests/features/session_cost INV-10 to
+  INV-16). Tool-definition rent uses the request shape in force at each
+  request; later shapes carry the tools ToolSearch loaded. Compaction is
+  inferred (context under half the previous request's): no transcript on
+  disk held an explicit marker. Not built: attributing hook text to a
+  server (a hook line names its event, not its owner). Checked live on
+  Ants_Terminal/3e2dc307: 431 requests, Ants definitions plus deferred
+  names 22.6 MB rent.
   **Layman:** The tool that reports what a Claude session cost should also say how much of that cost came from Ants.
   Kind: enhancement.
   Source: ANTS-1120 long-session read 2026-11-06.
@@ -91093,6 +91103,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: claude-config session message 2026-11-06.
   Lanes: mcp-ci.
+
+- 💭 [ANTS-6707] **session_cost attributes hook text to the tool or project that owns the hook.**
+  ANTS-6697 reports hook rent per hookName (the event, such as
+  UserPromptSubmit). A hook_success line also carries `command`; its
+  script path could map a hook to an owner (Ants, ~/.claude). Only
+  hook_success has it; hook_additional_context does not, so the mapping
+  would be partial. Decide whether a partial owner split is worth it.
+  **Layman:** The cost report could say how much of the hook text a session carries comes from Ants.
+  Kind: enhancement.
+  Source: self-found 2026-11-07 (ANTS-6697 build).
+  Lanes: mcp-meta.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

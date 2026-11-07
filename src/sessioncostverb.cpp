@@ -72,6 +72,98 @@ QJsonObject startupFrom(const QJsonObject &shape, int top) {
                        {QStringLiteral("largest_tools"), largest}};
 }
 
+
+// ANTS-6697 — `mcp__<server>__<verb>` → `<server>`; any other name → builtin.
+QString serverOf(const QString &tool) {
+    if (tool.startsWith(QLatin1String("mcp__"))) {
+        const qsizetype end = tool.indexOf(QLatin1String("__"), 5);
+        if (end > 5)
+            return tool.mid(5, end - 5);
+    }
+    return QStringLiteral("builtin");
+}
+
+// An attachment's `rendered` text: an array of {content} blocks, where a
+// content is a string or an array of text blocks.
+qint64 renderedBytes(const QJsonValue &rendered) {
+    qint64 total = 0;
+    int images = 0;
+    for (const auto &b : rendered.toArray())
+        total += contentBytes(b.toObject().value(QStringLiteral("content")), &images);
+    return total;
+}
+
+// One shape's tool definitions: bytes per tool, and per server.
+struct Shape {
+    QHash<QString, qint64> toolBytes;
+    QHash<QString, qint64> serverBytes;
+};
+
+Shape shapeFrom(const QJsonObject &shape) {
+    Shape out;
+    for (const auto &t : shape.value(QStringLiteral("tools")).toArray()) {
+        const QJsonObject o = t.toObject();
+        const QString name = o.value(QStringLiteral("name")).toString();
+        const qint64 n = QJsonDocument(o).toJson(QJsonDocument::Compact).size();
+        out.toolBytes.insert(name, n);
+        out.serverBytes[serverOf(name)] += n;
+    }
+    return out;
+}
+
+// Bytes arriving before request `request` (1-based), with a label.
+struct Held {
+    QString label;
+    qint64 bytes = 0;
+    int request = 0;
+};
+
+// Rent sums, per tool, server and hook (ANTS-6697).
+struct ToolRow {
+    int calls = 0;
+    qint64 resultBytes = 0, rent = 0;
+};
+struct ServerRow {
+    int calls = 0;
+    qint64 resultBytes = 0, resultRent = 0, definitionRent = 0, nameRent = 0;
+    qint64 total() const { return resultRent + definitionRent + nameRent; }
+};
+struct HookRow {
+    int count = 0;
+    qint64 bytes = 0, rent = 0;
+};
+
+// Rows of a hash as a JSON array, largest `key` first, ties by name.
+template <typename Row, typename Key, typename Fill>
+QJsonArray rankedRows(const QHash<QString, Row> &rows, int top, Key key, Fill fill) {
+    QStringList names = rows.keys();
+    std::sort(names.begin(), names.end(), [&](const QString &a, const QString &b) {
+        const qint64 ka = key(rows.value(a)), kb = key(rows.value(b));
+        return ka != kb ? ka > kb : a < b;
+    });
+    QJsonArray out;
+    for (qsizetype i = 0; i < names.size() && i < top; ++i)
+        out.append(fill(names.at(i), rows.value(names.at(i))));
+    return out;
+}
+
+// Server rows of a {server: bytes} sum, as {server, tool_count, bytes}.
+QJsonArray serverTable(const QHash<QString, qint64> &toolBytes) {
+    QHash<QString, std::pair<int, qint64>> by;
+    for (auto it = toolBytes.cbegin(); it != toolBytes.cend(); ++it) {
+        auto &row = by[serverOf(it.key())];
+        ++row.first;
+        row.second += it.value();
+    }
+    QStringList names = by.keys();
+    std::sort(names.begin(), names.end());
+    QJsonArray out;
+    for (const QString &n : names)
+        out.append(QJsonObject{{QStringLiteral("server"), n},
+                               {QStringLiteral("tool_count"), by.value(n).first},
+                               {QStringLiteral("bytes"), by.value(n).second}});
+    return out;
+}
 }  // namespace
 
 QString folderNameFor(const QString &cwd) {
@@ -113,6 +205,12 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
     qint64 in = 0, read = 0, write = 0, out = 0;
     qint64 first = -1, current = 0, peak = 0;
     int requests = 0, images = 0;
+    // ANTS-6697 — what rent needs: each request's context and shape, and the
+    // hook text, deferred-tool lists and their added names as they arrive.
+    std::vector<qint64> contexts;
+    std::vector<int> requestShape;  // index into shapes, -1 before any
+    std::vector<Shape> shapes;
+    std::vector<Held> hooks, deferredLists, deferredNames;
 
     while (!f.atEnd()) {
         const QJsonObject e = QJsonDocument::fromJson(f.readLine()).object();
@@ -120,8 +218,32 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
             continue;
         const QString type = e.value(QStringLiteral("type")).toString();
         if (type == QLatin1String("api-request-shape")) {
-            if (startup.isNull())
-                startup = startupFrom(e.value(QStringLiteral("shape")).toObject(), top);
+            const QJsonObject shape = e.value(QStringLiteral("shape")).toObject();
+            shapes.push_back(shapeFrom(shape));
+            if (startup.isNull()) {
+                QJsonObject su = startupFrom(shape, top);
+                su[QStringLiteral("servers")] = serverTable(shapes.back().toolBytes);
+                startup = su;
+            }
+            continue;
+        }
+        if (type == QLatin1String("attachment")) {
+            const QJsonObject at = e.value(QStringLiteral("attachment")).toObject();
+            const QString kind = at.value(QStringLiteral("type")).toString();
+            const qint64 n = renderedBytes(e.value(QStringLiteral("rendered")));
+            if (n <= 0)
+                continue;
+            if (kind == QLatin1String("hook_success")
+                || kind == QLatin1String("hook_additional_context")) {
+                hooks.push_back({at.value(QStringLiteral("hookName")).toString(), n,
+                                 requests + 1});
+            } else if (kind == QLatin1String("deferred_tools_delta")) {
+                deferredLists.push_back({{}, n, requests + 1});
+                for (const auto &name : at.value(QStringLiteral("addedNames")).toArray()) {
+                    const QString s = name.toString();
+                    deferredNames.push_back({serverOf(s), s.toUtf8().size() + 1, requests + 1});
+                }
+            }
             continue;
         }
         const QJsonObject m = e.value(QStringLiteral("message")).toObject();
@@ -152,6 +274,8 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                 first = current;
             peak = std::max(peak, current);
             ++requests;
+            contexts.push_back(current);
+            requestShape.push_back(static_cast<int>(shapes.size()) - 1);
             continue;
         }
         if (type != QLatin1String("user"))
@@ -181,6 +305,83 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
         }
     }
 
+    // INV-10 — a request under half the previous one's context starts a new
+    // segment. segmentEnd[p] is the last request held with request p.
+    const auto startsSegment = [&contexts](int p) {
+        return p > 1 && 2 * contexts[p - 1] < contexts[p - 2];
+    };
+    int compactions = 0;
+    for (int p = 2; p <= requests; ++p)
+        compactions += startsSegment(p) ? 1 : 0;
+    std::vector<int> segmentEnd(requests + 1, requests);
+    for (int p = requests - 1; p >= 1; --p)
+        segmentEnd[p] = startsSegment(p + 1) ? p : segmentEnd[p + 1];
+    const auto rentOf = [&](qint64 bytes, int request) -> qint64 {
+        return request >= 1 && request <= requests
+                   ? bytes * (segmentEnd[request] - request + 1) : 0;
+    };
+
+    QHash<QString, ToolRow> toolRows;
+    QHash<QString, ServerRow> serverRows;
+    qint64 resultRent = 0;
+    for (const Item &it : items) {
+        if (it.kind != QLatin1String("tool_result"))
+            continue;
+        const qint64 rent = rentOf(it.bytes, it.request);
+        resultRent += rent;
+        ToolRow &t = toolRows[it.tool];
+        ++t.calls;
+        t.resultBytes += it.bytes;
+        t.rent += rent;
+        ServerRow &sv = serverRows[serverOf(it.tool)];
+        ++sv.calls;
+        sv.resultBytes += it.bytes;
+        sv.resultRent += rent;
+    }
+    // INV-12 — each request rents the definitions of the shape in force.
+    qint64 definitionRent = 0;
+    for (const int s : requestShape) {
+        if (s < 0)
+            continue;
+        const QHash<QString, qint64> &by = shapes[s].serverBytes;
+        for (auto it = by.cbegin(); it != by.cend(); ++it) {
+            serverRows[it.key()].definitionRent += it.value();
+            definitionRent += it.value();
+        }
+    }
+    // INV-13 — hook text, deferred-tool lists and their added names.
+    QHash<QString, HookRow> hookRows;
+    qint64 hookBytes = 0, hookRent = 0;
+    for (const Held &h : hooks) {
+        const qint64 rent = rentOf(h.bytes, h.request);
+        HookRow &row = hookRows[h.label];
+        ++row.count;
+        row.bytes += h.bytes;
+        row.rent += rent;
+        hookBytes += h.bytes;
+        hookRent += rent;
+    }
+    qint64 listBytes = 0, listRent = 0;
+    for (const Held &d : deferredLists) {
+        listBytes += d.bytes;
+        listRent += rentOf(d.bytes, d.request);
+    }
+    for (const Held &d : deferredNames)
+        serverRows[d.label].nameRent += rentOf(d.bytes, d.request);
+
+    // INV-12 — tools a later shape names and the first does not, each sized
+    // where it first appears.
+    if (!startup.isNull()) {
+        QHash<QString, qint64> later;
+        for (size_t i = 1; i < shapes.size(); ++i)
+            for (auto it = shapes[i].toolBytes.cbegin(); it != shapes[i].toolBytes.cend(); ++it)
+                if (!shapes.front().toolBytes.contains(it.key()) && !later.contains(it.key()))
+                    later.insert(it.key(), it.value());
+        QJsonObject su = startup.toObject();
+        su[QStringLiteral("loaded_later")] = serverTable(later);
+        startup = su;
+    }
+
     std::stable_sort(items.begin(), items.end(),
                      [](const Item &a, const Item &b) { return a.bytes > b.bytes; });
     QJsonArray largest;
@@ -193,7 +394,36 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
         largest.append(o);
     }
 
-    return QJsonObject{
+    const QJsonArray tools = rankedRows(
+        toolRows, top, [](const ToolRow &r) { return r.rent; },
+        [](const QString &name, const ToolRow &r) {
+            return QJsonObject{{QStringLiteral("name"), name},
+                               {QStringLiteral("server"), serverOf(name)},
+                               {QStringLiteral("calls"), r.calls},
+                               {QStringLiteral("result_bytes"), r.resultBytes},
+                               {QStringLiteral("rent_bytes"), r.rent}};
+        });
+    const QJsonArray servers = rankedRows(
+        serverRows, top, [](const ServerRow &r) { return r.total(); },
+        [](const QString &name, const ServerRow &r) {
+            return QJsonObject{{QStringLiteral("server"), name},
+                               {QStringLiteral("calls"), r.calls},
+                               {QStringLiteral("result_bytes"), r.resultBytes},
+                               {QStringLiteral("result_rent_bytes"), r.resultRent},
+                               {QStringLiteral("definition_rent_bytes"), r.definitionRent},
+                               {QStringLiteral("deferred_name_rent_bytes"), r.nameRent},
+                               {QStringLiteral("rent_bytes"), r.total()}};
+        });
+    const QJsonArray byHook = rankedRows(
+        hookRows, top, [](const HookRow &r) { return r.rent; },
+        [](const QString &name, const HookRow &r) {
+            return QJsonObject{{QStringLiteral("hook"), name},
+                               {QStringLiteral("count"), r.count},
+                               {QStringLiteral("bytes"), r.bytes},
+                               {QStringLiteral("rent_bytes"), r.rent}};
+        });
+
+    QJsonObject result{
         {QStringLiteral("ok"), true},
         {QStringLiteral("requests"), requests},
         {QStringLiteral("context"),
@@ -207,7 +437,30 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                      {QStringLiteral("output"), out}}},
         {QStringLiteral("images"), images},
         {QStringLiteral("startup"), startup},
-        {QStringLiteral("largest_items"), largest}};
+        {QStringLiteral("largest_items"), largest},
+        {QStringLiteral("compactions"), compactions},
+        {QStringLiteral("tools"), tools},
+        {QStringLiteral("servers"), servers},
+        {QStringLiteral("hooks"),
+         QJsonObject{{QStringLiteral("count"), static_cast<int>(hooks.size())},
+                     {QStringLiteral("bytes"), hookBytes},
+                     {QStringLiteral("rent_bytes"), hookRent},
+                     {QStringLiteral("by_hook"), byHook}}},
+        {QStringLiteral("deferred_tools"),
+         QJsonObject{{QStringLiteral("count"), static_cast<int>(deferredLists.size())},
+                     {QStringLiteral("bytes"), listBytes},
+                     {QStringLiteral("rent_bytes"), listRent}}},
+        {QStringLiteral("rent"),
+         QJsonObject{{QStringLiteral("results"), resultRent},
+                     {QStringLiteral("definitions"), definitionRent},
+                     {QStringLiteral("hooks"), hookRent},
+                     {QStringLiteral("deferred_tools"), listRent},
+                     {QStringLiteral("total"),
+                      resultRent + definitionRent + hookRent + listRent}}}};
+    if (startup.isNull())  // INV-15
+        result[QStringLiteral("notices")] = QJsonArray{QStringLiteral(
+            "no api-request-shape line: start-up and tool-definition rent are unknown")};
+    return result;
 }
 
 QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
@@ -299,6 +552,35 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
     r[QStringLiteral("session_inferred")] = inferred;
     if (inferred)
         r[QStringLiteral("other_active_sessions")] = othersActive;
+    // INV-16 — a session's helper agents, summed. A helper has none.
+    if (args.value(QStringLiteral("include_agents")).toBool()
+        && !r.contains(QStringLiteral("parent_session_id"))) {
+        const QFileInfoList helpers =
+            QDir(QDir(folder).filePath(QFileInfo(path).completeBaseName()
+                                       + QStringLiteral("/subagents")))
+                .entryInfoList({QStringLiteral("agent-*.jsonl")}, QDir::Files);
+        int count = 0, requests = 0;
+        qint64 rentTotal = 0;
+        QJsonObject totals;
+        for (const QFileInfo &h : helpers) {
+            const QJsonObject a = analyse(h.absoluteFilePath(), 1);
+            if (!a.value(QStringLiteral("ok")).toBool())
+                continue;
+            ++count;
+            requests += a.value(QStringLiteral("requests")).toInt();
+            rentTotal += static_cast<qint64>(
+                a.value(QStringLiteral("rent")).toObject().value(QStringLiteral("total")).toDouble());
+            const QJsonObject t = a.value(QStringLiteral("totals")).toObject();
+            for (auto it = t.constBegin(); it != t.constEnd(); ++it)
+                totals[it.key()] = static_cast<qint64>(totals.value(it.key()).toDouble()
+                                                       + it.value().toDouble());
+        }
+        r[QStringLiteral("agents")] =
+            QJsonObject{{QStringLiteral("count"), count},
+                        {QStringLiteral("requests"), requests},
+                        {QStringLiteral("totals"), totals},
+                        {QStringLiteral("rent_total"), rentTotal}};
+    }
     return r;
 }
 
