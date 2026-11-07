@@ -417,6 +417,12 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
         return f.read(kSqliteMagic.size()) == kSqliteMagic;
     };
     const QString tmp = destPath + QStringLiteral(".partial");
+    // ANTS-6451 — the live store is a SQLite database too, so the check below
+    // would let a snapshot replace it while it is open. Its -wal and -shm fail
+    // that check already: neither starts with the SQLite header.
+    const QString destCanon = QFileInfo(destPath).canonicalFilePath();
+    if (!destCanon.isEmpty() && destCanon == QFileInfo(m_path).canonicalFilePath())
+        return fail(QStringLiteral("%1 is the live store; not replacing it").arg(destPath));
     if (QFile::exists(destPath) && !replaceable(destPath, false))
         return fail(QStringLiteral("%1 exists and is not a SQLite database; "
                                    "not replacing it").arg(destPath));

@@ -91545,7 +91545,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6451] **roadmapstore.cpp: with `remotecontrol_roadmap_migrate.cpp:253` `r.backupTo = req.value(QStringLiteral("backup_to")).toString();` (comment: "Not validated against the project root, deliberately"), and…**
+- ✅ [ANTS-6451] **roadmapstore.cpp: with `remotecontrol_roadmap_migrate.cpp:253` `r.backupTo = req.value(QStringLiteral("backup_to")).toString();` (comment: "Not validated against the project root, deliberately"), and…**
   `roadmapstore.cpp:451` — with `remotecontrol_roadmap_migrate.cpp:253`
   `r.backupTo = req.value(QStringLiteral("backup_to")).toString();`
   (comment: "Not validated against the project root, deliberately"), and
@@ -91558,12 +91558,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   migrate`/`backup_to` snapshot, for example by requiring the `.sqlite`
   name or a marker.
   Ledger row 150, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: snapshotTo refuses a destination whose real
+  location is the live store. The -wal/-shm and non-SQLite halves were
+  already refused by ANTS-5466's header check. No .sqlite-name rule
+  added: the header check already guards unrelated files. Test:
+  RoadmapMigrateBackup.Ants6451DestinationIsTheLiveStoreRefused; spec
+  INV-14.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 14-roadmap-store (High).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6452] **roadmapmigrate.cpp: the live roadmap (declared or root) is opened through `QFileInfo` and `QDir::Files`, which follow symlinks.**
+- ✅ [ANTS-6452] **roadmapmigrate.cpp: the live roadmap (declared or root) is opened through `QFileInfo` and `QDir::Files`, which follow symlinks.**
   `roadmapmigrate.cpp:1014-1026` — the live roadmap (declared or root)
   is opened through `QFileInfo` and `QDir::Files`, which follow
   symlinks. Archives explicitly refuse symlinks (line 1078); the live
@@ -91573,6 +91579,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Recorded as an open question, not…
   Quote: `QFileInfo`
   Ledger row 158, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: open question settled from the code. ANTS-4693's
+  case is an in-project symlink, so a symlinked root ROADMAP.md is
+  followed only when isInsideProject accepts it, as a declared path
+  already is; one leading out reads as no_roadmap. The read opens
+  through openInsideProject. Test:
+  roadmap_migrate_read.Ants6452SymlinkedRootRoadmapMustStayInProject.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 14-roadmap-store (Low).

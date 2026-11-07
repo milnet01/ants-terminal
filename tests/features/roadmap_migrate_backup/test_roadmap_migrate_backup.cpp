@@ -446,3 +446,25 @@ TEST(RoadmapMigrateBackup, Inv13MissingFolderIsNotCreated) {
                   .value(QStringLiteral("folder")).toString().toStdString(),
               gone.toStdString());
 }
+
+// ANTS-6451 — a snapshot whose destination is the live store, reached by its own
+// name or through a symlink, is refused: replacing the open database with its
+// own snapshot leaves it out of step with its -wal. The store keeps its rows.
+TEST(RoadmapMigrateBackup, Ants6451DestinationIsTheLiveStoreRefused) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString live = dir.path() + QStringLiteral("/roadmap.sqlite");
+    RoadmapStore store(live);
+    ASSERT_TRUE(store.open());
+    writeProbe(store, QStringLiteral("kept"), true);
+    ASSERT_TRUE(QFile::link(live, dir.path() + QStringLiteral("/alias.sqlite")));
+
+    for (const QString &dest : {live, dir.path() + QStringLiteral("/alias.sqlite")}) {
+        QString err;
+        EXPECT_FALSE(store.snapshotTo(dest, &err)) << dest.toStdString();
+        EXPECT_FALSE(QFileInfo(live).isSymLink());
+    }
+    QSqlQuery q(RoadmapStoreTestAccess::db(store));
+    ASSERT_TRUE(q.exec(QStringLiteral("SELECT v FROM snapshot_probe")) && q.next());
+    EXPECT_EQ(q.value(0).toString().toStdString(), std::string("kept"));
+}

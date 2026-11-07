@@ -49,6 +49,8 @@ migration that runs between two of its snapshots.
 - **INV-13** *(ANTS-5247)* — a `snapshotDir` that does not exist is never
   created, and falls back as INV-12 does. A folder on an unmounted drive would
   otherwise be recreated on the system drive.
+- **INV-14** *(ANTS-6451)* — a destination that is the live store, by its own
+  name or through a symlink, refuses. The store is left as it was.
 
 Parent for INV-10..13: ANTS-3855 INV-15.
 

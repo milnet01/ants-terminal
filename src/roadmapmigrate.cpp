@@ -5,6 +5,7 @@
 #include "roadmapmigrate.h"
 
 #include "markdownscan.h"
+#include "pathvalidation.h"
 #include "projectsettings.h"   // ANTS-4693 — the declared `roadmap` key
 #include "roadmapindex.h"
 #include "roadmapparse.h"
@@ -1019,9 +1020,14 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     if (hits.isEmpty()) {
         const QFileInfoList entries =
             dir.entryInfoList(QDir::Files | QDir::Hidden, QDir::Name);
+        // ANTS-6452 — a symlinked ROADMAP.md is followed (ANTS-4693's
+        // ROADMAP.md -> docs/11-roadmap.md) only when it lands in the project,
+        // as a declared path is (validEntry). One leading out is not this
+        // project's roadmap.
         for (const QFileInfo &fi : entries)
             if (fi.fileName().compare(QStringLiteral("roadmap.md"),
-                                      Qt::CaseInsensitive) == 0)
+                                      Qt::CaseInsensitive) == 0 &&
+                PathValidation::isInsideProject(projectRoot, fi.absoluteFilePath()))
                 hits.append(fi.absoluteFilePath());
     }
     if (hits.isEmpty()) return fail("not_found");
@@ -1098,8 +1104,9 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     }
 
     {
-        QFile f(hits.constFirst());
-        if (!f.open(QIODevice::ReadOnly)) return fail("not_found");
+        QFile f;   // ANTS-6452 — re-checked at the open
+        if (!PathValidation::openInsideProject(f, projectRoot, hits.constFirst()))
+            return fail("not_found");
         Source live;
         if (!decodeUtf8(f.readAll(), &live.markdown)) return fail("not_utf8");
         live.path = hits.constFirst();

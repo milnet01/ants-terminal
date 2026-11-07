@@ -383,6 +383,13 @@ for security-relevant changes.
 
 ### Security
 
+- **`roadmap_migrate` keeps the live store and other projects' roadmaps safe**
+  A `backup_to` that names the live roadmap store, directly or through a
+  symlink, is refused instead of replacing the open database. A root
+  `ROADMAP.md` that is a symlink is followed only when it lands inside the
+  project, so another tree's roadmap cannot be imported. (ANTS-6451,
+  ANTS-6452)
+
 - **MCP tools, the audit and the review engines read only files whose real location is inside the project**
   A symlink pointing out of the project is no longer followed by the doc
   walk, `dependency_inventory`, `comment_claims`, `find_caller`'s `lane`,

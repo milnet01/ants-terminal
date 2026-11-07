@@ -468,6 +468,37 @@ TEST(roadmap_migrate_read, Ants4693HonoursTheDeclaredRoadmapKey) {
         << "the file's own text is returned, not just its path";
 }
 
+// ANTS-6452 — a root ROADMAP.md that is a symlink is followed when it lands in
+// the project (ANTS-4693's shape), and refused as not found when it leads out,
+// so another tree's roadmap cannot be imported into the machine-global store.
+TEST(roadmap_migrate_read, Ants6452SymlinkedRootRoadmapMustStayInProject) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    const QByteArray body =
+        "# Roadmap\n\n## Work\n\n"
+        "- \xF0\x9F\x93\x8B [PERCH-0001] **A bullet.**\n  Kind: fix.\n  Source: seed.\n";
+    const auto put = [&](const QString &path) {
+        QFile f(path);
+        return f.open(QIODevice::WriteOnly) && f.write(body) == body.size();
+    };
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("docs")));
+    ASSERT_TRUE(put(tmp.path() + QStringLiteral("/docs/11-roadmap.md")));
+    ASSERT_TRUE(QFile::link(tmp.path() + QStringLiteral("/docs/11-roadmap.md"),
+                            tmp.path() + QStringLiteral("/ROADMAP.md")));
+    QString err;
+    EXPECT_TRUE(RoadmapMigrate::findRoadmaps(tmp.path(), &err).has_value())
+        << "an in-project symlink was refused: " << err.toStdString();
+
+    ASSERT_TRUE(put(outside.path() + QStringLiteral("/ROADMAP.md")));
+    ASSERT_TRUE(QFile::remove(tmp.path() + QStringLiteral("/ROADMAP.md")));
+    ASSERT_TRUE(QFile::link(outside.path() + QStringLiteral("/ROADMAP.md"),
+                            tmp.path() + QStringLiteral("/ROADMAP.md")));
+    err.clear();
+    EXPECT_FALSE(RoadmapMigrate::findRoadmaps(tmp.path(), &err).has_value())
+        << "a roadmap outside the project was imported";
+    EXPECT_EQ(err.toStdString(), std::string("not_found"));
+}
+
 // ANTS-4693 — a declaration naming a file that is not there falls through to
 // the ordinary root scan. An unusable declaration is not evidence that the
 // root file is absent, and refusing on it would make a stale settings key
