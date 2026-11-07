@@ -1333,7 +1333,9 @@ void AuditDialog::populateChecks() {
                                   "Update available", "Passed checks:",
                                   "Skipped checks:"},
               "", {}, 120 },
-            true, true, nullptr
+            // ANTS-6696 — off by default: the project's .checkov.yaml can set
+            // external-checks-dir to Python checks the project supplies.
+            false, true, nullptr
         });
     }
 
@@ -1477,7 +1479,9 @@ void AuditDialog::populateChecks() {
             hasLuacheck ? "Static analysis for Lua scripts" : "(luacheck not installed)", "Lua",
             "find . -name '*.lua'" + kFindExcl + " -exec luacheck {} + 2>&1 | head -100",
             CheckType::Bug, Severity::Major, { {}, "", {}, 100 },
-            hasLuacheck, hasLuacheck, nullptr
+            // ANTS-6696 — off by default: .luacheckrc is a Lua script run
+            // with full access to os and io.
+            false, hasLuacheck, nullptr
         });
     }
 

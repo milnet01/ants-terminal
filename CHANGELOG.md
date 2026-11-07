@@ -383,6 +383,12 @@ for security-relevant changes.
 
 ### Security
 
+- **The Audit dialog's luacheck and checkov checks start switched off**
+  Both can run code the audited project supplies: luacheck runs the
+  project's `.luacheckrc`, and checkov reads a `.checkov.yaml` that can
+  point it at the project's own Python checks. Tick them to run them, as
+  with Cargo Clippy and Pylint. (ANTS-6696)
+
 - **`roadmap_migrate` keeps the live store and other projects' roadmaps safe**
   A `backup_to` that names the live roadmap store, directly or through a
   symlink, is refused instead of replacing the open database. A root

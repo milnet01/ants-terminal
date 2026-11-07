@@ -91482,7 +91482,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 27-audit-engine (Medium).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6695] **auditrunner.cpp: compile_commands.json flags that load a plugin pass validation.**
+- 🚫 [ANTS-6695] **auditrunner.cpp: compile_commands.json flags that load a plugin pass validation.**
   validateCompileCommands checks only the paths a compiler reads
   (ANTS-6448). A compile DB entry carrying `-fplugin=/tmp/x.so`,
   `-Xclang -load -Xclang /tmp/x.so` or `-fpass-plugin=` reaches
@@ -91490,18 +91490,32 @@ keeps the reviewer's remedy, which is a claim to check before building.
   code execution from a cloned project. Not verified against a live
   clang-tidy yet; check that first. Likely fix: refuse the run on any
   plugin-loading flag, as compile_commands_escape does for paths.
+  Dropped 2026-11-07, verified not reachable: a test library whose
+  constructor writes a marker file was named in compile_commands.json
+  via -fplugin=, -Xclang -load and -fpass-plugin=. clang-tidy and
+  clazy-standalone (LLVM 23.1.4) loaded none of them, though -fplugin
+  did reach clang-tidy's cc1 line; clang++ itself loaded it with the
+  same flags (positive control). libTooling does not load frontend
+  plugins. Re-open if a toolchain update changes that.
   **Layman:** A project's build file could make the audit load a program library of the project's choosing.
   Kind: security.
   Source: close-findings 2026-11-06, found next door to ANTS-6446/6448.
   Lanes: audit-engine.
 
-- 📋 [ANTS-6696] **auditdialog_catalogue.cpp: check whether checkov and luacheck run project code from their config files.**
+- ✅ [ANTS-6696] **auditdialog_catalogue.cpp: check whether checkov and luacheck run project code from their config files.**
   Found while closing ANTS-6446 (cargo_clippy and pylint now start off).
   checkov reads `.checkov.yaml` from the project, and its keys mirror
   the CLI, which suggests `external-checks-dir` (Python checks) can be
   set there. luacheck runs `.luacheckrc` as Lua. Both lanes start
   selected. Not verified: confirm each tool's behaviour, then start any
   that runs project code off, as ANTS-6446 did.
+  Shipped 2026-11-07: both lanes start off. luacheck verified from its
+  source (config.lua make_config_env_mt: __index falls through to _G, so
+  .luacheckrc reaches os/io). checkov: config discovery confirmed in
+  config_utils.py (.checkov.yaml in the -d directory) and
+  external-checks-dir is a parser option; the import of the .py checks
+  was not read, so that half is near-certain, not proven. Neither tool
+  is installed here. Test: AuditProjectCodeLanesOff (INV-1 extended).
   **Layman:** Two more audit checks may run code from the project being audited; check and switch them off by default if so.
   Kind: security.
   Source: close-findings 2026-11-06, found next door to ANTS-6446/6448.

@@ -1,4 +1,4 @@
-// ANTS-6446 — audit lanes that run project code start off. Contract:
+// ANTS-6446, ANTS-6696 — audit lanes that run project code start off. Contract:
 // spec.md beside this file.
 
 #include "auditdialog.h"
@@ -33,7 +33,9 @@ TEST(AuditProjectCodeLanesOff, ProjectCodeLanesAreNotSelected) {
     ASSERT_TRUE(project.isValid() && bin.isValid());
     ASSERT_TRUE(writeFile(project.filePath("Cargo.toml"), "[package]\nname=\"x\"\n"));
     ASSERT_TRUE(writeFile(project.filePath("main.py"), "print(1)\n"));
-    for (const char *tool : {"cargo", "cargo-audit", "pylint"})
+    ASSERT_TRUE(writeFile(project.filePath("main.lua"), "print(1)\n"));
+    ASSERT_TRUE(writeFile(project.filePath("Dockerfile"), "FROM scratch\n"));
+    for (const char *tool : {"cargo", "cargo-audit", "pylint", "luacheck", "checkov"})
         ASSERT_TRUE(writeFile(bin.filePath(tool), "#!/bin/sh\nexit 0\n", true));
 
     ants_test::XdgGuard env;
@@ -44,7 +46,7 @@ TEST(AuditProjectCodeLanesOff, ProjectCodeLanesAreNotSelected) {
     const QList<AuditCheck> checks = dlg.checksForTest();
 
     // INV-1
-    for (const char *id : {"cargo_clippy", "pylint"}) {
+    for (const char *id : {"cargo_clippy", "pylint", "luacheck", "checkov"}) {
         const AuditCheck *c = findCheck(checks, id);
         ASSERT_NE(c, nullptr) << id << " lane missing";
         EXPECT_TRUE(c->available) << id << " not available with its tool on PATH";
