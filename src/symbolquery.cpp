@@ -2,6 +2,7 @@
 // See symbolquery.h header.
 
 #include "symbolquery.h"
+#include "pathvalidation.h"
 #include "boundedreadline.h"
 #include "fileoutline.h"
 #include "walkrules.h"
@@ -1015,8 +1016,11 @@ CallResult findCaller(const QString &rootCanonical,
     if (!opts.lane.isEmpty()) {
         const QString cand =
             QDir::cleanPath(scanRoot + QLatin1Char('/') + opts.lane);
+        // ANTS-6456 — and by its real location, so a symlinked lane that
+        // leads out of the root is ignored too.
         if ((cand == scanRoot || cand.startsWith(scanRoot + QLatin1Char('/'))) &&
-            QFileInfo(cand).isDir())
+            QFileInfo(cand).isDir() &&
+            PathValidation::isInsideProject(rootCanonical, cand))
             scanRoot = cand;
     }
     walk(st, scanRoot);

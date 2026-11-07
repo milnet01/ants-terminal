@@ -13,8 +13,10 @@
 #include <QStandardPaths>
 #include <QStringList>
 
+#include <cerrno>
 #include <fcntl.h>
 #include <sys/file.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -336,15 +338,28 @@ void addSnapshotTo(PeerUsage &u, const QString &stem,
 // § 2.6 — read one file as untrusted input. Empty `why` on success.
 bool readSnapshotFile(const QString &path, QHash<QString, ToolCounter> *tools,
                       QHash<QString, qint64> *bytesByRoot, QString *why) {
-    const QFileInfo fi(path);
-    if (fi.isSymLink())  { *why = QStringLiteral("a symlink"); return false; }
-    if (!fi.isFile())    { *why = QStringLiteral("not a regular file"); return false; }
-    if (fi.size() > kMaxSnapshotBytes) {
-        *why = QStringLiteral("over %1 KiB").arg(kMaxSnapshotBytes / 1024);
+    // ANTS-6457 — the checks run on the open descriptor, so nothing can be
+    // swapped in between them and the read. O_NONBLOCK keeps a FIFO from
+    // hanging the open.
+    const int fd = ::open(QFile::encodeName(path).constData(),
+                          O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        *why = errno == ELOOP ? QStringLiteral("a symlink") : QStringLiteral("unreadable");
         return false;
     }
-    QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) { *why = QStringLiteral("unreadable"); return false; }
+    const auto refuse = [&](const QString &reason) {
+        ::close(fd);
+        *why = reason;
+        return false;
+    };
+    struct stat st{};
+    if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode))
+        return refuse(QStringLiteral("not a regular file"));
+    if (st.st_size > kMaxSnapshotBytes)
+        return refuse(QStringLiteral("over %1 KiB").arg(kMaxSnapshotBytes / 1024));
+    QFile f;
+    if (!f.open(fd, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle))
+        return refuse(QStringLiteral("unreadable"));
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
     if (pe.error != QJsonParseError::NoError || !doc.isObject()) {

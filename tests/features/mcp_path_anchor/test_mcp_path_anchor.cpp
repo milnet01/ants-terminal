@@ -19,6 +19,8 @@
 #include <QTemporaryDir>
 #include <QTextStream>
 
+#include <sys/stat.h>
+
 #include <sstream>
 #include <string>
 
@@ -714,4 +716,83 @@ TEST(McpPathAnchor, MissingLeafUnderSymlinkedAncestorRejects) {
         QStringLiteral("real/sub/new.txt"), root,
         QStringLiteral("apply_edits"), QStringLiteral("path"));
     EXPECT_FALSE(ordinary.bad) << "an ordinary new file inside the root was refused";
+}
+
+// PV-OPEN (ANTS-6449..6463) — openInsideProject judges the file it OPENED, not
+// the path it was given. A regular file inside the root opens, and so does an
+// in-tree symlink to one. A symlink to a file outside the root, a file under a
+// symlinked directory that leads out, an outside path given directly, and a
+// FIFO inside the root are all refused, and each leaves the QFile closed.
+namespace {
+bool writeFile(const QString &path, const QByteArray &bytes) {
+    QFile f(path);
+    return f.open(QIODevice::WriteOnly) && f.write(bytes) == bytes.size();
+}
+}  // namespace
+
+TEST(McpPathAnchor, OpenInsideProjectJudgesTheOpenedFile) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(outside.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString out = QFileInfo(outside.path()).canonicalFilePath();
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/inside.txt"), "inside"));
+    ASSERT_TRUE(writeFile(out + QStringLiteral("/secret.txt"), "secret"));
+    ASSERT_TRUE(QFile::link(root + QStringLiteral("/inside.txt"),
+                            root + QStringLiteral("/alias.txt")));
+    ASSERT_TRUE(QFile::link(out + QStringLiteral("/secret.txt"),
+                            root + QStringLiteral("/leak.txt")));
+    ASSERT_TRUE(QFile::link(out, root + QStringLiteral("/outdir")));
+
+    QFile f;
+    ASSERT_TRUE(PathValidation::openInsideProject(
+        f, root, root + QStringLiteral("/inside.txt")));
+    EXPECT_EQ(f.readAll(), QByteArray("inside"));
+    f.close();
+
+    ASSERT_TRUE(PathValidation::openInsideProject(
+        f, root, root + QStringLiteral("/alias.txt")))
+        << "an in-tree symlink to an in-tree file was refused";
+    EXPECT_EQ(f.readAll(), QByteArray("inside"));
+    f.close();
+
+    for (const QString &escape : {root + QStringLiteral("/leak.txt"),
+                                  root + QStringLiteral("/outdir/secret.txt"),
+                                  out + QStringLiteral("/secret.txt")}) {
+        QFile g;
+        EXPECT_FALSE(PathValidation::openInsideProject(g, root, escape))
+            << "opened a file outside the root: " << escape.toStdString();
+        EXPECT_FALSE(g.isOpen()) << escape.toStdString();
+    }
+}
+
+TEST(McpPathAnchor, OpenInsideProjectRefusesFifoWithoutBlocking) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString fifo = root + QStringLiteral("/pipe");
+    ASSERT_EQ(::mkfifo(QFile::encodeName(fifo).constData(), 0600), 0);
+    QFile f;
+    EXPECT_FALSE(PathValidation::openInsideProject(f, root, fifo));
+    EXPECT_FALSE(f.isOpen());
+}
+
+// ANTS-6458 — a missing path is judged as the kernel walks it: through a
+// symlink first, `..` after. `link/../new.txt`, with `link` pointing into an
+// outside folder, reads as `root/new.txt` once the text is cleaned, but a write
+// to it lands beside that outside folder. `src/../new.txt` still passes.
+TEST(McpPathAnchor, MissingPathWithDotDotAfterSymlinkRejects) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(QDir(outside.path()).mkpath(QStringLiteral("sub")));
+    ASSERT_TRUE(QFile::link(outside.path() + QStringLiteral("/sub"),
+                            root + QStringLiteral("/link")));
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("src")));
+
+    EXPECT_TRUE(PathValidation::validatePath(QStringLiteral("link/../new.txt"), root,
+                                             QStringLiteral("apply_edits")).bad)
+        << "a missing path whose .. follows a symlink out of the root passed";
+    EXPECT_FALSE(PathValidation::validatePath(QStringLiteral("src/../new.txt"), root,
+                                              QStringLiteral("apply_edits")).bad);
 }

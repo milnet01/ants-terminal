@@ -146,12 +146,16 @@ bool isPythonShebang(const QByteArray &firstLine);
 // `maxSymbols` was not a substitute and made it worse: it truncates from the
 // TOP, so on an append-only log it keeps the OLDEST entries and drops the
 // newest, which is the opposite of what such a file wants.
+// ANTS-6454 — `containRoot`, when set, opens the file through
+// PathValidation::openInsideProject: a file that is not inside it reads as
+// not found. For a caller that walked the tree earlier and opens the file now.
 QJsonObject compute(const QString &absPath,
                     Mode mode,
                     bool includeDocComment,
                     int maxSymbols,
                     bool withSizes = false,
-                    int maxHeadingLevel = 0);
+                    int maxHeadingLevel = 0,
+                    const QString &containRoot = QString());
 
 }  // namespace FileOutline
 

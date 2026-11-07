@@ -1,6 +1,7 @@
 // VerifyEngine implementation — see verifyengine.h + docs/specs/ANTS-1289.md.
 
 #include "verifyengine.h"
+#include "pathvalidation.h"
 #include "testrescache.h"   // ANTS-4996 — the shared ctest summary matcher
 #include "verifytrust.h"
 #include "projectsettings.h"   // ANTS-3373 — isNoiseDir for orphan-lint pruning
@@ -557,21 +558,26 @@ VerifyReport runVerify(const QString &projectPath,
 // can't mask a real orphan.
 // ANTS-5102 — `visited` holds canonical paths, so a directory symlink to an
 // ancestor (or to /) is walked once rather than re-walked down the link.
-static void collectCmakeText(const QString &dir, QString &out,
+// ANTS-6462 — and a directory or file whose real location is outside `root`
+// is not read at all.
+static void collectCmakeText(const QString &root, const QString &dir, QString &out,
                              QSet<QString> &visited) {
     const QString canon = QFileInfo(dir).canonicalFilePath();
-    if (canon.isEmpty() || visited.contains(canon)) return;
+    if (canon.isEmpty() || visited.contains(canon) ||
+        !PathValidation::isInsideProject(root, canon))
+        return;
     visited.insert(canon);
     const QFileInfoList entries = QDir(dir).entryInfoList(
         QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QFileInfo &fi : entries) {
         if (fi.isDir()) {
             if (ProjectSettings::isNoiseDir(fi.fileName())) continue;
-            collectCmakeText(fi.absoluteFilePath(), out, visited);
+            collectCmakeText(root, fi.absoluteFilePath(), out, visited);
         } else if (fi.fileName() == QLatin1String("CMakeLists.txt")
                    || fi.fileName().endsWith(QLatin1String(".cmake"))) {
-            QFile f(fi.absoluteFilePath());
-            if (f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QFile f;
+            if (PathValidation::openInsideProject(f, root, fi.absoluteFilePath())) {
+                f.setTextModeEnabled(true);
                 out += QString::fromUtf8(f.readAll());
                 out += QLatin1Char('\n');
             }
@@ -585,7 +591,7 @@ QStringList findUnreferencedSources(const QString &projectPath,
 
     QString cmakeText;
     QSet<QString> visited;
-    collectCmakeText(projectPath, cmakeText, visited);
+    collectCmakeText(projectPath, projectPath, cmakeText, visited);
 
     QStringList orphaned;
     for (const QString &p : addedSourcePaths) {

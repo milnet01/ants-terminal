@@ -1534,9 +1534,11 @@ QString assembleThreatModelExtras(const QString &projectPath) {
         out += QStringLiteral("=== ");
         out += header;
         out += QStringLiteral(" ===\n");
-        const QString abs = projectPath + QChar('/') + relPath;
-        const QString body = slurpUtf8(abs);
-        out += body;
+        // ANTS-6461 — this text goes to the AI endpoint, so a symlink out of
+        // the project reads as an absent file.
+        QFile f;
+        if (PathValidation::openInsideProject(f, projectPath, projectPath + QChar('/') + relPath))
+            out += QString::fromUtf8(f.readAll());
         if (!out.endsWith(QChar('\n'))) out += QChar('\n');
         out += QChar('\n');
     };

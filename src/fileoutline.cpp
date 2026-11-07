@@ -4,6 +4,7 @@
 #include "boundedreadline.h"
 
 #include "markdownscan.h"   // ANTS-4520 — shared blockquote strip
+#include "pathvalidation.h"
 
 #include <QSet>
 #include <QHash>
@@ -1307,7 +1308,8 @@ QJsonObject compute(const QString &absPath,
                     bool includeDocComment,
                     int maxSymbols,
                     bool withSizes,
-                    int maxHeadingLevel) {
+                    int maxHeadingLevel,
+                    const QString &containRoot) {
     if (maxSymbols <= 0)            maxSymbols = 200;
     if (maxSymbols > kMaxSymbolsCap) maxSymbols = kMaxSymbolsCap;
 
@@ -1319,10 +1321,14 @@ QJsonObject compute(const QString &absPath,
         return errObj("not_found",
             QStringLiteral("file_outline: \"%1\" does not exist").arg(absPath));
     }
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+    const bool opened = containRoot.isEmpty()
+        ? f.open(QIODevice::ReadOnly | QIODevice::Text)
+        : PathValidation::openInsideProject(f, containRoot, absPath);
+    if (!opened) {
         return errObj("not_found",
             QStringLiteral("file_outline: cannot open \"%1\"").arg(absPath));
     }
+    f.setTextModeEnabled(true);
 
     // Resolve effective mode (auto → ext-based).
     Mode effective = (mode == Mode::Auto) ? pickModeByExt(absPath) : mode;

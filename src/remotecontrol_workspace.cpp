@@ -4066,10 +4066,12 @@ QJsonDocument RemoteControl::cmdCodebaseIndex(const QJsonObject &req) {
         // Project-relative form for the index lookup (empty .resolved = a
         // not-yet-existing in-root path, still a valid soft-miss query).
         QString rel = check.resolved.isEmpty() ? rawFilePath : check.resolved;
-        if (rel.startsWith(rootCanonical))
-            rel = rel.mid(rootCanonical.size()).startsWith(QLatin1Char('/'))
-                      ? rel.mid(rootCanonical.size() + 1)
-                      : rel.mid(rootCanonical.size());
+        // ANTS-6464 — strip the root only at a path boundary, so a sibling
+        // such as "<root>_Ants_MCP_Feedback.md" keeps its full path.
+        if (rel == rootCanonical)
+            rel.clear();
+        else if (rel.startsWith(rootCanonical + QLatin1Char('/')))
+            rel = rel.mid(rootCanonical.size() + 1);
         params.filePath = rel;
     }
 

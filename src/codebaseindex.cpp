@@ -204,7 +204,8 @@ FileEntry outlineFile(const QString &rootCanonical, const QString &rel,
 
     const QJsonObject ol = FileOutline::compute(
         abs, FileOutline::Mode::Auto, /*includeDocComment=*/false,
-        FileOutline::kMaxSymbolsCap);
+        FileOutline::kMaxSymbolsCap, /*withSizes=*/false, /*maxHeadingLevel=*/0,
+        /*containRoot=*/rootCanonical);   // ANTS-6454
     fe.language = ol.value(QStringLiteral("language")).toString();
     fe.lines = ol.value(QStringLiteral("total_lines")).toInt();
     const QJsonArray syms = ol.value(QStringLiteral("symbols")).toArray();

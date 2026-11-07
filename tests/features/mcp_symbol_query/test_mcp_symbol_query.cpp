@@ -1519,3 +1519,21 @@ TEST(McpSymbolQuery, Ants5478CappedWalkNamesWhatItDidNotReach) {
     EXPECT_TRUE(full.walkStoppedIn.isEmpty());
     EXPECT_TRUE(full.walkUnreached.isEmpty());
 }
+
+// ANTS-6456 — a lane that is a symlink out of the root is ignored, so the walk
+// stays in the project and never reaches the outside caller.
+TEST(McpSymbolQuery, Ants6456SymlinkLaneOutOfRootIsIgnored) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("src/in.cpp"), QStringLiteral("void f() { probeFn(); }\n"));
+    writeFile(outside.path(), QStringLiteral("out.cpp"), QStringLiteral("void g() { probeFn(); }\n"));
+    ASSERT_TRUE(QFile::link(outside.path(), root + QStringLiteral("/lane")));
+    SymbolQuery::Options opts;
+    opts.lane = QStringLiteral("lane");
+    const SymbolQuery::CallResult r =
+        SymbolQuery::findCaller(root, QStringLiteral("probeFn"), opts);
+    for (const SymbolQuery::CallMatch &c : r.callers)
+        EXPECT_FALSE(c.file.contains(QStringLiteral("out.cpp"))) << c.file.toStdString();
+    EXPECT_EQ(r.callers.size(), 1);
+}

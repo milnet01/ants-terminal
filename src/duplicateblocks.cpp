@@ -8,6 +8,7 @@
 // three copies are one group rather than three pairs.
 
 #include "duplicateblocks.h"
+#include "pathvalidation.h"
 
 #include "codewalk.h"
 
@@ -307,8 +308,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     QList<File> files;
     int linesCompared = 0;
     for (const QString &abs : walked.files) {
-        QFile in(abs);
-        if (!in.open(QIODevice::ReadOnly)) continue;
+        QFile in;   // ANTS-6454 — re-checked at the open, not only at the walk
+        if (!PathValidation::openInsideProject(in, rootCanonical, abs)) continue;
         files.append(load(root.relativeFilePath(abs), QString::fromUtf8(in.readAll()), names, &vocab));
         linesCompared += int(files.last().ids.size());
     }

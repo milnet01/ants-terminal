@@ -499,6 +499,18 @@ TEST(IndieReviewEngine, AssembleThreatModelExtrasReadsExisting) {
     EXPECT_TRUE(out.contains("Test security content."));
 }
 
+// ANTS-6461 — a CLAUDE.md that is a symlink out of the project is not read, so
+// its target never reaches the synthesis prompt.
+TEST(IndieReviewEngine, Ants6461SymlinkOutOfProjectIsNotRead) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    writeFile(outside.path(), "config.json", "secret api key here\n");
+    ASSERT_TRUE(QFile::link(outside.path() + "/config.json", tmp.path() + "/CLAUDE.md"));
+    const QString out = IndieReviewEngine::assembleThreatModelExtras(tmp.path());
+    EXPECT_FALSE(out.contains("secret api key here")) << out.toStdString();
+    EXPECT_TRUE(out.contains("=== CLAUDE.md ==="));
+}
+
 // ANTS-4846 — an override the parser rejects is named with its reason, so the
 // fall-through to the module map is visible. Absent and usable files are not.
 TEST(IndieReviewEngine, Ants4846OverrideRejectionIsNamed) {

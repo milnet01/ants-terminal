@@ -334,6 +334,9 @@ std::optional<QJsonObject> parseRequest(const QJsonObject &args, const QString &
 
     if (hasPath) {
         const QString raw = args.value(QStringLiteral("path")).toString();
+        // ANTS-6455 — validatePath passes an empty path, which names no file.
+        if (!args.value(QStringLiteral("path")).isString() || raw.isEmpty())
+            return refuse("bad_args", QStringLiteral("\"path\" must be a non-empty string"));
         const PathValidation::Check check = PathValidation::validatePath(
             raw, root, QStringLiteral("trace"), QStringLiteral("path"), false);
         if (check.bad) return check.err;

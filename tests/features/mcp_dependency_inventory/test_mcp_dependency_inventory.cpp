@@ -204,3 +204,18 @@ TEST(McpDependencyInventory, Ants5515VerbIsWiredAndOffline) {
     EXPECT_EQ(env.value("skipped").toArray().at(0).toString(), QStringLiteral("tracked_files"))
         << "the fixture is no git repository, and the reply must say what that cost";
 }
+
+// ANTS-6450 — a tracked file that is a symlink out of the root is not read.
+TEST(McpDependencyInventory, Ants6450SymlinkOutOfRootIsNotRead) {
+    QTemporaryDir outside;
+    ASSERT_TRUE(outside.isValid());
+    {
+        QFile f(outside.filePath(".nvmrc"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("20.11.0\n");
+    }
+    Project p;
+    ASSERT_TRUE(QFile::link(outside.filePath(".nvmrc"), p.tmp.filePath(".nvmrc")));
+    p.tracked.append(".nvmrc");
+    EXPECT_TRUE(ofKind(p.run(), "runtime").isEmpty()) << dump(p.run());
+}

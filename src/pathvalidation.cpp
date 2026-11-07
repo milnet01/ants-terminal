@@ -11,6 +11,11 @@
 #include <QLatin1Char>
 #include <QStringLiteral>
 
+#include <climits>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 namespace PathValidation {
 
 namespace {
@@ -274,7 +279,13 @@ Check validatePath(const QString &rawPath,
         } else {
             const QString cleaned = QDir::cleanPath(joined);
             const QString landing = landingPath(cleaned);
-            if (landing.isEmpty() || !admitted(landing, rootCanonical)) {
+            // ANTS-6458 — the text cleanup folds `link/..` away before any
+            // symlink is seen; the kernel resolves `link` first. Judge the
+            // uncleaned path too, its existing part canonicalised as is.
+            const QString walked = landingPath(joined);
+            if (landing.isEmpty() || !admitted(landing, rootCanonical) ||
+                walked.isEmpty() ||
+                !admitted(QDir::cleanPath(walked), rootCanonical)) {
                 pc.bad = true;
                 pc.err = makeErr(toolName, paramName,
                     QStringLiteral("escapes project root"), cleaned);
@@ -303,6 +314,30 @@ bool isInsideProject(const QString &projectPath, const QString &candidate) {
     const QString candCanon = QFileInfo(candidate).canonicalFilePath();
     if (candCanon.isEmpty()) return false;
     return anchoredUnder(candCanon, rootCanon);
+}
+
+bool openInsideProject(QFile &file, const QString &projectPath,
+                       const QString &path) {
+    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
+    if (rootCanon.isEmpty()) return false;
+    // O_NONBLOCK so a FIFO planted in the tree cannot hang the open; it is
+    // cleared again once the file is known to be a regular one.
+    const int fd = ::open(QFile::encodeName(path).constData(),
+                          O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return false;
+    const auto refuse = [fd] { ::close(fd); return false; };
+    struct stat st{};
+    if (::fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) return refuse();
+    char real[PATH_MAX];
+    const QByteArray link = "/proc/self/fd/" + QByteArray::number(fd);
+    const ssize_t n = ::readlink(link.constData(), real, sizeof real);
+    if (n <= 0 || n >= ssize_t(sizeof real)) return refuse();
+    if (!anchoredUnder(QFile::decodeName(QByteArray(real, int(n))), rootCanon))
+        return refuse();
+    if (::fcntl(fd, F_SETFL, 0) != 0) return refuse();
+    if (!file.open(fd, QIODevice::ReadOnly, QFileDevice::AutoCloseHandle))
+        return refuse();
+    return true;
 }
 
 }  // namespace PathValidation

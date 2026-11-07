@@ -986,6 +986,30 @@ else
     skip "install-hooks round-trip (jq not available)"
 fi
 
+# ---------- ANTS-6459: drift-check never writes through a planted symlink ----------
+# A fake ants-helper reports drift (exit 3). The old fixed temp name is planted
+# as a symlink to a file outside the project; the hook must leave that file
+# alone and still write the marker.
+dc_tmp="$(mktemp -d)"
+mkdir -p "$dc_tmp/proj" "$dc_tmp/bin" "$dc_tmp/home"
+: > "$dc_tmp/proj/.ants-project"
+printf 'untouched\n' > "$dc_tmp/outside.txt"
+ln -s "$dc_tmp/outside.txt" "$dc_tmp/proj/.ants-audit-pending.tmp"
+printf '#!/bin/sh\necho "{\\"drift\\":1}"\nexit 3\n' > "$dc_tmp/bin/ants-helper"
+chmod +x "$dc_tmp/bin/ants-helper"
+(cd "$dc_tmp/proj" && printf '{}\n' | PATH="$dc_tmp/bin:/usr/bin:/bin" HOME="$dc_tmp/home" \
+    timeout 5 bash "$HOOKS_DIR/ants-drift-check.sh" >/dev/null 2>&1)
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [ -f "$dc_tmp/proj/.ants-audit-pending" ] && ! [ -L "$dc_tmp/proj/.ants-audit-pending" ] && break
+    sleep 0.1
+done
+if [ "$(cat "$dc_tmp/outside.txt")" = "untouched" ] && [ -f "$dc_tmp/proj/.ants-audit-pending" ]; then
+    pass "ANTS-6459 drift-check wrote the marker, not through the planted symlink"
+else
+    fail "ANTS-6459 drift-check wrote through a symlinked temp file (outside: $(cat "$dc_tmp/outside.txt"))"
+fi
+rm -rf "$dc_tmp"
+
 if [ "$failures" -gt 0 ]; then
     printf '\n%d assertion(s) failed.\n' "$failures" >&2
     exit "$failures"

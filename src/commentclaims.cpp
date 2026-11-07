@@ -10,6 +10,7 @@
 #include "mcprefusal.h"
 
 #include "codewalk.h"
+#include "pathvalidation.h"
 #include "projectsettings.h"
 #include "quotationcheckverb.h"
 #include "symbolquery.h"
@@ -236,9 +237,10 @@ Joined join(const Block &b) {
     return j;
 }
 
-QString readText(const QString &abs) {
-    QFile f(abs);
-    if (!f.open(QIODevice::ReadOnly)) return QString();
+// ANTS-6453 — empty unless `abs` opens as a file inside `root`.
+QString readText(const QString &root, const QString &abs) {
+    QFile f;
+    if (!PathValidation::openInsideProject(f, root, abs)) return QString();
     return QString::fromUtf8(f.readAll());
 }
 
@@ -397,7 +399,7 @@ private:
     bool contains(const QString &rel, const QByteArray &needle) {
         if (!m_normalised.contains(rel))
             m_normalised.insert(rel, QuotationCheck::normalise(
-                readText(QDir(m_root).filePath(rel)).toUtf8()).text);
+                readText(m_root, QDir(m_root).filePath(rel)).toUtf8()).text);
         return m_normalised.value(rel).contains(needle);
     }
 
@@ -532,7 +534,7 @@ QSet<QString> roadmapIds(const QString &rootCanonical) {
         QRegularExpression::MultilineOption);
     QSet<QString> ids;
     for (const QString &f : std::as_const(files))
-        for (auto it = item.globalMatch(readText(root.filePath(f))); it.hasNext();)
+        for (auto it = item.globalMatch(readText(rootCanonical, root.filePath(f))); it.hasNext();)
             ids.insert(it.next().captured(1));
     return ids;
 }
@@ -567,7 +569,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
 
     const QDir root(rootCanonical);
     Checker checker(rootCanonical, ids, prefixes);
-    for (const QString &abs : files.files) checker.file(root.relativeFilePath(abs), readText(abs));
+    for (const QString &abs : files.files) checker.file(root.relativeFilePath(abs), readText(rootCanonical, abs));
 
     QList<Row> rows = checker.rows;
     int unchecked = 0;

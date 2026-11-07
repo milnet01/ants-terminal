@@ -1,6 +1,7 @@
 // function_sizes (ANTS-5787) — the longest functions in the given paths.
 
 #include "functionsizes.h"
+#include "pathvalidation.h"
 
 #include "codewalk.h"
 #include "fileoutline.h"
@@ -163,8 +164,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     int unmeasured = 0;
     const QDir root(rootCanonical);
     for (const QString &abs : files.files) {
-        QFile in(abs);
-        if (!in.open(QIODevice::ReadOnly)) continue;
+        QFile in;   // ANTS-6454 — re-checked at the open, not only at the walk
+        if (!PathValidation::openInsideProject(in, rootCanonical, abs)) continue;
         QStringList lines;
         while (!in.atEnd()) lines.append(QString::fromUtf8(in.readLine()));
         const QString rel = root.relativeFilePath(abs);

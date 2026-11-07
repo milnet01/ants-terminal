@@ -328,3 +328,19 @@ TEST(CommentClaims, Inv9Wiring) {
     EXPECT_NE(body.find("schema[\"type\"] = \"object\";"), std::string::npos);
     EXPECT_NE(body.find("schema[\"additionalProperties\"] = false;"), std::string::npos);
 }
+
+// ANTS-6453 — a comment naming a file outside the root does not get that file
+// read: its quotation is reported missing, not confirmed from the outside file.
+TEST(CommentClaims, Ants6453FileOutsideRootIsNotRead) {
+    QTemporaryDir parent;
+    ASSERT_TRUE(parent.isValid());
+    writeFile(parent.filePath("out/secret.txt"), "the hidden secret phrase here\n");
+    writeFile(parent.filePath("proj/src/a.cpp"),
+              "// ../out/secret.txt holds \"the hidden secret phrase here\" as it says.\n");
+    const QJsonObject r = CommentClaims::run(
+        QFileInfo(parent.filePath("proj")).canonicalFilePath(), {});
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().constData();
+    EXPECT_EQ(quotes(rows(r, "findings", QStringLiteral("missing_quotation"))),
+              QStringList{QStringLiteral("the hidden secret phrase here")})
+        << QJsonDocument(r).toJson().constData();
+}

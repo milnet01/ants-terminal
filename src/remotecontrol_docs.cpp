@@ -243,6 +243,10 @@ QStringList RemoteControl::docIntegrityEnumerate(const QString &rootCanonical,
             if (!it.fileInfo().isFile() ||
                 !path.endsWith(QLatin1String(".md"), Qt::CaseInsensitive))
                 continue;
+            // ANTS-6449 — a symlinked doc is read only if it lands in the root.
+            if (it.fileInfo().isSymLink() &&
+                !PathValidation::isInsideProject(rootCanonical, path))
+                continue;
             out << rootDir.relativeFilePath(path);
         }
         out.sort();

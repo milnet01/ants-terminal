@@ -126,7 +126,10 @@ TEST_F(TraceServe, Inv1RefusesNeitherBothAndMalformedSymbol) {
          {QJsonObject{},
           QJsonObject{{QStringLiteral("symbol"), QStringLiteral("spanFn")},
                       {QStringLiteral("path"), QStringLiteral("span.cpp")}},
-          QJsonObject{{QStringLiteral("symbol"), QStringLiteral("a b")}}}) {
+          QJsonObject{{QStringLiteral("symbol"), QStringLiteral("a b")}},
+          // ANTS-6455 — an empty or non-string path is no path.
+          QJsonObject{{QStringLiteral("path"), QString()}},
+          QJsonObject{{QStringLiteral("path"), 7}}}) {
         const QJsonObject r = call(args);
         SCOPED_TRACE(dump(args));
         EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool(true));

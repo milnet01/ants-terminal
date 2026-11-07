@@ -405,6 +405,18 @@ TEST(VerifyEngine, Inv10OrphanedSourceLint) {
     EXPECT_TRUE(VerifyEngine::findUnreferencedSources(root, {}).isEmpty());
 }
 
+// ANTS-6462 — a directory symlink out of the project is not walked, so CMake
+// text outside the project cannot mark a source as referenced.
+TEST(VerifyEngine, Ants6462SymlinkedDirOutOfProjectIsNotWalked) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    writeFile(tmp.path(), "CMakeLists.txt", "add_executable(app main.cpp)\n");
+    writeFile(outside.path(), "CMakeLists.txt", "add_executable(x leak.cpp)\n");
+    ASSERT_TRUE(QFile::link(outside.path(), tmp.path() + "/ext"));
+    EXPECT_EQ(VerifyEngine::findUnreferencedSources(tmp.path(), {QStringLiteral("leak.cpp")}),
+              QStringList{QStringLiteral("leak.cpp")});
+}
+
 // ---------------------------------------------------------------------------
 // INV-11 (ANTS-5063) — a timed-out gate's backgrounded, still-running child
 // does not survive the timeout. runOneGate today kills only the /bin/sh

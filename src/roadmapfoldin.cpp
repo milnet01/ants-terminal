@@ -128,7 +128,9 @@ constexpr int kInteractiveLockAttempts = 20;
 int lockExclusive(const QString &path, bool *flockBroken = nullptr,
                   int attempts = kLockAttempts) {
     const QByteArray utf8 = path.toUtf8();
-    int fd = ::open(utf8.constData(), O_RDWR | O_CREAT, 0644);
+    // ANTS-6460 — O_NOFOLLOW: counterStaysInProject ran before this open, so
+    // a symlink swapped in since is refused here rather than followed.
+    int fd = ::open(utf8.constData(), O_RDWR | O_CREAT | O_NOFOLLOW, 0644);
     if (fd < 0) return -1;
     bool everSystemic = false;
     bool everContention = false;
@@ -273,7 +275,7 @@ CounterLock acquireCounterLock(const QString &counterPath_, LockWait wait,
         }
         lk.usingRenameLock = true;
         lk.fd = ::open(counterPath_.toUtf8().constData(),
-                       O_RDWR | O_CREAT, 0644);
+                       O_RDWR | O_CREAT | O_NOFOLLOW, 0644);   // ANTS-6460
         if (lk.fd < 0) {
             releaseRenameLock(counterPath_);
             return lk;

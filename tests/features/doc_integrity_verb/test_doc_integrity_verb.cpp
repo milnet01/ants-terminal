@@ -64,6 +64,20 @@ TEST(DocIntegrityVerb, EnumerateScoping) {
     EXPECT_TRUE(RemoteControl::docIntegrityEnumerate(root, "docs/typo.md", "docs").isEmpty());
 }
 
+// ANTS-6449 — the walk keeps a symlinked doc only when it lands in the root.
+TEST(DocIntegrityVerb, WalkSkipsSymlinkOutOfRoot) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(writeFile(root + "/docs/real.md", "# H\n"));
+    ASSERT_TRUE(writeFile(outside.path() + "/secret.md", "# S\n"));
+    ASSERT_TRUE(QFile::link(outside.path() + "/secret.md", root + "/docs/leak.md"));
+    ASSERT_TRUE(QFile::link(root + "/docs/real.md", root + "/docs/alias.md"));
+
+    EXPECT_EQ(RemoteControl::docIntegrityEnumerate(root, "", "docs"),
+              (QStringList{"docs/alias.md", "docs/real.md"}));
+}
+
 // INV-18 — the `kinds` filter narrows both findings AND counts.
 // ANTS-5623 — the directory walk is bounded by entries VISITED, files and
 // directories alike, and says when it stopped. Under the cap it reports no cut.

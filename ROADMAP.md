@@ -91509,7 +91509,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
 
 ### Path containment (2026-11-06 review)
 
-- 📋 [ANTS-6449] **remotecontrol_docs.cpp: The doc walk used by `doc_integrity`, `doc_symbols`, `spec_lint`, `doc_dedup` and `doc_lint` has no `QDir::NoSymLinks`.**
+- ✅ [ANTS-6449] **remotecontrol_docs.cpp: The doc walk used by `doc_integrity`, `doc_symbols`, `spec_lint`, `doc_dedup` and `doc_lint` has no `QDir::NoSymLinks`.**
   `remotecontrol_docs.cpp:233-246` — The doc walk used by
   `doc_integrity`, `doc_symbols`, `spec_lint`, `doc_dedup` and
   `doc_lint` has no `QDir::NoSymLinks`. A symlinked `*.md` therefore
@@ -91520,12 +91520,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): add
   `QDir::NoSymLinks`, or check each yielded path with `isInsideProject`.
   Ledger row 136, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: the walk keeps a symlinked doc only when
+  PathValidation::isInsideProject accepts it (in-tree symlinks still
+  count). Test: DocIntegrityVerb.WalkSkipsSymlinkOutOfRoot.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 12-mcp-content-verbs-a (Low).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6450] **dependencyinventory.cpp: a tracked file that is a symlink is followed with no check that its target is under the root.**
+- ✅ [ANTS-6450] **dependencyinventory.cpp: a tracked file that is a symlink is followed with no check that its target is under the root.**
   `dependencyinventory.cpp:29-30` — a tracked file that is a symlink is
   followed with no check that its target is under the root.
   Quote: `QFile f(root + QLatin1Char('/') + rel); if (f.size() >
@@ -91533,6 +91536,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): skip any tracked
   path whose canonical path is not under `root`.
   Ledger row 139, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: readLines opens through the new
+  PathValidation::openInsideProject, which checks the open descriptor's
+  real location. Test:
+  McpDependencyInventory.Ants6450SymlinkOutOfRootIsNotRead.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
@@ -91571,7 +91578,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 14-roadmap-store (Low).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6453] **commentclaims.cpp: comment_claims can read files outside the project.**
+- ✅ [ANTS-6453] **commentclaims.cpp: comment_claims can read files outside the project.**
   `commentclaims.cpp:307` — comment_claims can read files outside the
   project.
   Quote: `if (QFileInfo::exists(root.filePath(p))) return
@@ -91580,12 +91587,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `..`/absolute result, or a canonical path outside the root, in both
   branches of `resolve()`.
   Ledger row 159, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: fixed at the read, not in resolve(): readText
+  opens through openInsideProject. Changing resolve() would have
+  reported every existing ../ reference as dead. Test:
+  CommentClaims.Ants6453FileOutsideRootIsNotRead.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 15-code-index-search-a (Medium).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6454] **Several files are opened again after `PathValidation`/walk time with no new containment check (`functionsizes.cpp:166`, `duplicateblocks.cpp:310`, `codebaseindex.cpp:205`).**
+- ✅ [ANTS-6454] **Several files are opened again after `PathValidation`/walk time with no new containment check (`functionsizes.cpp:166`, `duplicateblocks.cpp:310`, `codebaseindex.cpp:205`).**
   `functionsizes.cpp:166` — Several files are opened again after
   `PathValidation`/walk time with no new containment check
   (`functionsizes.cpp:166`, `duplicateblocks.cpp:310`,
@@ -91594,12 +91605,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   tree.
   Quote: `functionsizes.cpp:166`
   Ledger row 171, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: functionsizes and duplicateblocks open through
+  openInsideProject; codebaseindex passes FileOutline::compute's new
+  containRoot. The race is not forceable in a test; the helper's own
+  tests (McpPathAnchor.OpenInsideProject*) cover the check.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 15-code-index-search-a (Low).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6455] **trace.cpp: Bug 1 — empty path accepted.**
+- ✅ [ANTS-6455] **trace.cpp: Bug 1 — empty path accepted.**
   `trace.cpp:336-342` — Bug 1 — empty path accepted. `validatePath`
   returns `bad=false` for an empty path (`pathvalidation.cpp:223`). So
   `path:""`, or a non-string `path` (whose `toString()` is `""`), is
@@ -91611,12 +91626,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   non-string `path` with `bad_args`. Derive `pathRel` from
   `check.resolved`.
   Ledger row 176, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: an empty or non-string path refuses bad_args; spec
+  ANTS-5734 INV-1 amended. pathRel left lexical: it is only a search
+  needle and validatePath already judged the real path.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 16-code-index-search-b (Medium).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6456] **symbolquery.cpp: A `lane` that is a symlink to a directory outside the root passes the check (`isDir` follows the link), and the walk then runs outside the root.**
+- ✅ [ANTS-6456] **symbolquery.cpp: A `lane` that is a symlink to a directory outside the root passes the check (`isDir` follows the link), and the walk then runs outside the root.**
   `symbolquery.cpp:1016-1020` — A `lane` that is a symlink to a
   directory outside the root passes the check (`isDir` follows the
   link), and the walk then runs outside the root.
@@ -91626,24 +91644,29 @@ keeps the reviewer's remedy, which is a claim to check before building.
   and re-check it against the root, or refuse when
   `QFileInfo(cand).isSymLink()`.
   Ledger row 177, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: the lane is also checked by its real location
+  (isInsideProject). Test:
+  McpSymbolQuery.Ants6456SymlinkLaneOutOfRootIsIgnored.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6457] **tokenusageengine.cpp: The symlink check and the open are separate steps (a check-then-use race, TOCTOU).**
+- ✅ [ANTS-6457] **tokenusageengine.cpp: The symlink check and the open are separate steps (a check-then-use race, TOCTOU).**
   `src/tokenusageengine.cpp:340-347` — The symlink check and the open
   are separate steps (a check-then-use race, TOCTOU).
   Quote: `if (fi.isSymLink()) … QFile f(path); f.open(...)`
   Remedy (the reviewer's; check it before building): `open(O_NOFOLLOW)`,
   then `fstat`.
   Ledger row 191, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: open(O_NOFOLLOW|O_NONBLOCK) then fstat; same
+  refusal reasons. Race not forceable in a test.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6458] **pathvalidation.cpp: A path to a missing file can still escape the root through a symlink.**
+- ✅ [ANTS-6458] **pathvalidation.cpp: A path to a missing file can still escape the root through a symlink.**
   `pathvalidation.cpp:275` — A path to a missing file can still escape
   the root through a symlink.
   Quote: `const QString cleaned = QDir::cleanPath(joined);`
@@ -91652,12 +91675,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   at a time without the text cleanup), and return the landing path in
   `Check` for callers to write to.
   Ledger row 216, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: a missing path is also judged uncleaned (symlink
+  first, .. after). Landing path not returned in Check: no caller needed
+  it. Test: McpPathAnchor.MissingPathWithDotDotAfterSymlinkRejects.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 20-shared-utilities (Medium).
   Lanes: shared-utilities.
 
-- 📋 [ANTS-6459] **ants-drift-check.sh: The temp file has a fixed name in a repository working tree, and the redirect follows a symlink.**
+- ✅ [ANTS-6459] **ants-drift-check.sh: The temp file has a fixed name in a repository working tree, and the redirect follows a symlink.**
   `hooks/ants-drift-check.sh:59` — The temp file has a fixed name in a
   repository working tree, and the redirect follows a symlink.
   Quote: `printf '%s\n' "$out" > "$marker.tmp"`
@@ -91665,24 +91691,28 @@ keeps the reviewer's remedy, which is a claim to check before building.
   file with `mktemp "$project_root/.ants-audit-pending.XXXXXX"`, or
   refuse when `[ -L "$marker.tmp" ]` or `[ -L "$marker" ]`.
   Ledger row 269, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: mktemp temp file. Test: hook_pack ANTS-6459 case,
+  red on the old hook.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6460] **roadmapfoldin.cpp: The symlink check (`counterStaysInProject`) runs before the open, and the open does not use `O_NOFOLLOW`.**
+- ✅ [ANTS-6460] **roadmapfoldin.cpp: The symlink check (`counterStaysInProject`) runs before the open, and the open does not use `O_NOFOLLOW`.**
   `roadmapfoldin.cpp:131` — The symlink check (`counterStaysInProject`)
   runs before the open, and the open does not use `O_NOFOLLOW`. A
   symlink swapped in between is followed.
   Quote: `::open(utf8.constData(), O_RDWR | O_CREAT, 0644)`
   Remedy (the reviewer's; check it before building): add `O_NOFOLLOW`.
   Ledger row 336, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: O_NOFOLLOW on both counter opens. Race not
+  forceable in a test.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Low).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6461] **indiereviewengine.cpp: `assembleThreatModelExtras` reads `CLAUDE.md`, `SECURITY.md` and `.semgrep.yml` with no check that their real location is inside the project.**
+- ✅ [ANTS-6461] **indiereviewengine.cpp: `assembleThreatModelExtras` reads `CLAUDE.md`, `SECURITY.md` and `.semgrep.yml` with no check that their real location is inside the project.**
   `indiereviewengine.cpp:1537-1538` — `assembleThreatModelExtras` reads
   `CLAUDE.md`, `SECURITY.md` and `.semgrep.yml` with no check that their
   real location is inside the project. A repo whose `CLAUDE.md` is a
@@ -91695,12 +91725,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   through the same `canonicalFilePath().startsWith(rootCanon + '/')`
   check.
   Ledger row 385, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: the three files open through openInsideProject.
+  Test: IndieReviewEngine.Ants6461SymlinkOutOfProjectIsNotRead.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 34-review-engines (Medium).
   Lanes: review-engines.
 
-- 📋 [ANTS-6462] **verifyengine.cpp: the walk follows directory symlinks.**
+- ✅ [ANTS-6462] **verifyengine.cpp: the walk follows directory symlinks.**
   `verifyengine.cpp:565-570` — the walk follows directory symlinks. The
   `visited` set stops loops, but a link to `/` or `$HOME` still walks
   and reads all of it.
@@ -91710,29 +91742,38 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `QDir::NoSymLinks`, or require the canonical path to stay under the
   root.
   Ledger row 407, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: the walk skips any directory whose real location
+  is outside the root, and opens each file through openInsideProject.
+  Test: VerifyEngine.Ants6462SymlinkedDirOutOfProjectIsNotWalked.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (Low).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6463] **auditengine.cpp: `resolveProjectPathLocal` has no project containment check.**
+- ✅ [ANTS-6463] **auditengine.cpp: `resolveProjectPathLocal` has no project containment check.**
   `src/auditengine.cpp:310` — `resolveProjectPathLocal` has no project
   containment check. A tool output line like `./../../x.h:N:` makes
   `applyFilter` read a file outside the project (only to search it for
   words).
   Ledger row 1329, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: the context-filter read opens through
+  openInsideProject. Test:
+  AuditExclusionSet.Ants6463ContextFilterSkipsFileOutsideProject.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-readability 2026-11-06, lane 11-audit-engine-b (Info).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6464] **- `src/remotecontrol_workspace.cpp:4069`: `rel.startsWith(rootCanonical)` without a trailing `/` could strip a sibling-prefix path ("/a/b" vs "/a/bc").**
+- ✅ [ANTS-6464] **- `src/remotecontrol_workspace.cpp:4069`: `rel.startsWith(rootCanonical)` without a trailing `/` could strip a sibling-prefix path ("/a/b" vs "/a/bc").**
   `src/remotecontrol_workspace.cpp:4069` — -
   `src/remotecontrol_workspace.cpp:4069`:
   `rel.startsWith(rootCanonical)` without a trailing `/` could strip a
   sibling-prefix path ("/a/b" vs "/a/bc"). It is probably unreachable
   after validatePath.
   Ledger row 1402, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-07: the root is stripped only at a path boundary.
+  Reachable through the feedback-file carve-out; no observable effect,
+  so no test.
   **Layman:** A tool could read or write a file outside the project it was asked to work on.
   Kind: security.
   Source: review-readability 2026-11-06, lane 26-mcp-state-workspace-a (Info).

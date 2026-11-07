@@ -10,8 +10,12 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include <string>
 
@@ -195,4 +199,23 @@ TEST(AuditExclusionSet, ApplyFilterDropsEnvReadSecretLine) {
     EXPECT_EQ(r.count, 0)
         << "env-read secret line should be dropped; body was: "
         << r.body.toStdString();
+}
+
+// ANTS-6463 — a tool output path that leads out of the project is not read for
+// the context filter, so text outside the project cannot drop a finding.
+TEST(AuditExclusionSet, Ants6463ContextFilterSkipsFileOutsideProject) {
+    QTemporaryDir parent;
+    ASSERT_TRUE(parent.isValid());
+    ASSERT_TRUE(QDir(parent.path()).mkpath(QStringLiteral("proj")));
+    ASSERT_TRUE(QDir(parent.path()).mkpath(QStringLiteral("out")));
+    QFile h(parent.filePath(QStringLiteral("out/x.h")));
+    ASSERT_TRUE(h.open(QIODevice::WriteOnly));
+    h.write("int x; // OUTSIDE_MARK\n");
+    h.close();
+    OutputFilter f;
+    f.dropIfContextContains = {QStringLiteral("OUTSIDE_MARK")};
+    const AuditEngine::FilterResult r = AuditEngine::applyFilter(
+        QStringLiteral("./../out/x.h:1: warning: something\n"), f,
+        parent.filePath(QStringLiteral("proj")));
+    EXPECT_EQ(r.count, 1) << "the outside file was read: " << r.body.toStdString();
 }

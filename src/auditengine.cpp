@@ -1,4 +1,5 @@
 #include "auditengine.h"
+#include "pathvalidation.h"
 #include "roadmapfoldin.h"
 
 #include "auditfpledger.h"
@@ -544,12 +545,15 @@ FilterResult applyFilter(const QString &raw,
                     // uses (lineIsCode caps at 2 MiB); a context window
                     // needs a source file, not a generated blob.
                     constexpr qint64 kMaxContextFileBytes = 4LL * 1024 * 1024;
-                    if (!abs.isEmpty() && QFileInfo(abs).size() <= kMaxContextFileBytes) {
-                        QFile src(abs);
-                        if (src.open(QIODevice::ReadOnly | QIODevice::Text)) {
-                            lines = QString::fromUtf8(src.readAll())
-                                        .split('\n', Qt::KeepEmptyParts);
-                        }
+                    // ANTS-6463 — a path in the tool's output that leads
+                    // out of the project is not read.
+                    QFile src;
+                    if (!abs.isEmpty() &&
+                        PathValidation::openInsideProject(src, projectPath, abs) &&
+                        src.size() <= kMaxContextFileBytes) {
+                        src.setTextModeEnabled(true);
+                        lines = QString::fromUtf8(src.readAll())
+                                    .split('\n', Qt::KeepEmptyParts);
                     }
                     cached = fileCache.insert(relPath, lines);
                 }

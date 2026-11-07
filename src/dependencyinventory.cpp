@@ -1,6 +1,7 @@
 // dependency_inventory (ANTS-5515). See dependencyinventory.h.
 
 #include "dependencyinventory.h"
+#include "pathvalidation.h"
 
 #include <QFile>
 #include <QJsonArray>
@@ -26,8 +27,10 @@ QJsonObject baseRow(const char *kind, const QString &file, int line) {
 }
 
 QStringList readLines(const QString &root, const QString &rel, Inventory *inv) {
-    QFile f(root + QLatin1Char('/') + rel);
-    if (f.size() > kMaxFileBytes || !f.open(QIODevice::ReadOnly)) return {};
+    QFile f;   // ANTS-6450 — a tracked symlink is read only if it lands in the root
+    if (!PathValidation::openInsideProject(f, root, root + QLatin1Char('/') + rel) ||
+        f.size() > kMaxFileBytes)
+        return {};
     ++inv->filesRead;
     return QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
 }

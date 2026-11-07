@@ -383,6 +383,16 @@ for security-relevant changes.
 
 ### Security
 
+- **MCP tools, the audit and the review engines read only files whose real location is inside the project**
+  A symlink pointing out of the project is no longer followed by the doc
+  walk, `dependency_inventory`, `comment_claims`, `find_caller`'s `lane`,
+  the review threat-model prompt, `verify_changes`' CMake scan or the
+  audit's context filter. Files re-opened after a walk are checked again
+  at the open. A path to a new file can no longer leave the project
+  through `link/..`. `trace` refuses an empty `path`. The drift-check
+  hook's temp file can no longer be redirected by a planted symlink.
+  (ANTS-6449, ANTS-6450, ANTS-6453 to ANTS-6464)
+
 - **The shell-integration key now lives in a private key file, and programs your shell runs no longer inherit it**
   The terminal and both shell hooks read `~/.config/ants-terminal/osc133.key`
   (mode 0600), falling back to an exported `$ANTS_OSC133_KEY`, which the

@@ -7,6 +7,7 @@
 #ifndef ANTS_PATHVALIDATION_H
 #define ANTS_PATHVALIDATION_H
 
+#include <QFile>
 #include <QJsonObject>
 #include <QString>
 
@@ -65,6 +66,15 @@ Check validatePath(const QString &rawPath,
 // miss (e.g. a non-existent candidate). Extracted from coldeyesengine's
 // file-local helper once a third call-site (indiereviewengine) appeared.
 bool isInsideProject(const QString &projectPath, const QString &candidate);
+
+// ANTS-6449..6463 — open `path` read-only, and keep it open only if what was
+// opened is a regular file inside `projectPath`. The check runs on the open
+// descriptor's real location (/proc/self/fd), not on the path beforehand, so
+// a symlink swapped in after an earlier check cannot redirect the read. A
+// symlink that stays inside the project is still followed. A FIFO is refused
+// without blocking. False leaves `file` closed.
+[[nodiscard]] bool openInsideProject(QFile &file, const QString &projectPath,
+                                     const QString &path);
 
 }  // namespace PathValidation
 

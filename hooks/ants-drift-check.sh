@@ -56,8 +56,15 @@ esac
     fi
 
     if [ "$rc" -eq 3 ]; then
-        printf '%s\n' "$out" > "$marker.tmp" 2>>"$logfile" \
-            && mv -f "$marker.tmp" "$marker" 2>>"$logfile"
+        # ANTS-6459 — mktemp makes a fresh file, so a symlink planted in the
+        # working tree is never written through; mv replaces a symlinked
+        # marker rather than following it.
+        tmp="$(mktemp "$marker.XXXXXX" 2>>"$logfile")" || exit 0
+        if printf '%s\n' "$out" > "$tmp" 2>>"$logfile"; then
+            mv -f "$tmp" "$marker" 2>>"$logfile" || rm -f "$tmp"
+        else
+            rm -f "$tmp"
+        fi
     elif [ "$rc" -eq 0 ]; then
         # Clean — clear stale marker if any.
         rm -f "$marker" 2>>"$logfile"
