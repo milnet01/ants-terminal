@@ -408,13 +408,20 @@ public:
     // feature test (`tests/features/roadmap_viewer_archive/`) can drive
     // them without instantiating a dialog.
     //
-    // `archiveDirFor(roadmapPath)` resolves the canonical
-    // (symlink-followed) `m_roadmapPath`, then returns
-    // `<dirname>/docs/roadmap/` iff that path exists, is a directory,
-    // and is readable. Returns the empty string in every other case
-    // (missing, regular file, broken symlink, symlink cycle,
-    // unreadable, non-directory). Spec INVs 1, 1a.
+    // `archiveDirFor(roadmapPath)` returns
+    // `<projectRootFor(roadmapPath)>/docs/roadmap/` iff that path exists, is
+    // a directory, and is readable. Returns the empty string in every other
+    // case (missing, regular file, broken symlink, symlink cycle,
+    // unreadable, non-directory). Spec INVs 1, 1a, 1b.
     static QString archiveDirFor(const QString &roadmapPath);
+
+    // The project root of the canonical (symlink-followed) roadmapPath: the
+    // nearest ancestor directory holding a `.git`, which is the same boundary
+    // findRoadmapUnder()'s up-walk stops at, so a roadmap found at
+    // `<root>/docs/ROADMAP.md` resolves back to `<root>`. Falls back to the
+    // roadmap's own directory outside a git tree; empty for an empty path or
+    // a broken symlink.
+    static QString projectRootFor(const QString &roadmapPath);
 
     // `loadMarkdown(roadmapPath, includeArchive)` reads the file at
     // `roadmapPath` (capped at 64 MiB; each archive at 8 MiB) and, if
@@ -602,11 +609,8 @@ private:
     // own cached read in m_source.
     QVector<BulletRecord> rereadTabBullets();
 
-    // The project root ANTS-3756 INV-8 keys a project on, derived from
-    // m_roadmapPath: the nearest ancestor directory holding a `.git`, which is
-    // the same boundary findRoadmapUnder()'s up-walk stops at, so a roadmap
-    // found at `<root>/docs/ROADMAP.md` resolves back to `<root>`. Falls back
-    // to the roadmap's own directory outside a git tree.
+    // The project root ANTS-3756 INV-8 keys a project on:
+    // projectRootFor(m_roadmapPath).
     QString storeProjectRoot() const;
 
     // § 2.3 — this project's STORED legend as status emoji → label, empty on

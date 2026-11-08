@@ -12,15 +12,16 @@ runs a search — so the default render stays cheap.
 
 ## Layout convention
 
-Archive files live at `<dirname(canonical-roadmap)>/docs/roadmap/`,
-where `canonical-roadmap` is `m_roadmapPath` after symlink resolution.
-The dialog never re-discovers the project — it uses only
-`dirname(canonical(m_roadmapPath))`. (For most repos that *is* the
-project root, but the dialog doesn't know that and doesn't depend
-on it.)
+Archive files live at `<project root>/docs/roadmap/`, where
+`roadmap_log op:"rotate_minor"` writes them (ANTS-5159). The project
+root is the nearest ancestor of `m_roadmapPath`, after symlink
+resolution, that holds a `.git`, or the roadmap's own directory outside
+a git tree (`RoadmapDialog::projectRootFor`). A roadmap at
+`<root>/docs/private/ROADMAP.md` reads `<root>/docs/roadmap/`, never a
+`docs/roadmap/` beside itself.
 
 ```
-<dirname(canonical-roadmap)>/
+<project root>/
 ├── ROADMAP.md              ← current minor in flight + [Unreleased]
 └── docs/
     └── roadmap/
@@ -167,7 +168,7 @@ Source-grep + pure-helper drive. Same harness pattern as
 `roadmap_viewer` and `roadmap_viewer_tabs`.
 
 - **INV-1** `RoadmapDialog::historyArchiveDir()` returns the absolute,
-  symlink-resolved path to `<dirname(canonical(m_roadmapPath))>/docs/roadmap/`
+  symlink-resolved path to `<projectRootFor(m_roadmapPath)>/docs/roadmap/`
   iff that path exists AND `S_ISDIR` AND is readable. Returns the
   empty string in **every** other case: missing, regular file, broken
   symlink, symlink cycle, unreadable, `docs/` itself missing or a
@@ -176,6 +177,12 @@ Source-grep + pure-helper drive. Same harness pattern as
 - **INV-1a** `historyArchiveDir()` is symlink-safe: a symlink-cycle
   for `docs/roadmap/` resolves to a canonical path or returns empty
   rather than looping.
+
+- **INV-1b** A roadmap below the project root reads the root's
+  `docs/roadmap/` (ANTS-5159). With `.git` at `<root>` and the roadmap
+  at `<root>/docs/private/ROADMAP.md`, `archiveDirFor()` returns
+  `<root>/docs/roadmap/`, and the history load holds its archives and
+  none from `<root>/docs/private/docs/roadmap/`.
 
 - **INV-2** `loadRoadmapMarkdown(false)` returns the contents of
   `m_roadmapPath` only (subject to the per-file 8 MiB cap) — the

@@ -110332,7 +110332,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-14 (IDE clang-tidy diagnostics).
   Lanes: remote-control.
 
-- 📋 [ANTS-5159] **roadmap-format.md names two different bases for the archive directory, and the viewer and the migration follow different ones.**
+- ✅ [ANTS-5159] **roadmap-format.md names two different bases for the archive directory, and the viewer and the migration follow different ones.**
   § 3.9's convention puts archives at `<dir(ROADMAP.md)>/docs/roadmap/`,
   while its rotate_minor bullet says `docs/roadmap/<M>.<N>.md` relative to
   the project root. The code splits the same way: RoadmapDialog::archiveDirFor
@@ -110352,6 +110352,12 @@ reports are asked for separately, each time.
   Neither has archives yet, so nothing is lost today. Fix: the viewer
   resolves the project root and reads <root>/docs/roadmap/; the nested
   Dantes layout is the case to design for.
+  Shipped 2026-11-08. RoadmapDialog::archiveDirFor now reads
+  <projectRootFor(path)>/docs/roadmap/, the same .git walk-up
+  storeProjectRoot() uses, which matches the store roots of both
+  off-root projects (RetroArch: RetroArch/; Dantes: hells-gate-recomp/,
+  where its ROADMAP.md already sits). Test INV-1b in
+  roadmap_viewer_archive; spec amended.
   **Layman:** The roadmap rules disagree about where old-version archive files live when the roadmap file is not at the top of the project.
   Kind: doc-fix.
   Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).

@@ -125,6 +125,33 @@ static int runMain() {
             fail("INV-1a", "broken symlink should yield empty");
     }
 
+    // INV-1b (ANTS-5159): an off-root ROADMAP.md (RetroArch's
+    // docs/private/ROADMAP.md) reads archives from <project root>/docs/roadmap/,
+    // where rotate_minor writes them — never from beside ROADMAP.md.
+    {
+        QTemporaryDir tmpOff;
+        if (!tmpOff.isValid()) fail("INV-1b", "tmpOff not created");
+        const QString root = tmpOff.path();
+        QDir(root).mkpath(QStringLiteral(".git"));
+        QDir(root).mkpath(QStringLiteral("docs/roadmap"));
+        QDir(root).mkpath(QStringLiteral("docs/private/docs/roadmap"));
+        const QString r = writeFile(root + QStringLiteral("/docs/private"),
+                                    QStringLiteral("ROADMAP.md"),
+                                    QByteArrayLiteral("# current\n"));
+        writeFile(root + QStringLiteral("/docs/roadmap"),
+                  QStringLiteral("0.7.md"), QByteArrayLiteral("AT-ROOT\n"));
+        writeFile(root + QStringLiteral("/docs/private/docs/roadmap"),
+                  QStringLiteral("0.6.md"), QByteArrayLiteral("BESIDE-ROADMAP\n"));
+        if (QFileInfo(RoadmapDialog::archiveDirFor(r)).canonicalFilePath() !=
+            QFileInfo(root + QStringLiteral("/docs/roadmap")).canonicalFilePath())
+            fail("INV-1b", "off-root roadmap did not resolve to <root>/docs/roadmap");
+        const QString assembled = RoadmapDialog::loadMarkdown(r, true);
+        if (!assembled.contains(QStringLiteral("AT-ROOT")))
+            fail("INV-1b", "root archive missing from the history load");
+        if (assembled.contains(QStringLiteral("BESIDE-ROADMAP")))
+            fail("INV-1b", "an archive beside ROADMAP.md was read");
+    }
+
     // INV-2: loadMarkdown(includeArchive=false) returns just the
     // current file's content. Independent of archive presence.
     writeFile(baseRoot + QStringLiteral("/docs/roadmap"),

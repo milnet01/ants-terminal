@@ -265,6 +265,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Roadmap viewer's History tab reads old-version archives from the project's top folder, so a roadmap kept in a subfolder such as docs/private/ finds them too.** (ANTS-5159)
+
 - **When Ants closes, the roadmap database is closed on the same thread that opened it.** (ANTS-5141)
 
 - **The AppImage bundles Qt's SQLite driver, so its roadmap, message and know-how verbs open their store** (ANTS-3790)

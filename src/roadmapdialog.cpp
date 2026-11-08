@@ -648,13 +648,17 @@ RoadmapDialog::parseBullets(const QString &markdownText) {
     return RoadmapParse::parseBullets(markdownText);
 }
 
+QString RoadmapDialog::storeProjectRoot() const {
+    return projectRootFor(m_roadmapPath);
+}
+
 // ANTS-3793 § 2.2 — see roadmapdialog.h. The up-walk stops at the same `.git`
 // boundary findRoadmapUnder()'s down-walk does, so the two are inverses on
 // every layout that helper supports (`./`, `docs/`, `docs/private/`,
 // `docs/internal/`, `.github/`).
-QString RoadmapDialog::storeProjectRoot() const {
-    if (m_roadmapPath.isEmpty()) return {};
-    const QString canonical = QFileInfo(m_roadmapPath).canonicalFilePath();
+QString RoadmapDialog::projectRootFor(const QString &roadmapPath) {
+    if (roadmapPath.isEmpty()) return {};
+    const QString canonical = QFileInfo(roadmapPath).canonicalFilePath();
     if (canonical.isEmpty()) return {};
     const QString startDir = QFileInfo(canonical).path();
     QString dir = startDir;
@@ -3210,18 +3214,15 @@ void RoadmapDialog::scheduleRebuild() {
 }
 
 QString RoadmapDialog::archiveDirFor(const QString &roadmapPath) {
-    // ANTS-1125 INV-1 / INV-1a: derive the archive path from the
-    // canonical (symlink-resolved) roadmapPath, then check that
-    // <dir>/docs/roadmap/ exists, is a directory, and is readable.
-    // Empty string in *every* failure mode (missing, regular-file,
-    // broken symlink, symlink cycle, unreadable, non-directory).
-    if (roadmapPath.isEmpty()) return QString();
-    const QString canonical =
-        QFileInfo(roadmapPath).canonicalFilePath();
-    if (canonical.isEmpty()) return QString();   // broken symlink / cycle
-    const QString candidatePath =
-        QFileInfo(canonical).absoluteDir().absolutePath()
-        + QStringLiteral("/docs/roadmap");
+    // ANTS-1125 INV-1 / INV-1a / INV-1b: <project root>/docs/roadmap/, the
+    // root rotate_minor writes against (ANTS-5159), so an off-root
+    // docs/private/ROADMAP.md still finds its archives. The directory must
+    // exist, be a directory, and be readable. Empty string in *every* failure
+    // mode (missing, regular-file, broken symlink, symlink cycle, unreadable,
+    // non-directory).
+    const QString root = projectRootFor(roadmapPath);
+    if (root.isEmpty()) return QString();   // empty path / broken symlink / cycle
+    const QString candidatePath = root + QStringLiteral("/docs/roadmap");
     const QFileInfo candidateInfo(candidatePath);
     if (!candidateInfo.exists()) return QString();
     if (!candidateInfo.isDir()) return QString(); // regular file shadowing
