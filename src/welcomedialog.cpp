@@ -114,6 +114,12 @@ WelcomeDialog::WelcomeDialog(const QString &themeName, const Options &opts,
     rows.push_back(addRow(cv, claude, tr("Git context on every prompt"),
                           QStringLiteral("welcomeGitContextButton"), &cs::gitContextStatus,
                           runNow(&cs::installGitContextHook)));
+    // ANTS-6708 — the ants-*.sh pack tools/install-hooks.sh installs from a
+    // checkout; an AppImage or package carries its own copy.
+    rows.push_back(addRow(cv, claude, tr("Ants hook pack (session orientation, inbox notices)"),
+                          QStringLiteral("welcomeHookPackButton"),
+                          [] { return cs::hookPackStatus(cs::defaultHookPackDirs()); },
+                          runNow([] { return cs::installHookPack(cs::defaultHookPackDirs()); })));
     const QString mdPath = opts.claudeMdPath;
     rows.push_back(addRow(cv, claude, tr("Ants notes in your CLAUDE.md (optional)"),
                           QStringLiteral("welcomeClaudeMdButton"),

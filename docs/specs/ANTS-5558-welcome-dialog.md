@@ -3,7 +3,7 @@
 **Status:** accepted (2026-09-29), review-contract loops 1 + 2 folded, cap reached.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5558 (user-request-2026-09-29; decisions recorded in the item's body and its 2026-09-29 note).
-**Amended by:** ANTS-5744 (install Claude Code from the dialog: § 2.8, INV-11 to INV-14).
+**Amended by:** ANTS-5744 (install Claude Code from the dialog: § 2.8, INV-11 to INV-14); ANTS-6708 (the hook pack: § 2.4 row 5, INV-16, INV-17).
 **Composes with:** `tests/features/help_about_menu/spec.md` (the Help and Donate menus), `docs/standards/dialogs.md` (D1 to D6), ANTS-4932 (`ants-mcpd`), `packaging/shell-integration/README.md` (the OSC 133 hook).
 
 **Layman:** The first time Ants Terminal opens, a window thanks the user, says briefly what the terminal can do, sets up the Claude Code extras and shell integration in one click each, and invites a donation.
@@ -54,7 +54,7 @@ struct Outcome { bool ok; QString message; };
 
 **Detection** (amended by ANTS-5744)**.** `cs::claudeProgram()`, new with ANTS-5744, returns `QStandardPaths::findExecutable("claude")`, else `$HOME/.local/bin/claude` when that file is executable, else empty. The second place is where § 2.8's installer puts it, and it may not be on the `PATH` Ants started with. Claude Code is present when `claudeProgram()` is not empty or `~/.claude.json` exists; only Claude Code writes that file, so a program Ants cannot find on its `PATH` still counts once it has run. `~/.claude` does not count: Ants' SessionStart hook creates it at startup, and § 2.8's installer creates it before downloading. Read on each open.
 
-Four rows:
+Five rows:
 
 1. **Status-bar hooks.** `installStatusHooks()` / `statusHooksStatus()`: the moved `installClaudeHooks` work.
 2. **Connect Ants MCP to Claude Code.** `registerMcp()` / `mcpStatus()`.
@@ -70,6 +70,10 @@ Four rows:
    - The button first shows the exact text to be written and the file path, and writes nothing unless the user confirms.
    - The note sits between the lines `<!-- ants-terminal:begin -->` and `<!-- ants-terminal:end -->` in `~/.claude/CLAUDE.md`, created if absent. A second install replaces the block in place. Remove deletes the block and its markers. Every byte outside the block is kept.
    - The note is a few lines: that Ants Terminal's MCP tools are available as `mcp__ants__*`, that they are usually cheaper than raw file reads and searches, and that `session_orient` is the first call. The automatic SessionStart orientation hook (`ants::mcp_orientation::install`) stays the default route and is untouched.
+5. **The Ants hook pack** (ANTS-6708). `installHookPack()` / `hookPackStatus()`, also a Settings button.
+   - The pack is `hooks/` in the source tree. Every package and the AppImage install it under `share/ants-terminal/claude-hooks/`. `defaultHookPackDirs()` searches there beside the binary, then under `/usr/local` and `/usr`.
+   - Install copies each `ants-*.sh` and `_common.sh` into `~/.claude/hooks/`. It merges into `settings.json` what `tools/install-hooks.sh` merges: the `ants_hooks_pack_v1` key, and each pack hook not already on its event. The user's other hooks and keys are kept.
+   - The status names every `settings.json` hook whose script file is missing, whoever installed it. With no pack in this install and nothing missing, it is `Unavailable`.
 
 ### 2.5 Reload
 
@@ -130,6 +134,8 @@ curl -fsSL https://claude.ai/install.sh | bash && ~/.local/bin/claude
 - **INV-13** — Activating the dialog re-reads detection and swaps the install offer for the setup section once Claude Code is found. Broken by reading detection only at construction. *Test:* `WelcomeDialog.ReDetectsOnActivate` gives `detectClaude` a flag that starts false, sets it true, sends `QEvent::WindowActivate`, and expects the setup section visible and the install button hidden.
 - **INV-14** — `MainWindow::showWelcome` binds `openInstallTab` to `newTabForRemote` with the command and a trailing newline. Broken by binding nothing, which leaves the button doing nothing. *Test:* `WelcomeDialog.MainWindowOpensInstallTab`, a source check on `showWelcome` in `src/mainwindow.cpp`.
 - **INV-15** — A `~/.claude` that Claude Code did not create does not count as Claude Code. Broken by detection that reads the folder, which hides the install offer on every fresh machine. *Test:* `ClaudeSetup.DetectionIgnoresAFolderClaudeCodeDidNotCreate` runs under an empty `PATH` and temporary HOME: not detected after `mcp_orientation::installAt` and after `~/.claude/downloads` appears; detected with `~/.claude.json`, and with an executable `~/.local/bin/claude`.
+- **INV-16** — `installHookPack` copies every pack script, executable, and writes the same `hooks` object `tools/install-hooks.sh` writes from the same starting file. A second run leaves `settings.json` byte-identical. A user's hook on a shared event, and other keys, are kept. A `settings.json` that does not parse is left unwritten. The pack is in `CMakeLists.txt`'s install rules and the openSUSE file list, and the welcome dialog and Settings both offer it. Broken by a table that drifts from the script, a dropped user hook, or a package without the pack. *Test:* `HookPackInstall.Inv16CopiesPackAndMatchesInstallScript`, `HookPackInstall.Inv16RefusesCorruptSettings`, `HookPackInstall.Inv16PackShipsAndBothSurfacesOfferIt`.
+- **INV-17** — `hookPackStatus` is `Missing` before an install and `Installed` after. It is `Partial` naming a deleted pack script, or any other hook whose script is gone. It is `Unavailable` with no pack and nothing missing. Broken by a status that reads `settings.json` alone, which reports a reinstalled machine as set up. *Test:* `HookPackInstall.Inv17StatusFlagsMissingScripts`.
 
 ## 4. RAM / build cost
 
@@ -156,6 +162,8 @@ The dialog exists only while open. One new translation unit for the dialog and o
 | INV-13 | `WelcomeDialog.ReDetectsOnActivate` |
 | INV-14 | `WelcomeDialog.MainWindowOpensInstallTab` |
 | INV-15 | `ClaudeSetup.DetectionIgnoresAFolderClaudeCodeDidNotCreate` |
+| INV-16 | The three `HookPackInstall.Inv16*` tests in `tests/features/hook_pack_install/` |
+| INV-17 | `HookPackInstall.Inv17StatusFlagsMissingScripts` |
 
 The source-scrape tests anchored on the moved `SettingsDialog` bodies keep what each protects, and each check follows the text it reads: file work to `src/claudesetup.cpp`, button wiring and message boxes staying in `settingsdialog.cpp`. Where the move changes the text's form, the pattern changes with it — `settings_parse_failure_mirror`'s "`return;` after the rotation" becomes the module's early return of a failed `Outcome`. The tests: `hook_events_wired`, `claude_git_context_hook` (`test_installer_grep.cpp`, `test_script.sh`), `git_optional_locks`, `concurrent_writer_lock`, `persistence_post_rename_chmod`, `settings_parse_failure_mirror` and `secureio_configbackup_split`.
 

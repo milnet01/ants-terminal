@@ -492,6 +492,182 @@ QString gitContextHookScript() {
         "printf '%s\\n' \"$block\"\n");
 }
 
+// --- hook pack (ANTS-6708) --------------------------------------------------
+
+//
+// The same install tools/install-hooks.sh makes, for a user with no source
+// checkout: the scripts go to ~/.claude/hooks/, and settings.json gains the
+// sentinel key and one group per pack hook not already wired on its event.
+// The table below must match the script's hook_entries();
+// tests/features/hook_pack_install compares the two.
+
+namespace {
+
+struct PackHook {
+    const char *event;
+    const char *matcher;   // nullptr: the group has no matcher key
+    const char *script;
+    int timeout;           // 0: no timeout key
+};
+
+constexpr PackHook kPackHooks[] = {
+    {"SessionStart",     "*",    "ants-session-preamble.sh",    0},
+    {"SessionStart",     "*",    "ants-inbox-notice.sh",        0},
+    {"SessionStart",     "*",    "ants-know-how-notice.sh",     0},
+    {"UserPromptSubmit", nullptr, "ants-inbox-notice.sh",       5},
+    {"PreToolUse",       "Bash", "ants-bash-veto.sh",           0},
+    {"PreToolUse",       "Read", "ants-read-roadmap-veto.sh",   0},
+    {"PostToolUse",      "*",    "ants-inbox-notice.sh",        5},
+    {"Stop",             "*",    "ants-drift-check.sh",         0},
+    {"PreCompact",       "*",    "ants-precompact-snapshot.sh", 0},
+};
+
+constexpr char kPackSentinel[] = "ants_hooks_pack_v1";
+
+QString claudeHooksDir() { return ConfigPaths::claudeHome() + QStringLiteral("/hooks"); }
+
+// The first directory in `dirs` holding the pack, else empty.
+QString findPack(const QStringList &dirs) {
+    for (const QString &dir : dirs)
+        if (QFileInfo(dir + QStringLiteral("/_common.sh")).isFile()) return dir;
+    return {};
+}
+
+// The pack's files: every ants-*.sh and the _common.sh they source.
+QStringList packFiles(const QString &packDir) {
+    return QDir(packDir).entryList({QStringLiteral("ants-*.sh"), QStringLiteral("_common.sh")},
+                                   QDir::Files, QDir::Name);
+}
+
+// Hook commands in settings.json whose script, an absolute path before any
+// argument, does not exist.
+QStringList missingHookScripts(const QJsonObject &hooks) {
+    QStringList missing;
+    for (auto ev = hooks.begin(); ev != hooks.end(); ++ev)
+        for (const auto &group : ev.value().toArray())
+            for (const auto &h : group.toObject().value(QStringLiteral("hooks")).toArray()) {
+                const QString cmd = h.toObject().value(QStringLiteral("command")).toString();
+                if (!cmd.startsWith(QLatin1Char('/'))) continue;
+                const QString path = cmd.section(QLatin1Char(' '), 0, 0);
+                if (!QFileInfo::exists(path) && !missing.contains(path)) missing << path;
+            }
+    return missing;
+}
+
+bool sameBytes(const QString &a, const QString &b) {
+    const QFileInfo fb(b);
+    return fb.isFile() && readBytes(a) == readBytes(b);
+}
+
+}  // namespace
+
+QStringList defaultHookPackDirs() {
+    const QString rel = QStringLiteral("/share/ants-terminal/claude-hooks");
+    return {QDir::cleanPath(QCoreApplication::applicationDirPath() +
+                            QStringLiteral("/..") + rel),
+            QStringLiteral("/usr/local") + rel, QStringLiteral("/usr") + rel};
+}
+
+Status hookPackStatus(const QStringList &packDirs) {
+    const QString pack = findPack(packDirs);
+    const QJsonObject hooks = readHooks();
+    const QStringList missing = missingHookScripts(hooks);
+    if (!missing.isEmpty()) {
+        QStringList names;
+        for (const QString &p : missing) names << QFileInfo(p).fileName();
+        return {State::Partial,
+                QStringLiteral("Claude Code settings name hook scripts that are "
+                               "missing: %1. %2")
+                    .arg(names.join(QStringLiteral(", ")),
+                         pack.isEmpty()
+                             ? QStringLiteral("This install does not carry the Ants "
+                                              "hook pack to restore them.")
+                             : QStringLiteral("Install to restore the Ants ones.")) };
+    }
+    if (pack.isEmpty())
+        return {State::Unavailable, QStringLiteral("the hook pack is not in this install")};
+
+    const QString dst = claudeHooksDir();
+    int current = 0;
+    const QStringList files = packFiles(pack);
+    for (const QString &f : files)
+        if (sameBytes(pack + QLatin1Char('/') + f, dst + QLatin1Char('/') + f)) ++current;
+    bool wired = true;
+    for (const PackHook &h : kPackHooks)
+        if (!eventRuns(hooks.value(QLatin1String(h.event)).toArray(),
+                       dst + QLatin1Char('/') + QLatin1String(h.script)))
+            wired = false;
+    if (current == files.size() && wired)
+        return {State::Installed,
+                QStringLiteral("✓ Installed. Claude Code sessions get the Ants "
+                               "orientation, inbox notices and tool routing.")};
+    if (current == 0 && !wired)
+        return {State::Missing,
+                QStringLiteral("Not installed. Claude Code sessions start without "
+                               "the Ants orientation and inbox notices.")};
+    return {State::Partial,
+            QStringLiteral("Partly installed, or an older version. Install again "
+                           "to update it.")};
+}
+
+Outcome installHookPack(const QStringList &packDirs) {
+    const QString pack = findPack(packDirs);
+    if (pack.isEmpty()) return fail(QStringLiteral("The hook pack is not in this install."));
+    const QString dst = claudeHooksDir();
+    if (!QDir().mkpath(dst)) return fail(QStringLiteral("Could not create %1").arg(dst));
+
+    const QString settingsPath = claudeSettingsPath();
+    // ANTS-5109 — one hold across read, merge and write, as installStatusHooks.
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    ConfigWriteLock writeLock(settingsPath);
+    if (!writeLock.acquired()) return settingsLockBusy(settingsPath);
+    QJsonObject root;
+    Outcome read = readClaudeSettings(settingsPath, root);
+    if (!read.ok) return read;
+
+    // Scripts first, so settings.json never names one not yet there. A
+    // symlinked target is skipped, never written through.
+    for (const QString &f : packFiles(pack)) {
+        const QString src = pack + QLatin1Char('/') + f;
+        const QString out = dst + QLatin1Char('/') + f;
+        if (QFileInfo(out).isSymLink() || sameBytes(src, out)) continue;
+        Outcome wrote = writeScript(out, QString::fromUtf8(readBytes(src)));
+        if (!wrote.ok) return wrote;
+    }
+    // ants-inbox-notice.sh finds ants-mcpd through this file when it is not
+    // on PATH. An AppImage's mount path changes every launch, so it gets none.
+    const QString mcpd = QCoreApplication::applicationDirPath() + QStringLiteral("/ants-mcpd");
+    if (qEnvironmentVariableIsEmpty("APPIMAGE") && QFileInfo(mcpd).isExecutable())
+        writeBytes(dst + QStringLiteral("/ants-mcpd.path"), mcpd.toUtf8() + '\n');
+
+    QJsonObject hooks = root.value(QStringLiteral("hooks")).toObject();
+    bool changed = !root.value(QLatin1String(kPackSentinel)).toBool();
+    for (const PackHook &h : kPackHooks) {
+        const QString event = QLatin1String(h.event);
+        const QString command = dst + QLatin1Char('/') + QLatin1String(h.script);
+        QJsonArray groups = hooks.value(event).toArray();
+        if (eventRuns(groups, command)) continue;
+        QJsonObject hook{{QStringLiteral("type"), QStringLiteral("command")},
+                         {QStringLiteral("command"), command}};
+        if (h.timeout > 0) hook[QStringLiteral("timeout")] = h.timeout;
+        QJsonObject group{{QStringLiteral("hooks"), QJsonArray{hook}}};
+        if (h.matcher) group[QStringLiteral("matcher")] = QLatin1String(h.matcher);
+        groups.append(group);
+        hooks[event] = groups;
+        changed = true;
+    }
+    // ANTS-5569 — nothing to add, nothing written.
+    if (changed) {
+        root[QLatin1String(kPackSentinel)] = true;
+        root[QStringLiteral("hooks")] = hooks;
+        Outcome written = writeClaudeSettings(settingsPath, root);
+        if (!written.ok) return written;
+    }
+    return {true, QStringLiteral("Installed the Ants hook pack.\n\nScripts: %1\n"
+                                 "Settings: %2\n\nEffective for new Claude Code "
+                                 "sessions.").arg(dst, settingsPath)};
+}
+
 // --- MCP registration -----------------------------------------------------
 
 QStringList mcpLaunchCommand(const QString &appImage, const QString &appDir) {

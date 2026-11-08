@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **The welcome window and Preferences install the Ants hook pack** (ANTS-6708)
+  The AppImage and the packages now carry the hook scripts that
+  `tools/install-hooks.sh` installs from a source checkout. One button
+  copies them into `~/.claude/hooks/` and adds them to Claude Code's
+  settings. Its status names any hook whose script file is missing, so a
+  reinstalled machine shows what to restore.
+
 - **The AppImage adds itself to the app menu, so the panel and task manager show its icon**
   Each launch from an AppImage writes its menu entry and icons under
   `~/.local/share`, with the entry running that AppImage file. A moved or

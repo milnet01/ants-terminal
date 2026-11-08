@@ -1529,6 +1529,13 @@ install(FILES packaging/shell-integration/ants-osc133.bash
               packaging/shell-integration/README.md
         DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/shell-integration)
 
+# ANTS-6708 — the Claude Code hook pack, which the welcome dialog and Settings
+# copy into ~/.claude/hooks/ (src/claudesetup.cpp, installHookPack).
+install(DIRECTORY hooks/
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal/claude-hooks
+        USE_SOURCE_PERMISSIONS
+        FILES_MATCHING PATTERN "*.sh" PATTERN "README.md")
+
 # ANTS-5734 § 5 — ants-mcpd carries the vendored tree-sitter runtime and
 # grammars, and MIT asks for each notice to travel with the copy.
 install(FILES third_party/tree-sitter/LICENSE
@@ -2532,6 +2539,8 @@ if(ANTS_TESTS)
                 # with Settings (docs/specs/ANTS-5558-welcome-dialog.md INV-1..INV-10).
                 tests/features/welcome_dialog/test_welcome_dialog.cpp
                 tests/features/welcome_dialog/test_claude_setup.cpp
+                # ANTS-6708 — Settings and the welcome dialog install the hook pack.
+                tests/features/hook_pack_install/test_hook_pack_install.cpp
                 # ANTS-5560 — the AppImage updates itself
                 # (docs/specs/ANTS-5560-appimage-self-update.md INV-1..INV-9).
                 tests/features/self_update/test_self_update.cpp
@@ -2674,6 +2683,14 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/welcome_dialog/test_claude_setup.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_ABOUTDIALOGS_PATH="${CMAKE_SOURCE_DIR}/src/aboutdialogs.cpp")
+    set_property(SOURCE tests/features/hook_pack_install/test_hook_pack_install.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_HOOKS_DIR="${CMAKE_SOURCE_DIR}/hooks"
+        SRC_INSTALL_HOOKS_SH="${CMAKE_SOURCE_DIR}/tools/install-hooks.sh"
+        SRC_CMAKELISTS_PATH="${CMAKE_SOURCE_DIR}/CMakeLists.txt"
+        SRC_OPENSUSE_SPEC_PATH="${CMAKE_SOURCE_DIR}/packaging/opensuse/ants-terminal.spec"
+        SRC_WELCOMEDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/welcomedialog.cpp"
+        SRC_SETTINGSDIALOG_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp")
     set_property(SOURCE tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")

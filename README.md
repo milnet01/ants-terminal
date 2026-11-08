@@ -122,7 +122,8 @@ a running total of what the tools have saved you this session.
 
 > Power users: the tools are [Model Context Protocol](https://modelcontextprotocol.io)
 > tools in the `mcp__ants__*` namespace. An optional extra set of Claude Code
-> hooks installs with `tools/install-hooks.sh` — it needs `jq`, and only acts
+> hooks installs from the welcome window or Preferences, or with
+> `tools/install-hooks.sh` in a source checkout — it needs `jq`, and only acts
 > in folders that contain a `.ants-project` file. Details in [CLAUDE.md](CLAUDE.md).
 
 ## It's also a great terminal

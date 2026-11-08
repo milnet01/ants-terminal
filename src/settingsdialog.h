@@ -87,6 +87,8 @@ private:
     QLabel *m_claudeHooksStatus = nullptr;
     QPushButton *m_installClaudeGitContextBtn = nullptr;
     QLabel *m_claudeGitContextStatus = nullptr;
+    QPushButton *m_installHookPackBtn = nullptr;  // ANTS-6708
+    QLabel *m_hookPackStatus = nullptr;
     // Per-tab Claude activity glyph gate. See Config::claudeTabStatusIndicator.
     QCheckBox *m_claudeTabStatusIndicator = nullptr;
     // ANTS-1735 §2.7 — single prominent toggle for the autonomous
@@ -117,6 +119,8 @@ private:
     void refreshClaudeHooksStatus();
     void installClaudeGitContextHook();
     void refreshClaudeGitContextStatus();
+    void installHookPack();
+    void refreshHookPackStatus();
 
     // Appearance
     QFontComboBox *m_fontFamily;

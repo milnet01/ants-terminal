@@ -192,8 +192,9 @@ void sourceGrepTests() {
         };
         const auto locks = positions("ConfigWriteLock writeLock(settingsPath)");
         const auto reads = positions("readClaudeSettings(settingsPath, root)");
-        bool ordered = locks.size() == 2 && reads.size() == 2;
-        for (size_t k = 0; ordered && k < 2; ++k) {
+        // Every installer: status-bar, git-context and (ANTS-6708) hook pack.
+        bool ordered = locks.size() >= 2 && reads.size() == locks.size();
+        for (size_t k = 0; ordered && k < locks.size(); ++k) {
             ordered = locks[k] < reads[k] && (k == 0 || reads[k - 1] < locks[k]);
         }
         expect(ordered, "I6/claudesetup-installers-lock-before-read",

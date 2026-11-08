@@ -242,6 +242,21 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     layout->addRow(QString(), m_claudeGitContextStatus);
     refreshClaudeGitContextStatus();
 
+    // ANTS-6708 — the ants-*.sh hook pack, which only tools/install-hooks.sh
+    // installed before; its status also names any hook whose script is gone.
+    m_installHookPackBtn = new QPushButton("Install the Ants hook pack", tab);
+    m_installHookPackBtn->setToolTip(
+        "Copies the Ants hook scripts (session orientation, inbox notices, "
+        "tool routing) into ~/.claude/hooks/ and adds them to "
+        "~/.claude/settings.json.");
+    m_hookPackStatus = new QLabel(tab);
+    m_hookPackStatus->setWordWrap(true);
+    connect(m_installHookPackBtn, &QPushButton::clicked,
+            this, &SettingsDialog::installHookPack);
+    layout->addRow(QString(), m_installHookPackBtn);
+    layout->addRow(QString(), m_hookPackStatus);
+    refreshHookPackStatus();
+
     // Per-tab Claude activity glyph. When enabled, each tab whose shell
     // has a Claude Code child process draws a small state-dependent dot
     // on the tab chrome — muted grey for idle/thinking, blue for most
@@ -1441,4 +1456,20 @@ void SettingsDialog::installClaudeGitContextHook() {
     refreshClaudeGitContextStatus();
     if (o.ok) QMessageBox::information(this, "Install git-context hook", o.message);
     else      QMessageBox::warning(this, "Install git-context hook", o.message);
+}
+
+void SettingsDialog::refreshHookPackStatus() {
+    if (!m_hookPackStatus) return;
+    const ants::claude_setup::Status s =
+        ants::claude_setup::hookPackStatus(ants::claude_setup::defaultHookPackDirs());
+    m_hookPackStatus->setText(s.detail);
+    m_installHookPackBtn->setEnabled(s.state != ants::claude_setup::State::Unavailable);
+}
+
+void SettingsDialog::installHookPack() {
+    const ants::claude_setup::Outcome o =
+        ants::claude_setup::installHookPack(ants::claude_setup::defaultHookPackDirs());
+    refreshHookPackStatus();
+    if (o.ok) QMessageBox::information(this, "Install hook pack", o.message);
+    else      QMessageBox::warning(this, "Install hook pack", o.message);
 }

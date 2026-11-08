@@ -50,6 +50,15 @@ Outcome refreshStatusHookScript();
 Status  gitContextStatus();
 Outcome installGitContextHook();
 
+// ANTS-6708 — the ants-*.sh hook pack (hooks/ in the source tree), copied
+// into ~/.claude/hooks/ with its entries merged into ~/.claude/settings.json,
+// as tools/install-hooks.sh does. `packDirs` is the search list for the
+// pack, defaulting to defaultHookPackDirs(). The status also reports any
+// settings.json hook whose script file is missing, whoever installed it.
+QStringList defaultHookPackDirs();
+Status  hookPackStatus(const QStringList &packDirs);
+Outcome installHookPack(const QStringList &packDirs);
+
 // Registering ants-mcpd with Claude Code at user scope.
 // The command to register: {$APPIMAGE, "--mcpd"} when `appImage` is set,
 // else {the ants-mcpd beside `appDir`, else on PATH}. Empty when none.

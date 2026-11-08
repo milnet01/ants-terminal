@@ -406,6 +406,8 @@ cd ..
 # — every entry must be matched by a line in this section.
 %dir %{_datadir}/%{name}
 %{_datadir}/%{name}/shell-integration
+# ANTS-6708 — the Claude Code hook pack the welcome dialog installs.
+%{_datadir}/%{name}/claude-hooks
 # ANTS-5734 — the vendored tree-sitter runtime's and grammars' licences.
 %license %{_datadir}/%{name}/licenses
 # ANTS-5617 — demoreel, outside PATH.
