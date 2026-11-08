@@ -110363,7 +110363,7 @@ reports are asked for separately, each time.
   Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
   Lanes: roadmap-store, roadmap-dialog, docs.
 
-- 📋 [ANTS-5160] **roadmap-format.md § 3.10.3 step 2 says the counter carries ids because the file does not yet classify ants-v1, but its next paragraph says step 1 alone can make it classify.**
+- ✅ [ANTS-5160] **roadmap-format.md § 3.10.3 step 2 says the counter carries ids because the file does not yet classify ants-v1, but its next paragraph says step 1 alone can make it classify.**
   Step 2 of the GFM-to-emoji conversion assigns ids against
   `.roadmap-counter` even on a project with a store row, "because the file
   does not yet classify `ants-v1`". The paragraph after the steps says the
@@ -110374,6 +110374,11 @@ reports are asked for separately, each time.
   row of § 3.5.1's table also floors to the store's id_high_water, which may
   be the whole answer: state which carrier step 2 uses on a store-row project
   and drop the false reason. Gated standard: rule 14 applies.
+  Re-checked 2026-11-08: already resolved by b26bea58. Step 2 no longer
+  gives the false reason; it says step 1 may already have made the file
+  classify ants-v1, and numbers by hand from the floor § 3.5.1's counter
+  row states, which on a store-migrated project is the store's
+  id_high_water. No edit needed.
   **Layman:** The steps for converting an old-style roadmap give a reason that the same section later says may not be true.
   Kind: doc-fix.
   Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
