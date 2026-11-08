@@ -227,6 +227,9 @@ project, and swaps it in. Then restart now, or keep working and get the new
 version next time you open Ants. You can turn the startup check off in
 Settings → General.
 
+On first launch the AppImage adds itself to your app menu, so its icon shows
+in the panel and task manager.
+
 It works on most recent Linux distributions and bundles everything it needs.
 Your settings live in `~/.config/ants-terminal/`.
 

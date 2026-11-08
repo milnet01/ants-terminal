@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "antsversion.h"
+#include "appimagedesktop.h"
 #include "appimageenv.h"
 #include "remotecontrol.h"
 #include "terminalaccessible.h"  // ANTS-1078 — screen-reader factory
@@ -494,6 +495,9 @@ int main(int argc, char *argv[]) {
             appIcon.addFile(QString("%1-%2.png").arg(base).arg(sz), QSize(sz, sz));
     }
     app.setWindowIcon(appIcon);
+    // On Wayland the panel finds a window's icon through its menu entry,
+    // which a downloaded AppImage lacks; this writes one pointing at it.
+    AppImageDesktop::integrateFromEnvironment();
 
     QFont font("Monospace", 11);
     font.setStyleHint(QFont::Monospace);

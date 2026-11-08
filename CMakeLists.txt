@@ -844,6 +844,7 @@ add_library(ants_core_lib STATIC
     src/vtstream.cpp
     src/inlineimagedecode.cpp # ANTS-1061
     src/appimageenv.cpp       # ANTS-5574
+    src/appimagedesktop.cpp   # AppImage menu entry + panel icon
 )
 target_link_libraries(ants_core_lib
     PUBLIC  ants_mcpcore_lib
@@ -2676,6 +2677,9 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
+    set_property(SOURCE tests/features/appimage_desktop_integration/test_appimage_desktop_integration.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
     set_property(SOURCE tests/features/self_update/test_self_update.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SELFUPDATE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/selfupdate.cpp"
@@ -4251,6 +4255,8 @@ if(ANTS_TESTS)
                 tests/features/audit_tool_process_group_kill/test_processgroup_helper.cpp
                 # ANTS-5574 — the AppImage's OpenSSL 3 shim leaves the env.
                 tests/features/appimage_openssl3_shim/test_appimage_openssl3_shim.cpp
+                # The AppImage installs its own menu entry and icons.
+                tests/features/appimage_desktop_integration/test_appimage_desktop_integration.cpp
                 tests/features/remote_control_tab_list/test_remote_control_tab_list.cpp
                 tests/features/remote_control_ls/test_remote_control_ls.cpp
                 tests/features/remote_control_send_text/test_remote_control_send_text.cpp

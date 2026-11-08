@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **The AppImage adds itself to the app menu, so the panel and task manager show its icon**
+  Each launch from an AppImage writes its menu entry and icons under
+  `~/.local/share`, with the entry running that AppImage file. A moved or
+  updated AppImage refreshes the entry on its next launch.
+
 - **Each tab's scrollback now has a memory limit, 256 MiB by default, set in Settings → Terminal** (ANTS-4534)
   Once a tab's stored history passes the limit, its oldest lines are
   dropped. The limit is `scrollback_max_mib` in `config.json` (16 to
