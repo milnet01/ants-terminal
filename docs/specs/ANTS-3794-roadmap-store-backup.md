@@ -129,7 +129,7 @@ Steps, stopping at the first failure:
    with `--export-roadmaps <repo>/roadmap-export`. A non-zero exit is a
    failure.
 5. `git add -A -- 'roadmap-export/*.jsonl'`, then
-   `git commit -m "chore: weekly roadmap export (<date>)" -- 'roadmap-export/*.jsonl'`.
+   `git commit -m "chore: daily roadmap export (<date>)" -- 'roadmap-export/*.jsonl'`.
    `claude-config`'s `commit-msg` hook requires an id or a
    `chore:`/`docs:`/`fix:` prefix there, and rejects a bare component
    prefix. The pathspec limits the commit to the export files. `ConfigWriteLock`

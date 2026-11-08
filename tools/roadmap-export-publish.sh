@@ -76,7 +76,7 @@ git -C "$REPO" add -A -- "$PATHSPEC" || fail "git add $PATHSPEC failed"
 if git -C "$REPO" diff --cached --quiet -- "$PATHSPEC"; then
     echo "roadmap-export-publish: nothing to commit"
 else
-    git -C "$REPO" commit -q -m "chore: weekly roadmap export ($(date -u +%F))" -- "$PATHSPEC" ||
+    git -C "$REPO" commit -q -m "chore: daily roadmap export ($(date -u +%F))" -- "$PATHSPEC" ||
         fail "git commit failed (a hook may have refused it)"
     git -C "$REPO" push --quiet || fail "git push to $upstream failed"
     echo "roadmap-export-publish: committed and pushed $(git -C "$REPO" rev-parse --short HEAD)"
