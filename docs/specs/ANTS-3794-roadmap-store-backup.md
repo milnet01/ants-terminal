@@ -201,7 +201,7 @@ namespace RoadmapBackupHealth {
 // Empty object when healthy or when there is no store; otherwise the block.
 QJsonObject assess(const QString &stateDir, const QDateTime &nowUtc,
                    bool storeExists);
-constexpr qint64 kStaleAfterSecs = 8 * 24 * 60 * 60;  // weekly + one day
+constexpr qint64 kStaleAfterSecs = 3 * 24 * 60 * 60;  // daily + two days
 }
 ```
 

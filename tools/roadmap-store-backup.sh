@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ANTS-3794 — weekly local snapshot of the machine-global roadmap store, and
+# ANTS-3794 — daily local snapshot of the machine-global roadmap store, and
 # (ANTS-6311) of the know-how store where one exists: only a first entry
 # creates that file, so its absence is not a failure.
 #

@@ -13,8 +13,9 @@
 
 namespace RoadmapBackupHealth {
 
-// Weekly jobs, plus a day of grace.
-constexpr qint64 kStaleAfterSecs = 8LL * 24 * 60 * 60;
+// Daily jobs (the user's choice, 2026-11-08), plus two days of grace: a
+// weekend with the machine off is caught up by Persistent=true at next boot.
+constexpr qint64 kStaleAfterSecs = 3LL * 24 * 60 * 60;
 
 // $XDG_STATE_HOME/ants-terminal, or ~/.local/state/ants-terminal when that is
 // unset. QStandardPaths::StateLocation is Qt 6.7+, above the 6.2 floor.

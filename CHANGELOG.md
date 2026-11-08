@@ -105,6 +105,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **A Claude session now warns that the roadmap backup has stopped after 3 days without one, not 8, to match the daily backup** (ANTS-3794)
+
 - **The openSUSE/Fedora package no longer installs ROADMAP.md and CHANGELOG.md, which were about a quarter of its installed size** (ANTS-3730)
 
 - **Short lines in the scroll history no longer use memory for the empty space to their right** (ANTS-6703)
