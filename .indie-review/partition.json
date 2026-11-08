@@ -101,6 +101,8 @@
         "src/reviewdialogbase.h",
         "src/appimageenv.cpp",
         "src/appimageenv.h",
+        "src/appimagedesktop.cpp",
+        "src/appimagedesktop.h",
         "src/selfupdate.cpp",
         "src/selfupdate.h",
         "src/themedstylesheet.cpp",
