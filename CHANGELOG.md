@@ -105,6 +105,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The audit window holds each finding once, so a large audit uses less memory.** (ANTS-5201)
+
 - **The AI Assistant window keeps about the last sixteen long replies' worth of chat and lets older messages go, so a long session no longer holds every message in memory.** (ANTS-5200)
 
 - **Tidied the remote-control code where clang-tidy flagged it, with no change in behaviour.** (ANTS-5158)

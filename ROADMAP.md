@@ -98709,8 +98709,14 @@ that extend an earlier perf-pass bundle name it.
   Source: memory-perf-pass-2026-09-14.
   Lanes: dialogs.
 
-- 📋 [ANTS-5201] **Stop the audit dialog keeping a full second copy of every finding.**
+- ✅ [ANTS-5201] **Stop the audit dialog keeping a full second copy of every finding.**
   AuditDialog::renderResults clears and refills m_findingsByKey (a QHash of full Finding values) on every render. The same findings already sit in m_completedResults. Direction: store an index into m_completedResults instead of a copy.
+  Shipped 2026-11-08. m_findingsByKey (full copies) became
+  m_findingIndexByKey, a (result, finding) position into
+  m_completedResults; findingForKey() reads through it and returns a
+  default Finding on an unknown key or a stale position. The four
+  readers are unchanged in behaviour; Audit* tests 337/337 before and
+  after.
   **Layman:** The audit window stores each finding twice just so a click can find its details.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.

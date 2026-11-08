@@ -423,7 +423,14 @@ private:
 
     // Lookup table populated at render time so the anchor click handler can
     // find a finding's context (file, message, rule) from just the dedup key.
-    QHash<QString, Finding> m_findingsByKey;
+    // ANTS-5201 — it holds each finding's (result, finding) position in
+    // m_completedResults, not a second copy. Positions hold until runAudit's
+    // clear: results are only appended, and findings are filtered before
+    // their result is stored.
+    QHash<QString, std::pair<qsizetype, qsizetype>> m_findingIndexByKey;
+    // The finding a dedup key names, or a default Finding (empty checkId)
+    // when the key is unknown or its position is stale.
+    Finding findingForKey(const QString &key) const;
 
     // Per-check cap to prevent one noisy check from drowning out signal.
     static constexpr int kMaxFindingsPerCheck = 100;

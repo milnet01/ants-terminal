@@ -110,7 +110,7 @@ static TriageVerdict parseTriageVerdict(const QJsonObject &o) {
 
 void AuditDialog::requestAiTriage(const QString &dedupKey) {
     if (dedupKey.isEmpty()) return;
-    Finding f = m_findingsByKey.value(dedupKey);
+    Finding f = findingForKey(dedupKey);
     if (f.checkId.isEmpty()) return;
 
     // Prefer a previously-computed snippet; fall back to a fresh read.
@@ -387,7 +387,7 @@ void AuditDialog::requestAiTriageBatch(const QStringList &dedupKeys) {
     QList<Finding> batch;
     batch.reserve(dedupKeys.size());
     for (const QString &key : dedupKeys) {
-        Finding f = m_findingsByKey.value(key);
+        Finding f = findingForKey(key);
         if (f.checkId.isEmpty()) continue;
         if (!f.aiVerdict.isEmpty()) continue;
         // Ensure each has a snippet if one is available.

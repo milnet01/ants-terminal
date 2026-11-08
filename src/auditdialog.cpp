@@ -1565,7 +1565,7 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     // ANTS-1257 — "Allow this finding" — write a project-local allowlist
     // entry (rule + file + message) so future runs drop this finding.
     if (scheme == "ants-allow") {
-        const Finding fa = m_findingsByKey.value(key);
+        const Finding fa = findingForKey(key);
         const QString whereA = (!fa.file.isEmpty() && fa.line > 0)
             ? QString("%1:%2").arg(fa.file, QString::number(fa.line))
             : (fa.file.isEmpty() ? QStringLiteral("(no location)") : fa.file);
@@ -1598,7 +1598,7 @@ void AuditDialog::onResultAnchorClicked(const QUrl &url) {
     }
 
     if (scheme != "ants-suppress") return;
-    const Finding f = m_findingsByKey.value(key);
+    const Finding f = findingForKey(key);
     const QString where = (!f.file.isEmpty() && f.line > 0)
         ? QString("%1:%2").arg(f.file, QString::number(f.line))
         : (f.file.isEmpty() ? QStringLiteral("(no location)") : f.file);
@@ -3131,9 +3131,19 @@ QString typeLabel(CheckType t) {
 
 } // namespace auditdialogdetail
 
+Finding AuditDialog::findingForKey(const QString &key) const {
+    const auto it = m_findingIndexByKey.constFind(key);
+    if (it == m_findingIndexByKey.constEnd()) return {};
+    const auto [ri, fi] = it.value();
+    if (ri >= m_completedResults.size()) return {};
+    const auto &findings = m_completedResults.at(ri).findings;
+    if (fi >= findings.size() || findings.at(fi).dedupKey != key) return {};
+    return findings.at(fi);
+}
+
 void AuditDialog::renderResults() {
     m_results->clear();
-    m_findingsByKey.clear();
+    m_findingIndexByKey.clear();
 
     // Multi-tool correlation: group findings by {file, line}. When a pair is
     // flagged by two or more distinct tools, mark every finding on that line
@@ -3189,9 +3199,11 @@ void AuditDialog::renderResults() {
 
     // Populate key→finding lookup for the anchor click handler. Done after
     // correlation so the lookup reflects the highConfidence flag.
-    for (const auto &r : std::as_const(m_completedResults))
-        for (const Finding &f : r.findings)
-            m_findingsByKey.insert(f.dedupKey, f);
+    for (qsizetype ri = 0; ri < m_completedResults.size(); ++ri) {
+        const auto &findings = m_completedResults.at(ri).findings;
+        for (qsizetype fi = 0; fi < findings.size(); ++fi)
+            m_findingIndexByKey.insert(findings.at(fi).dedupKey, {ri, fi});
+    }
 
     // Sort: highest severity first, then by category, then by name.
     std::vector<CheckResult> sorted(m_completedResults.begin(), m_completedResults.end());
