@@ -78,6 +78,13 @@ explicit socket path and the GUI bundle's `main` already builds a
   failures, so arbitrary names cannot grow the tracker (ANTS-1284 INV-8).
   Driven through the real dispatcher, where the tracked name is chosen.
 
+*Amendment, 2026-11-08 (ANTS-5141):*
+
+- `RemoteControl`'s cached roadmap store, opened on a worker thread, is
+  released when that thread finishes, so it is closed on the thread that
+  opened it. A store opened on the GUI thread stays cached. Driven with a
+  store file under a `QTemporaryDir` and a plain `QThread`.
+
 Numbering follows the parent spec's, so a reader can move between them without
 a mapping table.
 

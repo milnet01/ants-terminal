@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6714 -->
+<!-- ants-roadmap-id-high-water: ANTS=6715 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74339,7 +74339,7 @@ indie-review finding.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 1 sweep).
   Lanes: mcp, docs, threading.
 
-- 📋 [ANTS-5141] **RemoteControl's roadmap store is opened on the MCP dispatch worker but queried and closed on the GUI thread at shutdown.**
+- ✅ [ANTS-5141] **RemoteControl's roadmap store is opened on the MCP dispatch worker but queried and closed on the GUI thread at shutdown.**
   RemoteControl::roadmapStoreOrNull opens m_roadmapStore lazily on the
   first caller's thread, which is the dispatch worker since ANTS-2132
   (and every caller once the ANTS-2132 amendment moves the socket's
@@ -74366,6 +74366,13 @@ indie-review finding.
   on before calling shutdownDispatchWorker. The poster refuses once
   shutting down, so the order matters. Not built this session: it needs
   a blocking post the poster API does not offer.
+  Shipped 2026-11-08 (session 234). roadmapStoreOrNull connects the
+  opening worker's QThread::finished (DirectConnection; emitted on the
+  worker before the shutdown join returns) to reset m_roadmapStore, so
+  ~RoadmapStore runs on the thread that opened it. No blocking post
+  needed. A store opened on the GUI thread is untouched. Test:
+  McpAsyncDispatch.Ants5141StoreOpenedOnAWorkerIsReleasedWhenItFinishes
+  (red before the fix).
   **Layman:** When Ants closes, it tidies the roadmap database from a different thread than the one that opened it, which Qt does not support.
   Kind: fix.
   Source: in-session-2026-09-13 (ANTS-2132 amendment gate, loop 2 lane question).
@@ -74415,6 +74422,18 @@ indie-review finding.
   Kind: security.
   Source: in-session-2026-11-05 (ANTS-5184 build).
   Lanes: mcp.
+
+- 📋 [ANTS-6715] **RoadmapReadSeam.Inv3Latency missed its 50 ms p95 budget at 54.8 ms under a local -j4 ctest run.**
+  Seen 2026-11-08 (session 234) running ctest -j4 -R 'McpAsyncDispatch|Roadmap'
+  on the main build. The same test passed 3 of 3 runs alone straight after.
+  Earlier misses: ANTS-4720 (OBS builder), ANTS-6163 (CI Release, 51.2 ms).
+  The test's own message forbids relaxing the budget, so the question is
+  whether a wall-clock budget belongs in a test that runs inside the -j4
+  preset at all, or should carry the perf label (compare ANTS-5375).
+  **Layman:** A speed test for reading the roadmap fails now and then when the machine is busy with other tests.
+  Kind: test.
+  Source: in-session-2026-11-08 (ANTS-5141 test run).
+  Lanes: roadmap, tests.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 

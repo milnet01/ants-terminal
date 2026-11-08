@@ -31,6 +31,7 @@
 #include "claudeintegration.h"
 #include "guithread.h"
 #include "remotecontrol.h"
+#include "roadmapstore.h"
 #include "rootprovider.h"
 
 // ANTS-5098 — the root resolver lives in remotecontrol_internal.h, which only
@@ -918,4 +919,43 @@ TEST(McpAsyncDispatch, Ants5098EmptyHostAnswerRefusesInsteadOfProcessCwd) {
         << QJsonDocument(cited).toJson(QJsonDocument::Compact).toStdString();
     EXPECT_FALSE(cited.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(cited).toJson(QJsonDocument::Compact).toStdString();
+}
+
+// ANTS-5141 — the cached store is a QSqlDatabase connection, usable only on
+// the thread that opened it. Opened on a worker, it is released when that
+// worker finishes; opened on this (GUI) thread, it stays cached.
+TEST(McpAsyncDispatch, Ants5141StoreOpenedOnAWorkerIsReleasedWhenItFinishes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard guard;
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString path = RoadmapStore::defaultPath();
+    // Never touch the developer's real store.
+    ASSERT_TRUE(path.startsWith(tmp.path())) << path.toStdString();
+    ASSERT_TRUE(QDir().mkpath(QFileInfo(path).absolutePath()));
+    {
+        RoadmapStore seed(path, RoadmapStore::kDefaultHistoryCapBytes,
+                          RoadmapStore::Access::Interactive);
+        QString err;
+        ASSERT_TRUE(seed.open(&err)) << err.toStdString();
+    }
+
+    RemoteControl rc(nullptr);
+    std::atomic<bool> opened{false};
+    std::unique_ptr<QThread> worker(QThread::create(
+        [&rc, &opened] { opened.store(rc.openRoadmapStoreForTest()); }));
+    worker->start();
+    ASSERT_TRUE(worker->wait(5000));
+    ASSERT_TRUE(opened.load()) << "the worker could not open the store";
+    EXPECT_FALSE(rc.roadmapStoreHeldForTest())
+        << "the store opened on the worker outlived it, so it would be "
+           "closed on another thread";
+
+    ASSERT_TRUE(rc.openRoadmapStoreForTest());
+    std::unique_ptr<QThread> idle(QThread::create([] {}));
+    idle->start();
+    ASSERT_TRUE(idle->wait(5000));
+    EXPECT_TRUE(rc.roadmapStoreHeldForTest())
+        << "a store opened on the GUI thread must stay cached";
 }

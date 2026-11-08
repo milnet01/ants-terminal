@@ -1,8 +1,10 @@
 // ANTS-3833 TU 3/25 — Roadmap read ops.
 #include "remotecontrol.h"
 #include "roadmapparse.h"   // ANTS-4989
+#include <QCoreApplication>   // ANTS-5141 — the GUI thread, to tell a worker apart
 #include <QHash>
 #include <QMutex>
+#include <QThread>            // ANTS-5141 — release the store when its opener finishes
 #include <QRegularExpression>
 #include "remotecontrol_internal.h"
 #include "guithread.h"
@@ -1053,6 +1055,19 @@ RoadmapStore *RemoteControl::roadmapStoreOrNull(RoadmapSource::ReadError *why,
             *error = openErr;
         return nullptr;
     }
+    // ANTS-5141 — a QSqlDatabase connection may be used only on the thread
+    // that opened it. Opened on a worker (the MCP dispatch lane), release it
+    // when that worker finishes; QThread::finished is emitted on the worker
+    // itself, before the shutdown join returns. Otherwise ~RemoteControl would
+    // close it on the GUI thread.
+    QObject::disconnect(m_roadmapStoreRelease);
+    QThread *const opener = QThread::currentThread();
+    if (QCoreApplication::instance() &&
+        opener != QCoreApplication::instance()->thread()) {
+        m_roadmapStoreRelease = connect(
+            opener, &QThread::finished, this,
+            [this] { m_roadmapStore.reset(); }, Qt::DirectConnection);
+    }
     return m_roadmapStore.get();
 }
 
@@ -1061,6 +1076,10 @@ RoadmapStore *RemoteControl::roadmapStoreOrNull(RoadmapSource::ReadError *why,
 void RemoteControl::setRoadmapHistoryCapForTest(qint64 bytes) {
     m_roadmapHistoryCap = bytes;
     m_roadmapStore.reset();
+}
+
+bool RemoteControl::openRoadmapStoreForTest() {
+    return roadmapStoreOrNull(nullptr, nullptr) != nullptr;
 }
 
 bool RemoteControl::flushHistoryForTest(RoadmapStore &store,

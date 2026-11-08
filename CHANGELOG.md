@@ -263,6 +263,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **When Ants closes, the roadmap database is closed on the same thread that opened it.** (ANTS-5141)
+
 - **The AppImage bundles Qt's SQLite driver, so its roadmap, message and know-how verbs open their store** (ANTS-3790)
   The release build now refuses to package an AppImage that lacks it.
 

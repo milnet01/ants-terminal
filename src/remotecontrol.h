@@ -1311,6 +1311,11 @@ public:
     // cached store, and ~unique_ptr<RoadmapStore> needs the complete type, which
     // this header does not have (see m_roadmapStore's comment).
     void setRoadmapHistoryCapForTest(qint64 bytes);
+    // ANTS-5141 — open the cached store on the calling thread, and say whether
+    // one is still cached, so a test can see it released when that thread
+    // finishes. See tests/features/mcp_async_dispatch/spec.md.
+    bool openRoadmapStoreForTest();
+    bool roadmapStoreHeldForTest() const { return m_roadmapStore != nullptr; }
     // ANTS-4416 — record ONE history row and flush it through the real
     // rcdetail::rlFlushHistory(), so a test can drive § 2.3's abort branch
     // without including remotecontrol_internal.h (rc_tu_split INV-5 keeps that
@@ -1593,6 +1598,10 @@ private:
     // forward-declared type — ~RemoteControl() is defined in the .cpp, which is
     // where the complete type is.
     mutable std::unique_ptr<RoadmapStore> m_roadmapStore;
+    // ANTS-5141 — releases m_roadmapStore when the worker thread that opened
+    // it finishes, so the connection closes on its own thread. Empty when the
+    // store was opened on the GUI thread.
+    mutable QMetaObject::Connection m_roadmapStoreRelease;
 
     // ANTS-3822 § 2.3.2 — the history cap this instance opens its store with.
     // Production always uses the default; a test lowers it so the cap is
