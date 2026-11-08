@@ -101687,7 +101687,7 @@ here.)
   Source: in-session-2026-09-09 (hit while building ANTS-4985).
   Lanes: mcp, roadmap-store.
 
-- 📋 [ANTS-4991] **doc_integrity's heading_sequence check fires on a RELEASE-HISTORY heading, where the gap is the truth.**
+- 🚫 [ANTS-4991] **doc_integrity's heading_sequence check fires on a RELEASE-HISTORY heading, where the gap is the truth.**
   `PLUGINS.md` carries a per-version history whose headings are VERSION
   NUMBERS, not section numbers. `doc_integrity` reports "section 0.6.13 skips
   0.6.10, 0.6.11, 0.6.12" — true, and correct: those releases shipped no
@@ -101727,6 +101727,10 @@ here.)
   Only PLUGINS.md carries version headings. The remaining directions (an
   enclosing History ancestor, or a declared exemption) need a decision;
   with one affected file, leaving it is also a fair answer.
+  Dropped by user decision 2026-11-08 (session 234): leave it.
+  PLUGINS.md is the only file with version-numbered headings, and its
+  heading_sequence warning there is known and expected — the skipped
+  versions shipped no plugin-API change.
   **Layman:** A document checker asks us to renumber a list of past releases, which would make the history wrong.
   Kind: fix.
   Source: in-session-2026-09-09 (found in the 0.7.109 release doc sweep).
