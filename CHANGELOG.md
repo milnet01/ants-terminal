@@ -105,6 +105,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Tidied the remote-control code where clang-tidy flagged it, with no change in behaviour.** (ANTS-5158)
+
 - **A Claude session now warns that the roadmap backup has stopped after 3 days without one, not 8, to match the daily backup** (ANTS-3794)
 
 - **The openSUSE/Fedora package no longer installs ROADMAP.md and CHANGELOG.md, which were about a quarter of its installed size** (ANTS-3730)

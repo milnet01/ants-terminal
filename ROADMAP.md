@@ -74430,6 +74430,9 @@ indie-review finding.
   The test's own message forbids relaxing the budget, so the question is
   whether a wall-clock budget belongs in a test that runs inside the -j4
   preset at all, or should carry the perf label (compare ANTS-5375).
+  2026-11-08 20:02, load average 19.4 (other processes: clang++,
+  ffmpeg): run alone five times, p95 69.8 / 65.0 / 59.8 / 65.6 / 60.8
+  ms. So a busy machine fails it even outside -j4.
   **Layman:** A speed test for reading the roadmap fails now and then when the machine is busy with other tests.
   Kind: test.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
@@ -110294,7 +110297,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-14 (review-contract sweep, ANTS-4955 gate on roadmap-format.md).
   Lanes: docs, roadmap-store.
 
-- 📋 [ANTS-5158] **Triage clang-tidy warnings in src/remotecontrol.cpp, led by a bugprone-incorrect-roundings cast.**
+- ✅ [ANTS-5158] **Triage clang-tidy warnings in src/remotecontrol.cpp, led by a bugprone-incorrect-roundings cast.**
   Surfaced by the editor's clang-tidy pass on 2026-09-14 while working
   on ANTS-4955; that work did not touch this file, so these predate it.
   Unverified, and needs triage before any edit:
@@ -110307,6 +110310,15 @@ reports are asked for separately, each time.
     tests that call them before making them static.
   - performance-unnecessary-copy-initialization (twice) and
     performance-use-std-move (once).
+  Triaged and shipped 2026-11-08 (session 234), against a fresh
+  clang-tidy run. incorrect-roundings: the input is a Jaccard score >=
+  0.60, so the cast was already right; now std::lround. branch-clone: no
+  longer reported. The five named helpers are now static (no caller
+  outside the file; static matches the file's existing helpers, which
+  tidy flags as misc-use-anonymous-namespace instead). 'verb' is a const
+  reference; 'captured' is moved. The 'before' copy is a false positive:
+  the loop mutates text and compares against it. Other warnings in the
+  file were not in this item.
   **Layman:** An automatic code checker flagged a few spots in the remote-control code, one of which may round a number the wrong way.
   Kind: audit-fix.
   Source: in-session-2026-09-14 (IDE clang-tidy diagnostics).

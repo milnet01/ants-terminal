@@ -57,6 +57,7 @@
 #include <QScopeGuard>
 #include <QPointer>
 #include <QTimer>
+#include <cmath>     // ANTS-5158 — std::lround
 
 // safeToUnlinkLocalSocket lives in secureio.h as of ANTS-1132 (0.7.66)
 // so the Claude hook + MCP server start paths can share the same
@@ -1756,7 +1757,7 @@ QString rcStructuralStem(const QString &headline) {
     const QStringList toks = RoadmapParse::normaliseHeadline(headline)
                                  .split(QLatin1Char(' '), Qt::SkipEmptyParts);
     if (toks.size() < 2) return {};
-    const QString verb = toks.first();
+    const QString &verb = toks.first();
     for (const QChar c : verb)
         if (!c.isLetter()) return {};   // a real action word, not a path/number
     for (int i = 1; i < toks.size(); ++i) {
@@ -1873,7 +1874,7 @@ QJsonArray rcComputePossibleDuplicates(
             // `inter >= 2` guard; behaviour is unchanged.
             const double jac = rcHeadlineJaccard(tokNew, tokEx);
             if (jac >= 0.60) {
-                score = static_cast<int>(jac * 100.0 + 0.5);
+                score = static_cast<int>(std::lround(jac * 100.0));
             }
         }
         if (score > 0) cands.append({rec.id, rec.headline, score});
@@ -1896,7 +1897,7 @@ QJsonArray rcComputePossibleDuplicates(
     return out;
 }
 
-bool rcExtractBoldId(const QString &lineHead, QString *id) {
+static bool rcExtractBoldId(const QString &lineHead, QString *id) {
     // ANTS-1937 — match RoadmapParse::extractBoldId's looser pattern
     // to support composite IDs like "Ts20-DE1, Ts20-DE2". Captures any text
     // up to 80 chars, then trims trailing period + whitespace (matching the
@@ -1909,11 +1910,11 @@ bool rcExtractBoldId(const QString &lineHead, QString *id) {
     if (captured.endsWith(QLatin1Char('.'))) captured.chop(1);
     captured = captured.trimmed();
     if (captured.isEmpty()) return false;
-    if (id) *id = captured;
+    if (id) *id = std::move(captured);
     return true;
 }
 
-QString rcExtractCaretAnchor(const QString &line) {
+static QString rcExtractCaretAnchor(const QString &line) {
     static const QRegularExpression rx(QStringLiteral(
         "\\^([a-z0-9_-]+)\\s*$"));
     const auto m = rx.match(line);
@@ -1982,7 +1983,7 @@ QSet<quint64> rcGfmHeadlineMatchHashes(const QString &rawHead,
 // opened a fence nothing closed, and flip / flip_batch / annotate /
 // amend_body / amend_headline then refused anchor_unsafe_context on every
 // bullet below it — naming that innocent line as the cause.
-QVector<bool> rcFenceExtents(const QStringList &lines) {
+static QVector<bool> rcFenceExtents(const QStringList &lines) {
     return MarkdownScan::fenceMask(lines);
 }
 
@@ -1991,7 +1992,7 @@ QVector<bool> rcFenceExtents(const QStringList &lines) {
 // opener runs to end-of-input, the same leniency the local scanners had.
 // Derived from the mask rather than re-scanned, so the opener rule is stated
 // once — the shape ANTS-4403 settled on in roadmapmigrate.cpp's walkSource().
-QVector<int> rcFenceOpenerOf(const QVector<bool> &fenced) {
+static QVector<int> rcFenceOpenerOf(const QVector<bool> &fenced) {
     QVector<int> openerOf(fenced.size(), -1);
     for (int i = 0; i < fenced.size(); ++i) {
         if (!fenced.at(i)) continue;
@@ -2023,7 +2024,7 @@ QVector<int> rcFenceOpenerOf(const QVector<bool> &fenced) {
 // it — which is why the test is on the opener's position, not on whether the
 // fence happens to be unterminated.
 template <typename Bullet>
-void rcScopeFencesToBullets(const QStringList &lines, QVector<Bullet> &bullets) {
+static void rcScopeFencesToBullets(const QStringList &lines, QVector<Bullet> &bullets) {
     if (bullets.isEmpty()) return;
     // Lines belonging to some bullet's body. The bullet's own line is excluded
     // — it starts with "- ", so it can never be the fence opener.
