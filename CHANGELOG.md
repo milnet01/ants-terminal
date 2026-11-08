@@ -247,6 +247,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AppImage bundles Qt's SQLite driver, so its roadmap, message and know-how verbs open their store** (ANTS-3790)
+  The release build now refuses to package an AppImage that lacks it.
+
 - **A tab's foreground program name is read from the right `/proc` field, so it shows the running program.** (ANTS-6436)
 
 - **ci_report judges each run against the time budgets its own commit's workflow file held, read from the local clone (ANTS-6417).**

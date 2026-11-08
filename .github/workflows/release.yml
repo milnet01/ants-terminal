@@ -124,7 +124,12 @@ jobs:
             libxcb-shape0-dev libxcb-sync-dev libxcb-util-dev \
             libxcb-xkb-dev libxkbfile-dev \
             libdbus-1-dev libwayland-dev \
-            libfuse2 file desktop-file-utils patchelf
+            libfuse2 file desktop-file-utils patchelf \
+            libqt6sql6-sqlite
+          # ANTS-3790 — libqt6sql6-sqlite is Qt's SQLite driver plugin, a
+          # Recommends that --no-install-recommends skips. linuxdeploy can
+          # bundle only what is installed; without it every roadmap-store
+          # verb fails in the AppImage with "Driver not loaded".
 
       - name: Configure (Release, /usr prefix for AppDir staging)
         run: |
@@ -207,6 +212,10 @@ jobs:
           # ants-mcpd, anything else starts ants-terminal.
           ./linuxdeploy --appdir AppDir --plugin qt \
             --custom-apprun packaging/appimage/AppRun --output appimage
+          # ANTS-3790 — the driver is loaded at run time, so nothing else
+          # fails when it is missing. Refuse to ship without it.
+          test -f AppDir/usr/plugins/sqldrivers/libqsqlite.so \
+            || { echo "::error::AppImage lacks the QSQLITE driver plugin"; exit 1; }
           ls -la "${OUTPUT}" "${OUTPUT}.zsync"
           file "${OUTPUT}"
 
