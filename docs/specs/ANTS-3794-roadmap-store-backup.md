@@ -1,12 +1,12 @@
-# ANTS-3794 — publish the roadmap export weekly and report a backup that stops
+# ANTS-3794 — publish the roadmap export daily and report a backup that stops
 
-**Status:** accepted (2026-09-19), review-contract loops 1 + 2 folded (cap reached). **Amended 2026-10-12 (ANTS-5621)** — § 2.4 and INV-13: the snapshot record gains `store=`; loops 3 and 4, cap reached.
+**Status:** accepted (2026-09-19), review-contract loops 1 + 2 folded (cap reached). **Amended 2026-10-12 (ANTS-5621)** — § 2.4 and INV-13: the snapshot record gains `store=`; loops 3 and 4, cap reached. **Amended 2026-11-08** — § 2.6: the export runs daily (user decision 2026-11-08).
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3794 (ANTS-3758 split, seam 3c; user decisions 2026-09-19).
 **Pairs with:** [ANTS-3761](ANTS-3761-roadmap-export-format.md) — the export's bytes; this spec runs and publishes it.
 **Blocker for:** ANTS-5244 (restore from the export).
 
-**Layman:** Every week the roadmap database is written out as text, one file per project, and pushed to a private repo; if that ever stops working, the next Claude session says so.
+**Layman:** Every day the roadmap database is written out as text, one file per project, and pushed to a private repo; if that ever stops working, the next Claude session says so.
 
 ## 1. Problem
 
@@ -32,7 +32,7 @@ file already past GitHub's 50 MB warning size (`stat -c %s` on
 
 **User decisions (2026-09-19):** back up only to a private destination,
 preferably `claude-config` (`milnet01/claude-config`, private). Weekly is
-enough. Ship the local snapshot first, then this.
+enough (changed to daily by the user, 2026-11-08). Ship the local snapshot first, then this.
 
 ## 2. Surface
 
@@ -234,7 +234,7 @@ the block. That is deliberate: whoever is working should see it.
 
 ### 2.6 Scheduling
 
-A weekly user timer runs the publish script, beside the snapshot timer
+A daily user timer runs the publish script, beside the snapshot timer
 (`ants-roadmap-backup.timer`)
 already installed. Unit files are local machine configuration and are not
 shipped; this is their text:
@@ -250,10 +250,10 @@ ExecStart=/mnt/Games/Scripts/Linux/Ants_Terminal/tools/roadmap-export-publish.sh
 
 # ~/.config/systemd/user/ants-roadmap-export.timer
 [Unit]
-Description=Weekly Ants Terminal roadmap export (ANTS-3794)
+Description=Daily Ants Terminal roadmap export (ANTS-3794)
 
 [Timer]
-OnCalendar=weekly
+OnCalendar=daily
 Persistent=true
 RandomizedDelaySec=1h
 
@@ -261,7 +261,7 @@ RandomizedDelaySec=1h
 WantedBy=timers.target
 ```
 
-`Persistent=true` runs a missed week at the next boot. § 2.5 catches a
+`Persistent=true` runs a missed day at the next boot. § 2.5 catches a
 timer that is disabled or lost.
 
 ### 2.7 Alternatives rejected
@@ -275,7 +275,7 @@ timer that is disabled or lost.
   is already the binary that matches the live store.
 - **Rebase or merge on divergence.** § 9 forbids auto-merge. A rebase
   over unrelated upstream commits still publishes history nobody reviewed.
-  Stopping costs at most one missed week, which § 2.5 reports.
+  Stopping costs at most one missed day, which § 2.5 reports.
 - **Detect failure by notification alone.** A notification needs the job
   to run. A disabled timer never runs, so only a reader that checks the
   record's age can see it.
@@ -370,7 +370,7 @@ timer that is disabled or lost.
 - **Syncing stores across machines** — a permanent exclusion. The store
   is per-machine; this spec only makes a second store's pushes visible
   (INV-8).
-- **Retrying a failed run** — a permanent exclusion. The next weekly run
+- **Retrying a failed run** — a permanent exclusion. The next daily run
   retries, and § 2.5 reports the gap in between.
 - **Shipping the unit files** — a permanent exclusion. They name
   machine-specific paths; § 2.6 carries their text.

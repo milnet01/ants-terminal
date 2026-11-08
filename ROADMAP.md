@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6713 -->
+<!-- ants-roadmap-id-high-water: ANTS=6714 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92227,6 +92227,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: in-session-2026-11-08.
   Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-6714] **The roadmap export fails whenever the claude-config clone is merely behind, not diverged.**
+  2026-11-08: ~/.claude was one commit behind origin/main (1dce267) and\nroadmap-export-publish.sh exited 1: "upstream origin/main has commits\nHEAD lacks". ANTS-3794 refuses to merge so that two diverged stores\nsurface. A clone that is only behind has not diverged; a fast-forward\n(git merge --ff-only, after checking the work tree is clean) is safe\nand keeps that guarantee. With the export now daily, this will recur\nwhenever the clone is pushed from elsewhere.
+  **Layman:** The nightly roadmap backup no longer fails just because the backup folder is a little out of date.
+  Kind: fix.
+  Source: in-session-2026-11-08.
+  Lanes: roadmap-store.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 
