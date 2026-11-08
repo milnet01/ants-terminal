@@ -365,7 +365,9 @@ cd ..
 
 %files
 %license LICENSE
-%doc README.md CHANGELOG.md ROADMAP.md
+# ANTS-3730 — README only. CHANGELOG.md and ROADMAP.md are project history
+# (3.5 MB in 0.7.101) that no user of the terminal reads; both are on GitHub.
+%doc README.md
 %{_bindir}/%{name}
 # ANTS-4932 — the standalone MCP server Claude Code launches.
 %{_bindir}/ants-mcpd

@@ -105,6 +105,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The openSUSE/Fedora package no longer installs ROADMAP.md and CHANGELOG.md, which were about a quarter of its installed size** (ANTS-3730)
+
 - **Short lines in the scroll history no longer use memory for the empty space to their right** (ANTS-6703)
   A tab holding 50,000 history lines at 200 columns now uses 105.6 MiB
   of heap (measured 2026-11-07 with bench_scrollback_memory), down from

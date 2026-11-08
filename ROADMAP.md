@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6712 -->
+<!-- ants-roadmap-id-high-water: ANTS=6713 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -221,7 +221,7 @@ SSH key registered there.
 6. **One-click-install URL:** OBS auto-generates
    `software.opensuse.org/package/ants-terminal` pages for discovery.
 
-- 📋 [ANTS-3730] **Stop shipping 3.5 MB of ROADMAP and CHANGELOG inside the RPM.**
+- ✅ [ANTS-3730] **Stop shipping 3.5 MB of ROADMAP and CHANGELOG inside the RPM.**
   Measured on ants-terminal-0.7.101-2.1.x86_64.rpm, 12.7 MB installed:
 
   /usr/bin/ants-terminal                     8.7 MB   (stripped)
@@ -242,6 +242,10 @@ SSH key registered there.
   Not urgent — it costs disk, not correctness — but it is the single
   largest lever left on package size now that the binary is stripped, and
   bigger than the ~1 MB stripping itself returned.
+  Shipped 2026-11-08. The spec's %doc line names README.md
+  only;\nrpmspec -P lists it alone. The metainfo check is ANTS-6713.
+  Debian's\ndh_installchangelogs may still pick up CHANGELOG.md on its
+  own; that is\nunverified here (no debhelper on this host).
   **Layman:** The installed package is nearly a third project-history files that no user of the terminal reads.
   Kind: package.
   Source: in-session-2026-07-29 (measured while verifying ANTS-3729).
@@ -477,6 +481,12 @@ SSH key registered there.
   **Layman:** When a package build fails on one Linux distribution only, a short table of how the distributions differ would save the investigation.
   Kind: doc.
   Source: in-session-2026-09-30 (left over from ANTS-5305).
+
+- 📋 [ANTS-6713] **The AppStream metainfo carries every release since the first, so it has grown past 380 KB.**
+  packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml holds\na <release> block for every version. Most projects keep only recent\nones. Before trimming, check what reads the old blocks: release.sh,\ncheck-version-drift.sh, make-flathub-manifest.sh and the\nrelease_pipeline tests all parse <release> entries.
+  **Layman:** The app-store description file lists every release ever made; it could keep only the recent ones.
+  Kind: package.
+  Source: in-session-2026-11-08 (split from ANTS-3730).
 
 ### P4 — Fedora COPR
 
