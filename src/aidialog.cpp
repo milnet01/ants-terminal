@@ -4,6 +4,7 @@
 
 #include <QMessageBox>
 #include <QScrollBar>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QUrl>
@@ -231,7 +232,27 @@ void AiDialog::appendMessage(const QString &role, const QString &text) {
         html = QString("<p><i style='color:#F38BA8;'>%1</i></p>").arg(text.toHtmlEscaped());
     }
     m_chatHistory->append(html);
+    // ANTS-5200 — never mid-stream: onLlmFinished deletes the streamed reply
+    // by m_streamStart, a character position a trim would move. Every
+    // caller runs with no stream open: sendRequest and onLlmFinished clear
+    // m_streamStart first, and onSend's Send button is off while one streams.
+    trimHistory(m_chatHistory->document(), kMaxHistoryChars);
     m_chatHistory->verticalScrollBar()->setValue(m_chatHistory->verticalScrollBar()->maximum());
+}
+
+void AiDialog::trimHistory(QTextDocument *doc, int maxChars) {
+    if (!doc || doc->characterCount() <= maxChars) return;
+    // Cut at the first block from which the rest fits; failing that, keep
+    // the newest block alone. One cut, so the document re-lays out once.
+    const int total = doc->characterCount();
+    QTextBlock keep = doc->lastBlock();
+    for (QTextBlock b = doc->firstBlock(); b.isValid(); b = b.next()) {
+        if (total - b.position() <= maxChars) { keep = b; break; }
+    }
+    if (keep.position() == 0) return;
+    QTextCursor cursor(doc);
+    cursor.setPosition(keep.position(), QTextCursor::KeepAnchor);
+    cursor.removeSelectedText();
 }
 
 void AiDialog::sendRequest(const QString &userMessage) {

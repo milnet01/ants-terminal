@@ -98699,8 +98699,11 @@ windows and dialogs, Claude and MCP, and the engines and stores. Nothing
 critical was found. Every item was checked against source before filing. Items
 that extend an earlier perf-pass bundle name it.
 
-- 📋 [ANTS-5200] **Cap the AI Assistant's chat history, which grows for the life of the app.**
+- ✅ [ANTS-5200] **Cap the AI Assistant's chat history, which grows for the life of the app.**
   MainWindow builds AiDialog once and keeps it. AiDialog::appendMessage appends each message to m_chatHistory. AiDialog::resetTransient leaves the history alone on purpose. Direction: drop the oldest messages past a limit, or free the dialog when the user clears it.
+  Shipped 2026-11-08. AiDialog::trimHistory drops the oldest blocks past
+  kMaxHistoryChars (16 × kMaxShownReplyChars); appendMessage applies it,
+  never mid-stream. Test: tests/features/ai_chat_history_cap.
   **Layman:** The AI Assistant window keeps every message in memory until you quit, with no limit.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.

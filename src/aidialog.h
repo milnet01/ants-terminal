@@ -64,6 +64,16 @@ public:
     // stalls the GUI thread. m_lastResponse still keeps the whole reply.
     static constexpr int kMaxShownReplyChars = 64 * 1024;
 
+    // ANTS-5200 — the most the chat view holds, in QString chars: sixteen
+    // replies at the display cap. The dialog lives as long as the app, so
+    // without a cap every message stays in memory until quit.
+    static constexpr int kMaxHistoryChars = 16 * kMaxShownReplyChars;
+
+    // Drops the oldest blocks of `doc` until it holds at most `maxChars`
+    // characters; the newest block always stays. Public so the feature test
+    // can drive it without a dialog.
+    static void trimHistory(class QTextDocument *doc, int maxChars);
+
 private slots:
     void onSend();
     void onLlmFinished(const LlmResult &result);

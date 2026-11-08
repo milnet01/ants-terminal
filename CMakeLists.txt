@@ -2813,6 +2813,7 @@ if(ANTS_TESTS)
                 tests/features/ssh_extra_args_sanitize/test_ssh_extra_args.cpp
                 tests/features/shellutils_whitelist/test_shellutils_whitelist.cpp
                 tests/features/ai_insert_command_sanitize/test_ai_insert_command.cpp
+                tests/features/ai_chat_history_cap/test_ai_chat_history_cap.cpp
                 tests/features/claude_git_context_hook/test_installer_grep.cpp
                 tests/features/ai_context_redaction/test_ai_context_redaction.cpp
                 tests/features/ssh_control_master/test_ssh_control_master.cpp
@@ -3643,6 +3644,7 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AI_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
     set_property(SOURCE tests/features/ai_context_redaction/test_ai_context_redaction.cpp
+                        tests/features/ai_chat_history_cap/test_ai_chat_history_cap.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_AIDIALOG_CPP="${CMAKE_SOURCE_DIR}/src/aidialog.cpp")
     set_property(SOURCE tests/features/lua_oom_event_dispatch/test_lua_oom_event_dispatch.cpp
