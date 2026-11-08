@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6710 -->
+<!-- ants-roadmap-id-high-water: ANTS=6712 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -29370,6 +29370,7 @@ for the rotation contract.
   stale claims (the caller list, and the existence/size stat as a candidate) are
   corrected there.
 
+
 - ✅ [ANTS-4080] **spec_lint cannot see the global spec-format standard, so a project without a local copy is linted against nothing.**
   `~/.claude/standards/spec-format.md` became authoritative on 2026-08-08,
   with projects carrying deltas only. A project with no local copy therefore
@@ -33701,8 +33702,8 @@ for the rotation contract.
   recommended, not taken unilaterally.
   **Layman:** Saving the roadmap and reading it back adds one stray line to 363 items — once each, not repeatedly.
   Kind: fix.
-  Source: in-session-2026-08-13 (ANTS-4065 Phase D3 acceptance run).
   Lanes: roadmap-store, mcp.
+  Source: in-session-2026-08-13 (ANTS-4065 Phase D3 acceptance run).
 
 - ✅ [ANTS-4412] **Roadmap dialog — the filter bar is three dense rows of checkboxes and needs collapsing.**
   User request 2026-08-15, with a screenshot of the "Next" tab. The
@@ -70997,17 +70998,40 @@ minor tag (next: pre-0.8.0).
   Kind: feature.
   Source: user-request-2026-06-25.
 
-- 📋 [ANTS-6708] **Preferences installs the hook pack, not only the two status-bar and git-context hooks.**
-  After a reinstall, ~/.claude/settings.json still named the ants-*.sh hook pack, but the scripts were gone from ~/.claude/hooks/, and Preferences could not restore them: only tools/install-hooks.sh copies them. The status check should flag a hook entry whose script is missing, and the install button should put the pack back.
+- ✅ [ANTS-6708] **Preferences installs the hook pack, not only the two status-bar and git-context hooks.**
+  After a reinstall, ~/.claude/settings.json still named the ants-*.sh
+  hook pack, but the scripts were gone from ~/.claude/hooks/, and
+  Preferences could not restore them: only tools/install-hooks.sh copies
+  them. The status check should flag a hook entry whose script is
+  missing, and the install button should put the pack back.
+  Shipped 2026-11-08 (68ad9cc0). claude_setup::installHookPack
+  and\nhookPackStatus; a welcome-window row and a Settings button.
+  hooks/\ninstalls to share/ants-terminal/claude-hooks. Spec ANTS-5558
+  INV-16/17;\nHookPackInstall.Inv16CopiesPackAndMatchesInstallScript
+  checks the pack\nmatches tools/install-hooks.sh.
   **Layman:** The Preferences hook button now restores every Ants hook, so a reinstall leaves none missing.
   Kind: fix.
   Source: user report 2026-11-07.
 
 - 📋 [ANTS-6709] **Connecting the MCP from Preferences uses an ants-mcpd that can read the roadmap store.**
-  The terminal launch.sh runs has no ants-mcpd beside it, so mcpLaunchCommand falls back to PATH: /usr/bin/ants-mcpd from the 0.7.115 package, which refuses the store as schema 5 > 4. It should prefer the build launch.sh copied from (the binary ants-mcpd.path names), or say the found one is too old.
+  The terminal launch.sh runs has no ants-mcpd beside it, so
+  mcpLaunchCommand falls back to PATH: /usr/bin/ants-mcpd from the
+  0.7.115 package, which refuses the store as schema 5 > 4. It should
+  prefer the build launch.sh copied from (the binary ants-mcpd.path
+  names), or say the found one is too old.
   **Layman:** Connecting the MCP from Preferences no longer picks an old copy that cannot open your roadmap.
   Kind: fix.
   Source: user report 2026-11-07.
+
+- ✅ [ANTS-6711] **The AppImage adds itself to the app menu, so the panel shows its icon.**
+  Shipped 2026-11-08 (fbf99644). Each launch from an AppImage copies its
+  bundled menu entry and hicolor icons under $XDG_DATA_HOME, with Exec and
+  TryExec naming $APPIMAGE (src/appimagedesktop.cpp). A file that already
+  matches is left alone; a moved AppImage refreshes the entry on its next
+  launch. Tests: AppImageDesktop.*.
+  **Layman:** Running the AppImage now puts Ants Terminal in your app menu, and the taskbar shows its icon.
+  Kind: feature.
+  Source: in-session-2026-11-08.
 
 ### 🎨 Claude Code companion offload (user request 2026-04-30)
 
@@ -88444,8 +88468,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of Deedbox session, 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the**
-  Theme:** line by hand.**
+- 📋 [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the **Theme:** line by hand.**
   cut-release adds a **Theme:** line under the new version heading on
   every cut. A `theme` argument on op:"release" would write it in the
   same edit.
@@ -90206,8 +90229,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: cc-feedback-2026-10-21 demoreel.
 
-- ✅ [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (-**
-  INV-N — title.**).**
+- ✅ [ANTS-6046] **spec_lint finds no invariants in a spec whose invariants are bold bullets (- **INV-N — title.**).**
   Reported by finbreak (2026-10-22). docs/specs/FIBR-0097-transactions-table-model.md
   holds INV-1 to INV-7 as bullets opening `- **INV-N — <title>.**`.
   spec_lint on that file returns invariants_found: 0 and skips both
@@ -92174,10 +92196,27 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Lanes: claude-session-widgets.
 
 - 📋 [ANTS-6710] **The roadmap render keeps bold text inside a headline on one line.**
-  A roadmap_log append on 2026-11-07 re-rendered ANTS-5522 ("adds the **Theme:** line") and ANTS-6046 ("(- **INV-N") by moving the inner ** to the line end and wrapping, which breaks their bold.
+  A roadmap_log append on 2026-11-07 re-rendered ANTS-5522 ("adds the
+  **Theme:** line") and ANTS-6046 ("(- **INV-N") by moving the inner **
+  to the line end and wrapping, which breaks their bold.
   **Layman:** Roadmap headlines that contain bold words no longer get split and garbled when the file is rewritten.
   Kind: fix.
   Source: user report 2026-11-07.
+
+- 📋 [ANTS-6712] **An item typed into ROADMAP.md by hand can only reach the store through a whole-project migrate.**
+  ANTS-6708..6710 were hand-filed on 2026-11-07 and every roadmap_log
+  write then refused (bullet_not_found / render_would_drop). The refusal
+  says run roadmap_migrate, but migrate and op:"convert" re-import every
+  item: the dry run updated 2,556, some lossily (ANTS-1565's layman cut
+  to its last **Layman:** fragment; ANTS-4344's trailing field lines
+  dropped). Worked around by removing the three from the file and
+  re-appending them with id_hint. Wanted: an import of named ids only,
+  or a refusal that names that workaround. Migrate's loss on items with
+  repeated field lines is a second defect to fix with it.
+  **Layman:** Adding a roadmap item by hand no longer locks the roadmap until a risky full re-import is run.
+  Kind: fix.
+  Source: in-session-2026-11-08.
+  Lanes: roadmap-store, mcp.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 
@@ -100738,7 +100777,7 @@ here.)
   Lanes: auditdialog, auditengine, mainwindow (Project Audit
   menu wiring), claudeintegration (sidecar-JSON consumption),
   remotecontrol (audit-history-query IPC verb), docs/standards/.
-  **Layman:** Show the history of code-quality checks over time and across projects, instead of only the most recent run.
+  Layman: Show the history of code-quality checks over time and across projects, instead of only the most recent run.
   Kind: implement.
   Source: user-2026-05-02.
 
