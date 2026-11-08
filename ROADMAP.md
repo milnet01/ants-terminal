@@ -90708,7 +90708,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: user-request-2026-10-31.
   Lanes: ci.
 
-- 💭 [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
+- 📋 [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
   Push of 45b13e02, 2026-10-31, in the ubuntu:24.04 image at ctest -j2: 'the child
   ants-mcpd was not listed' at line 137, in 15 ms; 1 failure in 5971 tests. It passed
   200 of 200 on this machine outside the container the same day. Cause not found.
@@ -90721,6 +90721,14 @@ measured Ants adding about 5,250 tokens to every request.
   one candidate, not a finding. The failure now prints the pid, the exe
   readlink's result and /proc/pid/stat. Reopen when it recurs and read
   that line.
+  Failed again 2026-11-08 (session 234) in the push gate's container,
+  pushing f362ec54 (script + spec text only), at host load ~19. The
+  diagnosis now names the cause: exe /src/build/test_claude, state R, so
+  the child had forked but not yet exec'd ants-mcpd when runningCopies
+  looked. RunningChild ignores waitForStarted's return. Next: check why
+  waitForStarted returned before exec under that image's Qt, then wait
+  for /proc/<pid>/exe to name ants-mcpd (or poll runningCopies) before
+  asserting.
   **Layman:** A test that looks for a running helper program failed once for no clear reason, which blocked a push.
   Kind: fix.
   Source: in-session-2026-10-31.
@@ -110334,6 +110342,16 @@ reports are asked for separately, each time.
   `.ants/project.json`'s `roadmap` key allows it not to. Decide one base (or
   require the root placement), then correct the standard and whichever code
   path disagrees. Gated standard: rule 14 applies to the doc change.
+  Re-checked 2026-11-08 (session 234). The standard now settles the
+  base: archives at <project root>/docs/roadmap/, ROADMAP.md at the
+  root. The code gap stays: RoadmapDialog::archiveDirFor (loadMarkdown,
+  sourceStamp, historyArchiveDir; test roadmap_viewer_archive; spec
+  ANTS-1125 INV-1) looks beside ROADMAP.md. Two registered projects
+  declare an off-root roadmap: RetroArch (docs/private/ROADMAP.md) and
+  the outer Dantes_Inferno_Recomp (hells-gate-recomp/ROADMAP.md).
+  Neither has archives yet, so nothing is lost today. Fix: the viewer
+  resolves the project root and reads <root>/docs/roadmap/; the nested
+  Dantes layout is the case to design for.
   **Layman:** The roadmap rules disagree about where old-version archive files live when the roadmap file is not at the top of the project.
   Kind: doc-fix.
   Source: review-contract loop 3 on roadmap-format.md, 2026-09-14 (ANTS-4955 gate, filed at cap).
