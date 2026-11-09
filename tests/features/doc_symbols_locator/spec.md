@@ -51,7 +51,10 @@ The reduction is `DocSymbols::locate()` (engine, pure); the JSON is
 
 - **INV-9 a qualifier the document wrote is honoured** — `A::b` locates only
   a candidate the source puts inside `A`: its own signature reads `A::b`, or a
-  class, struct or namespace named `A` encloses its line. With several
+  class, struct or namespace named `A` encloses its line. In a Rust file
+  (ANTS-6723) the module its path names counts too — `src/a/b.rs` is `a::b`,
+  `src/a/mod.rs` is `a` — and so do `impl`, `trait`, `mod` and type blocks,
+  past any lifetime. *Test:* `Inv9RustModulePathAndImpl`. With several
   qualifiers the innermost (`B` in `A::B::c`) is the one checked. A symbol
   whose qualifier matches no candidate is `unresolved` in this mode, although
   the default mode reports it resolved: ANTS-3661 INV-2 resolves a `::` span

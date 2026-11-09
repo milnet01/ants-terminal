@@ -291,6 +291,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_symbols' locator mode places a Rust name written with its module path (security::validate_serial(), psn::utils::read_capped_text) or its impl type (Promise::spawn_async) in the file that defines it.** (ANTS-6723)
+
 - **ci_report in a fork reads the GitHub repository the current branch tracks; where it cannot tell, a repo_ambiguous problem finding says how to choose.** (ANTS-6722)
 
 - **find_definition and doc_symbols resolve Python module constants and class attributes to the line that assigns them.** (ANTS-5387)

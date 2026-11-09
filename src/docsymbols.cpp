@@ -387,10 +387,21 @@ namespace {
 // skipped so a brace inside one opens nothing; a brace whose head carries no
 // class-key or `namespace` opens an unnamed scope (a function body, an
 // initialiser), which still has to be popped.
-QStringList enclosingScopes(const QStringList &lines, int line) {
-    static const QRegularExpression named(QStringLiteral(
+//
+// ANTS-6723 — `rust` names Rust's scopes instead: `mod`, `trait`, a type
+// declaration, and an `impl` block, which names the type after any `for`.
+// There a `'` opens a character literal only as `'x'` or `'\…'`; anything
+// else is a lifetime (`impl<'a> Foo<'a>`), which would otherwise swallow the
+// type name up to the next `'`.
+QStringList enclosingScopes(const QStringList &lines, int line, bool rust = false) {
+    static const QRegularExpression cNamed(QStringLiteral(
         "\\b(?:class|struct|union|namespace)\\s+(?:[A-Z_][A-Z0-9_]*\\s+)?"
         "([A-Za-z_]\\w*)[^;{()]*$"));
+    static const QRegularExpression rustNamed(QStringLiteral(
+        "^(?:#\\[[^\\]]*\\]\\s*)*(?:pub(?:\\([^)]*\\))?\\s+)?(?:unsafe\\s+)?"
+        "(?:impl\\b(?:\\s*<.*?>)?\\s+(?:.*?\\bfor\\s+)?(?:[A-Za-z_]\\w*::)*"
+        "|(?:mod|trait|struct|enum|union)\\s+)([A-Za-z_]\\w*)"));
+    const QRegularExpression &named = rust ? rustNamed : cNamed;
     QStringList stack;
     QString head;
     bool inComment = false;
@@ -414,7 +425,11 @@ QStringList enclosingScopes(const QStringList &lines, int line) {
             // digit separator (`1'000`), not a quote — unless that word is a
             // literal prefix (`L'{'`, `u'{'`, `U'{'`, `u8'{'`).
             bool quote = c == QLatin1Char('"');
-            if (c == QLatin1Char('\'')) {
+            if (c == QLatin1Char('\'') && rust) {
+                quote = (i + 1 < l.size() && l.at(i + 1) == QLatin1Char('\\'))
+                        || (i + 2 < l.size() && l.at(i + 2) == QLatin1Char('\''));
+                if (!quote) { head += c; continue; }
+            } else if (c == QLatin1Char('\'')) {
                 qsizetype w = i;
                 while (w > 0 && (l.at(w - 1).isLetterOrNumber() || l.at(w - 1) == QLatin1Char('_'))) --w;
                 const QStringView word = QStringView(l).mid(w, i - w);
@@ -462,9 +477,27 @@ QStringList enclosingPyClasses(const QStringList &lines, int line) {
     return out;
 }
 
+// ANTS-6723 — a Rust file is a module named by its path below `src/`:
+// src/psn/utils.rs is `psn::utils`, src/net/mod.rs is `net`, and lib.rs and
+// main.rs are the crate root, which adds nothing.
+QStringList rustModulePath(const QString &file) {
+    QString rel = file;
+    const qsizetype src = rel.lastIndexOf(QLatin1String("src/"));
+    if (src == 0 || (src > 0 && rel.at(src - 1) == QLatin1Char('/')))
+        rel = rel.mid(src + 4);
+    rel.chop(3);   // ".rs"
+    QStringList parts = rel.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    if (!parts.isEmpty()
+        && (parts.last() == QLatin1String("mod") || parts.last() == QLatin1String("lib")
+            || parts.last() == QLatin1String("main")))
+        parts.removeLast();
+    return parts;
+}
+
 // Does candidate `d` live inside `qual`? Its own signature decides when it
 // is written qualified (`void Alpha::fire(`); otherwise the scopes enclosing
-// its line do. No root means only the signature can confirm.
+// its line do, and for a Rust file the module its path names. No root means
+// only the signature or the path can confirm.
 bool inQualifier(const SymbolQuery::DefMatch &d, const QString &qual, const QString &leaf,
                  const SourceLines &sourceLines, QHash<QString, QStringList> &fileCache) {
     const QRegularExpression written(
@@ -472,12 +505,14 @@ bool inQualifier(const SymbolQuery::DefMatch &d, const QString &qual, const QStr
         + QStringLiteral("\\b"));
     const auto m = written.match(d.signature);
     if (m.hasMatch()) return m.captured(1) == qual;
+    const bool rust = d.file.endsWith(QLatin1String(".rs"));
+    if (rust && rustModulePath(d.file).contains(qual)) return true;
     if (!sourceLines) return false;
     auto it = fileCache.find(d.file);
     if (it == fileCache.end()) it = fileCache.insert(d.file, sourceLines(d.file));
     const QStringList chain = d.file.endsWith(QLatin1String(".py"))
                                   ? enclosingPyClasses(*it, d.line)
-                                  : enclosingScopes(*it, d.line);
+                                  : enclosingScopes(*it, d.line, rust);
     return chain.contains(qual);
 }
 

@@ -275,3 +275,73 @@ TEST(DocSymbolsLocator, Inv9QualifierIsHonoured) {
            "closes before `loose`", l.located.value(QStringLiteral("Delta::loose()")));
     EXPECT_EQ(0, expect_finish());
 }
+
+// INV-9, Rust (ANTS-6723) — a Rust module is its file: `security::x` names
+// the `x` in src/security.rs, `a::b::x` the one in src/a/b.rs, and a mod.rs
+// is named by its folder. A method's qualifier is its `impl` block's type, and
+// a lifetime (`'a`) is not a character literal. Measured on rusty-psn's
+// STANDARDS.md, where all of these came back unresolved.
+TEST(DocSymbolsLocator, Inv9RustModulePathAndImpl) {
+    expect_reset();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    auto put = [&](const char *rel, const char *text) {
+        const QString p = root + QLatin1Char('/') + QString::fromUtf8(rel);
+        QDir().mkpath(QFileInfo(p).absolutePath());
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(text);
+    };
+    put("src/security.rs",
+        "pub fn validate_serial(s: &str) -> bool {\n"
+        "    !s.is_empty()\n"
+        "}\n");
+    put("src/psn/utils.rs",
+        "pub(crate) fn read_capped_text(p: &str) -> String {\n"
+        "    p.to_string()\n"
+        "}\n"
+        "pub enum FileError {\n"
+        "    Io,\n"
+        "}\n");
+    put("src/net/mod.rs",
+        "pub fn open_link() {}\n");
+    put("src/promise.rs",
+        "pub struct Promise<'a> {\n"
+        "    name: &'a str,\n"
+        "}\n"
+        "impl<'a> Promise<'a> {\n"
+        "    pub fn spawn_async(&self) {}\n"
+        "}\n");
+
+    DocSymbols::Options o;
+    o.rootCanonical = root;
+    const DocSymbols::ScanResult r = DocSymbols::scan(QStringLiteral(
+        "`security::validate_serial()` `psn::utils::read_capped_text` "
+        "`utils::FileError` `net::open_link()` `Promise::spawn_async` "
+        "`network::validate_serial()`\n"),
+        QStringLiteral("docs/x.md"), o);
+    const DocSymbols::Locators l = DocSymbols::locate(r.symbols, [&root](const QString &rel) {
+        QFile f(root + QLatin1Char('/') + rel);
+        return f.open(QIODevice::ReadOnly)
+                   ? QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'))
+                   : QStringList();
+    });
+
+    const auto at = [&l](const char *n) { return l.located.value(QString::fromUtf8(n)); };
+    expect(at("security::validate_serial()") == QLatin1String("src/security.rs:1"),
+           "INV-9: a file stem is a module qualifier", at("security::validate_serial()"));
+    expect(at("psn::utils::read_capped_text") == QLatin1String("src/psn/utils.rs:1"),
+           "INV-9: a nested module path", at("psn::utils::read_capped_text"));
+    expect(at("utils::FileError") == QLatin1String("src/psn/utils.rs:4"),
+           "INV-9: a type in a module", at("utils::FileError"));
+    expect(at("net::open_link()") == QLatin1String("src/net/mod.rs:1"),
+           "INV-9: a mod.rs is named by its folder", at("net::open_link()"));
+    expect(at("Promise::spawn_async") == QLatin1String("src/promise.rs:5"),
+           "INV-9: an impl block, past lifetimes, names the method's type",
+           at("Promise::spawn_async"));
+    expect(l.unresolved.contains(QStringLiteral("network::validate_serial()")),
+           "INV-9: a module the file is not stays unresolved",
+           at("network::validate_serial()"));
+    EXPECT_EQ(0, expect_finish());
+}

@@ -89356,7 +89356,7 @@ project. Reported causes are claims until checked in source.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-10-17.
   Lanes: mcp-roadmap.
 
-- 📋 [ANTS-6723] **doc_symbols' locator mode accepts a Rust module path as the qualifier of a name defined in that module's file.**
+- ✅ [ANTS-6723] **doc_symbols' locator mode accepts a Rust module path as the qualifier of a name defined in that module's file.**
   On rusty-psn STANDARDS.md, locator mode lists 11 names as unresolved
   (`security::validate_serial()`, `psn::utils::read_capped_text`,
   `utils::FileError`, ...) that full mode reports resolved or referenced.
@@ -89367,6 +89367,14 @@ project. Reported causes are claims until checked in source.
   file stem (not mod/lib/main) to the chain. `Promise::spawn_async` (an
   impl method) also needs `impl Foo {` in the chain. Related: ANTS-5670,
   ANTS-5313 INV-9.
+  Resolved (2026-11-09): inQualifier (src/docsymbols.cpp) adds a .rs
+  file's module path below src/ (mod/lib/main dropped) and, through
+  enclosingScopes' Rust mode, impl/trait/mod/type blocks; a `'` there
+  opens a char literal only as 'x' or '\..', so a lifetime no longer
+  swallows the impl's type. Test: DocSymbolsLocator.Inv9RustModulePathAndImpl,
+  red (5 of 6 checks) before the fix. On rusty-psn STANDARDS.md the
+  locator now reports 0 unresolved; all 11 qualified names located
+  point at the right file.
   **Layman:** The checker's "where is it" answer says Rust names written with their module prefix are missing, though they exist.
   Kind: fix.
   Source: in-session-2026-11-09 (ANTS-5670 check on rusty-psn STANDARDS.md).
