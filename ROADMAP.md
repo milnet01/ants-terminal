@@ -91471,6 +91471,10 @@ measured Ants adding about 5,250 tokens to every request.
   real convert snapshots the store first (user, 2026-11-09). RetroDB's
   real convert waits on ANTS-6725 and its go-ahead after a scratch-copy
   sample.
+  Spec gated 2026-11-09 by review-contract: 2 loops (cap), 9 verified
+  and fixed, 2 dismissed, no deferred tail. Status accepted; ready to
+  implement. Log:
+  docs/reviews/ANTS-6724-convert-pass-headings-loop-log.md.
   **Layman:** Lets a project whose roadmap is grouped by review pass switch to the standard grouping by version without losing its item numbers.
   Kind: feature.
   Source: feedback-RetroDB-2026-11-09.
