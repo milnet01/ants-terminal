@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6715 -->
+<!-- ants-roadmap-id-high-water: ANTS=6716 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -73332,7 +73332,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-09-11 (performance pass).
   Lanes: mcp.
 
-- 📋 [ANTS-5216] **doc_citations' quotation mode (ANTS-4386) and its suffix rung (ANTS-4381) have no spec, so ANTS-3636 undercounts the request surface.**
+- ✅ [ANTS-5216] **doc_citations' quotation mode (ANTS-4386) and its suffix rung (ANTS-4381) have no spec, so ANTS-3636 undercounts the request surface.**
   Found by a cold review lane on 2026-09-14. docs/specs/ANTS-3636.md § 2.1
   says its request block is "the whole request surface" and INV-22 names
   nine declared properties, but the shipped descriptor also declares
@@ -73344,6 +73344,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   Record the quotation mode where it belongs: an amendment to ANTS-3636,
   or its own spec cross-referenced from § 2.1. The suffix rung itself is
   recorded in ANTS-3636 § 2.4 by the ANTS-4918 amendment.
+  Shipped 2026-11-09 as an amendment to docs/specs/ANTS-3636.md: § 2.1's
+  request block and § 2.7's Options block list quotes, quote_min_chars
+  (default 30, clamped 10-500) and paths; § 2.1 names the opt-in passes
+  and ANTS-4386, 4637, 4638, 4639, 4640, 4696, 5296; INV-22 lists the
+  twelve properties its test asserts. Loop-log row "impl (2026-11-09)".
   **Layman:** The design document for the citation checker leaves out a feature that already ships, so anyone reading it gets an incomplete picture.
   Kind: doc-fix.
   Source: review-contract-2026-09-14 ANTS-3636 loop 1.
@@ -73775,6 +73780,18 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: enhancement.
   Source: in-session-2026-10-21.
   Lanes: code-index-search.
+
+- 📋 [ANTS-6716] **The doc_citations spec still places the verb's descriptor in claudeintegration.cpp, and one of its line citations is past that file's end.**
+  docs/specs/ANTS-3636.md names claudeintegration.cpp as the home of the
+  authored descriptor (INV-22 among others). The descriptor is now in
+  src/claudeintegration_docs.cpp. check-doc 2026-11-09 also reports the
+  citation claudeintegration.cpp:10256 against a file far shorter. Point
+  each mention at the current file, outside the loop log, which records
+  the past.
+  **Layman:** The design document for the citation checker points at the wrong source file for one part of the tool.
+  Kind: doc-fix.
+  Source: in-session-2026-11-09 (check-doc on ANTS-3636 during ANTS-5216).
+  Lanes: mcp, docs.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
