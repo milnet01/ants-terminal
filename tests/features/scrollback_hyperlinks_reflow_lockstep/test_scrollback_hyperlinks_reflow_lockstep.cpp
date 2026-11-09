@@ -35,23 +35,20 @@ std::string osc8Link(const std::string &url, const std::string &label) {
     return "\033]8;;" + url + "\x07" + label + "\033]8;;\x07";
 }
 
-// Probe m_scrollbackHyperlinks' true length via reference identity.
-// terminalgrid.cpp:225-230 returns a reference to a function-static
-// empty vector for out-of-range idx; in-range probes return a
-// reference into the deque. Same-address-as-fallback ⇒ out of range.
-int hyperlinksDequeSize(const TerminalGrid &g) {
-    const auto *fallback = &g.scrollbackHyperlinks(1 << 30);
-    int lo = 0, hi = 1 << 20;
-    while (lo < hi) {
-        int mid = (lo + hi) / 2;
-        if (&g.scrollbackHyperlinks(mid) == fallback) hi = mid;
-        else lo = mid + 1;
-    }
-    return lo;
-}
-
+// ANTS-5204 — spans are stored only for lines that have any, so lockstep
+// means: no more span lists than lines, and every span starts on the first
+// cell of its own link label ("abcdefghij" in every case below).
 bool dequesLockstep(const TerminalGrid &g) {
-    return hyperlinksDequeSize(g) == g.scrollbackSize();
+    if (g.scrollbackHyperlinkEntryCount() > g.scrollbackSize()) return false;
+    for (int i = 0; i < g.scrollbackSize(); ++i) {
+        const auto &cells = g.scrollbackLine(i);
+        for (const auto &sp : g.scrollbackHyperlinks(i)) {
+            if (sp.startCol < 0 || sp.startCol >= static_cast<int>(cells.size())
+                || cells[sp.startCol].codepoint != 'a')
+                return false;
+        }
+    }
+    return true;
 }
 
 void fail(const char *label, const char *detail){

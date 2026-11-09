@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 #include <deque>
+#include <map>
 #include <unordered_map>
 #include <functional>
 #include <memory>
@@ -463,6 +464,10 @@ public:
     // OSC 8 hyperlinks (per screen line)
     const std::vector<HyperlinkSpan> &screenHyperlinks(int row) const;
     const std::vector<HyperlinkSpan> &scrollbackHyperlinks(int idx) const;
+    // How many scrollback lines have a stored span list (ANTS-5204).
+    int scrollbackHyperlinkEntryCount() const {
+        return static_cast<int>(m_scrollbackHyperlinks.size());
+    }
 
     // Test-only: current size of the Kitty APC chunk-accumulation buffer.
     // Locked by tests/features/osc8_apc_memory_caps to confirm
@@ -518,10 +523,7 @@ public:
         // scrollbackPushed() reflects its scrollback depth (the get_scrollback
         // since_cursor cursor is this counter).
         ++m_scrollbackPushed;
-        // ANTS-1999 — keep m_scrollbackHyperlinks in lockstep. Restore carries
-        // no serialized OSC 8 span data, so push an empty entry; without it the
-        // two deques desync permanently and later spans map to the wrong rows.
-        m_scrollbackHyperlinks.emplace_back();
+        // Restore carries no OSC 8 spans, so no hyperlink entry (ANTS-5204).
         trimScrollbackToCap();
     }
     TermLine &screenLine(int row) { ++m_contentRevision; return m_screenLines[row]; }  // ANTS-5030
@@ -904,7 +906,12 @@ private:
 
     // OSC 8 hyperlinks per screen/scrollback line
     std::vector<std::vector<HyperlinkSpan>> m_screenHyperlinks;
-    std::deque<std::vector<HyperlinkSpan>> m_scrollbackHyperlinks;
+    // ANTS-5204 — spans only for scrollback lines that have any, keyed by
+    // m_scrollbackHlBase + scrollback index, so a front eviction moves no key.
+    std::map<qint64, std::vector<HyperlinkSpan>> m_scrollbackHyperlinks;
+    qint64 m_scrollbackHlBase = 0;
+    // Files the spans of the line just pushed to the back of m_scrollback.
+    void addBackScrollbackHyperlinks(std::vector<HyperlinkSpan> &&spans);
     // Active hyperlink state (between open and close OSC 8)
     bool m_hyperlinkActive = false;
     std::string m_hyperlinkUri;

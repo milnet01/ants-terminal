@@ -98734,8 +98734,14 @@ that extend an earlier perf-pass bundle name it.
   Source: memory-perf-pass-2026-09-14.
   Lanes: claude.
 
-- 📋 [ANTS-5204] **Stop allocating an empty hyperlink list for every scrollback line.**
+- ✅ [ANTS-5204] **Stop allocating an empty hyperlink list for every scrollback line.**
   Extends ANTS-4534. TerminalGrid pushes an entry into m_scrollbackHyperlinks (a deque of vectors) for every line pushed to scrollback, links or not. Direction: a sparse side table keyed by line, like the combining-character table.
+  Shipped 2026-11-09: m_scrollbackHyperlinks is a std::map keyed by
+  m_scrollbackHlBase + scrollback index, holding entries only for lines
+  with spans; eviction raises the base. Before: 2064 stored lists for
+  one linked line (INV-3 of scrollback_hyperlink_restore_sync); after:
+  1. The empty list cost 24 bytes a line, not a heap allocation. Suite
+  6158/6158.
   **Layman:** Every line of history carries an empty link list, even though almost no lines have links.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.

@@ -105,6 +105,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Scrollback stores link data only for lines that have links, so plain history takes less memory** (ANTS-5204)
+
 - **The background-tasks window keeps one copy of each task's output and forgets tasks that are gone** (ANTS-5203)
 
 - **The audit window holds each finding once, so a large audit uses less memory.** (ANTS-5201)

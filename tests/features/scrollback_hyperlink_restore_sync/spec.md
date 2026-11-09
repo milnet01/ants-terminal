@@ -31,3 +31,8 @@ is always true), so 1:1 lockstep is the real invariant.
   *same* scrollback index whose cells hold the link text.
 - **INV-2** — after `setMaxScrollback` evicts front lines, a surviving OSC 8
   line's span still maps to its (shifted) row.
+- **INV-3** (ANTS-5204) — only lines that carry a link store a span list:
+  after restored and plain lines plus one link line,
+  `scrollbackHyperlinkEntryCount()` is 1. The table is a map keyed by
+  `m_scrollbackHlBase` plus the line index, so the lockstep above holds by
+  construction and the "Fix" pushes of empty entries are gone.

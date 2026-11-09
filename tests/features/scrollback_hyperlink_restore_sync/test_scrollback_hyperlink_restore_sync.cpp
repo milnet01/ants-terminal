@@ -72,6 +72,26 @@ TEST(ScrollbackHyperlinkRestoreSync, Inv1RestoreThenLinkAligns) {
         << "span must map to the link's own row (idx=" << idx << ")";
 }
 
+// INV-3 — only lines that carry a link store a span list (ANTS-5204).
+TEST(ScrollbackHyperlinkRestoreSync, Inv3PlainLinesStoreNoSpans) {
+    Harness h(3, 20);
+    for (int i = 0; i < 2000; ++i)
+        h.grid.pushScrollbackLine(TermLine{});
+    for (int i = 0; i < 50; ++i)
+        h.feed("plain\n");
+    h.feed(cup(0, 0));
+    h.feed(osc8Link("https://sparse.example/", "linkC"));
+    h.feed(cup(2, 0));
+    h.feed("\n\n\n\n");
+
+    ASSERT_GT(h.grid.scrollbackSize(), 2000);
+    const int idx = findLineByText(h.grid, "linkC");
+    ASSERT_GE(idx, 0);
+    EXPECT_TRUE(idxHasUri(h.grid, idx, "https://sparse.example/"));
+    EXPECT_EQ(h.grid.scrollbackHyperlinkEntryCount(), 1)
+        << "a span list is stored for every scrollback line, links or not";
+}
+
 // INV-2 — setMaxScrollback eviction keeps a surviving link's span aligned.
 TEST(ScrollbackHyperlinkRestoreSync, Inv2SetMaxScrollbackKeepsAlignment) {
     Harness h(3, 20);

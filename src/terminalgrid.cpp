@@ -302,9 +302,15 @@ const std::vector<HyperlinkSpan> &TerminalGrid::screenHyperlinks(int row) const 
 
 const std::vector<HyperlinkSpan> &TerminalGrid::scrollbackHyperlinks(int idx) const {
     static const std::vector<HyperlinkSpan> s_empty;
-    if (idx >= 0 && idx < static_cast<int>(m_scrollbackHyperlinks.size()))
-        return m_scrollbackHyperlinks[idx];
-    return s_empty;
+    if (idx < 0 || idx >= static_cast<int>(m_scrollback.size())) return s_empty;
+    const auto it = m_scrollbackHyperlinks.find(m_scrollbackHlBase + idx);
+    return it != m_scrollbackHyperlinks.end() ? it->second : s_empty;
+}
+
+void TerminalGrid::addBackScrollbackHyperlinks(std::vector<HyperlinkSpan> &&spans) {
+    if (spans.empty() || m_scrollback.empty()) return;
+    const qint64 key = m_scrollbackHlBase + static_cast<qint64>(m_scrollback.size()) - 1;
+    m_scrollbackHyperlinks.insert_or_assign(key, std::move(spans));
 }
 
 void TerminalGrid::setMaxScrollback(int lines) {
@@ -324,8 +330,8 @@ void TerminalGrid::setMaxScrollbackMib(int mib) {
 
 // The one place scrollback is evicted down to m_maxScrollback lines and
 // m_maxScrollbackMib of cell storage (ANTS-4534).
-// ANTS-1999 — pop both deques in lockstep so OSC 8 spans never misalign
-// with their lines. Evicted cells go back to the reuse pool.
+// Each eviction moves the hyperlink key base up one, so spans stay on their
+// lines (ANTS-1999, ANTS-5204). Evicted cells go back to the reuse pool.
 void TerminalGrid::trimScrollbackToCap() {
     const qint64 byteCap = static_cast<qint64>(m_maxScrollbackMib) * 1024 * 1024;
     while (static_cast<int>(m_scrollback.size()) > m_maxScrollback
@@ -334,13 +340,11 @@ void TerminalGrid::trimScrollbackToCap() {
         returnCellsRow(std::move(m_scrollback.front().cells));
         m_scrollback.pop_front();
         ++m_promptRegionShift;  // ANTS-5029
-        if (!m_scrollbackHyperlinks.empty())
-            m_scrollbackHyperlinks.pop_front();
+        ++m_scrollbackHlBase;
     }
-    // Defensive: a legacy on-disk desync may leave the span deque longer than
-    // the cap even after the lockstep trim above — bound it too.
-    while (static_cast<int>(m_scrollbackHyperlinks.size()) > m_maxScrollback)
-        m_scrollbackHyperlinks.pop_front();
+    while (!m_scrollbackHyperlinks.empty()
+           && m_scrollbackHyperlinks.begin()->first < m_scrollbackHlBase)
+        m_scrollbackHyperlinks.erase(m_scrollbackHyperlinks.begin());
 }
 
 // ANTS-5029 — prompt regions hold global line numbers (scrollback index plus
@@ -1889,10 +1893,10 @@ void TerminalGrid::eraseInDisplay(int mode) {
             m_promptRegionShift += static_cast<qint64>(m_scrollback.size());
             m_scrollback.clear();
             m_scrollbackBytes = 0;  // ANTS-4534
-            // ANTS-1799 — keep the parallel hyperlink side-table lockstep.
-            // Clearing m_scrollback alone leaves stale OSC 8 spans (with
-            // their old URIs) that re-attach to unrelated post-clear rows.
+            // ANTS-1799 — clear the hyperlink side-table too, or stale OSC 8
+            // spans re-attach to unrelated post-clear rows.
             m_scrollbackHyperlinks.clear();
+            m_scrollbackHlBase = 0;
         }
         break;
     }
@@ -2126,10 +2130,8 @@ void TerminalGrid::scrollUp(int count) {
             m_scrollback.push_back(trimmedForScrollback(std::move(m_screenLines[srcRow])));
             m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
             ++m_scrollbackPushed;
-            if (hlInRange) {
-                m_scrollbackHyperlinks.push_back(
-                    std::move(m_screenHyperlinks[srcRow]));
-            }
+            if (hlInRange)
+                addBackScrollbackHyperlinks(std::move(m_screenHyperlinks[srcRow]));
         } else {
             returnCellsRow(std::move(m_screenLines[srcRow].cells));
         }
@@ -2823,12 +2825,11 @@ void TerminalGrid::resize(int rows, int cols) {
     // to O(N) cheap in-place resizes.
     if (cols != m_cols && !m_scrollback.empty()) {
         std::deque<TermLine> newScrollback;
-        // ANTS-1333 — keep m_scrollbackHyperlinks lockstep with the new
-        // scrollback deque. INV-2 (fast-path) carries the source row's
-        // spans across with column clipping; INV-3 (slow-path) emits an
-        // empty span vector per reflowed row to match joinLogical's
-        // combining-char drop semantics.
-        std::deque<std::vector<HyperlinkSpan>> newScrollbackHyperlinks;
+        // ANTS-1333 — rebuild the hyperlink table against the new scrollback,
+        // keyed from 0. INV-2 (fast-path) carries the source row's spans
+        // across with column clipping; INV-3 (slow-path) rows get none, to
+        // match joinLogical's combining-char drop semantics.
+        std::map<qint64, std::vector<HyperlinkSpan>> newScrollbackHyperlinks;
         std::vector<TermLine> pending; // current soft-wrap sequence
 
         auto flushPending = [&]() {
@@ -2836,10 +2837,8 @@ void TerminalGrid::resize(int rows, int cols) {
             auto logicals = joinLogical(pending);
             std::vector<TermLine> reflowed;
             for (auto &L : logicals) rewrap(L, reflowed);
-            for (auto &tl : reflowed) {
-                newScrollback.push_back(trimmedForScrollback(std::move(tl)));
-                newScrollbackHyperlinks.emplace_back();  // INV-3
-            }
+            for (auto &tl : reflowed)
+                newScrollback.push_back(trimmedForScrollback(std::move(tl)));  // INV-3
             pending.clear();
         };
 
@@ -2884,8 +2883,7 @@ void TerminalGrid::resize(int rows, int cols) {
             }
         };
 
-        int srcIdx = 0;
-        const int srcHlSize = static_cast<int>(m_scrollbackHyperlinks.size());
+        qint64 srcKey = m_scrollbackHlBase;
         for (auto &tl : m_scrollback) {
             bool inSequence = !pending.empty() || tl.softWrapped;
             if (inSequence) {
@@ -2900,12 +2898,15 @@ void TerminalGrid::resize(int rows, int cols) {
                     if (static_cast<int>(tl.cells.size()) > cols) inPlaceResize(tl);
                     newScrollback.push_back(trimmedForScrollback(std::move(tl)));
                     // INV-2: carry spans across with clipping.
-                    if (srcIdx < srcHlSize)
-                        newScrollbackHyperlinks.push_back(
-                            clipSpansToCols(std::move(
-                                m_scrollbackHyperlinks[srcIdx])));
-                    else
-                        newScrollbackHyperlinks.emplace_back();
+                    const auto src = m_scrollbackHyperlinks.find(srcKey);
+                    if (src != m_scrollbackHyperlinks.end()) {
+                        auto clipped = clipSpansToCols(std::move(src->second));
+                        if (!clipped.empty())
+                            newScrollbackHyperlinks.emplace_hint(
+                                newScrollbackHyperlinks.end(),
+                                static_cast<qint64>(newScrollback.size()) - 1,
+                                std::move(clipped));
+                    }
                 } else {
                     // Doesn't fit — fall through to slow path as a 1-line
                     // sequence so rewrap() handles the split exactly as
@@ -2914,7 +2915,7 @@ void TerminalGrid::resize(int rows, int cols) {
                     flushPending();
                 }
             }
-            ++srcIdx;
+            ++srcKey;
         }
         // Flush any pending remainder. Defensive — the last scrollback line
         // should have softWrapped=false so this is usually a no-op.
@@ -2922,6 +2923,7 @@ void TerminalGrid::resize(int rows, int cols) {
 
         m_scrollback = std::move(newScrollback);
         m_scrollbackHyperlinks = std::move(newScrollbackHyperlinks);
+        m_scrollbackHlBase = 0;
         m_scrollbackBytes = 0;  // ANTS-4534 — reflow rebuilt every line
         for (const TermLine &tl : m_scrollback)
             m_scrollbackBytes += cellBytes(tl);
@@ -2962,10 +2964,8 @@ void TerminalGrid::resize(int rows, int cols) {
                 // scrollbackPushed() contract holds (get_scrollback's
                 // since_cursor diff must see these lines).
                 ++m_scrollbackPushed;
-                // ANTS-1333 INV-4 — reflowed rows came from joinLogical;
-                // no usable mapping back to their hyperlink spans. Push an
-                // empty span vector to keep the deque length-locked.
-                m_scrollbackHyperlinks.emplace_back();
+                // ANTS-1333 INV-4 — reflowed rows came from joinLogical, with
+                // no usable mapping back to their spans, so they carry none.
             }
         }
         reflowed.erase(reflowed.begin(), reflowed.begin() + overflow);

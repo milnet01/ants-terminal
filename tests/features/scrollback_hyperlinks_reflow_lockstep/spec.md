@@ -5,18 +5,19 @@ See `docs/specs/ANTS-1333.md` for the full contract.
 ## Test scope
 
 Asserts that after `TerminalGrid::resize(rows, cols)` triggers
-width-change scrollback reflow, `m_scrollbackHyperlinks.size() ==
-m_scrollback.size()` and the per-row spans behave per
-INV-2 / INV-3 / INV-4.
+width-change scrollback reflow, every span sits on its own link's text,
+the hyperlink table holds no more entries than scrollback has lines, and
+the per-row spans behave per INV-2 / INV-3 / INV-4.
 
 ## Invariants checked
 
-- **INV-1.** Lockstep length after in-place narrow / grow.
+- **INV-1.** Lockstep after in-place narrow / grow: spans aligned, entry
+  count within the line count (the table is sparse since ANTS-5204).
 - **INV-2.** Span survives across in-place reflow (clipped if
   endCol exceeds new cols).
 - **INV-3.** Slow-path rewrap emits empty spans.
 - **INV-4.** Screen→scrollback overflow push emits empty spans.
-- **INV-5.** Cap-trim pops from both deques together.
+- **INV-5.** Cap-trim keeps the surviving spans on their lines.
 
 ## Repro before the fix
 
