@@ -12,7 +12,6 @@
 #include <utility>
 
 #include "markdownscan.h"
-#include "walkrules.h"
 
 namespace DocSymbols {
 namespace {
@@ -93,23 +92,6 @@ QString stripOneSpace(const QString &content) {
         && content.endsWith(QLatin1Char(' ')) && !content.trimmed().isEmpty())
         return content.mid(1, content.size() - 2);
     return content;
-}
-
-// ANTS-5669 — CMake FetchContent unpacks each dependency's source into
-// <root>/build/_deps/<name>-src. The rest of build/ is output and stays
-// skipped. A symlink is not followed, as in every walk (walkrules.h).
-QStringList dependencyRoots(const QString &rootCanonical) {
-    QStringList out;
-    if (rootCanonical.isEmpty()) return out;
-    const QString deps = rootCanonical + QLatin1String("/build/_deps");
-    if (!walkrules::followed(QFileInfo(rootCanonical + QLatin1String("/build")))
-        || !walkrules::followed(QFileInfo(deps)))
-        return out;
-    for (const QFileInfo &fi : walkrules::entries(deps))
-        if (fi.isDir() && walkrules::followed(fi)
-            && fi.fileName().endsWith(QLatin1String("-src")))
-            out << fi.absoluteFilePath();
-    return out;
 }
 
 struct Candidate {
@@ -278,7 +260,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
     SymbolQuery::Options depOpts;
     depOpts.maxResults = 50;
     depOpts.recordFirstUse = true;
-    for (const QString &dep : dependencyRoots(opts.rootCanonical)) {
+    for (const QString &dep : SymbolQuery::dependencyRoots(opts.rootCanonical)) {
         if (depCandidates.isEmpty()) break;
         if (opts.resolveDeadlineMs > 0 && clock.elapsed() >= opts.resolveDeadlineMs) {
             for (const QString &needle : std::as_const(depCandidates))

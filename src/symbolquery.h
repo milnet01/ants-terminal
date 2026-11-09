@@ -46,6 +46,12 @@ constexpr int kLangCount = static_cast<int>(Lang::Glsl) + 1;
 // hard-fails the scan).
 Lang parseLang(const QString &s);
 
+// ANTS-5669 — the absolute paths of <root>/build/_deps/<name>-src, where CMake
+// FetchContent unpacks each dependency's source. Every walk skips build/, so a
+// caller resolving a dependency's names walks these roots itself. Symlinks are
+// not followed (walkrules.h). Empty when there are none.
+QStringList dependencyRoots(const QString &rootCanonical);
+
 // Identifier guard: ^[A-Za-z_][A-Za-z0-9_]{0,127}$ (ASCII only).
 // Rejects empty, leading digit, regex metachars, and >128 chars. The
 // symbol is the only caller-supplied text spliced into a regex, so

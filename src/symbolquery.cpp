@@ -1010,6 +1010,20 @@ Lang parseLang(const QString &s) {
     return Lang::Auto;
 }
 
+QStringList dependencyRoots(const QString &rootCanonical) {
+    QStringList out;
+    if (rootCanonical.isEmpty()) return out;
+    const QString deps = rootCanonical + QLatin1String("/build/_deps");
+    if (!walkrules::followed(QFileInfo(rootCanonical + QLatin1String("/build")))
+        || !walkrules::followed(QFileInfo(deps)))
+        return out;
+    for (const QFileInfo &fi : walkrules::entries(deps))
+        if (fi.isDir() && walkrules::followed(fi)
+            && fi.fileName().endsWith(QLatin1String("-src")))
+            out << fi.absoluteFilePath();
+    return out;
+}
+
 bool isValidSymbol(const QString &symbol) {
     if (symbol.isEmpty() || symbol.size() > kSymbolMaxLen) return false;
     const QChar c0 = symbol.at(0);
