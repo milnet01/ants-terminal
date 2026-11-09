@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6721 -->
+<!-- ants-roadmap-id-high-water: ANTS=6722 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -80338,6 +80338,21 @@ in each bullet, not just the reporter's symptom.
   **Layman:** A speed test in CI keeps failing and passing on different commits; find out whether the test or the CI machine is to blame.
   Kind: investigate.
   Source: ci_report alternating finding on this repo, 2026-11-05.
+
+- 📋 [ANTS-6722] **ci_report reads the current branch's own GitHub remote in a fork, and says so loudly when it cannot tell.**
+  rusty-psn: origin = RainbowCookie32/rusty-psn (upstream), fork =
+  milnet01/rusty-psn, and local-dev tracks fork. With no `gh repo
+  set-default`, ci_report read upstream (43 runs, ok:true) where the fork
+  has 159; the only sign was repo_note (ANTS-6403's fix). Suggested: take
+  the repo from the remote of the current branch's upstream (git
+  rev-parse @{u}) before gh's own pick; where that is absent and two
+  GitHub remotes exist, refuse or put the ambiguity in findings, naming
+  `gh repo set-default`. Also filed by claude-config in
+  claude_config_Ants_MCP_Feedback.md (2026-11-09). Related: ANTS-6403.
+  **Layman:** In a copy of someone else's project, the CI report reads your copy's results rather than the original project's.
+  Kind: fix.
+  Source: feedback-rusty-psn-2026-11-09.
+  Lanes: mcp.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
