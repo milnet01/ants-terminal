@@ -91473,6 +91473,21 @@ measured Ants adding about 5,250 tokens to every request.
   extras.source_status ("done (v3.8.0)"), which no source reads.
   Changes ANTS-5315 § 2.2's evidence rules, so amend that spec.
   Follows ANTS-6724; finishes RetroDB's version-block regroup.
+  Agreed with RetroDB (2026-11-09; the user left the choices to that
+  session and asked for every item linked to its release). Shipped-item
+  sources, highest first: (a) the version in the item's own status or
+  resolution text ("done (v3.8.0)", "built in the open 3.35.3");
+  (b) data/changelog.yaml, a list of {version, date, notes}, citing
+  "Pass 43.5", "Pass 43.2/43.3/43.5", "(Pass 46.3 / 47.6)" or
+  "PASS-59-271" - take the OLDEST entry citing the id; (c) commit
+  subjects citing the full id anywhere, then the earliest tag containing
+  the commit (coarse: few tags). (a) beats (b) beats (c); the dry run
+  reports every disagreement and its counts by source. No version found
+  -> a "Shipped, version not known" block; never guess. Shipped items
+  go to the archive grouped by version, word for word, ids kept. Open
+  items: RetroDB places them by hand into v4.0.0 / v4.0.x / v4.x.0 /
+  v5.0.0. Before RetroDB's real convert, run convert + this op on a
+  scratch copy and send RetroDB the counts for a sample check.
   **Layman:** After RetroDB's roadmap is converted, its finished items can be filed under the version they shipped in, instead of none being placed.
   Kind: enhancement.
   Source: in-session-2026-11-09 (ANTS-6724 prototype on a scratch copy of RetroDB).
