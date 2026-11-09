@@ -871,14 +871,22 @@ which heading you expect it under.
     the `plan_id` of its own dry run applies. `cmdRoadmapLog()` strips the
     internal `_plan_apply` mark from every caller request and sets it on the
     plan's re-dispatch.
-  - **The release** is the lowest CHANGELOG `## [X.Y.Z]` citing the id. With
-    no citation, it is the lowest stable tag (`X.Y.Z` or `vX.Y.Z`; a suffixed
-    tag is not a release) holding a commit whose subject begins with the id.
+  - **The release** comes from the first source that names one (ANTS-6725
+    added the first and the fallbacks). (1) The highest released version in
+    the leading clause of the item's status text (`extras.source_status`,
+    then `resolution`). (2) The lowest changelog entry citing the id: a
+    Markdown `## [X.Y.Z]`, or a `- version: X.Y.Z` entry when the changelog
+    file is `.yaml` or `.yml`. (3) The lowest stable tag (`X.Y.Z` or
+    `vX.Y.Z`; a suffixed tag is not a release) holding a commit whose subject
+    begins with the whole id; with none, one citing it anywhere in its
+    subject (`source:"mention"`). A citation is a real item id, literal
+    (`PASS-43-5`) or spelled with the project's prefix (`Pass 43.2/43.3`).
   - **What stays put.** Open, considered and dropped items never move. A
     shipped item with no release stays and is listed in `unplaced` with a
-    reason: `unreleased` (cited under `[Unreleased]`, or a subject commit on
-    any ref, `git log --all`, that no stable tag holds), `no_evidence`, or
-    `human_placed`.
+    reason: `unreleased` (cited under `[Unreleased]`, or a commit on any ref,
+    `git log --all`, that no stable tag holds), `no_evidence`, or
+    `human_placed`. With `unknown_section:"<title>"`, `no_evidence` items
+    move to that level-2 section instead, created when missing.
   - **Sections.** It reuses one section per release, or creates
     `X.Y.Z — released <date>` placed by ANTS-1878 § 2.3a. Any other section
     titled with a released version is retitled so the version moves to the

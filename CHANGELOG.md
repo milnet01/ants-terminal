@@ -119,6 +119,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log place_by_release reads more release evidence: an item's own status text, YAML changelogs, multi-part ids and spelled citations such as "Pass 43.2/43.3", and a commit that mentions an id anywhere in its subject** (ANTS-6725)
+  A new optional unknown_section argument collects shipped items with no
+  evidence in one section; without it they stay where they are. The reply
+  adds placed_by_source, disagreements.by_pair and sources.changelog_format.
+
 - **doc_symbols reports a name the project's code uses but defines elsewhere as `referenced`, with where it is used, instead of as missing.** (ANTS-5357)
   Library types, standard flags, test names and function parameters stop
   showing up as dead references. A name left only in a comment or a string

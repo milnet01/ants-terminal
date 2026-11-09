@@ -58,6 +58,9 @@ ParseResult parse(const QString &markdown, const QString &idPrefix);
 // above the first `## [` belongs to no section.
 QHash<QString, QStringList> citationsByVersion(const QString &markdown,
                                                const QString &idPrefix);
+// ANTS-6725 — the text of each `## [x]` section, keyed as citationsByVersion()
+// keys it, for a caller that reads citations its own way.
+QHash<QString, QString> sectionTextByVersion(const QString &markdown);
 
 // ANTS-5543 — READ-ONLY format check, so a push gate can catch a misplaced
 // line without changing the file. One finding per offending line, in document

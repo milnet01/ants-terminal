@@ -325,32 +325,37 @@ ParseResult parse(const QString &markdown, const QString &idPrefix) {
     return result;
 }
 
-QHash<QString, QStringList> citationsByVersion(const QString &markdown,
-                                               const QString &idPrefix) {
-    QHash<QString, QStringList> out;
+QHash<QString, QString> sectionTextByVersion(const QString &markdown) {
+    QHash<QString, QStringList> bodies;
     QString version;
     bool inSection = false;
-    QStringList body;
-    const auto flush = [&]() {
-        if (!inSection) return;
-        QStringList &ids = out[version];
-        for (const QString &id : extractIds(body.join(QLatin1Char('\n')), idPrefix))
-            if (!ids.contains(id)) ids << id;
-        body.clear();
-    };
     // A column-0 `## [` opens a section even inside a fence, as in parse().
     for (const QString &line : markdown.split(QLatin1Char('\n'))) {
         QString v, d;
         bool u = false;
         if (parseVersionHeading(line, v, d, u)) {
-            flush();
             version   = v;
             inSection = true;
+            bodies[version];   // a section with no body still counts
             continue;
         }
-        if (inSection) body << line;
+        if (inSection) bodies[version] << line;
     }
-    flush();
+    QHash<QString, QString> out;
+    for (auto it = bodies.cbegin(); it != bodies.cend(); ++it)
+        out.insert(it.key(), it.value().join(QLatin1Char('\n')));
+    return out;
+}
+
+QHash<QString, QStringList> citationsByVersion(const QString &markdown,
+                                               const QString &idPrefix) {
+    QHash<QString, QStringList> out;
+    const QHash<QString, QString> text = sectionTextByVersion(markdown);
+    for (auto it = text.cbegin(); it != text.cend(); ++it) {
+        QStringList &ids = out[it.key()];
+        for (const QString &id : extractIds(it.value(), idPrefix))
+            if (!ids.contains(id)) ids << id;
+    }
     return out;
 }
 

@@ -1613,6 +1613,14 @@ void appendToolSchemasStore(QJsonArray &tools) {
                             "reply, 1-200, default 50. Counts are never capped.");
                         props["sample_limit"] = sampleLimitProp;
                     }
+                    {   // ANTS-6725
+                        QJsonObject unknownProp;
+                        unknownProp["type"] = QStringLiteral("string");
+                        unknownProp["description"] = QStringLiteral(
+                            "place_by_release: title of a level-2 section for shipped "
+                            "items with no evidence. Omitted, they stay put.");
+                        props["unknown_section"] = unknownProp;
+                    }
                     {   // ANTS-5704
                         QJsonObject planIdProp;
                         planIdProp["type"] = QStringLiteral("string");

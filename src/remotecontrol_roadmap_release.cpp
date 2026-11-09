@@ -10,13 +10,11 @@
 #include "changelogquery.h"
 #include "gitwrap.h"
 #include "hostexec.h"      // ANTS-5527 — tools run on the host inside a Flatpak
-#include "roadmapfoldin.h"
 #include "roadmapindex.h"
 
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
-#include <QFileInfo>
 #include <QJsonArray>
 #include <QProcess>
 #include <QRegularExpression>
@@ -54,13 +52,105 @@ RlVerKey rlPlacementKey(const QString &v) {
     return {p.value(0).toLongLong(), p.value(1).toLongLong(), patch};
 }
 
-// § 2.2 — the id a commit subject BEGINS with, followed by a non-word
-// character or the end of the subject. Empty when the subject leads with none.
+// § 2.2 item 3 — the id a commit subject BEGINS with, read whole (`PASS-43-5`,
+// never `PASS-43`), followed by a non-word character or the end of the
+// subject. Empty when the subject leads with none.
 QString rlSubjectId(const QString &subject) {
-    static const QRegularExpression rx(
-        QStringLiteral("^([A-Za-z][A-Za-z0-9_]*-\\d+)(?=\\W|$)"));
+    static const QRegularExpression rx(QStringLiteral(
+        "^([A-Za-z][A-Za-z0-9_]*-\\d+(?:-\\d+)*(?:-[A-Za-z])?)(?=\\W|$)"));
     const auto m = rx.match(subject);
     return m.hasMatch() ? m.captured(1) : QString();
+}
+
+// § 2.2a — the item ids a text cites, literal (`PASS-43-5`) or spelled
+// (`Pass 43.2/43.3`), keyed on the project's own prefixes. Only real item ids
+// come back, each once, spelled as the store spells it.
+class RlCiter {
+public:
+    explicit RlCiter(const QHash<qint64, RoadmapStore::ItemWrite> &items) {
+        static const QRegularExpression prefixOf(QStringLiteral("^(.+?)-\\d"));
+        QSet<QString> prefixes;
+        for (const auto &it : items) {
+            m_ids.insert(it.id.toUpper(), it.id);
+            const auto m = prefixOf.match(it.id);
+            if (m.hasMatch()) prefixes.insert(QRegularExpression::escape(m.captured(1)));
+        }
+        if (prefixes.isEmpty()) return;
+        const QString alt = QStringList(prefixes.cbegin(), prefixes.cend()).join(QLatin1Char('|'));
+        // M.N, not a third number, then an optional `.L` / `-L` letter.
+        const QString number =
+            QStringLiteral("(\\d+)\\.(\\d+)(?!\\.\\d)(?:[.-]([A-Za-z])(?!\\w))?");
+        const auto ci = QRegularExpression::CaseInsensitiveOption;
+        m_literal = QRegularExpression(QStringLiteral(
+            "(?<![\\w-])((?:%1)-\\d+(?:-\\d+)*(?:-[A-Za-z])?)(?![\\w-])").arg(alt), ci);
+        m_spelled = QRegularExpression(
+            QStringLiteral("(?<![\\w-])(%1)\\s+").arg(alt) + number, ci);
+        m_more  = QRegularExpression(QStringLiteral("\\s*/\\s*") + number);
+        m_ready = true;
+    }
+
+    QStringList cite(const QString &text) const {
+        QStringList out;
+        if (!m_ready) return out;
+        const auto add = [&](const QString &candidate) {
+            const auto it = m_ids.constFind(candidate.toUpper());
+            if (it != m_ids.cend() && !out.contains(*it)) out << *it;
+        };
+        for (auto i = m_literal.globalMatch(text); i.hasNext();) add(i.next().captured(1));
+        for (auto i = m_spelled.globalMatch(text); i.hasNext();) {
+            const auto m = i.next();
+            const QString prefix = m.captured(1);
+            // `first` is the capture index of M; N and the letter follow it.
+            const auto spelled = [&](const QRegularExpressionMatch &n, int first) {
+                QString id = prefix + QLatin1Char('-') + n.captured(first) +
+                             QLatin1Char('-') + n.captured(first + 1);
+                if (!n.captured(first + 2).isEmpty())
+                    id += QLatin1Char('-') + n.captured(first + 2);
+                add(id);
+            };
+            spelled(m, 2);
+            // `Pass 43.2/43.3/43.5`: each `/ M.N` straight after cites one more.
+            for (qsizetype at = m.capturedEnd(0);;) {
+                const auto c = m_more.match(text, at, QRegularExpression::NormalMatch,
+                                            QRegularExpression::AnchorAtOffsetMatchOption);
+                if (!c.hasMatch()) break;
+                spelled(c, 1);
+                at = c.capturedEnd(0);
+            }
+        }
+        return out;
+    }
+
+private:
+    QHash<QString, QString> m_ids;   // upper-cased id -> the store's spelling
+    QRegularExpression m_literal, m_spelled, m_more;
+    bool m_ready = false;
+};
+
+// § 2.2 item 1 — the highest released version in a status text's leading
+// clause: the text before its first `. ` or ` — ` outside parentheses.
+// Empty when the clause names none.
+QString rlStatusVersion(const QString &text, const QSet<QString> &released) {
+    static const QString dash = QStringLiteral(" — ");
+    qsizetype end = text.size();
+    int depth = 0;
+    for (qsizetype i = 0; i < text.size() && end == text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (c == QLatin1Char('(')) ++depth;
+        else if (c == QLatin1Char(')')) depth = std::max(0, depth - 1);
+        else if (depth == 0 && ((c == QLatin1Char('.') &&
+                                 (i + 1 == text.size() || text.at(i + 1).isSpace())) ||
+                                QStringView(text).mid(i, dash.size()) == dash))
+            end = i;
+    }
+    static const QRegularExpression ver(
+        QStringLiteral("(?<![\\w.])v?(\\d+\\.\\d+\\.\\d+)(?!\\w|\\.\\d)"));
+    QString best;
+    for (auto it = ver.globalMatch(text.left(end)); it.hasNext();) {
+        const QString v = it.next().captured(1);
+        if (released.contains(v) && (best.isEmpty() || rlVersionLess(best, v))) best = v;
+    }
+    return best;
 }
 
 // § 2.3 — `0.7.50–0.7.59 — …`: a version, a dash, then another version.
@@ -127,17 +217,18 @@ RlGitOut rlRunGit(const QString &root, const QStringList &args,
     return r;
 }
 
-// § 2.2 item 2 — the tag source.
+// § 2.2 item 3 — the tag source.
 struct RlTagEvidence {
-    QHash<QString, QString> versionOf;   // id -> lowest stable tag containing its subject commit
-    QSet<QString> untagged;              // ids whose subject commit no stable tag contains
+    QHash<QString, QString> versionOf;   // id -> lowest stable tag containing a commit it leads
+    QHash<QString, QString> mentionOf;   // id -> lowest stable tag containing a commit citing it
+    QSet<QString> untagged;              // ids a commit no stable tag contains leads or cites
     QHash<QString, QString> tagDate;     // version -> the tag's creator date
     int stableTags = 0;
     bool failed = false;
     QString error;
 };
 
-RlTagEvidence rlReadTags(const QString &root, int budgetMs) {
+RlTagEvidence rlReadTags(const QString &root, const RlCiter &citer, int budgetMs) {
     RlTagEvidence ev;
     // § 4 — not a git repository: the source gives nothing, and that is no error.
     const GitWrap::Result probe =
@@ -174,10 +265,13 @@ RlTagEvidence rlReadTags(const QString &root, int budgetMs) {
     });
     ev.stableTags = int(tags.size());
 
+    // onId(id, leads): once for a subject's leading id, once per id it cites.
     const auto subjectsInto = [&](const QByteArray &out, const auto &onId) {
         for (const QByteArray &line : out.split('\n')) {
-            const QString id = rlSubjectId(QString::fromUtf8(line));
-            if (!id.isEmpty()) onId(id);
+            const QString subject = QString::fromUtf8(line);
+            const QString id = rlSubjectId(subject);
+            if (!id.isEmpty()) onId(id, true);
+            for (const QString &cited : citer.cite(subject)) onId(cited, false);
         }
     };
     // Lowest first: the commits a tag holds that no lower tag holds.
@@ -189,8 +283,9 @@ RlTagEvidence rlReadTags(const QString &root, int budgetMs) {
         args << QStringLiteral("--");
         const RlGitOut g = rlRunGit(root, args, clock, budgetMs);
         if (g.failed) return fail(g);
-        subjectsInto(g.out, [&](const QString &id) {
-            if (!ev.versionOf.contains(id)) ev.versionOf.insert(id, t.version);
+        subjectsInto(g.out, [&](const QString &id, bool leads) {
+            QHash<QString, QString> &into = leads ? ev.versionOf : ev.mentionOf;
+            if (!into.contains(id)) into.insert(id, t.version);
         });
         ev.tagDate.insert(t.version, t.date);
         lower << QStringLiteral("refs/tags/") + t.name;
@@ -206,47 +301,84 @@ RlTagEvidence rlReadTags(const QString &root, int budgetMs) {
         args << QStringLiteral("--");
         const RlGitOut g = rlRunGit(root, args, clock, budgetMs);
         if (g.failed) return fail(g);
-        subjectsInto(g.out, [&](const QString &id) { ev.untagged.insert(id); });
+        subjectsInto(g.out, [&](const QString &id, bool) { ev.untagged.insert(id); });
     }
     return ev;
 }
 
-// § 2.2 item 1 — the CHANGELOG source.
+// § 2.2 item 2 — the changelog source.
 struct RlChangelogEvidence {
     QString relPath;                          // empty: no changelog
+    QString format;                           // "markdown" or "yaml"
     QHash<QString, QStringList> cited;        // id -> released versions citing it
     QSet<QString> unreleased;                 // ids cited under [Unreleased]
-    QSet<QString> versions;                   // every `## [X.Y.Z]` heading
+    QSet<QString> versions;                   // every X.Y.Z release entry
     QHash<QString, QString> headingDate;      // version -> ISO date, when ISO
 };
 
-RlChangelogEvidence rlReadChangelog(const QString &root, const QString &roadmapPath,
-                                    const QString &prefixFallback) {
+// § 2.2 item 2's YAML shape, read line by line rather than as YAML: a
+// column-0 `- version: X.Y.Z` opens an entry, its first indented `date:` dates
+// it, and every line up to the next column-0 `- ` is its text.
+QHash<QString, QString> rlYamlEntries(const QString &yaml, QHash<QString, QString> *dates) {
+    static const QRegularExpression open(
+        QStringLiteral("^- version:\\s*['\"]?([^'\"\\s#]+)"));
+    static const QRegularExpression dated(
+        QStringLiteral("^\\s+date:\\s*['\"]?(\\d{4}-\\d{2}-\\d{2})['\"]?\\s*$"));
+    QHash<QString, QStringList> lines;
+    QString version;
+    for (const QString &line : yaml.split(QLatin1Char('\n'))) {
+        if (line.startsWith(QLatin1String("- "))) {
+            const auto m = open.match(line);
+            version = m.hasMatch() ? m.captured(1) : QString();
+            if (!version.isEmpty()) lines[version];
+            continue;
+        }
+        if (version.isEmpty()) continue;
+        const auto d = dated.match(line);
+        if (d.hasMatch() && !dates->contains(version)) dates->insert(version, d.captured(1));
+        lines[version] << line;
+    }
+    QHash<QString, QString> out;
+    for (auto it = lines.cbegin(); it != lines.cend(); ++it)
+        out.insert(it.key(), it.value().join(QLatin1Char('\n')));
+    return out;
+}
+
+RlChangelogEvidence rlReadChangelog(const QString &root, const RlCiter &citer) {
     RlChangelogEvidence ev;
-    const QString path = findChangelogUnder(root);
+    QString path = findChangelogUnder(root);
+    if (path.isEmpty()) path = findYamlChangelogUnder(root);
     if (path.isEmpty()) return ev;
+    // The extension decides: findChangelogUnder() honours a project's
+    // `changelog` setting, which may name a YAML file (RetroDB's does).
+    const bool yaml = path.endsWith(QLatin1String(".yaml"), Qt::CaseInsensitive) ||
+                      path.endsWith(QLatin1String(".yml"), Qt::CaseInsensitive);
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return ev;
     ev.relPath = QDir(root).relativeFilePath(path);
-    const QString prefix = RoadmapFoldIn::sniffIdPrefix(
-        QFileInfo(roadmapPath).absolutePath(), prefixFallback);
-    const QString markdown = QString::fromUtf8(f.readAll());
-    const ChangelogQuery::ParseResult parsed = ChangelogQuery::parse(markdown, prefix);
+    ev.format  = yaml ? QStringLiteral("yaml") : QStringLiteral("markdown");
+    const QString text = QString::fromUtf8(f.readAll());
     static const QRegularExpression iso(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
-    for (const ChangelogQuery::VersionInfo &v : parsed.versions) {
-        if (v.unreleased || !rlStableKey(v.version)) continue;
-        ev.versions.insert(v.version);
-        if (iso.match(v.date.trimmed()).hasMatch())
-            ev.headingDate.insert(v.version, v.date.trimmed());
-    }
-    // Every citation in a section counts, not only entries under one of the
+    // Every citation in an entry counts, not only entries under one of the
     // six categories parse() keeps.
-    const QHash<QString, QStringList> byVersion =
-        ChangelogQuery::citationsByVersion(markdown, prefix);
+    QHash<QString, QString> byVersion;
+    if (yaml) {
+        byVersion = rlYamlEntries(text, &ev.headingDate);
+        for (auto it = byVersion.cbegin(); it != byVersion.cend(); ++it)
+            if (rlStableKey(it.key())) ev.versions.insert(it.key());
+    } else {
+        for (const ChangelogQuery::VersionInfo &v : ChangelogQuery::parse(text, QString()).versions) {
+            if (v.unreleased || !rlStableKey(v.version)) continue;
+            ev.versions.insert(v.version);
+            if (iso.match(v.date.trimmed()).hasMatch())
+                ev.headingDate.insert(v.version, v.date.trimmed());
+        }
+        byVersion = ChangelogQuery::sectionTextByVersion(text);
+    }
     for (auto it = byVersion.cbegin(); it != byVersion.cend(); ++it) {
-        const bool unreleased = it.key() == QLatin1String("Unreleased");
+        const bool unreleased = !yaml && it.key() == QLatin1String("Unreleased");
         if (!unreleased && !rlStableKey(it.key())) continue;
-        for (const QString &id : it.value()) {
+        for (const QString &id : citer.cite(it.value())) {
             if (unreleased) {
                 ev.unreleased.insert(id);
             } else {
@@ -292,6 +424,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
                                "from 1 to 200"));
         sampleLimit = int(d);
     }
+    // § 2.3a — opt-in: where shipped items with no evidence go.
+    QString unknownTitle;
+    if (req.contains(QStringLiteral("unknown_section"))) {
+        const QJsonValue v = req.value(QStringLiteral("unknown_section"));
+        unknownTitle = v.toString().trimmed();
+        if (!v.isString() || unknownTitle.isEmpty() || unknownTitle.size() > 200 ||
+            unknownTitle.contains(QLatin1Char('\n')))
+            return pbErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: unknown_section is a one-line section "
+                               "title of at most 200 characters"));
+    }
 
     QString root, roadmapPath;
     QJsonDocument refusal;
@@ -327,23 +470,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     const auto historyOpt = store.placementHistory(projectId, &err);
     if (!historyOpt) return pbErr(QStringLiteral("store_failed"), err);
 
-    // The fallback prefix for the CHANGELOG's id extraction: the store's most
-    // common one, used only when ROADMAP.md names none.
-    QString prefixFallback;
-    {
-        QHash<QString, int> n;
-        for (const auto &it : items) {
-            const int dash = it.id.lastIndexOf(QLatin1Char('-'));
-            if (dash > 0) ++n[it.id.left(dash)];
-        }
-        int best = 0;
-        for (auto it = n.cbegin(); it != n.cend(); ++it)
-            if (it.value() > best) { best = it.value(); prefixFallback = it.key(); }
-    }
-    const RlChangelogEvidence cl = rlReadChangelog(root, roadmapPath, prefixFallback);
+    const RlCiter citer(items);
+    const RlChangelogEvidence cl = rlReadChangelog(root, citer);
     // ANTS-5095 — 50 s, under the client's 60 s timeout. Nothing is written
     // until every source has been read.
-    const RlTagEvidence tags = rlReadTags(root, 50000);
+    const RlTagEvidence tags = rlReadTags(root, citer, 50000);
     if (tags.failed)
         return pbErr(QStringLiteral("git_failed"),
             QStringLiteral("roadmap_log: place_by_release could not read the tags "
@@ -393,48 +524,76 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
             markers[it.key()] = {true, lastSection.value(it.key(), 0) > it.value()};
     }
 
+    QSet<QString> released = cl.versions;   // § 2.3
+    for (auto it = tags.tagDate.cbegin(); it != tags.tagDate.cend(); ++it)
+        released.insert(it.key());
+
     // ---- § 2.2 — where each shipped item belongs ----------------------------
     struct Placement { QString version, source; };
     QHash<qint64, Placement> placement;
     struct Unplaced { qint64 pk; QString reason; };
     QVector<Unplaced> unplaced;
+    QVector<qint64> noEvidence;   // § 2.3a's candidates, in document order
     int bothCount = 0, differCount = 0, multiCited = 0;
+    QHash<QString, int> byPair{{QStringLiteral("status_changelog"), 0},
+                               {QStringLiteral("status_tag"), 0},
+                               {QStringLiteral("changelog_tag"), 0}};
     QJsonArray disagreementSample;
     for (const qint64 pk : std::as_const(order)) {
         const RoadmapStore::ItemWrite &it = itemAt(pk);
         if (it.status != QLatin1String("shipped")) continue;   // INV-5
+        QString statusV = rlStatusVersion(it.extras.value(QStringLiteral("source_status")).toString(),
+                                          released);
+        if (statusV.isEmpty()) statusV = rlStatusVersion(it.resolution, released);
         QStringList cited = cl.cited.value(it.id);
         std::sort(cited.begin(), cited.end(), rlVersionLess);
-        const QString tagV = tags.versionOf.value(it.id);
         if (cited.size() > 1) ++multiCited;
-        if (!cited.isEmpty()) {
-            placement.insert(pk, {cited.first(), QStringLiteral("changelog")});
-            if (!tagV.isEmpty()) {
-                ++bothCount;
-                if (tagV != cited.first()) {
-                    ++differCount;
-                    if (disagreementSample.size() < sampleLimit) {
-                        QJsonObject d;
-                        d[QStringLiteral("id")]        = it.id;
-                        d[QStringLiteral("changelog")] = cited.first();
-                        d[QStringLiteral("tag")]       = tagV;
-                        disagreementSample.append(d);
-                    }
-                }
+        const QString clV  = cited.value(0);
+        const bool leads   = tags.versionOf.contains(it.id);
+        const QString tagV = leads ? tags.versionOf.value(it.id) : tags.mentionOf.value(it.id);
+
+        // The sources in rank order; the first that speaks wins.
+        const std::pair<QString, QString> spoke[] = {
+            {QStringLiteral("status"), statusV}, {QStringLiteral("changelog"), clV},
+            {leads ? QStringLiteral("tag") : QStringLiteral("mention"), tagV}};
+        int speaking = 0;
+        bool agree = true;
+        for (const auto &[source, v] : spoke) {
+            if (v.isEmpty()) continue;
+            if (++speaking == 1) placement.insert(pk, {v, source});
+            else if (v != placement.value(pk).version) agree = false;
+        }
+        if (speaking == 0) {
+            if (cl.unreleased.contains(it.id) || tags.untagged.contains(it.id)) {
+                unplaced.push_back({pk, QStringLiteral("unreleased")});
+            } else if (unknownTitle.isEmpty()) {
+                unplaced.push_back({pk, QStringLiteral("no_evidence")});
+            } else {
+                noEvidence << pk;
             }
-        } else if (!tagV.isEmpty()) {
-            placement.insert(pk, {tagV, QStringLiteral("tag")});
-        } else {
-            const bool unrel = cl.unreleased.contains(it.id) || tags.untagged.contains(it.id);
-            unplaced.push_back({pk, unrel ? QStringLiteral("unreleased")
-                                          : QStringLiteral("no_evidence")});
+            continue;
+        }
+        if (speaking < 2) continue;
+        ++bothCount;
+        const auto pair = [&](const QString &key, const QString &a, const QString &b) {
+            if (!a.isEmpty() && !b.isEmpty() && a != b) ++byPair[key];
+        };
+        pair(QStringLiteral("status_changelog"), statusV, clV);
+        pair(QStringLiteral("status_tag"), statusV, tagV);
+        pair(QStringLiteral("changelog_tag"), clV, tagV);
+        if (agree) continue;
+        ++differCount;
+        if (disagreementSample.size() < sampleLimit) {
+            QJsonObject d;
+            d[QStringLiteral("id")] = it.id;
+            if (!statusV.isEmpty()) d[QStringLiteral("status")]    = statusV;
+            if (!clV.isEmpty())     d[QStringLiteral("changelog")] = clV;
+            if (!tagV.isEmpty())    d[QStringLiteral("tag")]       = tagV;
+            disagreementSample.append(d);
         }
     }
 
     // ---- § 2.3 — release sections ------------------------------------------
-    QSet<QString> released = cl.versions;
-    for (auto it = tags.tagDate.cbegin(); it != tags.tagDate.cend(); ++it)
-        released.insert(it.key());
     QHash<int, QString> versionLed;   // section index -> numbered version
     for (int i = 0; i < secs.size(); ++i) {
         if (secs.at(i).level != 2) continue;
@@ -563,6 +722,20 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     const auto entrySlug = [&](int e) {
         return e < 0 ? created.at(-e - 1).slug : slugNow(e);
     };
+    // The `layout` position just past the entry at `afterPos` and its deeper
+    // sections (ANTS-4848), in its own file.
+    const auto pastDeeper = [&](int afterPos) {
+        int insertAt = afterPos + 1;
+        const int anchor = layout.at(afterPos);
+        for (int p = afterPos + 1; p < layout.size(); ++p) {
+            const int e = layout.at(p);
+            if (e < 0) break;
+            if (anchor >= 0 && secs.at(e).sourcePath != secs.at(anchor).sourcePath) continue;
+            if (secs.at(e).level <= 2) break;
+            insertAt = p + 1;
+        }
+        return insertAt;
+    };
     for (const QString &v : std::as_const(toCreate)) {
         QString date = tags.tagDate.value(v);
         if (date.isEmpty()) date = cl.headingDate.value(v);
@@ -607,22 +780,51 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
             c.beforeSlug = entrySlug(layout.at(beforePos));
         } else if (afterPos >= 0) {
             c.afterSlug = entrySlug(layout.at(afterPos));
-            // Past the anchor's deeper sections (ANTS-4848), in its own file.
-            insertAt = afterPos + 1;
-            const int anchor = layout.at(afterPos);
-            for (int p = afterPos + 1; p < layout.size(); ++p) {
-                const int e = layout.at(p);
-                if (e < 0) break;
-                if (anchor >= 0 && secs.at(e).sourcePath != secs.at(anchor).sourcePath) continue;
-                if (secs.at(e).level <= 2) break;
-                insertAt = p + 1;
-            }
+            insertAt    = pastDeeper(afterPos);
         }
         created.push_back(c);
         layout.insert(insertAt, -int(created.size()));
     }
     QHash<QString, int> createdOf;
     for (int k = 0; k < created.size(); ++k) createdOf.insert(created.at(k).version, k);
+
+    // § 2.3a — the unknown section: the first level-2 section titled exactly
+    // `unknownTitle`, or one created after the last version-led live level-2
+    // section once some item needs it.
+    int unknownIdx = -1, unknownCreated = -1;
+    QSet<qint64> unknownSubtree;
+    if (!noEvidence.isEmpty()) {
+        for (int i = 0; i < secs.size() && unknownIdx < 0; ++i)
+            if (secs.at(i).level == 2 && titleNow(i) == unknownTitle) unknownIdx = i;
+        if (unknownIdx >= 0) unknownSubtree = subtreeOf(unknownIdx);
+    }
+    const auto ensureUnknownCreated = [&]() -> std::optional<QJsonDocument> {
+        if (unknownIdx >= 0 || unknownCreated >= 0) return std::nullopt;
+        const QString slug = RoadmapIndex::slugifyHeading(unknownTitle);
+        if (slug.isEmpty() || slugs.contains(slug))
+            return pbErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: the unknown section \"%1\" would take the "
+                               "slug \"%2\", which another section holds; nothing was "
+                               "written").arg(unknownTitle, slug));
+        slugs.insert(slug);
+        int afterPos = -1, lastLive2 = -1;
+        for (int p = 0; p < layout.size(); ++p) {
+            if (!entryLive2(layout.at(p))) continue;
+            lastLive2 = p;
+            if (!RoadmapIndex::versionOfTitle(entryTitle(layout.at(p))).isEmpty()) afterPos = p;
+        }
+        if (afterPos < 0) afterPos = lastLive2;
+        Created c{QString(), unknownTitle, slug, QString(), QString()};
+        int insertAt = int(layout.size());
+        if (afterPos >= 0) {
+            c.afterSlug = entrySlug(layout.at(afterPos));
+            insertAt    = pastDeeper(afterPos);
+        }
+        created.push_back(c);
+        unknownCreated = int(created.size()) - 1;
+        layout.insert(insertAt, -int(created.size()));
+        return std::nullopt;
+    };
 
     // ---- The moves -----------------------------------------------------------
     struct Move { qint64 pk; QString version, source; int fromIdx; int destIdx; int destCreated; };
@@ -640,6 +842,19 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         }
         moves.push_back({pk, p->version, p->source, idxOf.value(sid, -1), rIdx,
                          rIdx >= 0 ? -1 : createdOf.value(p->version, -1)});
+    }
+    // § 2.3a — after the release moves, so `moves` keeps them first.
+    for (const qint64 pk : std::as_const(noEvidence)) {
+        const qint64 sid = itemAt(pk).sectionId;
+        if (unknownSubtree.contains(sid)) { ++alreadyPlaced; continue; }
+        const Marker m = markers.value(pk);
+        if (m.placedBy && m.movedAfter) {
+            unplaced.push_back({pk, QStringLiteral("human_placed")});
+            continue;
+        }
+        if (const auto refused = ensureUnknownCreated()) return *refused;
+        moves.push_back({pk, QString(), QStringLiteral("none"), idxOf.value(sid, -1),
+                         unknownIdx, unknownIdx >= 0 ? -1 : unknownCreated});
     }
     QHash<qint64, int> leaving;
     for (const Move &m : std::as_const(moves)) ++leaving[itemAt(m.pk).sectionId];
@@ -740,13 +955,21 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         o[QStringLiteral("from")]    = m.fromIdx >= 0 ? secs.at(m.fromIdx).slug : QString();
         o[QStringLiteral("to")]      = m.destIdx >= 0 ? slugNow(m.destIdx)
                                                       : created.at(m.destCreated).slug;
-        o[QStringLiteral("version")] = m.version;
+        o[QStringLiteral("version")] = m.version.isEmpty() ? QJsonValue(QJsonValue::Null)
+                                                           : QJsonValue(m.version);
         o[QStringLiteral("source")]  = m.source;
         moved.append(o);
     }
     env[QStringLiteral("moved_count")] = int(moves.size());
     capped(env, QStringLiteral("moved"), moved, int(moves.size()));
     env[QStringLiteral("already_placed_count")] = alreadyPlaced;
+    // Every placed item but the ones a human placed, moved or already there.
+    QJsonObject bySource{{QStringLiteral("status"), 0}, {QStringLiteral("changelog"), 0},
+                         {QStringLiteral("tag"), 0}, {QStringLiteral("mention"), 0}};
+    for (auto it = placement.cbegin(); it != placement.cend(); ++it)
+        if (!humanCandidate.contains(it.key()))
+            bySource[it->source] = bySource.value(it->source).toInt() + 1;
+    env[QStringLiteral("placed_by_source")] = bySource;
 
     QJsonArray unplacedRows;
     QJsonObject byReason{{QStringLiteral("unreleased"), 0}, {QStringLiteral("no_evidence"), 0},
@@ -805,6 +1028,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     QJsonObject dis;
     dis[QStringLiteral("both_count")]   = bothCount;
     dis[QStringLiteral("differ_count")] = differCount;
+    QJsonObject pairs;
+    for (auto it = byPair.cbegin(); it != byPair.cend(); ++it) pairs[it.key()] = it.value();
+    dis[QStringLiteral("by_pair")]      = pairs;
     dis[QStringLiteral("sample")]       = disagreementSample;
     if (differCount > disagreementSample.size()) dis[QStringLiteral("sample_truncated")] = true;
     env[QStringLiteral("disagreements")]     = dis;
@@ -812,6 +1038,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     QJsonObject sources;
     sources[QStringLiteral("changelog")] =
         cl.relPath.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(cl.relPath);
+    sources[QStringLiteral("changelog_format")] =
+        cl.format.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(cl.format);
     sources[QStringLiteral("stable_tags")] = tags.stableTags;
     env[QStringLiteral("sources")] = sources;
     if (anything) {

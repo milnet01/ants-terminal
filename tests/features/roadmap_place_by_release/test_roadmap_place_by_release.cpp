@@ -1,6 +1,8 @@
 // Feature-conformance test for ANTS-5315 step 4 — roadmap_log
 // op:"place_by_release". Contract:
-// docs/specs/ANTS-5315-release-sections-migration.md § 3, INV-1 to INV-12.
+// docs/specs/ANTS-5315-release-sections-migration.md § 3, INV-1 to INV-17.
+// INV-13 to INV-17 (ANTS-6725) use a second fixture, seedPass(), whose ids,
+// YAML changelog and status texts are shaped like RetroDB's.
 //
 // The fixture builds a REAL git repository with stable and pre-release tags,
 // a CHANGELOG and a migrated store, as tests/features/roadmap_backfill_dates
@@ -234,7 +236,8 @@ Fixture seed(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
         !commitAndTag(root, QStringLiteral("DEMO-0004: candidate only"),
                       QStringLiteral("v0.4.0-rc1"), QStringLiteral("2026-04-01T10:00:00 +0000")) ||
         !git(root, {QStringLiteral("checkout"), QStringLiteral("-q"), QStringLiteral("-")}) ||
-        !commitAndTag(root, QStringLiteral("Unrelated: mentions DEMO-0014 in passing"),
+        // ANTS-6725 — a mention now places (INV-16), so INV-4's commit names no id.
+        !commitAndTag(root, QStringLiteral("Unrelated: names no item"),
                       QString(), QStringLiteral("2026-04-15T10:00:00 +0000")) ||
         !commitAndTag(root, QStringLiteral("DEMO-0009: nine"),
                       QStringLiteral("v0.9.0"), QStringLiteral("2026-09-01T10:00:00 +0000")) ||
@@ -716,4 +719,271 @@ TEST(RoadmapPlaceByRelease, Inv12OneStampTwoRowsPerMove) {
     q.addBindValue(mark);
     ASSERT_TRUE(q.exec() && q.next());
     EXPECT_EQ(q.value(0).toInt(), 1);
+}
+
+// ============================================================ ANTS-6725 ====
+// The second fixture: RetroDB-shaped evidence. Every item is shipped.
+//
+//   PASS-1      only "Pass 1" (a single number) and the PASS-1-6 subject
+//               name it → no_evidence (INV-14, INV-15)
+//   PASS-1-2    "Pass 1.2/1.3" in 0.2.0, PASS-1-2 in 0.3.0 → 0.2.0 (INV-14)
+//   PASS-1-3    the slash continuation in 0.2.0 → 0.2.0 (INV-14)
+//   PASS-1-4    "(Pass 1.4 / 2.1-A)" in 0.1.0 → 0.1.0 (INV-14)
+//   PASS-2-1-A  the lettered continuation in 0.1.0 → 0.1.0 (INV-14)
+//   PASS-1-6    subject "PASS-1-6: …" under v0.1.0 → 0.1.0 by tag (INV-15)
+//   PASS-1-7    a mention under v0.1.0, a leading id under v0.2.0 → 0.2.0
+//               by tag (INV-16)
+//   PASS-1-8    only a mention under v0.1.0 → 0.1.0 by mention (INV-16)
+//   PASS-3-1    status "done (v0.1.0; v0.2.0). Filed from v0.3.0", cited in
+//               0.3.0 → 0.2.0 by status (INV-13)
+//   PASS-3-2    status "done (2026-01-01). Filed from v0.3.0", cited in
+//               0.3.0 → 0.3.0 by changelog (INV-13)
+//   PASS-3-3    status "done (v9.9.9)", subject under v0.1.0 → 0.1.0 by tag
+//               (INV-13)
+//   PASS-4-1    no evidence → the unknown section, when asked (INV-17)
+namespace {
+
+const char *kPassIds[] = {"PASS-1", "PASS-1-2", "PASS-1-3", "PASS-1-4", "PASS-2-1-A",
+                          "PASS-1-6", "PASS-1-7", "PASS-1-8", "PASS-3-1", "PASS-3-2",
+                          "PASS-3-3", "PASS-4-1"};
+
+QByteArray passYaml(bool citeUnknown) {
+    QByteArray y =
+        "- version: 0.3.0\n"
+        "  date: 2026-03-01\n"
+        "  tags:\n"
+        "  - type: fix\n"
+        "    label: 'Follow-up to PASS-1-2, and Pass 1 overall; PASS-3-1 and PASS-3-2'\n"
+        "- version: 0.2.0\n"
+        "  date: 2026-02-01\n"
+        "  tags:\n"
+        "  - type: feature\n"
+        "    label: 'Pass 1.2/1.3 landed'\n";
+    if (citeUnknown) y += "  - type: fix\n    label: 'Late record of PASS-4-1'\n";
+    y += "- version: 0.1.0\n"
+         "  date: 2026-01-01\n"
+         "  tags:\n"
+         "  - type: feature\n"
+         "    label: 'First cut (Pass 1.4 / 2.1-A)'\n";
+    return y;
+}
+
+Fixture seedPass(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
+    Fixture fx;
+    guard.setEnv("XDG_DATA_HOME",
+                 QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("pass"));
+    QDir().mkpath(rawRoot);
+    QByteArray md = "# Pass \xE2\x80\x94 Roadmap\n\n";
+    md += kPad;
+    md += "\n## Work\n\n";
+    for (const char *id : kPassIds) md += bullet(kShipped, id, "A shipped pass.");
+    if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), md) ||
+        !writeFile(rawRoot + QStringLiteral("/data/changelog.yaml"), passYaml(false)) ||
+        !writeFile(rawRoot + QStringLiteral("/.ants/project.json"),
+                   // RetroDB names its YAML changelog here, and
+                   // findChangelogUnder() honours the setting.
+                   "{\"changelog\": \"data/changelog.yaml\", "
+                   "\"id_format\": {\"prefix\": \"PASS\", "
+                   "\"pattern\": \"PASS-\\\\d+(?:-\\\\d+)*(?:-[A-Z])?\"}}\n"))
+        return fx;
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+
+    if (!git(root, {QStringLiteral("init"), QStringLiteral("-q")}) ||
+        !git(root, {QStringLiteral("config"), QStringLiteral("user.email"),
+                    QStringLiteral("t@example.invalid")}) ||
+        !git(root, {QStringLiteral("config"), QStringLiteral("user.name"),
+                    QStringLiteral("T")}))
+        return fx;
+    const QString d1 = QStringLiteral("2026-01-01T10:00:00 +0000");
+    if (!commitAndTag(root, QStringLiteral("PASS-1-6: the whole id"), QString(), d1) ||
+        !commitAndTag(root, QStringLiteral("PASS-3-3: status names no release"), QString(), d1) ||
+        !commitAndTag(root, QStringLiteral("tidy (PASS-1-7)"), QString(), d1) ||
+        !commitAndTag(root, QStringLiteral("fix (PASS-1-8)"), QStringLiteral("v0.1.0"), d1) ||
+        !commitAndTag(root, QStringLiteral("PASS-1-7: the real change"), QStringLiteral("v0.2.0"),
+                      QStringLiteral("2026-02-01T10:00:00 +0000")) ||
+        !commitAndTag(root, QStringLiteral("Release three"), QStringLiteral("v0.3.0"),
+                      QStringLiteral("2026-03-01T10:00:00 +0000")))
+        return fx;
+
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return fx;
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(root, &err);
+    if (!disc) {
+        ADD_FAILURE() << "findRoadmaps: " << err.toStdString();
+        return fx;
+    }
+    const auto plan =
+        RoadmapMigrate::planFrom(*disc, QStringLiteral("Pass"), QStringLiteral("pass"));
+    RoadmapMigrateLoad::Options opts;
+    opts.changedAt   = QStringLiteral("2026-08-14T10:00:00Z");
+    opts.projectRoot = root;
+    const auto out = RoadmapMigrateLoad::load(*store, plan, opts);
+    if (!out.ok) {
+        ADD_FAILURE() << "migration load: " << out.error.toStdString();
+        return fx;
+    }
+    for (const char *id : kPassIds)
+        if (!store->findItem(out.projectId, QString::fromLatin1(id), &err)) {
+            ADD_FAILURE() << id << " did not load as itself";
+            return fx;
+        }
+    // § 2.2 item 1 — the status text a pass-headings convert keeps verbatim.
+    const QList<std::pair<const char *, const char *>> statuses = {
+        {"PASS-3-1", "done (v0.1.0; v0.2.0). Filed from v0.3.0"},
+        {"PASS-3-2", "done (2026-01-01). Filed from v0.3.0"},
+        {"PASS-3-3", "done (v9.9.9)"}};
+    for (const auto &[id, status] : statuses) {
+        QSqlQuery q(RoadmapStoreTestAccess::db(*store));
+        q.prepare(QStringLiteral(
+            "UPDATE item SET extras = json_object('source_status', ?) "
+            "WHERE project_id = ? AND id = ?"));
+        q.addBindValue(QString::fromUtf8(status));
+        q.addBindValue(out.projectId);
+        q.addBindValue(QString::fromLatin1(id));
+        if (!q.exec() || q.numRowsAffected() != 1) {
+            ADD_FAILURE() << "status for " << id << ": " << q.lastError().text().toStdString();
+            return fx;
+        }
+    }
+    fx.projectId = out.projectId;
+    fx.root      = root;
+    return fx;
+}
+
+QJsonObject passDryRun(const Fixture &fx, const QString &unknownSection = QString()) {
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = fx.root;
+    req[QStringLiteral("op")]           = QStringLiteral("place_by_release");
+    req[QStringLiteral("dry_run")]      = true;
+    req[QStringLiteral("sample_limit")] = 200;
+    if (!unknownSection.isEmpty()) req[QStringLiteral("unknown_section")] = unknownSection;
+    return roadmapLog(req);
+}
+
+// The dry run's `moved` row for `id`, or the `unplaced` row's reason.
+QJsonObject movedRow(const QJsonObject &dry, const char *id) {
+    return rowFor(dry.value(QStringLiteral("moved")).toArray(), QStringLiteral("id"),
+                  QString::fromLatin1(id));
+}
+QString unplacedReason(const QJsonObject &dry, const char *id) {
+    return rowFor(dry.value(QStringLiteral("unplaced")).toArray(), QStringLiteral("id"),
+                  QString::fromLatin1(id)).value(QStringLiteral("reason")).toString();
+}
+
+#define EXPECT_PLACED(dry, id, ver, src)                                                 \
+    do {                                                                                 \
+        const QJsonObject r_ = movedRow((dry), (id));                                    \
+        EXPECT_EQ(r_.value(QStringLiteral("version")).toString(), QStringLiteral(ver))   \
+            << (id) << ": " << dump(dry);                                                \
+        EXPECT_EQ(r_.value(QStringLiteral("source")).toString(), QStringLiteral(src))    \
+            << (id);                                                                     \
+    } while (0)
+
+}  // namespace
+
+// ----------------------------------------------------------------- INV-13 ---
+TEST(RoadmapPlaceByRelease, Inv13TheStatusClauseOutranksTheChangelog) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seedPass(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+
+    const QJsonObject dry = passDryRun(fx);
+    ASSERT_VERB_OK(dry);
+    EXPECT_PLACED(dry, "PASS-3-1", "0.2.0", "status");
+    EXPECT_PLACED(dry, "PASS-3-2", "0.3.0", "changelog");
+    EXPECT_PLACED(dry, "PASS-3-3", "0.1.0", "tag");
+    const QJsonObject dis = dry.value(QStringLiteral("disagreements")).toObject();
+    EXPECT_GE(dis.value(QStringLiteral("by_pair")).toObject()
+                  .value(QStringLiteral("status_changelog")).toInt(), 1) << dump(dry);
+    EXPECT_GE(dry.value(QStringLiteral("placed_by_source")).toObject()
+                  .value(QStringLiteral("status")).toInt(), 1);
+}
+
+// ----------------------------------------------------------------- INV-14 ---
+TEST(RoadmapPlaceByRelease, Inv14AYamlChangelogIsReadWithSpelledCitations) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seedPass(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+
+    const QJsonObject dry = passDryRun(fx);
+    ASSERT_VERB_OK(dry);
+    EXPECT_EQ(dry.value(QStringLiteral("sources")).toObject()
+                  .value(QStringLiteral("changelog_format")).toString(), QStringLiteral("yaml"))
+        << dump(dry);
+    EXPECT_PLACED(dry, "PASS-1-2", "0.2.0", "changelog");
+    EXPECT_PLACED(dry, "PASS-1-3", "0.2.0", "changelog");
+    EXPECT_PLACED(dry, "PASS-1-4", "0.1.0", "changelog");
+    EXPECT_PLACED(dry, "PASS-2-1-A", "0.1.0", "changelog");
+    EXPECT_EQ(unplacedReason(dry, "PASS-1"), QStringLiteral("no_evidence"));
+}
+
+// ----------------------------------------------------------------- INV-15 ---
+TEST(RoadmapPlaceByRelease, Inv15ALeadingIdIsReadWhole) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seedPass(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+
+    const QJsonObject dry = passDryRun(fx);
+    ASSERT_VERB_OK(dry);
+    EXPECT_PLACED(dry, "PASS-1-6", "0.1.0", "tag");
+    EXPECT_EQ(unplacedReason(dry, "PASS-1"), QStringLiteral("no_evidence")) << dump(dry);
+}
+
+// ----------------------------------------------------------------- INV-16 ---
+TEST(RoadmapPlaceByRelease, Inv16AMentionPlacesOnlyWithoutALeadingId) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seedPass(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+
+    const QJsonObject dry = passDryRun(fx);
+    ASSERT_VERB_OK(dry);
+    EXPECT_PLACED(dry, "PASS-1-7", "0.2.0", "tag");
+    EXPECT_PLACED(dry, "PASS-1-8", "0.1.0", "mention");
+}
+
+// ----------------------------------------------------------------- INV-17 ---
+TEST(RoadmapPlaceByRelease, Inv17TheUnknownSectionIsOptIn) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seedPass(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+    const QString unknown = QStringLiteral("Shipped, version not known");
+
+    const QJsonObject plain = passDryRun(fx);
+    ASSERT_VERB_OK(plain);
+    EXPECT_EQ(unplacedReason(plain, "PASS-4-1"), QStringLiteral("no_evidence")) << dump(plain);
+
+    const QJsonObject dry = passDryRun(fx, unknown);
+    ASSERT_VERB_OK(dry);
+    const QJsonObject row = movedRow(dry, "PASS-4-1");
+    EXPECT_TRUE(row.value(QStringLiteral("version")).isNull()) << dump(dry);
+    EXPECT_EQ(row.value(QStringLiteral("source")).toString(), QStringLiteral("none"));
+    EXPECT_TRUE(unplacedReason(dry, "PASS-4-1").isEmpty());
+    const QJsonObject applied = apply(fx, dry.value(QStringLiteral("plan_id")).toString());
+    ASSERT_VERB_OK(applied);
+    const QString unknownSlug = RoadmapIndex::slugifyHeading(unknown);
+    EXPECT_FALSE(rowFor(applied.value(QStringLiteral("sections_created")).toArray(),
+                        QStringLiteral("slug"), unknownSlug).isEmpty()) << dump(applied);
+    EXPECT_EQ(sectionSlugOf(fx.projectId, QStringLiteral("PASS-4-1")), unknownSlug);
+
+    const QJsonObject again = passDryRun(fx, unknown);
+    ASSERT_VERB_OK(again);
+    EXPECT_EQ(again.value(QStringLiteral("moved_count")).toInt(), 0) << dump(again);
+    EXPECT_TRUE(again.value(QStringLiteral("sections_created")).toArray().isEmpty());
+
+    ASSERT_TRUE(writeFile(fx.root + QStringLiteral("/data/changelog.yaml"), passYaml(true)));
+    const QJsonObject later = passDryRun(fx, unknown);
+    ASSERT_VERB_OK(later);
+    EXPECT_PLACED(later, "PASS-4-1", "0.2.0", "changelog");
 }

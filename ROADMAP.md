@@ -91484,7 +91484,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: feedback-RetroDB-2026-11-09.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-6725] **place_by_release finds the release of a RetroDB item from the evidence that project actually keeps.**
+- ✅ [ANTS-6725] **place_by_release finds the release of a RetroDB item from the evidence that project actually keeps.**
   Measured on a scratch store with RetroDB rendered as ants-v1:
   place_by_release dry run placed 0 of 363 shipped items, all
   `no_evidence`. Three gaps in src/remotecontrol_roadmap_release.cpp:
@@ -91517,6 +91517,14 @@ measured Ants adding about 5,250 tokens to every request.
   leading id (measured on Ants Terminal, spec § 9). The "Shipped,
   version not known" block is opt-in via unknown_section, so the
   2026-10-19 ruling stays the default. Next: red tests, then the code.
+  2026-11-09: built per docs/specs/ANTS-5315-release-sections-migration.md
+  § 2.2, § 2.2a, § 2.3a (INV-13 to INV-17, red then green). The scratch
+  run caught a YAML changelog named by project.json being read as
+  Markdown; fixed with a red test. Scratch figures (RetroDB after
+  convert): status 113, changelog 4, mention 161, tag 0, unknown 56,
+  unreleased 30; 83 disagreements. Ants Terminal on the same copy: no
+  changelog or tag placement changes; 173 more by mention. RetroDB's
+  real convert waits on its go.
   **Layman:** After RetroDB's roadmap is converted, its finished items can be filed under the version they shipped in, instead of none being placed.
   Kind: enhancement.
   Source: in-session-2026-11-09 (ANTS-6724 prototype on a scratch copy of RetroDB).
