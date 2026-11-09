@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6723 -->
+<!-- ants-roadmap-id-high-water: ANTS=6724 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91443,6 +91443,23 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A measurement run for another project also reviewed two parts of this one; its findings need sorting into fixes.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892).
+
+- 📋 [ANTS-6724] **roadmap_log op:convert takes a pass-headings roadmap into ants-v1, keeping each Pass id as the item's stable id.**
+  RetroDB (2026-11-09): its user wants the roadmap regrouped into
+  roadmap-format.md § 3.2 version blocks (v4.0.0 / v4.0.x / v4.x.0 /
+  v5.0.0) with shipped items archived (§ 3.9). On its pass-headings
+  roadmap create_section refuses format_mismatch (ANTS-2031),
+  rotate_minor finds no version block, and convert refuses
+  dialect_out_of_scope; a hand edit is reverted at the next render.
+  Suggested route (a): convert pass-headings → ants-v1, each PASS-N-M id
+  kept as stable_id so citations in code and commits still resolve; every
+  other op then works. Route (b), teaching create_section, section moves
+  and archive rotation the pass-headings dialect, is larger. 438 items,
+  363 shipped. Related: ANTS-4803, ANTS-5230.
+  **Layman:** Lets a project whose roadmap is grouped by review pass switch to the standard grouping by version without losing its item numbers.
+  Kind: feature.
+  Source: feedback-RetroDB-2026-11-09.
+  Lanes: mcp, roadmap.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
