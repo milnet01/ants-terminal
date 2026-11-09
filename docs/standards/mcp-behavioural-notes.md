@@ -881,6 +881,8 @@ which heading you expect it under.
     begins with the whole id; with none, one citing it anywhere in its
     subject (`source:"mention"`). A citation is a real item id, literal
     (`PASS-43-5`) or spelled with the project's prefix (`Pass 43.2/43.3`).
+    `commit_evidence:false` turns off (3) and the commit half of
+    `unreleased`; tags still mark versions released.
   - **What stays put.** Open, considered and dropped items never move. A
     shipped item with no release stays and is listed in `unplaced` with a
     reason: `unreleased` (cited under `[Unreleased]`, or a commit on any ref,

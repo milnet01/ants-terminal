@@ -1621,6 +1621,14 @@ void appendToolSchemasStore(QJsonArray &tools) {
                             "items with no evidence. Omitted, they stay put.");
                         props["unknown_section"] = unknownProp;
                     }
+                    {   // ANTS-6725
+                        QJsonObject commitProp;
+                        commitProp["type"] = QStringLiteral("boolean");
+                        commitProp["description"] = QStringLiteral(
+                            "place_by_release: false ignores git commits as evidence; "
+                            "status text and changelog still place. Default true.");
+                        props["commit_evidence"] = commitProp;
+                    }
                     {   // ANTS-5704
                         QJsonObject planIdProp;
                         planIdProp["type"] = QStringLiteral("string");

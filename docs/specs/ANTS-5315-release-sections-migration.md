@@ -3,7 +3,7 @@
 **Status:** accepted (2026-10-19).
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-5315 step 4 (claude-ab-request-2026-09-24; user decisions 2026-10-19).
-**Amended by:** ANTS-6725 (2026-11-09): status text, YAML changelogs, spelled and mid-subject citations, and `unknown_section`.
+**Amended by:** ANTS-6725 (2026-11-09): status text, YAML changelogs, spelled and mid-subject citations, and `unknown_section`; `commit_evidence` (2026-11-10).
 **Composes with:** ANTS-1878 § 2.3a (release-section placement), ANTS-4501 (the `backfill_dates` dry-run discipline), ANTS-5704 (`plan_id`).
 
 **Layman:** One command sorts every finished roadmap item under the release it shipped in, shows you the counts, every section change and example moves before changing anything, and leaves unfinished work where it is.
@@ -29,6 +29,7 @@ A new op on the existing `roadmap_log` verb, `op:"place_by_release"`. Its body i
 | `plan_id` | string | Applies a plan from an earlier dry run of this op. |
 | `sample_limit` | int, 1–200, default 50 | Cap on each sample array in the reply. |
 | `unknown_section` | string | Title of a level-2 section for shipped items with no evidence (§ 2.3a). Omitted, they stay where they are. |
+| `commit_evidence` | bool, default `true` | `false` turns off § 2.2 item 3: no `tag` or `mention` placement, and no `unreleased` reason from a commit. Tag names still mark versions released (§ 2.3). |
 
 **Dry run first is enforced.** A request with neither `dry_run:true` nor `plan_id` refuses `bad_args`, with a hint naming `dry_run:true`. The generic wrapper `RemoteControl::cmdRoadmapLog` re-dispatches a stashed plan's request. It marks that re-dispatch so this op can tell an apply from a direct call. The mark is internal and is not a request field a caller can send.
 
@@ -44,7 +45,7 @@ For each item with `status = 'shipped'`, the op computes at most one **placement
    - `tag`: the subject **begins with the item's full id**, followed by a non-word character or the end (`ANTS-1234: …`, `PASS-43-5 fix …`).
    - `mention`: the subject cites the item anywhere (§ 2.2a), as in `… (PASS-59-271)`.
 
-   Such commits that no stable tag contains give no placement.
+   Such commits that no stable tag contains give no placement. With `commit_evidence:false` this source gives nothing.
 4. **Nothing else.** Section titles, `item.shipped` dates and tag dates are not sources (§ 9 says why).
 
 An item with no placement is **unplaced**. Each unplaced item is reported with one reason:
@@ -134,7 +135,7 @@ Git is read through `HostExec`, as `rlWalkGitForDates` reads it, under the 50 s 
                     "by_pair": {"status_changelog": 0, "status_tag": 0, "changelog_tag": 0},
                     "sample": [{"id": "", "status": "", "changelog": "", "tag": ""}]},
   "multi_cited_count": 0,
-  "sources": {"changelog": "CHANGELOG.md", "changelog_format": "markdown|yaml", "stable_tags": 0}
+  "sources": {"changelog": "CHANGELOG.md", "changelog_format": "markdown|yaml", "stable_tags": 0, "commit_evidence": true}
 }
 ```
 
@@ -161,6 +162,7 @@ Each array is capped at `sample_limit` and carries a `*_truncated` flag when cap
 - **INV-15** — A subject's leading id is read whole. *Test:* `tests/features/roadmap_place_by_release`: items `PASS-1` and `PASS-1-6`, and one commit `PASS-1-6: x` under `v0.1.0`. `PASS-1-6` goes to `0.1.0` and `PASS-1` is `no_evidence`. *Breaks when:* the id is cut at its first number.
 - **INV-16** — A mention places only an item no leading id names. *Test:* `tests/features/roadmap_place_by_release`. Item M1 has a mention `tidy (PASS-1-7)` under `v0.1.0` and a leading commit under `v0.2.0`: it goes to `0.2.0` with source `tag`. Item M2 has only a mention `fix (PASS-1-8)` under `v0.1.0`: it goes to `0.1.0` with source `mention`. *Breaks when:* a mention outranks a leading id, or mentions are not read.
 - **INV-17** — `unknown_section` collects `no_evidence` items, and only when given. *Test:* `tests/features/roadmap_place_by_release`. A dry run without it leaves item U1 `no_evidence`. An apply with `unknown_section:"Shipped, version not known"` creates that section and moves U1 there with source `none`. A second dry run reports U1 in `already_placed_count` with no moves. After U1 gains a `[0.2.0]` citation, a third run moves it to `0.2.0`. *Breaks when:* items move without the field, the move skips the marker, or an item in `U` never leaves it.
+- **INV-18** — `commit_evidence:false` drops commits as evidence and nothing else. *Test:* `tests/features/roadmap_place_by_release`. With the switch off, item M2 (only a mention under `v0.1.0`) and item M1 (a leading commit under `v0.2.0`) are `no_evidence`; an item placed by its status text still places, by a version only a tag names; `sources.commit_evidence` is `false`. *Breaks when:* commits still place, or status versions named only by a tag stop counting.
 
 ## 4. Failure modes
 
@@ -182,7 +184,7 @@ The plan holds one row per shipped item and one per section. It is bounded by th
 
 ## 6. Tests
 
-Feature test `tests/features/roadmap_place_by_release/`, which covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13, INV-14, INV-15, INV-16 and INV-17, label `features;fast`. It builds a real git repository with tags in a `QTemporaryDir`, as `tests/features/roadmap_backfill_dates` does, and runs under `ants_test::XdgGuard`, so it never touches the live store. Each test runs against pre-change source first and must fail there; the op does not exist, so every request refuses. The tests for ANTS-6725's invariants fail on the source before ANTS-6725, which reads none of those sources or fields.
+Feature test `tests/features/roadmap_place_by_release/`, which covers INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13, INV-14, INV-15, INV-16, INV-17 and INV-18, label `features;fast`. It builds a real git repository with tags in a `QTemporaryDir`, as `tests/features/roadmap_backfill_dates` does, and runs under `ants_test::XdgGuard`, so it never touches the live store. Each test runs against pre-change source first and must fail there; the op does not exist, so every request refuses. The tests for ANTS-6725's invariants fail on the source before ANTS-6725, which reads none of those sources or fields.
 
 ### 6.1 Measured figures
 
@@ -223,6 +225,7 @@ A `roadmap_log` op needs no tab or terminal state. `roadmap_log` is registered i
 - **A mention is a fallback below a leading id, never a replacement** — ANTS-6725. Measured 2026-11-09 on Ants Terminal: the CHANGELOG's lowest citation was compared with the lowest stable tag holding a subject that begins with the id, and with one that cites it anywhere. Leading ids agree for 1,195 of 1,305 items both place. A mention used only where no leading id exists agrees for 267 of 314. Ranked above the leading id, a mention changes 55 placements, and agrees for 6 of the 45 the CHANGELOG also places.
 - **Spelled citations are read for every project** — ANTS-6725. They key on the project's own prefixes and count only real item ids, so a project that never writes `Prefix M.N` is unaffected. Rejected: a per-project alias setting, which only RetroDB would set.
 - **`unknown_section` is opt-in** — ANTS-6725. Omitted, the 2026-10-19 ruling stands and no-evidence items stay put. RetroDB asked for a block of them (2026-11-09). Its title says the version is not known, so it does not claim the items did not ship.
+- **`commit_evidence` can be turned off** — RetroDB, 2026-11-10. On RetroDB's scratch run a later commit naming an old id dragged it to a later release: `PASS-2-9`, one of its oldest passes, landed on 3.30.0. Its tags are sparse, so a commit lands on the next tag, not its release. Turned off, those items go to `unknown_section` instead.
 - **Dry run enforced, not advised** — this spec. ANTS-4501's dry run is optional; this op moves most of a project's items in one call.
 
 ## 10. Out of scope

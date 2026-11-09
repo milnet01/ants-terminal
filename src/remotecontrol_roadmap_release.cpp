@@ -436,6 +436,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
                                "title of at most 200 characters"));
     }
 
+    // § 2.1 — false: commits neither place an item nor hold it back.
+    bool commitEvidence = true;
+    if (req.contains(QStringLiteral("commit_evidence"))) {
+        const QJsonValue v = req.value(QStringLiteral("commit_evidence"));
+        if (!v.isBool())
+            return pbErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: commit_evidence is true or false"));
+        commitEvidence = v.toBool();
+    }
+
     QString root, roadmapPath;
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
@@ -549,8 +559,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
         std::sort(cited.begin(), cited.end(), rlVersionLess);
         if (cited.size() > 1) ++multiCited;
         const QString clV  = cited.value(0);
-        const bool leads   = tags.versionOf.contains(it.id);
-        const QString tagV = leads ? tags.versionOf.value(it.id) : tags.mentionOf.value(it.id);
+        const bool leads   = commitEvidence && tags.versionOf.contains(it.id);
+        const QString tagV = !commitEvidence ? QString()
+                           : leads ? tags.versionOf.value(it.id) : tags.mentionOf.value(it.id);
 
         // The sources in rank order; the first that speaks wins.
         const std::pair<QString, QString> spoke[] = {
@@ -564,7 +575,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
             else if (v != placement.value(pk).version) agree = false;
         }
         if (speaking == 0) {
-            if (cl.unreleased.contains(it.id) || tags.untagged.contains(it.id)) {
+            if (cl.unreleased.contains(it.id) ||
+                (commitEvidence && tags.untagged.contains(it.id))) {
                 unplaced.push_back({pk, QStringLiteral("unreleased")});
             } else if (unknownTitle.isEmpty()) {
                 unplaced.push_back({pk, QStringLiteral("no_evidence")});
@@ -1041,6 +1053,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     sources[QStringLiteral("changelog_format")] =
         cl.format.isEmpty() ? QJsonValue(QJsonValue::Null) : QJsonValue(cl.format);
     sources[QStringLiteral("stable_tags")] = tags.stableTags;
+    sources[QStringLiteral("commit_evidence")] = commitEvidence;
     env[QStringLiteral("sources")] = sources;
     if (anything) {
         rlAttachHistoryNote(env, store, hist);

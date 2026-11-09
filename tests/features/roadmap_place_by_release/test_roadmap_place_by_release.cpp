@@ -1,7 +1,7 @@
 // Feature-conformance test for ANTS-5315 step 4 — roadmap_log
 // op:"place_by_release". Contract:
-// docs/specs/ANTS-5315-release-sections-migration.md § 3, INV-1 to INV-17.
-// INV-13 to INV-17 (ANTS-6725) use a second fixture, seedPass(), whose ids,
+// docs/specs/ANTS-5315-release-sections-migration.md § 3, INV-1 to INV-18.
+// INV-13 to INV-18 (ANTS-6725) use a second fixture, seedPass(), whose ids,
 // YAML changelog and status texts are shaped like RetroDB's.
 //
 // The fixture builds a REAL git repository with stable and pre-release tags,
@@ -852,8 +852,10 @@ Fixture seedPass(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
     return fx;
 }
 
-QJsonObject passDryRun(const Fixture &fx, const QString &unknownSection = QString()) {
+QJsonObject passDryRun(const Fixture &fx, const QString &unknownSection = QString(),
+                       bool commitEvidence = true) {
     QJsonObject req;
+    if (!commitEvidence) req[QStringLiteral("commit_evidence")] = false;
     req[QStringLiteral("caller_cwd")]   = fx.root;
     req[QStringLiteral("op")]           = QStringLiteral("place_by_release");
     req[QStringLiteral("dry_run")]      = true;
@@ -986,4 +988,35 @@ TEST(RoadmapPlaceByRelease, Inv17TheUnknownSectionIsOptIn) {
     const QJsonObject later = passDryRun(fx, unknown);
     ASSERT_VERB_OK(later);
     EXPECT_PLACED(later, "PASS-4-1", "0.2.0", "changelog");
+}
+
+// ----------------------------------------------------------------- INV-18 ---
+TEST(RoadmapPlaceByRelease, Inv18CommitEvidenceCanBeTurnedOff) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const Fixture fx = seedPass(guard, tmp);
+    ASSERT_FALSE(fx.root.isEmpty());
+    // A release only a tag names, and a status that cites it.
+    ASSERT_TRUE(commitAndTag(fx.root, QStringLiteral("Release four"), QStringLiteral("v0.4.0"),
+                             QStringLiteral("2026-04-01T10:00:00 +0000")));
+    {
+        auto store = openStore(RoadmapStore::Access::Bulk);
+        ASSERT_TRUE(store);
+        QSqlQuery q(RoadmapStoreTestAccess::db(*store));
+        q.prepare(QStringLiteral("UPDATE item SET extras = json_object('source_status', ?) "
+                                 "WHERE project_id = ? AND id = ?"));
+        q.addBindValue(QStringLiteral("done (v0.4.0)"));
+        q.addBindValue(fx.projectId);
+        q.addBindValue(QStringLiteral("PASS-3-2"));
+        ASSERT_TRUE(q.exec() && q.numRowsAffected() == 1) << q.lastError().text().toStdString();
+    }
+
+    const QJsonObject dry = passDryRun(fx, QString(), false);
+    ASSERT_VERB_OK(dry);
+    EXPECT_EQ(unplacedReason(dry, "PASS-1-7"), QStringLiteral("no_evidence")) << dump(dry);
+    EXPECT_EQ(unplacedReason(dry, "PASS-1-8"), QStringLiteral("no_evidence"));
+    EXPECT_PLACED(dry, "PASS-3-2", "0.4.0", "status");
+    EXPECT_FALSE(dry.value(QStringLiteral("sources")).toObject()
+                     .value(QStringLiteral("commit_evidence")).toBool(true));
 }
