@@ -91511,6 +91511,12 @@ measured Ants adding about 5,250 tokens to every request.
   items: RetroDB places them by hand into v4.0.0 / v4.0.x / v4.x.0 /
   v5.0.0. Before RetroDB's real convert, run convert + this op on a
   scratch copy and send RetroDB the counts for a sample check.
+  2026-11-09: spec amended in place, no gate (rule 14):
+  docs/specs/ANTS-5315-release-sections-migration.md § 2.2, § 2.2a,
+  § 2.3a, INV-13 to INV-17. Mention citations are a fallback below a
+  leading id (measured on Ants Terminal, spec § 9). The "Shipped,
+  version not known" block is opt-in via unknown_section, so the
+  2026-10-19 ruling stays the default. Next: red tests, then the code.
   **Layman:** After RetroDB's roadmap is converted, its finished items can be filed under the version they shipped in, instead of none being placed.
   Kind: enhancement.
   Source: in-session-2026-11-09 (ANTS-6724 prototype on a scratch copy of RetroDB).
