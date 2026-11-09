@@ -30,6 +30,23 @@ and scrolls the screen up one row before it closes. Its first five characters
 report a span on the second-to-last row, columns 75–79, and its last five a
 span on the last row, columns 0–4.
 
+**INV-9 — an open link's start moves with a reverse scroll.** A link opened
+at row 5, column 0, with the text `abcde`, then CSI T (scroll down one). The
+cursor is moved to row 6, column 5 and the link closed. Row 6 has a span on
+columns 0–4; row 5 has none.
+
+**INV-10 — an open link's start moves with an inserted line.** As INV-9, but
+CSI L at row 3 moves the text to row 6.
+
+**INV-11 — an open link's start moves with a deleted line.** As INV-9, but
+CSI M at row 3 moves the text to row 4; the link closes at row 4, column 5.
+Row 4 has a span on columns 0–4; row 5 has none.
+
+**INV-12 — a start pushed off the bottom restarts at the cursor.** A link
+opened at the last row, column 0, with the text `abcde`, then CSI T; then
+`xyz` and the close. The last row's span starts at column 5, where `xyz`
+begins, not on the blank columns before it.
+
 ## Rationale
 
 `TerminalGrid::clearRow` reset cells and combining characters but left the
@@ -49,3 +66,6 @@ without bound.
 - **ANTS-5076 (INV-8):** `scrollUp` moved rows and their spans but not the open
   link's start row, so a link that wrapped off the bottom row closed as a
   single-row span that ended before it began and was dropped.
+- **ANTS-5218 (INV-9 to INV-12):** `scrollDown`, `insertLines` and
+  `deleteLines` moved rows under an open link without moving its start row,
+  so the link's span landed on the row its text had left.

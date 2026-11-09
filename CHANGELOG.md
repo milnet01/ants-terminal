@@ -273,6 +273,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A link being printed stays on its own text when the screen scrolls back, or a line is inserted or deleted, before the link ends** (ANTS-5218)
+
 - **The Roadmap viewer's History tab reads old-version archives from the project's top folder, so a roadmap kept in a subfolder such as docs/private/ finds them too.** (ANTS-5159)
 
 - **When Ants closes, the roadmap database is closed on the same thread that opened it.** (ANTS-5141)

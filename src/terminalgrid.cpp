@@ -1942,6 +1942,7 @@ void TerminalGrid::insertLines(int count) {
     // drift away from the cells that contain the clickable text.
     const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     if (count <= 0) return;
+    moveOpenHyperlinkStart(m_cursorRow, bottom, count);  // ANTS-5218
     // One rotate of [cursorRow, bottom] instead of an erase + insert per
     // line, which shifted the region `count` times. The bottom `count`
     // rows are discarded; they rotate to the cursor row and are re-blanked.
@@ -1970,6 +1971,9 @@ void TerminalGrid::deleteLines(int count) {
     count = std::min(count, bottom - m_cursorRow + 1);
     const bool hlInRange = bottom < static_cast<int>(m_screenHyperlinks.size());
     if (count <= 0) return;
+    // ANTS-5218 — a start on a deleted row moves above the cursor row and is
+    // clamped to it, where the link's surviving text now begins.
+    moveOpenHyperlinkStart(m_cursorRow, bottom, -count);
     // One rotate of [cursorRow, bottom], as insertLines: the `count` rows
     // at the cursor are discarded, rotate to the bottom and are re-blanked.
     for (int i = 0; i < count; ++i)
@@ -2074,19 +2078,10 @@ void TerminalGrid::scrollUp(int count) {
     // into scrollback).
     count = std::min(count, regionSize);
 
-    // ANTS-5076 — an open OSC 8 link's start row moves with the rows it sits
-    // on. Left in place, a link that wraps off the bottom row closes with its
-    // start on the cursor row and an end column before its start column, and
-    // pushHyperlinkSpansForActive drops it. A start that scrolls off the top
-    // of the region is clamped to the region's top, column 0.
-    if (m_hyperlinkActive && m_hyperlinkStartRow >= m_scrollTop &&
-        m_hyperlinkStartRow <= m_scrollBottom) {
-        m_hyperlinkStartRow -= count;
-        if (m_hyperlinkStartRow < m_scrollTop) {
-            m_hyperlinkStartRow = m_scrollTop;
-            m_hyperlinkStartCol = 0;
-        }
-    }
+    // ANTS-5076 — left in place, a link that wraps off the bottom row closes
+    // with its start on the cursor row and an end column before its start
+    // column, and pushHyperlinkSpansForActive drops it.
+    moveOpenHyperlinkStart(m_scrollTop, m_scrollBottom, -count);
 
     // 0.6.22 — sliding-window check for the CSI 2J redraw suppression.
     // The whole batch of `count` shifts happens in microseconds within
@@ -2173,6 +2168,7 @@ void TerminalGrid::scrollDown(int count) {
 
     const int hlSize = static_cast<int>(m_screenHyperlinks.size());
     const bool hlInRange = m_scrollBottom < hlSize;
+    moveOpenHyperlinkStart(m_scrollTop, m_scrollBottom, count);  // ANTS-5218
 
     // Salvage the bottom `count` rows' cells into the pool so they can
     // feed the new top rows. Walk top-to-bottom of the doomed range
@@ -2300,6 +2296,23 @@ void TerminalGrid::dropActiveHyperlink() {
     m_hyperlinkId.clear();
     m_hyperlinkStartRow = 0;
     m_hyperlinkStartCol = 0;
+}
+
+// A start that moves above `top` had its text scrolled or deleted away; the
+// link's remaining text begins at `top`, column 0. A start that moves below
+// `bottom` had its text discarded; the link restarts at the cursor, so only
+// text printed from now on is linked.
+void TerminalGrid::moveOpenHyperlinkStart(int top, int bottom, int delta) {
+    if (!m_hyperlinkActive || m_hyperlinkStartRow < top || m_hyperlinkStartRow > bottom)
+        return;
+    m_hyperlinkStartRow += delta;
+    if (m_hyperlinkStartRow < top) {
+        m_hyperlinkStartRow = top;
+        m_hyperlinkStartCol = 0;
+    } else if (m_hyperlinkStartRow > bottom) {
+        m_hyperlinkStartRow = m_cursorRow;
+        m_hyperlinkStartCol = m_cursorCol;
+    }
 }
 
 void TerminalGrid::pushHyperlinkSpansForActive() {

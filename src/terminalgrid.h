@@ -624,6 +624,9 @@ private:
     void pushHyperlinkSpansForActive();
     // Forget the active OSC 8 link without emitting its spans.
     void dropActiveHyperlink();
+    // ANTS-5076, ANTS-5218 — rows [top, bottom] moved by `delta` (negative is
+    // up); an open link's start row moves with its text.
+    void moveOpenHyperlinkStart(int top, int bottom, int delta);
 
     // SGR color parsing helpers
     QColor parse256Color(const std::vector<int> &params, size_t &i);

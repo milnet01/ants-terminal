@@ -130,3 +130,57 @@ TEST(Osc8ClearRow, LinkWrappingOffTheBottomRowKeepsItsSpan) {
     EXPECT_EQ(tail->startCol, 0);
     EXPECT_EQ(tail->endCol, 4);
 }
+
+namespace {
+
+constexpr const char *kMoved = "https://moved.example/";
+
+const HyperlinkSpan *movedSpanOn(const TerminalGrid &g, int row) {
+    for (const auto &s : g.screenHyperlinks(row))
+        if (s.uri == kMoved) return &s;
+    return nullptr;
+}
+
+// Opens a link at (5,0), prints "abcde", runs `shift`, then closes the link
+// with the cursor at (closeRow, 5). The text must keep its span on closeRow.
+void expectSpanFollowsText(const std::string &shift, int closeRow) {
+    Harness h;
+    h.feed(cup(5, 0) + "\033]8;;" + kMoved + "\x07" + "abcde");
+    h.feed(shift);
+    h.feed(cup(closeRow, 5) + "\033]8;;\x07");
+    const HyperlinkSpan *s = movedSpanOn(h.grid, closeRow);
+    ASSERT_NE(s, nullptr) << "the link's text on row " << closeRow << " lost its span";
+    EXPECT_EQ(s->startCol, 0);
+    EXPECT_EQ(s->endCol, 4);
+    EXPECT_EQ(movedSpanOn(h.grid, 5), nullptr)
+        << "row 5, which the text left, still has the link";
+}
+
+}  // namespace
+
+// INV-9
+TEST(Osc8ClearRow, OpenLinkFollowsReverseScroll) {
+    expectSpanFollowsText("\033[T", 6);
+}
+
+// INV-10
+TEST(Osc8ClearRow, OpenLinkFollowsInsertedLine) {
+    expectSpanFollowsText(cup(3, 0) + "\033[L", 6);
+}
+
+// INV-11
+TEST(Osc8ClearRow, OpenLinkFollowsDeletedLine) {
+    expectSpanFollowsText(cup(3, 0) + "\033[M", 4);
+}
+
+// INV-12
+TEST(Osc8ClearRow, StartPushedOffTheBottomRestartsAtCursor) {
+    Harness h;
+    h.feed(cup(kRows - 1, 0) + "\033]8;;" + kMoved + "\x07" + "abcde");
+    h.feed("\033[T");
+    h.feed(std::string("xyz") + "\033]8;;\x07");
+    const HyperlinkSpan *s = movedSpanOn(h.grid, kRows - 1);
+    ASSERT_NE(s, nullptr);
+    EXPECT_EQ(s->startCol, 5) << "the span covers the blank columns the text left";
+    EXPECT_EQ(s->endCol, 7);
+}

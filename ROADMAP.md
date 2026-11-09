@@ -71390,7 +71390,7 @@ extends an existing item, that item carries it instead.
   Source: in-session-2026-09-14.
   Lanes: audit.
 
-- 📋 [ANTS-5218] **An open OSC 8 link's start row may go stale under reverse scroll, insert line and delete line.**
+- ✅ [ANTS-5218] **An open OSC 8 link's start row may go stale under reverse scroll, insert line and delete line.**
   Found 2026-09-14 while fixing ANTS-5076's wrapped-link low, which moves
   m_hyperlinkStartRow inside TerminalGrid::scrollUp. A search for
   m_hyperlinkStartRow finds it set when a link opens, read by
@@ -71401,6 +71401,12 @@ extends an existing item, that item carries it instead.
   The 2026-11-06 reviews also found this: row 21
   `terminalgrid.cpp:2041–2048`; row 1295
   `src/terminalgrid.cpp:2128-2167`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-09: TerminalGrid::moveOpenHyperlinkStart(top, bottom,
+  delta), called by scrollUp, scrollDown, insertLines and deleteLines. A
+  start moved above top clamps to top, column 0; one moved below bottom
+  restarts at the cursor. Locked by INV-9 to INV-12 of
+  tests/features/osc8_clear_row (red before: 4 of 4 failed on their
+  assertions).
   **Layman:** A clickable link might point at the wrong line if the screen scrolls backwards while it is being printed.
   Kind: fix.
   Source: in-session-2026-09-14.
