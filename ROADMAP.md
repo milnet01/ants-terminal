@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6724 -->
+<!-- ants-roadmap-id-high-water: ANTS=6725 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91459,6 +91459,23 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Lets a project whose roadmap is grouped by review pass switch to the standard grouping by version without losing its item numbers.
   Kind: feature.
   Source: feedback-RetroDB-2026-11-09.
+  Lanes: mcp, roadmap.
+
+- 📋 [ANTS-6725] **place_by_release finds the release of a RetroDB item from the evidence that project actually keeps.**
+  Measured on a scratch store with RetroDB rendered as ants-v1:
+  place_by_release dry run placed 0 of 363 shipped items, all
+  `no_evidence`. Three gaps in src/remotecontrol_roadmap_release.cpp:
+  (1) the changelog source parses markdown only; RetroDB's is
+  data/changelog.yaml. (2) rlSubjectId reads only a LEADING id, and its
+  pattern `[A-Za-z][A-Za-z0-9_]*-\d+` cuts `PASS-43-5` to `PASS-43`;
+  RetroDB cites ids at the end, e.g. "... (PASS-59-271)" (383 subjects
+  cite PASS-N-M). (3) 114 shipped items carry their version in
+  extras.source_status ("done (v3.8.0)"), which no source reads.
+  Changes ANTS-5315 § 2.2's evidence rules, so amend that spec.
+  Follows ANTS-6724; finishes RetroDB's version-block regroup.
+  **Layman:** After RetroDB's roadmap is converted, its finished items can be filed under the version they shipped in, instead of none being placed.
+  Kind: enhancement.
+  Source: in-session-2026-11-09 (ANTS-6724 prototype on a scratch copy of RetroDB).
   Lanes: mcp, roadmap.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
