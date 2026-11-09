@@ -97714,7 +97714,7 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Source: user-request-2026-09-05.
   Lanes: mcp, roadmap-store, claudeintegration.
 
-- 📋 [ANTS-5221] **A packaged or AppImage install cannot connect Claude Code to the built-in tools, because nothing ships the MCP bridge.**
+- ✅ [ANTS-5221] **A packaged or AppImage install cannot connect Claude Code to the built-in tools, because nothing ships the MCP bridge.**
   Claude Code reaches the Ants MCP server only through tools/mcp-bridge.py,
   registered with `claude mcp add ants -- <path>/tools/mcp-bridge.py`.
   Nothing registers it automatically: src/ never mentions `claude mcp add`,
@@ -97730,6 +97730,14 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   and inside the AppImage), then either register it from the app (a Settings
   button that runs `claude mcp add`) or document the one command with the
   installed path. python3 becomes a runtime dependency of the packages.
+  Re-checked 2026-11-09: resolved by the ants-mcpd work (ANTS-4932 and
+  after), which replaced tools/mcp-bridge.py (gone from 0.7.115).
+  CMakeLists.txt installs ants-mcpd with ants-terminal; the PKGBUILD and
+  debian/rules use cmake --install, the RPM spec lists
+  %{_bindir}/ants-mcpd, and the AppImage's AppRun runs it under --mcpd.
+  The welcome window's button registers it, and README "Connect Claude
+  Code to it" gives the command for a source build and the AppImage. No
+  python3 dependency is needed. No edit made.
   **Layman:** People who install Ants from a package or the AppImage have no way to hook Claude Code up to its money-saving tools.
   Kind: fix.
   Source: in-session-2026-09-15 (README getting-started check).
