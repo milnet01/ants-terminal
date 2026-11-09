@@ -98742,13 +98742,24 @@ that extend an earlier perf-pass bundle name it.
   one linked line (INV-3 of scrollback_hyperlink_restore_sync); after:
   1. The empty list cost 24 bytes a line, not a heap allocation. Suite
   6158/6158.
+  Correction to a0f54214's body: it said ASan ran in the push gate,
+  unchecked. Run separately 2026-11-09: build-asan test_vt,
+  Hyperlink|Scrollback|Reflow|Osc8 85/85, no sanitizer report.
   **Layman:** Every line of history carries an empty link list, even though almost no lines have links.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
   Lanes: terminal-core.
 
-- 📋 [ANTS-5205] **Bound the MCP spill directory by size and sweep it while Ants runs.**
+- ✅ [ANTS-5205] **Bound the MCP spill directory by size and sweep it while Ants runs.**
   Extends ANTS-5104. mcp::spillSweep has one caller, in mainwindow.cpp at startup, and deletes by age only (kSweepMaxAgeSec). The directory is under GenericCacheLocation, which is ~/.cache on the system drive. A long session can fill it with no size cap. Direction: a size cap plus a periodic sweep. Also note readSpillRows holds the file bytes and the parsed document together; it is bounded by kStructuredParseMaxBytes, so low.
+  Re-checked 2026-11-09: already bounded. offloadBody calls evict()
+  after every spill write, dropping oldest files until kSpillMaxFiles
+  (64) and kSpillMaxBytes (64 MiB) hold; in place since b2a9d08f
+  (ANTS-2094, 2026-06-16), before this finding. The same write path
+  serves ants-mcpd, so its spills are capped too. Residual: files over
+  24 h old can sit inside that cap until the next terminal start. That
+  is inside the cap, so no edit made. readSpillRows was already called
+  low (bounded by kStructuredParseMaxBytes).
   **Layman:** Large MCP results saved to disk are cleaned only at startup, by age, and the folder is on the system drive.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.
