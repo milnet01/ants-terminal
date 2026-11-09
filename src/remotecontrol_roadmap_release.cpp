@@ -436,7 +436,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
                                "title of at most 200 characters"));
     }
 
-    // § 2.1 — false: commits neither place an item nor hold it back.
+    // § 2.1 — false: commits place nothing; an untagged one still holds back.
     bool commitEvidence = true;
     if (req.contains(QStringLiteral("commit_evidence"))) {
         const QJsonValue v = req.value(QStringLiteral("commit_evidence"));
@@ -575,8 +575,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
             else if (v != placement.value(pk).version) agree = false;
         }
         if (speaking == 0) {
-            if (cl.unreleased.contains(it.id) ||
-                (commitEvidence && tags.untagged.contains(it.id))) {
+            if (cl.unreleased.contains(it.id) || tags.untagged.contains(it.id)) {
                 unplaced.push_back({pk, QStringLiteral("unreleased")});
             } else if (unknownTitle.isEmpty()) {
                 unplaced.push_back({pk, QStringLiteral("no_evidence")});

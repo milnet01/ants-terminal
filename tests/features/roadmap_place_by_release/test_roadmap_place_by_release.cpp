@@ -1000,6 +1000,9 @@ TEST(RoadmapPlaceByRelease, Inv18CommitEvidenceCanBeTurnedOff) {
     // A release only a tag names, and a status that cites it.
     ASSERT_TRUE(commitAndTag(fx.root, QStringLiteral("Release four"), QStringLiteral("v0.4.0"),
                              QStringLiteral("2026-04-01T10:00:00 +0000")));
+    // A commit no tag holds yet still holds its item back.
+    ASSERT_TRUE(commitAndTag(fx.root, QStringLiteral("PASS-1: not released yet"), QString(),
+                             QStringLiteral("2026-05-01T10:00:00 +0000")));
     {
         auto store = openStore(RoadmapStore::Access::Bulk);
         ASSERT_TRUE(store);
@@ -1017,6 +1020,7 @@ TEST(RoadmapPlaceByRelease, Inv18CommitEvidenceCanBeTurnedOff) {
     EXPECT_EQ(unplacedReason(dry, "PASS-1-7"), QStringLiteral("no_evidence")) << dump(dry);
     EXPECT_EQ(unplacedReason(dry, "PASS-1-8"), QStringLiteral("no_evidence"));
     EXPECT_PLACED(dry, "PASS-3-2", "0.4.0", "status");
+    EXPECT_EQ(unplacedReason(dry, "PASS-1"), QStringLiteral("unreleased"));
     EXPECT_FALSE(dry.value(QStringLiteral("sources")).toObject()
                      .value(QStringLiteral("commit_evidence")).toBool(true));
 }
