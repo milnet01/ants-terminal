@@ -607,6 +607,12 @@ times its CPU time: it waits on the network, a sleep or a lock, which is also
 a flake risk. It flags one busy on a single core. A nested script's steps
 count as one step. The record is `.git/ci-gate/time.json`.
 
+**The shared pre-push hook times every gate run the same way.** It appends
+one record, with the pushed `sha` and `ref`, to
+`.git/ci-gate/history.jsonl`, which keeps the last 50. The gate's output and
+exit code are unchanged. Where the timer cannot start, the gate runs
+untimed. `tests/features/pre-push-gate-history` checks each of these.
+
 **Ants MCP's `ci_report` reads the run history**, which a workflow file
 cannot show. It reports a job, or a step's shell guard, running near its
 budget or slowing (`timeout-minutes` row). It reports a red nightly (slow-legs
