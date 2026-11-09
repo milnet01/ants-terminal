@@ -41,7 +41,13 @@ namespace DocSymbols {
 // real one. A tri-state rather than a bool plus a flag: a two-boolean encoding
 // admits a meaningless fourth combination, and the first consumer to read only
 // the bool would silently reintroduce the defect (spec INV-7).
-enum class Resolution { Resolved, Unresolved, NotChecked };
+//
+// ANTS-5357 — `Referenced` is a fourth state: no definition was found, but the
+// project's code uses the name (SymbolQuery::DefResult::firstUse). A library's
+// name, a standard flag, a build-file option or a parameter lands here. It is
+// what the walk saw, not a guess at where the name lives, and it is no finding:
+// a name the code uses is not rot.
+enum class Resolution { Resolved, Unresolved, NotChecked, Referenced };
 
 // Wire strings (snake_case) — the CamelCase enum never reaches the wire.
 QString resolutionStr(Resolution r);
@@ -55,6 +61,7 @@ struct Symbol {
     int        docCol  = 0;  // 0-based, first content column of the span
     Resolution resolution = Resolution::NotChecked;
     QVector<SymbolQuery::DefMatch> definitions;  // only when Resolved
+    std::optional<SymbolQuery::CallMatch> usedAt; // only when Referenced
 };
 
 struct Options {
@@ -122,6 +129,7 @@ struct ScanResult {
     int unresolvedQualified = 0;
     int unresolvedBare      = 0;
     int notChecked = 0;
+    int referenced = 0;   // ANTS-5357
 
     // ANTS-3692 — NEEDLE-scoped, not occurrence-scoped: true iff some needle
     // went unwalked (budget or deadline). An ambiguous needle that resolves
@@ -149,6 +157,9 @@ struct Locators {
     // Declared, but only as a function-local name or a forward declaration:
     // real, so not `unresolved`, and still no place to point a reader.
     QStringList            declaredOnly;
+    // ANTS-5357 — defined nowhere in the project, used by its code: symbol →
+    // "file:line" of the first use.
+    QMap<QString, QString> referenced;
 };
 
 // `sourceLines` lets a qualified symbol (`A::b`) be checked against the scope

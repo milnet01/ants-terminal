@@ -112,6 +112,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **doc_symbols reports a name the project's code uses but defines elsewhere as `referenced`, with where it is used, instead of as missing.** (ANTS-5357)
+  Library types, standard flags, test names and function parameters stop
+  showing up as dead references. A name left only in a comment or a string
+  is still reported missing. Also ANTS-5626.
+
 - **The local Qt 6.2 check runs GitHub's own CI recipe inside its container, with no build commands of its own** (ANTS-5324)
   The pre-push check on the oldest supported Qt now builds exactly as
   GitHub's CI does, so the two cannot drift apart. The separate

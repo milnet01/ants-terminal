@@ -109,6 +109,7 @@ QString resolutionStr(Resolution r) {
     case Resolution::Resolved:   return QStringLiteral("resolved");
     case Resolution::Unresolved: return QStringLiteral("unresolved");
     case Resolution::NotChecked: return QStringLiteral("not_checked");
+    case Resolution::Referenced: return QStringLiteral("referenced");
     }
     return QString();
 }
@@ -187,6 +188,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
 
     QHash<QString, Resolution> state;
     QHash<QString, QVector<SymbolQuery::DefMatch>> defs;
+    QHash<QString, SymbolQuery::CallMatch> uses;   // ANTS-5357
     // Tracked over NEEDLES, not over emitted occurrences: an elided ambiguous
     // needle never reaches symbols[] (ANTS-3692), so deriving `truncated` from
     // notChecked > 0 would report a complete run over an incomplete one.
@@ -207,6 +209,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         if (pending.isEmpty()) return;
         SymbolQuery::Options so;
         so.maxResults = 50;
+        so.recordFirstUse = true;   // ANTS-5357
         const QHash<QString, SymbolQuery::DefResult> batch =
             SymbolQuery::findDefinitions(opts.rootCanonical, pending, so);
         for (const QString &needle : std::as_const(pending)) {
@@ -215,6 +218,9 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
             if (r.ok && !r.definitions.isEmpty()) {
                 state[needle] = Resolution::Resolved;
                 defs[needle]  = r.definitions;
+            } else if (r.ok && r.firstUse) {
+                state[needle] = Resolution::Referenced;
+                uses[needle]  = *r.firstUse;
             } else {
                 state[needle] = Resolution::Unresolved;
             }
@@ -260,11 +266,13 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         sym.docCol     = c.col;
         sym.resolution = r;
         if (sym.resolution == Resolution::Resolved) sym.definitions = defs.value(c.needle);
+        if (sym.resolution == Resolution::Referenced) sym.usedAt = uses.value(c.needle);
         res.symbols.push_back(sym);
 
         switch (sym.resolution) {
         case Resolution::Resolved:   ++res.resolved;   break;
         case Resolution::NotChecked: ++res.notChecked; break;
+        case Resolution::Referenced: ++res.referenced; break;
         case Resolution::Unresolved: {
             ++res.unresolved;
             DocFinding::Finding f;
@@ -453,6 +461,12 @@ Locators locate(const QVector<Symbol> &symbols, const SourceLines &sourceLines) 
         const Symbol &s = *sp;
         if (s.resolution == Resolution::NotChecked) { out.notChecked << name; continue; }
         if (s.resolution == Resolution::Unresolved) { out.unresolved << name; continue; }
+        if (s.resolution == Resolution::Referenced) {
+            if (s.usedAt)
+                out.referenced.insert(name, s.usedAt->file + QLatin1Char(':')
+                                                + QString::number(s.usedAt->line));
+            continue;
+        }
 
         // Distinct file:line per kind — a repeated match is one candidate.
         // A `local` row and a forward declaration are real declarations but

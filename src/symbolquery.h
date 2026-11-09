@@ -80,6 +80,9 @@ struct Options {
     // change — update/render/init/reset dominate a real class API. Scoping the
     // WALK rather than post-filtering keeps callers_count and truncated honest.
     QString lane;
+    // ANTS-5357 — findDefinitions only: also record each needle's first use
+    // in code (comments and string literals excluded) in DefResult::firstUse.
+    bool recordFirstUse = false;
 };
 
 struct DefResult {
@@ -100,6 +103,11 @@ struct DefResult {
     // file's base name, the project-relative path of that file ("" = none).
     // Lets the handler answer "no symbol X; did you mean the file X.cpp?".
     QString fileStemHint;
+    // ANTS-5357 — with Options::recordFirstUse, the first line in walk order
+    // where code uses the name as a whole token on a line that defines nothing.
+    // A name the project uses but defines elsewhere — a library's, the build
+    // file's — has this and no definitions.
+    std::optional<CallMatch> firstUse;
 };
 
 struct CallResult {

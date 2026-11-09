@@ -100,30 +100,37 @@ TEST(DocSymbolsVerb, Inv6RefusalMinimums) {
     EXPECT_EQ(counts.value(QStringLiteral("not_checked")).toInt(), 0);
 }
 
-// The tri-state reaches the wire as three distinct strings — the response is
-// where a caller could still be told "does not exist" about a needle nobody
-// looked up (§ 2.2).
-TEST(DocSymbolsVerb, ResolutionReachesTheWireAsThreeStates) {
+// The states reach the wire as distinct strings — the response is where a
+// caller could still be told "does not exist" about a needle nobody looked up
+// (§ 2.2). ANTS-5357 added `referenced`, which carries where the code uses it.
+TEST(DocSymbolsVerb, ResolutionReachesTheWireAsDistinctStates) {
     QVector<DocSymbols::Symbol> syms;
     for (auto r : {DocSymbols::Resolution::Resolved, DocSymbols::Resolution::Unresolved,
-                   DocSymbols::Resolution::NotChecked}) {
+                   DocSymbols::Resolution::NotChecked, DocSymbols::Resolution::Referenced}) {
         DocSymbols::Symbol s;
         s.symbol     = QStringLiteral("Sym");
         s.docLine    = 1;
         s.resolution = r;
+        if (r == DocSymbols::Resolution::Referenced)
+            s.usedAt = SymbolQuery::CallMatch{QStringLiteral("src/a.cpp"), 7, {}, {}};
         syms.push_back(s);
     }
     const QJsonObject o = RemoteControl::docSymbolsBuildResponse(syms, {}, true, {});
     const QJsonArray arr = o.value(QStringLiteral("symbols")).toArray();
-    ASSERT_EQ(arr.size(), 3);
+    ASSERT_EQ(arr.size(), 4);
     EXPECT_EQ(arr.at(0).toObject().value("resolution").toString(), QStringLiteral("resolved"));
     EXPECT_EQ(arr.at(1).toObject().value("resolution").toString(), QStringLiteral("unresolved"));
     EXPECT_EQ(arr.at(2).toObject().value("resolution").toString(), QStringLiteral("not_checked"));
+    EXPECT_EQ(arr.at(3).toObject().value("resolution").toString(), QStringLiteral("referenced"));
+    const QJsonObject used = arr.at(3).toObject().value("used_at").toObject();
+    EXPECT_EQ(used.value("file").toString(), QStringLiteral("src/a.cpp"));
+    EXPECT_EQ(used.value("line").toInt(), 7);
 
     const QJsonObject counts = o.value(QStringLiteral("counts")).toObject();
     EXPECT_EQ(counts.value(QStringLiteral("resolved")).toInt(), 1);
     EXPECT_EQ(counts.value(QStringLiteral("unresolved")).toInt(), 1);
     EXPECT_EQ(counts.value(QStringLiteral("not_checked")).toInt(), 1);
+    EXPECT_EQ(counts.value(QStringLiteral("referenced")).toInt(), 1);
 }
 
 // ANTS-3688 — the verb-vocabulary provider is installed AFTER m_remoteControl

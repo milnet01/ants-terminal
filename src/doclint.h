@@ -179,6 +179,7 @@ struct Stats {
     int  symbolsResolved   = 0;
     int  symbolsUnresolved = 0;
     int  symbolsNotChecked = 0;
+    int  symbolsReferenced = 0;   // ANTS-5357
     bool symbolsTruncated  = false;
 
     // spec_lint — flag OR-ed, line_count MERGED by project-relative path. A

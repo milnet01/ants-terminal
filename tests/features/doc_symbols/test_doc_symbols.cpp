@@ -554,3 +554,59 @@ A qualified non-call `Widget::alsoGone`.
     EXPECT_GE(r.unresolvedQualified, 1)
         << "structurally unreachable before ANTS-4443";
 }
+
+// ANTS-5357 — a name the project's CODE uses but defines nowhere (a library
+// flag, a standard type) is `referenced`, with where it is used, and raises
+// no finding. A name left only in a comment or a string literal is not a use:
+// that is how a deleted function lingers, so it stays `unresolved`.
+TEST(DocSymbols, Ants5357NameUsedByCodeIsReferenced) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(seedTree(root));
+    ASSERT_TRUE(writeFile(root + "/src/use.cpp",
+                          "#include <fcntl.h>\n"
+                          "// LegacyHelper was removed\n"
+                          "int openIt() { const char *s = \"GhostName\"; (void)s; return O_TRUNC; }\n"
+                          "/* BlockGhost\n"
+                          "   BlockGhostTwo */ int after = AFTER_BLOCK;\n"));
+    ASSERT_TRUE(writeFile(root + "/tool/vault.py",
+                          "import os\n"
+                          "\"\"\"PyGhost in a docstring\n"
+                          "\"\"\"\n"
+                          "flags = os.O_EXCL  # HashGhost\n"));
+    ASSERT_TRUE(writeFile(root + "/crate/lib.rs",
+                          "fn f<'a>(x: &'a str) -> usize { RUST_USE }\n"));
+
+    const QString doc = QStringLiteral(
+        "`O_TRUNC` `O_EXCL` `AFTER_BLOCK` `RUST_USE` `parseSpecBody`\n"
+        "`LegacyHelper` `GhostName` `BlockGhost` `BlockGhostTwo` `PyGhost` `HashGhost`\n");
+    DocSymbols::Options opts;
+    opts.rootCanonical = root;
+    const DocSymbols::ScanResult r = DocSymbols::scan(doc, QStringLiteral("docs/x.md"), opts);
+
+    QMap<QString, DocSymbols::Resolution> got;
+    for (const DocSymbols::Symbol &s : r.symbols) got.insert(s.symbol, s.resolution);
+    using R = DocSymbols::Resolution;
+    for (const char *n : {"O_TRUNC", "O_EXCL", "AFTER_BLOCK", "RUST_USE"})
+        EXPECT_EQ(got.value(QString::fromLatin1(n), R::Resolved), R::Referenced) << n;
+    EXPECT_EQ(got.value(QStringLiteral("parseSpecBody")), R::Resolved);
+    for (const char *n : {"LegacyHelper", "GhostName", "BlockGhost", "BlockGhostTwo",
+                          "PyGhost", "HashGhost"})
+        EXPECT_EQ(got.value(QString::fromLatin1(n), R::Resolved), R::Unresolved) << n;
+    EXPECT_EQ(r.referenced, 4);
+    EXPECT_EQ(r.unresolved, 6);
+    EXPECT_EQ(r.findings.size(), 6) << "a referenced name raises no finding";
+
+    for (const DocSymbols::Symbol &s : r.symbols) {
+        if (s.symbol != QLatin1String("O_TRUNC")) continue;
+        ASSERT_TRUE(s.usedAt.has_value());
+        EXPECT_EQ(s.usedAt->file, QStringLiteral("src/use.cpp"));
+        EXPECT_EQ(s.usedAt->line, 3);
+    }
+
+    const DocSymbols::Locators l = DocSymbols::locate(r.symbols);
+    EXPECT_EQ(l.referenced.value(QStringLiteral("O_TRUNC")), QStringLiteral("src/use.cpp:3"));
+    EXPECT_EQ(l.referenced.size(), 4);
+    EXPECT_TRUE(l.unresolved.contains(QStringLiteral("LegacyHelper")));
+}

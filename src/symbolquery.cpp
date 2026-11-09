@@ -424,6 +424,11 @@ struct ScanState {
     QVector<CallMatch> calls;
     int  callsTotal = 0;
 
+    // ANTS-5357 — first use in code. `recordUse` is set on the batch walk
+    // state; `firstUse` is filled on each needle's slot.
+    bool recordUse = false;
+    std::optional<CallMatch> firstUse;
+
     // ANTS-1950 — file-stem fallback hint. When a query matches no symbol
     // but exactly equals a source file's base name (e.g. asking for
     // `test_reference_harness`, which is a filename not a symbol), record
@@ -559,6 +564,85 @@ private:
     QString m_head;          // text since the last statement boundary
 };
 
+// ANTS-5357 — a line with its comments and string literals blanked to spaces,
+// so a token left in it is one the CODE uses. A name that survives only in a
+// comment is how a deleted function lingers, and counting it as a use would
+// hide exactly the rot doc_symbols exists to find. `m_closer` carries a block
+// comment, a Lua long comment or a Python triple-quoted string across lines.
+//
+// Line-based and approximate, like CppScope. Shell strings are kept, since a
+// shell script names its variables inside them. A C-family `'` opens a
+// literal only when it closes within five characters, so a Rust lifetime
+// (`&'a str`) or a digit separator (`1'000`) does not blank the rest of the
+// line.
+class CodeOnly {
+public:
+    explicit CodeOnly(Lang lang) : m_lang(lang) {}
+
+    QString strip(const QString &line) {
+        QString out = line;
+        const qsizetype n = line.size();
+        auto blank = [&](qsizetype from, qsizetype to) {
+            for (qsizetype k = from; k < qMin(to, n); ++k) out[k] = QLatin1Char(' ');
+        };
+        const bool cStyle = m_lang == Lang::Cpp || m_lang == Lang::Glsl
+                            || m_lang == Lang::Generic;
+        qsizetype i = 0;
+        while (i < n) {
+            if (!m_closer.isEmpty()) {
+                const qsizetype end = line.indexOf(m_closer, i);
+                if (end < 0) { blank(i, n); return out; }
+                blank(i, end + m_closer.size());
+                i = end + m_closer.size();
+                m_closer.clear();
+                continue;
+            }
+            const QChar c = line.at(i);
+            const QStringView rest = QStringView(line).mid(i);
+            if (cStyle && rest.startsWith(QLatin1String("//"))) { blank(i, n); return out; }
+            if (cStyle && rest.startsWith(QLatin1String("/*"))) {
+                m_closer = QStringLiteral("*/");
+                blank(i, i + 2);
+                i += 2;
+                continue;
+            }
+            if (m_lang == Lang::Lua && rest.startsWith(QLatin1String("--"))) {
+                if (!rest.mid(2).startsWith(QLatin1String("[["))) { blank(i, n); return out; }
+                m_closer = QStringLiteral("]]");
+                blank(i, i + 4);
+                i += 4;
+                continue;
+            }
+            if ((m_lang == Lang::Py || m_lang == Lang::Sh) && c == QLatin1Char('#')
+                && (m_lang == Lang::Py || i == 0 || line.at(i - 1).isSpace())) {
+                blank(i, n);
+                return out;
+            }
+            if (m_lang == Lang::Py && (rest.startsWith(QLatin1String("\"\"\""))
+                                       || rest.startsWith(QLatin1String("'''")))) {
+                m_closer = rest.left(3).toString();
+                blank(i, i + 3);
+                i += 3;
+                continue;
+            }
+            if (m_lang != Lang::Sh && (c == QLatin1Char('"') || c == QLatin1Char('\''))) {
+                qsizetype j = i + 1;
+                while (j < n && line.at(j) != c) j += (line.at(j) == QLatin1Char('\\')) ? 2 : 1;
+                if (cStyle && c == QLatin1Char('\'') && (j >= n || j - i > 5)) { ++i; continue; }
+                blank(i, j + 1);
+                i = j + 1;
+                continue;
+            }
+            ++i;
+        }
+        return out;
+    }
+
+private:
+    Lang m_lang;
+    QString m_closer;   // non-empty inside a multi-line comment or string
+};
+
 // ANTS-4358's function-local lambda is a name documents cite
 // (makeFieldsProp and its siblings), so it keeps its kind inside a body.
 bool isLambdaDef(const QString &trimmed) {
@@ -680,6 +764,8 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     // this walk state builds no anchors of its own.
     const bool trackScope = lang == Lang::Cpp || lang == Lang::Glsl;
     CppScope scope;
+    CodeOnly codeOnly(lang);
+    QVarLengthArray<int, 8> codeHits;
     while (!f.atEnd()) {
         // ANTS-5103 — bounded: enough to tell a line over kMaxLineBytes,
         // which is skipped below, without holding the whole of it.
@@ -735,11 +821,23 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
         // and a line that is only ever context never carries the symbol.
         if (st.batch) {
             needleSlots(*st.bySymbol, line, hits);
+            // ANTS-5357 — strip every line, hit or not: a block comment's
+            // state has to advance through lines that name no needle.
+            if (st.recordUse) {
+                const QString code = codeOnly.strip(line);
+                if (hits.isEmpty()) codeHits.clear();
+                else needleSlots(*st.bySymbol, code, codeHits);
+            }
             for (const int idx : hits) {
                 ScanState &sl = (*st.batch)[idx];
                 bool split = false;
+                const int defsBefore = sl.defsTotal;
                 matchLine(sl, sl.anchors[langOrd], rel, line, thisLine,
                           prevLine, lineNo, &split, local);
+                if (st.recordUse && !sl.firstUse && sl.defsTotal == defsBefore
+                    && codeHits.contains(idx))
+                    sl.firstUse = CallMatch{rel, lineNo, thisLine,
+                                            QString::fromLatin1(langStr(lang))};
                 if (split)
                     pending.append({idx, lineNo, 0,
                                     prevLine + QLatin1Char(' ') + thisLine,
@@ -866,6 +964,7 @@ DefResult finishDefs(const ScanState &st, int filesScanned, bool walkCapped) {
     // that also happens to share a file's stem should not be second-guessed.
     if (r.definitions.isEmpty())
         r.fileStemHint = st.fileStemHit;
+    r.firstUse = st.firstUse;
     return r;
 }
 
@@ -970,6 +1069,7 @@ QHash<QString, DefResult> findDefinitions(const QString &rootCanonical,
     walkSt.batch = &batchSlots;
     walkSt.bySymbol = &bySymbol;
     walkSt.byStem = &byStem;
+    walkSt.recordUse = opts.recordFirstUse;
     walk(walkSt, QDir::cleanPath(rootCanonical));
 
     QString stoppedIn;

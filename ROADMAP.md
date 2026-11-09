@@ -88374,12 +88374,18 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Rolodex-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5357] **doc_symbols reports standard-library flags, library exceptions and byte literals as unresolved.**
+- ✅ [ANTS-5357] **doc_symbols reports standard-library flags, library exceptions and byte literals as unresolved.**
   Reported by Rolodex: on docs/security-standards.md, O_TRUNC, O_EXCL,
   InvalidToken and a bytes literal (MAGIC = b"VLT1") came back
   unresolved_symbol. Suggested: classify external module symbols as
   not_checked, and match a quoted token against string or bytes literals
   assigned to a constant. Related: ANTS-3688, ANTS-4379.
+  Shipped 2026-11-09: a name the code uses outside comments and strings,
+  with no definition, is now `referenced` (ANTS-3661 INV-12). Rolodex
+  docs/security-standards.md: 6 unresolved → 1. The one left, O_TRUNC,
+  appears only in a test docstring, so no code uses it and `unresolved`
+  is true. The byte literal (`VLT1`) is a single capitalised word,
+  dropped unless it resolves since ANTS-5470.
   **Layman:** The document checker flags ordinary library names as mistakes, so its results need sorting by hand.
   Kind: fix.
   Source: feedback-Rolodex-2026-09-21.
@@ -88428,6 +88434,10 @@ project. Reported causes are claims until checked in source.
 
 - 📋 [ANTS-5387] **doc_symbols resolves Python assignments and classifies builtins as not checked.**
   The py resolver indexes def and class only, so module constants, class-body attributes and try-body import flags report unresolved, as do builtins and stdlib names. Index Assign and AnnAssign targets, and classify builtins and stdlib names as not_checked.
+  2026-11-09: ANTS-5357's `referenced` state reports a Python constant
+  the code uses (Rolodex `ARGON2_*`) as referenced, not unresolved.
+  Left: indexing Assign and AnnAssign targets so they resolve to their
+  definition line.
   **Layman:** Stops the docs checker flagging real Python names as missing.
   Kind: fix.
   Source: Snatch feedback 2026-09-25.
@@ -88704,6 +88714,10 @@ project. Reported causes are claims until checked in source.
   (`glGetNamedBufferSubData`) and CMake functions
   (`FetchContent_Declare`). Vestige suggests a quieter not_checked class
   for GL and CMake names. Rest of that finding: ANTS-5669.
+  2026-11-09: ANTS-5357's `referenced` state clears the gtest and Qt
+  names (docs/design.md: 6 unresolved → 2). Left: CMake names
+  (`ANTS_ENABLE_HELPER_CLI`, `JOB_POOLS`, `Qt6::Widgets`), because
+  CMakeLists.txt and *.cmake are not walked.
   **Layman:** The document checker flags real names as missing when they come from the build file, the tests or the Qt library, so its warnings get ignored.
   Kind: fix.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).
@@ -88968,7 +88982,7 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-10-07 triage
 
-- 📋 [ANTS-5626] **doc_symbols reports a name in a language with no indexer, such as UnrealScript, as not checked rather than unresolved.**
+- ✅ [ANTS-5626] **doc_symbols reports a name in a language with no indexer, such as UnrealScript, as not checked rather than unresolved.**
   doc_lint checks:["doc_symbols"] on UT_MonsterHunt's docs/specs/GAME-0190-test-playlist.md
   returned 43 unresolved_symbol findings of 65; about 13 distinct names are real
   symbols in unrealscript/**/*.uc. find_definition scans no .uc files either.
@@ -88978,6 +88992,10 @@ project. Reported causes are claims until checked in source.
   names as not_checked with a count, as workspace_search's
   enclosing_symbol_unavailable does. (b) is the general fix; (a) is per language.
   Siblings: ANTS-5357, ANTS-5387, ANTS-5470, ANTS-5544 (other false unresolved).
+  Shipped 2026-11-09 through ANTS-5357's `referenced` state:
+  UT_MonsterHunt GAME-0190 spec, 22 unresolved → 0 (22 referenced). .uc
+  files were already walked (ANTS-4902); engine natives and `var` names
+  they use now come back referenced.
   **Layman:** Spec checks on the Unreal game project stop flagging real game code names as missing just because the tool cannot read that language.
   Kind: fix.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-10-06 (GAME-0190 spec).
@@ -89119,6 +89137,10 @@ project. Reported causes are claims until checked in source.
   The other three classes are already filed: enumerators under ANTS-5535;
   gtest, CMake and GL names under ANTS-5544.
   Related: ANTS-5357, ANTS-5626.
+  2026-11-09: ANTS-5357's `referenced` state clears parameters, GL calls
+  and Jolt names Vestige's own code uses (physics spec: 58 unresolved →
+  7). Left: `std::` names the code never uses, Jolt names only under
+  build/_deps, and `FetchContent_Declare` (CMake, see ANTS-5544).
   **Layman:** The document checker reports real names as missing when they come from a downloaded library, the C++ standard library or a function's own arguments, so the real mistakes get lost.
   Kind: fix.
   Source: feedback-Vestige-2026-10-12.
@@ -89135,6 +89157,10 @@ project. Reported causes are claims until checked in source.
   `impl` blocks; report a crate-path symbol as not_checked rather than
   unresolved. The one real dead name in that run (`PlaformVariant`) was
   buried among the false ones. Related: ANTS-5357, ANTS-5626.
+  2026-11-09: ANTS-5357's `referenced` state clears this report
+  (rusty-psn STANDARDS.md: 15 unresolved → 0); crate paths and the
+  consts come back referenced. Left: the consts and statics still do not
+  RESOLVE to their definition line.
   **Layman:** The document checker cannot see some kinds of Rust names, so a Rust project's documents look full of dead references that are not dead.
   Kind: fix.
   Source: feedback-rusty-psn-source-2026-10-12.

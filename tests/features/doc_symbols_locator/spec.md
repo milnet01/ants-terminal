@@ -15,7 +15,9 @@ Origin: `~/.claude/docs/reviews/v2-mechanical-checks-proposal-2026-09-24.md`
 `doc_symbols {path, mode:"locator"}` returns
 `{ok, mode:"locator", locators:{<symbol>:"<file>:<line>"},
 ambiguous:{<symbol>:n}, unresolved:[<symbol>], not_checked:[<symbol>],
-declared_only:[<symbol>], counts, truncated, checked_docs, docs_digest}`.
+declared_only:[<symbol>], referenced:{<symbol>:"<file>:<line>"}, counts,
+truncated, checked_docs, docs_digest}`. `referenced` (ANTS-5357) holds names
+defined nowhere in the project that its code uses, with the first use.
 
 The reduction is `DocSymbols::locate()` (engine, pure); the JSON is
 `RemoteControl::docSymbolsBuildLocatorResponse()` (pure).

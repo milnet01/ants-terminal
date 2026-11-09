@@ -491,7 +491,7 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     // cannot drift.
     const QString onlyApplied = only.isEmpty() ? QStringLiteral("all") : only;
     QJsonArray symbolsArr;
-    int resolved = 0, unresolved = 0, notChecked = 0, withheld = 0;
+    int resolved = 0, unresolved = 0, notChecked = 0, referenced = 0, withheld = 0;
     for (const DocSymbols::Symbol &s : symbols) {
         QJsonObject so;
         so[QStringLiteral("symbol")]     = s.symbol;
@@ -513,6 +513,15 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
             ++resolved;
         } else if (s.resolution == DocSymbols::Resolution::Unresolved) {
             ++unresolved;
+        } else if (s.resolution == DocSymbols::Resolution::Referenced) {
+            // ANTS-5357 — where the code uses it, so a reader can confirm.
+            if (s.usedAt) {
+                QJsonObject u;
+                u[QStringLiteral("file")] = s.usedAt->file;
+                u[QStringLiteral("line")] = s.usedAt->line;
+                so[QStringLiteral("used_at")] = u;
+            }
+            ++referenced;
         } else {
             ++notChecked;
         }
@@ -528,6 +537,7 @@ QJsonObject RemoteControl::docSymbolsBuildResponse(
     counts[QStringLiteral("resolved")]    = resolved;
     counts[QStringLiteral("unresolved")]  = unresolved;
     counts[QStringLiteral("not_checked")] = notChecked;
+    counts[QStringLiteral("referenced")]  = referenced;
     // ANTS-4359 — split the unresolved bucket by the SHAPE the document wrote,
     // so a reader starts with the class where "no such symbol" is a real
     // defect rather than reading two dozen names one by one. On one standard
@@ -590,6 +600,9 @@ QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
     QJsonObject ambiguous;
     for (auto it = l.ambiguous.cbegin(); it != l.ambiguous.cend(); ++it)
         ambiguous[it.key()] = it.value();
+    QJsonObject referenced;   // ANTS-5357
+    for (auto it = l.referenced.cbegin(); it != l.referenced.cend(); ++it)
+        referenced[it.key()] = it.value();
 
     QJsonObject counts;
     counts[QStringLiteral("located")]     = int(l.located.size());
@@ -597,9 +610,10 @@ QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
     counts[QStringLiteral("unresolved")]  = int(l.unresolved.size());
     counts[QStringLiteral("not_checked")] = int(l.notChecked.size());
     counts[QStringLiteral("declared_only")] = int(l.declaredOnly.size());
+    counts[QStringLiteral("referenced")]  = int(l.referenced.size());
     counts[QStringLiteral("symbols")] =
         int(l.located.size() + l.ambiguous.size() + l.unresolved.size()
-            + l.notChecked.size() + l.declaredOnly.size());
+            + l.notChecked.size() + l.declaredOnly.size() + l.referenced.size());
 
     QJsonObject o;
     o[QStringLiteral("ok")]           = true;
@@ -609,6 +623,7 @@ QJsonObject RemoteControl::docSymbolsBuildLocatorResponse(
     o[QStringLiteral("unresolved")]   = QJsonArray::fromStringList(l.unresolved);
     o[QStringLiteral("not_checked")]  = QJsonArray::fromStringList(l.notChecked);
     o[QStringLiteral("declared_only")] = QJsonArray::fromStringList(l.declaredOnly);
+    o[QStringLiteral("referenced")]   = referenced;
     o[QStringLiteral("counts")]       = counts;
     o[QStringLiteral("truncated")]    = truncated;
     o[QStringLiteral("checked_docs")] = QJsonArray::fromStringList(checkedDocs);
@@ -2426,7 +2441,7 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
             {QStringLiteral("unparsed_total"), result.stats.unparsedTotal},
             {QStringLiteral("examples_suppressed"), result.stats.examplesSuppressed}};
     if (run.contains(QStringLiteral("doc_symbols")))
-        // A NESTED counts object, not four dotted keys: it is doc_symbols' own
+        // A NESTED counts object, not dotted keys: it is doc_symbols' own
         // shape, and flattening would collide by name with this envelope's
         // top-level `counts`, which holds findings per verb per kind.
         stats[QStringLiteral("doc_symbols")] = QJsonObject{
@@ -2434,7 +2449,8 @@ QJsonObject RemoteControl::docLintBuildResponse(const DocLint::Result &result,
              QJsonObject{{QStringLiteral("total"), result.stats.symbolsTotal},
                          {QStringLiteral("resolved"), result.stats.symbolsResolved},
                          {QStringLiteral("unresolved"), result.stats.symbolsUnresolved},
-                         {QStringLiteral("not_checked"), result.stats.symbolsNotChecked}}},
+                         {QStringLiteral("not_checked"), result.stats.symbolsNotChecked},
+                         {QStringLiteral("referenced"), result.stats.symbolsReferenced}}},
             {QStringLiteral("truncated"), result.stats.symbolsTruncated}};
     if (run.contains(QStringLiteral("spec_lint"))) {
         QJsonObject lineCount;

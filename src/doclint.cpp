@@ -459,6 +459,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
             r.stats.symbolsResolved   += sr.resolved;
             r.stats.symbolsUnresolved += sr.unresolved;
             r.stats.symbolsNotChecked += sr.notChecked;
+            r.stats.symbolsReferenced += sr.referenced;
             r.stats.symbolsTruncated   = r.stats.symbolsTruncated || sr.truncated;
         }
 
