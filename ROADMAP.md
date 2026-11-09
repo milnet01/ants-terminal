@@ -409,6 +409,25 @@ SSH key registered there.
   INSTANCE OF ANTS-3733 ("source-level portability breaks are only caught
   AFTER the release tag") -- the tag was already published when this
   surfaced.
+  2026-11-09 (session 237), decided, not yet built: option 3.
+  Measured: 0 of 12,582 ids in the live store hold a non-ASCII
+  character, so refusing them breaks nothing and makes foldId and
+  SQLite's lower() agree on every build. No schema change (option 2's
+  kSchemaVersion bump is not needed).
+  Write points to guard with one shared check (e.g.
+  RoadmapParse::isAsciiId):
+  - RoadmapStore insert of an item (roadmapstore.cpp, the INSERT INTO
+    item in the insert path);
+  - RoadmapExport::rebuildProject's INSERT INTO item (reload from file)
+    and its relationship insert's dst_id_fold;
+  - RoadmapStore::reassignItemId;
+  - RoadmapStore::relateCrossProject's dstIdFold.
+  Decide at build time: does roadmap_migrate refuse the project, or
+  quarantine the item (id_origin 'quarantined' exists)? Prefer
+  quarantine, so one bad id does not block a whole project.
+  Test: tests/features/roadmap_id_fold — keep FoldMatchesSqliteLower for
+  ASCII ids only, and replace the Ä-1 / ÉTÉ-7 cases with "the store
+  refuses a non-ASCII id", which holds on ICU and non-ICU SQLite alike.
   **Layman:** On most Linux distributions the database lowercases only English letters, but Mageia's build also lowercases accented ones. Our code assumes the first, so on Mageia the two disagree and a package build fails.
   Kind: fix.
   Source: obs-build-failure-2026-09-22.
