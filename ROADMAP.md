@@ -88447,12 +88447,20 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: Album_Builder feedback 2026-09-25.
 
-- 📋 [ANTS-5387] **doc_symbols resolves Python assignments and classifies builtins as not checked.**
+- ✅ [ANTS-5387] **doc_symbols resolves Python assignments and classifies builtins as not checked.**
   The py resolver indexes def and class only, so module constants, class-body attributes and try-body import flags report unresolved, as do builtins and stdlib names. Index Assign and AnnAssign targets, and classify builtins and stdlib names as not_checked.
   2026-11-09: ANTS-5357's `referenced` state reports a Python constant
   the code uses (Rolodex `ARGON2_*`) as referenced, not unresolved.
   Left: indexing Assign and AnnAssign targets so they resolve to their
   definition line.
+  2026-11-09: the py anchors take `NAME = …`, `NAME: T = …` and `NAME:
+  T`; a PyScope tracker tags assignments inside a def body or open
+  brackets `local`. Builtins and stdlib names already come back
+  referenced (ANTS-5357). Rolodex docs/security-standards.md:
+  ARGON2_ITERATIONS, ARGON2_LANES, ARGON2_MEMORY_KIB locate to
+  rolodex.py:76-78 as definitions. Test:
+  McpSymbolQuery.Ants5387PythonAssignmentsDefine (five mutations, all
+  killed).
   **Layman:** Stops the docs checker flagging real Python names as missing.
   Kind: fix.
   Source: Snatch feedback 2026-09-25.

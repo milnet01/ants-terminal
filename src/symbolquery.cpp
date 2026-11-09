@@ -222,6 +222,7 @@ struct Anchors {
     QRegularExpression wrappedName;
     bool hasWrapped = false;
     bool cppKind = false;
+    bool pyKind = false;   // ANTS-5387 — an assignment row may be `local`
     const char *lang = "";
 };
 
@@ -354,6 +355,11 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             break;
         case Lang::Py:
             add(QStringLiteral("^\\s*(?:async\\s+)?(?:def|class)\\s+") + s + QStringLiteral("\\b"));
+            // ANTS-5387 — an assignment target: `s = …`, `s: T = …` or a bare
+            // annotation `s: T`. `(?!=)` keeps `s == x` out; `+=` never
+            // matches because the operator follows the name.
+            add(QStringLiteral("^\\s*") + s + QStringLiteral("\\s*(?::[^=]+)?(?:=(?!=)|$)"));
+            a.pyKind = true;
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             break;
         case Lang::Lua:
@@ -668,10 +674,51 @@ private:
     QString m_closer;   // non-empty inside a multi-line comment or string
 };
 
+// ANTS-5387 — where a Python line starts: inside a `def` body or inside open
+// brackets (a continuation line, where `name=` is a keyword argument), or at
+// module or class-body level. Indentation closes a def: a code line indented
+// no deeper than a def's own line ends it. Comments and strings are blanked
+// first (CodeOnly), so a bracket or `def` in one counts for nothing.
+// Backslash continuations are not modelled.
+class PyScope {
+public:
+    // Call once per line, in order; returns whether this line starts local.
+    bool step(const QString &line) {
+        static const QRegularExpression defRe(QStringLiteral("^(?:async\\s+)?def\\b"));
+        const QString code = m_code.strip(line);
+        const bool continuation = m_depth > 0;
+        const QString t = code.trimmed();
+        qsizetype indent = 0;
+        while (indent < line.size() && line.at(indent).isSpace()) ++indent;
+        if (!continuation && !t.isEmpty())
+            while (!m_defs.isEmpty() && m_defs.back() >= indent) m_defs.pop_back();
+        const bool local = continuation || !m_defs.isEmpty();
+        if (!continuation && defRe.match(t).hasMatch()) m_defs.push_back(indent);
+        for (const QChar c : code) {
+            if (c == QLatin1Char('(') || c == QLatin1Char('[') || c == QLatin1Char('{')) ++m_depth;
+            else if ((c == QLatin1Char(')') || c == QLatin1Char(']') || c == QLatin1Char('}'))
+                     && m_depth > 0) --m_depth;
+        }
+        return local;
+    }
+
+private:
+    CodeOnly m_code{Lang::Py};
+    QVector<qsizetype> m_defs;   // indents of the open defs, outermost first
+    int m_depth = 0;             // open brackets
+};
+
 // ANTS-4358's function-local lambda is a name documents cite
 // (makeFieldsProp and its siblings), so it keeps its kind inside a body.
 bool isLambdaDef(const QString &trimmed) {
     static const QRegularExpression re(QStringLiteral("\\bauto\\s+\\w+\\s*=\\s*\\["));
+    return re.match(trimmed).hasMatch();
+}
+
+// ANTS-5387 — a nested def or class keeps its kind; only an assignment
+// inside a body becomes `local`.
+bool isPyDefOrClass(const QString &trimmed) {
+    static const QRegularExpression re(QStringLiteral("^(?:async\\s+)?(?:def|class)\\b"));
     return re.match(trimmed).hasMatch();
 }
 
@@ -692,6 +739,8 @@ void recordDef(ScanState &st, const Anchors &an, const QString &rel,
         } else if (looksLikeDeclaration(trimmed)) {
             kind = QStringLiteral("declaration");
         }
+    } else if (an.pyKind && local && !isPyDefOrClass(trimmed)) {
+        kind = QStringLiteral("local");   // ANTS-5387 — see PyScope
     }
     QVector<DefMatch> &bucket =
         (kind == QStringLiteral("declaration") || kind == QStringLiteral("local"))
@@ -789,6 +838,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
     // this walk state builds no anchors of its own.
     const bool trackScope = lang == Lang::Cpp || lang == Lang::Glsl;
     CppScope scope;
+    PyScope pyScope;   // ANTS-5387
     CodeOnly codeOnly(lang);
     QVarLengthArray<int, 8> codeHits;
     while (!f.atEnd()) {
@@ -815,7 +865,8 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
         }
         const QString line = QString::fromUtf8(raw);
         const QString thisLine = line.trimmed();
-        const bool local = trackScope && scope.local();
+        const bool local = trackScope ? scope.local()
+                                      : (lang == Lang::Py && pyScope.step(line));
 
         // ANTS-4828 — resolve split signatures. The line after the name must
         // open the parameter list with `(`; lines then join until one holds

@@ -22,6 +22,11 @@ source tree spanning C++, Python, Lua, Shell):
 3b. (ANTS-5670) Rust `const NAME: T`, `static [mut] NAME: T` and a
     path-scoped visibility (`pub(crate) fn`, `pub(super) const fn`) are
     definitions. A use of the name is not.
+3c. (ANTS-5387) A Python assignment (`NAME = …`, `NAME: T = …`, `NAME: T`)
+    defines NAME. At module level or in a class body it is a
+    `definition`; inside a `def` body or inside open brackets it is
+    `local`. A `def` or `class` line keeps its kind. `NAME == x` is not an
+    assignment.
 4. The tree walk skips `build*` / dot-dirs / `node_modules`.
 5. An explicit `lang` filter restricts the scan to one family.
 5a. (ANTS-5544) `CMakeLists.txt` and `*.cmake` are the `cmake` family.

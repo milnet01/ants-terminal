@@ -291,6 +291,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_definition and doc_symbols resolve Python module constants and class attributes to the line that assigns them.** (ANTS-5387)
+  An assignment inside a function body, or a keyword argument on a
+  continuation line, is reported as `local` and ranks after definitions.
+
 - **find_definition and doc_symbols resolve Rust const and static items, and functions declared pub(crate), pub(super) or pub(in path).** (ANTS-5670)
 
 - **doc_symbols resolves names from a CMake FetchContent dependency's source under build/_deps, and no longer reports std:: names.** (ANTS-5669)

@@ -654,6 +654,66 @@ TEST(McpSymbolQuery, Ants5670RustConstStaticAndScopedPub) {
                   .definitionsTotal, 1);
 }
 
+// ANTS-5387 — spec 3c: a Python assignment defines its target. Module and
+// class-body assignments are definitions; one inside a def body or inside
+// open brackets (a keyword argument on a continuation line) is `local`, which
+// ranks after every definition. A comparison is no assignment.
+TEST(McpSymbolQuery, Ants5387PythonAssignmentsDefine) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("vault.py"),
+              QStringLiteral("import os\n"                       // 1
+                             "ARGON2_TIME = 3\n"                 // 2
+                             "TIMEOUT: int = 30\n"               // 3
+                             "try:\n"                            // 4
+                             "    import fastlib\n"              // 5
+                             "    HAS_FAST = True\n"             // 6
+                             "except ImportError:\n"             // 7
+                             "    HAS_FAST = False\n"            // 8
+                             "\n"                                // 9
+                             "class Vault:\n"                    // 10
+                             "    kdf_name = \"argon2\"\n"       // 11
+                             "    rounds: int\n"                 // 12
+                             "\n"                                // 13
+                             "    def open(self):\n"             // 14
+                             "        scratch_value = 1\n"       // 15
+                             "        return call(\n"            // 16
+                             "            retry_limit=5,\n"      // 17
+                             "        )\n"                       // 18
+                             "\n"                                // 19
+                             "total = compute(ARGON2_TIME == 3)\n"  // 20
+                             "after_def = 1\n"                   // 21
+                             "ARGON2_TIME == 3\n"                // 22
+                             "CONFIG = dict(\n"                  // 23
+                             "    pool_size=4,\n"                // 24
+                             ")\n"                               // 25
+                             "def outer():\n"                    // 26
+                             "    def inner_helper():\n"         // 27
+                             "        pass\n"));                 // 28
+
+    SymbolQuery::Options so;
+    auto rows = [&](const char *sym) {
+        std::string out;
+        for (const auto &d :
+             SymbolQuery::findDefinition(root, QString::fromUtf8(sym), so).definitions)
+            out += QStringLiteral("%1/%2 ").arg(d.line).arg(d.kind).toStdString();
+        return out;
+    };
+    EXPECT_EQ(rows("ARGON2_TIME"), "2/definition ");
+    EXPECT_EQ(rows("TIMEOUT"), "3/definition ");
+    EXPECT_EQ(rows("HAS_FAST"), "6/definition 8/definition ");
+    EXPECT_EQ(rows("kdf_name"), "11/definition ");
+    EXPECT_EQ(rows("rounds"), "12/definition ");
+    EXPECT_EQ(rows("scratch_value"), "15/local ");
+    EXPECT_EQ(rows("retry_limit"), "17/local ");
+    EXPECT_EQ(rows("open"), "14/definition ") << "a method stays a definition";
+    EXPECT_EQ(rows("after_def"), "21/definition ") << "the def body has ended";
+    EXPECT_EQ(rows("CONFIG"), "23/definition ");
+    EXPECT_EQ(rows("pool_size"), "24/local ") << "a keyword argument at module level";
+    EXPECT_EQ(rows("inner_helper"), "27/definition ") << "a nested def keeps its kind";
+}
+
 TEST(McpSymbolQuery, WiringContract) {
     expect_reset();
 
