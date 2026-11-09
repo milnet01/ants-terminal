@@ -610,3 +610,64 @@ TEST(DocSymbols, Ants5357NameUsedByCodeIsReferenced) {
     EXPECT_EQ(l.referenced.size(), 4);
     EXPECT_TRUE(l.unresolved.contains(QStringLiteral("LegacyHelper")));
 }
+
+// INV-13 (ANTS-5669) — a `std::` span names the standard library, which no
+// project defines, so it is not a candidate. A name defined only in a
+// FetchContent dependency's source (build/_deps/<name>-src) resolves there,
+// though the project walk skips build/. A name defined nowhere stays
+// unresolved.
+TEST(DocSymbols, Ants5669StdSkippedAndDepsResolve) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    ASSERT_TRUE(seedTree(root));
+    ASSERT_TRUE(writeFile(root + "/build/_deps/jolt-src/Jolt/Physics/BodyInterface.h",
+                          "namespace JPH {\nclass BodyInterface {\n};\n}\n"));
+    ASSERT_TRUE(writeFile(root + "/build/_deps/jolt-src/Build/CMakeLists.txt",
+                          "target_compile_definitions(Jolt PUBLIC JOLT_ONLY_FLAG)\n"));
+    ASSERT_TRUE(writeFile(root + "/build/other/Stray.h",
+                          "class StrayBuildOutput {\n};\n"));
+
+    const QString doc = QStringLiteral(
+        "`std::unique_ptr` and `std::bad_alloc` wrap a `JPH::BodyInterface`.\n"
+        "`StrayBuildOutput` and `GoneForGood()` are not dependencies.\n"
+        "`JOLT_ONLY_FLAG` is a flag the dependency's build uses.\n");
+    DocSymbols::Options opts;
+    opts.rootCanonical = root;
+    const DocSymbols::ScanResult r = DocSymbols::scan(doc, QStringLiteral("docs/x.md"), opts);
+
+    QMap<QString, DocSymbols::Symbol> got;
+    for (const DocSymbols::Symbol &s : r.symbols) got.insert(s.symbol, s);
+    EXPECT_FALSE(got.contains(QStringLiteral("std::unique_ptr")));
+    EXPECT_FALSE(got.contains(QStringLiteral("std::bad_alloc")));
+
+    using R = DocSymbols::Resolution;
+    ASSERT_TRUE(got.contains(QStringLiteral("JPH::BodyInterface")));
+    const DocSymbols::Symbol &jolt = got.value(QStringLiteral("JPH::BodyInterface"));
+    EXPECT_EQ(jolt.resolution, R::Resolved);
+    ASSERT_FALSE(jolt.definitions.isEmpty());
+    EXPECT_EQ(jolt.definitions.front().file.toStdString(),
+              "build/_deps/jolt-src/Jolt/Physics/BodyInterface.h");
+    EXPECT_EQ(jolt.definitions.front().line, 2);
+
+    // Only _deps/*-src is a dependency; the rest of build/ stays skipped.
+    EXPECT_EQ(got.value(QStringLiteral("StrayBuildOutput")).resolution, R::Unresolved);
+    EXPECT_EQ(got.value(QStringLiteral("GoneForGood()")).resolution, R::Unresolved);
+    EXPECT_EQ(r.unresolved, 2);
+    EXPECT_EQ(r.findings.size(), 2);
+
+    // A name only the dependency's code uses is referenced there (INV-12).
+    const DocSymbols::Symbol &flag = got.value(QStringLiteral("JOLT_ONLY_FLAG"));
+    EXPECT_EQ(flag.resolution, R::Referenced);
+    ASSERT_TRUE(flag.usedAt.has_value());
+    EXPECT_EQ(flag.usedAt->file.toStdString(), "build/_deps/jolt-src/Build/CMakeLists.txt");
+
+    // The qualifier is checked against the dependency's own namespace.
+    const DocSymbols::Locators l = DocSymbols::locate(r.symbols, [&](const QString &rel) {
+        QFile f(root + QLatin1Char('/') + rel);
+        if (!f.open(QIODevice::ReadOnly)) return QStringList();
+        return QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    });
+    EXPECT_EQ(l.located.value(QStringLiteral("JPH::BodyInterface")).toStdString(),
+              "build/_deps/jolt-src/Jolt/Physics/BodyInterface.h:2");
+}

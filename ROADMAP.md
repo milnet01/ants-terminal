@@ -89145,7 +89145,7 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-10-12 triage
 
-- 📋 [ANTS-5669] **doc_symbols resolves names from vendored dependencies and std::, and reports function parameters as not checked.**
+- ✅ [ANTS-5669] **doc_symbols resolves names from vendored dependencies and std::, and reports function parameters as not checked.**
   Vestige: doc_lint (doc_symbols) on docs/engine/physics/spec.md
   reported 76 unresolved names, every one real. This item covers three of
   the six classes: symbols of a FetchContent dependency under
@@ -89161,6 +89161,13 @@ project. Reported causes are claims until checked in source.
   and Jolt names Vestige's own code uses (physics spec: 58 unresolved →
   7). Left: `std::` names the code never uses, Jolt names only under
   build/_deps, and `FetchContent_Declare` (CMake, see ANTS-5544).
+  2026-11-09: std:: spans are skipped at harvest; a needle still
+  unresolved after the project walk is looked up once in each
+  build/_deps/*-src (definition → resolved, use → referenced; deadline →
+  not_checked). FetchContent_Declare is referenced via ANTS-5544's CMake
+  walk. Vestige physics spec: 9 distinct unresolved → 2, none
+  not_checked, 2.6 s. Spec ANTS-3661 INV-13; test
+  DocSymbols.Ants5669StdSkippedAndDepsResolve.
   **Layman:** The document checker reports real names as missing when they come from a downloaded library, the C++ standard library or a function's own arguments, so the real mistakes get lost.
   Kind: fix.
   Source: feedback-Vestige-2026-10-12.

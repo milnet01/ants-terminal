@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "markdownscan.h"
+#include "walkrules.h"
 
 namespace DocSymbols {
 namespace {
@@ -94,6 +95,23 @@ QString stripOneSpace(const QString &content) {
     return content;
 }
 
+// ANTS-5669 — CMake FetchContent unpacks each dependency's source into
+// <root>/build/_deps/<name>-src. The rest of build/ is output and stays
+// skipped. A symlink is not followed, as in every walk (walkrules.h).
+QStringList dependencyRoots(const QString &rootCanonical) {
+    QStringList out;
+    if (rootCanonical.isEmpty()) return out;
+    const QString deps = rootCanonical + QLatin1String("/build/_deps");
+    if (!walkrules::followed(QFileInfo(rootCanonical + QLatin1String("/build")))
+        || !walkrules::followed(QFileInfo(deps)))
+        return out;
+    for (const QFileInfo &fi : walkrules::entries(deps))
+        if (fi.isDir() && walkrules::followed(fi)
+            && fi.fileName().endsWith(QLatin1String("-src")))
+            out << fi.absoluteFilePath();
+    return out;
+}
+
 struct Candidate {
     QString span;    // verbatim span content, echoed as Symbol::symbol
     QString needle;  // what the resolver is asked for
@@ -142,6 +160,9 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         if (opts.excludedNames.contains(span)) continue;
         if (keywords().contains(span)) continue;
         if (namingConventionNames().contains(span)) continue;
+        // ANTS-5669 — the standard library is defined by no project, so a
+        // `std::` span could only ever come back unresolved.
+        if (span.startsWith(QLatin1String("std::"))) continue;
 
         // The length floor is a real trade: it also drops `emit`, `exec`,
         // `main` and `open`. Accepted, because a doc asserting something about
@@ -205,6 +226,8 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
     QStringList pending;
     pending.reserve(kResolveChunk);
 
+    QStringList depCandidates;   // ANTS-5669 — unresolved after the project walk
+
     auto flush = [&]() {
         if (pending.isEmpty()) return;
         SymbolQuery::Options so;
@@ -223,6 +246,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
                 uses[needle]  = *r.firstUse;
             } else {
                 state[needle] = Resolution::Unresolved;
+                if (r.ok) depCandidates << needle;
             }
         }
         pending.clear();
@@ -242,6 +266,50 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
         if (pending.size() >= kResolveChunk) flush();
     }
     flush();
+
+    // ANTS-5669 — a name the project neither defines nor uses may come from a
+    // FetchContent dependency, whose source sits under build/, which the
+    // project walk skips. One walk per dependency, for those names only, after
+    // every chunk: a walk per chunk spent Vestige's whole deadline. A name the
+    // deadline stops short of was never looked up there, so it is NotChecked
+    // (INV-7), not Unresolved.
+    // A name the dependency's own code uses is `referenced`, as a project use
+    // is (INV-12); a later dependency that DEFINES it still upgrades it.
+    SymbolQuery::Options depOpts;
+    depOpts.maxResults = 50;
+    depOpts.recordFirstUse = true;
+    for (const QString &dep : dependencyRoots(opts.rootCanonical)) {
+        if (depCandidates.isEmpty()) break;
+        if (opts.resolveDeadlineMs > 0 && clock.elapsed() >= opts.resolveDeadlineMs) {
+            for (const QString &needle : std::as_const(depCandidates))
+                if (state.value(needle) == Resolution::Unresolved) {
+                    state[needle] = Resolution::NotChecked;
+                    anyNeedleElided = true;
+                }
+            break;
+        }
+        const QString prefix = dep.mid(opts.rootCanonical.size() + 1) + QLatin1Char('/');
+        const QHash<QString, SymbolQuery::DefResult> found =
+            SymbolQuery::findDefinitions(dep, depCandidates, depOpts);
+        for (qsizetype i = depCandidates.size() - 1; i >= 0; --i) {
+            const QString &needle = depCandidates.at(i);
+            const SymbolQuery::DefResult r = found.value(needle);
+            QVector<SymbolQuery::DefMatch> d = r.definitions;
+            if (d.isEmpty()) {
+                if (r.firstUse && !uses.contains(needle)) {
+                    state[needle] = Resolution::Referenced;
+                    uses[needle]  = *r.firstUse;
+                    uses[needle].file.prepend(prefix);
+                }
+                continue;
+            }
+            uses.remove(needle);
+            for (SymbolQuery::DefMatch &m : d) m.file.prepend(prefix);
+            state[needle] = Resolution::Resolved;
+            defs[needle]  = d;
+            depCandidates.removeAt(i);
+        }
+    }
 
     for (const Candidate &c : std::as_const(cands)) {
         const Resolution r = state.value(c.needle, Resolution::NotChecked);

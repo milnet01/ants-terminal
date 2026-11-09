@@ -291,6 +291,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_symbols resolves names from a CMake FetchContent dependency's source under build/_deps, and no longer reports std:: names.** (ANTS-5669)
+  A name the project neither defines nor uses is looked up in each
+  `build/_deps/<name>-src` folder once the project walk is done.
+
 - **find_definition, find_caller and doc_symbols read CMakeLists.txt and *.cmake files: a CMake option, variable, function or macro resolves to the line that creates it, and a name the build only uses reports as referenced.** (ANTS-5544)
   `lang` takes a new `cmake` family.
 
