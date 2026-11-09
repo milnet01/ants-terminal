@@ -17,6 +17,8 @@
 namespace CiHistory {
 
 struct Options {
+    // ANTS-6722 — owner/name for every gh call; empty leaves gh's own pick.
+    QString repo;
     int days = 30;
     QString workflow;              // keep runs of this workflow name only
     QDateTime now = QDateTime::currentDateTimeUtc();

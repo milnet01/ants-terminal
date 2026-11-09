@@ -55,7 +55,8 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "alternating (flips red/green across commits), near_budget, "
                         "budget_trend, scheduled_red, queue_wait, annotation, "
                         "runner_latest, cache_size, cache_key_shared, cache_save_skipped, "
-                        "test_parallelism. Each finding names its runs, SHAs and the "
+                        "test_parallelism, repo_ambiguous (a fork it cannot tell apart). "
+                        "Each finding names its runs, SHAs and the "
                         "standard it cites. source:\"saved\" reads the last report with no "
                         "network. caller_cwd Required.");
                     t["detail"] = QStringLiteral(

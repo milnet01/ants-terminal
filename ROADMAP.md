@@ -80339,7 +80339,7 @@ in each bullet, not just the reporter's symptom.
   Kind: investigate.
   Source: ci_report alternating finding on this repo, 2026-11-05.
 
-- 📋 [ANTS-6722] **ci_report reads the current branch's own GitHub remote in a fork, and says so loudly when it cannot tell.**
+- ✅ [ANTS-6722] **ci_report reads the current branch's own GitHub remote in a fork, and says so loudly when it cannot tell.**
   rusty-psn: origin = RainbowCookie32/rusty-psn (upstream), fork =
   milnet01/rusty-psn, and local-dev tracks fork. With no `gh repo
   set-default`, ci_report read upstream (43 runs, ok:true) where the fork
@@ -80349,6 +80349,15 @@ in each bullet, not just the reporter's symptom.
   GitHub remotes exist, refuse or put the ambiguity in findings, naming
   `gh repo set-default`. Also filed by claude-config in
   claude_config_Ants_MCP_Feedback.md (2026-11-09). Related: ANTS-6403.
+  2026-11-09: with two GitHub remotes and no gh-resolved, every gh call
+  names the remote the current branch tracks (read from .git/HEAD and
+  the branch's remote in the config, no process); repo_note says which
+  and why. With none, gh's pick stands and a repo_ambiguous problem
+  finding names the others and gh repo set-default. Spec ANTS-6399 §
+  4.2, § 4.3, § 7. Test McpCiReport.Ants6722ForkReadsTheBranchRemote.
+  Live: a throwaway folder with rusty-psn's remotes read
+  milnet01/rusty-psn (166 runs). rusty-psn itself now has gh-resolved
+  set.
   **Layman:** In a copy of someone else's project, the CI report reads your copy's results rather than the original project's.
   Kind: fix.
   Source: feedback-rusty-psn-2026-11-09.

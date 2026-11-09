@@ -29,7 +29,11 @@ a fake `gh` and reads the saved report back through `session_orient`'s block.
 
 `McpCiReport.Ants6403AmbiguousRemotesNameTheRepoRead` locks `repo_note`
 (spec § 4.2): two GitHub remotes and no `gh-resolved` carry it; a set
-default or one GitHub remote does not. `McpCiReport.Ants6406WrapperOptionValues`
+default or one GitHub remote does not. `McpCiReport.Ants6722ForkReadsTheBranchRemote`
+locks the choice of repository there: every gh call names the GitHub
+remote the current branch tracks; with none, a `repo_ambiguous` problem
+finding names `gh repo set-default` and the repository not read.
+`McpCiReport.Ants6406WrapperOptionValues`
 reads ctest past a wrapper option that takes a value, and past quoting.
 
 The `McpCiReport.Ants6415*` to `Ants6421*` tests lock what other sessions

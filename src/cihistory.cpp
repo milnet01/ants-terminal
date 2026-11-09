@@ -367,15 +367,19 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
     Result res;
     Session s(root, opts);
 
-    const Call view = s.run({QStringLiteral("repo"), QStringLiteral("view"), QStringLiteral("--json"),
-                             QStringLiteral("nameWithOwner,defaultBranchRef")});
+    QStringList viewArgs{QStringLiteral("repo"), QStringLiteral("view")};
+    if (!opts.repo.isEmpty()) viewArgs << opts.repo;   // ANTS-6722
+    viewArgs << QStringLiteral("--json") << QStringLiteral("nameWithOwner,defaultBranchRef");
+    const Call view = s.run(viewArgs);
     if (refuseOn(view, res)) return res;
     res.repo = QJsonDocument::fromJson(view.out).object()
                    .value(QStringLiteral("nameWithOwner")).toString();
 
-    const Call list = s.run({QStringLiteral("run"), QStringLiteral("list"), QStringLiteral("--json"),
+    QStringList listArgs{QStringLiteral("run"), QStringLiteral("list"), QStringLiteral("--json"),
         QStringLiteral("databaseId,headSha,headBranch,conclusion,event,workflowName,createdAt,attempt,status"),
-        QStringLiteral("--limit"), QString::number(opts.runLimit)});
+        QStringLiteral("--limit"), QString::number(opts.runLimit)};
+    if (!opts.repo.isEmpty()) listArgs << QStringLiteral("--repo") << opts.repo;
+    const Call list = s.run(listArgs);
     if (refuseOn(list, res)) return res;
     bool runLimitHit = false;
     const QJsonArray runs = keepRuns(QJsonDocument::fromJson(list.out).array(), opts, &runLimitHit);

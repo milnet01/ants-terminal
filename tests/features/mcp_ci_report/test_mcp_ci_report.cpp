@@ -144,8 +144,10 @@ struct FakeGh {
         gh.write("#!/bin/bash\n"
                  "echo \"$*\" >> \"$FAKE_DIR/calls.log\"\n"
                  "d=\"$FAKE_DIR/${2//[\\/?=&]/_}.delay\"; [[ $1 == api && -f $d ]] && sleep \"$(<\"$d\")\"\n"
+                 // `repo view <owner/name>` names the repository; bare, gh picks o/r.
                  "if [[ $1 == repo ]]; then\n"
-                 "  printf '%s' '{\"nameWithOwner\":\"o/r\",\"defaultBranchRef\":{\"name\":\"main\"}}'\n"
+                 "  r=$3; [[ -z $r || $r == --* ]] && r=o/r\n"
+                 "  printf '{\"nameWithOwner\":\"%s\",\"defaultBranchRef\":{\"name\":\"main\"}}' \"$r\"\n"
                  "elif [[ $1 == run ]]; then\n"
                  "  [[ $FAKE_FAIL == list ]] && { echo 'HTTP 401: Bad credentials' >&2; exit 1; }\n"
                  "  f=\"$FAKE_DIR/runs.json\"; [[ -f $f ]] && printf '%s' \"$(<\"$f\")\" || printf '[]'\n"
@@ -798,6 +800,67 @@ TEST(McpCiReport, Ants6403AmbiguousRemotesNameTheRepoRead) {
     EXPECT_TRUE(note("[remote \"origin\"]\n\turl = https://github.com/o/r.git\n"
                      "[remote \"mirror\"]\n\turl = https://gitlab.com/o/r.git\n").isUndefined())
         << "one GitHub remote";
+}
+
+// ---- ANTS-6722: in a fork, read the current branch's own remote ------------
+
+// Two GitHub remotes, no `gh repo set-default`. Where the current branch
+// tracks a GitHub remote, every gh call names that repository. Where it
+// tracks none, gh's own pick stands and a `repo_ambiguous` problem finding
+// says how to choose. A set default, or one GitHub remote, passes no repo.
+TEST(McpCiReport, Ants6722ForkReadsTheBranchRemote) {
+    struct Out { QJsonObject reply; QString calls; };
+    auto run = [](const QByteArray &config, const QByteArray &head) {
+        Env env;
+        FakeGh gh;
+        gh.install(env);
+        Project p(/*withWorkflow=*/true, /*withRemote=*/false);
+        env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+        p.write(QStringLiteral(".git/config"), config);
+        if (!head.isEmpty()) p.write(QStringLiteral(".git/HEAD"), head);
+        Out o{p.call(), QString()};
+        QFile log(gh.log());
+        if (log.open(QIODevice::ReadOnly)) o.calls = QString::fromUtf8(log.readAll());
+        return o;
+    };
+    auto ambiguous = [](const QJsonObject &r) {
+        for (const QJsonValue &v : r.value("findings").toArray())
+            if (v.toObject().value("check").toString() == QLatin1String("repo_ambiguous"))
+                return v.toObject();
+        return QJsonObject();
+    };
+    const QByteArray remotes = "[remote \"origin\"]\n\turl = git@github.com:me/r.git\n"
+                               "[remote \"upstream\"]\n\turl = https://github.com/o/r.git\n";
+    const QByteArray tracksOrigin = "[branch \"dev\"]\n\tremote = origin\n\tmerge = refs/heads/dev\n";
+
+    const Out fork = run(remotes + tracksOrigin, "ref: refs/heads/dev\n");
+    EXPECT_EQ(fork.reply.value("repo").toString(), QStringLiteral("me/r")) << dump(fork.reply);
+    EXPECT_TRUE(fork.calls.contains(QLatin1String("repo view me/r"))) << fork.calls.toStdString();
+    EXPECT_TRUE(fork.calls.contains(QLatin1String("--repo me/r"))) << fork.calls.toStdString();
+    EXPECT_TRUE(fork.reply.value("repo_note").toString().contains(QLatin1String("origin")))
+        << "the note says which remote was read and why";
+    EXPECT_TRUE(ambiguous(fork.reply).isEmpty());
+
+    const Out detached = run(remotes, "0123456789abcdef0123456789abcdef01234567\n");
+    EXPECT_EQ(detached.reply.value("repo").toString(), QStringLiteral("o/r"));
+    const QJsonObject f = ambiguous(detached.reply);
+    ASSERT_FALSE(f.isEmpty()) << dump(detached.reply);
+    EXPECT_EQ(f.value("severity").toString(), QStringLiteral("problem"));
+    EXPECT_TRUE(f.value("message").toString().contains(QLatin1String("gh repo set-default")));
+    EXPECT_TRUE(f.value("message").toString().contains(QLatin1String("me/r")))
+        << "the message names the repository not read";
+    EXPECT_EQ(detached.reply.value("findings").toArray().first().toObject().value("check").toString(),
+              QStringLiteral("repo_ambiguous")) << "a problem sorts first";
+
+    const Out set = run("[remote \"origin\"]\n\turl = git@github.com:me/r.git\n\tgh-resolved = base\n"
+                        "[remote \"upstream\"]\n\turl = https://github.com/o/r.git\n" + tracksOrigin,
+                        "ref: refs/heads/dev\n");
+    EXPECT_FALSE(set.calls.contains(QLatin1String("--repo"))) << "gh repo set-default chose";
+    EXPECT_TRUE(ambiguous(set.reply).isEmpty());
+
+    const Out one = run("[remote \"origin\"]\n\turl = https://github.com/o/r.git\n" + tracksOrigin,
+                        "ref: refs/heads/dev\n");
+    EXPECT_FALSE(one.calls.contains(QLatin1String("--repo"))) << "one GitHub remote";
 }
 
 // ---- ANTS-6406: a wrapper option that takes a value ------------------------

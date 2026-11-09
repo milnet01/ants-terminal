@@ -139,7 +139,11 @@ runs (ANTS-6421).
 A live reply also carries `repo_note` when two or more remotes name
 `github.com` and none has `gh-resolved` (set by `gh repo set-default`):
 `gh` then reads the `upstream` remote, so the note names the repository
-read and the command that picks another (ANTS-6403). `cache` is `"hit"`, `"miss"` or
+read and the command that picks another (ANTS-6403). In that case every
+`gh` call names the GitHub remote the current branch tracks, read from
+`.git/HEAD` and the branch's `remote` in the git config, and the note says
+so. With no such remote, `gh`'s pick stands and the `repo_ambiguous`
+check fires (ANTS-6722). `cache` is `"hit"`, `"miss"` or
 `"unknown"` and is present on timing findings only (§ 4.3). `runs` and
 `shas` hold at most 10 entries each, newest first. A finding whose
 evidence includes a job from an attempt older than its run's latest
@@ -167,6 +171,7 @@ or hygiene change.
 | `cache_size` | advice | The repository's Actions cache usage is 80% or more of 10 GB. | `local-gate.md` § 9, caches row (prune) |
 | `cache_key_shared` | advice | Two jobs save `actions/cache` keys with the same prefix: the key with its last `${{ … }}` and everything after it removed, compared as text (`${{ runner.os }}-ccache-release-`). | `local-gate.md` § 9, caches row |
 | `cache_save_skipped` | advice | An `actions/cache/save` step's `if:` does not run after a failure (it holds none of `always()`, `failure()` or `!cancelled()`), or a job uses the combined `actions/cache`, whose save does not run when the job fails. | `local-gate.md` § 9, caches row |
+| `repo_ambiguous` | problem | Two or more remotes name `github.com`, none has `gh-resolved`, and the current branch tracks no GitHub remote, so the report reads `gh`'s pick. Names the repository read, the others, and `gh repo set-default` (ANTS-6722). A problem, because every other finding may be about the wrong repository. | none |
 | `test_parallelism` | advice | A step runs a `ctest` command that carries `--timeout` and no `-j`/`--parallel`, and `CTEST_PARALLEL_LEVEL` is set neither in the step's command nor in the workflow's, job's or step's `env`. The ctest command is read on its own, past wrappers such as `timeout`, `env`, `sudo` and `xvfb-run`. The message states the isolation precondition. | `local-gate.md` § 9, test-parallelism row |
 
 **A job's time** runs from its `started_at` to its last step's
@@ -412,6 +417,7 @@ removed and seen to fail before it lands.
 | ANTS-6402 tests (`McpCiReport.Ants6402*`) | INV-1's amendment; § 4.4's matrix, alias, flow-map and block-map rules; § 4.5's pages and log ends |
 | `McpCiReport.Ants6415*` to `Ants6421*` | § 4.2's `window.files`; § 4.3's `alternating`, `budget_trend` detail and matrix `runner_latest`; § 4.4's `dynamic` runs and budgets at a run's commit |
 | fake-`gh` verb tests | INV-6, INV-8, INV-9, INV-10 |
+| `McpCiReport.Ants6722ForkReadsTheBranchRemote` | § 4.2's choice of repository; § 4.3's `repo_ambiguous` |
 | `session_orient` block test | INV-7 |
 | source checks, with `tests/features/standalone_mcp_server` | INV-11 |
 

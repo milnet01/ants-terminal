@@ -25,6 +25,8 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QMap>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QStandardPaths>
 
@@ -65,10 +67,23 @@ QJsonObject readSaved(const QString &path) {
 // The git remotes whose URL names github.com, read from the config files with
 // no process: the repository's own, and a worktree's common one. `resolved`
 // is true when `gh repo set-default` marked one (`gh-resolved`).
+// ANTS-6722 — `slugs` maps each such remote to its owner/name, and
+// `branchRemote` names the remote the current branch tracks, if any.
 struct GithubRemotes {
     int count = 0;
     bool resolved = false;
+    QMap<QString, QString> slugs;
+    QString branchRemote;
 };
+
+// owner/name from a GitHub URL: https://github.com/o/n(.git),
+// git@github.com:o/n(.git) or ssh://git@github.com/o/n(.git). Empty otherwise.
+QString githubSlug(const QString &url) {
+    static const QRegularExpression re(
+        QStringLiteral("github\\.com[:/]([\\w.-]+)/([\\w.-]+?)(?:\\.git)?/?$"));
+    const QRegularExpressionMatch m = re.match(url);
+    return m.hasMatch() ? m.captured(1) + QLatin1Char('/') + m.captured(2) : QString();
+}
 
 GithubRemotes githubRemotes(const QString &root) {
     GithubRemotes found;
@@ -88,21 +103,38 @@ GithubRemotes githubRemotes(const QString &root) {
     if (common.open(QIODevice::ReadOnly))
         configs << QDir(gitDir).absoluteFilePath(QString::fromUtf8(common.readAll()).trimmed())
                        + QStringLiteral("/config");
+    // A worktree's HEAD is its own, in its own git dir.
+    QString branch;
+    QFile head(gitDir + QStringLiteral("/HEAD"));
+    if (head.open(QIODevice::ReadOnly)) {
+        const QString ref = QString::fromUtf8(head.readAll()).trimmed();
+        if (ref.startsWith(QLatin1String("ref: refs/heads/"))) branch = ref.mid(16);
+    }
+    static const QRegularExpression section(QStringLiteral("^\\[(remote|branch) \"(.*)\"\\]$"));
     for (const QString &path : configs) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) continue;
         // Only a [remote "…"] section's url: a submodule's is another repository.
         // A remote counts once, however many url lines it has.
-        bool inRemote = false, counted = false;
+        QString remote;
+        bool inBranch = false, counted = false;
         while (!f.atEnd()) {
             const QString line = QString::fromUtf8(f.readLine()).trimmed();
             if (line.startsWith(QLatin1Char('['))) {
-                inRemote = line.startsWith(QLatin1String("[remote "));
+                const QRegularExpressionMatch m = section.match(line);
+                const bool isRemote = m.hasMatch() && m.captured(1) == QLatin1String("remote");
+                remote = isRemote ? m.captured(2) : QString();
+                inBranch = m.hasMatch() && !isRemote && !branch.isEmpty() && m.captured(2) == branch;
                 counted = false;
-            } else if (!inRemote) continue;
-            else if (line.startsWith(QLatin1String("url")) && line.contains(QLatin1String("github.com"))) {
+            } else if (inBranch && line.startsWith(QLatin1String("remote"))) {
+                found.branchRemote = line.section(QLatin1Char('='), 1).trimmed();
+            } else if (remote.isEmpty()) {
+                continue;
+            } else if (line.startsWith(QLatin1String("url")) && line.contains(QLatin1String("github.com"))) {
                 if (!counted) ++found.count;
                 counted = true;
+                const QString slug = githubSlug(line.section(QLatin1Char('='), 1).trimmed());
+                if (!slug.isEmpty() && !found.slugs.contains(remote)) found.slugs.insert(remote, slug);
             }
             else if (line.startsWith(QLatin1String("gh-resolved")))
                 found.resolved = true;
@@ -214,6 +246,12 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
             return w.name != workflow && w.file != workflow;
         });
     CiHistory::Options opts;
+    // ANTS-6722 — in a fork with no `gh repo set-default`, gh reads the
+    // `upstream` remote. Read the remote the current branch tracks instead;
+    // with none to go on, gh's pick stands and a finding says so.
+    const bool ambiguous = remotes.count > 1 && !remotes.resolved;
+    const QString branchSlug = remotes.slugs.value(remotes.branchRemote);
+    if (ambiguous) opts.repo = branchSlug;
     opts.days = days;
     opts.workflow = workflow;
     opts.now = now;
@@ -242,8 +280,16 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
                       QStringLiteral("gh could not reach GitHub; see stderr_tail (gh auth status)"),
                       {{QStringLiteral("stderr_tail"), fetched.stderrTail}});
 
-    const CiReport::Analysis a =
-        CiReport::analyse(fetched.history, wf, now, days, commitsOf(fetched.history));
+    QJsonObject history = fetched.history;
+    if (ambiguous && branchSlug.isEmpty()) {
+        QStringList others;
+        for (const QString &slug : remotes.slugs)
+            if (slug != fetched.repo && !others.contains(slug)) others << slug;
+        history[QStringLiteral("repo_ambiguous")] =
+            QJsonObject{{QStringLiteral("read"), fetched.repo},
+                        {QStringLiteral("others"), QJsonArray::fromStringList(others)}};
+    }
+    const CiReport::Analysis a = CiReport::analyse(history, wf, now, days, commitsOf(history));
     QJsonArray unread = wf.unread;
     for (const QJsonValue &v : a.unread) unread.append(v);
     QJsonObject reply{
@@ -261,9 +307,14 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
         {QStringLiteral("counts"), a.counts},
         {QStringLiteral("unread"), unread},
         {QStringLiteral("fetch_errors"), fetched.fetchErrors}};
-    // In a fork gh reads the `upstream` remote unless told otherwise, so say
-    // which repository this is and how to read the other.
-    if (remotes.count > 1 && !remotes.resolved)
+    // Say which repository this is, why, and how to read another.
+    if (ambiguous && !branchSlug.isEmpty())
+        reply[QStringLiteral("repo_note")] = QStringLiteral(
+            "This project has %1 GitHub remotes and gh has no default, so this read %2, "
+            "the remote '%3' the current branch tracks. "
+            "To read another, run: gh repo set-default <owner/name>")
+            .arg(remotes.count).arg(fetched.repo, remotes.branchRemote);
+    else if (ambiguous)
         reply[QStringLiteral("repo_note")] = QStringLiteral(
             "This project has %1 GitHub remotes and gh has no default, so gh chose %2. "
             "To read another, run: gh repo set-default <owner/name>").arg(remotes.count).arg(fetched.repo);

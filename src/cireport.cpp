@@ -843,6 +843,26 @@ QJsonObject toJson(Finding f, const QJsonObject &logs) {
     return o;
 }
 
+// ANTS-6722 — the caller marks a history read from a fork whose repository
+// it could not choose: gh has no default and the current branch tracks no
+// GitHub remote. A problem, because every other finding may be about the
+// wrong repository.
+void checkRepoAmbiguous(const QJsonObject &history, QList<Finding> &found) {
+    const QJsonObject amb = history.value(QStringLiteral("repo_ambiguous")).toObject();
+    if (amb.isEmpty()) return;
+    QStringList others;
+    for (const QJsonValue &v : amb.value(QStringLiteral("others")).toArray())
+        others << v.toString();
+    Finding f = makeFinding("repo_ambiguous", Severity::Problem);
+    f.message = QStringLiteral(
+        "This report reads %1, gh's pick, not %2: gh has no default repository "
+        "and the current branch tracks no GitHub remote. "
+        "Run gh repo set-default <owner/name> to choose.")
+        .arg(amb.value(QStringLiteral("read")).toString(),
+             others.join(QStringLiteral(" or ")));
+    found.append(f);
+}
+
 }  // namespace
 
 Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflows,
@@ -869,6 +889,7 @@ Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflow
     checkCacheKeys(workflows, found);
     checkCacheSave(workflows, found);
     checkTestParallelism(workflows, found);
+    checkRepoAmbiguous(history, found);
 
     // Logs the findings read, problems first: flaky, then near_budget, then trend.
     for (const char *check : {"flaky", "near_budget", "budget_trend"})

@@ -291,6 +291,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report in a fork reads the GitHub repository the current branch tracks; where it cannot tell, a repo_ambiguous problem finding says how to choose.** (ANTS-6722)
+
 - **find_definition and doc_symbols resolve Python module constants and class attributes to the line that assigns them.** (ANTS-5387)
   An assignment inside a function body, or a keyword argument on a
   continuation line, is reported as `local` and ranks after definitions.
