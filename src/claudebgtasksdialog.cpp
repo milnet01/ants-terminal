@@ -12,6 +12,7 @@
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
+#include <QSet>
 #include <QTextEdit>
 #include <QTextStream>
 #include <QVBoxLayout>
@@ -208,7 +209,15 @@ void ClaudeBgTasksDialog::rebuild() {
 
     const auto tasks = m_tracker->tasks();
     int running = 0;
-    for (const auto &t : tasks) if (!t.finished) ++running;
+    QSet<QString> liveIds;
+    for (const auto &t : tasks) {
+        if (!t.finished) ++running;
+        liveIds.insert(t.id);
+    }
+    // ANTS-5203 — forget the output of tasks the tracker no longer lists.
+    m_finishedOutput.removeIf([&liveIds](QHash<QString, QString>::iterator it) {
+        return !liveIds.contains(it.key());
+    });
 
     QString html;
     html += QStringLiteral("<pre style='color: %1; background: %2; "
@@ -284,9 +293,11 @@ void ClaudeBgTasksDialog::rebuild() {
 
     // 0.7.37 scroll-preservation pattern: skip identical renders, then
     // capture vbar/hbar before setHtml, restore after with std::min
-    // clamp. lastHtml is per-dialog (member, not static) so multiple
-    // dialogs don't fight over the cache.
-    if (m_lastHtml == html) {
+    // clamp. The hash is per-dialog (member, not static) so multiple
+    // dialogs don't fight over the cache. ANTS-5203 — a hash, not a second
+    // copy of the page beside the viewer's own document.
+    const size_t htmlHash = qHash(html);
+    if (m_rendered && m_lastHtmlHash == htmlHash) {
         if (m_liveStatus) {
             m_liveStatus->setText(QStringLiteral("● live"));
             m_liveStatus->setStyleSheet(
@@ -294,8 +305,9 @@ void ClaudeBgTasksDialog::rebuild() {
         }
         return;
     }
-    const bool isFirstRender = m_lastHtml.isEmpty();
-    m_lastHtml = html;
+    const bool isFirstRender = !m_rendered;
+    m_rendered = true;
+    m_lastHtmlHash = htmlHash;
 
     QScrollBar *vbar = m_viewer->verticalScrollBar();
     QScrollBar *hbar = m_viewer->horizontalScrollBar();

@@ -10,6 +10,11 @@
 keeps a finished task's output in `m_finishedOutput` and does not call
 `tailFile` for it again; `rewatch` watches only running tasks' output files.
 
+**INV-3 — one copy of each output.** `rebuild` drops `m_finishedOutput`
+entries for tasks the tracker no longer lists. The skip-identical check
+keeps a hash of the page (`m_lastHtmlHash`), not the page HTML.
+Checked by `KeepsOneCopyOfOutput`.
+
 ## Rationale
 
 The ANTS-5092 performance pass found both. The check canonicalised the path
@@ -25,3 +30,5 @@ included.
 ## Regression history
 
 - **ANTS-5092:** the two defects above. Locked by this spec.
+- **ANTS-5203:** the cache kept output of tasks long gone, and the page HTML
+  was held whole beside the viewer's own document. Locked by INV-3.

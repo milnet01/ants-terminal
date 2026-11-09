@@ -19,7 +19,7 @@ class ClaudeBgTaskTracker;
 //     transcript path (to pick up new starts / completions).
 //   • Debounce watcher signals through a 200 ms QTimer so a noisy
 //     stdout doesn't thrash the renderer.
-//   • Skip-identical-HTML guard via a per-dialog lastHtml cache.
+//   • Skip-identical-HTML guard via a per-dialog hash of the last page.
 //   • Capture vbar/hbar value before setHtml, restore after with a
 //     std::min clamp — preserves scroll position across live refreshes.
 class ClaudeBgTasksDialog : public QDialog {
@@ -45,7 +45,8 @@ private:
     QTimer m_debounce;
     QPointer<QTextEdit> m_viewer;
     QPointer<QLabel> m_liveStatus;
-    QString m_lastHtml;
+    size_t m_lastHtmlHash = 0;   // ANTS-5203 — hash of the last page shown
+    bool m_rendered = false;
     // ANTS-5092 — task id → output tail, filled once a task has finished.
     QHash<QString, QString> m_finishedOutput;
 };

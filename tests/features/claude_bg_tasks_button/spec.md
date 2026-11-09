@@ -111,8 +111,9 @@ the wire-up that, if reverted, breaks the user-visible behavior.
   `connect(m_claudeBgTasksBtn, …, MainWindow::showBgTasksDialog)`.)
 
 - **INV-7** (dialog reuses scroll-preservation pattern):
-  `ClaudeBgTasksDialog::rebuild()` declares a `m_lastHtml == html`
-  early-return guard, captures `verticalScrollBar()` value before
+  `ClaudeBgTasksDialog::rebuild()` declares a
+  `m_rendered && m_lastHtmlHash == htmlHash` early-return guard (a hash of
+  the page since ANTS-5203), captures `verticalScrollBar()` value before
   `setHtml`, and restores after with a `qMin(... , maximum())`
   clamp. Same shape as `MainWindow::showDiffViewer` — diverging
   here would re-open the 0.7.37 scroll-reset bug for the new

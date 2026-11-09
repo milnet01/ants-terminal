@@ -98722,8 +98722,13 @@ that extend an earlier perf-pass bundle name it.
   Source: memory-perf-pass-2026-09-14.
   Lanes: audit.
 
-- 📋 [ANTS-5203] **Stop the background-tasks dialog holding each task's output several times over.**
+- ✅ [ANTS-5203] **Stop the background-tasks dialog holding each task's output several times over.**
   Extends ANTS-5092. ClaudeBgTasksDialog::rebuild caches output in m_finishedOutput, which is never pruned for tasks the tracker no longer lists. The page HTML is also kept whole in m_lastHtml for a change check, beside the viewer's own document. Direction: prune the cache to live tasks, and compare a hash instead of keeping the HTML string.
+  Shipped 2026-11-09: rebuild prunes m_finishedOutput to the tracker's
+  tasks (QHash::removeIf), and the skip-identical check keeps
+  qHash(html) plus a rendered flag instead of the page string. Locked by
+  INV-3 in tests/features/claude_bg_tasks_dialog_reads; INV-7 of
+  claude_bg_tasks_button amended to the hash guard.
   **Layman:** The background-tasks window keeps extra copies of task output, and never forgets tasks that are gone.
   Kind: perf.
   Source: memory-perf-pass-2026-09-14.

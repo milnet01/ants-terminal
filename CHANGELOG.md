@@ -105,6 +105,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The background-tasks window keeps one copy of each task's output and forgets tasks that are gone** (ANTS-5203)
+
 - **The audit window holds each finding once, so a large audit uses less memory.** (ANTS-5201)
 
 - **The AI Assistant window keeps about the last sixteen long replies' worth of chat and lets older messages go, so a long session no longer holds every message in memory.** (ANTS-5200)

@@ -47,3 +47,19 @@ TEST(ClaudeBgTasksDialogReads, FinishedOutputReadOnce) {
     EXPECT_TRUE(rewatch.contains(QStringLiteral("!t.finished")))
         << "finished tasks' output files are still watched";
 }
+
+// INV-3
+TEST(ClaudeBgTasksDialogReads, KeepsOneCopyOfOutput) {
+    const QString rebuild = functionBody(dialogSource(),
+                                         QStringLiteral("void ClaudeBgTasksDialog::rebuild()"));
+    ASSERT_FALSE(rebuild.isEmpty());
+    EXPECT_TRUE(rebuild.contains(QStringLiteral("m_finishedOutput.removeIf(")))
+        << "output of tasks the tracker no longer lists is never dropped";
+    QFile h(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
+            + QStringLiteral("/../../../src/claudebgtasksdialog.h"));
+    ASSERT_TRUE(h.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString header = QString::fromUtf8(h.readAll());
+    EXPECT_FALSE(header.contains(QStringLiteral("QString m_lastHtml")))
+        << "the change check keeps a whole copy of the page HTML";
+    EXPECT_TRUE(header.contains(QStringLiteral("m_lastHtmlHash")));
+}
