@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6720 -->
+<!-- ants-roadmap-id-high-water: ANTS=6721 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91304,7 +91304,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: self-found 2026-11-07 (ANTS-6697 build).
   Lanes: mcp-meta.
 
-- 📋 [ANTS-6720] **A command-line sender lets a non-Claude process post a session_message to a project's inbox.**
+- ✅ [ANTS-6720] **A command-line sender lets a non-Claude process post a session_message to a project's inbox.**
   Asked by ants-projects-hub-website (user decision 2026-11-09): its
   serve.mjs (plain Node, systemd user unit) should send each new issue,
   PR, failed build, empty release and upstream-PR change to the owning
@@ -91319,10 +91319,37 @@ measured Ants adding about 5,250 tokens to every request.
   already holds the store code without a GUI. Either is a fresh process
   per call, so a new build reaches the caller with no terminal relaunch.
   Reply to ants-projects-hub-website with the command and the release.
+  2026-11-09 built. No new flag: `ants-mcpd --call session_message -`
+  (ANTS-5506) already sends from a shell, with exit 0 sent / 1 refused /
+  2 usage; told the website the same day. Added: send `dedupe:true`
+  (RoadmapStore::sendMessageDeduped; the match runs inside the send's
+  transaction, before the inbox cap; no schema change), op:"projects"
+  (export_slug, name, root, github_repo via GitOrigin::githubRepo, moved
+  from mainwindow_repo.cpp into src/gitorigin.h), and launch.sh promotes
+  ants-mcpd into ~/.local/share/ants-terminal/bin/ beside ants-terminal.
+  ANTS-4622 spec INV-15, INV-16. Reload: the verb is served by
+  ants-mcpd, so a rebuild reaches Claude on /mcp reconnect and --call on
+  its next run; the installed copy refreshes at each terminal launch.
   **Layman:** Lets the website's stats server leave a note for a project's Claude session, such as a new issue or a failed build, without a Claude session running.
   Kind: feature.
   Source: Ants_Projects_Hub_Website_Ants_MCP_Feedback.md 2026-11-09.
   Lanes: mcp.
+
+- 📋 [ANTS-6721] **Triage the findings of the 2026-11-09 paired review lanes on the roadmap store and the roadmap query/log verbs.**
+  Four review-code lanes ran on f575db35 for claude-config's CFG-0892
+  measurement (two lanes, each twice). Their reports are real findings and
+  are not yet filed. Files (not in the repo, which is public):
+  /mnt/Games/claude-scratch/reviews/ants-terminal/cfg0892-2026-11-09/
+  lane-*.result, summarised in index.md there (run 1's in
+  run1-truncated-brief/ also count). Run close-findings over them; many may
+  match open 2026-11-06 review items. Highs: link lines on an id-less bullet
+  lost in migration (roadmapmigrateload.cpp ~1205); writers not mutually
+  excluded, RoadmapWriteHold is shared (query_verb.cpp ~4072); know_how
+  creation failure deletes another process's store (knowhowstore.cpp
+  ~460). Mediums include backup_to overwriting any SQLite file it is given.
+  **Layman:** A measurement run for another project also reviewed two parts of this one; its findings need sorting into fixes.
+  Kind: review-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892).
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

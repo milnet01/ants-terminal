@@ -2115,7 +2115,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "`body`; to:\"*\" reaches every registered project and "
                         "returns sent[] and refused[]), op:\"inbox\" (default: your unacked mail, newest "
                         "first), op:\"outbox\" (mail you sent), op:\"ack\" (needs "
-                        "`message_id`; idempotent). An entry "
+                        "`message_id`; idempotent), op:\"projects\" (every "
+                        "registered slug, root and github_repo). An entry "
                         "with `acked_at` has been read. Refusals: no_project (run "
                         "roadmap_migrate first), unknown_project, inbox_full, "
                         "not_found. Distinct from the *_Ants_MCP_Feedback.md corpus, "
@@ -2134,6 +2135,13 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "the mail you sent, newest first, optionally for one "
                         "`to`, with a body preview; no `acked_at` means not acked "
                         "yet, and acked mail disappears when it is pruned. "
+                        "op:\"projects\" (ANTS-6720) lists every registered "
+                        "project's export_slug, name, root and, for a GitHub "
+                        "origin, github_repo (owner/name), so a caller outside "
+                        "Claude can find the slug for a repo. `dedupe:true` on "
+                        "a send answers with the id of your identical unacked "
+                        "message to that project instead of writing a second; "
+                        "once that one is acked, the same body sends again. "
                         "Confirmation is two states in "
                         "one nullable column: an entry carrying `acked_at` has "
                         "been read. Every op needs the CALLING project "
@@ -2176,12 +2184,24 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         e.append(QStringLiteral("inbox"));
                         e.append(QStringLiteral("outbox"));
                         e.append(QStringLiteral("ack"));
+                        e.append(QStringLiteral("projects"));
                         p["enum"] = e;
                         p["description"] = QStringLiteral(
-                            "Default \"inbox\": your unacked mail. \"outbox\": "
-                            "mail you sent. \"send\" needs `to` and `body`; "
-                            "\"ack\" needs `message_id`.");
+                            "Default \"inbox\". \"outbox\": mail you sent. \"send\" "
+                            "needs `to`, `body`; \"ack\" needs `message_id`. "
+                            "\"projects\": every slug.");
                         props["op"] = p;
+                    }
+                    {
+                        // ANTS-6720 — read only by op:"send" to one slug.
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "op:\"send\" — send nothing while your identical "
+                            "unacked message to `to` exists; reply with its id "
+                            "and deduplicated:true.");
+                        props["dedupe"] = p;
                     }
                     {
                         QJsonObject p;

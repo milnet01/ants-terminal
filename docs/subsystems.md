@@ -342,6 +342,9 @@ Listed only where behavior isn't obvious from the name.
   no semantic change (`op:"render"`).
 - `remotecontrol_session_message` — thin handler for the cross-session
   mailbox verb; the store does the work.
+- `gitorigin` (header only) — the GitHub `owner/name` of a checkout's
+  `origin`, read from `.git/config`. Shared by `session_message` op
+  `projects` and the status bar's repo label (ANTS-6720).
 - `remotecontrol_know_how` — thin handler for `know_how`, which resolves the
   caller and its project; the seam is `knowhowstore` (ANTS-6310).
 - `remotecontrol_run_trace` — thin handler for `run_trace`, which records a

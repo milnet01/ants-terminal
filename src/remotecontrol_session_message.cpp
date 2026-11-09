@@ -18,6 +18,7 @@
 
 #include "remotecontrol.h"
 
+#include "gitorigin.h"         // ANTS-6720 — op:"projects"' github_repo
 #include "projectsettings.h"   // ANTS-5667 — repoRootOf
 #include "resolvedroot.h"
 #include "roadmapstore.h"
@@ -142,16 +143,28 @@ QJsonDocument sendBroadcast(MailCall &c, const QString &body, const QString &fro
 // insert. Nothing here writes, and § 2.6's prune is skipped for the same
 // reason, so a preview cannot destroy aged mail to measure itself.
 QJsonDocument sendPreview(MailCall &c, const QString &to, const QString &body,
-                          const QString &from) {
-    if (!c.store.projectIdForSlug(to))
+                          const QString &from, bool dedupe) {
+    const auto toId = c.store.projectIdForSlug(to);
+    if (!toId)
         return refuseUnknownProject(c.store, to,
                       QStringLiteral("no project is registered under "
                                      "export_slug \"%1\", so mail to it "
                                      "could never be delivered").arg(to));
     if (const QString bad = RoadmapStore::mailArgsError(body, from); !bad.isEmpty())
         return refuse("bad_args", bad);
+    // ANTS-6720 — the read the real send makes, without its transaction.
+    qint64 duplicate = 0;
+    if (dedupe) {
+        QString err;
+        const auto dup = c.store.unackedDuplicate(c.self, *toId, body, &err);
+        if (!dup)
+            return refuseStore(QString(), err);
+        duplicate = *dup;
+    }
     c.out[QStringLiteral("dry_run")]    = true;
-    c.out[QStringLiteral("would_send")] = true;
+    c.out[QStringLiteral("would_send")] = duplicate == 0;
+    if (duplicate != 0)
+        c.out[QStringLiteral("duplicate_of")] = double(duplicate);
     c.out[QStringLiteral("to")]         = to;
     return QJsonDocument(c.out);
 }
@@ -164,23 +177,62 @@ QJsonDocument opSend(MailCall &c) {
         return refuse("bad_args",
                       QStringLiteral("session_message: op:\"send\" needs a "
                                      "`to` export_slug"));
-    if (to == QLatin1String("*"))
+    const bool dedupe = c.req.value(QStringLiteral("dedupe")).toBool(false);
+    if (to == QLatin1String("*")) {
+        if (dedupe)
+            return refuse("bad_args",
+                          QStringLiteral("session_message: `dedupe` applies to one "
+                                         "recipient, not to:\"*\""));
         return sendBroadcast(c, body, from);
+    }
     if (c.dryRun)
-        return sendPreview(c, to, body, from);
+        return sendPreview(c, to, body, from, dedupe);
 
     qint64 id = 0;
+    bool deduplicated = false;
     QString code, err;
-    if (!c.store.sendMessage(c.self, to, body, from, c.now, &id, &code, &err)) {
+    const bool sent =
+        dedupe ? c.store.sendMessageDeduped(c.self, to, body, from, c.now, &id,
+                                            &deduplicated, &code, &err)
+               : c.store.sendMessage(c.self, to, body, from, c.now, &id, &code, &err);
+    if (!sent) {
         if (code == QLatin1String("unknown_project"))
             return refuseUnknownProject(c.store, to,
                                         QStringLiteral("session_message: %1").arg(err));
         return refuseStore(code, err);
     }
-    c.pruneAfterWrite();
     c.out[QStringLiteral("message_id")] = double(id);
     c.out[QStringLiteral("to")]         = to;
+    if (deduplicated) {
+        // Nothing was written, so there is no new created_at and no prune.
+        c.out[QStringLiteral("deduplicated")] = true;
+        return QJsonDocument(c.out);
+    }
+    c.pruneAfterWrite();
     c.out[QStringLiteral("created_at")] = c.now;
+    return QJsonDocument(c.out);
+}
+
+// ANTS-6720 — every registered project, so a caller outside Claude (a stats
+// server) can map a GitHub repo to the export_slug `to` takes. A read.
+QJsonDocument opProjects(MailCall &c) {
+    QString err;
+    const QVector<RoadmapStore::ProjectRow> rows = c.store.listProjects(&err);
+    if (!err.isEmpty())
+        return refuseStore(QString(), err);
+    QJsonArray arr;
+    for (const auto &p : rows) {
+        QJsonObject o;
+        o[QStringLiteral("export_slug")] = p.exportSlug;
+        o[QStringLiteral("name")]        = p.name;
+        o[QStringLiteral("root")]        = p.root;
+        // Absent rather than null when the origin is not on GitHub.
+        if (const QString gh = GitOrigin::githubRepo(p.root); !gh.isEmpty())
+            o[QStringLiteral("github_repo")] = gh;
+        arr.append(o);
+    }
+    c.out[QStringLiteral("projects")] = arr;
+    c.out[QStringLiteral("count")]    = arr.size();
     return QJsonDocument(c.out);
 }
 
@@ -305,10 +357,12 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     const QString op = req.value(QStringLiteral("op")).toString(
         QStringLiteral("inbox"));
     if (op != QStringLiteral("send") && op != QStringLiteral("inbox")
-        && op != QStringLiteral("outbox") && op != QStringLiteral("ack"))
+        && op != QStringLiteral("outbox") && op != QStringLiteral("ack")
+        && op != QStringLiteral("projects"))
         return refuse("bad_args",
                       QStringLiteral("session_message: unknown op \"%1\" — "
-                                     "expected send, inbox, outbox or ack").arg(op));
+                                     "expected send, inbox, outbox, ack or "
+                                     "projects").arg(op));
 
     RoadmapStore store(RoadmapStore::defaultPath());
     QString err;
@@ -343,6 +397,8 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
         return opSend(c);
     if (op == QStringLiteral("outbox"))
         return opOutbox(c);
+    if (op == QStringLiteral("projects"))
+        return opProjects(c);
     const std::optional<qint64> id = messageIdArg(req);
     if (!id)
         return refuse("bad_args",

@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **Programs outside Claude can leave a project a message without sending the same one twice, and can look up a project's name from its GitHub repository** (ANTS-6720)
+  `session_message` gains `dedupe: true`, which skips a message identical
+  to one the project has not read yet, and `op: "projects"`, which lists
+  every project with its GitHub owner/name. Run it from a script with
+  `ants-mcpd --call session_message`. Launching the terminal now also
+  places `ants-mcpd` beside it in ~/.local/share/ants-terminal/bin/.
+
 - **The welcome window and Preferences install the Ants hook pack** (ANTS-6708)
   The AppImage and the packages now carry the hook scripts that
   `tools/install-hooks.sh` installs from a source checkout. One button

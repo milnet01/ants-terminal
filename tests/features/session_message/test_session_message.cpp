@@ -15,10 +15,12 @@
 #include <gtest/gtest.h>
 
 #include "../../_support/srcgrep.h"
+#include "gitorigin.h"
 #include "roadmapstore.h"
 #include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
+#include <QFile>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QString>
@@ -882,4 +884,146 @@ TEST(SessionMessage, Ants5499SendWaitsOutAConcurrentWriter) {
     writer.join();
     EXPECT_TRUE(sent) << code.toStdString() << ": " << err.toStdString();
     EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 1);
+}
+
+// ANTS-6720 — a deduped send writes nothing while an UNACKED message from the
+// same sender to the same project carries the identical body, and answers
+// with that message's id. Once it is acked, the same body sends again: an old
+// fault that recurs after it was read is news.
+TEST(SessionMessage, Ants6720DedupeReturnsTheUnackedDuplicate) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("beta"));
+    ASSERT_TRUE(a && b);
+    const QString t = QString::fromLatin1(kT1);
+    const QString count = QStringLiteral("SELECT count(*) FROM message");
+
+    qint64 first = 0;
+    QString code, err;
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("beta"), QStringLiteral("x"),
+                                     QString(), t, &first, &code, &err)) << err.toStdString();
+
+    qint64 id = 0;
+    bool dup = false;
+    ASSERT_TRUE(f.store->sendMessageDeduped(a, QStringLiteral("beta"), QStringLiteral("x"),
+                                            QString(), t, &id, &dup, &code, &err))
+        << err.toStdString();
+    EXPECT_TRUE(dup);
+    EXPECT_EQ(id, first);
+    EXPECT_EQ(rowCount(*f.store, count), 1) << "a duplicate wrote a row";
+
+    ASSERT_TRUE(f.store->sendMessageDeduped(a, QStringLiteral("beta"), QStringLiteral("y"),
+                                            QString(), t, &id, &dup, &code, &err));
+    EXPECT_FALSE(dup) << "a different body is not a duplicate";
+    EXPECT_NE(id, first);
+    EXPECT_EQ(rowCount(*f.store, count), 2);
+
+    bool already = false;
+    ASSERT_TRUE(f.store->ackMessage(b, first, t, &already, &code, &err)) << err.toStdString();
+    ASSERT_TRUE(f.store->sendMessageDeduped(a, QStringLiteral("beta"), QStringLiteral("x"),
+                                            QString(), t, &id, &dup, &code, &err));
+    EXPECT_FALSE(dup) << "an acked message is no longer a duplicate";
+    EXPECT_EQ(rowCount(*f.store, count), 3);
+}
+
+// The match is per sender: two projects reporting the same text both land.
+TEST(SessionMessage, Ants6720DedupeIsPerSender) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 c = f.addProject(QStringLiteral("gamma"));
+    ASSERT_TRUE(a && c && f.addProject(QStringLiteral("beta")));
+    const QString t = QString::fromLatin1(kT1);
+    qint64 id = 0;
+    bool dup = false;
+    QString code, err;
+    ASSERT_TRUE(f.store->sendMessageDeduped(a, QStringLiteral("beta"), QStringLiteral("x"),
+                                            QString(), t, &id, &dup, &code, &err));
+    ASSERT_TRUE(f.store->sendMessageDeduped(c, QStringLiteral("beta"), QStringLiteral("x"),
+                                            QString(), t, &id, &dup, &code, &err));
+    EXPECT_FALSE(dup) << "another sender's identical message is not this sender's duplicate";
+    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 2);
+}
+
+// The deduped send keeps every refusal the plain send has.
+TEST(SessionMessage, Ants6720DedupeKeepsTheSendRefusals) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    ASSERT_TRUE(a);
+    qint64 id = 0;
+    bool dup = false;
+    QString code, err;
+    EXPECT_FALSE(f.store->sendMessageDeduped(a, QStringLiteral("nope"), QStringLiteral("x"),
+                                             QString(), QString::fromLatin1(kT1), &id, &dup,
+                                             &code, &err));
+    EXPECT_EQ(code, QStringLiteral("unknown_project"));
+    EXPECT_FALSE(f.store->sendMessageDeduped(a, QStringLiteral("alpha"), QString(), QString(),
+                                             QString::fromLatin1(kT1), &id, &dup, &code, &err));
+    EXPECT_EQ(code, QStringLiteral("bad_args"));
+}
+
+// The read the dry run uses: 0 when there is no unacked duplicate.
+TEST(SessionMessage, Ants6720UnackedDuplicateIsARead) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("beta"));
+    ASSERT_TRUE(a && b);
+    QString code, err;
+    EXPECT_EQ(f.store->unackedDuplicate(a, b, QStringLiteral("x"), &err), qint64(0));
+    qint64 id = 0;
+    ASSERT_TRUE(f.store->sendMessage(a, QStringLiteral("beta"), QStringLiteral("x"), QString(),
+                                     QString::fromLatin1(kT1), &id, &code, &err));
+    EXPECT_EQ(f.store->unackedDuplicate(a, b, QStringLiteral("x"), &err), id);
+    EXPECT_EQ(f.store->unackedDuplicate(b, b, QStringLiteral("x"), &err), qint64(0));
+}
+
+// ANTS-6720 — op:"projects" and `dedupe` are declared, and the dry run finds
+// a duplicate with the read, never the writer.
+TEST(SessionMessage, Ants6720SchemaAndPreview) {
+    const QString block = sessionMessageToolBlock();
+    ASSERT_FALSE(block.isEmpty());
+    EXPECT_TRUE(block.contains(QStringLiteral("e.append(QStringLiteral(\"projects\"))")));
+    EXPECT_TRUE(block.contains(QStringLiteral("props[\"dedupe\"]")));
+
+    const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
+    const int previewAt = h.indexOf(QStringLiteral("QJsonDocument sendPreview("));
+    ASSERT_GE(previewAt, 0);
+    const int end = h.indexOf(QStringLiteral("return QJsonDocument(c.out);"), previewAt);
+    const QString preview = h.mid(previewAt, end - previewAt);
+    EXPECT_TRUE(preview.contains(QStringLiteral("unackedDuplicate(")));
+    EXPECT_FALSE(preview.contains(QStringLiteral("sendMessageDeduped(")));
+    EXPECT_TRUE(h.contains(QStringLiteral("GitOrigin::githubRepo(")))
+        << "op:\"projects\" reports each project's GitHub owner/name";
+}
+
+// ANTS-6720 — the owner/name op:"projects" reports, read from .git/config's
+// [remote "origin"] url. Moved from mainwindow_repo.cpp, which still uses it.
+TEST(SessionMessage, Ants6720GithubRepoFromOrigin) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const auto repoWith = [&](const char *name, const QByteArray &config) {
+        const QString root = dir.filePath(QString::fromLatin1(name));
+        QDir().mkpath(root + QStringLiteral("/.git"));
+        QFile f(root + QStringLiteral("/.git/config"));
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(config);
+        return root;
+    };
+    EXPECT_EQ(GitOrigin::githubRepo(repoWith("https",
+                  "[core]\n\tbare = false\n[remote \"origin\"]\n"
+                  "\turl = https://github.com/milnet01/LottoTracker.git\n")),
+              QStringLiteral("milnet01/LottoTracker"));
+    EXPECT_EQ(GitOrigin::githubRepo(repoWith("ssh",
+                  "[remote \"origin\"]\n\turl = git@github.com:milnet01/ants-terminal\n")),
+              QStringLiteral("milnet01/ants-terminal"));
+    EXPECT_EQ(GitOrigin::githubRepo(repoWith("upstream-only",
+                  "[remote \"upstream\"]\n\turl = https://github.com/x/y.git\n")),
+              QString()) << "only origin counts";
+    EXPECT_EQ(GitOrigin::githubRepo(repoWith("gitlab",
+                  "[remote \"origin\"]\n\turl = https://gitlab.com/x/y.git\n")),
+              QString()) << "a non-GitHub origin has no owner/name here";
+    EXPECT_EQ(GitOrigin::githubRepo(dir.filePath(QStringLiteral("absent"))), QString());
 }

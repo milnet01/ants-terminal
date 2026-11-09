@@ -1091,6 +1091,24 @@ public:
                      const QString &createdAt, qint64 *messageId,
                      QString *code, QString *error = nullptr);
 
+    // ANTS-6720 — sendMessage(), except that an UNACKED message from the same
+    // sender to the same project with the identical body is answered instead
+    // of a new row: *deduplicated is set and *messageId is that message's id.
+    // The check and the insert share one transaction, so two concurrent
+    // senders cannot both pass it. Same refusals as sendMessage().
+    bool sendMessageDeduped(qint64 fromProjectId, const QString &toSlug,
+                            const QString &body, const QString &fromSession,
+                            const QString &createdAt, qint64 *messageId,
+                            bool *deduplicated, QString *code,
+                            QString *error = nullptr);
+
+    // ANTS-6720 — the newest unacked message from `fromProjectId` to
+    // `toProjectId` whose body is exactly `body`: its id, 0 when there is none,
+    // nullopt on a query failure. A read, for the dry-run preview.
+    std::optional<qint64> unackedDuplicate(qint64 fromProjectId, qint64 toProjectId,
+                                           const QString &body,
+                                           QString *error = nullptr) const;
+
     // ANTS-5741 (ANTS-4622 § 2.7) — `to:"*"`: one ordinary message per
     // registered project, the sender skipped unless `includeSelf`. A recipient
     // at kMailInboxCap lands in the outcome list with code `inbox_full` while
@@ -1317,6 +1335,12 @@ public:
     static QString canonicalJson(const QJsonValue &o);
 
 private:
+    // ANTS-6720 — the one send path; sendMessage() is it with dedupe off.
+    bool sendMessageImpl(qint64 fromProjectId, const QString &toSlug,
+                         const QString &body, const QString &fromSession,
+                         const QString &createdAt, bool dedupe, qint64 *messageId,
+                         bool *deduplicated, QString *code, QString *error);
+
     // ANTS-3819 — the raw handle writes around every invariant the typed
     // surface enforces (element density, filing index, provenance, canonical
     // JSON), so it is private. Two callers are trusted with it: the export /

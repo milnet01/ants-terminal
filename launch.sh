@@ -58,6 +58,25 @@ if [ -n "$SRC" ] && { [ ! -e "$RUN_BIN" ] || [ "$SRC" -nt "$RUN_BIN" ]; }; then
     fi
 fi
 
+# ANTS-6720 — ants-mcpd beside it, for a program outside Claude that runs
+# `ants-mcpd --call` (a poller sending session_message). build/ is relinked
+# in place, so this copy is the stable path; it is refreshed at each launch.
+# Claude Code's own MCP server is unaffected: it is registered to build/.
+MCPD_SRC=""
+for cand in "$SCRIPT_DIR/build-fast/ants-mcpd" "$SCRIPT_DIR/build/ants-mcpd"; do
+    if [ -x "$cand" ]; then
+        if [ -z "$MCPD_SRC" ] || [ "$cand" -nt "$MCPD_SRC" ]; then MCPD_SRC="$cand"; fi
+    fi
+done
+MCPD_BIN="$RUN_DIR/ants-mcpd"
+if [ -n "$MCPD_SRC" ] && { [ ! -e "$MCPD_BIN" ] || [ "$MCPD_SRC" -nt "$MCPD_BIN" ]; }; then
+    mkdir -p "$RUN_DIR"
+    tmp="$RUN_DIR/.ants-mcpd.staging.$$"
+    if ! { cp -f "$MCPD_SRC" "$tmp" && mv -f "$tmp" "$MCPD_BIN"; }; then
+        rm -f "$tmp" 2>/dev/null || true
+    fi
+fi
+
 # Diagnose common launch failures to stderr before exec — a user who
 # double-clicked the .desktop entry never sees the logfile.
 if [ ! -x "$RUN_BIN" ]; then

@@ -2391,6 +2391,44 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                                const QString &body, const QString &fromSession,
                                const QString &createdAt, qint64 *messageId,
                                QString *code, QString *error) {
+    return sendMessageImpl(fromProjectId, toSlug, body, fromSession, createdAt,
+                           false, messageId, nullptr, code, error);
+}
+
+bool RoadmapStore::sendMessageDeduped(qint64 fromProjectId, const QString &toSlug,
+                                      const QString &body, const QString &fromSession,
+                                      const QString &createdAt, qint64 *messageId,
+                                      bool *deduplicated, QString *code,
+                                      QString *error) {
+    return sendMessageImpl(fromProjectId, toSlug, body, fromSession, createdAt,
+                           true, messageId, deduplicated, code, error);
+}
+
+std::optional<qint64> RoadmapStore::unackedDuplicate(qint64 fromProjectId,
+                                                     qint64 toProjectId,
+                                                     const QString &body,
+                                                     QString *error) const {
+    QSqlQuery q(m_db);
+    q.prepare(QStringLiteral(
+        "SELECT message_id FROM message WHERE from_project_id = ? "
+        "AND to_project_id = ? AND acked_at IS NULL AND body = ? "
+        "ORDER BY message_id DESC LIMIT 1"));
+    q.addBindValue(fromProjectId);
+    q.addBindValue(toProjectId);
+    q.addBindValue(body);
+    if (!q.exec()) {
+        if (error) *error = lastErr(q);
+        return std::nullopt;
+    }
+    return q.next() ? q.value(0).toLongLong() : qint64(0);
+}
+
+bool RoadmapStore::sendMessageImpl(qint64 fromProjectId, const QString &toSlug,
+                                   const QString &body, const QString &fromSession,
+                                   const QString &createdAt, bool dedupe,
+                                   qint64 *messageId, bool *deduplicated,
+                                   QString *code, QString *error) {
+    if (deduplicated) *deduplicated = false;
     const auto fail = [&](const char *c, const QString &msg) {
         if (code)  *code  = QString::fromLatin1(c);
         if (error) *error = msg;
@@ -2413,6 +2451,27 @@ bool RoadmapStore::sendMessage(qint64 fromProjectId, const QString &toSlug,
                                    "\"%1\", so mail to it could never be "
                                    "delivered").arg(toSlug));
     const qint64 toProjectId = *to;
+
+    // ANTS-6720 — inside the transaction, so a concurrent sender of the same
+    // body sees this one's row or waits for it. Before the cap check: a
+    // duplicate adds nothing to a full inbox, so it is answered, not refused.
+    if (dedupe) {
+        const auto dup = unackedDuplicate(fromProjectId, toProjectId, body, error);
+        if (!dup) {
+            if (code) *code = QStringLiteral("io_error");
+            return false;
+        }
+        if (*dup != 0) {
+            if (!tx.commit(error)) {
+                if (code) *code = QStringLiteral("io_error");
+                return false;
+            }
+            if (messageId) *messageId = *dup;
+            if (deduplicated) *deduplicated = true;
+            if (code) code->clear();
+            return true;
+        }
+    }
 
     // A full inbox refuses rather than dropping the oldest: a silently dropped
     // message is indistinguishable from one that was never sent.

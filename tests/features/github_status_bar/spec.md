@@ -48,7 +48,8 @@ same per-tab lifecycle as the Roadmap button. Tab switch fires
 3. Walks the cwd up via `findGitRepoRoot()` looking for a `.git`
    entry (file or directory). If absent, hides.
 4. Parses `<repoRoot>/.git/config` for the
-   `[remote "origin"] url = ...` line via `parseGithubOriginSlug()`.
+   `[remote "origin"] url = ...` line via `GitOrigin::githubRepo()`
+   (`src/gitorigin.h`, shared with `session_message`; ANTS-6720).
    Handles both `https://github.com/owner/repo[.git]` and
    `git@github.com:owner/repo[.git]` forms. Non-GitHub origins return
    empty → hide.
@@ -125,12 +126,13 @@ source-grep harness, no Qt link.
   **update-available** action is on the menu bar via
   `m_menuBar->addAction`. The retired name `m_updateAvailableLabel`
   appears in neither `mainwindow.h` nor `mainwindow.cpp`.
-- **INV-3** The pure helpers `findGitRepoRoot` and
-  `parseGithubOriginSlug` exist in `mainwindow.cpp`, and
-  `compareSemver` in `selfupdate.cpp` (moved by ANTS-5560).
-- **INV-4** `parseGithubOriginSlug` handles both URL forms — source-
+- **INV-3** The pure helper `findGitRepoRoot` exists in the main
+  window sources, which call `GitOrigin::githubRepo` (`gitorigin.h`,
+  moved by ANTS-6720); `compareSemver` is in `selfupdate.cpp` (moved
+  by ANTS-5560).
+- **INV-4** `GitOrigin::githubRepo` handles both URL forms — source-
   grep for `https://github.com/` AND `git@github.com:` literals in
-  the helper.
+  the helper. `SessionMessage.Ants6720GithubRepoFromOrigin` runs it.
 - **INV-5** `refreshStatusBarForActiveTab` calls `refreshRepoVisibility`
   alongside the existing `refresh*Button` calls.
 - **INV-6** `refreshRepoVisibility` early-returns + `hide()`s the label

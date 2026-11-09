@@ -1,6 +1,7 @@
 // ANTS-1677 mainwindow piece 8/8 — repository state and updates
 #include "mainwindow.h"
 #include "antsversion.h"
+#include "gitorigin.h"          // ANTS-6720 — shared with session_message
 #include "mainwindow_internal.h"
 #include "terminalwidget.h"
 #include "themes.h"             // ANTS-1325: include directly where Themes:: is called
@@ -40,38 +41,6 @@ QString findGitRepoRoot(const QString &start) {
     }
 }
 
-// Parse `.git/config` for the `[remote "origin"] url = ...` line.
-// Handles both `https://github.com/owner/repo[.git]` and
-// `git@github.com:owner/repo[.git]` forms. Returns "owner/repo"
-// (no `.git` suffix) for GitHub remotes; empty for non-GitHub or
-// missing origin.
-QString parseGithubOriginSlug(const QString &repoRoot) {
-    QFile f(repoRoot + QStringLiteral("/.git/config"));
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return {};
-    QString section;
-    while (!f.atEnd()) {
-        const QString line = QString::fromUtf8(f.readLine()).trimmed();
-        if (line.startsWith('[') && line.endsWith(']')) {
-            section = line;
-            continue;
-        }
-        if (section != QStringLiteral("[remote \"origin\"]")) continue;
-        if (!line.startsWith(QStringLiteral("url"))) continue;
-        const int eq = line.indexOf('=');
-        if (eq < 0) continue;
-        QString url = line.mid(eq + 1).trimmed();
-        // strip a trailing .git so the slug compares cleanly.
-        if (url.endsWith(QStringLiteral(".git"))) url.chop(4);
-        // https://github.com/owner/repo
-        const QString httpsHost = QStringLiteral("https://github.com/");
-        const QString sshHost = QStringLiteral("git@github.com:");
-        if (url.startsWith(httpsHost)) return url.mid(httpsHost.size());
-        if (url.startsWith(sshHost)) return url.mid(sshHost.size());
-        return {};  // origin exists but isn't GitHub
-    }
-    return {};
-}
-
 }  // namespace
 
 void MainWindow::refreshRepoVisibility() {
@@ -93,7 +62,7 @@ void MainWindow::refreshRepoVisibility() {
     const QString repoRoot = findGitRepoRoot(cwd);
     if (repoRoot.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
 
-    const QString slug = parseGithubOriginSlug(repoRoot);
+    const QString slug = GitOrigin::githubRepo(repoRoot);
     if (slug.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
 
     // ANTS-1137 — in-flight guard mirroring m_reviewProbeInFlight.

@@ -7,9 +7,9 @@
 //
 // INV-1 / INV-2 — both QLabel members declared + constructed +
 //                 added via addPermanentWidget + start hide()-n.
-// INV-3        — pure helpers findGitRepoRoot, parseGithubOriginSlug,
+// INV-3        — pure helpers findGitRepoRoot, GitOrigin::githubRepo,
 //                 compareSemver exist in the implementation.
-// INV-4        — parseGithubOriginSlug handles both URL forms.
+// INV-4        — GitOrigin::githubRepo handles both URL forms.
 // INV-5        — refreshStatusBarForActiveTab calls refreshRepoVisibility.
 // INV-6        — refreshRepoVisibility hides on every failure branch.
 // INV-7        — repo-visibility cache has a 10-minute TTL.
@@ -64,6 +64,7 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     const std::string yml = ants_test::slurpFile(SRC_RELEASE_WORKFLOW_PATH);
     // ANTS-5560 — compareSemver and the update dialog left mainwindow.cpp.
     const std::string su = ants_test::slurpFile(SRC_DIR "/selfupdate.cpp");
+    const std::string go = ants_test::slurpFile(SRC_DIR "/gitorigin.h");  // ANTS-6720
     const std::string ud = ants_test::slurpFile(SRC_DIR "/updatedialog.cpp");
 
     // INV-1: visibility pill is a QLabel member; update notifier is
@@ -124,23 +125,23 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     // INV-3: pure helpers exist.
     if (!contains(s, "findGitRepoRoot"))
         fail("INV-3", "findGitRepoRoot helper missing");
-    if (!contains(s, "parseGithubOriginSlug"))
-        fail("INV-3", "parseGithubOriginSlug helper missing");
+    if (!contains(s, "GitOrigin::githubRepo("))
+        fail("INV-3", "the repo label no longer reads GitOrigin::githubRepo (ANTS-6720)");
     if (!contains(su, "int compareSemver"))
         fail("INV-3", "compareSemver helper missing from selfupdate.cpp (ANTS-5560)");
 
-    // INV-4: parseGithubOriginSlug handles both URL forms.
+    // INV-4: GitOrigin::githubRepo handles both URL forms.
     {
-        const std::string body = functionBody(s,
-            "QString parseGithubOriginSlug");
+        const std::string body = functionBody(go,
+            "inline QString githubRepo");
         if (body.empty())
-            fail("INV-4", "parseGithubOriginSlug body not found");
+            fail("INV-4", "GitOrigin::githubRepo body not found in gitorigin.h");
         if (body.find("https://github.com/") == std::string::npos)
             fail("INV-4",
-                "parseGithubOriginSlug must recognise the https URL form");
+                "GitOrigin::githubRepo must recognise the https URL form");
         if (body.find("git@github.com:") == std::string::npos)
             fail("INV-4",
-                "parseGithubOriginSlug must recognise the SSH URL form");
+                "GitOrigin::githubRepo must recognise the SSH URL form");
     }
 
     // INV-5: refreshStatusBarForActiveTab calls refreshRepoVisibility.

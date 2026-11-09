@@ -144,14 +144,28 @@ three thin verbs.
 
 | op | Required | Optional | Returns |
 |---|---|---|---|
-| `send` | `caller_cwd`, `to`, `body` | `from_session`, `dry_run`, `include_self` (§ 2.7) | `message_id`, `to`, `created_at`; for `to:"*"`, § 2.7's shape |
+| `send` | `caller_cwd`, `to`, `body` | `from_session`, `dry_run`, `include_self` (§ 2.7), `dedupe` | `message_id`, `to`, `created_at`; with `dedupe`, `deduplicated`; for `to:"*"`, § 2.7's shape |
 | `inbox` | `caller_cwd` | `include_acked`, `limit`, `offset`, `message_id` | `messages[]`, `unacked_count` |
 | `outbox` | `caller_cwd` | `to`, `limit`, `offset` | `messages[]` (`message_id`, `to`, `created_at`, `preview`, `acked_at`), `unacked_count` |
 | `ack` | `caller_cwd`, `message_id` | — | `acked_at`, `already_acked` |
+| `projects` | `caller_cwd` | — | `projects[]` (`export_slug`, `name`, `root`, `github_repo`), `count` |
 
 `inbox` with `message_id` returns that one message, acked or not (ANTS-5601).
 Without it, `limit` pages at most 200 rows, and 0 or less asks for 200
 (ANTS-5591).
+
+`send` with `dedupe:true` (ANTS-6720) writes nothing while an unacked message
+from the caller to `to` holds the identical body. It answers with that
+message's `message_id` and `deduplicated:true`, and no `created_at`. The check
+runs inside the send's transaction and before the inbox cap, so a duplicate is
+answered rather than refused `inbox_full`. Once that message is acked, the
+same body sends again. Its preview reports `would_send:false` and
+`duplicate_of`. With `to:"*"` it refuses `bad_args`.
+
+`projects` (ANTS-6720) lists every registered project: `export_slug`, `name`,
+`root`, and `github_repo` (`owner/name`) where the root's `.git/config` names a
+GitHub `origin`. It lets a caller outside Claude find the slug for a
+repository. It is a read.
 
 `outbox` lists the mail the calling project sent, newest first (ANTS-5255).
 `to` narrows it to one recipient, and an unregistered slug refuses
@@ -423,6 +437,19 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
   recipient or either end. *Test:* `bravo` also sends to `alpha`, and that row
   stays out of `alpha`'s outbox; the recipient filter narrows `unacked_count`,
   and a page does not.
+- **INV-15** — A `dedupe` send writes no row while an unacked message from the
+  same sender to the same project holds the identical body, and answers with
+  that message's id. A different body, a different sender, or an acked match
+  sends. Breaks when the match ignores the sender or the ack, or runs outside
+  the send's transaction. *Test:* `Ants6720DedupeReturnsTheUnackedDuplicate`,
+  `Ants6720DedupeIsPerSender`, `Ants6720DedupeKeepsTheSendRefusals`; the
+  preview's read is `Ants6720UnackedDuplicateIsARead` and
+  `Ants6720SchemaAndPreview`.
+- **INV-16** — `projects` reports each registered project's GitHub
+  `owner/name` from its `origin` remote, and nothing for another host or
+  remote. *Test:* `Ants6720GithubRepoFromOrigin` runs `GitOrigin::githubRepo`
+  over https, ssh, non-origin, non-GitHub and absent configs;
+  `Ants6720SchemaAndPreview` checks the handler calls it.
 
 ## 4. RAM / build cost
 
@@ -491,7 +518,7 @@ sits at exactly the 6000 lines ANTS-3833 INV-6 caps a TU at, with no headroom
 ## 6. Tests
 
 Feature test: `tests/features/session_message/`, covering INV-1, INV-2, INV-3,
-INV-4, INV-5, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13 and INV-14 — written out rather than as a range, so
+INV-4, INV-5, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13, INV-14, INV-15 and INV-16 — written out rather than as a range, so
 the parity between this list and § 3 stays mechanically checkable. Label
 `features`. Wired into an existing bundle's `SOURCES`
 list — ask `build_target_for` which bundle owns the file rather than guessing,
@@ -543,3 +570,4 @@ here.
 | 3 | 2026-10-21 | 2, cold, via `neutral-lane` — genre pinned `spec`; every lane held every question; one shared packet carrying the handler whole, the `RoadmapStore` mailbox, transaction and project-list windows, the tool schema, the test fixture and the ANTS-5366 passages. Gated span: commit 6a71f24f (ANTS-5741) | **Q1 0 · Q2 0 · Q3 1 · Q4 1** (2 verified, 2 fixed / 2 dismissed) | **[Q4], both lanes:** § 2.7 placed the broadcast nowhere, and the handler opens the real store, so a handler-side broadcast left INV-11 to INV-13 with no runnable test. § 2.7 now puts the walk, the cap split and the dry-run split in one `RoadmapStore` method that the invariants drive on a temporary store. **[Q3], one lane:** only the body was validated up front, so an oversized `from_session` could come back `ok:true` with every recipient refused; it now refuses `bad_args` for the whole call and `refused[]` carries only `inbox_full`. § 2.3's `bad_args` gloss gains the same case. **Dismissed:** the single-slug preview not checking the cap while the broadcast preview does (two paths, each stated, neither false); a claim that § 6 overstates INV-10's coverage (the feature test covers it by source inspection, in that directory). **Outside the amendment's radius, filed on the roadmap:** INV-5, § 2.5 and § 7 still describe the pre-ANTS-5366 delete; § 2.3 says `acked_at` is always returned; § 2.1 says the refusal lists the known slugs. **Open questions, none became a finding:** a deregistered caller's `include_self`, `include_self` on a single-slug send, and whether a broadcast writing no row prunes — local choices nothing else binds to. |
 | 4 | 2026-10-21 | 2, cold, via `neutral-lane` — identical brief, packet rebuilt whole from disk; every lane held every question | **Q1 0 · Q2 0 · Q3 1 · Q4 0** (1 verified, 1 fixed / 0 dismissed) | **Cap reached (2 for a spec); calm, not oscillating.** **[Q3], one lane, the other asking it as an open question:** § 2.7 never said whether the broadcast reply and its preview carry the top-level `to` and `dry_run` keys a single-slug send returns. Both now carry `to:"*"`, the preview carries `dry_run:true`, and `would_send_to[]` stands in for `would_send`. That fix is read by no lane; implementation is its reader. **Own-fix share of this loop: 0 of 1** — the finding sat on text the ANTS-5741 commit wrote. **Run share inside the gated span (6a71f24f): 3 of 7 verified findings**; the other four lie outside the amendment and are filed as ANTS-5809 (INV-5 and § 7 against ANTS-5366, § 2.3's `acked_at`, § 2.1's slug list, INV-4 and INV-10 written as behavioural tests the handler's real store rules out). Status set to `accepted (2026-10-21)`. **Open questions, none became a finding:** whether a broadcast that writes no row prunes, and whether a broadcast preview refuses a bad body — local choices nothing else binds to. |
 | impl | 2026-11-02 | 0 — no reviewer dispatched; an in-place amendment | — | ANTS-5255: § 2.3 gains op `outbox`, with INV-14. It reads rows the store already holds. Rule 14: an amendment gets no automatic review. |
+| impl | 2026-11-09 | 0 — no reviewer dispatched; an in-place amendment | — | ANTS-6720 (ants-projects-hub-website's request): § 2.3 gains `dedupe` on `send` and op `projects`, with INV-15 and INV-16. No schema change: the duplicate is found from rows the store already holds. Rule 14: an amendment gets no automatic review. |
