@@ -474,6 +474,12 @@ bool Loader::matchItems() {
         const PlannedItem &it = plan.items.at(i);
         if (it.id.isEmpty())
             continue;
+        // ANTS-5304 — refused here, naming the bullet, for the reason above:
+        // putItem() would refuse it anyway, without saying which bullet.
+        if (!RoadmapParse::isAsciiId(it.id))
+            return fail(QStringLiteral("%1: %2. A bold lead-in that is prose counts as an "
+                                       "id; rename it or give the bullet an ASCII id.")
+                            .arg(site(it), RoadmapParse::nonAsciiIdError(it.id)));
         const QString fold = RoadmapParse::foldId(it.id);
         // value() with a sentinel rather than constFind(): dereferencing the
         // iterator trips -Wnull-dereference here, and an index is all this

@@ -232,14 +232,33 @@ quint64 fnv1a64(const QString &normalised);
 QString normaliseHeadline(const QString &raw);
 
 // ANTS-5087 — the fold the roadmap store's id_fold column holds: SQLite's
-// lower(), which changes only ASCII A-Z. QString::toLower() also folds
+// lower(), which on ASCII changes only A-Z. QString::toLower() also folds
 // non-ASCII letters, so a key built with it misses the row the column holds.
+// Above ASCII lower() depends on the SQLite build (an ICU one folds accented
+// letters), which is why the store admits only ids isAsciiId() accepts.
 inline QString foldId(const QString &id) {
     QString out = id;
     for (QChar &c : out)
         if (c.unicode() >= u'A' && c.unicode() <= u'Z')
             c = QChar(c.unicode() + (u'a' - u'A'));
     return out;
+}
+
+// ANTS-5304 — whether the store may hold `id`: every character is ASCII, so
+// foldId() and SQLite's lower() agree on every build. Every store write point
+// that sets an id or a cross-project id fold checks it. Empty passes: whether
+// an id may be empty is the caller's question.
+inline bool isAsciiId(const QString &id) {
+    for (QChar c : id)
+        if (c.unicode() > 0x7F)
+            return false;
+    return true;
+}
+
+// The one refusal text for a non-ASCII id, so every write point says the same.
+inline QString nonAsciiIdError(const QString &id) {
+    return QStringLiteral("id '%1' holds a non-ASCII character; the roadmap store "
+                          "accepts only ASCII ids (ANTS-5304)").arg(id);
 }
 
 // Classify a roadmap document: "ants-v1" | "github-task-list" |

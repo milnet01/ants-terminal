@@ -129,6 +129,16 @@ bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
 
 QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 
+// ANTS-5304 — false, with the refusal in *error, for an id the store may not
+// hold (RoadmapParse::isAsciiId).
+bool storableId(const QString &id, QString *error) {
+    if (RoadmapParse::isAsciiId(id))
+        return true;
+    if (error)
+        *error = RoadmapParse::nonAsciiIdError(id);
+    return false;
+}
+
 // The same-project rule's one lookup: which project owns this section.
 // nullopt = no such section, or the read failed; every caller refuses either
 // way. A SQLite CHECK may not contain a subquery, so the rule cannot live in
@@ -1055,6 +1065,8 @@ std::optional<qint64> RoadmapStore::addSection(qint64 projectId, const QString &
 }
 
 std::optional<qint64> RoadmapStore::putItem(const ItemWrite &w, QString *error) {
+    if (!storableId(w.id, error))
+        return std::nullopt;
     // ANTS-3765 § 2.3 / INV-8 — atomic either way. With no transaction open it
     // opens and commits its own, because INV-20 depends on the item and its
     // element being written together and every existing caller relies on it.
@@ -1291,6 +1303,8 @@ bool RoadmapStore::relateCrossProject(const QString &type, qint64 srcPk,
     // src_pk, and the edge is never re-normalised if the far project later
     // arrives — a rebuild that can suddenly see one more project must not
     // silently flip a stored direction.
+    if (!storableId(dstIdFold, error))
+        return false;
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
         "INSERT INTO relationship (type, src_pk, dst_project, dst_id_fold) "
@@ -2945,6 +2959,8 @@ bool RoadmapStore::reassignItemId(qint64 itemPk, const QString &newId, QString *
             *error = QStringLiteral("reassignItemId: empty id");
         return false;
     }
+    if (!storableId(newId, error))
+        return false;
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET id = ? WHERE item_pk = ?"));
     q.addBindValue(newId);

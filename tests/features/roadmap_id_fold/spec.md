@@ -22,6 +22,14 @@ the answer.
 `roadmapmigrateload.cpp`, `roadmapmigrate.cpp` and `roadmapstore.cpp` build
 no id key with `QString::toLower()`.
 
+**INV-4 — the store holds only ASCII ids.** `RoadmapParse::isAsciiId` is the
+one check. A non-ASCII id is refused by `RoadmapStore::putItem`,
+`RoadmapStore::reassignItemId`, `RoadmapStore::relateCrossProject` (its
+`dstIdFold`), and `RoadmapExport::rebuildProject` (an item's `id`, a
+cross-project relationship's `dst`). Each refusal writes nothing. The
+migration refuses the project in `Loader::matchItems`, naming the bullet's
+file and line, as it does for a duplicate id; it does not drop the label.
+
 ## Rationale
 
 The store's `id_fold` is `GENERATED ALWAYS AS (lower(id))`. The ANTS-5087
@@ -33,12 +41,11 @@ does not, so the key missed the row.
 (ANTS-5304): it read "SQLite's `lower()` changes only ASCII letters". That is
 true of a DEFAULT SQLite build, not of SQLite. A build carrying the ICU
 extension folds accented letters in `lower()` too. So `foldId` and the
-`id_fold` column agree on a default build and diverge on an ICU one — which
-leaves a residual question this spec does not settle: the column is computed
-by SQLite while `relationship.dst_id_fold` is bound from the C++ fold, and
-`UNIQUE (project_id, id_fold)` means different things on the two builds.
-Unreachable while ids stay ASCII, which the format requires. **ANTS-5304**
-carries it.
+`id_fold` column agree on a default build and diverge on an ICU one. The
+column is computed by SQLite while `relationship.dst_id_fold` is bound from
+the C++ fold, and `UNIQUE (project_id, id_fold)` would mean different things
+on the two builds. INV-4 closes that: with ASCII ids only, every build folds
+alike, and no schema change is needed.
 
 ## Test surface
 
@@ -46,7 +53,10 @@ carries it.
 in-memory database, over ASCII ids only (INV-1); asserts `foldId`'s treatment
 of non-ASCII against written-out values with no database (INV-3); and reads
 the four sources (located from the test's own path) for `toLower()` on an id
-(INV-2).
+(INV-2). For INV-4 it drives each write point on a real store with `Ä-1`
+and checks the refusal and that no row landed: the rebuild through an export
+with the id substituted, the migration through a GFM roadmap whose bold
+lead-in is accented prose.
 
 ## Regression history
 
@@ -57,3 +67,6 @@ the four sources (located from the test's own path) for `toLower()` on an id
   openSUSE_Tumbleweed, openSUSE_Leap_16.0 and the local suite all passed.
   INV-1 is now scoped to the ids the format admits, and INV-3 carries the
   non-ASCII claim without a database.
+- **ANTS-5304 (2026-11-09):** the store's write points accepted a non-ASCII
+  id. INV-4 refuses one. Measured that day: no id in the live store held a
+  non-ASCII character, so the refusal breaks no project.

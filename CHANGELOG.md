@@ -273,6 +273,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The roadmap store accepts only ASCII ids, so item ids fold the same way on every distribution's SQLite** (ANTS-5304)
+  Adding, renumbering, linking, restoring from an export, and migrating all
+  refuse an id with a non-ASCII character. The migration names the bullet's
+  file and line. No existing id was affected.
+
 - **token_usage reports the calling session's own calls** (ANTS-5262)
   A Claude Code session served through ants-mcpd now sees its own
   per-tool calls, tools_called and total_saved; the terminal's own

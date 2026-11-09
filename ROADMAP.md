@@ -362,7 +362,7 @@ SSH key registered there.
   Kind: test.
   Source: in-session-2026-08-02 (second instance of the same break in four days).
 
-- 📋 [ANTS-5304] **The id fold assumes SQLite's lower() is ASCII-only, which is false on a distro that builds SQLite with ICU.**
+- ✅ [ANTS-5304] **The id fold assumes SQLite's lower() is ASCII-only, which is false on a distro that builds SQLite with ICU.**
   FOUND BY the Mageia_10 OBS build of v0.7.110 on 2026-09-22.
   `RoadmapIdFold.FoldMatchesSqliteLower` failed there and passed on
   openSUSE_Tumbleweed, openSUSE_Leap_16.0 and locally (5042/5042).
@@ -428,6 +428,14 @@ SSH key registered there.
   Test: tests/features/roadmap_id_fold — keep FoldMatchesSqliteLower for
   ASCII ids only, and replace the Ä-1 / ÉTÉ-7 cases with "the store
   refuses a non-ASCII id", which holds on ICU and non-ICU SQLite alike.
+  2026-11-09 built: RoadmapParse::isAsciiId guards putItem,
+  reassignItemId, relateCrossProject, and rebuildProject's item id and
+  cross-project dst. The migration refuses in Loader::matchItems naming
+  file:line, not quarantine: a quarantined id is still stored verbatim,
+  so quarantine would not keep it out, and matchItems already refuses a
+  duplicate id rather than dropping the label.
+  tests/features/roadmap_id_fold INV-4. Live store re-measured: 0 of
+  12,584 item ids non-ASCII.
   **Layman:** On most Linux distributions the database lowercases only English letters, but Mageia's build also lowercases accented ones. Our code assumes the first, so on Mageia the two disagree and a package build fails.
   Kind: fix.
   Source: obs-build-failure-2026-09-22.
@@ -91263,6 +91271,13 @@ measured Ants adding about 5,250 tokens to every request.
   cpu, peak_rss_mb, flags}], flags BIG / WAITS / ONE CORE. Asked for a
   per-push history layout: history.jsonl beside it, one record per push
   plus the pushed sha, last 50 kept.
+  2026-11-09: unblocked. claude-config shipped CFG-0893 (837bc50): every
+  gated push appends one line to <git-common-dir>/ci-gate/history.jsonl
+  — time.json's shape (gate, args, started, exit, total_wall, total_cpu,
+  peak_rss_mb, steps[{name, wall, cpu, peak_rss_mb, flags}]) plus sha
+  and ref; last 50 kept, rewritten atomically. A push the passed-tree
+  cache skips writes no line. Records start at each project's next gated
+  push.
   **Layman:** Maybe let the CI report also show how long the local checks before a push take.
   Kind: feature.
   Source: claude-config session message 2026-11-06.

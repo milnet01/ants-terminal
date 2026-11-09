@@ -946,6 +946,11 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             sectionIdOf.insert(o.value(QStringLiteral("slug")).toString(),
                                q.lastInsertId().toLongLong());
         } else if (t == QLatin1String("item")) {
+            // ANTS-5304 — the file may be hand-edited or older than the guard.
+            if (const QString id = o.value(QStringLiteral("id")).toString();
+                !RoadmapParse::isAsciiId(id))
+                return abort(QStringLiteral("line %1: %2")
+                                 .arg(lineNo).arg(RoadmapParse::nonAsciiIdError(id)));
             q.prepare(QStringLiteral(
                 "INSERT INTO item (project_id, id, id_origin, status, headline, layman, kind, "
                 "source, priority, visibility, milestone, resolution, body, created, "
@@ -1008,6 +1013,10 @@ bool RoadmapExport::rebuildProject(RoadmapStore &store, QIODevice *in, QString *
             q.addBindValue(itemPkOf.value(o.value(QStringLiteral("src")).toString()));
             const bool crossProject = o.contains(QStringLiteral("dst_project"));
             const bool document = o.contains(QStringLiteral("dst_path"));
+            if (const QString dst = o.value(QStringLiteral("dst")).toString();
+                crossProject && !RoadmapParse::isAsciiId(dst))   // ANTS-5304
+                return abort(QStringLiteral("line %1: %2")
+                                 .arg(lineNo).arg(RoadmapParse::nonAsciiIdError(dst)));
             q.addBindValue(crossProject || document
                                ? QVariant()
                                : QVariant(itemPkOf.value(o.value(QStringLiteral("dst")).toString())));
