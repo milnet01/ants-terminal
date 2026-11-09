@@ -11,6 +11,7 @@
 #include "remotecontrol.h"
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
+#include "roadmapmigrateverb.h"
 #include "roadmapparse.h"
 #include "roadmapstore.h"
 #include "roadmapwrite.h"
@@ -24,6 +25,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -72,19 +74,31 @@ QByteArray gfmRoadmapPlusUnlaymanned() {
                         "  Source: ants-4491-test.\n");
 }
 
-// Two Pass headings and two Status markers and no emoji bullets. With fewer,
-// detectRoadmapFormat() falls to its ants-v1 default and the case would
-// exercise the accepted path instead of the refusal.
+// ANTS-6724 — two Pass sections, three items and the Status markers
+// detectRoadmapFormat() needs (two Pass headings AND two Status markers) to
+// read it as pass-headings rather than fall to its ants-v1 default. `2.1.A`
+// synthesises PASS-2-1-A, the one id the universal grammar rejects.
 QByteArray passHeadingsRoadmap() {
     return QByteArray(
         "# Demo Roadmap\n"
         "\n"
-        "#### Pass 1.1 The first pass.\n"
-        "- **Status**: done\n"
+        "## Pass 1\n"
         "\n"
-        "#### Pass 1.2 The second pass.\n"
-        "- **Status**: todo\n");
+        "#### Pass 1.1 The first pass\n"
+        "- **Status**: done\n"
+        "- **Finding**: the first finding.\n"
+        "\n"
+        "#### Pass 1.2 The second pass\n"
+        "- **Status**: todo\n"
+        "- **Finding**: the second finding.\n"
+        "\n"
+        "## Pass 2\n"
+        "\n"
+        "#### Pass 2.1.A The lettered sub-pass\n"
+        "- **Status**: todo\n"
+        "- **Finding**: the third finding.\n");
 }
+
 
 bool writeFile(const QString &path, const QByteArray &body) {
     QDir().mkpath(QFileInfo(path).absolutePath());
@@ -157,14 +171,71 @@ bool migrate(const QString &root, const char *stamp = "2026-09-21T10:00:00Z") {
     return out.ok;
 }
 
-QJsonObject convert(const QString &root, bool dryRun = false) {
-    QJsonObject req;
+// ANTS-6724 § 7 — where every real convert here puts its snapshot: beside the
+// project, inside the case's temp root, never the user's snapshot folder.
+QString snapshotPathFor(const QString &root) {
+    return QFileInfo(root).absolutePath() + QStringLiteral("/pre-convert-test.sqlite");
+}
+
+// `extra` adds arguments; a real run without its own `backup_to` gets
+// snapshotPathFor(root).
+QJsonObject convertWith(const QString &root, const QJsonObject &extra) {
+    QJsonObject req = extra;
     req[QStringLiteral("caller_cwd")] = root;
     req[QStringLiteral("op")]         = QStringLiteral("convert");
-    if (dryRun)
-        req[QStringLiteral("dry_run")] = true;
+    if (!req.value(QStringLiteral("dry_run")).toBool()
+        && !req.contains(QStringLiteral("backup_to")))
+        req[QStringLiteral("backup_to")] = snapshotPathFor(root);
     RemoteControl rc(nullptr);
     return rc.cmdRoadmapLogConvertForTest(req).object();
+}
+
+QJsonObject convert(const QString &root, bool dryRun = false) {
+    QJsonObject extra;
+    if (dryRun)
+        extra[QStringLiteral("dry_run")] = true;
+    return convertWith(root, extra);
+}
+
+// RetroDB's declaration, measured to clear both prototype findings (§ 2).
+QString passPattern() { return QStringLiteral("PASS-\\d+(?:-\\d+)*(?:-[A-Z])?"); }
+
+// Writes `<root>/.ants/project.json` declaring `id_format`; an empty member is
+// left out, so a case can declare half of it.
+bool declareIdFormat(const QString &root, const QString &prefix, const QString &pattern) {
+    QJsonObject fmt;
+    if (!prefix.isEmpty())  fmt[QStringLiteral("prefix")]  = prefix;
+    if (!pattern.isEmpty()) fmt[QStringLiteral("pattern")] = pattern;
+    QJsonObject o;
+    o[QStringLiteral("id_format")] = fmt;
+    return writeFile(root + QStringLiteral("/.ants/project.json"),
+                     QJsonDocument(o).toJson());
+}
+
+// id → "status|headline|body" for every stored item of the project: the four
+// fields ANTS-6724 INV-2 and INV-7 hold across a convert.
+QMap<QString, QString> itemRowsOf(const QString &root) {
+    QMap<QString, QString> rows;
+    auto store = openStore();
+    if (!store)
+        return rows;
+    QString err;
+    const auto row = store->readProjectByRoot(root, &err);
+    if (!row)
+        return rows;
+    if (const auto items = store->readItems(row->projectId, &err))
+        for (const auto &it : *items)
+            rows.insert(it.id, it.status + u'|' + it.headline + u'|' + it.body);
+    return rows;
+}
+
+// The fixture migrated, with RetroDB's id_format declared.
+QString seedPassProject(ants_test::XdgGuard &guard, const QTemporaryDir &tmp) {
+    const QString root = seed(guard, tmp, passHeadingsRoadmap());
+    if (root.isEmpty() || !migrate(root)
+        || !declareIdFormat(root, QStringLiteral("RDB"), passPattern()))
+        return QString();
+    return root;
 }
 
 QString detectedFormatOf(const QString &roadmapPath) {
@@ -463,28 +534,263 @@ TEST(RoadmapConvert, orphansRefuseInsteadOfResurrecting) {
         << "a refused convert changed the stored format";
 }
 
-// ----------------------------------------------------------------- INV-7 ----
+// ------------------------------------------- ANTS-6724 — pass-headings ----
+// ANTS-4491 INV-7's thirdDialectRefused is withdrawn: its fixture is now
+// accepted input (ANTS-6724 § 7).
 
-TEST(RoadmapConvert, thirdDialectRefused) {
+// ANTS-6724 INV-1
+TEST(RoadmapConvert, passHeadingsFormatsAgree) {
     ants_test::XdgGuard guard;
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());
-    const QString root = seed(guard, tmp, passHeadingsRoadmap());
+    const QString root = seedPassProject(guard, tmp);
     ASSERT_FALSE(root.isEmpty());
     const QString roadmap = root + QStringLiteral("/ROADMAP.md");
     ASSERT_EQ(detectedFormatOf(roadmap), QStringLiteral("pass-headings"))
-        << "setup: the fixture must classify as the third dialect, or this case "
-           "tests the accepted path instead";
-    ASSERT_TRUE(migrate(root));
+        << "setup: the fixture must classify as pass-headings";
 
-    const QByteArray before = readFile(roadmap);
-    const QJsonObject resp  = convert(root);
-    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+    const QJsonObject resp = convert(root);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(resp).toJson().toStdString();
-    EXPECT_EQ(resp.value(QStringLiteral("code")).toString().toStdString(),
-              std::string("dialect_out_of_scope"))
+    EXPECT_EQ(resp.value(QStringLiteral("source_dialect")).toString(),
+              QStringLiteral("pass-headings"));
+    EXPECT_EQ(detectedFormatOf(roadmap), QStringLiteral("ants-v1"));
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));
+}
+
+// ANTS-6724 INV-2
+TEST(RoadmapConvert, passIdsKept) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedPassProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    const QMap<QString, QString> before = itemRowsOf(root);
+    ASSERT_EQ(before.size(), 3) << "setup: three Pass items";
+
+    const QJsonObject resp = convert(root);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(resp).toJson().toStdString();
-    EXPECT_EQ(readFile(roadmap), before) << "a refused convert rewrote the file";
+    EXPECT_EQ(resp.value(QStringLiteral("ids")).toObject()
+                  .value(QStringLiteral("allocated")).toInt(), 0)
+        << "a pass-headings convert allocated ids it should have kept";
+    EXPECT_EQ(itemRowsOf(root), before)
+        << "an id, status, headline or body changed across the convert";
+    EXPECT_TRUE(readFile(root + QStringLiteral("/ROADMAP.md")).contains("[PASS-2-1-A]"))
+        << readFile(root + QStringLiteral("/ROADMAP.md")).toStdString();
+}
+
+// ANTS-6724 INV-3
+TEST(RoadmapConvert, idFormatRequired) {
+    struct Run {
+        const char *label;
+        QString prefix, pattern;
+        QStringList missing;
+        QStringList unmatched;
+    };
+    const Run runs[] = {
+        {"no id_format", QString(), QString(),
+         {QStringLiteral("prefix"), QStringLiteral("pattern")},
+         {QStringLiteral("PASS-2-1-A")}},
+        {"a pattern no id matches", QStringLiteral("RDB"), QStringLiteral("RDB-\\d+"),
+         {}, {QStringLiteral("PASS-2-1-A")}},
+        {"a pattern with no prefix", QString(), passPattern(),
+         {QStringLiteral("prefix")}, {}},
+    };
+    for (const Run &r : runs) {
+        SCOPED_TRACE(r.label);
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, passHeadingsRoadmap());
+        ASSERT_FALSE(root.isEmpty());
+        ASSERT_TRUE(migrate(root));
+        if (!r.prefix.isEmpty() || !r.pattern.isEmpty()) {
+            ASSERT_TRUE(declareIdFormat(root, r.prefix, r.pattern));
+        }
+        const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+        const QByteArray hashBefore = hashOf(roadmap);
+        const QString formatBefore  = storedFormatOf(root);
+
+        const QJsonObject resp = convert(root);
+        const std::string dump = QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("id_format_required")) << dump;
+        QStringList missing;
+        for (const auto &v : resp.value(QStringLiteral("missing")).toArray())
+            missing.append(v.toString());
+        EXPECT_EQ(missing, r.missing) << dump;
+        QStringList unmatched;
+        for (const auto &v : resp.value(QStringLiteral("unmatched_ids")).toArray())
+            unmatched.append(v.toString());
+        EXPECT_EQ(unmatched, r.unmatched) << dump;
+        EXPECT_EQ(hashOf(roadmap), hashBefore) << "a refused convert rewrote the file";
+        EXPECT_EQ(storedFormatOf(root), formatBefore);
+        EXPECT_FALSE(QFile::exists(snapshotPathFor(root)))
+            << "a refusal before the snapshot point still took one";
+    }
+}
+
+// ANTS-6724 INV-4
+TEST(RoadmapConvert, passConvertIsIdempotent) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedPassProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+
+    ASSERT_TRUE(convert(root).value(QStringLiteral("ok")).toBool());
+    const QByteArray once = hashOf(roadmap);
+    const QJsonObject second = convert(root);
+    ASSERT_TRUE(second.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(second).toJson().toStdString();
+    EXPECT_EQ(hashOf(roadmap), once) << "a second convert changed the file";
+}
+
+namespace {
+// The project's source_format as the snapshot at `path` recorded it.
+QString snapshotFormatOf(const QString &path, const QString &root) {
+    RoadmapStore snap(path, RoadmapStore::kDefaultHistoryCapBytes,
+                      RoadmapStore::Access::Bulk);
+    QString err;
+    if (!snap.open(&err))
+        return QStringLiteral("<open failed: %1>").arg(err);
+    const auto row = snap.readProjectByRoot(root, &err);
+    return row ? row->sourceFormat : QStringLiteral("<no row>");
+}
+}  // namespace
+
+// ANTS-6724 INV-5
+TEST(RoadmapConvert, convertSnapshotsFirst) {
+    {
+        SCOPED_TRACE("pass-headings");
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seedPassProject(guard, tmp);
+        ASSERT_FALSE(root.isEmpty());
+        const QString snap = snapshotPathFor(root);
+
+        ASSERT_TRUE(convert(root, /*dryRun=*/true).value(QStringLiteral("ok")).toBool());
+        EXPECT_FALSE(QFile::exists(snap)) << "a dry run wrote a snapshot";
+
+        const QJsonObject resp = convert(root);
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("backup_path")).toString(), snap);
+        EXPECT_EQ(resp.value(QStringLiteral("backup_path_source")).toString(),
+                  QStringLiteral("backup_to"));
+        ASSERT_TRUE(QFile::exists(snap));
+        EXPECT_EQ(snapshotFormatOf(snap, root), QStringLiteral("pass-headings"))
+            << "the snapshot was taken after the convert's write";
+    }
+    {
+        SCOPED_TRACE("github-task-list");
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, gfmRoadmap());
+        ASSERT_FALSE(root.isEmpty());
+        ASSERT_TRUE(migrate(root));
+        const QString snap = snapshotPathFor(root);
+
+        const QJsonObject resp = convert(root);
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("backup_path")).toString(), snap);
+        EXPECT_EQ(snapshotFormatOf(snap, root), QStringLiteral("github-task-list"));
+    }
+    {
+        SCOPED_TRACE("orphans_present after the snapshot");
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seed(guard, tmp, gfmRoadmap());
+        ASSERT_FALSE(root.isEmpty());
+        ASSERT_TRUE(migrate(root));
+        const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+        QByteArray fewer = readFile(roadmap);
+        const QByteArray gone = "- [ ] The second checklist bullet.\n"
+                                "  Layman: A plain-language line.\n"
+                                "  Kind: chore.\n"
+                                "  Source: ants-4491-test.\n";
+        ASSERT_TRUE(fewer.contains(gone));
+        fewer.replace(gone, QByteArray());
+        ASSERT_TRUE(writeFile(roadmap, fewer));
+
+        const QJsonObject resp = convert(root);
+        const std::string dump = QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("orphans_present")) << dump;
+        EXPECT_EQ(resp.value(QStringLiteral("backup_path")).toString(),
+                  snapshotPathFor(root)) << dump;
+    }
+}
+
+// ANTS-6724 INV-6
+TEST(RoadmapConvert, snapshotFailureRefuses) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedPassProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    const QString blocker = QDir(tmp.path()).filePath(QStringLiteral("a-file"));
+    ASSERT_TRUE(writeFile(blocker, "not a directory\n"));
+    const QByteArray hashBefore = hashOf(roadmap);
+
+    QJsonObject extra;
+    extra[QStringLiteral("backup_to")] = blocker + QStringLiteral("/snap.sqlite");
+    const QJsonObject resp = convertWith(root, extra);
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("backup_failed"))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(hashOf(roadmap), hashBefore) << "a convert proceeded past a failed snapshot";
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("pass-headings"));
+}
+
+// ANTS-6724 INV-7
+TEST(RoadmapConvert, convertIsReversible) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedPassProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+    const QString roadmap = root + QStringLiteral("/ROADMAP.md");
+    const QByteArray original = readFile(roadmap);
+    const QMap<QString, QString> before = itemRowsOf(root);
+    ASSERT_EQ(before.size(), 3);
+
+    ASSERT_TRUE(convert(root).value(QStringLiteral("ok")).toBool());
+    ASSERT_TRUE(writeFile(roadmap, original));
+
+    // § 4.4 route 1 — the migrate verb's own seam, as roadmap_migrate runs it.
+    RoadmapMigrateVerb::Request req;
+    req.projectRoot = root;
+    req.projectName = QStringLiteral("proj");
+    req.exportSlug  = QStringLiteral("proj");
+    req.changedAt   = QStringLiteral("2026-11-09T12:00:00Z");
+    req.backupTo    = QDir(tmp.path()).filePath(QStringLiteral("pre-migrate.sqlite"));
+    const QJsonObject out = RoadmapMigrateVerb::run(RoadmapStore::defaultPath(), req);
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+
+    EXPECT_EQ(itemRowsOf(root), before);
+    EXPECT_EQ(storedFormatOf(root), QStringLiteral("pass-headings"));
+}
+
+// ANTS-6724 INV-8
+TEST(RoadmapConvert, passHeadingNotTextLost) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedPassProject(guard, tmp);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject resp = convert(root);   // no accept_text_loss
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_NE(resp.value(QStringLiteral("code")).toString(), QStringLiteral("text_lost"));
 }
 
 // ----------------------------------------------------------------- INV-8 ----
@@ -996,11 +1302,8 @@ TEST(RoadmapConvert, textLossRefusesUnlessAccepted) {
 
     // accept_text_loss:true proceeds.
     QJsonObject req;
-    req[QStringLiteral("caller_cwd")]       = root;
-    req[QStringLiteral("op")]               = QStringLiteral("convert");
     req[QStringLiteral("accept_text_loss")] = true;
-    RemoteControl rc(nullptr);
-    const QJsonObject accepted = rc.cmdRoadmapLogConvertForTest(req).object();
+    const QJsonObject accepted = convertWith(root, req);
     EXPECT_TRUE(accepted.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(accepted).toJson().toStdString();
     EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));
@@ -1098,11 +1401,8 @@ TEST(RoadmapConvert, ambiguousRematchNamesCandidatesAndRefuses) {
 
     // Accepted: proceeds.
     QJsonObject req;
-    req[QStringLiteral("caller_cwd")] = root;
-    req[QStringLiteral("op")]         = QStringLiteral("convert");
     req[QStringLiteral("accept_ambiguous_rematch")] = true;
-    RemoteControl rc(nullptr);
-    const QJsonObject accepted = rc.cmdRoadmapLogConvertForTest(req).object();
+    const QJsonObject accepted = convertWith(root, req);
     EXPECT_TRUE(accepted.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(accepted).toJson().toStdString();
     EXPECT_EQ(storedFormatOf(root), QStringLiteral("ants-v1"));

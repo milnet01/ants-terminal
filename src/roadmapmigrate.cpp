@@ -183,6 +183,8 @@ bool isItem(const BulletRecord &rec) {
     return !rec.headline.isEmpty() || !rec.idToken.isEmpty();
 }
 
+}  // namespace
+
 // roadmap-format.md § 3.5.1's acceptance grammar, whole-token. Everything else
 // in the leading slot is off-grammar and quarantined (§ 2.6) — position is the
 // discriminator, not shape (§ 2.5), so `[ANTS-119&]` is quarantined for the
@@ -226,6 +228,8 @@ bool isGrammaticalId(const QString &token, const RoadmapParse::IdFormat &fmt) {
     }
     return declared.isValid() && declared.match(token).hasMatch();
 }
+
+namespace {
 
 void addNote(QVector<Note> &notes, const char *code, const QString &detail,
              int line, int sourceIndex = 0) {

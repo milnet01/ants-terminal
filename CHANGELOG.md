@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log op:"convert"` converts a pass-headings roadmap to ants-v1, keeping its `PASS-N-M` ids, and every real convert backs up the store first** (ANTS-6724)
+  A pass-headings project first declares its own `id_format` (a `prefix`
+  and a `pattern` every id matches); until then the convert refuses
+  `id_format_required`. The backup goes to `backup_to`, or to a dated
+  `pre-convert-<slug>-<UTC>.sqlite` in the snapshot folder, and the reply
+  names it as `backup_path`.
+
 - **Programs outside Claude can leave a project a message without sending the same one twice, and can look up a project's name from its GitHub repository** (ANTS-6720)
   `session_message` gains `dedupe: true`, which skips a message identical
   to one the project has not read yet, and `op: "projects"`, which lists

@@ -42,8 +42,8 @@ the commit to be one transaction.
 - **INV-6** — an id present in the file but absent from the store matches its
   existing item rather than creating a second one.
   *Test:* `staleMirrorDoesNotDuplicate`.
-- **INV-7** — a source recognised as a third dialect refuses
-  `dialect_out_of_scope` and writes nothing. *Test:* `thirdDialectRefused`.
+- **INV-7** — withdrawn 2026-11-09 by ANTS-6724: `pass-headings` is now
+  accepted input, and `thirdDialectRefused` is removed.
 
 - **INV-8** — the render's Layman gate is ADVISORY for `op:"convert"`: an open
   item with no `Layman:` line does not refuse the conversion, and the envelope
@@ -212,6 +212,23 @@ the commit to be one transaction.
   *Breaks when:* the filter keeps a row needing no decision or drops one that
   needs it, the cap is not applied, or the total counts only shown rows.
 
+### ANTS-6724 — a pass-headings source
+
+Design: [`docs/specs/ANTS-6724-convert-pass-headings.md`](../../../docs/specs/ANTS-6724-convert-pass-headings.md),
+whose INV-1 to INV-8 these cases test. Every real convert in this file passes
+`backup_to` inside its temp root.
+
+| ANTS-6724 | Case |
+|---|---|
+| INV-1 — formats agree after a pass-headings convert | `passHeadingsFormatsAgree` |
+| INV-2 — id, status, headline and body kept | `passIdsKept` |
+| INV-3 — `id_format_required` until a prefix and a matching pattern | `idFormatRequired` |
+| INV-4 — idempotent | `passConvertIsIdempotent` |
+| INV-5 — a real convert snapshots the store before its transaction | `convertSnapshotsFirst` |
+| INV-6 — a failed snapshot refuses `backup_failed` | `snapshotFailureRefuses` |
+| INV-7 — restoring the file and migrating undoes it | `convertIsReversible` |
+| INV-8 — a Pass heading is not lost text | `passHeadingNotTextLost` |
+
 Note on a field that is deliberately absent: the report does NOT carry the
 matched row's id origin. Both match passes require `idFromMigration` on the
 candidate, so every matched row is migration-allocated by construction — a
@@ -231,8 +248,8 @@ this op unguarded by a passing suite. A test that forces its failure through
 whichever business rule is handy is coupled to a rule that was never its
 subject; a seam named for the window cannot be invalidated by a rule change.
 
-INV-7's fixture carries two `Pass` headings and two `Status` markers and no
-emoji bullets. With fewer, `detectRoadmapFormat()` classifies it `ants-v1` and
+The pass-headings fixture carries at least two `Pass` headings and two
+`Status` markers and no emoji bullets. With fewer, `detectRoadmapFormat()` classifies it `ants-v1` and
 the case exercises the accepted path instead.
 
 Label: `features`. Bundle: `test_claude`.

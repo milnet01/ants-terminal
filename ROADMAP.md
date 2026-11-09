@@ -91452,7 +91452,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892).
 
-- 📋 [ANTS-6724] **roadmap_log op:convert takes a pass-headings roadmap into ants-v1, keeping each Pass id as the item's stable id.**
+- ✅ [ANTS-6724] **roadmap_log op:convert takes a pass-headings roadmap into ants-v1, keeping each Pass id as the item's stable id.**
   RetroDB (2026-11-09): its user wants the roadmap regrouped into
   roadmap-format.md § 3.2 version blocks (v4.0.0 / v4.0.x / v4.x.0 /
   v5.0.0) with shipped items archived (§ 3.9). On its pass-headings
@@ -91475,6 +91475,10 @@ measured Ants adding about 5,250 tokens to every request.
   and fixed, 2 dismissed, no deferred tail. Status accepted; ready to
   implement. Log:
   docs/reviews/ANTS-6724-convert-pass-headings-loop-log.md.
+  Shipped 2026-11-09: convert accepts pass-headings behind the
+  id_format_required precondition, and every real convert snapshots the
+  store first (backup_to or pre-convert-<slug>-<UTC>.sqlite). Tests:
+  tests/features/roadmap_convert/test_convert.cpp, INV-1 to INV-8.
   **Layman:** Lets a project whose roadmap is grouped by review pass switch to the standard grouping by version without losing its item numbers.
   Kind: feature.
   Source: feedback-RetroDB-2026-11-09.

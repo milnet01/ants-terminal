@@ -292,4 +292,11 @@ inline constexpr qint64 kMaxSourceBytes = 32LL * 1024 * 1024;
 // seam is what lets the plan be inspected before anything is written.
 void validatePaths(MigrationPlan &plan, const QString &projectRoot);
 
+// Does `token` pass roadmap-format.md § 3.5.1's id grammar, or the project's
+// declared `fmt.pattern`, as a whole token? planFrom() records an id that
+// passes as `parsed` and one that fails as quarantined. Exported for ANTS-6724
+// § 4.2: a pass-headings convert refuses while an id of the project fails it,
+// and must ask the same test the re-import will, never a copy of it.
+[[nodiscard]] bool isGrammaticalId(const QString &token, const RoadmapParse::IdFormat &fmt);
+
 }  // namespace RoadmapMigrate

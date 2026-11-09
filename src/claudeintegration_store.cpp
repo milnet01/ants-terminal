@@ -757,14 +757,15 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "on a dry run), which grows with every note. "
                         "`fields:[\"ok\",\"id\"]` trims any reply. "
                         "\"convert\" (ANTS-4491) re-imports a "
-                        "`github-task-list` roadmap and republishes it as "
+                        "`github-task-list` or (ANTS-6724) `pass-headings` "
+                        "roadmap and republishes it as "
                         "canonical ants-v1, in ONE atomic commit+render — the "
                         "two halves cannot be written separately, because "
                         "every read dispatches on the live file's detected "
                         "dialect and refuses a disagreement with the stored "
                         "`source_format`, so a half-written convert leaves the "
                         "project unreadable. Takes `caller_cwd` alone (plus "
-                        "`dry_run`); it is NOT section-scoped and takes no "
+                        "`dry_run` and `backup_to`); it is NOT section-scoped and takes no "
                         "locator. Bullets already carrying an id keep it, and "
                         "an id-less one is ALLOCATED a synthesised "
                         "`<prefix>-S<NNNN>` from its own counter (ANTS-4500), "
@@ -797,8 +798,12 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "`project_not_registered` on an unmigrated project (it "
                         "will not migrate implicitly — run roadmap_migrate "
                         "first), `unrecognised_format` on a file carrying no "
-                        "dialect signal at all, and `dialect_out_of_scope` on "
-                        "a recognised THIRD dialect such as pass-headings. "
+                        "dialect signal at all, and (ANTS-6724) "
+                        "`id_format_required` on a pass-headings source until "
+                        "the project declares `id_format` with a `prefix` and "
+                        "a `pattern` its ids match. A real run snapshots the "
+                        "store first (`backup_path`) and refuses "
+                        "`backup_failed` when it cannot. "
                         "ANTS-5326 — on a github-task-list source it also "
                         "refuses `orphans_present` (with `items_orphaned` and "
                         "`orphaned_ids`) when the store holds items the file "
@@ -1689,6 +1694,13 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "human must check: origin absent, id_inferred, or "
                         "ambiguous_rematch. Default `all`.");
                     props["planned_filter"] = plannedFilterProp; // ANTS-5328
+                    QJsonObject backupToProp;
+                    backupToProp["type"] = "string";
+                    backupToProp["description"] = QStringLiteral(
+                        "op:\"convert\" — the store snapshot's file path. "
+                        "Default: pre-convert-<slug>-<UTC>.sqlite in the "
+                        "snapshot folder.");
+                    props["backup_to"] = backupToProp;           // ANTS-6724
                     schema["properties"]   = props;
 
                     // ANTS-1428 — only caller_cwd is unconditionally

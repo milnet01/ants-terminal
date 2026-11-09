@@ -93,6 +93,25 @@ struct Request {
 // it before returning (§ 2.2).
 QJsonObject run(const QString &storePath, const Request &req);
 
+// ANTS-3855 § 2.4's snapshot ladder, shared by run() and roadmap_log
+// op:"convert" (ANTS-6724 § 4.3) so the two verbs cannot drift apart.
+// `backupTo` is a file path, used as given; a failure there is final.
+// Otherwise `fileName` inside `snapshotDir`, which must already exist (never
+// created: a folder on an unmounted drive would be recreated on the system
+// drive); when that is empty or fails, `fileName` beside `storePath`.
+// The caller runs it outside any transaction: VACUUM INTO refuses inside one.
+struct StoreSnapshot {
+    bool        ok = false;
+    QString     path;
+    QString     source;     // "backup_to", "config", "backup_record" or "beside_store"
+    QString     error;      // why the last rung failed, when !ok
+    QJsonObject fallback;   // {folder, error} when the snapshotDir rung failed
+};
+StoreSnapshot snapshotStore(RoadmapStore &store, const QString &storePath,
+                            const QString &backupTo, const QString &snapshotDir,
+                            const QString &snapshotDirSource,
+                            const QString &fileName);
+
 // ANTS-4491 § 4.3 — the migration half of a dialect convert, run inside a
 // transaction the CALLER has already opened.
 //

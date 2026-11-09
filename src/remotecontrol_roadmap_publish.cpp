@@ -23,14 +23,18 @@
 // putting a writing operation behind the read verb would contradict the
 // invariant one section along.
 
+#include "config.h"
+#include "projectsettings.h"
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "roadmapbackuphealth.h"
 
 #include "roadmapmigrateverb.h"
 #include "roadmapparse.h"
 #include "roadmapstore.h"
 #include "roadmapwrite.h"
 
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -247,16 +251,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
                            "headings. There is nothing to convert and nothing "
                            "was written.").arg(roadmapPath));
     }
+    // ANTS-6724 § 4.1 — pass-headings joins the set. Its ids are synthesised
+    // `PASS-N-M` from each heading, and the render writes them in brackets.
+    const bool passHeadings = detected == QLatin1String("pass-headings");
     if (detected != QLatin1String("ants-v1")
-        && detected != QLatin1String("github-task-list")) {
-        // A RECOGNISED third dialect. migratedProject() does not refuse this,
-        // which is why the op needs a code of its own; a source with no format
-        // signal at all is a different branch and never reaches here, because
-        // detectRoadmapFormat() answers ants-v1 for it.
+        && detected != QLatin1String("github-task-list") && !passHeadings) {
+        // A dialect the detector may name later; no current input reaches it.
         return refuseWith(QStringLiteral("dialect_out_of_scope"),
-            QStringLiteral("roadmap_log: convert takes a github-task-list or "
-                           "ants-v1 roadmap; \"%1\" reads as %2. Converting that "
-                           "dialect is out of scope and nothing was written.")
+            QStringLiteral("roadmap_log: convert takes a github-task-list, "
+                           "pass-headings or ants-v1 roadmap; \"%1\" reads as %2. "
+                           "Converting that dialect is out of scope and nothing "
+                           "was written.")
                 .arg(roadmapPath, detected));
     }
 
@@ -300,6 +305,49 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     }
     const qint64 projectId = row->projectId;
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
+
+    // ANTS-6724 § 4.2 — a pass-headings project declares its own id_format
+    // first. Without a prefix the next append takes `PASS-<n>` for one; without
+    // a pattern a letter-suffixed `PASS-41-5-B` fails the ants-v1 grammar and
+    // is quarantined at the next re-import. The project chooses both, so the
+    // message suggests neither.
+    if (passHeadings) {
+        const RoadmapParse::IdFormat fmt = ProjectSettings::idFormatFor(root);
+        QJsonArray missing;
+        if (fmt.prefix.isEmpty())  missing.append(QStringLiteral("prefix"));
+        if (fmt.pattern.isEmpty()) missing.append(QStringLiteral("pattern"));
+        QStringList ids;
+        if (const auto items = store->readItems(projectId, &storeErr))
+            for (const auto &it : *items) ids.append(it.id);
+        else
+            return refuseWith(QStringLiteral("store_failed"),
+                QStringLiteral("roadmap_log: convert could not read the "
+                               "project's items: %1. Nothing was written.")
+                    .arg(storeErr));
+        for (const auto &it : RoadmapMigrateVerb::planPassText(roadmapPath, markdown).items)
+            ids.append(it.id);
+        ids.removeDuplicates();
+        QStringList unmatched;
+        for (const QString &id : std::as_const(ids))
+            if (!id.isEmpty() && !RoadmapMigrate::isGrammaticalId(id, fmt))
+                unmatched.append(id);
+        if (!missing.isEmpty() || !unmatched.isEmpty()) {
+            QJsonObject e = refuseWith(QStringLiteral("id_format_required"),
+                QStringLiteral("roadmap_log: converting a pass-headings roadmap "
+                               "needs the project's own id_format, with a "
+                               "`prefix` for new ids and a `pattern` every "
+                               "existing id matches. Set it with "
+                               "project_settings (key `id_format`), then re-run. "
+                               "Nothing was written.")).object();
+            if (!missing.isEmpty())
+                e[QStringLiteral("missing")] = missing;
+            e[QStringLiteral("unmatched_ids")] =
+                QJsonArray::fromStringList(unmatched.mid(0, kMaxEchoedIds));
+            if (unmatched.size() > kMaxEchoedIds)
+                e[QStringLiteral("unmatched_ids_shown")] = kMaxEchoedIds;
+            return QJsonDocument(e);
+        }
+    }
 
     // ANTS-5328 — the per-bullet table's size and population. Vestige's dry
     // run was 121,826 characters with planned[] cut at 200 of 1,102 rows, so
@@ -476,6 +524,44 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
         }
     }
 
+    // ANTS-6724 § 4.3 — a real convert snapshots the whole store first, after
+    // every check above and before its transaction opens: VACUUM INTO refuses
+    // inside one, and a copy taken after the write protects nothing. Dated, so
+    // a later convert or migrate never overwrites it; outside the weekly job's
+    // `roadmap-*.sqlite` prune glob. No opt-out: a convert rewrites a whole
+    // project in a store every project shares.
+    QJsonObject backupFields;
+    const auto withBackup = [&backupFields](QJsonObject &e) {
+        for (auto it = backupFields.constBegin(); it != backupFields.constEnd(); ++it)
+            e[it.key()] = it.value();
+    };
+    if (!dryRun) {
+        const RoadmapBackupHealth::SnapshotDest dest = RoadmapBackupHealth::snapshotDest(
+            Config().claudeRoadmapSnapshotDir(), RoadmapBackupHealth::stateDir(),
+            RoadmapStore::defaultPath());
+        const QString fileName = QStringLiteral("pre-convert-%1-%2.sqlite")
+            .arg(row->exportSlug,
+                 QDateTime::currentDateTimeUtc().toString(
+                     QStringLiteral("yyyyMMdd'T'HHmmss'Z'")));
+        const auto snap = RoadmapMigrateVerb::snapshotStore(
+            *store, RoadmapStore::defaultPath(),
+            req.value(QStringLiteral("backup_to")).toString(),
+            dest.folder, dest.source, fileName);
+        if (!snap.fallback.isEmpty())
+            backupFields[QStringLiteral("backup_fallback")] = snap.fallback;
+        if (!snap.ok) {
+            QJsonObject e = refuseWith(QStringLiteral("backup_failed"),
+                QStringLiteral("roadmap_log: the pre-convert snapshot to %1 "
+                               "failed: %2. Nothing was converted. Pass a "
+                               "writable `backup_to`.").arg(snap.path, snap.error))
+                .object();
+            withBackup(e);
+            return QJsonDocument(e);
+        }
+        backupFields[QStringLiteral("backup_path")]        = snap.path;
+        backupFields[QStringLiteral("backup_path_source")] = snap.source;
+    }
+
     const auto rc = RoadmapWrite::commitAndRender(
         *store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &err,
         RoadmapWrite::LaymanGate::Exempt, RoadmapWrite::DriftBasis::AfterMutation);
@@ -506,6 +592,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             e[QStringLiteral("orphaned_ids_shown")] = int(ids.size());
         if (dryRun)
             e[QStringLiteral("dry_run")] = true;
+        withBackup(e);   // § 4.3 — the rollback leaves the snapshot
         return QJsonDocument(e);
     }
 
@@ -513,10 +600,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     if (rcRoadmapWriteRefused(env, rc, err, outcome)) {
         if (!loadError.isEmpty())
             env[QStringLiteral("load_error")] = loadError;
+        withBackup(env);
         return QJsonDocument(env);
     }
 
     env[QStringLiteral("ok")] = true;
+    withBackup(env);
     env[QStringLiteral("op")] = QStringLiteral("convert");
     env[QStringLiteral("project_root")]    = root;
     env[QStringLiteral("source_dialect")]  = detected;

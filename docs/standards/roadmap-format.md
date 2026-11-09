@@ -1283,10 +1283,13 @@ every read refusing.
 
 It is idempotent per bullet: a bullet already carrying a bracket id keeps
 it, which is what makes it safe against the part-converted file it will
-actually meet. It accepts a source that reads as `github-task-list` or as
-`ants-v1` — the latter because after a successful run the file IS
-ants-v1, so refusing that dialect would make the op refuse its own
-output. A recognised third dialect refuses `dialect_out_of_scope`.
+actually meet. It accepts a source that reads as `github-task-list`,
+`pass-headings` or `ants-v1` — the last because after a successful run
+the file IS ants-v1, so refusing that dialect would make the op refuse
+its own output. A `pass-headings` source keeps its `PASS-N-M` ids, and
+refuses `id_format_required` until the project declares an `id_format`
+whose `pattern` every id matches (**ANTS-6724**). Every real convert
+snapshots the store first and reports the copy as `backup_path`.
 
 `dry_run: true` previews the whole thing, including the id assignment it
 would make. Prefer it: the op is a one-way bulk rewrite of a
