@@ -116,8 +116,10 @@ TEST(token_usage_no_ci_diagnostic, Inv4SuccessPathClean) {
     const std::string region = body.substr(pos);
     expect(!contains(region, "env[\"debug\"]"),
            "INV-4: success path must not assign a debug field");
-    expect(contains(region, "env[\"calls\"]"),
-           "INV-4: success path assigns the calls array");
+    // ANTS-5262 — calls[] comes from the shared sessionFieldsJson, which
+    // builds the envelope the success path then completes.
+    expect(contains(body, "TokenUsageEngine::sessionFieldsJson(snap)"),
+           "INV-4: success path builds the session fields, calls[] included");
     EXPECT_EQ(0, expect_failures());
 }
 

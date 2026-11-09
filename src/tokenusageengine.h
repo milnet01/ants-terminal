@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QHash>
 #include <QJsonObject>
 #include <QList>
@@ -196,5 +197,16 @@ void releaseClaimed(const QString &dir, const PeerUsage &dead,
 bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime,
                    QJsonObject &byProject, const QString &month,
                    const QString &nowIso);
+
+// token_usage's session fields for one tracker: since, since_unix_ms,
+// tools_called, total_saved, total_wrap_bytes, total_failed_bytes, calls.
+QJsonObject sessionFieldsJson(const Snapshot &snap);
+
+// ANTS-5262 — ants-mcpd's rewrite of a forwarded token_usage reply line.
+// Each session field present in the terminal's ok envelope is replaced by
+// `local`'s, and the terminal's own tools_called / total_saved move to
+// `terminal_session`. Any other line is returned unchanged.
+QByteArray overlaySessionOnReply(const QByteArray &replyLine,
+                                 const Snapshot &local);
 
 }  // namespace TokenUsageEngine

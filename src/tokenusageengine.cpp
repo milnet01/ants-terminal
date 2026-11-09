@@ -7,11 +7,13 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QSet>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QTimeZone>
 
 #include <cerrno>
 #include <fcntl.h>
@@ -579,6 +581,79 @@ bool foldPeerUsage(const PeerUsage &dead, QJsonObject &monthly, qint64 &lifetime
         changed = true;
     }
     return changed;
+}
+
+QJsonObject sessionFieldsJson(const Snapshot &snap) {
+    QJsonObject env;
+    env["since"] = QDateTime::fromMSecsSinceEpoch(snap.sinceUnixMs, QTimeZone::utc())
+                       .toString(Qt::ISODate);
+    env["since_unix_ms"] = snap.sinceUnixMs;
+    env["tools_called"]  = snap.toolsCalled;
+    env["total_saved"]   = snap.totalSaved;
+    // ANTS-1355 — envelope sum across ALL tools (includes those
+    // filtered out of `calls[]` by include_zero:false).
+    env["total_wrap_bytes"] = snap.totalWrapBytes;
+    // ANTS-1432 — Σ(failed_bytes_in + failed_bytes_out) across ALL
+    // tools. Net-token-impact for the session is
+    //     total_saved - total_failed_bytes / 4.
+    env["total_failed_bytes"] = snap.totalFailedBytes;
+    QJsonArray calls;
+    for (const auto &r : snap.calls) {
+        QJsonObject c;
+        c["tool"]              = r.tool;
+        c["n_calls"]           = r.nCalls;
+        c["bytes_in"]          = static_cast<qint64>(r.bytesIn);
+        c["bytes_out"]         = static_cast<qint64>(r.bytesOut);
+        // ANTS-1355 — wrap-overhead + latency breakdown.
+        c["wrap_bytes"]        = static_cast<qint64>(r.wrapBytes);
+        c["duration_us_min"]   = static_cast<qint64>(r.durationUsMin);
+        c["duration_us_max"]   = static_cast<qint64>(r.durationUsMax);
+        c["duration_us_mean"]  = static_cast<qint64>(r.durationUsMean);
+        c["est_tokens_saved"]  = static_cast<qint64>(r.estTokensSaved);
+        // ANTS-1432 — per-tool failure cost. Zero for tools that
+        // have only ever succeeded.
+        c["failed_calls"]      = static_cast<qint64>(r.failedCalls);
+        c["failed_bytes_in"]   = static_cast<qint64>(r.failedBytesIn);
+        c["failed_bytes_out"]  = static_cast<qint64>(r.failedBytesOut);
+        calls.append(c);
+    }
+    env["calls"] = calls;
+    return env;
+}
+
+QByteArray overlaySessionOnReply(const QByteArray &replyLine,
+                                 const Snapshot &local) {
+    // token_usage is control-plane, so its text is the bare envelope with no
+    // data wrap; fields= may already have dropped some session fields.
+    QJsonObject rpc = QJsonDocument::fromJson(replyLine).object();
+    QJsonObject result = rpc.value(QStringLiteral("result")).toObject();
+    QJsonArray content = result.value(QStringLiteral("content")).toArray();
+    QJsonObject text = content.at(0).toObject();
+    QJsonObject env = QJsonDocument::fromJson(
+        text.value(QStringLiteral("text")).toString().toUtf8()).object();
+    if (!env.value(QStringLiteral("ok")).toBool()) return replyLine;
+
+    const QJsonObject mine = sessionFieldsJson(local);
+    QJsonObject terminal;
+    bool replaced = false;
+    for (auto it = mine.constBegin(); it != mine.constEnd(); ++it) {
+        if (!env.contains(it.key())) continue;
+        if (it.key() == QLatin1String("tools_called") ||
+            it.key() == QLatin1String("total_saved"))
+            terminal[it.key()] = env.value(it.key());
+        env[it.key()] = it.value();
+        replaced = true;
+    }
+    if (!replaced) return replyLine;
+    if (!terminal.isEmpty())
+        env[QStringLiteral("terminal_session")] = terminal;
+
+    text[QStringLiteral("text")] =
+        QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+    content[0] = text;
+    result[QStringLiteral("content")] = content;
+    rpc[QStringLiteral("result")] = result;
+    return QJsonDocument(rpc).toJson(QJsonDocument::Compact) + '\n';
 }
 
 }  // namespace TokenUsageEngine

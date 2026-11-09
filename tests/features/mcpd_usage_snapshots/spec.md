@@ -13,6 +13,8 @@ invariants are the ones this directory tests, by the names given there.
 - INV-8 `ForwardedCallNotInSnapshot`
 - INV-9 `SingleConfigSave`
 - INV-10 `ConcurrentClaimOnce`
+- INV-11 `Ants5262ForwardedReplyCarriesCallerSession`,
+  `Ants5262OtherRepliesPassUnchanged`
 
 INV-8 and INV-9 hold of the code before ANTS-5311 and are regression
 guards, proved red by mutation. Every case works in a temporary directory,

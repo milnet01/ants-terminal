@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6717 -->
+<!-- ants-roadmap-id-high-water: ANTS=6719 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -82438,7 +82438,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (ai-prompts), shapes proposed by them.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5262] **token_usage does not report a session's own verb usage, so no session can measure where its tokens went.**
+- ✅ [ANTS-5262] **token_usage does not report a session's own verb usage, so no session can measure where its tokens went.**
   Two sessions hit this on the same day while trying to answer a direct
   request for measured numbers.
 
@@ -82467,6 +82467,21 @@ are closed inline in the feedback files rather than filed here.
   figures, so the verb is not wholly dead. A verb that answers the
   lifetime question and not the session question, under one name, is how
   both sessions came to trust it before checking.
+  2026-11-09. Decided: not a broken counter. Since ANTS-4932 each
+  Claude Code session has its own ants-mcpd, which counts the calls it
+  serves; token_usage is terminal-scoped, so it reported the terminal's
+  tracker, holding only forwarded terminal-scoped calls (ANTS-5311
+  § 2.5 chose that). Reproduced 2026-11-09: calls [] after ~15 calls.
+  Fix: ants-mcpd rewrites the forwarded token_usage reply with its own
+  session (TokenUsageEngine::overlaySessionOnReply); the terminal's
+  tools_called/total_saved move to terminal_session; reset:true also
+  resets the caller's helper. ANTS-5311 amended (§ 2.5, § 5, INV-11).
+  mcp_trace's server-wide ring is unchanged.
+  Verified by a fresh ants-mcpd driven over stdio: two read_region
+  calls, then token_usage listed read_region x2, tools_called 1,
+  terminal_session {tools_called 1, total_saved 0}.
+  Hot reload: reaches a session on its next /mcp reconnect. The
+  terminal side is a refactor with unchanged output, so no relaunch.
   **Layman:** The tool that is supposed to show how many tokens each command used returns an empty list, so nobody can find the expensive ones.
   Kind: fix.
   Source: cc-feedback-2026-09-21 (Vestige and ai-prompts, independently).
@@ -111192,6 +111207,32 @@ reports are asked for separately, each time.
   Kind: audit-fix.
   Source: in-session-2026-11-09 (ANTS-5243 clangd run).
   Lanes: mcp.
+
+- 📋 [ANTS-6718] **Clear the clang-tidy and unused-include warnings clangd shows in remotecontrol_terminal.cpp.**
+  Seen in clangd on 2026-11-09 while ANTS-5262 edited the file; none
+  from that edit.
+  - bugprone-implicit-widening-of-multiplication-result: one int
+    product widened to qsizetype. Check it for overflow first.
+  - misc-use-anonymous-namespace: file-static e2eRefusal.
+  - performance-implicit-conversion-in-loop: a range-for binds const
+    QJsonValue& over a QJsonArray of modifiers.
+  - unused-includes: projectsettings.h and findsources.h. Check the
+    build without each first.
+  **Layman:** Small warnings a code checker raises in the terminal's remote-control code.
+  Kind: audit-fix.
+  Source: in-session-2026-11-09 (ANTS-5262).
+  Lanes: mcp.
+
+- 📋 [ANTS-6719] **ANTS-4932's spec still says token_usage misses ants-mcpd's calls, deferred to ANTS-5311, which has shipped.**
+  docs/specs/ANTS-4932-standalone-mcp-server.md § 2.3: "token_usage
+  counts only the calls the terminal served ... Deferred — tracked by
+  ANTS-5311". ANTS-5311 § 7 asked for this sentence to become a
+  pointer to its spec when it shipped, and ANTS-5262 (2026-11-09) now
+  also gives each ants-mcpd client its own session's figures.
+  **Layman:** A design document still describes a gap in the token report that was closed weeks ago.
+  Kind: doc-fix.
+  Source: in-session-2026-11-09 (ANTS-5262).
+  Lanes: mcp, docs.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

@@ -241,8 +241,24 @@ int main(int argc, char **argv) {
     QSet<QString> forwarded;
     for (const QString &name : mcp::terminalScopedVerbNames()) forwarded.insert(name);
     pipeline.setForwarder(forwarded,
-        [&forwarder](const QByteArray &line, ClaudeIntegration::ForwardReplyFn onReply,
-                     ClaudeIntegration::ForwardFailFn onFail) {
+        [&forwarder, &pipeline](const QByteArray &line, ClaudeIntegration::ForwardReplyFn onReply,
+                                ClaudeIntegration::ForwardFailFn onFail) {
+            // ANTS-5262 — the terminal counts only its own calls, so its
+            // token_usage reply gets this session's figures (INV-11). The
+            // snapshot is taken now; a reset waits for the terminal's answer.
+            const QJsonObject params = QJsonDocument::fromJson(line).object()
+                                           .value(QStringLiteral("params")).toObject();
+            if (params.value(QStringLiteral("name")).toString() == QLatin1String("token_usage")) {
+                const QJsonObject args = params.value(QStringLiteral("arguments")).toObject();
+                const bool reset = args.value(QStringLiteral("reset")).toBool();
+                onReply = [inner = std::move(onReply), &pipeline, reset,
+                           mine = pipeline.tokenUsageReport(
+                               args.value(QStringLiteral("include_zero")).toBool())](
+                              const QByteArray &reply) {
+                    if (reset) pipeline.resetTokenUsage();
+                    inner(TokenUsageEngine::overlaySessionOnReply(reply, mine));
+                };
+            }
             forwarder.forward(line, std::move(onReply), std::move(onFail));
         });
 

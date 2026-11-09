@@ -4,6 +4,10 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "tokenusageengine.h"
+
+#include <QJsonArray>
+#include <QJsonObject>
 
 #include <string>
 
@@ -93,27 +97,32 @@ TEST(McpTokenUsageTool, SchemaSetsAdditionalPropertiesFalse) {
            "token_usage registration block";
 }
 
-// ANTS-1355 REG-V2-1 — response builder emits envelope total_wrap_bytes.
+// ANTS-1355 REG-V2-1/2 — the session fields carry the envelope's
+// total_wrap_bytes and each call's wrap_bytes and latency. Built by
+// TokenUsageEngine::sessionFieldsJson, which cmdTokenUsage and ants-mcpd
+// share (ANTS-5262).
 TEST(McpTokenUsageTool, V2EnvelopeIncludesTotalWrapBytes) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    EXPECT_NE(rc.find("env[\"total_wrap_bytes\"]"), std::string::npos)
-        << "cmdTokenUsage must surface total_wrap_bytes on the envelope";
+    TokenUsageEngine::Snapshot snap;
+    snap.totalWrapBytes = 1234;
+    const QJsonObject env = TokenUsageEngine::sessionFieldsJson(snap);
+    EXPECT_EQ(env.value(QStringLiteral("total_wrap_bytes")).toInteger(), 1234);
 }
 
-// ANTS-1355 REG-V2-2 — per-tool entry emits wrap_bytes + duration fields.
 TEST(McpTokenUsageTool, V2PerCallEntryIncludesWrapAndLatency) {
-    const std::string rc = ants_test::slurpRemoteControl();
-    ASSERT_FALSE(rc.empty());
-    for (const char *key : {
-            "c[\"wrap_bytes\"]",
-            "c[\"duration_us_min\"]",
-            "c[\"duration_us_max\"]",
-            "c[\"duration_us_mean\"]",
-         }) {
-        EXPECT_NE(rc.find(key), std::string::npos)
-            << "cmdTokenUsage per-call entry missing " << key;
-    }
+    TokenUsageEngine::Snapshot snap;
+    TokenUsageEngine::ToolReport r;
+    r.tool = QStringLiteral("read_region");
+    r.wrapBytes = 11;
+    r.durationUsMin = 22;
+    r.durationUsMax = 33;
+    r.durationUsMean = 44;
+    snap.calls.append(r);
+    const QJsonObject c = TokenUsageEngine::sessionFieldsJson(snap)
+                              .value(QStringLiteral("calls")).toArray().at(0).toObject();
+    EXPECT_EQ(c.value(QStringLiteral("wrap_bytes")).toInteger(), 11);
+    EXPECT_EQ(c.value(QStringLiteral("duration_us_min")).toInteger(), 22);
+    EXPECT_EQ(c.value(QStringLiteral("duration_us_max")).toInteger(), 33);
+    EXPECT_EQ(c.value(QStringLiteral("duration_us_mean")).toInteger(), 44);
 }
 
 // ANTS-1355 REG-V2-3 — dispatch site computes wrapBytes + durUs and

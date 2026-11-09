@@ -342,3 +342,91 @@ TEST(McpdUsageSnapshots, ConcurrentClaimOnce) {
     EXPECT_TRUE(QDir(dir).entryList(QDir::Files).isEmpty())
         << QDir(dir).entryList(QDir::Files).join(QLatin1Char(' ')).toStdString();
 }
+
+// INV-11 (ANTS-5262) — through ants-mcpd, token_usage's session fields are
+// the calling ants-mcpd's own; the terminal's move to terminal_session, and
+// every other field and the JSON-RPC frame pass unchanged.
+namespace {
+QByteArray replyLine(const QJsonObject &env) {
+    QJsonObject text;
+    text["type"] = QStringLiteral("text");
+    text["text"] = QString::fromUtf8(QJsonDocument(env).toJson(QJsonDocument::Compact));
+    QJsonObject result;
+    result["content"] = QJsonArray{text};
+    QJsonObject rpc;
+    rpc["jsonrpc"] = QStringLiteral("2.0");
+    rpc["id"] = 7;
+    rpc["result"] = result;
+    return QJsonDocument(rpc).toJson(QJsonDocument::Compact) + '\n';
+}
+QJsonObject envOf(const QByteArray &line) {
+    const QJsonObject rpc = QJsonDocument::fromJson(line).object();
+    EXPECT_EQ(rpc.value(QStringLiteral("id")).toInt(), 7);
+    const QString text = rpc.value(QStringLiteral("result")).toObject()
+        .value(QStringLiteral("content")).toArray().at(0).toObject()
+        .value(QStringLiteral("text")).toString();
+    return QJsonDocument::fromJson(text.toUtf8()).object();
+}
+Snapshot localSession() {
+    Snapshot s;
+    s.sinceUnixMs = 1000;
+    s.toolsCalled = 3;
+    s.totalSaved = 500;
+    ToolReport r;
+    r.tool = QStringLiteral("read_region");
+    r.nCalls = 3;
+    r.estTokensSaved = 500;
+    s.calls.append(r);
+    return s;
+}
+}  // namespace
+
+TEST(McpdUsageSnapshots, Ants5262ForwardedReplyCarriesCallerSession) {
+    Snapshot terminal;
+    terminal.toolsCalled = 2;
+    terminal.totalSaved = 99;
+    ToolReport t;
+    t.tool = QStringLiteral("tab_list");
+    terminal.calls.append(t);
+    QJsonObject env = sessionFieldsJson(terminal);
+    env["ok"] = true;
+    env["month_saved"] = 5;
+    env["mcpd"] = QJsonObject{{QStringLiteral("calls"), 38}};
+
+    const QByteArray out = overlaySessionOnReply(replyLine(env), localSession());
+    ASSERT_TRUE(out.endsWith('\n'));
+    const QJsonObject got = envOf(out);
+    EXPECT_EQ(got.value(QStringLiteral("tools_called")).toInt(), 3);
+    EXPECT_EQ(got.value(QStringLiteral("total_saved")).toInteger(), 500);
+    EXPECT_EQ(got.value(QStringLiteral("since_unix_ms")).toInteger(), 1000);
+    const QJsonArray calls = got.value(QStringLiteral("calls")).toArray();
+    ASSERT_EQ(calls.size(), 1);
+    EXPECT_EQ(calls.at(0).toObject().value(QStringLiteral("tool")).toString(),
+              QStringLiteral("read_region"));
+    EXPECT_EQ(got.value(QStringLiteral("month_saved")).toInt(), 5);
+    EXPECT_EQ(got.value(QStringLiteral("mcpd")).toObject()
+                  .value(QStringLiteral("calls")).toInt(), 38);
+    const QJsonObject ts = got.value(QStringLiteral("terminal_session")).toObject();
+    EXPECT_EQ(ts.value(QStringLiteral("tools_called")).toInt(), 2);
+    EXPECT_EQ(ts.value(QStringLiteral("total_saved")).toInteger(), 99);
+}
+
+TEST(McpdUsageSnapshots, Ants5262OtherRepliesPassUnchanged) {
+    // fields= dropped every session field: nothing to replace, nothing added.
+    QJsonObject projected;
+    projected["ok"] = true;
+    projected["mcpd"] = QJsonObject{{QStringLiteral("calls"), 4}};
+    const QByteArray p = replyLine(projected);
+    EXPECT_EQ(overlaySessionOnReply(p, localSession()), p);
+    // A refusal is the terminal's answer, not a report.
+    QJsonObject refused;
+    refused["ok"] = false;
+    refused["tools_called"] = 2;
+    const QByteArray r = replyLine(refused);
+    EXPECT_EQ(overlaySessionOnReply(r, localSession()), r);
+    // Not a tool result at all.
+    const QByteArray junk("{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-1}}\n");
+    EXPECT_EQ(overlaySessionOnReply(junk, localSession()), junk);
+    EXPECT_EQ(overlaySessionOnReply(QByteArray("not json\n"), localSession()),
+              QByteArray("not json\n"));
+}

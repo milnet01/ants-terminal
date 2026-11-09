@@ -29,7 +29,6 @@
 #include <QPointer>
 #include <QSet>
 #include <QStandardPaths>
-#include <QTimeZone>
 #include <QTimer>
 
 #include <cerrno>
@@ -1225,43 +1224,11 @@ QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,
         ci->resetTokenUsage();
     }
 
-    QJsonObject env;
+    // since, tools_called, total_saved, total_wrap_bytes, total_failed_bytes
+    // and calls[] — shared with ants-mcpd's ANTS-5262 rewrite.
+    QJsonObject env = TokenUsageEngine::sessionFieldsJson(snap);
     env["ok"] = true;
-    env["since"] = QDateTime::fromMSecsSinceEpoch(snap.sinceUnixMs, QTimeZone::utc())
-                       .toString(Qt::ISODate);
-    env["since_unix_ms"] = static_cast<qint64>(snap.sinceUnixMs);
-    env["tools_called"]  = snap.toolsCalled;
-    env["total_saved"]   = static_cast<qint64>(snap.totalSaved);
-    // ANTS-1355 — envelope sum across ALL tools (includes those
-    // filtered out of `calls[]` by include_zero:false).
-    env["total_wrap_bytes"] = static_cast<qint64>(snap.totalWrapBytes);
-    // ANTS-1432 — Σ(failed_bytes_in + failed_bytes_out) across ALL
-    // tools. Net-token-impact for the session is
-    //     total_saved - total_failed_bytes / 4.
-    env["total_failed_bytes"] = static_cast<qint64>(snap.totalFailedBytes);
     env["reset_performed"] = wantsReset;
-
-    QJsonArray calls;
-    for (const auto &r : snap.calls) {
-        QJsonObject c;
-        c["tool"]              = r.tool;
-        c["n_calls"]           = r.nCalls;
-        c["bytes_in"]          = static_cast<qint64>(r.bytesIn);
-        c["bytes_out"]         = static_cast<qint64>(r.bytesOut);
-        // ANTS-1355 — wrap-overhead + latency breakdown.
-        c["wrap_bytes"]        = static_cast<qint64>(r.wrapBytes);
-        c["duration_us_min"]   = static_cast<qint64>(r.durationUsMin);
-        c["duration_us_max"]   = static_cast<qint64>(r.durationUsMax);
-        c["duration_us_mean"]  = static_cast<qint64>(r.durationUsMean);
-        c["est_tokens_saved"]  = static_cast<qint64>(r.estTokensSaved);
-        // ANTS-1432 — per-tool failure cost. Zero for tools that
-        // have only ever succeeded.
-        c["failed_calls"]      = static_cast<qint64>(r.failedCalls);
-        c["failed_bytes_in"]   = static_cast<qint64>(r.failedBytesIn);
-        c["failed_bytes_out"]  = static_cast<qint64>(r.failedBytesOut);
-        calls.append(c);
-    }
-    env["calls"] = calls;
     // ANTS-3572 — persisted month / YTD / all-time saved (each = stored + this
     // session). monthly[] is the folded buckets only, recent-first. Placed
     // after calls[] (JSON order is immaterial; summary totals follow the detail).

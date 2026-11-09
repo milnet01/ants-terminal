@@ -273,6 +273,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **token_usage reports the calling session's own calls** (ANTS-5262)
+  A Claude Code session served through ants-mcpd now sees its own
+  per-tool calls, tools_called and total_saved; the terminal's own
+  figures move to a terminal_session block. Reaches a session on its
+  next MCP reconnect (/mcp); no terminal relaunch.
+
 - **A link being printed stays on its own text when the screen scrolls back, or a line is inserted or deleted, before the link ends** (ANTS-5218)
 
 - **The Roadmap viewer's History tab reads old-version archives from the project's top folder, so a roadmap kept in a subfolder such as docs/private/ finds them too.** (ANTS-5159)
