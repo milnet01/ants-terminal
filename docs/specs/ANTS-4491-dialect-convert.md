@@ -177,7 +177,8 @@ default is `ants-v1`. So:
 
 - `pass-headings` — a *recognised* third dialect — refuses
   `dialect_out_of_scope`. `migratedProject()` does not refuse it, which is
-  why this spec needs its own code.
+  why this spec needs its own code. **Amended 2026-11-09:** ANTS-6724
+  accepts this dialect; the code remains for a dialect not yet named.
 - A source with **no format signal** takes `migratedProject()`'s existing
   `ReadError::SourceUnrecognised`. The convert never runs.
 
@@ -290,6 +291,9 @@ must match its item rather than produce a fresh insert. That is ANTS-4500
   accepted path instead.
   *Breaks when:* the convert relies on `migratedProject()`, which recognises
   that dialect and does not refuse it.
+  **Withdrawn 2026-11-09 by ANTS-6724:** `pass-headings` is now accepted
+  input, under `docs/specs/ANTS-6724-convert-pass-headings.md`'s
+  `id_format` precondition (its INV-3). `thirdDialectRefused` is removed.
 
 ## 6. Failure modes
 
@@ -327,7 +331,7 @@ restored.
 | INV-4 | `idsStableAcrossCommit` |
 | INV-5 | `existingIdsPreserved` |
 | INV-6 | `staleMirrorDoesNotDuplicate` |
-| INV-7 | `thirdDialectRefused` |
+| INV-7 | withdrawn (ANTS-6724) |
 
 Fixtures are throwaway stores under the test's own temp root, never the
 machine-global store. `RoadmapStore`'s default path is the real store, so each
@@ -378,7 +382,8 @@ no redesign follows, and the report above is what makes it reviewable.
 - Converting a recognised dialect that is neither `github-task-list` nor
   `ants-v1`.
   Those refuse `dialect_out_of_scope`; see § 4.4 for why `ants-v1` is
-  accepted rather than refused.
+  accepted rather than refused. `pass-headings` left this list on
+  2026-11-09 (ANTS-6724).
 
 ## 10. What checks this
 
@@ -390,7 +395,7 @@ no redesign follows, and the report above is what makes it reviewable.
 | INV-4 | `test_convert.cpp::idsStableAcrossCommit` |
 | INV-5 | `test_convert.cpp::existingIdsPreserved` |
 | INV-6 | `test_convert.cpp::staleMirrorDoesNotDuplicate` |
-| A third dialect refuses `dialect_out_of_scope` | `test_convert.cpp::thirdDialectRefused` |
+| A third dialect refuses `dialect_out_of_scope` | withdrawn 2026-11-09 (ANTS-6724); ANTS-6724's table carries its replacement |
 
 ## 11. Cross-doc impact
 

@@ -91456,6 +91456,13 @@ measured Ants adding about 5,250 tokens to every request.
   other op then works. Route (b), teaching create_section, section moves
   and archive rotation the pass-headings dialect, is larger. 438 items,
   363 shipped. Related: ANTS-4803, ANTS-5230.
+  Spec: docs/specs/ANTS-6724-convert-pass-headings.md (draft
+  2026-11-09). Amends docs/specs/ANTS-4491-dialect-convert.md (INV-7
+  withdrawn). Agreed with RetroDB 2026-11-09: id_format prefix "PASS-59",
+  pattern PASS-\d+(?:-\d+)*(?:-[A-Z])?, appends via stable_prefix. Every
+  real convert snapshots the store first (user, 2026-11-09). RetroDB's
+  real convert waits on ANTS-6725 and its go-ahead after a scratch-copy
+  sample.
   **Layman:** Lets a project whose roadmap is grouped by review pass switch to the standard grouping by version without losing its item numbers.
   Kind: feature.
   Source: feedback-RetroDB-2026-11-09.
