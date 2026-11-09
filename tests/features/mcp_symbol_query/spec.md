@@ -19,6 +19,9 @@ source tree spanning C++, Python, Lua, Shell):
 2. `findCaller` returns call sites, excludes the definition line
    (INV-9), and attaches the best-guess `definition`.
 3. Per-language anchors fire for C++ / Python / Lua / Shell.
+3b. (ANTS-5670) Rust `const NAME: T`, `static [mut] NAME: T` and a
+    path-scoped visibility (`pub(crate) fn`, `pub(super) const fn`) are
+    definitions. A use of the name is not.
 4. The tree walk skips `build*` / dot-dirs / `node_modules`.
 5. An explicit `lang` filter restricts the scan to one family.
 5a. (ANTS-5544) `CMakeLists.txt` and `*.cmake` are the `cmake` family.

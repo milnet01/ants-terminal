@@ -367,15 +367,20 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\b"));
             break;
         case Lang::Generic:
-            // ANTS-2150 — mirror FileOutline's three brace-family patterns,
-            // spliced around the (escaped) query symbol `s`:
+            // ANTS-2150 — (1)-(3) mirror FileOutline's three brace-family
+            // patterns, spliced around the (escaped) query symbol `s`:
             // (1) keyword declaration (`pub fn s`, `class s`, `func (r R) s`,
-            //     `def self.s` Ruby singleton — ANTS-2150 optional receiver),
-            add(QStringLiteral("^\\s*(?:(?:pub|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\\s+)*(?:fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\\b(?:\\s+\\([^)]*\\))?\\s+(?:self\\.)?") + s + QStringLiteral("\\b"));
+            //     `def self.s` Ruby singleton — ANTS-2150 optional receiver;
+            //     `pub(crate) fn s` — ANTS-5670),
+            add(QStringLiteral("^\\s*(?:(?:pub(?:\\([^)]*\\))?|export|default|public|private|protected|internal|static|final|abstract|sealed|async|open|override|suspend|inline|const|unsafe|extern|data)\\s+)*(?:fn|fun|func|function|def|class|struct|enum|trait|impl|interface|type|module|object|protocol|extension|namespace|record)\\b(?:\\s+\\([^)]*\\))?\\s+(?:self\\.)?") + s + QStringLiteral("\\b"));
             // (2) C-style method definition (`private void s(...) {`),
             add(QStringLiteral("^\\s*(?!(?:return|if|for|while|switch|catch|else|throw|new|await|do|in|of)\\b)(?:[A-Za-z_$<>\\[\\].]+[\\s*&]+)+") + s + QStringLiteral("\\s*\\([^;{]*\\)\\s*(?:->\\s*[\\w$<>\\[\\].?]+\\s*|:\\s*[\\w$<>\\[\\].?]+\\s*)?\\{"));
             // (3) JS/TS arrow-function assignment (`const s = (...) =>`).
             add(QStringLiteral("^\\s*(?:export\\s+)?(?:default\\s+)?(?:const|let|var)\\s+") + s + QStringLiteral("\\s*=\\s*(?:async\\s+)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>"));
+            // (4) ANTS-5670 — a Rust `const NAME: T` or `static [mut] NAME: T`.
+            //     The `:` type Rust requires is the anchor, so a JS
+            //     `const x = 1` does not match.
+            add(QStringLiteral("^\\s*(?:pub(?:\\([^)]*\\))?\\s+)?(?:const|static)\\s+(?:mut\\s+)?") + s + QStringLiteral("\\s*:"));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             break;
         case Lang::Cmake:

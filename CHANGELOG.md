@@ -291,6 +291,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_definition and doc_symbols resolve Rust const and static items, and functions declared pub(crate), pub(super) or pub(in path).** (ANTS-5670)
+
 - **doc_symbols resolves names from a CMake FetchContent dependency's source under build/_deps, and no longer reports std:: names.** (ANTS-5669)
   A name the project neither defines nor uses is looked up in each
   `build/_deps/<name>-src` folder once the project walk is done.

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6722 -->
+<!-- ants-roadmap-id-high-water: ANTS=6723 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89173,7 +89173,7 @@ project. Reported causes are claims until checked in source.
   Source: feedback-Vestige-2026-10-12.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5670] **doc_symbols resolves Rust const and static items and impl methods, and reports crate-path names as not checked.**
+- ✅ [ANTS-5670] **doc_symbols resolves Rust const and static items and impl methods, and reports crate-path names as not checked.**
   rusty-psn: doc_lint (doc_symbols) over STANDARDS.md reported 26 of 58
   unresolved. Several exist: `ALLOWED_DOMAINS` and
   `security::ALLOWED_DOMAINS` (pub const in src/security.rs),
@@ -89188,6 +89188,13 @@ project. Reported causes are claims until checked in source.
   (rusty-psn STANDARDS.md: 15 unresolved → 0); crate paths and the
   consts come back referenced. Left: the consts and statics still do not
   RESOLVE to their definition line.
+  2026-11-09: the generic anchors take `const NAME: T` / `static [mut]
+  NAME: T` and a path-scoped `pub(...)`. Methods inside impl blocks
+  already resolved; crate paths come back referenced (ANTS-5357).
+  rusty-psn STANDARDS.md: ALLOWED_DOMAINS, MAX_METADATA_SIZE,
+  CHUNK_SIZE, MERGE_CHUNK_SIZE now locate to their definition lines;
+  INVALID_CHARS is ambiguous (two cfg-gated definitions). Test:
+  McpSymbolQuery.Ants5670RustConstStaticAndScopedPub.
   **Layman:** The document checker cannot see some kinds of Rust names, so a Rust project's documents look full of dead references that are not dead.
   Kind: fix.
   Source: feedback-rusty-psn-source-2026-10-12.
@@ -89331,6 +89338,22 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-10-17.
   Lanes: mcp-roadmap.
+
+- 📋 [ANTS-6723] **doc_symbols' locator mode accepts a Rust module path as the qualifier of a name defined in that module's file.**
+  On rusty-psn STANDARDS.md, locator mode lists 11 names as unresolved
+  (`security::validate_serial()`, `psn::utils::read_capped_text`,
+  `utils::FileError`, ...) that full mode reports resolved or referenced.
+  inQualifier (src/docsymbols.cpp) checks the qualifier against the
+  signature and the enclosing class/namespace chain; a Rust module is the
+  file path (src/security.rs, src/psn/utils.rs, src/x/mod.rs), so it never
+  matches. Fix: for a .rs definition, add the path's directory names and
+  file stem (not mod/lib/main) to the chain. `Promise::spawn_async` (an
+  impl method) also needs `impl Foo {` in the chain. Related: ANTS-5670,
+  ANTS-5313 INV-9.
+  **Layman:** The checker's "where is it" answer says Rust names written with their module prefix are missing, though they exist.
+  Kind: fix.
+  Source: in-session-2026-11-09 (ANTS-5670 check on rusty-psn STANDARDS.md).
+  Lanes: mcp, docs.
 
 ## Ants MCP feedback from CC sessions — 2026-10-15 token survey
 

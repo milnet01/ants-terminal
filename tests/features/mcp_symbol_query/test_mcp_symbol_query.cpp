@@ -615,6 +615,45 @@ TEST(McpSymbolQuery, Ants5544CmakeFamily) {
                     .definitions.isEmpty());
 }
 
+// ANTS-5670 — spec 3b: Rust items whose definition carries no fn/struct
+// keyword. `const NAME: T` and `static [mut] NAME: T` (the `:` type is
+// mandatory in Rust), and a visibility with a path, `pub(crate) fn`.
+TEST(McpSymbolQuery, Ants5670RustConstStaticAndScopedPub) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("src/security.rs"),
+              QStringLiteral("pub const ALLOWED_DOMAINS: &[&str] = &[\".net\"];\n"
+                             "const CHUNK_SIZE: usize = 1024;\n"
+                             "static mut COUNTER: u32 = 0;\n"
+                             "pub(crate) static BANNER: &str = \"x\";\n"
+                             "impl Sfo {\n"
+                             "    pub(crate) fn make_test_sfo() -> Vec<u8> {\n"
+                             "        let n = CHUNK_SIZE;\n"
+                             "    }\n"
+                             "    pub(super) const fn limit() -> usize { 1 }\n"
+                             "}\n"));
+
+    SymbolQuery::Options so;
+    auto defAt = [&](const char *sym) {
+        const auto r = SymbolQuery::findDefinition(root, QString::fromUtf8(sym), so);
+        return r.definitions.isEmpty()
+                   ? std::string()
+                   : QStringLiteral("%1:%2").arg(r.definitions.front().file)
+                         .arg(r.definitions.front().line).toStdString();
+    };
+    EXPECT_EQ(defAt("ALLOWED_DOMAINS"), "src/security.rs:1");
+    EXPECT_EQ(defAt("CHUNK_SIZE"), "src/security.rs:2");
+    EXPECT_EQ(defAt("COUNTER"), "src/security.rs:3");
+    EXPECT_EQ(defAt("BANNER"), "src/security.rs:4");
+    EXPECT_EQ(defAt("make_test_sfo"), "src/security.rs:6");
+    EXPECT_EQ(defAt("limit"), "src/security.rs:9");
+
+    // The use on line 7 is a use, never a second definition.
+    EXPECT_EQ(SymbolQuery::findDefinition(root, QStringLiteral("CHUNK_SIZE"), so)
+                  .definitionsTotal, 1);
+}
+
 TEST(McpSymbolQuery, WiringContract) {
     expect_reset();
 
