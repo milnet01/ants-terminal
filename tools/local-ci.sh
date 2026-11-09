@@ -415,31 +415,9 @@ else
     fi
 fi
 
-# --- build-test toolchain leg -------------------------------------------------
-# The same guard, pointed at build-test's runner: ubuntu 24.04, GCC 13, mold.
-# This box's GCC 16 links targets that GCC 13 + mold cannot — an under-linked
-# static-archive consumer links here and fails there. bench_partition_walk went
-# red on three consecutive CI pushes that way while every local leg was green.
-# Same scope and --warm-only contract as the leg above.
-#
-# Opt out for one push with ANTS_PREPUSH_NO_UBUNTU24=1.
-if [[ "$job_in_image" == 1 ]]; then
-    echo "pre-push: build-test toolchain leg already covered — the job ran in CI's image."
-elif [[ -n "${ANTS_PREPUSH_NO_UBUNTU24:-}" ]]; then
-    echo "pre-push: build-test toolchain leg skipped (ANTS_PREPUSH_NO_UBUNTU24 set)."
-elif [[ ! -x tools/qt62-guard.sh ]]; then
-    echo "pre-push: ⊘ tools/qt62-guard.sh missing — build-test toolchain guard did NOT run."
-elif [[ -z "$compilable" ]]; then
-    echo "pre-push: build-test toolchain leg skipped — no compilable source in this push."
-elif ! tools/qt62-guard.sh --job build-test --warm-only; then
-    echo >&2
-    echo "pre-push: build FAILED under CI's build-test toolchain — push blocked." >&2
-    echo "          It builds with this box's compiler but not with ubuntu 24.04's" >&2
-    echo "          GCC 13 + mold. Check the error above; a link error usually" >&2
-    echo "          means a target needs the full --start-group library set." >&2
-    echo "          ('git push --no-verify' to override.)" >&2
-    exit 1
-fi
+# No separate build-test toolchain leg (ANTS-5324): with podman, the job
+# above already ran whole in CI's image (ubuntu 24.04, GCC 13, mold); without
+# podman there is no image to compile in, and that skip is recorded above.
 
 echo "pre-push: correctness suite green — push allowed."
 exit 0

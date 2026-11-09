@@ -105,6 +105,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **The local Qt 6.2 check runs GitHub's own CI recipe inside its container, with no build commands of its own** (ANTS-5324)
+  The pre-push check on the oldest supported Qt now builds exactly as
+  GitHub's CI does, so the two cannot drift apart. The separate
+  "build-test toolchain" step is gone; the full CI job in CI's own image
+  already covers it.
+
 - **Scrollback stores link data only for lines that have links, so plain history takes less memory** (ANTS-5204)
 
 - **The background-tasks window keeps one copy of each task's output and forgets tasks that are gone** (ANTS-5203)

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""The podman compile guard configures as ci.yml does. See spec.md beside this."""
+"""The podman guard runs ci.yml's own job steps. See spec.md beside this."""
 import os
 import re
+import subprocess
 import sys
 
 try:
@@ -22,15 +23,6 @@ def check(ok, msg):
         failures.append(msg)
 
 
-def configure_flags(text):
-    """The -D cache variables and the -G generator, as a set of strings."""
-    flags = set(re.findall(r"-D[A-Za-z0-9_]+(?::[A-Z]+)?=\S+", text))
-    gen = re.search(r"-G\s+(\S+)", text)
-    if gen:
-        flags.add("-G " + gen.group(1))
-    return flags
-
-
 with open(os.path.join(ROOT, ".github", "workflows", "ci.yml")) as f:
     ci = yaml.safe_load(f)
 
@@ -39,31 +31,38 @@ with open(GUARD) as f:
     code = "\n".join(l for l in f.read().splitlines()
                      if not l.lstrip().startswith("#"))
 
-# The compile leg: from its `bash -euo pipefail -c '` to the closing quote.
-m = re.search(r"podman run (?:(?!podman run).)*?bash -euo pipefail -c '(.*?)'",
-              code, re.S)
-check(m is not None, "the guard's compile block is found")
-if not m:
-    sys.exit(1)
-compile_cmd = m.group(1)
-compile_run = code[code.rfind("podman run", 0, m.start(1)):m.start(1)]
-guard_flags = configure_flags(compile_cmd)
-guard_env = dict(re.findall(r"-e (CCACHE_[A-Z_]+)=(\S+)", compile_run))
+# INV-1 — no configure or build line of the guard's own. An `echo` line is a
+# message that may name the command, not a run of it.
+commands = "\n".join(l for l in code.splitlines() if not l.lstrip().startswith("echo "))
+own = re.findall(r"\bcmake\s+(?:-S|-B|--build)\b[^\n]*", commands)
+check(not own, f"INV-1 the guard runs no cmake of its own (found {own})")
 
+# INV-2 — one container run, and it runs the job through ci_workflow.py.
+runs = [m.start() for m in re.finditer(r"\bpodman run\b", code)]
+check(len(runs) == 1, f"INV-2 the guard has one podman run (found {len(runs)})")
+if runs:
+    block = code[runs[0]:code.find("&\n", runs[0])]
+    check('tools/ci_workflow.py run "$job"' in block,
+          "INV-2 that run executes tools/ci_workflow.py run \"$job\"")
+
+# INV-3 — --print mounts the build volume at the job's own Configure -B dir.
 for job in GUARDED_JOBS:
-    spec = ci["jobs"][job]
-    steps = [s for s in spec["steps"] if s.get("name", "").startswith("Configure")]
+    steps = [s for s in ci["jobs"][job]["steps"]
+             if s.get("name", "").startswith("Configure")]
     check(len(steps) == 1, f"{job} has one Configure step")
     if len(steps) != 1:
         continue
-    want = configure_flags(steps[0]["run"])
-    check(want == guard_flags,
-          f"INV-1 {job}: configure flags match "
-          f"(missing {sorted(want - guard_flags)}, extra {sorted(guard_flags - want)})")
-    want_env = {k: str(v) for k, v in (spec.get("env") or {}).items()
-                if k.startswith("CCACHE_") and k != "CCACHE_DIR"}
-    diff = {k: (v, guard_env.get(k)) for k, v in want_env.items()
-            if guard_env.get(k) != v}
-    check(not diff, f"INV-2 {job}: CCACHE_* env matches (ci.yml vs guard: {diff})")
+    want = re.search(r"-B\s+(\S+)", steps[0]["run"])
+    check(want is not None, f"{job}'s Configure step names a -B directory")
+    out = subprocess.run(["bash", GUARD, "--job", job, "--print"], cwd=ROOT,
+                         capture_output=True, text=True)
+    got = re.search(r"^volume: .*\(at /src/(\S+)\)$", out.stdout, re.M)
+    check(out.returncode == 0 and got is not None,
+          f"INV-3 {job}: --print names the volume's mount (rc {out.returncode}, "
+          f"stderr {out.stderr.strip()!r})")
+    if want and got:
+        check(got.group(1) == want.group(1),
+              f"INV-3 {job}: mounted at /src/{got.group(1)}, ci.yml builds in "
+              f"{want.group(1)}")
 
 sys.exit(1 if failures else 0)

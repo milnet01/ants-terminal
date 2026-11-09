@@ -65,20 +65,22 @@
 #   tools/qt62-guard.sh --clean      # drop every cached image + build volume
 #   tools/qt62-guard.sh --print      # show the resolved image/volume/packages
 #
-# Any of the above takes `--job build-test` to guard ci.yml's build-test job
-# instead: ubuntu:24.04, its GCC 13 and mold. This box's GCC 16 extracts fewer
-# members from a static archive than GCC 13 + mold does, so an under-linked
-# target links here and fails only there — bench_partition_walk broke three
-# CI pushes that way. Same compile, same caches, own image and volume.
+# Every run executes ci.yml's own job steps through tools/ci_workflow.py,
+# never a configure or build line of this script's (ANTS-5324), so the guard
+# cannot drift from ci.yml. The working tree is mounted read-write, as a
+# runner's checkout is. The build volume is mounted at the directory the
+# job's Configure step names (`-B`), and the compile cache at .ccache/, the
+# job env's CCACHE_DIR; both are volumes, so the host's own trees are never
+# touched. Podman leaves the mount point as an empty, gitignored directory
+# in the checkout (build-qt62/ for qt62-baseline).
 #
-# `--job build-test --run-job` runs that ci.yml job WHOLE in the same image,
-# through tools/ci_workflow.py: build, suite, shellcheck, packaging lints. It
-# is the one local run on CI's Qt (6.4 on ubuntu 24.04; this box has a newer
-# one), so a test that passes here and fails there is caught before a push.
-# ANTS-5479's button test was that case. The working tree is mounted
-# read-write, as a runner's checkout is; build/ and .ccache/ are volumes of
-# their own, so the host's build/ is never touched. `--check-warm` exits 0
-# when that job's caches exist and 3 when they do not.
+# `--job build-test --run-job` runs ci.yml's build-test job whole in its
+# image (ubuntu:24.04, GCC 13, mold): build, suite, shellcheck, packaging
+# lints. It is the one local run on CI's Qt (6.4; this box has a newer one),
+# so a test that passes here and fails there is caught before a push.
+# ANTS-5479's button test was that case. `--job build-test` implies
+# `--run-job`, because that job runs the suite. `--check-warm` exits 0 when
+# the job's caches exist and 3 when they do not.
 #
 # Exit: 0 pass (or skipped under --warm-only), 1 compile/job failure or
 # refusal, 3 not warm (--check-warm only), 130 interrupted.
@@ -120,12 +122,10 @@ case "$job" in
         qt62_base="docker.io/library/ubuntu:24.04"
         qt62_step="Install Qt6 + build + packaging deps (cached)"
         qt62_prefix="ants-ubuntu24"
-        qt62_what="CI's build-test toolchain (ubuntu 24.04, GCC 13, mold)"
-        qt62_cmd="tools/qt62-guard.sh --job build-test"
-        if [[ "$run_job" == 1 ]]; then
-            qt62_what="ci.yml's build-test job in CI's image (ubuntu 24.04)"
-            qt62_cmd="tools/qt62-guard.sh --job build-test --run-job"
-        fi ;;
+        # The job runs the suite, so it is always run whole (ANTS-5324).
+        run_job=1
+        qt62_what="ci.yml's build-test job in CI's image (ubuntu 24.04)"
+        qt62_cmd="tools/qt62-guard.sh --job build-test --run-job" ;;
     *) echo "qt62-guard: unknown --job '$job' (qt62-baseline or build-test)" >&2
        exit 1 ;;
 esac
@@ -137,6 +137,10 @@ esac
 # HTTPS when no system GTest is found. The runner has none either, so CI takes
 # the same FetchContent path. These reproduce the runner ENV.
 qt62_extra_pkgs="git ca-certificates"
+# python3-yaml runs tools/ci_workflow.py, which reads ci.yml. The runner
+# ships Python and PyYAML; the bare image has neither (python3-yaml pulls in
+# python3). build-test's ci.yml list already names it, so its tag is unchanged.
+qt62_extra_pkgs="$qt62_extra_pkgs python3-yaml"
 # --run-job runs the SUITE, which needs Qt's SQLite driver: the roadmap store
 # and session_message tests open a QSQLITE database. libqt6sql6-sqlite is a
 # Recommends of libqt6sql6t64, which this image installs without; GitHub's
@@ -203,22 +207,34 @@ qt62_ci_packages() {
     printf '%s\n' "$pkgs"
 }
 
-qt62_pkgs=""; qt62_tag=""; qt62_image=""; qt62_volume=""
+# The build directory the job's Configure step names with `-B`, read from
+# ci.yml through the runner's own plan. The volume is mounted there, because a
+# CMake cache cannot move between binary dirs. Refuses unless exactly one.
+qt62_ci_build_dir() {
+    local dirs
+    dirs="$(python3 tools/ci_workflow.py plan "$job" \
+            | sed -nE 's/^  \| *cmake .*-B +([^ ]+).*/\1/p' | sort -u)"
+    if [[ -z "$dirs" || "$dirs" == *$'\n'* ]]; then
+        echo "qt62-guard: cannot read one cmake -B directory from ci.yml's $job job" >&2
+        echo "            (found: ${dirs:-none}). Update qt62_ci_build_dir()." >&2
+        return 1
+    fi
+    printf '%s\n' "$dirs"
+}
+
+qt62_pkgs=""; qt62_tag=""; qt62_image=""; qt62_volume=""; qt62_build_dir=""
 qt62_container=""; qt62_interrupted_marker=""
 qt62_resolve() {
     local list
     list="$(qt62_ci_packages)" || return 1
+    qt62_build_dir="$(qt62_ci_build_dir)" || return 1
     qt62_pkgs="$(printf '%s\n%s\n' "$list" "$(tr ' ' '\n' <<<"$qt62_extra_pkgs")" | sort -u)"
     qt62_tag="$(printf '%s\n%s\n' "$qt62_base" "$qt62_pkgs" | sha256sum | cut -c1-12)"
     qt62_image="localhost/$qt62_prefix-baseline:$qt62_tag"
-    qt62_volume="$qt62_prefix-build-$qt62_tag"
-    qt62_container="$qt62_prefix-guard-$qt62_tag"
-    if [[ "$run_job" == 1 ]]; then
-        # Its own tree: the job configures build/ under /src, and a CMake
-        # cache cannot move between binary dirs.
-        qt62_volume="$qt62_prefix-job-$qt62_tag"
-        qt62_container="$qt62_prefix-job-$qt62_tag"
-    fi
+    # `-job-`, not the `-build-` the compile-only guard used: that tree was
+    # configured at /build and cannot be reused at the job's own directory.
+    qt62_volume="$qt62_prefix-job-$qt62_tag"
+    qt62_container="$qt62_prefix-job-$qt62_tag"
     qt62_interrupted_marker="$qt62_state_dir/$qt62_volume.interrupted"
 }
 
@@ -228,7 +244,7 @@ if [[ "$mode" == "print" ]]; then
     echo "base:    $qt62_base"
     echo "tag:     $qt62_tag"
     echo "image:   $qt62_image"
-    echo "volume:  $qt62_volume"
+    echo "volume:  $qt62_volume (at /src/$qt62_build_dir)"
     echo "packages ($(wc -l <<<"$qt62_pkgs"), extracted from ci.yml):"
     while IFS= read -r l; do echo "  $l"; done <<<"$qt62_pkgs"
     exit 0
@@ -314,10 +330,9 @@ qt62_ensure_image() {
 qt62_ensure_image || {
     echo "qt62-guard: image build failed" >&2; exit 1; }
 
-# --- the compile guard ------------------------------------------------------
-# Source is bind-mounted READ-ONLY, so a stray write fails loudly and the host
-# repo and its build*/ trees are never touched. The build tree lives in the
-# named volume, which is what makes a re-run incremental.
+# --- the job run --------------------------------------------------------------
+# The build tree lives in the named volume, which is what makes a re-run
+# incremental.
 if [[ -e "$qt62_interrupted_marker" ]]; then
     echo "qt62-guard: the cached build tree was interrupted mid-compile;"
     echo "            discarding it and building cold."
@@ -341,38 +356,22 @@ qt62_ccache="$PWD/.ccache-guard/$qt62_prefix"
 [[ "$run_job" == 1 ]] && qt62_ccache="$PWD/.ccache-guard/$qt62_prefix-job"
 mkdir -p "$qt62_ccache" || {
     echo "qt62-guard: cannot create $qt62_ccache" >&2; exit 1; }
-if [[ "$run_job" == 1 ]]; then
-    # ci.yml's own steps, through the same runner the host leg uses. The job
-    # env points CCACHE_DIR at the workspace's .ccache, so that path is the
-    # mount; ANTS_PUSH_GATE passes through so the push gate skips the perf
-    # step exactly as on the host (ANTS-5375).
-    # --userns=keep-id runs the job as this user, not root: GitHub's runner
-    # is a normal user, and root ignores file modes, so the tests that chmod
-    # a file unreadable and expect a refusal failed here as root (measured
-    # 2026-09-27: five of them). HOME must then be somewhere writable.
-    echo "qt62-guard: running $qt62_what ($qt62_base, tag $qt62_tag)…"
-    podman run --rm --security-opt label=disable --init --name "$qt62_container" \
-        --userns=keep-id -e HOME=/tmp \
-        -v "$PWD:/src" -v "$qt62_volume:/src/build" -v "$qt62_ccache:/src/.ccache" \
-        -e ANTS_PUSH_GATE="${ANTS_PUSH_GATE:-}" \
-        -w /src "$qt62_image" \
-        python3 tools/ci_workflow.py run build-test &
-else
-    echo "qt62-guard: compiling for $qt62_what ($qt62_base, tag $qt62_tag)…"
-    podman run --rm --security-opt label=disable --init --name "$qt62_container" \
-        -v "$PWD:/src:ro" -v "$qt62_volume:/build" -v "$qt62_ccache:/ccache" \
-        -e CCACHE_DIR=/ccache -e CCACHE_MAXSIZE=2500M -e CCACHE_COMPRESS=1 \
-        -e CCACHE_SLOPPINESS=pch_defines,time_macros \
-        -w /src "$qt62_image" \
-        bash -euo pipefail -c '
-            cmake -S /src -B /build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-                -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-                -DANTS_COMPILE_POOL=4 \
-                -DANTS_REQUIRE_SELF_UPDATE=ON
-            cmake --build /build --parallel
-        ' &
-fi
+# ci.yml's own steps, through the same runner the host leg uses (ANTS-5324).
+# The job env points CCACHE_DIR at the workspace's .ccache, so that path is the
+# mount; ANTS_PUSH_GATE passes through so the push gate skips the perf step
+# exactly as on the host (ANTS-5375).
+# --userns=keep-id runs the job as this user, not root: GitHub's runner is a
+# normal user, and root ignores file modes, so the tests that chmod a file
+# unreadable and expect a refusal failed here as root (measured 2026-09-27:
+# five of them). HOME must then be somewhere writable.
+echo "qt62-guard: running $qt62_what ($qt62_base, tag $qt62_tag)…"
+podman run --rm --security-opt label=disable --init --name "$qt62_container" \
+    --userns=keep-id -e HOME=/tmp \
+    -v "$PWD:/src" -v "$qt62_volume:/src/$qt62_build_dir" \
+    -v "$qt62_ccache:/src/.ccache" \
+    -e ANTS_PUSH_GATE="${ANTS_PUSH_GATE:-}" \
+    -w /src "$qt62_image" \
+    python3 tools/ci_workflow.py run "$job" &
 wait $!
 rc=$?
 trap - INT TERM HUP

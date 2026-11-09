@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6719 -->
+<!-- ants-roadmap-id-high-water: ANTS=6720 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -79854,7 +79854,7 @@ in each bullet, not just the reporter's symptom.
   Kind: chore.
   Source: in-session-2026-09-09.
 
-- 📋 [ANTS-5324] **tools/qt62-guard.sh runs its own configure and build commands instead of ci.yml's.**
+- ✅ [ANTS-5324] **tools/qt62-guard.sh runs its own configure and build commands instead of ci.yml's.**
   ANTS-5322 made the host jobs run ci.yml's own steps. The podman legs
   take their package list from ci.yml, but the compile inside the
   container is the guard's own cmake configure + build, without ci.yml's
@@ -79863,6 +79863,16 @@ in each bullet, not just the reporter's symptom.
   the build volume at the directory ci.yml names. Moving the volume's
   mount point invalidates the cached trees, and tools/hooks/pre-push runs
   the guard with --warm-only, so re-key the volume and warm it once.
+  2026-11-09 built: one podman run for every job, `python3
+  tools/ci_workflow.py run "$job"`, the build volume mounted at the -B
+  dir read from ci.yml (qt62_ci_build_dir), ccache at /src/.ccache.
+  qt62-baseline's image gains python3-yaml (new tag 0162d1dbf4ba, volume
+  ants-qt62-job-*); build-test's tag is unchanged. `--job build-test`
+  now implies --run-job, and local-ci.sh's build-test toolchain leg is
+  gone: it was reachable only without podman, where it skipped. Warmed
+  cold on 2026-11-09 (0 ccache hits, new build path); a warm run takes
+  22 s, configure included. ci_guard_parity rewritten: no own cmake, one
+  podman run through ci_workflow.py, volume at ci.yml's -B dir.
   **Layman:** The two container checks still write out their build commands by hand instead of taking them from GitHub's CI recipe.
   Kind: refactor.
   Source: in-session-2026-09-25 (user chose roadmap over now).
@@ -91293,6 +91303,26 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: self-found 2026-11-07 (ANTS-6697 build).
   Lanes: mcp-meta.
+
+- 📋 [ANTS-6720] **A command-line sender lets a non-Claude process post a session_message to a project's inbox.**
+  Asked by ants-projects-hub-website (user decision 2026-11-09): its
+  serve.mjs (plain Node, systemd user unit) should send each new issue,
+  PR, failed build, empty release and upstream-PR change to the owning
+  project's inbox. Today only an MCP client can call session_message.
+  Shape asked for: `ants-terminal --send-message <export_slug> --from
+  <label> [--key <dedupe-key>]`, body on stdin, the same 4096-byte cap
+  and unknown_project refusal, non-zero exit on refusal. Nice to have:
+  (1) a dedupe key, a no-op while an unacked message with that key
+  exists; (2) a GitHub owner/name -> export_slug lookup, since slugs do
+  not follow repo names (LottoTracker -> lottotracker).
+  Decide at build time: a flag on ants-terminal, or on ants-mcpd, which
+  already holds the store code without a GUI. Either is a fresh process
+  per call, so a new build reaches the caller with no terminal relaunch.
+  Reply to ants-projects-hub-website with the command and the release.
+  **Layman:** Lets the website's stats server leave a note for a project's Claude session, such as a new issue or a failed build, without a Claude session running.
+  Kind: feature.
+  Source: Ants_Projects_Hub_Website_Ants_MCP_Feedback.md 2026-11-09.
+  Lanes: mcp.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
