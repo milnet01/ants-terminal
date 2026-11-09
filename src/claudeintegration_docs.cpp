@@ -311,7 +311,7 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                     "Resolve the identifiers a doc claims exist: inline code spans "
                     "like `Foo::bar()` are looked up with find_definition's "
                     "resolver and reported resolved | unresolved | not_checked | "
-                    "referenced (used by the code, defined elsewhere; used_at). "
+                    "referenced. "
                     "Fenced code, paths, keywords and MCP names are excluded. "
                     "REPORT-ONLY. Unresolved findings carry `shape` (call | "
                     "qualified | bare); read call-shaped ones first. not_checked "
