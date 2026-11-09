@@ -1,7 +1,7 @@
 <!-- ants-spec-format: 1 -->
 # ANTS-6724 — Convert a pass-headings roadmap to ants-v1, keeping its Pass ids
 
-**Status:** spec draft (2026-11-09).
+**Status:** accepted (2026-11-09).
 **Kind:** feature.
 **Source:** ROADMAP ANTS-6724 (feedback-RetroDB-2026-11-09).
 
@@ -108,17 +108,18 @@ refuse id_format_required when:
   id_format.prefix  is empty, or
   id_format.pattern is empty, or
   some id of the project, stored or read from the file's Pass headings,
-  does not match the pattern
+  fails isGrammaticalId(id, id_format)
 ```
 
-The match is `RoadmapMigrate`'s `isGrammaticalId()` test: the universal
-grammar or the declared pattern. It is declared in `roadmapmigrate.h` and
-called, not copied. The refusal carries:
+`isGrammaticalId()` passes an id matching the universal grammar or the
+declared pattern. It moves out of `src/roadmapmigrate.cpp`'s anonymous
+namespace into `roadmapmigrate.h`; the convert calls it, never a copy. The
+refusal carries:
 
 | Field | Meaning |
 |---|---|
 | `missing` | `["prefix"]`, `["pattern"]`, both, or absent |
-| `unmatched_ids` | ids failing the pattern, capped at 200 |
+| `unmatched_ids` | ids failing that test, capped at 200 |
 | `unmatched_ids_shown` | present only when the cap bit |
 
 The message names `project_settings` and the `id_format` key. It suggests no
@@ -130,14 +131,18 @@ Every convert that is not a `dry_run` snapshots the store after the checks
 made before `commitAndRender()`, the rehearsal included, and before it opens
 its transaction. ANTS-3855 § 2.4's reasons hold: `VACUUM INTO` cannot run
 inside a transaction, and a backup after the write protects nothing. A call
-refused before that point takes none. A refusal raised inside the real `commitAndRender()`, such as
-`orphans_present`, rolls the store back and leaves its snapshot.
+refused before that point takes none. A refusal raised inside the real
+`commitAndRender()`, such as `orphans_present`, rolls the store back and
+leaves its snapshot; its envelope carries `backup_path` and
+`backup_path_source`.
 
 - **Where.** `backup_to` (a new `op:"convert"` argument) when given: the
   snapshot's file path, used as given, as `roadmap_migrate`'s is. Otherwise
   ANTS-3855 § 2.4's folder ladder: config key, backup record, beside the
-  store. One implementation serves both verbs; the ladder moves out of
-  `RoadmapMigrateVerb::run()` into a function both call.
+  store. The convert's handler picks the folder with
+  `RoadmapBackupHealth::snapshotDest()`, as the migrate handler does. The
+  snapshot-and-fallback block moves out of `RoadmapMigrateVerb::run()` into
+  a function both verbs call, taking the file name.
 - **Name.** On the ladder,
   `pre-convert-<export_slug>-<UTC YYYYMMDDTHHMMSSZ>.sqlite`. Dated, so a later
   convert or migrate never overwrites it. Outside the weekly job's
@@ -182,14 +187,16 @@ throwaway store and project root. The pass-headings fixture carries two
   *Breaks when:* the convert treats the source as id-less and allocates, or
   the convert's write changes a body or headline.
 
-- **INV-3** — Without a declared `prefix` and `pattern`, or with a pattern
-  some stored id fails, a pass-headings convert refuses `id_format_required`.
+- **INV-3** — Without a declared `prefix` and `pattern`, or with an id of the
+  project failing `isGrammaticalId()` under them, a pass-headings convert
+  refuses `id_format_required`.
   It leaves the file's bytes, the store's rows and `source_format` unchanged,
   and writes no snapshot.
   *Test:* case `idFormatRequired` — three runs: no `id_format`; a pattern
-  `PASS-\d+-\d+`, which `PASS-2-1-A` fails, so `unmatched_ids` is
-  `["PASS-2-1-A"]`; a pattern with no prefix. Each asserts the code, the
-  unchanged file hash and `source_format`, and no file at `backup_to`.
+  `RDB-\d+`, which no id matches, so `unmatched_ids` is `["PASS-2-1-A"]`
+  because the other two pass the universal grammar; a pattern with no prefix.
+  Each asserts the code, the unchanged file hash and `source_format`, and no
+  file at `backup_to`.
   *Breaks when:* the check is missing, so the convert proceeds and the next
   append proposes an id under a `PASS-<n>` prefix; or it tests only
   presence, so the letter-suffix id is quarantined at the next migrate.
@@ -207,7 +214,8 @@ throwaway store and project root. The pass-headings fixture carries two
   *Test:* case `convertSnapshotsFirst` — convert with `backup_to` in the temp
   root; open the snapshot and assert the project's `source_format` is
   `pass-headings` and the envelope's `backup_path` names it. Repeat on the
-  github-task-list fixture. A `dry_run` writes no file at `backup_to`.
+  github-task-list fixture, and assert an `orphans_present` refusal there carries
+  `backup_path`. A `dry_run` writes no file at `backup_to`.
   *Breaks when:* the snapshot is taken after `commitAndRender()`, so it reads
   `ants-v1`; or skipped for one source dialect.
 
@@ -263,8 +271,8 @@ throwaway store and project root. The pass-headings fixture carries two
 
 Same file, bundle and label (`features`) as ANTS-4491's cases. Each case is
 seen to fail against the pre-change code before the change is restored. Every
-case passes `backup_to` inside its temp root, so no case writes to the user's
-snapshot folder; the default ladder is ANTS-3855 INV-15's to test.
+real convert in the file, ANTS-4491's cases included, passes `backup_to`
+inside its temp root, so no case writes to the user's snapshot folder; the default ladder is ANTS-3855 INV-15's to test.
 
 `thirdDialectRefused` (ANTS-4491 INV-7) is removed: its fixture is now
 accepted input.
