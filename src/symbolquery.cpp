@@ -39,6 +39,7 @@ const char *langStr(Lang l) {
         case Lang::Lua:     return "lua";
         case Lang::Sh:      return "sh";
         case Lang::Generic: return "generic";
+        case Lang::Cmake:   return "cmake";     // ANTS-5544
         case Lang::Glsl:    return "glsl";
         case Lang::Auto:    return "";
     }
@@ -51,6 +52,7 @@ Lang langForExt(const QString &ext) {
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
     if (ext == QLatin1String("lua")) return Lang::Lua;
     if (ext == QLatin1String("sh") || ext == QLatin1String("bash")) return Lang::Sh;
+    if (ext == QLatin1String("cmake")) return Lang::Cmake;   // ANTS-5544
     // ANTS-2150 — brace family + Ruby (kept in step with
     // FileOutline::genericLangName + CodebaseIndex::isIndexableSuffix so
     // count → outline → symbol query agree). Ruby (`.rb`) reuses Lang::Generic:
@@ -376,6 +378,14 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             add(QStringLiteral("^\\s*(?:export\\s+)?(?:default\\s+)?(?:const|let|var)\\s+") + s + QStringLiteral("\\s*=\\s*(?:async\\s+)?(?:\\([^)]*\\)|[A-Za-z_$][\\w$]*)\\s*=>"));
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             break;
+        case Lang::Cmake:
+            // ANTS-5544 — the four commands that name what they create first:
+            // option(NAME …), set(NAME …), function(NAME …), macro(NAME …).
+            // CMake command names ignore case (`SET(`). A use is any whole
+            // word: `${NAME}`, `if(NAME)`, a target or property argument.
+            add(QStringLiteral("^\\s*(?i:option|set|function|macro)\\s*\\(\\s*") + s + QStringLiteral("\\b"));
+            a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\b"));
+            break;
         case Lang::Glsl:
             // ANTS-3558 — a GLSL function definition/prototype is
             // `<qualifiers>* <rettype> <name>(<args>)` at line start. Require
@@ -606,6 +616,14 @@ public:
                 i += 2;
                 continue;
             }
+            if (m_lang == Lang::Cmake && c == QLatin1Char('#')) {
+                // ANTS-5544 — `#[[ … ]]` is CMake's block comment.
+                if (!rest.mid(1).startsWith(QLatin1String("[["))) { blank(i, n); return out; }
+                m_closer = QStringLiteral("]]");
+                blank(i, i + 3);
+                i += 3;
+                continue;
+            }
             if (m_lang == Lang::Lua && rest.startsWith(QLatin1String("--"))) {
                 if (!rest.mid(2).startsWith(QLatin1String("[["))) { blank(i, n); return out; }
                 m_closer = QStringLiteral("]]");
@@ -625,7 +643,9 @@ public:
                 i += 3;
                 continue;
             }
-            if (m_lang != Lang::Sh && (c == QLatin1Char('"') || c == QLatin1Char('\''))) {
+            // CMake quotes only with `"`; an apostrophe is an ordinary character.
+            if (m_lang != Lang::Sh && (c == QLatin1Char('"')
+                                       || (c == QLatin1Char('\'') && m_lang != Lang::Cmake))) {
                 qsizetype j = i + 1;
                 while (j < n && line.at(j) != c) j += (line.at(j) == QLatin1Char('\\')) ? 2 : 1;
                 if (cStyle && c == QLatin1Char('\'') && (j >= n || j - i > 5)) { ++i; continue; }
@@ -875,7 +895,10 @@ void walk(ScanState &st, const QString &dirPath) {
         }
         if (!fi.isFile()) continue;
 
-        const Lang lang = langForExt(fi.suffix().toLower());
+        // ANTS-5544 — CMakeLists.txt is the one file known by its name.
+        const Lang lang = fi.fileName() == QLatin1String("CMakeLists.txt")
+                              ? Lang::Cmake
+                              : langForExt(fi.suffix().toLower());
         if (lang == Lang::Auto) continue;  // unknown extension
 
         // ANTS-1950 — note a file whose base name equals the query, before
@@ -944,6 +967,7 @@ void prepare(ScanState &st, const QString &rootCanonical,
     buildIf(Lang::Lua);
     buildIf(Lang::Sh);
     buildIf(Lang::Generic);
+    buildIf(Lang::Cmake);  // ANTS-5544
     buildIf(Lang::Glsl);   // ANTS-3558
 }
 
@@ -981,6 +1005,7 @@ Lang parseLang(const QString &s) {
     if (s == QLatin1String("lua")) return Lang::Lua;
     if (s == QLatin1String("sh"))  return Lang::Sh;
     if (s == QLatin1String("generic")) return Lang::Generic;
+    if (s == QLatin1String("cmake")) return Lang::Cmake;   // ANTS-5544
     if (s == QLatin1String("glsl")) return Lang::Glsl;   // ANTS-3558
     return Lang::Auto;
 }

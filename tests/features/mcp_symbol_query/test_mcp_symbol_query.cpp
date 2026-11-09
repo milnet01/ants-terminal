@@ -556,6 +556,65 @@ TEST(McpSymbolQuery, Ants3558GlslShaderFamily) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-5544 — spec 5a: build files are walked, so a CMake option a document
+// names resolves to its option() line and a property or imported target the
+// build uses comes back as a use.
+TEST(McpSymbolQuery, Ants5544CmakeFamily) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+
+    writeFile(root, QStringLiteral("CMakeLists.txt"),
+              QStringLiteral("# HELPER_ONLY_IN_COMMENT is not code\n"
+                             "option(ANTS_ENABLE_HELPER_CLI \"Build the helper\" ON)\n"
+                             "SET(ANTS_SOURCES main.cpp)\n"
+                             "set_property(GLOBAL PROPERTY JOB_POOLS compile=4)\n"
+                             "target_link_libraries(app PRIVATE Qt6::Widgets)\n"));
+    writeFile(root, QStringLiteral("cmake/helpers.cmake"),
+              QStringLiteral("function(ants_add_bundle name)\nendfunction()\n"
+                             "macro(ants_warn msg)\nendmacro()\n"));
+
+    const QStringList needles = {
+        QStringLiteral("ANTS_ENABLE_HELPER_CLI"), QStringLiteral("ANTS_SOURCES"),
+        QStringLiteral("ants_add_bundle"),        QStringLiteral("ants_warn"),
+        QStringLiteral("JOB_POOLS"),              QStringLiteral("Widgets"),
+        QStringLiteral("HELPER_ONLY_IN_COMMENT")};
+    SymbolQuery::Options so;
+    so.recordFirstUse = true;
+    const auto res = SymbolQuery::findDefinitions(root, needles, so);
+
+    auto defAt = [&](const char *sym) {
+        const auto r = res.value(QString::fromUtf8(sym));
+        return r.definitions.isEmpty()
+                   ? std::string()
+                   : QStringLiteral("%1:%2/%3").arg(r.definitions.front().file)
+                         .arg(r.definitions.front().line)
+                         .arg(r.definitions.front().lang).toStdString();
+    };
+    EXPECT_EQ(defAt("ANTS_ENABLE_HELPER_CLI"), "CMakeLists.txt:2/cmake");
+    EXPECT_EQ(defAt("ANTS_SOURCES"), "CMakeLists.txt:3/cmake");
+    EXPECT_EQ(defAt("ants_add_bundle"), "cmake/helpers.cmake:1/cmake");
+    EXPECT_EQ(defAt("ants_warn"), "cmake/helpers.cmake:3/cmake");
+
+    for (const char *used : {"JOB_POOLS", "Widgets"}) {
+        const auto r = res.value(QString::fromUtf8(used));
+        EXPECT_TRUE(r.definitions.isEmpty()) << used;
+        ASSERT_TRUE(r.firstUse.has_value()) << used;
+        EXPECT_EQ(r.firstUse->file.toStdString(), "CMakeLists.txt") << used;
+    }
+    const auto c = res.value(QStringLiteral("HELPER_ONLY_IN_COMMENT"));
+    EXPECT_TRUE(c.definitions.isEmpty());
+    EXPECT_FALSE(c.firstUse.has_value()) << "a # comment is not a use";
+
+    // The explicit family filter, both ways.
+    SymbolQuery::Options cm;  cm.lang = SymbolQuery::parseLang(QStringLiteral("cmake"));
+    SymbolQuery::Options cpp; cpp.lang = SymbolQuery::Lang::Cpp;
+    EXPECT_EQ(SymbolQuery::findDefinition(root, QStringLiteral("ants_warn"), cm)
+                  .definitions.size(), 1);
+    EXPECT_TRUE(SymbolQuery::findDefinition(root, QStringLiteral("ants_warn"), cpp)
+                    .definitions.isEmpty());
+}
+
 TEST(McpSymbolQuery, WiringContract) {
     expect_reset();
 

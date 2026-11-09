@@ -88710,7 +88710,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-config CFG-0658, relayed by claude-cd 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5544] **doc_symbols reports CMake options, gtest names and Qt API calls as unresolved symbols.**
+- ✅ [ANTS-5544] **doc_symbols reports CMake options, gtest names and Qt API calls as unresolved symbols.**
   doc_lint over docs/design.md returned five unresolved_symbol findings,
   all real names: `ANTS_ENABLE_HELPER_CLI` (a CMake option in
   CMakeLists.txt), `StandaloneMcpServer` and `Inv1LinksNoGuiLibrary` (a
@@ -88733,6 +88733,11 @@ project. Reported causes are claims until checked in source.
   names (docs/design.md: 6 unresolved → 2). Left: CMake names
   (`ANTS_ENABLE_HELPER_CLI`, `JOB_POOLS`, `Qt6::Widgets`), because
   CMakeLists.txt and *.cmake are not walked.
+  2026-11-09: SymbolQuery gains a cmake family (CMakeLists.txt, *.cmake;
+  option/set/function/macro define; # and #[[ ]] comments stripped).
+  docs/design.md: 2 unresolved → 0 (ANTS_ENABLE_HELPER_CLI resolves to
+  its option() line; JOB_POOLS referenced). Test:
+  McpSymbolQuery.Ants5544CmakeFamily.
   **Layman:** The document checker flags real names as missing when they come from the build file, the tests or the Qt library, so its warnings get ignored.
   Kind: fix.
   Source: in-session-2026-09-28 (check-doc-facts on docs/design.md).

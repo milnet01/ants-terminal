@@ -1553,12 +1553,12 @@ QJsonObject makeSymbolLangProp() {
         QStringLiteral("auto"), QStringLiteral("cpp"),
         QStringLiteral("py"), QStringLiteral("lua"),
         QStringLiteral("sh"), QStringLiteral("generic"),
-        QStringLiteral("glsl")};
+        QStringLiteral("cmake"), QStringLiteral("glsl")};   // cmake: ANTS-5544
     p["default"] = "auto";
     p["description"] = QStringLiteral(
         "Restrict the scan to one language family. "
         "\"auto\" (default) scans every supported family "
-        "(cpp, py, lua, sh, generic, glsl).");
+        "(cpp, py, lua, sh, generic, cmake, glsl).");
     return p;
 }
 

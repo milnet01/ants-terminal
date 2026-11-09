@@ -35,10 +35,13 @@ namespace SymbolQuery {
 // it matches both same-line and Allman (next-line `{`) function bodies —
 // the Generic brace-family anchor requires the `{` on the def line and
 // would miss the common next-line-brace GLSL style.
-enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic, Glsl };   // Glsl stays last
+// ANTS-5544 — `Cmake` covers CMakeLists.txt and *.cmake, so an option or
+// variable a document names resolves to its option()/set() line, and a name
+// the build only uses comes back as a use.
+enum class Lang { Auto, Cpp, Py, Lua, Sh, Generic, Cmake, Glsl };   // Glsl stays last
 constexpr int kLangCount = static_cast<int>(Lang::Glsl) + 1;
 
-// "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh"/"generic"/"glsl" → the explicit
+// "" / "auto" → Auto; "cpp"/"py"/"lua"/"sh"/"generic"/"cmake"/"glsl" → the explicit
 // family; anything else → Auto (permissive — the caller's lang hint never
 // hard-fails the scan).
 Lang parseLang(const QString &s);
@@ -54,7 +57,7 @@ struct DefMatch {
     QString file;       // project-relative (root prefix stripped)
     int     line = 0;
     QString signature;  // trimmed matched line
-    QString lang;       // "cpp" / "py" / "lua" / "sh" / "glsl" / "generic"
+    QString lang;       // "cpp" / "py" / "lua" / "sh" / "glsl" / "generic" / "cmake"
     QString kind;       // "definition" | "declaration" | "namespace" | "local"
 };
 

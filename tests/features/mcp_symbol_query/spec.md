@@ -21,6 +21,10 @@ source tree spanning C++, Python, Lua, Shell):
 3. Per-language anchors fire for C++ / Python / Lua / Shell.
 4. The tree walk skips `build*` / dot-dirs / `node_modules`.
 5. An explicit `lang` filter restricts the scan to one family.
+5a. (ANTS-5544) `CMakeLists.txt` and `*.cmake` are the `cmake` family.
+    `option(NAME`, `set(NAME`, `function(NAME` and `macro(NAME`, in any
+    letter case, define NAME. A name used only in a `#` comment is no
+    use; one used in code is `firstUse`.
 6. Emitted `file` paths are project-relative (root prefix stripped).
 7. `maxResults` caps the array; `*_count` carries the pre-cap total
    and `truncated` flips.

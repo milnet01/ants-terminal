@@ -291,6 +291,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **find_definition, find_caller and doc_symbols read CMakeLists.txt and *.cmake files: a CMake option, variable, function or macro resolves to the line that creates it, and a name the build only uses reports as referenced.** (ANTS-5544)
+  `lang` takes a new `cmake` family.
+
 - **The roadmap store accepts only ASCII ids, so item ids fold the same way on every distribution's SQLite** (ANTS-5304)
   Adding, renumbering, linking, restoring from an export, and migrating all
   refuse an id with a non-ASCII character. The migration names the bullet's
