@@ -66,6 +66,11 @@ static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
            toolName == QLatin1String("last_selection");
 }
 
+// ANTS-1659 — the most one hook event or MCP request may buffer: both are
+// small, and the cap closes a same-UID OOM vector (deeply nested JSON
+// balloons 3-5x in QJson tree allocation). Was 10 MiB.
+constexpr qsizetype kMaxSocketRequestBytes = qsizetype{256} * 1024;
+
 ClaudeIntegration::ClaudeIntegration(QObject *parent) : QObject(parent) {
     // ANTS-1356 — start the monotonic clock used by rateLimitCheck.
     // QElapsedTimer::start() is idempotent; calling it on already-
@@ -214,12 +219,9 @@ void ClaudeIntegration::onHookConnection() {
         connect(socket, &QLocalSocket::readyRead, this, [socket, buf, overCap]() {
             if (*overCap) { socket->readAll(); return; }
             *buf += socket->readAll();
-            // ANTS-1659 — hook events are <8 KiB; cap at 256 KiB to close a
-            // same-UID OOM vector (deeply-nested JSON balloons 3-5× in QJson
-            // tree allocation). Was 10 MiB.
             // ANTS-6397 — empty the buffer and latch: the disconnected handler
             // below parses it, so over-cap bytes left in it would be parsed.
-            if (buf->size() > 256 * 1024) {
+            if (buf->size() > kMaxSocketRequestBytes) {
                 buf->clear();
                 *overCap = true;
                 socket->disconnectFromServer();
@@ -1420,10 +1422,7 @@ void ClaudeIntegration::onMcpConnection() {
             if (socket->property("_handled").toBool()) return;
             const qsizetype scanFrom = buf->size();
             *buf += socket->readAll();
-            // ANTS-1659 — MCP requests are small (tool name + args); cap at
-            // 256 KiB to close the same nested-JSON OOM vector as the hook
-            // path. Was 10 MiB.
-            if (buf->size() > 256 * 1024) { socket->disconnectFromServer(); return; }
+            if (buf->size() > kMaxSocketRequestBytes) { socket->disconnectFromServer(); return; }
             const qsizetype newline = buf->indexOf('\n', scanFrom);
             if (newline < 0) return;
             // ANTS-4932 — a complete request is in hand. Mark it handled and

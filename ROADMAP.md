@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6716 -->
+<!-- ants-roadmap-id-high-water: ANTS=6717 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74466,6 +74466,11 @@ indie-review finding.
   2026-11-08 20:02, load average 19.4 (other processes: clang++,
   ffmpeg): run alone five times, p95 69.8 / 65.0 / 59.8 / 65.6 / 60.8
   ms. So a busy machine fails it even outside -j4.
+  2026-11-09: CI run 42572862603 (3dc36d1e, a test-only commit),
+  Release job, perf step: p95 50.9 ms against 50 ms. The seven runs
+  before it printed 25.7-41.9 ms, so this is runner noise, not a
+  read-path regression. First CI miss since ANTS-6163's 2026-10-30
+  speed-up. User forwarded the failure email.
   **Layman:** A speed test for reading the roadmap fails now and then when the machine is busy with other tests.
   Kind: test.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
@@ -110499,7 +110504,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-17.
   Lanes: audit, terminalwidget, chrome.
 
-- 📋 [ANTS-5243] **Triage clang-tidy warnings in claudeintegration.h and claudeintegration.cpp, led by two implicit-widening multiplications.**
+- ✅ [ANTS-5243] **Triage clang-tidy warnings in claudeintegration.h and claudeintegration.cpp, led by two implicit-widening multiplications.**
   clangd's clang-tidy reported these while ANTS-5091's doc fix was
   being made. None were introduced by that edit.
   - bugprone-implicit-widening-of-multiplication-result: two sites in
@@ -110513,6 +110518,20 @@ reports are asked for separately, each time.
   - misc-use-anonymous-namespace on file-static helpers, and cert-dcl16-c
     on a lowercase ll suffix.
   Waits until the performance-pass review findings are done.
+  2026-11-09, re-run with clang-tidy 5 checks on the PCH-stripped
+  compile command:
+  - implicit-widening: both sites were the constant 256 * 1024, so no
+    overflow. Now one kMaxSocketRequestBytes (qsizetype) shared by the
+    hook and MCP readers; the warning is gone.
+  - implicit-conversion-in-loop and cert-dcl16-c: no longer reported.
+  - performance-enum-size: only ClaudeState and RateLimitClass remain.
+    Not narrowed: one byte saved per value, and ClaudeState crosses
+    signals. Closed as won't-fix.
+  - misc-use-anonymous-namespace (s_rateLimitClock,
+    tabSpecificAcceptsTabIndex, writeMcpRequestError): not changed.
+    File-static has the same internal linkage, and the mcp_rate_limit
+    and mcp_tabspecific_contract specs and tests quote the static form.
+  Other clangd warnings seen: ANTS-6717.
   **Layman:** Tidy up warnings a code checker raises in the Claude integration code; two may hide number overflows.
   Kind: audit-fix.
   Source: in-session-2026-09-19.
@@ -111148,6 +111167,21 @@ reports are asked for separately, each time.
   Kind: test.
   Source: in-session-2026-11-05 (push gate, qt62 container leg).
   Lanes: tests, claudetabtracker.
+
+- 📋 [ANTS-6717] **Clear four clang-tidy performance warnings and two unused includes in claudeintegration.cpp.**
+  clangd showed these on 2026-11-09 while ANTS-5243 was fixed; none
+  are new from that edit, and ANTS-5243 did not list them.
+  - performance-unnecessary-value-param: McpCallContext ctx and
+    ReplyTransform reply copied per call; a QString body passed by
+    value and copied once.
+  - performance-no-automatic-move: a const local `hint` blocks a move
+    on return.
+  - unused-includes: <climits> and <limits>. Check the build still
+    compiles without each before removing it.
+  **Layman:** Small speed and tidiness warnings a code checker raises in the Claude integration code.
+  Kind: audit-fix.
+  Source: in-session-2026-11-09 (ANTS-5243 clangd run).
+  Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

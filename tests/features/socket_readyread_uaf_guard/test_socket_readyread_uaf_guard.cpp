@@ -123,7 +123,7 @@ TEST(SocketReadyreadUafGuard, Ants6397HookOverCapEmptiesTheBuffer) {
     const std::string marker = "&QLocalSocket::readyRead, this, [socket, buf, overCap]()";
     const size_t at = claude.find(marker);
     ASSERT_NE(at, std::string::npos) << "hook readyRead handler not found";
-    const size_t cap = claude.find("buf->size() > 256 * 1024", at);
+    const size_t cap = claude.find("buf->size() > kMaxSocketRequestBytes", at);
     ASSERT_NE(cap, std::string::npos);
     const size_t clear = claude.find("buf->clear()", cap);
     const size_t disc = claude.find("disconnectFromServer()", cap);
