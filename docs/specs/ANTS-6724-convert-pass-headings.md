@@ -107,11 +107,13 @@ id_format = ProjectSettings::idFormatFor(root)
 refuse id_format_required when:
   id_format.prefix  is empty, or
   id_format.pattern is empty, or
-  some stored item id of the project does not match the pattern
+  some id of the project, stored or read from the file's Pass headings,
+  does not match the pattern
 ```
 
 The match is `RoadmapMigrate`'s `isGrammaticalId()` test: the universal
-grammar or the declared pattern. The refusal carries:
+grammar or the declared pattern. It is declared in `roadmapmigrate.h` and
+called, not copied. The refusal carries:
 
 | Field | Meaning |
 |---|---|
@@ -124,17 +126,21 @@ prefix: the project chooses it.
 
 ### 4.3 The snapshot
 
-Every convert that is not a `dry_run` snapshots the store after every refusal
-check and before `commitAndRender()` opens its transaction. ANTS-3855 § 2.4's
-reasons hold: `VACUUM INTO` cannot run inside a transaction, and a backup
-after the write protects nothing. A refused call takes none.
+Every convert that is not a `dry_run` snapshots the store after the checks
+made before `commitAndRender()`, the rehearsal included, and before it opens
+its transaction. ANTS-3855 § 2.4's reasons hold: `VACUUM INTO` cannot run
+inside a transaction, and a backup after the write protects nothing. A call
+refused before that point takes none. A refusal raised inside the real `commitAndRender()`, such as
+`orphans_present`, rolls the store back and leaves its snapshot.
 
-- **Where.** `backup_to` (a new `op:"convert"` argument) when given. Otherwise
+- **Where.** `backup_to` (a new `op:"convert"` argument) when given: the
+  snapshot's file path, used as given, as `roadmap_migrate`'s is. Otherwise
   ANTS-3855 § 2.4's folder ladder: config key, backup record, beside the
   store. One implementation serves both verbs; the ladder moves out of
   `RoadmapMigrateVerb::run()` into a function both call.
-- **Name.** `pre-convert-<export_slug>-<UTC YYYYMMDDTHHMMSSZ>.sqlite`. Dated,
-  so a later convert or migrate never overwrites it. Outside the weekly job's
+- **Name.** On the ladder,
+  `pre-convert-<export_slug>-<UTC YYYYMMDDTHHMMSSZ>.sqlite`. Dated, so a later
+  convert or migrate never overwrites it. Outside the weekly job's
   `roadmap-*.sqlite` prune glob.
 - **Failure** refuses `backup_failed` and converts nothing. There is no
   `backup:false`.
@@ -183,7 +189,7 @@ throwaway store and project root. The pass-headings fixture carries two
   *Test:* case `idFormatRequired` — three runs: no `id_format`; a pattern
   `PASS-\d+-\d+`, which `PASS-2-1-A` fails, so `unmatched_ids` is
   `["PASS-2-1-A"]`; a pattern with no prefix. Each asserts the code, the
-  unchanged file hash and `source_format`, and an empty `backup_to` folder.
+  unchanged file hash and `source_format`, and no file at `backup_to`.
   *Breaks when:* the check is missing, so the convert proceeds and the next
   append proposes an id under a `PASS-<n>` prefix; or it tests only
   presence, so the letter-suffix id is quarantined at the next migrate.
@@ -201,7 +207,7 @@ throwaway store and project root. The pass-headings fixture carries two
   *Test:* case `convertSnapshotsFirst` — convert with `backup_to` in the temp
   root; open the snapshot and assert the project's `source_format` is
   `pass-headings` and the envelope's `backup_path` names it. Repeat on the
-  github-task-list fixture. A `dry_run` leaves the folder empty.
+  github-task-list fixture. A `dry_run` writes no file at `backup_to`.
   *Breaks when:* the snapshot is taken after `commitAndRender()`, so it reads
   `ants-v1`; or skipped for one source dialect.
 
