@@ -672,6 +672,57 @@ TEST(McpWorkspaceSearch, Ants5711HardKillKeepsPartialResultsInEveryMode) {
     EXPECT_EQ(run("count_only").value(QStringLiteral("count")).toInt(), 1);
 }
 
+// ANTS-5226 — a run of rg that failed with nothing found refuses; it never
+// answers ok:true with no matches. Each shim fails one way: an error exit, a
+// crash, and a hang past the wall budget.
+TEST(McpWorkspaceSearch, Ants5226FailedRunNeverAnswersEmpty) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    {
+        QFile f(root + QStringLiteral("/a.txt"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("needle_5226(\n");
+    }
+    for (const char *body : {"echo 'rg: broken' >&2; exit 2",
+                             "kill -9 $$",
+                             "exec sleep 30"}) {
+        QTemporaryDir shimDir;
+        ASSERT_TRUE(shimDir.isValid());
+        {
+            QFile s(shimDir.path() + QStringLiteral("/rg"));
+            ASSERT_TRUE(s.open(QIODevice::WriteOnly));
+            s.write(QByteArray("#!/bin/sh\n") + body + "\n");
+            s.close();
+            s.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner
+                             | QFileDevice::ExeOwner);
+        }
+        ants_test::XdgGuard env;
+        env.setEnv("PATH", shimDir.path().toUtf8() + ":" + qgetenv("PATH"));
+        for (const char *mode : {"rows", "files_only", "matches_only", "count_only",
+                                 "as_reported"}) {
+            QJsonObject req;
+            req[QStringLiteral("caller_cwd")] = root;
+            req[QStringLiteral("pattern")] = QStringLiteral("needle_5226(");
+            req[QStringLiteral("timeout_sec")] = 1;
+            if (qstrcmp(mode, "as_reported") == 0) {
+                // The 2026-09-17 call: context and enclosing_symbol on.
+                req[QStringLiteral("context")] = 10;
+                req[QStringLiteral("enclosing_symbol")] = true;
+            } else if (qstrcmp(mode, "rows") != 0) {
+                req[QLatin1String(mode)] = true;
+            }
+            RemoteControl rc(nullptr);
+            const QJsonObject o = rc.cmdWorkspaceSearch(req).object();
+            ASSERT_TRUE(o.contains(QStringLiteral("ok"))) << body << " / " << mode;
+            EXPECT_FALSE(o.value(QStringLiteral("ok")).toBool())
+                << "shim `" << body << "`, mode " << mode
+                << ": a failed rg run answered as a clean search: "
+                << QJsonDocument(o).toJson(QJsonDocument::Compact).constData();
+        }
+    }
+}
+
 namespace {
 // A project with one hit in a hidden directory and one in a plain directory.
 QJsonObject search6188(const QString &root, QJsonObject req) {

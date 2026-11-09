@@ -73360,7 +73360,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: review-contract-2026-09-14 ANTS-3636 loop 1.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5226] **workspace_search once returned no matches with ok:true for text that exists, apparently under load.**
+- ✅ [ANTS-5226] **workspace_search once returned no matches with ok:true for text that exists, apparently under load.**
   Observed 2026-09-17: workspace_search with pattern
   `m_lineCompletionCallback(`, regex false, lane src, returned an empty
   matches list and ok:true. `rg -nF 'm_lineCompletionCallback(' src`
@@ -73387,6 +73387,16 @@ fixes don't address. Roadmapped here as their own design tasks.
   with timeout_sec 30 took 3063 ms and returned all seven. That one WAS
   flagged, so a slow scan on this host is common after builds; the open
   question is only why the earlier call came back unflagged.
+  Closed 2026-11-09 with a test, not a code change. The empty reply was
+  not reproduced again. Current code refuses every failed rg run that
+  found nothing: start failure, crash, exit >= 2, hard kill, parse
+  budget. New test McpWorkspaceSearch.Ants5226FailedRunNeverAnswersEmpty
+  puts fake rg programs on PATH (an error exit, kill -9, a hang past a 1
+  s budget) and runs each in every mode plus the reported call shape
+  (context 10, enclosing_symbol). It expects ok:false every time. It
+  passes on current code, so it is unproven against the original fault.
+  An out-of-band mutation probe killed both mutants: the exit guard
+  raised to >= 3, and the hard-kill guard disabled. Spec row 5226-1.
   **Layman:** Searching the code for text containing a bracket can wrongly report that nothing was found.
   Kind: fix.
   Source: in-session-2026-09-17.

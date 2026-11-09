@@ -60,6 +60,7 @@ defs already declared on `test_claude`.
 | 6202-1 | A zero reply from a glob holding `\|` carries `glob_hint`, naming the `{a,b}` form. | `McpWorkspaceSearch.Ants6202BarInGlobIsNamed` |
 | 6207-1 | A regex with look-around or a backreference runs through `--pcre2`. A ripgrep without PCRE2 refuses `rg_failed` with a `hint` saying so. | `McpWorkspaceSearch.Ants6207LookaroundRuns` |
 | 4851-1 | `multiline:true` with `regex:true` lets a match cross a line break: `line` is where it starts and `text` is folded to one line. A regex holding `\n` without it refuses `rg_failed` with a `hint` naming `multiline:true`. `multiline` without `regex` refuses `bad_args` with a `hint` naming `match_wrapped`. | `McpWorkspaceSearch.Ants4851MultilineRegexCrossesALineBreak` |
+| 5226-1 | An rg run that fails with nothing found (an error exit, a crash, or a hang past the wall budget) refuses with `ok:false` in every mode; it never answers `ok:true` with no matches. | `McpWorkspaceSearch.Ants5226FailedRunNeverAnswersEmpty` |
 
 The classifier is pure so the four branches are testable without making
 ripgrep vanish — which is why the evidence is gathered at the spawn site and
