@@ -82278,7 +82278,7 @@ are closed inline in the feedback files rather than filed here.
   Source: in-session-2026-09-21, hit re-sending to Vestige at the user's request.
   Lanes: mcp.
 
-- 📋 [ANTS-5259] **ADR-0005 D10 lets `language` narrow a source rename's sweep, which skips the stale references the sweep exists to catch.**
+- ✅ [ANTS-5259] **ADR-0005 D10 lets `language` narrow a source rename's sweep, which skips the stale references the sweep exists to catch.**
   docs/decisions/0005-colony-multi-session-orchestration.md states:
   "`language` narrows the sweep for a SOURCE-language rename only — never
   for the always-declare list above."
@@ -82320,6 +82320,16 @@ are closed inline in the feedback files rather than filed here.
   in PROSE in a document is a seventh always-declare entry the list is
   missing. Relevant here — Colony renames C++ symbols that this project's
   docs name by hand.
+  2026-11-09: ADR-0005 D10 no longer carries its own declaration
+  rules. It points at ~/.claude/standards/unchecked-changes.md § 6,
+  which already holds the correction: `language` orders a sweep and never
+  narrows it; `kind` is closed at name and behaviour; a behaviour entry
+  names its reader and is never swept. Removed the "narrows for a SOURCE
+  rename only", "routes to human review" and "{old, new, kind, language}"
+  text that contradicted it.
+  The open question (is a source symbol named in prose a seventh
+  always-declare entry?) is answered to claude-config, not decided here.
+  ANTS-4915 (the Colony standard) stays open.
   **Layman:** The plan for renaming things says you only need to search files of the same programming language. But a renamed function is also named in documents and test data, so that search would miss them.
   Kind: doc-fix.
   Source: cc-feedback-2026-09-21 (claude-config), from three cold-reader gate loops on the derived standard.

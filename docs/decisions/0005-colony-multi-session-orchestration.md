@@ -456,26 +456,12 @@ language is:
   — the one entry here that is not a rename at all, and the least
   visible of them.
 
-The declaration is `{old, new, kind, language}` and rides the task record
-(D4), which the orchestrator already reads.
-
-**The changed-default entry does not fit that shape**, being the one that
-renames nothing: there is no old token to sweep for, and putting a value
-like `false` in `old` would fail every merge on ubiquitous matches. It
-declares `kind: "behaviour"` with the call sites it changes, and the
-orchestrator routes it to human review instead of to the token sweep.
-
-**`language` narrows the sweep for a SOURCE-language rename only — never
-for the always-declare list above.** Those entries are declared precisely
-because they cross a boundary: a Lua binding's stale references live in
-`.cpp`, an MCP verb name lives in schema strings and docs, a config key
-lives in JSON and prose. **They are swept unscoped**, across source,
-tests, docs and config. Scoping them by the language they were written in
-would skip exactly the references the entry exists to catch.
-
-For an entry with no source language — a JSON key, a moved file path, a
-doc citation — `language` is `null`, which reads as "sweep everything"
-rather than as a missing field.
+The declaration rides the task record (D4), which the orchestrator
+already reads. Its two shapes, and how far a sweep reaches, are
+`~/.claude/standards/unchecked-changes.md` § 6's. In short: `kind` is
+`name` or `behaviour`; a `behaviour` entry names its reader and is never
+swept; and `language` may order a sweep but never narrows it, because a
+renamed symbol is cited in documents and test fixtures too.
 
 **The orchestrator verifies rather than trusts.** On each merge it sweeps
 the merged tree for every declared `old` token still present, across
