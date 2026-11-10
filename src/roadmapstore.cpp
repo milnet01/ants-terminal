@@ -2901,6 +2901,7 @@ bool RoadmapStore::deleteItem(qint64 itemPk, QString *error) {
             return false;
         }
     }
+    m_historyTotal.reset();   // ANTS-6649 row 154 — its history rows are gone
     return true;
 }
 

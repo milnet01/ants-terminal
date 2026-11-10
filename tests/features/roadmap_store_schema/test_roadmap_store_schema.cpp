@@ -1181,6 +1181,41 @@ TEST(RoadmapStoreSchema, Ants5046DeregisterInsideTransactionUnblocksTheCap) {
     ASSERT_TRUE(f.store.commit(&err)) << err.toStdString();
 }
 
+// ANTS-6649 row 154 — the same leg for deleteItem(), which the migration's
+// element rebuild calls inside its transaction: the item's history rows are
+// gone, so a write that now fits must not be refused on a stale total.
+TEST(RoadmapStoreSchema, Ants5046DeleteItemInsideTransactionUnblocksTheCap) {
+    const QString field = QStringLiteral("status");
+    const QString oldV  = QStringLiteral("planned");
+    const QString newV  = QStringLiteral("shipped");
+    const qint64 perRow = field.toUtf8().size() + oldV.toUtf8().size()
+                          + newV.toUtf8().size();
+
+    Fixture f(perRow);  // room for exactly one row
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 p    = f.project(QStringLiteral("p"));
+    const qint64 s    = f.section(p);
+    const qint64 pkA  = f.item(p, s, QStringLiteral("P-1"), 0);
+    const qint64 pkB  = f.item(p, s, QStringLiteral("P-2"), 1);
+    ASSERT_TRUE(f.store.appendHistory(pkA, QStringLiteral("2026-11-10T00:00:00Z"), 0,
+                                      field, oldV, newV, &err)) << err.toStdString();
+
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    err.clear();
+    EXPECT_FALSE(f.store.appendHistory(pkB, QStringLiteral("2026-11-10T00:00:00Z"), 0,
+                                       field, oldV, newV, &err))
+        << "the cap is full from P-1's row";
+    err.clear();
+    ASSERT_TRUE(f.store.deleteItem(pkA, &err)) << err.toStdString();
+    err.clear();
+    EXPECT_TRUE(f.store.appendHistory(pkB, QStringLiteral("2026-11-10T00:00:00Z"), 0,
+                                      field, oldV, newV, &err))
+        << "P-1 and its history are gone; the same write must now fit: "
+        << err.toStdString();
+    ASSERT_TRUE(f.store.commit(&err)) << err.toStdString();
+}
+
 // ANTS-5046 RED — a failed measurement is not "no history": historyBytes()
 // must return std::nullopt, never an engaged 0, and historyWouldExceedCap()
 // must fail CLOSED (refuse) rather than read nullopt as "nothing to compare

@@ -307,6 +307,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A roadmap import that removes items no longer refuses later history writes for a full cap it has just freed** (ANTS-6649)
+
 - **know_how keeps another session's first entry when this session's own first write fails** (ANTS-6649)
 
 - **roadmap_log refuses with `item_changed` when another session edited the item mid-write, instead of overwriting that edit** (ANTS-6729)

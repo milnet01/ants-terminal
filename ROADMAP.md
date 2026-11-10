@@ -95442,6 +95442,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Test: RoadmapMigrateBackup.Inv2PartialIsOwnerOnlyBeforeTheVacuum via
   RoadmapStore::setBeforeVacuumHookForTest; red with the new block
   disabled.
+  2026-11-10: row 154 fixed. deleteItem() drops the cached history
+  total. Test:
+  RoadmapStoreSchema.Ants5046DeleteItemInsideTransactionUnblocksTheCap;
+  red before the fix.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
