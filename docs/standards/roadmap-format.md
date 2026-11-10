@@ -1108,6 +1108,22 @@ The convention:
   > avoiding — a second archive naming scheme — is one added regex
   > reusing the sort contract already stated. Decided here per
   > CFG-0069 and raised into the global copy (ANTS-4073).
+- **A closed `##` section that names no version, and has no release block
+  to rejoin, archives to `<project root>/docs/roadmap/unversioned.md`.**
+  `place_by_release`'s `unknown_section` is the case. Every such section
+  shares that one file, as a minor's blocks share its archive. The literal
+  name cannot collide with a version or phase name. Its slugs carry the
+  prefix `unversioned-`. It sorts as its own class, after every version
+  and phase archive. Hoisted `## FP<NN>` and `## DS<NN>` fold-ins keep the
+  rule above, and phase blocks the phase rule. A section still holding an
+  open item, 💭 included, does not move. On a store-migrated project the
+  move is `roadmap_log op:"archive_section"` (ANTS-6737).
+
+  **Do not create the file until ANTS-6737 ships.** `archivedIds`,
+  `parseArchiveFilename`, `archiveNameRx()` and `isPlaceableSourcePath`
+  (each named in the phase bullet above) take only version or phase
+  names, so each skips it. The id floor (`corpusHighWater`) already reads
+  every `.md` in `docs/roadmap/`. Agreed with claude-config 2026-11-10.
 - **On a versioned roadmap** rotation happens at bump time on a
   minor or major bump only. Patch bumps don't rotate. On a
   hand-authored roadmap the bump recipe (`.claude/bump.json` on each
