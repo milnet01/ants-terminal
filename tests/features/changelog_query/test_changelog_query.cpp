@@ -3,17 +3,21 @@
 // source-scrape for the handler registration + allowlist wiring.
 
 #include "../../_support/expect.h"
+#include "../../_support/xdg_guard.h"
 #include "changelogquery.h"
 #include "changeloglog.h"
 #include "mcpprojection.h"
 #include "mcpspill.h"
 #include "paginationengine.h"
 #include "remotecontrol.h"
+#include "roadmapstore.h"
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -797,6 +801,47 @@ TEST(ChangelogQueryLint, Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsC
 }
 
 // A malformed window refuses before the store is touched.
+// ANTS-6649 row 1335 — a deregistered project has no roadmap (ANTS-5366
+// § 2.3), so the release checks skip it as unregistered rather than checking
+// the CHANGELOG against the items deregistering deleted.
+TEST(ChangelogQueryHandler, Ants6649DeregisteredProjectSkipsReleaseChecks) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard guard;
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString root = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    {
+        QFile f(root + QStringLiteral("/CHANGELOG.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(kReleaseFixture);
+    }
+    {
+        ASSERT_TRUE(QDir().mkpath(QFileInfo(RoadmapStore::defaultPath()).path()));
+        RoadmapStore store(RoadmapStore::defaultPath());
+        QString err;
+        ASSERT_TRUE(store.open(&err)) << err.toStdString();
+        const auto pk = store.registerProject(QFileInfo(root).canonicalFilePath(),
+                                              QStringLiteral("proj"),
+                                              QStringLiteral("proj"), &err);
+        ASSERT_TRUE(pk) << err.toStdString();
+        RoadmapStore::DeregisterCounts counts;
+        ASSERT_TRUE(store.deregisterProject(*pk, QStringLiteral("2026-06-01T00:00:00Z"),
+                                            &counts, &err)) << err.toStdString();
+    }
+    RemoteControl rc(nullptr);
+    const QJsonObject r = rc.cmdChangelogQuery(QJsonObject{
+        {QStringLiteral("caller_cwd"), root},
+        {QStringLiteral("mode"), QStringLiteral("lint")},
+        {QStringLiteral("release"), true}}).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << r.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_FALSE(r.contains(QStringLiteral("release")))
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("release_skipped")).toString(),
+              QStringLiteral("this project is not registered in the roadmap store"));
+}
+
 TEST(ChangelogQueryHandler, Ants5507ReleaseSinceMustBeADate) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

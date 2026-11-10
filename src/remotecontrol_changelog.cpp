@@ -37,8 +37,11 @@ std::optional<ChangelogQuery::ReleaseFacts> clReleaseFacts(
         return std::nullopt;
     }
     QString err;
-    const auto pid = store->projectIdForRoot(projectRoot, &err);
-    if (!pid) {
+    // readProjectByRoot(), not projectIdForRoot(): the id lookup also finds a
+    // deregistered project, whose items are gone (ANTS-5366 § 2.3).
+    const auto row = store->readProjectByRoot(
+        QFileInfo(projectRoot).canonicalFilePath(), &err);
+    if (!row) {
         *skipped = QStringLiteral("this project is not registered in the roadmap store");
         return std::nullopt;
     }
@@ -55,9 +58,9 @@ std::optional<ChangelogQuery::ReleaseFacts> clReleaseFacts(
     }
 
     ChangelogQuery::ReleaseFacts facts;
-    const auto all = store->itemsForDateBackfill(*pid, &err);
+    const auto all = store->itemsForDateBackfill(row->projectId, &err);
     const auto shipped = store->idsShippedInWindow(
-        *pid, *since, QDate::currentDate().addDays(1), &err);
+        row->projectId, *since, QDate::currentDate().addDays(1), &err);
     if (!all || !shipped) {
         *skipped = QStringLiteral("the roadmap store query failed: %1").arg(err);
         return std::nullopt;
@@ -65,7 +68,7 @@ std::optional<ChangelogQuery::ReleaseFacts> clReleaseFacts(
     for (const RoadmapStore::DateTarget &t : *all) facts.statusById.insert(t.id, t.status);
     facts.shippedSince = *shipped;
     for (const QString &id : std::as_const(facts.shippedSince)) {
-        const auto pk = store->findItem(*pid, id, &err);
+        const auto pk = store->findItem(row->projectId, id, &err);
         const auto item = pk ? store->readItem(*pk, &err) : std::nullopt;
         if (item && ChangelogQuery::recordsNoEntryDecision(item->body))
             facts.decided << id;

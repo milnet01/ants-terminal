@@ -95470,6 +95470,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   only grammar characters and falls back to ROOT; all four copies call
   it. Test: RoadmapMigrateVerb.Ants6649FolderPrefixObeysGrammar, red
   before the fix on both cases.
+  2026-11-10: row 1335 fixed in part, dismissed in part. The three id
+  lookups see a deregistered project by design (ANTS-5366 § 2.3: the
+  mailbox). changelog_query's release checks used one and ran against a
+  deregistered project's deleted items; clReleaseFacts now reads the row
+  with readProjectByRoot() and skips it as unregistered. Test:
+  ChangelogQueryHandler.Ants6649DeregisteredProjectSkipsReleaseChecks,
+  red first. markUnresolvedLinks' self lookup is dismissed: migrating a
+  deregistered root revives the same project_id (§ 2.4), so "self" is
+  the right project either way.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

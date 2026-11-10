@@ -307,6 +307,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query's release checks skip a deregistered project as unregistered** (ANTS-6649)
+
 - **An id prefix guessed from a folder name is always a valid prefix** (ANTS-6649)
   `roadmap_log` and `roadmap_migrate` now share one rule: the folder
   name's first four letters, digits, `_` or `-`, uppercased. `PC Games`
