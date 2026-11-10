@@ -381,6 +381,14 @@ void setSources(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan,
     env[QStringLiteral("sources")] = sources;
 }
 
+// Whether the store serves this plan's live roadmap: its dialect, read off
+// sources[0]. One predicate for the success envelope and the re-run refusals
+// (ANTS-6649), so the two cannot answer differently for one project.
+bool isStoreBackedPlan(const RoadmapMigrate::MigrationPlan &plan) {
+    return !plan.sources.isEmpty()
+        && RoadmapSource::isStoreServedDialect(plan.sources.first().format);
+}
+
 // Whether the store serves this project after the call, and what still
 // writes the roadmap file.
 void setStoreBacking(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan,
@@ -396,9 +404,7 @@ void setStoreBacking(QJsonObject &env, const RoadmapMigrate::MigrationPlan &plan
     // Index 0 is the live roadmap and is what project.source_format records
     // (ANTS-3815 INV-2). Unchanged by dry_run on purpose: this answers a
     // question about the source DIALECT, which a rollback cannot change.
-    const bool storeBacked =
-        !plan.sources.isEmpty()
-        && RoadmapSource::isStoreServedDialect(plan.sources.first().format);
+    const bool storeBacked = isStoreBackedPlan(plan);
     env[QStringLiteral("store_backed")] = storeBacked;
 
     // ANTS-4802 — the bare flag was not enough. A reader sees ok:true, a
@@ -814,10 +820,13 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     // different verdict from the real call is the one thing a preview must not
     // do; ANTS-4548 made these previews run every gate for that reason. So the
     // fix is to make the refusal answerable rather than to withdraw it.
-    auto withOwner = [&owner, ownerDeregistered](QJsonObject e) {
+    // store_backed asks setStoreBacking()'s predicate: "registered" alone
+    // said true for a github-task-list project nothing reads (ANTS-6649).
+    auto withOwner = [&owner, ownerDeregistered,
+                      served = isStoreBackedPlan(plan)](QJsonObject e) {
         if (owner) {
             e[QStringLiteral("project_id")]         = owner->projectId;
-            e[QStringLiteral("store_backed")]       = !ownerDeregistered;
+            e[QStringLiteral("store_backed")]       = served && !ownerDeregistered;
             e[QStringLiteral("stored_export_slug")] = owner->exportSlug;
             e[QStringLiteral("stored_project_name")] = owner->name;
             if (ownerDeregistered)
@@ -1049,7 +1058,9 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
     QString discErr;
     const auto disc = RoadmapMigrate::findRoadmaps(projectRoot, &discErr);
     if (!disc) {
-        out.error = std::move(discErr);
+        // run()'s canonical code, leading the message (ANTS-6649).
+        out.error = QStringLiteral("%1: no usable roadmap under \"%2\" (%3)")
+                        .arg(discoveryRefusalCode(discErr), projectRoot, discErr);
         return out;
     }
 

@@ -338,6 +338,29 @@ TEST(RoadmapMigrateVerb, Inv2bOwnBulkConnectionBySignature) {
         << "run() must not take an open store";
 }
 
+// ANTS-6649 row 1346 — the convert's seam names a discovery failure by the
+// canonical code run() refuses with (§ 2.5's mapping), not findRoadmaps()' own.
+TEST(RoadmapMigrateVerb, Ants6649InTransactionLoadMapsTheDiscoveryCode) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString root = dir.filePath(QStringLiteral("empty"));
+    ASSERT_TRUE(QDir().mkpath(root));
+    auto store = openStore(dir.filePath(QStringLiteral("store.sqlite")),
+                           RoadmapStore::Access::Bulk);
+    ASSERT_TRUE(store);
+
+    const QJsonObject viaRun = RoadmapMigrateVerb::run(
+        dir.filePath(QStringLiteral("store.sqlite")), request(root));
+    ASSERT_EQ(viaRun.value(QStringLiteral("code")).toString(), QStringLiteral("no_roadmap"));
+
+    const auto loaded = RoadmapMigrateVerb::loadInOpenTransaction(
+        *store, root, QStringLiteral("Demo"), QStringLiteral("demo"),
+        QStringLiteral("2026-08-06T10:00:00Z"), 10);
+    EXPECT_FALSE(loaded.ok);
+    EXPECT_TRUE(loaded.error.startsWith(QLatin1String("no_roadmap:")))
+        << loaded.error.toStdString();
+}
+
 // ------------------------------------------------------------- INV-2(a) -----
 //
 // ok:true alone would also pass for a *Bulk* process-owned connection, which is
@@ -1202,6 +1225,19 @@ TEST(RoadmapMigrateVerb, Inv12StoreBackedAgreesWithTheConsumerDispatch) {
         EXPECT_EQ(env.value(QStringLiteral("store_backed")).toBool(), leg.second)
             << "a dry run changed store_backed, which answers a question about "
                "the source DIALECT — a rollback cannot change that";
+    }
+
+    // (d) ANTS-6649 row 1344 — a re-run REFUSAL (a changed slug) reports the
+    // same store_backed as the success path, not merely "registered".
+    for (const auto &leg : {std::make_pair(antsRoot, true), std::make_pair(gfmRoot, false)}) {
+        const QJsonObject env = RoadmapMigrateVerb::run(
+            storePath, request(leg.first, QStringLiteral("renamed"), QStringLiteral("Renamed")));
+        ASSERT_FALSE(env.value(QStringLiteral("ok")).toBool());
+        ASSERT_GT(env.value(QStringLiteral("project_id")).toInt(), 0)
+            << env.value(QStringLiteral("code")).toString().toStdString();
+        ASSERT_TRUE(env.contains(QStringLiteral("store_backed")));
+        EXPECT_EQ(env.value(QStringLiteral("store_backed")).toBool(), leg.second)
+            << env.value(QStringLiteral("code")).toString().toStdString();
     }
 }
 
