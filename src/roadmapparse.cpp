@@ -1841,6 +1841,18 @@ bool isIdPrefix(const QString &prefix) {
     return kShape.match(prefix).hasMatch();
 }
 
+QString leafIdPrefix(const QString &leaf) {
+    QString pfx;
+    for (const QChar c : leaf) {
+        if (pfx.size() == 4)
+            break;
+        const bool alnum = c.isLetterOrNumber() && c.unicode() < 0x80;
+        if (alnum || (!pfx.isEmpty() && (c == u'_' || c == u'-')))
+            pfx += c.toUpper();
+    }
+    return isIdPrefix(pfx) ? pfx : QStringLiteral("ROOT");
+}
+
 namespace {
 const QLatin1String kIdMarkOpen("<!-- ants-roadmap-id-high-water:");
 const QLatin1String kIdMarkClose(" -->");

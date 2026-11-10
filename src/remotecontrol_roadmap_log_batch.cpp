@@ -6,6 +6,7 @@
 // pre-split relative order — which is what INV-3 checks and what every
 // two-anchor scrape window depends on. Inserted at its slice position in
 // ANTS_RC_SOURCES_REL, immediately after TU 5, and never appended.
+#include "roadmapparse.h"
 #include "markdownscan.h"
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
@@ -947,8 +948,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 [](Target *a, Target *b){ return a->firstLine < b->firstLine; });
             QString prefix = req.value(QStringLiteral("prefix_hint")).toString();
             if (prefix.isEmpty()) {
-                prefix = QFileInfo(callerCanonical).fileName().left(4).toUpper();
-                if (prefix.isEmpty()) prefix = QStringLiteral("ROOT");
+                prefix = RoadmapParse::leafIdPrefix(
+                    QFileInfo(callerCanonical).fileName());
             } else {
                 static const QRegularExpression rxPrefix(
                     QStringLiteral("^[A-Z][A-Z0-9_-]{0,15}$"));

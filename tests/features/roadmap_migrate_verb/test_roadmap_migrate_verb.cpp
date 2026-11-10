@@ -2398,6 +2398,34 @@ TEST(RoadmapMigrateVerb, Ants5374FolderPrefixIsAnnounced) {
         << QJsonDocument(clean).toJson().toStdString();
 }
 
+// ANTS-6649 row 157 — the folder-name prefix obeys the id-prefix grammar. A
+// space is dropped rather than kept (`PC Games` gave `PC G`), and a folder
+// with no letter in its first characters falls back to ROOT.
+TEST(RoadmapMigrateVerb, Ants6649FolderPrefixObeysGrammar) {
+    const struct { const char *leaf; const char *prefix; } cases[] = {
+        {"PC Games", "PCGA"},
+        {"2026", "ROOT"},
+        {"3D_Engine", "3D_E"},   // a prefix that was already valid is kept
+    };
+    for (const auto &c : cases) {
+        QTemporaryDir dir;
+        ASSERT_TRUE(dir.isValid());
+        const QString root = makeProjectRoot(dir, QString::fromUtf8(c.leaf), gfmRoadmap());
+        ASSERT_FALSE(root.isEmpty());
+        const QJsonObject env = RoadmapMigrateVerb::run(
+            dir.filePath(QStringLiteral("store.sqlite")), request(root));
+        ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+            << env.value(QStringLiteral("error")).toString().toStdString();
+        QString guessed;
+        for (const auto &w : env.value(QStringLiteral("warnings")).toArray())
+            if (w.toObject().value(QStringLiteral("code")).toString() ==
+                QStringLiteral("id_prefix_guessed"))
+                guessed = w.toObject().value(QStringLiteral("prefix")).toString();
+        EXPECT_EQ(guessed, QString::fromUtf8(c.prefix)) << c.leaf;
+        EXPECT_TRUE(RoadmapParse::isIdPrefix(guessed)) << c.leaf;
+    }
+}
+
 // ANTS-3855 INV-16 (ANTS-5287) — the verb carries the load's deletions, its
 // mass_deletion refusal and the accept_deletions flag through unchanged.
 namespace {

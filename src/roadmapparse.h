@@ -299,6 +299,12 @@ QString detectRoadmapFormat(const QStringList &lines, bool *sawSignal = nullptr)
 // somewhere, not led by `_` or `-`. RoadmapFoldIn::isValidIdPrefix() asks this.
 bool isIdPrefix(const QString &prefix);
 
+// The prefix guessed from a project folder's name when nothing else names one:
+// its first four letters, digits, `_` or `-` (a leading `_` or `-` skipped),
+// uppercased. Other characters are dropped, so `PC Games` gives `PCGA`. A
+// result isIdPrefix() refuses, such as `2026`, gives `ROOT`.
+QString leafIdPrefix(const QString &leaf);
+
 // `pairs` keys are prefixes or `<prefix>#S` synthesis keys. QMap's order is the
 // line's order: QString compares UTF-16 code units, which for the ASCII the
 // grammar admits is byte order. Empty in, empty out — no pair, no line.

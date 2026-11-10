@@ -710,17 +710,14 @@ const QRegularExpression kIdPrefixShape(
     QStringLiteral("^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$"));
 
 // ANTS-2076 — project-default counter-ID prefix derived from the
-// caller's leaf directory (uppercase first 4 chars) — the same source
+// caller's leaf directory (RoadmapParse::leafIdPrefix) — the same source
 // op:flip already uses for caret-anchor prefixes. Used as the
 // op:append / op:append_batch fallback when no explicit id_prefix is
 // given AND the roadmap has no existing counter IDs to sniff, so a
 // fresh project (DOOM_Ants → "DOOM") gets a project-shaped prefix
 // instead of the hardcoded "ANTS".
 QString rlLeafDirPrefix(const QString &callerCanonical) {
-    const QString leaf = QFileInfo(callerCanonical).fileName();
-    QString pfx = leaf.left(4).toUpper();
-    if (pfx.isEmpty()) pfx = QStringLiteral("ROOT");
-    return pfx;
+    return RoadmapParse::leafIdPrefix(QFileInfo(callerCanonical).fileName());
 }
 
 // ANTS-2076 — resolve the counter-ID prefix for op:append /

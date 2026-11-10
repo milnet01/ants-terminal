@@ -60,7 +60,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "ID prefix (ANTS-2076): counter IDs render as "
                         "[<PREFIX>-NNNN]; the prefix is sniffed from "
                         "existing IDs, else derived from caller_cwd's "
-                        "leaf directory (uppercase first 4 chars, "
+                        "leaf directory (first 4 id characters, uppercased; "
                         "DOOM_Ants → DOOM) — pass `id_prefix` to pin it "
                         "on a fresh roadmap. `dry_run:true` (ANTS-2077) "
                         "previews the id + bullet without writing. "
@@ -839,9 +839,9 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     prefixHintProp["pattern"] = "^[A-Z][A-Z0-9_-]{0,15}$";
                     prefixHintProp["description"] = QStringLiteral(
                         "Optional prefix for newly-injected caret "
-                        "anchors under op:\"flip\". Defaults to the "
-                        "uppercase first 4 chars of caller_cwd's "
-                        "leaf directory.");
+                        "anchors under op:\"flip\". Default: the first "
+                        "4 id characters of caller_cwd's folder, "
+                        "uppercased.");
 
                     // ANTS-1717/1793 — note to append to the located
                     // bullet's body. Required under op:\"annotate\";
@@ -1274,7 +1274,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "(e.g. \"DOOM\" → DOOM-0001). When omitted, the "
                         "prefix is sniffed from existing IDs, else "
                         "derived from caller_cwd's leaf directory "
-                        "(uppercase first 4 chars). Ignored under "
+                        "(first 4 id characters, uppercased). Ignored under "
                         "id_strategy:\"stable_prefix\".");
 
                     // ANTS-2077 — dry_run preview flag; ANTS-2136 and

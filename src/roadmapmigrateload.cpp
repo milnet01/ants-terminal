@@ -914,10 +914,10 @@ bool Loader::allocateId(QString *allocated) {
             if (prefix.isEmpty()) {
                 // And failing THAT — a project with no id-bearing items at all,
                 // which is the first-run case for several of the corpus's ten —
-                // the same fallback roadmap_log uses: the uppercased first four
-                // characters of the project root's leaf directory.
+                // the same fallback roadmap_log uses: RoadmapParse::leafIdPrefix
+                // of the project root's leaf directory.
                 const QString leaf = QFileInfo(QDir::cleanPath(opts.projectRoot)).fileName();
-                prefix = leaf.left(4).toUpper();
+                prefix = RoadmapParse::leafIdPrefix(leaf);
                 out.idPrefixGuessed = prefix;   // ANTS-5374
             }
         }

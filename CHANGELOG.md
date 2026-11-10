@@ -307,6 +307,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An id prefix guessed from a folder name is always a valid prefix** (ANTS-6649)
+  `roadmap_log` and `roadmap_migrate` now share one rule: the folder
+  name's first four letters, digits, `_` or `-`, uppercased. `PC Games`
+  gives `PCGA` rather than `PC G`; a folder such as `2026` gives `ROOT`.
+
 - **A roadmap import that removes items no longer refuses later history writes for a full cap it has just freed** (ANTS-6649)
 
 - **know_how keeps another session's first entry when this session's own first write fails** (ANTS-6649)

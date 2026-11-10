@@ -1,4 +1,5 @@
 // ANTS-3833 TU 6/25 — Roadmap single-item write ops.
+#include "roadmapparse.h"
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"
@@ -2567,10 +2568,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         QString prefix = req.value(QStringLiteral("prefix_hint"))
                             .toString();
         if (prefix.isEmpty()) {
-            const QString leaf =
-                QFileInfo(callerCanonical).fileName();
-            prefix = leaf.left(4).toUpper();
-            if (prefix.isEmpty()) prefix = QStringLiteral("ROOT");
+            prefix = RoadmapParse::leafIdPrefix(
+                QFileInfo(callerCanonical).fileName());
         } else {
             static const QRegularExpression rxPrefix(
                 QStringLiteral("^[A-Z][A-Z0-9_-]{0,15}$"));

@@ -94701,6 +94701,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 795 `src/remotecontrol.cpp:1891` (Medium)
   - row 796 `src/remotecontrol.cpp:1552` (Medium)
   - row 1378 `src/roadmapmigrateload.cpp:913` (Info)
+  2026-11-10: rows 792 (the leaf-prefix copy) and 1378 fixed under
+  ANTS-6649 row 157. rlLeafDirPrefix, both roadmap_log flip paths and
+  the migration loader now call RoadmapParse::leafIdPrefix(), which
+  returns ROOT where the loader used to return an empty prefix.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -95460,6 +95464,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   test RoadmapMigrateLoad.LinkToAnItemThisRunDeletesIsNotStored deletes
   A-1 in the same run that adds a Blocked-by A-1 line, and passes on
   unchanged code.
+  2026-11-10: row 157 fixed. The "3D_Engine" half was stale
+  (isIdPrefix accepts 3D_E); a space or `.` was real (`PC Games` gave
+  `PC G`, `2026` gave `2026`). New RoadmapParse::leafIdPrefix() keeps
+  only grammar characters and falls back to ROOT; all four copies call
+  it. Test: RoadmapMigrateVerb.Ants6649FolderPrefixObeysGrammar, red
+  before the fix on both cases.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
