@@ -73614,16 +73614,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code finding #27).
   Lanes: mcp-feedback, spec-log, session-message.
 
-- 📋 [ANTS-5413] **changelog_log add_batch reports created_category on the entry that created the heading.**
+- 🚫 [ANTS-5413] **changelog_log add_batch reports created_category on the entry that created the heading.**
   A seven-entry add_batch into an [Unreleased] with no ### Security
   heading wrote the heading once, above entry 0, but reported
   created_category:false on entries 0-5 and true on entry 6. A caller
   checking which write added a heading reads the wrong one. Expected:
   true on index 0 only.
+  Dropped 2026-11-10: duplicate of ANTS-5377, which shipped this fix
+  (reportCreatedCategoryOnFirstEntry in src/remotecontrol_changelog.cpp)
+  with the test
+  changelog_log_add_batch.Ants5377CreatedCategoryIsOnTheFirstEntry.
   **Layman:** The changelog tool said the wrong entry created a new section; the file itself was right.
   Kind: fix.
   Source: in-session-2026-09-26 (code audit, CHANGELOG write).
   Lanes: changelog.
+  Duplicate-of: ANTS-5377.
 
 - 📋 [ANTS-5414] **apply_edits, co_change_family and invariant_check cap the arrays a caller can make them process.**
   apply_edits `edits` (remotecontrol_workspace.cpp ~2594) has no count
