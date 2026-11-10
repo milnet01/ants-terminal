@@ -307,6 +307,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log refuses a text field that holds a closing tag named after one of its arguments, such as `</layman>`, with text after it.** (ANTS-5393)
+  That shape means the harness merged two arguments into one field. The
+  call is refused with `bad_args` before anything is written, and the reply
+  names each field and tag. A tag quoted as code still passes.
+
 - **changelog_log op:"release" writes the new version heading with the same dash as the file's newest dated heading.** (ANTS-5388)
   A CHANGELOG whose headings use ` — ` or ` – ` now gets a matching new
   heading and anchor; a file with no versioned heading keeps ` - `.

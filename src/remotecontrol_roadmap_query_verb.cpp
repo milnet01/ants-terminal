@@ -4083,6 +4083,22 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     QJsonObject opReq = plan ? plan->req : req;
     opReq.remove(QLatin1String(kPlanApplyKey));
     if (plan) opReq[QLatin1String(kPlanApplyKey)] = true;
+    // ANTS-5393 — a closing tag named after an argument, mid-field, means two
+    // arguments were merged into one. Refused before anything is written.
+    if (const QStringList leaked = RoadmapParse::argumentClosingTagFields(opReq);
+        !leaked.isEmpty()) {
+        QJsonObject env;
+        env[QStringLiteral("ok")]   = false;
+        env[QStringLiteral("code")] = QStringLiteral("bad_args");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: %1 holds a closing tag named after an argument, with "
+            "text after it — the next argument was merged into this one. "
+            "Resend each field on its own; quote a tag as `code` to keep it.")
+            .arg(leaked.join(QStringLiteral(", ")));
+        env[QStringLiteral("fields")] = QJsonArray::fromStringList(leaked);
+        if (plan) rlRestorePlan(req.value(QStringLiteral("plan_id")).toString(), *plan);
+        return QJsonDocument(env);
+    }
     QJsonDocument doc = cmdRoadmapLogDispatch(opReq);
     if (plan && !doc.object().value(QStringLiteral("ok")).toBool())
         rlRestorePlan(req.value(QStringLiteral("plan_id")).toString(), *plan);

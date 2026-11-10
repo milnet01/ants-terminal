@@ -144,3 +144,14 @@ carries one in `note`, `body`, `new_text`, `bullets[].body` or
 whose `fields` names each one. It is advisory: the write is unchanged, and a
 field that already holds a real newline is not named. *Tests:*
 `Ants5359LiteralEscapeFieldsNamed`, `Ants5359AnnotateWarnsOnLiteralEscape`.
+
+## ANTS-5393 — a closing tag named after an argument is refused
+
+A `roadmap_log` text field (`headline`, `body`, `layman`, `note`, `source`,
+`new_text`, and their `bullets[]` and `locators[]` forms) holding a closing
+tag named after a roadmap_log argument, with more text after it, carries two
+merged arguments. The call is refused `bad_args` before anything is written;
+`fields` and the error name each field and tag. A tag inside a `code span`
+is prose and passes; one that ends the field is stripped by the scrub, as
+before. *Tests:* `Ants5393AnnotateRefusesArgumentClosingTag`,
+`Ants5393ArgumentClosingTagFieldsNamed`.

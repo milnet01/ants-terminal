@@ -630,3 +630,56 @@ TEST(roadmap_log_annotate, Ants5359AnnotateWarnsOnLiteralEscape) {
     EXPECT_FALSE(resp.contains(QStringLiteral("warnings")))
         << "a real newline is what the caller meant";
 }
+
+// ANTS-5393 — a harness once folded the next argument into `layman`, and the
+// item stored `...path.</layman> First-run ...` as one field. The scrub strips
+// only parameter wrappers, so a closing tag named after a roadmap_log argument
+// reached the store with no warning. It is a boundary leak, and the write is
+// refused before anything changes.
+TEST(roadmap_log_annotate, Ants5393AnnotateRefusesArgumentClosingTag) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(roadmapPath(tmp.path()), seedV1()));
+    const QByteArray before = readFile(roadmapPath(tmp.path()));
+
+    RemoteControl rc(nullptr);
+    QJsonObject r = req(tmp.path(), QStringLiteral("annotate"));
+    r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+    r[QStringLiteral("note")] = QStringLiteral("checks the path.</layman> First-run");
+    const QJsonObject resp = rc.cmdRoadmapLog(r).object();
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+    EXPECT_TRUE(resp.value(QStringLiteral("error")).toString().contains(
+        QStringLiteral("</layman>")))
+        << "the refusal names the tag it found";
+    EXPECT_EQ(readFile(roadmapPath(tmp.path())), before)
+        << "a refused write leaves the roadmap unchanged";
+
+    // Quoted as code, the same tag is prose about the tag.
+    r[QStringLiteral("note")] = QStringLiteral("quotes `</layman>` as code");
+    EXPECT_TRUE(rc.cmdRoadmapLog(r).object().value(QStringLiteral("ok")).toBool());
+}
+
+TEST(roadmap_log_annotate, Ants5393ArgumentClosingTagFieldsNamed) {
+    using RoadmapParse::argumentClosingTagFields;
+    QJsonObject r;
+    r[QStringLiteral("layman")]   = QStringLiteral("path.</layman> First-run");
+    r[QStringLiteral("body")]     = QStringLiteral("ends with a leak</body>");
+    r[QStringLiteral("note")]     = QStringLiteral("quotes `</note>` here");
+    r[QStringLiteral("headline")] = QStringLiteral("a <div></div> stays");
+    QJsonArray bullets;
+    bullets.append(QJsonObject{{QStringLiteral("body"), QStringLiteral("clean")}});
+    bullets.append(QJsonObject{{QStringLiteral("source"),
+                                QStringLiteral("x</source>\n<parameter name=\"kind\">")}});
+    r[QStringLiteral("bullets")] = bullets;
+    QJsonArray locs;
+    locs.append(QJsonObject{{QStringLiteral("new_text"), QStringLiteral("a</note> b")}});
+    r[QStringLiteral("locators")] = locs;
+    EXPECT_EQ(argumentClosingTagFields(r),
+              (QStringList{QStringLiteral("layman (</layman>)"),
+                           QStringLiteral("bullets[1].source (</source>)"),
+                           QStringLiteral("locators[0].new_text (</note>)")}))
+        << "a tag ending the field is the scrub's; a code span or a non-argument "
+           "tag is prose";
+}

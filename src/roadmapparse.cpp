@@ -1687,6 +1687,34 @@ QStringList literalEscapeFields(const QJsonObject &req) {
     return out;
 }
 
+QStringList argumentClosingTagFields(const QJsonObject &req) {
+    static const QRegularExpression codeSpan(QStringLiteral("`[^`\\n]*`"));
+    static const QRegularExpression closer(QStringLiteral(
+        "</(headline|body|layman|note|source|kind|lanes|evidence|section|"
+        "status|to_status|new_text|old_text|id|op)\\s*>(?=\\s*\\S)"));
+    QStringList out;
+    const auto check = [&](const QJsonValue &v, const QString &name) {
+        QString s = v.toString();
+        s.remove(codeSpan);
+        const auto m = closer.match(s);
+        if (m.hasMatch())
+            out << QStringLiteral("%1 (%2)").arg(name, m.captured(0));
+    };
+    for (const char *key : {"headline", "body", "layman", "note", "source", "new_text"})
+        check(req.value(QLatin1String(key)), QLatin1String(key));
+    const auto scan = [&](const char *array, std::initializer_list<const char *> fields) {
+        const QJsonArray arr = req.value(QLatin1String(array)).toArray();
+        for (int i = 0; i < arr.size(); ++i)
+            for (const char *field : fields)
+                check(arr.at(i).toObject().value(QLatin1String(field)),
+                      QStringLiteral("%1[%2].%3")
+                          .arg(QLatin1String(array)).arg(i).arg(QLatin1String(field)));
+    };
+    scan("bullets", {"headline", "body", "layman", "source"});
+    scan("locators", {"note", "new_text"});
+    return out;
+}
+
 ReviewKindMismatch reviewKindMismatch(const QString &kind,
                                       const QString &source) {
     ReviewKindMismatch out;

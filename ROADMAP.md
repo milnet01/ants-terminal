@@ -99555,8 +99555,12 @@ protocol.
   Kind: fix.
   Source: user-screenshot-2026-09-26.
 
-- 📋 [ANTS-5393] **The leaked-markup scrub refuses a field whose text carries a closing tag for another argument.**
+- ✅ [ANTS-5393] **The leaked-markup scrub refuses a field whose text carries a closing tag for another argument.**
   ANTS-1886 and ANTS-1887 stored `...path.</layman> First-run ...` in one field: the harness folded the next argument into the Layman value. rcScrubLeakedToolXml strips the `` opener but leaves a mid-text `</layman>`, so a repeat would still merge two fields with no warning. A closing tag naming a known roadmap_log argument, followed by a parameter opener, is a boundary leak, not prose. Refuse or split it, and say so in the reply.
+  Shipped 2026-11-10. cmdRoadmapLog refuses bad_args when
+  RoadmapParse::argumentClosingTagFields finds an argument-named closing
+  tag with text after it; code spans pass, an edge tag is still
+  scrubbed. Red first: the annotate test wrote and returned ok.
   **Layman:** Stops a garbled tool call from silently merging two roadmap fields into one.
   Kind: fix.
   Source: in-session-2026-09-26.

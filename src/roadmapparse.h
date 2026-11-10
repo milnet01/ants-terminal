@@ -102,6 +102,14 @@ ReviewKindMismatch reviewKindMismatch(const QString &kind, const QString &source
 // a mistake. Returns the decision only; the caller builds the warning.
 QStringList literalEscapeFields(const QJsonObject &req);
 
+// ANTS-5393 — the text fields of a roadmap_log request holding a closing tag
+// named after a roadmap_log argument (`</layman>`) with more text after it:
+// the harness folded the next argument into this one. Each entry is the field
+// name and the tag, `layman (</layman>)`. A tag inside a `code span` is prose
+// about the tag; one ending the field is left to rcScrubLeakedToolXml's edge
+// strip, as before.
+QStringList argumentClosingTagFields(const QJsonObject &req);
+
 // Bullet record surfaced via the `roadmap-query` IPC verb (ANTS-1117).
 // One entry per top-level status-emoji-prefixed bullet in document
 // order; plain narration bullets without an emoji are omitted (they
