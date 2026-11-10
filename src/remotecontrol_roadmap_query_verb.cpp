@@ -4272,6 +4272,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
     // what § 2.4 asked for before this was wired.
     if (op == QStringLiteral("rotate_minor"))
         return cmdRoadmapLogRotateMinor(req);
+    if (op == QStringLiteral("archive_section"))   // ANTS-6737
+        return cmdRoadmapLogArchiveSection(req);
     // ANTS-5379 — a section's narration and table elements.
     if (op == QStringLiteral("list_elements") || op == QStringLiteral("amend_element") ||
         op == QStringLiteral("delete_element") || op == QStringLiteral("promote_element"))
@@ -4341,7 +4343,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
                            "\"set_intro\", \"amend_intro\", \"amend_preamble\", "
                            "\"set_preamble\", \"set_legend\", \"delete_section\", "
                            "\"move_section\", \"retitle_section\", "
-                           "\"rotate_minor\", "
+                           "\"rotate_minor\", \"archive_section\", "
                            "\"link\", \"unlink\", "
                            "\"list_elements\", "
                            "\"amend_element\", \"delete_element\", "

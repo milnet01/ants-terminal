@@ -462,6 +462,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     opEnum.append("move_section");    // ANTS-4958
                     opEnum.append("retitle_section"); // ANTS-5557
                     opEnum.append("rotate_minor");    // ANTS-4081
+                    opEnum.append("archive_section"); // ANTS-6737
                     opEnum.append("link");            // ANTS-4079
                     opEnum.append("unlink");          // ANTS-4079
                     opEnum.append("list_elements");    // ANTS-5379
@@ -498,6 +499,10 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "while one holds an open item. Run it on a minor or "
                         "major bump only, as the bump recipe does; a minor "
                         "with nothing open may still be the current one. "
+                        "\"archive_section\" (ANTS-6737, store-only) moves "
+                        "a closed `section` naming no version to "
+                        "docs/roadmap/unversioned.md; an open item refuses "
+                        "section_not_closed. "
                         "\"retitle_section\" (store-only) renames `section` to "
                         "`title` and returns its new `slug`; a clash refuses "
                         "bad_args. "

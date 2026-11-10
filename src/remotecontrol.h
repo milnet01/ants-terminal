@@ -1419,6 +1419,8 @@ private:
     // the migration has not taken over. See
     // docs/specs/ANTS-4070-rotation-and-section-title.md.
     QJsonDocument cmdRoadmapLogRotateMinor(const QJsonObject &req);
+    // ANTS-6737 — a closed unversioned ## section → docs/roadmap/unversioned.md.
+    QJsonDocument cmdRoadmapLogArchiveSection(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogRetitleSection(const QJsonObject &req);
     // ANTS-4949 / ANTS-4968 — set_intro replaces a section's intro prose;
     // set_preamble replaces the live file's root intro, which holds the

@@ -1154,3 +1154,140 @@ TEST(RoadmapRotateMinor, Ants4081RetitleAndRotateAreDispatched) {
     EXPECT_GE(rot.value(QStringLiteral("sections_moved")).toInt(), 1)
         << QJsonDocument(rot).toJson().toStdString();
 }
+
+// ============================================================================
+// ANTS-6737 — op:"archive_section": a closed `##` section that names no
+// version moves to docs/roadmap/unversioned.md (roadmap-format.md § 3.9).
+// ============================================================================
+
+namespace {
+
+const char *kUnknownTitle = "Shipped, version not known";
+const char *kOldTitle     = "Old block";
+
+QByteArray unversionedFixture(const char *openEmoji = nullptr) {
+    QByteArray b = header();
+    b += QByteArray("## ") + kUnknownTitle + "\n\n";
+    b += bullet(kShipped, "DEMO-0011", "Old shipped work.");
+    if (openEmoji) b += bullet(openEmoji, "DEMO-0014", "Still being thought about.");
+    b += "### Older notes\n\n";
+    b += bullet(kShipped, "DEMO-0012", "An older child item.");
+    b += QByteArray("## ") + kOldTitle + "\n\n";
+    b += bullet(kShipped, "DEMO-0013", "Another old item.");
+    b += QByteArray("## ") + kOpenTitle + "\n\n";
+    b += bullet(kPlanned, "DEMO-0003", "An open item.");
+    return b;
+}
+
+QJsonObject archiveSection(const QString &root, const QString &slug) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("archive_section");
+    req[QStringLiteral("section")]    = slug;
+    return rc.cmdRoadmapLog(req).object();
+}
+
+std::string dumpJson(const QJsonObject &o) {
+    return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+}
+
+QString unversionedPath(const QString &root) {
+    return root + QStringLiteral("/docs/roadmap/unversioned.md");
+}
+
+}  // namespace
+
+TEST(RoadmapArchiveSection, MovesASectionAndItsChildrenAndSurvivesReimport) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, unversionedFixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject r = archiveSection(
+        root, RoadmapIndex::slugifyHeading(QString::fromUtf8(kUnknownTitle)));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dumpJson(r);
+    EXPECT_EQ(r.value(QStringLiteral("archive_path")).toString(),
+              QStringLiteral("docs/roadmap/unversioned.md"));
+    EXPECT_EQ(r.value(QStringLiteral("sections_moved")).toInt(), 2)
+        << "the ### child moves with its ##";
+
+    const QByteArray live = readAll(livePath(root));
+    const QByteArray arch = readAll(unversionedPath(root));
+    EXPECT_FALSE(live.contains("DEMO-0011"));
+    EXPECT_FALSE(live.contains("DEMO-0012"));
+    EXPECT_TRUE(live.contains("DEMO-0013")) << "only the named section moves";
+    EXPECT_TRUE(arch.contains("DEMO-0011"));
+    EXPECT_TRUE(arch.contains("DEMO-0012"));
+    for (const auto &s : sectionsOf(projectId))
+        if (s.sourcePath)
+            EXPECT_TRUE(s.slug.startsWith(QStringLiteral("unversioned-")))
+                << s.slug.toStdString();
+
+    // A second section joins the same file, after the first.
+    const QJsonObject r2 = archiveSection(
+        root, RoadmapIndex::slugifyHeading(QString::fromUtf8(kOldTitle)));
+    ASSERT_TRUE(r2.value(QStringLiteral("ok")).toBool()) << dumpJson(r2);
+    const QByteArray arch2 = readAll(unversionedPath(root));
+    EXPECT_TRUE(arch2.contains("DEMO-0011"));
+    EXPECT_TRUE(arch2.contains("DEMO-0013"));
+
+    // The store equals its own regeneration: a re-import derives the slugs
+    // the op assigned, so each still names the same section. Not a count:
+    // the first re-import adds the new file's level-0 preamble (see INV-13).
+    QStringList moved;
+    for (const auto &v : r.value(QStringLiteral("sections")).toArray())
+        moved << v.toString();
+    for (const auto &v : r2.value(QStringLiteral("sections")).toArray())
+        moved << v.toString();
+    QHash<QString, std::optional<qint64>> idsBefore;
+    for (const QString &slug : moved) idsBefore.insert(slug, idOfSlug(projectId, slug));
+    ASSERT_TRUE(reimport(root));
+    for (const QString &slug : moved)
+        EXPECT_EQ(idOfSlug(projectId, slug), idsBefore.value(slug))
+            << slug.toStdString() << "\n" << dumpSections(projectId);
+
+    // Archiving it again moves nothing and succeeds.
+    const QJsonObject again = archiveSection(root,
+        r.value(QStringLiteral("sections")).toArray().at(0).toString());
+    ASSERT_TRUE(again.value(QStringLiteral("ok")).toBool()) << dumpJson(again);
+    EXPECT_EQ(again.value(QStringLiteral("sections_moved")).toInt(), 0);
+}
+
+TEST(RoadmapArchiveSection, Refusals) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root =
+        seedMigrated(guard, tmp, unversionedFixture(kConsidered), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    const QJsonObject open = archiveSection(
+        root, RoadmapIndex::slugifyHeading(QString::fromUtf8(kUnknownTitle)));
+    EXPECT_EQ(open.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_not_closed"))
+        << "a 💭 item is open (§ 3.9): " << dumpJson(open);
+    EXPECT_TRUE(open.value(QStringLiteral("error")).toString()
+                    .contains(QStringLiteral("DEMO-0014")));
+
+    const QJsonObject versioned = archiveSection(
+        root, RoadmapIndex::slugifyHeading(QString::fromUtf8(kOpenTitle)));
+    EXPECT_EQ(versioned.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"))
+        << "a section naming a version is rotate_minor's: " << dumpJson(versioned);
+
+    const QJsonObject child = archiveSection(root, QStringLiteral("older-notes"));
+    EXPECT_EQ(child.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"))
+        << "only a ## section is archived on its own: " << dumpJson(child);
+
+    const QJsonObject missing = archiveSection(root, QStringLiteral("no-such-section"));
+    EXPECT_EQ(missing.value(QStringLiteral("code")).toString(),
+              QStringLiteral("section_not_found"));
+
+    EXPECT_FALSE(QFileInfo::exists(unversionedPath(root)))
+        << "a refusal writes nothing";
+}

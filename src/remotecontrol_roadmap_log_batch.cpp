@@ -13,6 +13,7 @@
 #include "roadmapfoldin.h"
 #include "roadmaplinks.h"   // ANTS-4079
 #include "readregion.h"   // ANTS-4949 — the shared section-slug ranker
+#include "roadmapmigrate.h"  // ANTS-6737 — kUnversionedArchive
 #include <limits>
 #include <tuple>
 #include <QFile>
@@ -3425,6 +3426,188 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
     return target;
 }
 
+namespace {
+
+// ANTS-6737 — how one archive move differs between rotate_minor and
+// archive_section; everything else in rcMoveSectionsToArchive is shared.
+struct ArchiveMove {
+    QString archiveRel;      // derived, never passed (§ 3.9)
+    QString slugPrefix;      // with its trailing '-'
+    QString what;            // "rotating minor 0.7", for refusal messages
+    QString notClosedCode;   // minor_not_closed / section_not_closed
+    QString notClosedWhat;   // "minor 0.7"
+    QString op;
+    bool    wholeArchive = false;  // the file collects sections over time
+};
+
+// The move itself: guard openness and the live file, re-slug the way the next
+// import will, reassign source_path, and render. `candidates` are the sections
+// to archive, descendants included.
+QJsonDocument rcMoveSectionsToArchive(
+        RoadmapStore &store, qint64 projectId, const QString &root,
+        const QString &roadmapPath, bool dryRun,
+        const QHash<qint64, RoadmapStore::SectionRow> &rowById,
+        const QHash<QString, qint64> &idBySlug,
+        const QSet<qint64> &candidates, const ArchiveMove &move) {
+    // Skip on EQUALITY with the derived path, not on "already archived": a 0.7
+    // section mistakenly sitting in 0.6.md must be reassigned, or its parent
+    // renders into 0.7.md while it stays in 0.6.md.
+    const QString &archiveRel = move.archiveRel;
+    QVector<RoadmapStore::SectionRow> moveSet;
+    QSet<qint64> moveIds;
+    for (qint64 id : candidates) {
+        const RoadmapStore::SectionRow &row = *rowById.constFind(id);
+        if (row.sourcePath && *row.sourcePath == archiveRel) continue;
+        moveSet.append(row);
+        moveIds.insert(id);
+    }
+    std::sort(moveSet.begin(), moveSet.end(), sectionOrderLess);
+    QString err;
+
+    // The openness guard covers the whole MOVE SET, matched sections and
+    // descendants alike — a guard reading only the level == 2 matches would
+    // archive an in-progress item living under a `###` child while reporting
+    // success. "Open" is RoadmapRender::isOpen()'s: 📋, 🚧 AND 💭.
+    if (!moveIds.isEmpty()) {
+        const auto itemsOpt = store.readItems(projectId, &err);
+        if (!itemsOpt)
+            return rcSectionOpErr(QStringLiteral("store_failed"), err);
+        QStringList openIds;
+        for (const auto &it : *itemsOpt)
+            if (moveIds.contains(it.sectionId) && RoadmapRender::isOpen(it.status))
+                openIds << it.id;
+        if (!openIds.isEmpty()) {
+            openIds.sort();
+            return rcSectionOpErr(move.notClosedCode,
+                QStringLiteral("roadmap_log: %1 still holds open items: %2")
+                    .arg(move.notClosedWhat, openIds.join(QStringLiteral(", "))));
+        }
+    }
+
+    // A rotation must not empty the live file: the render assembles content
+    // only for paths that still have sections, so a file with none is never
+    // written and is left on disk with its old content while the store says
+    // otherwise.
+    int liveRemaining = 0;
+    for (auto it = rowById.cbegin(); it != rowById.cend(); ++it)
+        if (!it.value().sourcePath && !moveIds.contains(it.key()))
+            ++liveRemaining;
+    if (!moveIds.isEmpty() && liveRemaining == 0)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: %1 would leave the live "
+                           "roadmap with no sections, and the render never "
+                           "rewrites a file that has none").arg(move.what));
+
+    // § 2.2's re-slug rule, and it is a WHOLE-SET computation: uniqueSlug()
+    // over the move set alone, seeded empty, in the render's document order —
+    // exactly what the next import's walk of that archive will derive, because
+    // the archive will hold exactly this set in exactly this order.
+    //
+    // ANTS-6737 — where the archive collects sections over time
+    // (`wholeArchive`), the set is everything the file will hold, in the same
+    // order. A section already there must keep its slug, or the next import
+    // would re-slug it.
+    QHash<qint64, QString> newSlugOf;
+    QStringList movedSlugs;
+    {
+        QVector<RoadmapStore::SectionRow> fileSet = moveSet;
+        if (move.wholeArchive)
+            for (auto it = rowById.cbegin(); it != rowById.cend(); ++it)
+                // Level 0 is the file's preamble; the import slugs it with
+                // the bare prefix, outside this sequence.
+                if (it.value().level > 0 && it.value().sourcePath
+                    && *it.value().sourcePath == archiveRel)
+                    fileSet.append(it.value());
+        std::sort(fileSet.begin(), fileSet.end(), sectionOrderLess);
+        QSet<QString> seen;
+        for (const auto &row : fileSet) {
+            const QString slug =
+                move.slugPrefix + RoadmapIndex::uniqueSlug(seen, row.title);
+            if (!moveIds.contains(row.sectionId)) {
+                if (slug != row.slug)
+                    return rcSectionOpErr(QStringLiteral("bad_args"),
+                        QStringLiteral("roadmap_log: %1 would re-slug \"%2\", "
+                                       "already in %3, to \"%4\"")
+                            .arg(move.what, row.slug, archiveRel, slug));
+                continue;
+            }
+            newSlugOf.insert(row.sectionId, slug);
+            movedSlugs << slug;
+        }
+    }
+
+    // A new slug landing on a section OUTSIDE the move set is refused, never
+    // auto-suffixed — the suffix invented here could differ from the one a
+    // re-import assigns, which is the divergence this whole design removes.
+    for (auto it = newSlugOf.cbegin(); it != newSlugOf.cend(); ++it) {
+        const qint64 holder = idBySlug.value(it.value(), 0);
+        if (holder != 0 && !moveIds.contains(holder))
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: %1 would give a moved "
+                               "section the slug \"%2\", which section \"%2\" "
+                               "already holds").arg(move.what, it.value()));
+    }
+
+    // The live side frees the slugs it gives up. If a REMAINING live section
+    // holds a uniqueSlug()-disambiguated slug whose un-suffixed base the move
+    // frees, the next import re-derives a different slug for a section this
+    // operation never touched.
+    {
+        QSet<QString> freed;
+        for (const auto &row : moveSet) freed.insert(row.slug);
+        QStringList clashes;
+        for (auto it = rowById.cbegin(); it != rowById.cend(); ++it) {
+            const RoadmapStore::SectionRow &row = it.value();
+            if (row.sourcePath || moveIds.contains(it.key())) continue;
+            const QString base = RoadmapIndex::slugifyHeading(row.title);
+            if (row.slug != base && freed.contains(base))
+                clashes << QStringLiteral("%1 (would re-derive \"%2\")")
+                               .arg(row.slug, base);
+        }
+        if (!clashes.isEmpty()) {
+            clashes.sort();
+            return rcSectionOpErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: %1 frees a slug base a "
+                               "remaining live section was disambiguated out of: "
+                               "%2").arg(move.what, clashes.join(QStringLiteral(", "))));
+        }
+    }
+
+    const auto mutate = [&](QString *mErr) -> bool {
+        for (const auto &row : moveSet) {
+            const qint64 id = row.sectionId;
+            if (!store.setSectionSlug(id, newSlugOf.value(id), mErr))
+                return false;
+            if (!store.setSectionSource(id, archiveRel, mErr))
+                return false;
+        }
+        return true;
+    };
+
+    RoadmapRender::Outcome outcome;
+    QString writeErr;
+    const auto r = RoadmapWrite::commitAndRender(
+        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
+    QJsonObject env;
+    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
+        return QJsonDocument(env);
+
+    env[QStringLiteral("ok")]           = true;
+    env[QStringLiteral("op")]           = move.op;
+    env[QStringLiteral("archive_path")] = archiveRel;
+    // The slugs the moved sections carry AFTERWARDS — the address a caller
+    // needs next, on the same reasoning retitle_section reports the new `slug`
+    // rather than the old one. `sections_moved` is always sections.length: a
+    // count of matched `##` sections would exclude descendants, and on the
+    // idempotent re-run it would be non-zero while nothing moved.
+    env[QStringLiteral("sections")]       = QJsonArray::fromStringList(movedSlugs);
+    env[QStringLiteral("sections_moved")] = movedSlugs.size();
+    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
+    return QJsonDocument(env);
+}
+
+}  // namespace
+
 // ANTS-4070 § 2.2 — rotate_minor. A caller over the store's own setters:
 // select the closed minor's sections by TITLE, take their descendants, re-slug
 // them the way the next import will, reassign their source_path, and let
@@ -3531,137 +3714,91 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
             frontier.append(child);
     }
 
-    // Skip on EQUALITY with the derived path, not on "already archived": a 0.7
-    // section mistakenly sitting in 0.6.md must be reassigned, or its parent
-    // renders into 0.7.md while it stays in 0.6.md.
-    QVector<RoadmapStore::SectionRow> moveSet;
-    QSet<qint64> moveIds;
-    for (qint64 id : candidates) {
-        const RoadmapStore::SectionRow &row = rowById[id];
-        if (row.sourcePath && *row.sourcePath == archiveRel) continue;
-        moveSet.append(row);
-        moveIds.insert(id);
-    }
-    std::sort(moveSet.begin(), moveSet.end(), sectionOrderLess);
+    ArchiveMove move;
+    move.archiveRel    = archiveRel;
+    move.slugPrefix    = slugPrefix;
+    move.what          = QStringLiteral("rotating minor ") + minorArg;
+    move.notClosedCode = QStringLiteral("minor_not_closed");
+    move.notClosedWhat = QStringLiteral("minor ") + minorArg;
+    move.op            = QStringLiteral("rotate_minor");
+    return rcMoveSectionsToArchive(store, projectId, root, roadmapPath, dryRun,
+                                   rowById, idBySlug, candidates, move);
+}
 
-    // The openness guard covers the whole MOVE SET, matched sections and
-    // descendants alike — a guard reading only the level == 2 matches would
-    // archive an in-progress item living under a `###` child while reporting
-    // success. "Open" is RoadmapRender::isOpen()'s: 📋, 🚧 AND 💭.
-    if (!moveIds.isEmpty()) {
-        const auto itemsOpt = store.readItems(projectId, &err);
-        if (!itemsOpt)
-            return rcSectionOpErr(QStringLiteral("store_failed"), err);
-        QStringList openIds;
-        for (const auto &it : *itemsOpt)
-            if (moveIds.contains(it.sectionId) && RoadmapRender::isOpen(it.status))
-                openIds << it.id;
-        if (!openIds.isEmpty()) {
-            openIds.sort();
-            return rcSectionOpErr(QStringLiteral("minor_not_closed"),
-                QStringLiteral("roadmap_log: minor %1 still holds open items: %2")
-                    .arg(minorArg, openIds.join(QStringLiteral(", "))));
-        }
-    }
+// ANTS-6737 — archive_section: roadmap-format.md § 3.9's unversioned
+// archive. One closed `##` section that names no version, with its
+// descendants, moves to docs/roadmap/unversioned.md through the same move
+// rotate_minor makes.
+QJsonDocument RemoteControl::cmdRoadmapLogArchiveSection(const QJsonObject &req) {
+    const QString slug = req.value(QStringLiteral("section")).toString();
+    if (slug.isEmpty())
+        return rcSectionOpErr(QStringLiteral("missing_field"),
+            QStringLiteral("roadmap_log: archive_section requires `section`"));
+    const QString archiveRel = QStringLiteral("docs/roadmap/")
+        + QLatin1String(RoadmapMigrate::kUnversionedArchive);
 
-    // A rotation must not empty the live file: the render assembles content
-    // only for paths that still have sections, so a file with none is never
-    // written and is left on disk with its old content while the store says
-    // otherwise.
-    int liveRemaining = 0;
-    for (auto it = rowById.cbegin(); it != rowById.cend(); ++it)
-        if (!it.value().sourcePath && !moveIds.contains(it.key()))
-            ++liveRemaining;
-    if (!moveIds.isEmpty() && liveRemaining == 0)
+    QString root, roadmapPath;
+    QJsonDocument refusal;
+    const auto target =
+        roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
+    if (!target) return refusal;
+    RoadmapStore &store    = *target->store;
+    const qint64 projectId = target->projectId;
+
+    QString err;
+    const auto allOpt = store.listSections(projectId, &err);
+    if (!allOpt)
+        return rcSectionOpErr(QStringLiteral("store_failed"), err);
+    QHash<QString, qint64> idBySlug;
+    QHash<qint64, RoadmapStore::SectionRow> rowById;
+    QHash<qint64, QVector<qint64>> childrenOf;
+    for (const auto &s : *allOpt) {
+        idBySlug.insert(s.slug, s.sectionId);
+        rowById.insert(s.sectionId, s);
+        if (s.parentId) childrenOf[*s.parentId].append(s.sectionId);
+    }
+    if (!idBySlug.contains(slug))
+        return rcSectionNotFound(store, projectId, slug);
+    const RoadmapStore::SectionRow &row = *rowById.constFind(idBySlug.value(slug));
+
+    if (row.level != 2)
         return rcSectionOpErr(QStringLiteral("bad_args"),
-            QStringLiteral("roadmap_log: rotating minor %1 would leave the live "
-                           "roadmap with no sections, and the render never "
-                           "rewrites a file that has none").arg(minorArg));
+            QStringLiteral("roadmap_log: \"%1\" is not a ## section; a "
+                           "sub-section moves with its parent").arg(slug));
+    if (row.sourcePath && *row.sourcePath != archiveRel)
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: \"%1\" is already archived in %2")
+                .arg(slug, *row.sourcePath));
+    // § 3.9 scope: a version, a phase or a fold-in keeps its own rule.
+    static const QRegularExpression ownRule(QStringLiteral(
+        "(?<![\\w.])v?\\d+\\.\\d+(?![\\w])|\\A(?:P|FP|DS)\\d+\\b"));
+    if (ownRule.match(row.title).hasMatch())
+        return rcSectionOpErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: \"%1\" names a version, phase or "
+                           "fold-in block; rotate_minor or § 3.9's rule for "
+                           "it applies").arg(row.title));
 
-    // § 2.2's re-slug rule, and it is a WHOLE-SET computation: uniqueSlug()
-    // over the move set alone, seeded empty, in the render's document order —
-    // exactly what the next import's walk of that archive will derive, because
-    // the archive will hold exactly this set in exactly this order.
-    QHash<qint64, QString> newSlugOf;
-    QStringList movedSlugs;
-    {
-        QSet<QString> seen;
-        for (const auto &row : moveSet) {
-            const QString slug =
-                slugPrefix + RoadmapIndex::uniqueSlug(seen, row.title);
-            newSlugOf.insert(idBySlug.value(row.slug), slug);
-            movedSlugs << slug;
-        }
+    QSet<qint64> candidates;
+    QVector<qint64> frontier{row.sectionId};
+    while (!frontier.isEmpty()) {
+        const qint64 id = frontier.takeLast();
+        if (candidates.contains(id)) continue;
+        candidates.insert(id);
+        frontier += childrenOf.value(id);
     }
 
-    // A new slug landing on a section OUTSIDE the move set is refused, never
-    // auto-suffixed — the suffix invented here could differ from the one a
-    // re-import assigns, which is the divergence this whole design removes.
-    for (auto it = newSlugOf.cbegin(); it != newSlugOf.cend(); ++it) {
-        const qint64 holder = idBySlug.value(it.value(), 0);
-        if (holder != 0 && !moveIds.contains(holder))
-            return rcSectionOpErr(QStringLiteral("bad_args"),
-                QStringLiteral("roadmap_log: rotating minor %1 would give a moved "
-                               "section the slug \"%2\", which section \"%2\" "
-                               "already holds").arg(minorArg, it.value()));
-    }
-
-    // The live side frees the slugs it gives up. If a REMAINING live section
-    // holds a uniqueSlug()-disambiguated slug whose un-suffixed base the move
-    // frees, the next import re-derives a different slug for a section this
-    // operation never touched.
-    {
-        QSet<QString> freed;
-        for (const auto &row : moveSet) freed.insert(row.slug);
-        QStringList clashes;
-        for (auto it = rowById.cbegin(); it != rowById.cend(); ++it) {
-            const RoadmapStore::SectionRow &row = it.value();
-            if (row.sourcePath || moveIds.contains(it.key())) continue;
-            const QString base = RoadmapIndex::slugifyHeading(row.title);
-            if (row.slug != base && freed.contains(base))
-                clashes << QStringLiteral("%1 (would re-derive \"%2\")")
-                               .arg(row.slug, base);
-        }
-        if (!clashes.isEmpty()) {
-            clashes.sort();
-            return rcSectionOpErr(QStringLiteral("bad_args"),
-                QStringLiteral("roadmap_log: rotating minor %1 frees a slug base a "
-                               "remaining live section was disambiguated out of: "
-                               "%2").arg(minorArg, clashes.join(QStringLiteral(", "))));
-        }
-    }
-
-    const auto mutate = [&](QString *mErr) -> bool {
-        for (const auto &row : moveSet) {
-            const qint64 id = idBySlug.value(row.slug);
-            if (!store.setSectionSlug(id, newSlugOf.value(id), mErr))
-                return false;
-            if (!store.setSectionSource(id, archiveRel, mErr))
-                return false;
-        }
-        return true;
-    };
-
-    RoadmapRender::Outcome outcome;
-    QString writeErr;
-    const auto r = RoadmapWrite::commitAndRender(
-        store, projectId, root, roadmapPath, dryRun, mutate, &outcome, &writeErr);
-    QJsonObject env;
-    if (rcRoadmapWriteRefused(env, r, writeErr, outcome))
-        return QJsonDocument(env);
-
-    env[QStringLiteral("ok")]           = true;
-    env[QStringLiteral("op")]           = QStringLiteral("rotate_minor");
-    env[QStringLiteral("archive_path")] = archiveRel;
-    // The slugs the moved sections carry AFTERWARDS — the address a caller
-    // needs next, on the same reasoning retitle_section reports the new `slug`
-    // rather than the old one. `sections_moved` is always sections.length: a
-    // count of matched `##` sections would exclude descendants, and on the
-    // idempotent re-run it would be non-zero while nothing moved.
-    env[QStringLiteral("sections")]       = QJsonArray::fromStringList(movedSlugs);
-    env[QStringLiteral("sections_moved")] = movedSlugs.size();
-    rcRoadmapWriteFields(env, outcome, dryRun);   // ANTS-4463
-    return QJsonDocument(env);
+    ArchiveMove move;
+    move.archiveRel    = archiveRel;
+    move.slugPrefix    = QLatin1String(RoadmapMigrate::kUnversionedSlugPrefix)
+                         + QLatin1Char('-');
+    move.what          = QStringLiteral("archiving section \"%1\"").arg(slug);
+    move.notClosedCode = QStringLiteral("section_not_closed");
+    move.notClosedWhat = QStringLiteral("section \"%1\"").arg(slug);
+    move.op            = QStringLiteral("archive_section");
+    move.wholeArchive  = true;
+    return rcMoveSectionsToArchive(store, projectId, root, roadmapPath,
+                                   req.value(QStringLiteral("dry_run")).toBool(),
+                                   rowById, idBySlug, candidates, move);
 }
 
 // ANTS-4070 § 2.3 — retitle_section. The slug IS recomputed from the new

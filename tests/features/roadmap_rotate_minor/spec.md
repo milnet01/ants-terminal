@@ -56,3 +56,17 @@ INV-1 … INV-13 are the design spec's, numbered identically.
 - **`setSectionSlug()` existing at all** — a compile failure, not a test.
 - **§ 3.9's rotation-event rule** — delegated to `/bump`; nothing in this code
   can observe a version transition.
+
+## ANTS-6737 — `op:"archive_section"`
+
+roadmap-format.md § 3.9's unversioned archive. `section` names one live `##`
+section; it and its descendants move to `docs/roadmap/unversioned.md` through
+the move `rotate_minor` makes (`rcMoveSectionsToArchive`), with slug prefix
+`unversioned-`. The file collects sections over time, so the re-slug runs
+over everything it will hold, and a section already there that would change
+slug refuses `bad_args`. Refusals: an open item, 💭 included
+(`section_not_closed`); a sub-section, a section already in another archive,
+or a title naming a version, phase or fold-in (`bad_args`); an unknown slug
+(`section_not_found`). A re-run moves nothing and succeeds. Tests:
+`RoadmapArchiveSection.MovesASectionAndItsChildrenAndSurvivesReimport`,
+`RoadmapArchiveSection.Refusals`.

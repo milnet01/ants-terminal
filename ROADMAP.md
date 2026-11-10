@@ -91735,7 +91735,7 @@ measured Ants adding about 5,250 tokens to every request.
 
 ### Ants MCP feedback from CC sessions — 2026-11-10 triage
 
-- 📋 [ANTS-6737] **roadmap_log can archive a named, fully closed section to docs/roadmap/<slug>.md.**
+- ✅ [ANTS-6737] **roadmap_log can archive a named, fully closed section to docs/roadmap/unversioned.md.**
   rotate_minor moves a closed minor's version sections out of the main
   roadmap, but nothing moves a non-version section. place_by_release's
   unknown_section ("Shipped, version not known") then stays in the main
@@ -91751,6 +91751,14 @@ measured Ants adding about 5,250 tokens to every request.
   shape, so a slug-named archive would be skipped on re-migrate.
   Proposed the § 3.9 extension to claude-config by session_message the
   same day; build after it lands.
+  Shipped 2026-11-10, after claude-config accepted the § 3.9 change with
+  amendments (one fixed name). § 3.9 names docs/roadmap/unversioned.md
+  (1a4398c2); every reader accepts it via
+  RoadmapMigrate::kUnversionedArchive (12e76f1e); op:"archive_section"
+  moves a closed ## section naming no version, through
+  rcMoveSectionsToArchive, now shared with rotate_minor. Tests:
+  RoadmapArchiveSection.*, plus the reader tests in FoldInIdPrefix,
+  RoadmapViewerArchive (INV-4c) and RoadmapWriteHalf.Ants6737*.
   **Layman:** Lets a project move a finished block of its roadmap into an archive file, as it already can for old versions.
   Kind: feature.
   Source: RetroDB feedback 2026-11-10.

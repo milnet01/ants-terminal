@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_log op:"archive_section" moves a finished roadmap section that names no version into docs/roadmap/unversioned.md, which every roadmap reader now loads** (ANTS-6737)
+
 - **`roadmap_log op:"convert"` converts a pass-headings roadmap to ants-v1, keeping its `PASS-N-M` ids, and every real convert backs up the store first** (ANTS-6724)
   A pass-headings project first declares its own `id_format` (a `prefix`
   and a `pattern` every id matches); until then the convert refuses
