@@ -95419,6 +95419,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Row 152 (link lines lost for an id-less bullet,
   roadmapmigrateload.cpp:1128-1129 allocates into a local, :1205-1207
   skips it) was rated High in both arms: fix it first.
+  2026-11-10: row 152 fixed. writeLinks() now keys on the pk step 3
+  filed; regression test
+  RoadmapMigrateLoad.LinkLineOnIdLessItemBecomesARow (both legs:
+  allocated id, weak-key re-match).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

@@ -2050,3 +2050,37 @@ TEST(RoadmapMigrateLoad, Inv20FieldConflictCarriesTheIdApartFromTheColumn) {
     }
     EXPECT_EQ(ids, (QStringList{QStringLiteral("A-1"), QStringLiteral("A-2")}));
 }
+
+// ANTS-6649 row 152 — a link line on an item whose id this load allocates must
+// become a relationship row. writeLinks() looked the source item up by its
+// parsed id, which an id-less bullet does not have, so the line went into
+// neither a row nor `extras.unresolved_links`. Leg (b): the same item matched
+// by the weak key on a re-run.
+TEST(RoadmapMigrateLoad, LinkLineOnIdLessItemBecomesARow) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    PlannedItem blocked = item(QString(), QStringLiteral("blocked"), QStringLiteral("s"), 1);
+    blocked.links.insert(QStringLiteral("blocked-by"), {QStringLiteral("A-1")});
+    const auto first = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("s"), 0),
+                         blocked}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    EXPECT_EQ(first.idsAllocated, 1);
+    EXPECT_EQ(f.count(QStringLiteral("relationship")), 1)
+        << "a resolvable Blocked-by line on an allocated item must be stored";
+
+    // Leg (b) — drop the row, re-run: the item now matches by the weak key.
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
+    ASSERT_TRUE(q.exec(QStringLiteral("DELETE FROM relationship")));
+    const auto again = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("s"), 0),
+                         blocked}),
+        f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    EXPECT_EQ(again.itemsInserted, 0);
+    EXPECT_EQ(f.count(QStringLiteral("relationship")), 1)
+        << "a weak-key match must write its link rows too";
+}

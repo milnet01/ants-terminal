@@ -187,6 +187,7 @@ struct Loader {
     QSet<qint64> clearedSections;               // the sections step 2 emptied
     QVector<RoadmapStore::ItemRef> existing;
     QVector<qint64> matchPk;                    // parallel to plan.items; 0 = new
+    QVector<qint64> itemPk;                     // parallel to plan.items; set by step 3
     QSet<qint64> consumed;                      // stored items a plan item claimed
     bool massDeletion = false;                  // § 2.7's guard refused
 
@@ -1114,6 +1115,7 @@ bool Loader::rebuildElements() {
     // via fileItem(), without which every matched item would end the
     // transaction unfiled.
     QHash<qint64, int> nextPosition;
+    itemPk = QVector<qint64>(plan.items.size(), 0);
     for (qsizetype i = 0; i < plan.items.size(); ++i) {
         const PlannedItem &it = plan.items.at(i);
         const qint64 sid = sectionIds.value(it.sectionSlug, 0);
@@ -1124,13 +1126,16 @@ bool Loader::rebuildElements() {
         if (const qint64 pk = matchPk.at(i)) {
             if (!store.fileItem(pk, sid, it.position, &err))
                 return fail(err);
+            itemPk[i] = pk;
         } else {
             QString id = it.id;
             if (id.isEmpty() && !allocateId(&id))
                 return false;
             RoadmapStore::ItemWrite w = itemWriteFor(it, id, sid);
-            if (!store.putItem(w, &err))
+            const auto newPk = store.putItem(w, &err);
+            if (!newPk)
                 return fail(err);
+            itemPk[i] = *newPk;
             ++out.itemsInserted;
         }
         ++out.elementsWritten;
@@ -1200,20 +1205,15 @@ bool Loader::rebuildElements() {
 // ids markUnresolvedLinks() could not place are skipped here and live on in
 // `extras`. Insert-if-absent, because a re-migration keeps matched items and
 // with them their rows. No cycle refusal: op:"link" owns that, and import
-// restores what the file holds (ANTS-3810 INV-2).
+// restores what the file holds (ANTS-3810 INV-2). Keyed on the pk step 3
+// filed, not the parsed id: an id-less bullet has none (ANTS-6649 row 152).
 bool Loader::writeLinks() {
-    for (const PlannedItem &it : plan.items) {
-        if (it.id.isEmpty())
-            continue;
-        const auto src = store.findItem(projectId, it.id, &err);
-        if (!src) {
-            if (!err.isEmpty())
-                return fail(err);
-            continue;
-        }
+    for (qsizetype i = 0; i < plan.items.size(); ++i) {
+        const PlannedItem &it = plan.items.at(i);
+        const qint64 src = itemPk.at(i);
         // § 2.6 — the converted types, from the lines the body keeps. The
         // values it cannot hold are already in extras (markUnresolvedLinks).
-        if (!store.syncConvertedLinks(*src, it.body, nullptr, &err))
+        if (!store.syncConvertedLinks(src, it.body, nullptr, &err))
             return fail(err);
         const QJsonObject unresolved =
             it.extras.value(QStringLiteral("unresolved_links")).toObject();
@@ -1228,14 +1228,14 @@ bool Loader::writeLinks() {
                         return fail(err);
                     continue;
                 }
-                const auto has = store.hasRelation(t.key(), *src, *dst, &err);
+                const auto has = store.hasRelation(t.key(), src, *dst, &err);
                 if (!has)
                     return fail(err);
                 if (*has)
                     continue;
                 const bool ok = dst->itemPk
-                    ? store.relateItems(t.key(), *src, *dst->itemPk, &err)
-                    : store.relateCrossProject(t.key(), *src, dst->exportSlug,
+                    ? store.relateItems(t.key(), src, *dst->itemPk, &err)
+                    : store.relateCrossProject(t.key(), src, dst->exportSlug,
                                                dst->idFold, &err);
                 if (!ok)
                     return fail(err);

@@ -307,6 +307,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Roadmap import keeps the Blocked-by and Supersedes lines of a bullet that had no id** (ANTS-6649)
+
 - **doc_symbols' locator mode places a Rust name written with its module path (security::validate_serial(), psn::utils::read_capped_text) or its impl type (Promise::spawn_async) in the file that defines it.** (ANTS-6723)
 
 - **ci_report in a fork reads the GitHub repository the current branch tracks; where it cannot tell, a repo_ambiguous problem finding says how to choose.** (ANTS-6722)
