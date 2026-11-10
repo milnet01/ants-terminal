@@ -307,11 +307,12 @@ QStringList queryTokens(const QString &query) {
     QStringList kept;
     const QStringList words = query.split(QRegularExpression(QStringLiteral("\\s+")),
                                           Qt::SkipEmptyParts);
-    for (const QString &w : words.mid(0, 8)) {
+    // Short words go first, so they cannot use up the cap (ANTS-6649).
+    for (const QString &w : words) {
         if (w.size() >= 2)
             kept << w;
     }
-    return kept;
+    return kept.mid(0, 8);
 }
 
 QString clipSnippet(const QString &line) {

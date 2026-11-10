@@ -133,8 +133,9 @@ Refusals: the existing `bad_args`, `missing_field`, `no_project`, `io_error` and
 
 `tags` is an array in every reply, `history[]` rows included.
 
-**`find`.** The query splits on whitespace, tokens past the eighth are ignored,
-and a token shorter than 2 characters is dropped. An entry's score sums, over its tokens, 3
+**`find`.** The query splits on whitespace, a token shorter than 2 characters is
+dropped, and then tokens past the eighth are ignored (amended 2026-11-10,
+ANTS-6649). An entry's score sums, over its tokens, 3
 for a match in `topic`, `title` or `tags`, or else 1 for a match in `body`.
 Entries scoring above zero come back highest score first, then most recently
 verified. Any-token matching is what lets a sentence work: "how do I reach the

@@ -471,6 +471,17 @@ TEST(KnowHow, FindRanksAndStaysSmall) {
 }
 
 // INV-9 — staleness flips after 90 days, not at them, on every op.
+// ANTS-6649 row 1345 — one-character words are dropped BEFORE the eight-token
+// cap, so a query opening with short words keeps its real terms.
+TEST(KnowHow, ShortWordsDoNotUseUpTheTokenCap) {
+    Fixture f;
+    ASSERT_TRUE(isOk(f.add(QStringLiteral("windows-box"), QStringLiteral("use ssh to it"),
+                           QStringLiteral("Windows PC"))));
+    const QJsonObject found = f.find(QStringLiteral("a b c d e f g h windows"));
+    ASSERT_TRUE(isOk(found)) << dump(found);
+    EXPECT_EQ(topicsOf(found), (QStringList{QStringLiteral("windows-box")})) << dump(found);
+}
+
 TEST(KnowHow, StaleAfterNinetyDays) {
     Fixture f;
     ASSERT_TRUE(isOk(f.add(QStringLiteral("t"), QStringLiteral("needle"))));

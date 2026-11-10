@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6735 -->
+<!-- ants-roadmap-id-high-water: ANTS=6736 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95407,7 +95407,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6649] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-store.**
+- ✅ [ANTS-6649] **Fix the smaller bugs the 2026-11-06 reviews found in roadmap-store.**
   19 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 151 `knowhowstore.cpp:460-463` (Medium)
   - row 152 `roadmapmigrateload.cpp:1199-1201` (Medium)
@@ -95506,6 +95506,31 @@ keeps the reviewer's remedy, which is a claim to check before building.
   "no item N", or the mismatch, and passes a failed query's own error
   through. Test: RoadmapStoreSchema.Ants6649FileItemNamesAMissingRow, red
   first ("section 1 is not in project -1"); full default suite green.
+  2026-11-10: row 1341 fixed. The parent-section lookup's SQL error now
+  fails the load instead of being cleared and read as "absent". No red
+  run: the next statement repeats the same query on the same table and
+  already fails the load, so the silent case needs a failure that occurs
+  once and not again.
+  2026-11-10: row 1342 fixed. Every load note (note(), fieldConflict(),
+  the refusal) carries sourceIndex -1. ANTS-3765 § 2.11 amended. Test:
+  RoadmapMigrateLoad.Ants6649LoadNotesIndexNoSource, red first.
+  2026-11-10: row 1343 fixed. The duplicate-id hint reads both items'
+  idOrigin: "Neither" only when both are quarantined, the one id when
+  one is. Test: RoadmapMigrateLoad.Ants6649DuplicateIdHintMatchesBothOrigins,
+  red first.
+  2026-11-10: row 1344 fixed. The re-run refusals ask isStoreBackedPlan(),
+  the success path's predicate, and not "registered" alone. Test:
+  Inv12StoreBackedAgreesWithTheConsumerDispatch leg (d), red first.
+  2026-11-10: row 1345 fixed. know_how find drops one-character words
+  before the eight-token cap. ANTS-6310 § 4.2 amended. Test:
+  KnowHow.ShortWordsDoNotUseUpTheTokenCap, red first.
+  2026-11-10: row 1346 fixed. loadInOpenTransaction's discovery error
+  leads with run()'s canonical code ("no_roadmap: ..."). The convert's
+  envelope code (store_failed) is unchanged; not part of the finding.
+  Test: RoadmapMigrateVerb.Ants6649InTransactionLoadMapsTheDiscoveryCode,
+  red first. Full default suite green.
+  2026-11-10: all 19 rows have a disposition (17 fixed, 156 closed not
+  reproduced, 1338 dismissed as deliberate and locked).
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -95668,6 +95693,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: vt-parser-pty.
+
+- 📋 [ANTS-6736] **Give roadmap_log op:convert's load failures their own refusal code, not store_failed.**
+  Seen next door while fixing ANTS-6649 row 1346, not verified end to end.
+  The convert's mutate lambda (src/remotecontrol_roadmap_publish.cpp)
+  returns false on a failed loadInOpenTransaction(); the write then
+  appears to refuse through rcRoadmapWriteRefused()'s StoreFailed case,
+  code store_failed, with the load's message in error and load_error.
+  A discovery failure (no_roadmap, case_ambiguous, not_utf8, too_large)
+  is not a store failure. Check the Result the write returns first.
+  **Layman:** When converting a roadmap fails because no roadmap file was found, Ants should say that, not report a database failure.
+  Kind: fix.
+  Source: close-findings ANTS-6649 sweep 2026-11-10.
+  Lanes: roadmap-store.
 
 ### Readability (2026-11-06 review)
 

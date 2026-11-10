@@ -307,6 +307,12 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_migrate`: a note the store load raises carries `source_index: -1`, since it is about a stored row and not a line of any roadmap file** (ANTS-6649)
+
+- **`roadmap_migrate`: a re-run refusal reports the same `store_backed` as a successful run, so a github-task-list project reads `false` either way** (ANTS-6649)
+
+- **`know_how op:"find"`: one-letter words no longer use up the eight-word query limit** (ANTS-6649)
+
 - **changelog_query's release checks skip a deregistered project as unregistered** (ANTS-6649)
 
 - **An id prefix guessed from a folder name is always a valid prefix** (ANTS-6649)
