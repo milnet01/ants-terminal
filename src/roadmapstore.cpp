@@ -1264,6 +1264,11 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
     // provenance and every other key is carried through untouched. That
     // carry-through is also ANTS-3765 § 2.6's "provenance is merged, not
     // replaced" — a field a re-run did not write keeps the provenance it had.
+    // ANTS-6649 row 1337 — the provenance read and the write are one
+    // transaction, so a concurrent edit cannot land between them.
+    ImmediateTx tx(m_db, m_inTransaction);
+    if (!tx.begin(error))
+        return false;
     const auto prov = mergedItemProvenance(m_db, itemPk, field, provenance, error);
     if (!prov)
         return false;
@@ -1279,6 +1284,8 @@ bool RoadmapStore::setItemField(qint64 itemPk, const QString &field,
             *error = lastErr(q);
         return false;
     }
+    if (!tx.commit(error))
+        return false;
     m_writtenItems.insert(itemPk);   // ANTS-4628
     return true;
 }
@@ -3123,6 +3130,11 @@ bool RoadmapStore::clearItemField(qint64 itemPk, const QString &field,
         return false;
     }
 
+    // ANTS-6649 row 1337 — the provenance read and the write are one
+    // transaction, so a concurrent edit cannot land between them.
+    ImmediateTx tx(m_db, m_inTransaction);
+    if (!tx.begin(error))
+        return false;
     const auto prov = mergedItemProvenance(m_db, itemPk, field, provenance, error);
     if (!prov)
         return false;
@@ -3141,6 +3153,8 @@ bool RoadmapStore::clearItemField(qint64 itemPk, const QString &field,
             *error = lastErr(q);
         return false;
     }
+    if (!tx.commit(error))
+        return false;
     m_writtenItems.insert(itemPk);   // ANTS-4628
     return true;
 }

@@ -95485,6 +95485,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   execOneRow() helper; the feedback setter checks inline). Test:
   RoadmapStoreSchema.Ants6649SettersRefuseAMissingRow, all seven red
   first; full default suite green.
+  2026-11-10: row 1337 fixed. markIdParsed's half was already fixed
+  under row 155 (cur.finish()). setItemField and clearItemField now run
+  their provenance read and their write in one ImmediateTx, which steps
+  aside inside a caller's begin(). No red run: every current caller
+  holds a transaction, and the race needs a second writer between two
+  statements. Full default suite green.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
