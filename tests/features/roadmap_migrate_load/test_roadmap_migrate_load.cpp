@@ -2051,6 +2051,93 @@ TEST(RoadmapMigrateLoad, Inv20FieldConflictCarriesTheIdApartFromTheColumn) {
     EXPECT_EQ(ids, (QStringList{QStringLiteral("A-1"), QStringLiteral("A-2")}));
 }
 
+// ANTS-6649 row 1342 — § 2.11: a load note is about a store row, so it indexes
+// no source and carries -1. At the default 0 it claimed the live roadmap. One
+// leg per writer: note(), the refusal, and fieldConflict().
+TEST(RoadmapMigrateLoad, Ants6649LoadNotesIndexNoSource) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const auto expectAllUnindexed = [](const RoadmapMigrateLoad::Outcome &o,
+                                       const char *code) {
+        int seen = 0;
+        for (const RoadmapMigrate::Note &n : o.notes) {
+            if (n.code != QLatin1String(code)) continue;
+            ++seen;
+            EXPECT_EQ(n.sourceIndex, -1) << code;
+        }
+        EXPECT_GT(seen, 0) << code;
+    };
+
+    QVector<PlannedItem> items = fourItems();
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf(items), f.opts()).ok);
+    const auto refused = RoadmapMigrateLoad::load(f.store, planOf({items[0]}), f.opts());
+    ASSERT_FALSE(refused.ok);
+    expectAllUnindexed(refused, "project_refused");
+    expectAllUnindexed(refused, "mass_deletion");
+
+    items.removeLast();
+    const auto deleted = RoadmapMigrateLoad::load(f.store, planOf(items), f.opts());
+    ASSERT_TRUE(deleted.ok) << deleted.error.toStdString();
+    expectAllUnindexed(deleted, "deleted_item");
+
+    Fixture g;
+    ASSERT_TRUE(g.store.open(&err)) << err.toStdString();
+    const auto one = [](const QString &kind, const QString &prov) {
+        return planOf({itemWithProv(QStringLiteral("A-1"), kind,
+                                    QStringLiteral("a-real-source"), prov)});
+    };
+    ASSERT_TRUE(RoadmapMigrateLoad::load(g.store,
+                                         one(QStringLiteral("fix"), QStringLiteral("asserted")),
+                                         g.opts())
+                    .ok);
+    const auto conflict = RoadmapMigrateLoad::load(
+        g.store, one(QStringLiteral("implement"), QStringLiteral("defaulted")), g.opts());
+    ASSERT_TRUE(conflict.ok) << conflict.error.toStdString();
+    expectAllUnindexed(conflict, "field_conflict");
+}
+
+// ANTS-6649 row 1343 — the duplicate-id refusal's quarantine hint speaks only
+// for the items whose idOrigin it read: "Neither" when both are quarantined,
+// the one id when only one is, and no hint when neither is.
+TEST(RoadmapMigrateLoad, Ants6649DuplicateIdHintMatchesBothOrigins) {
+    const auto refusal = [](const QString &firstOrigin, const QString &secondOrigin) {
+        Fixture f;
+        QString err;
+        EXPECT_TRUE(f.store.open(&err)) << err.toStdString();
+        PlannedItem a = item(QStringLiteral("Photo-mode"), QStringLiteral("One"),
+                             QStringLiteral("s"), 0);
+        PlannedItem b = item(QStringLiteral("photo-MODE"), QStringLiteral("Two"),
+                             QStringLiteral("s"), 1);
+        a.idOrigin = firstOrigin;
+        b.idOrigin = secondOrigin;
+        const auto out = RoadmapMigrateLoad::load(f.store, planOf({a, b}), f.opts());
+        EXPECT_FALSE(out.ok);
+        return out.error;
+    };
+    const QString q = QStringLiteral("quarantined");
+    const QString p = QStringLiteral("parsed");
+
+    const QString both = refusal(q, q);
+    EXPECT_TRUE(both.contains(QLatin1String("Neither is an id-shaped token")))
+        << both.toStdString();
+
+    for (const QString &one : {refusal(p, q), refusal(q, p)}) {
+        EXPECT_FALSE(one.contains(QLatin1String("Neither"))) << one.toStdString();
+        EXPECT_TRUE(one.contains(QLatin1String("is not an id-shaped token")))
+            << one.toStdString();
+    }
+    const QString quarantinedSecond = refusal(p, q);
+    EXPECT_TRUE(quarantinedSecond.contains(QLatin1String("'photo-MODE' is not")))
+        << quarantinedSecond.toStdString();
+    const QString quarantinedFirst = refusal(q, p);
+    EXPECT_TRUE(quarantinedFirst.contains(QLatin1String("'Photo-mode' is not")))
+        << quarantinedFirst.toStdString();
+
+    const QString neither = refusal(p, p);
+    EXPECT_FALSE(neither.contains(QLatin1String("id-shaped"))) << neither.toStdString();
+}
+
 // ANTS-6649 row 152 — a link line on an item whose id this load allocates must
 // become a relationship row. writeLinks() looked the source item up by its
 // parsed id, which an id-less bullet does not have, so the line went into

@@ -23,6 +23,11 @@ using RoadmapMigrate::Note;
 using RoadmapMigrate::PlannedItem;
 using RoadmapMigrate::PlannedSection;
 
+// § 2.11 (ANTS-6649) — a load note is about a store row and indexes no
+// source, so it takes ANTS-3766 § 2.4's sentinel rather than 0, which names
+// the live roadmap.
+constexpr int kNoSource = -1;
+
 namespace {
 
 // ANTS-4479 — the same bound `notes[]` carries, for the same reason: one entry
@@ -200,17 +205,17 @@ struct Loader {
     // ANTS-4656 — a field_conflict names the item in Note::id and only the
     // column in `detail`, so the verb can collapse one column's conflicts.
     void fieldConflict(const QString &id, const QString &column) {
-        Note n{QStringLiteral("field_conflict"), column, 0};
+        Note n{QStringLiteral("field_conflict"), column, 0, kNoSource};
         n.id = id;
         out.notes.push_back(n);
     }
 
     void note(const char *code, const QString &detail) {
-        // § 2.11 — line is ALWAYS 0 on a load note. A plan note is keyed to the
+        // § 2.11 — line is ALWAYS 0 and sourceIndex -1 on a load note. A plan note is keyed to the
         // source line it came from; a load note is about a store row, and the
         // load never opens the source file. A plausible-looking line would be
         // worse than none.
-        out.notes.push_back(Note{QString::fromLatin1(code), detail, 0});
+        out.notes.push_back(Note{QString::fromLatin1(code), detail, 0, kNoSource});
     }
 
     bool fail(const QString &message) {
@@ -356,12 +361,16 @@ bool Loader::resolveSections() {
             if (const auto it = sectionIds.constFind(s->parentSlug);
                 it != sectionIds.constEnd())
                 parentId = *it;
-            else
+            else {
                 // Not in this plan: it may still be in the store from an
                 // earlier run, since § 2.6 retains a section the plan stopped
                 // carrying. Unresolvable ⇒ top level, which is the shape the
-                // store can actually hold.
+                // store can actually hold. A failed query is not "absent".
+                err.clear();
                 parentId = store.findSection(projectId, notNull(s->parentSlug), &err);
+                if (!err.isEmpty())
+                    return fail(err);
+            }
         }
 
         err.clear();
@@ -491,6 +500,19 @@ bool Loader::matchItems() {
             continue;
         }
         const PlannedItem &first = plan.items.at(prior);
+        // ANTS-6649 — the hint speaks for each item's own idOrigin, never
+        // for both from one of them.
+        const bool firstQ  = first.idOrigin == QLatin1String("quarantined");
+        const bool secondQ = it.idOrigin == QLatin1String("quarantined");
+        QString hint;
+        if (firstQ && secondQ)
+            hint = QStringLiteral("Neither is an id-shaped token, so both were adopted "
+                                  "from a leading bold label that is prose in at least "
+                                  "one of them (ANTS-3771). ");
+        else if (firstQ || secondQ)
+            hint = QStringLiteral("'%1' is not an id-shaped token, so it was adopted from "
+                                  "a leading bold label that may be prose (ANTS-3771). ")
+                       .arg(firstQ ? first.id : it.id);
         // Each site carries ITS OWN spelling, because the fold is
         // case-insensitive and the two need not be spelled alike — quoting one
         // spelling for both sends the reader grepping for a string that occurs
@@ -498,13 +520,7 @@ bool Loader::matchItems() {
         return fail(QStringLiteral(
                         "two bullets claim one id — %1 and %2 — which the store folds "
                         "to the single identity '%3'. %4Give one of them a distinct id.")
-                        .arg(site(first), site(it), fold,
-                             it.idOrigin == QLatin1String("quarantined")
-                                 ? QStringLiteral(
-                                       "Neither is an id-shaped token, so both were "
-                                       "adopted from a leading bold label that is "
-                                       "prose in at least one of them (ANTS-3771). ")
-                                 : QString()));
+                        .arg(site(first), site(it), fold, hint));
     }
 
     const auto items = store.listItems(projectId, &err);
@@ -1367,7 +1383,7 @@ Outcome load(RoadmapStore &store, const MigrationPlan &plan, const Options &opts
     const auto refuse = [&](const char *code, const QString &message) {
         Outcome refused;
         refused.notes = plan.notes;
-        refused.notes.push_back(Note{QString::fromLatin1(code), message, 0});
+        refused.notes.push_back(Note{QString::fromLatin1(code), message, 0, kNoSource});
         refused.error = message;
         return refused;
     };

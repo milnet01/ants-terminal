@@ -155,7 +155,8 @@ struct Note {
     // `archive_unrecognised` names an entry deliberately never read, so it
     // indexes nothing, its filename lives in `detail`, and its `line` is 0
     // (there is no file here to be inside). Without the -1 it would default to
-    // 0 and claim to be about the live roadmap.
+    // 0 and claim to be about the live roadmap. Every load note carries -1
+    // too (ANTS-3765 § 2.11): it is about a store row, not a source line.
     int     sourceIndex = 0;
     // ANTS-4656 (ANTS-3765 § 2.11) — the item a note is about, where its
     // subject is one field of that item. Set on `field_conflict` alone, whose
