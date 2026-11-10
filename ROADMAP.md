@@ -95501,6 +95501,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   digits, so `ANTS-99-0001` no longer reads as ANTS 99. Test:
   RoadmapStoreSchema.Ants6649LongerPrefixDoesNotFeedShorterOnesFloor,
   red first (99 and 7 for 3 and 4); full default suite green.
+  2026-11-10: row 1340 fixed. fileItem's same-project check reads
+  each side's project in its own subquery and refuses "no section N",
+  "no item N", or the mismatch, and passes a failed query's own error
+  through. Test: RoadmapStoreSchema.Ants6649FileItemNamesAMissingRow, red
+  first ("section 1 is not in project -1"); full default suite green.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

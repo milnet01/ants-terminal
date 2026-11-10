@@ -2191,17 +2191,29 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
     // ANTS-3760 — same-project rule, as putItem() states it: "Items are never
     // global". No schema constraint covers it, so this check is the rule.
     QSqlQuery same(m_db);
+    // ANTS-6649 row 1340 — one subquery per side, so a missing row is named
+    // rather than read as a project mismatch.
     same.prepare(QStringLiteral(
-        "SELECT s.project_id, i.project_id FROM section s, item i "
-        "WHERE s.section_id = ? AND i.item_pk = ?"));
+        "SELECT (SELECT project_id FROM section WHERE section_id = ?), "
+        "(SELECT project_id FROM item WHERE item_pk = ?)"));
     same.addBindValue(sectionId);
     same.addBindValue(itemPk);
-    if (!same.exec() || !same.next()
-        || same.value(0).toLongLong() != same.value(1).toLongLong()) {
+    if (!same.exec() || !same.next()) {
         if (error)
-            *error = QStringLiteral("section %1 is not in project %2")
-                         .arg(sectionId).arg(same.isValid()
-                                                 ? same.value(1).toLongLong() : -1);
+            *error = lastErr(same);
+        return false;
+    }
+    QString refusal;
+    if (same.value(0).isNull())
+        refusal = QStringLiteral("no section %1").arg(sectionId);
+    else if (same.value(1).isNull())
+        refusal = QStringLiteral("no item %1").arg(itemPk);
+    else if (same.value(0).toLongLong() != same.value(1).toLongLong())
+        refusal = QStringLiteral("section %1 is not in project %2")
+                      .arg(sectionId).arg(same.value(1).toLongLong());
+    if (!refusal.isEmpty()) {
+        if (error)
+            *error = refusal;
         return false;
     }
     // ANTS-6649 row 155 — ended before the write, so an autocommit call

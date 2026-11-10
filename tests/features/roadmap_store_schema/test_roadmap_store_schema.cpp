@@ -1032,6 +1032,30 @@ TEST(RoadmapStoreSchema, Ants6649LongerPrefixDoesNotFeedShorterOnesFloor) {
     EXPECT_EQ(f.store.maxAllocatedId(pid, QStringLiteral("ANTS-99"), &err).value_or(-1), 1);
 }
 
+// ANTS-6649 row 1340 — fileItem() names what is missing, rather than calling a
+// missing section or item a project mismatch with "project -1".
+TEST(RoadmapStoreSchema, Ants6649FileItemNamesAMissingRow) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 pid = f.project(QStringLiteral("p"));
+    const qint64 sid = f.section(pid);
+    const qint64 pk = f.item(pid, sid, QStringLiteral("P-0001"), 0);
+    {   // unfile it, so the already-filed check is not what refuses
+        QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
+        q.prepare(QStringLiteral("DELETE FROM element WHERE item_pk = ?"));
+        q.addBindValue(pk);
+        ASSERT_TRUE(q.exec()) << q.lastError().text().toStdString();
+    }
+
+    err.clear();
+    EXPECT_FALSE(f.store.fileItem(pk, 999999, 0, &err));
+    EXPECT_EQ(err, QStringLiteral("no section 999999")) << err.toStdString();
+    err.clear();
+    EXPECT_FALSE(f.store.fileItem(999999, sid, 0, &err));
+    EXPECT_EQ(err, QStringLiteral("no item 999999")) << err.toStdString();
+}
+
 // ANTS-4503 — the history cap is documented in BYTES everywhere (the ctor
 // argument, historyCapBytes(), ANTS_HISTORY_CAP_BYTES, and appendHistory's own
 // refusal message) while three different units were being counted:
