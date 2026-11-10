@@ -95491,6 +95491,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   aside inside a caller's begin(). No red run: every current caller
   holds a transaction, and the race needs a second writer between two
   statements. Full default suite green.
+  2026-11-10: row 1338 dismissed as deliberate, now locked.
+  reassignItemId changes only `id`; its one caller, the re-match fallback,
+  is followed in the same load by applyPlanFields' markIdParsed(), which
+  sets id_origin parsed and provenance.id asserted. reMatchFallsBackToKey
+  now asserts both; it went red with that call disabled.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

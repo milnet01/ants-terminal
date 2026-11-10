@@ -489,6 +489,17 @@ TEST(RoadmapSynthId, reMatchFallsBackToKey) {
     EXPECT_EQ(ids.size(), countBefore) << "the fallback inserted a duplicate item";
     EXPECT_EQ(ids.value(QString::fromLatin1(kHeadline)), QStringLiteral("DEMO-0042"))
         << "the source's id must win, or the next render overwrites the author's";
+
+    // ANTS-6649 row 1338 — reassignItemId() changes only `id`; the same load's
+    // markIdParsed() then records that the source declares it.
+    QString err;
+    const auto pk = store->findItem(pid, QStringLiteral("DEMO-0042"), &err);
+    ASSERT_TRUE(pk) << err.toStdString();
+    const auto row = store->readItem(*pk, &err);
+    ASSERT_TRUE(row) << err.toStdString();
+    EXPECT_EQ(row->idOrigin, QStringLiteral("parsed"));
+    EXPECT_EQ(row->provenance.value(QStringLiteral("id")).toString(),
+              QStringLiteral("asserted"));
 }
 
 // ----------------------------------------------------------------- INV-7 ----
