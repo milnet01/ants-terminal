@@ -288,7 +288,16 @@ static int runMain() {
         writeFile(archDir, QStringLiteral("1.0.md"), QByteArrayLiteral("tag-1.0\n"));
         writeFile(archDir, QStringLiteral("FP03.md"), QByteArrayLiteral("BAD-FOLDIN\n"));
         writeFile(archDir, QStringLiteral("p02.md"), QByteArrayLiteral("BAD-LOWER\n"));
+        writeFile(archDir, QStringLiteral("unversioned.md"),
+                  QByteArrayLiteral("tag-unversioned\n"));
         const QString assembled = RoadmapDialog::loadMarkdown(r7, true);
+        // ANTS-6737 (INV-4c): the unversioned archive loads, after every
+        // version and phase archive.
+        const int unv = assembled.indexOf(QStringLiteral("tag-unversioned"));
+        if (unv < 0)
+            fail("INV-4c", "unversioned.md was filtered out");
+        else if (unv < assembled.indexOf(QStringLiteral("tag-P01")))
+            fail("INV-4c", "unversioned.md must sort after every phase archive");
         const int v10 = assembled.indexOf(QStringLiteral("tag-1.0"));
         const int p10 = assembled.indexOf(QStringLiteral("tag-P10"));
         const int p75 = assembled.indexOf(QStringLiteral("tag-P07.5"));

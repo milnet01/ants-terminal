@@ -1119,11 +1119,11 @@ The convention:
   open item, 💭 included, does not move. On a store-migrated project the
   move is `roadmap_log op:"archive_section"` (ANTS-6737).
 
-  **Do not create the file until ANTS-6737 ships.** `archivedIds`,
-  `parseArchiveFilename`, `archiveNameRx()` and `isPlaceableSourcePath`
-  (each named in the phase bullet above) take only version or phase
-  names, so each skips it. The id floor (`corpusHighWater`) already reads
-  every `.md` in `docs/roadmap/`. Agreed with claude-config 2026-11-10.
+  Every reader of `docs/roadmap/` accepts the name: `archivedIds`,
+  `parseArchiveFilename`, the migration's discovery and
+  `isPlaceableSourcePath` (via `RoadmapMigrate::kUnversionedArchive`), and
+  the id floor (`corpusHighWater`), which reads every `.md` there. Agreed
+  with claude-config 2026-11-10.
 - **On a versioned roadmap** rotation happens at bump time on a
   minor or major bump only. Patch bumps don't rotate. On a
   hand-authored roadmap the bump recipe (`.claude/bump.json` on each

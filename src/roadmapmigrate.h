@@ -39,6 +39,12 @@
 
 namespace RoadmapMigrate {
 
+// ANTS-6737 — roadmap-format.md § 3.9's archive for closed sections that name
+// no version, and the slug prefix its sections carry. Every reader of
+// docs/roadmap/ accepts this one literal name.
+inline constexpr char kUnversionedArchive[] = "unversioned.md";
+inline constexpr char kUnversionedSlugPrefix[] = "unversioned";
+
 // One item as migration will file it. Field names follow
 // RoadmapStore::ItemWrite (ANTS-3756); § 2.1.1 accounts for every ItemWrite
 // field and every `item` column, including the ones left empty here.

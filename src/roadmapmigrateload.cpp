@@ -88,7 +88,9 @@ QString relativeSourcePath(const QString &projectRoot, const QString &sourcePath
 bool isPlaceableSourcePath(const QString &rel) {
     static const QRegularExpression rx(
         QStringLiteral("\\Adocs/roadmap/(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.md\\z"));
-    return rx.match(rel).hasMatch();
+    return rx.match(rel).hasMatch()
+        || rel == QLatin1String("docs/roadmap/")
+                      + QLatin1String(RoadmapMigrate::kUnversionedArchive);
 }
 
 // One field the plan is authoritative for, paired with what the store holds.

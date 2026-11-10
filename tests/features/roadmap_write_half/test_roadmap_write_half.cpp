@@ -3832,3 +3832,49 @@ TEST(RoadmapWriteHalf, Ants6738UnpaddedIdsStayUnpadded) {
     EXPECT_EQ(b.value(QStringLiteral("ids")).toArray().at(0).toString(),
               QStringLiteral("DEMO-13"));
 }
+
+// ANTS-6737 — § 3.9's unversioned archive survives a migration and a render:
+// discovery takes it as a source, its slugs carry `unversioned-`, the load
+// places it, and a render writes it back with its item.
+TEST(RoadmapWriteHalf, Ants6737UnversionedArchiveMigratesAndRenders) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/docs/roadmap/unversioned.md"),
+        "## Shipped, version not known\n"
+        "\n"
+        "- \xE2\x9C\x85 [DEMO-0002] **Old work.**\n"
+        "  Layman: Old thing.\n"
+        "  Kind: fix.\n"
+        "  Source: seed.\n"));
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty()) << "the migration refused the archive";
+
+    {
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store);
+        const auto sections = store->listSections(projectId);
+        ASSERT_TRUE(sections.has_value());
+        bool found = false;
+        for (const auto &s : *sections)
+            if (s.sourcePath
+                && *s.sourcePath == QStringLiteral("docs/roadmap/unversioned.md")) {
+                found = true;
+                EXPECT_TRUE(s.slug.startsWith(QStringLiteral("unversioned-")))
+                    << s.slug.toStdString();
+            }
+        EXPECT_TRUE(found) << "no section came from unversioned.md";
+    }
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("render");
+    const QJsonObject r = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson(QJsonDocument::Compact).toStdString();
+    EXPECT_TRUE(readAll(root + QStringLiteral("/docs/roadmap/unversioned.md"))
+                    .contains("[DEMO-0002]"));
+}

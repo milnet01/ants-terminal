@@ -232,6 +232,10 @@ Source-grep + pure-helper drive. Same harness pattern as
   archives and the two non-matching names, and checking the emitted
   order and that neither skipped name's content appears.
 
+- **INV-4c** (ANTS-6737) `unversioned.md`, the archive for closed
+  sections that name no version (roadmap-format.md § 3.9), loads after
+  every version and phase archive. Asserted in INV-4b's fixture.
+
 - **INV-5** Per-file 8 MiB read cap. A current ROADMAP.md of 16 MiB
   is truncated to 8 MiB; an 8 MiB cap applies independently to each
   `QFile::read()` call inside `loadRoadmapMarkdown`. The cap defends

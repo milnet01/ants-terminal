@@ -1,4 +1,5 @@
 #include "roadmapdialog.h"
+#include "roadmapmigrate.h"  // ANTS-6737 — kUnversionedArchive
 
 #include "coloredtabbar.h"     // for ClaudeTabIndicator::color (ToolUse yellow)
 #include "config.h"
@@ -3239,17 +3240,25 @@ namespace {
 // ANTS-4073 (INV-4b): a closed phase archives as P<N>[.<sub>].md
 // (roadmap-format.md § 3.9). `phase` says which class matched; the two
 // classes cannot share one key, since P01.md and 1.0.md both parse to (1, 0).
-bool parseArchiveFilename(const QString &name, bool *phaseOut,
+// ANTS-6737 (INV-4c): unversioned.md is a third class, after both (§ 3.9).
+enum class ArchiveClass { Version, Phase, Unversioned };
+bool parseArchiveFilename(const QString &name, ArchiveClass *classOut,
                           int *majorOut, int *minorOut) {
     static const QRegularExpression re(
         QStringLiteral(R"(^(\d+)\.(\d+)\.md$)"));
     static const QRegularExpression phaseRe(
         QStringLiteral(R"(^P(\d+)(?:\.(\d+))?\.md$)"));
+    if (name == QLatin1String(RoadmapMigrate::kUnversionedArchive)) {
+        if (classOut) *classOut = ArchiveClass::Unversioned;
+        if (majorOut) *majorOut = 0;
+        if (minorOut) *minorOut = 0;
+        return true;
+    }
     auto m = re.match(name);
     const bool phase = !m.hasMatch();
     if (phase) m = phaseRe.match(name);
     if (!m.hasMatch()) return false;
-    if (phaseOut) *phaseOut = phase;
+    if (classOut) *classOut = phase ? ArchiveClass::Phase : ArchiveClass::Version;
     if (majorOut) *majorOut = m.captured(1).toInt();
     if (minorOut) *minorOut = m.captured(2).toInt();   // absent sub reads 0
     return true;
@@ -3305,20 +3314,20 @@ QString RoadmapDialog::loadMarkdown(const QString &roadmapPath,
     const QStringList rawEntries =
         d.entryList(QDir::Files | QDir::Readable, QDir::NoSort);
     // ANTS-4073: phase archives are a strictly older class, so every version
-    // archive sorts before every phase archive.
-    struct Entry { bool phase = false; int major = 0; int minor = 0; QString name; };
+    // archive sorts before every phase archive; ANTS-6737: unversioned last.
+    struct Entry { ArchiveClass cls = ArchiveClass::Version; int major = 0; int minor = 0; QString name; };
     QVector<Entry> entries;
     entries.reserve(rawEntries.size());
     for (const QString &name : rawEntries) {
-        bool phase = false;
+        ArchiveClass cls = ArchiveClass::Version;
         int major = 0, minor = 0;
-        if (parseArchiveFilename(name, &phase, &major, &minor)) {
-            entries.push_back({phase, major, minor, name});
+        if (parseArchiveFilename(name, &cls, &major, &minor)) {
+            entries.push_back({cls, major, minor, name});
         }
     }
     std::sort(entries.begin(), entries.end(),
               [](const Entry &a, const Entry &b) {
-        if (a.phase != b.phase) return !a.phase;
+        if (a.cls != b.cls) return a.cls < b.cls;
         if (a.major != b.major) return a.major > b.major;
         return a.minor > b.minor;
     });

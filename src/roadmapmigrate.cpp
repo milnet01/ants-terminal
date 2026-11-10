@@ -1078,6 +1078,8 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
             for (const QFileInfo &fi : archiveEntries) {
                 const QString name = fi.fileName();
                 const auto m = archiveNameRx().match(name);
+                const bool unversioned =
+                    name == QLatin1String(kUnversionedArchive);
                 // Regular files only, and symlinks are NOT followed. BOTH
                 // halves are written out because Qt will not give them for
                 // free: isFile() and a QDir::Files filter FOLLOW symlinks and
@@ -1085,13 +1087,18 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
                 // implementation loads it — and a symlink under docs/roadmap/
                 // can point outside the project root. A DIRECTORY named
                 // `0.7.md` matches the regex too.
-                if (!m.hasMatch() || !fi.isFile() || fi.isSymLink()) {
+                if ((!m.hasMatch() && !unversioned) || !fi.isFile()
+                    || fi.isSymLink()) {
                     // Never a silent skip: a misnamed archive is exactly the
                     // shape whose silent loss this lane exists to prevent.
                     addNote(disc.notes, "archive_unrecognised", name, 0, -1);
                     continue;
                 }
-                found.append({{m.captured(1).toInt(), m.captured(2).toInt()},
+                // The unversioned archive sorts after every version (§ 3.9).
+                found.append({unversioned
+                                  ? qMakePair(-1, -1)
+                                  : qMakePair(m.captured(1).toInt(),
+                                              m.captured(2).toInt()),
                               fi.absoluteFilePath()});
             }
             // Descending by the (major, minor) INTEGER tuple. Lexical sort is
@@ -1193,9 +1200,11 @@ MigrationPlan planFrom(const Discovery &discovery, const QString &projectName,
             // "<M>-<N>" from the archive's own filename — § 2.3. Derived from
             // the name alone, which is what makes an archive slug stable under
             // every edit to every other source (INV-4).
-            const auto m = archiveNameRx().match(
-                QFileInfo(plan.sources.at(i).path).fileName());
-            ctx.prefix = m.captured(1) + QLatin1Char('-') + m.captured(2);
+            const QString name = QFileInfo(plan.sources.at(i).path).fileName();
+            const auto m = archiveNameRx().match(name);
+            ctx.prefix = m.hasMatch()
+                ? m.captured(1) + QLatin1Char('-') + m.captured(2)
+                : QString::fromLatin1(kUnversionedSlugPrefix);
         }
         walkSource(plan.sources.at(i), ctx, plan, fmt);
     }
