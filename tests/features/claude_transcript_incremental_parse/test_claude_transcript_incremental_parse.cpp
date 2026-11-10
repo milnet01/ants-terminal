@@ -465,3 +465,55 @@ TEST(TranscriptIncremental, WalkCacheKeepsOnlyTheMostRecentPaths) {
     EXPECT_FALSE(cache.restore(QStringLiteral("/fresh"), c, acc))
         << "an unprimed cursor was kept";
 }
+
+// --- ANTS-5416 — a line past the walk window is skipped whole ---------
+//
+// The cold walk reads only the last kMaxWalkBytes, so it can never parse a
+// longer line. A resumed walk now skips such a line too, instead of reading
+// it into memory whole, and an unterminated one still holds the cursor
+// (INV-1).
+
+namespace {
+QByteArray hugeEvent() {
+    QByteArray line(
+        "{\"type\":\"assistant\",\"timestamp\":\"2026-09-12T10:00:02.000Z\","
+        "\"pad\":\"");
+    line += QByteArray(ClaudeTranscript::kMaxWalkBytes + 1024, 'x');
+    line += "\"}";
+    return line;
+}
+}  // namespace
+
+TEST(TranscriptIncremental, Ants5416OverlongLineIsSkippedOnResume) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.filePath("t.jsonl");
+    writeAll(p, todoWrite("pending", "one"));
+    ClaudeTranscript::Cursor cur;
+    ASSERT_EQ(visitCount(p, cur), 1);
+
+    appendTo(p, hugeEvent() + "\n");
+    appendTo(p, todoWrite("completed", "one"));
+    EXPECT_EQ(visitCount(p, cur), 1)
+        << "the overlong line is skipped; the event after it is visited";
+    EXPECT_EQ(cur.offset, QFile(p).size()) << "the walk consumed both lines";
+}
+
+TEST(TranscriptIncremental, Ants5416UnterminatedOverlongLineHoldsTheCursor) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = dir.filePath("t.jsonl");
+    writeAll(p, todoWrite("pending", "one"));
+    ClaudeTranscript::Cursor cur;
+    ASSERT_EQ(visitCount(p, cur), 1);
+    const qint64 lineStart = cur.offset;
+
+    appendTo(p, hugeEvent());  // still being written
+    EXPECT_EQ(visitCount(p, cur), 0);
+    EXPECT_EQ(cur.offset, lineStart) << "INV-1: an unterminated line is not consumed";
+
+    appendTo(p, "\n");
+    appendTo(p, todoWrite("completed", "one"));
+    EXPECT_EQ(visitCount(p, cur), 1);
+    EXPECT_EQ(cur.offset, QFile(p).size());
+}

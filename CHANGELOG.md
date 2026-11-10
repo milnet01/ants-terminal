@@ -312,6 +312,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude transcript reader skips a single line longer than 16 MiB in small reads instead of loading it into memory** (ANTS-5416)
+
 - **roadmap_log append and append_batch number a new id the way the project's existing ids are written: PASS-59-298 after PASS-59-297** (ANTS-6738)
 
 - **Typing or pasting while a large paste is stalled now queues at most 4 MiB behind it; past that the input is dropped and logged** (ANTS-5415)

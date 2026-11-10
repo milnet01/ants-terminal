@@ -73668,13 +73668,20 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code RC-14; draft by retroarch-1c).
   Lanes: pty.
 
-- 📋 [ANTS-5416] **The transcript walker skips a line longer than its 16 MiB window on a resumed walk.**
+- ✅ [ANTS-5416] **The transcript walker skips a line longer than its 16 MiB window on a resumed walk.**
   claudetranscriptwalker.h walkFrom reads each line with readLine() and
   no size; only the cold walk's 16 MiB tail window bounds anything. Hoist
   that window to a namespace constant and use it as a per-line cap on
   every walk, skipping a longer line whole (and holding the cursor at an
   unterminated one, INV-1). Decide first: the skip drops a real event
   over 16 MiB, which the cold walk already cannot parse.
+  Shipped 2026-11-10. Decision: skip, because the cold walk's 16 MiB
+  window already makes such a line unparseable, so a resumed walk loses
+  nothing a cold one keeps. The window is now
+  ClaudeTranscript::kMaxWalkBytes; walkFrom reads each line up to it and
+  skipRestOfLine passes a longer one in 1 MiB reads, holding the cursor
+  while it is unterminated (INV-1). Tests:
+  TranscriptIncremental.Ants5416* (spec INV-11).
   **Layman:** A single enormous line in a Claude transcript should not be read into memory whole.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code RC-26; draft by retroarch-1c).

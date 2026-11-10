@@ -26,6 +26,9 @@
 // tests share one implementation, mirroring claudecontent.h (ANTS-2002).
 namespace ClaudeTranscript {
 
+// The cold walk reads at most this tail of a transcript (INV-5).
+inline constexpr qint64 kMaxWalkBytes = 16LL * 1024 * 1024;
+
 // ANTS-1341 — parse an ISO-8601-with-ms timestamp string into epoch ms.
 // Returns 0 on empty / unparseable input — fail-soft so a missing or
 // malformed timestamp never drops user-visible work from the abandonment
@@ -97,6 +100,19 @@ inline bool canResume(const QString &path, const Cursor &cur) {
 // isSidechain, so a caller walking one of those files passes Keep.
 enum class Sidechains { Skip, Keep };
 
+// ANTS-5416 — read past the rest of the current line in bounded chunks.
+// True once its newline is consumed; false at end of file, where the line is
+// still being written.
+inline bool skipRestOfLine(QFile &file) {
+    constexpr qint64 kChunk = 1024 * 1024;
+    while (!file.atEnd()) {
+        const QByteArray chunk = file.readLine(kChunk);
+        if (chunk.endsWith('\n')) return true;
+        if (chunk.isEmpty()) return false;
+    }
+    return false;
+}
+
 template <typename Handler>
 void walkFrom(const QString &path, Cursor &cur, Handler &&handler,
               Sidechains sidechains = Sidechains::Skip) {
@@ -107,10 +123,9 @@ void walkFrom(const QString &path, Cursor &cur, Handler &&handler,
     if (resuming) {
         if (!file.seek(cur.offset)) return;
     } else {
-        constexpr qint64 kMaxBytes = 16LL * 1024 * 1024;
         const qint64 size = file.size();
-        if (size > kMaxBytes) {
-            if (!file.seek(size - kMaxBytes)) return;
+        if (size > kMaxWalkBytes) {
+            if (!file.seek(size - kMaxWalkBytes)) return;
             file.readLine();  // discard the (likely-truncated) first line
         }
         cur.latestEventMs = 0;
@@ -119,7 +134,17 @@ void walkFrom(const QString &path, Cursor &cur, Handler &&handler,
 
     while (!file.atEnd()) {
         const qint64 lineStart = file.pos();
-        const QByteArray rawLine = file.readLine();
+        // ANTS-5416 — no line is read past the cold walk's window. A longer
+        // one could never be parsed cold either, so it is skipped whole.
+        const QByteArray rawLine = file.readLine(kMaxWalkBytes);
+        if (!rawLine.endsWith('\n') && !file.atEnd()) {  // hit the cap
+            if (!skipRestOfLine(file)) {  // INV-1: still being written
+                cur.offset = lineStart;
+                break;
+            }
+            cur.offset = file.pos();
+            continue;
+        }
         // INV-1 — a line with no terminator is still being written. Leave the
         // cursor before it and stop; the next walk sees it whole.
         if (!rawLine.endsWith('\n')) {

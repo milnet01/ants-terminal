@@ -50,6 +50,7 @@ handler, so the full-parse contract is unchanged by construction.
 | INV-8 | `parseTranscript(path)`'s signature and result are unchanged. |
 | INV-9 | After each parse a tracker keeps its cursor and accumulator under the transcript path, in a `ClaudeTranscript::WalkCache` shared by every tracker of its type. A tracker binding a path with kept state resumes from it: a tab switch back, or a second pane on the same transcript. `rescan`'s `canResume` check still walks cold when the kept cursor no longer holds. |
 | INV-10 | The cache keeps at most `WalkCache::kMaxPaths` paths, most recent first, and never keeps an unprimed cursor. Each entry is a cursor and one tracker's accumulator. |
+| INV-11 | (ANTS-5416) No walk reads one line past `kMaxWalkBytes`, the cold walk's window. A longer line, which a cold walk could never parse, is skipped whole in bounded reads; one still unterminated at end of file holds the cursor at its first byte (INV-1). |
 
 ## What checks this
 
@@ -65,6 +66,7 @@ handler, so the full-parse contract is unchanged by construction.
 | INV-8 | `FullParseContractUnchanged` |
 | INV-9 | `RebindResumesTaskListFromKeptState`, `RebindResumesBgTasksFromKeptState`, `SiblingTrackerResumesFromKeptState` |
 | INV-10 | `WalkCacheKeepsOnlyTheMostRecentPaths` |
+| INV-11 | `Ants5416OverlongLineIsSkippedOnResume`, `Ants5416UnterminatedOverlongLineHoldsTheCursor` |
 
 ## Scope
 
