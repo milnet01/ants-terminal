@@ -3784,3 +3784,51 @@ TEST(RoadmapWriteHalf, Ants4661ReturnSurfaceOnAMigratedProject) {
     ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dump(plain);
     EXPECT_FALSE(plain.contains(QStringLiteral("post_bullets"))) << dump(plain);
 }
+
+// ANTS-6738 — a counter id takes the width the prefix's existing ids use.
+// RetroDB's ids are unpadded (PASS-59-297) and an id_hint append issued
+// PASS-59-0298. With DEMO-7 and DEMO-3 stored, append, a hinted append and
+// append_batch all issue unpadded ids. The padded fixture above keeps four
+// digits (Inv3Allocation).
+TEST(RoadmapWriteHalf, Ants6738UnpaddedIdsStayUnpadded) {
+    const auto dump = [](const QJsonObject &o) {
+        return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+    };
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    QByteArray md = fixture();
+    md.replace("DEMO-000", "DEMO-");
+    const QString root = seedMigrated(guard, tmp, md, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject plain =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("Plain.")))
+            .object();
+    ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dump(plain);
+    EXPECT_EQ(plain.value(QStringLiteral("id")).toString(), QStringLiteral("DEMO-8"));
+
+    QJsonObject hinted = appendReq(root, QStringLiteral("Hinted."));
+    hinted[QStringLiteral("id_hint")] = 12;
+    const QJsonObject h = rc.cmdRoadmapLogAppendForTest(hinted).object();
+    ASSERT_TRUE(h.value(QStringLiteral("ok")).toBool()) << dump(h);
+    EXPECT_EQ(h.value(QStringLiteral("id")).toString(), QStringLiteral("DEMO-12"));
+
+    QJsonObject bullet;
+    bullet[QStringLiteral("status")]   = QStringLiteral("planned");
+    bullet[QStringLiteral("headline")] = QStringLiteral("Batched.");
+    bullet[QStringLiteral("kind")]     = QStringLiteral("implement");
+    bullet[QStringLiteral("source")]   = QStringLiteral("test");
+    bullet[QStringLiteral("layman")]   = QStringLiteral("A batched thing.");
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = root;
+    req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+    req[QStringLiteral("section")]    = QStringLiteral("work");
+    req[QStringLiteral("bullets")]    = QJsonArray{ bullet };
+    const QJsonObject b = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    ASSERT_TRUE(b.value(QStringLiteral("ok")).toBool()) << dump(b);
+    EXPECT_EQ(b.value(QStringLiteral("ids")).toArray().at(0).toString(),
+              QStringLiteral("DEMO-13"));
+}

@@ -2680,6 +2680,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
 
     qint64 nextId = effCounter + 1;
     bool firstAccepted = true;
+    // ANTS-6738 — on the store path, the width the prefix's ids already use.
+    const int idWidth = writeTarget
+        ? writeTarget->store->counterIdWidth(writeTarget->projectId, counterPfx)
+        : 4;
 
     // ANTS-5344 — a bullet may name its own `section`; the call-level one is
     // the fallback. The store files each item by section id and position, so
@@ -2878,11 +2882,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 }
                 nextId = hint;
             }
-            idStr = QStringLiteral("%1-%2")
-                        .arg(counterPfx).arg(nextId, 4, 10,
-                                             QLatin1Char('0'));
-            if (nextId > 9999)
-                idStr = QStringLiteral("%1-%2").arg(counterPfx).arg(nextId);
+            idStr = RoadmapStore::formatCounterId(counterPfx, nextId, idWidth);
         }
         firstAccepted = false;
 

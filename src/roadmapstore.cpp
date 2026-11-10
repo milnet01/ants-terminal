@@ -4046,6 +4046,30 @@ std::optional<qint64> RoadmapStore::maxAllocatedId(qint64 projectId,
     return q.value(0).toLongLong();
 }
 
+int RoadmapStore::counterIdWidth(qint64 projectId, const QString &prefix) const {
+    constexpr int kPadded = 4;
+    if (prefix.isEmpty())
+        return kPadded;
+    QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
+    // maxAllocatedId()'s filter: this prefix's all-digit suffixes only.
+    q.prepare(QStringLiteral(
+        "SELECT COUNT(*), COALESCE(SUM(substr(id, ?) GLOB '0?*'), 0) FROM item "
+        "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*'"));
+    q.addBindValue(prefix.size() + 2);
+    q.addBindValue(projectId);
+    q.addBindValue(prefix + QStringLiteral("-[0-9]*"));
+    q.addBindValue(prefix.size() + 2);
+    if (!q.exec() || !q.next())
+        return kPadded;
+    const qint64 ids = q.value(0).toLongLong();
+    const qint64 padded = q.value(1).toLongLong();
+    return (ids == 0 || padded > 0) ? kPadded : 0;
+}
+
+QString RoadmapStore::formatCounterId(const QString &prefix, qint64 n, int width) {
+    return QStringLiteral("%1-%2").arg(prefix).arg(n, width, 10, QLatin1Char('0'));
+}
+
 std::optional<qint64> RoadmapStore::maxSynthesisedId(qint64 projectId,
                                                      const QString &prefix,
                                                      QString *error) const {

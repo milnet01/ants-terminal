@@ -312,6 +312,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log append and append_batch number a new id the way the project's existing ids are written: PASS-59-298 after PASS-59-297** (ANTS-6738)
+
 - **Typing or pasting while a large paste is stalled now queues at most 4 MiB behind it; past that the input is dropped and logged** (ANTS-5415)
 
 - **roadmap_log refuses a text field that holds a closing tag named after one of its arguments, such as `</layman>`, with text after it.** (ANTS-5393)

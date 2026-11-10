@@ -91749,7 +91749,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: RetroDB feedback 2026-11-10.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-6738] **roadmap_log append numbers a counter id at the width the prefix's existing ids use.**
+- ✅ [ANTS-6738] **roadmap_log append numbers a counter id at the width the prefix's existing ids use.**
   append with id_prefix:"PASS-59", id_hint:298 allocated PASS-59-0298;
   RetroDB's other ids are unpadded (PASS-59-297). cmdRoadmapLogAppend
   pads to four digits unconditionally (`.arg(allocated, 4, 10, '0')`), as
@@ -91758,6 +91758,12 @@ measured Ants adding about 5,250 tokens to every request.
   ids use; four only where they use four or there are none. Red test: a
   roadmap of unpadded PASS-59-N ids, append with id_hint, expect no pad.
   Not in scope: an op to rename an id (RetroDB's optional ask).
+  Shipped 2026-11-10. RoadmapStore::counterIdWidth answers 4 where the
+  prefix holds no all-digit id or one starts with 0, else 0; append and
+  append_batch format through RoadmapStore::formatCounterId. The
+  markdown path and GFM caret anchors keep four digits. Test:
+  RoadmapWriteHalf.Ants6738UnpaddedIdsStayUnpadded. Reaches RetroDB once
+  ants-mcpd is rebuilt and it reconnects.
   **Layman:** A new roadmap item got the number 0298 when every other item in that project is written without leading zeros, like 297.
   Kind: fix.
   Source: RetroDB feedback 2026-11-10.

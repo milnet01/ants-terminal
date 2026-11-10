@@ -522,10 +522,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                 .arg(hint).arg(prefix).arg(highWater));
                     allocated = hint;
                 }
-                idStr = allocated > 9999
-                            ? QStringLiteral("%1-%2").arg(prefix).arg(allocated)
-                            : QStringLiteral("%1-%2").arg(prefix)
-                                  .arg(allocated, 4, 10, QLatin1Char('0'));
+                // ANTS-6738 — the width the prefix's ids already use.
+                idStr = RoadmapStore::formatCounterId(
+                    prefix, allocated, store.counterIdWidth(projectId, prefix));
             }
 
             RoadmapStore::ItemWrite w;

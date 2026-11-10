@@ -378,3 +378,12 @@ reply adds `drift_hint` (`would_drift_hint` on a dry run). It says to run
 as a small diff. It is absent when text was lost, since rendering first
 loses the same text, and on `render` and `convert`, which are the
 re-layout. *Test:* `RoadmapWriteHalf.Ants5399LayoutDriftPointsAtRender`.
+
+## ANTS-6738 — a counter id keeps the prefix's width
+
+On the store path, `append` and `append_batch` pad a counter id to four
+digits only where the prefix holds no all-digit id yet or one of them
+starts with `0` (`DEMO-0007`). A prefix whose ids are unpadded gets
+unpadded ids: `DEMO-7` in the store gives `DEMO-8`, and `id_hint:12`
+gives `DEMO-12`. The markdown path keeps four digits. *Test:*
+`RoadmapWriteHalf.Ants6738UnpaddedIdsStayUnpadded`.

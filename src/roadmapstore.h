@@ -1253,6 +1253,14 @@ public:
     std::optional<qint64> maxAllocatedId(qint64 projectId, const QString &prefix,
                                          QString *error = nullptr) const;
 
+    // ANTS-6738 — the zero-pad width for the next counter id under `prefix`:
+    // 4 where the prefix holds no all-digit id yet or one of them starts with
+    // 0 (DEMO-0007), else 0 (PASS-59-297). A failed query answers 4, the
+    // width the allocators always used.
+    int counterIdWidth(qint64 projectId, const QString &prefix) const;
+    // `<prefix>-<n>`, zero-padded to `width` digits.
+    static QString formatCounterId(const QString &prefix, qint64 n, int width);
+
     // ANTS-4500 § 4.2 — maxAllocatedId()'s sibling for the SYNTHESIS namespace:
     // the highest suffix among this project's stored `<prefix>-S<digits>` ids.
     //
