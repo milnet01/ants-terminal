@@ -16,6 +16,7 @@
 #include <QString>
 #include <QStringList>
 #include <cstdint>
+#include <functional>
 #include <optional>
 
 namespace RoadmapExport { struct StoreHandle; }
@@ -137,6 +138,9 @@ public:
     // instead. CANNOT run inside a transaction — SQLite refuses — so a caller
     // takes the snapshot before it calls begin().
     bool snapshotTo(const QString &destPath, QString *error = nullptr);
+    // ANTS-6649 row 153 — TEST ONLY. Runs just before snapshotTo()'s VACUUM
+    // INTO, with the temp path it writes. An empty function clears it.
+    static void setBeforeVacuumHookForTest(std::function<void(const QString &)> hook);
 
     // ANTS-3765 § 2.3 — explicit transaction control, so a caller can make one
     // project one transaction. putItem()'s self-committing shape made that

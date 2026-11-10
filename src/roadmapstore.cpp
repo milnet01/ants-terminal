@@ -396,6 +396,15 @@ QString RoadmapStore::defaultSnapshotPath() {
            + QStringLiteral("/pre-migrate.sqlite");
 }
 
+namespace {
+// ANTS-6649 row 153 — see setBeforeVacuumHookForTest(). Never set outside a test.
+std::function<void(const QString &)> g_beforeVacuumHook;
+}  // namespace
+
+void RoadmapStore::setBeforeVacuumHookForTest(std::function<void(const QString &)> hook) {
+    g_beforeVacuumHook = std::move(hook);
+}
+
 // ANTS-4499 — see the header for why VACUUM INTO and not a file copy.
 bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
     const auto fail = [&](const QString &message) {
@@ -412,8 +421,8 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
     if (!QDir().mkpath(destDir))
         return fail(QStringLiteral("cannot create snapshot directory %1").arg(destDir));
 
-    // VACUUM INTO refuses a target that already exists, so the temp name has to
-    // be free before it runs — including after an earlier run died between the
+    // VACUUM INTO refuses a target that already exists unless it is empty, so
+    // the temp name has to be cleared before it runs — including after an earlier run died between the
     // vacuum and the rename below.
     // ANTS-5466 — `backup_to` is not confined to a project, so a file already
     // at either path is removed only when it is one of ours: a SQLite database,
@@ -441,6 +450,21 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
                                    "not replacing it").arg(tmp));
     if (QFile::exists(tmp) && !QFile::remove(tmp))
         return fail(QStringLiteral("cannot clear stale %1").arg(tmp));
+    // ANTS-6649 row 153 — created empty and owner-only before the vacuum fills
+    // it. Left to SQLite, it is created with the umask's mode and stays
+    // readable by others until the chmod below.
+    {
+        QFile fresh(tmp);
+        if (!fresh.open(QIODevice::WriteOnly | QIODevice::NewOnly))
+            return fail(QStringLiteral("cannot create %1").arg(tmp));
+        if (!setOwnerOnlyPerms(fresh)) {
+            fresh.close();
+            QFile::remove(tmp);
+            return fail(QStringLiteral("cannot set 0600 on %1").arg(tmp));
+        }
+    }
+    if (const auto hook = g_beforeVacuumHook)   // test only
+        hook(tmp);
 
     QSqlQuery q(m_db);
     // Bound rather than interpolated: the destination is caller data, and a

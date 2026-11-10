@@ -99,6 +99,32 @@ TEST(RoadmapMigrateBackup, Inv2SnapshotIsOwnerOnly) {
     EXPECT_FALSE(p.testFlag(QFileDevice::ReadOther));
 }
 
+// INV-2, ANTS-6649 row 153 — owner-only for the whole write, not only once
+// it ends: the `.partial` the vacuum fills is already 0600 when it starts.
+TEST(RoadmapMigrateBackup, Inv2PartialIsOwnerOnlyBeforeTheVacuum) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + QStringLiteral("/roadmap.sqlite"));
+    ASSERT_TRUE(store.open());
+    writeProbe(store, QStringLiteral("x"), true);
+
+    bool seen = false, exists = false;
+    QFileDevice::Permissions p;
+    RoadmapStore::setBeforeVacuumHookForTest([&](const QString &tmp) {
+        seen = true;
+        exists = QFile::exists(tmp);
+        p = QFile::permissions(tmp);
+    });
+    const bool ok = store.snapshotTo(dir.path() + QStringLiteral("/pre-migrate.sqlite"));
+    RoadmapStore::setBeforeVacuumHookForTest({});
+
+    ASSERT_TRUE(ok);
+    ASSERT_TRUE(seen);
+    EXPECT_TRUE(exists) << "the vacuum created the .partial itself, with the umask's mode";
+    EXPECT_FALSE(p.testFlag(QFileDevice::ReadGroup));
+    EXPECT_FALSE(p.testFlag(QFileDevice::ReadOther));
+}
+
 // INV-3 / INV-4 — rolling, and no debris. The second snapshot replaces the
 // first, and the temp file the write went through is not left behind. A
 // caller listing the directory sees one snapshot, never two or a `.partial`.

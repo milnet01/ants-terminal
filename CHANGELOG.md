@@ -489,6 +489,8 @@ for security-relevant changes.
 
 ### Security
 
+- **The roadmap store's pre-migrate backup is owner-only from the moment it is created, not only once written** (ANTS-6649)
+
 - **The Audit dialog's luacheck and checkov checks start switched off**
   Both can run code the audited project supplies: luacheck runs the
   project's `.luacheckrc`, and checkov reads a `.checkov.yaml` that can

@@ -95437,6 +95437,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   file only when, under BEGIN IMMEDIATE, it holds no know_how row
   (holdsNoRow). Test: KnowHow.AFailedCreatorKeepsAnotherSessionsRow via
   KnowHowStore::setAfterCreateHookForTest; red before the fix.
+  2026-11-10: row 153 fixed. snapshotTo() creates the .partial empty and
+  owner-only (NewOnly + setOwnerOnlyPerms) before VACUUM INTO fills it.
+  Test: RoadmapMigrateBackup.Inv2PartialIsOwnerOnlyBeforeTheVacuum via
+  RoadmapStore::setBeforeVacuumHookForTest; red with the new block
+  disabled.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
