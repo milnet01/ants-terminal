@@ -46,6 +46,11 @@ public:
     // `op` must satisfy isOp(). Returns {ok:true, op, ...} or a refusal.
     QJsonObject run(const QString &op, const QJsonObject &args, const QString &author);
 
+    // ANTS-6649 row 151 — TEST ONLY. Runs once a call has created the empty
+    // file and before it opens it: the window in which another session can
+    // open the new file and commit to it. An empty function clears it.
+    static void setAfterCreateHookForTest(std::function<void()> hook);
+
 private:
     enum class Access { Read, Write };
     enum class After { Nothing, Checkpoint };

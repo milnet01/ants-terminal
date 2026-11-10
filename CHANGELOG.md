@@ -307,6 +307,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **know_how keeps another session's first entry when this session's own first write fails** (ANTS-6649)
+
 - **roadmap_log refuses with `item_changed` when another session edited the item mid-write, instead of overwriting that edit** (ANTS-6729)
   Covers annotate, flip, amend_body, amend_batch, replace_text and their
   batch forms on a store-backed project. Re-run the edit to apply it.

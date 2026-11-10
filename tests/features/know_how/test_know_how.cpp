@@ -173,6 +173,24 @@ TEST(KnowHow, ReadsDoNotCreateTheFile) {
     EXPECT_TRUE(f.fileExists());
 }
 
+// INV-1, ANTS-6649 row 151 — a call that created the file and then failed
+// removes it only while it holds no row. Here another session opens the new
+// file and commits first, so this call's add of the same topic fails; the
+// other session's entry must survive.
+TEST(KnowHow, AFailedCreatorKeepsAnotherSessionsRow) {
+    Fixture f;
+    KnowHowStore::setAfterCreateHookForTest([&f] {
+        KnowHowStore::setAfterCreateHookForTest({});
+        EXPECT_TRUE(isOk(f.add(QStringLiteral("t"), QStringLiteral("theirs"))));
+    });
+    const QJsonObject mine = f.add(QStringLiteral("t"), QStringLiteral("mine"));
+    KnowHowStore::setAfterCreateHookForTest({});
+
+    EXPECT_FALSE(isOk(mine)) << dump(mine);
+    EXPECT_TRUE(f.fileExists()) << "the failed creator deleted a store another session wrote";
+    EXPECT_EQ(bodyOf(f.get(QStringLiteral("t"))), QStringLiteral("theirs"));
+}
+
 // A dry run on a store that exists changes nothing either, on any write op.
 TEST(KnowHow, DryRunWritesNothing) {
     Fixture f;

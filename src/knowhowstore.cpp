@@ -123,8 +123,33 @@ std::optional<qint64> scalar(QSqlDatabase &db, const QString &sql,
     return q.value(0).toLongLong();
 }
 
+// ANTS-6649 row 151 — see setAfterCreateHookForTest(). Never set outside a test.
+std::function<void()> g_afterCreateHook;
+
 QStringList storeFiles(const QString &path) {
     return {path, path + QStringLiteral("-wal"), path + QStringLiteral("-shm")};
+}
+
+// ANTS-6649 row 151 — whether a file this call created may be removed after
+// its own write failed: another session may have opened it and committed since.
+// Asked under the write lock; a table not yet created holds no row. Any doubt
+// answers false, which keeps the file.
+bool holdsNoRow(const QString &path) {
+    Connection c(path);
+    if (!c.db().open())
+        return false;
+    QSqlQuery q(c.db());
+    if (!q.exec(QStringLiteral("BEGIN IMMEDIATE")))
+        return false;
+    bool empty = false;
+    if (q.exec(QStringLiteral("SELECT count(*) FROM sqlite_master WHERE name = 'know_how'"))
+        && q.next()) {
+        empty = q.value(0).toInt() == 0
+             || (q.exec(QStringLiteral("SELECT count(*) FROM know_how")) && q.next()
+                 && q.value(0).toLongLong() == 0);
+    }
+    q.exec(QStringLiteral("ROLLBACK"));
+    return empty;
 }
 
 // The store's files that exist and could not be made owner-only.
@@ -432,6 +457,10 @@ QJsonObject KnowHowStore::run(const QString &op, const QJsonObject &args,
     return opPurge(args, author);
 }
 
+void KnowHowStore::setAfterCreateHookForTest(std::function<void()> hook) {
+    g_afterCreateHook = std::move(hook);
+}
+
 QJsonObject KnowHowStore::session(Access access, const QJsonObject &whenEmpty, const Body &body,
                                   After after) {
     bool created = false;
@@ -452,12 +481,16 @@ QJsonObject KnowHowStore::session(Access access, const QJsonObject &whenEmpty, c
             }
         }
     }
+    if (created) {
+        if (const auto hook = g_afterCreateHook)   // test only; may clear itself
+            hook();
+    }
     QJsonObject reply;
     {
         Connection c(m_path);
         reply = sessionOn(c.db(), access, whenEmpty, body, after);
     }
-    if (created && !reply.value(QStringLiteral("ok")).toBool()) {
+    if (created && !reply.value(QStringLiteral("ok")).toBool() && holdsNoRow(m_path)) {
         for (const QString &f : storeFiles(m_path))
             QFile::remove(f);
     }

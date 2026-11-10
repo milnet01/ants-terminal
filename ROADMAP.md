@@ -72765,6 +72765,9 @@ class; the deferrals below cover the rest.
   McpReplyChannel::isOpen/reply/finish (claudeintegration.h). Confirmed
   pre-existing by compiling the 948a383d file with the same flags: same
   ten warnings. ANTS-1554 class.
+  2026-11-10: also src/knowhowstore.cpp, -Wdangling-pointer ("dangling
+  pointer to an unnamed temporary may be used") at the session() return
+  in opUpdate and opPurge, seen on a rebuild for ANTS-6649 row 151.
   **Layman:** Clear the leftover compiler warnings so a new one stands out.
   Kind: fix.
   Source: in-session-2026-10-19 (full build during ANTS-2107).
@@ -95430,6 +95433,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   filed; regression test
   RoadmapMigrateLoad.LinkLineOnIdLessItemBecomesARow (both legs:
   allocated id, weak-key re-match).
+  2026-11-10: row 151 fixed. A failed creator deletes the new know-how
+  file only when, under BEGIN IMMEDIATE, it holds no know_how row
+  (holdsNoRow). Test: KnowHow.AFailedCreatorKeepsAnotherSessionsRow via
+  KnowHowStore::setAfterCreateHookForTest; red before the fix.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
