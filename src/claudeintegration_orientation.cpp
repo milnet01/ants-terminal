@@ -655,6 +655,18 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "which over a widely-referenced file can exceed the "
                         "response cap. An unknown value refuses `bad_mode`.");
                     props["mode"]       = modeProp;
+                    // ANTS-5414 — cap on matched_specs.
+                    {
+                        QJsonObject maxProp;
+                        maxProp["type"]    = "integer";
+                        maxProp["minimum"] = 1;
+                        maxProp["maximum"] = 200;
+                        maxProp["default"] = 50;
+                        maxProp["description"] = QStringLiteral(
+                            "Cap on matched_specs (default 50). matched_total "
+                            "counts every match; truncated says the cap cut it.");
+                        props["max_specs"] = maxProp;
+                    }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray req;

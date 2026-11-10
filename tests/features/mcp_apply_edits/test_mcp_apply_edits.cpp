@@ -959,3 +959,42 @@ TEST(McpApplyEdits, Ants5103ReplaceAllCountsWhatItReplaced) {
     EXPECT_EQ(r.newContents, QStringLiteral("ba"));
     EXPECT_EQ(r.replacements, 1) << "one replacement was made";
 }
+
+// ANTS-5414 — `edits` is capped at 100, as file_outline caps `paths`. Past
+// the cap the whole call refuses bad_args and writes nothing; at the cap it
+// runs.
+TEST(McpApplyEdits, Ants5414EditsPastTheCapRefuseAndWriteNothing) {
+    for (const int n : {100, 101}) {
+        QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+        const QString p = seedDoc(dir);
+        QJsonArray edits;
+        for (int i = 0; i < n; ++i) {
+            QJsonObject e;
+            e[QStringLiteral("path")] = p;
+            e[QStringLiteral("old")]  = i == 0 ? QStringLiteral("alpha")
+                                               : QStringLiteral("absent");
+            e[QStringLiteral("new")]  = QStringLiteral("ALPHA");
+            edits.append(e);
+        }
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir.path();
+        req[QStringLiteral("edits")]      = edits;
+        const QJsonObject env = rc.cmdApplyEdits(req).object();
+        if (n > 100) {
+            EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
+            EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
+                      QStringLiteral("bad_args"));
+            EXPECT_TRUE(env.value(QStringLiteral("error")).toString()
+                            .contains(QStringLiteral("100")))
+                << "the refusal names the cap";
+            EXPECT_EQ(slurp(p), QString::fromUtf8(kDoc))
+                << "a refused batch writes nothing";
+        } else {
+            EXPECT_NE(env.value(QStringLiteral("code")).toString(),
+                      QStringLiteral("bad_args"))
+                << "100 edits is inside the cap";
+            EXPECT_TRUE(slurp(p).startsWith(QStringLiteral("ALPHA")));
+        }
+    }
+}

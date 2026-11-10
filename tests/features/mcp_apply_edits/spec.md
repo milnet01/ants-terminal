@@ -45,3 +45,9 @@ When a batch applies at least one edit and skips at least one, the envelope
 carries `partial: true`; a dry run carries `would_be_partial: true` instead and
 no `partial`. A batch with no skipped edit, or with nothing applied, carries
 neither. *Test:* `McpApplyEdits.Ants4856PartialBatchIsFlagged`.
+
+## ANTS-5414 — the batch cap
+
+More than 100 `edits` refuses `bad_args` before any file is read, the
+cap `file_outline` puts on `paths`; the error names the cap. Test:
+`McpApplyEdits.Ants5414EditsPastTheCapRefuseAndWriteNothing`.

@@ -22,6 +22,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIODevice>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -740,4 +741,32 @@ TEST(CoChangeFamily, Ants5052GuardNoOverrideNotTruncated) {
         << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
     EXPECT_GT(resp.value(QStringLiteral("sites_count")).toInt(), 0)
         << "GUARD: the fixture must actually produce sites";
+}
+
+// ANTS-5414 — `stems` stops at 64, as cited_by caps `anchors`, and the reply
+// says it stopped: stems_truncated plus the stems_limit it stopped at.
+TEST(CoChangeFamily, Ants5414StemsPastTheCapAreFlagged) {
+    if (QStandardPaths::findExecutable(QStringLiteral("rg")).isEmpty())
+        GTEST_SKIP() << "ripgrep not installed";
+    for (const int n : {64, 65}) {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+        QJsonArray stems;
+        for (int i = 0; i < n; ++i)
+            stems.append(QStringLiteral("widgetName%1").arg(i));
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("stems")]      = stems;
+        RemoteControl rc(nullptr);
+        const QJsonObject resp = rc.cmdCoChangeFamily(req).object();
+        ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("stems")).toArray().size(), 64)
+            << "n=" << n;
+        EXPECT_EQ(resp.value(QStringLiteral("stems_truncated")).toBool(),
+                  n > 64) << "n=" << n;
+        EXPECT_EQ(resp.value(QStringLiteral("stems_limit")).toInt(), 64)
+            << "n=" << n;
+    }
 }

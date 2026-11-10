@@ -775,3 +775,40 @@ TEST(McpInvariantCheck, Ants6332WorktreeHintNamesTheMainCheckout) {
     EXPECT_FALSE(bare.contains("main_checkout"));
     EXPECT_TRUE(bare.value("hint").toString().contains("specs_dir"));
 }
+
+// ANTS-5414 — max_specs caps matched_specs (default 50, clamped 1-200).
+// matched_count is the length of the returned array, so a zero still means
+// nothing matched; matched_total is how many matched before the cap, and
+// truncated says the cap cut the list.
+TEST(McpInvariantCheck, Ants5414MaxSpecsCapsTheMatchList) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    for (const char *id : {"ANTS-9101", "ANTS-9102", "ANTS-9103"})
+        seedSpec(dir.path(), QString::fromLatin1(id),
+                 QStringLiteral("src/widget.cpp"));
+
+    auto run = [&](const QJsonValue &maxSpecs) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir.path();
+        req[QStringLiteral("files")] =
+            QJsonArray{QStringLiteral("src/widget.cpp")};
+        if (!maxSpecs.isUndefined()) req[QStringLiteral("max_specs")] = maxSpecs;
+        return rc.cmdInvariantCheck(req).object();
+    };
+
+    const QJsonObject capped = run(2);
+    ASSERT_TRUE(capped.value("ok").toBool());
+    EXPECT_EQ(capped.value("matched_specs").toArray().size(), 2);
+    EXPECT_EQ(capped.value("matched_count").toInt(), 2);
+    EXPECT_EQ(capped.value("matched_total").toInt(), 3);
+    EXPECT_TRUE(capped.value("truncated").toBool());
+
+    const QJsonObject whole = run(QJsonValue(QJsonValue::Undefined));
+    EXPECT_EQ(whole.value("matched_count").toInt(), 3);
+    EXPECT_EQ(whole.value("matched_total").toInt(), 3);
+    EXPECT_FALSE(whole.value("truncated").toBool());
+
+    const QJsonObject floor = run(0);
+    EXPECT_EQ(floor.value("matched_specs").toArray().size(), 1)
+        << "max_specs below 1 clamps to 1";
+}

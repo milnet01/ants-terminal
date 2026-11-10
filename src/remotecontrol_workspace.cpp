@@ -3048,6 +3048,13 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         return QJsonDocument(o);
     }
     const QJsonArray edits = editsV.toArray();
+    // ANTS-5414 — cap the batch, as file_outline caps `paths`.
+    constexpr qsizetype kMaxApplyEdits = 100;
+    if (edits.size() > kMaxApplyEdits) {
+        return QJsonDocument(wsErr("bad_args",
+            QStringLiteral("apply_edits: %1 edits exceeds the cap of %2; "
+                           "split the batch").arg(edits.size()).arg(kMaxApplyEdits)));
+    }
 
     // ANTS-2227 — dry_run preview: resolve + apply every edit IN MEMORY but
     // skip the atomic write, returning the would-be applied/skipped tallies so
@@ -4112,6 +4119,10 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
         return QJsonDocument(wsErr("bad_args",
             QStringLiteral("co_change_family: pass \"stem\" or \"stems\"")));
     }
+    // ANTS-5414 — keep the first 64 stems, cited_by's anchor bound, and say so.
+    constexpr qsizetype kMaxCoChangeStems = kCitedByMaxAnchors;
+    const bool stemsTruncated = rawStems.size() > kMaxCoChangeStems;
+    if (stemsTruncated) rawStems.resize(kMaxCoChangeStems);
 
     const QString callerRaw =
         req.value(QStringLiteral("caller_cwd")).toString();
@@ -4304,6 +4315,8 @@ QJsonDocument RemoteControl::cmdCoChangeFamily(const QJsonObject &req) {
     out[QStringLiteral("files_count")] = files.size();
     out[QStringLiteral("sites_count")] = static_cast<int>(res.sites.size());
     out[QStringLiteral("truncated")]   = res.truncated || cutShort;
+    out[QStringLiteral("stems_truncated")] = stemsTruncated;
+    out[QStringLiteral("stems_limit")]     = int(kMaxCoChangeStems);
     // `etag` is NOT emitted here: the dispatcher injects it (mcp-tools.md
     // step 7), and a handler-written one would be overwritten or doubled.
     return QJsonDocument(out);

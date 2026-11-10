@@ -33,6 +33,7 @@
 #include <QProcess>
 #include <QScopedValueRollback>
 #include <QThread>
+#include <algorithm>
 #include <sys/socket.h>
 #include "build_info.h"
 #include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
@@ -2767,9 +2768,21 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
         }
     }
 
+    // ANTS-5414 — cap the match list (max_specs, default 50, clamped 1-200,
+    // read as task_priors reads its caps). matched_count stays the length of
+    // the returned array, so a zero still means nothing matched;
+    // matched_total is the count before the cap.
+    const int matchedTotal = int(matched.size());
+    int maxSpecs = 50;
+    if (const QJsonValue v = req.value(QStringLiteral("max_specs")); v.isDouble())
+        maxSpecs = std::clamp(v.toInt(maxSpecs), 1, 200);
+    while (matched.size() > maxSpecs) matched.removeLast();
+
     QJsonObject result;
     result["ok"]             = true;
     result["matched_specs"]  = matched;
+    result["matched_total"]  = matchedTotal;
+    result["truncated"]      = matchedTotal > maxSpecs;
     result["specs_scanned"]  = specsScanned;
     result["phases_scanned"] = phasesScanned;
     result["decisions_scanned"] = decisionsScanned;

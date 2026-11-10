@@ -75,6 +75,13 @@ false however small the override.
 this verb's own spec calls for, line-by-line stdout parsing, and
 `rg --count`.
 
+## ANTS-5414 — the stems cap
+
+`stems` keeps its first 64 entries, the bound `cited_by` puts on
+`anchors`. Every reply carries `stems_limit` (64) and `stems_truncated`,
+true when entries past the cap were dropped. Test:
+`CoChangeFamily.Ants5414StemsPastTheCapAreFlagged`.
+
 ## Why two of these are source-greps, not behaviour
 
 `SeamTuHasNoChromeSymbols` and `ScanIgnoresDeclaredSourceRoots` assert

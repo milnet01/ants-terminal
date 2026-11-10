@@ -73630,7 +73630,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Lanes: changelog.
   Duplicate-of: ANTS-5377.
 
-- 📋 [ANTS-5414] **apply_edits, co_change_family and invariant_check cap the arrays a caller can make them process.**
+- ✅ [ANTS-5414] **apply_edits, co_change_family and invariant_check cap the arrays a caller can make them process.**
   apply_edits `edits` (remotecontrol_workspace.cpp ~2594) has no count
   cap: refuse bad_args past 100, as file_outline's kMaxOutlinePaths does.
   co_change_family `stems` (~3591): stop at kCitedByMaxAnchors (64) and
@@ -73638,6 +73638,13 @@ fixes don't address. Roadmapped here as their own design tasks.
   (remotecontrol_state.cpp ~2846): a max_specs arg (default 50, clamp
   1-200, task_priors clampCap shape) with truncated + matched_total;
   decide whether matched_count reports returned or total (ANTS-4374).
+  Shipped 2026-11-10. apply_edits refuses bad_args past 100 edits.
+  co_change_family keeps the first 64 stems and reports stems_truncated
+  and stems_limit. invariant_check takes max_specs (default 50, clamped
+  1-200) and reports matched_total and truncated. matched_count stays
+  the returned length, so a zero still means nothing matched. Tests: the
+  three Ants5414 cases in McpApplyEdits, CoChangeFamily and
+  McpInvariantCheck.
   **Layman:** Three tools accept lists of any length; each should have a sensible limit.
   Kind: enhancement.
   Source: code-audit-2026-09-26 (review-code RC-32, RC-48; drafts by retroarch-1c).
