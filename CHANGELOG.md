@@ -307,6 +307,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log refuses with `item_changed` when another session edited the item mid-write, instead of overwriting that edit** (ANTS-6729)
+  Covers annotate, flip, amend_body, amend_batch, replace_text and their
+  batch forms on a store-backed project. Re-run the edit to apply it.
+  Reaches clients on their next ants-mcpd reconnect.
+
 - **Roadmap import keeps the Blocked-by and Supersedes lines of a bullet that had no id** (ANTS-6649)
 
 - **doc_symbols' locator mode places a Rust name written with its module path (security::validate_serial(), psn::utils::read_capped_text) or its impl type (Promise::spawn_async) in the file that defines it.** (ANTS-6723)

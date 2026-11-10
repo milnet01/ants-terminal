@@ -91580,7 +91580,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: ants-projects-hub-website request 2026-11-10.
 
-- 📋 [ANTS-6729] **A store-backed roadmap_log edit can silently lose another session's edit to the same item.**
+- ✅ [ANTS-6729] **A store-backed roadmap_log edit can silently lose another session's edit to the same item.**
   remotecontrol_roadmap_log.cpp:1363 reads the item (`before`) before
   the transaction opens; the new body, built from `before->body`, is
   written inside the mutate step (:1466) with no re-check. Each Claude
@@ -91592,6 +91592,13 @@ measured Ants adding about 5,250 tokens to every request.
   when its body differs from `before`. Markdown twin: ANTS-5420. Store
   append: ANTS-6466. Umbrella: ANTS-4881.
   Finding L09-15 (whole arm, Medium).
+  2026-11-10: rlItemUnchanged() re-reads body and status inside the
+  write transaction (BEGIN IMMEDIATE) in flip/annotate,
+  flip_batch/annotate_batch, amend_body and rlCommitBodyEdits
+  (amend_batch, replace_text); a mismatch refuses item_changed and
+  writes nothing. Test: roadmap_log_annotate_batch INV-10, via
+  RoadmapWrite::setBeforeBeginHookForTest. Markdown twin ANTS-5420 and
+  store append ANTS-6466 not touched.
   **Layman:** Two Claude sessions editing the same roadmap item at once can each be told it worked while one edit is lost.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.

@@ -30,6 +30,9 @@ bool g_forcePostMutateFail = false;
 // ANTS-5286 — see setDropFromPostImageForTest(). Never set outside a test.
 QString g_dropFromPostImage;
 
+// ANTS-6729 — see setBeforeBeginHookForTest(). Never set outside a test.
+std::function<void()> g_beforeBeginHook;
+
 // Removes every post-image line containing g_dropFromPostImage, so a test can
 // make the render look as if it would drop the file's text. A no-op outside
 // a test.
@@ -478,6 +481,7 @@ QHash<QString, QString> renderPreImage(RoadmapStore &store, qint64 projectId,
 
 void setForcePostMutateFailForTest(bool on) { g_forcePostMutateFail = on; }
 void setDropFromPostImageForTest(const QString &needle) { g_dropFromPostImage = needle; }
+void setBeforeBeginHookForTest(std::function<void()> hook) { g_beforeBeginHook = std::move(hook); }
 
 
 // ANTS-4803 — publish in the dialect the project was MIGRATED FROM, read from
@@ -615,6 +619,9 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
     // and the mutation has not run, so the measurement is identical on either
     // side of this line; all that changes is how long the lock is held. It was
     // held across two render walks and externalDrift()'s file reparse.
+    // ANTS-6729 — test only. Run a copy: the hook may clear itself.
+    if (const auto hook = g_beforeBeginHook)
+        hook();
     if (!store.begin(error))
         return Result::StoreFailed;
 

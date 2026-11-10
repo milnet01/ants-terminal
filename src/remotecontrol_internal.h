@@ -294,6 +294,13 @@ QString rlHistoryStamp();
 // docs/specs/ANTS-4501-roadmap-report.md § 2.2.
 QString rlStampToday();
 bool rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err);
+// ANTS-6729 — called first inside a mutate step: true when the item's body and
+// status still match `before`, the read taken before the write transaction.
+// Otherwise another session wrote it in between, and this sets *err and
+// *code = "item_changed" so the caller refuses rather than overwrites.
+bool rlItemUnchanged(RoadmapStore &store, qint64 itemPk,
+                     const RoadmapStore::ItemWrite &before, QString *err,
+                     QString *code);
 bool rlStampShipped(RoadmapStore &store, qint64 itemPk, const QString &oldStatus,
                     const QString &newStatus, QString *err);
 

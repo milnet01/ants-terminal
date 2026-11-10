@@ -89,6 +89,27 @@ bool rcdetail::rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err)
                               QStringLiteral("store-generated"), err);
 }
 
+// Each session runs its own ants-mcpd, so a verb's pre-transaction read can be
+// stale by the time BEGIN IMMEDIATE takes the lock. Writing a body built from
+// it would silently drop the other session's edit.
+bool rcdetail::rlItemUnchanged(RoadmapStore &store, qint64 itemPk,
+                               const RoadmapStore::ItemWrite &before,
+                               QString *err, QString *code) {
+    const auto now = store.readItem(itemPk, err);
+    if (!now)
+        return false;
+    if (now->body == before.body && now->status == before.status)
+        return true;
+    if (err)
+        *err = QStringLiteral("roadmap_log: %1 changed while this edit was "
+                              "being prepared (another session wrote it); "
+                              "nothing was written, re-run the edit")
+                   .arg(before.id);
+    if (code)
+        *code = QStringLiteral("item_changed");
+    return false;
+}
+
 // `shipped` moves ONLY on a transition: set entering `shipped`, cleared leaving
 // it. A write to an item that was already shipped and still is moves nothing
 // (INV-5) — that is what stops one re-render dating the whole backlog to today,
@@ -1443,6 +1464,8 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
         // `last_modified` stamp. An annotate whose note is already
         // present writes nothing at all, and an item nothing
         // touched must not read as modified today.
+        if (!rlItemUnchanged(store, *itemPk, *before, err, &deriveCode))
+            return false;
         bool wrote = false;
         if (!annotateMode) {
             if (!store.setItemField(*itemPk, QStringLiteral("status"),
@@ -3593,6 +3616,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
             QStringList keptColumns;
 
             const auto mutate = [&](QString *err) -> bool {
+                if (!rlItemUnchanged(store, *itemPk, *before, err, &deriveCode))
+                    return false;
                 if (!store.setItemField(*itemPk, QStringLiteral("body"), newBody,
                                         QStringLiteral("asserted"), err))
                     return false;
@@ -4321,6 +4346,8 @@ bool rlCommitBodyEdits(RoadmapStore &store, qint64 projectId, const QString &roo
     const auto mutate = [&](QString *e) -> bool {
         for (const RlBodyEdit &ed : edited) {
             if (ed.body == ed.before.body) continue;
+            if (!rlItemUnchanged(store, ed.pk, ed.before, e, &deriveCode))
+                return false;
             if (!store.setItemField(ed.pk, QStringLiteral("body"), ed.body,
                                     QStringLiteral("asserted"), e))
                 return false;

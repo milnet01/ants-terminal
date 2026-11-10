@@ -14,6 +14,7 @@
 #include "roadmapmigrate.h"
 #include "roadmapmigrateload.h"
 #include "roadmapstore.h"
+#include "roadmapwrite.h"
 
 #include <gtest/gtest.h>
 
@@ -28,8 +29,10 @@
 #include <QStringLiteral>
 #include <QTemporaryDir>
 
+#include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -502,4 +505,101 @@ TEST(roadmap_log_annotate_batch, Inv9StorePathAllFailedRefuses) {
         << "the store path labels every batch flip_batch";
     EXPECT_EQ(resp.value(QStringLiteral("skipped_count")).toInt(), 1);
     EXPECT_FALSE(resp.value(QStringLiteral("code")).toString().isEmpty());
+}
+
+// ── INV-10 — a concurrent edit is refused, not lost (ANTS-6729) ────────────
+
+namespace {
+
+QString storeBody(const QString &root, const QString &id) {
+    auto store = openStore(RoadmapStore::Access::Bulk);
+    if (!store) return QString();
+    QString err;
+    const auto pid = store->projectIdForRoot(root, &err);
+    if (!pid) { ADD_FAILURE() << "no project: " << err.toStdString(); return QString(); }
+    const auto pk = store->findItem(*pid, id, &err);
+    if (!pk) { ADD_FAILURE() << "no item: " << err.toStdString(); return QString(); }
+    const auto item = store->readItem(*pk, &err);
+    if (!item) ADD_FAILURE() << "read: " << err.toStdString();
+    return item ? item->body : QString();
+}
+
+}  // namespace
+
+TEST(roadmap_log_annotate_batch, Inv10ConcurrentEditIsRefusedNotLost) {
+    struct Leg {
+        const char *name;
+        std::function<QJsonObject(RemoteControl &, const QString &)> run;
+    };
+    const std::vector<Leg> legs{
+        {"annotate", [](RemoteControl &rc, const QString &root) {
+             QJsonObject r;
+             r[QStringLiteral("caller_cwd")] = root;
+             r[QStringLiteral("op")]   = QStringLiteral("annotate");
+             r[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+             r[QStringLiteral("note")] = QStringLiteral("Mine.");
+             return rc.cmdRoadmapLogFlipForTest(r).object();
+         }},
+        {"amend_body", [](RemoteControl &rc, const QString &root) {
+             QJsonObject r;
+             r[QStringLiteral("caller_cwd")] = root;
+             r[QStringLiteral("op")]       = QStringLiteral("amend_body");
+             r[QStringLiteral("id")]       = QStringLiteral("ANTS-0042");
+             r[QStringLiteral("old_text")] = QStringLiteral("Seed line.");
+             r[QStringLiteral("new_text")] = QStringLiteral("Mine.");
+             return rc.cmdRoadmapLogAmendBodyForTest(r).object();
+         }},
+        {"annotate_batch", [](RemoteControl &rc, const QString &root) {
+             QJsonArray locs;
+             locs.append(loc(QStringLiteral("ANTS-0042"), QStringLiteral("Mine.")));
+             return rc.cmdRoadmapLogFlipBatchForTest(
+                 batchReq(root, QStringLiteral("annotate_batch"), locs)).object();
+         }},
+    };
+    for (const Leg &leg : legs) {
+        SCOPED_TRACE(leg.name);
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        const QString root = seedProject(guard, tmp);
+        ASSERT_FALSE(root.isEmpty());
+        ASSERT_TRUE(migrate(root));
+
+        RemoteControl rc(nullptr);
+        // A body line for amend_body to replace; the seed holds only trailers.
+        {
+            QJsonObject seed;
+            seed[QStringLiteral("caller_cwd")] = root;
+            seed[QStringLiteral("op")]   = QStringLiteral("annotate");
+            seed[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+            seed[QStringLiteral("note")] = QStringLiteral("Seed line.");
+            ASSERT_TRUE(rc.cmdRoadmapLogFlipForTest(seed).object()
+                            .value(QStringLiteral("ok")).toBool());
+        }
+        // The other session's annotate lands after this call's read and
+        // before its write transaction. The hook clears itself first, so the
+        // nested call does not re-enter it.
+        RoadmapWrite::setBeforeBeginHookForTest([&rc, &root] {
+            RoadmapWrite::setBeforeBeginHookForTest({});
+            QJsonObject other;
+            other[QStringLiteral("caller_cwd")] = root;
+            other[QStringLiteral("op")]   = QStringLiteral("annotate");
+            other[QStringLiteral("id")]   = QStringLiteral("ANTS-0042");
+            other[QStringLiteral("note")] = QStringLiteral("Other session.");
+            const QJsonObject r = rc.cmdRoadmapLogFlipForTest(other).object();
+            EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool())
+                << QJsonDocument(r).toJson().toStdString();
+        });
+        const QJsonObject resp = leg.run(rc, root);
+        RoadmapWrite::setBeforeBeginHookForTest({});
+
+        const QString body = storeBody(root, QStringLiteral("ANTS-0042"));
+        EXPECT_TRUE(body.contains(QStringLiteral("Other session.")))
+            << "the other session's note was overwritten; body:\n"
+            << body.toStdString();
+        EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(resp).toJson().toStdString();
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("item_changed"));
+    }
 }

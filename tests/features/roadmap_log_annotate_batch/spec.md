@@ -108,3 +108,13 @@ return `ok:false` with a `code` and name their own `op`, as the markdown path
 has since ANTS-4109. *Test:* `Inv9StorePathAllFailedRefuses` migrates the
 fixture, adds a bullet to ROADMAP.md by hand, and annotates it: the file walk
 resolves it and the store lookup does not.
+
+### INV-10 — a store edit never overwrites another session's edit (ANTS-6729)
+
+Each Claude Code session runs its own `ants-mcpd`, so two writes to one item
+can interleave. When the item changed between the verb's read and its write
+transaction, `annotate`, `amend_body` and `annotate_batch` refuse with
+`code:"item_changed"` and write nothing; the other edit survives. *Test:*
+`Inv10ConcurrentEditIsRefusedNotLost` lands a second annotate through
+`RoadmapWrite::setBeforeBeginHookForTest`, the window between the read and
+`BEGIN IMMEDIATE`.

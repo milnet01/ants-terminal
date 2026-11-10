@@ -132,6 +132,12 @@ void setForcePostMutateFailForTest(bool on);
 // needle clears it. Clear it in the same case that sets it.
 void setDropFromPostImageForTest(const QString &needle);
 
+// ANTS-6729 — TEST ONLY. Runs just before commitAndRender() opens its write
+// transaction: the window in which another session's write can land between a
+// verb's read of an item and its own write. An empty function clears it. Clear
+// it in the same case that sets it.
+void setBeforeBeginHookForTest(std::function<void()> hook);
+
 // ANTS-5256 — whether the render's INV-5 Layman gate REFUSES this write or
 // merely reports on it. Named rather than a trailing bool, because the call
 // site is where the exemption has to be legible: `LaymanGate::Exempt` at the

@@ -812,6 +812,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                 // it is what decides the `last_modified` stamp, and an
                 // annotate whose note is already present writes nothing at
                 // all. An item nothing touched must not read as modified today.
+                if (!rlItemUnchanged(store, st.itemPk, st.before, err, &deriveCode))
+                    return false;
                 bool wrote = false;
                 if (!annotateMode) {
                     if (!store.setItemField(st.itemPk, QStringLiteral("status"),
