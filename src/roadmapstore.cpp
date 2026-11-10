@@ -2097,6 +2097,9 @@ bool RoadmapStore::setElementPayload(qint64 sectionId, int position,
     }
 
     const QString kind = sel.value(0).toString();
+    // ANTS-6649 row 155 — ended before the write, so an autocommit call
+    // does not hold a read snapshot that SQLite refuses to upgrade (ANTS-5499).
+    sel.finish();
     if (kind == QLatin1String("item")) {
         if (error)
             *error = QStringLiteral("setElementPayload() cannot rewrite an item "
@@ -2145,6 +2148,9 @@ bool RoadmapStore::deleteElement(qint64 sectionId, int position, QString *error)
                                     "use deleteItem() or unfileItem()");
         return false;
     }
+    // ANTS-6649 row 155 — ended before the write, so an autocommit call
+    // does not hold a read snapshot that SQLite refuses to upgrade (ANTS-5499).
+    sel.finish();
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
@@ -2195,6 +2201,10 @@ bool RoadmapStore::fileItem(qint64 itemPk, qint64 sectionId, int position,
                                                  ? same.value(1).toLongLong() : -1);
         return false;
     }
+    // ANTS-6649 row 155 — ended before the write, so an autocommit call
+    // does not hold a read snapshot that SQLite refuses to upgrade (ANTS-5499).
+    cur.finish();
+    same.finish();
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral(
@@ -2959,6 +2969,9 @@ bool RoadmapStore::deleteSection(qint64 sectionId, QString *error) {
                                     "section").arg(sectionId);
         return false;
     }
+    // ANTS-6649 row 155 — ended before the write, so an autocommit call
+    // does not hold a read snapshot that SQLite refuses to upgrade (ANTS-5499).
+    q.finish();
     if (!clearSectionElements(sectionId, error))
         return false;
     QSqlQuery d(m_db);
@@ -3070,11 +3083,15 @@ std::optional<bool> RoadmapStore::markIdParsed(qint64 itemPk, QString *error) {
     }
     if (!cur.next())
         return false;   // not synthesised, or no such row: nothing to mark
+    const QString provenance = cur.value(0).toString();
+    // ANTS-6649 row 155 — ended before the write, so an autocommit call
+    // does not hold a read snapshot that SQLite refuses to upgrade (ANTS-5499).
+    cur.finish();
 
     QSqlQuery q(m_db);
     q.prepare(QStringLiteral("UPDATE item SET id_origin = 'parsed', provenance = ? "
                              "WHERE item_pk = ? AND id_origin = 'synthesised'"));
-    q.addBindValue(provenanceWith(cur.value(0).toString(), QStringLiteral("id"),
+    q.addBindValue(provenanceWith(provenance, QStringLiteral("id"),
                                   QStringLiteral("asserted")));
     q.addBindValue(itemPk);
     if (!q.exec()) {

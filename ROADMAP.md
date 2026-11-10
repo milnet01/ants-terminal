@@ -95446,6 +95446,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   total. Test:
   RoadmapStoreSchema.Ants5046DeleteItemInsideTransactionUnblocksTheCap;
   red before the fix.
+  2026-11-10: row 155 fixed with the reviewer's finish() remedy:
+  setElementPayload, deleteElement, fileItem, markIdParsed and
+  deleteSection end their SELECT before writing. Not ImmediateTx:
+  deleteSection calls clearSectionElements inside, and ImmediateTx does
+  not set m_inTransaction, so a nested one would BEGIN twice. No red
+  test: every current caller already runs inside a write transaction, so
+  the failure is unreachable today; 919 roadmap tests green.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
