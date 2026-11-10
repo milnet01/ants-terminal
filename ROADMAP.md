@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6727 -->
+<!-- ants-roadmap-id-high-water: ANTS=6728 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87372,6 +87372,17 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   **Layman:** After the Ants MCP server is rebuilt, one click brings every open Claude session onto the new version, instead of typing /mcp in each one.
   Kind: feature.
   Source: user-request-2026-11-10.
+
+- 📋 [ANTS-6728] **An ants-mcpd build refreshes the installed copy that programs outside Claude call.**
+  launch.sh copies build/ants-mcpd to
+  ~/.local/share/ants-terminal/bin/ants-mcpd only at terminal launch
+  (ANTS-6720). After ANTS-6726's rebuild that copy still lacked
+  github_repos, so the hub's stats server kept its name-only fallback.
+  Refreshed by hand 2026-11-10. Fix: the same atomic cp+mv as a
+  POST_BUILD step on the ants-mcpd target, so each build refreshes it.
+  **Layman:** Programs outside Claude, like the website's stats server, get the newest Ants MCP as soon as it is built, not only after the terminal is restarted.
+  Kind: fix.
+  Source: ants-projects-hub-website report 2026-11-10.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
