@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6726 -->
+<!-- ants-roadmap-id-high-water: ANTS=6727 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -87360,6 +87360,18 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: doc-fix.
   Source: review-contract ANTS-1855 2026-10-19 (ANTS-5707 gate, out of radius).
   Lanes: mcp.
+
+- 📋 [ANTS-6727] **One button reconnects Ants MCP in every running Claude Code session.**
+  Today each session needs its own /mcp reconnect after an ants-mcpd
+  rebuild. Investigate first: whether Claude Code reconnects a stdio
+  server on its own when the process exits, and whether the terminal
+  can drive /mcp safely in an idle Claude tab it owns (never a busy
+  one). Related: ANTS-4940 (no server-to-client path) and ANTS-5341
+  (About warns of a stale ants-mcpd). Hot reload: the button lives in
+  the terminal; it reaches running sessions by design.
+  **Layman:** After the Ants MCP server is rebuilt, one click brings every open Claude session onto the new version, instead of typing /mcp in each one.
+  Kind: feature.
+  Source: user-request-2026-11-10.
 
 ### Cold-eyes logs move to review history (user request 2026-09-07)
 
