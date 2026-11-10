@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6737 -->
+<!-- ants-roadmap-id-high-water: ANTS=6738 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91748,6 +91748,20 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: RetroDB feedback 2026-11-10.
   Lanes: roadmap-store, mcp.
+
+- 📋 [ANTS-6738] **roadmap_log append numbers a counter id at the width the prefix's existing ids use.**
+  append with id_prefix:"PASS-59", id_hint:298 allocated PASS-59-0298;
+  RetroDB's other ids are unpadded (PASS-59-297). cmdRoadmapLogAppend
+  pads to four digits unconditionally (`.arg(allocated, 4, 10, '0')`), as
+  do the counter paths in cmdRoadmapLogFlip, cmdRoadmapLogFlipBatch and
+  roadmapfoldin.cpp renderId. Fix: pad to the width the prefix's existing
+  ids use; four only where they use four or there are none. Red test: a
+  roadmap of unpadded PASS-59-N ids, append with id_hint, expect no pad.
+  Not in scope: an op to rename an id (RetroDB's optional ask).
+  **Layman:** A new roadmap item got the number 0298 when every other item in that project is written without leading zeros, like 297.
+  Kind: fix.
+  Source: RetroDB feedback 2026-11-10.
+  Lanes: roadmap-write.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
