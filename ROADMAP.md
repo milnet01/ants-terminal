@@ -91722,6 +91722,12 @@ measured Ants adding about 5,250 tokens to every request.
   Suggested: an op that archives a named section whose items are all
   shipped or dropped to docs/roadmap/<slug>.md, refusing while it holds
   an open item, as rotate_minor refuses minor_not_closed.
+  Blocked 2026-11-10 on the archive naming rule. roadmap-format.md § 3.9
+  (owned by claude-config) names archives only
+  docs/roadmap/MAJOR.MINOR.md, and isPlaceableSourcePath reads only that
+  shape, so a slug-named archive would be skipped on re-migrate.
+  Proposed the § 3.9 extension to claude-config by session_message the
+  same day; build after it lands.
   **Layman:** Lets a project move a finished block of its roadmap into an archive file, as it already can for old versions.
   Kind: feature.
   Source: RetroDB feedback 2026-11-10.
