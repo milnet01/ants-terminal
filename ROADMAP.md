@@ -95496,6 +95496,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   is followed in the same load by applyPlanFields' markIdParsed(), which
   sets id_origin parsed and provenance.id asserted. reMatchFallsBackToKey
   now asserts both; it went red with that call disabled.
+  2026-11-10: row 1339 fixed. maxAllocatedId and maxSynthesisedId
+  now count an id only when everything after `PFX-` (or `PFX-S`) is
+  digits, so `ANTS-99-0001` no longer reads as ANTS 99. Test:
+  RoadmapStoreSchema.Ants6649LongerPrefixDoesNotFeedShorterOnesFloor,
+  red first (99 and 7 for 3 and 4); full default suite green.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

@@ -1015,6 +1015,23 @@ TEST(RoadmapStoreSchema, Ants6649SettersRefuseAMissingRow) {
     f.store.rollback();
 }
 
+// ANTS-6649 row 1339 — a prefix may end in `-<digits>` (`ANTS-99`), and its
+// ids then match `ANTS-[0-9]*`. Only an all-digit suffix counts toward ANTS.
+TEST(RoadmapStoreSchema, Ants6649LongerPrefixDoesNotFeedShorterOnesFloor) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 pid = f.project(QStringLiteral("p"));
+    const qint64 sid = f.section(pid);
+    f.item(pid, sid, QStringLiteral("ANTS-0003"), 0);
+    f.item(pid, sid, QStringLiteral("ANTS-99-0001"), 1);
+    f.item(pid, sid, QStringLiteral("ANTS-S0004"), 2);
+    f.item(pid, sid, QStringLiteral("ANTS-S7-0001"), 3);
+    EXPECT_EQ(f.store.maxAllocatedId(pid, QStringLiteral("ANTS"), &err).value_or(-1), 3);
+    EXPECT_EQ(f.store.maxSynthesisedId(pid, QStringLiteral("ANTS"), &err).value_or(-1), 4);
+    EXPECT_EQ(f.store.maxAllocatedId(pid, QStringLiteral("ANTS-99"), &err).value_or(-1), 1);
+}
+
 // ANTS-4503 — the history cap is documented in BYTES everywhere (the ctor
 // argument, historyCapBytes(), ANTS_HISTORY_CAP_BYTES, and appendHistory's own
 // refusal message) while three different units were being counted:

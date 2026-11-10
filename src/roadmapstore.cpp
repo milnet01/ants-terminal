@@ -4019,10 +4019,11 @@ std::optional<qint64> RoadmapStore::maxAllocatedId(qint64 projectId,
     // sibling prefix sharing a leading run (ANTS / ANTSX) cannot contribute.
     q.prepare(QStringLiteral(
         "SELECT MAX(CAST(substr(id, ?) AS INTEGER)) FROM item "
-        "WHERE project_id = ? AND id GLOB ?"));
+        "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*'"));
     q.addBindValue(prefix.size() + 2);          // 1-based, past "PFX-"
     q.addBindValue(projectId);
     q.addBindValue(prefix + QStringLiteral("-[0-9]*"));
+    q.addBindValue(prefix.size() + 2);   // ANTS-6649 row 1339: an all-digit suffix only
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);
@@ -4045,10 +4046,11 @@ std::optional<qint64> RoadmapStore::maxSynthesisedId(qint64 projectId,
     // collect `ANTSX-S0001`.
     q.prepare(QStringLiteral(
         "SELECT MAX(CAST(substr(id, ?) AS INTEGER)) FROM item "
-        "WHERE project_id = ? AND id GLOB ?"));
+        "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*'"));
     q.addBindValue(prefix.size() + 3);          // 1-based, past "PFX-S"
     q.addBindValue(projectId);
     q.addBindValue(prefix + QStringLiteral("-S[0-9]*"));
+    q.addBindValue(prefix.size() + 3);   // ANTS-6649 row 1339: an all-digit suffix only
     if (!q.exec()) {
         if (error)
             *error = lastErr(q);
