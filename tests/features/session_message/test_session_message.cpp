@@ -1027,3 +1027,34 @@ TEST(SessionMessage, Ants6720GithubRepoFromOrigin) {
               QString()) << "a non-GitHub origin has no owner/name here";
     EXPECT_EQ(GitOrigin::githubRepo(dir.filePath(QStringLiteral("absent"))), QString());
 }
+
+// ANTS-6726 — every GitHub remote, origin first, so a fork whose origin is
+// the upstream (rusty-psn) still matches its project.
+TEST(SessionMessage, Ants6726GithubReposListsEveryRemote) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const auto repoWith = [&](const char *name, const QByteArray &config) {
+        const QString root = dir.filePath(QString::fromLatin1(name));
+        QDir().mkpath(root + QStringLiteral("/.git"));
+        QFile f(root + QStringLiteral("/.git/config"));
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(config);
+        return root;
+    };
+    EXPECT_EQ(GitOrigin::githubRepos(repoWith("fork",
+                  "[remote \"fork\"]\n\turl = https://github.com/milnet01/rusty-psn.git\n"
+                  "[remote \"gitlab\"]\n\turl = https://gitlab.com/x/y.git\n"
+                  "[remote \"origin\"]\n\turl = https://github.com/RainbowCookie32/rusty-psn.git\n"
+                  "[remote \"mirror\"]\n\turl = git@github.com:milnet01/rusty-psn\n")),
+              QStringList({QStringLiteral("RainbowCookie32/rusty-psn"),
+                           QStringLiteral("milnet01/rusty-psn")}))
+        << "origin first, then the others in file order; non-GitHub and repeats dropped";
+    EXPECT_EQ(GitOrigin::githubRepos(repoWith("no-origin",
+                  "[remote \"upstream\"]\n\turl = https://github.com/x/y.git\n")),
+              QStringList({QStringLiteral("x/y")}));
+    EXPECT_TRUE(GitOrigin::githubRepos(dir.filePath(QStringLiteral("absent"))).isEmpty());
+
+    const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
+    EXPECT_TRUE(h.contains(QStringLiteral("GitOrigin::githubRepos(")))
+        << "op:\"projects\" reports every GitHub remote";
+}

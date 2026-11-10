@@ -119,6 +119,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The project list also shows a project's fork, not only the repository it was copied from, so a message about the fork reaches the right project** (ANTS-6726)
+
 - **roadmap_log place_by_release reads more release evidence: an item's own status text, YAML changelogs, multi-part ids and spelled citations such as "Pass 43.2/43.3", and a commit that mentions an id anywhere in its subject** (ANTS-6725)
   A new optional unknown_section argument collects shipped items with no
   evidence in one section; without it they stay where they are.

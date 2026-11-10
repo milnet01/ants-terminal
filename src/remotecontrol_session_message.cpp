@@ -229,6 +229,10 @@ QJsonDocument opProjects(MailCall &c) {
         // Absent rather than null when the origin is not on GitHub.
         if (const QString gh = GitOrigin::githubRepo(p.root); !gh.isEmpty())
             o[QStringLiteral("github_repo")] = gh;
+        // ANTS-6726 — every GitHub remote, so a fork whose origin is the
+        // upstream still matches. Absent when there is none.
+        if (const QStringList all = GitOrigin::githubRepos(p.root); !all.isEmpty())
+            o[QStringLiteral("github_repos")] = QJsonArray::fromStringList(all);
         arr.append(o);
     }
     c.out[QStringLiteral("projects")] = arr;

@@ -130,18 +130,25 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
     if (!contains(su, "int compareSemver"))
         fail("INV-3", "compareSemver helper missing from selfupdate.cpp (ANTS-5560)");
 
-    // INV-4: GitOrigin::githubRepo handles both URL forms.
+    // INV-4: GitOrigin::githubRepo handles both URL forms, through
+    // githubSlugOf (ANTS-6726 moved the parsing there).
     {
         const std::string body = functionBody(go,
             "inline QString githubRepo");
         if (body.empty())
             fail("INV-4", "GitOrigin::githubRepo body not found in gitorigin.h");
-        if (body.find("https://github.com/") == std::string::npos)
+        if (body.find("githubSlugOf(") == std::string::npos)
+            fail("INV-4", "GitOrigin::githubRepo must parse through githubSlugOf");
+        const std::string slug = functionBody(go,
+            "inline QString githubSlugOf");
+        if (slug.empty())
+            fail("INV-4", "GitOrigin::githubSlugOf body not found in gitorigin.h");
+        if (slug.find("https://github.com/") == std::string::npos)
             fail("INV-4",
-                "GitOrigin::githubRepo must recognise the https URL form");
-        if (body.find("git@github.com:") == std::string::npos)
+                "GitOrigin::githubSlugOf must recognise the https URL form");
+        if (slug.find("git@github.com:") == std::string::npos)
             fail("INV-4",
-                "GitOrigin::githubRepo must recognise the SSH URL form");
+                "GitOrigin::githubSlugOf must recognise the SSH URL form");
     }
 
     // INV-5: refreshStatusBarForActiveTab calls refreshRepoVisibility.

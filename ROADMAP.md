@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6725 -->
+<!-- ants-roadmap-id-high-water: ANTS=6726 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91529,6 +91529,16 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: in-session-2026-11-09 (ANTS-6724 prototype on a scratch copy of RetroDB).
   Lanes: mcp, roadmap.
+
+- ✅ [ANTS-6726] **session_message op:"projects" lists every GitHub remote, so a fork matches its project.**
+  rusty-psn's origin is the upstream (RainbowCookie32/rusty-psn); the
+  user's fork is its `fork` remote. github_repo reads origin only, so
+  the hub's stats server found no mailbox for milnet01/rusty-psn.
+  Add github_repos[]: every GitHub remote, origin first. github_repo
+  is unchanged. Hot reload: ants-mcpd rebuild + /mcp; no state held.
+  **Layman:** The project list now shows a project's own fork as well as the original it was copied from, so messages about the fork reach the right project.
+  Kind: enhancement.
+  Source: ants-projects-hub-website request 2026-11-10.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

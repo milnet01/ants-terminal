@@ -131,8 +131,9 @@ source-grep harness, no Qt link.
   moved by ANTS-6720); `compareSemver` is in `selfupdate.cpp` (moved
   by ANTS-5560).
 - **INV-4** `GitOrigin::githubRepo` handles both URL forms — source-
-  grep for `https://github.com/` AND `git@github.com:` literals in
-  the helper. `SessionMessage.Ants6720GithubRepoFromOrigin` runs it.
+  grep for a `githubSlugOf(` call in it, and for `https://github.com/`
+  AND `git@github.com:` literals in `githubSlugOf`.
+  `SessionMessage.Ants6720GithubRepoFromOrigin` runs it.
 - **INV-5** `refreshStatusBarForActiveTab` calls `refreshRepoVisibility`
   alongside the existing `refresh*Button` calls.
 - **INV-6** `refreshRepoVisibility` early-returns + `hide()`s the label
