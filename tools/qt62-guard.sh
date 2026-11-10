@@ -350,10 +350,14 @@ mkdir -p "$qt62_state_dir" && : > "$qt62_interrupted_marker" || {
     echo "qt62-guard: cannot write $qt62_interrupted_marker" >&2; exit 1; }
 # ANTS-5192 — a compile cache that outlives the build volume, so a cold tree
 # (new package set, or a tree discarded after an interruption) still compiles
-# from cache. Inside the checkout, so on the same drive as the source rather
-# than under $HOME; gitignored. ccache is in both jobs' ci.yml package lists.
-qt62_ccache="$PWD/.ccache-guard/$qt62_prefix"
-[[ "$run_job" == 1 ]] && qt62_ccache="$PWD/.ccache-guard/$qt62_prefix-job"
+# from cache. ccache is in both jobs' ci.yml package lists. The root is this
+# clone's `git config ants.qt62CcacheDir` when set (a per-machine path, kept
+# out of the tracked tree); otherwise .ccache-guard/ in the checkout,
+# gitignored.
+qt62_ccache_root=$(git config --get ants.qt62CcacheDir || true)
+[[ -n "$qt62_ccache_root" ]] || qt62_ccache_root="$PWD/.ccache-guard"
+qt62_ccache="$qt62_ccache_root/$qt62_prefix"
+[[ "$run_job" == 1 ]] && qt62_ccache="$qt62_ccache_root/$qt62_prefix-job"
 mkdir -p "$qt62_ccache" || {
     echo "qt62-guard: cannot create $qt62_ccache" >&2; exit 1; }
 # ci.yml's own steps, through the same runner the host leg uses (ANTS-5324).
