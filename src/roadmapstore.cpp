@@ -129,6 +129,22 @@ bool exec(QSqlDatabase &db, const QString &sql, QString *error) {
 
 QString lastErr(const QSqlQuery &q) { return q.lastError().text(); }
 
+// ANTS-6649 row 1336 — an UPDATE matching no row SUCCEEDS in SQLite, so a
+// setter that checked only exec() claimed to write a row that does not exist.
+// `missing` is the refusal for that case.
+bool execOneRow(QSqlQuery &q, const QString &missing, QString *error) {
+    if (!q.exec()) {
+        if (error)
+            *error = lastErr(q);
+        return false;
+    }
+    if (q.numRowsAffected() == 1)
+        return true;
+    if (error)
+        *error = missing;
+    return false;
+}
+
 // ANTS-5304 — false, with the refusal in *error, for an id the store may not
 // hold (RoadmapParse::isAsciiId).
 bool storableId(const QString &id, QString *error) {
@@ -1932,12 +1948,7 @@ bool RoadmapStore::setSectionSource(qint64 sectionId,
         q.addBindValue(QVariant(QMetaType(QMetaType::QString)));
     }
     q.addBindValue(sectionId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    return true;
+    return execOneRow(q, QStringLiteral("no section %1").arg(sectionId), error);
 }
 
 // ANTS-4070 § 2.1 — see the header for why this is not part of
@@ -1948,12 +1959,7 @@ bool RoadmapStore::setSectionSlug(qint64 sectionId, const QString &slug,
     q.prepare(QStringLiteral("UPDATE section SET slug = ? WHERE section_id = ?"));
     q.addBindValue(slug);
     q.addBindValue(sectionId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    return true;
+    return execOneRow(q, QStringLiteral("no section %1").arg(sectionId), error);
 }
 
 bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
@@ -1966,12 +1972,7 @@ bool RoadmapStore::setSectionIntro(qint64 sectionId, const QString &intro,
     intro.isEmpty() ? q.addBindValue(QVariant(QMetaType(QMetaType::QString)))
                     : q.addBindValue(intro);
     q.addBindValue(sectionId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    return true;
+    return execOneRow(q, QStringLiteral("no section %1").arg(sectionId), error);
 }
 
 bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int level,
@@ -2002,12 +2003,7 @@ bool RoadmapStore::updateSection(qint64 sectionId, const QString &title, int lev
     q.addBindValue(position);
     parentId ? q.addBindValue(*parentId) : q.addBindValue(QVariant(QMetaType(QMetaType::LongLong)));
     q.addBindValue(sectionId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    return true;
+    return execOneRow(q, QStringLiteral("no section %1").arg(sectionId), error);
 }
 
 // The `table` payload rule, shared by addElement() and setElementPayload().
@@ -2997,12 +2993,7 @@ bool RoadmapStore::setLegend(qint64 projectId, const QJsonObject &legend,
     q.prepare(QStringLiteral("UPDATE project SET legend = ? WHERE project_id = ?"));
     q.addBindValue(stored);
     q.addBindValue(projectId);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
-        return false;
-    }
-    return true;
+    return execOneRow(q, QStringLiteral("no project %1").arg(projectId), error);
 }
 
 // ANTS-3815 § 2.4 / INV-7. Two refusals, and the first is why this does not
@@ -3062,11 +3053,8 @@ bool RoadmapStore::reassignItemId(qint64 itemPk, const QString &newId, QString *
     q.prepare(QStringLiteral("UPDATE item SET id = ? WHERE item_pk = ?"));
     q.addBindValue(newId);
     q.addBindValue(itemPk);
-    if (!q.exec()) {
-        if (error)
-            *error = lastErr(q);
+    if (!execOneRow(q, QStringLiteral("no item %1").arg(itemPk), error))
         return false;
-    }
     m_writtenItems.insert(itemPk);   // ANTS-4628
     return true;
 }

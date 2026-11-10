@@ -95479,6 +95479,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   red first. markUnresolvedLinks' self lookup is dismissed: migrating a
   deregistered root revives the same project_id (§ 2.4), so "self" is
   the right project either way.
+  2026-11-10: row 1336 fixed. setSectionSource, setSectionSlug,
+  setSectionIntro, updateSection, setLegend, reassignItemId and
+  setFeedbackExportSha now refuse when their UPDATE matched no row (new
+  execOneRow() helper; the feedback setter checks inline). Test:
+  RoadmapStoreSchema.Ants6649SettersRefuseAMissingRow, all seven red
+  first; full default suite green.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).

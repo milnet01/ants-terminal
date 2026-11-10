@@ -120,7 +120,14 @@ bool RoadmapStore::setFeedbackExportSha(qint64 reporterId, const QString &sha256
         "UPDATE feedback_reporter SET export_sha256 = ? WHERE reporter_id = ?"));
     q.addBindValue(nullIfEmpty(sha256));
     q.addBindValue(reporterId);
-    return q.exec() || fail(q, error);
+    if (!q.exec())
+        return fail(q, error);
+    // ANTS-6649 row 1336 — an UPDATE matching no row succeeds in SQLite.
+    if (q.numRowsAffected() == 1)
+        return true;
+    if (error)
+        *error = QStringLiteral("no feedback reporter %1").arg(reporterId);
+    return false;
 }
 
 std::optional<QVector<RoadmapStore::FeedbackFindingRow>>

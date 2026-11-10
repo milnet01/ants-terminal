@@ -981,6 +981,40 @@ TEST(RoadmapStoreSchema, Ants3815Inv1SourceFormatColumn) {
     EXPECT_EQ(row->sourceFormat.toStdString(), std::string("pass-headings"));
 }
 
+// ANTS-6649 row 1336 — an UPDATE matching no row succeeds in SQLite, so each
+// setter checks that it wrote one row, as setProjectSourceFormat() does. A
+// project exists, so the missing row is the only reason to refuse.
+TEST(RoadmapStoreSchema, Ants6649SettersRefuseAMissingRow) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    ASSERT_GT(f.project(QStringLiteral("p")), 0);
+    constexpr qint64 kNone = 999999;
+
+    const auto refuses = [&](const char *what, auto &&call) {
+        err.clear();
+        EXPECT_FALSE(call()) << what << " claimed a write to a missing row";
+        EXPECT_FALSE(err.isEmpty()) << what << ": a refusal must carry its reason";
+    };
+    refuses("setSectionSource", [&] {
+        return f.store.setSectionSource(kNone, QStringLiteral("x.md"), &err); });
+    refuses("setSectionSlug", [&] {
+        return f.store.setSectionSlug(kNone, QStringLiteral("s"), &err); });
+    refuses("setSectionIntro", [&] {
+        return f.store.setSectionIntro(kNone, QStringLiteral("intro"), &err); });
+    refuses("updateSection", [&] {
+        return f.store.updateSection(kNone, QStringLiteral("T"), 2, 0, std::nullopt, &err); });
+    refuses("setLegend", [&] {
+        return f.store.setLegend(kNone, QJsonObject{{QStringLiteral("planned"),
+                                                     QStringLiteral("Planned")}}, &err); });
+    refuses("reassignItemId", [&] {
+        return f.store.reassignItemId(kNone, QStringLiteral("P-1"), &err); });
+    ASSERT_TRUE(f.store.begin(&err)) << err.toStdString();
+    refuses("setFeedbackExportSha", [&] {
+        return f.store.setFeedbackExportSha(kNone, QStringLiteral("ab"), &err); });
+    f.store.rollback();
+}
+
 // ANTS-4503 — the history cap is documented in BYTES everywhere (the ctor
 // argument, historyCapBytes(), ANTS_HISTORY_CAP_BYTES, and appendHistory's own
 // refusal message) while three different units were being counted:
