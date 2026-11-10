@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6728 -->
+<!-- ants-roadmap-id-high-water: ANTS=6735 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -73694,6 +73694,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   The 2026-11-06 reviews also found this: row 99
   `remotecontrol_roadmap_query_verb.cpp:4072`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review
+  (whole arm, rated High) at remotecontrol_roadmap_query_verb.cpp:4072:
+  RoadmapWriteHold is shared among writers. roadmap_log is
+  project-scoped, so every session's ants-mcpd runs it. The store-path
+  twin is ANTS-6729.
   **Layman:** If two sessions edit an old-style roadmap file at the same moment, one edit can vanish while both are told it worked.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code RC-49).
@@ -91459,7 +91464,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Ants_Projects_Hub_Website_Ants_MCP_Feedback.md 2026-11-09.
   Lanes: mcp.
 
-- 📋 [ANTS-6721] **Triage the findings of the 2026-11-09 paired review lanes on the roadmap store and the roadmap query/log verbs.**
+- ✅ [ANTS-6721] **Triage the findings of the 2026-11-09 paired review lanes on the roadmap store and the roadmap query/log verbs.**
   Four review-code lanes ran on f575db35 for claude-config's CFG-0892
   measurement (two lanes, each twice). Their reports are real findings and
   are not yet filed. Files (not in the repo, which is public):
@@ -91471,6 +91476,18 @@ measured Ants adding about 5,250 tokens to every request.
   excluded, RoadmapWriteHold is shared (query_verb.cpp ~4072); know_how
   creation failure deletes another process's store (knowhowstore.cpp
   ~460). Mediums include backup_to overwriting any SQLite file it is given.
+  2026-11-10: triaged all 47 findings (22 lane 14, incl. 3 from run 1;
+  25 lane 09). The lane reports were deleted from claude-scratch on
+  2026-11-10; the findings were recovered from session c1ce970a's
+  transcript (its index.md). Ledger, off-repo:
+  /mnt/Games/claude-scratch/reviews/ants-terminal/cfg0892-2026-11-09-recovered/close-findings-ledger.md.
+  19 matched open items and are noted there (ANTS-6649, 6641, 5420, 6466, 5871, 6574, 6236, 5926, 5868).
+  26 queued as new: ANTS-6729 (lost
+  store edit), 6730 (version ignores dates), 6731 (backup_to), 6732
+  (stale re-migrate deletes; needs a decision), 6733 and 6734 (lane
+  buckets), 6735 (docs). Dismissed 2: L14-06 (id_fold and foldId are
+  both ASCII-only and ids are ASCII-only) and L14-18 (backup_to is
+  unconfined by documented choice, remotecontrol_roadmap_migrate.cpp).
   **Layman:** A measurement run for another project also reviewed two parts of this one; its findings need sorting into fixes.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892).
@@ -91562,6 +91579,122 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** The project list now shows a project's own fork as well as the original it was copied from, so messages about the fork reach the right project.
   Kind: enhancement.
   Source: ants-projects-hub-website request 2026-11-10.
+
+- 📋 [ANTS-6729] **A store-backed roadmap_log edit can silently lose another session's edit to the same item.**
+  remotecontrol_roadmap_log.cpp:1363 reads the item (`before`) before
+  the transaction opens; the new body, built from `before->body`, is
+  written inside the mutate step (:1466) with no re-check. Each Claude
+  Code session runs its own ants-mcpd, and roadmap_log is a
+  project-scoped verb, so two annotates on one item race across
+  processes: both report ok:true and one note is gone. Same shape in
+  amend_body, amend_batch, replace_text and the pass separator edit.
+  Remedy: re-read the item inside the transaction; refuse or recompute
+  when its body differs from `before`. Markdown twin: ANTS-5420. Store
+  append: ANTS-6466. Umbrella: ANTS-4881.
+  Finding L09-15 (whole arm, Medium).
+  **Layman:** Two Claude sessions editing the same roadmap item at once can each be told it worked while one edit is lost.
+  Kind: review-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6730] **roadmap_query's version= silently ignores shipped_since and shipped_until.**
+  remotecontrol_roadmap_query_verb.cpp:1921 refuses the shipped window
+  only when `section` is set. `version` answers on the section path
+  (:3063) too, where the window is never applied, so the dates are
+  dropped with no refusal. Remedy: test
+  `!section.isEmpty() || !versionArg.isEmpty()` at :1921.
+  Finding L09-05 (sliced arm, Medium).
+  **Layman:** Asking for one release's items with a date range quietly ignores the dates.
+  Kind: review-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6731] **roadmap_migrate's backup_to replaces any SQLite database the caller names, not only an Ants snapshot.**
+  roadmapstore.cpp:436 `replaceable()` checks only the SQLite file
+  header, then :467 removes the target. ANTS-6451 refused the live
+  store and declined a name rule because "the header check already
+  guards unrelated files" - but every SQLite file passes that check.
+  Remedy: replace only a file Ants wrote (a marker table, or the
+  snapshot naming), otherwise refuse.
+  Finding L14-11 (whole arm, Medium).
+  **Layman:** A mistyped backup path can overwrite another program's database.
+  Kind: review-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6732] **Re-migrating a store-served project from a stale ROADMAP.md deletes items that exist only in the store.**
+  roadmapmigrateload.cpp:1058-1064 queues every unreferenced item absent
+  from the file for deletion unless keep_absent is set; :1099 deletes
+  it. This is ANTS-5287 § 2.7's design, bounded by the 25% mass-delete
+  guard and a deleted_item note per item. Below 25% it goes through.
+  Needs the user's decision: keep as designed, default keep_absent for
+  a project the store already serves, or refuse unless deletions are
+  accepted. Related: ANTS-6712.
+  Finding L14-12 (whole arm, Medium).
+  **Layman:** Re-importing an old copy of the roadmap file can delete items that only exist in the database.
+  Kind: investigate.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6733] **Fix the smaller bugs the 2026-11-09 paired review found in roadmap-store.**
+  Each verified at e7324f30. File roadmapstore.cpp unless named.
+  - L14-03 snapshot swap is remove-then-rename (~:467-471): use POSIX
+    rename over the target.
+  - L14-04 roadmapmigrateverb.cpp:733-756 slug/root guards run before
+    the load transaction: re-check inside it, or map the UNIQUE
+    violation to slug_collision.
+  - L14-07 roadmapmigrateload.cpp:512 snapshots `existing` before pass
+    3's reassignItemId; :705 reports the old fold. Update it on reassign.
+  - L14-10 roadmapmigrate.cpp:1121 opens archive files without
+    openInsideProject: route them through it.
+  - L14-17 allocationFloor GLOB (~:3978) is case-sensitive: match on
+    id_fold with a lower-cased prefix.
+  - L14-19 :1280 a failed duplicate-link query reads as "none": fail
+    on !exec().
+  - L14-20 feedbackfile.cpp:331 leaves entryHeading a null QString;
+    roadmapstore_feedback.cpp:40 binds it into a NOT NULL column.
+    Initialise it to "".
+  **Layman:** A batch of small database-layer bugs found by a second review, each with its fix.
+  Kind: review-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6734] **Fix the smaller bugs the 2026-11-09 paired review found in mcp-roadmap-query-log.**
+  Each verified at e7324f30. log = remotecontrol_roadmap_log.cpp,
+  query = remotecontrol_roadmap_query.cpp, verb = ..._query_verb.cpp.
+  - L09-03 log:4615 counts overlapping matches; replace() does not.
+  - L09-06 verb:1739 report/bundles accept query/kind/status/source
+    and ignore them: refuse bad_mode_combo, as ledger mode does.
+  - L09-08 query:794 checks the note before the scrub (:826).
+  - L09-11 verb:3740 archive root skips rcProjectRootFor.
+  - L09-12 query:292 vs :564 place the pass `---` differently.
+  - L09-13 log:276/284/346/383/1783/2559 echo raw input uncapped
+    (extend ANTS-6240's helper here).
+  - L09-14 verb:594, :1490 toInt() turns 1e10 or 2.5 into 0.
+  - L09-20 query:445 bare section_not_found; a store error reads as
+    not-found.
+  - L09-21 log:3975, :4456 a findItem error reads as bullet_not_found.
+  - L09-24 log:4211 batch dedupe keys on the raw id, not the fold.
+  - L09-25 query:1770 rlBodyShadows compares an uncanonicalised kind.
+  **Layman:** A batch of small roadmap-tool bugs found by a second review, each with its fix.
+  Kind: review-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6735] **Correct four doc statements the 2026-11-09 paired review found stale in the roadmap store and verb docs.**
+  - L14-13 docs/subsystems.md, roadmapmigrateload entry: says an item
+    absent from source is retained; the code deletes it (ANTS-5287).
+  - L14-14 docs/standards/mcp-tools.md 6b's dry_run list omits
+    know_how, which takes dry_run.
+  - L14-15 the same section's migrate dry-run bound omits the schema
+    upgrade any store open performs and commits.
+  - L09-18 docs/standards/mcp-error-codes.md lacks id_taken,
+    too_many_matches, body_match_not_found, headline_match_ambiguous,
+    plan_failed and roadmap_write_failed.
+  **Layman:** Four places in the docs that no longer match what the roadmap code does.
+  Kind: doc-fix.
+  Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
+  Lanes: roadmap-store, mcp-roadmap-query-log.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
@@ -92268,6 +92401,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): re-read
   `allocationFloor` and redo the duplicate check inside `mutate`.
   Ledger row 100, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review
+  (L09-10, remotecontrol_roadmap_log.cpp:485-487). Store edits of an
+  existing item have the same race: ANTS-6729.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Medium).
@@ -94055,6 +94191,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1611 `src/roadmapmigrate.cpp:206` (Low)
   - row 1612 `src/roadmapmigrate.cpp:1307` (Low)
   - row 1615 `src/roadmapstore.h:1123` (Low)
+  2026-11-10 (ANTS-6721): add roadmapstore.h's "Relationships are
+  cleared from BOTH ends" (deregister): rows other projects key by
+  dst_project/dst_id_fold survive (roadmapstore.cpp:2214-2215).
+  2026-11-09 paired review, L14-16.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -95130,6 +95270,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1387 `src/remotecontrol_roadmap_log.cpp:3839` (Info)
   - row 1390 `src/remotecontrol_roadmap_query.cpp:1011` (Info)
   - row 1391 `src/remotecontrol_roadmap_query_verb.cpp:4317` (Info)
+  2026-11-10 (ANTS-6721): the 2026-11-09 paired review re-found rows 97,
+  98, 101 (both the preview id and the missing id_taken), 104 and 108;
+  all still present at e7324f30.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -95271,6 +95414,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1344 `src/roadmapmigrateverb.cpp:820` (Info)
   - row 1345 `src/knowhowstore.cpp:285` (Info)
   - row 1346 `src/roadmapmigrateverb.cpp:1045` (Info)
+  2026-11-10 (ANTS-6721): the 2026-11-09 paired review re-found rows
+  151-154, 1336 and 1341 independently; all still present at e7324f30.
+  Row 152 (link lines lost for an id-less bullet,
+  roadmapmigrateload.cpp:1128-1129 allocates into a local, :1205-1207
+  skips it) was rated High in both arms: fix it first.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -104615,6 +104763,8 @@ worked after these.
   one shape for both (see ANTS-6232), refusing with bad_args, and lock
   it with a red-first test.
   Hot reload: none needed.
+  2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review
+  (L09-02, remotecontrol_roadmap_log.cpp:2549).
   **Layman:** Two roadmap tools disagree about which id prefixes are valid, so a folder named like "3D_Engine" works for one and is refused by the other.
   Kind: fix.
   Source: review-readability-2026-10-22 (L19-F9).
@@ -106070,6 +106220,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-10 (ANTS-6721): the caller discards the error too:
+  remotecontrol_roadmap_query.cpp:2324-2325 passes `&ignored` to
+  allocationFloor. Fix both ends together (2026-11-09 paired review,
+  L09-09).
   **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -106106,6 +106260,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review (run
+  1): setItemField's provenance read-then-write
+  (roadmapstore.cpp:1227-1232) still has no ImmediateTx.
   **Layman:** A possible bug in the roadmap database, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -106797,6 +106954,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   `src/remotecontrol_roadmap_query_verb.cpp:1900`; row 1389
   `src/remotecontrol_roadmap_query_verb.cpp:1900`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review
+  (L09-04); now at remotecontrol_roadmap_query_verb.cpp:1900.
   **Layman:** A possible bug in the roadmap tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
