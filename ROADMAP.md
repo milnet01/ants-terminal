@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6738 -->
+<!-- ants-roadmap-id-high-water: ANTS=6739 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91775,6 +91775,20 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: RetroDB feedback 2026-11-10.
   Lanes: roadmap-write.
+
+- 📋 [ANTS-6739] **ci_report flags a shared cache key only where the sharing jobs cache different paths or keys.**
+  On games-hub, two jobs cache runner.temp/Qt under the same key
+  inputs; cache_key_shared said each "restores the other's compiled
+  output". checkCacheKeys (src/cireport.cpp) groups by key prefix only,
+  and CiWorkflows::Step records `with: key:` but not `with: path:`.
+  Fix: parse the cache path; stay quiet when every sharer has the same
+  full key text and the same path; keep the finding when they differ.
+  Red test: two jobs with identical path + key → no finding; same prefix,
+  different paths → the finding.
+  **Layman:** The CI report warned that two jobs share build output, when they only share the same downloaded Qt, which is meant to be shared.
+  Kind: fix.
+  Source: Games Hub feedback 2026-11-10.
+  Lanes: ci-report.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
