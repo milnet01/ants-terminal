@@ -307,6 +307,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log op:"release" writes the new version heading with the same dash as the file's newest dated heading.** (ANTS-5388)
+  A CHANGELOG whose headings use ` — ` or ` – ` now gets a matching new
+  heading and anchor; a file with no versioned heading keeps ` - `.
+
 - **`roadmap_migrate`: a note the store load raises carries `source_index: -1`, since it is about a stored row and not a line of any roadmap file** (ANTS-6649)
 
 - **`roadmap_migrate`: a re-run refusal reports the same `store_backed` as a successful run, so a github-task-list project reads `false` either way** (ANTS-6649)

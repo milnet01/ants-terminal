@@ -88505,8 +88505,12 @@ project. Reported causes are claims until checked in source.
   Kind: fix.
   Source: Snatch feedback 2026-09-25.
 
-- 📋 [ANTS-5388] **changelog_log op:"release" matches the dash style of the file's existing dated headings.**
+- ✅ [ANTS-5388] **changelog_log op:"release" matches the dash style of the file's existing dated headings.**
   op:"release" always writes ` - ` before the date. A CHANGELOG whose headings use ` — ` gets a mismatched heading and a different anchor, which AppStream detail links depend on. Match the most recent dated heading, take a dash argument, or at least warn.
+  Shipped 2026-11-10. closeUnreleased reads the separator of the newest
+  `## [version]` heading (` — `, ` – `, else ` - `). Red first:
+  Ants5388ReleaseMatchesExistingDashStyle failed on the dash; green
+  after.
   **Layman:** Keeps new release headings in the same style as the project's older ones.
   Kind: fix.
   Source: perch feedback 2026-09-25.

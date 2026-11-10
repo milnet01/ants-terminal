@@ -565,6 +565,22 @@ static bool isReleasableLine(const QString &line) {
     return true;
 }
 
+// ANTS-5388 — the separator the newest `## [version] <sep> date` heading
+// uses, so a new heading matches the file's style and anchor form. A file
+// with no versioned heading gets Keep a Changelog's ` - `.
+static QString releaseHeadingDash(const QStringList &lines) {
+    for (const QString &line : lines) {
+        if (!line.startsWith(QStringLiteral("## [")) ||
+            line.startsWith(QStringLiteral("## [Unreleased]")))
+            continue;
+        const QStringView rest = QStringView(line).mid(line.indexOf(u']') + 1);
+        for (const QString &dash : {QStringLiteral(" — "), QStringLiteral(" – ")})
+            if (rest.startsWith(dash)) return dash;
+        break;
+    }
+    return QStringLiteral(" - ");
+}
+
 ReleaseResult closeUnreleased(const QString &markdown,
                               const QString &version,
                               const QString &date) {
@@ -629,7 +645,8 @@ ReleaseResult closeUnreleased(const QString &markdown,
     const QString effDate = date.trimmed().isEmpty()
         ? QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"))
         : date.trimmed();
-    r.heading = QStringLiteral("## [%1] - %2").arg(ver, effDate);
+    r.heading = QStringLiteral("## [%1]%2%3")
+                    .arg(ver, releaseHeadingDash(lines), effDate);
     r.date    = effDate;   // ANTS-4833 — resolved, so the caller sees the default
 
     // Capture the closed body before rewriting, trimming the blank lines that

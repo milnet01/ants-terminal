@@ -1454,6 +1454,34 @@ TEST(changelog_log_writer, Ants5108HeadingOnlySectionIsNothingToRelease) {
     EXPECT_EQ(dated.code, QStringLiteral("nothing_to_release"));
 }
 
+// ANTS-5388 — release always wrote ` - ` before the date. A file whose
+// headings use ` — ` got a mismatched heading and a different anchor, which
+// AppStream detail links depend on. The newest dated heading sets the style;
+// a file with none keeps ` - `.
+TEST(changelog_log_writer, Ants5388ReleaseMatchesExistingDashStyle) {
+    const QString body = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Added\n\n- **New.** (P-2)\n\n");
+    const auto emDash = ChangelogLog::closeUnreleased(
+        body + QStringLiteral("## [0.1.0] — 2026-01-01\n\n- old.\n"
+                              "## [0.0.1] - 2025-01-01\n\n- older.\n"),
+        QStringLiteral("0.2.0"), QStringLiteral("2026-10-02"));
+    ASSERT_TRUE(emDash.ok) << emDash.error.toStdString();
+    EXPECT_EQ(emDash.heading, QStringLiteral("## [0.2.0] — 2026-10-02"));
+    EXPECT_TRUE(emDash.markdown.contains(
+        QStringLiteral("\n## [0.2.0] — 2026-10-02\n")));
+
+    const auto enDash = ChangelogLog::closeUnreleased(
+        body + QStringLiteral("## [0.1.0] – 2026-01-01\n\n- old.\n"),
+        QStringLiteral("0.2.0"), QStringLiteral("2026-10-02"));
+    ASSERT_TRUE(enDash.ok) << enDash.error.toStdString();
+    EXPECT_EQ(enDash.heading, QStringLiteral("## [0.2.0] – 2026-10-02"));
+
+    const auto none = ChangelogLog::closeUnreleased(
+        body, QStringLiteral("0.2.0"), QStringLiteral("2026-10-02"));
+    ASSERT_TRUE(none.ok) << none.error.toStdString();
+    EXPECT_EQ(none.heading, QStringLiteral("## [0.2.0] - 2026-10-02"));
+}
+
 // ANTS-5108 — the writer finds a `### ` heading the way the reader does:
 // at column 0 and outside a code fence (ChangelogQuery::parse). It used to
 // match a trimmed line and ignore fences, so an indented or fenced
