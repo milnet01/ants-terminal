@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6736 -->
+<!-- ants-roadmap-id-high-water: ANTS=6737 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91709,6 +91709,23 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: doc-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: roadmap-store, mcp-roadmap-query-log.
+
+### Ants MCP feedback from CC sessions — 2026-11-10 triage
+
+- 📋 [ANTS-6737] **roadmap_log can archive a named, fully closed section to docs/roadmap/<slug>.md.**
+  rotate_minor moves a closed minor's version sections out of the main
+  roadmap, but nothing moves a non-version section. place_by_release's
+  unknown_section ("Shipped, version not known") then stays in the main
+  file, and a hand edit is reverted by the next render. RetroDB's is
+  about 6,000 rendered lines of finished work.
+
+  Suggested: an op that archives a named section whose items are all
+  shipped or dropped to docs/roadmap/<slug>.md, refusing while it holds
+  an open item, as rotate_minor refuses minor_not_closed.
+  **Layman:** Lets a project move a finished block of its roadmap into an archive file, as it already can for old versions.
+  Kind: feature.
+  Source: RetroDB feedback 2026-11-10.
+  Lanes: roadmap-store, mcp.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
