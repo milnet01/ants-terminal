@@ -2084,3 +2084,32 @@ TEST(RoadmapMigrateLoad, LinkLineOnIdLessItemBecomesARow) {
     EXPECT_EQ(f.count(QStringLiteral("relationship")), 1)
         << "a weak-key match must write its link rows too";
 }
+
+// ANTS-6649 row 156 — a re-migration that deletes A-1 (absent from source)
+// must not store A-2's Blocked-by line as a cross-project row naming this
+// project's own slug. The id stays in extras.unresolved_links instead.
+TEST(RoadmapMigrateLoad, LinkToAnItemThisRunDeletesIsNotStored) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    // Run 1 stores A-1 and A-2 with no link, so nothing references A-1.
+    const auto first = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("s"), 0),
+                         item(QStringLiteral("A-2"), QStringLiteral("two"), QStringLiteral("s"), 1)}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+
+    // Run 2 drops A-1 from source and gives A-2 a Blocked-by line naming it.
+    PlannedItem two = item(QStringLiteral("A-2"), QStringLiteral("two"), QStringLiteral("s"), 0);
+    two.links.insert(QStringLiteral("blocked-by"), {QStringLiteral("A-1")});
+    auto opts = f.opts();
+    opts.acceptDeletions = true;
+    const auto again = RoadmapMigrateLoad::load(f.store, planOf({two}), opts);
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    ASSERT_EQ(again.itemsDeleted, 1) << "this case is only meaningful when A-1 is deleted";
+    EXPECT_EQ(f.count(QStringLiteral("relationship")), 0)
+        << "a link to the deleted A-1 was stored";
+    EXPECT_TRUE(f.scalar(QStringLiteral("SELECT extras FROM item WHERE id = 'A-2'"))
+                    .contains(QStringLiteral("unresolved_links")));
+}

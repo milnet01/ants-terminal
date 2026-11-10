@@ -95453,6 +95453,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   not set m_inTransaction, so a nested one would BEGIN twice. No red
   test: every current caller already runs inside a write transaction, so
   the failure is unreachable today; 919 roadmap tests green.
+  2026-11-10: row 156 closed, not reproduced. markUnresolvedLinks()
+  treats an own-project id the plan drops as unresolved (its resolves()
+  lambda refuses a target in this project unless planned), so
+  writeLinks() skips it and it stays in extras.unresolved_links. Guard
+  test RoadmapMigrateLoad.LinkToAnItemThisRunDeletesIsNotStored deletes
+  A-1 in the same run that adds a Blocked-by A-1 line, and passes on
+  unchanged code.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
