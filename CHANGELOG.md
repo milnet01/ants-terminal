@@ -314,6 +314,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report's cache_key_shared stays quiet for jobs that share one downloaded cache on purpose: same path, same key, nothing compiled in it** (ANTS-6739)
+
 - **The Claude transcript reader skips a single line longer than 16 MiB in small reads instead of loading it into memory** (ANTS-5416)
 
 - **roadmap_log append and append_batch number a new id the way the project's existing ids are written: PASS-59-298 after PASS-59-297** (ANTS-6738)

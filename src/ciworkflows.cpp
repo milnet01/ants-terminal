@@ -421,7 +421,9 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
             s.uses = text(sm.value(QStringLiteral("uses")));
             s.run = text(sm.value(QStringLiteral("run")));
             s.ifExpr = text(sm.value(QStringLiteral("if")));
-            s.cacheKey = text(sm.value(QStringLiteral("with")).toMap().value(QStringLiteral("key")));
+            const QVariantMap with = sm.value(QStringLiteral("with")).toMap();
+            s.cacheKey = text(with.value(QStringLiteral("key")));
+            s.cachePath = text(with.value(QStringLiteral("path")));
             s.envKeys = keysOf(sm.value(QStringLiteral("env")));
             const double own = budgetOf(sm, out, rel, j.id,
                 QStringLiteral("steps[%1].timeout-minutes").arg(j.steps.size()));

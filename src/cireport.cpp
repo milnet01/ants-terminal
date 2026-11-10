@@ -611,6 +611,13 @@ bool savesCache(const CiWorkflows::Step &s) {
 void checkCacheKeys(const CiWorkflows::Result &wf, QList<Finding> &out) {
     QMap<QString, QStringList> jobsByPrefix;
     QMap<QString, QString> wfOf;
+    // ANTS-6739 — each sharer's full key and path, joined. One shape across
+    // every sharer, with a path that is not build output, is a cache shared
+    // on purpose (the same download), not one job restoring another's build.
+    QMap<QString, QSet<QString>> shapesByPrefix;
+    QMap<QString, bool> sharedOnPurpose;
+    static const QRegularExpression buildOutput(
+        QStringLiteral("ccache|sccache|build"), QRegularExpression::CaseInsensitiveOption);
     for (const CiWorkflows::Workflow &w : wf.workflows)
         for (const CiWorkflows::Job &j : w.jobs)
             for (const CiWorkflows::Step &s : j.steps) {
@@ -621,9 +628,15 @@ void checkCacheKeys(const CiWorkflows::Result &wf, QList<Finding> &out) {
                 const QString who = w.name + QStringLiteral(" / ") + j.name;
                 if (!jobsByPrefix[prefix].contains(who)) jobsByPrefix[prefix].append(who);
                 if (!wfOf.contains(prefix)) wfOf[prefix] = w.name;
+                shapesByPrefix[prefix].insert(s.cacheKey + QLatin1Char('\n') + s.cachePath);
+                const bool download = !s.cachePath.trimmed().isEmpty()
+                    && !buildOutput.match(s.cachePath).hasMatch();
+                sharedOnPurpose[prefix] = sharedOnPurpose.value(prefix, true) && download;
             }
     for (auto it = jobsByPrefix.cbegin(); it != jobsByPrefix.cend(); ++it) {
         if (it.value().size() < 2) continue;
+        if (sharedOnPurpose.value(it.key()) && shapesByPrefix.value(it.key()).size() == 1)
+            continue;
         Finding f = makeFinding("cache_key_shared", Severity::Advice);
         f.workflow = wfOf.value(it.key());
         f.job = it.value().join(QStringLiteral(", "));

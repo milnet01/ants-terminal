@@ -1434,3 +1434,32 @@ TEST(McpCiReport, Ants6415AlternatingResultsAcrossCommits) {
     EXPECT_TRUE(findings("RGRGR").isEmpty()) << "two returns to red are a break and a fix, twice";
     EXPECT_TRUE(findings("RRRGGG").isEmpty());
 }
+
+// ANTS-6739 — a cache two jobs share on purpose is not a finding. Games Hub's
+// two jobs cache the same downloaded Qt (same path, same full key); nothing
+// compiled is in it. Same prefix with different paths, or a shared build
+// output path, still fires.
+TEST(McpCiReport, Ants6739IdenticalDownloadCacheIsQuiet) {
+    const auto twoJobs = [](const char *pathA, const char *pathB) {
+        return workflow(QStringLiteral(
+            "name: CI\njobs:\n"
+            "  fuzz:\n    name: Fuzz\n    steps:\n"
+            "      - uses: actions/cache@v4\n        with:\n"
+            "          path: %1\n"
+            "          key: qt-${{ env.QT_VERSION }}-linux-${{ hashFiles('scripts/install-qt.py') }}\n"
+            "  tidy:\n    name: Tidy\n    steps:\n"
+            "      - uses: actions/cache@v4\n        with:\n"
+            "          path: %2\n"
+            "          key: qt-${{ env.QT_VERSION }}-linux-${{ hashFiles('scripts/install-qt.py') }}\n")
+            .arg(QLatin1String(pathA), QLatin1String(pathB)));
+    };
+    const auto shared = [&](const CiWorkflows::Result &wf) {
+        return ofCheck(CiReport::analyse(QJsonObject(), wf, kNow, 30), "cache_key_shared");
+    };
+    EXPECT_TRUE(shared(twoJobs("${{ runner.temp }}/Qt", "${{ runner.temp }}/Qt")).isEmpty())
+        << "the same download, cached on purpose";
+    EXPECT_EQ(shared(twoJobs("${{ runner.temp }}/Qt", "${{ runner.temp }}/Qt6")).size(), 1)
+        << "different paths under one key prefix";
+    EXPECT_EQ(shared(twoJobs("~/.ccache", "~/.ccache")).size(), 1)
+        << "a shared ccache is compiled output";
+}

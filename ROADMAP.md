@@ -91784,7 +91784,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: RetroDB feedback 2026-11-10.
   Lanes: roadmap-write.
 
-- 📋 [ANTS-6739] **ci_report flags a shared cache key only where the sharing jobs cache different paths or keys.**
+- ✅ [ANTS-6739] **ci_report flags a shared cache key only where the sharing jobs cache different paths or keys.**
   On games-hub, two jobs cache runner.temp/Qt under the same key
   inputs; cache_key_shared said each "restores the other's compiled
   output". checkCacheKeys (src/cireport.cpp) groups by key prefix only,
@@ -91793,6 +91793,11 @@ measured Ants adding about 5,250 tokens to every request.
   full key text and the same path; keep the finding when they differ.
   Red test: two jobs with identical path + key → no finding; same prefix,
   different paths → the finding.
+  Shipped 2026-11-10. CiWorkflows::Step now carries cachePath.
+  checkCacheKeys stays quiet when every sharer has one key+path shape
+  with a non-empty path that names no build output
+  (ccache/sccache/build); the no-path ccache case (Ants6399) still
+  fires. Test: McpCiReport.Ants6739IdenticalDownloadCacheIsQuiet.
   **Layman:** The CI report warned that two jobs share build output, when they only share the same downloaded Qt, which is meant to be shared.
   Kind: fix.
   Source: Games Hub feedback 2026-11-10.

@@ -40,3 +40,11 @@ The `McpCiReport.Ants6415*` to `Ants6421*` tests lock what other sessions
 asked for (spec §§ 4.2 to 4.4): `alternating`, `dynamic` runs left out of
 `unread`, budgets at a run's commit, `budget_trend`'s step and rise,
 matrix runners, and `window.files`.
+
+## ANTS-6739 — a cache shared on purpose
+
+`cache_key_shared` stays quiet when every job sharing a key prefix caches the
+same non-empty `with: path:` under the same full key, and that path does not
+name build output (`ccache`, `sccache`, `build`): that is one download cached
+on purpose. Different paths, or a shared build-output path, still fire, as
+does a shared key with no path. Test: `McpCiReport.Ants6739IdenticalDownloadCacheIsQuiet`.

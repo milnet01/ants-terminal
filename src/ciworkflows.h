@@ -21,6 +21,7 @@ struct Step {
     QString run;            // single line, or a `|`/`>` block joined by \n
     QString ifExpr;
     QString cacheKey;       // `with: key:`
+    QString cachePath;      // `with: path:` (ANTS-6739)
     QStringList envKeys;
     double budgetMin = -1;  // smaller of timeout-minutes and a leading shell guard; -1 unknown
     // GitHub's display name: `name:`, else "Run <uses>", else "Run <first run line>".
