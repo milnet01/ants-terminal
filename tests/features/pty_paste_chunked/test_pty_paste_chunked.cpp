@@ -2,6 +2,7 @@
 // Behavioural: a real VtStream feeding a child that reads its terminal in raw
 // mode, so the line discipline neither truncates nor rewrites the bytes.
 
+#include "ptyhandler.h"
 #include "vtstream.h"
 
 #include "../../_support/expect.h"
@@ -134,4 +135,93 @@ int runMain() {
 
 TEST(PtyPasteChunked, Main) {
     ASSERT_EQ(0, runMain());
+}
+
+// ANTS-5415 — what queues behind a stalled paste is capped at Pty's
+// MAX_PENDING_WRITE_BYTES. The paste itself stays whole. A write that would
+// take the queue behind it past the cap is dropped and reported; smaller
+// writes after it still land. The child sleeps before reading, so the paste
+// is stalled while the test queues behind it.
+namespace {
+
+std::atomic<bool> g_backlogDropped{false};
+
+void captureBacklogDrop(QtMsgType type, const QMessageLogContext &ctx,
+                        const QString &msg) {
+    if (msg.contains(QLatin1String("behind a stalled paste")))
+        g_backlogDropped = true;
+    if (g_previousHandler) g_previousHandler(type, ctx, msg);
+}
+
+int runBacklogCap() {
+    expect_reset();
+    QTemporaryDir dir;
+    if (!dir.isValid()) {
+        expect(false, "ANTS-5415-setup", "could not create QTemporaryDir");
+        return expect_finish();
+    }
+    const QString out = dir.path() + "/received.bin";
+    const QString script = dir.path() + "/child.sh";
+    {
+        QFile f(script);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            expect(false, "ANTS-5415-setup", "could not write child.sh");
+            return expect_finish();
+        }
+        f.write("#!/bin/sh\nstty raw -echo\nprintf READY\nsleep 3\nexec cat > '" +
+                out.toLocal8Bit() + "'\n");
+    }
+    ::chmod(script.toLocal8Bit().constData(), 0755);
+
+    const QByteArray paste(qsizetype(1) * 1024 * 1024, 'p');
+    const qsizetype cap = Pty::MAX_PENDING_WRITE_BYTES;
+    const QByteArray fits(cap - 16, 'a');       // inside the cap
+    const QByteArray over(qsizetype(64) * 1024, 'b');  // takes it past the cap
+    const QByteArray tail("END");                // still fits after the drop
+
+    g_backlogDropped = false;
+    g_previousHandler = qInstallMessageHandler(captureBacklogDrop);
+    {
+        VtStream stream;
+        bool ready = false;
+        QObject::connect(&stream, &VtStream::batchReady,
+                         [&](const VtBatchPtr &batch) {
+                             if (batch->rawBytes.contains("READY")) ready = true;
+                             stream.drainAck();
+                         });
+        const bool started = stream.start(script, dir.path(), 24, 80);
+        expect(started, "ANTS-5415-setup", "VtStream::start(child.sh) failed");
+        if (started) {
+            pumpUntil(5000, [&] { return ready; });
+            expect(ready, "ANTS-5415-setup", "the child never started");
+
+            stream.writePaste(paste);
+            stream.write(fits);
+            stream.write(over);
+            stream.write(tail);
+
+            const qint64 want = paste.size() + fits.size() + tail.size();
+            pumpUntil(30000, [&] { return QFileInfo(out).size() >= want; });
+            pumpUntil(500, [] { return false; });  // let any excess arrive
+            QFile got(out);
+            const QByteArray data =
+                got.open(QIODevice::ReadOnly) ? got.readAll() : QByteArray();
+
+            expect(data == paste + fits + tail, "ANTS-5415-INV-5",
+                   "received " + std::to_string(data.size()) + " bytes; want " +
+                       std::to_string(want) +
+                       ": the paste, the write inside the cap and the tail, "
+                       "without the write that went past the cap");
+        }
+    }
+    qInstallMessageHandler(g_previousHandler);
+    expect(g_backlogDropped.load(), "ANTS-5415-INV-5",
+           "the dropped write was not reported");
+    return expect_finish();
+}
+
+}  // namespace
+
+TEST(PtyPasteChunked, Ants5415QueueBehindAStalledPasteIsCapped) {
+    ASSERT_EQ(0, runBacklogCap());
 }

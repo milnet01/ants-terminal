@@ -73650,7 +73650,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code RC-32, RC-48; drafts by retroarch-1c).
   Lanes: mcp-workspace, mcp-state.
 
-- 📋 [ANTS-5415] **Typing or pasting onto a stalled paste is capped like the PTY write queue.**
+- ✅ [ANTS-5415] **Typing or pasting onto a stalled paste is capped like the PTY write queue.**
   VtStream::write and writePaste append to m_pasteBacklog with no cap
   while a paste is in flight (vtstream.cpp ~87-100). Cap appends onto an
   in-flight backlog at Pty::MAX_PENDING_WRITE_BYTES (4 MiB; private in
@@ -73659,6 +73659,10 @@ fixes don't address. Roadmapped here as their own design tasks.
   feed already slices it.
   The 2026-11-06 reviews also found this: row 6 `vtstream.cpp:81,89`.
   Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-10. VtStream::queueBehindPaste caps the bytes queued
+  behind the paste being fed at Pty::MAX_PENDING_WRITE_BYTES (now
+  public), logs a drop, and never caps the paste itself. Test:
+  PtyPasteChunked.Ants5415QueueBehindAStalledPasteIsCapped (spec INV-5).
   **Layman:** If a big paste stalls, extra input queued behind it should not grow memory without limit.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code RC-14; draft by retroarch-1c).

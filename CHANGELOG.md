@@ -312,6 +312,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Typing or pasting while a large paste is stalled now queues at most 4 MiB behind it; past that the input is dropped and logged** (ANTS-5415)
+
 - **roadmap_log refuses a text field that holds a closing tag named after one of its arguments, such as `</layman>`, with text after it.** (ANTS-5393)
   That shape means the harness merged two arguments into one field. The
   call is refused with `bad_args` before anything is written, and the reply

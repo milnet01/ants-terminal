@@ -11,6 +11,10 @@ class Pty : public QObject {
     Q_OBJECT
 
 public:
+    // Cap on the EAGAIN write queue. Public so VtStream caps what queues
+    // behind a stalled paste at the same size (ANTS-5415).
+    static constexpr qsizetype MAX_PENDING_WRITE_BYTES = 4 * 1024 * 1024;
+
     explicit Pty(QObject *parent = nullptr);
     ~Pty() override;
 
@@ -111,5 +115,4 @@ private:
     // when the kernel signals writability. See
     // tests/features/pty_write_eagain_queue/spec.md.
     QByteArray m_pendingWrite;
-    static constexpr qsizetype MAX_PENDING_WRITE_BYTES = 4 * 1024 * 1024;
 };

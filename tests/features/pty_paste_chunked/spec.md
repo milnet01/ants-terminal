@@ -23,6 +23,12 @@ The fix feeds the paste to the PTY in slices as the write queue drains
 - **INV-4 — the widget sends a paste as one call.** `TerminalWidget::performPaste`
   hands the wrapped payload to `VtStream::writePaste` in a single invoke, not
   as separate marker and body writes. Source scrape.
+- **INV-5 — what queues behind a stalled paste is capped (ANTS-5415).** A
+  write, or a second paste, arriving while a paste is fed is queued only if
+  the bytes queued behind that paste stay within `Pty::MAX_PENDING_WRITE_BYTES`.
+  Past that it is dropped and logged ("queued behind a stalled paste"); a
+  smaller write after it still lands. The paste itself is never capped.
+  Behavioural: the child sleeps before reading, so the paste stalls.
 
 ## Red proof
 

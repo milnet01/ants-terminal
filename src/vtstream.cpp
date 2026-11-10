@@ -41,6 +41,7 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
         // rather than hold it.
         m_pasteBacklog.clear();
         m_pasteOffset = 0;
+        m_pasteHeadEnd = 0;
     });
     connect(m_pty, &Pty::writeDrained, this, &VtStream::feedPaste);
 
@@ -78,7 +79,7 @@ pid_t VtStream::childPid() const {
 void VtStream::write(const QByteArray &data) {
     if (!m_pty) return;
     if (m_pasteOffset < m_pasteBacklog.size()) {  // a paste is still being fed
-        m_pasteBacklog.append(data);
+        queueBehindPaste(data);
         return;
     }
     m_pty->write(data);
@@ -86,8 +87,26 @@ void VtStream::write(const QByteArray &data) {
 
 void VtStream::writePaste(const QByteArray &data) {
     if (!m_pty || data.isEmpty()) return;
-    m_pasteBacklog.append(data);
+    if (m_pasteOffset < m_pasteBacklog.size()) {
+        queueBehindPaste(data);
+    } else {
+        m_pasteBacklog.append(data);  // the paste itself is never capped
+        m_pasteHeadEnd = m_pasteBacklog.size();
+    }
     feedPaste();
+}
+
+// ANTS-5415 — what queues behind the paste being fed is capped as Pty caps
+// its write queue, so a stalled paste cannot grow memory without limit.
+void VtStream::queueBehindPaste(const QByteArray &data) {
+    const qsizetype queued =
+        m_pasteBacklog.size() - std::max(m_pasteHeadEnd, m_pasteOffset);
+    if (queued + data.size() > Pty::MAX_PENDING_WRITE_BYTES) {
+        qWarning("VtStream: dropped %lld byte(s) queued behind a stalled paste",
+                 static_cast<long long>(data.size()));
+        return;
+    }
+    m_pasteBacklog.append(data);
 }
 
 void VtStream::feedPaste() {
@@ -100,6 +119,7 @@ void VtStream::feedPaste() {
     if (m_pasteOffset >= m_pasteBacklog.size()) {  // fed in full, or dropped
         m_pasteBacklog.clear();
         m_pasteOffset = 0;
+        m_pasteHeadEnd = 0;
     }
 }
 

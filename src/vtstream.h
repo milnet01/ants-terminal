@@ -252,6 +252,9 @@ private slots:
     void feedPaste();
 
 private:
+    // ANTS-5415 — append a write behind the paste being fed, or drop it past
+    // the cap.
+    void queueBehindPaste(const QByteArray &data);
     void scheduleFlush();
     void flushBatch();
     // The parser's action callback: queues each action for the next batch.
@@ -279,9 +282,12 @@ private:
 
     // ANTS-5075 — the part of a paste Pty has not been handed yet, and how far
     // into m_pasteBacklog the feed has reached. Bytes written during a paste
-    // are appended here so they land after it.
+    // are appended here so they land after it. m_pasteHeadEnd is where the
+    // paste that started the backlog ends; what follows it is capped
+    // (ANTS-5415).
     QByteArray m_pasteBacklog;
     qsizetype m_pasteOffset = 0;
+    qsizetype m_pasteHeadEnd = 0;
     static constexpr qsizetype kPasteSliceBytes = qsizetype(64) * 1024;
 
     // Back-pressure cap. A batch flushes once it reaches kFlushActions or
