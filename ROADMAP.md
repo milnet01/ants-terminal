@@ -91661,7 +91661,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6731] **roadmap_migrate's backup_to replaces any SQLite database the caller names, not only an Ants snapshot.**
+- ✅ [ANTS-6731] **roadmap_migrate's backup_to replaces any SQLite database the caller names, not only an Ants snapshot.**
   roadmapstore.cpp:436 `replaceable()` checks only the SQLite file
   header, then :467 removes the target. ANTS-6451 refused the live
   store and declined a name rule because "the header check already
@@ -91669,6 +91669,8 @@ measured Ants adding about 5,250 tokens to every request.
   Remedy: replace only a file Ants wrote (a marker table, or the
   snapshot naming), otherwise refuse.
   Finding L14-11 (whole arm, Medium).
+  Shipped 2026-11-11 in c52ffad3: the destination must hold the store's
+  project, section, item and element tables.
   **Layman:** A mistyped backup path can overwrite another program's database.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.

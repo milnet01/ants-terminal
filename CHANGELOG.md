@@ -318,6 +318,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_migrate`'s `backup_to` replaces an existing file only when it is a roadmap store copy, never another program's SQLite database** (ANTS-6731)
+
 - **`roadmap_query` refuses `shipped_since` / `shipped_until` alongside `version=`, as it already did alongside `section=`** (ANTS-6730)
 
 - **Each ants-mcpd build refreshes the installed copy that programs outside Claude call, with no terminal relaunch.** (ANTS-6728)
