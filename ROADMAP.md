@@ -91672,7 +91672,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6732] **Re-migrating a store-served project from a stale ROADMAP.md deletes items that exist only in the store.**
+- ✅ [ANTS-6732] **Re-migrating a store-served project from a stale ROADMAP.md deletes items that exist only in the store.**
   roadmapmigrateload.cpp:1058-1064 queues every unreferenced item absent
   from the file for deletion unless keep_absent is set; :1099 deletes
   it. This is ANTS-5287 § 2.7's design, bounded by the 25% mass-delete
@@ -91685,6 +91685,9 @@ measured Ants adding about 5,250 tokens to every request.
   project, a re-migration keeps items absent from the file (keep_absent
   on) unless the caller asks for deletions. A deliberate clean-up still
   works by opting in. No longer waiting on the user.
+  Shipped 2026-11-11 in c6c47148: roadmap_migrate keeps absent items on
+  a store-served project unless accept_deletions:true; reply carries
+  absent_kept.
   **Layman:** Re-importing an old copy of the roadmap file can delete items that only exist in the database.
   Kind: investigate.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
