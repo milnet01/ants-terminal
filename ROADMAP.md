@@ -85466,8 +85466,17 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 LottoTracker.
 
-- 📋 [ANTS-4840] **fields_unmatched cannot distinguish an unknown name from a field the response conditionally omits.**
+- 💭 [ANTS-4840] **fields_unmatched cannot distinguish an unknown name from a field the response conditionally omits.**
   Observed on feedback_query's server_build_date and server_build_commit, which are echoed only alongside possibly_stale_binary. The envelope was right and the call was wrong, but a caller reading the schema cannot tell a conditional field from an unconditional one before making the call. An unknown name is a typo; a conditional absence is information, and the two currently read the same.
+  Parked 2026-11-12. ANTS-4930 shipped fields_available, so a
+  misspelling now shows the right name beside it, and the fields
+  description already says an unmatched name may be one carried "only
+  when there is something to report". Telling a conditional field from
+  an unknown one BEFORE the call needs a declared output-field list for
+  every verb. MCP's own outputSchema would oblige each declaring verb to
+  return conforming structuredContent, so it is not a drop-in. A
+  one-verb table would leave every other verb ambiguous. Revisit if
+  output schemas are taken on as a project.
   **Layman:** Asking for a field that is only sometimes present looks the same as a typo.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 OneUp.
