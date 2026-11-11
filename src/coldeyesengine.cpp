@@ -1186,7 +1186,17 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
             h.addData(QByteArray(1, '\0'));          // path/body separator
             h.addData(rel.toUtf8());
             h.addData(QByteArray(1, '\0'));
-            h.addData(slurpUtf8(projectPath + QChar('/') + rel).toUtf8());
+            const QString abs = projectPath + QChar('/') + rel;
+            bool clipped = false;
+            const QString body = FileContentCache::slurpUtf8(abs, false, &clipped);
+            if (!clipped) {
+                h.addData(body.toUtf8());
+                return;
+            }
+            // ANTS-5417 — the read stopped at the cap; a prefix hash would
+            // miss a change past it, so stream the whole file instead.
+            QFile f(abs);
+            if (f.open(QIODevice::ReadOnly)) h.addData(&f);
         };
         for (const QString &p : m.docPaths)       addFile(p);
         for (const QString &p : smallCrossRefs)   addFile(p);

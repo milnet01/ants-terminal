@@ -314,6 +314,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The review engines read at most 16 MiB of one file, so a huge file is never held whole; the cold-eyes input hash still covers the whole file.** (ANTS-5417)
+
 - **ci_report's cache_key_shared stays quiet for jobs that share one downloaded cache on purpose: same path, same key, nothing compiled in it** (ANTS-6739)
 
 - **The Claude transcript reader skips a single line longer than 16 MiB in small reads instead of loading it into memory** (ANTS-5416)

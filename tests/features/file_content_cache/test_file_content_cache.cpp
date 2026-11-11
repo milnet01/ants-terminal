@@ -145,39 +145,53 @@ TEST(FileContentCache, ByteBudgetHoldsUnderLoad) {
     }
 }
 
-// INV-2 — a file whose own decoded size exceeds kByteBudget is still
-// returned whole and correctly, and must not be retained: cachedBytes()
-// stays within budget after reading it. Pre-fix the stub caches everything
-// unconditionally, so cachedBytes() after this read equals the oversized
-// body's own size, which is greater than kByteBudget.
-TEST(FileContentCache, OversizedFileServedNotRetained) {
+// INV-2 (ANTS-5417) — a file larger than kByteBudget/2 bytes is read only
+// up to that cap, so it is never held whole; the clipped body is returned,
+// never cached. A file of exactly the cap is read whole. Pre-fix the read
+// was readAll(), so the oversized body came back whole.
+TEST(FileContentCache, OversizedFileClippedNotRetained) {
     FileContentCache::clear();
 
     QTemporaryDir dir;
     ASSERT_TRUE(dir.isValid());
 
     const qint64 budget = FileContentCache::kByteBudget;
-    // UTF-16 bytes = 2 * char count, so budget/2 + a small margin of ASCII
-    // characters decodes to just over kByteBudget bytes — the smallest
-    // file that exercises "larger than the budget".
-    const qint64 overBudgetChars = budget / 2 + 4096;
+    const qint64 cap = budget / 2;  // UTF-8 bytes; decoded, at most `budget`
+
     const QString path = dir.filePath(QStringLiteral("oversized.txt"));
-    const QString content(static_cast<int>(overBudgetChars), QLatin1Char('Z'));
+    const QString content(static_cast<int>(cap + 4096), QLatin1Char('Z'));
     ASSERT_TRUE(writeFileAt(path, content.toLatin1(), 1700000001000LL))
         << "setup: could not write " << qUtf8Printable(path);
 
-    const QString got = FileContentCache::slurpUtf8(path);
-    EXPECT_EQ(got, content)
-        << "INV-2: an oversized file must still be returned in full and "
-           "correctly, even though it is too large to cache.";
+    bool truncated = false;
+    const QString got = FileContentCache::slurpUtf8(path, false, &truncated);
+    EXPECT_TRUE(truncated) << "INV-2: a clipped read must say so.";
+    EXPECT_EQ(got.size(), cap)
+        << "INV-2: a file over the cap must be read only up to "
+        << cap << " bytes. Actual: " << got.size() << " characters.";
+    EXPECT_EQ(got, content.left(static_cast<int>(cap)))
+        << "INV-2: the clipped body must be the file's own prefix.";
+    EXPECT_EQ(FileContentCache::cachedBytes(), 0)
+        << "INV-2: a clipped body must never be cached.";
 
-    const qint64 bytes = FileContentCache::cachedBytes();
-    EXPECT_LE(bytes, budget)
-        << "INV-2: cachedBytes() == " << bytes
-        << " after reading a file whose own decoded size ("
-        << (overBudgetChars * 2) << " UTF-16 bytes) exceeds kByteBudget ("
-        << budget << "). Expected: it is not retained. Actual: it was "
-           "cached anyway.";
+    const QString exactPath = dir.filePath(QStringLiteral("exact.txt"));
+    const QString exact(static_cast<int>(cap), QLatin1Char('Y'));
+    ASSERT_TRUE(writeFileAt(exactPath, exact.toLatin1(), 1700000001500LL));
+    EXPECT_EQ(FileContentCache::slurpUtf8(exactPath, false, &truncated), exact)
+        << "INV-2: a file of exactly the cap must be read whole.";
+    EXPECT_FALSE(truncated) << "INV-2: a whole read must not claim a clip.";
+
+    // The clip cuts a two-byte character in half: the half is dropped,
+    // not decoded as U+FFFD.
+    const QString splitPath = dir.filePath(QStringLiteral("split.txt"));
+    QByteArray split(static_cast<int>(cap - 1), 'a');
+    split += "\xC3\xA9";  // é
+    ASSERT_TRUE(writeFileAt(splitPath, split, 1700000001700LL));
+    const QString gotSplit = FileContentCache::slurpUtf8(splitPath, false, &truncated);
+    EXPECT_TRUE(truncated);
+    EXPECT_EQ(gotSplit.size(), cap - 1)
+        << "INV-2: a character the clip cut through must be dropped whole.";
+    EXPECT_FALSE(gotSplit.endsWith(QChar(QChar::ReplacementCharacter)));
 }
 
 // INV-3 — freshness: a file rewritten with a new mtime returns the new

@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "coldeyesengine.h"
+#include "filecontentcache.h"
 #include "indiereviewengine.h"
 
 #include <QDir>
@@ -167,6 +168,25 @@ TEST(ColdEyesEngine, Ants3718InputHashStableAndContentSensitive) {
     ASSERT_TRUE(wsB.valid());
     EXPECT_NE(hashFor(wsB, QStringLiteral("# Spec\nbeta\n")), a)
         << "a changed doc body must change input_hash";
+}
+
+// ANTS-5417 — slurpUtf8 clips a file at kMaxReadBytes. A change past the
+// clip must still change input_hash, or the lane skip hides it.
+TEST(ColdEyesEngine, Ants5417InputHashSeesPastTheReadCap) {
+    const auto hashFor = [](Workspace &ws, const QString &tail) {
+        ColdEyesEngine::Lane lane;
+        lane.name = QStringLiteral("spec/ANTS-9999");
+        lane.docPaths << QStringLiteral("docs/specs/ANTS-9999.md");
+        const QString body =
+            QString(static_cast<int>(FileContentCache::kMaxReadBytes), QLatin1Char('x'))
+            + tail;
+        EXPECT_TRUE(ws.writeRel("docs/specs/ANTS-9999.md", body));
+        return ColdEyesEngine::assembleBriefManifest(ws.root(), lane).inputHash;
+    };
+    Workspace wsA, wsB;
+    ASSERT_TRUE(wsA.valid() && wsB.valid());
+    EXPECT_NE(hashFor(wsA, QStringLiteral("alpha")), hashFor(wsB, QStringLiteral("beta")))
+        << "a change past the read cap must change input_hash";
 }
 
 // ANTS-3740 — per-doc section index. The fenced `# Not a heading` is the case

@@ -21,10 +21,12 @@ one cache, one lock, one byte budget (`kByteBudget`). Each engine's
   several files whose combined decoded size runs well past half of
   `kByteBudget`, `cachedBytes()` never exceeds `kByteBudget` at any point
   in the sequence, and every read still returns that file's real content.
-- **INV-2 (an oversized file is served, not retained)** — a file whose own
-  decoded size alone exceeds `kByteBudget` is still returned in full and
-  correctly; the cache holds nothing that would push `cachedBytes()` past
-  `kByteBudget`.
+- **INV-2 (an oversized file is clipped, not retained)** — at most
+  `kMaxReadBytes` (`kByteBudget / 2`) bytes are read from one file. A
+  larger file comes back as its prefix, sets the optional `truncated`
+  out-param, and is not cached. A multi-byte character the clip cuts
+  through is dropped whole. A file of exactly `kMaxReadBytes` is read
+  whole and does not set `truncated`.
 - **INV-3 (freshness and read mode are both part of the key)** — a file
   rewritten with a new modification time returns its new content on the
   next read. Reading the same path with `textMode=false` and with
@@ -91,3 +93,7 @@ for the retired cache shape's absence and the shared call's presence.
 - **Fixed:** ANTS-5056 — `src/filecontentcache.h` centralises the cache
   behind a lock and a byte budget; this spec locks that contract and the
   wiring that makes it apply to all four call sites.
+- **Changed:** ANTS-5417 — INV-2 read the whole file before deciding not
+  to keep it; the read now stops at `kMaxReadBytes`.
+  `ColdEyesEngine`'s `input_hash` streams a clipped file whole, so a change
+  past the cap still changes the hash.

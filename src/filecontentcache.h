@@ -7,6 +7,7 @@
 // GUI thread. Keyed by (path, read mode, mtime); every access is locked, and
 // the bodies held never exceed kByteBudget.
 
+#include <QByteArray>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -20,6 +21,10 @@ namespace FileContentCache {
 // Byte budget for cached bodies (UTF-16 bytes).
 inline constexpr qint64 kByteBudget = qint64(32) * 1024 * 1024;
 
+// ANTS-5417 — the most bytes read from one file. A UTF-8 byte decodes to at
+// most one UTF-16 unit, so a full read fills at most kByteBudget.
+inline constexpr qint64 kMaxReadBytes = kByteBudget / 2;
+
 namespace detail {
 struct State {
     QMutex mutex;
@@ -31,11 +36,26 @@ inline State &state() {
     return s;
 }
 inline qint64 bodyBytes(const QString &s) { return s.size() * qint64(sizeof(QChar)); }
+
+// Drops a multi-byte UTF-8 sequence the clip cut through, so the decoded
+// prefix does not end in a replacement character.
+inline void dropPartialUtf8Tail(QByteArray &raw) {
+    qsizetype lead = raw.size() - 1;
+    while (lead >= 0 && raw.size() - lead < 4 && (uchar(raw[lead]) & 0xC0) == 0x80) --lead;
+    if (lead < 0) return;
+    const uchar c = uchar(raw[lead]);
+    const int want = c >= 0xF0 ? 4 : c >= 0xE0 ? 3 : c >= 0xC0 ? 2 : 1;
+    if (raw.size() - lead < want) raw.truncate(lead);
+}
 }  // namespace detail
 
 // The file's contents decoded as UTF-8, or "" when it cannot be opened.
 // `textMode` opens with QIODevice::Text (CRLF → LF), as BriefDispatch did.
-inline QString slurpUtf8(const QString &absPath, bool textMode = false) {
+// A file over kMaxReadBytes comes back as its prefix, is not cached, and
+// sets `*truncated` (ANTS-5417).
+inline QString slurpUtf8(const QString &absPath, bool textMode = false,
+                         bool *truncated = nullptr) {
+    if (truncated) *truncated = false;
     const QString key = (textMode ? QStringLiteral("t:") : QStringLiteral("b:")) + absPath;
     const qint64 mtime = QFileInfo(absPath).lastModified().toMSecsSinceEpoch();
     auto &st = detail::state();
@@ -50,7 +70,14 @@ inline QString slurpUtf8(const QString &absPath, bool textMode = false) {
     QIODevice::OpenMode mode = QIODevice::ReadOnly;
     if (textMode) mode |= QIODevice::Text;
     if (!f.open(mode)) return {};
-    const QString content = QString::fromUtf8(f.readAll());
+    QByteArray raw = f.read(kMaxReadBytes + 1);
+    const bool clipped = raw.size() > kMaxReadBytes;
+    if (clipped) {
+        raw.truncate(kMaxReadBytes);
+        detail::dropPartialUtf8Tail(raw);
+        if (truncated) *truncated = true;
+    }
+    const QString content = QString::fromUtf8(raw);
     const qint64 size = detail::bodyBytes(content);
 
     QMutexLocker lock(&st.mutex);
@@ -58,7 +85,7 @@ inline QString slurpUtf8(const QString &absPath, bool textMode = false) {
         st.bytes -= detail::bodyBytes(old->second);
         st.entries.erase(old);
     }
-    if (size > kByteBudget) return content;  // served, never held
+    if (clipped) return content;  // served, never held
     if (st.bytes + size > kByteBudget) {     // clear on overflow: a re-read is cheap
         st.entries.clear();
         st.bytes = 0;
