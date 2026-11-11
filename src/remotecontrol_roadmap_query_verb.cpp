@@ -1918,9 +1918,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             why = QStringLiteral("mode:report has its own since / until; "
                                  "shipped_since / shipped_until narrow the "
                                  "list path");
-        else if (!section.isEmpty())
+        else if (!section.isEmpty() || !versionArg.isEmpty())   // ANTS-6730
             why = QStringLiteral("shipped_since / shipped_until are not applied "
-                                 "on the section= path");
+                                 "on the section= or version= path");
         if (!why.isEmpty()) {
             out["ok"]    = false;
             out["error"] = why;

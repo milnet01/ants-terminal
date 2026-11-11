@@ -1431,6 +1431,18 @@ TEST(RoadmapWriteHalf, Ants4715ShippedWindowNarrowsTheListPath) {
         << "a silently ignored window returns something that looks like a "
            "release list and is not one";
 
+    // ANTS-6730 — version= answers on the section path too, which never
+    // applies the window.
+    QJsonObject byVersion;
+    byVersion[QStringLiteral("caller_cwd")]    = root;
+    byVersion[QStringLiteral("version")]       = QStringLiteral("0.1.0");
+    byVersion[QStringLiteral("shipped_since")] = today;
+    const QJsonObject versionCombo = rc.cmdRoadmapQuery(byVersion).object();
+    EXPECT_FALSE(versionCombo.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(versionCombo.value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_mode_combo"))
+        << "version= takes the section path, where the window is not applied";
+
     // A malformed date is refused, not quietly read as "no window".
     QJsonObject junk;
     junk[QStringLiteral("caller_cwd")]    = root;
