@@ -954,6 +954,16 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         env[QStringLiteral("deleted_ids_truncated")] = deletedNotes > maxNotes;
         return env;
     }
+    // ANTS-6733 L14-04 — step 6's slug guard runs before the transaction, so a
+    // second migration can take the slug in between. The load then fails on
+    // the UNIQUE index; name it as the guard would have.
+    if (!out.ok
+        && out.error.contains(QLatin1String("UNIQUE constraint failed: project.export_slug"))) {
+        return mcp::refusal(QStringLiteral("slug_collision"),
+                     QStringLiteral("roadmap_migrate: export_slug \"%1\" was taken by "
+                                    "another migration while this one ran — pass a "
+                                    "different export_slug").arg(slug));
+    }
     if (!out.ok) {
         // Including a lock timeout: Access::Bulk carries a 30 s busy deadline
         // and the write lock is held for a whole project, so a concurrent

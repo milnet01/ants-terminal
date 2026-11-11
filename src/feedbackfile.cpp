@@ -328,6 +328,9 @@ ParseResult parse(const QString &fileContent) {
             rec.heading = fb.heading;
             rec.line    = fb.headingLine0 + 1;
             rec.triage  = triage;
+            // ANTS-6733 L14-20 — "" and not a null QString, which binds as
+            // SQL NULL into the NOT NULL entry_heading column.
+            rec.entryHeading = QStringLiteral("");
             for (const Boundary &b : boundaries) {
                 if (b.line0 >= fb.headingLine0) break;
                 rec.entryHeading = b.text;

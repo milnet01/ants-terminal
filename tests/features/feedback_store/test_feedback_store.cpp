@@ -148,6 +148,27 @@ TEST(FeedbackStore, Inv1ImportLosesNothing) {
     }
 }
 
+// ANTS-6733 L14-20 — a finding with no heading above it has an empty entry
+// heading, which the NOT NULL entry_heading column must accept.
+TEST(FeedbackStore, Ants6733FindingWithNoEntryHeadingImports) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + "/s.sqlite");
+    ASSERT_TRUE(store.open());
+    const QString p = dir.path() + "/Fx_Ants_MCP_Feedback.md";
+    ASSERT_TRUE(writeBytes(p, "<!-- ants-mcp-feedback: 2 -->\n"
+                              "### A finding with no entry above it\n\n"
+                              "- **What:** w\n- **Proposed ID:**\n"));
+
+    const FeedbackStore::Result r = FeedbackStore::load(store, p);
+    ASSERT_TRUE(r.code.isEmpty()) << r.code.toStdString() << ": " << r.message.toStdString();
+    const auto reporter = store.feedbackReporter(FeedbackStore::exportKey(p));
+    ASSERT_TRUE(reporter.has_value());
+    const auto rows = store.feedbackFindings(reporter->reporterId);
+    ASSERT_TRUE(rows.has_value());
+    ASSERT_EQ(rows->size(), 1);
+    EXPECT_TRUE(rows->at(0).entryHeading.isEmpty());
+}
+
 // INV-2 — the rows classify as parse() does; a Note line's id is not an id.
 TEST(FeedbackStore, Inv2RowsClassifyAsParseDoes) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

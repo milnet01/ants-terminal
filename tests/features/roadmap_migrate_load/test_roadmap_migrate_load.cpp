@@ -351,6 +351,29 @@ TEST(RoadmapMigrateLoad, AllocationClearsTheSourceFilesOwnIdsNotJustTheStores) {
     EXPECT_EQ(f.count(QStringLiteral("item")), 4);
 }
 
+// ANTS-6733 L14-07 — pass 3 gives a weak-key match the source's id. The match
+// record must name that id, not the synthesised one it replaced.
+TEST(RoadmapMigrateLoad, Ants6733ReassignedMatchNamesTheNewId) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const auto first = RoadmapMigrateLoad::load(
+        f.store, planOf({item(QString(), QStringLiteral("one"), QStringLiteral("s"), 0)}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    ASSERT_EQ(f.scalar(QStringLiteral("SELECT id FROM item")), QStringLiteral("PROJ-S0001"));
+
+    const auto again = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({item(QStringLiteral("PROJ-0042"), QStringLiteral("one"), QStringLiteral("s"), 0)}),
+        f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    ASSERT_TRUE(hasNote(again, "id_reassigned"));
+    ASSERT_EQ(again.itemMatches.size(), 1);
+    EXPECT_TRUE(again.itemMatches.at(0).matched);
+    EXPECT_EQ(again.itemMatches.at(0).matchedId, QStringLiteral("proj-0042"));
+}
+
 // INV-2, the synthetic root section — regression, found by running the ten
 // real project roadmaps rather than by any invariant test. A section carrying
 // content above the first heading has an empty slug AND title, and the read

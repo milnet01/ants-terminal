@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <utility>
 
 namespace {
@@ -528,15 +529,11 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
         return fail(QStringLiteral("cannot set 0600 on %1").arg(tmp));
     }
 
-    // QFile::rename() will not replace an existing target, so the previous
-    // snapshot goes first. The window in which neither file sits at destPath
-    // spans two syscalls, and the new snapshot exists at `tmp` throughout it,
-    // so nothing is unrecoverable inside it.
-    if (QFile::exists(destPath) && !QFile::remove(destPath)) {
-        QFile::remove(tmp);
-        return fail(QStringLiteral("cannot replace %1").arg(destPath));
-    }
-    if (!QFile::rename(tmp, destPath)) {
+    // ANTS-6733 L14-03 — rename(2), which replaces the previous snapshot in one
+    // step. QFile::rename() will not replace a target, and removing it first
+    // left a window with no snapshot at destPath.
+    if (std::rename(QFile::encodeName(tmp).constData(),
+                    QFile::encodeName(destPath).constData()) != 0) {
         QFile::remove(tmp);
         return fail(QStringLiteral("cannot rename %1 to %2").arg(tmp, destPath));
     }
@@ -1352,7 +1349,12 @@ bool RoadmapStore::relateItems(const QString &type, qint64 srcPk, qint64 dstPk,
             "AND ((src_pk = ? AND dst_pk = ?) OR (src_pk = ? AND dst_pk = ?))"));
         dup.addBindValue(a); dup.addBindValue(b);
         dup.addBindValue(b); dup.addBindValue(a);
-        if (dup.exec() && dup.next())
+        if (!dup.exec()) {   // ANTS-6733 L14-19 — a failed check is not "none"
+            if (error)
+                *error = lastErr(dup);
+            return false;
+        }
+        if (dup.next())
             return true;
     }
 

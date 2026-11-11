@@ -1125,11 +1125,13 @@ std::optional<Discovery> findRoadmaps(const QString &projectRoot, QString *error
     }
 
     for (const auto &entry : std::as_const(found)) {
-        QFile f(entry.second);
-        if (!f.open(QIODevice::ReadOnly)) {
+        QFile f;
+        if (!PathValidation::openInsideProject(f, projectRoot, entry.second)) {
             // An archive is skippable where the live file is not, so a
             // permissions failure takes the note rather than the
-            // `not_found` this function gives the live file.
+            // `not_found` this function gives the live file. ANTS-6733
+            // L14-10: so does one that resolves outside the project, as
+            // through a docs/roadmap symlink, which the listing cannot see.
             addNote(disc.notes, "archive_unrecognised",
                     QFileInfo(entry.second).fileName(), 0, -1);
             continue;

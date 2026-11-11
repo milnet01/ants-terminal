@@ -91697,7 +91697,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6733] **Fix the smaller bugs the 2026-11-09 paired review found in roadmap-store.**
+- ✅ [ANTS-6733] **Fix the smaller bugs the 2026-11-09 paired review found in roadmap-store.**
   Each verified at e7324f30. File roadmapstore.cpp unless named.
   - L14-03 snapshot swap is remove-then-rename (~:467-471): use POSIX
     rename over the target.
@@ -91715,6 +91715,13 @@ measured Ants adding about 5,250 tokens to every request.
   - L14-20 feedbackfile.cpp:331 leaves entryHeading a null QString;
     roadmapstore_feedback.cpp:40 binds it into a NOT NULL column.
     Initialise it to "".
+  Shipped 2026-11-11. L14-03, -04, -07, -10, -19, -20 fixed; -07, -10,
+  -19, -20 proved red first; -03 and -04 have no red test (each needs a
+  hook between two syscalls or two processes). L14-17 closed n/a — by
+  design: roadmap-data-model.md records the user's 2026-10-11 decision
+  (ANTS-5639) that a prefix is compared exactly and each spelling floors
+  from its own items; a colliding second spelling is refused by the
+  id_fold UNIQUE index.
   **Layman:** A batch of small database-layer bugs found by a second review, each with its fix.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.

@@ -1032,6 +1032,35 @@ TEST(RoadmapStoreSchema, Ants6649LongerPrefixDoesNotFeedShorterOnesFloor) {
     EXPECT_EQ(f.store.maxAllocatedId(pid, QStringLiteral("ANTS-99"), &err).value_or(-1), 1);
 }
 
+// ANTS-6733 L14-19 — a failed duplicate check is a failure, not "no duplicate".
+// A temp view shadows `relationship` for this connection: reading it raises an
+// integer overflow, and an INSTEAD OF trigger lets the insert through, so only
+// the check fails.
+TEST(RoadmapStoreSchema, Ants6733FailedDuplicateCheckRefuses) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+    const qint64 pid = f.project(QStringLiteral("p"));
+    const qint64 sid = f.section(pid);
+    const qint64 a = f.item(pid, sid, QStringLiteral("P-0001"), 0);
+    const qint64 b = f.item(pid, sid, QStringLiteral("P-0002"), 1);
+    QSqlQuery q(RoadmapStoreTestAccess::db(f.store));
+    ASSERT_TRUE(q.exec(QStringLiteral(
+        "CREATE TEMP VIEW relationship(type, src_pk, dst_pk) AS "
+        "SELECT 'relates-to', abs(-9223372036854775807 - 1), 0")))
+        << q.lastError().text().toStdString();
+    ASSERT_TRUE(q.exec(QStringLiteral(
+        "CREATE TEMP TRIGGER rel_through INSTEAD OF INSERT ON relationship BEGIN "
+        "INSERT INTO main.relationship (type, src_pk, dst_pk) "
+        "VALUES (NEW.type, NEW.src_pk, NEW.dst_pk); END")))
+        << q.lastError().text().toStdString();
+
+    err.clear();
+    EXPECT_FALSE(f.store.relateItems(QStringLiteral("relates-to"), a, b, &err))
+        << "a duplicate check that failed was read as no duplicate";
+    EXPECT_FALSE(err.isEmpty());
+}
+
 // ANTS-6649 row 1340 — fileItem() names what is missing, rather than calling a
 // missing section or item a project mismatch with "project -1".
 TEST(RoadmapStoreSchema, Ants6649FileItemNamesAMissingRow) {

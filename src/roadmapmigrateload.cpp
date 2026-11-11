@@ -671,6 +671,11 @@ bool Loader::matchItems() {
             continue;
         if (!store.reassignItemId(pk, it.id, &err))
             return fail(err);
+        // ANTS-6733 L14-07 — `existing` was read before this pass; the match
+        // record built from it below must name the id the row holds now.
+        for (RoadmapStore::ItemRef &r : existing)
+            if (r.itemPk == pk)
+                r.idFold = it.id.toLower();
         err.clear();
         const auto storedSeq = store.maxHistorySeq(pk, opts.changedAt, &err);
         if (!err.isEmpty())

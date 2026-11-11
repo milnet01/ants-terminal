@@ -499,6 +499,35 @@ TEST(roadmap_migrate_read, Ants6452SymlinkedRootRoadmapMustStayInProject) {
     EXPECT_EQ(err.toStdString(), std::string("not_found"));
 }
 
+// ANTS-6733 L14-10 — an archive is held to the same rule. A docs/roadmap that
+// is a symlink out of the project lists regular files, so only the open can
+// tell; the archive is noted and skipped, never read.
+TEST(roadmap_migrate_read, Ants6733ArchiveOutsideProjectIsNotRead) {
+    QTemporaryDir tmp, outside;
+    ASSERT_TRUE(tmp.isValid() && outside.isValid());
+    const auto put = [](const QString &path, const QByteArray &body) {
+        QFile f(path);
+        return f.open(QIODevice::WriteOnly) && f.write(body) == body.size();
+    };
+    ASSERT_TRUE(put(tmp.path() + QStringLiteral("/ROADMAP.md"),
+                    "# Roadmap\n\n## Work\n\n"
+                    "- \xF0\x9F\x93\x8B [PERCH-0001] **A bullet.**\n  Kind: fix.\n  Source: seed.\n"));
+    ASSERT_TRUE(put(outside.path() + QStringLiteral("/0.5.md"),
+                    "# Roadmap 0.5\n\n## Old\n\n"
+                    "- \xE2\x9C\x85 [PERCH-0002] **Foreign.**\n  Kind: fix.\n  Source: seed.\n"));
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("docs")));
+    ASSERT_TRUE(QFile::link(outside.path(), tmp.path() + QStringLiteral("/docs/roadmap")));
+
+    QString err;
+    const auto disc = RoadmapMigrate::findRoadmaps(tmp.path(), &err);
+    ASSERT_TRUE(disc.has_value()) << err.toStdString();
+    EXPECT_EQ(disc->sources.size(), 1) << "an archive outside the project was read";
+    bool noted = false;
+    for (const auto &n : disc->notes)
+        noted = noted || n.code == QLatin1String("archive_unrecognised");
+    EXPECT_TRUE(noted);
+}
+
 // ANTS-4693 — a declaration naming a file that is not there falls through to
 // the ordinary root scan. An unusable declaration is not evidence that the
 // root file is absent, and refusing on it would make a stale settings key
