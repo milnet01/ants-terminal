@@ -415,6 +415,32 @@ QString RoadmapStore::defaultSnapshotPath() {
 namespace {
 // ANTS-6649 row 153 — see setBeforeVacuumHookForTest(). Never set outside a test.
 std::function<void(const QString &)> g_beforeVacuumHook;
+
+// ANTS-6731 — whether `path` is a copy of a roadmap store: it opens read-only
+// and carries the store's core tables. Every SQLite file shares the header, so
+// the header alone would let a mistyped backup_to replace another program's
+// database.
+bool isRoadmapStoreFile(const QString &path) {
+    static std::atomic<int> serial{0};
+    const QString conn = QStringLiteral("roadmap_snapshot_check_%1").arg(++serial);
+    bool ours = false;
+    {
+        QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), conn);
+        db.setDatabaseName(path);
+        db.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+        if (db.open()) {
+            QSqlQuery q(db);
+            ours = q.exec(QStringLiteral(
+                       "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' "
+                       "AND name IN ('project', 'section', 'item', 'element')"))
+                   && q.next() && q.value(0).toInt() == 4;
+            q.finish();
+            db.close();
+        }
+    }
+    QSqlDatabase::removeDatabase(conn);
+    return ours;
+}
 }  // namespace
 
 void RoadmapStore::setBeforeVacuumHookForTest(std::function<void(const QString &)> hook) {
@@ -441,9 +467,10 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
     // the temp name has to be cleared before it runs — including after an earlier run died between the
     // vacuum and the rename below.
     // ANTS-5466 — `backup_to` is not confined to a project, so a file already
-    // at either path is removed only when it is one of ours: a SQLite database,
-    // or (the temp path only) the empty file a run killed before writing
-    // leaves. Anything else is refused and left alone.
+    // at either path is removed only when it is one of ours: at the
+    // destination a roadmap store copy (ANTS-6731), at the temp path a SQLite
+    // database or the empty file a run killed before writing leaves. Anything
+    // else is refused and left alone.
     const auto replaceable = [](const QString &path, bool emptyIsOurs) {
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) return false;
@@ -458,8 +485,9 @@ bool RoadmapStore::snapshotTo(const QString &destPath, QString *error) {
     const QString destCanon = QFileInfo(destPath).canonicalFilePath();
     if (!destCanon.isEmpty() && destCanon == QFileInfo(m_path).canonicalFilePath())
         return fail(QStringLiteral("%1 is the live store; not replacing it").arg(destPath));
-    if (QFile::exists(destPath) && !replaceable(destPath, false))
-        return fail(QStringLiteral("%1 exists and is not a SQLite database; "
+    if (QFile::exists(destPath)
+        && !(replaceable(destPath, false) && isRoadmapStoreFile(destPath)))
+        return fail(QStringLiteral("%1 exists and is not a roadmap store snapshot; "
                                    "not replacing it").arg(destPath));
     if (QFile::exists(tmp) && !replaceable(tmp, true))
         return fail(QStringLiteral("%1 exists and is not a SQLite database; "

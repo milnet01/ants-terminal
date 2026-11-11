@@ -2075,7 +2075,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                             "`backup_path_source` names which. It is "
                             "ROLLING -- each run overwrites it -- so name your "
                             "own path to keep a particular one. An existing "
-                            "file there that is not a SQLite database is "
+                            "file there that is not a roadmap store copy is "
                             "never replaced: the call refuses `backup_failed` "
                             "naming it. NOT validated "
                             "against the project root, because the store is "

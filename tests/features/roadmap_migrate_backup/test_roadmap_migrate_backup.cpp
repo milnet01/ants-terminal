@@ -149,8 +149,9 @@ TEST(RoadmapMigrateBackup, Inv3And4SnapshotRollsAndLeavesNoPartial) {
     EXPECT_FALSE(QFile::exists(dest + QStringLiteral(".partial")));
 }
 
-// INV-9 (ANTS-5466) — a file at the destination that is not a SQLite database
-// is refused and left as it was; so is one at the temp path. An empty temp
+// INV-9 (ANTS-5466, ANTS-6731) — a file at the destination that is not a
+// roadmap store copy is refused and left as it was; so is a non-database at
+// the temp path. An empty temp
 // file is what a killed run leaves, and is cleared.
 TEST(RoadmapMigrateBackup, Inv9RefusesToReplaceAFileThatIsNotADatabase) {
     QTemporaryDir dir;
@@ -176,6 +177,28 @@ TEST(RoadmapMigrateBackup, Inv9RefusesToReplaceAFileThatIsNotADatabase) {
     EXPECT_FALSE(store.snapshotTo(dest, &err));
     EXPECT_TRUE(err.contains(dest)) << err.toStdString();
     EXPECT_EQ(contents(dest), precious);
+
+    // ANTS-6731 — another program's SQLite database is refused too: being a
+    // database is not being one of our snapshots.
+    const QString foreign = dir.path() + QStringLiteral("/other-app.db");
+    {
+        const QString conn = QStringLiteral("inv9_foreign");
+        {
+            QSqlDatabase db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), conn);
+            db.setDatabaseName(foreign);
+            ASSERT_TRUE(db.open());
+            QSqlQuery q(db);
+            ASSERT_TRUE(q.exec(QStringLiteral("CREATE TABLE notes(body TEXT)")));
+            ASSERT_TRUE(q.exec(QStringLiteral("INSERT INTO notes VALUES('keep me')")));
+            db.close();
+        }
+        QSqlDatabase::removeDatabase(conn);
+    }
+    const QByteArray foreignBytes = contents(foreign);
+    err.clear();
+    EXPECT_FALSE(store.snapshotTo(foreign, &err));
+    EXPECT_TRUE(err.contains(foreign)) << err.toStdString();
+    EXPECT_EQ(contents(foreign), foreignBytes);
 
     // At the temp path beside a free destination.
     const QString dest2 = dir.path() + QStringLiteral("/snap.sqlite");
