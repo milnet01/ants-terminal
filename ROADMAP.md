@@ -85502,8 +85502,15 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 finbreak.
 
-- 📋 [ANTS-4853] **project_settings has no way to declare a key deliberately absent, so undeclared[] reports a design decision as a gap.**
+- ✅ [ANTS-4853] **project_settings has no way to declare a key deliberately absent, so undeclared[] reports a design decision as a gap.**
   The reporting project's numbered docs are its design narrative by a written standard, and docs/specs/ will not exist. A declared path must already exist, so specs_dir cannot be declared and sits in undeclared[] permanently, where every fresh session reads it as an undone task. Downstream verbs keying off it return empty for the same reason and are equally unreadable as deliberate-versus-unset. Accept an explicit null for a key, write it to project.json, echo it in a declared_none array and drop it from undeclared[], which keeps undeclared[] meaning "nobody has decided". A documentation-only answer does not work: the state lives in the envelope.
+  Closed 2026-11-12 as a duplicate of ANTS-4815 (0.7.108): a recognised
+  key with no candidate path on disk now lands in unavailable[], not
+  undeclared[], so undeclared[] means a to-do again (splitUndeclared,
+  src/projectsettings.cpp; tests ProjectSettingsVerb.Ants4815*). 4815
+  weighed this item's explicit-null route and declined it: a third
+  stored state every reader must handle, for information the split
+  already gives.
   **Layman:** A project that has decided it needs no specs folder is told forever that it has not set one up.
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 perch.
