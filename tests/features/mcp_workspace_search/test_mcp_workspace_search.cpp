@@ -6,6 +6,7 @@
 #include "../../_support/expect.h"
 #include "rgdiagnosis.h"
 #include "remotecontrol.h"
+#include "mcpspill.h"   // ANTS-4892
 
 #include <QByteArray>
 #include <QDir>
@@ -884,4 +885,48 @@ TEST(McpWorkspaceSearch, Ants5278BareIdentifierNamesCallSiteVerbs) {
     const QJsonObject phrase = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("target_5279(int")},
                                                  {QStringLiteral("context"), 2}});
     EXPECT_FALSE(phrase.contains(QStringLiteral("call_site_hint"))) << "not a bare identifier";
+}
+
+// ANTS-4892 — a reply large enough to spill carries `files`, the
+// [{file, count}] summary a caller narrows with, and the spill keeps it.
+// A reply that will not spill pays nothing.
+TEST(McpWorkspaceSearch, Ants4892SpilledSearchKeepsFileCounts) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/src"));
+    for (int f = 0; f < 12; ++f) {
+        QFile out(root + QStringLiteral("/src/f%1.txt").arg(f));
+        ASSERT_TRUE(out.open(QIODevice::WriteOnly));
+        const int lines = (f == 0) ? 30 : 5;   // one file dominates
+        for (int i = 0; i < lines; ++i)
+            out.write(QStringLiteral("needle_4892 file %1 row %2 padding padding\n")
+                          .arg(f).arg(i).toUtf8());   // unique, so no row folds
+    }
+    QFile one(root + QStringLiteral("/src/once.txt"));
+    ASSERT_TRUE(one.open(QIODevice::WriteOnly));
+    one.write("solo_4892\n");
+    one.close();
+
+    mcp::setOffloadConfig(true, 4096, 2048);
+    const QJsonObject big = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("needle_4892")},
+                                              {QStringLiteral("max_results"), 200}});
+    const QJsonArray files = big.value(QStringLiteral("files")).toArray();
+    ASSERT_EQ(files.size(), 12) << QJsonDocument(big).toJson().toStdString().substr(0, 400);
+    EXPECT_EQ(files.at(0).toObject().value(QStringLiteral("file")).toString().toStdString(),
+              "src/f0.txt") << "the most-matched file comes first";
+    EXPECT_EQ(files.at(0).toObject().value(QStringLiteral("count")).toInt(), 30);
+
+    const QJsonObject spilled = QJsonDocument::fromJson(
+        mcp::offloadBody(QStringLiteral("workspace_search"),
+                         QString::fromUtf8(QJsonDocument(big).toJson(QJsonDocument::Compact)))
+            .toUtf8()).object();
+    ASSERT_TRUE(spilled.value(QStringLiteral("offloaded")).toBool())
+        << "offload did not fire — nothing was being tested";
+    EXPECT_EQ(spilled.value(QStringLiteral("files")).toArray().size(), 12)
+        << "the summary must survive the spill";
+
+    const QJsonObject small = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("solo_4892")}});
+    EXPECT_FALSE(small.contains(QStringLiteral("files"))) << "a reply that will not spill pays nothing";
+    mcp::setOffloadConfig(false, 16384, 2048);
 }

@@ -1376,6 +1376,42 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                                               : QStringLiteral("max_results"),
             budgetSec);
     }
+    // ANTS-4892 — a reply that will spill was too broad, and the next move is
+    // to narrow it. The spill's verb-agnostic rows_preview cannot say which
+    // files matched, so the verb adds that here, in files_only's shape, and
+    // the spill layer carries it as a preserved top-level field. Only when
+    // the reply will spill, so an inline reply pays nothing.
+    if (!matches.isEmpty() && mcp::offloadRequested(req)) {
+        const qint64 bytes = QJsonDocument(out).toJson(QJsonDocument::Compact).size();
+        if (mcp::shouldOffload(bytes, mcp::offloadThresholdFor(
+                                          QStringLiteral("workspace_search"), req))) {
+            QHash<QString, int> perFile;
+            for (const QJsonValue &v : std::as_const(matches)) {
+                const QJsonObject m = v.toObject();
+                ++perFile[m.value(QStringLiteral("file")).toString()];
+                for (const QJsonValue &a : m.value(QStringLiteral("also_at")).toArray())
+                    ++perFile[a.toObject().value(QStringLiteral("file")).toString()];
+            }
+            QList<QPair<QString, int>> rows(perFile.keyValueBegin(), perFile.keyValueEnd());
+            std::sort(rows.begin(), rows.end(), [](const auto &a, const auto &b) {
+                return a.second != b.second ? a.second > b.second : a.first < b.first;
+            });
+            // Most-matched first, as many as fit the spill layer's per-field
+            // cap: a larger array would be dropped from the spilled envelope.
+            // files_total says how many there were.
+            QJsonArray files;
+            qint64 used = 16;   // the "files" key and its punctuation
+            for (const auto &[file, count] : std::as_const(rows)) {
+                const QJsonObject row{{QStringLiteral("file"), file},
+                                      {QStringLiteral("count"), count}};
+                used += QJsonDocument(row).toJson(QJsonDocument::Compact).size() + 1;
+                if (used > mcp::kPreservedFieldMaxBytes) break;
+                files.append(row);
+            }
+            out["files"]       = files;
+            out["files_total"] = int(rows.size());
+        }
+    }
     // ANTS-1248-INV-6: stateless — no cache, no member-state mutation.
     // ANTS-1248-INV-10: reachability gated by the existing UDS +
     // MCP-socket trust model (SO_PEERCRED UID + 0700 + S_ISSOCK).

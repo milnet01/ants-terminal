@@ -85796,7 +85796,7 @@ rather than refiled.
   Source: Pressless-feedback-2026-09-06.
   Lanes: mcp.
 
-- 📋 [ANTS-4892] **A spilled workspace_search returns per-row shape data, where the file-and-count summary is what a caller needs to narrow.**
+- ✅ [ANTS-4892] **A spilled workspace_search returns per-row shape data, where the file-and-count summary is what a caller needs to narrow.**
   On a spill the reply carries `rows_preview`: one {index, bytes, head}
   entry per match. The reporter's call produced 28 such entries and they
   used none of it — a spill means the query was too broad, and the next
@@ -85846,6 +85846,14 @@ rather than refiled.
   What is settled: a spilled search should not need a second call to answer
   "which files matched", and the verb, not the spill layer, is where that
   answer already lives.
+  Shipped 2026-11-12 by the route the body settled: the verb adds files
+  [{file,count}] + files_total, and the spill layer preserves them as
+  top-level fields. The two open questions, decided: emitted only when
+  the reply will spill (mcp::shouldOffload with the verb's threshold),
+  so inline replies pay nothing; it JOINS rows_preview, which stays
+  verb-agnostic for every other verb. Rows are capped by bytes to
+  kPreservedFieldMaxBytes (512) so the spill does not drop the array.
+  Test: McpWorkspaceSearch.Ants4892SpilledSearchKeepsFileCounts.
   **Layman:** When a search is too big to return, the summary it gives back does not help you make the search smaller.
   Kind: enhancement.
   Source: finbreak-feedback-2026-09-06.

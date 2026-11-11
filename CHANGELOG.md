@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **A workspace_search too large to return inline now says which files matched and how often (`files`)** (ANTS-4892)
+  The summary survives the spill, so the next, narrower search needs no
+  second call to find where the matches are.
+
 - **similar_code finds look-alike code in Rust, Go, JS/TS, Java and the rest of the brace family (`lang: "generic"`)** (ANTS-2150)
 
 - **tool_info's catalog says whether two calls to one verb can overlap (`concurrency`)** (ANTS-5807)

@@ -101,3 +101,13 @@ asked for context or was cut off, the reply carries `call_site_hint` naming
 `find_caller` and `trace`. It is a hint, never a refusal: a search for
 mentions is a real question. *Test:*
 `McpWorkspaceSearch.Ants5278BareIdentifierNamesCallSiteVerbs`.
+
+## ANTS-4892 — a spilling reply says which files matched
+
+When offload is on and the reply is large enough to spill, it carries
+`files`: `[{file, count}]` in `files_only`'s shape, most-matched first, as
+many rows as fit the spill layer's per-field cap (`kPreservedFieldMaxBytes`),
+and `files_total`. A file named in a row's `also_at` counts too. The spill
+keeps both as preserved top-level fields, beside `rows_preview`. A reply that
+will not spill carries neither. *Test:*
+`McpWorkspaceSearch.Ants4892SpilledSearchKeepsFileCounts`.
