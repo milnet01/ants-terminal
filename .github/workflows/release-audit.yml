@@ -24,6 +24,11 @@ on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      rehearsal:
+        description: 'A deliberate proving run: a red result is a test, not an outage'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,8 +44,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           OBS_BASE: https://download.opensuse.org/repositories/home:/milnet:/ants-terminal
+          REHEARSAL: ${{ inputs.rehearsal }}
         run: |
           set -uo pipefail
+          if [ "${REHEARSAL:-}" = "true" ]; then
+            echo "::notice::REHEARSAL run: a red result here is a test, not an outage"
+          fi
           fail=0
           # A fetch that could not run is NOT drift. Reporting one as the other
           # trains people to ignore this job, which is how it stops working.
