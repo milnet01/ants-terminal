@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6744 -->
+<!-- ants-roadmap-id-high-water: ANTS=6745 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84120,6 +84120,12 @@ filed below.
   reads "Release audit — REHEARSAL, not an outage" when it is set; the
   header comment states the rule (prove the alarm only with
   rehearsal:true). actionlint clean.
+  Correction 2026-11-11: the run-name half did not ship. Every run-name
+  form made the workflow end in startup_failure (ANTS-6745), so
+  release-audit.yml was restored and re-shipped with only option (a) —
+  the rule in its header — and the `rehearsal` input, which prints a
+  REHEARSAL ::notice:: on the run page (proven: run 43101805621). The
+  failure mail subject is unchanged until ANTS-6745 lands.
   **Layman:** Testing the download alarm sends the same panic email as the download actually being broken.
   Kind: enhancement.
   Source: user-report-2026-08-20.
@@ -84245,6 +84251,24 @@ filed below.
   **Layman:** A changelog written as dated topics with prose but no bold bullets can still have an entry added far from the top.
   Kind: fix.
   Source: in-session-2026-09-08, found while shipping ANTS-4563.
+
+- 📋 [ANTS-6745] **A run-name on release-audit.yml makes every run end in startup_failure, so a rehearsal's failure mail still reads like an outage.**
+  Tried 2026-11-11, each actionlint-clean, each dispatch ending in
+  startup_failure with zero jobs ("This run likely failed because of a
+  workflow file issue"):
+  - `${{ inputs.rehearsal && 'Release audit — REHEARSAL...' || 'Release audit' }}`
+    (run 43096363177)
+  - `github.event.inputs.rehearsal == 'true'` form (43097239500)
+  - the same with an ASCII title, plus an env line (43097554733, and
+    43098014586 dispatched with no input)
+  Without run-name, the same input and a ::notice:: start fine
+  (43101805621). GitHub's error text is on the run page, which needs a
+  logged-in browser; read it there first. Until then the REHEARSAL notice
+  on the run page is the only marker, and the mail subject is unchanged.
+  **Layman:** We wanted the test run's email title to say "rehearsal", but GitHub refused to start the job whenever we set a title; the reason is not yet known.
+  Kind: investigate.
+  Source: ANTS-4590 follow-up 2026-11-11.
+  Lanes: ci.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-21 triage
 

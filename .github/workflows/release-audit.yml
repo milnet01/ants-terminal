@@ -18,6 +18,11 @@
 # schedule, can.
 #
 # It is deliberately read-only and fixes nothing. Going red is the product.
+#
+# ANTS-4590 — a red run must mean a real outage. To prove this alarm fires,
+# dispatch it with `gh workflow run release-audit.yml -f rehearsal=true`; the
+# run page then carries a REHEARSAL notice. Do not add `run-name:` here: every
+# form tried on 2026-11-11 made each run end in startup_failure (ANTS-6745).
 name: Release audit
 
 on:
