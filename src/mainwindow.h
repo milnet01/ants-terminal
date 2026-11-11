@@ -135,6 +135,14 @@ private:
     void showWelcome();
     void applyTheme(const QString &name);
     void centerWindow();
+    // ANTS-6742 — size the window so the current terminal shows cols ×
+    // rows; the window's other parts keep their size. Not in quake mode.
+    void resizeToCells(int cols, int rows);
+    // Applies the config's fixed size when it is on, and only when it
+    // changed since the last apply, unless `force`.
+    void applyFixedWindowSize(bool force);
+    // View > Resize Window...: asks for columns and rows, resizes once.
+    void showResizeWindowDialog();
     void moveViaKWin(int targetX, int targetY);
     void changeFontSize(int delta);
     void applyFontSizeToAll(int size);
@@ -706,6 +714,9 @@ private:
 
     // First-show flag (per-instance, not static)
     bool m_firstShow = true;
+    // ANTS-6742 — the fixed size last applied, as columns × rows; invalid
+    // while the fixed size is off.
+    QSize m_appliedFixedSize;
     // ANTS-5558 — the open welcome dialog, if any (it deletes on close).
     QPointer<class WelcomeDialog> m_welcomeDialog;
 

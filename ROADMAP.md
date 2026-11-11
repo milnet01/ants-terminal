@@ -70112,9 +70112,16 @@ interpretation. Closes the self-graded-homework loop.
   Source: user-request-2026-11-11.
   Lanes: ui.
 
-- 📋 [ANTS-6742] **Set the terminal window's size in rows and columns.**
+- ✅ [ANTS-6742] **Set the terminal window's size in rows and columns.**
   User request 2026-11-11: let the user set the size of the workable
   window, e.g. 50 rows by 200 columns.
+  Shipped 2026-11-11. User chose "Both" (2026-11-11): a fixed start size
+  (config window_fixed_size, window_columns, window_rows; Settings >
+  Appearance) and View > Resize Window... for a one-off.
+  TerminalWidget::sizeForGrid shares gridMargins() with recalcGridSize;
+  MainWindow::resizeToCells resizes by the terminal's difference.
+  Contract: tests/features/window_cell_size/spec.md; suite
+  WindowCellSize.
   **Layman:** Choose how big the terminal window opens, counted in lines and characters (for example 50 rows by 200 columns).
   Kind: feature.
   Source: user-request-2026-11-11.

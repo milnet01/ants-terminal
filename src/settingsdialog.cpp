@@ -549,6 +549,28 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
     m_paddingSpinner->setSuffix(" px");
     layout->addRow("Terminal Padding:", m_paddingSpinner);
 
+    // ANTS-6742 — off: a window reopens at its last size.
+    m_fixedWindowSize = new QCheckBox("Open windows at a fixed size", tab);
+    layout->addRow(m_fixedWindowSize);
+    m_windowColumns = new QSpinBox(tab);
+    m_windowColumns->setRange(20, 1000);
+    m_windowRows = new QSpinBox(tab);
+    m_windowRows->setRange(5, 500);
+    auto *cellSize = new QHBoxLayout();
+    cellSize->addWidget(m_windowColumns);
+    cellSize->addWidget(new QLabel("columns ×", tab));
+    cellSize->addWidget(m_windowRows);
+    cellSize->addWidget(new QLabel("rows", tab));
+    cellSize->addStretch(1);
+    layout->addRow("Window Size:", cellSize);
+    auto syncFixedSize = [this]() {
+        const bool on = m_fixedWindowSize->isChecked();
+        m_windowColumns->setEnabled(on);
+        m_windowRows->setEnabled(on);
+    };
+    connect(m_fixedWindowSize, &QCheckBox::toggled, this, syncFixedSize);
+    syncFixedSize();
+
     // Badge text (watermark in terminal background)
     m_badgeEdit = new QLineEdit(tab);
     m_badgeEdit->setPlaceholderText("e.g. hostname, project name...");
@@ -590,6 +612,9 @@ void SettingsDialog::setupAppearanceTab(QWidget *tab) {
         m_opacitySlider->setValue(100);
         m_backgroundBlur->setChecked(false);
         m_paddingSpinner->setValue(4);
+        m_fixedWindowSize->setChecked(false);
+        m_windowColumns->setValue(120);
+        m_windowRows->setValue(36);
         m_badgeEdit->clear();
         m_autoColorScheme->setChecked(false);
         m_darkThemeCombo->setCurrentText(QStringLiteral("Dark"));
@@ -1176,6 +1201,9 @@ void SettingsDialog::loadSettings() {
     m_opacitySlider->setValue(static_cast<int>(m_config->opacity() * 100));
     m_backgroundBlur->setChecked(m_config->backgroundBlur());
     m_paddingSpinner->setValue(m_config->terminalPadding());
+    m_fixedWindowSize->setChecked(m_config->windowFixedSize());
+    m_windowColumns->setValue(m_config->windowColumns());
+    m_windowRows->setValue(m_config->windowRows());
     m_badgeEdit->setText(m_config->badgeText());
     m_autoColorScheme->setChecked(m_config->autoColorScheme());
     m_darkThemeCombo->setCurrentText(m_config->darkTheme());
@@ -1326,6 +1354,9 @@ void SettingsDialog::applySettings() {
     m_config->setOpacity(m_opacitySlider->value() / 100.0);
     m_config->setBackgroundBlur(m_backgroundBlur->isChecked());
     m_config->setTerminalPadding(m_paddingSpinner->value());
+    m_config->setWindowFixedSize(m_fixedWindowSize->isChecked());
+    m_config->setWindowColumns(m_windowColumns->value());
+    m_config->setWindowRows(m_windowRows->value());
     m_config->setBadgeText(m_badgeEdit->text().trimmed());
     m_config->setAutoColorScheme(m_autoColorScheme->isChecked());
     m_config->setDarkTheme(m_darkThemeCombo->currentText());

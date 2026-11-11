@@ -130,6 +130,10 @@ private:
     QLabel *m_opacityLabel;
     QCheckBox *m_backgroundBlur;
     QSpinBox *m_paddingSpinner;
+    // ANTS-6742 — open at a fixed columns × rows.
+    QCheckBox *m_fixedWindowSize;
+    QSpinBox *m_windowColumns;
+    QSpinBox *m_windowRows;
     QLineEdit *m_badgeEdit;
     QCheckBox *m_autoColorScheme;
     QComboBox *m_darkThemeCombo;

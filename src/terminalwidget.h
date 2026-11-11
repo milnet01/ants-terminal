@@ -238,6 +238,9 @@ public:
     void setPadding(int px);
     int padding() const { return m_padding; }
 
+    // ANTS-6742 — the widget size whose grid is exactly cols × rows.
+    QSize sizeForGrid(int cols, int rows) const;
+
     // URL / hints quick-select mode (extended: URLs, paths, SHAs, IPs, emails)
     void enterUrlQuickSelect();
     void exitUrlQuickSelect();
@@ -436,6 +439,9 @@ private:
     pid_t m_lastShellPid = -1;
 
     void recalcGridSize();
+    // The widget's width and height that hold no cells: padding on both
+    // sides, the scroll bar, and the search bar while it shows.
+    QSize gridMargins() const;
 
     // ANTS-5078 — the running export, one per widget. Each slice writes up to
     // kExportLinesPerStep lines per step until kExportSliceMs has passed.

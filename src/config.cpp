@@ -323,6 +323,29 @@ void Config::setWindowGeometry(int x, int y, int w, int h) {
     save();
 }
 
+bool Config::windowFixedSize() const { return m_data.value("window_fixed_size").toBool(false); }
+
+void Config::setWindowFixedSize(bool fixed) {
+    if (!storeIfChanged("window_fixed_size", fixed)) return;
+    save();
+}
+
+int Config::windowColumns() const {
+    return qBound(20, m_data.value("window_columns").toInt(120), 1000);
+}
+
+void Config::setWindowColumns(int columns) {
+    if (!storeIfChanged("window_columns", qBound(20, columns, 1000))) return;
+    save();
+}
+
+int Config::windowRows() const { return qBound(5, m_data.value("window_rows").toInt(36), 500); }
+
+void Config::setWindowRows(int rows) {
+    if (!storeIfChanged("window_rows", qBound(5, rows, 500))) return;
+    save();
+}
+
 QString Config::windowGeometryBase64() const {
     return m_data.value("window_geometry").toString("");
 }

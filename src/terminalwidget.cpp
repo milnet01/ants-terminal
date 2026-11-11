@@ -3417,11 +3417,20 @@ void TerminalWidget::forceRecalcSize() {
     recalcGridSize();
 }
 
+QSize TerminalWidget::gridMargins() const {
+    const int scrollBarW = m_scrollBar ? m_scrollBar->width() : 0;
+    const int searchBarH = m_searchVisible ? m_searchBar->height() : 0;
+    return {m_padding * 2 + scrollBarW, m_padding * 2 + searchBarH};
+}
+
+QSize TerminalWidget::sizeForGrid(int cols, int rows) const {
+    return gridMargins() + QSize(cols * m_cellWidth, rows * m_cellHeight);
+}
+
 void TerminalWidget::recalcGridSize() {
-    int scrollBarW = m_scrollBar ? m_scrollBar->width() : 0;
-    int availW = width() - m_padding * 2 - scrollBarW;
-    int searchBarH = m_searchVisible ? m_searchBar->height() : 0;
-    int availH = height() - m_padding * 2 - searchBarH;
+    const QSize margins = gridMargins();
+    int availW = width() - margins.width();
+    int availH = height() - margins.height();
     int cols = std::max(availW / m_cellWidth, 10);
     int rows = std::max(availH / m_cellHeight, 3);
 

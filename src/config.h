@@ -38,6 +38,14 @@ public:
     int windowX() const;
     int windowY() const;
     void setWindowGeometry(int x, int y, int w, int h);
+    // ANTS-6742 — open every window at columns × rows of text, in place
+    // of the last-used pixel size.
+    bool windowFixedSize() const;
+    void setWindowFixedSize(bool fixed);
+    int windowColumns() const;
+    void setWindowColumns(int columns);
+    int windowRows() const;
+    void setWindowRows(int rows);
 
     // Qt saveGeometry/restoreGeometry (handles WM frame offsets reliably)
     QString windowGeometryBase64() const;

@@ -2408,6 +2408,10 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/crash_safe_session_persist/test_crash_safe_session_persist.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_MAIN_CPP_PATH="${CMAKE_SOURCE_DIR}/src/main.cpp")
+    set_property(SOURCE tests/features/window_cell_size/test_window_cell_size.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        SRC_TERMINALWIDGET_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_SETTINGSDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/settingsdialog.cpp")
 
     # ----------------------------------------------------------------------
     # ANTS-1217 Phase 3 — test_chrome bundle.
@@ -2435,6 +2439,8 @@ if(ANTS_TESTS)
                 tests/features/tab_color/test_tab_color.cpp
                 # ANTS-5645 — the side tab list panel.
                 tests/features/tab_list_panel/test_tab_list_panel.cpp
+                # ANTS-6742 — window size in columns × rows.
+                tests/features/window_cell_size/test_window_cell_size.cpp
                 # ANTS-5646 — go to a tab by typing its name.
                 tests/features/tab_switcher/test_tab_switcher.cpp
                 # ANTS-6146 — one table of default keyboard shortcuts.

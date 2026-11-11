@@ -323,6 +323,9 @@ void MainWindow::setupViewMenu() {
     QAction *centerAction = viewMenu->addAction("&Center Window");
     centerAction->setShortcut(QKeySequence("Ctrl+Shift+M"));
     connect(centerAction, &QAction::triggered, this, &MainWindow::centerWindow);
+    // ANTS-6742 — a one-off size in columns × rows of text.
+    QAction *resizeAction = viewMenu->addAction("&Resize Window...");
+    connect(resizeAction, &QAction::triggered, this, &MainWindow::showResizeWindowDialog);
 
     viewMenu->addSeparator();
 
@@ -972,6 +975,7 @@ void MainWindow::setupSettingsMenu() {
                 }
 
                 applyTabListPanelConfig();  // ANTS-5645
+                applyFixedWindowSize(false);  // ANTS-6742 — only if the size changed
 
 #ifdef ANTS_LUA_PLUGINS
                 // 0.6.9 — let plugins react to settings changes (re-read their

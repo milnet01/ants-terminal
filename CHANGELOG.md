@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **Size the window in columns × rows of text: View > Resize Window... for a one-off size, or Settings > Appearance > "Open windows at a fixed size" to open every window at it** (ANTS-6742)
+
 - **The tab side panel can sit on the right of the window: View > Tab List on the Right, or `tab_list_panel_right` in config.json** (ANTS-6743)
 
 - **roadmap_log op:"archive_section" moves a finished roadmap section that names no version into docs/roadmap/unversioned.md, which every roadmap reader now loads** (ANTS-6737)

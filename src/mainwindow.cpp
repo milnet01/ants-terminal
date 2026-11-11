@@ -143,6 +143,7 @@ void sweepKwinScriptOrphansOnce();
 #include <QHeaderView>
 #include <QFormLayout>
 #include <QDialogButtonBox>
+#include <QSpinBox>  // ANTS-6742 — Resize Window
 #include <QRegularExpression>
 #include <QPainter>
 #include <QPen>
@@ -1551,6 +1552,45 @@ void MainWindow::centerWindow() {
     runKWinScript(this, kwinJs, QStringLiteral("center"));
 }
 
+void MainWindow::resizeToCells(int cols, int rows) {
+    TerminalWidget *t = currentTerminal();
+    if (m_quakeMode || !t) return;  // quake mode owns its own geometry
+    if (isMaximized() || isFullScreen()) showNormal();
+    // The window's other parts (title bar, menus, tabs, side panel,
+    // status bar) keep their size; only the terminal's share changes.
+    resize(size() + (t->sizeForGrid(cols, rows) - t->size()));
+}
+
+void MainWindow::applyFixedWindowSize(bool force) {
+    const QSize want = m_config.windowFixedSize()
+                           ? QSize(m_config.windowColumns(), m_config.windowRows())
+                           : QSize();
+    if (!force && want == m_appliedFixedSize) return;
+    m_appliedFixedSize = want;
+    if (want.isValid()) resizeToCells(want.width(), want.height());
+}
+
+void MainWindow::showResizeWindowDialog() {
+    TerminalWidget *t = currentTerminal();
+    if (!t) return;
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Resize Window"));
+    auto *form = new QFormLayout(&dlg);
+    auto *cols = new QSpinBox(&dlg);
+    cols->setRange(20, 1000);
+    cols->setValue(t->grid()->cols());
+    auto *rows = new QSpinBox(&dlg);
+    rows->setRange(5, 500);
+    rows->setValue(t->grid()->rows());
+    form->addRow(tr("Columns:"), cols);
+    form->addRow(tr("Rows:"), rows);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    form->addRow(buttons);
+    if (dlg.exec() == QDialog::Accepted) resizeToCells(cols->value(), rows->value());
+}
+
 void MainWindow::toggleMaximize() {
     if (isMaximized()) {
         showNormal();
@@ -1641,6 +1681,8 @@ void MainWindow::showEvent(QShowEvent *event) {
     if (m_firstShow) {
         m_firstShow = false;
         QTimer::singleShot(150, this, [this]() {
+            // ANTS-6742 — the terminal is laid out by now, so its size is real.
+            applyFixedWindowSize(true);
             centerWindow();
         });
         // ANTS-5558 — once per config, after the window has settled.
@@ -2998,6 +3040,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     }
 
     applyTabListPanelConfig();  // ANTS-5645
+    applyFixedWindowSize(false);  // ANTS-6742 — only if the size changed
 
     showStatusMessage("Config reloaded from disk", 3000);
 
