@@ -24,7 +24,7 @@
 # rehearsal=true): the run's title then says REHEARSAL, so its failure mail
 # cannot be mistaken for broken downloads.
 name: Release audit
-run-name: ${{ inputs.rehearsal && 'Release audit — REHEARSAL, not an outage' || 'Release audit' }}
+run-name: ${{ github.event.inputs.rehearsal == 'true' &&'Release audit — REHEARSAL, not an outage' || 'Release audit' }}
 
 on:
   schedule:
