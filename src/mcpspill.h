@@ -8,7 +8,7 @@
 // cache file under ~/.cache/ants-terminal/mcp-spill/<sha256>.json and
 // returns a small {head, handle, bytes, ...} envelope instead. The agent
 // re-reads the full body (byte-paged) via the `read_spill` verb only when
-// it needs more than the head. See docs/specs/ANTS-2094.md.
+// it needs more than the head. See docs/specs/ANTS-2094-proactive-server-side-result-offload.md.
 //
 // Pure Qt6::Core (no widgets) so it links into ants_core_lib. The cache is
 // global and content-addressed — never project-scoped — so it cannot
@@ -36,11 +36,11 @@ constexpr qint64  kStructuredParseMaxBytes = 1LL * 1024 * 1024;  // 1 MiB
 
 // ANTS-3545 — read_spill row-paging default page (rows) when row_count is
 // omitted / 0. Row-count-bounded (not byte-bounded); still hard-capped by the
-// kStructuredParseMaxBytes parse cap on the whole body. See docs/specs/ANTS-2094.md § 2.4.1.
+// kStructuredParseMaxBytes parse cap on the whole body. See docs/specs/ANTS-2094-proactive-server-side-result-offload.md § 2.4.1.
 constexpr int     kSpillRowsDefault      = 100;
 
 // ANTS-4692 — per-member cap for the preserved top-level fields
-// (docs/specs/ANTS-2094.md § 2.3.2). Wide enough for a path, an `etag` or a
+// (docs/specs/ANTS-2094-proactive-server-side-result-offload.md § 2.3.2). Wide enough for a path, an `etag` or a
 // `source`; narrow enough that no one member can spend the whole preserved
 // total, which is offloadHeadBytes().
 constexpr qint64  kPreservedFieldMaxBytes = 512;

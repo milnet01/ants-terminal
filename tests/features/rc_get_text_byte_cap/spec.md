@@ -1,6 +1,6 @@
 # Feature: rc get-text server-side byte cap
 
-Canonical design: `docs/specs/ANTS-1348.md`. This file is the
+Canonical design: `docs/specs/ANTS-1348-server-side-byte-cap-cmdgettext.md`. This file is the
 test-side restatement of the invariants the test_*.cpp pins.
 
 ## Problem
@@ -26,7 +26,7 @@ response envelope so the caller knows data was elided.
   `auditdialog.h:468` is a sibling 64 MiB "biggest tool output"
   constant — different consumer, different number.
 
-## Invariants (full list in `docs/specs/ANTS-1348.md`)
+## Invariants (full list in `docs/specs/ANTS-1348-server-side-byte-cap-cmdgettext.md`)
 
 - **INV-1** `out["bytes"]` ≤ `max_bytes` (or 16 MiB ceiling).
 - **INV-2** Trim drops oldest; newest tail always survives.

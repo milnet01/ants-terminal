@@ -1,7 +1,7 @@
 # ANTS-1360 — `mcp_trace` ring buffer conformance
 
 Behavioural feature test for the per-call MCP dispatch trace.
-Spec: `docs/specs/ANTS-1360.md`.
+Spec: `docs/specs/ANTS-1360-mcp-debug-log-tap-mcp.md`.
 
 ## Invariants covered
 

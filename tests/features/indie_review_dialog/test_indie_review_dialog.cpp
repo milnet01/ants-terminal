@@ -4,7 +4,7 @@
 // paths of IndieReviewDialog : ReviewDialogBase. INV-1..7 drive the engine
 // + brief + fold-in logic directly; INV-8 is a construction smoke
 // assertion. See tests/features/indie_review_dialog/spec.md +
-// docs/specs/ANTS-1258.md.
+// docs/specs/ANTS-1258-indiereviewdialog-native-app-independent.md.
 
 #include "indiereviewdialog.h"
 #include "indiereviewengine.h"

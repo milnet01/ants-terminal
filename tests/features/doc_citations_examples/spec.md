@@ -1,6 +1,6 @@
 # doc_citations_examples — the `doc-examples` suppression region (ANTS-3659)
 
-Contract: [`docs/specs/ANTS-3659.md`](../../../docs/specs/ANTS-3659.md) § 2
+Contract: [`docs/specs/ANTS-3659-examples-region-doc-scanners-honour.md`](../../../docs/specs/ANTS-3659-examples-region-doc-scanners-honour.md) § 2
 (the marker, the mask, what it suppresses, the antecedent reset) and § 3
 (INV-49 … INV-55).
 
@@ -51,7 +51,7 @@ They are therefore re-proven by mutation, not by the RED run. See below.
 
 Verified RED before the mask was wired into `DocCitations::scan` (2026-07-27),
 with `MarkdownScan::exampleMask` present but its result unused — which is
-`docs/specs/ANTS-3659.md` § 6's "feature-absent" state exactly: the two
+`docs/specs/ANTS-3659-examples-region-doc-scanners-honour.md` § 6's "feature-absent" state exactly: the two
 `ScanResult` members sit at their sentinels and nothing consumes the mask.
 
 Every row asserting **suppression** failed. Every row asserting

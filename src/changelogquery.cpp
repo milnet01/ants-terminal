@@ -1,4 +1,4 @@
-// ANTS-3533: Keep-a-Changelog reader — see changelogquery.h + docs/specs/ANTS-3533.md.
+// ANTS-3533: Keep-a-Changelog reader — see changelogquery.h + docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md.
 
 #include "changelogquery.h"
 #include "markdownscan.h"

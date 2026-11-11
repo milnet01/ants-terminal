@@ -1,6 +1,6 @@
 # Feature: rc-socket fallback dir hardening
 
-Canonical design: `docs/specs/ANTS-1365.md`. This file is the
+Canonical design: `docs/specs/ANTS-1365-tmp-socket-path-fallback-hardening.md`. This file is the
 test-side restatement.
 
 ## Problem
@@ -26,7 +26,7 @@ guard for defense-in-depth.
   posture; this spec extends the same posture to the *containing
   directory*.
 
-## Invariants (full list in `docs/specs/ANTS-1365.md`)
+## Invariants (full list in `docs/specs/ANTS-1365-tmp-socket-path-fallback-hardening.md`)
 
 - **INV-2** Subdir is created with 0700 atomically (`::mkdir(0700)`,
   not two-step `mkpath` + `chmod`).

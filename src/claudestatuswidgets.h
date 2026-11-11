@@ -4,7 +4,7 @@
 // widget + the per-session render state. Extracted from
 // mainwindow.cpp by ANTS-1146 (Bundle G Tier 3, sibling to
 // ANTS-1145's DiffViewerDialog carve-out). See
-// docs/specs/ANTS-1146.md for the full design rationale, the
+// docs/specs/ANTS-1146-extract-claudestatusbarcontroller.md for the full design rationale, the
 // 12-row external touch-site rewrite map, and the INV-9 per-test
 // re-pointing table.
 //

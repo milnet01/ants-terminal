@@ -1,6 +1,6 @@
 # DEC mode 2026 sync output unified snapshot path (ANTS-1148)
 
-Companion test for `docs/specs/ANTS-1148.md`. The full design
+Companion test for `docs/specs/ANTS-1148-dec-mode-2026-sync-output.md`. The full design
 rationale, transition table, and "what is NOT snapshotted"
 contract live in the spec; this file documents only what
 `test_sync_output_snapshot.cpp` itself asserts.

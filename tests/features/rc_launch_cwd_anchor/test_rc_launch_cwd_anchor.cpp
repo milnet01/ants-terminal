@@ -1,5 +1,5 @@
 // Feature-conformance test for spec.md (canonical:
-// docs/specs/ANTS-1347.md). Pins the cwdHasBadByte helper +
+// docs/specs/ANTS-1347-cwd-anchor-cmdlaunch-cmdnewtab.md). Pins the cwdHasBadByte helper +
 // the validatePath wiring in cmdLaunch / cmdNewTab.
 //
 // CB-1..CB-7 exercise cwdHasBadByte directly (pure helper).
@@ -41,7 +41,7 @@ void testEngine() {
     // CB-2 pure ASCII project-relative path → false.
     {
         expect(!RemoteControl::cwdHasBadByte(
-                   QStringLiteral("docs/specs/ANTS-1347.md")),
+                   QStringLiteral("docs/specs/ANTS-1347-cwd-anchor-cmdlaunch-cmdnewtab.md")),
                "CB-2 pure ASCII → false");
         expect(!RemoteControl::cwdHasBadByte(
                    QStringLiteral("/home/user/project")),

@@ -5,7 +5,7 @@ regex-scanner outline returning `{header_doc, symbols[], total_lines,
 total_bytes}` for a single file. ~13-39× compression vs full Read on
 typical C++ source files.
 
-Spec of record: `docs/specs/ANTS-1249.md`. This test file pins the
+Spec of record: `docs/specs/ANTS-1249-file-outline-mcp-tool.md`. This test file pins the
 source-grep wiring contract plus a tiny runtime smoke against the
 in-tree `auditdialog.cpp` (INV-3 floor check).
 

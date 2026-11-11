@@ -116,8 +116,8 @@ It reads only the folder it is given. It does not walk: each caller passes the f
 
 ## 7. Cross-doc impact
 
-- `docs/specs/ANTS-1459.md` RQ-4 is superseded by INV-6. `McpLastAuditSummary.Ants1459StatusBarRoadmapButtonWidened` becomes a check that the button calls `findRoadmapUnder`.
-- `docs/specs/ANTS-2160.md` lists `repo_root` beside the other `.ants/project.json` keys. `docs/standards/mcp-config-keys.md` gains a `## Per-project repo_root` entry in the form of its `## Per-project id_format (ANTS-3771)` entry, and that entry says `id_format` is read from the repo root.
+- `docs/specs/ANTS-1459-roadmap-query-last-audit-summary.md` RQ-4 is superseded by INV-6. `McpLastAuditSummary.Ants1459StatusBarRoadmapButtonWidened` becomes a check that the button calls `findRoadmapUnder`.
+- `docs/specs/ANTS-2160-per-project-ants-settings-file.md` lists `repo_root` beside the other `.ants/project.json` keys. `docs/standards/mcp-config-keys.md` gains a `## Per-project repo_root` entry in the form of its `## Per-project id_format (ANTS-3771)` entry, and that entry says `id_format` is read from the repo root.
 - The `project_settings` tool description names the key.
 - `CLAUDE.md` § Conventions lists `repo_root` among the per-project layout keys.
 - The CHANGELOG describes the outer-folder layout. ANTS-5664 closes with this item.

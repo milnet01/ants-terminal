@@ -1,7 +1,7 @@
 # Feature: `similar_code` MCP shape matcher (ANTS-1305)
 
 Human contract for the regression test in this directory. Full design:
-`docs/specs/ANTS-1305.md`.
+`docs/specs/ANTS-1305-similar-code-mcp-pattern-matcher.md`.
 
 `similar_code` walks a project's C++/Python source tree, extracts
 class/function signatures by reusing the `FileOutline` extractor, and

@@ -147,7 +147,7 @@ QList<Heading> extractHeadings(const QStringList &lines,
 // ANTS-3635(a) — the mask runs over the whole document, not line by line,
 // because a code span may cross a newline (CommonMark § 6.1). Masking each
 // line in isolation left the tail of a multi-line span exposed:
-// docs/specs/ANTS-1150.md wraps a C++ lambda in a span that opens on :197
+// docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md wraps a C++ lambda in a span that opens on :197
 // and closes on :198, so `[this](int idx)` was harvested as a link.
 //
 // ANTS-3649 — the span-finding half now lives in MarkdownScan::codeSpans

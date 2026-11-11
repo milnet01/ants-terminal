@@ -1,6 +1,6 @@
 # ANTS-1579 — `verify_changes` `timeout_sec` end-to-end plumb
 
-See `docs/specs/ANTS-1579.md`. This spec.md mirrors the invariants the
+See `docs/specs/ANTS-1579-verify-changes-timeout-sec-end.md`. This spec.md mirrors the invariants the
 test enforces.
 
 ## Contract

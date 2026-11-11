@@ -1,6 +1,6 @@
 # `roadmap_query` per-section ETag — feature-conformance test
 
-Locks the invariants in `docs/specs/ANTS-1882.md`. The section-mode
+Locks the invariants in `docs/specs/ANTS-1882-roadmap-query-per-section-etag.md`. The section-mode
 `duplicate_ids` field is now filtered to entries involving the
 queried section — preserving per-section ETag invariance under
 unrelated cross-section edits.

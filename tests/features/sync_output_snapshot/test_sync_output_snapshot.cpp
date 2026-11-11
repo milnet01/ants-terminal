@@ -1,7 +1,7 @@
 // Feature-conformance test for ANTS-1148 (0.7.75) — DEC mode 2026
 // (sync output) unified snapshot path. Source-grep only.
 //
-// INVs map 1:1 to docs/specs/ANTS-1148.md §Acceptance:
+// INVs map 1:1 to docs/specs/ANTS-1148-dec-mode-2026-sync-output.md §Acceptance:
 //   INV-1   batchEntersSyncOutput helper in anon namespace
 //   INV-2   pre-scan ordered before the processAction loop
 //   INV-3   capture disjunction (sync || batchEnters) + empty guard

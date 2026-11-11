@@ -6,7 +6,7 @@
 
 // ANTS-1147 — extracted from MainWindow::applyTheme. Pure
 // functions; no Qt widget headers needed. See
-// docs/specs/ANTS-1147.md for the contract.
+// docs/specs/ANTS-1147-extract-themedstylesheet-mainwindow-cpp.md for the contract.
 
 namespace themedstylesheet {
 

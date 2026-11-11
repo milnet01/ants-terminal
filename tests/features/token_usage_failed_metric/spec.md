@@ -1,7 +1,7 @@
 # token_usage_failed_metric — feature contract
 
 Pure-function tests for the ANTS-1432 failed-call metric extension to
-`TokenUsageEngine::Tracker`. See `docs/specs/ANTS-1432.md` for the
+`TokenUsageEngine::Tracker`. See `docs/specs/ANTS-1432-token-usage-failed-call-metric.md` for the
 full design + rationale; this is the test-side mirror.
 
 ## What this test guards

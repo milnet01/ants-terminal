@@ -4,7 +4,7 @@ Drives the `cmdRoadmapLog*ForTest` seams against a seeded
 `#### Pass N.M` heading-format `ROADMAP.md` in a `QTemporaryDir`, plus
 pure-helper unit cases for `PassHeadingWrite`. Verifies the writer that
 ANTS-2031 punted (it shipped only the `format_mismatch` refusal). The
-spec these invariants implement is `docs/specs/ANTS-2126.md`; the INV
+spec these invariants implement is `docs/specs/ANTS-2126-roadmap-log-heading-format-writer.md`; the INV
 numbers below are this test file's own namespace (distinct from the
 design spec's INV-1..16 and from the format-mismatch test's INVs).
 

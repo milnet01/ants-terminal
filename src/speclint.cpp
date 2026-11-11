@@ -738,7 +738,7 @@ void checkTestSurfaces(const QVector<InvId> &ids,
 
         // A withdrawn or moved invariant has nothing left to test. Without the
         // exemption this check fires against every tombstone in the corpus —
-        // docs/specs/ANTS-3663.md carries two today.
+        // docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md carries two today.
         if (isTombstone(o.value(QStringLiteral("body")).toString())) continue;
 
         // Blank counts as absent, and that is not defensive: the bullet branch
@@ -839,7 +839,7 @@ void checkIdGaps(const QStringList &lines, const QVector<bool> &fence,
         QSet<int> have;
         for (const InvId &e : ids) have.insert(e.n);
         // From the document's OWN MINIMUM, not from 1. A spec whose sequence
-        // legitimately starts above 1 — docs/specs/ANTS-1358.md opens at INV-14
+        // legitimately starts above 1 — docs/specs/ANTS-1358-debt-sweep-detector-expansion.md opens at INV-14
         // because it continues an earlier spec's numbering — has an offset
         // origin, not thirteen gaps. Anchoring at 1 reported exactly that
         // against the corpus (measured: it was most of the 109 id-gap findings

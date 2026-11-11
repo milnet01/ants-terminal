@@ -1,7 +1,7 @@
 # Feature test — docs_index MCP verb (ANTS-2139)
 
 Behavioural invariants drive the pure `DocsIndex` helper; wiring invariants
-source-scrape the registration sites. Full design: `docs/specs/ANTS-2139.md`.
+source-scrape the registration sites. Full design: `docs/specs/ANTS-2139-docs-index-mcp-tool-project.md`.
 
 | INV | Test | Asserts |
 |---|---|---|

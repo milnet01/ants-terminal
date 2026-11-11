@@ -2658,7 +2658,7 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
     // ANTS-4644 — a spec cites a module the way a HUMAN writes it, so the
     // project-relative form this verb's own description prescribes is routinely
     // the one form that matches nothing. Two projects reported it on the same
-    // day, and it reproduces here: docs/specs/ANTS-2161.md, the spec governing
+    // day, and it reproduces here: docs/specs/ANTS-2161-auto-detect-non-standard-layout.md, the spec governing
     // op:detect, cites `projectsettings.cpp` and is invisible to a query for
     // `src/projectsettings.cpp`.
     //
@@ -2933,8 +2933,8 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
 // (matching specs / ROADMAP cards / recent commits / ADRs). Pure
 // composer over cmdRoadmapQuery + cmdGitState + SpecParse::parseSpecBody.
 // project_conventions: task_type → curated {rule, source} table with a
-// source-existence check. Both MCP-only. Specs docs/specs/ANTS-1306.md
-// and docs/specs/ANTS-1307.md.
+// source-existence check. Both MCP-only. Specs docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md
+// and docs/specs/ANTS-1307-project-conventions-mcp-compact.md.
 
 namespace rcdetail {
 
@@ -3534,7 +3534,7 @@ QJsonDocument RemoteControl::cmdProjectConventions(const QJsonObject &req) {
 
 // ----- ANTS-1302 — focused_test: run only the ctest subset touching
 // the changed files. Pure resolution in FocusedTest; this runs ctest
-// and parses with TestResCache. See docs/specs/ANTS-1302.md.
+// and parses with TestResCache. See docs/specs/ANTS-1302-focused-test-mcp-run-only.md.
 // ANTS-5503 — the other runners: TestRunners builds the command and parses
 // the output. See docs/specs/ANTS-5503-multi-runner-tests.md.
 

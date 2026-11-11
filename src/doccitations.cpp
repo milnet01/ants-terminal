@@ -1,4 +1,4 @@
-// ANTS-3653 — see doccitations.h for the contract, docs/specs/ANTS-3653.md for
+// ANTS-3653 — see doccitations.h for the contract, docs/specs/ANTS-3653-citation-scan-path-line-grammar.md for
 // the grammar.
 
 #include "doccitations.h"
@@ -362,7 +362,7 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
 
 // ---------------------------------------------------------------------------
 // ANTS-3636 — the read path: resolve every scanned citation against the tree
-// and return the cited text. See docs/specs/ANTS-3636.md § 2.4 (the ladder),
+// and return the cited text. See docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md § 2.4 (the ladder),
 // § 2.6 (statuses) and § 2.7 (the Options block that owns every bound).
 // ---------------------------------------------------------------------------
 

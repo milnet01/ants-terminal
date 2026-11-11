@@ -168,7 +168,7 @@ QList<SpecToken> findDriftTokens(
 QList<SpecToken> extractDocLiteralTokens(const QString &docText) {
     // Like extractSpecTokens but path-widened (`/` added to the body charset,
     // so slash-paths like `archived/unknown` are captured) and fence-aware.
-    // See docs/specs/ANTS-3600.md § 2.4.
+    // See docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md § 2.4.
     static const QRegularExpression tokenRe(
         R"(`([A-Za-z_][A-Za-z0-9_:\-\./]{3,})`)");
     // URL guard — the widened charset admits `:` and `/`, so a back-ticked URL
@@ -513,7 +513,7 @@ QString buildProjectSourceBlob(const QString &projectPath,
             // ANTS-3600 phase 1 — record the rel-path UNCONDITIONALLY, before
             // any content gate below, so a doc-cited filename resolves via the
             // manifest even when the file is name-excluded / off-kExts / a
-            // markdown body (docs/specs/ANTS-3600.md § 2.3).
+            // markdown body (docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md § 2.3).
             if (opts.appendPathManifest) {
                 pathManifest += rel;
                 pathManifest += '\n';

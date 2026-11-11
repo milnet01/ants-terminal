@@ -1,7 +1,7 @@
 # roadmap_scroll_persistence — ANTS-1264
 
 Feature contract for the Roadmap dialog's scroll-position persistence
-(implements spec `docs/specs/ANTS-1154.md` §4.5 / INV-13).
+(implements spec `docs/specs/ANTS-1154-roadmapdialog-v2-card-style-rendering.md` §4.5 / INV-13).
 
 The dialog records the topmost visible card per tab on close
 (in the project's view state, keyed by the tab showing; ANTS-5214) and restores

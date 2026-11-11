@@ -1,6 +1,6 @@
 # mcp_roadmap_log_verb — ANTS-1424
 
-See `docs/specs/ANTS-1424.md`.
+See `docs/specs/ANTS-1424-roadmap-log-mcp-write-verb.md`.
 
 ## Test scope
 

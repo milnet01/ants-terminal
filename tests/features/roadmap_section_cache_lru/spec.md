@@ -1,7 +1,7 @@
 # ANTS-1346 — `roadmap_query` section cache LRU eviction
 
 Source-grep + structural tests locking in the LRU policy added to
-`RemoteControl::m_roadmapSectionCache`. See `docs/specs/ANTS-1346.md`
+`RemoteControl::m_roadmapSectionCache`. See `docs/specs/ANTS-1346-roadmap-query-section-cache-lru.md`
 for full design.
 
 ## Invariants exercised

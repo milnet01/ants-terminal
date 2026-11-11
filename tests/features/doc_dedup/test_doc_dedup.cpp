@@ -198,7 +198,7 @@ TEST(DocDedup, Inv3ExclusionsAndTheDeletedOne) {
     // the pointer rule. Three shapes: bare link, see-prefixed, list item.
     const QString link = QStringLiteral(
         "[the canonical statement of the passage segmentation rule and every "
-        "constant it depends on](docs/specs/ANTS-3660.md#2-1-passages)");
+        "constant it depends on](docs/specs/ANTS-3660-doc-dedup-find-same-passage.md#2-1-passages)");
     ASSERT_TRUE(DocDedup::isPointerLine(link));
     ASSERT_TRUE(DocDedup::isPointerLine(QStringLiteral("See ") + link + QStringLiteral(".")));
     ASSERT_TRUE(DocDedup::isPointerLine(QStringLiteral("- ") + link));

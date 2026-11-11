@@ -54,7 +54,7 @@ class PluginManager;
 // ANTS-3572 — snapshot of the persisted tokens-saved aggregate + the live
 // session, assembled by MainWindow::tokenSavingsSummary() for the token_usage
 // MCP verb. Each scalar period is stored + live session; `monthly` is the
-// folded buckets only, recent-first. See docs/specs/ANTS-3572.md.
+// folded buckets only, recent-first. See docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md.
 struct TokenSavingsSummary {
     qint64     month    = 0;
     qint64     ytd      = 0;

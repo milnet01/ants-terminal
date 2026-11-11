@@ -10,7 +10,7 @@
 // reaches screen readers without the metadata fragility the ANTS-1235
 // status-emoji label work surfaced.
 //
-// Spec: docs/specs/ANTS-1236.md.
+// Spec: docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md.
 
 #include <QDialog>
 #include <QString>

@@ -141,7 +141,7 @@ TEST(mcp_tool_info_verb, Inv8DispatchedInline) {
 
 // ---- ANTS-1985 — catalog mode (INV-9..INV-13) -------------------
 // These continue the invariant sequence already owned by this test
-// home (ANTS-1399 INV-1..8); see docs/specs/ANTS-1985.md § 3.
+// home (ANTS-1399 INV-1..8); see docs/specs/ANTS-1985-tool-info-catalog-true-one.md § 3.
 
 // Scope a substring to the tool_info descriptor registration block:
 // from `t["name"] = "tool_info";` to the next `tools.append(t);`.

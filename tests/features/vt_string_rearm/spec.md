@@ -15,7 +15,7 @@ state — *only* when the next byte is a string introducer
 (`]`→OSC, `P`→DCS, `_`→APC, `X`→SOS, `^`→PM). Every other byte —
 including the dangerous ESC-finals (`c`/RIS, `D`, `M`, `7`, `8`, `=`,
 `>`), the CSI introducer `[`, intermediates, and C0 — is still
-discarded. Design spec: `docs/specs/ANTS-1777.md`.
+discarded. Design spec: `docs/specs/ANTS-1777-safe-re-arm-string-introducers.md`.
 
 ## Invariants
 

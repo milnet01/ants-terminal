@@ -7,7 +7,7 @@ behaviour; source-greps `claudetasklistdialog.cpp`,
 ## INV map
 
 INV labels qualified `ANTS-1158-INV-N`. Full statements in
-`docs/specs/ANTS-1158.md` §9.
+`docs/specs/ANTS-1158-claude-code-task-list-status.md` §9.
 
 | #  | Lane | Statement |
 |----|------|-----------|

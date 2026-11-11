@@ -114,7 +114,7 @@ QStringList argumentClosingTagFields(const QJsonObject &req);
 // One entry per top-level status-emoji-prefixed bullet in document
 // order; plain narration bullets without an emoji are omitted (they
 // don't have stable IDs and so are out of contract). See
-// `docs/specs/ANTS-1117.md` § Acceptance criteria.
+// `docs/specs/ANTS-1117-claude-code-running-ants-gui.md` § Acceptance criteria.
 struct BulletRecord {
     QString id;          // <PREFIX>-NNNN; empty if no `[<PREFIX>-NNNN]` token (ANTS-1405)
     QString status;      // one of the kEmoji* glyphs above

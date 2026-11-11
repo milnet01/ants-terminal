@@ -1,7 +1,7 @@
 # mcp_project_layout_scan — feature contract
 
 Pure-function tests for the ANTS-1430 `project_layout` scan helper
-on `ProjectLayoutEngine`. See `docs/specs/ANTS-1430.md` for the
+on `ProjectLayoutEngine`. See `docs/specs/ANTS-1430-session-memory-project-layout-scan.md` for the
 full design + rationale; this is the test-side mirror.
 
 ## What this test guards

@@ -1,6 +1,6 @@
 // Feature-conformance test for ANTS-1878 — `roadmap_log op:create_section`.
 // See tests/features/mcp_roadmap_log_create_section/spec.md and
-// docs/specs/ANTS-1878.md.
+// docs/specs/ANTS-1878-roadmap-log-op-create-section.md.
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -356,7 +356,7 @@ TEST(McpRoadmapLogCreateSection, Ants4848Level2AfterLevel3DoesNotAdoptSiblings) 
 }
 
 // ---------------------------------------------------------------------------
-// INV-11 (ANTS-5315) — docs/specs/ANTS-1878.md § 2.3a. With no after_section,
+// INV-11 (ANTS-5315) — docs/specs/ANTS-1878-roadmap-log-op-create-section.md § 2.3a. With no after_section,
 // a level-2 version title is placed after the greatest lower version.
 
 namespace {

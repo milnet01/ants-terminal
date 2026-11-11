@@ -1,6 +1,6 @@
 # mcp_session_memory — feature-conformance spec
 
-**Owner:** ANTS-1283 (`docs/specs/ANTS-1283.md`)
+**Owner:** ANTS-1283 (`docs/specs/ANTS-1283-session-memory-mcp-key-value.md`)
 **Subject:** MCP wiring layer (RemoteControl + ClaudeIntegration +
 MainWindow) for the `session_memory` tool.
 

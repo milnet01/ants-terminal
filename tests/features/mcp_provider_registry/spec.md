@@ -1,6 +1,6 @@
 # mcp_provider_registry — ANTS-1253 conformance
 
-Source spec: [docs/specs/ANTS-1253.md](../../../docs/specs/ANTS-1253.md).
+Source spec: [docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md](../../../docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md).
 
 Source-grep conformance harness — does NOT spin up the MCP server.
 It locks the post-ANTS-1253 wiring contract that consolidated 12

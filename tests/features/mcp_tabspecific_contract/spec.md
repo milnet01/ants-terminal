@@ -1,7 +1,7 @@
 # Feature: `CallerCwdContract::TabSpecific` enforcement (ANTS-1415, Phase 3b)
 
 Human contract for the source-scrape regression test in this
-directory. Full design: `docs/specs/ANTS-1415.md`.
+directory. Full design: `docs/specs/ANTS-1415-callercwdcontract-tabspecific.md`.
 
 Phase 3a (ANTS-1404) enforced the `Required` caller-cwd contract at the
 MCP `tools/call` dispatch site and classified six tools `TabSpecific`

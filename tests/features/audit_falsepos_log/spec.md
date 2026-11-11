@@ -1,7 +1,7 @@
 # Feature: `audit_falsepos_log` MCP write verb
 
 Contract for the write side of the false-positive ledger
-`.ants_review_falsepos.jsonl`. Design: [`docs/specs/ANTS-2129.md`](../../../docs/specs/ANTS-2129.md);
+`.ants_review_falsepos.jsonl`. Design: [`docs/specs/ANTS-2129-audit-falsepos-log-mcp-write.md`](../../../docs/specs/ANTS-2129-audit-falsepos-log-mcp-write.md);
 standard: [`docs/standards/audit-false-positives.md`](../../../docs/standards/audit-false-positives.md).
 
 Driven via `RemoteControl::cmdAuditFalseposLog` (m_main-independent —

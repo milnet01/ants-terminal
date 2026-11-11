@@ -11,7 +11,7 @@ ANTS-3672 (found 2026-07-28 verifying ANTS-3665 against the live corpus).
 **Covers:** ANTS-3785 (writer corrupts a wrapped field), ANTS-3672 (reader
 truncates a wrapped field).
 **Pairs with:** `docs/standards/specs.md` § 3.2 (header block) — the normative
-home of the rule this spec implements — and [ANTS-1963](ANTS-1963.md), whose
+home of the rule this spec implements — and [ANTS-1963](ANTS-1963-spec-log-mcp-tool-write.md), whose
 INV-5 currently mandates the defective behaviour; § 7 carries the amendment.
 
 ## 1. Problem
@@ -55,7 +55,7 @@ python3 tools/spec-header-survey.py docs/specs
 # fence opened inside a header block: 0
 # orphaned-continuation signature: 0
 # distinct header-field names: 46 (4 prose-shaped, each needing a human look)
-# prose-bullet continuation (ANTS-1436.md): present
+# prose-bullet continuation (ANTS-1436-roadmap-query-pagination-auto-truncate.md): present
 ```
 
 `--values` additionally prints each wrapped field's `line_count` and joined
@@ -110,7 +110,7 @@ each stripped of surrounding whitespace and joined with a single space.
 run ending in a colon *within* a line is ordinary value text — every anchor
 above is `^`-anchored for this reason. Two corpus cases pin it:
 `docs/specs/ANTS-3766-roadmap-migration-archives.md` carries
-`**Split at loop 4:**` inside its Status prose, and `docs/specs/ANTS-1253.md`
+`**Split at loop 4:**` inside its Status prose, and `docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md`
 packs `**Lanes:**` onto the same physical line as its `**Kind:**` value.
 
 **The consequence has to be stated, because it is the rule's one sharp edge: a
@@ -145,7 +145,7 @@ delete the evidence that the rule handles it.
 terminator.** It is absent from the list above deliberately, and a
 bullet-leading line is therefore a continuation unless it independently matches
 one of the four. This is measured, not assumed: in
-`docs/specs/ANTS-1436.md` the Status field's continuation line begins
+`docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md` the Status field's continuation line begins
 `` + `cmdRoadmapQuery` offset/limit; … `` and is prose, not a list item — the
 sentence reads ``…`src/paginationengine.{h,cpp}` + `cmdRoadmapQuery`…``. A
 terminator set including `^[-*+]\s` truncates it there, and is rejected for
@@ -243,7 +243,7 @@ implementations.
   value is the opener's trailing text plus each continuation, each stripped and
   joined with exactly one space. *Test:*
   `tests/features/spec_field_extent/` — a fixture holding a byte-for-byte copy
-  of `docs/specs/ANTS-1436.md`'s header, checked in so that no later edit to
+  of `docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md`'s header, checked in so that no later edit to
   that live spec can move the expectation; asserts
   `lineCount == 2` and that the value equals exactly ``shipped 2026-05-16
   (commit f9647bc; `src/paginationengine.{h,cpp}` + `cmdRoadmapQuery`
@@ -308,7 +308,7 @@ implementations.
   (INV-9), and a fixture exercising two rules at once proves neither.
 - **INV-9** — A `**Field:**` marker begins or ends a field only at the start
   of a line; a bold colon-run inside a line is value text. *Test:*
-  `tests/features/spec_field_extent/` — the `docs/specs/ANTS-1253.md` shape
+  `tests/features/spec_field_extent/` — the `docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md` shape
   (`**Kind:** … **Lanes:** …` on one physical line, one continuation line),
   asserting the returned `Kind` retains the literal `**Lanes:**` rather than
   stopping at it, and that `lineCount` is 2.
@@ -418,7 +418,7 @@ move an anchor; the three asserted literals are untouched by this change.
 
 - `docs/standards/specs.md` § 3.2 — the extent rule (§ 2.3 above). Gated
   separately as a standard.
-- `docs/specs/ANTS-1963.md` INV-5 — currently reads *"rewrites the first
+- `docs/specs/ANTS-1963-spec-log-mcp-tool-write.md` INV-5 — currently reads *"rewrites the first
   `^\*\*Status:\*\*` line's trailing text … and changes nothing else"*, which
   mandates the defect. Amended to the whole-extent contract, citing this spec.
   Per `specs.md` § 5.5 the id is amended in place, never renumbered.

@@ -1,6 +1,6 @@
 // Feature-conformance test for ANTS-1294 — MCP output sanitisation.
 // Frames user-supplied content returned by tools/call as data
-// rather than instructions. See spec.md and docs/specs/ANTS-1294.md.
+// rather than instructions. See spec.md and docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md.
 //
 // Layout: engine cases call ClaudeIntegration::wrapMcpData directly
 // (the test bundle already links ants_claude_lib). Wiring cases

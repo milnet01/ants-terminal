@@ -97,7 +97,7 @@ in v2 (roadmap follow-up).
   Test: `Ants3605InProcessLanesDispatchedHeadless` — a hermetic
   QTemporaryDir project whose `tests/features/*/spec.md` cites a
   back-ticked token absent from the tree; asserts `spec_code_drift` lands
-  in `by_tool` with `rawCount ≥ 1`. See docs/specs/ANTS-1351.md INV-21.
+  in `by_tool` with `rawCount ≥ 1`. See docs/specs/ANTS-1351-audit-run-mcp-verb-server.md INV-21.
 - **trivy's nested findings are flattened (2026-09-26 audit).** trivy's
   `Results[]` are per-target containers; `AuditEngine::flattenTrivyResults`
   turns each vulnerability, secret and misconfiguration into one entry with

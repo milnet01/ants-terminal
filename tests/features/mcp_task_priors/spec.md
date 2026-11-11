@@ -1,7 +1,7 @@
 # mcp_task_priors — feature-conformance contract
 
 **Theme:** `task_priors` MCP tool wiring + ranking-logic markers
-(ANTS-1306). Full spec: `docs/specs/ANTS-1306.md`.
+(ANTS-1306). Full spec: `docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md`.
 
 This is a source-grep harness (the same pattern as
 `mcp_current_state` / `mcp_invariant_check`): `task_priors` is a
@@ -15,7 +15,7 @@ against the source files.
 
 - **INV-1**: `cmdTaskPriors(const QJsonObject &req)` is declared in
   `src/remotecontrol.h` and defined in the remotecontrol TUs with an
-  `ANTS-1306` anchor comment. Source: docs/specs/ANTS-1306.md INV-1.
+  `ANTS-1306` anchor comment. Source: docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md INV-1.
 - **INV-2**: term extraction uses the three documented regexes — id
   `ANTS-[0-9]+`, the known-extension path set, and
   `[A-Za-z_][A-Za-z0-9_]{3,}` for terms — and a process-static

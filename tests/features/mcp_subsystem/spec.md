@@ -1,6 +1,6 @@
 # mcp_subsystem — ANTS-1251 conformance
 
-Source spec: [docs/specs/ANTS-1251.md](../../../docs/specs/ANTS-1251.md).
+Source spec: [docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md](../../../docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md).
 
 This is a source-grep conformance harness — it does NOT spin up a
 RemoteControl + QLocalServer + filesystem sandbox. It locks the
@@ -72,7 +72,7 @@ parse.
 
 The canonical module map moved out of CLAUDE.md (reloaded into every
 Claude session) into `docs/subsystems.md`, served on demand via the
-`subsystem` tool. See `docs/specs/ANTS-1292.md`. Assertions 12-14 lock it:
+`subsystem` tool. See `docs/specs/ANTS-1292-split-claude-md-module-map.md`. Assertions 12-14 lock it:
 INV-12 parses the *resolved* source (≥ 15 lanes incl. `vtparser`),
 INV-13 asserts `resolveSource()` prefers `docs/subsystems.md`, and INV-14
 asserts the post-split CLAUDE.md parses to zero lanes (no duplicate

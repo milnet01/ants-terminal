@@ -1,4 +1,4 @@
-// VerifyEngine implementation — see verifyengine.h + docs/specs/ANTS-1289.md.
+// VerifyEngine implementation — see verifyengine.h + docs/specs/ANTS-1289-verify-changes-mcp-tool.md.
 
 #include "verifyengine.h"
 #include "pathvalidation.h"

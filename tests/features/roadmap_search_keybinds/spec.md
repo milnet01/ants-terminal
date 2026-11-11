@@ -3,13 +3,13 @@
 Locks ANTS-1234: RoadmapDialog `/`-focus + Esc-clear + body-only
 auto-expand of cards on substring match. Full design rationale +
 re-open conditions live in
-[`docs/specs/ANTS-1234.md`](../../../docs/specs/ANTS-1234.md). This
+[`docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md`](../../../docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md). This
 file restates the invariants the test asserts so the test reads as a
 contract rather than a regression-only ratchet.
 
 ## Invariants under test
 
-These mirror `docs/specs/ANTS-1234.md` § 4. IDs are qualified
+These mirror `docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md` § 4. IDs are qualified
 (`ANTS-1234-INV-N`) per the ANTS-1236 § 7 convention — bare `INV-N`
 is ambiguous once two specs share a test directory tree.
 

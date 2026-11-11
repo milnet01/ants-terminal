@@ -1,7 +1,7 @@
 # doc_dedup — engine conformance
 
 Contract for `tests/features/doc_dedup/test_doc_dedup.cpp`. Owning spec:
-[`docs/specs/ANTS-3660.md`](../../../docs/specs/ANTS-3660.md).
+[`docs/specs/ANTS-3660-doc-dedup-find-same-passage.md`](../../../docs/specs/ANTS-3660-doc-dedup-find-same-passage.md).
 
 `DocDedup::Accumulator` is pure — document text in, pairs out — so every row here
 drives it directly, with no MainWindow and no filesystem. The one exception is

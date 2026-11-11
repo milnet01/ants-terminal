@@ -621,8 +621,8 @@ order, so `tests/features/mcp_tabspecific_contract/`'s ordering assertion is
 re-used against the new host rather than relaxed.
 
 **Two stale status lines, cited by content not by status** (write-spec Step 1's
-rule): `docs/specs/ANTS-1401.md` carries **no `Status:` line at all**, and
-`docs/specs/ANTS-1415.md` still reads `spec draft (2026-05-20)` although its
+rule): `docs/specs/ANTS-1401-central-resolvedroot-helper-caller-cwd.md` carries **no `Status:` line at all**, and
+`docs/specs/ANTS-1415-callercwdcontract-tabspecific.md` still reads `spec draft (2026-05-20)` although its
 gate is shipped and enforced. Both are cited above for what they say, not for
 what their headers claim. Fixing them is not this spec's work.
 

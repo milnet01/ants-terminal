@@ -7,7 +7,7 @@
 // coverage-map file. The MCP layer (`RemoteControl::cmdFocusedTest`)
 // runs ctest and parses it with `TestResCache::parseCtestOutput`.
 //
-// Layout / invariants documented in `docs/specs/ANTS-1302.md`.
+// Layout / invariants documented in `docs/specs/ANTS-1302-focused-test-mcp-run-only.md`.
 
 #pragma once
 
@@ -45,7 +45,7 @@ struct Resolution {
 };
 
 // Resolve changed files (repo-relative, leading "./" already stripped)
-// to ctest patterns. See docs/specs/ANTS-1302.md § 3.3.
+// to ctest patterns. See docs/specs/ANTS-1302-focused-test-mcp-run-only.md § 3.3.
 Resolution resolve(const QStringList &changedFiles, const CoverageMap &map);
 
 // foo.cpp / foo.h -> a best-effort ctest-name fragment (the basename

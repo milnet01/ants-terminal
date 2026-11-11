@@ -349,7 +349,7 @@ TEST(ReadRegionMdSection, WiringContract) {
 // string, so ```` ```cpp ```` on one line is an inline code span, not an
 // opener. The hand-rolled tracker this replaced read it as an opener and went
 // blind to every later heading, refusing `section_not_found` on any document
-// that teaches fenced code — docs/specs/ANTS-3661.md, live, before the fix.
+// that teaches fenced code — docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md, live, before the fix.
 TEST(ReadRegionMdSection, InlineFenceExampleDoesNotBlindTheScan) {
     QTemporaryDir dir;
     const char *doc =

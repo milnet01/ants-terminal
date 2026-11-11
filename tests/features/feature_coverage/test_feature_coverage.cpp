@@ -420,7 +420,7 @@ void testIndexedLookupMatchesUnindexed() {
     const QString blob = QStringLiteral(
         "class RemoteControl { void dispatch(); };\n"
         "#include \"featurecoverage.h\"\n"
-        "docs/specs/ANTS-3600.md\n"
+        "docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md\n"
         "int alpha_beta = 3;  // trailing comment here\n"
         "lua54-devel x-checker-data\n"
         "some words with spaces between them\n");
@@ -437,7 +437,7 @@ void testIndexedLookupMatchesUnindexed() {
         QStringLiteral("beta"), QStringLiteral("lpha"),
         // Present, path-shaped (crosses '.', ':', '/', '-').
         QStringLiteral("featurecoverage.h"), QStringLiteral("docs/specs"),
-        QStringLiteral("docs/specs/ANTS-3600.md"), QStringLiteral("lua54-devel"),
+        QStringLiteral("docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md"), QStringLiteral("lua54-devel"),
         QStringLiteral("x-checker-data"),
         // Present, but outside both character classes — must reach the blob.
         QStringLiteral("words with spaces"), QStringLiteral("comment here"),

@@ -1,5 +1,5 @@
 // ANTS-1302 — `focused_test` resolution lib. See focusedtest.h and
-// docs/specs/ANTS-1302.md.
+// docs/specs/ANTS-1302-focused-test-mcp-run-only.md.
 
 #include "focusedtest.h"
 

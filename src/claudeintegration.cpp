@@ -59,7 +59,7 @@ qint64 monotonicNowMs() { return s_rateLimitClock.elapsed(); }
 // (get_scrollback, get_last_command, get_environment, get_cwd) ignore
 // `tab`, so it must NOT count as a routing key for them — else a stray
 // tab:N would bypass the Phase 3b gate and still fall back to the
-// focused tab. See docs/specs/ANTS-1415.md.
+// focused tab. See docs/specs/ANTS-1415-callercwdcontract-tabspecific.md.
 static bool tabSpecificAcceptsTabIndex(const QString &toolName) {
     return toolName == QLatin1String("get_text") ||
            toolName == QLatin1String("recent_errors") ||
@@ -770,7 +770,7 @@ void ClaudeIntegration::recordDispatch(
 }
 
 void ClaudeIntegration::endTokenSession() {
-    // ANTS-3572 — sole reset path (see docs/specs/ANTS-3572.md). Emit BEFORE
+    // ANTS-3572 — sole reset path (see docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md). Emit BEFORE
     // the reset so MainWindow's same-thread (DirectConnection) fold slot
     // snapshots the intact session total; then clear; then blank the chip.
     emit tokenSessionEnding();
@@ -1104,7 +1104,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     // changes a field's SHAPE and the caller must know how to
     // decode {__cols__,__rows__}. tabularize is self-guarding per
     // array (no tool-name predicate) — it no-ops on refusals,
-    // 304s, and arrays that don't shrink. See docs/specs/ANTS-2090.md.
+    // 304s, and arrays that don't shrink. See docs/specs/ANTS-2090-tabular-columnar-encoding-homogeneous.md.
     if (toolHandled && !etagUnchanged &&
         argsObj.value(QStringLiteral("encoding")).toString()
             == QStringLiteral("tabular")) {
@@ -1128,7 +1128,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     // head+pointer envelope. Opt-in (per-call offload:true or the
     // session default). The head guard (bodyBytes > head size)
     // keeps offload a net saving; fail-open returns the body
-    // unchanged on any write failure. See docs/specs/ANTS-2094.md.
+    // unchanged on any write failure. See docs/specs/ANTS-2094-proactive-server-side-result-offload.md.
     if (toolHandled && !etagUnchanged && !rawRequested &&
         mcp::isOffloadEligible(toolName) &&
         mcp::offloadRequested(argsObj)) {
@@ -1174,7 +1174,7 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         // not instructions. Control-plane tools (server-
         // generated state) skip the wrap so a caller can
         // syntactically distinguish structural metadata
-        // from content. See docs/specs/ANTS-1294.md.
+        // from content. See docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md.
         const bool isControlPlane =
             (toolName == QStringLiteral("get_session_info") ||
              toolName == QStringLiteral("token_usage") ||
@@ -1751,7 +1751,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
 
             if (method == "initialize") {
                 // ANTS-1284 — reset per-tool dispatch counters on
-                // session-start handshake. See docs/specs/ANTS-1284.md.
+                // session-start handshake. See docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
                 // ANTS-3572 — fold the previous session into the persisted
                 // aggregate before clearing (endTokenSession emits first).
                 endTokenSession();
@@ -2889,7 +2889,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // ANTS-1454 retrofitted the ANTS-1404 branch below to
                 // set "caller_cwd_required" — the pre-1454 default-to-
                 // ok masked the per-call cost of misconfigured callers
-                // (see docs/specs/ANTS-1454.md).
+                // (see docs/specs/ANTS-1454-caller-cwd-required-refusals-count.md).
                 QString dispatchResult = QStringLiteral("ok");
                 // ANTS-1360 — start latency clock before cache lookup
                 // so cache-hit records capture true µs-range latency
@@ -3073,7 +3073,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // A stray `tab` on a cwd-only tool is NOT a routing key
                 // (the handler ignores it), else it would bypass the
                 // gate and still fall back to focused. See
-                // docs/standards/mcp-error-codes.md § 3 + docs/specs/ANTS-1415.md.
+                // docs/standards/mcp-error-codes.md § 3 + docs/specs/ANTS-1415-callercwdcontract-tabspecific.md.
                 if (!toolHandled && toolKnown &&
                     contract == CallerCwdContract::TabSpecific) {
                     const bool tabIsRoutingKey =

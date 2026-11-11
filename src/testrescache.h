@@ -5,7 +5,7 @@
 // pass/fail/skip counts + per-failure excerpts, writes atomically,
 // reads on demand. No GUI deps.
 //
-// Layout / invariants documented in `docs/specs/ANTS-1300.md`.
+// Layout / invariants documented in `docs/specs/ANTS-1300-test-results-mcp-last-test.md`.
 
 #pragma once
 

@@ -16,7 +16,7 @@
 // lookup buys is the short list — the expensive half a reviewer cannot do
 // cheaply. Hence no severity, no defect vocabulary, and never autoFixable.
 //
-// See docs/specs/ANTS-3661.md.
+// See docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md.
 
 #pragma once
 

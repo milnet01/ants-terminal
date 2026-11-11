@@ -1,6 +1,6 @@
 # mcp_caller_cwd_contracts — ANTS-1404 Phase 3a
 
-See `docs/specs/ANTS-1404.md`.
+See `docs/specs/ANTS-1404-per-tool-caller-cwd-contracts.md`.
 
 ## Test scope
 

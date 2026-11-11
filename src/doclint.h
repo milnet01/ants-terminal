@@ -21,7 +21,7 @@
 // will eventually disagree (ANTS-3661 § 2.4). The CAPS are the engine's, because
 // eliding a document is an observable outcome a test must be able to drive.
 //
-// See docs/specs/ANTS-3663.md.
+// See docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md.
 
 #include <QHash>
 #include <QList>

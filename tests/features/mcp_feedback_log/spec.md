@@ -5,7 +5,7 @@ Drives the pure `FeedbackFile` renderers directly + the
 `RemoteControl::cmdFeedbackLog` handler (absolute path,
 m_main-independent) for op routing, refusals, file handling, atomicity.
 
-Invariants exercised (docs/specs/ANTS-1962.md §3 / §6):
+Invariants exercised (docs/specs/ANTS-1962-feedback-log-mcp-tool-append.md §3 / §6):
 
 - T1 — append_finding renders the full template; omitting repro drops
   only the **Repro:** line; **Proposed ID:** always present + blank.

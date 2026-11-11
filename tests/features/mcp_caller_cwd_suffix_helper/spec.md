@@ -1,6 +1,6 @@
 # mcp_caller_cwd_suffix_helper — ANTS-1409
 
-See `docs/specs/ANTS-1409.md`.
+See `docs/specs/ANTS-1409-callercwdsuffix-helper-tool-description.md`.
 
 ## Test scope
 

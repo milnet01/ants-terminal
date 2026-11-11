@@ -60,7 +60,7 @@ over `kMaxLineBytes` (ANTS-2139 INV-3) and every line inside a fenced block
 (ANTS-3604) *before* its matcher runs, and its matcher requires a non-empty
 same-line tail (`(.+)$`) where `headerField` accepts an empty one (`(.*)$`).
 A count that models none of these reports a status for documents the scanner
-never reads one from — measured: exactly one, `docs/specs/ANTS-2161.md`, whose
+never reads one from — measured: exactly one, `docs/specs/ANTS-2161-auto-detect-non-standard-layout.md`, whose
 `**Status:**` line is a single run well over 1024 bytes and is therefore
 invisible to `docs_index` today **and** after this change.
 
@@ -168,8 +168,8 @@ docs=296
   both_empty=119 (of which wrapped: 0)
   other=0 (of which wrapped: 0)
 docs_with_no_h2=0
-largest_header_block=65 lines, 4492 bytes (docs/specs/ANTS-3579.md)
-longest_status_extent=16 lines (docs/specs/ANTS-1397.md)
+largest_header_block=65 lines, 4492 bytes (docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md)
+longest_status_extent=16 lines (docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md)
 ```
 
 **`other=0` is the part that makes this evidence rather than a tally.** It is
@@ -323,7 +323,7 @@ struct Options {
 ```
 
 256 is chosen against the corpus, not by feel: the largest header block in
-scope is **65 lines / 4,492 bytes** (`docs/specs/ANTS-3579.md`, § 1's
+scope is **65 lines / 4,492 bytes** (`docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md`, § 1's
 `largest_header_block`) — so the cap
 sits at roughly 4× the observed worst case and no current document reaches it.
 Past the cap, buffering stops and the helper runs on what was collected — the
@@ -362,7 +362,7 @@ Two things the row labels alone would hide. **The 2 below-block documents are
 also wrapped ones**, so § 1's 54 is `52 + 2` — the *classes* are disjoint, the
 two *figures* overlap, and adding 54 and 2 would count those documents twice.
 And `both_empty`'s 119 is 118 documents with no `**Status:**` line plus
-**one that has one nobody can read**: `docs/specs/ANTS-2161.md`, whose status
+**one that has one nobody can read**: `docs/specs/ANTS-2161-auto-detect-non-standard-layout.md`, whose status
 line exceeds `kMaxLineBytes` and is skipped before either matcher sees it. This
 change does not fix that document and does not try to — § 5.
 
@@ -498,7 +498,7 @@ being a build-graph change.
 
 - **Re-wrapping or repairing the 52 wrapped documents.** They are well-formed;
   the reader was wrong, not the documents.
-- **`docs/specs/ANTS-2161.md`'s unreadable status.** Its `**Status:**` line is
+- **`docs/specs/ANTS-2161-auto-detect-non-standard-layout.md`'s unreadable status.** Its `**Status:**` line is
   one run over `kMaxLineBytes`, so ANTS-2139 INV-3's over-long-line guard drops
   it before any matcher — today and after this change alike (§ 1). Fixing it
   means either raising that guard or re-wrapping the document, and both are
@@ -514,7 +514,7 @@ being a build-graph change.
   `Kind` returns, which this spec does not read.
 - **A streaming form of the rule.** Considered and rejected: a line-at-a-time
   accumulator inside `scanDoc` would hold only one field's lines (16 at the
-  corpus worst case — `docs/specs/ANTS-1397.md`, § 1's
+  corpus worst case — `docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md`, § 1's
   `longest_status_extent`) instead of the block's 65, but it re-expresses the
   **field-extent terminator set** — blank line, next field marker, ATX
   heading — in a second place, which is the duplication INV-2 and INV-7 exist
@@ -564,13 +564,13 @@ transcription, which is the rung `documentation.md` asks for and the reason
 
 ## 7. Cross-doc impact
 
-- **`docs/specs/ANTS-2139.md` INV-17** — currently "a `**Status:**` line sets
+- **`docs/specs/ANTS-2139-docs-index-mcp-tool-project.md` INV-17** — currently "a `**Status:**` line sets
   `status`", which is silent on position. Amended in place to say the line must
   appear in the header block (§ 2.3 states the effect), annotated
   `INV-17 amended by ANTS-3786` per `specs.md` § 5.5. **Not renumbered.**
-- **`docs/specs/ANTS-2139.md` INV-19** — gains `maxHeaderBlockLines` in its
+- **`docs/specs/ANTS-2139-docs-index-mcp-tool-project.md` INV-19** — gains `maxHeaderBlockLines` in its
   list of silent per-doc caps, same annotation form.
-- **`docs/specs/ANTS-2139.md` § 2.3's `constexpr` / `struct Options` block** —
+- **`docs/specs/ANTS-2139-docs-index-mcp-tool-project.md` § 2.3's `constexpr` / `struct Options` block** —
   enumerates every cap and every `Options` field, so it gains
   `kMaxHeaderBlockLines` and `maxHeaderBlockLines` alongside the INV-19 prose.
   Listed separately because amending the invariant text and leaving the code
@@ -605,5 +605,5 @@ transcription, which is the rung `documentation.md` asks for and the reason
 |---|---|---|---|---|
 | 3-impl | 2026-08-02 | none — implementation, not a review | contract held; 2 corrections | **Implementation row, written by the implementer**; no reviewer was dispatched. Every § 2.1 citation was re-verified against source before building — `statusRx`'s regex, both `continue`s, the `maxDocBytes` `break`, `blockEndRe` as `^##\s`, and the `SRC_*_CPP_PATH` scrape convention all matched as written. **Built must-fail-first**: with only `src/docsindex.cpp` reverted to HEAD, **8 of 10 assertions went red**. The two that stayed green are correctly insensitive to that file and are recorded rather than treated as gaps — INV-6 pins *unchanged* behaviour (ANTS-2139 INV-17's surviving half) and INV-9 exercises the survey tool. Then 10/10 green, with the sibling `DocsIndex` and `SpecFieldExtent` suites (40 tests total) green alongside. **Strongest evidence in the run:** `--scope=docs-index`, written independently on top of the tool's existing `field_extent` / `header_block_end` helpers, reproduces § 1's eight figures **byte-for-byte** — two independent implementations of the simulator agreeing, where § 1 previously rested on one. **Two things the contract got wrong and building it exposed.** (1) **§ 2.1's absorbed-prose mechanism was stated for one route and applies via two**: "headerField over the raw lines would have seen the excluded line as a terminator and stopped" is true only when the excluded line is *itself* terminator-shaped. A fence opener is not — it is neither blank, a marker, nor a heading — so the raw path absorbs the fence text instead of stopping. Both routes still make the two differ, so INV-2 was never at risk; the prose now carries a fixture per route rather than describing one as the rule. (2) **§ 6 said "the four simulator classes" where INV-9 says five and asserts five** — `other` is the bucket § 1 rests its evidence on, so the tool must print it; corrected to five. No contract clause was found false, and no invariant needed renumbering. |
 | 3 | 2026-08-02 | 2 cold `general-purpose` lanes, same byte-identical packet, no prior-loop context | C 1 · H 3 · M 5 · L 5 · I 1 — 15 verified, **1 dismissed** | **No loop-1 or loop-2 finding resurfaced.** All 14 actionable fixed; the INFO (a time/allocation budget line) was fixed anyway in § 4. **This loop was dominated by fix collateral, which is why the run stops here rather than looping again.** Loop 2 replaced § 1's counting command with a both-paths simulator and thereby orphaned two figures — `largest_header_block` and `longest_status_extent` — that § 2.2 and § 5 still cited as "§ 1's", leaving the cap value 256 and the streaming-form rejection unsourced while § 1 claimed every figure came from it. Loop 2's INV-5 fix likewise created the CRITICAL: the byte budget became a fourth way out of the read loop, which INV-2's three named exclusions did not cover, so INV-2 demanded equality on precisely the fixture INV-5 demanded differ. Both were repaired by making § 1's command emit *every* quoted figure — including `of which wrapped`, which sources the previously-asserted claim that the 2 body-prose documents are themselves wrapped — and by naming the budget as INV-2's fourth exclusion. One finding was **dismissed on verification**: a lane doubted the `features;fast` ctest label, which `CMakeLists.txt` carries verbatim. Lane B also caught a real second-order effect nobody had stated — the skips are `continue`s, so excluded lines close up and prose can be absorbed into a field value it was never adjacent to. |
-| 2 | 2026-08-02 | 2 cold `general-purpose` lanes, same byte-identical packet, no prior-loop context | C 1 · H 4 · M 6 · L 7 · I 1 — 19 verified, 0 dismissed, **2 of them found during verification rather than by a lane** | **No loop-1 finding resurfaced, which is the evidence those fixes held.** All 18 actionable fixed. **The CRITICAL was collateral from loop 1's own fix**: the EOF flush added there ran on the `maxDocBytes` `break` too, and that buffer is a truncated prefix — so the flush would emit exactly the partial value INV-5 forbids, making the two unbuildable together. Fixed with a `budgetHit` guard, and the "three exits" passage that caused it became four, since the budget break and EOF both leave the loop with `headerDone == false` and only one means the block ended. **The largest item was not a lane's**: verifying lane B's HIGH about the measurement script — that it modelled neither `scanDoc`'s over-long-line skip, its fence skip, nor its non-empty-tail matcher — meant replacing the count with a **simulation of both code paths**, which moved two figures (`unchanged` 124 → 123, `both_empty` 118 → 119) and surfaced `docs/specs/ANTS-2161.md`, whose `**Status:**` line exceeds `kMaxLineBytes` and is therefore unreadable before and after this change; it is now named in § 5. The second verification-found item killed a fictional test seam: INV-2 and INV-4 drove tests through `DocsIndex::scanToEntry`, which `docsindex.h` does not export — both now go through `build()`, the seam the sibling suite actually uses. |
+| 2 | 2026-08-02 | 2 cold `general-purpose` lanes, same byte-identical packet, no prior-loop context | C 1 · H 4 · M 6 · L 7 · I 1 — 19 verified, 0 dismissed, **2 of them found during verification rather than by a lane** | **No loop-1 finding resurfaced, which is the evidence those fixes held.** All 18 actionable fixed. **The CRITICAL was collateral from loop 1's own fix**: the EOF flush added there ran on the `maxDocBytes` `break` too, and that buffer is a truncated prefix — so the flush would emit exactly the partial value INV-5 forbids, making the two unbuildable together. Fixed with a `budgetHit` guard, and the "three exits" passage that caused it became four, since the budget break and EOF both leave the loop with `headerDone == false` and only one means the block ended. **The largest item was not a lane's**: verifying lane B's HIGH about the measurement script — that it modelled neither `scanDoc`'s over-long-line skip, its fence skip, nor its non-empty-tail matcher — meant replacing the count with a **simulation of both code paths**, which moved two figures (`unchanged` 124 → 123, `both_empty` 118 → 119) and surfaced `docs/specs/ANTS-2161-auto-detect-non-standard-layout.md`, whose `**Status:**` line exceeds `kMaxLineBytes` and is therefore unreadable before and after this change; it is now named in § 5. The second verification-found item killed a fictional test seam: INV-2 and INV-4 drove tests through `DocsIndex::scanToEntry`, which `docsindex.h` does not export — both now go through `build()`, the seam the sibling suite actually uses. |
 | 1 | 2026-08-02 | 2 cold `general-purpose` lanes, one byte-identical shared packet, loop log withheld via a scrubbed copy | C 1 · H 2 · M 5 · L 7 · I 1 — 16 verified, 0 dismissed | All 15 actionable fixed; the INFO carried to the report. **Both lanes independently returned the same CRITICAL**, which is the strongest evidence the run produced: the § 2.1 snippet assigned `status` only inside its flush branch, so a document with no `^## ` heading and a header block under the cap would reach EOF with the field buffered and unread — a silent regression against the code this spec replaces, in a draft whose own § 2.3 table asserted such documents were "unchanged". Fixed by a third exit (the EOF flush) and pinned by a new **INV-8**. Two HIGHs were contract defects the author could not see: INV-2 claimed an unconditional equality that `scanDoc`'s fence and over-long-line skips make false, and INV-7 was written in exactly the scrape shape ANTS-3785 INV-6 spells out as wrong (literal instead of identifier, `#include` instead of call-site) — a sibling invariant the author had read and mis-applied. One MEDIUM was the design arguing against itself: § 5 rejected the streaming alternative for duplicating the rule while § 2.1 duplicated the block-end bound, resolved by exporting `SpecParse::isHeaderBlockEnd`. The Phase 4b sweep then caught one defect the fixes themselves introduced — a rewritten § 2.1 cited `plain_below=0` as evidence every document carries a `^## `, which that field does not measure; the § 1 command now prints `docs_with_no_h2` and the byte figure § 2.2 needs. |

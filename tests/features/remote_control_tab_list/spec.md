@@ -3,7 +3,7 @@
 User request 2026-04-30: surface a richer per-tab snapshot than the
 existing `ls` verb — same `index` / `title` / `cwd`, plus the
 `shell_pid` / `claude_running` / `color` fields Claude needs to
-script across multiple sessions. See `docs/specs/ANTS-1117.md`.
+script across multiple sessions. See `docs/specs/ANTS-1117-claude-code-running-ants-gui.md`.
 
 ## Surface
 

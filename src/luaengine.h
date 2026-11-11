@@ -133,7 +133,7 @@ public:
     // the plugin sandbox (5-lib allowlist + sandboxEnvironment() +
     // allocator + hook) but installs ONLY the read-only `project.*` API
     // (registerQueryApi) — none of registerApi()'s write callbacks.
-    // See docs/specs/ANTS-2093.md.
+    // See docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md.
     // ===================================================================
 
     // Marshalled outcome of one snippet run. Invariant: code/error are

@@ -1,7 +1,7 @@
 // ANTS-1855 — read_log filtering helper. Pure (Qt6::Core-only). Streams
 // the file line-by-line and keeps survivors in a drop-oldest deque
 // bounded by max_bytes (and tail), and reads no line past max_bytes, so
-// peak heap stays near max_bytes regardless of file size. See docs/specs/ANTS-1855.md.
+// peak heap stays near max_bytes regardless of file size. See docs/specs/ANTS-1855-read-log-mcp-tool-filter.md.
 
 #include "readlog.h"
 #include "boundedreadline.h"

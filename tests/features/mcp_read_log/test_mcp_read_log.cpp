@@ -1,7 +1,7 @@
 // Feature-conformance test for the read_log MCP tool (ANTS-1855).
 // Behavioural invariants exercise the pure ReadLog::filter helper;
 // wiring invariants source-scrape the five registration sites.
-// See spec.md + docs/specs/ANTS-1855.md.
+// See spec.md + docs/specs/ANTS-1855-read-log-mcp-tool-filter.md.
 
 #include "../../_support/expect.h"
 #include "readlog.h"

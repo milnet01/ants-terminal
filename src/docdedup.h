@@ -34,7 +34,7 @@
 // copy — so nothing here is ever autoFixable, and ANTS-3669 refuses to fix a
 // doc_dedup finding by name.
 //
-// See docs/specs/ANTS-3660.md.
+// See docs/specs/ANTS-3660-doc-dedup-find-same-passage.md.
 
 #pragma once
 

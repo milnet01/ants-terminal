@@ -359,7 +359,7 @@ QJsonDocument RemoteControl::cmdColdEyesBrief(const QJsonObject &req) {
 // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Pure delegation to
 // SessionMemoryEngine::execute. INV-12 echo hygiene applied to every
 // user-supplied string echoed in error responses. See
-// docs/specs/ANTS-1283.md.
+// docs/specs/ANTS-1283-session-memory-mcp-key-value.md.
 
 namespace rcdetail {
 
@@ -720,7 +720,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
 // key `project_layout`. Required-contract gated (dispatcher refuses
 // empty caller_cwd before the provider lambda runs). On invocation:
 // gate → cache lookup → freshness check (TTL + mtime) → scan-if-stale
-// → cache write (best-effort). See docs/specs/ANTS-1430.md.
+// → cache write (best-effort). See docs/specs/ANTS-1430-session-memory-project-layout-scan.md.
 
 QJsonDocument RemoteControl::cmdProjectLayout(const QJsonObject &req) {
     if (!m_roots) {

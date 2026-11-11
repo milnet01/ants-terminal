@@ -5,7 +5,7 @@
 // compiler output into an errors[] + warnings_count summary, writes
 // atomically via QSaveFile, reads on demand. No GUI deps.
 //
-// Layout / invariants documented in `docs/specs/ANTS-1299.md`.
+// Layout / invariants documented in `docs/specs/ANTS-1299-build-status-mcp-cached-build.md`.
 
 #pragma once
 

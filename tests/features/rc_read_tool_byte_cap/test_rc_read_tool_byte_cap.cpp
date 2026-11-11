@@ -1,4 +1,4 @@
-// Feature-conformance test for spec.md (canonical: docs/specs/ANTS-1293.md).
+// Feature-conformance test for spec.md (canonical: docs/specs/ANTS-1293-mcp-read-tool-response-byte.md).
 // Pins the server-side response byte cap on the structured read tools
 // (file_outline `symbols[]`, workspace_search `matches[]`) via the pure
 // RemoteControl::capJsonArrayToBytes helper, plus source-grep on the two

@@ -1,7 +1,7 @@
 // Feature-conformance test for the codebase_index MCP tool (ANTS-1637).
 // Behavioural invariants drive the pure CodebaseIndex helper; wiring
 // invariants source-scrape the registration sites. See spec.md +
-// docs/specs/ANTS-1637.md.
+// docs/specs/ANTS-1637-codebase-index-mcp-tool-pre.md.
 
 #include "../../_support/expect.h"
 #include "codebaseindex.h"

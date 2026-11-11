@@ -685,7 +685,7 @@ private:
     // burst paths (24-row `clear`, dmesg flood, tmux split redraw)
     // that previously paid fresh allocations for the rows past 4.
     // RAM ceiling ~256 KiB at 200-col widths; cf. m_scrollback at
-    // ~360 MiB upper bound. See docs/specs/ANTS-1362.md.
+    // ~360 MiB upper bound. See docs/specs/ANTS-1362-cell-buffer-free-pool-cap.md.
     static constexpr int kFreePoolCap = 32;
     // Pulls a blanked m_cols-wide cells row from the pool, or allocates fresh.
     std::vector<Cell> takeBlankedCellsRow();

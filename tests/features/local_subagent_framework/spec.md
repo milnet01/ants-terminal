@@ -4,7 +4,7 @@ User request 2026-04-30: ship a stateless CLI helper Claude Code can
 invoke instead of running shell scripts and parsing their stdout
 manually. v1 surface: a single subcommand wrapping
 `packaging/check-version-drift.sh`, behind a CMake option that
-defaults OFF. See `docs/specs/ANTS-1116.md` for the full contract.
+defaults OFF. See `docs/specs/ANTS-1116-stateless-local-subagent-cli-re.md` for the full contract.
 
 ## Surface
 

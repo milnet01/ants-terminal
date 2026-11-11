@@ -1,6 +1,6 @@
 # doc_citations_verb — the verb layer and its registration (ANTS-3636)
 
-Contract: [`docs/specs/ANTS-3636.md`](../../../docs/specs/ANTS-3636.md) § 2.1
+Contract: [`docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md`](../../../docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md) § 2.1
 (refusals, request surface) and § 2.7 (the six registration hooks).
 
 The engine's own invariants are `tests/features/doc_citations/`, in the

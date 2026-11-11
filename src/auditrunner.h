@@ -16,7 +16,7 @@
 // ANTS-5067 — the in-process drift lanes run on a detached worker under what
 // is left of the aggregate cap (internal::runInProcessLanes).
 //
-// See docs/specs/ANTS-1351.md.
+// See docs/specs/ANTS-1351-audit-run-mcp-verb-server.md.
 
 #pragma once
 
@@ -62,7 +62,7 @@ struct ToolSkip {
 struct RunRequest {
     // Raw caller_cwd as passed by the MCP layer. runAudit canonicalises
     // it into a local (`canonProject`) and validates that — this field is
-    // NOT rewritten. See docs/specs/ANTS-1351.md INV-2.
+    // NOT rewritten. See docs/specs/ANTS-1351-audit-run-mcp-verb-server.md INV-2.
     QString     projectRoot;
     QStringList tools;                   // empty == auto-detect
     // "auto" (whole tree) | "full" (ANTS-2015, explicit whole tree) |

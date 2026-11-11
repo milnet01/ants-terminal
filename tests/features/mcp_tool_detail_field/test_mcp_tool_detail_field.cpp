@@ -2,7 +2,7 @@
 // `description`/`detail` split. Source-scrape pattern (same harness as
 // mcp_tool_info_verb): we read src/claudeintegration.cpp and assert the
 // structural facts that implement each invariant, plus a reconstructed
-// wire-byte budget for INV-5. See spec.md + docs/specs/ANTS-2079.md.
+// wire-byte budget for INV-5. See spec.md + docs/specs/ANTS-2079-trim-load-bearing-mcp-tool.md.
 
 #include "../../_support/expect.h"
 

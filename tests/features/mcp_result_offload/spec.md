@@ -1,7 +1,7 @@
 # mcp_result_offload — ANTS-2094 conformance
 
 Test contract for proactive MCP result offload (observation masking).
-Full design: `docs/specs/ANTS-2094.md`. Behavioural coverage of the
+Full design: `docs/specs/ANTS-2094-proactive-server-side-result-offload.md`. Behavioural coverage of the
 `mcp::` offload/spill API (in `ants_core_lib`) under an isolated test
 cache dir (`QStandardPaths` test mode), plus source-scrapes for the
 dispatch-site and verb-wiring invariants.

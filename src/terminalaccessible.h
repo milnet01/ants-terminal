@@ -9,7 +9,7 @@ class TerminalWidget;
 // visible viewport to assistive technology (Orca, etc.) as readable text
 // with a caret. Thin glue: all content logic lives in TerminalWidget's
 // accessible*() helpers; this class holds NO per-widget content cache.
-// See docs/specs/ANTS-1078.md.
+// See docs/specs/ANTS-1078-screen-reader-accessibility.md.
 class TerminalWidgetAccessible : public QAccessibleWidget,
                                  public QAccessibleTextInterface {
 public:

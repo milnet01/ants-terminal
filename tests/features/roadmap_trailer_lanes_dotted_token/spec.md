@@ -99,7 +99,7 @@ own set for exactly this reason.
   line is not split into lanes. Caught against the live store, not
   reasoned about: a first draft stopping at the end of the line repaired
   the dotted runs and turned `Lanes: hooks. Verify the resulting
-  predicate table still matches docs/specs/ANTS-2141.md …` into one lane
+  predicate table still matches docs/specs/ANTS-2141-soft-warn-grep-find-over.md …` into one lane
   carrying the whole sentence.
 
 ## Tests

@@ -1,7 +1,7 @@
 # ANTS-1359 — `verify_changes` session build-cache conformance
 
 Behavioural feature test for the session-scoped cache wrapping
-`mcp__ants__verify_changes`. Spec: `docs/specs/ANTS-1359.md`.
+`mcp__ants__verify_changes`. Spec: `docs/specs/ANTS-1359-verify-changes-session-build-cache.md`.
 
 ## Invariants covered
 

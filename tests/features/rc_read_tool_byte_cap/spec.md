@@ -1,6 +1,6 @@
 # rc_read_tool_byte_cap — MCP read-tool response byte cap (ANTS-1293)
 
-Canonical spec: `docs/specs/ANTS-1293.md`.
+Canonical spec: `docs/specs/ANTS-1293-mcp-read-tool-response-byte.md`.
 
 Pins the server-side response byte cap on the structured read tools
 (`file_outline` `symbols[]`, `workspace_search` `matches[]`) via the pure

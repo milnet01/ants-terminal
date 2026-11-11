@@ -20,7 +20,7 @@ Invariants exercised (docs/specs/ANTS-3785-header-field-extent.md §3 / §6):
 - T2 (INV-2) — a continuation line beginning with a list bullet belongs to
   the field, and the joined value is the opener's trailing text plus each
   continuation, stripped and joined with exactly one space. Fixture is a
-  byte-for-byte copy of `docs/specs/ANTS-1436.md`'s header, checked in so a
+  byte-for-byte copy of `docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md`'s header, checked in so a
   later edit to that live spec cannot move the expectation.
 - T3 (INV-3) — `parseSpecBody` returns the whole joined value for `Status`
   and `Kind`, not the first-line prefix.
@@ -29,7 +29,7 @@ Invariants exercised (docs/specs/ANTS-3785-header-field-extent.md §3 / §6):
   and a fixture exercising two rules at once proves neither.
 - T5 (INV-9) — a `**Field:**` marker only opens or closes a field at the
   start of a line; an inline bold colon-run is value text. Fixture is the
-  `docs/specs/ANTS-1253.md` shape (`**Kind:** … **Lanes:** …` on one
+  `docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md` shape (`**Kind:** … **Lanes:** …` on one
   physical line plus a continuation).
 - T6 (INV-10, reader leg) — the search is bounded to the header block, so a
   `**Status:**` inside a fenced example below the first `## ` heading is

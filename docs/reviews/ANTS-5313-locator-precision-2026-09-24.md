@@ -88,66 +88,66 @@ must be re-measured on a new seed.
 
 | # | Symbol | Document | Cited | Verdict |
 |---|---|---|---|---|
-| 1 | `kSpecStopwords` | `docs/specs/ANTS-1113.md:358` | `src/featurecoverage.cpp:31` | right |
-| 2 | `totalCount()` | `docs/specs/ANTS-1407.md:57` | `src/claudetasklist.h:78` | right |
-| 3 | `roadmapKindFilters` | `docs/specs/ANTS-1238.md:728` | `src/config.cpp:365` | right |
+| 1 | `kSpecStopwords` | `docs/specs/ANTS-1113-fold-debt-sweep-into-project.md:358` | `src/featurecoverage.cpp:31` | right |
+| 2 | `totalCount()` | `docs/specs/ANTS-1407-tasks-tracker-mirrors-cc-inline.md:57` | `src/claudetasklist.h:78` | right |
+| 3 | `roadmapKindFilters` | `docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md:728` | `src/config.cpp:365` | right |
 | 4 | `MigrationPlan` | `docs/specs/ANTS-3796-section-record-completeness.md:270` | `src/roadmapmigrate.h:197` | right |
-| 5 | `startPcallBudget()` | `docs/specs/ANTS-2093.md:57` | `src/luaengine.cpp:296` | right |
-| 6 | `cmd_promote` | `docs/specs/ANTS-3661.md:202` | `packaging/cut-rc.sh:715` | right |
+| 5 | `startPcallBudget()` | `docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md:57` | `src/luaengine.cpp:296` | right |
+| 6 | `cmd_promote` | `docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md:202` | `packaging/cut-rc.sh:715` | right |
 | 7 | `internal` | `docs/specs/ANTS-3810-round-trip-oracle-and-acyclicity.md:615` | `tests/features/roadmap_read_seam/test_roadmap_read_seam.cpp:709` | **wrong** — test-local variable; doc means an item class |
 | 8 | `m_statusTimer` | `docs/standards/status-bar.md:6` | `src/mainwindow.h:346` | right |
-| 9 | `hasStub` | `docs/specs/ANTS-3504.md:119` | `src/feedbackfile.cpp:1058` | right |
-| 10 | `shellCwd()` | `docs/specs/ANTS-3572.md:103` | `src/terminalwidget.cpp:5263` | right |
+| 9 | `hasStub` | `docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md:119` | `src/feedbackfile.cpp:1058` | right |
+| 10 | `shellCwd()` | `docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md:103` | `src/terminalwidget.cpp:5263` | right |
 | 11 | `PlannedItem` | `docs/specs/ANTS-3810-round-trip-oracle-and-acyclicity.md:258` | `src/roadmapmigrate.h:44` | right |
 | 12 | `scope` | `docs/standards/test-audit-resume.md:74` | `tests/features/test_audit_polyglot_and_strip/test_polyglot_and_strip.cpp:30` | **wrong** — test parameter; doc means a verb argument |
-| 13 | `score()` | `docs/specs/ANTS-1896.md:66` | `src/modelrecommender.cpp:153` | right |
-| 14 | `cmdGetText` | `docs/specs/ANTS-1244.md:59` | `src/remotecontrol_terminal.cpp:122` | right |
-| 15 | `required` | `docs/specs/ANTS-1985.md:107` | `tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp:77` | **wrong** — test-local; doc means a JSON-schema key |
-| 16 | `QFileSystemWatcher` | `docs/specs/ANTS-1873.md:21` | `src/pluginmanager.h:14` | **wrong** — forward declaration of a Qt class |
-| 17 | `kReadToolMaxBytesCeiling` | `docs/specs/ANTS-2021.md:276` | `src/remotecontrol.h:296` | right |
-| 18 | `storeIfChanged` | `docs/specs/ANTS-1150.md:131` | `src/config.cpp:254` | right |
-| 19 | `RemoteControl::cmdFocusedTest` | `docs/specs/ANTS-1302.md:165` | `src/remotecontrol_state.cpp:3556` | right |
-| 20 | `resolution` | `docs/specs/ANTS-3661.md:303` | `src/docsymbols.h:54` | right (borderline: the struct field behind the wire key the doc names) |
+| 13 | `score()` | `docs/specs/ANTS-1896-recommender-confidence-top-signals.md:66` | `src/modelrecommender.cpp:153` | right |
+| 14 | `cmdGetText` | `docs/specs/ANTS-1244-surface-3-existing-remote-control.md:59` | `src/remotecontrol_terminal.cpp:122` | right |
+| 15 | `required` | `docs/specs/ANTS-1985-tool-info-catalog-true-one.md:107` | `tests/features/ci_workflow_deps/test_ci_workflow_deps.cpp:77` | **wrong** — test-local; doc means a JSON-schema key |
+| 16 | `QFileSystemWatcher` | `docs/specs/ANTS-1873-single-source-truth-claude-state.md:21` | `src/pluginmanager.h:14` | **wrong** — forward declaration of a Qt class |
+| 17 | `kReadToolMaxBytesCeiling` | `docs/specs/ANTS-2021-read-region-mcp-tool-read.md:276` | `src/remotecontrol.h:296` | right |
+| 18 | `storeIfChanged` | `docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md:131` | `src/config.cpp:254` | right |
+| 19 | `RemoteControl::cmdFocusedTest` | `docs/specs/ANTS-1302-focused-test-mcp-run-only.md:165` | `src/remotecontrol_state.cpp:3556` | right |
+| 20 | `resolution` | `docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md:303` | `src/docsymbols.h:54` | right (borderline: the struct field behind the wire key the doc names) |
 | 21 | `layman` | `docs/specs/ANTS-4065-import-mapping-contract.md:62` | `tests/features/roadmap_rotate_minor/test_roadmap_rotate_minor.cpp:108` | **wrong** — test parameter; doc means an item field |
-| 22 | `formatVersion` | `docs/specs/ANTS-3446.md:844` | `src/feedbackfile.h:94` | right |
-| 23 | `PlanOptions` | `docs/specs/ANTS-1290.md:390` | `src/plantemplateengine.h:27` | right |
-| 24 | `StatsConfig::windowDays` | `docs/specs/ANTS-1941.md:15` | `src/modelswitchledger.h:215` | right |
+| 22 | `formatVersion` | `docs/specs/ANTS-3446-feedback-log-op-migrate-v2.md:844` | `src/feedbackfile.h:94` | right |
+| 23 | `PlanOptions` | `docs/specs/ANTS-1290-plan-template-mcp-tool.md:390` | `src/plantemplateengine.h:27` | right |
+| 24 | `StatsConfig::windowDays` | `docs/specs/ANTS-1941-behaviour-epoch-boundary-model-switch.md:15` | `src/modelswitchledger.h:215` | right |
 | 25 | `projectName` | `docs/specs/ANTS-3855-roadmap-migrate-verb.md:106` | `src/claudeprojects.cpp:408` | **wrong** — dialog local; doc means a roadmapmigrate.h field |
-| 26 | `Write` | `docs/specs/ANTS-1890.md:136` | `src/remotecontrol_roadmap_backfill.cpp:305` | **wrong** — local struct; doc means the Write tool |
+| 26 | `Write` | `docs/specs/ANTS-1890-scorer-v2-commit-intent-recency.md:136` | `src/remotecontrol_roadmap_backfill.cpp:305` | **wrong** — local struct; doc means the Write tool |
 | 27 | `commandStartMs` | `docs/specs/ANTS-5078-export-streaming.md:145` | `src/terminalgrid.h:111` | right |
 | 28 | `rcStatusEmoji` | `docs/specs/ANTS-4977-dropped-status.md:50` | `src/remotecontrol.cpp:1038` | right |
 | 29 | `QFile` | `docs/specs/ANTS-3855-roadmap-migrate-verb.md:825` | `src/roadmapsource.h:29` | **wrong** — forward declaration of a Qt class |
 | 30 | `cmdChangelogLogAddBatch` | `docs/specs/ANTS-3833-remotecontrol-decomposition.md:104` | `src/remotecontrol_changelog.cpp:1325` | right |
 | 31 | `rxBold` | `docs/specs/ANTS-3808-item-body-and-trailer-suppression.md:124` | `src/roadmapparse.cpp:1153` | right |
 | 32 | `RoadmapSource::bulletsFor()` | `docs/specs/ANTS-3815-store-source-format-column.md:357` | `src/roadmapsource.cpp:585` | right |
-| 33 | `package` | `docs/specs/ANTS-2093.md:47` | `src/debtsweepengine.h:210` | **wrong** — struct member; doc means the Lua `package` library |
-| 34 | `parseShippedDates` | `docs/specs/ANTS-1154.md:62` | `src/roadmapdialog.cpp:1810` | right |
-| 35 | `behind` | `docs/specs/ANTS-1569.md:177` | `src/remotecontrol_state.cpp:1908` | **wrong** — session_orient local; doc means a git_state reply field |
+| 33 | `package` | `docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md:47` | `src/debtsweepengine.h:210` | **wrong** — struct member; doc means the Lua `package` library |
+| 34 | `parseShippedDates` | `docs/specs/ANTS-1154-roadmapdialog-v2-card-style-rendering.md:62` | `src/roadmapdialog.cpp:1810` | right |
+| 35 | `behind` | `docs/specs/ANTS-1569-current-state-mcp-aggregator-one.md:177` | `src/remotecontrol_state.cpp:1908` | **wrong** — session_orient local; doc means a git_state reply field |
 | 36 | `internal` | `docs/specs/ANTS-3758-roadmap-render.md:580` | `tests/features/roadmap_read_seam/test_roadmap_read_seam.cpp:709` | **wrong** — test-local variable; doc means an item class |
 | 37 | `m_inTransaction` | `docs/specs/ANTS-3781-roadmap-store-schema-upgrade.md:528` | `src/roadmapstore.h:1051` | right |
-| 38 | `kExclusions()` | `docs/specs/ANTS-1351.md:67` | `src/auditrunner.cpp:167` | right |
+| 38 | `kExclusions()` | `docs/specs/ANTS-1351-audit-run-mcp-verb-server.md:67` | `src/auditrunner.cpp:167` | right |
 | 39 | `startExport` | `docs/specs/ANTS-5078-export-streaming.md:116` | `src/terminalwidget.cpp:5682` | right |
-| 40 | `transport` | `docs/specs/ANTS-2079.md:353` | `tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp:113` | **wrong** — test-local; doc means a literal string |
-| 41 | `testGlobs` | `docs/specs/ANTS-1624.md:80` | `src/debtsweepengine.cpp:833` | **wrong** — debtsweepengine.cpp local; doc means a testauditengine.cpp table field |
+| 40 | `transport` | `docs/specs/ANTS-2079-trim-load-bearing-mcp-tool.md:353` | `tests/features/mcp_verify_changes_timeout_headroom/test_mcp_verify_changes_timeout_headroom.cpp:113` | **wrong** — test-local; doc means a literal string |
+| 41 | `testGlobs` | `docs/specs/ANTS-1624-test-audit-partition-libcheck-c.md:80` | `src/debtsweepengine.cpp:833` | **wrong** — debtsweepengine.cpp local; doc means a testauditengine.cpp table field |
 | 42 | `defaultSocketPath` | `docs/specs/ANTS-3833-remotecontrol-decomposition.md:140` | `src/remotecontrol.cpp:2388` | right |
 | 43 | `detail` | `docs/standards/mcp-behavioural-notes.md:203` | `tests/_support/expect.h:81` | **wrong** — test-helper parameter; doc means the tool_info field |
 | 44 | `detectRoadmapFormat()` | `docs/specs/ANTS-3793-roadmap-consumer-cutover.md:511` | `src/roadmapparse.cpp:1660` | right |
 | 45 | `TerminalGrid::maxScrollback` | `docs/specs/ANTS-5219-scrollback-line-cap.md:17` | `src/terminalgrid.h:215` | right |
-| 46 | `modelId` | `docs/specs/ANTS-1895.md:279` | `src/modelswitchledger.h:152` | right |
-| 47 | `runProbes` | `docs/specs/ANTS-1145.md:144` | `src/diffviewer.cpp:367` | right |
+| 46 | `modelId` | `docs/specs/ANTS-1895-dry-run-phantom-mode-auto.md:279` | `src/modelswitchledger.h:152` | right |
+| 47 | `runProbes` | `docs/specs/ANTS-1145-extract-diffviewerdialog-mainwindow-cpp.md:144` | `src/diffviewer.cpp:367` | right |
 | 48 | `ResolvedRoot` | `docs/specs/ANTS-4932-standalone-mcp-server.md:290` | `src/resolvedroot.h:26` | right |
-| 49 | `weightForTurnIndex` | `docs/specs/ANTS-1890.md:394` | `src/modelrecommender.cpp:133` | right |
+| 49 | `weightForTurnIndex` | `docs/specs/ANTS-1890-scorer-v2-commit-intent-recency.md:394` | `src/modelrecommender.cpp:133` | right |
 | 50 | `cmdGetText` | `docs/specs/ANTS-2132-async-mcp-dispatch.md:107` | `src/remotecontrol_terminal.cpp:122` | right |
 | 51 | `setSectionIntro()` | `docs/specs/ANTS-3782-roadmap-section-provenance.md:152` | `src/roadmapstore.cpp:1322` | right |
-| 52 | `RemoteControl::filterControlChars` | `docs/specs/ANTS-1335.md:14` | `src/remotecontrol.h:151` | right |
-| 53 | `m_roadmapCacheBullets` | `docs/specs/ANTS-1357.md:215` | `src/remotecontrol.h:1481` | right |
+| 52 | `RemoteControl::filterControlChars` | `docs/specs/ANTS-1335-utf-8-c1-control-byte.md:14` | `src/remotecontrol.h:151` | right |
+| 53 | `m_roadmapCacheBullets` | `docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md:215` | `src/remotecontrol.h:1481` | right |
 | 54 | `isRenderable()` | `docs/specs/ANTS-3810-round-trip-oracle-and-acyclicity.md:176` | `src/roadmaprender.cpp:58` | right |
-| 55 | `computeToken` | `docs/specs/ANTS-1397.md:470` | `src/testauditengine.cpp:518` | right |
-| 56 | `clearStatusMessage` | `docs/specs/ANTS-1146.md:215` | `src/mainwindow.cpp:6454` | right |
-| 57 | `MainWindow::setupClaudeMcpProviders` | `docs/specs/ANTS-1113.md:297` | `src/mainwindow.cpp:4369` | right |
-| 58 | `release_notes` | `docs/specs/ANTS-2164.md:180` | `packaging/cut-rc.sh:182` | right |
+| 55 | `computeToken` | `docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md:470` | `src/testauditengine.cpp:518` | right |
+| 56 | `clearStatusMessage` | `docs/specs/ANTS-1146-extract-claudestatusbarcontroller.md:215` | `src/mainwindow.cpp:6454` | right |
+| 57 | `MainWindow::setupClaudeMcpProviders` | `docs/specs/ANTS-1113-fold-debt-sweep-into-project.md:297` | `src/mainwindow.cpp:4369` | right |
+| 58 | `release_notes` | `docs/specs/ANTS-2164-harden-rc-release-new-rc.md:180` | `packaging/cut-rc.sh:182` | right |
 | 59 | `Settings` | `docs/specs/ANTS-3771-id-format-declaration.md:690` | `src/projectsettings.h:22` | right |
-| 60 | `foldIn` | `docs/specs/ANTS-1727.md:269` | `src/testauditengine.cpp:1987` | right |
+| 60 | `foldIn` | `docs/specs/ANTS-1727-review-dialog-foundation-llmclient.md:269` | `src/testauditengine.cpp:1987` | right |
 
 ## Re-measure after the resolver fix
 
@@ -200,60 +200,60 @@ entry (`shape`) resolved into it, and it is not in the sample.
 | 1 | `isGrammaticalId()` | `docs/specs/ANTS-3793-roadmap-consumer-cutover.md:273` | `src/roadmapmigrate.cpp:207` | right |
 | 2 | `ReviewDialogBase::beginRound` | `docs/specs/ANTS-5010-plaintext-prompt-warning.md:64` | `src/reviewdialogbase.cpp:290` | right |
 | 3 | `scanDoc` | `docs/specs/ANTS-3786-docsindex-header-field.md:48` | `src/docsindex.cpp:74` | right |
-| 4 | `cmdSessionMemory` | `docs/specs/ANTS-1372.md:165` | `src/remotecontrol_coldeyes.cpp:850` | right |
-| 5 | `mappedIds` | `docs/specs/ANTS-3442.md:108` | `src/feedbackfile.h:88` | right |
-| 6 | `parsePassHeadingBullets` | `docs/specs/ANTS-1583.md:185` | `src/roadmapparse.cpp:787` | right |
-| 7 | `mcp::setSpillDirOverride` | `docs/specs/ANTS-1922.md:124` | `src/mcpspill.cpp:690` | right |
-| 8 | `contract` | `docs/specs/ANTS-1415.md:125` | `src/claudeintegration.h:756` | borderline: the `RegisteredTool::contract` member, where the doc means a local copied from it |
+| 4 | `cmdSessionMemory` | `docs/specs/ANTS-1372-caller-cwd-gate-mutating-mcp.md:165` | `src/remotecontrol_coldeyes.cpp:850` | right |
+| 5 | `mappedIds` | `docs/specs/ANTS-3442-feedback-log-op-prune-tracking.md:108` | `src/feedbackfile.h:88` | right |
+| 6 | `parsePassHeadingBullets` | `docs/specs/ANTS-1583-roadmap-branch-drift-mcp-verb.md:185` | `src/roadmapparse.cpp:787` | right |
+| 7 | `mcp::setSpillDirOverride` | `docs/specs/ANTS-1922-roadmap-query-mode-bundles-work.md:124` | `src/mcpspill.cpp:690` | right |
+| 8 | `contract` | `docs/specs/ANTS-1415-callercwdcontract-tabspecific.md:125` | `src/claudeintegration.h:756` | borderline: the `RegisteredTool::contract` member, where the doc means a local copied from it |
 | 9 | `Config::aiEndpoint()` | `docs/standards/mcp-error-codes.md:130` | `src/config.cpp:1019` | right |
-| 10 | `offloadBody` | `docs/specs/ANTS-3578.md:19` | `src/mcpspill.cpp:236` | right |
-| 11 | `RemoteControl::m_main` | `docs/specs/ANTS-3572.md:595` | `src/remotecontrol.h:1585` | right |
+| 10 | `offloadBody` | `docs/specs/ANTS-3578-delta-envelope-foundation-content-hash.md:19` | `src/mcpspill.cpp:236` | right |
+| 11 | `RemoteControl::m_main` | `docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md:595` | `src/remotecontrol.h:1585` | right |
 | 12 | `RoadmapStore::canonicalJson()` | `docs/specs/ANTS-3810-round-trip-oracle-and-acyclicity.md:185` | `src/roadmapstore.cpp:138` | right |
-| 13 | `populateChecks()` | `docs/specs/ANTS-1111.md:479` | `src/auditdialog_catalogue.cpp:25` | right |
-| 14 | `detectProjectFrameworks` | `docs/specs/ANTS-1111.md:395` | `src/audithygiene.cpp:140` | right |
+| 13 | `populateChecks()` | `docs/specs/ANTS-1111-fold-audit-triage-into-project.md:479` | `src/auditdialog_catalogue.cpp:25` | right |
+| 14 | `detectProjectFrameworks` | `docs/specs/ANTS-1111-fold-audit-triage-into-project.md:395` | `src/audithygiene.cpp:140` | right |
 | 15 | `kBulkBusyTimeoutMs` | `docs/specs/ANTS-3781-roadmap-store-schema-upgrade.md:470` | `src/roadmapstore.h:62` | right |
-| 16 | `startPcallBudget` | `docs/specs/ANTS-2093.md:664` | `src/luaengine.cpp:296` | right |
+| 16 | `startPcallBudget` | `docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md:664` | `src/luaengine.cpp:296` | right |
 | 17 | `createdSchema()` | `docs/specs/ANTS-3815-store-source-format-column.md:538` | `src/roadmapstore.h:169` | right |
-| 18 | `ResolvedRoot` | `docs/specs/ANTS-1401.md:1` | `src/resolvedroot.h:26` | right |
+| 18 | `ResolvedRoot` | `docs/specs/ANTS-1401-central-resolvedroot-helper-caller-cwd.md:1` | `src/resolvedroot.h:26` | right |
 | 19 | `acquire` | `docs/specs/ANTS-5144-shared-socket-listener.md:131` | `src/localsockethub.cpp:49` | right |
 | 20 | `RemoteControl::dispatch` | `docs/specs/ANTS-2132-async-mcp-dispatch.md:84` | `src/remotecontrol.cpp:2658` | right |
-| 21 | `totalSaved` | `docs/specs/ANTS-3579.md:136` | `src/tokenusageengine.cpp:173` | right |
-| 22 | `discoveredContractFiles` | `docs/specs/ANTS-1619.md:54` | `src/coldeyesengine.h:108` | right |
-| 23 | `changedFilesCount` | `docs/specs/ANTS-1504.md:234` | `src/auditrunner.h:167` | right |
+| 21 | `totalSaved` | `docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md:136` | `src/tokenusageengine.cpp:173` | right |
+| 22 | `discoveredContractFiles` | `docs/specs/ANTS-1619-cold-eyes-partition-contracts-doc.md:54` | `src/coldeyesengine.h:108` | right |
+| 23 | `changedFilesCount` | `docs/specs/ANTS-1504-audit-run-since-last-run.md:234` | `src/auditrunner.h:167` | right |
 | 24 | `surfacesResolved` | `docs/specs/ANTS-4127-test-surface-resolution.md:395` | `src/speclint.h:139` | right |
 | 25 | `sentenceStop()` | `docs/specs/ANTS-3808-item-body-and-trailer-suppression.md:374` | `src/roadmapparse.cpp:657` | right |
-| 26 | `checkCallerCwd` | `docs/specs/ANTS-1630.md:215` | `src/remotecontrolgate.cpp:11` | right |
-| 27 | `shellCwd` | `docs/specs/ANTS-1435.md:381` | `src/terminalwidget.cpp:5263` | right |
-| 28 | `RemoteControl::cmdColdEyesBrief` | `docs/specs/ANTS-1634.md:110` | `src/remotecontrol_coldeyes.cpp:123` | right |
-| 29 | `sliceSection` | `docs/specs/ANTS-1287.md:207` | `src/roadmapindex.cpp:159` | right |
+| 26 | `checkCallerCwd` | `docs/specs/ANTS-1630-caller-cwd-anchor-two-focused.md:215` | `src/remotecontrolgate.cpp:11` | right |
+| 27 | `shellCwd` | `docs/specs/ANTS-1435-session-memory-project-layout-reads.md:381` | `src/terminalwidget.cpp:5263` | right |
+| 28 | `RemoteControl::cmdColdEyesBrief` | `docs/specs/ANTS-1634-cold-eyes-partition-ux-polish.md:110` | `src/remotecontrol_coldeyes.cpp:123` | right |
+| 29 | `sliceSection` | `docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md:207` | `src/roadmapindex.cpp:159` | right |
 | 30 | `error` | `docs/specs/ANTS-3855-roadmap-migrate-verb.md:750` | `src/scrollbackexporter.h:37` | **wrong** — `scrollbackexporter.h` accessor; doc means the migrate `Outcome::error` field |
-| 31 | `buildAppStylesheet` | `docs/specs/ANTS-1147.md:102` | `src/themedstylesheet.cpp:13` | right |
+| 31 | `buildAppStylesheet` | `docs/specs/ANTS-1147-extract-themedstylesheet-mainwindow-cpp.md:102` | `src/themedstylesheet.cpp:13` | right |
 | 32 | `detectRoadmapFormat()` | `docs/specs/ANTS-3809-roadmap-write-half.md:496` | `src/roadmapparse.cpp:1660` | right |
-| 33 | `defaultSocketPath()` | `docs/specs/ANTS-1117.md:54` | `src/remotecontrol.cpp:2388` | right |
+| 33 | `defaultSocketPath()` | `docs/specs/ANTS-1117-claude-code-running-ants-gui.md:54` | `src/remotecontrol.cpp:2388` | right |
 | 34 | `applyPlanFields()` | `docs/specs/ANTS-3822-consumer-write-history.md:300` | `src/roadmapmigrateload.cpp:633` | right |
-| 35 | `m_pcallTimer` | `docs/specs/ANTS-1750.md:260` | `src/luaengine.h:255` | right |
-| 36 | `compact` | `docs/specs/ANTS-3578.md:397` | `tests/features/mcp_result_offload/test_mcp_result_offload.cpp:464` | **wrong** — test-file helper function; doc means the `compact` argument |
-| 37 | `Options::excludedNames` | `docs/specs/ANTS-3661.md:667` | `src/docsymbols.h:66` | right |
+| 35 | `m_pcallTimer` | `docs/specs/ANTS-1750-run-each-lua-plugin-vm.md:260` | `src/luaengine.h:255` | right |
+| 36 | `compact` | `docs/specs/ANTS-3578-delta-envelope-foundation-content-hash.md:397` | `tests/features/mcp_result_offload/test_mcp_result_offload.cpp:464` | **wrong** — test-file helper function; doc means the `compact` argument |
+| 37 | `Options::excludedNames` | `docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md:667` | `src/docsymbols.h:66` | right |
 | 38 | `mcp::setHintLatchEnabled` | `docs/standards/mcp-config-keys.md:143` | `src/mcpprojection.cpp:52` | right |
 | 39 | `status` | `docs/specs/ANTS-3809-roadmap-write-half.md:526` | `tests/features/doc_citations/fixture.h:59` | **wrong** — test-fixture helper function; doc means a roadmap `status` field |
-| 40 | `QFileSystemWatcher::fileChanged` | `docs/specs/ANTS-1117.md:153` | `src/claudeintegration.h:635` | **wrong** — `ClaudeIntegration::fileChanged`; the qualifier `QFileSystemWatcher::` was not honoured |
-| 41 | `counts` | `docs/specs/ANTS-1254.md:54` | `tests/features/doc_symbols_only_filter/test_doc_symbols_only_filter.cpp:68` | **wrong** — test-file helper function; doc means the reply's `counts` field |
-| 42 | `roadmapExpandedSections` | `docs/specs/ANTS-1154.md:488` | `src/config.cpp:759` | right |
-| 43 | `RemoteControl::cmdRoadmapQuery()` | `docs/specs/ANTS-1244.md:300` | `src/remotecontrol_roadmap_query.cpp:1932` | right |
-| 44 | `RcGate::checkCallerCwd` | `docs/specs/ANTS-1435.md:96` | `src/remotecontrolgate.cpp:11` | right |
-| 45 | `m_timedOut` | `docs/specs/ANTS-1750.md:260` | `src/luaengine.h:243` | right |
-| 46 | `cmdColdEyesPartition` | `docs/specs/ANTS-1619.md:126` | `src/remotecontrol_coldeyes.cpp:20` | right |
+| 40 | `QFileSystemWatcher::fileChanged` | `docs/specs/ANTS-1117-claude-code-running-ants-gui.md:153` | `src/claudeintegration.h:635` | **wrong** — `ClaudeIntegration::fileChanged`; the qualifier `QFileSystemWatcher::` was not honoured |
+| 41 | `counts` | `docs/specs/ANTS-1254-last-audit-summary-mcp-tool.md:54` | `tests/features/doc_symbols_only_filter/test_doc_symbols_only_filter.cpp:68` | **wrong** — test-file helper function; doc means the reply's `counts` field |
+| 42 | `roadmapExpandedSections` | `docs/specs/ANTS-1154-roadmapdialog-v2-card-style-rendering.md:488` | `src/config.cpp:759` | right |
+| 43 | `RemoteControl::cmdRoadmapQuery()` | `docs/specs/ANTS-1244-surface-3-existing-remote-control.md:300` | `src/remotecontrol_roadmap_query.cpp:1932` | right |
+| 44 | `RcGate::checkCallerCwd` | `docs/specs/ANTS-1435-session-memory-project-layout-reads.md:96` | `src/remotecontrolgate.cpp:11` | right |
+| 45 | `m_timedOut` | `docs/specs/ANTS-1750-run-each-lua-plugin-vm.md:260` | `src/luaengine.h:243` | right |
+| 46 | `cmdColdEyesPartition` | `docs/specs/ANTS-1619-cold-eyes-partition-contracts-doc.md:126` | `src/remotecontrol_coldeyes.cpp:20` | right |
 | 47 | `RoadmapStore::db()` | `docs/specs/ANTS-3765-roadmap-migration-load.md:31` | `src/roadmapstore.h:171` | right |
-| 48 | `cmdApplyEdits` | `docs/specs/ANTS-2161.md:315` | `src/remotecontrol_workspace.cpp:2601` | right |
-| 49 | `status` | `docs/specs/ANTS-1407.md:186` | `tests/features/doc_citations/fixture.h:59` | **wrong** — test-fixture helper function; doc means a task's `status` field |
+| 48 | `cmdApplyEdits` | `docs/specs/ANTS-2161-auto-detect-non-standard-layout.md:315` | `src/remotecontrol_workspace.cpp:2601` | right |
+| 49 | `status` | `docs/specs/ANTS-1407-tasks-tracker-mirrors-cc-inline.md:186` | `tests/features/doc_citations/fixture.h:59` | **wrong** — test-fixture helper function; doc means a task's `status` field |
 | 50 | `rcStatusEmoji` | `docs/specs/ANTS-4977-dropped-status.md:50` | `src/remotecontrol.cpp:1038` | right |
-| 51 | `IndieReviewEngine::kMaxScanBytes` | `docs/specs/ANTS-1344.md:23` | `src/indiereviewengine.h:55` | right |
-| 52 | `m_filterDone` | `docs/specs/ANTS-1106.md:70` | `src/roadmapdialog.h:628` | right |
-| 53 | `kRoadmapMinParseableSize` | `docs/specs/ANTS-1437.md:203` | `src/remotecontrol.h:1547` | right |
-| 54 | `kKinds` | `docs/specs/ANTS-1238.md:294` | `src/roadmapdialog.cpp:139` | right |
+| 51 | `IndieReviewEngine::kMaxScanBytes` | `docs/specs/ANTS-1344-indie-review-corroborate-truncation-flag.md:23` | `src/indiereviewengine.h:55` | right |
+| 52 | `m_filterDone` | `docs/specs/ANTS-1106-mandatory-kind-field-viewer-faceted.md:70` | `src/roadmapdialog.h:628` | right |
+| 53 | `kRoadmapMinParseableSize` | `docs/specs/ANTS-1437-roadmap-query-section-index-mode.md:203` | `src/remotecontrol.h:1547` | right |
+| 54 | `kKinds` | `docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md:294` | `src/roadmapdialog.cpp:139` | right |
 | 55 | `pathTokensIn()` | `docs/specs/ANTS-4065-import-mapping-contract.md:816` | `src/roadmapmigrate.cpp:1197` | right |
-| 56 | `stage` | `docs/specs/ANTS-1896.md:963` | `tests/features/docsindex_header_field/test_docsindex_header_field.cpp:56` | **wrong** — test-file helper function; doc means the English word "stage" |
+| 56 | `stage` | `docs/specs/ANTS-1896-recommender-confidence-top-signals.md:963` | `tests/features/docsindex_header_field/test_docsindex_header_field.cpp:56` | **wrong** — test-file helper function; doc means the English word "stage" |
 | 57 | `cmdProjectSettings` | `docs/specs/ANTS-3833-remotecontrol-decomposition.md:107` | `src/remotecontrol_docs.cpp:1529` | right |
-| 58 | `cmdCurrentState` | `docs/specs/ANTS-2160.md:180` | `src/remotecontrol_state.cpp:1109` | right |
+| 58 | `cmdCurrentState` | `docs/specs/ANTS-2160-per-project-ants-settings-file.md:180` | `src/remotecontrol_state.cpp:1109` | right |
 | 59 | `RoadmapStore::reassignItemId()` | `docs/specs/ANTS-3765-roadmap-migration-load.md:376` | `src/roadmapstore.cpp:1981` | right |
-| 60 | `compactResolved` | `docs/specs/ANTS-3447.md:34` | `src/feedbackfile.cpp:1034` | right |
+| 60 | `compactResolved` | `docs/specs/ANTS-3447-feedback-log-op-assign-id.md:34` | `src/feedbackfile.cpp:1034` | right |

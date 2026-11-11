@@ -1,6 +1,6 @@
 // ANTS-1897 — MCP discoverability via SessionStart hook installer.
 //
-// Covers the 14 invariants in docs/specs/ANTS-1897.md.
+// Covers the 14 invariants in docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md.
 //   INV-1       content-parity rewrite: byte-identical → idempotent
 //               skip; in-version stale body or version bump → rewrite
 //               (ANTS-2038)

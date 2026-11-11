@@ -1,0 +1,649 @@
+# ANTS-3601 — Deterministic doc-integrity check
+
+**Status:** accepted (2026-07-24) — user sign-off; cold-eyes loops 1–7 folded.
+**Kind:** feature.
+**Source:** ROADMAP.md ANTS-3601 (in-session-2026-07-24, ANTS-3599 follow-up).
+**Blocked by:** ANTS-3603 (shared fence-aware markdown scanner — defined in § 2.2 here, built first).
+**Pairs with:** ANTS-3600 (doc-vs-code literal drift — its sibling; this one is internal-consistency).
+
+## 1. Problem
+
+Long contract docs accumulate internal-consistency rot that no test
+catches and only a careful human reader finds:
+
+1. **Dead anchors** — a `[text](#some-heading)` link whose target heading
+   was renamed or removed. The link renders but goes nowhere.
+2. **Broken relative links** — a `[text](../src/foo.cpp)` or
+   `[text](other.md)` whose target file was moved or renamed.
+3. **TOC drift** — a hand-maintained Table of Contents that no longer
+   lists every section, or lists a section that no longer exists (dead or
+   duplicate entries). `docs/standards/mcp-feedback-files.md` needed exactly
+   this verification by hand during ANTS-3599.
+
+These are **fully deterministic** — computable with no LLM — yet today they
+are found only by cold-eyes reviewers spending expensive judgment tokens on
+grep-able trivia. The cold-eyes skill's own "Phase 1e mechanical pre-pass"
+(`~/.claude/skills/cold-eyes`) explicitly wants a broken-link/anchor checker
+to run *before* the LLM lanes, removing this whole class from their plates.
+
+The existing `docs_index` engine (`src/docsindex.cpp`) parses headings and
+relative-`.md` links but is **not fence-aware** (ANTS-3604), computes **no
+slugs**, resolves **no anchors**, and has **no TOC check** — so it cannot
+answer any of the three questions above. This spec adds a dedicated engine
+that can, reusing the slug and link primitives that already exist elsewhere.
+
+**Consequence:** without it, link/anchor/TOC rot ships silently and burns
+cold-eyes reviewer tokens rediscovering it every review.
+
+## 2. Surface
+
+A new Core-only engine `src/docintegrity.{h,cpp}` (mirrors `docsindex.cpp` /
+`codebaseindex.cpp`: Qt6::Core only, FS-reading, no widgets, no subprocess),
+consumed by **two** thin entry points — a new MCP verb and the existing
+`cold_eyes_brief` pre-pass. It reuses the slug + fence + link-resolve
+primitives already in the tree rather than re-deriving them.
+
+### 2.1 The engine
+
+```cpp
+// src/docintegrity.h — Qt6::Core only.
+namespace DocIntegrity {
+
+enum class Kind {
+    DeadAnchor,   // [t](#slug) / [t](other.md#slug) → slug is no real heading
+    BrokenLink,   // [t](relpath) → target file does not exist under root
+    TocGap,       // a section missing from the TOC, or a duplicate TOC entry
+};
+
+struct Finding {
+    Kind    kind;
+    QString file;     // project-relative path of the doc the link lives in
+    int     line;     // 1-based line of the offending link/entry
+    QString message;  // human-readable, e.g. "anchor #foo resolves to no heading"
+};
+
+struct Options {
+    qint64 maxDocBytes       = 2 * 1024 * 1024;  // per-doc read budget
+    int    maxHeadingsPerDoc = 4000;
+    int    maxLinksPerDoc    = 4000;
+    int    maxDocsPerRun     = 2000;  // total in-scope docs ceiling; mirrors
+                                      // docsindex.h kMaxIndexDocs (:27). Docs
+                                      // beyond the cap are skipped, not read.
+    // mirror docsindex's caps (INV-19 style) — no unbounded growth.
+};
+
+// Check the given project-relative docs. rootCanonical anchors relative-link
+// and cross-doc-anchor resolution. Findings are returned in (file, line)
+// order. Pure: no disk writes, no cache.
+QList<Finding> check(const QString &rootCanonical,
+                     const QStringList &relDocs,
+                     const Options &opts = {});
+}
+```
+
+Heading-slug resolution uses a **docintegrity-local `gfmSlug`** that
+reproduces GitHub's anchor algorithm (`github-slugger`). It does **not** reuse
+`RoadmapIndex::slugifyHeading` (`roadmapindex.cpp:36`) / `uniqueSlug`
+(`roadmapindex.cpp:73`): those target the Qt-rendered Roadmap dialog and
+diverge from GFM in ways that would emit **false `DeadAnchor`s on the
+project's own docs** — verified against `docs/standards/mcp-feedback-files.md`'s
+live TOC:
+
+- `slugifyHeading` turns *every* non-alphanumeric into a `-`, so
+  `## Contributor don'ts` → `contributor-don-ts`, but the real GitHub anchor
+  (and that doc's working TOC entry) is `#contributor-donts` — apostrophes are
+  **stripped**, not dashed.
+- `## Maintainer compaction (v2 — ` `` `compact_resolved` `` `)` →
+  `slugifyHeading` gives `compact-resolved` (underscore → dash), but GitHub
+  **keeps** underscores: the real anchor is
+  `#maintainer-compaction-v2--compact_resolved--ants-3443`.
+- `uniqueSlug` disambiguates duplicates starting at `-2`; GitHub starts at
+  `-1` (2nd occurrence of `foo` → `foo-1`).
+
+The heading **text** first has any trailing ATX closing-hash sequence removed
+(`## Foo ##` → `Foo`), reusing the same trailing-hash strip `docsindex`'s
+`scanDoc` already applies (`trailFenceRx`, `docsindex.cpp`). Then
+`gfmSlug(headingText)` rules (in order): (1) remove backtick code-span markers,
+keeping inner text; (2) lowercase; (3) delete every character that is not a
+letter, digit, space, hyphen, or underscore — this strips punctuation (`'`,
+`(`, `)`, `—`, `.`, `:`, `/`) **and emoji / other symbols** (`📋`, which is
+neither `isLetterOrNumber` nor `_`/`-`/space); (4) replace each space with `-`
+**without collapsing runs and without trimming leading/trailing dashes** (so a
+removed em-dash between two spaces yields `--`, and a leading emoji+space —
+`## 📋 Roadmap` — yields a leading `-roadmap`, matching GitHub's
+`github-slugger` (the corpus has no *non-fenced* emoji heading to cite, so
+INV-13's emoji case is a constructed fixture pinned against the documented
+`github-slugger` output, not a live anchor); (5) duplicate
+base slugs get `-N` where N = the count of prior identical base slugs (2nd
+occurrence → `-1`, 3rd → `-2`). Known limitations, none present in the current
+corpus (§ 6): markdown *emphasis* markers on a heading (`_italic_`, `**bold**`)
+and an inline **link** in a heading (GitHub anchors on the link's display text)
+are not specially unwrapped beyond backtick + ATX-hash removal.
+
+Headings are extracted **all levels H1–H6** and **fence-aware** (§ 2.2), so a
+`#` inside a ```` ``` ```` example is never treated as a real heading.
+(`buildIndex` at `roadmapindex.cpp:89` is not reused: it is H2/H3-only and not
+fence-aware.)
+
+### 2.2 ANTS-3603 — the shared fence-aware scanner (built first)
+
+Foundation for this engine, ANTS-3600, and ANTS-3604. The fence primitives
+are today **duplicated verbatim** in `src/feedbackfile.cpp` (`fenceRe` :34,
+`fenceOpenerChar` :57, the fence-state loop in `scanBoundaries` :74) and
+`src/speclog.cpp` (`fenceRe` :21, `fenceOpenerChar` :30). This engine +
+ANTS-3600 + ANTS-3604 are the 3rd–5th call-sites → Rule of Three clears the hoist.
+
+```cpp
+// src/markdownscan.h — Qt6::Core only. Single source for fence detection.
+namespace MarkdownScan {
+
+// Fence opener: ``` or ~~~ with up to 3 SPACE (not \s) indent, CommonMark
+// (ANTS-3598). Captures the fence char so a closer matches the same char.
+const QRegularExpression &fenceRe();
+
+// The fence char that would close a fence opened on `line`, or a null QChar
+// if `line` is not a fence opener. (== feedbackfile.cpp:56 today.)
+QChar fenceOpenerChar(const QString &line);
+
+// For a whole doc's lines, return a same-length mask: mask[i] == true iff
+// line i lies inside a fenced code block, INCLUSIVE of the opener and the
+// matching-char closer (matches scanBoundaries' skip semantics). Callers
+// skip masked lines when extracting headings / links / literals.
+QVector<bool> fenceMask(const QStringList &lines);
+}
+```
+
+The hoist refactors `feedbackfile.cpp` and `speclog.cpp` to call
+`MarkdownScan::fenceRe` / `fenceOpenerChar` (their `scanBoundaries` keeps its
+own heading rules but drops its private fence copies). Their existing
+`FeedbackV2Delta` / `McpSpecLog` suites must stay green — the hoist is
+behaviour-preserving. ANTS-3603 is a pure refactor with no new behaviour;
+it needs no separate design doc, only this interface contract + green suites.
+
+### 2.3 Check 1 — dead anchors
+
+For each markdown link `[text](target)` on a non-fenced line where `target`
+contains `#`:
+
+- **In-doc** (`#slug`): the slug must appear in *this* doc's fence-aware
+  heading-slug set. Else → `DeadAnchor`.
+- **Cross-doc** (`other.md#slug`): resolve `other.md` relative to the link's
+  dir (§ 2.4). If the file is missing → `BrokenLink` (check 2). If present
+  **and a member of the in-scope `relDocs` set**, compute *its* fence-aware
+  heading slugs; `slug` must be among them, else → `DeadAnchor`. If the target
+  file exists but is **outside** `relDocs` (an in-scope doc links to a doc the
+  run isn't checking), its **file existence** is still verified (BrokenLink if
+  gone) but its **anchor is not** — no doc outside the enumerated set is opened.
+
+This bounds every doc read to the ≤ `maxDocsPerRun` enumerated set (§ 5): a
+lane that hands `check` a single doc linking to hundreds of others never opens
+those others' bodies. Each in-scope doc's slug set is computed once and memoised
+for the run (an in-scope doc is both a link source and a possible anchor
+target). *(Consequence: a dead `#anchor` into an out-of-scope doc is not caught —
+acceptable, since deep-checking a doc the caller didn't ask about would break
+the RAM bound. The **verb** default (whole `docs/` tree) makes most cross-doc
+targets in-scope; the **cold-eyes feed** (§ 2.7) usually passes a single spec
+doc, so from it cross-doc anchors are typically not resolved — each doc's own
+intra-doc anchors and its links' file existence still are.)*
+
+### 2.4 Check 2 — broken relative links
+
+For each `[text](target)` on a non-fenced line, resolve `target` with a
+`docintegrity`-local resolver modelled on `DocsIndex::resolveLink`
+(`docsindex.cpp:40`) — strip the `#anchor`, skip external
+(`://`, `mailto:`) and pure-anchor targets, `QDir::cleanPath`, reject
+root-escape — but **without** `resolveLink`'s `.md`-only filter, so a link to a
+**source file** (`[x](../src/foo.cpp)`) is also verified. A target that
+resolves inside the root but names no existing file → `BrokenLink`.
+**Root-escape is two cases**, both silently skipped (no finding, no filesystem
+probe outside root): a relative escape (`../../outside.md`, `cleanPath` starts
+`../`) **and an absolute target** (`/etc/passwd`, or the GitHub
+root-relative `/docs/foo.md` convention — any `target` starting with `/`).
+`resolveLink` (`docsindex.cpp:55`) guards only the `../` case, so the
+`docintegrity`-local resolver **adds** the leading-`/` reject — an absolute
+link must never be resolved against the host filesystem root nor treated as an
+in-root file. This matches the security posture but closes a gap the inherited
+code leaves open; surfacing an escaping link as its own finding kind is
+deferred (§ 6). (The focused resolver is ~15 lines; `resolveLink` stays
+`.md`-only for its docsindex contract — a shared extraction waits for a 3rd
+caller, § 6.)
+
+### 2.5 Check 3 — TOC coverage
+
+Runs **only** when the doc has a recognisable Table of Contents, else it is a
+no-op (most docs have none). Detection is deterministic:
+
+- A **TOC region** = the first contiguous run of list items each containing an
+  in-doc `[text](#slug)` link, appearing after a heading whose `gfmSlug` is
+  `contents` or `table-of-contents`. "After" **tolerates blank lines** between
+  the heading and the first list item (real TOCs put one there —
+  `mcp-feedback-files.md:47-49` is `## Contents`, blank, first entry); the
+  scan skips blank lines to find the list start; blank lines **within** the run
+  are also skipped (a loose-list TOC). A **list item** is a line whose first
+  non-space character is a bullet marker (`-`, `*`, `+`) or an ordered marker
+  (`N.` or `N)` — both CommonMark forms), at any indent (nested sub-items included). A list item that contains
+  **no** in-doc `[text](#slug)` link (a parent/category bullet nesting linked
+  sub-items) is **skipped — not a TOC entry, and does not end the run**; the run
+  ends only at the first non-blank line that is **not a list item at all**. If
+  the first non-blank line after the heading is neither blank nor a list item
+  (e.g. an intro sentence between `## Contents` and the list), there is **no
+  TOC region** — same as no heading at all. If no `contents`/`table-of-contents`
+  heading is found, there is no TOC region and Check 3 is a no-op.
+
+Given a TOC region:
+
+- Every `## ` (H2) heading **after** the TOC region must have a TOC entry
+  linking to its slug. A heading with no entry → `TocGap` ("section '<h>'
+  missing from TOC"). H2 headings **before** the TOC region (e.g. an
+  `## Overview` preceding `## Contents`) are out of coverage **by design** — a
+  TOC conventionally lists what follows it.
+- A TOC entry `#slug` matching no heading → `DeadAnchor` (check 1).
+- The same `#slug` appearing in two TOC entries → `TocGap` ("duplicate TOC
+  entry '<slug>'").
+
+Scope is H2 (the section granularity the project's TOCs use, e.g.
+mcp-feedback-files.md). H3+ coverage is out of scope (§ 6).
+
+### 2.6 Entry point A — MCP verb `doc_integrity`
+
+A read-only verb following the MCP-tools authoring checklist
+(`docs/standards/mcp-tools.md`): response-wrap, `caller_cwd` contract, path
+validation under root, ETag-304, refusal codes.
+
+- **Handler:** `cmdDocIntegrity` in `remotecontrol.cpp`, registered in
+  `mainwindow.cpp` (same pattern as `cmdDocsIndex`, handler at
+  `remotecontrol_docs.cpp`, registration at `mainwindow.cpp:5129`). The verb
+  joins the same `tools/list` schema, `callerCwdContractFor(Required)`,
+  `isEtagSupportedTool`, `tokenCostFor`, and `kindForName` registrations
+  (in `src/claudeintegration.cpp`) that `docs_index` did (per its ANTS-2139
+  wiring).
+- **Params:** `caller_cwd` (required); optional `path` (a single doc or a
+  dir, project-relative, default `docs/`); optional `kinds` filter; optional
+  `etag_match` (ETag-304 short-circuit, per the MCP-tools contract). The
+  `kinds` filter accepts a list of the snake_case kind strings below
+  (`["dead_anchor","toc_gap"]`); omitted → all kinds.
+- **Doc enumeration (`path` → `relDocs`):** the engine takes an explicit
+  `relDocs` list, so the verb builds it. A **file** `path` → a one-element
+  `relDocs`. A **directory** `path` → the `.md` files under a recursive walk of
+  *that directory* (`QDirIterator::Subdirectories`, `.md` only, `QDir::NoSymLinks`).
+  An **omitted** `path` defaults to the project's docs dir — the
+  `.ants/project.json` `docs_dir` override if set (ANTS-2160), else `docs/` —
+  then walked as a directory. `DocsIndex::walkDocs` is deliberately **not**
+  reused: it is an internal-linkage helper (`docsindex.cpp:157`, inside the
+  anonymous namespace at `:24`) with a fixed *root-plus-`docs/`* shape that
+  cannot scope to an arbitrary `path` directory — so `doc_integrity` uses a
+  ~10-line recursive `.md` walk of the resolved `path` (the reuse exception,
+  global CLAUDE.md § 3(c): neither calling nor refactoring `walkDocs` fits the
+  flexible `path` contract). The two walks share the pattern, not a symbol;
+  extract a shared helper only on a 3rd caller. The enumerated list is truncated
+  to `maxDocsPerRun` (§ 2.1) before `check` runs.
+- **Response:** `{ok, etag, findings:[{kind, file, line, message}], counts:{dead_anchor, broken_link, toc_gap}, checked_docs}`
+  — `etag` is a hash of the response body; a matching `etag_match` returns
+  `{ok, unchanged:true, etag}` instead (ANTS-1499 pattern). Each finding's
+  `kind` is the **snake_case wire string** `"dead_anchor"` / `"broken_link"` /
+  `"toc_gap"` (matching the `counts` keys and the project's lowercase
+  `kind`-field convention), serialised from the C++ `Kind` enum
+  (`DeadAnchor`/`BrokenLink`/`TocGap`) — the CamelCase enum names never reach
+  the wire.
+- No write side, no cache file — recomputed per call (fast, deterministic);
+  the `etag` is computed from the in-scope docs' mtimes + the findings.
+
+### 2.7 Entry point B — cold-eyes Phase 1e feed
+
+`ColdEyesEngine::assembleBriefManifest` (`coldeyesengine.cpp:952`) calls
+`DocIntegrity::check` with **the lane's `docPaths` as `relDocs`** and adds the
+findings to the brief so the mechanical pre-pass is served ready-made — a new
+`doc_integrity[]` block in `BriefManifest` (`coldeyesengine.h:114`), alongside
+the existing `staleCitations[]`. The cold-eyes skill already consumes such
+deterministic pre-verified findings (Phase 1e), so this only populates a field
+it wants; no skill-side change is required for correctness.
+
+**`relDocs` is `docPaths` only — NOT `crossReferenceDocs`.** The lane's
+`crossReferenceDocs` is the fixed CLAUDE.md/README.md/ROADMAP.md/CHANGELOG.md
+quartet appended to *every* lane (`coldeyesengine.h:119`); passing it to
+`check` would (a) re-run + re-report ROADMAP's/CHANGELOG's own
+anchor/TOC findings on all ≤ 12 lanes (a dedup violation), and (b) full-read
+ROADMAP.md — **2.49 MB, over `maxDocBytes` (2 MB)** — repeatedly, exactly the
+giant-log read-cost sink ANTS-3526 (`coldeyesengine.h:120`) exists to avoid.
+So the big cross-reference logs are **never** handed to `check`. **Note the
+majority lane shape is a single spec doc** (`assembleBriefManifest`'s
+`spec/ANTS-NNNN` lanes carry one `docPaths` entry), so from this consumer each
+doc's **own** dead-anchors and broken links are checked, but cross-doc
+`#anchor` verification (INV-17) rarely fires — the anchored sibling is outside
+the one-doc lane. That is the intended bound, not a gap: the whole-`docs/` verb
+(§ 2.6) is where cross-doc anchors are broadly resolved.
+
+## 3. Invariants
+
+- **INV-1** — An in-doc `[t](#slug)` whose slug is not a fence-aware heading
+  of the same doc is reported `DeadAnchor`. *Test:* fixture doc linking
+  `#missing` → one finding.
+- **INV-2** — An anchor whose slug **is** a real heading (including a
+  duplicate-disambiguated slug) is **not** reported. *Test:* fixture with two
+  "Setup" headings and a `#setup-1` link (GitHub's 2nd-occurrence suffix) →
+  zero findings; a `#setup-2` link → one `DeadAnchor` (no third "Setup").
+- **INV-3** — A heading or anchor inside a ```` ``` ```` fence is ignored for
+  both heading-set and link extraction. *Test:* fixture with `# Fake` and a
+  `[x](#real)` inside a fence → neither contributes; `#fake` link elsewhere is
+  a `DeadAnchor`, and the fenced `[x](#real)` produces no finding.
+- **INV-4** — A `[t](relpath)` (`.md` **or** other extension) resolving under
+  root to a non-existent file is reported `BrokenLink`; an existing target is
+  not. *Test:* fixture linking `[a](./gone.md)` and `[b](../src/real.cpp)`
+  where only the latter exists → one finding.
+- **INV-5** — External (`https://`, `mailto:`) and pure-anchor-only links are
+  never reported as broken. *Test:* fixture with an `https://` link → zero
+  `BrokenLink`.
+- **INV-6** — A root-escaping link — **both** a relative escape
+  (`../../outside.md`) **and an absolute target** (`/etc/passwd`,
+  `/docs/foo.md`) — is not resolved or reported as a valid target, and never
+  triggers a filesystem probe outside the project root. *Test:* fixtures with
+  `[x](../../outside.md)` and `[y](/etc/passwd)` → both skipped (no finding, no
+  out-of-root probe); neither is treated as an in-root file.
+- **INV-7** — With a recognisable TOC, an H2 section absent from the TOC is
+  reported `TocGap`; a fully-covered TOC yields none. *Test:* fixture with a
+  TOC missing one section → one finding; add the entry → zero.
+- **INV-8** — A duplicate TOC entry (same slug twice) is reported `TocGap`.
+  *Test:* fixture TOC with a repeated anchor → one finding.
+- **INV-9** — A doc with no TOC region runs checks 1–2 only; check 3 is a
+  silent no-op (no false TocGap). *Test:* fixture with headings but no TOC →
+  zero `TocGap`.
+- **INV-9b** (ANTS-3634) — A TOC region whose items carry **no `#anchor`
+  link at all** yields no slugs to match, so check 3 stands down entirely
+  rather than reporting every section missing. Coverage is anchor-matched
+  (§ 2.5); a plain-text TOC (`- §1 Problem`) is outside what that mechanism
+  can verify. Scoped to the **zero-entry** case — an individual linkless
+  bullet inside an otherwise-anchored TOC is still skipped without ending
+  the run (loop-4 ruling above), and that TOC keeps full coverage.
+  *Test:* fixture with a plain-text TOC → zero `TocGap`; fixture with one
+  linkless bullet plus one anchored entry and an uncovered H2 → one finding.
+- **INV-10** — The `doc_integrity` verb refuses without `caller_cwd`
+  (`caller_cwd_required`) and rejects a `path` outside root with `code:
+  "bad_path"` (path-validation), per the MCP-tools contract. *Test:* verb call
+  missing `caller_cwd` → `caller_cwd_required` refusal; `path=../outside` →
+  `bad_path` refusal.
+- **INV-11** — `MarkdownScan::fenceMask` marks exactly the opener→closer span
+  (inclusive) as in-fence, matching `scanBoundaries`' prior skip behaviour.
+  *Test:* a **direct** `markdownscan` unit test asserts the mask for a doc with
+  a fenced block (opener, body, closer all masked; lines outside unmasked) and
+  an unterminated fence (opener → EOF all masked); **and** the existing
+  `FeedbackV2Delta` + `McpSpecLog` suites stay green after the ANTS-3603 hoist.
+- **INV-12** — `DocIntegrity::check` writes nothing to disk and holds no
+  cross-call state (distinct from `docsindex`'s on-disk cache). *Test:* run
+  twice over the same tree with no intervening change → identical output, no
+  new files created.
+- **INV-13** — `gfmSlug` reproduces GitHub's anchor for the corpus's real
+  headings: apostrophes stripped (`Contributor don'ts` → `contributor-donts`),
+  underscores kept (`compact_resolved` stays `compact_resolved`), em-dash
+  between spaces yields `--`, a leading emoji yields a leading dash
+  (`📋 Roadmap` → `-roadmap`), a trailing `##` is stripped, and the 2nd
+  duplicate gets `-1`. *Test:* a table of (heading → expected slug) cases. The
+  two `mcp-feedback-files.md` headings (`Contributor don'ts`; the
+  `compact_resolved` heading) are pinned against that doc's **live** TOC
+  anchors. The emoji case is a **constructed fixture** — the corpus's only
+  `## 📋 …` headings sit inside ```` ```markdown ```` fences (e.g.
+  `ANTS-3448-marker-aware-v2-un-triaged.md:206`) and never render as anchors — so its expected slug is
+  pinned against the documented `github-slugger` algorithm (the subtle
+  leading-dash behaviour), which the implementer confirms against GitHub's
+  renderer.
+- **INV-14** — No more than `maxDocsPerRun` docs are read in one `check`;
+  excess docs are skipped, not read. *Test:* fixture dir with
+  `maxDocsPerRun + 5` docs run with a lowered cap → exactly `maxDocsPerRun`
+  appear in `checked_docs`.
+- **INV-15** — A `relDocs` entry that names no existing/openable file is
+  silently excluded from `checked_docs` — no crash, no finding — and the
+  remaining docs are still checked. The verb layer refuses a well-formed but
+  non-existent `path` or `paths` entry with `not_found` (ANTS-5554, 2026-11-02:
+  `ok:true` read as a clean run), distinct from a root-escaping `path` which
+  refuses `bad_path` (INV-10). *Test:* `check` with a `relDocs` list mixing one
+  real and one nonexistent path → only the real doc in `checked_docs`; verb
+  `path=docs/typo.md` → `not_found`.
+- **INV-16** — Directory `path` scoping is exact: a directory `path`
+  enumerates exactly the recursive `.md` set **under that directory** (not the
+  whole tree, not the root `.md` files); a file `path` → that one doc; an
+  omitted `path` → the `docs_dir` override (or `docs/`). *Test:* fixture tree
+  with `.md` under `docs/a/` and `docs/b/` plus a root `README.md`;
+  `path=docs/a` → only `docs/a/*.md` in `checked_docs`, nothing from `docs/b/`
+  or the root.
+- **INV-17** — Cross-doc anchor resolution opens **only** docs in the in-scope
+  `relDocs` set; no doc outside it is read, so total doc reads never exceed
+  `maxDocsPerRun`. A cross-doc link to an out-of-scope but existing target
+  yields no `DeadAnchor` (anchor unverified) yet still no `BrokenLink` (file
+  exists); a link to a missing target is `BrokenLink`. *Test:* fixture where an
+  in-scope doc links `[a](out.md#foo)` (out.md exists, not in `relDocs`) and
+  `[b](gone.md#x)` (missing) → `gone.md` is the only `BrokenLink`, no
+  `DeadAnchor`, and `out.md`'s body is never opened (assert via a read-counter
+  or by putting a would-be-dead `#foo` anchor mismatch in `out.md` that is not
+  flagged).
+- **INV-18** — When the `kinds` filter narrows the response, both `findings[]`
+  **and** `counts{}` reflect only the requested kinds (a filtered `counts` is
+  not the unfiltered total). *Test:* a fixture producing every kind, called
+  with `kinds:["dead_anchor"]` → `findings` all `dead_anchor`, `counts` reports
+  only `dead_anchor` (`broken_link`/`toc_gap`/`heading_sequence` absent or 0);
+  `kinds:["heading_sequence"]` narrows the same way.
+
+### Check 4 — numbered-heading sequence (ANTS-3700)
+
+A fourth kind, `heading_sequence`. Siblings are headings sharing a **numeric
+parent prefix** — `5.6` and `5.7` are siblings under `5`, `2.` and `3.` under
+the empty prefix — which is the hierarchy the numbering itself asserts, and is
+independent of `#` depth (a doc may write `## 5.` and `### 5.1`). A heading's
+number is its leading `\d+(\.\d+)*` with one optional trailing dot, so both
+`## 5. Problem` and `### 5.7 Emission model` parse and prose headings opt out
+by having none. H1 is skipped (it is the doc title). Fence-awareness is
+inherited from `extractHeadings`. A `MIRROR BEGIN` / `MIRROR END` region
+is its own numbering scope (ANTS-4878): it holds a copy of another
+document, kept byte-identical to its owner, so its sections are never
+siblings of the host document's. *Test:*
+`HeadingSequenceMirrorRegionIsItsOwnScope`.
+
+- **INV-19** — A sibling whose number is lower than the sibling before it is
+  reported `HeadingSequence`, and the hole it left ahead of itself is **not**
+  separately reported, because a later sibling fills it. *Test:*
+  `HeadingSequenceSwappedSiblings` — `5.6, 5.8, 5.7` → exactly **one** finding,
+  naming `5.7 is out of order`. (The live case: `spec-format.md`, the standard
+  that defines section ordering, shipped with 5.8 before 5.7 and cleared three
+  cold-eyes loops, two at full model.)
+- **INV-20** — A skipped number that **no** sibling ever fills is reported as a
+  gap that names the missing numbers, not merely its own. *Test:*
+  `HeadingSequenceRealGap` — `1, 2, 5` → one finding saying `skips 3, 4`.
+- **INV-21** — A repeated sibling number is reported as a duplicate, distinct
+  from a gap. *Test:* `HeadingSequenceDuplicate` — `1, 2, 2` → one finding
+  naming `duplicate section number 2`.
+- **INV-22** — The check is silent on: interleaved depths (`1, 1.1, 1.2, 2,
+  2.1, 3`), unnumbered prose headings, an H1 whose own number is unrelated, a
+  group whose **first** heading is above 1 (an excerpt or appendix numbering —
+  "should have started at 1" is a guess, and a guess repeated on every doc is
+  what makes a checker something readers filter out), and fenced headings.
+  *Test:* `HeadingSequenceQuietCases` — all four fixtures → zero findings.
+
+### Oversize documents (ANTS-5055)
+
+Before this fix, a document over `maxDocBytes` was still opened and read —
+`f.read(opts.maxDocBytes)` reads only the first `maxDocBytes` bytes and hands
+them to every checker as if they were the whole document. The document was
+still added to `checkedDocs`, with no signal that anything was cut. A heading
+past the cut was never extracted, so a table-of-contents entry earlier in the
+same document that links to it resolved against an incomplete slug set and
+came back `DeadAnchor` — a false positive, on the one document class this
+project cannot avoid checking: `ROADMAP.md` regularly exceeds `maxDocBytes`.
+Links and coverage past the cut went unchecked with no record that they had
+been skipped. `DocLint::run` (`doclint.cpp`) already gets this right for the
+same budget: it stats the file before opening it and skips a file over the
+cap outright, recording `{file, reason: "too_large"}` in `Result::skipped`
+rather than truncating it — see `doclint.h`'s `Skip` struct. `DocIntegrity`
+now does the same for its own callers, per document.
+
+- **INV-23** — A document whose file size exceeds `maxDocBytes` is not opened
+  or parsed at all: none of its headings, links, or TOC entries are read, and
+  it contributes no finding of any kind — including no `DeadAnchor` for a link
+  that appears elsewhere in the in-scope doc set and would otherwise resolve
+  against this document's (partial) slug set. *Test:*
+  `Ants5055OversizeDocNoDeadAnchorForLateHeading`.
+- **INV-24** — Such a document is excluded from `checkedDocs` — it was never
+  read, so it is not "checked" — mirroring `doc_lint`'s `too_large` skip
+  rather than silently truncating and still listing it. *Test:*
+  `Ants5055OversizeDocExcludedFromCheckedDocs`.
+- **INV-25** — A document at or under `maxDocBytes` is unaffected: a genuine
+  dead anchor in such a document is still reported `DeadAnchor`, and the
+  document is still listed in `checkedDocs`. The size gate changes behaviour
+  only for documents that exceed the budget. *Test:*
+  `Ants5055UnderLimitDeadAnchorStillReported`.
+
+Explicitly **not** solved: a cross-reference pointing at the wrong but still
+existing section (`see § 4.2` where 4.2 exists and 4.3 was meant) resolves
+fine and stays invisible to every deterministic check here.
+
+**Calibration (2026-07-28).** Run before shipping, because a check nobody can
+gate on is worse than none:
+
+| Corpus | Docs | Findings |
+|---|---|---|
+| `docs/**/*.md` (this project) | 275 | **2** |
+| `~/.claude/skills/**/*.md` | 69 | **0** |
+| `skills/_shared/spec-format.md` @ `1d9d807` (the pre-fix file that motivated this) | 1 | **1** — `:342 section 5.7 is out of order — it follows 5.8` |
+
+The reported defect is caught at its exact line in the exact revision that
+shipped it, with nothing else raised alongside it. Both live findings are
+true: `docs/journal/2026-04-13-DISCOVERY.md:17` really does repeat
+`## 1. Project map`, and `docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md:505` really has no §2.3
+heading — 2.2 and 2.3 were folded into one heading when both moved to
+ANTS-3653, so a cross-reference to §2.3 would have nothing to land on. Left
+in the output rather than papered over.
+
+A third finding during calibration was a checker doing its job on a
+neighbouring class: `ANTS-3446-feedback-log-op-migrate-v2.md` line-wrapped a sentence so that an inline
+```` ``` ```` landed at the start of a continuation line, which CommonMark
+(and `MarkdownScan::fenceMask`, correctly) reads as a fence opener. The
+document rendered as a code block from that line to the next such wrap,
+swallowing §§4–6. Fixed by reflowing the two lines; the engine was right.
+
+## 4. Tests
+
+Feature-conformance test `tests/features/doc_integrity/` (`spec.md` +
+`test_doc_integrity.cpp`), label `features;fast`. The **engine** test —
+building fixture doc trees in a temp dir and driving `DocIntegrity::check`
+headlessly — is added to the **Core-only `test_core` bundle**
+(`ants_add_core_bundle(test_core`, `CMakeLists.txt:1959`), since the engine is
+Qt6::Core-only; it asserts INV-1–9, INV-12, INV-13 (the `gfmSlug` case table),
+INV-14 (the docs cap), INV-15 (missing-doc skip), INV-16 (directory `path`
+scoping), INV-17 (cross-doc read bound), and INV-18 (`kinds`-filtered `counts`).
+The per-doc caps (`maxDocBytes`, `maxHeadingsPerDoc`, `maxLinksPerDoc`) get a
+truncation fixture (a doc exceeding each cap → headings/links capped, bytes
+past `maxDocBytes` unread). INV-11 is covered by a **direct**
+`MarkdownScan::fenceMask` unit test in the same bundle **plus** the pre-existing
+`FeedbackV2Delta` / `McpSpecLog` suites staying green after the ANTS-3603 hoist.
+INV-10 (verb contract: `caller_cwd_required`, path validation → `bad_path`,
+ETag-304) is a `remotecontrol` handler test added to the **`test_claude`
+bundle** (`CMakeLists.txt:1192`, where the `mcp_docs_index` verb test already
+lives).
+
+Per the project convention, **each test fails against pre-fix code** (the
+engine/verb absent) before the implementation is restored.
+
+## 5. RAM / build cost
+
+- **Memory:** per run, the engine holds — for the in-scope doc set — each
+  doc's heading-slug set and link list, bounded by `maxHeadingsPerDoc` /
+  `maxLinksPerDoc` (4000 each) **and** `maxDocsPerRun` (2000, the total
+  in-scope-docs ceiling that mirrors `docsindex.h` `kMaxIndexDocs` — INV-14),
+  so a pathological `docs/` cannot grow the working set without bound.
+  Cross-doc anchor targets are only ever the in-scope docs themselves
+  (out-of-scope targets are never opened — § 2.3, INV-17), so they add no reads
+  beyond the enumerated set; their slug sets are memoised for the run then
+  freed. **No persistent cache** — recomputed per call, so no eviction policy
+  needed; worst case is O(total headings + links) across ≤ `maxDocsPerRun`
+  docs, transient. For the project's own `docs/` (a few hundred `.md` files — 265 as
+  of 2026-07-24, well under the 2000 cap) this is well under a megabyte.
+- **Build:** two new Core translation units (`docintegrity.cpp`,
+  `markdownscan.cpp`) joining the Core lib; one new MCP handler in
+  `remotecontrol.cpp`; no new external library (all Qt6::Core + reused
+  first-party primitives). `markdownscan.cpp` **removes** duplicated code from
+  two existing TUs (net near-neutral).
+
+## 6. Out of scope
+
+- **Glob / enumerated-list drift** (a hand-maintained list or count that
+  drifts from a filesystem glob) — deferred. It cannot be checked
+  deterministically without a per-doc source annotation (e.g. an HTML comment
+  naming the authoritative glob), which no doc currently carries. A follow-up
+  ROADMAP id adds the opt-in annotation + check if demand is real.
+- **H3+ TOC coverage** — check 3 is H2-granularity (§ 2.5).
+- **Plain-text TOC coverage** — a TOC with no `#anchor` entries is not
+  checked at all (INV-9b), so a genuinely missing section in such a doc goes
+  unreported. Matching those by heading *text* would need fuzzy comparison
+  (`- §1 Problem` vs `## 1. Problem`), trading a false-positive class for a
+  false-negative one. Standing down is the honest default; ANTS-3635 tracks
+  the residual link-side false positives.
+- **Markdown quoted for another file** — a spec's § Cross-doc impact often
+  drafts text destined for `CHANGELOG.md` at the repo root, whose relative
+  links are correct *there* but resolve against the citing doc's directory
+  here (e.g. `ANTS-1894-near-miss-telemetry-log-gate.md:851`, matching the shipped `CHANGELOG.md:1752`).
+  The checker cannot know a block's destination; such links are expected
+  `broken_link` noise. Tracked in ANTS-3635(c).
+- **Emphasis / inline-links in headings** — `gfmSlug` unwraps backtick code
+  spans and trailing ATX hashes, but not `_italic_` / `**bold**` emphasis
+  markers, nor an inline `[display](url)` link in a heading (GitHub anchors on
+  the link's *display text*; `gfmSlug` would fold the URL characters in).
+  Neither shape exists in the current corpus (§ 2.1); a follow-up adds the
+  unwrapping if a real doc hits it.
+- **Root-escaping links as a finding** — an escaping relative link
+  (`../../outside.md`) is silently skipped (§ 2.4), matching `resolveLink`;
+  surfacing it as its own finding kind is deferred.
+- **Root-level contract docs under the default scope** — the verb's default
+  (`path` omitted → the `docs_dir` walk) covers `docs/` only, so root files
+  (`README.md`, `CLAUDE.md`, `ROADMAP.md`, `CHANGELOG.md`) are **not** checked
+  by default. A caller can pass an explicit `path=CLAUDE.md` to check one; the
+  giant logs (`ROADMAP.md`/`CHANGELOG.md`) are intentionally never bulk-checked
+  (§ 2.7, size). Deliberate, noted for maintainer awareness.
+- **Auto-fixing** — the engine only reports; a human resolves each finding
+  (a dead anchor may be a renamed heading or a deleted section).
+- **Sharing the link resolver with `docsindex`** — deferred until a 3rd
+  caller justifies extracting `resolveLink` (Rule of Three, § 2.4).
+
+## 7. Cross-doc impact
+
+- `CLAUDE.md` module map — add `src/docintegrity.cpp` + `src/markdownscan.cpp`
+  (via `docs/subsystems.md`, the offloaded lane catalogue).
+- `CHANGELOG.md` — new dated entry on ship (engine + verb + ANTS-3603 hoist +
+  ANTS-3604 docsindex fence fix, if shipped together).
+- `docs/standards/mcp-tools.md` catalogue / `tool_info` — the `doc_integrity`
+  verb joins the verb list with its one-line "when to use".
+- No `PLUGINS.md` change (no Lua surface).
+
+## Cold-eyes loop log
+
+**Loop 1 (2026-07-24)** — CRITICAL 1 · HIGH 2 · MEDIUM 2 · LOW 3 (all verified, 0 unverified). Independent cold reviewer (sonnet lane), findings verified against live source, all fixed:
+- **CRITICAL** — § 2.1 reused `RoadmapIndex::slugifyHeading` / `uniqueSlug` claiming GFM-compatible anchors. Verified false against the feature's own motivating file: `slugifyHeading` dashes apostrophes/underscores (`Contributor don'ts`→`contributor-don-ts`, `compact_resolved`→`compact-resolved`) where GitHub strips apostrophes and keeps underscores (`#contributor-donts`, `#...compact_resolved...`); `uniqueSlug` disambiguates from `-2` where GitHub starts `-1`. Would emit false `DeadAnchor`s day one. Replaced with a docintegrity-local `gfmSlug` reproducing GitHub's algorithm; added INV-13 (case table vs live anchors).
+- **HIGH** — § 2.5 "immediately following" TOC detection would no-op on every real doc (TOCs have a blank line after `## Contents`, e.g. `mcp-feedback-files.md:47-49`). Clarified blank-line tolerance. Duplicate-slug numbering folded into `gfmSlug` (`-1`-first); fixed INV-2's fixture.
+- **MEDIUM** — RAM budget had no total-docs cap unlike `docsindex` `kMaxIndexDocs` — added `maxDocsPerRun` (§ 2.1 Options, INV-14). § 2.6 response omitted `etag` though it promised ETag-304 — added `etag` / `etag_match` to params + response.
+- **LOW** — INV-11 test coverage was indirect — added a direct `MarkdownScan::fenceMask` unit test. Documented the root-escape silent-skip posture (§ 2.4, OQ resolved). Citation nits: `remotecontrol.cpp:12121`→`:12125`, `mainwindow.cpp:5127`→`:5129`, `feedbackfile.cpp` `fenceOpenerChar` `:56`→`:57`, `speclog.cpp` `:31`→`:30`.
+
+**Loop 2 (2026-07-24, cold — reviewer un-briefed on loop-1 fixes)** — CRITICAL 0 · HIGH 1 · MEDIUM 3 · LOW 2 (all verified, 0 unverified). Loop-1 fixes all held (the gfmSlug replacement, TOC blank-line, caps, etag all verified sound; none resurfaced). New findings, all fixed:
+- **HIGH** — the root-escape guard (inherited from `resolveLink`, `docsindex.cpp:47`) checks only `../`, not a leading `/`; an absolute link (`[x](/etc/passwd)`, or GitHub's root-relative `/docs/foo.md`) sails through, and INV-6 overclaimed "never leaves root." Added a leading-`/` reject to the `docintegrity`-local resolver (§ 2.4) + an absolute-target case to INV-6.
+- **MEDIUM** — `gfmSlug` didn't explicitly handle emoji headings (real: `## 📋 …` in `ANTS-3448-marker-aware-v2-un-triaged.md`) → rule 3 now names emoji stripping + the leading-dash consequence, INV-13 gains an emoji case. It also didn't strip trailing ATX hashes or handle inline-link headings → ATX-hash strip added to § 2.1 (reusing docsindex's `trailFenceRx`), inline-link listed as a § 6 limitation. § 5's "~tens of files" was wrong (265 `.md` today) — corrected.
+- **LOW** — `buildIndex` citation `:90`→`:89`; named `src/claudeintegration.cpp` for the `isEtagSupportedTool`/`tokenCostFor`/`kindForName`/`tools/list` registrations (§ 2.6).
+
+**Loop 3 (2026-07-24, cold)** — CRITICAL 0 · HIGH 1 · MEDIUM 1 · LOW 4 (all verified, 0 unverified). Loop-2 fixes all held (gfmSlug + two-case root-escape verified sound). New findings, all fixed:
+- **HIGH** — § 2.6's verb takes `path` but the engine takes an explicit `relDocs`; how a directory `path` becomes that list was undefined (recursive? `.md`? `docs_dir`-aware?). Specified reuse of `DocsIndex::walkDocs` (`docsindex.cpp:157` — recursive `.md`, `docs_dir`-aware per ANTS-2160), so `doc_integrity` and `docs_index` see the same doc set; single-doc `path` → one-element list; truncated to `maxDocsPerRun`.
+- **MEDIUM** — § 4 said the engine test joins "the bundle that hosts the `docs_index` test" while also saying "Core-only" — but the `docs_index` test lives in the **GUI** `test_claude` bundle. Split it: engine test → Core-only `test_core` (`CMakeLists.txt:1959`); verb-contract test → `test_claude` (`:1192`).
+- **LOW** — `docsindex.cpp:47`→`:55` (the real `../` guard line); flagged the `## 📋 Roadmap` slug example as illustrative vs INV-13's real heading; INV-10 now names the `bad_path` refusal code; § 2.5 TOC run tolerates mid-run blank lines (loose lists).
+
+**Loop 4 (2026-07-24, cold)** — CRITICAL 1 · HIGH 1 · MEDIUM 1 · LOW 0 · INFO 1 (all verified). Deeper cold read; the loop-3 `walkDocs` fix was itself un-implementable:
+- **CRITICAL** — loop-3 said "reuse `DocsIndex::walkDocs`", but `walkDocs` is inside `docsindex.cpp`'s **anonymous namespace** (`:24`) → internal linkage, not cross-TU callable, and absent from `docsindex.h`. § 2.6 now **promotes it to the public API** (move out of the anon namespace + declare in `docsindex.h`) as part of this spec's scope; INV-16 locks behaviour-preservation via the `mcp_docs_index` suite; § 7 records the `docsindex` touch.
+- **HIGH** — § 2.5's TOC-region boundary was ambiguous for a **linkless list item** (a parent/category bullet) and never named the bullet-marker set. Pinned both: a list item is `-`/`*`/`+`/`N.` at any indent; a linkless one is skipped without ending the run; the run ends at the first non-blank non-list line.
+- **MEDIUM** — behaviour for a well-formed but **non-existent** `path`/`relDocs` entry was undefined. INV-15: silently excluded from `checked_docs` (no crash, no finding); the verb returns `ok:true` (not a refusal), distinct from the `bad_path` root-escape case.
+- **INFO** — symlink-escape on link resolution isn't special-cased (mirrors the inherited `resolveLink`/`walkDocs` posture; left).
+
+**Loop 5 (2026-07-24, cold, neutral prompt)** — CRITICAL 0 · HIGH 2 · MEDIUM 0 · LOW 2 (all verified). Loop-4 fixes all held. Two substantive HIGHs, both fixed:
+- **HIGH** — INV-13 cited a "real emoji heading" (`## 📋 …`, `ANTS-3448-marker-aware-v2-un-triaged.md:206`) as its ground-truth, but that heading is inside a ```` ```markdown ```` fence — illustrative sample text, never rendered as an anchor. A repo-wide `^## 📋` search finds *only* fenced examples: the corpus has **no** non-fenced emoji heading. Reframed INV-13's emoji case as a **constructed fixture** pinned against the documented `github-slugger` algorithm (the two `mcp-feedback-files.md` cases remain pinned to live anchors).
+- **HIGH** — cross-doc anchor resolution (§ 2.3) opened *any* linked `other.md` to compute its slugs, unbounded by `maxDocsPerRun` — an unbounded-growth path the RAM budget (§ 5) didn't cover. Bounded it: only in-scope (`relDocs`) docs are opened for anchor checking; an out-of-scope target gets file-existence (`BrokenLink`) but not anchor verification. Added INV-17; § 5 updated.
+- **LOW** — § 2.5: a non-blank non-list preamble line between `## Contents` and the list means "no TOC region"; H2s **before** the TOC are out of coverage by design.
+
+**Loop 6 (2026-07-24, cold, confirmation)** — CRITICAL 1 · HIGH 0 · MEDIUM 2 · LOW 0 (all verified). The loop-3/4 `walkDocs` approach was still wrong:
+- **CRITICAL** — `DocsIndex::walkDocs` takes only `rootCanonical` and always returns root `.md` + the whole `docs/` subtree; it **cannot scope an arbitrary `path`** (e.g. `path=docs/decisions`). Rather than bolt a prefix-filter onto its fixed shape (the 3rd problem the `walkDocs` reuse caused), **replaced it with a `docintegrity`-local recursive `.md` walk** of the resolved `path` (§ 2.6, reuse-exception CLAUDE.md § 3(c)). This also **removed** the loop-4 `walkDocs`-promotion machinery — repurposed INV-16 to *directory-scope exactness*, dropped the `docsindex.h`/`.cpp` touch from § 7, and the default `path=docs/` count (265) is now correct (the local walk of `docs/` excludes the 12 root `.md`).
+- **MEDIUM** — pinned the cold-eyes `relDocs` (§ 2.7: the lane's own `docPaths` + `crossReferenceDocs`) and corrected the "usually in-scope" claim (single-doc lanes rarely resolve cross-doc anchors — intended, INV-17). Pinned the response `kind` **wire strings** to snake_case (`"dead_anchor"`/`"broken_link"`/`"toc_gap"`, matching `counts` + project convention) and the `kinds` filter's accepted values (§ 2.6).
+
+**Loop 7 (2026-07-24, cold, final)** — CRITICAL 0 · HIGH 1 · MEDIUM 1 · LOW 2 (verified). The loop-6 `relDocs` fix over-reached:
+- **HIGH** — loop 6 set the cold-eyes `relDocs` to `docPaths` **+ `crossReferenceDocs`**, but that quartet (`coldeyesengine.h:119`) includes **ROADMAP.md — 2.49 MB, over `maxDocBytes` (2 MB)** — appended to every one of ≤ 12 lanes: a dedup violation (ROADMAP/CHANGELOG's own findings re-reported per lane) and the exact giant-log read-cost sink ANTS-3526 exists to avoid. Reverted: `relDocs` = `docPaths` **only**; the big logs are never handed to `check` (§ 2.7).
+- **MEDIUM** — the `kinds` filter had no test and undefined `counts` scope. INV-18: a filtered response narrows both `findings` and `counts`.
+- **LOW** — added a per-doc-cap (`maxDocBytes`/`maxHeadingsPerDoc`/`maxLinksPerDoc`) truncation test (§ 4); § 2.5 now accepts the `N)` ordered-list marker; § 6 notes root contract docs are out of the default verb scope by design.

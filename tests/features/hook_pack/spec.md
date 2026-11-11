@@ -1,6 +1,6 @@
 # hook_pack — ANTS-1252 conformance
 
-Source spec: [docs/specs/ANTS-1252.md](../../../docs/specs/ANTS-1252.md).
+Source spec: [docs/specs/ANTS-1252-token-saving-hook-pack.md](../../../docs/specs/ANTS-1252-token-saving-hook-pack.md).
 
 Shell-driven harness (no C++ link, no QProcess wrapper) following the
 `tests/audit_self_test.sh` pattern. Exits 0 when every assertion
@@ -63,7 +63,7 @@ passes, non-zero (with FAIL lines on stderr) otherwise.
 
 ## ANTS-2141 — grep/find soft-warn (appended; existing 1-13 unchanged)
 
-Source spec: [docs/specs/ANTS-2141.md](../../../docs/specs/ANTS-2141.md).
+Source spec: [docs/specs/ANTS-2141-soft-warn-grep-find-over.md](../../../docs/specs/ANTS-2141-soft-warn-grep-find-over.md).
 These run only when `jq` is present (skipped with a `[skip]` line otherwise).
 
 - **Warn class (INV-1/3/5/12).** `grep -rn … src/`, pathless `grep -rn`, `rg`,
@@ -90,7 +90,7 @@ These run only when `jq` is present (skipped with a `[skip]` line otherwise).
 
 ## ANTS-2023 — cat/head/tail/bat read-dump soft-warn (appended; 1-13 + ANTS-2141 unchanged)
 
-Source spec: [docs/specs/ANTS-2023.md](../../../docs/specs/ANTS-2023.md).
+Source spec: [docs/specs/ANTS-2023-soft-warn-cat-head-tail.md](../../../docs/specs/ANTS-2023-soft-warn-cat-head-tail.md).
 These run only when `jq` is present (skipped with a `[skip]` line otherwise).
 
 - **Warn class (INV-1/3).** `cat src/…`, `cat include/…`, `head -50 …cpp`,

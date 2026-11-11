@@ -7,7 +7,7 @@ install, which is bad portability. Spec § Tests calls out this
 limitation and accepts the trade-off.
 
 This test acts as a **lower-bound drift detector**: it scrapes
-`docs/specs/ANTS-1410.md` itself for the load-bearing anchors the
+`docs/specs/ANTS-1410-audit-skill-enumerates-project-specific.md` itself for the load-bearing anchors the
 shipped skill MUST contain. If a refactor removes "step 1.5" or
 the INV-N markers, the test breaks loudly. The actual skill
 behaviour is verified manually per § Tests (b) — the recipe at the
@@ -15,7 +15,7 @@ bottom of the spec.
 
 ## Invariants
 
-- **INV-1 / Spec is present.** `docs/specs/ANTS-1410.md` exists
+- **INV-1 / Spec is present.** `docs/specs/ANTS-1410-audit-skill-enumerates-project-specific.md` exists
   and is readable.
 - **INV-2 / Step 1.5 anchor present.** The string
   `"Enumerate project-local CI gates"` appears in the spec.

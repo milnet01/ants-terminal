@@ -1,4 +1,4 @@
-// ANTS-1284 — implementation. See header and docs/specs/ANTS-1284.md.
+// ANTS-1284 — implementation. See header and docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
 
 #include "tokenusageengine.h"
 

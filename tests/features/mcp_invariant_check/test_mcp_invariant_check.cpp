@@ -368,7 +368,7 @@ TEST(McpInvariantCheck, ScanningNothingIsDistinguishableFromMatchingNothing) {
 
 // ANTS-4644 — a spec cites a module the way a human writes it, so the
 // project-relative form this verb's own description prescribes is the one that
-// matches nothing. Reproduced in this repo: docs/specs/ANTS-2161.md, which
+// matches nothing. Reproduced in this repo: docs/specs/ANTS-2161-auto-detect-non-standard-layout.md, which
 // governs op:detect, cites `projectsettings.cpp` and is invisible to a query
 // for `src/projectsettings.cpp`.
 TEST(McpInvariantCheck, Ants4644PathSuffixFallbackRescuesAConfidentZero) {

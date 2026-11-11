@@ -1,6 +1,6 @@
 # doc_finding — the shared doc-lint finding shape
 
-Contract for `src/docfinding.{h,cpp}`. Full design: `docs/specs/ANTS-3664.md`.
+Contract for `src/docfinding.{h,cpp}`. Full design: `docs/specs/ANTS-3664-one-finding-shape-doc-lint.md`.
 
 `DocFinding::Finding` is the one shape the doc-lint verbs
 (ANTS-3660 `doc_dedup`, ANTS-3661 `doc_symbols`, ANTS-3662 `spec_lint`)

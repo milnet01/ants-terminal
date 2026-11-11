@@ -1,7 +1,7 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # ANTS_NUDGE_TOOL is a sourced-lib output read cross-file by ants-bash-veto.sh (${ANTS_NUDGE_TOOL:-…}); shellcheck can't see the consumer (ANTS-2145).
 # ants-terminal hook pack — shared helpers (sourced, not executed).
-# See docs/specs/ANTS-1252.md.
+# See docs/specs/ANTS-1252-token-saving-hook-pack.md.
 #
 # Two surfaces:
 #   ants_in_project_or_exit    — INV-9 per-project gate (sentinel-only).
@@ -53,7 +53,7 @@ ants_validate_session_id() {
 # ANTS-2141 — soft-warn search-routing helpers. All filesystem ops are
 # best-effort / guarded so the veto stays FAIL-OPEN: a broken cache must never
 # silence the nudge or change the exit code (the veto runs `set -u` only).
-# See docs/specs/ANTS-2141.md §2.2-§2.5.
+# See docs/specs/ANTS-2141-soft-warn-grep-find-over.md §2.2-§2.5.
 
 # Cache dir for the throttle stamp + tally. Derives from $HOME so tests
 # redirect everything via HOME=$tmp.
@@ -149,7 +149,7 @@ ants_is_source_search() {
 # ANTS_NUDGE_TOOL (the §2.3 tally bucket) to the matched leading token. Operates
 # on the jq-decoded command string, never raw JSON (ANTS-1252 INV-7). The two
 # predicates' leading-token sets ({cat,head,tail,bat} vs the search tools) are
-# disjoint, so no command matches both. See docs/specs/ANTS-2023.md §2.2.
+# disjoint, so no command matches both. See docs/specs/ANTS-2023-soft-warn-cat-head-tail.md §2.2.
 ants_is_source_read() {
     local cmd="$1"
     ANTS_NUDGE_TOOL=""

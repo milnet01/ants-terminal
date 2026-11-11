@@ -1,6 +1,6 @@
 # tool_detection_engine — feature-conformance spec
 
-**Owner:** ANTS-1286 (`docs/specs/ANTS-1286.md`)
+**Owner:** ANTS-1286 (`docs/specs/ANTS-1286-audit-tool-detection-cache-session.md`)
 **Subject:** Process-lifetime PATH-keyed tool-availability cache.
 
 GTest cases against the engine in isolation (no GUI, no QProcess).

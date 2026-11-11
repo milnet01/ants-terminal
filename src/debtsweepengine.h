@@ -4,8 +4,8 @@
 //
 // A detector set + scanAll + applyMechanicalFix + two prompt
 // templates.
-// See docs/specs/ANTS-1113.md for the v1 contract and
-// docs/specs/ANTS-1358.md for the detector-expansion addendum.
+// See docs/specs/ANTS-1113-fold-debt-sweep-into-project.md for the v1 contract and
+// docs/specs/ANTS-1358-debt-sweep-detector-expansion.md for the detector-expansion addendum.
 //
 // All file IO is constrained to <projectPath>; all git invocations
 // run via QProcess with stdout caps + 30 s timeout.

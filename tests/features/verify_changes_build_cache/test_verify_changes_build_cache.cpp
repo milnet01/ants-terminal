@@ -1,6 +1,6 @@
 // Feature-conformance test for ANTS-1359 verify_changes build-cache.
 // Spec: tests/features/verify_changes_build_cache/spec.md +
-// docs/specs/ANTS-1359.md.
+// docs/specs/ANTS-1359-verify-changes-session-build-cache.md.
 
 #include "remotecontrol.h"
 

@@ -1,6 +1,6 @@
 # `spec_query` + `project_layout` phases-dir recognition — test contract
 
-Locks the invariants in `docs/specs/ANTS-1880.md`.
+Locks the invariants in `docs/specs/ANTS-1880-spec-query-project-layout-recognise.md`.
 
 ## Anchors
 

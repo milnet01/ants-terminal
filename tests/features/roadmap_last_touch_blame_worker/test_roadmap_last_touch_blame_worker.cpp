@@ -179,7 +179,7 @@ TEST(RoadmapLastTouchBlameWorker, Inv3BlameArgsUsePorcelainNotLinePorcelain) {
            "per commit, looked up per sha) rather than --line-porcelain "
            "(header repeated on every line) -- the whole-file output is "
            "tens of MB at today's ROADMAP.md size against the ~4 MB "
-           "transient docs/specs/ANTS-1237.md section 6 budgets.\n"
+           "transient docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md section 6 budgets.\n"
            "function body:\n" << body;
     EXPECT_EQ(body.find("--line-porcelain"), std::string::npos)
         << "still passing --line-porcelain -- the whole-file blame is "

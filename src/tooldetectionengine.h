@@ -1,6 +1,6 @@
 // ANTS-1286 — process-lifetime tool-availability cache for the audit
 // pipeline. PATH-hash-keyed; cache resets when $PATH changes. Lives
-// in ants_core_lib (Qt6::Core only). See docs/specs/ANTS-1286.md.
+// in ants_core_lib (Qt6::Core only). See docs/specs/ANTS-1286-audit-tool-detection-cache-session.md.
 
 #pragma once
 

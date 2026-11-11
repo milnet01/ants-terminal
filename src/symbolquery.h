@@ -11,7 +11,7 @@
 // anchors the project root; the lib never escapes that subtree (it
 // does not follow symlinks).
 //
-// See docs/specs/ANTS-1303.md.
+// See docs/specs/ANTS-1303-find-definition-find-caller-mcp.md.
 
 #ifndef ANTS_SYMBOLQUERY_H
 #define ANTS_SYMBOLQUERY_H

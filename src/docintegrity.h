@@ -18,7 +18,7 @@
 //                      items than it says (ANTS-5295).
 //
 // Consumed by the `doc_integrity` MCP verb and the cold-eyes Phase-1e feed.
-// See docs/specs/ANTS-3601.md.
+// See docs/specs/ANTS-3601-deterministic-doc-integrity-check.md.
 
 #pragma once
 

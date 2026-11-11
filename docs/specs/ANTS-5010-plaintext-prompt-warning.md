@@ -179,7 +179,7 @@ a port nothing listens on, so no request reaches a server.
 
 ## 8. Cross-doc impact
 
-- `docs/specs/ANTS-1352.md` — its success envelope gains `warning`; add one
+- `docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md` — its success envelope gains `warning`; add one
   sentence when this ships.
 - `CHANGELOG.md` — one `### Security` entry.
 - ROADMAP — ANTS-5010 flips to shipped when built.

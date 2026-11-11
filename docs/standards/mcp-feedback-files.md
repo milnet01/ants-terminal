@@ -856,7 +856,7 @@ never appear there.
 
 ## Stale-binary self-check (ANTS-3504)
 
-> **Status: shipped (ANTS-3504, cold-eyes clean — `docs/specs/ANTS-3504.md`).**
+> **Status: shipped (ANTS-3504, cold-eyes clean — `docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md`).**
 > `feedback_query` `mapped_id_status` carries `shipped_date` on ✅ ids. It goes live in a given
 > session once that session's MCP server is relaunched onto the shipping build.
 
@@ -900,7 +900,7 @@ an id → its shipping commit is not reliably mechanical; the `Resolved` date is
 single, mechanically-parseable field). When a ✅ bullet carries no `Resolved`
 date, no ship-date is emitted — the stub keeps its pre-3504 dateless form and
 `shipped_date` is absent; the date is never fabricated. Full contract:
-`docs/specs/ANTS-3504.md`.
+`docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md`.
 
 ## Migration from v1
 
@@ -908,7 +908,7 @@ There is none any more. `migrate_v2` (ANTS-3446) converted the corpus on
 2026-07-10, and ANTS-4513 retired it. On 2026-11-04 no corpus file was v1:
 `grep -L 'ants-mcp-feedback: 2'` over the corpus listed none. A v1 file
 refuses `not_v2`. Design of the retired op:
-[`docs/specs/ANTS-3446.md`](../specs/ANTS-3446.md).
+[`docs/specs/ANTS-3446-feedback-log-op-migrate-v2.md`](../specs/ANTS-3446-feedback-log-op-migrate-v2.md).
 
 ## Tooling (verbs) under v2
 

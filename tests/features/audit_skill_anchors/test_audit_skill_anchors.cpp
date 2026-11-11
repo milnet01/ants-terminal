@@ -1,7 +1,7 @@
 // ANTS-1410 — spec-anchor drift detection. The shipped /audit
 // skill lives at ~/.claude/skills/audit/SKILL.md (outside this
 // repo). We don't source-scrape the global file; we scrape
-// docs/specs/ANTS-1410.md for the anchors the skill MUST contain.
+// docs/specs/ANTS-1410-audit-skill-enumerates-project-specific.md for the anchors the skill MUST contain.
 
 #include "../../_support/expect.h"
 
@@ -26,7 +26,7 @@ TEST(audit_skill_anchors, Inv1SpecPresent) {
     expect_reset();
     const std::string spec = ants_test::slurpFile(SPEC_ANTS_1410_PATH);
     expect(spec.size() > 1000,
-           "INV-1: ANTS-1410.md is non-trivial size");
+           "INV-1: ANTS-1410-audit-skill-enumerates-project-specific.md is non-trivial size");
     EXPECT_EQ(0, expect_failures());
 }
 

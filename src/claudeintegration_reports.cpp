@@ -1186,8 +1186,8 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "catalog:true (no name) to get the full verb "
                         "catalog — every registered tool grouped by "
                         "category with its one-line selection_hint, in "
-                        "one call. See docs/specs/ANTS-1399.md + "
-                        "ANTS-1985.md.");
+                        "one call. See docs/specs/ANTS-1399-tool-info-name-mcp-verb.md + "
+                        "ANTS-1985-tool-info-catalog-true-one.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to fetch one tool's descriptor without "
                         "re-paying for the full tools/list snapshot, "
@@ -1231,7 +1231,7 @@ void appendToolSchemasReports(QJsonArray &tools) {
                 // when the cache is missing, expired (7-day TTL), or
                 // any probed path's mtime has advanced. Persists via
                 // session_memory under the well-known key
-                // `project_layout`. See docs/specs/ANTS-1430.md.
+                // `project_layout`. See docs/specs/ANTS-1430-session-memory-project-layout-scan.md.
                 {
                     QJsonObject t;
                     t["name"] = "project_layout";
@@ -1322,9 +1322,9 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "the focused Ants tab's cwd (prevents "
                         "confused-deputy writes). key required for "
                         "get/set/delete; value required for set. See "
-                        "docs/specs/ANTS-1283.md + "
-                        "docs/specs/ANTS-1336.md + "
-                        "docs/specs/ANTS-1435.md.");
+                        "docs/specs/ANTS-1283-session-memory-mcp-key-value.md + "
+                        "docs/specs/ANTS-1336-session-memory-cwd-arg-cross.md + "
+                        "docs/specs/ANTS-1435-session-memory-project-layout-reads.md.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject opProp;

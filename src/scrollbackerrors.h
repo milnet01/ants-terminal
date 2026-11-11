@@ -11,7 +11,7 @@
 // hands the string here. No GUI / terminal / filesystem deps — lives
 // in ants_core_lib next to fileoutline / buildcache.
 //
-// See docs/specs/ANTS-1301.md.
+// See docs/specs/ANTS-1301-recent-errors-mcp-extract-compile.md.
 
 #ifndef ANTS_SCROLLBACKERRORS_H
 #define ANTS_SCROLLBACKERRORS_H

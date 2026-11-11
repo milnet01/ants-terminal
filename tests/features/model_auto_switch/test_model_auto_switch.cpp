@@ -1,5 +1,5 @@
 // Feature-conformance test for ANTS-1735 — autonomous model-switch gate.
-// See tests/features/model_auto_switch/spec.md and docs/specs/ANTS-1735.md.
+// See tests/features/model_auto_switch/spec.md and docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md.
 //
 // Covers the pure decision helper (INV-1..INV-9). No live terminal: every case
 // builds a Gate value and asserts decide()/clampToFloor() output.

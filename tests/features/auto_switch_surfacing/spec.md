@@ -1,7 +1,7 @@
 # auto_switch_surfacing — feature-conformance spec
 
 Tests for ANTS-1893 (switch-event surfacing). See
-`docs/specs/ANTS-1893.md` for the full invariant catalogue
+`docs/specs/ANTS-1893-switch-event-surfacing-toast-chip.md` for the full invariant catalogue
 (INV-1..INV-15). Suite name: `AutoSwitchSurfacing`.
 
 ## Coverage status (2026-05-28)

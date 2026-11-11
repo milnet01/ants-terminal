@@ -176,7 +176,7 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                 // ANTS-1244 — surface 3 existing remote-control verbs
                 // as MCP tools so a Claude session in an Ants tab can
                 // query terminal state via tool-call rather than
-                // `Bash`/`Read`. See docs/specs/ANTS-1244.md.
+                // `Bash`/`Read`. See docs/specs/ANTS-1244-surface-3-existing-remote-control.md.
                 //
                 // ANTS-1247-INV-8: `status` filter declared in inputSchema
                 // with enum [all|active|shipped] + description citing

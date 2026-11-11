@@ -1,6 +1,6 @@
 # mcp_selection_hint — ANTS-1453
 
-See `docs/specs/ANTS-1453.md`.
+See `docs/specs/ANTS-1453-per-tool-selection-hint-every.md`.
 
 ## Test scope
 

@@ -14,7 +14,7 @@ from recall; both die at a symbol lookup. Nothing did the lookup.
 `ident ( "::" ident )* "()"?` whole-span, applies six exclusions, reduces each
 survivor to a needle, and resolves distinct needles through
 `SymbolQuery::findDefinition`. It **reports and never judges** — see INV-4 in
-`docs/specs/ANTS-3661.md`.
+`docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md`.
 
 - **INV-1 candidate harvest** — a span is a candidate only with all six
   exclusions applied: paths (excluded by the production itself), `doc-examples`
@@ -115,7 +115,7 @@ INV-4 and INV-6's absence-asserting mutations (M6, M7) are recorded in
 
 `DocSymbols.DISABLED_CorpusCalibration` sweeps the live `docs/specs` +
 `docs/standards` tree and prints the measured split against
-`docs/specs/ANTS-3661.md`'s two numeric gates. It is `DISABLED_` because it
+`docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md`'s two numeric gates. It is `DISABLED_` because it
 measures the repository rather than asserting a contract, and its numbers move
 as the corpus grows. Re-run it when either gate is in question:
 
@@ -130,7 +130,7 @@ and § 4.
 ## Out of scope
 
 - **Deciding defect vs forward reference** — the whole design constraint
-  (`docs/specs/ANTS-3661.md` § 2.3). A permanent exclusion, not deferred work.
+  (`docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md` § 2.3). A permanent exclusion, not deferred work.
 - **Signature checking** — "does `foo()` still take two arguments" needs a
   parse, not a lookup. Permanent for v1.
 - **Schema argument names as an injected exclusion** — no accessor returns the

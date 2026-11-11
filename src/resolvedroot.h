@@ -11,7 +11,7 @@
 // kept dependency-light so the regression test can include it without
 // pulling Qt6::Widgets.
 //
-// See docs/specs/ANTS-1401.md for the full design.
+// See docs/specs/ANTS-1401-central-resolvedroot-helper-caller-cwd.md for the full design.
 
 #pragma once
 

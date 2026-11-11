@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ants-terminal PreToolUse(Read) hook — block full reads of ROADMAP.md.
-# Spec: docs/specs/ANTS-1252.md § 1.3
+# Spec: docs/specs/ANTS-1252-token-saving-hook-pack.md § 1.3
 # Triggers: tool=Read AND target == project ROADMAP.md AND size > 50 KiB
 #           AND no `offset`/`limit` (partial reads are always allowed).
 # INV-7: jq -r only. INV-12 has no analogue here (no in-band override).

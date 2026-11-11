@@ -3,7 +3,7 @@
 // text, ids, body} records so drift-checks stop full-reading the log.
 // Qt6::Core-only; lives in ants_core_lib so the remotecontrol handler
 // and the feature test share one implementation.
-// See docs/specs/ANTS-3533.md.
+// See docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md.
 
 #pragma once
 

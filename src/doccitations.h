@@ -6,7 +6,7 @@
 // MarkdownScan, whose fenceMask + codeSpans (ANTS-3649) it consumes.
 //
 // The grammar and the reasoning behind every rule live in
-// docs/specs/ANTS-3653.md; the test surface is tests/features/doc_citations_scan/.
+// docs/specs/ANTS-3653-citation-scan-path-line-grammar.md; the test surface is tests/features/doc_citations_scan/.
 // Matching is two-stage — a permissive RECOGNISE pass finds token boundaries,
 // then a VALIDATE pass decides citation or bad_locus. That split is not
 // decoration: a single strict production cannot report what it fails to match,

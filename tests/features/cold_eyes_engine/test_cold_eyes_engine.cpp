@@ -408,7 +408,7 @@ TEST(ColdEyesEngine, CrossDocDiffFromReportsCorroboratesAcrossLanes) {
 TEST(ColdEyesEngine, FoldInBlockHeadingMatchesInv7) {
     QList<IndieReviewEngine::CorroboratedFinding> actionable;
     IndieReviewEngine::CorroboratedFinding f;
-    f.file = QStringLiteral("docs/specs/ANTS-1281.md");
+    f.file = QStringLiteral("docs/specs/ANTS-1281-indie-review-brief-returns-template.md");
     f.line = 42;
     f.citingLanes << QStringLiteral("contracts")
                   << QStringLiteral("spec/ANTS-1281");
@@ -423,7 +423,7 @@ TEST(ColdEyesEngine, FoldInBlockHeadingMatchesInv7) {
         << "INV-7 heading regex failed; block:\n" << block.toStdString();
     EXPECT_TRUE(block.contains(QStringLiteral("[ANTS-1335]")));
     EXPECT_TRUE(block.contains(QStringLiteral(
-        "docs/specs/ANTS-1281.md:42")));
+        "docs/specs/ANTS-1281-indie-review-brief-returns-template.md:42")));
 }
 
 // ENG-9
@@ -685,7 +685,7 @@ TEST(ColdEyesEngine, SpecLanePairsWithExpandsCrossRefs) {
     ASSERT_TRUE(ws.writeRel("README.md",  "x"));
     ASSERT_TRUE(ws.writeRel("ROADMAP.md", stubRoadmap({})));
     ASSERT_TRUE(ws.writeRel("CHANGELOG.md", "x"));
-    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1234.md",
+    ASSERT_TRUE(ws.writeRel("docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md",
         QStringLiteral("# ANTS-1234 — primary\n\n"
                        "**Pairs with:** ANTS-1100, ANTS-1101.\n\n"
                        "## Problem\nbody\n")));
@@ -694,7 +694,7 @@ TEST(ColdEyesEngine, SpecLanePairsWithExpandsCrossRefs) {
     // ANTS-9000 is named in the body but not in the header — should NOT appear.
     ColdEyesEngine::Lane lane;
     lane.name = QStringLiteral("spec/ANTS-1234");
-    lane.docPaths << QStringLiteral("docs/specs/ANTS-1234.md");
+    lane.docPaths << QStringLiteral("docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md");
     const auto m = ColdEyesEngine::assembleBriefManifest(ws.root(), lane);
     EXPECT_TRUE(m.crossReferenceDocs.contains(
         QStringLiteral("docs/specs/ANTS-1100.md")));

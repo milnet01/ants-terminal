@@ -1,6 +1,6 @@
 // ANTS-1284 — in-process MCP token-usage tracker. Counts per-tool
 // dispatch byte sizes and reports an est_tokens_saved delta against
-// per-tool static baselines. See docs/specs/ANTS-1284.md.
+// per-tool static baselines. See docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
 //
 // Qt6::Core only. Lives in ants_mcpcore_lib (ANTS-4932) alongside
 // verifyengine, indiereviewengine, debtsweepengine,
@@ -101,7 +101,7 @@ private:
 // ANTS-3572 — pure persistence helpers for the tokens-saved aggregate
 // (status-bar chip + monthly / YTD / all-time). Kept here (Qt6::Core, no
 // Widgets) so they are unit-testable without a MainWindow; the fold/write
-// side that consumes them lives on MainWindow. See docs/specs/ANTS-3572.md.
+// side that consumes them lives on MainWindow. See docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md.
 
 // ANTS-3579 — chars-per-token divisor, promoted from the tokenusageengine.cpp
 // anonymous namespace to a public constexpr so the per-project display path
@@ -121,7 +121,7 @@ QJsonObject foldMonthlyBucket(QJsonObject monthly, const QString &monthKey,
                               qint64 add, int keepMonths);
 
 // ANTS-3579 — per-project persistence helpers for the tokens-saved pill's
-// `claude.tokens_saved_by_project` map. See docs/specs/ANTS-3579.md § 2.5.
+// `claude.tokens_saved_by_project` map. See docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md § 2.5.
 //
 // Fold ONE project's `addTokens` into byProject[root]: lifetime += addTokens,
 // monthly via foldMonthlyBucket(...,keepMonths), stamp `since` = nowIso.left(10)

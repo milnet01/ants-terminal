@@ -1,6 +1,6 @@
 # Master Ants-MCP on/off toggle — feature spec
 
-Test contract for ANTS-1901. Full design: `docs/specs/ANTS-1901.md`.
+Test contract for ANTS-1901. Full design: `docs/specs/ANTS-1901-master-ants-mcp-off-toggle.md`.
 
 `claude.mcp_enabled` (default **true**) is the master switch for the whole
 Ants MCP integration. When off: the socket isn't bound at launch, the

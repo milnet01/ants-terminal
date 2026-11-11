@@ -1,7 +1,7 @@
 # audit_run since-last-run findings delta (ANTS-1870)
 
 Behavioural contract for the precise since-last-run delta + carry-forward
-SARIF merge. Full design: `docs/specs/ANTS-1870.md`.
+SARIF merge. Full design: `docs/specs/ANTS-1870-audit-run-precise-since-last.md`.
 
 ## Invariants under test
 
@@ -32,7 +32,7 @@ SARIF merge. Full design: `docs/specs/ANTS-1870.md`.
   first `max` entries (current findings lead `merged`) and returns true when
   it dropped any; `runAudit` calls it on `mergedForRecord` with
   `kSarifFindingsMax` before `AuditCache::recordRun`, marking the sidecar
-  `truncated` on a cut (docs/specs/ANTS-1870.md § 2.5).
+  `truncated` on a cut (docs/specs/ANTS-1870-audit-run-precise-since-last.md § 2.5).
 
 ## Out of scope
 

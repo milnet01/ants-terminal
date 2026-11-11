@@ -25,7 +25,7 @@
 
 // ANTS-1287: headingLevel + slugifyHeading + uniqueSlug live in RoadmapIndex.
 // File-scope using-declarations preserve the unqualified call surface the
-// moved bodies were written against. See docs/specs/ANTS-1287.md § 7.
+// moved bodies were written against. See docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md § 7.
 using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
 
@@ -39,7 +39,7 @@ namespace {
 }  // namespace
 
 // 64-bit FNV-1a hash of the normalised headline. See
-// docs/specs/ANTS-1428.md § Synthetic-ID fallback.
+// docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Synthetic-ID fallback.
 quint64 fnv1a64(const QString &normalised) {
     constexpr quint64 kFnvOffsetBasis = 0xcbf29ce484222325ULL;
     constexpr quint64 kFnvPrime       = 0x100000001b3ULL;

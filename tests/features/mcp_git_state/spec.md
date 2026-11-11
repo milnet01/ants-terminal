@@ -1,6 +1,6 @@
 # mcp_git_state — ANTS-1250 conformance
 
-Source spec: [docs/specs/ANTS-1250.md](../../../docs/specs/ANTS-1250.md).
+Source spec: [docs/specs/ANTS-1250-git-state-mcp-tool-consolidated.md](../../../docs/specs/ANTS-1250-git-state-mcp-tool-consolidated.md).
 
 This is a source-grep conformance harness — it does NOT spin up a
 RemoteControl + QProcess + real git repo. It locks the wiring

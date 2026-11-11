@@ -3,7 +3,7 @@
 // this file (test_claude — has the SRC_*_PATH defines) pins the wiring:
 //   INV-1/11 recordDispatch attribution; INV-12 clear-after-fold; INV-2/3/8/10/11
 //   the widget render; INV-4/6/7 the MainWindow fold + tab-switch refresh.
-// See docs/specs/ANTS-3579.md § 3 / § 5.
+// See docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md § 3 / § 5.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"

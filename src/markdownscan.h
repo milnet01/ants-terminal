@@ -76,7 +76,7 @@ bool fenceCloses(const QString &line, QChar openChar, int openRun,
 // ANTS-3638 — this is the one consumer that tracks list containers, so a
 // fence nested in a list item opens correctly (a 4-space-indented ``` under
 // a `- ` bullet used to be invisible, and its whole body was scanned as
-// prose — docs/specs/ANTS-1238.md:319 harvested a bogus broken_link). The
+// prose — docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md:319 harvested a bogus broken_link). The
 // stateless `fenceOpenerChar` callers (feedbackfile, docsindex)
 // keep the top-level rule: container tracking needs state they do not carry,
 // and the files they scan fence at top level.
@@ -113,7 +113,7 @@ struct CodeSpan {
 //
 // Whole-document, not line by line: a CommonMark span may cross a newline
 // (§ 6.1), and a per-line pass leaves such a span's tail exposed — the defect
-// ANTS-3635(a) fixed, where docs/specs/ANTS-1150.md:197-198 wraps a C++ lambda
+// ANTS-3635(a) fixed, where docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md:197-198 wraps a C++ lambda
 // whose second line reads `[this](int idx)`.
 //
 // A span's closing run is searched FORWARD across lines but never past a blank
@@ -143,7 +143,7 @@ QVector<CodeSpan> codeSpans(const QStringList &lines, const QVector<bool> &fence
 // accepted), matching fenceMask's overload.
 //
 // `fence` is required, not optional: a marker inside a fenced block is sample
-// text, and docs/specs/ANTS-3659.md is a document that shows the marker inside
+// text, and docs/specs/ANTS-3659-examples-region-doc-scanners-honour.md is a document that shows the marker inside
 // a fence. It must be the mask for THESE lines; a size mismatch is a
 // programming error, and in release a short mask reads as unfenced.
 //

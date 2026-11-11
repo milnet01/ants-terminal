@@ -1,6 +1,6 @@
 # contract_doc_drift — contract-doc ↔ code literal-drift lane (ANTS-3600)
 
-Full design contract: `docs/specs/ANTS-3600.md`. This test locks the runtime
+Full design contract: `docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md`. This test locks the runtime
 behaviour of `FeatureCoverage`'s two drift lanes and the registration of the
 `contract_doc_drift_standards` and `contract_doc_drift_specs` audit checks.
 
@@ -15,7 +15,7 @@ findings in one category, which was over 80% of the audit report; nobody read
 it, so anything genuine inside it was invisible. The split suppresses nothing
 — both lanes report — it makes the small half legible on its own.
 
-## Invariants (mapped to `docs/specs/ANTS-3600.md`)
+## Invariants (mapped to `docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md`)
 
 - **INV-1** — an unknown back-ticked symbol flags. *Test:* `DriftAndResolve`.
 - **INV-2** — a literal naming a real file (incl. name-excluded ROADMAP.md /

@@ -1,5 +1,5 @@
 // ANTS-3661 — see docsymbols.h for the design constraint (report-only) and
-// docs/specs/ANTS-3661.md for the contract.
+// docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md for the contract.
 
 #include "docsymbols.h"
 

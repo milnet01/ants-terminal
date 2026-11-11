@@ -1,12 +1,12 @@
 # Feature: changelog_query (ANTS-3533)
 
 Read-only MCP verb: a structured Keep-a-Changelog reader over CHANGELOG.md,
-mirroring `roadmap_query`. Full contract: `docs/specs/ANTS-3533.md`.
+mirroring `roadmap_query`. Full contract: `docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md`.
 
 This test asserts the pure `ChangelogQuery::parse` parser (the net-new logic)
 and source-scrapes the handler wiring.
 
-## Parser invariants exercised (docs/specs/ANTS-3533.md § 3, INV-2, INV-3, INV-10, INV-11)
+## Parser invariants exercised (docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md § 3, INV-2, INV-3, INV-10, INV-11)
 
 - **INV-2** — recognises `## [<version>]` headings (em-dash / hyphen / no
   separator; bare `## [Unreleased]` → `unreleased=true` + version normalised),

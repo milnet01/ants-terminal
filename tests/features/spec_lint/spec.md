@@ -1,7 +1,7 @@
 # spec_lint — engine conformance
 
 Contract for `tests/features/spec_lint/test_spec_lint.cpp`. Owning specs:
-[`docs/specs/ANTS-3662.md`](../../../docs/specs/ANTS-3662.md) and
+[`docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md`](../../../docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md) and
 [`docs/specs/ANTS-4127-test-surface-resolution.md`](../../../docs/specs/ANTS-4127-test-surface-resolution.md).
 Rows are prefixed by owner: `Inv*` are ANTS-3662's, `Ants4127Inv*` are
 ANTS-4127's, and the two numbering schemes are independent.

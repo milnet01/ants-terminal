@@ -35,7 +35,7 @@ QString cacheDirLocal(const QString &canonProject) {
     return canonProject + QLatin1String("/.audit_cache");
 }
 
-// Per-test status line (see § 3.4 of ANTS-1300.md).
+// Per-test status line (see § 3.4 of ANTS-1300-test-results-mcp-last-test.md).
 //   "   1/1221 Test #N: TestName ...   Passed    1.03 sec"
 //   "   1/1221 Test #N: TestName ...***Failed   1.03 sec"
 //   "   1/1221 Test #N: TestName ...***Exception: SegFault   1.03 sec"

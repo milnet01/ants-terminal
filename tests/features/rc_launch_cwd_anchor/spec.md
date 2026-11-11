@@ -1,6 +1,6 @@
 # Feature: rc cwd anchor on launch / new-tab
 
-Canonical design: `docs/specs/ANTS-1347.md`. Test-side restatement.
+Canonical design: `docs/specs/ANTS-1347-cwd-anchor-cmdlaunch-cmdnewtab.md`. Test-side restatement.
 
 ## Problem
 
@@ -31,7 +31,7 @@ bundle directory).
   helper here is the reject-on-bad-byte counterpart for fields where
   silent mutation would mislead the caller.
 
-## Invariants (full list in `docs/specs/ANTS-1347.md`)
+## Invariants (full list in `docs/specs/ANTS-1347-cwd-anchor-cmdlaunch-cmdnewtab.md`)
 
 - **INV-1** Anchor on by default — every `cmdLaunch`/`cmdNewTab`
   request with non-empty `cwd` and `allow_outside_root != true`

@@ -181,7 +181,7 @@ at the next relaunch; until then it still answers, which harms nothing.
 - **INV-9** — Each spec whose title names a removed verb carries
   `**Superseded by:** ANTS-5485`: ANTS-1279, ANTS-1281, ANTS-1290,
   ANTS-1569, ANTS-1583, ANTS-1635, ANTS-1644. *Test:*
-  `grep -L 'Superseded by:\*\* ANTS-5485' docs/specs/ANTS-1279.md docs/specs/ANTS-1281.md docs/specs/ANTS-1290.md docs/specs/ANTS-1569.md docs/specs/ANTS-1583.md docs/specs/ANTS-1635.md docs/specs/ANTS-1644.md`
+  `grep -L 'Superseded by:\*\* ANTS-5485' docs/specs/ANTS-1279-indie-review-orchestrate-mcp-tool.md docs/specs/ANTS-1281-indie-review-brief-returns-template.md docs/specs/ANTS-1290-plan-template-mcp-tool.md docs/specs/ANTS-1569-current-state-mcp-aggregator-one.md docs/specs/ANTS-1583-roadmap-branch-drift-mcp-verb.md docs/specs/ANTS-1635-test-audit-fold-narrative-mode.md docs/specs/ANTS-1644-cold-eyes-fold-indie-review.md`
   → no output.
 - **INV-10** — `docs/standards/` describes no removed verb as live.
   `mcp-error-codes.md` lists `verb_removed`. *Test:*

@@ -5,7 +5,7 @@ status bar to the menu bar, immediately to the right of the Help
 menu, so it reads as a one-shot call-to-action and frees status-bar
 real estate for steady-state telemetry.
 
-Companion to `docs/specs/ANTS-1124.md`. The spec covers the
+Companion to `docs/specs/ANTS-1124-move-update-available-link-status.md`. The spec covers the
 rationale; this file is the test contract.
 
 ## Invariants

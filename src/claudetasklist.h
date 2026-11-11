@@ -12,7 +12,7 @@
 //
 // The plan is sourced from the active session's JSONL transcript at
 // `~/.claude/projects/<encoded-cwd>/<session-uuid>.jsonl`. Three event
-// shapes carry plan state (see docs/specs/ANTS-1158.md §3.1):
+// shapes carry plan state (see docs/specs/ANTS-1158-claude-code-task-list-status.md §3.1):
 //
 //   * TodoWrite — full snapshot, replaces the list. (Most-recent wins.)
 //   * TaskCreate — incremental add; ID arrives in the paired

@@ -1,6 +1,6 @@
 # scrollback_hyperlinks_reflow_lockstep — ANTS-1333
 
-See `docs/specs/ANTS-1333.md` for the full contract.
+See `docs/specs/ANTS-1333-scrollback-hyperlink-lockstep-width.md` for the full contract.
 
 ## Test scope
 

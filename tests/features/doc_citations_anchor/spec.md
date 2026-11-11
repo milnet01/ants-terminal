@@ -1,6 +1,6 @@
 # doc_citations_anchor — the anchor-symbol drift check (ANTS-3654)
 
-Contract: [`docs/specs/ANTS-3654.md`](../../../docs/specs/ANTS-3654.md) § 2 (anchor,
+Contract: [`docs/specs/ANTS-3654-anchor-symbol-drift-check-only.md`](../../../docs/specs/ANTS-3654-anchor-symbol-drift-check-only.md) § 2 (anchor,
 needle, match) and § 3 (INV-13, INV-14).
 
 The engine's read path is `tests/features/doc_citations/`; the citation grammar is

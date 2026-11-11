@@ -421,7 +421,7 @@ public:
     // table inside claudeintegration.cpp. ANTS-1520 flipped the
     // fall-through default to Required so a new tool fails CLOSED:
     // an unclassified name refuses without caller_cwd rather than
-    // silently anchoring to the focused tab. See docs/specs/ANTS-1404.md.
+    // silently anchoring to the focused tab. See docs/specs/ANTS-1404-per-tool-caller-cwd-contracts.md.
     static CallerCwdContract callerCwdContractFor(const QString &toolName);
 
     // ANTS-1357 — shared with the MainWindow lambdas that emit this
@@ -440,7 +440,7 @@ public:
     //
     // Sliding-window bucket per (toolName, callerCwd). Monotonic
     // clock in production via s_rateLimitClock; tests pass synthetic
-    // nowMs. See docs/specs/ANTS-1356.md.
+    // nowMs. See docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md.
     // ANTS-1629 — BriefAssembly tier. Higher cap (30/min) for brief-
     // generation verbs that fan out one-call-per-lane during a single
     // /cold-eyes (or sibling) sweep. The default `/cold-eyes` Phase-2
@@ -489,7 +489,7 @@ public:
     // ANTS-1357 — direct cache API (test-only seam). The integration
     // with the MCP dispatch is exercised in
     // tests/features/mcp_idempotent_read_cache via these methods,
-    // bypassing the QLocalSocket round-trip. See docs/specs/ANTS-1357.md.
+    // bypassing the QLocalSocket round-trip. See docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md.
     QString tryGetIdempotentReadCacheForTest(
         const QString &toolName, const QJsonObject &args) const {
         return tryGetIdempotentReadCache(toolName, args);
@@ -543,7 +543,7 @@ public:
     // ANTS-3579 — per-project session saved-BYTES (divided to tokens at display /
     // fold). sessionSavedBytesForProject returns 0 for an unknown root;
     // sessionSavedBytesByProject is the whole-map snapshot MainWindow's fold
-    // iterates (the live map is private). See docs/specs/ANTS-3579.md § 2.1/2.3.
+    // iterates (the live map is private). See docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md § 2.1/2.3.
     qint64 sessionSavedBytesForProject(const QString &root) const {
         return m_sessionSavedBytesByProject.value(root, 0);
     }
@@ -556,7 +556,7 @@ public:
     // a consuming model can syntactically distinguish "data the
     // server returned" from "instructions from the user". Embedded
     // </ants_mcp_data> close tags in the payload are replaced with
-    // a sentinel to neutralise breakout. See docs/specs/ANTS-1294.md.
+    // a sentinel to neutralise breakout. See docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md.
     // ANTS-4457 — the two token_usage accounting rules, exposed as
     // statics so each is testable without driving a dispatch.
     // dispatchResultIsSuccess is a WHITELIST: a result added later
@@ -605,7 +605,7 @@ public:
     // provider lambda calls this to read a slice of the ring.
     // Filter: id >= since (INV-3 inclusive). Result envelope shape:
     //   {ok, records, next_id, ring_capacity, ring_size}
-    // See docs/specs/ANTS-1360.md.
+    // See docs/specs/ANTS-1360-mcp-debug-log-tap-mcp.md.
     QJsonObject queryMcpTrace(quint64 since, int limit) const;
 
     // ANTS-1360 — test-only seam. Drive record/query/clear without
@@ -892,7 +892,7 @@ private:
     // ANTS-1357 — short-TTL idempotent-read cache.
     // Allowlist: get_cwd / get_environment / tab_list / last_audit_summary.
     // Key: SHA256-hex16(toolName + '\0' + QJsonDocument(args).toJson(Compact)).
-    // INVs in docs/specs/ANTS-1357.md.
+    // INVs in docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md.
     struct IdempotentReadEntry {
         qint64  stampMs = 0;   // monotonicNowMs() (ANTS-5090)
         QString response;
@@ -906,7 +906,7 @@ private:
     // callerCwd) sliding-window bucket. Pruned on access; empty
     // buckets auto-evict to keep the map size proportional to active
     // load. kRateLimitMapCap bounds map growth via LRU eviction.
-    // See docs/specs/ANTS-1356.md.
+    // See docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md.
     struct RateLimitBucket {
         QQueue<qint64> tsMs;  // monotonic ms, strictly ascending
     };
@@ -963,7 +963,7 @@ public:
     // before a restart resolves to `expired` after). Modelled on the
     // in-flight gate above. The registry holds liveness + a cache path +
     // compact counts only — the multi-MB SARIF stays on disk in
-    // `.audit_cache`. See docs/specs/ANTS-3396.md.
+    // `.audit_cache`. See docs/specs/ANTS-3396-opt-async-audit-run-job.md.
     struct AuditJob {
         QString     status;        // stored: "running" | "done" | "error"
                                    // ("expired" is synthesised at poll time)
@@ -1024,7 +1024,7 @@ private:
     // ANTS-1360 — MCP debug-log tap. Ring buffer of last
     // kMcpTraceCap tools/call dispatches. Single-threaded by INV-10
     // (Qt main thread, QLocalSocket readyRead). See
-    // docs/specs/ANTS-1360.md.
+    // docs/specs/ANTS-1360-mcp-debug-log-tap-mcp.md.
     struct McpTraceRecord {
         quint64     id          = 0;
         qint64      tsMs        = 0;

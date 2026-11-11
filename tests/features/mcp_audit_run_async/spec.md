@@ -1,6 +1,6 @@
 # Feature test — ANTS-3396 opt-in async `audit_run` + `audit_poll`
 
-Contract mirror of `docs/specs/ANTS-3396.md` in test-anchor form. Label
+Contract mirror of `docs/specs/ANTS-3396-opt-async-audit-run-job.md` in test-anchor form. Label
 `features` (added to the `test_claude` bundle).
 
 Wiring is verified by source-grep against `src/mainwindow.cpp`

@@ -418,7 +418,7 @@ QJsonDocument clAmend(const QJsonObject &req, const QString &clPath, bool dryRun
 
 // ANTS-3533 — changelog_query: read-only structured CHANGELOG.md reader,
 // the symmetric read side of changelog_log. Mirrors cmdRoadmapQuery's
-// arg/mode/refusal discipline. See docs/specs/ANTS-3533.md.
+// arg/mode/refusal discipline. See docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md.
 QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
     auto err = [](const QString &code, const QString &message) {
         QJsonObject env;

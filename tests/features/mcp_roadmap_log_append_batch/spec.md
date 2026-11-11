@@ -1,7 +1,7 @@
 # Feature: `roadmap_log op:append_batch`
 
 Part of **ANTS-1879**. Full design + invariants live in
-[`docs/specs/ANTS-1879.md`](../../../docs/specs/ANTS-1879.md).
+[`docs/specs/ANTS-1879-roadmap-log-op-append-batch.md`](../../../docs/specs/ANTS-1879-roadmap-log-op-append-batch.md).
 
 ## Scope
 

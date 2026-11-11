@@ -64,7 +64,7 @@ Exactly one of `symbol` and `path` is required. These refuse the call with `bad_
   "tests": {"files": ["tests/features/workspace_search/test_ws.cpp"],
             "ctest_patterns": ["WorkspaceSearch"], "selection": "map"},
   "docs": [
-    {"file": "docs/specs/ANTS-1248.md", "heading": "4.2 The rg call", "heading_line": 40, "line": 52}
+    {"file": "docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md", "heading": "4.2 The rg call", "heading_line": 40, "line": 52}
   ],
   "spec_invariants": [{"spec": "ANTS-1248", "inv": "INV-3"}],
   "roadmap_items": [{"id": "ANTS-1248", "headline": "..."}],

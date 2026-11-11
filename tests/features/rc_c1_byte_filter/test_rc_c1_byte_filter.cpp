@@ -1,5 +1,5 @@
 // Feature-conformance test for spec.md (canonical:
-// docs/specs/ANTS-1335.md). Pins the C1 8-bit byte strip in
+// docs/specs/ANTS-1335-utf-8-c1-control-byte.md). Pins the C1 8-bit byte strip in
 // RemoteControl::filterControlChars + the source-grep wiring.
 //
 // PV-1..PV-16 exercise the filter directly (pure, Qt::Core only).

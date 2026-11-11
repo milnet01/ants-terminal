@@ -2,7 +2,7 @@
 // Changes dialog extracted from MainWindow::showDiffViewer into
 // src/diffviewer.{cpp,h}. Source-grep only.
 //
-// INVs map 1:1 to docs/specs/ANTS-1145.md §Acceptance:
+// INVs map 1:1 to docs/specs/ANTS-1145-extract-diffviewerdialog-mainwindow-cpp.md §Acceptance:
 //   INV-1   exact function signature in diffviewer.h
 //   INV-2a  structural markers in diffviewer.cpp
 //   INV-2b  user-visible strings preserved byte-identical

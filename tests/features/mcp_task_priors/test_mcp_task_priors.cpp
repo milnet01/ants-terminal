@@ -1,6 +1,6 @@
 // Source-grep harness for ANTS-1306 — locks the wiring contract and
 // load-bearing logic markers for the `task_priors` MCP tool. See
-// spec.md and docs/specs/ANTS-1306.md.
+// spec.md and docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md.
 //
 // task_priors resolves the project root via resolveRootCanonical(
 // m_main, req), which dereferences a live MainWindow, so the verb is

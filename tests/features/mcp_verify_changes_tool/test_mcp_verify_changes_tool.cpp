@@ -65,7 +65,7 @@ TEST(McpVerifyChangesTool, CmdMethodDefinedInCpp) {
 // falling back to `result["tools"] = tools;` if there's no subsequent
 // anchor. This tightening lets future tool registrations be inserted
 // after the verify_changes block without polluting this scan region —
-// see docs/specs/ANTS-1290.md § 5 for the MED-3 rationale.
+// see docs/specs/ANTS-1290-plan-template-mcp-tool.md § 5 for the MED-3 rationale.
 namespace {
 size_t verifyChangesBlockEnd(const std::string &ci, size_t start) {
     // Descriptor blocks in claudeintegration.cpp start at 16-space

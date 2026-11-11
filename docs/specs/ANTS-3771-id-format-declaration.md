@@ -557,7 +557,7 @@ implementing.
 
 ## 7. Cross-doc impact
 
-- § 2.1's key table in `docs/specs/ANTS-2160.md` gains `id_format`. It is the
+- § 2.1's key table in `docs/specs/ANTS-2160-per-project-ants-settings-file.md` gains `id_format`. It is the
   first non-path key there, so that section's sentence
   "Every value is a repo-root-relative path." needs qualifying.
 - `docs/specs/ANTS-3793-roadmap-consumer-cutover.md` — no change to INV-2 or
@@ -571,7 +571,7 @@ implementing.
 - `docs/specs/ANTS-3808-*` — § 4's library-layering note is the reason the
   declaration cannot load inside the read seam (§ 2.2); no change owed, cited
   so the constraint is findable.
-- `docs/specs/ANTS-2160.md` again — `ProjectSettings::Settings` gains
+- `docs/specs/ANTS-2160-per-project-ants-settings-file.md` again — `ProjectSettings::Settings` gains
   `idFormat`, its first non-path member, and `idFormatFor()` joins the module
   that § 2.2 of that spec describes as a "pure loader".
 - `docs/standards/mcp-config-keys.md` — `id_format` catalogued.

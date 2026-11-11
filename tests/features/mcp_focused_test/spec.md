@@ -2,7 +2,7 @@
 
 **Theme:** `focused_test` MCP — `FocusedTest` resolution lib (behavioural)
 + `cmdFocusedTest` wiring (source-grep). Full spec:
-`docs/specs/ANTS-1302.md`.
+`docs/specs/ANTS-1302-focused-test-mcp-run-only.md`.
 
 The pure `FocusedTest` lib is exercised GUI-free against
 `QTemporaryDir` fixtures (these tests fail on broken resolution

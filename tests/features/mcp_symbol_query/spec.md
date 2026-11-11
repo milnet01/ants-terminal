@@ -1,7 +1,7 @@
 # Feature test — `find_definition` / `find_caller` MCP symbol queries (ANTS-1303)
 
 Contract for the `SymbolQuery` Core lib + its MCP/IPC wiring. Full
-design: `docs/specs/ANTS-1303.md`.
+design: `docs/specs/ANTS-1303-find-definition-find-caller-mcp.md`.
 
 ## What this test locks
 

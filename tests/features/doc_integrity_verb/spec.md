@@ -1,6 +1,6 @@
 # doc_integrity_verb — the doc_integrity MCP verb (ANTS-3601)
 
-Full design contract: `docs/specs/ANTS-3601.md` § 2.6. This test locks the
+Full design contract: `docs/specs/ANTS-3601-deterministic-doc-integrity-check.md` § 2.6. This test locks the
 verb-layer behaviour (path→relDocs enumeration, the `kinds` filter) and the
 registration wiring. Behavioural INVs drive the extracted pure helpers and
 INV-10 source-scrapes the wiring (the `rc_get_text_byte_cap` pattern).
@@ -64,8 +64,8 @@ because the pure helpers are the sharper place to pin these two invariants.
 ANTS-3638(c), accepted rather than fixed. A relative link is resolved from
 the **citing doc's own directory**, which is right for every ordinary link
 and wrong for one narrow case: a spec that drafts text destined for a
-different file. `docs/specs/ANTS-1894.md:851` writes
-`` [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md) `` inside its
+different file. `docs/specs/ANTS-1894-near-miss-telemetry-log-gate.md:851` writes
+`` [`docs/specs/ANTS-1894-near-miss-telemetry-log-gate.md`](docs/specs/ANTS-1894-near-miss-telemetry-log-gate.md) `` inside its
 *Cross-doc impact* section as draft prose for `CHANGELOG.md`. From the repo
 root that path is correct — `CHANGELOG.md:1752` shipped the identical link —
 but resolved from `docs/specs/` it probes `docs/specs/docs/specs/` and

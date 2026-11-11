@@ -2,7 +2,7 @@
 
 Conformance test for the H9 core slice — `TerminalWidget` exposed to
 assistive technology via a `QAccessibleInterface` + `QAccessibleTextInterface`
-adapter. Full design + invariants: `docs/specs/ANTS-1078.md`.
+adapter. Full design + invariants: `docs/specs/ANTS-1078-screen-reader-accessibility.md`.
 
 ## Contract
 
@@ -11,7 +11,7 @@ reader: plain-text content, a caret offset, per-character rects, and a
 throttled change event — without retaining any per-widget content cache,
 and at zero cost when no AT is active.
 
-## Invariants covered (from docs/specs/ANTS-1078.md)
+## Invariants covered (from docs/specs/ANTS-1078-screen-reader-accessibility.md)
 
 - **INV-1** — with the factory installed + AT active,
   `QAccessible::queryAccessibleInterface(widget)` returns a non-null

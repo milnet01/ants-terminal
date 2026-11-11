@@ -5,7 +5,7 @@ ANTS-1100 status-filter tabs so the user can narrow the rendered
 roadmap to one or more `Kind:` values (`implement`, `fix`,
 `audit-fix`, `review-fix`, `doc`, `doc-fix`, `refactor`, `test`,
 `chore`, `release`, plus the de-facto `research` / `ux` values).
-Companion to `docs/specs/ANTS-1106.md` — the design + threat-
+Companion to `docs/specs/ANTS-1106-mandatory-kind-field-viewer-faceted.md` — the design + threat-
 model lives there; this file is the test contract.
 
 ## Invariants

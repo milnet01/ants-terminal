@@ -5,7 +5,7 @@ Drives the pure `FeedbackFile::parse` directly for the delta/mapped-id
 contract, plus the `RemoteControl::cmdFeedbackQuery` handler (with an
 absolute `path`, m_main-independent) for envelope + refusal coverage.
 
-Invariants exercised (see docs/specs/ANTS-1961.md §3 / §6):
+Invariants exercised (see docs/specs/ANTS-1961-feedback-query-mcp-tool-read.md §3 / §6):
 
 - T1 — multi maintainer block, mixed heading forms: delta starts at the
   first contributor heading after the LAST maintainer block; envelope

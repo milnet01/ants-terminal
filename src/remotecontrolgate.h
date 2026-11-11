@@ -8,7 +8,7 @@
 // write anything. Otherwise a Claude in project A can silently mutate
 // project B when the user has a tab focused on B.
 //
-// See docs/specs/ANTS-1372.md.
+// See docs/specs/ANTS-1372-caller-cwd-gate-mutating-mcp.md.
 
 #pragma once
 

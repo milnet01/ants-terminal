@@ -140,7 +140,7 @@ int  offloadHeadBytes()      { return g_offloadHead.load(std::memory_order_relax
 // is at or above the configured threshold (>=, inclusive) AND strictly larger
 // than the head budget (> head): the second guard keeps offload a net saving
 // when the head clamp meets or exceeds the threshold clamp (both ranges can
-// overlap — INV-12). See docs/specs/ANTS-2094.md § INV-1.
+// overlap — INV-12). See docs/specs/ANTS-2094-proactive-server-side-result-offload.md § INV-1.
 bool shouldOffload(qint64 bodyBytes) {
     return shouldOffload(bodyBytes, offloadThresholdBytes());
 }
@@ -190,7 +190,7 @@ bool fieldsWaitForOffload(const QString &toolName, const QJsonObject &args) {
 // `ok` is listed because the envelope emits it, but it is the one exception to
 // the skip: the envelope sets it as a placeholder, so a body carrying its own
 // `ok` must win — an offloaded body whose `ok` is false must not be reported
-// as a success. See docs/specs/ANTS-2094.md § 2.3.2.
+// as a success. See docs/specs/ANTS-2094-proactive-server-side-result-offload.md § 2.3.2.
 static bool isOffloadOwnedKey(const QString &k) {
     static const QSet<QString> kOwned{
         QStringLiteral("ok"),

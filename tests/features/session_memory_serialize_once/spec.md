@@ -2,7 +2,7 @@
 
 Behavioural tests asserting the post-write byte-accounting invariant
 the refactor preserves: `OpResult.totalBytes` exactly equals the
-bytes on disk. See `docs/specs/ANTS-1364.md`.
+bytes on disk. See `docs/specs/ANTS-1364-session-memory-set-serialize-store.md`.
 
 ## Invariants exercised
 

@@ -1,11 +1,11 @@
 # Feedback ship dates — feature-conformance contract
 
 This bundle held `feedback_log op:"compact_resolved"`
-([`docs/specs/ANTS-3443.md`](../../../docs/specs/ANTS-3443.md)). ANTS-4513
+([`docs/specs/ANTS-3443-feedback-log-op-compact-resolved.md`](../../../docs/specs/ANTS-3443-feedback-log-op-compact-resolved.md)). ANTS-4513
 retired that op and its cases
 ([`docs/specs/ANTS-4513-feedback-corpus-store.md`](../../../docs/specs/ANTS-4513-feedback-corpus-store.md)
 § 7). The ship-date cases stay, because `feedback_query` still reads ship
-dates ([`docs/specs/ANTS-3504.md`](../../../docs/specs/ANTS-3504.md)).
+dates ([`docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md`](../../../docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md)).
 
 ## What this test asserts
 

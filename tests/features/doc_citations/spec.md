@@ -1,6 +1,6 @@
 # doc_citations — engine: resolve a doc's citations and read the cited text (ANTS-3636)
 
-Contract: [`docs/specs/ANTS-3636.md`](../../../docs/specs/ANTS-3636.md). This
+Contract: [`docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md`](../../../docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md). This
 file is the test-surface map; the spec owns the ladder, the statuses and the
 caps.
 
@@ -114,7 +114,7 @@ The citation grammar itself is `tests/features/doc_citations_scan/`; the
 ## Quotation pass (ANTS-4386)
 
 `Options::quotes` opt-in. Nothing here has ever carried an `INV-N` id: the
-pass has no spec of its own, and `docs/specs/ANTS-3636.md`'s ladder does not
+pass has no spec of its own, and `docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md`'s ladder does not
 cover it (its numbering already runs to `INV-48`, spent on a verb-layer
 refusal, so the tests below are named by ticket rather than risking an id
 collision). Read the top-of-test comment on each for the defect it locks.

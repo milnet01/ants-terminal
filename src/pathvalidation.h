@@ -2,7 +2,7 @@
 // Every MCP/IPC handler that consumes a path-typed argument routes
 // through PathValidation::validatePath before any filesystem call,
 // so the "is this path inside the focused project root" check lives
-// in one place. Spec: docs/specs/ANTS-1295.md.
+// in one place. Spec: docs/specs/ANTS-1295-per-tool-cwd-anchor-enforcement.md.
 
 #ifndef ANTS_PATHVALIDATION_H
 #define ANTS_PATHVALIDATION_H

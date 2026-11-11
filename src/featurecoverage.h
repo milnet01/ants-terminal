@@ -68,7 +68,7 @@ QList<SpecToken> findDriftTokens(
 //      illustration, not a contract claim) — fence state comes from the
 //      shared MarkdownScan scanner, and back-ticked URLs are dropped.
 // Distinct function so the existing tests/features drift lane's token shape is
-// untouched. See docs/specs/ANTS-3600.md § 2.4.
+// untouched. See docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md § 2.4.
 QList<SpecToken> extractDocLiteralTokens(const QString &docText);
 
 // ---------------------------------------------------------------------------
@@ -266,7 +266,7 @@ QSet<QString> loadAllowlist(const QString &projectPath);
 // (buildProjectSourceBlob with markdown bodies excluded + a path manifest).
 // Allowlisted tokens (loadAllowlist) are suppressed. Silent no-op ("") when
 // the lane's own directory is absent. Pure free functions, dispatched by the
-// GUI Audit dialog's inProcessRunner path — see docs/specs/ANTS-3600.md.
+// GUI Audit dialog's inProcessRunner path — see docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md.
 //
 // ANTS-3849 — ONE lane per directory, not one over both. The two populations
 // want opposite treatment and differ by more than an order of magnitude in

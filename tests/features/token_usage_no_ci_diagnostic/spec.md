@@ -1,6 +1,6 @@
 # token_usage_no_ci_diagnostic — ANTS-1422
 
-See `docs/specs/ANTS-1422.md`.
+See `docs/specs/ANTS-1422-token-usage-no-claude-integration.md`.
 
 ## Test scope
 

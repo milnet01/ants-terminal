@@ -1,6 +1,6 @@
 # Feature: Lua plugins run off the GUI thread (ANTS-1750)
 
-Parent spec: `docs/specs/ANTS-1750.md`. This is the feature-conformance
+Parent spec: `docs/specs/ANTS-1750-run-each-lua-plugin-vm.md`. This is the feature-conformance
 contract for that design; it locks the observable behaviour + the
 structural invariants a future change could silently break.
 
@@ -40,7 +40,7 @@ responsive no matter what a plugin does.
 
 ## Structural invariants (source)
 
-These lock the design contract from `docs/specs/ANTS-1750.md` § 2. Each
+These lock the design contract from `docs/specs/ANTS-1750-run-each-lua-plugin-vm.md` § 2. Each
 fails on pre-fix source (none of the symbols exist yet).
 
 - **S1 (INV-1) — worker affinity.** `PluginManager` moves each engine to

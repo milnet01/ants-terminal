@@ -1,5 +1,5 @@
 // Feature-conformance test for spec.md (canonical:
-// docs/specs/ANTS-1365.md). Pins the ensureSocketDir helper +
+// docs/specs/ANTS-1365-tmp-socket-path-fallback-hardening.md). Pins the ensureSocketDir helper +
 // the defaultSocketPath fallback format.
 //
 // SD-1..SD-4 exercise ensureSocketDir directly via QTemporaryDir.

@@ -7,9 +7,9 @@
 // call into the helpers here.
 //
 // Format contract: docs/standards/mcp-feedback-files.md
-// Read verb spec:  docs/specs/ANTS-1961.md (§ 2.2 is the canonical home
+// Read verb spec:  docs/specs/ANTS-1961-feedback-query-mcp-tool-read.md (§ 2.2 is the canonical home
 //                  declaring the full namespace surface).
-// Write verb spec: docs/specs/ANTS-1962.md (§ 2).
+// Write verb spec: docs/specs/ANTS-1962-feedback-log-mcp-tool-append.md (§ 2).
 
 #pragma once
 
@@ -196,7 +196,7 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines);
 // corpus uses both). "" when no line matches (mid-line / "Resolved as of …" /
 // no `Resolved` line → graceful dateless fallback). feedback_query's
 // shipped_date reads it.
-// See docs/specs/ANTS-3504.md § 2.1.
+// See docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md § 2.1.
 QString shipDateFromRoadmapBody(const QString &roadmapBulletBody);
 
 // ---- ANTS-4646(b): set the file's H1 (set_title) ---------------------
@@ -229,7 +229,7 @@ SetTitleResult setTitle(const QString &content, const QString &projectTitle);
 // absent. Records the maintainer's assigned id(s) or an `n/a — <reason>`
 // closure. Pure; no roadmap, no filesystem — the wrapper (cmdFeedbackLog)
 // owns path resolution, the suffix guard, dry_run, and the atomic write.
-// See docs/specs/ANTS-3447.md for the full contract.
+// See docs/specs/ANTS-3447-feedback-log-op-assign-id.md for the full contract.
 
 struct AssignTarget {
     QString heading;          // the target `### ` heading, verbatim (trimmed match)

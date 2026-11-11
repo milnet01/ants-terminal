@@ -10,7 +10,7 @@
 loop grew the Ants process without bound. The raw output was then copied into
 the SARIF `toolExecutionNotifications` message, up to `kSarifFindingsMax × 256`
 characters per tool, against the ~7 MiB SARIF budget in
-`docs/specs/ANTS-1351.md` § 6.
+`docs/specs/ANTS-1351-audit-run-mcp-verb-server.md` § 6.
 
 ## Surface
 

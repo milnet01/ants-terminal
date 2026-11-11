@@ -1,6 +1,6 @@
 # `roadmap_log op:append` stable-prefix hint — feature-conformance test
 
-Locks the invariants in `docs/specs/ANTS-1877.md`. The
+Locks the invariants in `docs/specs/ANTS-1877-roadmap-log-op-append-stable.md`. The
 `counter_read_failed` envelope splits into three codes depending
 on the file-state + bullet-shape detected.
 

@@ -25,7 +25,7 @@ secret `SecretRedact::scrub` recognises with `[REDACTED:<kind>]` and report
 how many they hid. `read_log` also blanks each line of a private-key block
 (ANTS-5707). Read on every call, so an edit applies with no relaunch.
 Contracts: `tests/features/mcp_secret_redaction/spec.md`; for `read_log`,
-INV-14 of `docs/specs/ANTS-1855.md`.
+INV-14 of `docs/specs/ANTS-1855-read-log-mcp-tool-filter.md`.
 
 ## Feedback corpus root (ANTS-4471)
 
@@ -200,7 +200,7 @@ compiled out under `-DANTS_LUA_PLUGINS=OFF`.
 Surfaces the `TokenUsageEngine` (ANTS-1284) session savings as a live status-bar
 pill plus a persisted month / YTD / all-time total (also on the `token_usage`
 verb's `month_saved` / `ytd_saved` / `lifetime_saved` / `monthly[]` fields). See
-[`../specs/ANTS-3572.md`](../specs/ANTS-3572.md).
+[`../specs/ANTS-3572-mcp-tokens-saved-status-bar.md`](../specs/ANTS-3572-mcp-tokens-saved-status-bar.md).
 
 - `claude.tokens_saved_chip_enabled` (bool, default **true**) — Settings →
   General ("Show \"tokens saved\" pill in the status bar"). Gates the widget

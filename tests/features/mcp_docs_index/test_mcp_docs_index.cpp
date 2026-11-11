@@ -1,6 +1,6 @@
 // Feature-conformance test for the docs_index MCP tool (ANTS-2139).
 // Behavioural invariants drive the pure DocsIndex helper; wiring invariants
-// source-scrape the registration sites. See spec.md + docs/specs/ANTS-2139.md.
+// source-scrape the registration sites. See spec.md + docs/specs/ANTS-2139-docs-index-mcp-tool-project.md.
 
 #include "../../_support/expect.h"
 #include "docsindex.h"

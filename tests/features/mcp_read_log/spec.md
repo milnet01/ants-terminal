@@ -1,7 +1,7 @@
 # Feature test: `read_log` MCP tool (ANTS-1855)
 
 Test contract for the `read_log` MCP verb. Full design:
-[`docs/specs/ANTS-1855.md`](../../../docs/specs/ANTS-1855.md).
+[`docs/specs/ANTS-1855-read-log-mcp-tool-filter.md`](../../../docs/specs/ANTS-1855-read-log-mcp-tool-filter.md).
 
 The filtering logic lives in the pure `ReadLog::filter` helper
 (`src/readlog.{h,cpp}`, Qt6::Core-only in `ants_core_lib`) so the
@@ -9,7 +9,7 @@ behavioural invariants are testable without `RemoteControl` /
 `MainWindow`. The thin `cmdReadLog` wrapper + tools/list schema +
 dispatch are locked by source-scrape.
 
-## Invariants (mirror docs/specs/ANTS-1855.md)
+## Invariants (mirror docs/specs/ANTS-1855-read-log-mcp-tool-filter.md)
 
 - **W1 (INV-1/2/3)** — wiring: `cmdReadLog` declared in
   `remotecontrol.h`; the IPC dispatcher routes `read_log`/`read-log`;

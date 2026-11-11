@@ -968,7 +968,7 @@ TEST(McpTerseDefault, Ants3532DefaultOnAndOrderedBeforeOffload) {
 
 // ───────────────────────────────────────────────────────────────────
 // ANTS-2090 — mcp::tabularize: pack homogeneous top-level arrays-of-objects
-// into a columnar {__cols__, __rows__} form. See docs/specs/ANTS-2090.md.
+// into a columnar {__cols__, __rows__} form. See docs/specs/ANTS-2090-tabular-columnar-encoding-homogeneous.md.
 // ───────────────────────────────────────────────────────────────────
 
 namespace {

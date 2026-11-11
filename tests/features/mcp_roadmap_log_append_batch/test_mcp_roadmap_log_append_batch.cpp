@@ -1,6 +1,6 @@
 // Feature-conformance test for ANTS-1879 — `roadmap_log op:append_batch`.
 // See tests/features/mcp_roadmap_log_append_batch/spec.md and
-// docs/specs/ANTS-1879.md.
+// docs/specs/ANTS-1879-roadmap-log-op-append-batch.md.
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

@@ -100,7 +100,7 @@ client-orchestration layer because:
 
 ## Related
 
-- `docs/specs/ANTS-1397.md` — the test_audit trio's v1 contract.
+- `docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md` — the test_audit trio's v1 contract.
 - `docs/standards/audit-false-positives.md` — the FP ledger that
   carries across audit runs (orthogonal to partition_token; this
   one IS durable on disk).

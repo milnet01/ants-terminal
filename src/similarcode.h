@@ -15,7 +15,7 @@
 // symlinks). The `shape` query is tokenised, never spliced into a
 // regex, so there is no injection surface and no identifier guard.
 //
-// See docs/specs/ANTS-1305.md.
+// See docs/specs/ANTS-1305-similar-code-mcp-pattern-matcher.md.
 
 #ifndef ANTS_SIMILARCODE_H
 #define ANTS_SIMILARCODE_H

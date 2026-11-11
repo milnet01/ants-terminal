@@ -351,7 +351,7 @@ against the pre-change source before it passes.
 - `PLUGINS.md`: drop the † from the four rows; mark `keypress` not
   cancellable; document the payloads and rates; add `terminal.read` and
   `input.keys` to the permission table.
-- `docs/specs/ANTS-1750.md` § 2.6: a pointer that ANTS-4272 wired
+- `docs/specs/ANTS-1750-run-each-lua-plugin-vm.md` § 2.6: a pointer that ANTS-4272 wired
   `KeyPress` watch-only, so its veto contract stays unbuilt.
 - `src/luaengine.h`: the `KeyPress` comment.
 - `CHANGELOG.md`.

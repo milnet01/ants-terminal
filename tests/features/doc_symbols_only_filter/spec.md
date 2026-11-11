@@ -6,7 +6,7 @@
 on while leaving `counts` whole-document. `doc_symbols` had no
 equivalent, so every occurrence shipped — including every `resolved`
 row, the one class nobody reads. Measured: a single-document run over
-`docs/specs/ANTS-3663.md` returned over 100 KB, past the response cap,
+`docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md` returned over 100 KB, past the response cap,
 and had to be offloaded to a file and sliced before it could be used.
 
 ## Contract

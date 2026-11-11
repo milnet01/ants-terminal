@@ -1,6 +1,6 @@
 # combining_at_wide_right_edge — ANTS-1334
 
-See `docs/specs/ANTS-1334.md` for the full contract.
+See `docs/specs/ANTS-1334-combining-marks-wide-char-right.md` for the full contract.
 
 ## Test scope
 

@@ -1,6 +1,6 @@
 # ANTS-1565 — `workspace_search` configurable wall-clock budget
 
-See `docs/specs/ANTS-1565.md` for the full design + rationale. This
+See `docs/specs/ANTS-1565-workspace-search-configurable-wall-clock.md` for the full design + rationale. This
 spec.md mirrors the invariants the test enforces.
 
 ## Contract

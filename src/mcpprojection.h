@@ -48,7 +48,7 @@ bool isCompactArgTool(const QString &toolName);
 // offload replaces the body with a pointer, so it is not something to do to
 // every verb by default.
 // Write, control-plane, refusal and 304 responses are never offloaded
-// (gated by the dispatch site, not here). See docs/specs/ANTS-2094.md.
+// (gated by the dispatch site, not here). See docs/specs/ANTS-2094-proactive-server-side-result-offload.md.
 bool isOffloadEligible(const QString &toolName);
 
 // ANTS-2218 — read verbs that honour `raw:true`: return file/source bytes
@@ -64,7 +64,7 @@ bool isRawEligible(const QString &toolName);
 // meaning, and a `*_checked:false` (matched by suffix) reports that a check
 // DID NOT RUN, so dropping it reads as a clean pass over nothing examined.
 // ANTS-4692 — also the floor for the offload path's preserved fields
-// (docs/specs/ANTS-2094.md § 2.3.2), so both paths agree on that set.
+// (docs/specs/ANTS-2094-proactive-server-side-result-offload.md § 2.3.2), so both paths agree on that set.
 bool isProtectedCompactKey(const QString &key);
 
 // Return a compact JSON object carrying only the named top-level fields
@@ -161,7 +161,7 @@ QString compactEnvelope(const QString &responseText);
 // that are all objects AND the columnar form is strictly smaller in
 // compact UTF-8 (so it can never cost bytes). v1 carries nested
 // object/array cell values verbatim (no recursion). See
-// docs/specs/ANTS-2090.md.
+// docs/specs/ANTS-2090-tabular-columnar-encoding-homogeneous.md.
 QString tabularize(const QString &responseText);
 
 // ANTS-2085 — session/user "terse" default for read responses. When true,

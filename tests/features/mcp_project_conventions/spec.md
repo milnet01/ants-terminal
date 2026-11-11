@@ -1,7 +1,7 @@
 # mcp_project_conventions — feature-conformance contract
 
 **Theme:** `project_conventions` MCP tool wiring + curated-table drift
-guard (ANTS-1307). Full spec: `docs/specs/ANTS-1307.md`.
+guard (ANTS-1307). Full spec: `docs/specs/ANTS-1307-project-conventions-mcp-compact.md`.
 
 Source-grep harness for the wiring (same GUI-coupling constraint as
 `task_priors` / `current_state`), plus a **behavioural drift guard**:

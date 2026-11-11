@@ -2,7 +2,7 @@
 // Pure-function tests on PaginationEngine::pageBullets (engine INV-1..4) and
 // RemoteControl::downshiftMatches (workspace_search INV-8/9/10), plus
 // source-scrape on the cmdRoadmapQuery + cmdWorkspaceSearch wiring
-// (INV-5/6/7/11). See docs/specs/ANTS-3543.md.
+// (INV-5/6/7/11). See docs/specs/ANTS-3543-auto-downshift-would-truncated-list.md.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"

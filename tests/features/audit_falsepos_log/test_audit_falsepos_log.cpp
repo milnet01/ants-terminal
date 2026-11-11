@@ -1,7 +1,7 @@
 // Feature-conformance test for the audit_falsepos_log MCP tool (ANTS-2129).
 // Drives RemoteControl::cmdAuditFalseposLog (m_main-independent) against a
 // QTemporaryDir ledger, and round-trips through ants::falsepos::loadEntries.
-// See spec.md + docs/specs/ANTS-2129.md.
+// See spec.md + docs/specs/ANTS-2129-audit-falsepos-log-mcp-write.md.
 
 #include "falseposledger.h"
 #include "remotecontrol.h"

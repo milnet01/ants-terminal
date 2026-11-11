@@ -109,7 +109,7 @@ private:
     // The one place string introducers are decoded: the Escape state, the
     // 8-bit C1 forms and the *StringEsc peek states all call it. From a peek
     // state the caller discards a false to Ground, so c=RIS, [=CSI, … stay
-    // discarded (ANTS-1777, docs/specs/ANTS-1777.md).
+    // discarded (ANTS-1777, docs/specs/ANTS-1777-safe-re-arm-string-introducers.md).
     bool reArmStringIntroducer(uint32_t ch);
 
     // UTF-8 decoding

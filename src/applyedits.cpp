@@ -1,7 +1,7 @@
 // ANTS-2022 — apply_edits pure in-memory edit helper. Qt6::Core-only.
 // A whole-content substring replace per edit; the wrapper threads one
 // edit's result into the next so two edits to one file compose, then
-// writes atomically. See docs/specs/ANTS-2022.md.
+// writes atomically. See docs/specs/ANTS-2022-apply-edits-mcp-tool-n.md.
 
 #include "applyedits.h"
 

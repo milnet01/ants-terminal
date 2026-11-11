@@ -1,6 +1,6 @@
 // Feature-conformance test for the spec_log MCP tool (ANTS-1963).
 // Drives the pure SpecLog transforms directly + cmdSpecLog (caller_cwd
-// canonical root, m_main-independent). See spec.md + docs/specs/ANTS-1963.md.
+// canonical root, m_main-independent). See spec.md + docs/specs/ANTS-1963-spec-log-mcp-tool-write.md.
 
 #include "speclog.h"
 #include "remotecontrol.h"
@@ -607,7 +607,7 @@ TEST(McpSpecLog, Ants6047UnnumberedRowDoesNotHideDirection) {
 }
 
 // ANTS-5769 — a BULLET log runs in either direction too. Seen on
-// docs/specs/ANTS-1855.md: its log runs newest first, and a dry run reported
+// docs/specs/ANTS-1855-read-log-mcp-tool-filter.md: its log runs newest first, and a dry run reported
 // landing at the end of the file, below the oldest row. The direction comes
 // from the first and last rows' labels: the loop number, else the date.
 TEST(McpSpecLog, Ants5769BulletLogDirectionInference) {
@@ -674,7 +674,7 @@ TEST(McpSpecLog, Ants5769BulletLogDirectionInference) {
 }
 
 // ANTS-6361 — a log whose latest rows are `### <label>` headings with prose
-// under them gets a heading row, not a bullet. Seen on docs/specs/ANTS-2094.md:
+// under them gets a heading row, not a bullet. Seen on docs/specs/ANTS-2094-proactive-server-side-result-offload.md:
 // bullet loops first, then heading rows; the verb wrote `- **label** — body`
 // glued to the last heading's prose and reported row_order "ambiguous".
 TEST(McpSpecLog, Ants6361HeadingShapedLogGetsAHeadingRow) {
@@ -752,7 +752,7 @@ TEST(McpSpecLog, Ants6361HeadingShapedLogGetsAHeadingRow) {
 // ANTS-3651 — append_loop must append to the EXISTING loop-log section,
 // wherever it sits, and must never create a second one.
 //
-// Observed on docs/specs/ANTS-3636.md: after appending loop 7 the file carried
+// Observed on docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md: after appending loop 7 the file carried
 // TWO `## Cold-eyes loop log` headings, loop 7 alone under the trailing one.
 // Loops 8 and 9 then matched the FIRST, so the rendered order became
 // 1-6, 8, 9, then 7 under a duplicate heading, and the repair was by hand.

@@ -1338,7 +1338,7 @@ ants-terminal (0.7.80-1) unstable; urgency=medium
     full ANTS_TESTS=ON build now peaks at 526 MiB RSS in 1m36s
     wall (was >32 GiB OOM); 144/144 ctests green. Phases 2–7
     (test-bundle consolidation via GoogleTest + workstation
-    preset + safe-build.sh) pending — see docs/specs/ANTS-1217.md.
+    preset + safe-build.sh) pending — see docs/specs/ANTS-1217-hybrid-googletest-bundle-consolidation.md.
 
  -- Anthony Schemel <aant.schemel@gmail.com>  Sat, 10 May 2026 12:00:00 +0200
 
@@ -1606,7 +1606,7 @@ ants-terminal (0.7.76-1) unstable; urgency=medium
     third arg (no = nullptr default per cold-eyes review — single
     call site at mainwindow.cpp:1351 always has &m_config available;
     a default would be dead scaffolding).
-  * Spec at docs/specs/ANTS-1150.md cold-eyes-reviewed before code
+  * Spec at docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md cold-eyes-reviewed before code
     (2 CRITICAL, 5 HIGH, 6 MEDIUM, 4 LOW folded). Indie-review of
     the implementation folded 1 MEDIUM (Custom-preset silent rewrite
     to Full when status filters were never toggled) and 2 LOW (dead-
@@ -1648,7 +1648,7 @@ ants-terminal (0.7.75-1) unstable; urgency=medium
     (m_scrollOffset > 0); extended to (m_scrollOffset > 0) ||
     m_syncOutputActive to match the unified pattern at the other
     three call sites. Test gains INV-4b (74395a6).
-  * Spec at docs/specs/ANTS-1148.md cold-eyes-reviewed before
+  * Spec at docs/specs/ANTS-1148-dec-mode-2026-sync-output.md cold-eyes-reviewed before
     code (10 findings folded — 2 CRITICAL, 3 HIGH, 3 MEDIUM,
     2 LOW); new feature test at tests/features/sync_output_
     snapshot/ locks 9 INVs by source-grep. 132/132 ctests pass.
@@ -1788,7 +1788,7 @@ ants-terminal (0.7.65-1) unstable; urgency=medium
     where the first smoothScrollStep tick produced no
     offset change (intStep = int(0.9) = 0), letting
     onVtBatch mutate visible viewport rows before the
-    snapshot was captured. Spec at docs/specs/ANTS-1118.md.
+    snapshot was captured. Spec at docs/specs/ANTS-1118-smooth-scroll-snapshot-race-during.md.
   * ANTS-1130 — VT alt-screen + scroll-region invariants.
     Three findings folded into one fix-pass: DECSET
     47/1047/1049 split (only 1049 carries DECSC semantics
@@ -1817,7 +1817,7 @@ ants-terminal (0.7.64-1) unstable; urgency=medium
     total — the 10 spec-defined plus de-facto research / ux).
     OR-include semantics across active Kinds; bullets
     without a Kind: line are excluded under non-empty
-    filters. Spec at docs/specs/ANTS-1106.md; feature test
+    filters. Spec at docs/specs/ANTS-1106-mandatory-kind-field-viewer-faceted.md; feature test
     at tests/features/roadmap_kind_facets/.
   * ROADMAP status flips for ANTS-1116 v1 + ANTS-1117 v1 —
     both shipped in 0.7.59; v2 of each (MCP server wrapper +
@@ -1842,7 +1842,7 @@ ants-terminal (0.7.63-1) unstable; urgency=medium
     flagged by the 7th-audit memory) and ants.clipboard.write
     Lua plugin glue cap at 1 MiB; user-initiated copy actions
     pass large inputs through unchanged. All sources strip
-    embedded NUL bytes. Spec at docs/specs/ANTS-1014.md.
+    embedded NUL bytes. Spec at docs/specs/ANTS-1014-clipboard-write-redaction-helper.md.
   * ROADMAP outstanding-queue cleanup — ANTS-1052 and
     ANTS-1118 flipped to "Awaiting user repro" status (both
     have diagnostic logging in tree from commit 1abf768);

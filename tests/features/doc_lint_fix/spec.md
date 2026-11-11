@@ -4,7 +4,7 @@ Phase 2 of `doc_lint`. The read half ships in ANTS-3663; this directory covers
 everything behind `fix:true` — the only part of the doc-lint family that writes
 to a file.
 
-The contract is `docs/specs/ANTS-3663.md` § 2.3. This file records how the rows
+The contract is `docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md` § 2.3. This file records how the rows
 are tested and what each mutation actually turned red.
 
 ## Rows

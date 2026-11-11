@@ -1856,9 +1856,9 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "default 4, max_tokens [4096-128000] default "
                         "64000, model (default = Config::aiModel(), "
                         "which is \"llama3\" out-of-box — see "
-                        "docs/specs/ANTS-1352.md § 3.3), "
+                        "docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md § 3.3), "
                         "system_extras (≤ 4 KiB append to system "
-                        "prompt). See docs/specs/ANTS-1352.md.");
+                        "prompt). See docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to run the review lanes on the configured "
                         "LOCAL AI endpoint instead of Claude subagents — "
@@ -2144,8 +2144,8 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "`async:true` to get a job handle back instantly and "
                         "poll `audit_poll {job_id}`; the async path never "
                         "trips the transport cap at all. "
-                        "See docs/specs/ANTS-1351.md + ANTS-1555.md + "
-                        "ANTS-3396.md.");
+                        "See docs/specs/ANTS-1351-audit-run-mcp-verb-server.md + ANTS-1555-per-project-audit-cache-infrastructure.md + "
+                        "ANTS-3396-opt-async-audit-run-job.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to run the static-analysis sweep without "
                         "leaving Ants. Pairs with last_audit_summary "
@@ -2355,7 +2355,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "result is still on disk; read last_audit_summary). "
                         "Prefer the done envelope's cache_path over "
                         "last_audit_summary for this job's exact SARIF. "
-                        "Required: caller_cwd. See docs/specs/ANTS-3396.md.");
+                        "Required: caller_cwd. See docs/specs/ANTS-3396-opt-async-audit-run-job.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use after audit_run {async:true} to check whether "
                         "the detached sweep has finished.");
@@ -2470,7 +2470,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "verb if `test_audit_brief` refuses with "
                         "`partition_token not found`. Full recipe at "
                         "docs/standards/test-audit-resume.md. "
-                        "See docs/specs/ANTS-1397.md.");
+                        "See docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split a test corpus for multi-"
                         "reviewer test-audit dispatch. Phase 1 of "
@@ -2911,7 +2911,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "returns `cwd_mismatch` — confirms which "
                         "project's data the tool would have been "
                         "operating on. "
-                        "See docs/specs/ANTS-1400.md.");
+                        "See docs/specs/ANTS-1400-caller-cwd-info-mcp-diagnostic.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use FIRST when a read tool returns "
                         "no_roadmap_loaded, cwd_mismatch, or any "

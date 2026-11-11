@@ -3,7 +3,7 @@
 // RemoteControl / MainWindow (mirrors readlog.h / fileoutline.h). The thin
 // cmdReadRegion wrapper (remotecontrol.cpp) handles path resolution +
 // PathValidation + the caller_cwd contract, then calls ReadRegion::extract
-// on the resolved path. See docs/specs/ANTS-2021.md.
+// on the resolved path. See docs/specs/ANTS-2021-read-region-mcp-tool-read.md.
 
 #pragma once
 

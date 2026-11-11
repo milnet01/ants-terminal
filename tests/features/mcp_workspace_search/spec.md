@@ -4,8 +4,8 @@ Locks the wiring contract for the `workspace_search` MCP tool —
 a ripgrep wrapper that replaces a typical `Bash grep -r ... src/`
 pattern with structured `{matches[], truncated, elapsed_ms}` results.
 
-Specs of record: `docs/specs/ANTS-1248.md` (introduction, 10 INVs)
-and `docs/specs/ANTS-1452.md` (`respect_gitignore` + `include_hidden`
+Specs of record: `docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md` (introduction, 10 INVs)
+and `docs/specs/ANTS-1452-workspace-search-opts-gitignored-hidden.md` (`respect_gitignore` + `include_hidden`
 opt-ins, 6 additional INVs). This test file pins the source-grep
 invariants only; runtime/process behaviour of ripgrep itself is the
 kernel of the ANTS-1248 cold-eyes pass and is left to manual

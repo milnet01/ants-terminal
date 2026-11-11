@@ -2,7 +2,7 @@
 // file line-by-line, stopping at the earlier of end_line or the incremental
 // max_bytes boundary, so peak heap stays ≤ max_bytes regardless of the
 // requested range or file size. Symbol mode resolves a [start,end) range via
-// the flat file_outline. See docs/specs/ANTS-2021.md.
+// the flat file_outline. See docs/specs/ANTS-2021-read-region-mcp-tool-read.md.
 
 #include "readregion.h"
 

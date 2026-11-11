@@ -547,7 +547,7 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                     props["caller_cwd"] = slCwd;
                     props["max_findings"] = slMax;
                     props["etag_match"] = slEtag;
-                    // ANTS-5537 — diff scope (docs/specs/ANTS-3662.md § 2.4).
+                    // ANTS-5537 — diff scope (docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md § 2.4).
                     QJsonObject slSince; slSince["type"] = "string";
                         slSince["description"] = QStringLiteral(
                             "A git ref. Scope findings to what changed between that "

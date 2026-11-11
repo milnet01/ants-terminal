@@ -3,7 +3,7 @@
 // Records gate-evaluated-but-blocked auto-switch decisions (every tick where
 // ModelAutoSwitch::decide returned act=false with a non-empty blockedBy list).
 // Diagnostic surface for the question "why doesn't the auto-switcher fire in
-// this project?" — see docs/specs/ANTS-1894.md.
+// this project?" — see docs/specs/ANTS-1894-near-miss-telemetry-log-gate.md.
 //
 // Lives in ants_core_lib (alongside modelswitchledger) so the read-only
 // model_switch_stats MCP verb (dispatched from RemoteControl, also in

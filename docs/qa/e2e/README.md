@@ -6,7 +6,7 @@ down — without ever touching the instance you're running. It's how the
 agent (or you) can "sit down and use" the app: type, click buttons, open
 dialogs, resize, screenshot — and assert the result.
 
-Spec + contract: [`docs/specs/ANTS-2049.md`](../../specs/ANTS-2049.md).
+Spec + contract: [`docs/specs/ANTS-2049-end-end-harness-drive-ants.md`](../../specs/ANTS-2049-end-end-harness-drive-ants.md).
 
 ## Pieces
 

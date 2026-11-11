@@ -1,7 +1,7 @@
 # model_home_tier — ANTS-1974 home/baseline model tier
 
 Contract for `ModelRecommender::tierForScore(sc, mechanical, home)` and the
-home-relative `score()` band. See `docs/specs/ANTS-1974.md`.
+home-relative `score()` band. See `docs/specs/ANTS-1974-user-selectable-home-baseline-model.md`.
 
 - **INV-1** — `tierForScore(sc, mechanical, Sonnet)` reproduces the pre-1974
   mapping: `sc>=2`→Opus, `sc<=-2`→Haiku (both mechanical values), else Sonnet.

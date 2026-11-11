@@ -3,7 +3,7 @@
 ## What it locks
 
 The MCP-layer wiring for the `section` argument added to
-`roadmap_query` per `docs/specs/ANTS-1287.md`:
+`roadmap_query` per `docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md`:
 
 1. **REG-1.** `"section"` arg present in the `roadmap_query` MCP
    registration block in `claudeintegration.cpp`.

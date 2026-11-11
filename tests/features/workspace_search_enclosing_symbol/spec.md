@@ -6,7 +6,7 @@ inside — folding the usual "which function is this in?" follow-up
 (`file_outline` after a search) into the search itself, the way
 `find_definition include_body` folded in the post-find read.
 
-Spec of record for the verb: `docs/specs/ANTS-1248.md`. This test pins the
+Spec of record for the verb: `docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md`. This test pins the
 ANTS-2220 slice: the pure `RemoteControl::enclosingSymbolForLine` heuristic
 (runtime) plus the handler + schema wiring (source-grep — the handler needs a
 live `MainWindow` to invoke).

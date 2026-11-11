@@ -1,7 +1,7 @@
 // ANTS-3653 — citation-scan conformance test. The scan is a pure function
 // (document text in, tokens out), so every fixture here is a string literal and
 // an expected token list: no temp dir, no seeded index, no filesystem at all.
-// See spec.md for the invariant map and docs/specs/ANTS-3653.md for the
+// See spec.md for the invariant map and docs/specs/ANTS-3653-citation-scan-path-line-grammar.md for the
 // grammar.
 
 #include "doccitations.h"

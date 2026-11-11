@@ -1,5 +1,5 @@
 // ANTS-2139 — docs_index pure helper. Qt6::Core-only, FS-reading, no widgets /
-// no subprocess (mirrors codebaseindex.cpp). See docs/specs/ANTS-2139.md.
+// no subprocess (mirrors codebaseindex.cpp). See docs/specs/ANTS-2139-docs-index-mcp-tool-project.md.
 
 #include "docsindex.h"
 

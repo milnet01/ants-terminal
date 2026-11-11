@@ -1,7 +1,7 @@
 # token_usage_engine — feature contract
 
 Pure-function tests for `TokenUsageEngine::Tracker` (ANTS-1284). See
-`docs/specs/ANTS-1284.md` for invariant rationale; this is the
+`docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md` for invariant rationale; this is the
 test-side mirror.
 
 ## What this test guards

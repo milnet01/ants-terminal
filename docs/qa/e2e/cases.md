@@ -2,7 +2,7 @@
 
 A repeatable "sit down and use the app" checklist covering every user-facing
 feature, grouped by subsystem. It runs on the ANTS-2049 harness
-([README](README.md), [spec](../../specs/ANTS-2049.md)).
+([README](README.md), [spec](../../specs/ANTS-2049-end-end-harness-drive-ants.md)).
 
 Each case is **drive → observe → expected observable**. A run is either:
 

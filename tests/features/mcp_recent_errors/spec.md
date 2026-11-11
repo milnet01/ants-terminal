@@ -1,7 +1,7 @@
 # Feature test — `recent_errors` MCP scrollback error extraction (ANTS-1301)
 
 Contract for the `ScrollbackErrors` Core lib + its MCP wiring. Full
-design: `docs/specs/ANTS-1301.md`.
+design: `docs/specs/ANTS-1301-recent-errors-mcp-extract-compile.md`.
 
 ## What this test locks
 

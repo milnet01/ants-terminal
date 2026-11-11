@@ -1,6 +1,6 @@
 # list_downshift — auto-downshift a would-be-truncated list to its lean projection (ANTS-3543)
 
-Canonical spec: [`docs/specs/ANTS-3543.md`](../../../docs/specs/ANTS-3543.md).
+Canonical spec: [`docs/specs/ANTS-3543-auto-downshift-would-truncated-list.md`](../../../docs/specs/ANTS-3543-auto-downshift-would-truncated-list.md).
 
 When `roadmap_query` / `workspace_search` would truncate a large result list on
 the **auto path** (no explicit page size), the server first projects the whole

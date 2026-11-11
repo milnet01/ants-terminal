@@ -60,7 +60,7 @@ it is unique.
   string, so such a span is not an opener. Section mode hand-rolled its fence
   tracking until this fix and read it as one, going blind to every later
   heading and refusing `section_not_found` on any document that teaches fenced
-  code — reproduced live against `docs/specs/ANTS-3661.md`, where four
+  code — reproduced live against `docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md`, where four
   headings `file_outline` listed were unreachable. Fence tracking is now
   `MarkdownScan::fenceMask`, the shared primitive, and this was the last
   hand-rolled tracker in the tree.

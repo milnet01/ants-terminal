@@ -140,7 +140,7 @@ struct BriefManifest {
     // links, TOC gaps) for the lane's OWN docPaths, so the cold-eyes Phase-1e
     // mechanical pre-pass is served ready-made. relDocs = docPaths ONLY (never
     // crossReferenceDocs — the giant ROADMAP/CHANGELOG logs must not be handed
-    // to DocIntegrity::check; docs/specs/ANTS-3601.md § 2.7). Surfaces as
+    // to DocIntegrity::check; docs/specs/ANTS-3601-deterministic-doc-integrity-check.md § 2.7). Surfaces as
     // `doc_integrity[]` in the brief envelope, each entry formatted
     // "<file>:<line>: [<kind>] <message>".
     QStringList docIntegrity;

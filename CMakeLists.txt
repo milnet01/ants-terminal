@@ -3753,7 +3753,7 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/audit_skill_anchors/test_audit_skill_anchors.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1410 — spec-anchor drift test for the /audit skill.
-        SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410.md")
+        SPEC_ANTS_1410_PATH="${CMAKE_SOURCE_DIR}/docs/specs/ANTS-1410-audit-skill-enumerates-project-specific.md")
     set_property(SOURCE tests/features/audit_run_since_last_run/test_audit_run_since_last_run.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1504 — audit_run since-last-run scope source-scrape.

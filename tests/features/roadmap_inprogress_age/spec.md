@@ -4,13 +4,13 @@ Locks ANTS-1237: RoadmapDialog "Updated N days ago" line on 🚧
 cards, derived from `git blame --line-porcelain` on the bullet
 block (MAX author-time over the bullet line + continuation lines).
 Full design rationale + re-open conditions live in
-[`docs/specs/ANTS-1237.md`](../../../docs/specs/ANTS-1237.md).
+[`docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md`](../../../docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md).
 This file restates the invariants the test asserts so the test
 reads as a contract rather than a regression-only ratchet.
 
 ## Invariants under test
 
-These mirror `docs/specs/ANTS-1237.md` § 4. IDs are qualified
+These mirror `docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md` § 4. IDs are qualified
 (`ANTS-1237-INV-N`) per the ANTS-1236 § 7 convention.
 
 - **ANTS-1237-INV-1.** When `opts.lastTouchDates.contains(rec.id)`

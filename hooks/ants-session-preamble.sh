@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ants-terminal SessionStart hook — compact orientation block.
-# Spec: docs/specs/ANTS-1252.md § 1.1
+# Spec: docs/specs/ANTS-1252-token-saving-hook-pack.md § 1.1
 # Cap: ≤ 500 bytes total stdout (INV-3).
 #
 # Cost class: per-session injection (text-size-in-tokens).

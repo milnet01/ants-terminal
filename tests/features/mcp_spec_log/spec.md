@@ -5,7 +5,7 @@ the pure `SpecLog` transforms directly + the `RemoteControl::cmdSpecLog`
 handler (caller_cwd canonical root, m_main-independent) for routing,
 refusals, atomicity.
 
-Invariants exercised (docs/specs/ANTS-1963.md §3 / §6):
+Invariants exercised (docs/specs/ANTS-1963-spec-log-mcp-tool-write.md §3 / §6):
 
 - T1 — set_status rewrites only the Status line; no Status line →
   unrecognised_format.

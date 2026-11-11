@@ -1,6 +1,6 @@
 # `session_orient` bundle verb — feature-conformance test
 
-Locks the invariants in `docs/specs/ANTS-1883.md`. Composes three
+Locks the invariants in `docs/specs/ANTS-1883-session-orient-bundle-verb.md`. Composes three
 ETag-eligible verbs into one envelope.
 
 ## Anchors

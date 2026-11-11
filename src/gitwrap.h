@@ -9,7 +9,7 @@
 // here, and parses output. Same helper is intended for ANTS-1251's
 // subsystem.recent_changes per spec §3.
 //
-// See docs/specs/ANTS-1250.md.
+// See docs/specs/ANTS-1250-git-state-mcp-tool-consolidated.md.
 
 #ifndef ANTS_GITWRAP_H
 #define ANTS_GITWRAP_H

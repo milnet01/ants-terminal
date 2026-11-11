@@ -8,7 +8,7 @@
 // Reads optional JSON request from argv (first non-flag positional
 // after the subcommand) or from stdin if argv is `-` / absent.
 // Writes one JSON object per invocation to stdout. Exit codes per
-// `docs/specs/ANTS-1116.md` § INV-8: 0=success, 1=handler error,
+// `docs/specs/ANTS-1116-stateless-local-subagent-cli-re.md` § INV-8: 0=success, 1=handler error,
 // 2=usage error, 3=drift detected.
 
 #include "antshelper.h"

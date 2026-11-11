@@ -1,6 +1,6 @@
 // Feature-conformance source-grep for ANTS-3572 — MCP tokens-saved status-bar
 // chip + persisted month / YTD / all-time aggregate. See spec.md and
-// docs/specs/ANTS-3572.md. Pure math lives in token_usage_engine; this bundle
+// docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md. Pure math lives in token_usage_engine; this bundle
 // locks the cross-file wiring (signals, single reset path, fold home, verb
 // fields) that a pure test can't reach.
 

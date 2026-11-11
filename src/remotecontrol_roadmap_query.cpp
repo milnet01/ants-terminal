@@ -61,7 +61,7 @@ QString rcdetail::rlCanonicalToStatus(const QString &toStatus) {
 // from inside the member handlers at the format-detection gate, so they
 // need no test seam of their own (the existing *ForTest seams reach them
 // through the gate). The splice/flip primitives live in
-// passheadingwrite.{h,cpp}. See docs/specs/ANTS-2126.md.
+// passheadingwrite.{h,cpp}. See docs/specs/ANTS-2126-roadmap-log-heading-format-writer.md.
 
 // Atomic ROADMAP.md write (QSaveFile). No counter side-effect (INV-10).
 static bool rcAtomicWriteRoadmap(const QString &path, const QString &content) {

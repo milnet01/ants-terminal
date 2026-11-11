@@ -1,7 +1,7 @@
 // Feature-conformance test for ANTS-1111 RoadmapFoldIn helpers +
 // AuditEngine::templateRoadmapFoldInBlock. Extended in ANTS-1372 with
 // counter-symlink-escape tests (ANTS-1342 sibling) and caller-cwd
-// gate tests (R/G/S series, see docs/specs/ANTS-1372.md § 5).
+// gate tests (R/G/S series, see docs/specs/ANTS-1372-caller-cwd-gate-mutating-mcp.md § 5).
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

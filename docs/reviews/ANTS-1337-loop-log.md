@@ -1,6 +1,6 @@
 # ANTS-1337 — cold-eyes review log
 
-Review history for [`docs/specs/ANTS-1337.md`](../specs/ANTS-1337.md), moved
+Review history for [`docs/specs/ANTS-1337-first-run-trust-gate-ants.md`](../specs/ANTS-1337-first-run-trust-gate-ants.md), moved
 out of its § 11 on 2026-09-26. Entries are unchanged.
 
 ## Cold-eyes loop log

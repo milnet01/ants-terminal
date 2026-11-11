@@ -1,6 +1,6 @@
 // Source-grep + drift-guard harness for ANTS-1307 — the
 // `project_conventions` MCP tool. See spec.md and
-// docs/specs/ANTS-1307.md.
+// docs/specs/ANTS-1307-project-conventions-mcp-compact.md.
 //
 // Wiring is locked by source-grep. INV-5 is a real behavioural drift
 // guard: every `source` path baked into the curated table must exist on

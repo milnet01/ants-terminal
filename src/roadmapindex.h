@@ -1,6 +1,6 @@
 // ANTS-1287: heading-index engine for ROADMAP.md slice queries.
 // Pure (Qt6::Core-only); lives in ants_core_lib. See
-// docs/specs/ANTS-1287.md.
+// docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md.
 
 #pragma once
 

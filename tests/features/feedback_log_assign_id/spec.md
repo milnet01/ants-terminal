@@ -1,6 +1,6 @@
 # feedback_log op:"assign_id" — feature conformance
 
-Contract for the v2 inline triage write. Full design: `docs/specs/ANTS-3447.md`.
+Contract for the v2 inline triage write. Full design: `docs/specs/ANTS-3447-feedback-log-op-assign-id.md`.
 This test locks the invariants.
 
 ## What assign_id does
@@ -21,7 +21,7 @@ file:
 
 Nothing else changes — no other finding, no tracking table, no version marker.
 
-## Invariants under test (⇢ docs/specs/ANTS-3447.md)
+## Invariants under test (⇢ docs/specs/ANTS-3447-feedback-log-op-assign-id.md)
 
 - **INV-2** — exactly one finding's id line is replaced (or inserted); every
   other line is byte-identical. The envelope `line` is that finding's 1-based

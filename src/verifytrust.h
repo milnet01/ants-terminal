@@ -1,7 +1,7 @@
 // VerifyTrustClient — content-trust gate for `.ants/verify.json`
 // (ANTS-1337). Qt::Core only, no widgets — the modal that grants
 // trust lives in a separate chrome-layer client that overrides
-// `prompt()`. Spec: docs/specs/ANTS-1337.md.
+// `prompt()`. Spec: docs/specs/ANTS-1337-first-run-trust-gate-ants.md.
 //
 // The gate sits between `VerifyEngine::loadGateConfig` and its
 // caller. When a `.ants/verify.json` is found in the project root,

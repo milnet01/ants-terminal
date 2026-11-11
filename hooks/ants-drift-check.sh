@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ants-terminal Stop hook — drift-check launcher.
-# Spec: docs/specs/ANTS-1252.md § 1.4
+# Spec: docs/specs/ANTS-1252-token-saving-hook-pack.md § 1.4
 # Side-effect-only (INV-10 → zero stdout). Exits 0 always.
 #
 # Architecture:

@@ -1,0 +1,675 @@
+# ANTS-3533 — `changelog_query` read verb (mirror `roadmap_query` over CHANGELOG.md)
+
+**Status:** implemented + shipped (2026-07-19); cold-eyes converged (5 loops —
+accuracy clean the final 2). Full suite green (2773/2773). Parser + handler +
+wiring in `src/changelogquery.{h,cpp}`, `RemoteControl::cmdChangelogQuery`; tests
+in `tests/features/changelog_query/`. Loop log at end (§ 9).
+**Amendment (2026-09-13, ANTS-5071):** § 3 gains the dated topic heading, and
+§ 6 gains INV-10. Gated by review-contract at its cap (loops 6 and 7, § 9);
+ANTS-5147 stays open for a decision. Built: `categoryForHeading` in
+`src/changelogquery.cpp`, tested by the two `Inv10` tests in
+`tests/features/changelog_query/`.
+**Amendment (2026-09-13, ANTS-5145):** § 3 gains the topic entry, § 6 gains
+INV-11, and INV-10's test surface counts the bullet by its id. Gated by
+review-contract at its cap (loops 8 and 9, § 9). Not yet built.
+**Amendment (2026-10-12, ANTS-5651):** § 2.2's explicit `limit` is a cap,
+and the page is still cut to the soft cap. Not yet built.
+**Amendment (2026-10-26, ANTS-6282):** § 2.2's release citation also reads a
+bullet's indented continuation lines, so a wrapped bullet's id counts.
+**Kind:** feature.
+**Source:** ROADMAP.md ANTS-3533 (`🔌 MCP integration deepening — token + perf`
+block); in-session-2026-07-16 token-saving sweep. CHANGELOG.md is the #2 measured
+review-loop read sink (~276K tokens, ANTS-3521).
+**Builds on:** `roadmap_query` (`RemoteControl::cmdRoadmapQuery`, the read verb this
+mirrors), `changelog_log` (`RemoteControl::cmdChangelogLog` + the `ChangelogLog`
+pure helpers — the write side), `findChangelogUnder()` (shared path resolver),
+`PaginationEngine`, and the generic read-verb dispatch pipeline (ETag-304 /
+`fields=` / `compact` / offload / read-hints) in `claudeintegration.cpp` +
+`mcpprojection.cpp`.
+**Distinct from:** `changelog_log` (write-only — append / normalize `[Unreleased]`).
+This is the symmetric READ side and adds no write capability. Also distinct from
+ANTS-3532 (auto-compact of any large envelope) — that is a cross-verb dispatch
+change; this is one new verb.
+
+## 1. Problem
+
+`CHANGELOG.md` (1.1 MB, ~30K lines) is the second-largest measured review-loop
+token sink (~276K tokens, ANTS-3521). Every drift-check, release-prep, or
+"what shipped under ANTS-NNNN?" question has to `grep`/Read the whole file
+because MCP exposes only a **write** verb (`changelog_log`) — there is no
+structured reader. ANTS-3526 made cold-eyes / indie-review *search* the big logs
+instead of full-reading them, but a search still returns raw `grep` lines with no
+structure (version, category, id).
+
+`roadmap_query` already solves the identical problem for `ROADMAP.md`: a
+structured reader with status/section/id filters, lean projection modes,
+ETag-304, `fields=`, pagination, and a mtime+TTL parser cache. `CHANGELOG.md`
+has no analogue.
+
+The fix is a **read-only** verb `changelog_query`, symmetric with
+`roadmap_query`, that parses the Keep-a-Changelog structure into records and
+returns compact structured entries — filterable by version, category, id, or
+keyword — so a caller reads a scoped structured answer, never the whole file.
+
+## 2. Surface
+
+### 2.1 Arguments
+
+Read defensively off the request object (verbatim-forward `rcDelegate` pattern;
+no per-arg schema gating), mirroring `cmdRoadmapQuery`'s parse discipline.
+
+| Arg | Type | Meaning |
+|---|---|---|
+| `caller_cwd` | string (**required**) | Project root anchor (CallerCwdContract::Required). |
+| `version` | string | Filter to one version block. Accepts the bare version token (`"0.7.100"`) or `"Unreleased"` (case-insensitive on `Unreleased`; exact on the version token). Empty = all versions. |
+| `category` | string | Keep-a-Changelog category filter (`Added`/`Changed`/`Deprecated`/`Removed`/`Fixed`/`Security`). Validated against `ChangelogLog::isValidCategory()` — **case-sensitive** (`fixed` → `bad_category`); the canonical list is exposed publicly for the `bad_category` echo (§ 4). |
+| `query` | string | Case-insensitive substring over entry text + body (capped 200 chars + C0 scrub, exactly as `cmdRoadmapQuery`). |
+| `id` | string | Look up entries citing a single id (`ANTS-3572`). Overrides `version`/`category`/`query` filters + pagination (an id request wants that entry regardless of where it lives). See § 2.4 for mode interaction. |
+| `ids` | array\|string | Batch id lookup (array, or comma/space string coerced; dedup first-wins; **>100 → `bad_args`**; empty = absent). Mirrors `roadmap_query.ids`. |
+| `mode` | enum | `entries` (default) \| `version_index` \| `headline_only` \| `lint` (ANTS-5543). |
+| `include_body` | bool | `entries` mode only: attach the continuation-line `body` to each entry. Default **false** (lean). Ignored in `headline_only` (which always drops `body`) and `version_index`. |
+| `offset` / `limit` | int | Pagination over the post-filter list. `limit` clamps to `1..500` (`0` / negative / non-numeric → `bad_args`), matching `roadmap_query`; omitted `limit` → auto soft-cap (§ 2.2). `offset` non-numeric/negative → `bad_args`. |
+| `compact`, `fields`, `etag_match`, `encoding` | — | Handled generically at dispatch (§ 5); no handler code. |
+
+### 2.2 Response envelope
+
+`entries` mode (default):
+```json
+{ "ok": true, "path": "…/CHANGELOG.md", "mode": "entries",
+  "entries": [
+    { "version": "0.7.100", "date": "unreleased (Patron RC preview)",
+      "unreleased": false, "category": "Added",
+      "text": "**Surface MCP tokens-saved as a live status-bar chip …** (ANTS-3572)",
+      "ids": ["ANTS-3572"], "body": "A little pill on the status bar …" }
+  ],
+  "count": 1, "version": "0.7.100", "category": "Added",
+  "offset": 0, "total": 1 }
+```
+
+Each entry: `{version, date, unreleased, category, text, ids[], body?}` (plus
+`text_oneline` in `headline_only` mode — § 2.2 headline_only below). **Downshift**
+(ANTS-3576): in `entries` mode with no `limit` and no `include_body`, a result
+the soft cap would truncate is returned in the headline shape instead — `{version, category,
+text_oneline, ids}` per row — and the envelope carries `downshifted:true`.
+`date` is the raw trailing string after the closing `]` (a leading separator +
+whitespace stripped — § 3); it may be an ISO date `2026-07-17`, free text
+`unreleased (Patron RC preview)`, or `""` for a bare `## [Unreleased]` heading.
+`date` is always a JSON **string** (never `null`); a missing date is `""`.
+`unreleased` is `true` **iff the version token case-insensitively equals
+`Unreleased`** (the bare `## [Unreleased]` heading; the stored `version` is
+normalised to that canonical casing — § 3) — NOT when a versioned heading's date
+text merely contains the word "unreleased" (so `## [0.7.100] — unreleased (Patron
+RC preview)` → `version:"0.7.100"`, `unreleased:false`, as the example shows).
+`body` present
+only when `include_body:true` and continuation lines exist. Omitted `limit`
+auto-truncates at the soft cap, `PaginationEngine::softCapBytes()`, emitting
+`truncated:true` + `next_offset` (mirrors `roadmap_query`). An explicit `limit`
+(within `1..500`) caps the row count, and the page is still cut to the soft cap
+(ANTS-5651; `docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md` INV-9).
+
+`version_index` mode (the slug-discovery analogue of `roadmap_query`
+`section_index` — no entries, just the version skeleton):
+```json
+{ "ok": true, "path": "…", "mode": "version_index",
+  "versions": [
+    { "version": "Unreleased", "date": "", "unreleased": true,
+      "entry_count": 12, "categories": { "Added": 5, "Changed": 2, "Fixed": 5 } },
+    { "version": "0.7.99", "date": "2026-07-17", "unreleased": false,
+      "entry_count": 7, "categories": { "Fixed": 7 } }
+  ],
+  "count": 2 }
+```
+
+In `version_index`, `categories` omits zero-count categories and orders keys in
+canonical Keep-a-Changelog order; `entry_count` counts only categorised entries
+(uncategorised/skipped bullets — § 3 — are excluded, so it equals the sum of the
+`categories` values).
+
+`headline_only` mode: each entry narrowed to `{version, category,
+text_oneline, ids}` (drops `date`/`unreleased`/`body`), ~10× smaller — the
+existence/coverage scan projection.
+
+`lint` mode (ANTS-5543): a READ-ONLY format check a push gate runs. It returns
+`{ok, path, mode, findings[], counts, version?}`; `findings` is always present
+and empty when clean, because `ants-mcpd --call --exit-code` keys on it. Each
+finding is a `DocFinding` with verb `changelog_query`, filed at its line, never
+auto-fixable. Kinds: `prose_before_category` (prose above a section's first
+`###`, reported only when a `###` follows it, so a note in a section with no
+category is not one), `bullet_outside_category`, `unknown_category`,
+`category_out_of_order` and `prose_in_category` (flush-left prose inside a flat
+category block). Blank lines, HTML comments, link reference definitions, fenced
+code, the preamble, a dated topic's prose and one `**Theme:**` line before a
+section's first category are never findings. It reads the file directly, not
+the parse cache, since the parser drops the lines it reports.
+
+`release:true` (ANTS-5507) adds three kinds, appended after the format
+findings: `cited_not_shipped` (a bullet in the checked section cites an id the
+roadmap store does not hold as shipped), `shipped_not_cited` (an id the store
+dates shipped since `since` that no bullet anywhere cites, and whose body
+records no `Release note (…): no CHANGELOG entry` decision) and
+`tag_without_section` (the newest stable git tag has no `## [X.Y.Z]`
+section). A citation is an id on a `###` line, or on a bullet's first line or
+one of its indented continuation lines (the lines `entries` mode reads into
+`ids[]`); never in fenced code. The checked section is `version`, or
+`[Unreleased]` when it is absent. `since` defaults to the newest dated release
+section's date. The reply adds `release: {since, shipped_in_window, decided,
+latest_tag}`. A project the store does not hold, or a failed store query, adds
+`release_skipped` with the reason instead; that is not a refusal. A `since`
+that is not `YYYY-MM-DD` refuses `bad_args`.
+
+**`id` / `ids` result envelope.** An id lookup (§ 2.4) returns the matched
+entries in the current mode's shape (`entries` by default, or the headline
+projection under `mode:headline_only`) PLUS the `roadmap_query`-style id echo
+fields: `id` (or `ids`), `matched_ids[]`, `missing_ids[]`, and `found` (true iff
+≥1 entry matched). A requested id that matches no entry is **not** a refusal — it
+lands in `missing_ids` with `found:false` and (if none of the ids matched) an
+empty `entries[]`. Only a case-ONLY mismatch refuses `bad_case` (§ 2.3).
+
+**Pagination + counts (all list modes).** `entries`, `headline_only`, and
+`version_index` each carry `count` (items in THIS response's array) and `total`
+(the full post-filter count before pagination), plus `offset`; `truncated:true`
++ `next_offset` appear when the list was cut at `limit` or the ~20 KB soft cap.
+`count == total - offset` when not truncated. (The `version_index` example above shows
+only `count` for brevity; `total`/`offset` are emitted the same way.)
+
+**Ordering.** Entries and versions are returned in **document order** (top of
+file first — i.e. `[Unreleased]` then newest version down); an `id`/`ids` lookup
+whose matches span version blocks preserves that document order.
+
+### 2.3 Refusal taxonomy
+
+Codes drawn from `docs/standards/mcp-error-codes.md`:
+- `no_changelog` — no Markdown CHANGELOG found under the root.
+- `format_mismatch` — a YAML changelog exists (`findYamlChangelogUnder`) but no
+  Markdown one; the parser is Markdown-only, mirroring `changelog_log`.
+- `bad_version` — `version` filter matches no version block (echo `versions[]`
+  tokens for recovery).
+- `bad_category` — `category` not in `canonicalCategories()` (echo `accepted[]`).
+- `bad_mode` — `mode` not in the enum (echo `accepted[]`).
+- `bad_mode_combo` — `id`/`ids` combined with `mode:version_index` (a version
+  skeleton has no entry list to look ids up into) or `mode:lint`, mirroring `roadmap_query`'s
+  `id` + `section_index` refusal. See § 2.4.
+- `bad_case` — the **singular** `id` differs only by case from a real citation
+  (echo `canonical_id`), mirroring `roadmap_query`. Within an `ids` **batch** a
+  case-only mismatch is instead demoted to `missing_ids` (no batch-level refusal
+  on one mis-cased element), so a batch never fails on one wrongly-cased id.
+- `bad_args` — malformed `ids` / non-numeric `offset`/`limit` (never silently
+  fall through to the full list — ANTS-3541).
+- `caller_cwd_required` — emitted generically by the dispatcher when
+  `caller_cwd` is absent (CallerCwdContract::Required, ANTS-1520); listed here
+  for completeness though it is not raised in the handler body.
+
+**Precedence.** Refusals are evaluated in this fixed order: (1) **path
+resolution** — `no_changelog` / `format_mismatch` (the verb needs a file before
+anything else), then (2) **argument validation** — `bad_mode` → `bad_args` for the
+`id`/`ids` shape → `bad_mode_combo` → `bad_args` for a `section` alias that
+disagrees with `version` → `bad_version` → `bad_category` → `bad_args` for the
+`offset`/`limit` shape → `bad_case`. So `mode:"bogus"`
+with no CHANGELOG → `no_changelog` (path first). A well-formed-but-
+mode-irrelevant filter (e.g. `category` under `mode:version_index`, or
+`category`/`query` when `id` overrides them — § 2.4) is still **validated** in
+step 2 (an invalid value refuses `bad_category`/`bad_version`) and only a valid
+one is then ignored. Supplying **both `id` and `ids`** → `bad_args` (they are
+alternative spellings of the same lookup; mirrors `roadmap_query`, which refuses
+`id`+`ids`). This makes the refusal deterministic when several conditions hold at
+once. `offset`/`limit` are still shape-validated (`bad_args` on a non-numeric
+value) even when `id`/`ids` make them inert — the override skips their *effect*,
+not their validation.
+
+### 2.4 Combination semantics
+
+Every arg × mode combination is defined here so the implementer codes no
+undefined branch:
+
+- **`id` / `ids` present** — an entry-level lookup that OVERRIDES the
+  `version`/`category`/`query` filters and pagination (an id request wants every
+  entry citing that id, wherever it lives). The result is the set of entries
+  whose `ids[]` contains a requested id. `id` and `ids` are mutually exclusive —
+  both present → `bad_args` (§ 2.3).
+  - with `mode:entries` (default) → those entries in the full entry shape.
+  - with `mode:headline_only` → those entries in the headline projection.
+  - with `mode:version_index` → **`bad_mode_combo`** (a version skeleton has no
+    entry list to project a lookup into).
+  - with `mode:lint` → **`bad_mode_combo`** (a format check is over sections,
+    not entries).
+- **`mode:version_index`** — a structural index of version blocks. Honours
+  `version` (narrows `versions[]` to that one block; unknown token →
+  `bad_version`). **Ignores `category` and `query`** (it reports per-category
+  *counts*, not entries) — passing them is not an error, they simply do not
+  filter. No `entries[]` is emitted; pagination applies to `versions[]`.
+- **`mode:lint`** — honours `version` (checks that one section; unknown token
+  → `bad_version`); ignores `category`, `query` and pagination.
+- **`mode:entries` / `mode:headline_only`** (no `id`/`ids`) — `version`,
+  `category`, and `query` compose as a conjunction (AND) over the entry list;
+  pagination then applies to the filtered result.
+
+## 3. Parser — Keep-a-Changelog → records
+
+New pure code (the only substantial net-new logic; there is no reusable
+structured CHANGELOG reader today — `ChangelogLog` is a line-splicing *writer*).
+Free functions in a new `src/changelogquery.{h,cpp}` in `ants_core_lib` (Qt6::Core
+only, so the handler and tests share them — the `ChangelogLog` layering
+precedent). Signature:
+
+```cpp
+namespace ChangelogQuery {
+  struct Entry {
+    QString version;      // "0.7.100" | "Unreleased"
+    QString date;         // text after ']', separator stripped; "" if none
+    bool    unreleased = false;   // true iff version == "Unreleased"
+    QString category;     // "Added" | … (canonical)
+    QString text;         // the bullet's first line, or a topic's headline (§ 3)
+    QStringList ids;      // every <P>-NNNN cited in text+body, document order
+    QString body;         // continuation lines, de-indented, joined "\n"
+  };
+  struct VersionInfo {    // one `## [x]` block, for version_index (§ 2.2)
+    QString version, date;
+    bool    unreleased = false;
+    int     entry_count = 0;
+    QVector<QPair<QString, int>> categories;  // canonical order, zero omitted
+  };
+  struct ParseResult {
+    QVector<Entry>       entries;   // document order
+    QVector<VersionInfo> versions;  // document order
+  };
+  ParseResult parse(const QString &markdown, const QString &idPrefix);
+}
+```
+
+Parsing rules (verified against the live CHANGELOG.md, 2026-07-19):
+- **Fenced code state** — a line that is a code fence marker (` ``` ` or `~~~`,
+  optionally with an info string) OPENS a fence, by CommonMark's opener rule as
+  `MarkdownScan::fenceOpenerChar` applies it: at most three spaces of indent, and
+  never a tab. The open records its
+  marker char and run length; the fence CLOSES only on a later line that is a
+  fence of the **same char**, run length **≥** the opener's, and **no info
+  string** (CommonMark rules). A fence-like line that does not meet the close
+  rule — e.g. a `~~~` inside a ` ``` ` block, or a shorter run — is body, not a
+  toggle. Between the open and its matching close, ALL lines are continuation
+  `body` of the
+  current entry — never a heading or bullet — so a `## [x]`, `### Added`, or `-
+  foo` line inside the fence cannot be mis-parsed as structure. **A `## [`
+  version heading at column 0 is a hard block boundary that ALWAYS resets parser
+  state, closing any still-open fence** — so an unterminated fence runs only to
+  the next version heading (or EOF) and can never swallow the start of the next
+  version. (A column-0 `## [` inside a fence is pathological; the hard-reset rule
+  makes the parse deterministic rather than dependent on a missing close marker.)
+- **Version heading** — `^## \[(?<ver>[^\]]+)\]`. `version` = the bracket
+  contents, trimmed. `date` = the remainder of the line after the closing `]`,
+  trimmed, with a single leading separator character (` — ` em-dash, ` - `
+  hyphen, or `:`) + surrounding whitespace stripped; if nothing remains, `date =
+  ""`. This handles the em-dash the `/bump` release/promote path writes, a hyphen, or trailing text with
+  no recognised separator (the whole remainder becomes `date`). `unreleased =
+  true` **iff the trimmed version token equals `Unreleased`** (case-insensitive)
+  — driven by the version token ONLY, never by the date text (§ 2.2). When
+  `unreleased` is true the stored `version` is normalised to the canonical casing
+  `Unreleased`, so a `version:"Unreleased"` filter and the `version_index` token
+  are stable regardless of the source heading's casing.
+- **Category heading** — a line starting `### `, or a bare `###`; the name is
+  the rest of the line, trimmed (`#### x` and `###x` are not headings). A canonical category
+  (`isValidCategory`) sets the current category. Any other **non-canonical** `###`
+  heading — including a bare, name-less `### ` — **resets the current category to
+  none** (it is a category boundary, not a no-op) — so bullets under it are
+  skipped, symmetric with bullets before the first `###`. This prevents
+  mis-attributing a `### Notes` (or `### `) bullet to the previous canonical
+  category. A dated topic heading is the one exception, next.
+- **Dated topic heading** *(amendment, 2026-09-13 — ANTS-5071)* — a `###`
+  heading whose text starts with a date: `### <YYYY-MM-DD> <Category> — <headline>`,
+  the form `changelog_log` op:`add_subsection` writes (ANTS-3584); that writer refuses
+  a `date` QDate cannot parse (ANTS-5148). The date is the
+  first ten characters after `### `, parsed with
+  `QDate::fromString(…, "yyyy-MM-dd")` as `ChangelogLog::classifyUnreleased` does,
+  so `### 2026-13-45 Fixed — …` is not a dated topic. The whitespace-delimited word
+  after the date sets the current category when `isValidCategory` accepts it —
+  case-sensitive, as the § 2.1 `category` filter is. Otherwise the heading resets
+  the category to none, as any other non-canonical `###` does, and makes no
+  entry. Before ANTS-5071 every dated topic heading was non-canonical, so every
+  bullet under one was skipped while the call still returned `ok:true`.
+- **Topic entry** *(amendment, 2026-09-13 — ANTS-5145)* — a dated topic heading
+  that sets a category also starts an entry, ahead of the bullets under it.
+  `text` is the rest of the heading after the category word, with a single
+  leading `—` or `-` and the whitespace around it stripped; markdown kept.
+  `body` is every line after the heading up to the next `- ` bullet at column 0
+  outside a fence, `###` heading or `## [` version heading, with leading and
+  trailing blank lines dropped, each line de-indented as a continuation line is.
+  A fence keeps its meaning above inside that body. This is where the writer
+  puts a topic's prose: the comment on `collectInterleavedProse` in
+  `src/changeloglog.cpp` gives the block as the heading, a blank line,
+  flush-left prose, a blank line, then the bullets. `category`,
+  `version`, `date` and `unreleased` are set as for a bullet, so `date` is
+  still the version heading's and the topic's own date is not stored. `ids` are
+  extracted as for any entry, and the entry counts in its version's category
+  rollup. A heading with nothing after the category word and no prose makes no
+  entry.
+- **Entry bullet** — `^- ` at column 0 (outside a fence) starts an entry; `text`
+  = the rest of that line. A bullet with no current category (before any `###`,
+  or under a non-canonical `###`) is skipped (malformed / uncategorised).
+- **Continuation** — a subsequent line indented ≥2 spaces or by a tab (or a blank
+  line then such an indented line) that is *not* a new bullet/heading appends to
+  the current entry's `body`. A blank line followed by a non-indented, non-fenced
+  line ends the entry. A topic entry's body follows the topic entry rule instead.
+- **Id extraction** — an id is a token matching `<P>-[0-9]+` (word-bounded)
+  where `P` is the **project's roadmap ID prefix**, resolved by reusing the
+  shared `RoadmapFoldIn::sniffIdPrefix(root, "ANTS")` (`roadmapfoldin.h:81`) —
+  which sniffs ROADMAP.md's existing `[<P>-NNNN]` ids and falls back to the
+  literal `ANTS` when ROADMAP.md is absent or prefix-less (`ANTS` in this repo).
+  (That is the fold-in / write-side resolver; `roadmap_query`'s own bullet-id
+  scan uses a generic any-letter-prefix pattern and is NOT the source of `P` —
+  nor is `RoadmapDialog::parseShippedDates`, the existing CHANGELOG-prose id
+  reader, which uses that same generic pattern and WOULD over-match
+  `UTF-8`/`SHA-256`; `changelog_query` deliberately does not reuse it, § 4.)
+  Scan `text` + `body` **joined** (so a
+  parenthetical that spans the text→body line break still matches), document
+  order, dedup first-wins. Keying on the roadmap prefix — NOT on parentheses — is
+  what makes extraction correct across the live file's forms: trailing
+  (`(ANTS-3572)`), multiple (`(ANTS-3375, ANTS-3493)`), mid-bold
+  (`(ANTS-2169).**`), AND the **mixed** parenthetical `(ANTS-1335, lane-2 M2
+  deferral)` spanning two lines (extracts `ANTS-1335`, ignores `lane-2`/`M2`
+  prose). It also **excludes** every non-id id-shaped token regardless of
+  parenthesisation — `UTF-8`, `UTF-16`, `SHA-256`, `base-64`, even a standalone
+  `(SHA-256)` — because their prefix ≠ `P`. The writer parenthesises ids
+  (`ChangelogLog::formatBullet` emits `(id)` / `(id, id)`) but extraction does
+  not depend on it. `P` is resolved once and cached with the parse (§ 5).
+
+`text_oneline` is derived (first line, whitespace-collapsed) at projection time,
+not stored, matching `roadmap_query`'s `headline_oneline`.
+
+**Degenerate inputs.** An empty or entry-less CHANGELOG → `entries:[]`,
+`count:0` (not a refusal). A duplicate `## [x]` heading yields two independent
+version blocks — the parser does not merge them, and `version_index` lists the
+token twice. A `###`/bullet appearing BEFORE any `## [` version heading (no
+version context) is skipped — an entry with no version cannot be addressed by
+`version`/`version_index`. An `offset` past the end of the filtered list → empty
+`entries[]` with `offset == total` (mirrors `roadmap_query`).
+
+## 4. Reuse map
+
+| Concern | Reused verbatim | New |
+|---|---|---|
+| Path resolution + `.ants/project.json` override | `findChangelogUnder()` (`remotecontrol.cpp:168`); YAML sibling `findYamlChangelogUnder()` for the `format_mismatch` branch | — |
+| Registration | `registerToolProvider("changelog_query", Required, rcDelegate(&RemoteControl::cmdChangelogQuery))` (mainwindow.cpp) | handler `cmdChangelogQuery` |
+| Pagination | `PaginationEngine::pageBullets()` | — |
+| ETag-304 | `applyEtagPattern` + add name to `isEtagSupportedTool()` | — |
+| `fields=` | `mcp::projectFields` — nothing to add; ANTS-4524 removed the allowlist | — |
+| `compact` | `mcp::compactEnvelope` (automatic once fields/etag wired) | — |
+| Offload/spill | add name to `mcp::isOffloadEligible()` | — |
+| caller_cwd contract | add `changelog_query → Required` in `callerCwdContractFor()` | — |
+| Category validation | `ChangelogLog::isValidCategory()` (existing public, `changeloglog.h:20`) | **small new public code** — `canonicalCategories()` is a file-private helper (`changeloglog.cpp:15`, inside the anonymous namespace opened at `:13`), NOT callable across TUs and NOT in the header; hoist ITS declaration into `changeloglog.h` (keep the name `canonicalCategories()`) so `changelog_query` can both validate AND emit the `bad_category` `accepted[]` echo. ~2 LoC. |
+| Roadmap ID prefix (`P`) resolution | `RoadmapFoldIn::sniffIdPrefix(root, "ANTS")` (`roadmapfoldin.h:81`) — reused verbatim | — |
+| CHANGELOG-prose id extraction | **NOT reused** — `RoadmapDialog::parseShippedDates()` (`roadmapdialog.cpp:2457`) is the existing prose id reader but uses the generic any-prefix `idTokenPattern` that over-matches `UTF-8`/`SHA-256`; § 3's prefix-keyed rule is the deliberate replacement | prefix-keyed extractor (in the new parser) |
+| Parser cache | mtime+TTL cache *shape* (`m_roadmapCache*`) | `m_changelogCache*` members |
+| Response wrap | `wrapMcpData` (automatic at dispatch) | — |
+| Schema-prop factories | `makeCallerCwdReadProp` / `makeEtagMatchProp` / `makeFieldsProp` / `makeCompactProp` | version/category/mode/id/ids props (inline, mirroring the roadmap schema block) |
+
+**Wiring cost to opt into the full pipeline:** add `"changelog_query"` to the
+remaining allowlists — `isOffloadEligible`,
+`isEtagSupportedTool`, and a `callerCwdContractFor` branch — then etag / fields /
+compact / spill / hints engage automatically. The only NON-additive change is the
+~2-LoC public exposure of the canonical category list (reuse-map row above); the
+parser is otherwise the sole net-new logic.
+
+## 5. Parser cache (ANTS-1117 shape)
+
+Add `RemoteControl` members mirroring the roadmap cache: `m_changelogCachePath`,
+`m_changelogCacheMtimeMs`, `m_changelogCacheStampMs`,
+`m_changelogCache` (`ChangelogQuery::ParseResult`), and reuse
+`kRoadmapCacheTtlMs` (100 ms) — a shared TTL constant, not a duplicate. Freshness
+predicate identical to the roadmap one: `path == cached && mtime == cached &&
+mtime != 0 && (now − stamp ≤ TTL)`. On miss: read the file, re-parse, restamp.
+The cache holds ONE file's parse (the resolved CHANGELOG); a different
+`caller_cwd` resolving to a different file is a path mismatch → re-parse (never a
+cross-project shadow — `docs/standards/mcp-caches.md`). The roadmap prefix `P`
+(§ 3) is resolved once per parse and cached alongside the entries; since the
+freshness predicate keys on the CHANGELOG's mtime (not ROADMAP.md's), a rare
+ROADMAP prefix change is picked up on the next TTL-expiry or CHANGELOG-mtime
+re-parse — an acceptable, deliberate lag given how seldom a project's ID prefix
+changes.
+
+## 6. Invariants
+
+- **INV-1** — `changelog_query` resolves the CHANGELOG path via
+  `findChangelogUnder(rootCanonical)`, byte-identical to `changelog_log`; the
+  `.ants/project.json` `changelog` override and the `.git`-boundary walk
+  (ANTS-3350) apply unchanged. *(test surface: source-scrape — the handler calls
+  `findChangelogUnder`.)*
+- **INV-2** — The parser recognises `## [<version>]` headings (em-dash, hyphen,
+  or no separator; bare `## [Unreleased]` → `unreleased=true`), `### <Category>`
+  sub-headings (any other non-canonical `###` resets the current category to none;
+  a dated topic heading is INV-10's), and
+  `- ` bullets with ≥2-space continuation lines; a fenced code block
+  (` ``` `/`~~~`) suppresses structure detection so its inner `##`/`###`/`- `
+  lines are treated as body. *(test surface: parse in-memory markdown → assert
+  version/date/unreleased/category/text/body; a fixture with a fenced block
+  containing an **indented** fake `## [x]`/`- foo` asserts no spurious
+  version/entry, while a **column-0** `## [x]` inside an unterminated fence DOES
+  start a new version (the § 3 hard-reset); a `### Notes` block asserts its
+  bullet is uncategorised, not attributed to the prior category.)*
+- **INV-3** — Id extraction returns every token matching the project roadmap
+  prefix `<P>-NNNN` (§ 3) in an entry's `text`+`body` (joined), document order,
+  deduped — covering trailing, multiple, mid-bold, AND mixed-parenthetical
+  (`(ANTS-1335, lane-2 M2 deferral)`) placements — and extracts NO token whose
+  prefix ≠ `P`, parenthesised or not (`UTF-8`, `SHA-256`, `base-64`,
+  `(SHA-256)`). *(test surface: a fixture with the mixed group asserts
+  `ids == ["ANTS-1335"]` — not `["UTF-8","lane-2","M2",…]`; a `(SHA-256)` entry
+  asserts empty `ids`.)*
+- **INV-4** — `mode:entries` returns entries filtered by `version` ∧ `category` ∧
+  `query`; `mode:version_index` returns `versions[]` with per-category counts and
+  NO `entries` (honouring `version`, ignoring `category`/`query` — § 2.4);
+  `mode:headline_only` narrows each entry to `{version, category, text_oneline,
+  ids}`; all list modes carry `count`/`total`/`offset` (§ 2.2). *(test surface:
+  mode-dispatch unit tests over a fixture, asserting `count`==page size and
+  `total`==full post-filter count.)*
+- **INV-5** — `id`/`ids` lookup returns every entry whose `ids[]` contains the
+  requested id, overriding `version`/`category`/`query` filters + pagination,
+  with `matched_ids`/`missing_ids`/`found` echoed (§ 2.2); a genuinely-absent id
+  → `found:false` + `missing_ids` (NOT a refusal); a case-only mismatch →
+  `bad_case` + `canonical_id`; `id`/`ids` + `mode:version_index` or
+  `mode:lint` → `bad_mode_combo` (§ 2.4). *(test surface: fixture with an id in two version
+  blocks → both returned; an absent id → empty `entries` + `found:false`; id +
+  version_index → refusal.)*
+- **INV-6** — ETag-304 (`etag_match`), `fields=`, `compact`, offload/spill, and
+  pagination (`offset`/`limit` → `next_offset` on truncation) engage via the
+  generic dispatch pipeline — `changelog_query` is a member of each allowlist.
+  *(test surface: source-scrape — name present in the three allowlists § 4
+  names.)*
+- **INV-7** — The parsed model is cached with the mtime+TTL predicate; an mtime
+  change OR TTL expiry re-parses; a `caller_cwd` resolving to a different file
+  path re-parses (no shadow — `docs/standards/mcp-caches.md`). *(test surface:
+  source-scrape asserts the `m_changelogCache*` members + the freshness predicate
+  exist and mirror the roadmap-cache shape — this is the binding check; the
+  behavioural "TTL-hit avoids a re-read" is inherited from the roadmap-cache
+  pattern this reuses.)*
+- **INV-8** — Refusals use the § 2.3 codes. A malformed `ids` refuses `bad_args`
+  rather than dumping the full list (ANTS-3541): an `id` or `ids` of the wrong JSON
+  type, both present, or more than 100 ids. JSON null reads as absent
+  (ANTS-5146). A YAML-only changelog refuses
+  `format_mismatch`, a missing one `no_changelog`. *(test surface: unit tests per
+  refusal branch.)*
+- **INV-9** — The verb is READ-ONLY: it never writes CHANGELOG.md and registers
+  under CallerCwdContract::Required. *(test surface: source-scrape — no write/open
+  in write-mode; contract entry present.)*
+- **INV-10** *(amendment, 2026-09-13 — ANTS-5071)* — A dated topic heading whose
+  word after the date is a canonical category sets that category, so the bullets
+  under it are entries with that category. A heading whose date does not parse,
+  or whose next word is not a canonical category, resets the category to none
+  (§ 3). *(test surface: parse, inside one `## [x]` block, `### 2026-09-13 Fixed —
+  Topic` then a bullet citing an id → the entry holding that id has
+  `category == "Fixed"`, and that version's rollup counts it under `Fixed`
+  alongside the topic entry (INV-11). Then, each after a `### Added` heading and
+  a bullet of its own, the same bullet under `### 2026-13-45 Fixed — Topic` and
+  under `### 2026-09-13 Notes — Topic` → no entry for it, and only the `Added`
+  bullet's entry. Breaks if the parser keeps treating the whole heading text as
+  the category (no entry holds the first case's id), or if a dated heading
+  leaves the previous category in place (the negative cases yield an `Added`
+  entry for the bullet under them).)*
+- **INV-11** *(amendment, 2026-09-13 — ANTS-5145)* — A dated topic heading that
+  sets a category and has a headline or prose (§ 3) is an entry of its own,
+  before the bullets under it: `text` is
+  its headline and `body` its prose, so an id cited only there is found by an
+  `id` lookup. *(test surface: parse, inside one `## [x]` block,
+  `### 2026-09-13 Fixed — Topic (ANTS-9001)`, a blank line, a flush-left prose
+  line citing ANTS-9002, a blank line, then a bullet citing ANTS-9003 → two
+  entries in order: the topic with `text == "Topic (ANTS-9001)"` and
+  `ids == ["ANTS-9001", "ANTS-9002"]`, then the bullet with
+  `ids == ["ANTS-9003"]`; the rollup counts 2 under `Fixed`. The same block
+  under `### 2026-13-45 Fixed — Topic (ANTS-9001)` → no entry. Breaks if the
+  heading makes no entry (ANTS-9001 and ANTS-9002 are in no entry's `ids`), or
+  if the topic's prose is dropped (ANTS-9002 is in no entry's `ids`).)*
+
+## 7. Tests
+
+Feature-conformance bundle (not a standalone exe — append the `.cpp` to the root
+`CMakeLists.txt` `SOURCES` list, per `tests/features/README.md`). New dir
+`tests/features/changelog_query/` with `spec.md` (this contract, condensed) +
+`test_changelog_query.cpp`:
+
+1. **Parser unit tests** — feed in-memory Keep-a-Changelog markdown (em-dash and
+   hyphen separators, `[Unreleased]`, multi-category, continuation bodies, and all
+   three id-placement forms) → assert `ChangelogQuery::parse` output (INV-2/3).
+   *Amendment (2026-09-13):* a dated-topic fixture for INV-10, run red against
+   the pre-amendment parser first. `tests/features/changelog_query/spec.md`
+   gains INV-10, and its INV-2 line names the dated-topic exception.
+   *Amendment (2026-09-13, ANTS-5145):* an INV-11 fixture, run red against the
+   parser before it first; the INV-10 positive test finds the bullet by its id
+   rather than by the entry total; the test contract gains INV-11.
+2. **Filter/mode tests** — over a parsed fixture, assert version/category/query
+   filtering, id/ids bypass, and the three mode projections (INV-4/5).
+   *Amendment (2026-10-12, ANTS-5651):* a fixture larger than the soft cap,
+   queried with `limit:500`, returns `truncated:true`,
+   `next_offset == offset + count`, at least one entry, and no `downshifted`.
+3. **Source-scrape** (`_support/srcgrep.h`) — assert registration via
+   `rcDelegate(&RemoteControl::cmdChangelogQuery)`, the three allowlist
+   memberships, the `callerCwdContractFor` entry, and the schema advertisement
+   (INV-1/6/9). Satisfies the coverage tripwires
+   (`mcp_caller_cwd_contracts_coverage`, `mcp_call_site_contract`).
+4. **Must-fail-first** — the parser + filter tests are written against the
+   feature-absent tree first and confirmed RED before the handler exists
+   (test-first discipline).
+
+Closest templates: `tests/features/roadmap_query_pagination/` (read-verb +
+`PaginationEngine` + srcgrep) and `tests/features/changelog_log_writer/`
+(drive `ChangelogLog::*` pure helpers on in-memory markdown).
+
+## 8. RAM budget
+
+The parser holds one `QVector<Entry>` for the resolved CHANGELOG. Live file is
+~1.1 MB / ~30K lines; parsed records (bold text + body + id list per entry) are
+of the same order as the source bytes — a few MB, transient, cached for one file
+only and evicted on path mismatch or TTL. No unbounded growth: the cache never
+accumulates multiple files (single-slot, path-keyed), matching the roadmap
+cache's footprint. `body` is **always** parsed and held (both the id-scan and
+`query` search `text`+`body` — § 2.1/§ 3); `include_body` gates only whether
+`body` is **emitted** in the response, not whether it is parsed — so the parsed
+model is ~source-size regardless of `include_body`, and the `include_body:false`
+saving is on the RESPONSE wire, not the in-memory model.
+
+## 9. Cold-eyes loop log
+
+- **Loop 1** (2 cold lanes: accuracy-vs-code, implementability) —
+  CRITICAL 0 · HIGH 3 · MEDIUM 6 · LOW 4 · INFO 0 (verified 13/13). Fixes:
+  (H) `canonicalCategories()` is file-private → reuse needs ~2 LoC public
+  exposure (§ 2.1/2.3/4); (H) id-extraction regex matched `UTF-8`/`SHA-256` →
+  parenthetical-citation-group rule (§ 3, INV-3); (H) §2.2 example was impossible
+  (`0.7.100` + `unreleased:true`) → `unreleased` driven by the version token
+  only (§ 2.2/3); (M) `ids` threshold written inverted (`≤100`→`>100`); (M)
+  `date` `null` vs `""` → always a string (§ 2.2); (M) mode×id/filter combos
+  undefined → new § 2.4 combination-semantics + `bad_mode_combo`; (M)
+  `text_oneline` only in `headline_only`; (M) default `limit` / soft-cap
+  truncation stated; (M) fenced-code state added to § 3; (L) non-canonical `###`
+  resets category; (L) version-heading date = trimmed remainder rule; (L) INV-7
+  testability reworded; (L) `caller_cwd_required` added to § 2.3.
+- **Loop 2** (same 2 cold lanes, no fix-briefing) — CRITICAL 0 · HIGH 3 ·
+  MEDIUM 6 · LOW 4 · INFO 0 (verified 13/13). New findings the loop-1 fixes
+  exposed: (H) the parenthetical id rule under-extracted the live
+  `(ANTS-1335, lane-2 M2 deferral)` mixed group → re-based extraction on the
+  **project roadmap prefix `P-NNNN`** (kills `UTF-8`/`SHA-256`/`(SHA-256)` AND
+  reads mixed groups, § 3/INV-3); (H) `id`/`ids` result envelope undefined →
+  added `matched_ids`/`missing_ids`/`found` + not-found-is-not-a-refusal (§ 2.2,
+  INV-5); (H) unterminated-fence rule self-contradictory → `## [` at col 0 is a
+  hard reset that closes an open fence (§ 3); (M) `unreleased` "exactly" vs
+  "case-insensitive" → case-insensitive + version normalised to `Unreleased`; (M)
+  pagination fields + `count`/`total` semantics defined for all list modes; (M)
+  version_index category/query = validate-then-ignore, refusal precedence list
+  (§ 2.3); (M) fence detection recognises indented body fences; (L) category
+  accessor name settled (`canonicalCategories()` hoisted); (L) tab-indented
+  continuation; (L) empty/duplicate-version/offset-past-end degenerate cases.
+- **Loop 3** (same 2 cold lanes, no fix-briefing) — CRITICAL 0 · HIGH 1 ·
+  MEDIUM 6 · LOW 3 · INFO 0 (verified 10/10). Both lanes independently caught the
+  same (H): INV-3 still carried the loop-1 "parenthetical citation group" rule
+  that § 3 was rebased away from → INV-3 rewritten prefix-keyed. Plus: (M)
+  prefix resolution mis-attributed to `roadmap_query` → named the real resolver
+  `RoadmapFoldIn::sniffIdPrefix(root,"ANTS")` (`roadmapfoldin.h:81`), added a § 4
+  row; (M) `RoadmapDialog::parseShippedDates` is the uncited over-matching
+  precedent → § 3/§ 4 note it as the deliberate non-reuse; (M) INV-2 fence
+  test-surface vs § 3 column-0 hard-reset reconciled (indented fake heading);
+  (M) precedence omitted `no_changelog`/`format_mismatch` → path-resolution
+  ordered first (§ 2.3); (M) `id`+`ids` both present undefined → `bad_args`
+  (§ 2.3/2.4); (M) prefix-resolution reuse row added (§ 4); (L) empty `### `
+  regex → resets category; (L) `version_index.categories` zero-count/order/
+  entry_count defined; (L) `P` cache-staleness note (§ 5).
+- **Loop 4** (same 2 cold lanes, no fix-briefing) — CRITICAL 0 · HIGH 0 ·
+  MEDIUM 3 · LOW 6 · INFO 0 (verified 9/9). Accuracy lane fully clean (every
+  citation re-verified; § 3/INV-3 confirmed reconciled). Implementability fixes:
+  (M) `query`-over-`body` vs § 8 "lean path stores no prose" inconsistency →
+  `body` is ALWAYS parsed (id-scan + query search it); `include_body` gates
+  emission only (§ 8); (M) fence "toggle" vs "matching pair" → CommonMark
+  close-matching (same char, ≥ length, no info string) (§ 3); (M) `ids`-batch
+  `bad_case` undefined → demoted to `missing_ids`, no batch refusal (§ 2.3,
+  INV-5); (L) entry/version document-ordering stated; (L) `category` filter is
+  case-sensitive; (L) `offset`/`limit` still shape-validated under an `id`
+  override; (L) § 2.2 example shows kept `**bold**` markdown; (L) em-dash
+  attributed to the `/bump` promote path, not `ChangelogLog`.
+- **Loop 5** (same 2 cold lanes, no fix-briefing) — CRITICAL 0 · HIGH 0 ·
+  MEDIUM 1 · LOW 2 · INFO 0 (verified 3/3). Accuracy lane clean 2nd consecutive
+  loop (zero discrepancies). (M) `include_body` listed `headline_only` in § 2.1
+  but § 2.2/INV-4 always drop `body` there → § 2.1 corrected (entries-only); (L)
+  `limit` bounds pinned to `1..500` (mirrors `roadmap_query`); (L) a `###`/bullet
+  before any `## [` heading is skipped (§ 3). **Converged** — the remaining
+  findings were a single stale-word contradiction + two minor bounds (all
+  mechanical, no design change); accuracy verified clean twice running.
+- **Loop 6** (2026-09-13, ANTS-5071 amendment; review-contract, 3 cold lanes) —
+  Q1 7 · Q2 1 · Q3 0 · Q4 2 (verified 10 / dismissed 5; fixed 9 / surfaced 1).
+  Fixed: § 2.3 precedence now the handler's order; § 2.2 names the ANTS-3576
+  downshift; § 3 fence opener bounded to three spaces, no tab; § 3 dated topic
+  notes the writer does not check its date (ANTS-5148); § 3 known limit covers
+  any id cited only in a topic's headline or prose (ANTS-5145); INV-2 names the
+  dated-topic exception; INV-8 defines a malformed `ids`, with the wrong-type
+  refusal unbuilt (ANTS-5146); INV-10's test surface is parser-level and puts
+  its negative cases after a canonical `### Added`. Surfaced, not fixed: an
+  `id`/`ids` lookup is paged by the code while § 2.4 and INV-5 say it overrides
+  pagination (ANTS-5147).
+- **Loop 7** (2026-09-13, ANTS-5071 amendment; 3 cold lanes; cap reached) —
+  Q1 4 · Q2 2 · Q3 0 · Q4 0 (verified 6 / dismissed 5; fixed 6). Fixed: § 2.2
+  `count == total - offset` on an untruncated page; § 2.2 downshift needs no
+  `limit`; § 3 signature is the header's `ParseResult` (loop 6 dismissed this;
+  INV-10's rollup check needs it); § 3 category heading is a `### ` line or a
+  bare `###`; § 3 a `- ` line in a dated topic's prose is an entry; § 7 names
+  the test contract update. Dismissed as changing nothing built: allowlist
+  naming across § 4, INV-6 and § 7; § 2.1 lacking `path` and `section`; the
+  example envelope's `limit`; the `caller_cwd_required` note; `categories` key
+  order. At the cap, no tail beyond ANTS-5147, which stays surfaced.
+- **Loop 8** (2026-09-13, ANTS-5145 amendment; review-contract, 3 cold lanes) —
+  Q1 0 · Q2 2 · Q3 0 · Q4 0 (verified 2 / dismissed 1; fixed 2). Fixed: § 3's
+  topic entry body ends at a column-0 `- ` bullet outside a fence, and the
+  sentence saying such a line always starts a bullet is gone (all three lanes);
+  § 3's topic `text` strips the separator with the whitespace around it, as
+  INV-11 expects. Dismissed as changing nothing built: § 2.1 lacks the
+  `section` alias § 2.3 names (the handler already accepts it). Three open
+  questions resolved with no finding: the Status line's stale ANTS-5147 note, a
+  `####` line inside a topic body, and INV-10's rollup count.
+- **Loop 9** (2026-09-13, ANTS-5145 amendment; 3 cold lanes; cap reached) —
+  Q1 0 · Q2 1 · Q3 0 · Q4 0 (verified 1 / dismissed 2; fixed 1). Fixed: INV-11
+  names § 3's exception, so a heading with neither a headline nor prose makes no
+  entry. Dismissed as changing nothing built: § 2.1 lacking the `section` alias,
+  and the allowlist sets INV-6, § 4, § 7 and the test contract each name. Four
+  open questions resolved with no finding (the stale ANTS-5147 note, what
+  "outside a fence" covers, `section` handling, a topic heading before any
+  version heading); two outside the amendment left unexamined (which resolver
+  supplies `P`, `fenceInfoOf`'s indent rule). Cap reached (2 for a spec): calm,
+  0 of this loop's 1 finding landed on text loop 8 wrote; 3 of the run's 3
+  verified findings fall inside the gated span, the amendment commit 3d204ab0.
+  Tail filed: none.
+- **amend (2026-10-12, ANTS-5651)** — not a review; no reviewer dispatched. § 2.2's paging sentence now says an explicit `limit` caps the row count and the page is still cut to `softCapBytes()`, per ANTS-1436 INV-9 as amended. Decided by the user 2026-10-11. Gate owed: review-contract on this spec and ANTS-1436.
+- **Loop 10 (2026-10-12, ANTS-5651 amendment; review-contract, 2 cold lanes, every lane held every question)** — Q1 2 · Q2 2 · Q3 0 · Q4 0 (verified 4 / dismissed 1; fixed 4). In the amendment: the Status line now says ANTS-5651's cut is not yet built (both lanes). Records of shipped code, fixed under rule 14's code-exists exception: § 2.2's example drops `limit` and `truncated:false`, which the handler never emits, and the sentence about the example's `50` is gone; § 2.3 and INV-5 add `mode:lint` to the `bad_mode_combo` case; INV-6 and § 7 item 3 say three allowlists, as § 4 does. Dismissed as changing nothing built: § 2.1 lacking the `section` alias (the handler already accepts it).
+- **Loop 11 (2026-10-12, ANTS-5651 amendment; 2 cold lanes, every lane held every question; cap reached)** — Q1 0 · Q2 0 · Q3 0 · Q4 1 (verified 1 / dismissed 1; fixed 1). Fixed: § 7 item 2 names a test for the explicit-limit cut on this verb's own path, since the allowlist scrape INV-6 names cannot fail on a paging defect. Dismissed as changing nothing built: § 2.1 lacking the `section` alias (the handler already accepts it). Cap reached (2 for a spec): calm, 0 of this loop's 1 finding landed on text loop 10 wrote. Whole run: 2 of 5 verified findings fall inside the gated span, commit 6093600f. This loop's fix was read by no lane. Tail filed on ANTS-5651: INV-6 says paging engages through the dispatch allowlists, though the handler calls `pageBullets` itself; § 2.2's "~20 KB" can be lower under `softCapBytes()`.
+- **amend (2026-10-26, ANTS-6282)** — not a review; no reviewer dispatched. § 2.2's release citation now also reads a bullet's indented continuation lines, matching the ids `entries` mode reports; reported by frameledger, whose wrapped bullets drew five false `shipped_not_cited` findings. No gate: it changes no Goal, invariant or invariant test (rules/14-contract-gate.md § The instance).

@@ -5,7 +5,7 @@ clipboard writes. 15 raw `QApplication::clipboard()->setText(...)`
 sites lived in tree, two of which (OSC 52 callback, Lua plugin
 `ants.clipboard.write` glue) come from untrusted sources.
 
-Companion to `docs/specs/ANTS-1014.md`. The full design / threat
+Companion to `docs/specs/ANTS-1014-clipboard-write-redaction-helper.md`. The full design / threat
 model lives there; this file is the test contract.
 
 ## Invariants

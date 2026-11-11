@@ -13,7 +13,7 @@
 // "violations":[...]}}` shape Claude can parse without a separate
 // "let me read the stdout" round-trip.
 //
-// Per `docs/specs/ANTS-1116.md`: this is the "shape proves out the
+// Per `docs/specs/ANTS-1116-stateless-local-subagent-cli-re.md`: this is the "shape proves out the
 // binary works" v1. v2 will add `audit-run` once ANTS-1119 (audit-engine
 // extraction) lands. Other subcommands (id-allocate, test-runner,
 // audit-fold-in, …) are deferred until ANTS-1120 measurement validates

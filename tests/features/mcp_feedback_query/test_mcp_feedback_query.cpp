@@ -1,7 +1,7 @@
 // Feature-conformance test for the feedback_query MCP tool (ANTS-1961).
 // Behavioural invariants drive the pure FeedbackFile::parse helper;
 // refusal/envelope invariants drive cmdFeedbackQuery with an absolute
-// path (m_main-independent). See spec.md + docs/specs/ANTS-1961.md.
+// path (m_main-independent). See spec.md + docs/specs/ANTS-1961-feedback-query-mcp-tool-read.md.
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"

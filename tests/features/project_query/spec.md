@@ -1,6 +1,6 @@
 # Feature: `project_query` — sandboxed server-side query verb (ANTS-2093)
 
-Design spec: `docs/specs/ANTS-2093.md`. This is the feature-conformance
+Design spec: `docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md`. This is the feature-conformance
 contract; the C++ test drives `LuaEngine::runQuery` /
 `LuaEngine::projectQueryVerb` directly against `QTemporaryDir` fixtures and
 source-scrapes the wiring.

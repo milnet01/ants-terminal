@@ -1,7 +1,7 @@
 # doc_lint_verb — verb-layer conformance
 
 Contract for `tests/features/doc_lint_verb/test_doc_lint_verb.cpp`. Owning spec:
-[`docs/specs/ANTS-3663.md`](../../../docs/specs/ANTS-3663.md).
+[`docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md`](../../../docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md).
 
 Phase-1 rows only. `RemoteControl::cmdDocLint` needs a live `MainWindow`, so
 behavioural rows drive the pure helper `docLintBuildResponse` — and, for the

@@ -825,7 +825,7 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
     // status timer so a stale-hidden state is recovered within 2 s
     // of any cwd change. Same fix shape as refreshBgTasksButton,
     // which the same timer drives. Spec: docs/specs/
-    // ANTS-1160.md §9. Test: tests/features/roadmap_status_bar_refresh/.
+    // ANTS-1160-roadmap-dialog-redesign-format-spec.md §9. Test: tests/features/roadmap_status_bar_refresh/.
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRoadmapButton);
     connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshRepoVisibility);
     // 0.7.49 — also drive the background-tasks button refresh on the

@@ -1,7 +1,7 @@
 # Feature: Lua sandbox sticky-kill defeats pcall-nesting wall-clock evasion
 
 Regression test for the contract documented in
-[`docs/specs/ANTS-1332.md`](../../../docs/specs/ANTS-1332.md). See that
+[`docs/specs/ANTS-1332-lua-sandbox-sticky-kill-defeats.md`](../../../docs/specs/ANTS-1332-lua-sandbox-sticky-kill-defeats.md). See that
 spec for the threat model and full set of invariants — this file
 records only what the test exercises and the bounds it asserts.
 
@@ -25,7 +25,7 @@ re-broken.
 
 ## Invariants under test
 
-(IDs correspond to ANTS-1332.md § 4 Invariant N where applicable.)
+(IDs correspond to ANTS-1332-lua-sandbox-sticky-kill-defeats.md § 4 Invariant N where applicable.)
 
 ### Runtime checks
 

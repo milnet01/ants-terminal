@@ -4,7 +4,7 @@ Trim the load-bearing per-op prose out of the seven largest MCP tool
 `description` strings (the bytes every session pays for in `tools/list`)
 into a sibling `detail` literal that is **stripped from the wire payload**
 and served on demand by `tool_info {name}`. Full design:
-[`docs/specs/ANTS-2079.md`](../../../docs/specs/ANTS-2079.md).
+[`docs/specs/ANTS-2079-trim-load-bearing-mcp-tool.md`](../../../docs/specs/ANTS-2079-trim-load-bearing-mcp-tool.md).
 
 In-scope tools (wire `description` ≥ ~1800 B pre-trim): `roadmap_query`,
 `model_switch_stats`, `roadmap_log`, `test_audit_partition`,

@@ -1,7 +1,7 @@
 # roadmap_density — ANTS-1238
 
 > Feature contract for the RoadmapDialog density toggle.
-> Companion to `docs/specs/ANTS-1238.md`. This file is the
+> Companion to `docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md`. This file is the
 > human-readable test promise; the test source asserts each
 > invariant exit-0 on success.
 
@@ -50,7 +50,7 @@ is the grep handle for re-implementers.
 | INV-9  | Persistence-write failure path: with the parent config directory at mode 0500 (Config::save uses tmpfile+rename, which respects directory perms not file perms), calling `setRoadmapDensity("compact")` advances the in-memory state to `"compact"` AND a freshly-constructed `Config` reading the same on-disk file still returns the pre-chmod value. | `INV-9`        |
 
 Full design rationale + tier-table set-difference analysis for
-INV-2's sentinels: `docs/specs/ANTS-1238.md` § 2.f.
+INV-2's sentinels: `docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md` § 2.f.
 
 ## Exit shape
 

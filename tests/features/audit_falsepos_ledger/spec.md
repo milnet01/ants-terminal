@@ -2,7 +2,7 @@
 
 Feature-conformance test for the false-positive ledger helper
 introduced by ANTS-1457. Canonical spec at
-[`docs/specs/ANTS-1457.md`](../../../docs/specs/ANTS-1457.md);
+[`docs/specs/ANTS-1457-ants-review-falsepos-jsonl-ledger.md`](../../../docs/specs/ANTS-1457-ants-review-falsepos-jsonl-ledger.md);
 standard at
 [`docs/standards/audit-false-positives.md`](../../../docs/standards/audit-false-positives.md).
 

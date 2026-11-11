@@ -2,7 +2,7 @@
 
 Direct-cache-API tests for the 100 ms TTL cache that wraps four MCP
 read verbs at `claudeintegration.cpp::processTools`. See the parent
-spec at `docs/specs/ANTS-1357.md` for full rationale and invariants.
+spec at `docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md` for full rationale and invariants.
 
 The dispatch integration is exercised in `mcp_tools_list_schema` /
 other MCP feature lanes; this lane locks the cache helpers' contract

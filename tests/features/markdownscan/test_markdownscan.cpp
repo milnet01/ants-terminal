@@ -134,7 +134,7 @@ TEST(MarkdownScanFence, BacktickInfoStringMayNotContainABacktick) {
 
 // INV-8 — the document-level consequence, which is what made this load-bearing:
 // a spec that documents fence syntax by example must stay readable past the
-// example. docs/specs/ANTS-3653.md writes exactly this line.
+// example. docs/specs/ANTS-3653-citation-scan-path-line-grammar.md writes exactly this line.
 TEST(MarkdownScanFence, FourBacktickSpanLeavesTheRestOfTheDocVisible) {
     const QStringList lines{
         QStringLiteral("prose"),
@@ -273,7 +273,7 @@ TEST(MarkdownScanSpans, ContentIsVerbatim) {
 
 // INV-11 (ANTS-3649) — the scan is whole-document: a span may cross a newline
 // (CommonMark § 6.1), and a per-line pass leaves its tail exposed. This is the
-// live docs/specs/ANTS-1150.md:197-198 shape that ANTS-3635(a) fixed.
+// live docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md:197-198 shape that ANTS-3635(a) fixed.
 TEST(MarkdownScanSpans, SpanCrossesANewline) {
     const QStringList lines{
         QStringLiteral("a `x"),     // ` at col 2, content starts col 3

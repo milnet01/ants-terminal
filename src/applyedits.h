@@ -3,7 +3,7 @@
 // RemoteControl / MainWindow. The cmdApplyEdits wrapper (remotecontrol.cpp)
 // owns ALL filesystem concerns — path validation, the file read, the 4 MiB
 // size gate, and the atomic write — and calls applyToContent per edit on
-// the in-memory working content. See docs/specs/ANTS-2022.md.
+// the in-memory working content. See docs/specs/ANTS-2022-apply-edits-mcp-tool-n.md.
 
 #pragma once
 

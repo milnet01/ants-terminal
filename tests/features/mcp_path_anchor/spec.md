@@ -5,7 +5,7 @@ Locks ANTS-1295: every path-accepting MCP tool routes through
 cwd-anchor check lives in exactly one place and out-of-root paths
 reject uniformly.
 
-Spec source: `docs/specs/ANTS-1295.md`.
+Spec source: `docs/specs/ANTS-1295-per-tool-cwd-anchor-enforcement.md`.
 
 ## Invariants exercised
 

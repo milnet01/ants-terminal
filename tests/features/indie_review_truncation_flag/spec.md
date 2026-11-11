@@ -1,6 +1,6 @@
 # indie_review_corroborate truncation flag
 
-See [`docs/specs/ANTS-1344.md`](../../../docs/specs/ANTS-1344.md).
+See [`docs/specs/ANTS-1344-indie-review-corroborate-truncation-flag.md`](../../../docs/specs/ANTS-1344-indie-review-corroborate-truncation-flag.md).
 
 ## Invariants
 

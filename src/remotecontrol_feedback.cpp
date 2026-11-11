@@ -2099,7 +2099,7 @@ QJsonObject runRenameSweepOp(const ants::RootProvider *roots,
 
 // ANTS-2129 — audit_falsepos_log: append a confirmed false positive to
 // <root>/.ants_review_falsepos.jsonl via the atomic O_APPEND in
-// ants::falsepos::appendEntry. See docs/specs/ANTS-2129.md.
+// ants::falsepos::appendEntry. See docs/specs/ANTS-2129-audit-falsepos-log-mcp-write.md.
 QJsonDocument RemoteControl::cmdAuditFalseposLog(const QJsonObject &req) {
     auto afErr = [](const QString &code, const QString &message) {
         QJsonObject o;

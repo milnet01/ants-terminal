@@ -1,0 +1,44 @@
+# ANTS-3669 — `doc_lint --fix`: redirect to ANTS-3663 § 2.3
+
+**Status:** superseded (2026-07-28) — merged into ANTS-3663.
+**Kind:** implement.
+**Source:** ROADMAP.md ANTS-3669 (cold-eyes-2026-07-28, split from ANTS-3663).
+**Superseded by:** ANTS-3663, whose `**Covers:**` header carries this id.
+
+**The contract for `doc_lint`'s fix path is [ANTS-3663](ANTS-3663-doc-lint-every-deterministic-doc.md) § 2.3**,
+with its invariants at INV-5, INV-6, INV-12, INV-14–INV-16 and INV-18, and its
+tests in `tests/features/doc_lint_fix/`. **INV-13 is not in that set** — the
+`isEtagSupportedTool` exclusion is unconditional from the first ship, so it is
+asserted in phase 1 (ANTS-3663 § 2.5 and § 6's phase column, which is canonical
+for phase assignment).
+
+**The ROADMAP item stays open.** It is implementation **phase 2** of one verb:
+phase 1 (the walk, the five-checker composition, the adapters and the envelope)
+ships first and serves `/cold-eyes` § 1e without any write path. Only the
+*document* was merged, not the work.
+
+## Why this is a redirect and not a spec
+
+This id had its own spec for one day. Cold-eyes loop 4 reviewed the two halves
+as a pair and found **every** CRITICAL of the pair at their seam: `fixed[]` was
+fully specified in both documents and had diverged, `emission_index` had three
+contracts across three specs, and § 1 claimed "the read half keeps its ETag
+support; this half gives it up" — a per-half distinction that one verb with one
+registration entry cannot express.
+
+The split had been cut by **risk profile** (reads vs writes), but the response
+envelope spans that line, so every write-side field acquired two owners. There
+is no code boundary underneath it either: one verb, one registration entry, one
+`cmdDocLint`, one `src/doclint.{h,cpp}` — as ANTS-3663 § 2.5 puts it, "no new
+engine and no new verb arrives with the fix path."
+
+What the split was for survives the merge. Ship ordering is now a phase, stated
+in ANTS-3663 § 2.3. The stricter review a writing verb deserves is carried by
+its invariants, its tests and its code review — never by which file the prose
+sat in.
+
+This file is kept rather than deleted so that citations of `ANTS-3669` written
+before the merge still resolve to something that explains where the contract
+went. It carries no `## Invariants` or `## Tests` section by design: a redirect
+has no contract of its own, and inventing empty sections to satisfy a structural
+check would make it look like a spec that had lost its content.

@@ -8,7 +8,7 @@
 // per Karpathy §2. PCRE2 JIT + possessive quantifiers + 1024-byte
 // per-line cap bound the worst case (INV-8).
 //
-// See docs/specs/ANTS-1249.md.
+// See docs/specs/ANTS-1249-file-outline-mcp-tool.md.
 
 #ifndef ANTS_FILEOUTLINE_H
 #define ANTS_FILEOUTLINE_H

@@ -1,6 +1,6 @@
 # mcp_record_dispatch_unification — ANTS-1402
 
-See `docs/specs/ANTS-1402.md`.
+See `docs/specs/ANTS-1402-merge-dispatch-observers.md`.
 
 ## Test scope
 

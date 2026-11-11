@@ -3,7 +3,7 @@
 // Shape B of ANTS-1226. This is the actuator's *gate logic*, factored out as a
 // pure value-in/value-out function so it is unit-testable without a live
 // terminal (the controller in claudestatuswidgets.cpp builds the Gate each tick
-// and acts on the Decision). See docs/specs/ANTS-1735.md §2.3 + INV-1..INV-9.
+// and acts on the Decision). See docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md §2.3 + INV-1..INV-9.
 //
 // Lives in ants_claude_lib (not ants_core_lib as the spec §4 draft assumed):
 // decide() reuses ModelRecommender::tierName for the tier alias (INV-9 forbids

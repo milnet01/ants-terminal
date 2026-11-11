@@ -1,7 +1,7 @@
 # mcp_adapter_github_tasklist — feature contract
 
 Tier 1 (read-side adapter) + Tier 2 (write-side `op:"flip"`) tests
-for ANTS-1428. See `docs/specs/ANTS-1428.md` for the full design
+for ANTS-1428. See `docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md` for the full design
 + rationale; this is the test-side mirror.
 
 ## What this test guards

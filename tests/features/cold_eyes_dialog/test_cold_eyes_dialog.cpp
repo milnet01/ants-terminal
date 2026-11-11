@@ -8,7 +8,7 @@
 // synchronous fake LlmDispatcher::JobRunner) rather than calling
 // onAllReportsCollected directly, because the loop log must track what
 // each round DISPATCHED, not ReviewDialogBase's accumulated reports().
-// See tests/features/cold_eyes_dialog/spec.md + docs/specs/ANTS-1721.md.
+// See tests/features/cold_eyes_dialog/spec.md + docs/specs/ANTS-1721-coldeyesdialog-native-app-documentation.md.
 
 #include "coldeyesdialog.h"
 #include "coldeyesengine.h"

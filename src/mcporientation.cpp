@@ -1,4 +1,4 @@
-// ANTS-1897 — implementation. See mcporientation.h + docs/specs/ANTS-1897.md.
+// ANTS-1897 — implementation. See mcporientation.h + docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md.
 
 #include "mcporientation.h"
 #include "antsversion.h"

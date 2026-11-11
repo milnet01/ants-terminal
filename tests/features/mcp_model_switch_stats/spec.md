@@ -1,7 +1,7 @@
 # Feature: `model_switch_stats` MCP verb
 
 Part of **ANTS-1735** (Shape B of ANTS-1226). Full design lives in
-[`docs/specs/ANTS-1735.md`](../../../docs/specs/ANTS-1735.md) §2.5 (INV-13). A
+[`docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md`](../../../docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md) §2.5 (INV-13). A
 read-only MCP verb that aggregates the effectiveness ledger for the caller's
 project into the trust signal: *Opus turns avoided* vs *regret / under-route
 rate*. Because a Max(5) subscription has no per-token bill, the scarce resources

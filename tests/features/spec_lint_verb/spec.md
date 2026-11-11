@@ -1,7 +1,7 @@
 # spec_lint — verb-layer conformance
 
 Contract for `tests/features/spec_lint_verb/test_spec_lint_verb.cpp`. Owning
-spec: [`docs/specs/ANTS-3662.md`](../../../docs/specs/ANTS-3662.md).
+spec: [`docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md`](../../../docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md).
 
 The handler needs a live `MainWindow`, so this lane splits the way ANTS-3601 and
 ANTS-3661's verb lanes do: behavioural rows drive the pure helpers

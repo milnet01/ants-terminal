@@ -1,5 +1,5 @@
 // Feature-conformance test for spec.md (canonical:
-// docs/specs/ANTS-1337.md). Phase 1: infrastructure + engine API.
+// docs/specs/ANTS-1337-first-run-trust-gate-ants.md). Phase 1: infrastructure + engine API.
 //
 // VT-* tests exercise VerifyEngine::loadGateConfig with the three
 // trust-client states (nullptr / AlwaysTrust / AlwaysDeny /
@@ -60,7 +60,7 @@ QString makeProject(QTemporaryDir &tmp, const QByteArray &verifyJson) {
 }
 
 // Schema uses top-level "build" / "tests" / "lint" keys per
-// docs/specs/ANTS-1289.md § 2.4; each maps to a {command, format}
+// docs/specs/ANTS-1289-verify-changes-mcp-tool.md § 2.4; each maps to a {command, format}
 // object.
 constexpr char kSampleConfig[] =
     "{\n"

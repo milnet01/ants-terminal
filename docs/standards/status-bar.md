@@ -103,7 +103,7 @@ When adding a new status-bar widget that reads `shellCwd()`:
 - `tests/features/roadmap_status_bar_refresh/spec.md` — the
   feature-conformance test that enforces this contract for the
   RoadMap button and the GitHub repo-type badge.
-- `docs/specs/ANTS-1160.md` §9 — the spec section that folded
+- `docs/specs/ANTS-1160-roadmap-dialog-redesign-format-spec.md` §9 — the spec section that folded
   the v0.7.77 trio of regressions and added this addendum.
 - `src/claudetasklist.cpp::poll()` — the parallel pattern for
   per-tracker refresh rescue (covers the case where

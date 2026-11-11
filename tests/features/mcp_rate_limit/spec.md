@@ -4,7 +4,7 @@ Per-(toolName, callerCwd) sliding-window rate-limit on the MCP
 dispatcher. Three tiers: Cheap (60 calls/60 s), Expensive (10
 calls/60 s), ControlPlane (uncapped). Refuses with
 `{ok:false, code:"rate_limited", retry_after_ms}` when the bucket
-is full. See `docs/specs/ANTS-1356.md` for the full design.
+is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full design.
 
 ## Invariants
 

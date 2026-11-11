@@ -18,7 +18,7 @@ QStringList lines(const char *text) {
     return QString::fromUtf8(text).split(QLatin1Char('\n'));
 }
 
-// Byte-for-byte copy of docs/specs/ANTS-1436.md's header. Checked in on
+// Byte-for-byte copy of docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md's header. Checked in on
 // purpose: binding this expectation to the live spec would break the suite the
 // first time anyone flips that spec's status, which this very change enables.
 const char *kAnts1436Header =
@@ -34,7 +34,7 @@ const char *kAnts1436Joined =
     "+ `cmdRoadmapQuery` offset/limit; tests "
     "`tests/features/roadmap_query_pagination/`).";
 
-// The docs/specs/ANTS-1253.md shape: two field markers on one physical line.
+// The docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md shape: two field markers on one physical line.
 const char *kAnts1253Header =
     "# ANTS-1253 — Consolidate MCP-tool provider registry\n"
     "\n"

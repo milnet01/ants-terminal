@@ -1,5 +1,5 @@
 // ANTS-1963 — implementation of the spec_log pure transforms.
-// See speclog.h + docs/specs/ANTS-1963.md.
+// See speclog.h + docs/specs/ANTS-1963-spec-log-mcp-tool-write.md.
 
 #include "speclog.h"
 

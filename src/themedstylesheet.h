@@ -3,7 +3,7 @@
 // themedstylesheet — pure-function QSS builders extracted from
 // MainWindow::applyTheme by ANTS-1147 (Bundle G Tier 3, sibling
 // to ANTS-1146's ClaudeStatusBarController carve-out). See
-// docs/specs/ANTS-1147.md for the full design rationale, the
+// docs/specs/ANTS-1147-extract-themedstylesheet-mainwindow-cpp.md for the full design rationale, the
 // three-call-site chip-helper consolidation, and the
 // updateStatusBar cache-and-compare optimization shape.
 //

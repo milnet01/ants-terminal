@@ -503,7 +503,7 @@ row is deliberately `nothing` in § 8.
 
 Per call: one spec file, plus at most `max_cases` × (512 + 512) bytes of
 extracted case text ≈ 200 KiB at the default. The largest spec in the corpus
-is 122,121 bytes (`ls -S docs/specs/ | head -1` → `ANTS-3636.md`; `wc -c` →
+is 122,121 bytes (`ls -S docs/specs/ | head -1` → `ANTS-3636-doc-citations-resolve-doc-s.md`; `wc -c` →
 122121), so the file itself is the smaller half of a worst-case call.
 Nothing is retained between calls; no cache, so no eviction policy is
 needed. Build cost: one new TU in `ants_core_lib` (`add_library(ants_core_lib

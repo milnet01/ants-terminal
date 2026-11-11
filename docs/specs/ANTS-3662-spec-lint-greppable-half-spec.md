@@ -1,0 +1,843 @@
+# ANTS-3662 — `spec_lint`: the greppable half of the spec-format contract
+
+**Status:** accepted (2026-09-29, with the ANTS-5537 amendment); first accepted (2026-07-28); ANTS-3677's deferred item folded and the loop-log balance check dropped with its measurement (§ 5), the prerequisite filed as ANTS-3682.
+**Kind:** implement.
+**Source:** ROADMAP.md ANTS-3662 (user-request-2026-07-27).
+**Blocked by:** ANTS-3664 (the finding shape). **ANTS-3665 has shipped**
+(2026-07-28) — `spec_query`'s bullet-form parser now extracts the `*Test:*`
+clause into `test_surface`, and `parseSpecBody` is hoisted into
+`src/specparse.{h,cpp}` where this engine can link it. Both were blockers.
+**Amended by:** ANTS-5537 (2026-09-29) — § 2.4 diff scope, INV-9 to INV-15.
+**Blocker for:** ANTS-3663 (`doc_lint`), which composes it.
+**Composes with:** ANTS-3601 (`doc_integrity`, whose verb-layer shape this
+copies).
+
+**Layman:** One command that checks a spec has all its required parts, instead
+of six hand-typed searches every review.
+
+---
+
+## 1. Problem
+
+`/cold-eyes` § 1e runs a mechanical pre-pass before spending reviewer lanes on
+judgement. Several of its checks are deterministic and are hand-rolled every
+single run: required sections present, every `INV-N` carrying a test surface,
+gaps in the doc's own numbered ids, the loop-log tally balancing, and the line
+count against the skill's one-to-three-loop design point.
+
+Hand-rolling has a measured cost beyond the typing. § 1e's own notes record that
+the *what-checks-this table integrity* class was caught in three consecutive
+loops before it became a check, and that a stated count of un-caught rules "has
+been wrong every time a human wrote it". A deterministic gate costs seconds and
+runs every time; a cold reader costs a pass and rolls dice.
+
+**One sub-check earns its own mention.** A `*Test:*` clause that is a command
+(`grep`, `git`, `ctest`) but states no expected output is a clause that can only
+be read, and reading is how three of the eight invariants in the first spec to
+adopt that format shipped broken — a fictional section, a count off by one, and
+a tautology over a gitignored path. Each died in seconds when run.
+
+**And the parser does not currently supply the field.** `parseSpecBody`
+(`src/specparse.cpp::SpecParse::parseSpecBody()`) emits `test_surface` only from the GFM table
+branch; the bullet branch — which `docs/standards/specs.md:116` calls the
+default and which nearly every spec in this corpus uses — swallows the clause
+into `body`. **ANTS-3665 fixed that (2026-07-28)**; this verb consumes the
+repaired parser rather than reimplementing a second one beside it.
+
+## 2. Surface
+
+### 2.1 Checks
+
+Each check is deterministic and produces `DocFinding::Finding` (ANTS-3664) with
+`verb:"spec_lint"`:
+
+| `kind` | Fires when |
+|---|---|
+| `missing_section` | a section the project's format standard requires is absent *(ships disabled — see below)* |
+| `invariant_no_test` | an `INV-N` carries no `*Test:*` clause |
+| `invariant_id_gap` | the doc's own `INV-N` sequence skips a number with no tombstone |
+| `loop_row_no_outcome` | a cold-eyes loop-log row has counts and an empty outcome cell |
+| `command_test_no_expectation` | *(candidate)* a `*Test:*` clause is a command but states nothing it should return |
+
+**The required-section list is read, never assumed — and read from a
+machine-readable source.** It comes from a fenced block in the project's own
+format standard, `docs/standards/spec-format.md` if present, else
+`docs/standards/specs.md`, marked so the verb can find it without parsing prose
+(`<!-- required-sections -->` preceding a fence of literal `## N. Name` lines).
+Where a project ships neither standard, or ships one with no such block, the
+check is **skipped** and the envelope says so (`sections_checked:false`): a doc
+cannot violate a standard the project never adopted, nor one that never wrote
+its requirement down.
+
+**No `_shared` fallback.** The canonical `~/.claude/skills/_shared/spec-format.md`
+lives outside the project root, which this verb's own `bad_path` contract
+(INV-7) forbids it from reading — and because that file always exists, a
+`_shared` tier would mean the skip arm never fires and INV-1's second half were
+untestable. In-project or skipped.
+
+**Amended 2026-08-15 (ANTS-4080) — there IS a global tier now, and it is not
+that one.** `~/.claude/standards/spec-format.md` became the authoritative
+spec-format standard on 2026-08-08 with projects carrying deltas, so
+*in-project or skipped* stopped meaning "the project never adopted a standard"
+and started meaning "the project keeps its copy where the standard says not
+to". A reporting project was being linted against nothing and reading the skip
+as a clean structural result. Three things separate this tier from the one
+refused above, and each answers one clause of it. The path is
+`~/.claude/standards/`, not `skills/_shared/`. It re-roots through
+`expandGlobalConfigSentinel`, the `~global` sentinel ANTS-3719 already gave
+`doc_integrity` — one well-known read-only root, every path still validated, so
+INV-7 is intact rather than relaxed. And the skip arm is testable **by
+construction** rather than by argument: `QDir::homePath()` follows `$HOME`, so a
+fixture pointing it at a directory with no `.claude/` still reaches the skip.
+`sections_source` prefixes a global hit with `~global/`; the four project
+candidates are tried first and unchanged, so no project that ships its own
+standard sees any difference.
+
+**Amended 2026-09-08 (ANTS-4926) — that prefix says which standard ANSWERED,
+not that the project adopted none.** `spec-format.md` forbids a project from
+keeping a local copy: read it in place, write deltas to
+`docs/standards/spec-format-overrides.md`. So a conforming project reaches the
+global tier for the opposite reason to a project that adopted no format
+standard, and both emitted the same string. A caller reading the prefix as "no
+standard" therefore drops real findings on every conforming project.
+`sections_source_reason` separates the states — `project_standard`,
+`adoption_marker`, `local_standard_no_block`, `no_local_standard` — with
+`sections_source_hint` on the three arms a caller can misread. **Resolution is
+unchanged**: the overrides file is reported as an adoption signal and never
+read as a candidate, because a project adopting with zero deltas writes no such
+file and the candidate list would still be incomplete.
+
+**No machine-readable list exists yet, and the check is skipped until one
+does.** Both candidate sources were read (2026-07-27) and both are wrong, in
+opposite ways:
+
+- **`specs.md` § 3 "Required structure"** is the authoritative list, but its
+  headings are prose: `3.1 Title (H1)`, `3.2 Header block`, `3.3 § 1. Problem`,
+  `3.5 Invariants`, `3.6 Tests`. Two name things that are not sections at all
+  (an H1 and a bold key-value block), the numbering is the standard's own rather
+  than the spec's, and the heading a spec actually carries is `## 3. Invariants`,
+  not `3.5 Invariants`. Extracting it needs a normalisation nobody has written
+  down.
+- **§ 7's skeleton** is a fenced block of literal `## N. Name` lines and so
+  *looks* machine-readable — but it is a starting template, not the requirement.
+  It merges § 3's required set with § 4's explicitly **recommended** ones
+  (`## 4. RAM / build cost`, `## 5. Out of scope`, `## 7. Cross-doc impact`), so
+  reading it as the required list turns three recommendations into three
+  `missing_section` findings. It also omits `## Cold-eyes loop log` — and that
+  section's standing in the standard is **itself contradictory**, which any
+  machine-readable block has to resolve before it can be written. `specs.md`
+  § 5.7 and global rule 14 treat the loop log as mandatory (a spec without one
+  has not been through the gate), while `specs.md` § 4 lists "**§ Cold-eyes loop
+  log** — see § 5.7" under *Recommended sections* — the exact category § 7's
+  skeleton is condemned above for merging in. § 7 files that resolution together
+  with the block, because writing the block first would encode the same error
+  the block exists to eliminate.
+
+So the section check runs only where `specs.md` carries an explicit
+machine-readable block (§ 7 files it; ANTS-3829 added it). Without one,
+`sections_checked:false` is the answer, not a rare fallback: there is nothing
+honest to check against. That is deliberate — a check
+against a guessed list manufactures findings against every conforming spec in
+the corpus, which is worse than not running.
+
+**Spans inside a `doc-examples` region (ANTS-3659) are scanned normally.**
+ANTS-3659 § 2.1 makes honouring the region each verb's own policy, so this is a
+decision rather than an inheritance, and it goes the opposite way to ANTS-3661
+§ 2.1. The region suppresses *citation and identifier harvesting*, where a
+teaching example names things that deliberately do not exist. `spec_lint`'s
+checks are structural — a heading is present or absent, a row has an outcome or
+does not — and a spec that demonstrates invariant syntax inside a marked region
+still has whatever real structure it has. Suppressing there would blind the
+check to a document's actual shape for no gain.
+
+**Envelope.**
+
+```jsonc
+{ "ok": true,
+  "findings":         [ /* DocFinding::Finding, ANTS-3664 */ ],
+  "counts":           { "invariant_no_test": 2 },
+  "checked_docs":     ["docs/specs/ANTS-3601-deterministic-doc-integrity-check.md"],
+  "sections_checked": false,   // ALWAYS present; false when no block is declared
+  "line_count":       { "docs/specs/ANTS-3601-deterministic-doc-integrity-check.md": 2000 },
+  "truncated":        false }  // omitted when false; set by max_findings
+```
+
+Request-side: `caller_cwd` (required), `path` (file or dir; absent →
+`specs_dir`), and `max_findings` (default 500, clamped to [1, 5000]) — the same
+cap `doc_lint` carries, because a directory-scoped checker with no cap is one
+bad corpus away from an unbounded response.
+
+`sections_checked` is **always present, never omitted when false**. It is the
+one field that distinguishes "every required section is there" from "nobody
+checked", and those are the two states this verb ships between. `line_count` is
+keyed per document because the walk is directory-scoped; § 2.2 explains why size
+is reported here and never as a finding.
+
+**`command_test_no_expectation` is a candidate, not a verdict.** "Is this clause
+a command?" is a heuristic, and a manual recipe or a bare test-file path is a
+legitimate test surface with nothing to state. It is emitted with
+`autoFixable:false` and wording that says *candidate*, on the same reasoning
+ANTS-3661 § 2.3 gives for unresolved symbols: the verb produces the short list,
+a reviewer decides. The verb **never executes** a clause — `/write-spec` Step 3
+owns running them, at write time, where a failure is free.
+
+Both halves of the heuristic are literal, because "is a command" and "states an
+expectation" are each one guess away from firing on the whole corpus:
+
+- **Command-shaped** — the clause contains a code span whose first
+  whitespace-delimited word, after an optional `$ ` prompt, is one of:
+  `grep rg git ls find ctest cmake ninja make pytest python python3 node npm
+  bash sh sed awk wc cat head tail diff jq curl test`. A fixed vocabulary, not a
+  shape test: `` `QProcess` `` and `` `docs/standards/specs.md` `` are code
+  spans too, and a rule like "contains a slash or a dash" fires on both.
+- **States nothing it should return** — no alphanumeric character appears in the
+  clause after the end of its **last** command-shaped span. This is § 1e's own
+  wording read literally, and it is why the rule is not "the clause contains
+  `→`": that arrow is the corpus's habit, not a documented convention —
+  `docs/standards/specs.md` does not mention it — so a check keyed on it would
+  report every clause written before the habit formed. Trailing punctuation is
+  not an expectation (`` *Test:* run `ctest -R spec_lint`. `` fires); anything
+  with a digit or letter after the span is (`` … `grep -c foo src/` → 3 ``
+  does not).
+
+The fire rate over `docs/specs/` is measured before this check is trusted, on
+the ANTS-3661 precedent: a candidate emitter that fires on most of the corpus is
+a rule that has been guessed, not a corpus that is broken. § 6 carries the
+harness.
+
+**Measured 2026-07-28** — 218 specs, 1,856 invariant anchors, 90,019 lines:
+
+| kind | fires | of anchors | reading |
+|---|---|---|---|
+| `command_test_no_expectation` | 3 | 0.2% | The heuristic is tight. Three clauses, each genuinely a bare command. |
+| `invariant_id_gap` | 28 | 1.5% | Reviewable, with one known false-positive class — see below. |
+| `invariant_no_test` | 582 | 31.4% | A fact about the corpus, not a broken rule. |
+| `missing_section` | — | — | Skipped: no standard carries the block (§ 2.1). |
+
+Two of these moved the implementation rather than merely describing it, which
+is the whole reason the gate runs before the verb is trusted:
+
+- **`invariant_id_gap` was anchored at 1 and now anchors at the document's own
+  minimum.** The first run reported 109, and most were one document:
+  `docs/specs/ANTS-1358-debt-sweep-detector-expansion.md` opens at **INV-14** because it continues an earlier
+  spec's numbering, so thirteen ids that were never in it were reported as lost.
+  § 1e asks for gaps in "a doc's own numbered ids"; an offset origin is not a
+  gap. 109 → 28.
+- **The residual 28 are one class, and it is filed rather than suppressed.** A
+  spec carrying a *subset* of a parent's invariants keeps the parent's ids —
+  `docs/specs/ANTS-3653-citation-scan-path-line-grammar.md` has INV-1, 2, 3, 9, 10, 24, which are ANTS-3636's
+  numbers for the same rules, and renumbering them would break the citation that
+  `/write-spec` calls permanent. 1.5% is a reviewable rate, so the check ships as
+  it stands; **ANTS-3684** carries the two candidate resolutions. Inventing a
+  suppression marker with no corpus instance is the failure mode INV-3 already
+  documents.
+- **Amended 2026-08-15 (ANTS-3784) — the marker now has a corpus instance, so
+  it is no longer invented.** ANTS-4110 answered the same question first, with
+  the numbers sibling specs own; but that set is decided corpus-wide and
+  all-or-nothing — one number shared by two documents anywhere switches it off
+  — so a corpus numbering per-document *except* for one family cannot reach it,
+  which is this one. `docs/specs/ANTS-3782-…md` numbers from 26 past
+  ANTS-3756's highest and argues it at length in its own § 3, and still
+  reported eleven gaps on every run. A document may now state that argument
+  machine-readably as `<!-- invariant-id-base: N -->` outside fenced code:
+  numbers below `N` are counted into `id_gaps_suppressed` rather than reported.
+  Fenced occurrences are ignored so a document *describing* the syntax does not
+  declare one. Measured over `docs/specs/` the day it landed: 39 → 28, one
+  document moved, all eleven of its gaps became suppressions, and the residual
+  28 above are untouched.
+
+**31.4% is not this check misfiring.** Sampled: `docs/specs/ANTS-1111-fold-audit-triage-into-project.md`
+carries INV-1 … INV-8 under a heading reading *"Invariants (locked by feature
+tests)"* — the tests exist, the clause form does not, because the spec predates
+it. The check reports what it says it reports. The number is a measurement of
+how much of the corpus was written before the convention, and is the reason
+`invariant_no_test` is a finding a reviewer triages rather than a gate.
+
+**`invariants_unparsed`** (ANTS-4998). It fires once per document when no
+invariant was recognised and an unfenced line of the Invariants section opens
+with an `INV-` id. A citation inside a sentence does not fire, because a section
+may legitimately add none. It has no § 2.4 per-kind row, so a scoped run reports
+it in full. **Measured 2026-11-02** with `SpecLint.DISABLED_CorpusCalibration`:
+5 of 280 specs fire, and reading each flagged line found invariants written in
+an unread form in all 5.
+
+### 2.2 What it does not do
+
+**Only one of `/cold-eyes` § 1e's two loop-log checks ships.** § 1e asks for
+(1) every loop row carrying a non-empty outcome cell, and (2) where the doc also
+carries per-loop prose enumerating that loop's findings, the enumerated count
+matching the row's severity counts. This verb implements (1) and **drops (2)**;
+§ 5 records the measurement and ANTS-3682 carries the work that would make it
+computable.
+
+**The loop-log table is identified by its header, and the outcome cell is the
+row's last.** A loop log is a GFM table whose first header cell is exactly
+`Loop`; its data rows are the lines after the delimiter row, until the first
+line that is not a table row. The outcome is the **last cell**, because the
+column layout is not stable and its position is: four incompatible shapes are in
+use across the corpus (checked 2026-07-28) —
+
+| Shape | Columns | Seen in |
+|---|---|---|
+| `\| Loop \| Date \| Lanes \| C \| H \| M \| L \| I \| Outcome \|` | 9 | ANTS-3659..3664, ANTS-3669 (7 docs) |
+| `\| Loop \| C \| H \| M \| L \| I \| Verified \| Notes \|` | 8 | ANTS-1330 |
+| `\| Loop \| C \| H \| M \| L/I \| Notable verified findings \|` | 6 | ANTS-3504 |
+| `\| Loop \| Verified findings → fixes applied \|` | 2 | ANTS-1254 |
+
+— and the prose column is last in all four. Keying on the column *name* would
+match one shape and silently skip three; keying on position matches all four.
+A table whose first header cell is not `Loop` is not scanned at all, which is
+what stops the check firing on every table in the document.
+
+**Size is an observation, not a finding.** The line count is reported in the
+envelope, never as a `DocFinding`. A long spec is evidence about a *run*, not a
+defect in a document, and emitting it as a finding would put an unfixable item
+in a list whose consumer chain ends in a fixer (ANTS-3663 § 2.3).
+
+### 2.3 Files and hooks
+
+Engine `src/speclint.{h,cpp}` in `ants_core_lib`:
+
+```cpp
+// Text in, findings out, per the family convention ANTS-3664 § 2.3 fixes: the
+// engine never opens the DOCUMENT under review (its text is handed in), which
+// is what lets ANTS-3663 read each document once and serve all three native
+// checkers from that one read.
+
+struct Options {
+    // The required-section list, read once per run from the format standard's
+    // `<!-- required-sections -->` block. The engine is Qt6::Core-only and
+    // cannot find or read that file, so the verb layer supplies it — the
+    // ANTS-3664 § 2.3 rule-3 injection, the same shape as `doc_symbols`'
+    // `excludedNames`. Empty means the block was absent: the check is skipped
+    // and `sectionsChecked` comes back false (INV-1 arms (b) and (c)).
+    QStringList requiredSections;
+    int         maxFindings = 500;
+};
+
+struct Result {
+    QList<DocFinding::Finding> findings;
+    bool                       sectionsChecked = false;
+    int                        lineCount = 0;
+    bool                       truncated = false;
+};
+
+Result check(const QString &text, const QString &relPath, const Options &opts = {});
+```
+
+**It consumes `spec_query`'s parser for the invariant list, and does its own
+markdown scan for everything else.** `parseSpecBody`
+(`src/specparse.cpp::SpecParse::parseSpecBody()`) returns `{title, status, kind, invariants[]}`
+with **no line numbers, no section list and no loop-log rows** — so two of the
+five checks, plus the `line` every `DocFinding` needs, cannot come from it. The
+engine therefore runs a heading scan (fence-aware, via `MarkdownScan::fenceMask`)
+for `missing_section` and `loop_row_no_outcome`, and takes each finding's `line`
+from that scan. **`missing_section` is the exception and emits `line:0`**: the
+heading scan has no entry for a heading that is absent, and ANTS-3664 § 2.1
+defines `0` as document scope rather than a missing value — which is exactly
+what "this document lacks a section" means. `invariant_no_test` and
+`command_test_no_expectation` take the line of the `- **INV-N**` bullet the
+heading scan records; `invariant_id_gap` takes the line of the bullet
+*following* the gap, since a missing invariant has no line of its own. All other
+kinds carry a real line; the parser supplies `invariants[]`, each carrying the
+`test_surface` ANTS-3665 now extracts.
+
+**One requirement this check places on the parser: the clause split must run on
+text with code spans masked** (`MarkdownScan::codeSpans`). `parseSpecBody`
+currently splits an invariant body at the first occurrence of the clause marker,
+including one written inside backticks — so a spec that *discusses* the marker,
+as INV-2 must, is mis-parsed into a truncated body and a bogus `test_surface`.
+This is a live defect, not a hypothetical: it was reproduced against an earlier
+draft of INV-2 in this document. The masking fix is a precondition of this
+verb's `invariant_no_test` check being trustworthy on the spec corpus, and is
+filed as **ANTS-3676**.
+
+`parseSpecBody` **lives in `src/specparse.{h,cpp}` in `ants_core_lib`** and is
+directly linkable from this engine. It was an anonymous-namespace function
+inside `remotecontrol.cpp` until ANTS-3665 hoisted it (2026-07-28) alongside the
+`test_surface` repair — one move, not two, so this engine never had to grow a
+second spec parser beside the first.
+
+Verb layer mirrors `doc_integrity`: `cmdSpecLint` plus `specLintEnumerate` /
+`specLintBuildResponse`, and the registration set ANTS-3661 § 2.4 enumerates.
+
+### 2.4 Diff scope (ANTS-5537)
+
+**The problem.** A spec written before the format standard carries every
+newer-layout defect. Amend one invariant in it and `spec_lint` reports all of
+them, so a reviewer must sort by hand the findings the edit caused from the
+ones it inherited. Source: `~/.claude/docs/cfg-0655-draft-2026-09-28.md`.
+
+**Request.** Two new arguments, mutually exclusive:
+
+- `since:<git-ref>` — scope to what changed between that commit and the
+  working tree. Untracked files count as changed.
+- `staged:true` — scope to what changed between `HEAD` and the index.
+
+`staged:false` is the same as absent, and is not echoed. Passing neither leaves the verb exactly
+as it is: no git runs, and the envelope gains no key (INV-9).
+
+**Refusals** (INV-10), all from `docs/standards/mcp-error-codes.md`. Every git
+call goes through `GitWrap::run`, whose `Result` says whether git started, its
+exit code and a stderr tail. The checks run in this order, before any diff:
+
+| Case | Code |
+|---|---|
+| both `since` and `staged:true` | `bad_mode_combo` |
+| `since` fails `isValidRange`, or contains `..` | `bad_args` |
+| git does not start, crashes or is hard-killed, on any call | `git_failed` |
+| `git rev-parse --is-inside-work-tree` exits non-zero | `not_a_git_repo` |
+| `git rev-parse --verify --quiet <since>^{commit}` exits non-zero | `bad_args` |
+| any later call exits non-zero, or its stdout is truncated | `git_failed` |
+
+`isValidRange` rejects a leading `-`, so no `since` value reaches git as an
+option. A `git_failed` envelope carries the exit code and the stderr tail, as
+that code's row requires.
+
+**A failed git call never becomes an empty diff.** An empty diff puts every
+finding out of scope, so a silent fallback would report a broken run as a
+clean one. That is the defect this section exists to fix, run in reverse. A
+truncated diff is the same failure.
+
+**The verb reads git; the engine does not.** The engine stays text-in and
+opens nothing (§ 2.3). The verb runs one diff for the whole walk from the
+project root, with `--relative --unified=0 --no-renames` and the walked paths
+as pathspecs, so the diff's paths are project-root relative like the walk's.
+Under `staged` it is `git diff --cached`, which on a repository with no commit
+yet compares against the empty tree: every staged file is new, and
+`base_commit` is `null`. It parses the output with `GitWrap::parseDiffHunks`
+into one `SpecLint::DiffScope` per document:
+
+```cpp
+struct DiffScope {
+    bool          active = false;  // since or staged was passed
+    bool          fileNew = false; // see "New file" below
+    QSet<int>     added;           // 1-based lines the diff added
+    QSet<int>     touched;         // added, plus the neighbours of a deletion
+    QStringList   removed;         // text of every line the diff deleted
+};
+```
+
+`Options` gains a `DiffScope diff`. `Result` gains `bool stamped`. The
+per-finding decision is a public function, so a test can reach the rule for a
+kind no check emits yet:
+
+```cpp
+bool findingInDiff(const DocFinding::Finding &f, const QString &text,
+                   const Options &opts);
+```
+
+It reads the scope from `opts.diff`, and matches headings with
+`opts.requiredSections` and `opts.sectionsPrefixMatch` as the section check
+does. It reads a gap's missing id from the finding's `extra.invariant`
+(`"INV-2"`; one finding per missing number, as today) and a missing section's
+heading from `extra.section`. The engine sets those two keys only when
+`opts.diff.active` is true; with it false the engine emits no `in_diff` and
+neither key.
+
+- **Added and touched lines.** Every added line of a hunk is in `added` and
+  in `touched`. A hunk that only deletes touches the lines either side of the
+  gap, so a deletion inside a block still touches that block; those lines are
+  not in `added`.
+- **New file.** Under `since`: absent from that commit's tree, or untracked.
+  Under `staged`: added in the index. A renamed file is new, since
+  `--no-renames` reports it as a deletion and an addition.
+- **Which text is checked.** Under `since`, the working-tree file, as today;
+  its lines match the diff's new side. Under `staged`, a document with staged
+  changes is checked as its index copy (`git show :./<path>`, run from the
+  project root), so the line
+  numbers match what will be committed, and its `line_count` is the index
+  copy's. A document with no staged changes, or one the index deletes, is
+  read from disk and has no touched lines.
+
+**Per-kind scope** (INV-11 to INV-13). Each finding is `in_diff` when its rule
+holds:
+
+| kind | in the diff when |
+|---|---|
+| `invariant_no_test`, `command_test_no_expectation`, `test_surface_absent`, `test_surface_unresolved`, `test_surface_unwired` | a touched line lies in that invariant's block |
+| `invariant_id_gap` | the missing number is on a removed anchor line and on no added one, or the anchor right after the gap is on an added line |
+| `missing_section` | the file is new, or a removed line is a heading that matches the missing entry |
+| `test_coverage_gap` | a touched line lies in the Tests section, or in that invariant's block |
+| `test_coverage_unverifiable` | a touched line lies in the Tests section |
+| `loop_row_no_outcome` | the row's own line is touched |
+| any kind this table does not name | always |
+
+**An invariant's block** runs from its anchor line to the line before the next
+invariant anchor or the next heading, whichever comes first, or to the end of
+the document. Lines inside fenced code do not end a block. A table-form
+invariant's block is its row. The engine owns this, because only the parser
+that found the invariant knows where it ends; a post-filter over the output
+would have to guess.
+
+**The gap rule is per gap, and reads `added`, not `touched`.** A reworded
+`INV-3` line is removed and added under the same number, so it opens no gap.
+Adding a new last invariant leaves every older gap out of the diff.
+
+**A kind this table does not name is in the diff.** A new check added later
+reports in full until someone writes its rule, rather than vanishing from a
+scoped run.
+
+**A stamped spec is checked in full** (INV-14). A line reading exactly
+`<!-- ants-spec-format: N -->`, `N` one or more digits, outside fenced code,
+stamps the document. Any value of `N` counts: the stamp says the spec was
+written under a format standard, and the verb does not compare it with the
+standard's current version. Every finding in a stamped document is
+`in_diff`. So is every finding in a new file.
+`Result::stamped` is set on every run; only a scoped run emits it. A
+non-numeric value, such as the `mirror` this project's own standard carries,
+is not a stamp.
+
+**Envelope, when scoped** (INV-15). Every key an unscoped run emits keeps its
+meaning, except `findings[]` and `findings_total`:
+
+```jsonc
+{ "findings":           [ /* in-diff findings only; each carries "in_diff": true */ ],
+  "findings_total":     1,          // in-diff findings, before max_findings
+  "counts":             { "invariant_no_test": 2 },  // the full scan, as today
+  "counts_in_diff":     { "invariant_no_test": 1 },
+  "counts_out_of_diff": { "invariant_no_test": 1 },
+  "since":              "HEAD~1",   // echoed when passed
+  "staged":             true,       // echoed when passed
+  "base_commit":        "<40-hex>", // what since resolved to, or HEAD for staged
+  "stamped":            { "docs/specs/ANTS-3601-deterministic-doc-integrity-check.md": false } }  // every checked doc
+```
+
+`in_diff` rides in the finding's `extra` object (`DocFinding::Finding::extra`,
+ANTS-4127), so no other verb's findings change. It is always `true` in
+`findings[]`; it is there so a list merged with other runs keeps its
+provenance. The out-of-diff remainder is reported as counts, never dropped
+silently: a filter that leaves no record of what it removed is a different
+check that has not been run.
+
+**Reload.** The verb runs in `ants-mcpd`. A change reaches a running terminal
+by rebuilding `ants-mcpd` and reconnecting the client. It adds no call into
+`MainWindow`.
+
+**Alternatives rejected.**
+
+- *Filter the output in the calling skill.* It cannot know an invariant's
+  block, and it leaves no record of what it dropped.
+- *Check an old spec against the layout it was written under.* Nothing records
+  which layout that was, and guessing from the file's git date fails on any
+  spec rewritten after the standard landed. The stamp covers new specs instead.
+
+## 3. Invariants
+
+- **INV-1** — The required-section list is read from the marked block in the
+  project's format standard, and the check is skipped when that block is
+  absent — **including when the standard itself is present**. *Test:* three
+  roots for one spec that is missing a section: (a) a standard whose
+  `<!-- required-sections -->` block names three headings → one
+  `missing_section`; (b) no standard at all → zero findings,
+  `sections_checked:false`; (c) **a standard present but carrying no such
+  block** → zero findings, `sections_checked:false`. Arm (c) is the one that
+  matters: it is `specs.md`'s state today, so an implementation that falls back
+  to scraping § 3's prose or § 7's skeleton passes (a) and (b) and fails only
+  here.
+- **INV-2** — Every `INV-N` carrying no test-surface clause produces exactly one
+  `invariant_no_test`, in both the bullet and table forms — except a tombstoned
+  invariant (INV-3's two marker forms), which is exempt because a withdrawn or
+  moved invariant has nothing left to test. *Test:* a spec with two bullet
+  invariants (one with a clause, one without), two table rows likewise, and one
+  `*moved to ANTS-3653*` tombstone → exactly two findings, none of them against
+  the tombstone. The tombstone row is not decoration: `docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md`
+  carries **fifteen** today, so without the exemption this check fires against
+  the corpus on its first run. (`workspace_search` for
+  `^- \*\*INV-\d+\*\* — \*(moved to|withdrawn)` over `docs/specs`, 2026-07-28.
+  ANTS-3663 carried the other two until its ANTS-3669 merge restored them, which
+  is why the anchor is ANTS-3636 — a population fifteen times larger and the one
+  INV-3 already cites.) The bullet half was blocked until ANTS-3665 shipped
+  the clause extraction; before that this row could not pass at all.
+
+  **This invariant deliberately does not name the clause marker in its own
+  prose.** Writing the literal marker here would make *this document* parse
+  wrong: `SpecParse::parseSpecBody` splits an invariant body at the first
+  occurrence, so an earlier mention inside a code span is taken for the real
+  clause. Verified live — an earlier draft of this bullet returned
+  `body:"Every \`INV-N\` without a \`"` with the remainder swallowed into
+  `test_surface`. Two consequences, both real: the spec defining
+  `invariant_no_test` was itself mis-parsed by the parser this check consumes,
+  and `spec_lint` run over its own corpus would read a corrupt surface here.
+  § 2.3 carries the resulting requirement on the parser.
+- **INV-3** — An id gap fires only on a *missing* number, never on a tombstoned
+  one. A **tombstone** is an invariant bullet whose body begins with an italic
+  marker, matched by exactly these two patterns — anchored at the start of the
+  body, case-sensitive, with `—` the em dash U+2014:
+  `^\*moved to ([A-Z]+-\d+)\*` and `^\*withdrawn — (.+?)\*`. Given as literal
+  regexes because "begins with an italic marker" is not parser-decidable: it
+  leaves open whether *any* leading italic run counts, whether `<ID>` is
+  constrained, and whether the separator is an em dash or a hyphen. *Test:* a spec with
+  INV-1, INV-2, a `*moved to X*` INV-3 stub, a `*withdrawn — …*` INV-4 stub, and
+  INV-6 → one finding, for 5 alone. **Both marker forms are in the fixture
+  deliberately** — see below.
+
+  **The two forms have very different standing, and conflating them would ship
+  an untested branch.** `*moved to <ID>*` is *observed*: ANTS-3636 carries
+  fifteen (measured 2026-07-28, the command recorded at ANTS-3663 INV-6).
+  `*withdrawn — <reason>*` has **zero occurrences in this corpus**
+  (checked 2026-07-27) — it is introduced here, because `/write-spec`'s rules
+  sanction withdrawal ("Withdraw or annotate; never renumber") while defining no
+  syntax for it. An invented form with no corpus instance is exactly the kind of
+  clause that ships unexercised, which is why INV-3's fixture carries a row for
+  it rather than testing the observed form twice.
+
+  **Neither form is defined by any standard.** `specs.md` § 5.5 says only "amend
+  by adding a new invariant or annotating the old one (`INV-7 amended by
+  ANTS-NNNN`), never by reflowing the list" — nothing about withdrawal or
+  tombstones. § 7 files the corresponding `specs.md` addition; until that lands,
+  this section is the definition.
+- **INV-4** — `command_test_no_expectation` is emitted as a candidate: never
+  `autoFixable`, and the verb runs no subprocess. *Test:* a clause reading
+  ``*Test:* `grep -c foo src/`​`` → one finding, `autoFixable:false`; plus a
+  source-scrape of the engine for `QProcess` → zero hits. The scrape is the half
+  a behavioural test cannot hold. Note the assertion is that `auto_fixable` is
+  **absent** from the emitted JSON, not present-and-false: ANTS-3664 INV-1 omits
+  the key when the flag is false, so a test asserting `auto_fixable:false` on
+  the wire fails against a conforming serialiser.
+- **INV-5** — A loop-log row whose **last** cell is empty produces exactly one
+  `loop_row_no_outcome`, in every table shape; a table whose first header cell
+  is not `Loop` is not scanned. *Test:* one doc carrying three tables — a
+  9-column `| Loop | Date | Lanes | C | H | M | L | I | Outcome |` and a
+  6-column `| Loop | C | H | M | L/I | Notes |`, each with one complete row and
+  one whose final cell is empty, plus a `| Rule | Fires when |` table whose
+  final cell is empty → exactly two findings, one per loop table, each carrying
+  its own row's line. The second table is what stops a nine-column assumption
+  passing; the third is what stops the check firing on every table in the doc.
+- **INV-6** — Size is reported in the envelope and never as a finding. *Test:*
+  a 2,000-line spec → `line_count["<doc>"] == 2000`, and no `DocFinding` whose
+  kind mentions size; plus a spec with **no** findings at all → `line_count`
+  still populated and `findings[]` empty. The second arm is what stops the row
+  passing vacuously against an engine that emits nothing.
+- **INV-7** — The verb-contract minimum: no `caller_cwd` → `caller_cwd_required`;
+  root-escaping `path` → `bad_path`; well-formed non-existent in-root `path` →
+  `ok:true` with empty findings (ANTS-3601 INV-15). *Test:* three verb calls.
+- **INV-8** — Findings are emitted in a deterministic total order: the passes
+  run in a fixed sequence, and within the per-invariant passes by ascending
+  invariant id — number, then sub-letter — independent of the order the
+  document declares them in. `emissionIndex` ascends with it. ANTS-3663 INV-7
+  makes findings totally ordered with each producer's own `emissionIndex` as
+  the tiebreak of last resort, so that tiebreak is only as well-defined as this
+  order; three of the five producers stated one and this engine did not.
+  Stating it, not changing it — the order is what the engine already did.
+  *Test:* a document declaring INV-3 before INV-1, and carrying both `INV-2`
+  and `INV-2a`, reports them INV-1, INV-2, INV-2a, INV-3. Document order is the
+  half worth asserting: an engine emitting in declaration order passes any
+  fixture whose ids happen to be written in sequence.
+- **INV-9** — A call with neither `since` nor `staged` runs no git and emits
+  no key § 2.4 adds: no `in_diff`, `counts_in_diff`, `counts_out_of_diff`,
+  `base_commit` or `stamped`, and no `section` or `invariant` key on a
+  `missing_section` or `invariant_id_gap` finding. Broken by an implementation that probes git on
+  every call, or adds the keys empty. *Test:* a verb call with `PATH` led by a
+  directory whose `git` is a script that writes a marker file → `ok:true`,
+  none of those keys, and no marker file. The marker is what catches a git
+  probe whose failure the verb ignores.
+- **INV-10** — Each § 2.4 refusal fires on its case, and a git failure is
+  never read as an empty diff. Broken by an implementation that falls back to
+  a full-file run, or to an all-out-of-diff run, when git cannot answer.
+  *Test:* `since:"HEAD"` in a non-repository root → `not_a_git_repo`;
+  `since:"no-such-ref"` in a repository → `bad_args`; `since:"--output=x"`
+  with INV-9's marker-writing `git` first on `PATH` → `bad_args` and no
+  marker file; `since` with `staged:true` → `bad_mode_combo`; `since` with
+  `staged:false` → not refused; `since:"HEAD"` with `PATH` pointing at a
+  directory holding no `git` → `git_failed`, not `ok:true`; `since:"HEAD"`
+  with a `git` script that passes both `rev-parse` probes and exits non-zero
+  on `diff` → `git_failed`. The last arm is the one an all-out-of-diff
+  fallback hides in; `staged:true` in a repository with no commit and one
+  staged spec → `ok:true`, `base_commit:null`, every finding `in_diff`.
+- **INV-11** — A block-scoped finding is `in_diff` exactly when a touched line
+  lies in its invariant's block. *Test:* an engine call on a spec with INV-1
+  and INV-2, neither carrying a test clause, INV-2's body wrapped over two
+  lines, and an active `DiffScope` touching only INV-2's second line → two
+  `invariant_no_test` findings, INV-2's `in_diff:true`, INV-1's
+  `in_diff:false`. Touching a continuation line, not the anchor, is what fails
+  an implementation that scopes by the finding's own line. A second arm
+  touches the heading after INV-2 → both `false`, which fails a block that runs
+  past the next heading.
+- **INV-12** — `invariant_id_gap` follows the anchor numbers, and
+  `missing_section` follows new files and removed headings. *Test:* a spec
+  with INV-1 and INV-3, missing a required section: (a) `removed` holds an
+  `INV-2` anchor line and nothing adds one → the gap is `in_diff:true`; (b)
+  `removed` holds an `INV-1` anchor line and `added` holds the reworded
+  `INV-1` line → the gap is `in_diff:false`, which fails a rule that treats any
+  changed anchor as a gap change; (c) with an `INV-4` appended, `added` holds
+  only that anchor → the gap is `in_diff:false`, which fails a document-wide
+  rule; (d) `touched` holds the `INV-3` anchor and `added` does not, as after
+  a deletion just above it → the gap is `in_diff:false`, which fails a rule
+  reading `touched`; (e) `removed` holds the missing section's heading →
+  `missing_section` is `in_diff:true`; (f) `fileNew:true` with nothing
+  touched → `missing_section` is `in_diff:true`. Every arm sets
+  `active:true`.
+- **INV-13** — The coverage kinds follow the Tests section, a loop row follows
+  its own line, and a kind with no rule is always in the diff. *Test:* a spec
+  whose Tests section names INV-1 and omits INV-2, and whose loop log has a
+  row with an empty outcome: touching a Tests-section line → the
+  `test_coverage_gap` for INV-2 is `in_diff:true` and the loop row is
+  `false`; touching only the loop row → the loop row is `true` and the gap is
+  `false`. The "no rule" half calls `SpecLint::findingInDiff` (§ 2.4) with a
+  finding of kind `future_kind`, `active:true` and nothing touched → `true`;
+  the same call with kind `invariant_no_test` → `false`.
+- **INV-14** — Every finding in a stamped document, or a new file, is
+  `in_diff`. A stamp inside fenced code does not count. *Test:* one spec with
+  two untested invariants, `active:true` and nothing touched: stamped on its
+  own line →
+  both `in_diff:true` and `Result::stamped` true; the same line inside a
+  fence → both `false`; unstamped with `fileNew:true` → both `true`.
+- **INV-15** — A scoped envelope holds in-diff findings only and accounts for
+  the rest. For every kind, `counts_in_diff` plus `counts_out_of_diff` equals
+  `counts`; `findings_total` equals the sum of `counts_in_diff`;
+  `base_commit` is the resolved commit; `stamped` names every checked doc; and
+  under `staged` the index copy is the one checked. *Test:* a temporary
+  repository with a committed spec whose INV-1 and INV-2 lack test clauses;
+  reword INV-2's body and call `since:"HEAD"` → one finding (INV-2),
+  `counts.invariant_no_test == 2`, `counts_in_diff` 1, `counts_out_of_diff`
+  1, `base_commit` equal to `git rev-parse HEAD`. Then stage that edit, add an
+  unstaged blank line above INV-1, and call `staged:true` → the one finding's
+  `line` is INV-2's line in the index copy, not on disk. The unstaged line is
+  what fails an implementation that reads the working tree under `staged`. A
+  second test repeats the `since` and `staged` calls with the project root
+  one directory below the repository top → the same one in-diff finding;
+  that is what fails an implementation that drops `--relative`.
+- **INV-16** — A document with zero recognised invariants and a line opening with an `INV-` id in its Invariants section produces exactly one `invariants_unparsed`, on that line's number. A citation inside a sentence, a fenced example, a line outside the section and a recognised invariant each produce none.. *Test:* `SpecLint.Ants4998UnparsedInvariantsAreAFinding`. Broken by an implementation that matches an id anywhere on a line, which fires on the citation fixture..
+
+## 4. RAM / build cost
+
+Per spec: the parsed `spec_query` object and the finding list, both transient.
+Bounded by `maxDocsPerRun` specs at `maxDocBytes` each, inherited from
+`DocIntegrity::Options` so the doc verbs share one budget. The format standard
+is read **once per run**, not once per spec — it is the same file for every
+document in the walk, and re-reading it per spec is the obvious wrong shape.
+
+Build cost is the family default (ANTS-3664 § 4), with one deviation: ANTS-3665
+already moved `parseSpecBody` into `src/specparse.cpp`, an existing translation
+unit from this spec's point of view, so there is no new target.
+
+**A scoped run (§ 2.4) adds git calls, not a per-document cost.** The two
+probes and one diff for the whole walk; under `since`, one untracked-file
+listing; under `staged`, one `git show` per document with staged changes. The
+parsed diff is two line sets and one removed-line list per changed document,
+freed with the run. Each call is bounded by `GitWrap::run`'s wall-clock kill
+and stdout cap, and either refuses `git_failed` (§ 2.4).
+
+## 5. Out of scope
+
+- **Executing `*Test:*` clauses** — § 2.1. `/write-spec` Step 3 owns that.
+- **Judging whether a clause is honest.** Presence is greppable; whether the
+  named test actually locks the invariant is a reading. § 1e draws that line and
+  this verb keeps it.
+- **Prose quality.** A lane owns that.
+- **Section *ordering*.** `docs/standards/specs.md:43` says the required
+  sections appear "in this order", and **nothing checks it** — `doc_integrity` covers dead anchors,
+  broken links and TOC coverage, not order. This verb checks presence only.
+  Stated rather than attributed to a verb that does not do it, so the gap is
+  visible instead of assumed covered.
+- **Diff scope in `doc_lint`.** ANTS-3663 composes this verb without
+  `since` or `staged`, so its runs stay full-file. Passing the arguments
+  through is a change to that spec, not this one.
+- **Non-spec docs.** The walk is `specs_dir` (ANTS-2160's key, else
+  `docs/specs/`). A README has no invariants to check.
+- **The loop-log balance check** — `/cold-eyes` § 1e's second loop-log check,
+  the count enumerated in per-loop prose against the row's severity counts.
+  Dropped, not deferred quietly: it needs a document carrying *both* a counts
+  row and a per-loop enumeration, and **no document in this corpus carries
+  both**. Measured 2026-07-28 over `docs/`: 10 documents have a `| Loop | … |`
+  counts table, 22 carry `### Loop N` headings that enumerate findings under
+  severity sub-headings, and **the two sets are disjoint**. The two are rival
+  formats, not layers — the heading form records findings and no counts, the
+  table form records counts and prose.
+
+  The obvious heuristic for "enumerated in prose" — counting parenthesised
+  `(1) (2) (3)` markers in the outcome cell — false-fires on **this document's
+  own loop-1 row**, which uses them for three named findings out of nine and
+  would be reported as a six-finding shortfall. Implementing the check would
+  therefore mean inventing an enumeration syntax no document uses, to compare
+  against counts no document carrying that syntax records. **ANTS-3682** carries
+  the prerequisite: pick one loop-log format in `specs.md` § 5.7. Until then
+  this half has nothing honest to check, on exactly the reasoning § 2.1 gives
+  for shipping `missing_section` skipped.
+
+## 6. Tests
+
+`tests/features/spec_lint/` (engine) and `tests/features/spec_lint_verb/`
+(hooks + refusals), matching ANTS-3601's split. Label `features;fast`, wired
+into existing bundles.
+
+| INV | Covered by |
+|---|---|
+| INV-1 | `SpecLint.Inv1SectionListIsReadNotAssumed` |
+| INV-2 | `SpecLint.Inv2EveryInvariantNeedsATestClause` |
+| INV-3 | `SpecLint.Inv3TombstoneIsNotAGap` |
+| INV-4 | `SpecLintVerb.Inv4CommandClauseIsACandidate` |
+| INV-5 | `SpecLint.Inv5LoopLogOutcomeCells` |
+| — | `SpecLint.DISABLED_CorpusCalibration` — § 2.1's fire-rate measurement |
+| INV-6 | `SpecLint.Inv6SizeIsNotAFinding` |
+| INV-7 | `SpecLintVerb.Inv7RefusalMinimums` |
+| INV-8 | `SpecLint.Ants3691EmissionOrderIsByIdNotDocumentOrder` |
+| INV-9 | `SpecLintVerb.Ants5537UnscopedRunsNoGit` |
+| INV-10 | `SpecLintVerb.Ants5537RefusalsNeverFallBack` |
+| INV-11 | `SpecLint.Ants5537BlockKindsScopeByBlock` |
+| INV-12 | `SpecLint.Ants5537GapAndSectionScope` |
+| INV-13 | `SpecLint.Ants5537CoverageAndLoopRowScope` |
+| INV-14 | `SpecLint.Ants5537StampAndNewFileCheckInFull` |
+| INV-15 | `SpecLintVerb.Ants5537ScopedEnvelope`, `SpecLintVerb.Ants5537ProjectRootBelowRepoTop` |
+| INV-16 | `SpecLint.Ants4998UnparsedInvariantsAreAFinding` |
+
+**Verified RED against feature-absent code before the implementation lands.**
+INV-1's skip arm, INV-3's tombstone arm and INV-6 all assert an *absence* of
+findings and so pass trivially against an engine that finds nothing; they are
+re-proven by mutation (default the section list instead of skipping; treat a
+tombstone as a gap; emit size as a finding), recording what each run actually
+turns red.
+
+## 7. Cross-doc impact
+
+- **ANTS-3665** landed first (2026-07-28), including the extra step this spec's
+  review added to its scope: hoist
+  `parseSpecBody` out of `remotecontrol.cpp`'s anonymous namespace into a
+  linkable home, so `ants_core_lib` can call it. Filed against that item rather
+  than duplicated here.
+- **ANTS-3664** is a blocker; findings are `DocFinding::Finding`.
+- **`docs/standards/specs.md`** gains three things this verb needs and the
+  standard does not currently define, all filed as work rather than assumed. A
+  check against an unspecified format is a check against a guess, so each of
+  these gates the check that depends on it:
+  - **§ 3** gains a `<!-- required-sections -->` fenced block listing the
+    required headings in the form a spec carries them, plus
+    `## Cold-eyes loop log` from § 5.7. Today the requirement is split across
+    § 3's prose headings and § 5.7, and § 7's skeleton — the one fenced,
+    machine-readable candidate — merges § 3's required set with § 4's
+    *recommended* one and omits the loop log entirely. **Until this block
+    lands, `missing_section` does not run** (§ 2.1).
+  - **§ 5.5** gains the tombstone forms (`*moved to <ID>*`, observed fifteen
+    times in ANTS-3636; `*withdrawn — <reason>*`, introduced by this spec with
+    no corpus instance), which no standard describes.
+  - **§ 5.7** gains the loop-log table's columns, since `loop_row_no_outcome`
+    checks for an outcome cell in a format § 5.7 currently specifies only as
+    "record each loop's findings + resolutions". Four incompatible shapes are
+    in use as a result (§ 2.2's table), which is also what makes the balance
+    check uncomputable. Filed as **ANTS-3682**.
+
+  § 6 also gains a sentence naming this verb as the mechanical checker of § 3's
+  structure.
+- **`/cold-eyes` § 1e** names the verb beside its existing hand-rolled fallback
+  when it ships (ANTS-1581: the skill is global, the verb is not).
+- **`docs/subsystems.md`** — `src/speclint.{h,cpp}` joins `ants_core_lib`.
+- **ANTS-5537's other half belongs to claude-config.** `check-doc-facts`
+  passes `since` or `staged` when it checks an edit, and reports the
+  out-of-diff counts in one line. `write-spec` and the spec skeleton stamp new
+  specs, and the global `spec-format.md` declares the stamp. The value written
+  is the global standard's numeric version, never a mirror's marker value.
+  That last edit changes direction for that standard and is gated there.
+
+## Cold-eyes loop log
+
+| Loop | Date | Lanes | C | H | M | L | I | Outcome |
+|---|---|---|---|---|---|---|---|---|
+| impl | 2026-11-02 | amendment for ANTS-4998 (`invariants_unparsed`, INV-16); no reviewer dispatched | — | — | — | — | — | Origin: ANTS-4998. Not a review loop: amendments get no automatic review under CLAUDE.md rule 14. |
+| 6 | 2026-09-29 | 2 lanes, each holding every question, headless via neutral-lane; same subject as loop 5 | — | — | — | — | — | Origin: ANTS-5537. Tally Q1 0 · Q2 0 · Q3 6 · Q4 2, 8 verified / 0 dismissed, all 8 fixed; three open questions resolved clean (ETag hashes the finished envelope; `GitWrap::run` applies the read-only environment; the stdout cap is a stated refusal). Both lanes found the central defect: git resolves diff paths and `:<path>` from the repository top, so a project root below it would have matched no document; now `--relative` and `:./<path>`, measured in a subdirectory fixture. Also: `findingInDiff` takes `Options` and reads `extra.invariant` / `extra.section`; an unborn `HEAD` under `staged` diffs against the empty tree; any stamp value counts; a doc the index deletes is read from disk; INV-10 gains the no-git-started and failing-diff arms. Own-fix share of this loop: 4 of 8 landed on text loop 5 wrote (the refusal table's rows and INV-10's arms), all completing loop 5's refusal redesign rather than repairing a repair — a calm cap. The span share carries no information: the armed change is the whole amendment. **Cap reached (spec, 2 loops); shipped to implementation.** |
+| 5 | 2026-09-29 | 2 lanes, each holding every question, headless via neutral-lane; subject: the ANTS-5537 amendment (§ 2.4, INV-9 to INV-15) | — | — | — | — | — | Origin: ANTS-5537. Severity columns retired; tally Q1 0 · Q2 3 · Q3 4 · Q4 3, 10 verified / 0 dismissed, all 10 fixed. Both lanes found the central defect: `touched` mixed added lines with deletion neighbours, so the anchor-number rule could not be built; `DiffScope` gains `added`, and the gap rule is now per gap, so appending an invariant no longer drags older gaps into the diff. Refusals are now ordered probes through `GitWrap::run` (the named runner dropped the exit code); `isValidRange` guards `since`; `staged:false` equals absent; the stamp value is numeric, never `mirror`; `line_count` under `staged` is the index copy's. Test fixes: INV-9 detects an ignored git probe with a marker-writing `git` shim; INV-11, INV-13 and INV-14 set an active scope, without which their `false` arms were unobservable. Two of the ten came from settling lane open questions. Loop 6 dispatched. |
+| 4-merge | 2026-07-28 | cross-doc knock-ons from the ANTS-3669 merge; no reviewer dispatched | 0 | 1 | 1 | 1 | 0 | **The HIGH was found by the post-merge sweep, not by a reviewer, and it is the one a blast-radius check exists to catch.** INV-2's test clause justified its tombstone exemption with "`docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md` carries two today" — true when written, and falsified the moment ANTS-3663 restored INV-5/INV-6 on unwinding the ANTS-3669 split. The exemption is still correct; only its evidence moved. Repointed to `ANTS-3636-doc-citations-resolve-doc-s.md`, which carries **fifteen** — measured, with the command recorded inline, and a population fifteen times larger than the one it replaced. Its fixture id moved from `*moved to ANTS-3669*` to `*moved to ANTS-3653*` for the same reason: ANTS-3669 is no longer a move target, ANTS-3653 is a real one. Also: § 4's build-cost stanza deleted in favour of ANTS-3664 § 4's family default, keeping this spec's deviation (ANTS-3665 already created `src/specparse.cpp`, so no new target); and § 2.2's "a fixer (ANTS-3669)" repoints to ANTS-3663 § 2.3. |
+| 4 | 2026-07-28 | spec_lint depth | 1 | 8 | 6 | 5 | 0 | 20 raised; the CRITICAL and three HIGHs fixed, the rest deferred to **ANTS-3677** under a weekly-budget stop. CRITICAL, and it is this spec being bitten by its own subject: INV-2 quoted the literal test-surface marker while defining `invariant_no_test`, and `SpecParse::parseSpecBody` splits a bullet body at the *first* occurrence — so `spec_query` returned this invariant truncated at the quote, with the remainder swallowed into `test_surface`. Verified live before and after. INV-2 is reworded to avoid the literal, § 2.3 now states the masking requirement, and the parser defect is filed as **ANTS-3676**. Also fixed: INV-2 would have fired against every tombstoned invariant in the corpus (ANTS-3663 carries two today) — the exemption was attached to `invariant_id_gap`, where it is near-vacuous, and absent where it was needed; the engine had neither `Options` nor `Result` declared while being required to consume an injected required-section list; and two citations still pointed `parseSpecBody` at `remotecontrol.cpp`, which ANTS-3665 vacated. |
+| 3 | 2026-07-28 | A composer+shape, B the two checkers, C cross-doc vs standards+code (strong-model depth, breadth pass skipped) | 0 | 4 | 4 | 3 | 0 | 11 verified, all fixed. The HIGH worth naming: § 2.1 argued that `## Cold-eyes loop log` is required by `specs.md` § 5.7 — but `specs.md` § 4 lists it under **Recommended sections**, the exact category § 2.1 condemns § 7's skeleton for merging in. The standard contradicts itself and this spec asserted one side unremarked; since § 7 files the machine-readable block, writing that block first would have encoded the same error it exists to fix. Now named, and the resolution is filed with the block. Three more HIGHs: the spec had **no response envelope at all** while INV-1 asserted `sections_checked:false` and INV-6 asserted `line_count` — a test cannot assert a shape the spec never gives, so § 2.1 gains the block (plus `max_findings`, which a directory-scoped checker needs); the engine signature (`text` + `relPath`, never a path alone) that ANTS-3663's one-read design depends on was recorded only in ANTS-3663; and INV-4 asserted `autoFixable:false` on the wire, which ANTS-3664 INV-1 omits. MEDIUMs: "three of the five checks" over a list naming two; the tombstone markers were prose-defined and not parser-decidable (now two literal regexes, em dash pinned); `missing_section` had no stated `line` and now emits `0`; and the `doc-examples` policy ANTS-3659 leaves per-verb was unstated (scanned normally — structure is real inside a teaching example). |
+| 2 | 2026-07-27 | symbols+spec_lint depth; cross-doc (joint batch review of ANTS-3660/61/62/63/64) | 1 | 0 | 1 | 0 | 0 | 2 verified, both fixed. CRITICAL, and it is loop 1's own fix being wrong in the opposite direction: loop 1 moved the required-section source *to* `specs.md` § 7's skeleton because § 3's headings are prose. Re-reading both this loop shows § 7 is a **starting template**, not the requirement — it merges § 3's required set with § 4's explicitly *recommended* sections (`## 4. RAM / build cost`, `## 5. Out of scope`, `## 7. Cross-doc impact`), so reading it as the required list turns three recommendations into three `missing_section` findings against every conforming spec in the corpus; and it still omits `## Cold-eyes loop log`, the one section whose absence proves a spec never went through the gate. Neither candidate source is machine-readable, so the check now **ships skipped**: § 7 files a `<!-- required-sections -->` block against `specs.md` § 3, and INV-1 gains a third arm — standard present, block absent — which is the corpus's state today and the only arm that catches a fallback to prose-scraping. Also: the `*withdrawn*` tombstone form has **zero occurrences** corpus-wide (checked), so it is an invented second form; kept and labelled as introduced here, with its own fixture row so it cannot ship unexercised. |
+| 1 | 2026-07-27 | symbols+spec_lint depth; cross-doc (joint batch review of ANTS-3660/61/62/63/64) | 0 | 5 | 3 | 1 | 0 | 9 verified, all fixed. Three grounding failures, each an assertion about another document made without re-reading it — the class this whole verb exists to catch. (1) INV-3 claimed `specs.md` § 5.5 "requires" tombstones for withdrawn invariants; § 5.5 says only "amend by adding a new invariant or annotating the old one, never by reflowing" and describes no tombstone at all. The convention is real (ANTS-3636 carries a dozen) but undefined, so § 2.1 now defines it and § 7 files the standard addition. (2) The required-section list was to be extracted from `specs.md` § 3's prose headings, which are not machine-identifiable — two name non-sections, the prefixes are inconsistent, and `## Cold-eyes loop log` lives outside § 3 entirely; now read from § 7's fenced skeleton. (3) The `_shared` fallback resolves outside the project root, contradicting this verb's own `bad_path` contract and making INV-1's skip arm untestable, since that file always exists; the tier is dropped. Also: `parseSpecBody` supplies neither line numbers nor sections nor loop-log rows, so § 2.3 now states the engine runs its own scan; the hoist declared as "filed against ANTS-3665" was not filed, and now is. |

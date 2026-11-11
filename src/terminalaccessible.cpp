@@ -4,7 +4,7 @@
 #include <QTextBoundaryFinder>
 #include <QWidget>
 
-// ANTS-1078 — see docs/specs/ANTS-1078.md. This adapter is pure Qt-a11y
+// ANTS-1078 — see docs/specs/ANTS-1078-screen-reader-accessibility.md. This adapter is pure Qt-a11y
 // glue; every content decision (viewport text, caret offset, cell rects)
 // lives in TerminalWidget's accessible*() helpers.
 

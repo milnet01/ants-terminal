@@ -1,5 +1,5 @@
 // Feature-conformance test for ANTS-1735 — effectiveness ledger.
-// See tests/features/model_switch_ledger/spec.md and docs/specs/ANTS-1735.md
+// See tests/features/model_switch_ledger/spec.md and docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md
 // §2.5. Covers INV-10 (append + byte-cap eviction with pending-pinning),
 // INV-11 (override detection), INV-12 (under-route detection), the correction
 // soft signal, and the outcome fill-in lifecycle.

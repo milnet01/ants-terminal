@@ -5,7 +5,7 @@ The roadmap ID recognisers required a **letter-leading** prefix
 `roadmap_query id/ids` and `roadmap_log op:flip` — the whole project's IDs
 couldn't be fetched or flipped. The rule is relaxed to **"prefix contains
 at least one ASCII letter"** (design + full site inventory in
-`docs/specs/ANTS-3492.md`).
+`docs/specs/ANTS-3492-digit-led-letter-containing-roadmap.md`).
 
 ## Invariants covered
 

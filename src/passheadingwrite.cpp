@@ -1,5 +1,5 @@
 // ANTS-2126 — implementation of the pass-headings writer helpers.
-// See passheadingwrite.h + docs/specs/ANTS-2126.md.
+// See passheadingwrite.h + docs/specs/ANTS-2126-roadmap-log-heading-format-writer.md.
 
 #include "passheadingwrite.h"
 

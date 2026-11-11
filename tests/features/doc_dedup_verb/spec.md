@@ -1,7 +1,7 @@
 # doc_dedup — verb-layer conformance
 
 Contract for `tests/features/doc_dedup_verb/test_doc_dedup_verb.cpp`. Owning
-spec: [`docs/specs/ANTS-3660.md`](../../../docs/specs/ANTS-3660.md).
+spec: [`docs/specs/ANTS-3660-doc-dedup-find-same-passage.md`](../../../docs/specs/ANTS-3660-doc-dedup-find-same-passage.md).
 
 `RemoteControl::cmdDocDedup` needs a live `MainWindow`, so behavioural rows drive
 the pure helper (`RemoteControl::docDedupBuildResponse`) and wiring rows

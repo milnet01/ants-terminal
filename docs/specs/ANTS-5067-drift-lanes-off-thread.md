@@ -186,7 +186,7 @@ and that mutation run is its red proof.
 
 - `src/auditrunner.h` header comment, "Threading model" — `runAudit` now
   starts a worker for the in-process lanes.
-- `docs/specs/ANTS-1351.md` — check its threading invariant against
+- `docs/specs/ANTS-1351-audit-run-mcp-verb-server.md` — check its threading invariant against
   § 2.3.
 - `CHANGELOG.md` — a `### Fixed` entry.
 

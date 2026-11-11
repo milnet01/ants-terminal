@@ -6,7 +6,7 @@ review reports from a directory of `*.md` files and corroborates
 them server-side, saving the parent (orchestrator) context the
 ~14 × ~8 KiB transit of the inline-map shape.
 
-Full design: [docs/specs/ANTS-1282.md](../../../docs/specs/ANTS-1282.md).
+Full design: [docs/specs/ANTS-1282-indie-review-corroborate-accepts.md](../../../docs/specs/ANTS-1282-indie-review-corroborate-accepts.md).
 
 ## Invariants
 

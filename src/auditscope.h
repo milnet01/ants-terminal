@@ -4,7 +4,7 @@
 // without spawning git (mirrors ReadLog::filter + the AuditEngine
 // pure-function pattern). Only `resolveChangedFiles` shells out.
 //
-// See docs/specs/ANTS-1504.md.
+// See docs/specs/ANTS-1504-audit-run-since-last-run.md.
 
 #pragma once
 

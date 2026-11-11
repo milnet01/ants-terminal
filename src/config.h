@@ -64,7 +64,7 @@ public:
     // → "full". For Custom-preset persistence to be honoured, the
     // RoadmapDialog ctor must also have valid roadmap_status_filters
     // (otherwise the dialog falls back to Full to avoid an empty-
-    // render dead-end — see docs/specs/ANTS-1150.md).
+    // render dead-end — see docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md).
     QString roadmapActivePreset() const;
     void setRoadmapActivePreset(const QString &name);
 
@@ -217,7 +217,7 @@ public:
     // offloaded to a head+pointer out of the box (token-savers default ON).
     // The master bool has a Settings toggle + setter; threshold/head remain
     // config-file-only tuning keys. Threshold clamps to [4096, 1048576],
-    // head to [256, 16384] in mcp::setOffloadConfig. See docs/specs/ANTS-2094.md.
+    // head to [256, 16384] in mcp::setOffloadConfig. See docs/specs/ANTS-2094-proactive-server-side-result-offload.md.
     bool claudeMcpOffloadLargeResults() const;
     // The Claude context window the status-bar meter measures against, in
     // tokens. claude.context_window_tokens, default 1,000,000, clamped to
@@ -233,7 +233,7 @@ public:
     // ANTS-2093 — project_query gating. Master bool has a Settings toggle +
     // setter; timeout/result-cap remain config-file-only tuning keys, clamped
     // in their accessors to [100, 5000] ms and [1024, 1048576] bytes. Default
-    // ON per the token-savers rule. See docs/specs/ANTS-2093.md.
+    // ON per the token-savers rule. See docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md.
     bool claudeMcpProjectQueryEnabled() const;
     void setClaudeMcpProjectQueryEnabled(bool enabled);
     int  claudeMcpProjectQueryTimeoutMs() const;
@@ -243,7 +243,7 @@ public:
     // status-bar chip's tooltip + the token_usage verb. The three DATA
     // setters are STORE-ONLY (they write m_data but do NOT save()), so the
     // fold on MainWindow batches all three behind one save(); the chip flag
-    // follows the normal save-on-set idiom. See docs/specs/ANTS-3572.md.
+    // follows the normal save-on-set idiom. See docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md.
     QJsonObject claudeTokensSavedMonthly() const;             // {"YYYY-MM": n}
     void        setClaudeTokensSavedMonthly(const QJsonObject &monthly);
     qint64      claudeTokensSavedLifetime() const;            // exact all-time
@@ -254,7 +254,7 @@ public:
     void        setClaudeTokensSavedChipEnabled(bool enabled);
     // ANTS-3579 — per-project tokens-saved store: {"<canonicalRoot>": {monthly,
     // lifetime, since, updated}}. Store-only (folded behind MainWindow's single
-    // save(), INV-6). See docs/specs/ANTS-3579.md § 2.3.
+    // save(), INV-6). See docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md § 2.3.
     QJsonObject claudeTokensSavedByProject() const;
     void        setClaudeTokensSavedByProject(const QJsonObject &byProject);
 

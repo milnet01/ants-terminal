@@ -633,7 +633,7 @@ QVector<FindingBlock> enumerateFindingBlocks(const QStringList &lines) {
 // MultilineOption anchors `^` at each body line; the last match wins (a bullet
 // may carry earlier Progress/Resolved updates). "" when nothing matches — a
 // mid-line `… . Resolved <date> by …` or `Resolved as of <date>` is a graceful
-// miss (dateless fallback), per docs/specs/ANTS-3504.md § 2.1.
+// miss (dateless fallback), per docs/specs/ANTS-3504-ship-date-stamp-shipped-feedback.md § 2.1.
 QString shipDateFromRoadmapBody(const QString &roadmapBulletBody) {
     static const QRegularExpression re(
         QStringLiteral(R"(^\s*Resolved\s+\(?(\d{4}-\d{2}-\d{2}))"),
@@ -690,7 +690,7 @@ SetTitleResult setTitle(const QString &content, const QString &projectTitle) {
 // body bullet when absent. Pure; single line replace or insert; no roadmap, no
 // marker touch. The wrapper (cmdFeedbackLog) validates the request shape
 // (hasIds XOR hasClosure, ^ANTS-[0-9]+$ ids, newline-folded closure) and owns
-// the atomic write. Gates + invariants: docs/specs/ANTS-3447.md.
+// the atomic write. Gates + invariants: docs/specs/ANTS-3447-feedback-log-op-assign-id.md.
 AssignResult assignId(const QString &content, const AssignTarget &target) {
     AssignResult res;
     const QStringList lines = content.split(QLatin1Char('\n'));

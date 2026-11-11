@@ -1,6 +1,6 @@
 # roadmap_query_filter_section_headers — ANTS-1398
 
-See `docs/specs/ANTS-1398.md`.
+See `docs/specs/ANTS-1398-roadmap-query-filters-out-section.md`.
 
 ## Test scope
 

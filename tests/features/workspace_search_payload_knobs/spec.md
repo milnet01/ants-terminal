@@ -1,6 +1,6 @@
 # `workspace_search` payload knobs — feature-conformance test
 
-Locks the invariants in `docs/specs/ANTS-1876.md`. Two new opt-in args:
+Locks the invariants in `docs/specs/ANTS-1876-workspace-search-payload-knobs.md`. Two new opt-in args:
 `max_match_bytes` (per-match `text` / `headline` clip) and
 `headline_only` (drop snippets, emit `{file, line, headline}` triples).
 

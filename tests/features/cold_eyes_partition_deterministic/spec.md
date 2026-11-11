@@ -1,6 +1,6 @@
 # cold-eyes derivePartition deterministic tiebreak
 
-See [`docs/specs/ANTS-1345.md`](../../../docs/specs/ANTS-1345.md).
+See [`docs/specs/ANTS-1345-cold-eyes-derivepartition-mtime-tiebreak.md`](../../../docs/specs/ANTS-1345-cold-eyes-derivepartition-mtime-tiebreak.md).
 
 ## Invariants
 

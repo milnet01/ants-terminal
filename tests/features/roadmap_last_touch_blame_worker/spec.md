@@ -17,7 +17,7 @@ thread and still re-read `ROADMAP.md` from disk after ANTS-4414 moved the
 - **ANTS-5047** (this contract) is what the `finished` handler still does,
   synchronously, on the GUI thread, every time it fires: split the whole
   `--line-porcelain` output (tens of MB at today's `ROADMAP.md` size,
-  against the ~4 MB transient `docs/specs/ANTS-1237.md` § 6 budgets),
+  against the ~4 MB transient `docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md` § 6 budgets),
   re-read the whole file with no size cap, and run a decode + a regex over
   every line. It also races — `lastTouchFromBlame()` re-opens
   `m_roadmapPath` *after* blame has already finished, so a `roadmap_log`

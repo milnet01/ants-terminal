@@ -31,7 +31,7 @@
 // executes nothing — resolving a citation runs nothing — and it opens nothing
 // either: both filesystem facts are injected (see Options below).
 //
-// See docs/specs/ANTS-3662.md and docs/specs/ANTS-4127-test-surface-resolution.md.
+// See docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md and docs/specs/ANTS-4127-test-surface-resolution.md.
 
 #pragma once
 

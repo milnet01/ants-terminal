@@ -2,7 +2,7 @@
 
 Conformance test for `scope:"since-last-run"` (and the shared narrowing
 resolver) on the `audit_run` MCP tool. Full design + invariant contract:
-[`docs/specs/ANTS-1504.md`](../../../docs/specs/ANTS-1504.md). This file
+[`docs/specs/ANTS-1504-audit-run-since-last-run.md`](../../../docs/specs/ANTS-1504-audit-run-since-last-run.md). This file
 records what the C++ test pins; INV-1..9 mirror that spec's own numbers.
 INV-10..13 (ANTS-5043) are additions of this file's own, locking a
 base-ref-existence gap ANTS-1504 never covered.

@@ -1,7 +1,7 @@
 // ANTS-3448 — feature-conformance test for the marker-aware v2 un-triaged
 // delta in FeedbackFile::parse() + feedback_query. Pure parse() over v1/v2
 // fixtures + a live RemoteControl::cmdFeedbackQuery drive + schema greps.
-// See spec.md + docs/specs/ANTS-3448.md.
+// See spec.md + docs/specs/ANTS-3448-marker-aware-v2-un-triaged.md.
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"

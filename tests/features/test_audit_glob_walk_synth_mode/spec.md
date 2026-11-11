@@ -80,4 +80,4 @@ call site. Fixed under ANTS-5065 by changing the struct default, not
 the engine's branch logic.
 
 Runtime fixtures via `QTemporaryDir`; no committed corpora.
-See canonical spec at [`docs/specs/ANTS-1455.md`](../../../docs/specs/ANTS-1455.md).
+See canonical spec at [`docs/specs/ANTS-1455-test-audit-mcp-usability-gaps.md`](../../../docs/specs/ANTS-1455-test-audit-mcp-usability-gaps.md).

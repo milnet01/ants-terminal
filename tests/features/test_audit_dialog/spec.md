@@ -1,6 +1,6 @@
 # test_audit_dialog — feature-conformance contract
 
-Tracks `docs/specs/ANTS-1722.md` (`TestAuditDialog : ReviewDialogBase`).
+Tracks `docs/specs/ANTS-1722-testauditdialog-native-app-test-suite.md` (`TestAuditDialog : ReviewDialogBase`).
 Exercises the non-GUI partition / brief / synthesis / fold-in / resume
 paths — `TestAuditEngine`, `BriefDispatch`, `SessionMemoryEngine`, the
 ROADMAP fold-in — not the live Qt event loop. INV-8 is a construction

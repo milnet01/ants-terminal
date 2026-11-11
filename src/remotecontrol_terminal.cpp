@@ -1171,7 +1171,7 @@ QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
 // ANTS-1284 — token_usage: the per-tool dispatch report from
 // ClaudeIntegration's TokenUsageEngine::Tracker, sorted by
 // est_tokens_saved. reset:true clears the counters after the snapshot.
-// See docs/specs/ANTS-1284.md.
+// See docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
 // ANTS-4932 § 2.3 — token_usage is terminal-scoped: it reads the terminal's
 // own counters, so its body lives on the GUI side.
 QJsonDocument RemoteControl::cmdTokenUsage(const QJsonObject &req,

@@ -7,8 +7,8 @@ prints a short Ants-MCP cheat-sheet at every Claude Code session start
 so the assistant reaches for `changelog_log` / `file_outline` / etc.
 instead of always-loaded `Edit` / `Write` / `Bash`.
 
-Full design + 14 invariants in [`docs/specs/ANTS-1897.md`]
-(../../../docs/specs/ANTS-1897.md).
+Full design + 14 invariants in [`docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md`]
+(../../../docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md).
 
 This test exercises the installer, the marker contract, the
 settings.json merge, the parse-failure refusal, the script byte

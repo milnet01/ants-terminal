@@ -484,7 +484,7 @@ void VtParser::processString(uint32_t ch) {
         // (] P _ X ^) re-arms a fresh string, so back-to-back OSC, Sixel and
         // Kitty sequences survive. Every other byte — the dangerous ESC
         // finals `c`=RIS, `D`, `7` …, and the CSI introducer `[` — is
-        // discarded to Ground without dispatch. See docs/specs/ANTS-1777.md
+        // discarded to Ground without dispatch. See docs/specs/ANTS-1777-safe-re-arm-string-introducers.md
         // and tests/features/vt_osc_esc_discard/spec.md.
         if (!reArmStringIntroducer(ch))
             transition(Ground);

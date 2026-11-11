@@ -1,6 +1,6 @@
 # Feature: verify-trust gate
 
-Canonical design: `docs/specs/ANTS-1337.md`. This is the test-side
+Canonical design: `docs/specs/ANTS-1337-first-run-trust-gate-ants.md`. This is the test-side
 restatement for Phase 1 (infrastructure + engine API, no modal).
 
 ## Problem

@@ -1,6 +1,6 @@
 # caller_cwd_info_verb — ANTS-1400
 
-See `docs/specs/ANTS-1400.md`.
+See `docs/specs/ANTS-1400-caller-cwd-info-mcp-diagnostic.md`.
 
 ## Test scope
 

@@ -2,7 +2,7 @@
 
 Test contract for the two floating "jump to previous / next prompt" chips
 that mirror the `Ctrl+Shift+Up`/`Down` keyboard prompt navigation with the
-mouse. Design doc: `docs/specs/ANTS-1330.md` (cold-eyes-clean design; this
+mouse. Design doc: `docs/specs/ANTS-1330-floating-prompt-jump-chips-scrollback.md` (cold-eyes-clean design; this
 file owns the *test* contract, refined against the real code per the
 project's testing standard).
 

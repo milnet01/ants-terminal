@@ -2,13 +2,13 @@
 
 Locks ANTS-1236: RoadmapDialog v2 keyboard-shortcut cheatsheet overlay.
 Full design rationale + re-open conditions live in
-[`docs/specs/ANTS-1236.md`](../../../docs/specs/ANTS-1236.md). This file
+[`docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md`](../../../docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md). This file
 restates the invariants that the test asserts so the test reads as a
 contract rather than a regression-only ratchet.
 
 ## Invariants under test
 
-These mirror `docs/specs/ANTS-1236.md` § 4. The IDs are qualified
+These mirror `docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md` § 4. The IDs are qualified
 (`ANTS-1236-INV-N`) per § 7 of that spec — bare `INV-N` is ambiguous
 once two specs share a test directory tree.
 

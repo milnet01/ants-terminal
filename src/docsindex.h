@@ -12,7 +12,7 @@
 // over all doc types and project layouts (rich docs/ trees, flat top-level,
 // or none). The thin cmdDocsIndex wrapper (remotecontrol.cpp) resolves the
 // project root + the caller_cwd contract + PathValidation, then drives
-// serve() here. See docs/specs/ANTS-2139.md.
+// serve() here. See docs/specs/ANTS-2139-docs-index-mcp-tool-project.md.
 
 #pragma once
 
@@ -32,7 +32,7 @@ constexpr int    kMaxTopicHits      = 50;              // INV-6 topic= response 
 constexpr int    kMaxLinkedFrom     = 200;             // INV-18 doc_path= reverse-edge cap
 constexpr int    kMaxLineBytes      = 1024;            // INV-3 fixed regex-skip guard (not Options-overridable; mirrors FileOutline)
 // ANTS-3786 INV-4 — silent per-doc cap on the buffered header block. 256 is ~4×
-// the corpus worst case (65 lines / 4,492 B, docs/specs/ANTS-3579.md). It is a
+// the corpus worst case (65 lines / 4,492 B, docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md). It is a
 // LINE cap and maxDocBytes is a READ budget, so neither substitutes for the
 // other: the cost bounded here is the QStringList held, not the bytes streamed.
 constexpr int    kMaxHeaderBlockLines = 256;
@@ -51,7 +51,7 @@ struct Heading {
 };
 
 struct DocEntry {
-    QString          path;       // project-relative ("docs/specs/ANTS-1637.md")
+    QString          path;       // project-relative ("docs/specs/ANTS-1637-codebase-index-mcp-tool-pre.md")
     QString          id;         // filename stem ("ANTS-1637"); never empty
     QString          title;      // first H1 text; "" when the doc has no H1
     QString          status;     // best-effort **Status:** value from the HEADER BLOCK,

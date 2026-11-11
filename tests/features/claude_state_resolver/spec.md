@@ -12,7 +12,7 @@ forFocused, display}` in `src/claudestateresolver.{h,cpp}` and route
 both surfaces (plus the autonomous switcher gate, ANTS-1735 INV-2)
 through it. By construction the two surfaces cannot disagree.
 
-See `docs/specs/ANTS-1873.md` for the full contract.
+See `docs/specs/ANTS-1873-single-source-truth-claude-state.md` for the full contract.
 
 ## Coverage
 

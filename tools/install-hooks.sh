@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tools/install-hooks.sh — install the ants-terminal hook pack into
-# ~/.claude/settings.json. See docs/specs/ANTS-1252.md § 2.
+# ~/.claude/settings.json. See docs/specs/ANTS-1252-token-saving-hook-pack.md § 2.
 #
 # Hardening (loop 2 cold-eyes):
 #  - INV-5: lstat ~/.claude/settings.json; abort if it's a symlink.

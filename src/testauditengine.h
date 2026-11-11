@@ -35,7 +35,7 @@
 //     recompute in brief/synth, and envelope byte-cap cascade for
 //     pre_pass_findings on large suites.
 //
-// See docs/specs/ANTS-1397.md.
+// See docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md.
 
 #pragma once
 

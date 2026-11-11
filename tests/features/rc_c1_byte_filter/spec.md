@@ -1,6 +1,6 @@
 # Feature: rc-socket C1 8-bit control-byte strip
 
-Canonical design: `docs/specs/ANTS-1335.md`. This file is the
+Canonical design: `docs/specs/ANTS-1335-utf-8-c1-control-byte.md`. This file is the
 test-side restatement of the invariants the test_*.cpp pins.
 
 ## Problem
@@ -29,7 +29,7 @@ this is the 8-bit counterpart.
 - ANTS-1294 / ANTS-1295 — same defense-in-depth philosophy applied
   to MCP response sanitisation and path-typed arguments.
 
-## Invariants (full list in `docs/specs/ANTS-1335.md`)
+## Invariants (full list in `docs/specs/ANTS-1335-utf-8-c1-control-byte.md`)
 
 - **INV-2** `0xC2 [0x80..0x9F]` strips atomically. The two bytes
   removed together, `out_stripped` incremented by 2.

@@ -3961,11 +3961,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
 // bump .roadmap-counter atomically. Required-contract gated at the
 // dispatcher (ANTS-1404). All paths derived from caller_cwd so the
 // write stays anchored to the caller's project root. See
-// docs/specs/ANTS-1424.md.
+// docs/specs/ANTS-1424-roadmap-log-mcp-write-verb.md.
 //
 // ANTS-1428 — adapter mode adds `op:"flip"` for GFM-format
 // roadmaps. Default `op:"append"` preserves the ANTS-1424 path
-// byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
+// byte-for-byte. See docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Tier 2.
 namespace {
 // ANTS-5735 — a session filing items one call at a time pays for the whole
 // reply each time. When a single-item op lands on a project where the same op

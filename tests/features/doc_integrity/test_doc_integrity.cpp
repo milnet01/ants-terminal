@@ -190,7 +190,7 @@ TEST(DocIntegrity, RealLinkWithCodeTextStillChecked) {
 
 // INV-5d (ANTS-3635a) — a code span may cross a newline (CommonMark § 6.1),
 // so the tail of a multi-line span is still prose about a link. This is the
-// live docs/specs/ANTS-1150.md:197-198 shape: one span wrapping a C++ lambda
+// live docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md:197-198 shape: one span wrapping a C++ lambda
 // whose second line reads `[this](int idx)`.
 TEST(DocIntegrity, MultiLineInlineCodeSpanNotHarvested) {
     QTemporaryDir tmp;
@@ -279,7 +279,7 @@ TEST(DocIntegrity, TocCoverage) {
 // section below was reported missing from a Contents list that named it.
 //
 // The continuation here begins "2.4 delta ·" — the real shape from
-// docs/specs/ANTS-1870.md, and one no ordered-list pattern matches, since
+// docs/specs/ANTS-1870-audit-run-precise-since-last.md, and one no ordered-list pattern matches, since
 // `2.4` is not `2.` followed by a space.
 TEST(DocIntegrity, WrappedTocEntryDoesNotEndTheRun) {
     QTemporaryDir tmp;
@@ -349,7 +349,7 @@ TEST(DocIntegrity, NoTocNoGap) {
 
 // INV-9b (ANTS-3634) — a TOC region whose items carry no `#anchor` link at all
 // yields no slugs to match against, so check 3 must stand down rather than
-// report every section missing. Real shape: docs/specs/ANTS-2023.md, whose TOC
+// report every section missing. Real shape: docs/specs/ANTS-2023-soft-warn-cat-head-tail.md, whose TOC
 // lists plain-text `- §1 Problem` items — it produced 8 false TocGaps.
 TEST(DocIntegrity, LinklessTocNotReportedAsGaps) {
     QTemporaryDir tmp;
@@ -466,7 +466,7 @@ TEST(DocIntegrity, PerDocCaps) {
 
 // ---- ANTS-5055 — oversize documents are skipped, not truncated-and-checked -
 
-// INV-23 (ANTS-5055, docs/specs/ANTS-3601.md) — a document over maxDocBytes is
+// INV-23 (ANTS-5055, docs/specs/ANTS-3601-deterministic-doc-integrity-check.md) — a document over maxDocBytes is
 // not opened or parsed at all, so it contributes no finding — including no
 // DeadAnchor for its own earlier link to a heading that sits past the cut.
 // Before this fix, DocIntegrity::check read only the first maxDocBytes bytes

@@ -16,7 +16,7 @@
 // which is also why it shares nothing with rcScrubLeakedToolXml, a RemoteControl
 // helper that strips a different tag set and that ants_core_lib cannot link.
 //
-// See docs/specs/ANTS-3663.md § 2.6.
+// See docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md § 2.6.
 
 #pragma once
 

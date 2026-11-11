@@ -1,6 +1,6 @@
 # mcp_tool_info_verb — ANTS-1399
 
-See `docs/specs/ANTS-1399.md`.
+See `docs/specs/ANTS-1399-tool-info-name-mcp-verb.md`.
 
 ## Test scope
 
@@ -30,7 +30,7 @@ codes the handler emits.
 
 ## ANTS-1985 — catalog mode (INV-9..INV-14)
 
-See `docs/specs/ANTS-1985.md`. `tool_info {catalog:true}` returns every
+See `docs/specs/ANTS-1985-tool-info-catalog-true-one.md`. `tool_info {catalog:true}` returns every
 registered verb grouped by category with its `selection_hint`, in one
 call. INV-9..INV-13 are source-scrape tests here; INV-14 lives in
 `mcp_orientation_install` (the prelude template owner).

@@ -4009,7 +4009,7 @@ QString TerminalWidget::selectedText(qsizetype maxChars, int *linesSkipped) cons
 }
 
 // --- Accessibility (ANTS-1078) ---
-// See docs/specs/ANTS-1078.md. const helpers read m_grid / cellAtGlobal /
+// See docs/specs/ANTS-1078-screen-reader-accessibility.md. const helpers read m_grid / cellAtGlobal /
 // combiningAt / effectiveCursorRow()/Col() directly (grid() is non-const).
 
 int TerminalWidget::firstVisibleGlobalLine() const {

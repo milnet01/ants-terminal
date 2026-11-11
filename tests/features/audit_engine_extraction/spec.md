@@ -5,7 +5,7 @@ decision 4: lift the engine + triage halves of `auditdialog.cpp` into a
 new `auditengine.{h,cpp}` module that builds against `Qt6::Core` only.
 v1 scope is the data-shape + three demonstrably-pure parsing functions
 (`applyFilter`, `parseFindings`, `capFindings`); follow-up bullets
-migrate the rest. See `docs/specs/ANTS-1119.md`.
+migrate the rest. See `docs/specs/ANTS-1119-extract-audit-logic-into-gui.md`.
 
 ## Surface
 

@@ -22,7 +22,7 @@ using ToolHandler = std::function<QString(const QJsonObject &args)>;
 
 // ANTS-1404 — per-tool caller_cwd contract. Recorded once per tool at
 // registration time and consulted by the dispatcher before the handler
-// runs. See docs/specs/ANTS-1404.md.
+// runs. See docs/specs/ANTS-1404-per-tool-caller-cwd-contracts.md.
 enum class CallerCwdContract {
     // Anchorable + leaks if absent — refuse with
     // {ok:false, code:"caller_cwd_required"} when caller_cwd is empty.

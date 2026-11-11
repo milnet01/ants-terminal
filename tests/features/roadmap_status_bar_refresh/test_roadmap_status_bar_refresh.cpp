@@ -7,8 +7,8 @@
 // shellCwd()=="" on the first call.
 //
 // Spec: tests/features/roadmap_status_bar_refresh/spec.md.
-// Source design: docs/specs/ANTS-1160.md §9.
-// Plan: docs/plans/ANTS-1160.md P2.
+// Source design: docs/specs/ANTS-1160-roadmap-dialog-redesign-format-spec.md §9.
+// Plan: docs/plans/ANTS-1160-roadmap-dialog-redesign-format-spec.md P2.
 
 #include <iostream>
 #include <string>

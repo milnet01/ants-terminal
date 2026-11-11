@@ -2,7 +2,7 @@
 // Qt6::Core-only and no widgets. It reads the file system, and detect() also
 // runs `git check-ignore` (gitIgnoredPaths). Lets a project declare where its
 // source / docs / roadmap / changelog / specs live so the MCP read verbs
-// stop guessing on a non-src/ layout. See docs/specs/ANTS-2160.md.
+// stop guessing on a non-src/ layout. See docs/specs/ANTS-2160-per-project-ants-settings-file.md.
 
 #ifndef ANTS_PROJECTSETTINGS_H
 #define ANTS_PROJECTSETTINGS_H
@@ -124,7 +124,7 @@ bool isNoiseDir(const QString &name);
 QSet<QString> gitIgnoredPaths(const QString &rootCanonical,
                               const QStringList &relPaths);
 
-// ANTS-2161 — layout-suggestion detector. See docs/specs/ANTS-2161.md § 2.1.
+// ANTS-2161 — layout-suggestion detector. See docs/specs/ANTS-2161-auto-detect-non-standard-layout.md § 2.1.
 struct Suggestion {
     bool                       present = false;   // .ants/project.json already on disk
     std::optional<QStringList> sourceRoots;       // suggested dirs, when the layout looks misplaced

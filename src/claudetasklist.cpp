@@ -240,7 +240,7 @@ qint64 ClaudeTaskListTracker::lastRescanMtimeMs() const {
 }
 
 // Pure parser. Walks the transcript line by line. See header for
-// event shapes; full disambiguation table at docs/specs/ANTS-1158.md
+// event shapes; full disambiguation table at docs/specs/ANTS-1158-claude-code-task-list-status.md
 // §3.1.
 //
 // Mode A (TodoWrite snapshot): if any TodoWrite event is seen, the

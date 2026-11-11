@@ -1,6 +1,6 @@
 # sixel_raster_header_prebudget — ANTS-1366
 
-See `docs/specs/ANTS-1366.md`.
+See `docs/specs/ANTS-1366-sixel-raster-header-pre-budget.md`.
 
 ## Test scope
 

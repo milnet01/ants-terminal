@@ -1,4 +1,4 @@
-// ANTS-1436 — implementation. See header + docs/specs/ANTS-1436.md.
+// ANTS-1436 — implementation. See header + docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md.
 
 #include "paginationengine.h"
 

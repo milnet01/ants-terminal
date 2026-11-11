@@ -1,7 +1,7 @@
 // ANTS-3654 — the anchor-symbol drift check: does the line a doc cites still
 // mention the symbol the doc names beside it?
 //
-// Contract: docs/specs/ANTS-3654.md § 2 (anchor / needle / match) and § 3
+// Contract: docs/specs/ANTS-3654-anchor-symbol-drift-check-only.md § 2 (anchor / needle / match) and § 3
 // (INV-13, INV-14). Invariant map: tests/features/doc_citations_anchor/spec.md.
 //
 // The fixture and response accessors are shared with the parent engine's tests

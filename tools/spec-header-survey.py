@@ -38,7 +38,7 @@ FENCE = re.compile(r"^ {0,3}(```+(?!.*`)|~~~+)")
 # The corpus case that rejects `^[-*+]\s` as a terminator: this continuation
 # line is prose ("...paginationengine.{h,cpp}` + `cmdRoadmapQuery`..."), not a
 # list item. Treating a bullet as a terminator truncates it.
-WRAPPED_PROSE_BULLET = "ANTS-1436.md"
+WRAPPED_PROSE_BULLET = "ANTS-1436-roadmap-query-pagination-auto-truncate.md"
 
 
 def fence_mask(lines):

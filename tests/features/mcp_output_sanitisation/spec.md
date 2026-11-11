@@ -5,7 +5,7 @@ content as data, not instructions, by wrapping the payload in
 `<ants_mcp_data tool="…">…</ants_mcp_data>` at the single
 chokepoint in `src/claudeintegration.cpp:processTools`.
 
-Spec source: `docs/specs/ANTS-1294.md`.
+Spec source: `docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md`.
 
 ## Invariants exercised
 

@@ -1,6 +1,6 @@
 # mcpd_verify_trust_wiring — ants-mcpd never wires a VerifyTrust client
 
-Canonical trust design: `docs/specs/ANTS-1337.md`. Standalone-server design:
+Canonical trust design: `docs/specs/ANTS-1337-first-run-trust-gate-ants.md`. Standalone-server design:
 `docs/specs/ANTS-4932-standalone-mcp-server.md`. This directory's case
 continues the MC-numbering `tests/features/verify_trust_gate/spec.md`
 reserves for "Phase 2 (MCP envelope)" tests — MC-1..MC-4 there are

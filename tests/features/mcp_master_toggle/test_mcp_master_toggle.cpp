@@ -1,5 +1,5 @@
 // ANTS-1901 — master Ants-MCP on/off toggle. Conformance test.
-// See spec.md (this dir) and docs/specs/ANTS-1901.md.
+// See spec.md (this dir) and docs/specs/ANTS-1901-master-ants-mcp-off-toggle.md.
 //
 // INV-1            real Config round-trip (claude.mcp_enabled).
 // INV-2..7 + reg.  source-greps locking the gating wiring (the

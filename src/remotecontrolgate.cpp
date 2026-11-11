@@ -1,5 +1,5 @@
 // ANTS-1372 — caller-cwd gate implementation. Header docs at
-// src/remotecontrolgate.h; design at docs/specs/ANTS-1372.md.
+// src/remotecontrolgate.h; design at docs/specs/ANTS-1372-caller-cwd-gate-mutating-mcp.md.
 
 #include "remotecontrolgate.h"
 

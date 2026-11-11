@@ -1,7 +1,7 @@
 // Feature-conformance test for the read_region MCP tool (ANTS-2021).
 // Behavioural invariants exercise the pure ReadRegion::extract helper;
 // wiring invariants source-scrape the registration sites.
-// See spec.md + docs/specs/ANTS-2021.md.
+// See spec.md + docs/specs/ANTS-2021-read-region-mcp-tool-read.md.
 
 #include "../../_support/expect.h"
 #include "readregion.h"

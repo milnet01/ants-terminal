@@ -8,7 +8,7 @@
 //
 // The thin cmdCodebaseIndex wrapper (remotecontrol.cpp) resolves the project
 // root + the caller_cwd contract + PathValidation, then drives serve() here.
-// See docs/specs/ANTS-1637.md.
+// See docs/specs/ANTS-1637-codebase-index-mcp-tool-pre.md.
 
 #pragma once
 

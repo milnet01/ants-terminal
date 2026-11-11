@@ -8,7 +8,7 @@
 // no QProcess, no filesystem (INV-9 parity with AuditScope). Identity is
 // the `fp` field (ANTS-1820 content fingerprint), line-insensitive.
 //
-// See docs/specs/ANTS-1870.md.
+// See docs/specs/ANTS-1870-audit-run-precise-since-last.md.
 
 #pragma once
 

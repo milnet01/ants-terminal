@@ -1,6 +1,6 @@
 # Feature: layout auto-detect + `project_settings` verb
 
-Test contract for ANTS-2161 (`docs/specs/ANTS-2161.md`). Locks the pure
+Test contract for ANTS-2161 (`docs/specs/ANTS-2161-auto-detect-non-standard-layout.md`). Locks the pure
 `ProjectSettings::detect` detector and `ProjectSettings::applyWrite`
 writer/validator, plus the verb-layer + registration wiring via
 source-grep.

@@ -6,7 +6,7 @@ Engine-only feature test. Drives `VerifyEngine::loadGateConfig` and
 real `/bin/sh -c` commands against synthetic config so the tests
 exercise the path that production code walks.
 
-Pairs with docs/specs/ANTS-1289.md.
+Pairs with docs/specs/ANTS-1289-verify-changes-mcp-tool.md.
 
 ## Invariants covered
 

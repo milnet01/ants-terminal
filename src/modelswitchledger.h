@@ -3,7 +3,7 @@
 // Every auto-switch appends one Record; a later tick fills its Outcome once the
 // following turns have run. The ledger is the *trust signal* that replaces the
 // (unused) chip-click of Shape A: measured avoided-Opus vs regret/under-route.
-// See docs/specs/ANTS-1735.md §2.5 + INV-10..INV-12.
+// See docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md §2.5 + INV-10..INV-12.
 //
 // Pure Qt6 Core/JSON unit, NO ModelRecommender / claude_lib dependency — it
 // lives in ants_core_lib so the read-only `model_switch_stats` MCP verb

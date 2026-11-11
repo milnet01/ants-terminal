@@ -122,7 +122,7 @@ public:
     // (src/terminalaccessible.cpp). const, so they read m_grid /
     // cellAtGlobal / combiningAt / effectiveCursorRow()/Col() directly —
     // grid() has no const overload. Offsets are UTF-16 indices into
-    // accessibleText(). See docs/specs/ANTS-1078.md.
+    // accessibleText(). See docs/specs/ANTS-1078-screen-reader-accessibility.md.
     int firstVisibleGlobalLine() const;                     // scrollbackSize() - m_scrollOffset
     QString accessibleText() const;                         // visible viewport as plain text
     int accessibleCaretOffset() const;                      // caret offset within accessibleText()

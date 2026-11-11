@@ -54,7 +54,7 @@
 #include "statusinfowindow.h"      // ANTS-5759 — a pill's tooltip in a window
 
 // ANTS-1146 — extracted from mainwindow.cpp by Bundle G Tier 3.
-// See docs/specs/ANTS-1146.md for the design rationale, the
+// See docs/specs/ANTS-1146-extract-claudestatusbarcontroller.md for the design rationale, the
 // 12-row external touch-site rewrite map, and the per-test
 // re-pointing contract.
 
@@ -1575,7 +1575,7 @@ void ClaudeStatusBarController::refreshMailChip()
 
 // ANTS-3579 — render the tokens-saved pill for the FOCUSED tab's project.
 // Called from the tokensSavedUpdated nudge AND MainWindow::
-// refreshStatusBarForActiveTab() (tab switch, INV-7). See docs/specs/ANTS-3579.md.
+// refreshStatusBarForActiveTab() (tab switch, INV-7). See docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md.
 void ClaudeStatusBarController::refreshTokensSavedChip()
 {
     const Config &cfg = cachedConfig();

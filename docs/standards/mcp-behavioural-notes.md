@@ -98,7 +98,7 @@ dominant array — a tabularised body that spills therefore carries no
 refuses `not_array`** on it. Byte-page a tabularised spill
 (`offset`/`max_bytes`); reach for row mode only on an untabularised one.
 
-Spec + cold-eyes log: `docs/specs/ANTS-2090.md`.
+Spec + cold-eyes log: `docs/specs/ANTS-2090-tabular-columnar-encoding-homogeneous.md`.
 
 ## Result offload + `read_spill` (ANTS-2094 / ANTS-3538 / ANTS-3545)
 
@@ -196,7 +196,7 @@ byte `offset`/`max_bytes` are ignored).
 `raw:true` suppresses offload entirely (see its bullet under § Read /
 incremental verbs), so an Edit-from-output caller gets true bytes rather
 than a head+pointer.
-Specs: `docs/specs/ANTS-2094.md` (offload + byte paging). ANTS-3538
+Specs: `docs/specs/ANTS-2094-proactive-server-side-result-offload.md` (offload + byte paging). ANTS-3538
 (`head_rows` preview) and ANTS-3545 (row mode) shipped without a spec of
 their own — those bare ids are ROADMAP entries, not missing links.
 
@@ -398,7 +398,7 @@ server-controllable beyond this per-tool hint.
   id-asc); whole-bundle soft-cap truncation at
   `PaginationEngine::softCapBytes()` (no `next_offset` in v1). The
   builder is the pure static `RemoteControl::buildRoadmapBundlesEnvelope`
-  (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922.md`.
+  (warm-cache, no re-parse). Spec `docs/specs/ANTS-1922-roadmap-query-mode-bundles-work.md`.
 - **`downshifted` (ANTS-3543 `roadmap_query` + `workspace_search`;
   ANTS-3576 `changelog_query`)** —
   on the **auto-truncate path**, if a large list would drop
@@ -422,7 +422,7 @@ server-controllable beyond this per-tool hint.
   `changelog_query` likewise under `headline_only` or `include_body`;
   `workspace_search` only under `headline_only:true` — it has no `limit`,
   `include_body` or `mode` argument at all, so its lean-row flag is the
-  whole opt-out. Spec `docs/specs/ANTS-3543.md`.
+  whole opt-out. Spec `docs/specs/ANTS-3543-auto-downshift-would-truncated-list.md`.
   **ANTS-4837 adds a third `roadmap_query` opt-out: `bullet_fields`.** A
   caller-chosen row shape is one the downshift must not replace, since
   swapping it for the fixed four-key shape would silently discard the
@@ -526,7 +526,7 @@ server-controllable beyond this per-tool hint.
   respectively. Pure loader `ProjectSettings::load`
   (`src/projectsettings.cpp`); paths validated under root via
   `PathValidation::isInsideProject`; absent file / key ⟹ today's
-  heuristic (zero regression). Spec `docs/specs/ANTS-2160.md`.
+  heuristic (zero regression). Spec `docs/specs/ANTS-2160-per-project-ants-settings-file.md`.
 - **`docs_index`** — the documentation-map sibling of `codebase_index`:
   serves a pre-computed, **project-agnostic** map of every doc so a
   session finds the right doc in one call instead of grep / `Read` across
@@ -558,7 +558,7 @@ server-controllable beyond this per-tool hint.
   `dead_anchor`, `broken_link`, `toc_gap`, `heading_sequence`,
   `ungranted_tool`, `list_count`. The engine caches nothing (`DocIntegrity::check` is
   pure); the ETag-304 is made content-sensitive by `docs_digest` over the
-  checked set's paths, sizes and mtimes. Spec: `docs/specs/ANTS-3601.md`.
+  checked set's paths, sizes and mtimes. Spec: `docs/specs/ANTS-3601-deterministic-doc-integrity-check.md`.
 
 - **`similar_code`** — `include_bodies:true` (ANTS-2156) makes each
   (top-N, score-ranked) match additionally carry the FULL enclosing
@@ -1081,7 +1081,7 @@ The contract is `docs/specs/ANTS-6399-ci-report-verb.md`.
 `caller_cwd`; ETag + `fields` opt-in. Aggregates the model-switch ledger
 into avoided/regret ratios and pending-record counts (the trust signal
 that gates the default-ON flip of
-[`docs/specs/ANTS-1735.md`](../specs/ANTS-1735.md) § 8 OQ-3; never writes
+[`docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md`](../specs/ANTS-1735-autonomous-claude-code-model-switcher.md) § 8 OQ-3; never writes
 ledger/config).
 
 This verb gets its own H2 rather than a bullet under § Read verbs because

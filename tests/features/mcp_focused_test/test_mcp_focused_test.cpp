@@ -1,7 +1,7 @@
 // ANTS-1302 — feature-conformance test for focused_test.
 // Behavioural coverage of the pure FocusedTest resolution lib +
 // source-grep of the cmdFocusedTest / claudeintegration wiring.
-// See spec.md and docs/specs/ANTS-1302.md.
+// See spec.md and docs/specs/ANTS-1302-focused-test-mcp-run-only.md.
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"

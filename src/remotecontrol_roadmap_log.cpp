@@ -1662,7 +1662,7 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
 // bold-ID nor an existing anchor, the same write injects a
 // `^prefix-NNNN` caret anchor on the last line of the headline
 // content. Counter consumes only on anchor injection. See
-// docs/specs/ANTS-1428.md § Tier 2.
+// docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Tier 2.
 QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;

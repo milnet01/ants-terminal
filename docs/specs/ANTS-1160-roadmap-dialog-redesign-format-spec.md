@@ -1,0 +1,722 @@
+# ANTS-1160 — Roadmap dialog redesign + format spec v2
+
+| Field | Value |
+|---|---|
+| **Author** | Anthony Schemel |
+| **Date** | 2026-05-07 |
+| **Project** | Ants Terminal (lead) + cross-project rollout |
+| **Supersedes** | ANTS-1100 (faceted preset tabs — no per-feature spec file; prior art is the ROADMAP bullet + 0.7.59 CHANGELOG entries), ANTS-1106 (Kind filter — `docs/specs/ANTS-1106-mandatory-kind-field-viewer-faceted.md`), **ANTS-1117 partially** (`roadmap-query` verb only; the `tab-list` verb defined in ANTS-1117 survives unchanged), ANTS-1125 (archive split — no per-feature spec file; prior art is `roadmap-format.md` §3.9), ANTS-1150 (UI/chrome state persistence — `docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md`) — folded forward into one coherent design |
+| **References** | `docs/standards/roadmap-format.md` (current v1), `RoadMap_Design/*` (background research — original prompt + six AI responses) |
+
+**Status:** partly shipped. P2 shipped 0.7.77; P4 shipped 0.7.83
+(2026-05-11) through ANTS-1154, as HTML cards rather than the planned
+QListView rewrite; §5.12's parser change shipped under ANTS-1405. Open:
+P1 (the §12 P1 doc-tree edits other than (f) and (g)), P3, P5 and P6.
+**Kind:** implement.
+**Source:** ROADMAP.md ANTS-1160 (user-request-2026-05-07).
+
+## 1 — Why this spec exists
+
+The current Roadmap dialog ships in v0.7.77 with three hard usability problems and one architectural problem:
+
+1. **Wall-of-text rendering.** The dialog renders the entire markdown source to HTML in a `QTextBrowser`. Filters can suppress individual bullets but cannot hide the surrounding intro prose, legend, theme groups, or section headings. Result: tabs and Kind filters reduce visible bullets but leave the document chrome around them, so the user still sees a wall of text on the Current tab when only one item is actually in progress.
+2. **Programmer-only readability.** Bullet headlines are written for the implementer, not the reader. A non-programmer (an increasingly important audience as AI-assisted development matures) cannot tell what a bullet means without reading the body and understanding internal references. The original prompt called this out explicitly.
+3. **No per-item interaction.** Items cannot be collapsed, expanded, or reorganised in the dialog. The summary-then-detail UX the user repeatedly asks for has no surface in the current rendering substrate.
+4. **Soft architectural ceiling on size.** The dialog reads the full file at 8 MiB cap and the assembled buffer at 64 MiB. As Vestige-class projects produce decades of releases, the unbounded growth of in-flight roadmap content will erode performance long before those caps bite.
+
+Two regressions reported during this design pass (also folded in here):
+
+5. The Roadmap status-bar button is hidden until the user manually switches tabs at launch. Same shape: `refreshRoadmapButton()` is wired only to `onTabChanged`; the first call sees `shellPid()==0` and `shellCwd()==""`. The widget never re-fires.
+6. The GitHub repo-type badge has the same shape: `refreshRepoVisibility()` is wired only to `onTabChanged`; first call hides; nothing re-fires until tab-switch.
+
+## 2 — Audience & success criteria
+
+The dialog serves three audiences in priority order:
+
+1. **The project owner glancing at progress** — the most frequent reader. Wants to know "what's Claude working on right now?" in under two seconds.
+2. **Vibe coders** (non-programmers using AI to build software) — read the dialog to follow along; need plain-English text and visible progress signals (item numbers, version numbers, completion counts).
+3. **Programmers (Claude Code, the project author)** — need full technical detail on demand for diagnosis and planning.
+
+The redesign succeeds when:
+
+- The Current tab shows ≤ 5 cards on a typical project, no document chrome (intro/legend/orphan headings).
+- A vibe coder can read the Current tab and understand what each item *does for them* without any project context.
+- The dialog parses + paints first viewport in under 200 ms on a 250 KiB `ROADMAP.md` and sustains 60 fps scroll on a 1.5 MiB file.
+- The Vestige roadmap (the project's anticipated stress-test) renders within the same budgets when it has 50+ archives.
+
+Detailed acceptance criteria in §10.
+
+## 3 — Decisions summary
+
+These are the load-bearing decisions reached by the brainstorming exchange that produced this spec. Each is stated terse here; rationale follows in the body sections.
+
+| Decision | Outcome |
+|---|---|
+| **Source of truth** | Markdown stays as authored source. Dialog rewrite is the change, not data-model. |
+| **Layman / programmer split** | Optional `Layman:` field per actionable bullet; bold headline is the fallback. SHOULD-have for any user-facing item. |
+| **Rendering substrate** | Native Qt cards — `QListView` with custom delegate; per-item rich-text body via `QTextDocument`. No web view. *(P4 shipped via ANTS-1154 uses `renderCardsHtml` HTML-card approach, not `QListView` — see §5.8.)* |
+| **Current-tab semantics** | Lenient: 🚧 OR `[Unreleased]` match OR last-5-commit match. Each card displays a chip explaining *why* it qualifies. |
+| **Hierarchy** | Section headings ARE the parents. No new `Parent:` field. `##` parents `###` parents bullets. |
+| **ID prefix** | Universal `TASK-NNNN`. Existing `[ANTS-NNNN]` IDs remain immutable. Both prefixes parse forever. **Parser surgery ✅ shipped under ANTS-1405** — the bullet parser now accepts any letter-led prefix (see §5.12 for the carve-outs). |
+| **ID allocation** | Ants Terminal owns `.roadmap-counter` via the new `roadmap-allocate-id` IPC verb. Claude never reads or writes the counter directly. |
+| **Archive layout** | Version-based only (`docs/roadmap/<MAJOR>.<MINOR>.md`). No phase-flavor archive. Pre-version projects do not archive. |
+| **Archive trigger** | A closed minor that has been closed for ≥ 30 days AND whose successor has shipped. |
+| **Active roadmap caps** | Soft 250 KiB; hard 1.5 MiB. |
+| **Filter composition** | Tab × Kind × Status × Search filters compose with AND. Transitive parent rule fires off Tab predicate only. |
+| **Persistence** | Geometry, expand/collapse, scroll anchor, filters (Kind + Status), active tab, body view state (Layman/Detail), nav-split. (Design goal: per-project/path-hash keyed — actual shipped P4 uses single global keys; per-project keying is deferred.) |
+| **Vibe-coder defaults** | First-open = Current tab + Layman view + all sections expanded. |
+
+## 4 — Format spec changes (delta to `docs/standards/roadmap-format.md`)
+
+The current v1 spec stays largely intact. The bumped version is **v2** and changes byte-identical contents in the following places:
+
+### 4.1 — Format header
+
+Bump the marker:
+
+```markdown
+<!-- ants-roadmap-format: 2 -->
+```
+
+Parsers MUST accept v1 and v2 markers. v2 readers reading a v1 file treat absent v2-only fields as defaults (no `Layman:` line → fall back to bold headline).
+
+### 4.2 — Amend §3.5.1 — ID prefix is universal
+
+Replace the existing prefix paragraph in §3.5.1 with:
+
+> **Prefix.** New roadmap items use the literal prefix `TASK`. Existing items in legacy projects retain their original prefix (`ANTS`, `MYPRJ`, etc.) **forever** — once an ID is assigned it never changes, even when the project's prefix policy does. Parsers MUST accept any 3–6 character all-caps prefix as valid; `TASK` is the canonical prefix for new bullets in v2-conforming projects.
+
+**Why universal `TASK-`, not per-kind prefixes** (`DSN-`, `PHS-`, `DOC-` etc., as the original prompt asked and all six AI inputs proposed): three reasons. **(1)** The `Kind:` field is already on every bullet (mandatory in v1.1) and carries the same information — a per-kind prefix would duplicate it. **(2)** IDs are immutable for life; if a bullet's Kind ever changes (a `design` becomes a `decision`, an `implement` becomes a `refactor`), a per-kind prefix would freeze a wrong category onto the ID forever. The Kind field can change; the ID can't. **(3)** Cross-project portability — Vibe Coders learn one rule (`every roadmap item starts with [TASK-####]`) instead of one-rule-per-kind-per-project. The numbering "theme" requirement from the prompt is satisfied implicitly: `TASK-NNNN` IS the theme — every entry is uniformly a Task, the lowest common denominator across projects and kinds. Decisions on per-kind grouping happen via `Kind:` filters in the dialog (§5.14), not via the ID.
+
+### 4.3 — Add §3.5.5 — Allocation
+
+> **Allocation.** Roadmap item IDs are issued by the host terminal via the `roadmap-allocate-id` IPC verb (when the project is opened in Ants Terminal). Authors and LLM agents MUST NOT read or write `.roadmap-counter` directly. The counter file remains the on-disk source of truth; the IPC verb is the only mutation path. Projects without Ants Terminal as host fall back to manual allocation (read counter, write counter+1) and document this in `CLAUDE.md`.
+
+### 4.4 — Add the `Layman:` line
+
+In §3.5 ("Bullet structure"), add to the Optional pieces list:
+
+> **`Layman: <one or two sentences>.`** — A plain-English summary of what this bullet means for someone who isn't reading the code. SHOULD be present on any user-facing item (anything that ships behaviour to end users). Style: present tense, no version numbers, no internal IDs, no acronyms a non-programmer wouldn't know. If the bold headline is already plain English, this field MAY be omitted; the dialog falls back to the headline post-emoji-strip.
+>
+> **Ordering.** Within a bullet, the canonical field order is: bold headline → Layman line (if present) → free-form body prose → metadata lines (`Kind:`, `Source:`, `Lanes:`). Parsers MAY accept `Layman:` anywhere in the bullet but authors SHOULD place it directly after the headline so readers (and dialog renderers) reach it without scanning past arbitrarily long body prose.
+
+The v1 worked example in §3.5 places metadata (`Kind:`, `Lanes:`) at the end of the body. The v2 example below preserves that placement; the v1 example MUST be edited in lockstep when this amendment lands so both stay consistent.
+
+Add a worked example:
+
+```markdown
+- 📋 [TASK-1234] **Restore RoadMap button on launch.**
+  Layman: The RoadMap button now appears straight away when you open
+  the terminal, instead of only after switching tabs.
+  `refreshRoadmapButton` was wired only to `onTabChanged`; the first
+  call after `newTab()` saw `shellPid()==0`, hiding the button forever.
+  Wire to `m_statusTimer` and the startup `singleShot(0)` lambda.
+  Kind: fix.
+  Lanes: mainwindow.
+```
+
+### 4.5 — `Kind:` value reconciliation + three new values
+
+**First, reconcile drift between code and standards.** The dialog code (per ANTS-1106 / ANTS-1150) ships with **12** Kind facets — the 10 listed in v1 §3.5.3 plus `research` and `ux`, which are present in `ROADMAP.md` and accepted by the dialog filter row but not declared in the standards doc. v2 closes this gap by **blessing both** (rather than forcing a sweep that would remove already-shipped Kinds from `ROADMAP.md`):
+
+| Kind | Meaning | Follow-through | Status |
+|---|---|---|---|
+| `research` | Investigation / spike that precedes design (prove feasibility, learn an API) | Pairs with a `docs/specs/` artifact when results inform a real item; no test mandate | **Blessed in v2** (was de-facto in v1) |
+| `ux` | User-experience work distinct from implementation (visual layout, interaction polish) | Usually pairs with screenshots or a wireframe; no test mandate | **Blessed in v2** (was de-facto in v1) |
+
+**Then add three genuinely new values.** Append to §3.5.3's table:
+
+| Kind | Meaning | Follow-through |
+|---|---|---|
+| `design` | Design work distinct from implementation (e.g. format selection, wireframe, API shape) | Pairs with a `docs/specs/` or `docs/decisions/` artifact; no test mandate |
+| `decision` | An architectural decision captured as a roadmap item | Pairs with an ADR file in `docs/decisions/` |
+| `dependency` | Item blocked on an external thing (lib version, upstream reply, vendor) | Body MUST cite the dependency's status; no test mandate |
+
+Net Kind inventory after v2: **15** values (10 original + 2 blessed + 3 new). Declined: `review`, `milestone`, `risk` — covered by `implement` + section heading conventions.
+
+### 4.6 — Add §3.5.6 — Hierarchy
+
+(Renumbers if §4.3's Allocation goes in as §3.5.5; this becomes §3.5.6.)
+
+> **Hierarchy.** A `###` heading is the parent of bullets that follow until the next `###` or `##`. A `##` heading parents both bullets directly under it AND any nested `###` sub-sections. The Roadmap dialog renders this as a collapsible tree. No explicit `Parent:` field is needed; the section heading defines parentage.
+
+### 4.7 — Add Inclusion principle (new §3 preamble paragraph, position-by-editor)
+
+After the file-level introduction in `roadmap-format.md` (the editor picks the exact insertion point during the v2 amendment commit; the existing file uses `### 3.x` numbering rather than `§N.bis` form):
+
+> **Inclusion, not exclusion.** Tabs and filters in the Roadmap dialog operate by inclusion. An item appears in a tab when it carries a positive signal matching the tab's predicate; an item without any positive signal does not appear (it remains in the Full Roadmap tab only). Authors MUST NOT rely on per-item "do not show in tab X" markers — there are none. Tag the work with positive signals (status emoji, Kind, Source) and let the predicates do the rest.
+
+### 4.8 — What does NOT change
+
+ID format (4-digit minimum, zero-padded), status emojis, theme emojis, position-is-priority, archive rotation file naming, existing `Kind:` / `Source:` / `Lanes:` semantics, the LLM-agent execution contract, the findings fold-in subsection convention, the CHANGELOG.md spec.
+
+## 5 — Dialog architecture & rendering
+
+### 5.1 — Data flow
+
+```
+ROADMAP.md  ─┐
+CHANGELOG.md ┤→  parser  →  Items[] + Sections[] (tree)  →  filter  →  QListView<Card>
+git log     ─┤                                              ↑
+archives    ─┘                                  Tab × Kind × Status × Search × Transitive
+```
+
+Existing parsers (`parseBullets`, `extractToc`, archive helpers) survive. The HTML emitter (`renderHtml`) was originally planned to be replaced (see implementation note below).
+
+> **Implementation note (P4 shipped via ANTS-1154):** `renderHtml` was retained; `renderCardsHtml` was added alongside it for the card-based renderer. `renderHtml` continues to serve tests and the `roadmap-query` IPC verb consumers. The two coexist — "replaced" overstates what shipped.
+
+### 5.2 — The Card widget — two display states + one body sub-toggle
+
+Each actionable bullet renders as one Card. **Closed** (1-line header only) ↔ **Open** (header + body). Within Open, the body sub-toggle swaps **Layman** ↔ **Detail** in place — the Detail body replaces the Layman text, not appended below it.
+
+```
+─── Closed ──────────────────────────────────────────────────────────
+🚧  TASK-1234   Restore RoadMap button on launch                  [▾]
+─── Open / Layman (default) ─────────────────────────────────────────
+🚧  TASK-1234   Restore RoadMap button on launch                  [▴]
+    The RoadMap button now appears straight away when you open the
+    terminal, instead of only after switching tabs.
+                                              [ Show technical detail ▾ ]
+─── Open / Detail (after the toggle) ────────────────────────────────
+🚧  TASK-1234   Restore RoadMap button on launch                  [▴]
+    **Restore RoadMap button on launch.** `refreshRoadmapButton` was
+    wired only to `onTabChanged`; first call after `newTab()` saw
+    `shellPid()==0`. Wire to `m_statusTimer` and startup `singleShot(0)`.
+                                              [ Hide technical detail ▴ ]
+    Kind: fix · Source: user-2026-05-07 · Lanes: mainwindow
+    Signals: 🚧 flipped · in [Unreleased]
+```
+
+The `Signals:` chip row appears only when the item is showing because of a non-emoji signal (Unreleased match, recent commit) — the answer to "why is this here?".
+
+### 5.3 — Section header widget
+
+Every `##` and `###` heading renders as its own row above its children, collapsible:
+
+```
+▾ 🎨 Features — shell-aware workflows · 0.7.0 · shipped Apr 2026 · (3 of 7)
+▾ 🔍 Audit fold-in (2026-04-28) · (2 of 2 in progress)
+▸ ⚠️ Risks · (1 open)
+```
+
+Click anywhere on the row to collapse/expand. Section state persisted (per project, by anchor).
+
+The header design intentionally retains the version number AND the theme: the theme leads (vibe-coder readable), the version anchors progress (project-owner readable). Same rule for item IDs: the `[TASK-1234]` is small and dim but always visible, never hidden, because numbering communicates progress.
+
+### 5.4 — Tab predicates
+
+| Tab | Predicate (item appears iff…) |
+|---|---|
+| Full Roadmap | always |
+| History | status == ✅ |
+| Current | status == 🚧 OR headline matches `[Unreleased]` OR headline matches one of last 5 non-merge / non-revert / non-release-bump commits (per v1 §3.6.3) |
+| Next | status == 📋 AND lives in either the active release/phase block OR the immediately-following release/phase block (i.e. up next, not "any unshipped block") |
+| Far Future | status == 💭 OR lives in `future.md` (when present) |
+| Custom | whatever the checkbox row specifies |
+
+The tab is labelled **Far Future** rather than the prompt's *Future* to disambiguate from `[Unreleased]` near-future content (which lives in **Next**). The current dialog already ships this name and existing user mental model is built on it; spec preserves it.
+
+The "active block" is the lowest-versioned `##` block that contains any 📋 or 🚧 items, per the existing format-spec §3.5.4 ("LLM-agent execution contract") rule. The "immediately-following block" is the next `##` after the active one in document order.
+
+For Current, the headline-match rules for `[Unreleased]` and recent commits follow the existing format-spec §3.6.2 / §3.6.3 (lowercase + hyphens-as-spaces + punctuation-stripped fuzzy match; commits exclude merges, reverts, and release-bump subjects).
+
+Sections are pulled in by their members, not separately filtered. A `###` header appears iff at least one of its children appears under the current predicate. Empty sections never render — kills the "wall of text" pattern.
+
+### 5.5 — Transitive parent inclusion
+
+When an item matches the active tab's predicate, its **outstanding** children (any status that is not ✅) ride along. ✅ children stay hidden in non-History tabs. The parent's `(N of M)` badge counts ALL children regardless of visibility, so progress is reported honestly even when ✅ children are not drawn. Same rule applies recursively to sub-bullets under a 🚧 parent bullet.
+
+### 5.6 — Filter composition
+
+Tab × Kind × Status × Search predicates compose with AND. All four must pass for a card to render. The transitive-parent rule fires off the **tab predicate only** — narrowing by Kind or search does NOT auto-expand children. This keeps narrowing predictable: more filters = fewer cards, never more.
+
+### 5.7 — Navigation pane
+
+- Tree mirrors the section structure; collapse state is shared with the body.
+- **11 px per nesting level** (current 6 → +5).
+- Each node shows count: `🎨 Features (3 of 7)`.
+- Active scroll position highlights the deepest section whose top edge is at-or-above the viewport top (binary search over registered card line-spans).
+- Click a node → scroll body so that section's first card is at the viewport top + small offset.
+- Empty sections under the current filters are hidden from the nav pane.
+
+### 5.8 — Virtualized rendering
+
+`QListView` + a custom `QStyledItemDelegate`. Off-screen rows render via `paint()` only; full widgets are instantiated only for visible rows + ~10 above/below. Standard Qt pattern. Earns its keep on Vestige-class roadmaps.
+
+> **Implementation note (P4 shipped via ANTS-1154):** `QListView` with a custom delegate was NOT implemented. The shipped P4 renderer is `renderCardsHtml` — an HTML-based card renderer added alongside the existing `renderHtml`. The `QListView` virtualization design remains the intended path for future work if roadmap scale warrants it.
+
+### 5.9 — Persistence
+
+> **Implementation note (P4 shipped via ANTS-1154):** The per-project TOML file
+> described below was not implemented. The shipped dialog (ANTS-1154) uses nine
+> `Config::roadmap*` keys in `~/.config/ants-terminal/config.json`:
+> `roadmapDialogGeometry`, `roadmapActivePreset`, `roadmapKindFilters`,
+> `roadmapStatusFilters`, `roadmapExpandedItems`, `roadmapExpandedSections`,
+> `roadmapTableSections`, `roadmapScrollAnchors`, `roadmapDensity`
+> (`roadmapScrollAnchors` is declared in `config.h`/`config.cpp` but has no
+> call sites in `roadmapdialog.cpp` as of 0.7.92 — the key is reserved but
+> scroll-anchor restore is not yet consumed). The
+> **Correction:** the per-project keying motivation was NOT implemented in the
+> shipped P4 — all nine keys are single global keys (no path-hash scoping) in
+> `~/.config/ants-terminal/config.json`. Opening the dialog from two different
+> projects shares geometry and filter state. Per-project keying is deferred;
+> when P3/P4 resume, revisit before implementing the TOML path.
+
+> **Design intent (not shipped):** the following describes the original persistence design. Per the implementation note above, this was not implemented in P4; the nine `Config::roadmap*` keys in `config.json` are used instead.
+
+State lives in `~/.config/ants-terminal/roadmap-state.toml`, keyed by SHA-1 of the project root absolute path. **Per-project keying** ensures the dialog opened from `/Ants_Terminal` and `/Vestige` have independent persisted state.
+
+Persisted facets:
+
+- Active tab.
+- Per-tab Kind filter, Status checkbox state, search query.
+- Per-item open/closed state (by ID).
+- Per-item Layman/Detail body state (by ID).
+- Per-section collapse state (by section anchor).
+- Scroll anchor: `(item-id, line-offset-below-anchor)` — survives content edits because IDs are stable.
+- **Window geometry, per project.** Replaces the current single global `Config::roadmapDialogGeometry`. First open uses 1200×800; subsequent opens restore the per-project size.
+- Nav-pane split ratio.
+
+**Migration from v1 single-key state.** On the first dialog open after the v2 upgrade for a given project, the implementation MUST copy any pre-existing single-key state into the new per-project TOML for that project, then ignore those keys on subsequent opens:
+
+- `Config::roadmapDialogGeometry` (single base64-encoded `QByteArray`) → per-project `geometry` field.
+- `Config::roadmapKindFilters` (single `QStringList`) → per-project `tab_state.<tab>.filters_kinds` for the active tab; other tabs default to "all on".
+- `Config::roadmapStatusFilters` (single map of 5 status-emoji checkboxes, ANTS-1150) → per-project `tab_state.custom.status_mask`. **Critical for users in Custom-preset mode** — without this mapping their tuned mask silently disappears on v2 upgrade.
+- `Config::roadmapActivePreset` (ANTS-1150) → per-project `active_tab`.
+
+Out of scope for this migration: `Config::audit_*` keys (audit dialog state, separate subsystem). Listed here so reviewers don't think they were forgotten.
+
+Without this migration users who opened the dialog under v1 would silently lose their persisted geometry/filter on the v2 upgrade.
+
+Atomic writes via temp-file + rename. Schema version stamped at file head; mismatch falls back to defaults rather than crashing.
+
+### 5.10 — Live updates
+
+`QFileSystemWatcher` on `ROADMAP.md` and `CHANGELOG.md` retained from the current dialog. IPC mutations write through the file → watcher fires → reparse → diff against existing card model → re-render only changed sections. Expand state and scroll anchor are preserved across reparses by ID.
+
+### 5.11 — Kinds rendering
+
+Each card displays a small Kind icon next to the ID (e.g. `🛠️` for `fix`, `📐` for `design`, `🔗` for `dependency`). The Kind filter row uses the same icons as toggles. Default icon set is documented in the format spec; custom Kinds (project-specific) fall back to a generic `◆` glyph.
+
+### 5.12 — Parser surgery for prefix relaxation — ✅ shipped under ANTS-1405
+
+**Outcome (shipped 2026-05-20 (0.7.92) under [ANTS-1405](../specs/ANTS-1405-roadmap-query-parser-handles-non.md)):**
+the bullet parser `parseBullets` (`src/roadmapdialog.cpp:799`)
+now uses the widened regex `\[([A-Za-z][A-Za-z0-9_-]*-\d+)\]`
+(capturing the full prefix verbatim per item), and output
+formatting preserves the captured prefix per item
+(`src/roadmapdialog.cpp:1005`). `BulletRecord` carries no new
+field — the prefix lives inside `id` exactly as the spec
+proposed. The `roadmap-query` IPC verb returns the captured prefix
+via the same `id` field.
+
+**Deliberately left unchanged:** the second `rxId` in
+`parseShippedDates` (`src/roadmapdialog.cpp:2052`) still
+matches only `\bANTS-(\d+)\b`, because that helper resolves
+`✅` bullet ship-dates by scanning CHANGELOG headings — and this
+project's CHANGELOG entries are all ANTS-prefixed. Other-prefix
+projects adopting the dialog will need to either (a) widen this
+second regex on adoption, or (b) re-prefix their CHANGELOG entries
+to match.
+
+P3 (IPC verbs) no longer depends on a "first commit" of this
+surgery — the bullet parser surgery is done. Legacy
+`[ANTS-NNNN]` IDs and new prefix forms (`[TASK-NNNN]`,
+`[VEST-NNNN]`, etc.) round-trip through the dialog filter,
+search, and `roadmap-query`. The remaining P3 work is the four
+other IPC verbs, not parser work.
+
+**Residual doc-side TODO ✅ resolved:** `src/roadmapdialog.h:293`
+now reads `<PREFIX>-NNNN; empty if no \`[<PREFIX>-NNNN]\` token
+(ANTS-1405)` — updated in lockstep with the parser change.
+
+### 5.13 — Footer buttons
+
+The dialog has a footer button row (per the original prompt's explicit ask):
+
+| Button | Action | Hotkey |
+|---|---|---|
+| **Refresh** | Force re-read of `ROADMAP.md`, `CHANGELOG.md`, and any loaded archives, then rebuild the card list. Preserves expand/collapse and scroll anchor where IDs still exist. | `F5` |
+| **Reset View** | Reset filters, search query, expand/collapse state, and pane split to defaults. **Does NOT change the active tab.** Confirms before clearing if any filter is non-default. | `Ctrl+R` |
+| **Close** | Closes the dialog. Window state (geometry, active tab, filters) persists per §5.9. | `Esc` (see precedence below) |
+| (search focus) | Focus the search bar. Not a button — included here for hotkey completeness. | `Ctrl+F` |
+
+**`Esc` precedence rule.** When the search field has focus AND its query is non-empty, `Esc` clears the query and keeps the dialog open. Otherwise (search empty OR search not focused), `Esc` closes the dialog. This matches the standard text-field-with-cancel-key idiom and avoids the user accidentally dismissing the dialog when they meant to clear a search.
+
+Live updates (§5.10) fire automatically; **Refresh** is the manual escape hatch for the rare case where the file watcher missed an event. The canonical failure mode: `QFileSystemWatcher` (inotify under the hood) silently drops its watch when the watched file is replaced via atomic temp-file + rename — the OLD inode is gone and the NEW inode isn't being watched. The `claudetasklist.cpp::poll()` pattern (mtime-gated rescue on the status-bar 2 s timer, committed `2f5d470`) is the standard mitigation; **Refresh** is the user-driven equivalent for cases where even the poll missed.
+
+### 5.14 — Search bar grammar
+
+The search field accepts plain-text fuzzy match by default. Three explicit modifiers compose with AND:
+
+| Modifier | Examples | Matches |
+|---|---|---|
+| `id:` | `id:TASK-1234`, `id:1234` | bullet whose ID matches; bare number form ignores the prefix and matches any prefix |
+| `kind:` | `kind:fix`, `kind:design` | bullet whose `Kind:` field equals the value |
+| `status:` | `status:in-progress`, `status:🚧` | bullet whose status matches (canonical name OR emoji) |
+
+Plain text with no modifier prefix runs a case-insensitive substring match across headline + Layman + body. Modifiers and plain text can mix: `kind:fix button launch` finds fix-Kind bullets containing both "button" and "launch" anywhere in their searchable text. `Esc` behaviour follows the precedence rule in §5.13 — clears the query when the search field has focus and the query is non-empty; closes the dialog otherwise.
+
+## 6 — Sharding & scaling
+
+### 6.1 — Active size cap
+
+Active `ROADMAP.md` is **soft-capped at 250 KiB**. When the file crosses that threshold, the dialog surfaces a banner above the content pane:
+
+> *Roadmap is 263 KiB. Archive the oldest closed release block? `[ Archive 0.5.x → docs/roadmap/0.5.md ]`*
+
+Click triggers the `roadmap-archive-section` IPC verb (§7.1).
+
+**Hard cap: 1.5 MiB.** Beyond that, the parser switches to a "degraded mode" warning ("file is unusually large; archiving overdue") but continues to operate.
+
+### 6.2 — Archive layout (preserved from v1 §3.9, restated for completeness)
+
+Archives use **version-based naming only**: `docs/roadmap/<MAJOR>.<MINOR>.md`, matching the case-sensitive regex `^[0-9]+\.[0-9]+\.md$`. No leading `v`, no zero-padding (`0.7.md` not `00.07.md`), no patch suffix (`0.7.0.md` is rejected). This rule is **already enforced** by `roadmapdialog.cpp:3032-3040` (`parseArchiveFilename`) and documented in v1 format-spec §3.9 — restated here so v2 readers don't need to cross-reference.
+
+The phase-flavored archive (`P##.md`) some AI inputs proposed is declined: pre-version projects (purely phase-based, no version yet) do NOT archive. Their roadmaps stay small enough until they ship a first version that archival is unnecessary. Once the first version ships, archival begins per §6.3.
+
+Naming convention rather than a manifest file (`roadmap.toml`, `roadmap-index.yaml`) won the AI-proposal trade-off: convention discovery has no metadata file to drift, no synchronization risk between manifest and on-disk reality, and the dialog's archive enumerator already walks the directory anyway.
+
+### 6.3 — Archive trigger
+
+Archive a closed release block when **both** are true:
+
+1. The block has been closed (all items ✅, deferred, or cancelled) for **≥ 30 days** since its `shipped (YYYY-MM-DD)` date.
+2. Its successor minor has shipped (i.e. the next `##` block by version has its own `shipped (YYYY-MM-DD)` date and has been released for ≥ 1 day). Patch releases under the same minor do NOT count as the successor — only the next minor does, since archives are per-minor.
+
+The 30-day window provides slack for late regression reports to fold back into the just-shipped block before it freezes. The 250 KiB soft cap is a secondary trigger — only kicks in if the 30-day rule somehow didn't catch up.
+
+### 6.4 — Lazy archive loading
+
+The dialog NEVER loads all archives at once. Three load triggers:
+
+1. **History tab activated** → load archives most-recent-first, paginated (one archive per page; "Load older →" button).
+2. **Search with the `[Include archives]` checkbox** → load only archives whose filename matches a candidate version. Search query against `0.7.x` only loads `0.7.md`.
+3. **Direct ID jump** (`id:TASK-1234`) → if not in active, scan archives newest-to-oldest, stop at first hit.
+
+All three are **dialog-side** triggers. The `roadmap-query` IPC verb (§7) does NOT load archives — its archive-dialog-only contract from v1 format-spec §3.9 is preserved unchanged. Archives are dialog-only by contract. This is deliberate: query-side archive loading would unbound the verb's response size and undermine the 100 ms TTL cache. Programs (Claude Code, MCP clients) that need archive content go through dedicated future verbs (`roadmap-archive-status`, an eventual `roadmap-archive-fetch`) rather than overloading `roadmap-query`.
+
+Default cold open of any tab other than History stays cheap — only `ROADMAP.md` parsed.
+
+### 6.5 — History sort control
+
+The History tab has a sort dropdown:
+
+- **Newest version first** (default).
+- **Oldest version first.**
+
+Toggling re-sorts the loaded archive list without re-fetching.
+
+### 6.6 — Memory budget
+
+| Source | Cap | Policy |
+|---|---|---|
+| `ROADMAP.md` | 1.5 MiB hard cap (§6.1) | always loaded |
+| Per archive | 8 MiB per file (existing limit retained) | lazy, evicted on tab switch |
+| Assembled buffer | 64 MiB hard cap (existing) | History tab + Full-with-archives only |
+
+A 50-year, 600-minor project at ~150 KiB per archive = ~90 MB on disk. The History tab opens with the most-recent 1–5 archives parsed (~1–5 MB resident). Paging back loads more on demand. No more than ~10 MB of roadmap data is ever in memory at once. Card-list virtualization (§5.8) handles render scaling beyond memory scaling.
+
+### 6.7 — Vestige stress test
+
+Vestige (`/mnt/Games/Scripts/Linux/3D_Engine/`) is the project most likely to exceed any other in roadmap size. Acceptance for this redesign explicitly includes meeting parse + render budgets on Vestige's roadmap when it has 50+ archives (see §10).
+
+## 7 — IPC verb surface
+
+Extends the existing `remotecontrol` socket. Two waves.
+
+### 7.1 — Phase 1 (ships with the redesign)
+
+| Verb | Input | Output | Purpose |
+|---|---|---|---|
+| `roadmap-query` (extend existing ANTS-1117) | optional `tab`, `filter` | `{ bullets[], sections[] }` (§7.3) | Read structured snapshot |
+| `roadmap-allocate-id` | none | `{ id: "TASK-NNNN", counter_path: ".roadmap-counter" }` | Atomic flock on `.roadmap-counter`, return next ID. **MUST run on a worker thread** (`QtConcurrent::run` or equivalent) — `flock(LOCK_EX)` on a contended counter could wedge the GUI event loop where `remotecontrol.cpp`'s dispatch lives. Use `LOCK_EX|LOCK_NB` first; on contention, fall back to a worker-thread blocking acquire. The 50 ms response-time criterion (§10.7) is the SLA for the worker-thread path. |
+| `roadmap-archive-section` | `section-anchor` | `{ archived_path, removed_lines }` | Move closed section to archive, atomic |
+| `roadmap-archive-status` | none | `{ active_size_bytes, archives[], suggested_next }` | Drive archive banner |
+| `roadmap-validate` | optional `path` | `{ violations[] }` | Lint for spec violations, drives `/audit` and pre-commit |
+
+### 7.2 — Phase 2 (added after first round of real-world use)
+
+`roadmap-set-status`, `roadmap-add-bullet`, `roadmap-promote`. These optimize remaining mutation paths but are not blocking; Claude can write bullets directly in Phase 1. They ship when token-cost data from real usage justifies them.
+
+### 7.3 — `roadmap-query` extended response shape
+
+```json
+{
+  "bullets": [
+    {
+      "id": "TASK-1234",
+      "status": "🚧",
+      "headline": "Restore RoadMap button on launch",
+      "layman": "The RoadMap button now appears straight away when you open the terminal, instead of only after switching tabs.",
+      "kind": "fix",
+      "source": "user-2026-05-07",
+      "lanes": ["mainwindow"],
+      "section_anchor": "0-7-77-hardening-pass",
+      "current_signals": ["flipped-emoji", "unreleased-match"]
+    }
+  ],
+  "sections": [
+    {
+      "anchor": "0-7-77-hardening-pass",
+      "title": "0.7.77 — hardening pass — shipped 2026-05-07",
+      "level": 2,
+      "parent_anchor": null,
+      "child_count": { "completed": 4, "outstanding": 3 }
+    }
+  ]
+}
+```
+
+Cached with mtime + 100 ms wall-clock TTL (existing ANTS-1117 invariant retained).
+
+## 8 — Claude Code integration
+
+### 8.1 — The "ask the terminal" rule
+
+Project `CLAUDE.md` files (Ants Terminal first; rolled to other projects per §11) gain a new section:
+
+> **Roadmap operations go through the host terminal, not direct file logic.**
+>
+> - To allocate a new ID: `ants-terminal --rc roadmap-allocate-id`. Never read or write `.roadmap-counter` directly.
+> - To read the roadmap when planning: `ants-terminal --rc roadmap-query`. Don't grep `ROADMAP.md` to enumerate bullets.
+> - To validate before committing: `ants-terminal --rc roadmap-validate`.
+> - For new bullets, the editor still writes the markdown directly in Phase 1 (Phase 2 will add `roadmap-add-bullet`).
+> - Direct edits to `ROADMAP.md` remain allowed for prose narration, section headers, and ordering. They are NOT allowed for adding new actionable bullets (must use the verb to allocate an ID first) or for editing `.roadmap-counter`.
+
+### 8.2 — Boundary (terminal vs Claude)
+
+| Claude does | Terminal does |
+|---|---|
+| Decide WHAT a bullet says (narrative, layman text, body) | Allocate the ID |
+| Decide WHERE it goes (which section) | Atomic file-write under flock |
+| Compose layman text in plain English | Parse, render, persist UI state |
+| Run `/audit`, fold findings into roadmap | Validate spec compliance |
+| Decide priority via section position | Maintain `.roadmap-counter` |
+| Edit prose narration / section headers directly | Suggest archive candidates by date |
+
+If Claude finds itself parsing the roadmap to make a structural decision (counting items, scanning for an ID, computing a date threshold), that's the wrong lane — it's a verb call.
+
+### 8.3 — Token budget — measured saving
+
+For a typical "add an audit-fix bullet" task:
+
+| Action | Today | After Phase 1 |
+|---|---|---|
+| Read `.roadmap-counter` | ~100 | 0 (verb) |
+| Read `ROADMAP.md` (~3k lines) to find insertion point | ~12,000 | ~600 (`query` returns sections) |
+| Emit edited `ROADMAP.md` | ~12,000 | ~50 (insert one bullet via direct write) |
+| Verify edit didn't corrupt format | ~2,000 | ~30 (`validate`) |
+| **Total per bullet** | **~26,100** | **~680** |
+
+**~38× reduction per bullet.** A session touching 5 bullets goes from ~130k tokens to ~3.4k.
+
+### 8.4 — Vibe-coder defaults
+
+When the dialog opens on a project with no persisted state for that project:
+
+| State | Default |
+|---|---|
+| Active tab | **Current** |
+| Item display | Open + Layman view |
+| Section collapse | All `##` and `###` expanded |
+| Status checkboxes | Match the active tab's preset |
+| Kind filter | All on |
+| Search | empty |
+| Nav pane width | 30% |
+| Sort | Document order (Current/Full); Newest version first (History) |
+| Window geometry | 1200×800 |
+
+### 8.5 — "Current focus" footer panel
+
+A persistent footer renders only when the active tab is **Current**:
+
+```
+Current focus: TASK-1234 — Restore RoadMap button on launch
+              🚧 since 09:47 (14 minutes)  ·  in [Unreleased]
+```
+
+Source: the most-recently-flipped 🚧 bullet whose `[Unreleased]` entry or recent commit subject also matches. Empty when nothing is in flight.
+
+The footer is the killer-app surface for the project-owner audience: open the dialog, glance, immediately know what Claude is building right now, without reading any prose.
+
+## 9 — Status-bar fixes folded in
+
+Two regressions from §1 (items 5 and 6) — plus the Task List dialog refresh fix that already shipped in commit `2f5d470`, restated here for the status-bar widget contract — are fixed **before** this redesign's dialog rewrite (P2 in the §12 phasing — they ship in their own bundled commit, ahead of P3/P4, since they don't depend on the redesign). All three share one architectural shape: a widget reads state once and doesn't re-read on change.
+
+Affected sites in `src/mainwindow.cpp` (line numbers approximate; verify against current source at fix time):
+
+- `refreshRoadmapButton()` (`:5876` — verified against current source) — already called from `onTabChanged`, but the first `onTabChanged(0)` from `newTab()`'s `setCurrentIndex` runs *before* `startShell()` sets the PID; `shellCwd()` returns empty, the button hides, and nothing reschedules. Fix: also wire to the `m_statusTimer` connect block and the startup `singleShot(0)` lambda. The existing `onTabChanged` call site is preserved — the fix only adds two new wiring points.
+- `refreshRepoVisibility()` (`:6020` — verified against current source) — identical shape; same two additions.
+- **Task List dialog refresh** — already fixed in commit `2f5d470` (`ClaudeTaskListTracker::poll()` mtime-gated rescue called from the status-bar 2 s timer). Mirrors the `ClaudeBgTaskTracker::sweepLiveness` pattern from 0.7.55.
+
+**Status-bar widget contract addendum** (folded into the project's status-bar standard, not this spec): *"Any State-category status-bar widget that reads `shellCwd()` MUST register on `m_statusTimer` AND the startup `singleShot(0)` lambda, in addition to any `onTabChanged` connection. The `onTabChanged` path alone is insufficient because the first call from `newTab()` runs before `startShell()` sets the PID."*
+
+## 10 — Acceptance criteria
+
+The redesign is "done" when all of the following are green on the Ants Terminal roadmap itself, validated by feature-conformance tests under `tests/features/roadmap_*`:
+
+1. **Current tab cap.** Current tab shows ≤ 5 cards on a typical project (Ants Terminal, post-rollout) — no document chrome (intro paragraphs, legend, themes, orphan headings).
+2. **Tab differentiation.** Far Future and History tabs render visibly different content from Full Roadmap (the screenshot-3 pattern is impossible).
+3. **Cold-open performance.** Parse + paint first viewport in **< 200 ms** on a 250 KiB `ROADMAP.md`.
+4. **Scroll performance.** Sustain 60 fps scroll on a 1.5 MiB `ROADMAP.md` (virtualized list earns its keep).
+5. **Layman comprehensibility (manual review gate, NOT a feature test).** A "vibe coder reads it" pass on 20 random Current/Next-tab items: when shown only the Layman line, an unfamiliar reader correctly identifies what the item does for them in ≥ 95% of cases. This is a human-judgement sign-off, not a `tests/features/roadmap_*` automated test — call it out explicitly so reviewers don't try to encode it.
+6. **Per-project persistence.** Open dialog from `/Ants_Terminal` and `/Vestige` after sizing each differently → both restore their respective sizes on next open.
+7. **`roadmap-allocate-id` performance.** Returns under **50 ms** when contended by two parallel callers.
+8. **Vestige stress test.** Parse + render-first-viewport on Vestige's roadmap (whatever its size at rollout time, with ≥ 50 archives) under the same 200 ms / 60 fps budgets as criteria 3 and 4.
+9. **Bug fixes verified.** RoadMap button appears on terminal launch (no tab-switch needed); GitHub repo-type badge appears on terminal launch; Task List dialog rows refresh on `TaskUpdate`.
+10. **Inclusion-not-exclusion contract.** No code path in the dialog suppresses items via blacklist; all visibility is positive-signal-driven (lint check in `roadmap-validate`).
+11. **Existing test harness migration.** The pre-existing feature tests `tests/features/roadmap_viewer/`, `roadmap_viewer_tabs/`, `roadmap_viewer_archive/`, and `roadmap_kind_facets/` are either rewritten in lockstep with P4 (preferred — preserves their invariants under the new card-based surface) or retired with their invariants merged into new tests. None of them stays untouched, and none stays running against retired code — every existing test either has a v2 successor or is documented as retired in P4's commit message.
+
+Each criterion (1–4, 6–11) gets a feature-conformance test per `tests/features/README.md`. Criterion 5 is the manual gate exception.
+
+## 11 — Cross-project rollout
+
+### 11.1 — Migration prompt
+
+A short, copy-pasteable prompt the user gives to other Claude Code sessions. Lives at `docs/standards/roadmap-migration-prompt.md` (created by Phase P1 of §12):
+
+> **Migrate this project's roadmap to format-spec v2.**
+>
+> 1. Read `docs/standards/roadmap-format.md`. Copy from Ants Terminal if not present locally — the spec is shareable across projects byte-identical.
+> 2. **Do not change any existing `[<PREFIX>-NNNN]` IDs.** They are immutable.
+> 3. **Future bullets use `[TASK-NNNN]`.** Allocate via `ants-terminal --rc roadmap-allocate-id` if the user runs Ants Terminal; otherwise update `.roadmap-counter` directly and document "manual allocation" in `CLAUDE.md`.
+> 4. **Add a `Layman:` line** to every actionable bullet whose bold headline isn't already plain English. Keep to 1–2 sentences, present tense, no jargon, no version numbers, no internal IDs.
+> 5. **Add the new Kinds** (`design`, `decision`, `dependency`) where applicable. Existing Kinds remain valid.
+> 6. **Update `CLAUDE.md`** with the "ask the terminal" rule (§8.1). If Ants Terminal isn't the host, omit the IPC clauses and document manual `.roadmap-counter` mutation.
+> 7. **Validate**: run `ants-terminal --rc roadmap-validate` (or fall back to manual review against the spec).
+> 8. **Commit as one change** with subject `chore: migrate roadmap to format-spec v2`. Do not bundle other work.
+
+The migration is bounded by design: no structural rewrite, no archive reorganization, no ID renumbering.
+
+### 11.2 — Application order
+
+1. **Ants Terminal first** — proves the design end-to-end, including the dialog, the IPC verbs, and the format-spec changes.
+2. **One non-Ants project second** (likely Vestige, since it doubles as the stress-test) — validates that the migration prompt actually works for a Claude session that didn't write the spec.
+3. **Remaining projects** — fan out only after the first two land cleanly.
+
+### 11.3 — Feedback loop
+
+Each rollout target produces a short feedback note: what was unclear, what was missing, what tooling friction came up. Folded back into the spec via amendments (cold-eyes loop reopens for each material amendment).
+
+## 12 — Implementation phasing
+
+| Phase | Scope | Acceptance gate |
+|---|---|---|
+| **P1 — Format spec v2 + doc-tree alignment** | Update `docs/standards/roadmap-format.md` with §4 (including lockstep edit of the v1 worked example per §4.4 — the example's `Lanes:` / `Kind:` ordering must match the new canonical field order). Add `roadmap-migration-prompt.md`. **Doc-tree edits in lockstep** (per round 3 cold-eyes B-F6/F7/F9/F11/F12/F13): (a) `roadmap-format.md` HTML marker — clarify `ants-roadmap-format-spec` (spec-document marker) vs `ants-roadmap-format` (data marker) so they aren't conflated; bump data marker to `: 2`; (b) `docs/standards/documentation.md` — drop the stale `FP##/DS##/DOC##/R##` phase-ID line at `:113-116`, replace with reference to `roadmap-format.md` §3.5.1; (c) `CLAUDE.md` — change "stable `[ANTS-NNNN]` IDs from `.roadmap-counter`" to "stable IDs from `.roadmap-counter` (allocated via `roadmap-allocate-id` IPC; new bullets use `[TASK-NNNN]`, legacy `[ANTS-NNNN]` preserved)"; (d) `README.md:1035` — update `ROADMAP_FORMAT v1` comment to `v2`; (e) `ROADMAP.md:1,8` — bump format marker to `: 2` and prose `**Format:** v1` line to `v2`; (f) ✅ resolved: `PLUGINS.md` §`Versioning & Compatibility` — the "(also reserved, not yet present)" parenthetical has been removed. (g) ✅ resolved: Pre-existing drift sweep — `README.md` color theme count now reads "11 built-in themes" (lines 812 and 1056); `documentation.md` §2.1 loosening remains open if desired. **No code changes** beyond doc-tree text edits. | Format spec compiles; existing roadmap still parses with current dialog; all 7 doc-tree edits committed in the same P1 commit. |
+| **P2 — Status-bar bug fixes** | The three UI-refresh bugs from §9, folded into one ROADMAP item, fixed via the `m_statusTimer` + `singleShot(0)` pattern. Status-bar standard amendment lands in same commit. | Acceptance criterion 9 green. |
+| **P3 — IPC Phase 1 verbs** | `roadmap-allocate-id`, extended `roadmap-query`, `roadmap-validate`, `roadmap-archive-section`, `roadmap-archive-status`. No dialog changes yet. | All five verbs unit-tested; cold-eyes review on `roadmap-validate` rules. Acceptance criterion 7 green. |
+| **P4 — Dialog rewrite** | Card-based renderer, real tab predicates, transitive parent rule, signal chips, 11 px nav, per-project geometry, footer panel, virtualized rendering, archive banner. **Hard-depends on P3** — the archive banner click invokes `roadmap-archive-section`, the card model consumes the extended `roadmap-query` `sections[]` shape. The prefix-relaxed parser surgery once tabled here as "first commit of P3" has since shipped under ANTS-1405 (see §5.12); the remaining P3 work is the IPC verbs only. P3 and P4 cannot reorder. | Acceptance criteria 1–6, 8, 10, 11 green. |
+| **P5 — Cross-project rollout** | User runs the migration prompt on Vestige + at least one other project. Feedback folded back into spec. | Two non-Ants projects successfully migrated; spec amendments (if any) cold-eyes-reviewed. |
+| **P6 — IPC Phase 2 verbs** | `roadmap-set-status`, `roadmap-add-bullet`, `roadmap-promote`. Driven by token-cost data from P5 usage. | Verbs ship when data justifies them. |
+
+Each phase = one or more roadmap items, tackled top-to-bottom per the position-is-priority rule.
+
+## 13 — Cold-eyes review loop (this spec)
+
+Per the project's strict spec/code review loop:
+
+1. ✅ Self-review (placeholder scan, internal consistency, scope, ambiguity) — done inline before user review.
+2. **User review** — sign-off before cold-eyes dispatch.
+3. **Cold-eyes review (parallel)** — two independent reviewers:
+   - General-purpose agent reviewing against the AI-response inputs in `RoadMap_Design/` (does the spec address what the user originally asked for?).
+   - Project-specific agent reviewing against the existing format spec, dialog code, and Ants Terminal conventions (does the spec break anything load-bearing?).
+4. Fold findings back into the spec.
+5. Repeat 3–4 until both reviewers come back clean.
+6. Final user sign-off.
+7. Then — and only then — `/writing-plans` produces the implementation plan.
+
+Cold-eyes findings are tracked as numbered amendments at the foot of this file with `Cold-eyes-fold-in (date) — <reviewer-tag>:` prefixes, per project convention.
+
+## 14 — Out of scope (for this spec)
+
+Items considered and declined, with rationale so a future reviewer doesn't reopen them without new information:
+
+- **Custom themes / QSS user-overridable skins for the dialog.** Deferred until users ask. Default native palette + `Theme` dark/light presets cover the audience for now.
+- **A web-view-based renderer (`QWebEngineView` + HTML5/CSS/JS).** Deferred unless native-card limitations bite. ~50 MB Chromium cost was judged out of proportion for one dialog.
+- **Phase-flavor archive files (`P##.md`).** Declined; pre-version projects stay small enough not to need archives until they ship a version (§6.2).
+- **New `Kind:` values beyond `design`, `decision`, `dependency`.** Declined: `review` covered by `implement` for the planned-review-itself + the existing fold-in section pattern for findings; `milestone` covered by a `## ` section heading; `risk` covered by a `### ⚠️ Risks` subsection.
+- **Phase 2 IPC verbs** (`roadmap-set-status`, `roadmap-add-bullet`, `roadmap-promote`). Deferred to P6 (§12) — they ship when token-cost data from P5 justifies them.
+- **Dependency graph visualization** across items. Deferred. The `dependency` Kind (§4.5) lets authors *flag* blocked items; cross-item link visualization is a richer feature that needs its own spec.
+- **Inter-item dependency links** (`Depends: TASK-NNNN` field + "blocked items" filter). Deferred. The `dependency` Kind covers the common case ("this item is blocked on X"); explicit cross-item link tracking adds spec/parser/dialog surface and competes with using the body prose to describe the blocker. Revisit in P5 feedback.
+- **Cross-project roadmap aggregation** (single dashboard for multiple projects). Out of scope for the dialog; could become a separate skill.
+- **Tables / compact mode for grouped same-Kind bullets** (the prompt's table-form ask). Deferred. The card-based UI in P4 covers the layman/detail toggle and section-collapse; a denser table-mode for sequences of e.g. 10+ `phase-fix` bullets is a follow-up after P4 proves the UX in practice.
+- **Keyboard shortcuts** beyond Qt defaults + the three explicit hotkeys in §5.13 (F5 / Ctrl+R / Esc) and `Ctrl+F` for search focus. Deferred to a P5/P6 follow-up (per-tab numeric switching, `g`/`G` jump, `e` expand, etc.) — Qt's default focus traversal covers Tab/arrow navigation today.
+- **Hide-headers / hide-text-blocks filter toggles.** Deferred. §5.4's "empty sections never render" already covers most of the wall-of-text problem; explicit hide-headers is a refinement we revisit if the redesign's UX still feels noisy in P5.
+- **Audit trail per item** (`history: [{change, by, at}, ...]`). Deferred. Git blame on `ROADMAP.md` already provides this — the audit dialog (`auditdialog`) consumes git blame; consumers of the roadmap can do the same. Adding a per-item history field would duplicate git's job.
+- **Overall project completion bar** (e.g. `78% complete`). Considered partially addressed by the per-section `(N of M)` badges (§5.3); a single project-wide bar can land later if the per-section count proves insufficient.
+- **`assignee` / multi-user fields.** Out of scope; Ants Terminal targets solo-developer + Claude collaboration. If the design ever ports to a multi-user project, a separate spec covers it.
+
+## 15 — References
+
+- Format spec v1: `docs/standards/roadmap-format.md`
+- Background research (original prompt + 6 AI responses): `RoadMap_Design/`
+- Existing dialog: `src/roadmapdialog.{h,cpp}`
+- Existing IPC: `src/remotecontrol.cpp` (verb registration)
+- Existing tests: `tests/features/roadmap_viewer/`, `roadmap_viewer_tabs/`, `roadmap_viewer_archive/`, `roadmap_kind_facets/`
+- Vestige (stress-test target): `/mnt/Games/Scripts/Linux/3D_Engine/`
+- Status-bar standard (recipient of §9 amendment): per-project standards under `docs/standards/`
+
+## 16 — Cold-eyes review fold-in (round 1, 2026-05-07)
+
+Two parallel reviewers per §13: one against the original prompt + 6 AI inputs (gap analysis), one against the existing codebase (drift analysis). Findings consolidated below; **must-address** and **medium-or-higher** items folded in this revision; **low / optional** items folded as one-line declines with rationale in §14 or as inline rationale paragraphs.
+
+| Tag | Finding | Disposition |
+|---|---|---|
+| R1-F1+F2 | Per-kind prefix decision contradicted prompt + 6/6 AI consensus without rationale | §4.2 — added 3-reason rationale paragraph; numbering "theme" satisfied implicitly by `TASK` uniformity |
+| R1-F3 | Tables for grouped same-Kind items missing | §14 — deferred with rationale (revisit after P4) |
+| R1-F4+F12 | Three named footer buttons + Reset View semantics missing | §5.13 — added Refresh/Reset View/Close with explicit semantics + hotkeys |
+| R1-F5 | Search bar grammar undefined | §5.14 — added `id:` / `kind:` / `status:` modifier table + plain-text fallback |
+| R1-F6 | "Far Future" vs prompt's "Future" — no rationale | §5.4 — added 1-line note (existing dialog ships this label) |
+| R1-F7 | Keyboard shortcuts absent | §14 — deferred to P5/P6 (Qt defaults + 4 named hotkeys ship) |
+| R1-F8 | Manifest decline not justified | §6.2 — added rationale paragraph |
+| R1-F9 | Inter-item dependency links missing | §14 — deferred; `dependency` Kind covers common case |
+| R1-F10 | Audit trail | §14 — deferred (git blame on `ROADMAP.md` already covers it) |
+| R1-F11 | Hide-headers / hide-text filter | §14 — deferred (empty-sections rule covers most cases) |
+| R1-F13 | Status name vocabulary | OK as-is (pre-existing v1 convention) |
+| R1-F14 | Overall progress bar | §14 — partial coverage via per-section `(N of M)` badges |
+| R1-F15 | Assignee field | §14 — out of scope (solo+Claude project) |
+| R2-F1 | Parser hardcodes `ANTS-` prefix; spec underspecifies surgery | §3 + §5.12 — added explicit parser-surgery enumeration with site list |
+| R2-F2 | Format-spec section numbers (§3.5.5/§3.5.6/§1bis) inconsistent | §4.6/§4.7 — repositioned & clarified |
+| R2-F3 | Archive regex already enforced — §6.2 reads as new | §6.2 — reworded "preserved from v1 §3.9, restated for completeness" |
+| R2-F4 | `flock` could wedge GUI thread | §7.1 — added worker-thread requirement |
+| R2-F5 | §9 line numbers + missed `:4004-4005` call site | §9 — tightened ranges, acknowledged existing call site |
+| R2-F6 | Persistence migration from legacy single-key state | §5.9 — added migration paragraph (3 keys mapped) |
+| R2-F7 | `roadmap-query` archive-only-via-dialog contract | §6.4 — clarified contract preserved; query side stays archive-free |
+| R2-F8 | P3→P4 dependency not explicit; §9 vs P2 wording | §9 + §12 — fixed (P2 ships before redesign; P4 hard-depends on P3) |
+| R2-F9 | Acceptance criterion 5 not feature-testable | §10 — explicitly marked as manual review gate |
+| R2-F10 | Existing tests need rewrite/retire | §10 (criterion 11) + §12 P4 — explicit migration path |
+
+A second cold-eyes round is dispatched after this fold-in to confirm the substantive amendments don't introduce new contradictions; round 2 expected to find ≤ 2 minor items if any.
+
+**Round 2 (verification pass, 2026-05-07) — clean.** Reviewer verified all 9 spot-checks (R1-F1+F2 / R1-F4+F12 / R1-F5 / R2-F1 / R2-F2 / R2-F4 / R2-F6 / R2-F8 / R2-F9) landed at the cited sections; no new contradictions; no broken cross-references; no phantom fold-ins; §16 self-consistent. Two stylistic tightenings, both marked optional:
+
+| Tag | Finding | Disposition |
+|---|---|---|
+| R2r2-F1 | §4.4 v1 example edit not called out in §12 P1 | §12 P1 — added one clause |
+| R2r2-F2 | §5.13 Refresh button rationale doesn't name the inotify-drop-on-atomic-rewrite failure mode | §5.13 — added one sentence with the canonical pattern reference |
+
+**Round 3 (full re-read of spec + documentation tree audit, 2026-05-07).** Two parallel reviewers; user observed (correctly) that round 2 only spot-checked changes and that wording-drift from the round-1 amendments could have leaked across sections. Reviewer A (full fresh re-read of spec): 5 findings, 3 substantive. Reviewer B (audit of README, CLAUDE.md, CHANGELOG, ROADMAP.md, CONTRIBUTING, PLUGINS, EXPERIMENTAL, all 5 standards docs, the 5 superseded specs): 13 findings — including 3 high-severity the prior rounds missed entirely.
+
+| Tag | Finding | Disposition |
+|---|---|---|
+| R3-A1 | §9 said "Three regressions from §1" but §1 enumerates two | §9 — reworded ("Two regressions from §1, plus the Task List fix already shipped in `2f5d470`") |
+| R3-A2 | §5.4 table cell missing "non-revert / non-release-bump" qualifier | §5.4 — extended cell to match v1 §3.6.3 |
+| R3-A3 | Hotkey count drift (3 in §5.13 vs 4 in §14/§16) + Esc double-binding | §5.13 — added Ctrl+F row + Esc precedence rule; §5.14 — refers to §5.13 precedence |
+| R3-A4 | (informational) §16 R2r2-F1 disposition accurate | no fix |
+| R3-A5 | §3 Persistence row terser than §5.9 | §3 — appended "body view state, nav-split" |
+| R3-B1 | `ANTS-1100.md` doesn't exist in `docs/specs/`; spec claims to supersede a missing file | §1 supersedes row — clarified "no per-feature spec file; prior art is ROADMAP bullet + 0.7.59 CHANGELOG" |
+| R3-B2 | `ANTS-1125.md` doesn't exist; same shape | §1 supersedes row — clarified "no per-feature spec file; prior art is `roadmap-format.md` §3.9" |
+| R3-B3 | (HIGH) `ANTS-1117` defines TWO verbs (`roadmap-query` + `tab-list`); spec only carries forward `roadmap-query` | §1 supersedes row — clarified "ANTS-1117 partially (roadmap-query only; tab-list survives unchanged)" |
+| R3-B4 | `research` and `ux` Kinds are de-facto in code (ANTS-1106/1150) but absent from the standards doc | §4.5 — blessed both in v2 (15-Kind net inventory), reconciles code/standards drift |
+| R3-B5 | (HIGH) `Config::roadmapStatusFilters` missing from §5.9 migration list — Custom-preset users would silently lose their tuned mask | §5.9 — added status-filter row to migration list |
+| R3-B6 | `roadmap-format.md` HTML marker drift (`ants-roadmap-format-spec` vs `ants-roadmap-format`) | §12 P1 — added doc-tree edit to clarify the two markers |
+| R3-B7 | `documentation.md:113-116` references non-existent phase ID scheme | §12 P1 — added doc-tree edit to fix |
+| R3-B8 | `documentation.md:46-58` README section list stale | §12 P1 — optional sweep added |
+| R3-B9 | (HIGH) `CLAUDE.md:117` still says "stable `[ANTS-NNNN]` IDs" | §12 P1 — added doc-tree edit to update |
+| R3-B10 | `README.md` claims "7 color themes" twice; reality is 11 | §12 P1 — optional sweep added |
+| R3-B11 | `README.md:969` mentions `ROADMAP_FORMAT v1` | §12 P1 — added doc-tree edit (bumps to v2 in lockstep) |
+| R3-B12 | `ROADMAP.md:1,8` v1 marker | §12 P1 — added doc-tree edit (bumps to v2) |
+| R3-B13 | `PLUGINS.md` self-contradicts on `ants._version` | §12 P1 — added doc-tree edit to remove contradicting parenthetical |
+
+After round 3 fold-in, spec is considered **clean for this revision cycle**. The doc-tree alignment items in §12 P1 ship as part of the P1 commit so the broader documentation reflects v2 reality the moment the spec lands. Further amendments (e.g. P5 cross-project rollout feedback) trigger a new cold-eyes loop per §13.

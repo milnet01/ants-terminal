@@ -7,7 +7,7 @@
 // the atomic write, then calls into the helpers here.
 //
 // Contract: docs/standards/specs.md (Status § 5.6, INV bullet form
-// § 3.5, cold-eyes loop log § 5.7). Spec: docs/specs/ANTS-1963.md (§ 2.2).
+// § 3.5, cold-eyes loop log § 5.7). Spec: docs/specs/ANTS-1963-spec-log-mcp-tool-write.md (§ 2.2).
 
 #pragma once
 

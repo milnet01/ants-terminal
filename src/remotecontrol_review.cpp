@@ -679,7 +679,7 @@ QJsonDocument RemoteControl::corroborateWithRoot(const QJsonObject &req,
 
 namespace rcdetail {
 
-// Pinned reviewer system prompt — see docs/specs/ANTS-1352.md § 3.1.
+// Pinned reviewer system prompt — see docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md § 3.1.
 // Inlined here so the implementation is self-contained; the spec
 // holds the canonical text.
 const char *kReviewerSystemPrompt =
@@ -926,7 +926,7 @@ QJsonObject vcGateToJson(const VerifyEngine::GateResult &r) {
 }  // namespace rcdetail
 
 // ANTS-1359 — verify_changes session build-cache helpers. Per
-// docs/specs/ANTS-1359.md § 2.3 + § 2.7 the cache key is built from
+// docs/specs/ANTS-1359-verify-changes-session-build-cache.md § 2.3 + § 2.7 the cache key is built from
 // projectRoot + git HEAD + git status SHA + trust-outcome SHA +
 // ANTS_VERIFY_TRUST_AUTOTRUST + canonicalised options.
 namespace rcdetail {

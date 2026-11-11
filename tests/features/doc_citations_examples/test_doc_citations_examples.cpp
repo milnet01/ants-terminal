@@ -2,7 +2,7 @@
 // string literals (no filesystem, per ANTS-3653 § 5); the two check-layer rows
 // need a temp dir, because antecedent inheritance and the JSON envelope belong
 // to the read path. See spec.md for the invariant map and
-// docs/specs/ANTS-3659.md for the contract.
+// docs/specs/ANTS-3659-examples-region-doc-scanners-honour.md for the contract.
 
 #include "doccitations.h"
 

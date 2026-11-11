@@ -92,7 +92,7 @@ static_assert(std::size(kStatusLabels) == 5,
 // for the Roadmap dialog's keyboard surface; the cheatsheet sub-dialog
 // reads through `roadmapShortcutRows()` (defined below) and the
 // feature test source-greps these literal byte sequences (INV-1 / INV-2
-// / INV-5 / INV-8 — see docs/specs/ANTS-1236.md § 4).
+// / INV-5 / INV-8 — see docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md § 4).
 //
 // Adding a shortcut: bump the row count below + the test's exact-10
 // assertions in tests/features/roadmap_shortcuts_cheatsheet/ in the
@@ -174,7 +174,7 @@ constexpr KindEntry kKinds[] = {
 // Comfortable are -2 / +2 shifts on
 // the body / heading / code groups, with an 11 px floor on the
 // meta + label tier (INV-8; raised from 9 px by ANTS-2211). Spec:
-// docs/specs/ANTS-1238.md § 2.f.
+// docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md § 2.f.
 //
 // Field naming mirrors the spec: bodyPx covers `body`,
 // `.rm-summary`, `.rm-state`, `.rm-section-toggle`,
@@ -602,7 +602,7 @@ void RoadmapDialog::refreshRecentCommitsIfStale() {
 // expand-state survives section moves.
 // ANTS-1287: headingLevel + slugifyHeading + uniqueSlug moved to
 // RoadmapIndex. File-scope using-declarations preserve the unqualified
-// call surface for parseBullets, extractToc, renderCardsHtml. See docs/specs/ANTS-1287.md § 7.
+// call surface for parseBullets, extractToc, renderCardsHtml. See docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md § 7.
 using RoadmapIndex::headingLevel;
 using RoadmapIndex::uniqueSlug;
 
@@ -1300,7 +1300,7 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // ANTS-1234 — auto-expand cards whose match lives in body-only
         // (continuation prose) so the matched substring is visible
         // without a manual expand click. Render-time only: never
-        // mutates m_expandedItems (INV-5/INV-8 in docs/specs/ANTS-1234.md).
+        // mutates m_expandedItems (INV-5/INV-8 in docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md).
         // Guard: only fires when the predicate matches body but NOT
         // any of id / headline / layman — those are already visible
         // on the collapsed card so expansion would be redundant.
@@ -2058,7 +2058,7 @@ RoadmapDialog::RoadmapDialog(const QString &roadmapPath,
     // Comfortable=2). m_density is the live source of truth;
     // currentIndex is set from m_density. Combo signal flips
     // m_density, persists to Config (when present), triggers
-    // rebuild(). Spec: docs/specs/ANTS-1238.md § 3.b.
+    // rebuild(). Spec: docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md § 3.b.
     //
     // Config is optional (matches the existing `if (m_config)`
     // guard pattern in this ctor — tests construct RoadmapDialog

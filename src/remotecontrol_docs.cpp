@@ -105,7 +105,7 @@ QString RemoteControl::docSetDigest(const QString &rootCanonical,
 // doc or a dir, default the docs_dir override else `docs/`) routes through
 // PathValidation; an optional `kinds` filter narrows findings + counts; the
 // ETag-304 short-circuit is applied centrally (isEtagSupportedTool). Findings
-// come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601.md.
+// come from DocIntegrity::check (docintegrity.cpp). See docs/specs/ANTS-3601-deterministic-doc-integrity-check.md.
 // ANTS-5554 — a checker that scanned nothing because the path names nothing
 // must not answer ok:true: a push gate would read a typo as a clean run.
 static QJsonObject docPathNotFound(const QString &verb, const QString &rawPath) {
@@ -343,7 +343,7 @@ static QSet<QString> docSymbolsRefusalCodes(const QString &rootCanonical) {
 // about, and report — never judge. caller_cwd Required. `path` routes through
 // PathValidation and then the SAME enumeration doc_integrity uses. ETag-304 is
 // applied centrally (isEtagSupportedTool). Engine: DocSymbols::scan. See
-// docs/specs/ANTS-3661.md.
+// docs/specs/ANTS-3661-doc-symbols-resolve-identifiers-doc.md.
 QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
@@ -940,7 +940,7 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
 // pre-pass. caller_cwd Required. `path` routes through PathValidation and then
 // the SAME enumeration doc_integrity uses, defaulted to `specs_dir` rather than
 // `docs_dir`. ETag-304 is applied centrally (isEtagSupportedTool). Engine:
-// SpecLint::check. See docs/specs/ANTS-3662.md.
+// SpecLint::check. See docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md.
 QJsonDocument RemoteControl::cmdSpecLint(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty()) {
@@ -1541,7 +1541,7 @@ QJsonObject RemoteControl::docDedupBuildResponse(const DocDedup::Result &result,
 // unlike doc_integrity, which accepts a directory and walks it, because this
 // verb's payload is per-citation text and the whole docs/ corpus would bury it;
 // the sweep shape is ANTS-3643. Engine: DocCitations::check. See
-// docs/specs/ANTS-3636.md.
+// docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md.
 QJsonDocument RemoteControl::cmdDocCitations(const QJsonObject &req) {
     // ANTS-4565 — `~global` / `~claude-config` re-roots to ~/.claude, exactly
     // as doc_integrity does above (ANTS-3719) and as workspace_search,
@@ -1970,7 +1970,7 @@ QJsonDocument psWrite(const QString &rootCanonical, const QString &settingsPath,
 // (create-or-update; raw-JSON merge preserving unknown keys). caller_cwd
 // Required. The file is written world-readable (0644) by design — it holds
 // only non-secret path declarations (contrast the 0600 global config). See
-// docs/specs/ANTS-2161.md.
+// docs/specs/ANTS-2161-auto-detect-non-standard-layout.md.
 QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     const QString rootCanonical = resolveRootCanonical(m_roots, req);
     if (rootCanonical.isEmpty())
@@ -2182,7 +2182,7 @@ static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel
 // costs one call rather than one per checker, each re-walking the same tree.
 // caller_cwd Required. `path` routes through PathValidation and then the SAME
 // enumeration doc_integrity uses. Engine: DocLint::run. See
-// docs/specs/ANTS-3663.md.
+// docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md.
 //
 // DELIBERATELY ABSENT FROM isEtagSupportedTool, and this is not an oversight to
 // be tidied up by symmetry with the checker verbs it bundles (INV-13). The

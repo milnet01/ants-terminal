@@ -644,7 +644,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
         });
     // ANTS-1397 — test_audit verb family. All five register the
     // Required caller_cwd contract (the spec's original "Optional"
-    // design never shipped; ANTS-1397.md INV-5 was corrected to match
+    // design never shipped; ANTS-1397-test-audit-mcp-trio-skill.md INV-5 was corrected to match
     // this code, 2026-07-25). fold_in delegates to RoadmapFoldIn::*
     // engine entries directly (NOT MCP re-entry — INV-3).
     sink.registerToolProvider("test_audit_partition",
@@ -875,7 +875,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // ants_core_lib's RemoteControl cannot see LuaEngine; the provider lambda
     // (chrome_lib, which links lua_lib) reads the gate + tuning from Config and
     // delegates. Registered only in ANTS_LUA_PLUGINS builds (verb absent
-    // otherwise — clean drop-out, no dead refusal path). See docs/specs/ANTS-2093.md.
+    // otherwise — clean drop-out, no dead refusal path). See docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md.
     sink.registerToolProvider("project_query",
         ClaudeIntegration::CallerCwdContract::Required,
         ClaudeIntegration::RcHandler{[=](const QJsonObject &args) -> QString {
@@ -934,7 +934,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
 
     // ANTS-1735 — model_switch_stats. Read-only aggregation of the model-switch
     // effectiveness ledger, scoped to caller_cwd's project. MCP-only (mirrors
-    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735.md §2.5.
+    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md §2.5.
     sink.registerToolProvider("model_switch_stats",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdModelSwitchStats));
@@ -959,7 +959,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // task_priors bundles matching specs + ROADMAP cards + recent
     // commits + ADRs for a free-text task description; project_conventions
     // returns the task_type-scoped convention subset. Both MCP-only.
-    // See docs/specs/ANTS-1306.md and docs/specs/ANTS-1307.md.
+    // See docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md and docs/specs/ANTS-1307-project-conventions-mcp-compact.md.
     sink.registerToolProvider("task_priors",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdTaskPriors));
@@ -969,8 +969,8 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
 
     // ANTS-1299 + ANTS-1300 — build/test cache MCP tools. Both
     // are op-dispatched (op=read | op=record) and write to
-    // <project>/.audit_cache/. MCP-only. See docs/specs/ANTS-1299.md
-    // and docs/specs/ANTS-1300.md.
+    // <project>/.audit_cache/. MCP-only. See docs/specs/ANTS-1299-build-status-mcp-cached-build.md
+    // and docs/specs/ANTS-1300-test-results-mcp-last-test.md.
     sink.registerToolProvider("build_status",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdBuildStatus));
@@ -981,7 +981,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // ANTS-1302 — focused_test. Runs only the ctest subset touching the
     // changed files (via tests/coverage-map.json), returns the
     // test_results envelope. Expensive (shells out to ctest), MCP-only.
-    // See docs/specs/ANTS-1302.md.
+    // See docs/specs/ANTS-1302-focused-test-mcp-run-only.md.
     // ANTS-5096 — on the Bulk lane for the same reason as mutation_probe:
     // a ctest run holds its worker up to timeout_sec (default 300 s).
     sink.registerToolProvider("focused_test",
@@ -1000,7 +1000,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // scanner (no LSP). Both take {symbol, caller_cwd, lang?,
     // max_results?} and delegate to SymbolQuery via RemoteControl.
     // MCP-only conceptually; also reachable via the IPC dispatch verbs
-    // find-definition / find-caller. See docs/specs/ANTS-1303.md.
+    // find-definition / find-caller. See docs/specs/ANTS-1303-find-definition-find-caller-mcp.md.
     sink.registerToolProvider("find_definition",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdFindDefinition));
@@ -1013,7 +1013,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // similarity to a free-text {shape, caller_cwd, lang?, max_results?}
     // query. Delegates to SimilarCode via RemoteControl. MCP-only
     // conceptually; also reachable via the IPC dispatch verb
-    // similar-code. See docs/specs/ANTS-1305.md.
+    // similar-code. See docs/specs/ANTS-1305-similar-code-mcp-pattern-matcher.md.
     sink.registerToolProvider("similar_code",
         ClaudeIntegration::CallerCwdContract::Required,
         rcDelegate(rc, &RemoteControl::cmdSimilarCode));
@@ -1155,7 +1155,7 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
     // The verb is intentionally classified Optional in
     // ClaudeIntegration::callerCwdContractFor so empty caller_cwd is
     // accepted (EmptyFallback is the legitimate "what would happen
-    // without it?" question). See docs/specs/ANTS-1400.md.
+    // without it?" question). See docs/specs/ANTS-1400-caller-cwd-info-mcp-diagnostic.md.
     sink.registerToolProvider("caller_cwd_info",
         ClaudeIntegration::CallerCwdContract::Optional,
         ClaudeIntegration::RcHandler{[=](const QJsonObject &args) -> QString {

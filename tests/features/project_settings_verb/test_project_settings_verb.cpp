@@ -2,7 +2,7 @@
 // project_settings verb's pure helpers (ProjectSettings::detect /
 // ProjectSettings::applyWrite). Behavioural invariants drive the pure
 // helpers against QTemporaryDir fixtures; verb-layer + wiring invariants
-// source-scrape the handler/registration. See spec.md + docs/specs/ANTS-2161.md.
+// source-scrape the handler/registration. See spec.md + docs/specs/ANTS-2161-auto-detect-non-standard-layout.md.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"

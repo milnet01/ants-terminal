@@ -2,7 +2,7 @@
 // the pure RemoteControl helpers (docIntegrityEnumerate / …BuildResponse); the
 // wiring INV (INV-10) source-scrapes the registration sites. The handler itself
 // needs a live MainWindow, hence the pure-helper + source-scrape split (the
-// rc_get_text_byte_cap pattern). See docs/specs/ANTS-3601.md § 2.6.
+// rc_get_text_byte_cap pattern). See docs/specs/ANTS-3601-deterministic-doc-integrity-check.md § 2.6.
 
 #include "remotecontrol.h"
 #include "docintegrity.h"

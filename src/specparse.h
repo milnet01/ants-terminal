@@ -63,7 +63,7 @@ struct FieldExtent {
 //
 // Extent terminators (spec § 2.1): a blank line, a further `^\*\*Field:\*\*`
 // marker, an ATX heading, or the block end. A LIST BULLET is deliberately not
-// one — docs/specs/ANTS-1436.md's continuation begins `+ ` and is prose, so
+// one — docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md's continuation begins `+ ` and is prose, so
 // treating bullets as terminators truncates it. Only a marker at the START of
 // a line counts; an inline bold colon-run is value text.
 FieldExtent headerField(const QStringList &lines, const QString &name);

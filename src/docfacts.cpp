@@ -1,4 +1,4 @@
-// ANTS-5506 — doc_facts. See docfacts.h and docs/specs/ANTS-3663.md § 2.6.
+// ANTS-5506 — doc_facts. See docfacts.h and docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md § 2.6.
 
 #include "docfacts.h"
 #include "markdownscan.h"

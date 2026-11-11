@@ -1,8 +1,8 @@
 # DebtSweepEngine — Pure-Helper Conformance
 
 Locks the public API of `src/debtsweepengine.{h,cpp}` introduced in
-ANTS-1113 v1 and expanded in ANTS-1358. See `docs/specs/ANTS-1113.md`
-for the v1 design and `docs/specs/ANTS-1358.md` for the
+ANTS-1113 v1 and expanded in ANTS-1358. See `docs/specs/ANTS-1113-fold-debt-sweep-into-project.md`
+for the v1 design and `docs/specs/ANTS-1358-debt-sweep-detector-expansion.md` for the
 detector-expansion addendum.
 
 ## Invariants under test

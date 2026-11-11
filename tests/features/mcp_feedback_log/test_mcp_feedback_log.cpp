@@ -1,6 +1,6 @@
 // Feature-conformance test for the feedback_log MCP tool (ANTS-1962).
 // Drives FeedbackFile renderers directly + cmdFeedbackLog (absolute
-// path, m_main-independent). See spec.md + docs/specs/ANTS-1962.md.
+// path, m_main-independent). See spec.md + docs/specs/ANTS-1962-feedback-log-mcp-tool-append.md.
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"

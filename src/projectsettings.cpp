@@ -1,5 +1,5 @@
 // ANTS-2160 — per-project settings file loader. See projectsettings.h +
-// docs/specs/ANTS-2160.md.
+// docs/specs/ANTS-2160-per-project-ants-settings-file.md.
 
 #include "projectsettings.h"
 

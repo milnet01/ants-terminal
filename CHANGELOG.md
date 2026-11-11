@@ -121,6 +121,10 @@ for security-relevant changes.
 
 ### Changed
 
+- **Every spec under docs/specs/ now carries a topic in its filename (ANTS-1254-last-audit-summary-mcp-tool.md, not ANTS-1254.md), and every pointer in the tree follows it** (ANTS-3755)
+  `tools/rename-specs.py` did the rename. It previews by default and acts
+  only with `--apply`. `spec_query` still finds a spec by its id alone.
+
 - **`roadmap_log` applies a previewed `plan_id` when the call repeats the same `op`; only a different `op` is refused** (ANTS-6431)
 
 - **Re-importing ROADMAP.md into a project the roadmap database already serves keeps items the file no longer lists; pass `accept_deletions:true` to delete them** (ANTS-6732)
@@ -1819,7 +1823,7 @@ several security hardening fixes.
   `counts_out_of_diff` rather than dropped. A spec stamped
   `<!-- ants-spec-format: N -->`, or new in the range, is checked in full.
   Refuses `not_a_git_repo`, `bad_args` or `git_failed` instead of falling
-  back to a full-file run. Contract: docs/specs/ANTS-3662.md § 2.4.
+  back to a full-file run. Contract: docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md § 2.4.
 
 - **`changelog_query mode:"lint"` checks a changelog's layout without writing, and a push gate can run it from a shell** (ANTS-5543)
   It reports prose or a bullet above a section's first category heading,
@@ -9004,7 +9008,7 @@ ANTS-1891 honest headline + ANTS-1897 MCP cheat-sheet).
   or override cool-down. New `~/.cache/ants-terminal/model-switch-nearmiss.jsonl`
   sibling ledger, 256 KiB cap, drop-oldest, 0600; emit-on-signature-
   change with a 5 s per-project floor. 7-token `blocked_by` taxonomy
-  (canonical list at [`docs/specs/ANTS-1894.md`](docs/specs/ANTS-1894.md)
+  (canonical list at [`docs/specs/ANTS-1894-near-miss-telemetry-log-gate.md`](docs/specs/ANTS-1894-near-miss-telemetry-log-gate.md)
   INV-9).
 
 - **`model_switch_stats` envelope gains a slim `near_misses` block.** (ANTS-1894)
@@ -9026,7 +9030,7 @@ ANTS-1891 honest headline + ANTS-1897 MCP cheat-sheet).
 
   Also sweeps every Ants MCP tool descriptor: 15 outlier `selection_hint` strings rewritten to follow the canonical "Use when X. <cost cue>." form (regression-guard test at `tests/features/mcp_orientation_install/`).
 
-  Spec: `docs/specs/ANTS-1897.md` (cold-eyes loops 1–5 folded). Implementation: `src/mcporientation.{h,cpp}` (new), `src/mainwindow.cpp` (qputenv + install call after startMcpServer at L3867), `src/config.{h,cpp}` (`claude.mcp_orientation_enabled` + `claude.mcp_orientation_nudge_shown` keys), `src/settingsdialog.{h,cpp}` (General-tab checkbox). Tests: 13 new `TEST()` cases in `tests/features/mcp_orientation_install/` (`test_core` bundle). All 1735/1735 ctest pass.
+  Spec: `docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md` (cold-eyes loops 1–5 folded). Implementation: `src/mcporientation.{h,cpp}` (new), `src/mainwindow.cpp` (qputenv + install call after startMcpServer at L3867), `src/config.{h,cpp}` (`claude.mcp_orientation_enabled` + `claude.mcp_orientation_nudge_shown` keys), `src/settingsdialog.{h,cpp}` (General-tab checkbox). Tests: 13 new `TEST()` cases in `tests/features/mcp_orientation_install/` (`test_core` bundle). All 1735/1735 ctest pass.
 
 - **`model_switch_stats` headline no longer lies on small samples.**
   (ANTS-1891) Before this change, a ledger of 1–2 inconclusive
@@ -9051,7 +9055,7 @@ ANTS-1891 honest headline + ANTS-1897 MCP cheat-sheet).
   resets for post-1891 data, on purpose. 13 new feature tests on
   the `test_core` bundle; ledger schema unchanged at the byte-cap
   level (one extra ~50 B field per record). Spec:
-  [`docs/specs/ANTS-1891.md`](docs/specs/ANTS-1891.md).
+  [`docs/specs/ANTS-1891-auto-switcher-trust-signal-v2.md`](docs/specs/ANTS-1891-auto-switcher-trust-signal-v2.md).
 
 - **Auto model-switcher now recognises "commit and push" as a cheap
   turn — picks Haiku immediately even after a heavy refactor session.**
@@ -9434,7 +9438,7 @@ ANTS-1891 honest headline + ANTS-1897 MCP cheat-sheet).
   `applyMechanicalFix` is now a per-detector fix table. The
   external-tool-driven supersets (`include-what-you-use`,
   clazy/clang-tidy gated on a compile DB) are deferred to ANTS-1703.
-  Spec `docs/specs/ANTS-1358.md`; tests
+  Spec `docs/specs/ANTS-1358-debt-sweep-detector-expansion.md`; tests
   `tests/features/debt_sweep_engine/` (INV-14..INV-19).
 
 - **Fingerprint-keyed learned-FP ledger for static audit (ANTS-1708).**
@@ -9741,7 +9745,7 @@ tooling, ahead of cutting the inaugural `v0.7.92-rc1`.
     shared across projects; the Ants-specific RC cadence lives in the
     project-local script instead.
   - Conformance: `tests/features/release_rc_pipeline/` (6 source-scrape
-    invariants). Spec `docs/specs/ANTS-1318.md`.
+    invariants). Spec `docs/specs/ANTS-1318-weekly-wednesday-release-cadence-patron.md`.
 
 ### 🧪 Test-infra hardening — pull 41 (ANTS-1434, ANTS-1433, 2026-05-20)
 
@@ -9787,7 +9791,7 @@ before the next person re-derives them.
   "adding a new cache" checklist; linked from CLAUDE.md. Stale-entry
   GC + an opt-in `migrate-cwd` verb are deferred until a symptom is
   reported.
-- **ANTS-1447 (enhancement)** — `docs/specs/ANTS-1397.md` INV-15 now
+- **ANTS-1447 (enhancement)** — `docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md` INV-15 now
   documents the `test_audit` deep-tree mtime gap as an accepted v1
   limitation: the shallow recheck stats only the top-level
   `test_globs` roots, so a file added in a deep subdir can leave
@@ -9823,7 +9827,7 @@ the same cross-tenant data-leak shape Phase 3a closed for the
   `required`). **Contract break:** callers of these tools that omit
   every routing key now get one refusal; the fix is mechanical (add
   `caller_cwd`, or a `tab` index for the two tab-routing tools). Spec
-  `docs/specs/ANTS-1415.md` (cold-eyes 1 loop); tests
+  `docs/specs/ANTS-1415-callercwdcontract-tabspecific.md` (cold-eyes 1 loop); tests
   `tests/features/mcp_tabspecific_contract/` (6 source-scrape
   invariants). Full feature suite 1248/1248 green.
 - **ANTS-1420 deferred to 0.7.93.** The pull-40 plan bundled the
@@ -9861,7 +9865,7 @@ to a free-text `shape` query.
   unresolved). Reuses `FileOutline`'s extraction fidelity — notably
   only top-level Python `def`/`class` (FileOutline's column-0 anchor),
   while C++ member definitions and Qt markers are captured. Spec
-  `docs/specs/ANTS-1305.md` (cold-eyes-reviewed, 1 loop to clean);
+  `docs/specs/ANTS-1305-similar-code-mcp-pattern-matcher.md` (cold-eyes-reviewed, 1 loop to clean);
   tests `tests/features/mcp_similar_code/` (tokeniser/jaccard +
   behavioural ranking + hard-cap/bad_args + source-grep wiring). Full
   feature suite 1242/1242 green.
@@ -9898,7 +9902,7 @@ pattern resolution; `cmdFocusedTest` runs ctest and reuses
   `bad_path`, `ctest_missing`, `ctest_failed`, `unrecognised_output`.
   Ships a starter `tests/coverage-map.json` (partial — only
   verified-complete subsystem mappings; cross-cutting files fall back
-  to full). Spec `docs/specs/ANTS-1302.md` (cold-eyes 2 loops); tests
+  to full). Spec `docs/specs/ANTS-1302-focused-test-mcp-run-only.md` (cold-eyes 2 loops); tests
   `tests/features/mcp_focused_test/` (9 behavioural lib tests +
   source-grep wiring + a shipped-map drift guard). Full feature suite
   1240/1240 green.
@@ -9927,7 +9931,7 @@ does.
   pre-cap total. Caps default 5/5/5/3 (clamp 1–20). Refuses `bad_args`
   (empty description / all-stopword) and `no_project`. MCP-only;
   `kindForName` bucket `context`; token-cost `(1200, 6000)`. Spec
-  `docs/specs/ANTS-1306.md` (cold-eyes 4 loops); test
+  `docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md` (cold-eyes 4 loops); test
   `tests/features/mcp_task_priors/`.
 - **ANTS-1307 (implement)** — `project_conventions` MCP tool. Input
   `{task_type, caller_cwd}` with `task_type ∈ feature|bugfix|refactor|
@@ -9940,7 +9944,7 @@ does.
   guard). Returns `{ok, task_type, conventions[], conventions_count,
   sources[], sources_count}`. Refuses `bad_args` (task_type not in the
   enum) and `no_project`. MCP-only; `kindForName` bucket `convention`;
-  token-cost `(400, 1500)`. Spec `docs/specs/ANTS-1307.md` (cold-eyes
+  token-cost `(400, 1500)`. Spec `docs/specs/ANTS-1307-project-conventions-mcp-compact.md` (cold-eyes
   3 loops); test `tests/features/mcp_project_conventions/` (includes a
   behavioural drift guard that fails if any cited source doc is
   renamed/removed). Full feature suite 1229/1229 green.
@@ -9979,7 +9983,7 @@ Qt6::Core-only `ScrollbackErrors` parser (`src/scrollbackerrors.{h,cpp}`).
   `errors_count` carrying the pre-cap total. `TabSpecific`-contract
   (mirrors `get_text`/`get_scrollback`); MCP-only (no IPC verb);
   buckets as `[terminal]`; token-cost `(800, 4000)`; reuses the
-  `no_window` refusal code. Spec `docs/specs/ANTS-1301.md`
+  `no_window` refusal code. Spec `docs/specs/ANTS-1301-recent-errors-mcp-extract-compile.md`
   (cold-eyes-reviewed, 2 loops); tests
   `tests/features/mcp_recent_errors/` (live parser across all five
   categories + source-grep wiring). Full feature suite 1227/1227 green.
@@ -10016,7 +10020,7 @@ they cost today. Backed by a new Qt6::Core-only `SymbolQuery` lib
   are Required-contract gated, bucket as `[symbol]` in `kindForName`,
   and carry token-cost ledger entries `(600, 2500)` /  `(800, 4000)`.
   File paths in every envelope are project-relative. Spec
-  `docs/specs/ANTS-1303.md` (cold-eyes-reviewed, 2 loops to clean);
+  `docs/specs/ANTS-1303-find-definition-find-caller-mcp.md` (cold-eyes-reviewed, 2 loops to clean);
   tests `tests/features/mcp_symbol_query/` (live `SymbolQuery`
   behaviour across all four languages + source-grep wiring contract).
   Full feature suite 1225/1225 green.
@@ -10088,8 +10092,8 @@ files: `src/buildcache.{h,cpp}` (~280 LOC), `src/testrescache.{h,cpp}`
 (~330 LOC), plus the two `cmd*` handlers in `src/remotecontrol.cpp`
 (~210 LOC). Refusal codes `not_cached` + `detail_not_found` added
 to `docs/standards/mcp-error-codes.md` § 2 (Resource state) in
-the same commit. Specs `docs/specs/ANTS-1299.md` +
-`docs/specs/ANTS-1300.md` (cold-eyes-reviewed 3 loops: 27 → 2 →
+the same commit. Specs `docs/specs/ANTS-1299-build-status-mcp-cached-build.md` +
+`docs/specs/ANTS-1300-test-results-mcp-last-test.md` (cold-eyes-reviewed 3 loops: 27 → 2 →
 0 verified findings). Tests `tests/features/mcp_build_status/`
 (11 source-grep INVs) + `tests/features/mcp_test_results/`
 (12 source-grep INVs). Full features suite 1221/1221 green.
@@ -10306,7 +10310,7 @@ prose subsection, not N structured bullets" — same fix shape.
   short-circuit lives in `RemoteControl::cmdColdEyesFoldIn` +
   `cmdIndieReviewFoldIn`; no engine-API churn. RcGate caller-cwd
   check still runs first (gate cannot be bypassed). Spec
-  `docs/specs/ANTS-1644.md`; 8 new source-grep tests in
+  `docs/specs/ANTS-1644-cold-eyes-fold-indie-review.md`; 8 new source-grep tests in
   `tests/features/cold_eyes_fold_in_narrative/` +
   `tests/features/indie_review_fold_in_narrative/`. Adjacent
   `mcp_cold_eyes.SchemaRequiredArraysMatchInv10` retargeted to assert
@@ -10340,7 +10344,7 @@ mismatch class on a sibling verb.
   saves an allocation per call and prevents wasted IDs when the
   caller's prose isn't shaped per-finding. Closes the friction
   Music Production /test-audit second sweep (2026-05-18) hit when
-  it bypassed the verb entirely. Spec `docs/specs/ANTS-1635.md`;
+  it bypassed the verb entirely. Spec `docs/specs/ANTS-1635-test-audit-fold-narrative-mode.md`;
   4 new engine tests in `tests/features/test_audit_bundle_2026_05_19/`
   (`Ants1635*` — verbatim insert, body required, back-compat,
   insertBlock writes to ROADMAP) + 1 source-grep test in
@@ -10371,7 +10375,7 @@ path, and the source-grep test surface.
   Composes with [[ANTS-1457]] (false-positive ledger sits in the
   same render slot — same "do not re-raise" semantic) and
   [[ANTS-1584]] (verify-report-on-disk discipline — pairs with
-  this for loop-2 hygiene). Spec `docs/specs/ANTS-1634.md` § 2.3
+  this for loop-2 hygiene). Spec `docs/specs/ANTS-1634-cold-eyes-partition-ux-polish.md` § 2.3
   flips from "deferred" to "shipped". 4 new engine tests in
   `tests/features/cold_eyes_engine/` (`Ants1634PriorLoopFixes*` —
   empty omits, render shape, position before Instructions, partial
@@ -10402,7 +10406,7 @@ helper so it works on non-Ants project doc lanes.
   the dispatcher. The static table survives as a back-compat
   accessor for the test suite (`mcp_required_contract_baseline` et
   al. query it without instantiating `ClaudeIntegration`). Spec
-  `docs/specs/ANTS-1419.md`; new
+  `docs/specs/ANTS-1419-hoist-callercwdcontract-declaration-into.md`; new
   `tests/features/mcp_call_site_contract/` with 5 INV (header
   signature, every call site classifies, drift assertion present,
   map value type carries contract, dispatcher prefers stored
@@ -10425,7 +10429,7 @@ helper so it works on non-Ants project doc lanes.
   accuracy-dimension findings (cited file moved / deleted /
   never existed). Closes the 8-16 extra grep+stat round-trips
   RetroArch's /cold-eyes 2026-05-18 ran when its lane agents
-  had to verify citations manually. Spec `docs/specs/ANTS-1633.md`;
+  had to verify citations manually. Spec `docs/specs/ANTS-1633-cold-eyes-brief-cites-code.md`;
   4 new `Ants1633*` tests in `tests/features/cold_eyes_engine/`
   (language-agnostic resolve, stale capture, regex rejects non-
   code citations, BriefManifest carries `staleCitations`).
@@ -10454,7 +10458,7 @@ breakage on the verbs that already shipped.
   surface (mirrors `last_audit_summary` — no IPC dispatch branch).
   Closes the 3-4 read cascade every session opens with (MAME
   Curator x2 cross-session reports 2026-05-18). Spec
-  `docs/specs/ANTS-1569.md`; new feature test
+  `docs/specs/ANTS-1569-current-state-mcp-aggregator-one.md`; new feature test
   `tests/features/mcp_current_state/` (10 wiring INVs).
 
 - **ANTS-1304 (refactor)** — `workspace_search`'s `context`
@@ -10472,7 +10476,7 @@ breakage on the verbs that already shipped.
   the primary only — pass `dedup:false` for per-hit context,
   diagnose via `dedup_collapsed > 0`. Schema description + the
   `context` property descriptor both updated to surface the new
-  shape + the 10-line cap. Spec `docs/specs/ANTS-1304.md`; four
+  shape + the 10-line cap. Spec `docs/specs/ANTS-1304-workspace-search-returns-surrounding.md`; four
   new wiring INVs added to `tests/features/mcp_workspace_search/`.
 
 ### 🔌 MCP test-audit + cold-eyes ergonomics — pull 26 (ANTS-1623 + ANTS-1626 + ANTS-1627, 2026-05-19)
@@ -10544,7 +10548,7 @@ caller-side reads stay valid.
   `.cpp`-only globs. Reported by RetroArch Bundle 70 (2026-05-18,
   `/test-audit` on libretro-common's 5-file libcheck suite —
   2274 LoC silently invisible because the probe table didn't
-  recognise `Makefile.test`). Spec `docs/specs/ANTS-1624.md`;
+  recognise `Makefile.test`). Spec `docs/specs/ANTS-1624-test-audit-partition-libcheck-c.md`;
   6 new tests in `tests/features/test_audit_libcheck_detection/`.
 
 - **ANTS-1625 (enhancement)** — `last_audit_summary`'s foreign-
@@ -10567,7 +10571,7 @@ caller-side reads stay valid.
   the real project state (56 errors + 105 warnings). [[ANTS-1576]]
   already shipped scope tagging + branch/commit metadata +
   null-or-omit in pull 14; this pull lands the picker re-pick that
-  1576's spec explicitly deferred. Spec `docs/specs/ANTS-1625.md`;
+  1576's spec explicitly deferred. Spec `docs/specs/ANTS-1625-last-audit-summary-foreign-format.md`;
   8 new tests in `tests/features/mcp_last_audit_summary/`
   (6 behavioural + 2 wiring). Full suite 1165/1165.
 
@@ -10675,7 +10679,7 @@ RetroArch cross-session reports. All three land inside
   debug field returns `"override"` when `.cold-eyes/partition.json`
   parsed cleanly, `"default"` otherwise (covers absent +
   malformed-fall-back together — `override_warning` disambiguates
-  the latter). Spec `docs/specs/ANTS-1619.md`; tests
+  the latter). Spec `docs/specs/ANTS-1619-cold-eyes-partition-contracts-doc.md`; tests
   `tests/features/cold_eyes_engine/` (7 new cases).
 
 - **ANTS-1631 (enhancement)** — `cold_eyes_partition` probe set
@@ -10699,7 +10703,7 @@ RetroArch cross-session reports. All three land inside
   with distinct lane names (`spec/audio`, `spec/graphics`).
   Date-prefix `YYYY-MM-DD-*.md` files surface automatically — the
   walker accepts any `*.md` shape; only the ANTS-NNNN active-set
-  filter is restrictive. Spec `docs/specs/ANTS-1631.md`; tests
+  filter is restrictive. Spec `docs/specs/ANTS-1631-cold-eyes-partition-probe-set.md`; tests
   `tests/features/cold_eyes_engine/` (7 new cases).
 
 - **ANTS-1634 (enhancement)** — two cold-eyes partition UX polish
@@ -10714,7 +10718,7 @@ RetroArch cross-session reports. All three land inside
   overrides, allowlist standards). Threshold guards against
   promoting an empty suppressions stub. One-level walk — subdir
   files don't count toward the threshold or the doc list. Spec
-  `docs/specs/ANTS-1634.md`; tests in
+  `docs/specs/ANTS-1634-cold-eyes-partition-ux-polish.md`; tests in
   `tests/features/cold_eyes_engine/` (4 new cases) +
   `tests/features/mcp_cold_eyes/` (1 source-grep guard for the
   hint pointers).
@@ -10973,7 +10977,7 @@ as a dupe of already-shipped ANTS-1512.
   — never AuditDialog GUI artefacts, `trend.json`, or
   `baseline.json`. Read-only root falls back to the legacy
   `/tmp` path via `allocSarifPath`; callers branch on `cachePath`.
-  Spec `docs/specs/ANTS-1555.md` (10 INVs); tests
+  Spec `docs/specs/ANTS-1555-per-project-audit-cache-infrastructure.md` (10 INVs); tests
   `tests/features/audit_run_cache/` (12 INVs covering header
   surface, runner wiring, envelope surface, descriptor mention,
   atomic-write contract, plus in-process exercise against a
@@ -11020,7 +11024,7 @@ an in-session observation surfaced during Bundle G's pull 15.
   spliced into the prompt. `test_audit_synthesis_prompt` was
   already fenced via ANTS-1397 INV-8; the cold_eyes verbs are
   paths-only (no body splice) and need no fence. Spec
-  `docs/specs/ANTS-1445.md`; tests
+  `docs/specs/ANTS-1445-prompt-injection-fence-sweep-across.md`; tests
   `tests/features/indie_review_engine/` (3 new INVs: Inv9 fences
   shape, Inv10 hostile `</lane_report>` payload, Inv11 hostile
   `</threat_model>` payload).
@@ -11044,7 +11048,7 @@ an in-session observation surfaced during Bundle G's pull 15.
   system-include prefix (`/usr/include`, `/usr/lib`, `/opt`, …).
   The gate only fires when clazy / clang-tidy are in the
   resolved tool list. 32 MiB / 50K-entry size caps in place.
-  Spec `docs/specs/ANTS-1446.md`; tests
+  Spec `docs/specs/ANTS-1446-audit-run-compile-commands-json.md`; tests
   `tests/features/audit_run_compile_commands_validation/`
   (14 INVs covering both forms of the args field, system-prefix
   allowlist, hostile path rejection, control-char rejection,
@@ -11094,7 +11098,7 @@ not a one-shot fix, so it migrates to its own cycle.
   `keptCount >= f.maxLines` — only kept lines materialise. Tail
   handling: input without a trailing `\n` yields the final slice
   as a candidate; empty input short-circuits to `{"", 0}`. Spec
-  `docs/specs/ANTS-1339.md`; tests
+  `docs/specs/ANTS-1339-auditengine-applyfilter-streaming-line.md`; tests
   `tests/features/audit_engine_stream_line_split/` (5 INVs: source-
   grep guard, maxLines + drop/keep predicates, 1 MiB → 5-line bail
   under 250 ms, tail-without-newline, empty-input).
@@ -11115,7 +11119,7 @@ not a one-shot fix, so it migrates to its own cycle.
   a QDialog) captures the pre-collapse size before mutating the
   list, sets `findingCount = preCollapse + omittedCount`, and
   stamps the flag. Dispatcher gates the post-cap overwrite on
-  `!r.findingCountAuthored`. Spec `docs/specs/ANTS-1343.md`; tests
+  `!r.findingCountAuthored`. Spec `docs/specs/ANTS-1343-consolidatemypystubhints-finding-count.md`; tests
   `tests/features/audit_mypy_stub_count_preserved/` (5 INVs: header
   flag declaration, non-mypy no-op, single-package no-fold,
   multi-package collapse preserves preCollapse=23, dispatcher gate
@@ -11140,7 +11144,7 @@ not a one-shot fix, so it migrates to its own cycle.
   `RemoteControl` layer (inline `reports`: compare
   `QString::size()`; `reports_dir`: walk top-level `*.md` and check
   `QFileInfo::size()`); engine signatures are untouched. Spec
-  `docs/specs/ANTS-1344.md`; tests
+  `docs/specs/ANTS-1344-indie-review-corroborate-truncation-flag.md`; tests
   `tests/features/indie_review_truncation_flag/` (4 INVs: constexpr
   exposure, corroborate envelope grep, cross_doc_diff parity, gated
   emission).
@@ -11152,7 +11156,7 @@ not a one-shot fix, so it migrates to its own cycle.
 - **ANTS-1345 (fix)** — cold-eyes `derivePartition` deterministic
   tiebreak. The v1 spec-lane comparator sorted purely by
   `lastModified` descending, leaving equal-mtime entries in
-  filesystem-enumeration order — `touch docs/specs/ANTS-1234.md`
+  filesystem-enumeration order — `touch docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md`
   could swap which specs fit inside the `kMaxSpecLanes` (12) cap.
   New comparator buckets `lastModified` into 1 s windows and
   tiebreaks within a bucket by path-lex ascending. Bucketing
@@ -11161,7 +11165,7 @@ not a one-shot fix, so it migrates to its own cycle.
   when chains cross the boundary and triggers undefined-behaviour
   sort. Fix matters at the truncation cutoff (which specs survive
   the cap), not at the final lane order (still path-lex). Spec
-  `docs/specs/ANTS-1345.md`; tests
+  `docs/specs/ANTS-1345-cold-eyes-derivepartition-mtime-tiebreak.md`; tests
   `tests/features/cold_eyes_partition_deterministic/` (3 INVs:
   same-mtime cluster cutoff picks lex-smallest, newer-bucket
   always survives, idempotency across calls). Test fixtures
@@ -11220,7 +11224,7 @@ from the audit branch's HEAD.
   instead of emitting empty-string values; load-bearing fields
   (`sarif_path`, `source_format`, `counts`, `top_findings`) stay
   always-emitted. New `AuditSummary::branchSource` field
-  (`src/auditengine.h`). Spec `docs/specs/ANTS-1576.md`; tests
+  (`src/auditengine.h`). Spec `docs/specs/ANTS-1576-last-audit-summary-hardening-scope.md`; tests
   `tests/features/mcp_last_audit_summary/` (12 new test cases
   covering INV-1..INV-12 — helper declaration, populated-against-
   own-root, empty-on-non-git, both writer wirings, reader-side
@@ -11258,7 +11262,7 @@ from the audit branch's HEAD.
   truncated_history?}`. `caller_cwd` is Required; etag-supported
   (304-not-modified short-circuit). New `no_git_state` error code
   added to `docs/standards/mcp-error-codes.md` § 2. Spec
-  `docs/specs/ANTS-1583.md`; tests
+  `docs/specs/ANTS-1583-roadmap-branch-drift-mcp-verb.md`; tests
   `tests/features/mcp_roadmap_branch_drift/` (10 invariants:
   contract / etag / regex anchor / max_drift clamp /
   anti-pattern guard / count fields / `collectGitSnapshot` reuse
@@ -11391,7 +11395,7 @@ that turned out to be duplicates of work already shipped in pull
   (narrower filter / raise timeout_sec / fall back to `Bash rg`).
   Schema in `src/claudeintegration.cpp:1968-1996` declares the new
   property; description names it + the new default. Spec
-  `docs/specs/ANTS-1565.md`; tests
+  `docs/specs/ANTS-1565-workspace-search-configurable-wall-clock.md`; tests
   `tests/features/mcp_workspace_search_timeout_sec/` (6 invariants).
   Source: cross-session-report-2026-05-18 (Vestige Issue #8).
 
@@ -11409,7 +11413,7 @@ that turned out to be duplicates of work already shipped in pull
   scrapes both keywords appear within 400 chars of each other so the
   asymmetry is the first thing a caller sees at pick-time.
   Streaming-progress ping (Vestige follow-up c) deferred — needs
-  response-shape design. Spec `docs/specs/ANTS-1579.md`.
+  response-shape design. Spec `docs/specs/ANTS-1579-verify-changes-timeout-sec-end.md`.
   Source: cross-session-report-2026-05-17 (Vestige Issue #1).
 
 - **Dup-closes (4):**
@@ -12402,7 +12406,7 @@ adapter-mode dialect-detection will ride on next).
   `get_scrollback` and `get_text` keep their tool-specific phrasing
   (long-form fallback caveat / inline arg-list form respectively).
   Source-level dedup, not wire compression — each tool's full
-  description is still emitted. Spec `docs/specs/ANTS-1409.md`;
+  description is still emitted. Spec `docs/specs/ANTS-1409-callercwdsuffix-helper-tool-description.md`;
   tests `tests/features/mcp_caller_cwd_suffix_helper/` (7
   invariants). 678/678 features green at landing.
   Layman: three MCP tool descriptions used to each spell out the
@@ -12420,7 +12424,7 @@ adapter-mode dialect-detection will ride on next).
   caller set it (INV-5). The cache stores the unfiltered array so a
   follow-up call with the opt-in flag doesn't re-parse. Token
   saving on a 161-bullet active-filter response: ~10 rollups ×
-  ~70 B = ~700 B per call. Spec `docs/specs/ANTS-1398.md`; tests
+  ~70 B = ~700 B per call. Spec `docs/specs/ANTS-1398-roadmap-query-filters-out-section.md`; tests
   `tests/features/roadmap_query_filter_section_headers/` (6
   invariants). 684/684 features green.
   Layman: the roadmap-lookup tool was returning some "section
@@ -12441,7 +12445,7 @@ adapter-mode dialect-detection will ride on next).
   (descriptor metadata, not user content). Self-registers in
   `tools/list` so `tool_info({name:"tool_info"})` round-trips.
   Token saving on a refresh-one-tool flow: ~5 KiB → ~150 B per
-  call. Spec `docs/specs/ANTS-1399.md`; tests
+  call. Spec `docs/specs/ANTS-1399-tool-info-name-mcp-verb.md`; tests
   `tests/features/mcp_tool_info_verb/` (8 invariants).
   McpProviderRegistry INV-8b allowlist amended to carve out
   `tool_info` alongside `get_session_info`. 692/692 features green.
@@ -12461,7 +12465,7 @@ adapter-mode dialect-detection will ride on next).
   per-cwd telemetry tap) is one internal change. Byte-count
   contract from ANTS-1284 preserved; failure-branch behaviour
   preserved (m_tokenUsage skipped when result != "ok"). Spec
-  `docs/specs/ANTS-1402.md`; tests
+  `docs/specs/ANTS-1402-merge-dispatch-observers.md`; tests
   `tests/features/mcp_record_dispatch_unification/` (5 invariants).
   697/697 features green.
   Layman: the dispatch site updated two trackers side-by-side with
@@ -12486,7 +12490,7 @@ adapter-mode dialect-detection will ride on next).
   (`roadmap_update` is a separate ticket); cross-project routing
   (one repo per call). Pairs with ANTS-1156 (roadmap-system audit)
   which has the broader framing question; this is the narrow
-  MCP-write piece. Spec `docs/specs/ANTS-1424.md`; tests
+  MCP-write piece. Spec `docs/specs/ANTS-1424-roadmap-log-mcp-write-verb.md`; tests
   `tests/features/mcp_roadmap_log_verb/` (8 invariants,
   source-scrape only — behavioural fixture test deferred to v2).
   710/710 features green.
@@ -12546,7 +12550,7 @@ adapter-mode dialect-detection will ride on next).
   unexplained from source alone. If the same shape ever appears
   on a different MCP tool, the new ANTS-1427 audit-trail logging
   will surface it at per-dispatch granularity. Spec
-  `docs/specs/ANTS-1422.md` § "Pull 3 (2026-05-16): production
+  `docs/specs/ANTS-1422-token-usage-no-claude-integration.md` § "Pull 3 (2026-05-16): production
   close-out". Tests `tests/features/token_usage_no_ci_diagnostic/`
   rewritten to 5 invariants reflecting the post-pull-3 contract.
   728/728 features green.
@@ -12581,7 +12585,7 @@ adapter-mode dialect-detection will ride on next).
   per-cmd middle checkpoint is added here only for
   `cmdTokenUsage` (the historical hot spot); other `cmd*` sites
   add the same one-liner ad-hoc as future debugging needs
-  surface. Spec `docs/specs/ANTS-1427.md`; tests
+  surface. Spec `docs/specs/ANTS-1427-mcp-dispatch-debug-logging-multi.md`; tests
   `tests/features/mcp_dispatch_debug_log/` (3 invariants, all
   source-scrape). 728/728 features green.
   Layman: when MCP tools have weird failures, we now have a
@@ -12610,7 +12614,7 @@ adapter-mode dialect-detection will ride on next).
   `rlErr`) so it carries the same `path` + `bytes` + `hint`
   fields as the read path — caller can correlate the failure
   with file size regardless of which verb they called. Spec
-  `docs/specs/ANTS-1429.md`; tests
+  `docs/specs/ANTS-1429-roadmap-query-roadmap-log-unrecognised.md`; tests
   `tests/features/mcp_roadmap_unrecognised_format/` (3
   invariants, all source-scrape). 731/731 features green at
   landing.
@@ -12663,7 +12667,7 @@ adapter-mode dialect-detection will ride on next).
   surfaces three new per-tool fields plus a summary
   `total_failed_bytes`. `include_zero:false` retains tools with
   failed-only history so a regression like 1429 surfaces in the
-  report instead of disappearing. Spec `docs/specs/ANTS-1432.md`;
+  report instead of disappearing. Spec `docs/specs/ANTS-1432-token-usage-failed-call-metric.md`;
   tests `tests/features/token_usage_failed_metric/` (6 INVs covering
   branch isolation, summary aggregation, filter behaviour, and
   v2-callsite backward compatibility). 735/735 features green at
@@ -12701,7 +12705,7 @@ adapter-mode dialect-detection will ride on next).
   `CLAUDE.md` session_memory bullet now name both `session_memory`
   AND `project_layout` as the tenant-hashed-storage gated set
   (any read-only verb whose storage is hash-derived joins the
-  gate). Spec `docs/specs/ANTS-1430.md`; tests
+  gate). Spec `docs/specs/ANTS-1430-session-memory-project-layout-scan.md`; tests
   `tests/features/mcp_project_layout_scan/` (9 INVs covering
   empty/populated scans, both format detections, mtime + TTL
   invalidation, round-trip fidelity). 746/746 features green at
@@ -12769,7 +12773,7 @@ adapter-mode dialect-detection will ride on next).
   suppression on empty, ID rendering) flow structurally from
   the existing emitCard path — Tier 1's BulletRecord
   population is the load-bearing surface. Spec
-  `docs/specs/ANTS-1428.md` covers all three tiers (the spec
+  `docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md` covers all three tiers (the spec
   ran three cold-eyes loops to clean — 2 CRITICAL, 7 HIGH, 7
   MEDIUM, multiple LOW findings verified-and-fixed across
   loops; cross-doc amendment to ANTS-1336 INV-7 + CLAUDE.md
@@ -12981,7 +12985,7 @@ once real consumers hit it.
   `recordDispatch` with `result="rate_limited"` — `mcp_trace`
   surfaces the refusal and `token_usage`'s ANTS-1432 success flag
   routes the bytes into the failed-call accumulator (visible cost
-  in the dashboards). Spec `docs/specs/ANTS-1356.md`;
+  in the dashboards). Spec `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md`;
   cold-eyes-reviewed pre-implementation (1 CRITICAL + 2 HIGH + 3
   MEDIUM + 2 LOW addressed inline). Tests
   `tests/features/mcp_rate_limit/` (16 invariants, GUI-free,
@@ -13016,7 +13020,7 @@ once real consumers hit it.
   `m_roadmapIndex`. Inventory capped at 200 entries with
   `truncated:true` echo. Truly opaque files (zero bullets AND
   zero headings) still refuse with `unrecognised_format`
-  (ANTS-1429 behaviour preserved). Spec `docs/specs/ANTS-1462.md`
+  (ANTS-1429 behaviour preserved). Spec `docs/specs/ANTS-1462-roadmap-query-header-inventory-fallback.md`
   was cold-eyes-reviewed twice before commit; first pass surfaced
   8 findings (HI-1/HI-2 lazy-buildIndex contradiction, two-gate-
   one-shape gap, backwards-compat callout missing, 200-cap claim
@@ -13037,7 +13041,7 @@ once real consumers hit it.
   previously emitted only `code`+`error`+`path`+`bytes` —
   shape parity with the other three sites is restored.
   `docs/standards/mcp-error-codes.md` row updated to note the
-  enriched envelope. Spec `docs/specs/ANTS-1463.md` was cold-
+  enriched envelope. Spec `docs/specs/ANTS-1463-roadmap-log-refusal-envelope-names.md` was cold-
   eyes-reviewed twice; first pass caught the standards-doc drift,
   the EF-4 byte-equal claim (softened to a constant + reviewer
   discipline since QJsonObject serialises alphabetically anyway),
@@ -13067,7 +13071,7 @@ once real consumers hit it.
   `mtime`, `rescan-mtime`, `mtime-delta-ms`, `poll-dur-us`,
   `delta`. The hide-branch label is also refined from
   `HIDE/empty` to `HIDE/empty-or-done` so a reader of the log
-  can tell which case fired. Spec `docs/specs/ANTS-1458.md`
+  can tell which case fired. Spec `docs/specs/ANTS-1458-tasks-chip-task-list-dialog.md`
   (INV-1..INV-3) was cold-eyes-reviewed twice before commit;
   ROADMAP entry stays 🚧 in-progress (phase 2 — actual latency
   fix — lands once the user reproduces with the log enabled).
@@ -13129,7 +13133,7 @@ once real consumers hit it.
     `last_audit_summary` response now echoes `source_format` as
     `"sarif"` or `"cppcheck-xml"`. Default `"sarif"` when blank
     for back-compat.
-  Spec `docs/specs/ANTS-1459.md` (RQ-1..RQ-4, LAS-1..LAS-3) was
+  Spec `docs/specs/ANTS-1459-roadmap-query-last-audit-summary.md` (RQ-1..RQ-4, LAS-1..LAS-3) was
   cold-eyes-reviewed before commit: the reviewer caught a 12-vs-11
   candidate-count discrepancy and an untestable RQ-1 invariant —
   spec amended, RQ-1 folded into a source-grep test of the
@@ -13176,7 +13180,7 @@ once real consumers hit it.
     convention). Schema: `{"<tool>":{"args":[...]}}` overrides
     that tool's argv wholesale. Malformed JSON / missing file →
     empty config, defaults used. Loaded once per `runAudit()`.
-  Spec `docs/specs/ANTS-1456.md`. Tests extend
+  Spec `docs/specs/ANTS-1456-audit-run-flat-layout-v1.md`. Tests extend
   `tests/features/mcp_audit_run/` with four invariants (AR-1/2
   auto-detect, AR-3/4 project config, AR-5 SARIF property, AR-6
   descriptor clarification). Pre-fix verified: 4/4 FAIL → 4/4
@@ -13253,7 +13257,7 @@ once real consumers hit it.
   success envelope passes the field through unchanged
   (`env["selection_hint"] = match.value(QStringLiteral("selection_hint"))`)
   so a caller can fetch one hint for ~80 B rather than re-paying
-  for the full snapshot. Spec `docs/specs/ANTS-1453.md`. Tests
+  for the full snapshot. Spec `docs/specs/ANTS-1453-per-tool-selection-hint-every.md`. Tests
   `tests/features/mcp_selection_hint/` (3 invariants: HINT-1 every
   tool declares one, HINT-2 tool_info passes through, HINT-3 size
   budget). 961/961 features green at landing. Pairs with ANTS-1460
@@ -13283,7 +13287,7 @@ once real consumers hit it.
   at the `dispatchResult` initialisation and at the
   `recordDispatch` call site are updated to list the three known
   result strings (`"ok"`, `"caller_cwd_required"`, `"rate_limited"`).
-  Spec `docs/specs/ANTS-1454.md`. Tests extend
+  Spec `docs/specs/ANTS-1454-caller-cwd-required-refusals-count.md`. Tests extend
   `tests/features/mcp_caller_cwd_contracts/` with `DISP-5` — a
   source-grep assertion that the refusal branch sets the
   `dispatchResult` literal inside the closing `}\n` of the
@@ -13322,7 +13326,7 @@ once real consumers hit it.
   M-new-1) so a hostile/buggy upstream echoing the
   Authorization bearer token never leaks it. Contract:
   `CallerCwdContract::Required`; tier: `RateLimitClass::Expensive`
-  (10 calls / 60 s). Spec `docs/specs/ANTS-1352.md`,
+  (10 calls / 60 s). Spec `docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md`,
   cold-eyes-reviewed across loops 1 + 2 (3 CRITICAL + 4 HIGH
   + 5 MEDIUM + 4 LOW + 1 H-new-1 fold-in regression folded
   before implementation). Tests
@@ -13426,7 +13430,7 @@ once real consumers hit it.
   change explicit), H-2 (`limit:-1` default switched to
   `limit:5`), H-3/H-4 (route through `PathValidation::validatePath`
   rather than re-implement), H-7 (code-name length ≤ 24 chars).
-  Spec `docs/specs/ANTS-1455.md`. Tests
+  Spec `docs/specs/ANTS-1455-test-audit-mcp-usability-gaps.md`. Tests
   `tests/features/test_audit_glob_walk_synth_mode/` (11
   invariants — glob walk on the RetroDB Flask shape +
   reports_dir refusal codes + mode/pagination shape +
@@ -13495,7 +13499,7 @@ once real consumers hit it.
   `mcp-error-codes.md` (canonical) vs `mcp-errors.md`
   (historical) split; the latter now carries a "superseded
   by" banner. CLAUDE.md "Module map" lists `falseposledger`.
-  Spec `docs/specs/ANTS-1457.md`, cold-eyes-reviewed across
+  Spec `docs/specs/ANTS-1457-ants-review-falsepos-jsonl-ledger.md`, cold-eyes-reviewed across
   5 parallel lanes (schema/parser, security, concurrency+IO,
   cross-doc consistency, implementation+tests) with every
   CRITICAL / HIGH / MEDIUM / LOW / NIT folded in before
@@ -13531,7 +13535,7 @@ once real consumers hit it.
   Code session on the MAME Curator project saw every bullet
   return empty `id` because the parser was hardcoded to the Ants
   `ANTS-` prefix, forcing fallback to raw ROADMAP.md reads
-  (cross-session-report-2026-05-15). Spec `docs/specs/ANTS-1405.md`;
+  (cross-session-report-2026-05-15). Spec `docs/specs/ANTS-1405-roadmap-query-parser-handles-non.md`;
   tests `tests/features/roadmap_query_external_project_ids/`
   (10 invariants, GUI-free, label `features;fast`).
   888/888 features green at landing.
@@ -13640,7 +13644,7 @@ sweeps matter. Single-item subsection, ANTS-1248 follow-up.
   carve-out). 6 new INVs added to
   `tests/features/mcp_workspace_search/` alongside the original
   10 ANTS-1248 wiring invariants (876/876 features green). Spec
-  `docs/specs/ANTS-1452.md`.
+  `docs/specs/ANTS-1452-workspace-search-opts-gitignored-hidden.md`.
   Layman: the project-wide code-search MCP tool used to refuse
   to look inside `.gitignore`'d files — fine for code review,
   but it meant "are stale paths still anywhere?" audits
@@ -13673,7 +13677,7 @@ part of the 2026-05-14 sweep and is already in `[Unreleased]`.
   (`done + running + outstanding`) already excluded `deleted` —
   the chip's total now matches (overcount: 30 done + 8 pending +
   2 deleted now reads 30/38, not 30/40). Spec
-  `docs/specs/ANTS-1407.md` (1 solo + 2 joint cold-eyes loops to
+  `docs/specs/ANTS-1407-tasks-tracker-mirrors-cc-inline.md` (1 solo + 2 joint cold-eyes loops to
   clean). Header `claudetasklist.h:29` status comment extended
   to document the `deleted` value. Tests: 4 new in
   `tests/features/claude_task_list/test_claude_task_list.cpp` —
@@ -13705,7 +13709,7 @@ part of the 2026-05-14 sweep and is already in `[Unreleased]`.
   backlog, completed = history). Reference time is
   transcript-relative for deterministic synthetic tests. Fail-soft:
   tasks with `lastEventAtMs == 0` (missing or unparseable
-  timestamp) are preserved. Spec `docs/specs/ANTS-1341.md`
+  timestamp) are preserved. Spec `docs/specs/ANTS-1341-mode-b-progress-task-abandonment.md`
   (3 joint cold-eyes loops with ANTS-1407 to clean). Tests: 4 new
   — INV-2/3 stamp on Create+Update, INV-5 boundary abandonment at
   24h+1ms, INV-6/8 within-threshold preserved at 23h, INV-5
@@ -13738,7 +13742,7 @@ ships a diagnostic verb. Two security entries land in this bundle.
   entry points become wrappers mapping the variant back to QString
   / TerminalWidget *. Refactor only — no observable behaviour
   change. Header `src/resolvedroot.h`; spec
-  `docs/specs/ANTS-1401.md`; relocated ANTS-1396 source-scrapes
+  `docs/specs/ANTS-1401-central-resolvedroot-helper-caller-cwd.md`; relocated ANTS-1396 source-scrapes
   + new INV-5 ascending-walk + WrapperDelegatesToHelper cases.
   Layman: the same MCP argument used to be decoded in three
   different spots with slightly different rules; one helper now
@@ -13758,7 +13762,7 @@ ships a diagnostic verb. Two security entries land in this bundle.
   get / list / set / delete. The deprecated `cwd` field stays in
   the schema for one release with a "DEPRECATED, handler ignores"
   description, then drops in 0.7.93. ANTS-1372 § 4 INV-7 amended
-  in the new spec. Spec: `docs/specs/ANTS-1336.md`. Layman: an
+  in the new spec. Spec: `docs/specs/ANTS-1336-session-memory-cwd-arg-cross.md`. Layman: an
   MCP session inside project A could read project B's saved key-
   value notes by lying about the project path; that hole is now
   closed.
@@ -13780,7 +13784,7 @@ ships a diagnostic verb. Two security entries land in this bundle.
   — the routing-vs-anchoring overlap with ANTS-1392 needs its
   own spec pass. Contract break for callers omitting caller_cwd
   on the Required four; migration is one arg. Spec:
-  `docs/specs/ANTS-1404.md`. Layman: tools that look up project-
+  `docs/specs/ANTS-1404-per-tool-caller-cwd-contracts.md`. Layman: tools that look up project-
   specific data used to silently fall back to whichever tab Ants
   happens to focus when the caller didn't say which project it
   was in; they now refuse with a clear error so cross-project
@@ -13795,7 +13799,7 @@ ships a diagnostic verb. Two security entries land in this bundle.
   read scrollback, run git, or write any state. Classified
   `CallerCwdContract::Optional` so the empty case is accepted
   (the "what would happen without it?" question the verb is built
-  to answer). Spec: `docs/specs/ANTS-1400.md`. Layman: a new way
+  to answer). Spec: `docs/specs/ANTS-1400-caller-cwd-info-mcp-diagnostic.md`. Layman: a new way
   to ask Ants "which tab would my call route to?" without actually
   invoking a tool first — useful for diagnosing why a previous
   call returned data from the wrong project.
@@ -13815,7 +13819,7 @@ release.
   overflowed it and paid fresh allocations for the tail. Bump
   to 32 covers the common burst sizes; RAM ceiling ~256 KiB at
   200-col widths (0.14 % of scrollback). Spec:
-  `docs/specs/ANTS-1362.md`. Layman: a small internal buffer
+  `docs/specs/ANTS-1362-cell-buffer-free-pool-cap.md`. Layman: a small internal buffer
   cache used while scrolling fast was too small; making it
   bigger removes some allocation overhead on `clear` and
   similar fast-scroll bursts.
@@ -13829,7 +13833,7 @@ release.
   (after the `q` introducer) and refuses both
   `> MAX_IMAGE_DIM` (4096) and `> 256 MB` projected byte counts
   with the same inline-error label the post-walk reject emits.
-  Spec: `docs/specs/ANTS-1366.md`; tests:
+  Spec: `docs/specs/ANTS-1366-sixel-raster-header-pre-budget.md`; tests:
   `tests/features/sixel_raster_header_prebudget/` (3 invariants).
   Layman: a hostile or buggy program sending a Sixel image with
   a wildly oversized declared size used to allocate a 64 MB
@@ -13842,7 +13846,7 @@ release.
   continuation cell, which the renderer ignores. Result: the
   diacritic vanished. Fix steps `targetCol` left when it lands on
   an `isWideCont` cell, so combiners land on the lead.
-  Spec: `docs/specs/ANTS-1334.md`; tests:
+  Spec: `docs/specs/ANTS-1334-combining-marks-wide-char-right.md`; tests:
   `tests/features/combining_at_wide_right_edge/` (3 invariants).
   Layman: Chinese/Japanese/Korean text with diacritics no longer
   loses the accent mark when the underlying character sits at the
@@ -13861,7 +13865,7 @@ release.
   path with column clipping (INV-2), emits empty span vectors on
   the slow rewrap path (INV-3), pairs every overflow push with an
   empty vector (INV-4), and pops both deques in lockstep on cap
-  trim (INV-5). Spec: `docs/specs/ANTS-1333.md`. Tests:
+  trim (INV-5). Spec: `docs/specs/ANTS-1333-scrollback-hyperlink-lockstep-width.md`. Tests:
   `tests/features/scrollback_hyperlinks_reflow_lockstep/` (5
   invariants). Layman: after you resize the Ants window, links
   shown in scrollback used to map to the wrong rows (clickable
@@ -13885,7 +13889,7 @@ cross-project data leak in `terminalForCaller`, and clears the
   dispatch, so the `mcp_trace` ring and the aggregate report
   see byte-identical timestamps for the same call. Engine RAM
   grew ~32 B per tracked tool → ~4.2 KiB worst-case (33 tools).
-  Spec: `docs/specs/ANTS-1355.md`; 2-pass cold-eyes loop on the
+  Spec: `docs/specs/ANTS-1355-token-usage-v2-wrap-overhead.md`; 2-pass cold-eyes loop on the
   spec (HIGH-1 tool-count drift + LOW-1 escape-char miscount
   caught + fixed before Pass 2 CLEAN). 7 new engine tests + 4
   MCP-layer wire-shape tests; total 31 token_usage tests green.
@@ -13961,7 +13965,7 @@ in-process view of dispatch they can query over MCP itself.
   caught a MEDIUM on the wrap-detection boundary (full ring +
   `since=0` falsely flagged a wrap); pass 3 caught a LOW on
   the int/double type-tag heuristic; pass 4 confirmed CLEAN.
-  Spec: `docs/specs/ANTS-1360.md`. Tests:
+  Spec: `docs/specs/ANTS-1360-mcp-debug-log-tap-mcp.md`. Tests:
   `tests/features/mcp_trace_ring_buffer/` (16 tests covering
   cap/eviction/cursor/wrap/redaction/no-recursion/failure
   paths). Pre-existing `-Wshadow` warnings at
@@ -14006,7 +14010,7 @@ its own dedicated invalidation-correctness pass.
   with invariants + tests before implementation began. 17 new
   feature-conformance tests cover the cap/LRU/TTL/exclusion matrix
   plus all five `force_refresh`/`cache_only` interaction paths
-  plus the reentrancy flag. Spec: `docs/specs/ANTS-1359.md`.
+  plus the reentrancy flag. Spec: `docs/specs/ANTS-1359-verify-changes-session-build-cache.md`.
   Tests: `tests/features/verify_changes_build_cache/`.
 
 ### ⚡ MCP perf / token-reduction bundle (2026-05-15)
@@ -14030,7 +14034,7 @@ regression-locked, and live-tested against the running Ants binary.
   subagent fan-outs that re-issue the same tool call.
   `kRcUnavailable` promoted to `ClaudeIntegration::kMcpRcUnavailable`
   inline-constexpr so the cache rejection rule can reference the
-  same bytes the providers emit. Spec: `docs/specs/ANTS-1357.md`.
+  same bytes the providers emit. Spec: `docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md`.
   Tests: `tests/features/mcp_idempotent_read_cache/` (8 tests
   covering hit/miss/TTL/LRU bump/cap/allowlist + both INV-5
   rejections).
@@ -14047,7 +14051,7 @@ regression-locked, and live-tested against the running Ants binary.
   lock-step. Worst-case RAM ceiling drops from "ROADMAP-
   heading-count × largest-slice" (~hundreds of KB on the
   pathological case) to a deterministic ≤ 288 KB. Spec:
-  `docs/specs/ANTS-1346.md`. Tests:
+  `docs/specs/ANTS-1346-roadmap-query-section-cache-lru.md`. Tests:
   `tests/features/roadmap_section_cache_lru/`.
 - **ANTS-1364 — `session_memory` Set/Delete serialize-once
   refactor.** `saveStore(QString,QJsonObject)` signature
@@ -14061,11 +14065,11 @@ regression-locked, and live-tested against the running Ants binary.
   framing (cross-call delta caching) bought nothing because
   `execute()` is stateless across calls; this refactor
   captures the intra-call waste that was the real cost. Spec:
-  `docs/specs/ANTS-1364.md`. Tests:
+  `docs/specs/ANTS-1364-session-memory-set-serialize-store.md`. Tests:
   `tests/features/session_memory_serialize_once/`.
 
-Three new spec docs (`docs/specs/ANTS-1346.md`,
-`docs/specs/ANTS-1357.md`, `docs/specs/ANTS-1364.md`) each
+Three new spec docs (`docs/specs/ANTS-1346-roadmap-query-section-cache-lru.md`,
+`docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md`, `docs/specs/ANTS-1364-session-memory-set-serialize-store.md`) each
 cold-eyes-reviewed in three iterative passes against the live
 codebase before any implementation landed — the original drafts
 each carried verified critical/high/medium findings (wrong
@@ -14218,7 +14222,7 @@ hostile-content findings.
   Null client preserves pre-ANTS-1337 behaviour exactly (back-compat;
   Phase 2 wires `cmdVerifyChanges` to pass a real client + adds the
   modal QDialog that lets the user grant trust). Spec at
-  `docs/specs/ANTS-1337.md`; regression test at
+  `docs/specs/ANTS-1337-first-run-trust-gate-ants.md`; regression test at
   `tests/features/verify_trust_gate/` (3 VT-* engine + 3 TF-*
   trust-file format assertions; bundled into `test_core`).
 - **`cwd` anchor on `cmdLaunch` / `cmdNewTab` via
@@ -14244,7 +14248,7 @@ hostile-content findings.
   hygiene reject the existing `{code:"bad_cwd"}` code is
   retained for the different class. `PathValidation::validatePath`
   call-site count rises from 8 (ANTS-1295) to 10. Spec at
-  `docs/specs/ANTS-1347.md`; regression test at
+  `docs/specs/ANTS-1347-cwd-anchor-cmdlaunch-cmdnewtab.md`; regression test at
   `tests/features/rc_launch_cwd_anchor/` (7 CB-* engine + 5
   WI-* source-grep; bundled into `test_core`). The existing
   `remote_control_launch` test migrated from
@@ -14269,7 +14273,7 @@ hostile-content findings.
   is somehow bypassed, the file-level guard still gates the
   socket-bind step. XDG primary path
   (`/run/user/<uid>/ants-terminal.sock`) is unchanged.
-  Spec at `docs/specs/ANTS-1365.md`; regression test at
+  Spec at `docs/specs/ANTS-1365-tmp-socket-path-fallback-hardening.md`; regression test at
   `tests/features/rc_socket_dir_hardening/` (4 SD-* engine
   assertions via QTemporaryDir + 4 WI-* source-grep; bundled
   into `test_core`).
@@ -14291,7 +14295,7 @@ hostile-content findings.
   Refactored `cmdGetText` to delegate the cut logic to a pure
   `RemoteControl::trimScrollbackForGetText` static inline helper
   so feature tests cover it without instantiating MainWindow.
-  Spec at `docs/specs/ANTS-1348.md`; regression test at
+  Spec at `docs/specs/ANTS-1348-server-side-byte-cap-cmdgettext.md`; regression test at
   `tests/features/rc_get_text_byte_cap/` (10 GT-* engine + 3 WI-*
   source-grep assertions; bundled into `test_core`). The
   existing `remote_control_get_text` test's body-window heuristic
@@ -14309,7 +14313,7 @@ hostile-content findings.
   alongside C0. All three `send-text` / `launch.command` /
   `new-tab.command` call-sites pick up the C1 strip for free
   (no wire-schema change; `stripped` byte counter now counts
-  C1 bytes too). Spec at `docs/specs/ANTS-1335.md`; regression
+  C1 bytes too). Spec at `docs/specs/ANTS-1335-utf-8-c1-control-byte.md`; regression
   test at `tests/features/rc_c1_byte_filter/` (16 byte-level +
   3 source-grep assertions; bundled into `test_core`).
 - **Lua sandbox sticky-kill defeats pcall-nesting wall-clock
@@ -14332,7 +14336,7 @@ hostile-content findings.
   `LuaEngine::initialize` was lifted to a named static
   `LuaEngine::instructionHook` so the in-hook re-arm can pass
   the same callback symbol to `lua_sethook`. Spec at
-  `docs/specs/ANTS-1332.md`; regression test at
+  `docs/specs/ANTS-1332-lua-sandbox-sticky-kill-defeats.md`; regression test at
   `tests/features/lua_pcall_nesting_timeout/` (4 runtime asserts +
   5 source-grep asserts; bundled into `test_lua`).
 
@@ -14421,7 +14425,7 @@ hostile-content findings.
   `tests/features/roadmap_fold_in/test_roadmap_fold_in.cpp` cover
   R1-R3 (counter-symlink escape), Roadmap symlink escape,
   G1-G5 + envelope (gate verdicts), and S1-S5 (source-grep wiring).
-  Spec: `docs/specs/ANTS-1372.md`. Pairs with [ANTS-1295] — same
+  Spec: `docs/specs/ANTS-1372-caller-cwd-gate-mutating-mcp.md`. Pairs with [ANTS-1295] — same
   defense-in-depth philosophy, applied to project-root resolution
   rather than path-arg anchoring.
 
@@ -14445,7 +14449,7 @@ hostile-content findings.
   failures has been retired — consumers checking specifically for
   `bad_lane` on the lane field must now check `bad_path`.
   `bad_pattern` and `bad_glob` (independent of the anchor) are
-  unchanged. Spec: `docs/specs/ANTS-1295.md`. 16 new tests in
+  unchanged. Spec: `docs/specs/ANTS-1295-per-tool-cwd-anchor-enforcement.md`. 16 new tests in
   `tests/features/mcp_path_anchor/` cover the ten engine cases
   (empty, dash-prefix, traversal, absolute outside, control char,
   backslash, NFC, lexical-fallback, etc.) and six wiring cases
@@ -14475,7 +14479,7 @@ hostile-content findings.
   Per-call wrap cost ≤ 5 µs on typical 1–10 KiB payloads; wire
   overhead ≤ ~40 B per response (negligible against the
   `est_tokens_saved` figures reported by `mcp__ants__token_usage`).
-  Spec: `docs/specs/ANTS-1294.md` (cold-eyes loops 1 + 2 CLEAN).
+  Spec: `docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md` (cold-eyes loops 1 + 2 CLEAN).
   12 new feature tests
   (`tests/features/mcp_output_sanitisation/`) — 7 engine cases
   exercising the wrap helper directly + 5 wiring cases pinning
@@ -14499,7 +14503,7 @@ hostile-content findings.
   cached once. PATH change clears the cache atomically on the
   next call (INV-2). RAM budget ≤ ~10 KiB (~30 entries × 120–200
   B). 8 new tests TDE-1..TDE-8. Spec:
-  `docs/specs/ANTS-1286.md` (cold-eyes loops 1 + 2 + 3 CLEAN).
+  `docs/specs/ANTS-1286-audit-tool-detection-cache-session.md` (cold-eyes loops 1 + 2 + 3 CLEAN).
 
 - **`session_memory` MCP key-value store — per-cwd persistence
   across Claude Code sessions (ANTS-1283).** New
@@ -14523,7 +14527,7 @@ hostile-content findings.
   (Qt6::Core only); RemoteControl handler delegates entirely to
   `SessionMemoryEngine::execute`. Pairs with ANTS-1286 (audit
   tool-detection cache backend) and the deferred "did anything
-  change?" caching of ANTS-1289. Spec: `docs/specs/ANTS-1283.md`
+  change?" caching of ANTS-1289. Spec: `docs/specs/ANTS-1283-session-memory-mcp-key-value.md`
   (cold-eyes loops 1 + 2 CLEAN). 16 new feature tests (10 engine
   ENG-1..ENG-10 + 6 MCP wiring REG-1..REG-6).
 
@@ -14572,7 +14576,7 @@ hostile-content findings.
   through Latin-1 promotion in `QStringLiteral`). Token-savings
   estimate: ~50–100 K orchestrator tokens per `/cold-eyes` run
   by avoiding the full doc-trail load through the parent each
-  pass. Spec: `docs/specs/ANTS-1319.md` (cold-eyes loops 1 + 2
+  pass. Spec: `docs/specs/ANTS-1319-cold-eyes-mcp-fold.md` (cold-eyes loops 1 + 2
   CLEAN). 18 new feature tests (10 engine ENG-1..ENG-10 + 8 MCP
   wiring REG-1..REG-8); ctest 498 → 516 green.
 
@@ -14603,7 +14607,7 @@ hostile-content findings.
   share a single source of truth (INV-4). RAM ~12 KiB for
   the index + on-demand `QJsonArray` per slug ever queried
   (worst case ~+200-300 KiB). MCP tool description updated to
-  surface the new arg. Spec: `docs/specs/ANTS-1287.md`. 15 new
+  surface the new arg. Spec: `docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md`. 15 new
   feature tests (8 engine ENG-1..ENG-7 + uniqueness walk + 7
   MCP wiring REG-1..REG-7); ctest 481 → 496 green.
 - **`mcp__ants__token_usage` MCP telemetry tool — measure per-tool
@@ -14634,7 +14638,7 @@ hostile-content findings.
   No persistence — pairs with ANTS-1245 (full-session Tools →
   Token Usage dialog) but measures a different metric (MCP-tool
   displacement vs Claude's total session spend). Spec:
-  `docs/specs/ANTS-1284.md`. 17 new feature tests (11 engine + 6
+  `docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md`. 17 new feature tests (11 engine + 6
   MCP-layer); ctest 466 → 483 green.
 - **`mcp__ants__plan_template` MCP tool — host the `writing-plans`
   skill's template emission (ANTS-1290).** New MCP tool emits an
@@ -14657,7 +14661,7 @@ hostile-content findings.
   chronological). Headline savings: ~1.5 K tokens/session
   unconditional from collapsing template-echo overhead; up to ~6 K
   with vendor-skill update on Ants-equipped projects. Spec:
-  `docs/specs/ANTS-1290.md`. The same commit tightens the
+  `docs/specs/ANTS-1290-plan-template-mcp-tool.md`. The same commit tightens the
   ANTS-1289 verify_changes MCP-test scan region so future tool
   insertions can't pollute its count.
 
@@ -15012,7 +15016,7 @@ hostile-content findings.
   when invoked via the v2 path. **Token saving: ~14 × ~8 KiB
   median reports = ~112 KiB no longer transit parent context
   per `/indie-review` sweep**, on top of the ANTS-1281 brief
-  saving. Spec: [`docs/specs/ANTS-1282.md`](docs/specs/ANTS-1282.md).
+  saving. Spec: [`docs/specs/ANTS-1282-indie-review-corroborate-accepts.md`](docs/specs/ANTS-1282-indie-review-corroborate-accepts.md).
 
 - **MCP `indie_review_brief` no longer inlines source bodies
   (ANTS-1281).** The tool's response keeps the `brief` field but
@@ -15028,7 +15032,7 @@ hostile-content findings.
   `/indie-review` sweep.** Backwards-compatible: any caller that
   forwards the `brief` field to a subagent prompt continues to
   work; the subagent now performs the Read calls itself.
-  Spec: [`docs/specs/ANTS-1281.md`](docs/specs/ANTS-1281.md).
+  Spec: [`docs/specs/ANTS-1281-indie-review-brief-returns-template.md`](docs/specs/ANTS-1281-indie-review-brief-returns-template.md).
 
 ### Added
 
@@ -15042,7 +15046,7 @@ hostile-content findings.
   with the public-but-unannounced pre-release URL. AppImage
   `UPDATE_INFORMATION` for RC builds uses the RC channel (NOT
   `latest`) so stable users never auto-update onto an RC. Full design
-  + invariants: [`docs/specs/ANTS-1318.md`](docs/specs/ANTS-1318.md).
+  + invariants: [`docs/specs/ANTS-1318-weekly-wednesday-release-cadence-patron.md`](docs/specs/ANTS-1318-weekly-wednesday-release-cadence-patron.md).
 
 #### 🔌 MCP cross-project isolation (caller_cwd) — Phase 2 (2026-05-15)
 
@@ -15378,7 +15382,7 @@ Qt "Debt Sweep" tab deferred to ANTS-1259 v2.
   "Debt Sweep" tab + per-finding Fix / Defer / Allow buttons +
   Triage with AI button (aidialog dispatch). Adds README CLI flag
   drift detector (needs binary execution). Spec § 1.1 of
-  `docs/specs/ANTS-1113.md` documents the v1/v2 split rationale.
+  `docs/specs/ANTS-1113-fold-debt-sweep-into-project.md` documents the v1/v2 split rationale.
 
 ### Changed
 
@@ -15469,7 +15473,7 @@ tokens. Qt dialog deferred to ANTS-1258 v2.
 - **ANTS-1258** (new ROADMAP item) — ANTS-1112 v2: Qt
   `IndieReviewDialog` that wraps the v1 engine for users who want
   in-app indie review without Claude orchestration. Spec § 1.1 of
-  `docs/specs/ANTS-1112.md` documents the v1/v2 split rationale.
+  `docs/specs/ANTS-1112-fold-indie-review-orchestration-into.md` documents the v1/v2 split rationale.
 
 ## [0.7.88] — 2026-05-13
 
@@ -15563,7 +15567,7 @@ green. Foundation ships ahead of ANTS-1112 / 1113 (which reuse
 - **ANTS-1257** (new ROADMAP item) — ANTS-1111 v2: UI affordances
   (Fold-into-ROADMAP button, per-finding Allow button,
   Since-baseline pill, semgrep wiring). Spec § 12 of
-  `docs/specs/ANTS-1111.md` documents the v1/v2 split rationale.
+  `docs/specs/ANTS-1111-fold-audit-triage-into-project.md` documents the v1/v2 split rationale.
 
 ## [0.7.87] — 2026-05-13
 
@@ -15593,7 +15597,7 @@ add. Cumulative session saving on a typical `/indie-review` +
   formatting that previously lived in the per-tool dispatch case.
   No behaviour change. Source delta: −157 LoC across
   `claudeintegration.{h,cpp}` + `mainwindow.cpp`. Spec:
-  `docs/specs/ANTS-1253.md` (5-loop cold-eyes pass, ship-ready).
+  `docs/specs/ANTS-1253-consolidate-mcp-tool-provider-registry.md` (5-loop cold-eyes pass, ship-ready).
   New regression test: `tests/features/mcp_provider_registry/`
   (10 invariants source-greped, pre-fix red verified — 9/10 fail
   against the unrefactored tree; INV-10 carve-out preservation
@@ -15622,7 +15626,7 @@ add. Cumulative session saving on a typical `/indie-review` +
   Per-tab gate inherits from `resolveRootCanonical(MainWindow*)`.
   Lands on the post-1253 registry (one `registerToolProvider` call
   in `setupClaudeMcpProviders`, no per-tool setter). Spec:
-  `docs/specs/ANTS-1254.md` (5-loop cold-eyes pass, ship-ready).
+  `docs/specs/ANTS-1254-last-audit-summary-mcp-tool.md` (5-loop cold-eyes pass, ship-ready).
   New regression test: `tests/features/mcp_last_audit_summary/`
   (10 invariants — 6 parser-side against committed
   `fixture_min.sarif` + `fixture_empty.sarif`; 4 wiring-side via
@@ -15661,7 +15665,7 @@ add. Cumulative session saving on a typical `/indie-review` +
   covers INV-1/2/3/4/7/9/10/12 + bash-veto behaviour + read-
   roadmap-veto behaviour + install round-trip + symlink abort —
   36 assertions, all green; INV-6/8/11 deferred to manual smoke
-  with documented rationale. Spec: `docs/specs/ANTS-1252.md`.
+  with documented rationale. Spec: `docs/specs/ANTS-1252-token-saving-hook-pack.md`.
   Cold-eyes review on `tests/features/hook_pack/spec.md` returned
   7 findings (1 HIGH on source-vs-runtime semantics for INV-12,
   2 MEDIUM on doc-code drift, 4 LOW); all fixed inline.
@@ -15726,7 +15730,7 @@ add. Cumulative session saving on a typical `/indie-review` +
   `required:["op"]`, tools/call dispatch, header decl + member,
   provider lambda, op-dispatch chain, the stricter regex literal,
   the 2-tier kill constants, and CMake wiring). Spec:
-  `docs/specs/ANTS-1250.md`.
+  `docs/specs/ANTS-1250-git-state-mcp-tool-consolidated.md`.
 
 - **ANTS-1249 — `file_outline` MCP tool.** Returns a compact
   `{header_doc, symbols:[{line, kind, name, signature}],
@@ -15746,7 +15750,7 @@ add. Cumulative session saving on a typical `/indie-review` +
   `mcp_file_outline/` (10 invariants: wiring + runtime floor of
   ≥ 8 symbols against the in-tree `auditdialog.cpp` to catch
   regex-set regressions, plus not-found path). Spec:
-  `docs/specs/ANTS-1249.md`.
+  `docs/specs/ANTS-1249-file-outline-mcp-tool.md`.
 
 - **ANTS-1248 — `workspace_search` MCP tool (ripgrep wrapper).**
   Replaces typical `Bash grep -r ... src/` patterns with a
@@ -15768,7 +15772,7 @@ add. Cumulative session saving on a typical `/indie-review` +
   dispatch, header decl + member, provider lambda, the literal
   ripgrep flags (`--json`, `--no-heading`, `--line-number`,
   `--max-columns`, `--threads`), and the 2-tier kill wiring.
-  Spec: `docs/specs/ANTS-1248.md`.
+  Spec: `docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md`.
 
 ## [0.7.86] — 2026-05-12
 
@@ -15843,7 +15847,7 @@ on `roadmap_query` that cuts typical "what's next" queries by ~7×.
   snapshot) was already correct. Partial batches (any
   pending/in_progress) are preserved. Locked by 4-INV
   `tasks_chip_done_over_total/` and 3 new behavioural cases in
-  `claude_task_list/`. Spec: `docs/specs/ANTS-1246.md` (2 cold-eyes
+  `claude_task_list/`. Spec: `docs/specs/ANTS-1246-tasks-chip-progress-semantics-done.md` (2 cold-eyes
   loops, clean pass).
 
 - **ANTS-1256 — MCP `tools/list` `inputSchema` compliance.** The six
@@ -15897,7 +15901,7 @@ just the new density combo.
   9/16/18 px scoped to `renderCardsHtml`; combo present and wired;
   Config getter/setter round-trip; persistence-failure contract).
   No keyboard shortcut in v1 — the `?`-cheatsheet (ANTS-1236)
-  doesn't gain a row. Spec: `docs/specs/ANTS-1238.md`
+  doesn't gain a row. Spec: `docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md`
   (cold-eyes-clean after 4 loops + ~50 verified findings fixed;
   full audit trail at `ROADMAP.md`
   `### 📝 Cold-eyes 2026-05-12 (ANTS-1238 spec)`).
@@ -15965,7 +15969,7 @@ dialog.
   `tests/features/roadmap_inprogress_age/spec.md` (renderer-
   layer + parser-layer test split; parser tests early-skip with
   `GTEST_SKIP()` when `git` is not on PATH). Spec:
-  `docs/specs/ANTS-1237.md` (cold-eyes-clean after 4 loops + ~40
+  `docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md` (cold-eyes-clean after 4 loops + ~40
   verified findings fixed; full audit trail at `ROADMAP.md`
   `### 📝 Cold-eyes 2026-05-11 (ANTS-1237 spec)`).
 
@@ -15998,7 +16002,7 @@ dialog.
   card per render (~0.3 ms on 200 cards, well below the 120 ms
   search debounce). Regression-locked by ANTS-1234-INV-1..9 in
   `tests/features/roadmap_search_keybinds/spec.md`. Spec:
-  `docs/specs/ANTS-1234.md` (cold-eyes-clean after 7 loops + ~25
+  `docs/specs/ANTS-1234-roadmapdialog-v2-focus-esc-clear.md` (cold-eyes-clean after 7 loops + ~25
   findings fixed).
 
 - **ANTS-1236 — Keyboard-shortcut cheatsheet in the Roadmap dialog.**
@@ -16022,7 +16026,7 @@ dialog.
   future shortcut must bump the test in lockstep. Regression-locked
   by ANTS-1236-INV-1..8 in
   `tests/features/roadmap_shortcuts_cheatsheet/spec.md`. Spec:
-  `docs/specs/ANTS-1236.md` (cold-eyes-clean after 7 loops + ~27
+  `docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md` (cold-eyes-clean after 7 loops + ~27
   findings fixed).
 
 - **ANTS-1235 — Accessible status / theme glyph labels in the
@@ -16050,7 +16054,7 @@ dialog.
   section documenting the Qt 6 a11y path so future contributors
   don't repeat the aria-label investigation. Regression-locked
   by INV-18..24 in `tests/features/roadmap_dialog_cards/spec.md`
-  (302/302 tests pass). Spec: `docs/specs/ANTS-1235.md`. Cold-
+  (302/302 tests pass). Spec: `docs/specs/ANTS-1235-roadmapdialog-v2-accessible-status-theme.md`. Cold-
   eyes audit trail: `ROADMAP.md ### 📝 Cold-eyes 2026-05-11`.
 
 ### Fixed
@@ -16480,7 +16484,7 @@ STATIC libraries, build-time guardrails (`ccache` /
   hundreds of MiB of debug strings. Phase 1 verified on the
   32 GiB host: full `ANTS_TESTS=ON` build at **526 MiB peak RSS in
   1m36s wall** (was >32 GiB OOM); 144/144 ctests green. Spec at
-  `docs/specs/ANTS-1217.md`; Phases 2–7 (test-bundle consolidation
+  `docs/specs/ANTS-1217-hybrid-googletest-bundle-consolidation.md`; Phases 2–7 (test-bundle consolidation
   via GoogleTest + workstation preset + `tools/safe-build.sh`)
   pending.
 
@@ -17279,7 +17283,7 @@ behavioural-correctness only — no LoC delta on `mainwindow.cpp`.
   `toggleBookmark`, `updateSuggestion`, `lastCommandOutput`)
   intentionally keep direct `m_grid->cursorRow/Col()` reads —
   those paths want the real cursor, not the rendered one. Spec at
-  `docs/specs/ANTS-1148.md` cold-eyes-reviewed before code (10
+  `docs/specs/ANTS-1148-dec-mode-2026-sync-output.md` cold-eyes-reviewed before code (10
   findings folded — 2 CRITICAL, 3 HIGH, 3 MEDIUM, 2 LOW); new
   feature test at `tests/features/sync_output_snapshot/` locks
   9 INVs by source-grep. Out-of-snapshot scope (intentional,
@@ -17352,7 +17356,7 @@ Audit tool flesh-out. Closes with a post-bundle debt sweep
   Claude chrome (Roadmap button, update-available QAction, 5 s
   startup update-check `singleShot`) stay on MainWindow under
   the renamed `setupStatusBarChrome` host. `mainwindow.cpp`:
-  6249 → 5656 LoC (-593). Spec at `docs/specs/ANTS-1146.md`
+  6249 → 5656 LoC (-593). Spec at `docs/specs/ANTS-1146-extract-claudestatusbarcontroller.md`
   cold-eyes-reviewed before implementation; new feature test at
   `tests/features/claude_statusbar_extraction/` locks 9 INVs;
   three pre-existing tests (`claude_bg_tasks_button`,
@@ -17469,7 +17473,7 @@ Audit tool flesh-out. Closes with a post-bundle debt sweep
   redundancy); added "verified externally via `git diff --stat`;
   this in-process test asserts only the floor on the new TU"
   disclaimer to the two-sided LoC anchors in both
-  `docs/specs/ANTS-1146.md` (INV-8) and `docs/specs/ANTS-1147.md`
+  `docs/specs/ANTS-1146-extract-claudestatusbarcontroller.md` (INV-8) and `docs/specs/ANTS-1147-extract-themedstylesheet-mainwindow-cpp.md`
   (INV-7) so spec text matches what the source-grep harnesses
   can actually enforce.
 
@@ -17497,7 +17501,7 @@ fresh-eyes audit of the feature-test corpus.
   meaningful LoC (status message → focused-terminal lookup →
   button disable → call into `diffviewer::show` → connect
   dialog `destroyed` for re-enable + `refreshReviewButton`).
-  Spec at `docs/specs/ANTS-1145.md` was cold-eyes-reviewed
+  Spec at `docs/specs/ANTS-1145-extract-diffviewerdialog-mainwindow-cpp.md` was cold-eyes-reviewed
   before the implementation: 1 CRITICAL + 2 HIGH + 3 MEDIUM
   findings folded in (per-test re-pointing table, exact-
   signature INV, user-visible-string preservation INV,
@@ -18032,7 +18036,7 @@ small. Tier 2 + Tier 3 follow per the fold-in plan.
   transition. Plus `smoothScrollStep` timer-stop branch calls
   `updateScrollBar()` so any intent-captured-but-never-
   committed snapshot is dropped. Spec at
-  `docs/specs/ANTS-1118.md`; feature test at
+  `docs/specs/ANTS-1118-smooth-scroll-snapshot-race-during.md`; feature test at
   `tests/features/scroll_snapshot_intent/` drives 4 INVs
   (source-grep on the wheelEvent intent branch +
   smoothScrollStep cleanup + onVtBatch regression guard).
@@ -18105,7 +18109,7 @@ visual artifact, but the scrollback buffer itself is intact).
   `parseBullets` already uses; `m_kindFilter` set member +
   per-Kind `QPointer<QCheckBox>` widgets with stable
   `roadmap-filter-kind-<value>` objectNames for QSS targeting
-  + test discovery. Spec at `docs/specs/ANTS-1106.md`;
+  + test discovery. Spec at `docs/specs/ANTS-1106-mandatory-kind-field-viewer-faceted.md`;
   feature test at `tests/features/roadmap_kind_facets/`
   drives the helper through 7 INVs (pure-helper drive across
   empty / single-Kind / multi-Kind / missing-Kind shapes,
@@ -18179,7 +18183,7 @@ not forgotten."
   appropriate source classifications. We deliberately do NOT
   apply pattern-based secret detection — false-positive
   redaction is worse than no redaction for this user surface.
-  Spec at `docs/specs/ANTS-1014.md`; feature test at
+  Spec at `docs/specs/ANTS-1014-clipboard-write-redaction-helper.md`; feature test at
   `tests/features/clipboard_redaction/` drives the helper
   through 8 INVs (pure-helper drive across the three sources
   for NUL-strip + cap behaviour, source-grep that no raw
@@ -18253,7 +18257,7 @@ pill next to it.
   `m_updateAvailableLabel` token, action wired via
   `m_menuBar->addAction` *or* `insertAction`, visibility-toggle
   on the action, whitespace-tolerant `connect` grep, action
-  starts hidden). Spec at `docs/specs/ANTS-1124.md` carries the
+  starts hidden). Spec at `docs/specs/ANTS-1124-move-update-available-link-status.md` carries the
   cold-eyes review fold-in (F1 / F2 / F3 / F4 / F5 / F7 / F15).
 
 - **ANTS-1109 — git-branch chip colour cue.** User screenshot
@@ -18584,7 +18588,7 @@ shipped in this cut). Strategic context in the new ADR-0002
   {"clean": true|false, "violations":[…], "raw":"…",
   "exit_code": N}}`) Claude can parse without re-running
   the script's stdout through interpretation. Exit codes
-  per docs/specs/ANTS-1116.md § INV-8: 0=clean, 3=drift,
+  per docs/specs/ANTS-1116-stateless-local-subagent-cli-re.md § INV-8: 0=clean, 3=drift,
   1=handler error, 2=usage error. Builds against `Qt6::Core`
   only. v2 (`audit-run`, `id-allocate`, `test-runner`)
   contingent on ANTS-1120 measurement validating per-call
@@ -18715,7 +18719,7 @@ shipped in this cut). Strategic context in the new ADR-0002
 
 - **`docs/standards/roadmap-format.md` section reference
   drift in newly-authored specs** — internal cross-refs in
-  `docs/specs/ANTS-1117.md`, `docs/specs/ANTS-1120.md`, and
+  `docs/specs/ANTS-1117-claude-code-running-ants-gui.md`, `docs/specs/ANTS-1120-companion-instrumentation-gate.md`, and
   `docs/decisions/0002-cold-eyes-companion-cleanup.md` cited
   `§ 1.2` / `§ 3.1` / `§ 3.5` for facts that actually live
   in `§ 3.3` (status emojis) and `§ 3.5.1` (stable-ID
@@ -18744,8 +18748,8 @@ shipped in this cut). Strategic context in the new ADR-0002
   bundle (reorder ANTS-1116/1117 priority, retire ANTS-1110
   catalogue + ANTS-1056 + ANTS-1114 wishlist, drop ANTS-1113
   memory-drift category, register ANTS-1119 + ANTS-1120).
-- `docs/specs/ANTS-1116.md`, `docs/specs/ANTS-1117.md`,
-  `docs/specs/ANTS-1119.md`, `docs/specs/ANTS-1120.md` —
+- `docs/specs/ANTS-1116-stateless-local-subagent-cli-re.md`, `docs/specs/ANTS-1117-claude-code-running-ants-gui.md`,
+  `docs/specs/ANTS-1119-extract-audit-logic-into-gui.md`, `docs/specs/ANTS-1120-companion-instrumentation-gate.md` —
   per-bullet contracts (acceptance criteria, INVs, deliverables).
 
 ## [0.7.58] — 2026-04-30

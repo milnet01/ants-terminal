@@ -6,7 +6,7 @@
 - **Supersedes (in part):** [ADR-0002](0002-cold-eyes-companion-cleanup.md) decision 8
 - **Related:** ROADMAP.md ANTS-1108, ANTS-1111, ANTS-1112, ANTS-1113, ANTS-1120; CHANGELOG.md [0.7.87];
   [ADR-0002](0002-cold-eyes-companion-cleanup.md) (superseded in part);
-  `docs/specs/ANTS-1120.md` (companion-instrumentation gate spec)
+  `docs/specs/ANTS-1120-companion-instrumentation-gate.md` (companion-instrumentation gate spec)
 
 ## Context
 
@@ -206,7 +206,7 @@ two IDs.
 ## Cold-eyes review pass
 
 This ADR was self-reviewed before sign-off, then folded back into
-the cold-eyes loop on `docs/specs/ANTS-1111.md` (2026-05-13).
+the cold-eyes loop on `docs/specs/ANTS-1111-fold-audit-triage-into-project.md` (2026-05-13).
 
 ### Findings raised (self-review)
 

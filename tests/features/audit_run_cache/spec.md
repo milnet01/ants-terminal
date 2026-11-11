@@ -10,7 +10,7 @@ This is a source-scrape + lightweight in-process exercise of the
 external tools on PATH (cppcheck, ruff, etc.) and is exercised by
 `mcp_audit_run`. Here we lock the wiring + manifest behaviour.
 
-Full spec: `docs/specs/ANTS-1555.md`.
+Full spec: `docs/specs/ANTS-1555-per-project-audit-cache-infrastructure.md`.
 
 ## Invariants exercised
 

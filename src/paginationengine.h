@@ -1,7 +1,7 @@
 // ANTS-1436 — pagination + auto-truncate helper for cmdRoadmapQuery.
 // Pure (Qt6::Core-only); lives in ants_core_lib. Stateless apart from the
 // live offload threshold softCapBytes() reads (ANTS-5571) — args
-// in, slice + envelope-augment hints out. See docs/specs/ANTS-1436.md.
+// in, slice + envelope-augment hints out. See docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md.
 
 #pragma once
 

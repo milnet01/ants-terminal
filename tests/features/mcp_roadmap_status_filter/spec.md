@@ -3,7 +3,7 @@
 ## What it locks
 
 The 10-INV contract for the `status` filter on `roadmap_query` MCP
-tool + `cmdRoadmapQuery` IPC verb (per `docs/specs/ANTS-1247.md`):
+tool + `cmdRoadmapQuery` IPC verb (per `docs/specs/ANTS-1247-status-filter-roadmap-query-mcp.md`):
 
 1. **INV-1.** Back-compat: `cmdRoadmapQuery(QJsonObject{})` (zero-arg
    default) returns the full unfiltered set. Verified by header

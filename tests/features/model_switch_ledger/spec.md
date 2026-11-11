@@ -1,7 +1,7 @@
 # Feature: model-switch effectiveness ledger (`ModelSwitchLedger`)
 
 Part of **ANTS-1735** (Shape B of ANTS-1226). Full design + invariants live in
-[`docs/specs/ANTS-1735.md`](../../../docs/specs/ANTS-1735.md) §2.5. Because the
+[`docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md`](../../../docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md) §2.5. Because the
 user does not click the recommender chip, **measured outcomes replace
 click-acceptance** as the trust signal. Every auto-switch appends one record; a
 later tick fills its outcome once the following turns have run.

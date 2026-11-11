@@ -2,7 +2,7 @@
 
 Behavioural invariants drive the pure `ApplyEdits::applyToContent` helper;
 wiring invariants source-scrape the registration sites. Full design
-contract: [`docs/specs/ANTS-2022.md`](../../../docs/specs/ANTS-2022.md).
+contract: [`docs/specs/ANTS-2022-apply-edits-mcp-tool-n.md`](../../../docs/specs/ANTS-2022-apply-edits-mcp-tool-n.md).
 
 | # | Test | Asserts |
 |---|------|---------|

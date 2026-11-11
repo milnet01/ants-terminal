@@ -2,7 +2,7 @@
 
 Source-grep wiring contract for the MCP tokens-saved status-bar chip +
 persisted month / YTD / all-time aggregate. Full design:
-`docs/specs/ANTS-3572.md`. The pure fold/sum/humanize math is covered by
+`docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md`. The pure fold/sum/humanize math is covered by
 `tests/features/token_usage_engine/` (FOLD-*/HUMAN-1); the config-key
 defaults by `tests/features/auto_switch_surfacing/`. This bundle locks the
 cross-file wiring that a pure test can't reach.

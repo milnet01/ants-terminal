@@ -1,7 +1,7 @@
 # Feature: `roadmap_log op:create_section`
 
 Part of **ANTS-1878**. Full design + invariants live in
-[`docs/specs/ANTS-1878.md`](../../../docs/specs/ANTS-1878.md).
+[`docs/specs/ANTS-1878-roadmap-log-op-create-section.md`](../../../docs/specs/ANTS-1878-roadmap-log-op-create-section.md).
 
 ## Scope
 
@@ -34,7 +34,7 @@ Part of **ANTS-1878**. Full design + invariants live in
   negative (`#1234 ref`) cases.
 
 - **INV-11** (ANTS-5315) derived release placement per
-  `docs/specs/ANTS-1878.md` § 2.3a — `Ants5315*` cases: placed after the
+  `docs/specs/ANTS-1878-roadmap-log-op-create-section.md` § 2.3a — `Ants5315*` cases: placed after the
   greatest lower version, or before the first release when it is the lowest
   (`Ants5563*`); unplaceable titles still `missing_field`; `v`,
   pre-release and repeated versions `bad_title` placed or supplied, ahead

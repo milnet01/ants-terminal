@@ -1,6 +1,6 @@
 # mcp_cold_eyes — feature-conformance spec
 
-**Owner:** ANTS-1319 (`docs/specs/ANTS-1319.md`)
+**Owner:** ANTS-1319 (`docs/specs/ANTS-1319-cold-eyes-mcp-fold.md`)
 **Sources under test:** `src/claudeintegration.cpp`,
 `src/remotecontrol.{h,cpp}`, `src/mainwindow.cpp`.
 

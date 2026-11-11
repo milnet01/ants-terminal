@@ -1,7 +1,7 @@
 # feedback_query marker-aware v2 delta — feature conformance
 
 Contract for the marker-aware v2 un-triaged delta in `FeedbackFile::parse()` +
-`feedback_query`. Full design: `docs/specs/ANTS-3448.md`. This test locks the
+`feedback_query`. Full design: `docs/specs/ANTS-3448-marker-aware-v2-un-triaged.md`. This test locks the
 invariants.
 
 ## What the change does
@@ -25,7 +25,7 @@ The v1 boundary scan (`lastMaintainerLine` / `maintainerBlockCount` /
 needs no code change — it reads `deltaPresent`/`deltaLineCount`, now
 version-correct.
 
-## Invariants under test (⇢ docs/specs/ANTS-3448.md)
+## Invariants under test (⇢ docs/specs/ANTS-3448-marker-aware-v2-un-triaged.md)
 
 - **INV-1** — `formatVersion` from the first marker (absent/malformed → 0);
   `>= 2` selects the v2 rule, `< 2` the v1 rule.

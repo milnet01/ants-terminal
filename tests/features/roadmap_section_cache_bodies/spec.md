@@ -6,7 +6,7 @@
 `RemoteControl::m_roadmapSectionCache`, up to `kRoadmapSectionCacheCap`
 sections. Each bullet carried its whole body, and a parent heading's entry
 carries its whole subtree, so the cache grew far past the budget in
-`docs/specs/ANTS-1346.md` § 4 (ANTS-5094). The user decided on 2026-09-14
+`docs/specs/ANTS-1346-roadmap-query-section-cache-lru.md` § 4 (ANTS-5094). The user decided on 2026-09-14
 to fix the code, not the budget.
 
 ## Contract

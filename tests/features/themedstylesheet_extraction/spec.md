@@ -1,6 +1,6 @@
 # themedstylesheet extraction (ANTS-1147)
 
-Companion test for `docs/specs/ANTS-1147.md`. The full
+Companion test for `docs/specs/ANTS-1147-extract-themedstylesheet-mainwindow-cpp.md`. The full
 contract — surface-design choice, behavioural-parity statement,
 include-hygiene plan, three-call-site chip-helper consolidation,
 cache-and-compare optimization shape — lives in the spec; this

@@ -2,7 +2,7 @@
 //
 // Exercises the non-GUI partition / brief / synthesis / fold-in / resume
 // paths of TestAuditDialog : ReviewDialogBase. INV-8 is a construction
-// smoke. See tests/features/test_audit_dialog/spec.md + ANTS-1722.md.
+// smoke. See tests/features/test_audit_dialog/spec.md + ANTS-1722-testauditdialog-native-app-test-suite.md.
 
 #include "testauditdialog.h"
 #include "testauditengine.h"

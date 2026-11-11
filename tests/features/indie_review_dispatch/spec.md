@@ -3,7 +3,7 @@
 Server-side multi-agent indie-review orchestrator. Fires N parallel
 HTTP POSTs to the project-configured AI endpoint, saves each
 response under `reports_dir/<lane>.md`. See
-`docs/specs/ANTS-1352.md` for the full design + invariant rationale.
+`docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md` for the full design + invariant rationale.
 
 ## Invariants
 

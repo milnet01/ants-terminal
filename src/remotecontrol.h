@@ -504,7 +504,7 @@ public:
     // directly with hand-authored fixtures (the bundles branch calls it
     // on m_roadmapCacheBullets). softCapBytes bounds the emitted
     // bundles[]; truncation drops whole trailing bundles. See
-    // docs/specs/ANTS-1922.md.
+    // docs/specs/ANTS-1922-roadmap-query-mode-bundles-work.md.
     static QJsonObject buildRoadmapBundlesEnvelope(
         const QJsonArray &cacheBullets, int softCapBytes);
     // ANTS-1964 / ANTS-4896 — session_orient's cross-session feedback backlog
@@ -551,7 +551,7 @@ public:
     // path). Deliberately NOT MCP-registered, so unreachable through the
     // agent's MCP toolset against the user's live instance (security property,
     // spec §5). e2eResolveTarget is the shared offscreen-safe widget resolver
-    // (never QApplication::activeWindow()). See docs/specs/ANTS-2049.md.
+    // (never QApplication::activeWindow()). See docs/specs/ANTS-2049-end-end-harness-drive-ants.md.
     QWidget *e2eResolveTarget(const QString &objectName) const;
     QJsonDocument cmdInjectKey(const QJsonObject &req);
     QJsonDocument cmdInjectClick(const QJsonObject &req);
@@ -562,7 +562,7 @@ public:
     // scrollback with a per-language regex bank (ScrollbackErrors) and
     // return structured errors[]. Resolves the terminal exactly as
     // cmdGetText. MCP-only (no IPC dispatch verb, like get_scrollback).
-    // See docs/specs/ANTS-1301.md.
+    // See docs/specs/ANTS-1301-recent-errors-mcp-extract-compile.md.
     QJsonDocument cmdRecentErrors(const QJsonObject &req);
 
     // ANTS-3374: attach a `likely_fix` add_include hint to every entry in
@@ -590,7 +590,7 @@ public:
     // so the body is reused across IPC + MCP transports. Argv-only
     // QProcess::start (no shell), hard-killed after
     // kWorkspaceSearchHardKillMs + kWorkspaceSearchKillGraceMs, results
-    // clamped to kWorkspaceSearchMaxResultsCap. See docs/specs/ANTS-1248.md.
+    // clamped to kWorkspaceSearchMaxResultsCap. See docs/specs/ANTS-1248-workspace-search-mcp-tool-ripgrep.md.
     QJsonDocument cmdWorkspaceSearch(const QJsonObject &req);
 
     // ANTS-3368 — co_change_family: every edit site of one settings field,
@@ -608,7 +608,7 @@ public:
     // ANTS-1249: file outline (regex scanner over a file, returns
     // header_doc + symbols[] for cpp / py / md / unknown). Shares
     // the pathInRepoRoot helper with cmdWorkspaceSearch.
-    // See docs/specs/ANTS-1249.md.
+    // See docs/specs/ANTS-1249-file-outline-mcp-tool.md.
     QJsonDocument cmdFileOutline(const QJsonObject &req);
     // ANTS-3745 — build_target_for: which build target owns a source, plus
     // the `cmake --build --target` and `ctest -R` lines that answer follows
@@ -918,7 +918,7 @@ public:
     // symbol scanner. Delegate to SymbolQuery; resolve the root via
     // resolveRootCanonical, validate `symbol` (→ bad_args). Public so
     // the MCP provider lambdas in MainWindow delegate here.
-    // See docs/specs/ANTS-1303.md.
+    // See docs/specs/ANTS-1303-find-definition-find-caller-mcp.md.
     QJsonDocument cmdFindDefinition(const QJsonObject &req);
     QJsonDocument cmdFindCaller(const QJsonObject &req);
 
@@ -927,7 +927,7 @@ public:
     // similarity to a free-text `shape` query. Delegate to SimilarCode;
     // resolve the root via resolveRootCanonical, validate `shape`
     // (→ bad_args). Public so the MCP provider lambda in MainWindow
-    // delegates here. See docs/specs/ANTS-1305.md.
+    // delegates here. See docs/specs/ANTS-1305-similar-code-mcp-pattern-matcher.md.
     QJsonDocument cmdSimilarCode(const QJsonObject &req);
 
     // ANTS-1250: git_state — single tool, dispatches on `op` field
@@ -935,7 +935,7 @@ public:
     // helper. Argv-only, --separator + ./ prefix on -leading paths,
     // strict regex on the diff range (rejects leading -). Public so
     // the MCP provider lambda in MainWindow delegates here.
-    // See docs/specs/ANTS-1250.md.
+    // See docs/specs/ANTS-1250-git-state-mcp-tool-consolidated.md.
     QJsonDocument cmdGitState(const QJsonObject &req);
 
     // ANTS-1251: subsystem — single tool, dispatches on `op` field
@@ -943,13 +943,13 @@ public:
     // Module map, returns per-lane file lists, and (via cmdGitState
     // composition) per-lane git history. Public so the MCP provider
     // lambda in MainWindow delegates here.
-    // See docs/specs/ANTS-1251.md.
+    // See docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md.
     QJsonDocument cmdSubsystem(const QJsonObject &req);
 
     // ANTS-1254: last_audit_summary — opens latest .audit_cache/audit-*.sarif
     // and returns compact summary (counts + top_findings). Single-entry
     // mtime-keyed cache; SARIF parsing delegated to
-    // AuditEngine::summariseSarif. See docs/specs/ANTS-1254.md.
+    // AuditEngine::summariseSarif. See docs/specs/ANTS-1254-last-audit-summary-mcp-tool.md.
     QJsonDocument cmdLastAuditSummary(const QJsonObject &req);
 
     // ANTS-1569: one-call session-start state recovery.
@@ -962,7 +962,7 @@ public:
     QJsonDocument cmdCurrentState(const QJsonObject &req);
     // ANTS-1735: model_switch_stats — read-only aggregation of the model-switch
     // effectiveness ledger, scoped to the caller's project. MCP-only (mirrors
-    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735.md §2.5.
+    // current_state; no IPC dispatch branch). See docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md §2.5.
     QJsonDocument cmdModelSwitchStats(const QJsonObject &req);
     // ANTS-1883: bundle of current_state + project_layout +
     // roadmap_query mode:section_index status:active in one
@@ -975,13 +975,13 @@ public:
     // return ranked context buckets (matching specs, ROADMAP cards,
     // recent commits touching named paths, related ADRs) in one call.
     // Pure composer over cmdRoadmapQuery + cmdGitState + the spec
-    // parser; no new lib, no cache, MCP-only. See docs/specs/ANTS-1306.md.
+    // parser; no new lib, no cache, MCP-only. See docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md.
     QJsonDocument cmdTaskPriors(const QJsonObject &req);
 
     // ANTS-1307: project_conventions — return the curated subset of
     // project conventions relevant to a task_type (feature/bugfix/
     // refactor/docs/test), each {rule, source} with a source-existence
-    // check. Static table, MCP-only. See docs/specs/ANTS-1307.md.
+    // check. Static table, MCP-only. See docs/specs/ANTS-1307-project-conventions-mcp-compact.md.
     QJsonDocument cmdProjectConventions(const QJsonObject &req);
 
     // ANTS-1302: focused_test — run only the ctest subset touching the
@@ -989,7 +989,7 @@ public:
     // status) to ctest -R patterns via tests/coverage-map.json (or a
     // heuristic, or full-suite fallback), runs ctest, and returns the
     // test_results (ANTS-1300) envelope shape plus selection metadata.
-    // Re-entrancy-gated, Expensive, MCP-only. See docs/specs/ANTS-1302.md.
+    // Re-entrancy-gated, Expensive, MCP-only. See docs/specs/ANTS-1302-focused-test-mcp-run-only.md.
     QJsonDocument cmdFocusedTest(const QJsonObject &req);
 
     // ANTS-1309: spec_query — parse a single docs/specs/<id>.md file
@@ -1007,7 +1007,7 @@ public:
     // ANTS-1299: build_status — record/read the most recent build's
     // {exit_code, errors:[], warnings_count} summary at
     // <root>/.audit_cache/build.json. op ∈ {record, read} (default
-    // read). MCP-only. See docs/specs/ANTS-1299.md.
+    // read). MCP-only. See docs/specs/ANTS-1299-build-status-mcp-cached-build.md.
     QJsonDocument cmdBuildStatus(const QJsonObject &req);
 
     // ANTS-1300: test_results — record/read the most recent ctest run's
@@ -1020,7 +1020,7 @@ public:
     // ANTS-1112 — the `indie_review_*` MCP tools. All resolve the
     // active project via the focused TerminalWidget's shellCwd
     // (matches git_state / subsystem / last_audit_summary). Pure
-    // delegation to IndieReviewEngine. See docs/specs/ANTS-1112.md.
+    // delegation to IndieReviewEngine. See docs/specs/ANTS-1112-fold-indie-review-orchestration-into.md.
     QJsonDocument cmdIndieReviewPartition(const QJsonObject &req);
     QJsonDocument cmdIndieReviewCorroborate(const QJsonObject &req);
     // ANTS-4814 — drive corroboration against a synthetic caller_cwd without
@@ -1033,7 +1033,7 @@ public:
 
     // ANTS-1352 — server-side dispatch orchestrator. Fires N parallel
     // HTTP POSTs to Config::aiEndpoint, saves each response under
-    // reports_dir. See docs/specs/ANTS-1352.md. ANTS-5024 — `root` is resolved
+    // reports_dir. See docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md. ANTS-5024 — `root` is resolved
     // by the caller on the GUI thread; this runs on a worker the GUI thread
     // joins, so it must not marshal to the GUI thread.
     QJsonDocument cmdIndieReviewDispatch(const QJsonObject &req,
@@ -1041,12 +1041,12 @@ public:
 
     // ANTS-1289 — verify_changes. Drives the project's build → tests →
     // lint gates and returns structured pass/fail. Pure delegation to
-    // VerifyEngine. See docs/specs/ANTS-1289.md.
+    // VerifyEngine. See docs/specs/ANTS-1289-verify-changes-mcp-tool.md.
     QJsonDocument cmdVerifyChanges(const QJsonObject &req);
 
     // ANTS-1284 — token_usage. Reads ClaudeIntegration's
     // TokenUsageEngine::Tracker and returns the per-tool dispatch
-    // report. See docs/specs/ANTS-1284.md.
+    // report. See docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md.
     //
     // ANTS-1422 pull 3 — `explicitCi` is the canonical path. The
     // MCP lambda in mainwindow.cpp passes the captured
@@ -1059,31 +1059,31 @@ public:
                                 ClaudeIntegration *ci);
 
     // ANTS-1319 — the `cold_eyes_*` MCP tools. Pure delegation to
-    // ColdEyesEngine. See docs/specs/ANTS-1319.md.
+    // ColdEyesEngine. See docs/specs/ANTS-1319-cold-eyes-mcp-fold.md.
     QJsonDocument cmdColdEyesPartition(const QJsonObject &req);
     QJsonDocument cmdColdEyesBrief(const QJsonObject &req);
 
     // ANTS-1283 — session_memory KV. Per-cwd key-value persistence to
     // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Pure
     // delegation to SessionMemoryEngine::execute. See
-    // docs/specs/ANTS-1283.md.
+    // docs/specs/ANTS-1283-session-memory-mcp-key-value.md.
     QJsonDocument cmdSessionMemory(const QJsonObject &req);
 
     // ANTS-1430 — project_layout read verb. Scan-if-stale wrapper
     // over ProjectLayoutEngine + SessionMemoryEngine (well-known
     // key `project_layout`). Required contract; gateErrorEnvelope
-    // on caller_cwd mismatch. See docs/specs/ANTS-1430.md.
+    // on caller_cwd mismatch. See docs/specs/ANTS-1430-session-memory-project-layout-scan.md.
     QJsonDocument cmdProjectLayout(const QJsonObject &req);
 
     // ANTS-1424 — roadmap_log. Append a new bullet to ROADMAP.md.
     // Mutates project state (counter + markdown). Required contract
     // gates absent caller_cwd; PathValidation anchors paths to the
-    // caller's project root. See docs/specs/ANTS-1424.md.
+    // caller's project root. See docs/specs/ANTS-1424-roadmap-log-mcp-write-verb.md.
     //
     // ANTS-1428 — adapter mode adds `op:"flip"` for GFM-format
     // roadmaps; cmdRoadmapLog routes to cmdRoadmapLogFlip on that
     // value. Default `op:"append"` preserves ANTS-1424 behaviour
-    // byte-for-byte. See docs/specs/ANTS-1428.md § Tier 2.
+    // byte-for-byte. See docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Tier 2.
     QJsonDocument cmdRoadmapLog(const QJsonObject &req);
     // ANTS-5359 — cmdRoadmapLog's op dispatch. cmdRoadmapLog holds the write
     // lock, calls this, and adds the reply-wide advisories every op shares.
@@ -1184,7 +1184,7 @@ public:
     // ANTS-3533 — changelog_query: read-only structured reader over
     // CHANGELOG.md (mirror of cmdRoadmapQuery). Modes entries /
     // version_index / headline_only; version/category/query/id/ids
-    // filters; mtime+TTL parse cache. See docs/specs/ANTS-3533.md.
+    // filters; mtime+TTL parse cache. See docs/specs/ANTS-3533-changelog-query-read-verb-mirror.md.
     QJsonDocument cmdChangelogQuery(const QJsonObject &req);
 
     // ANTS-2044 — op:"add_batch": N entries, one read + one atomic
@@ -1210,7 +1210,7 @@ public:
     // ANTS-1359 — test-only entry point + cache inspectors. Bypasses
     // the MainWindow / RcGate path so tests can drive cmdVerifyChanges
     // against a synthetic project root inside a QTemporaryDir without
-    // standing up a real MainWindow. See docs/specs/ANTS-1359.md § 3.
+    // standing up a real MainWindow. See docs/specs/ANTS-1359-verify-changes-session-build-cache.md § 3.
     QJsonDocument cmdVerifyChangesWithRoot(const QString &root,
                                            const QJsonObject &req);
     int verifyCacheSizeForTest() const { return m_verifyCache.size(); }
@@ -1353,7 +1353,7 @@ private:
     QJsonDocument dispatch(const QJsonObject &req);
     // ANTS-1428 — adapter-mode write path for GFM-format roadmaps.
     // Dispatched from cmdRoadmapLog when req["op"] == "flip". See
-    // docs/specs/ANTS-1428.md § Tier 2.
+    // docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md § Tier 2.
     QJsonDocument cmdRoadmapLogFlip(const QJsonObject &req);
     // ANTS-4667 — op:"amend_field": write one trailer column of one item.
     QJsonDocument cmdRoadmapLogAmendField(const QJsonObject &req);
@@ -1663,7 +1663,7 @@ private:
     int m_gateDriftBudgetOverride = -1;   // ANTS-5096
     // ANTS-1287 — heading index + section-slice bullet cache. Shares
     // (path, mtime, stamp) keys with the bullets cache; cleared on
-    // mtime advance or TTL expiry. See docs/specs/ANTS-1287.md § 2.3.
+    // mtime advance or TTL expiry. See docs/specs/ANTS-1287-roadmap-query-indexed-parser-cache.md § 2.3.
     mutable QVector<RoadmapIndex::Section> m_roadmapIndex;
     mutable QHash<QString, QJsonArray>     m_roadmapSectionCache;
     // ANTS-1696 — per-section shape hint for non-bullet sections.
@@ -1718,7 +1718,7 @@ private:
 
     // ANTS-1359 — session-scoped verify_changes build-cache. Entries
     // keyed on (projectRoot, git HEAD, git status SHA, trust outcome,
-    // autotrust env, canonicalised options) — see docs/specs/ANTS-1359.md
+    // autotrust env, canonicalised options) — see docs/specs/ANTS-1359-verify-changes-session-build-cache.md
     // § 2.3. Excludes bad_config / none / verify_untrusted / non-git /
     // not-naturally-completed gates / mid-run snapshot drift per § 2.5.
     struct VerifyChangesCacheEntry {

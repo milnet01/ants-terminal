@@ -8,7 +8,7 @@
 //
 // Pure Qt6::Core. Lives in ants_core_lib so non-GUI consumers
 // (CI runners, ants-helper, future MCP) link it directly.
-// See docs/specs/ANTS-1430.md.
+// See docs/specs/ANTS-1430-session-memory-project-layout-scan.md.
 
 #pragma once
 

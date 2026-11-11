@@ -3084,7 +3084,7 @@ Remedy: say routing is decided by the `phase_` prefix, not by the branches being
 
 review-readability, lane 27-mcp-state-workspace-b, Q4. **Disposition:** queued under ANTS-6131.
 
-The next line returns `parse_failed`. `docs/specs/ANTS-1254.md` INV-10 also says `not_audited`. A reader can't tell whether the comment or the code is wrong.
+The next line returns `parse_failed`. `docs/specs/ANTS-1254-last-audit-summary-mcp-tool.md` INV-10 also says `not_audited`. A reader can't tell whether the comment or the code is wrong.
 
 Quote: `// INV-10: empty results / no runs[] → not_audited.`
 
@@ -4314,7 +4314,7 @@ Remedy: say that `errors[]` entries are always "error".
 
 review-readability, lane 43-diagnostics-logging, Q4. **Disposition:** queued, ANTS-6556.
 
-docs/specs/ANTS-1299.md has no § 3.3.2. Its headings are § 3.3 with `op=read` subsections, and the probe set is described at about lines 163-168 and in § 4 row 16. A stranger following the pointer gets stuck.
+docs/specs/ANTS-1299-build-status-mcp-cached-build.md has no § 3.3.2. Its headings are § 3.3 with `op=read` subsections, and the probe set is described at about lines 163-168 and in § 4 row 16. A stranger following the pointer gets stuck.
 
 Quote: `// instead of stale:false. The probed set is per § 3.3.2 step 3`
 
@@ -6266,7 +6266,7 @@ The "how far does a bullet's text run" walk in `lastTouchFromBlame` stops at the
 
 Quote: `if (cont.trimmed().isEmpty()) break;`
 
-Remedy: share one block-extent helper, or comment why blame differs. Cost: pinned — `docs/specs/ANTS-1237.md` names `lastTouchFromBlame` (line 41) and defines "until blank" (lines 281, 455); anchor `lastTouchFromBlame(` (line 37). Searched: `src` for `INV-31`; `roadmapparse.cpp` for its blank-line rule; th…
+Remedy: share one block-extent helper, or comment why blame differs. Cost: pinned — `docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md` names `lastTouchFromBlame` (line 41) and defines "until blank" (lines 281, 455); anchor `lastTouchFromBlame(` (line 37). Searched: `src` for `INV-31`; `roadmapparse.cpp` for its blank-line rule; th…
 
 Also reported as: "code lane 29-roadmap-dialog Low dim 4 roadmapdialog.cpp:1848; readability lane 16-roadmap-dialog Info correctness lead src/roadmapdialog.cpp:1835-1858"
 
@@ -7596,7 +7596,7 @@ The Pass-heading write replies are built by hand in pairs: - dry-run vs real wri
 
 Quote: `out["file"] = QFileInfo(roadmapPath).fileName(); // ANTS-4116`
 
-Remedy: one reply builder with a dry-run flag, and one refusal builder per operation name. Cost: pinned — specs ANTS-2126.md:197 and ANTS-4487-item-removal.md:64 name `cmdRoadmapLogPassAppend` and `cmdRoadmapLogPassFlip`. Confirms the query.cpp site of dup:0745ac399ba6, and dup:8f8fb646e4e2, dup:2a3d272950…
+Remedy: one reply builder with a dry-run flag, and one refusal builder per operation name. Cost: pinned — specs ANTS-2126-roadmap-log-heading-format-writer.md:197 and ANTS-4487-item-removal.md:64 name `cmdRoadmapLogPassAppend` and `cmdRoadmapLogPassFlip`. Confirms the query.cpp site of dup:0745ac399ba6, and dup:8f8fb646e4e2, dup:2a3d272950…
 
 ### Row 850 — Medium — `src/remotecontrol_roadmap_query_verb.cpp:1900`
 
@@ -13190,7 +13190,7 @@ Remedy: a name that says "enter a string if `ch` introduces one".
 
 review-readability, lane 02-terminal-grid, Q3. **Disposition:** queued, ANTS-6689.
 
-The name says history insertion pauses, but insertion carries on; only the doubling-guard suppression is turned off. A caller would expect lines to be held back or dropped. The setter's own comment had to be corrected once already (ANTS-5076). - Fix: rename to say what it does, for example "user is scrolled back". - Cost: pinned. `docs/specs/ANTS-1118.md` and `tests/features/scroll_snapshot_inten…
+The name says history insertion pauses, but insertion carries on; only the doubling-guard suppression is turned off. A caller would expect lines to be held back or dropped. The setter's own comment had to be corrected once already (ANTS-5076). - Fix: rename to say what it does, for example "user is scrolled back". - Cost: pinned. `docs/specs/ANTS-1118-smooth-scroll-snapshot-race-during.md` and `tests/features/scroll_snapshot_inten…
 
 Quote: `void setScrollbackInsertPaused(bool paused) { m_scrollbackInsertPaused = paused; }`
 
@@ -13810,7 +13810,7 @@ It returns CHANGELOG lines and commit subjects, not roadmap bullets, and the par
 
 Quote: `QStringList collectCurrentBullets();`
 
-Remedy: rename to something like `collectCurrentWorkSignals`. Cost: pinned — `docs/specs/ANTS-3793-roadmap-consumer-cutover.md` (lines 81, 875) and `docs/plans/ANTS-1160.md` (line 1384) name `collectCurrentBullets`.
+Remedy: rename to something like `collectCurrentWorkSignals`. Cost: pinned — `docs/specs/ANTS-3793-roadmap-consumer-cutover.md` (lines 81, 875) and `docs/plans/ANTS-1160-roadmap-dialog-redesign-format-spec.md` (line 1384) name `collectCurrentBullets`.
 
 ### Row 714 — Medium — `src/claudeintegration_terminal.cpp:186`
 
@@ -14220,7 +14220,7 @@ review-readability, lane 27-mcp-state-workspace-b, Q5. **Disposition:** queued u
 
 Quote: `QStringLiteral("ANTS-[0-9]+"),`
 
-Remedy: a comment that ids are ANTS-only by ANTS-1306 INV-2, or widen the pattern along with the spec. Cost: pinned. `docs/specs/ANTS-1306.md` INV-2 / table row 2 names `ANTS-[0-9]+`, and the anchor `ANTS-[0-9]+` (`test_mcp_task_priors.cpp:83`) pins it.
+Remedy: a comment that ids are ANTS-only by ANTS-1306 INV-2, or widen the pattern along with the spec. Cost: pinned. `docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md` INV-2 / table row 2 names `ANTS-[0-9]+`, and the anchor `ANTS-[0-9]+` (`test_mcp_task_priors.cpp:83`) pins it.
 
 ### Row 915 — Low — `src/remotecontrol_state.cpp:547`
 

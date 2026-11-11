@@ -1,5 +1,5 @@
 // Feature-conformance test for ANTS-1735 — the model_switch_stats MCP verb.
-// See tests/features/mcp_model_switch_stats/spec.md and docs/specs/ANTS-1735.md
+// See tests/features/mcp_model_switch_stats/spec.md and docs/specs/ANTS-1735-autonomous-claude-code-model-switcher.md
 // §2.5 (INV-13). Two halves:
 //   (1) behavioural — the pure aggregation (statsEnvelope/statsForProject),
 //   (2) wiring contract — source-grep that the MCP dispatch is registered

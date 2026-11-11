@@ -2,9 +2,9 @@
 
 **Theme:** `TestResCache::parseCtestOutput` — the pure ctest-log parser
 behind `test_results` and `focused_test`. Full spec:
-`docs/specs/ANTS-1300.md` § 3.4.
+`docs/specs/ANTS-1300-test-results-mcp-last-test.md` § 3.4.
 
-`docs/specs/ANTS-1300.md` § 3.4 and `tests/features/mcp_test_results/`
+`docs/specs/ANTS-1300-test-results-mcp-last-test.md` § 3.4 and `tests/features/mcp_test_results/`
 document the wiring around this function; neither exercises the parser
 against a real ctest log. This test calls
 `TestResCache::parseCtestOutput` directly with verbatim ctest output

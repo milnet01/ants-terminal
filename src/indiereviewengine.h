@@ -386,7 +386,7 @@ CorroborationSplit splitByLaneCount(const QList<CorroboratedFinding> &all,
 // is resolved relative to projectPath; lane name = filename stem of
 // each top-level `*.md` file. Sub-directories are not recursed. Each
 // report file is truncated at 64 KiB (matches extractFileLineCitations'
-// kMaxScanBytes — INV-8 of docs/specs/ANTS-1282.md). Saves the parent
+// kMaxScanBytes — INV-8 of docs/specs/ANTS-1282-indie-review-corroborate-accepts.md). Saves the parent
 // orchestrator from holding 14 reports in context just to call
 // corroborate.
 //

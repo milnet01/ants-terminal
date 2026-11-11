@@ -1,6 +1,6 @@
 // ANTS-1078 — terminal screen-reader accessibility conformance test.
 // Contract: tests/features/terminal_a11y/spec.md. Design + invariants:
-// docs/specs/ANTS-1078.md. Runs in the test_chrome GUI bundle (constructing
+// docs/specs/ANTS-1078-screen-reader-accessibility.md. Runs in the test_chrome GUI bundle (constructing
 // a full TerminalWidget pulls remotecontrol -> MainWindow, whose symbols live
 // in ants_chrome_lib) under QT_QPA_PLATFORM=offscreen.
 

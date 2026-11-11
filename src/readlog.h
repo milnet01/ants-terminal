@@ -3,7 +3,7 @@
 // MainWindow (mirrors fileoutline.h / paginationengine.h). The thin
 // cmdReadLog wrapper (remotecontrol.cpp) handles path resolution +
 // PathValidation + the caller_cwd contract, then calls ReadLog::filter
-// on the resolved path. See docs/specs/ANTS-1855.md.
+// on the resolved path. See docs/specs/ANTS-1855-read-log-mcp-tool-filter.md.
 
 #pragma once
 

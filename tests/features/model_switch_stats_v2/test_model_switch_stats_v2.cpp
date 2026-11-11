@@ -1,6 +1,6 @@
 // ANTS-1891 — Trust-signal v2 behavioural tests.
 //
-// Covers the 13 invariants in docs/specs/ANTS-1891.md:
+// Covers the 13 invariants in docs/specs/ANTS-1891-auto-switcher-trust-signal-v2.md:
 //   INV-1   regret_count folds in under-route
 //   INV-2   measured/inconclusive bucketing
 //   INV-3   regret_rate denominator semantics

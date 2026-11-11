@@ -472,7 +472,7 @@ TEST(McpLastAuditSummary, Ants1459StatusBarRoadmapButtonWidened) {
 // ANTS-1576 — last_audit_summary hardening
 // ============================================================
 //
-// Spec: docs/specs/ANTS-1576.md
+// Spec: docs/specs/ANTS-1576-last-audit-summary-hardening-scope.md
 //
 // Bundles:
 // - INV-1..3  : buildVcsProvenanceBlock helper (declared + behaviour).

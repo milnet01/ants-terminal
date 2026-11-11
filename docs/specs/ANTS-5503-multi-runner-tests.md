@@ -463,7 +463,7 @@ Rejected:
 
 ## 11. Cross-doc impact
 
-- `docs/specs/ANTS-1300.md` and `docs/specs/ANTS-1302.md` — a pointer line
+- `docs/specs/ANTS-1300-test-results-mcp-last-test.md` and `docs/specs/ANTS-1302-focused-test-mcp-run-only.md` — a pointer line
   to this spec.
 - `docs/standards/mcp-error-codes.md` — rows for `no_runner`,
   `runner_missing` and `runner_failed`.

@@ -1,5 +1,5 @@
 // VerifyTrust implementation — content-trust gate for
-// `.ants/verify.json`. See verifytrust.h + docs/specs/ANTS-1337.md.
+// `.ants/verify.json`. See verifytrust.h + docs/specs/ANTS-1337-first-run-trust-gate-ants.md.
 
 #include "verifytrust.h"
 #include "secureio.h"

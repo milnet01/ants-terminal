@@ -5,8 +5,8 @@ The scripts here are installed user-globally into `~/.claude/settings.json` by
 `.ants-project` marker (so they fire only inside an Ants repo, costing a
 sub-millisecond `stat` and zero tokens elsewhere).
 
-Design contract: [`docs/specs/ANTS-1252.md`](../docs/specs/ANTS-1252.md)
-(the pack) and [`docs/specs/ANTS-2141.md`](../docs/specs/ANTS-2141.md)
+Design contract: [`docs/specs/ANTS-1252-token-saving-hook-pack.md`](../docs/specs/ANTS-1252-token-saving-hook-pack.md)
+(the pack) and [`docs/specs/ANTS-2141-soft-warn-grep-find-over.md`](../docs/specs/ANTS-2141-soft-warn-grep-find-over.md)
 (the grep/find soft-warn). Conformance test:
 [`tests/features/hook_pack/`](../tests/features/hook_pack/).
 

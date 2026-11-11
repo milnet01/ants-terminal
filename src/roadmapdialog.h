@@ -78,7 +78,7 @@ class RoadmapShortcutsDialog;
 // row in declaration order. The action column is resolved through
 // `RoadmapDialog::tr()` so a future translation pass works; the keys
 // column is pass-through (key glyphs are layout-invariant). See spec
-// `docs/specs/ANTS-1236.md` § 3.c.
+// `docs/specs/ANTS-1236-roadmapdialog-v2-keyboard-shortcut.md` § 3.c.
 QVector<QPair<QString, QString>> roadmapShortcutRows();
 
 // ANTS-1237 — render an age in seconds as a "today" / "yesterday" /
@@ -160,7 +160,7 @@ public:
     // ANTS-1238: card-density tier. Selects the per-CSS-class px
     // values + vertical-padding scale that `renderCardsHtml` emits.
     // Cozy is the default (INV-1). Spec:
-    // docs/specs/ANTS-1238.md § 2.f.
+    // docs/specs/ANTS-1238-roadmapdialog-v2-density-toggle-compact.md § 2.f.
     enum class Density {
         // Per-tier px live in kDensityTable (roadmapdialog.cpp);
         // ANTS-2211 floored the Compact/Cozy meta+label rows at 11/12px
@@ -308,7 +308,7 @@ public:
     // `git blame --porcelain` (ANTS-5047) once in roadmapPath's dir;
     // returns an empty hash on any failure (not a git repo, file
     // not tracked, git not on PATH, file does not exist, empty
-    // blame output). See spec `docs/specs/ANTS-1237.md` § 3.b.2.
+    // blame output). See spec `docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md` § 3.b.2.
     static QHash<QString, qint64>
     parseLastTouchDates(const QString &roadmapPath);
 

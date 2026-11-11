@@ -1,4 +1,4 @@
-// ANTS-1283 — implementation. See header and docs/specs/ANTS-1283.md.
+// ANTS-1283 — implementation. See header and docs/specs/ANTS-1283-session-memory-mcp-key-value.md.
 
 #include "sessionmemoryengine.h"
 

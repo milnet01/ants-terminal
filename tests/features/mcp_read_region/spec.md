@@ -2,7 +2,7 @@
 
 Behavioural invariants drive the pure `ReadRegion::extract` helper; wiring
 invariants source-scrape the registration sites. Full design contract:
-[`docs/specs/ANTS-2021.md`](../../../docs/specs/ANTS-2021.md).
+[`docs/specs/ANTS-2021-read-region-mcp-tool-read.md`](../../../docs/specs/ANTS-2021-read-region-mcp-tool-read.md).
 
 | # | Test | Asserts |
 |---|------|---------|

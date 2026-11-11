@@ -1,6 +1,6 @@
 # UI / chrome state persistence — Phase 1 (ANTS-1150)
 
-Companion test for `docs/specs/ANTS-1150.md`. The full design
+Companion test for `docs/specs/ANTS-1150-ui-chrome-state-persistence-phase.md`. The full design
 rationale, defaults table, edge-case fallback (Custom + empty
 status filters → Full), and the cold-eyes-folded race / ordering
 analysis live in the spec; this file documents only what

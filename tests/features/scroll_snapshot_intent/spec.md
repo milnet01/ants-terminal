@@ -8,7 +8,7 @@ and lets the grid mutate the rows the user is scrolling past.
 Once the snapshot finally captures, it captures post-mutation
 state.
 
-Companion to `docs/specs/ANTS-1118.md`. Spec covers root cause
+Companion to `docs/specs/ANTS-1118-smooth-scroll-snapshot-race-during.md`. Spec covers root cause
 + rationale; this file is the test contract.
 
 ## Invariants

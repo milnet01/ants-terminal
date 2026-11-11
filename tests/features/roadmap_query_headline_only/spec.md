@@ -1,6 +1,6 @@
 # `roadmap_query` `mode:"headline_only"` — feature-conformance test
 
-Locks the invariants in `docs/specs/ANTS-1881.md` against the
+Locks the invariants in `docs/specs/ANTS-1881-roadmap-query-mode-headline-only.md` against the
 implementation in the remotecontrol TUs + `src/claudeintegration.cpp`.
 
 ## Invariants tested

@@ -16,7 +16,7 @@ from that worker. `showPrompt()` constructs a `QMessageBox` there. Building a
 crash), and `QMessageBox::exec()` spins its own event loop on the worker,
 which can service queued MCP jobs out of order and break ANTS-2132 INV-2.
 
-This also breaches `docs/specs/ANTS-1337.md` INV-8 ("Modal runs on main
+This also breaches `docs/specs/ANTS-1337-first-run-trust-gate-ants.md` INV-8 ("Modal runs on main
 thread"), which was written and verified when every caller of `prompt()` ran
 on the GUI thread and stopped holding the moment `verify_changes` moved
 off it.

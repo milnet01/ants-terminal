@@ -1,7 +1,7 @@
 # doc_lint — engine conformance
 
 Contract for `tests/features/doc_lint/test_doc_lint.cpp`. Owning spec:
-[`docs/specs/ANTS-3663.md`](../../../docs/specs/ANTS-3663.md).
+[`docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md`](../../../docs/specs/ANTS-3663-doc-lint-every-deterministic-doc.md).
 
 Phase-1 rows only. The fix-path invariants belong to ANTS-3669 and to
 `tests/features/doc_lint_fix/`, which does not exist yet.

@@ -1,6 +1,6 @@
 # Feature: per-project `.ants/project.json` settings file
 
-Test contract for ANTS-2160 (`docs/specs/ANTS-2160.md`). Locks the
+Test contract for ANTS-2160 (`docs/specs/ANTS-2160-per-project-ants-settings-file.md`). Locks the
 behaviour of the pure `ProjectSettings::load` loader and the
 settings-aware `CodebaseIndex` / `DocsIndex` walks, plus the
 dispatch-side wiring via source-grep.

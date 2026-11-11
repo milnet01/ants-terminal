@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ants-terminal PreCompact hook — todo snapshot for next-session resume.
-# Spec: docs/specs/ANTS-1252.md § 1.5
+# Spec: docs/specs/ANTS-1252-token-saving-hook-pack.md § 1.5
 # Side-effect-only (INV-10 → zero stdout). Exits 0 always.
 #
 # Reads transcript via $CLAUDE_TRANSCRIPT_PATH (or falls back to the

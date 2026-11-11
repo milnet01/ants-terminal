@@ -2,7 +2,7 @@
 
 Pre-computed project structural map served by the Ants MCP so a Claude
 session stops re-deriving project shape with grep / `file_outline` /
-CLAUDE.md reads. Full design + invariants: `docs/specs/ANTS-1637.md`.
+CLAUDE.md reads. Full design + invariants: `docs/specs/ANTS-1637-codebase-index-mcp-tool-pre.md`.
 
 This conformance test drives the pure `CodebaseIndex` helper
 (`src/codebaseindex.{h,cpp}`) against fixtures in a `QTemporaryDir`, and

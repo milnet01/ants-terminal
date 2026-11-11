@@ -1,5 +1,5 @@
 // ANTS-3660 — doc_dedup engine. See docdedup.h for the design and
-// docs/specs/ANTS-3660.md for the measurements every constant came from.
+// docs/specs/ANTS-3660-doc-dedup-find-same-passage.md for the measurements every constant came from.
 
 #include "docdedup.h"
 

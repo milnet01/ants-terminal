@@ -1,6 +1,6 @@
 # DiffViewerDialog extraction (ANTS-1145)
 
-Companion test for `docs/specs/ANTS-1145.md`. The full
+Companion test for `docs/specs/ANTS-1145-extract-diffviewerdialog-mainwindow-cpp.md`. The full
 contract — surface-design choice, behavioural-parity statement,
 include-hygiene plan, per-test re-pointing table for the four
 existing `review_changes_*` tests — lives in the spec; this file

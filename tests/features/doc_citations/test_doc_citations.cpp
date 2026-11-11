@@ -1,6 +1,6 @@
 // ANTS-3636 — DocCitations::check: resolve a doc's citations, read the cited
 // text. See tests/features/doc_citations/spec.md for the invariant map and
-// docs/specs/ANTS-3636.md for the contract.
+// docs/specs/ANTS-3636-doc-citations-resolve-doc-s.md for the contract.
 //
 // Every fixture is a QTemporaryDir standing in for a project root plus a seeded
 // basenameIndex — the engine is Qt6::Core-pure, so no CodebaseIndex on disk and

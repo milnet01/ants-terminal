@@ -2,7 +2,7 @@
 // (observation masking). Behavioural coverage of the mcp:: offload/spill
 // API (pure Qt6::Core, in ants_core_lib) under an isolated test cache dir,
 // plus source-scrapes for the dispatch-site + verb wiring invariants.
-// See tests/features/mcp_result_offload/spec.md and docs/specs/ANTS-2094.md.
+// See tests/features/mcp_result_offload/spec.md and docs/specs/ANTS-2094-proactive-server-side-result-offload.md.
 
 #include "mcpprojection.h"   // mcp::isOffloadEligible
 #include "mcpspill.h"

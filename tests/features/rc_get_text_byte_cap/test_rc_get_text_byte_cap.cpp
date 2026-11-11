@@ -1,5 +1,5 @@
 // Feature-conformance test for spec.md (canonical:
-// docs/specs/ANTS-1348.md). Pins the server-side byte cap on
+// docs/specs/ANTS-1348-server-side-byte-cap-cmdgettext.md). Pins the server-side byte cap on
 // cmdGetText via the pure RemoteControl::trimScrollbackForGetText
 // helper, plus source-grep on the cmdGetText body.
 //

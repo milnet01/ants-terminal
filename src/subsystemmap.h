@@ -1,13 +1,13 @@
 // ANTS-1251 — subsystemmap: parses the `## Module map (src/)` section
 // into [{name, summary}, ...] and caches the result keyed on the source
 // file's mtime (no wall-clock TTL — INV-2). One copy lives on
-// RemoteControl. See docs/specs/ANTS-1251.md.
+// RemoteControl. See docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md.
 //
 // ANTS-1292 — the canonical module map moved out of CLAUDE.md into
 // docs/subsystems.md so the ~130-line lane catalogue is not reloaded
 // into every Claude session preamble. resolveSource() picks
 // docs/subsystems.md when present and falls back to CLAUDE.md for
-// projects that have not migrated. See docs/specs/ANTS-1292.md.
+// projects that have not migrated. See docs/specs/ANTS-1292-split-claude-md-module-map.md.
 
 #ifndef ANTS_SUBSYSTEMMAP_H
 #define ANTS_SUBSYSTEMMAP_H

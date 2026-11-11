@@ -1,6 +1,6 @@
 # session_memory_engine — feature-conformance spec
 
-**Owner:** ANTS-1283 (`docs/specs/ANTS-1283.md`)
+**Owner:** ANTS-1283 (`docs/specs/ANTS-1283-session-memory-mcp-key-value.md`)
 **Engine:** `src/sessionmemoryengine.{h,cpp}`
 
 Exercises `SessionMemoryEngine::execute` plus its helpers

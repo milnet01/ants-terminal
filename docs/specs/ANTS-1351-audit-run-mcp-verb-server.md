@@ -1,0 +1,1307 @@
+# ANTS-1351 — `audit_run` MCP verb: server-side audit runner
+
+**Status:** implemented. The § 7 skill fast-path shipped (ANTS-3613) and the INV-9 concurrency bound shipped as a flat engine-side cap rather than the v2 `m_auditPool` (ANTS-3612) — the pool itself stays unbuilt by decision, not by omission. Cold-eyes loops 1 + 2 + 3 folded (2026-05-17), loop 4 folded (2026-07-24, ANTS-3605 headless in-process lanes), loop 5 folded (2026-07-24, ANTS-3609 code reconciliation), loop 6 folded (2026-07-25, ANTS-3610..3615 + ANTS-1713 code reconciliation). Loop log § 10.
+**Kind:** implement
+**Source:** ROADMAP.md ANTS-1351 (append-only log — search the id, line numbers drift).
+**Blocked by:** none. `AuditEngine` (Qt6::Core-only) shipped in ANTS-1119.
+**Pairs with:** `last_audit_summary`; `audit_poll` (the ANTS-3396 async
+job-handle companion, opt-in via the `async` request field). ANTS-1397
+follows this spec's conventions (envelope cap, contract classification,
+lock pattern, worker model, namespace). Note: the shipped "worker model"
+is the per-call `QThread` + in-flight gate of INV-9, **not** the unbuilt
+`m_auditPool` pool — ANTS-1397-test-audit-mcp-trio-skill.md's own pool references await the
+ANTS-3612 reconciliation.
+**Distinct from:** ANTS-1280 (end-to-end orchestrator with subagent
+dispatch). ANTS-1351 is the single-call tool-wrapper.
+
+## 1. Problem
+
+`/audit` skill is ~11.5 KiB markdown + N parallel Bash tool
+invocations. Each tool's raw output enters parent context for
+filter/dedup/rank/triage. 2026-05-14 sweep measurement:
+
+- ~2.9 K input tokens for the skill markdown (loaded once per
+  session, not per sweep — clarified loop 3 H1).
+- **~80 K input tokens for tool raw output** — measurement source:
+  `token_usage` ledger row tagged `audit_v0_2026-05-14` (see
+  ANTS-1432). The 80 K figure is **±20 % pending re-measurement
+  during impl** — call it an estimate.
+- ~5 K output tokens for shell orchestration.
+
+`audit_run` returns a structured envelope + SARIF path instead of N
+raw outputs. **Net per-sweep saving: ~70–75 K tokens** (80 K tool
+output − the envelope's ~5 K tokens [its 20 KiB *byte* cap, INV-13/§6,
+is ≈ 5 K tokens — not 20 K tokens] − 60 B wrap; first sweep additionally
+saves the 2.9 K skill load). All figures are estimates (the 80 K is
+±20 % — see above).
+
+## 2. Surface
+
+### 2.1 Request shape
+
+```json
+{
+  "caller_cwd": "/abs/path/to/project",
+  "tools":      ["cppcheck", "ruff", "bandit"],
+  "scope":      "auto | full | files | since-tag:<tag> | branch-diff | since-last-run",
+  "cap_per_tool_seconds": 30,
+  "suppressions": "auto | none | path:<file>",
+  "formats":    ["sarif"],
+  "top_findings_count": 0,
+  "paths":      ["src/foo.cpp"],
+  "checks":     ["modernize-*"],
+  "async":      false
+}
+```
+
+| Field | Required | Default | Notes |
+|---|---|---|---|
+| `caller_cwd` | yes | — | ANTS-1404 `Required` contract. Canonicalised with `QFileInfo::canonicalFilePath()` + an `isDir()` check — **not** through `PathValidation::validatePath`, which this verb never calls (the dispatch lambda's `resolveInflightCallerCwd`, then the engine's own guard). A non-existent directory refuses `bad_cwd` at the lambda, before the engine runs; see § 4. |
+| `tools` | no | `auto` | Subset of {cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, gitleaks, trivy, shellcheck, mypy} (`kKnownTools()`, 10 entries). Unknown → `bad_tool`. Auto-detect (`kAutoDetectTools()`) is this set minus `mypy` (deps-less mypy is noise — ANTS-3418), i.e. 9 tools on a default sweep — clang-tidy included. ANTS-3622 (shipped 2026-07-25) reconciled the two stale MCP schema strings that disagreed: the `tools` description claimed auto-detect also excluded clang-tidy, and the `paths` description claimed only cppcheck + clang-tidy honoured it. Both were fixed in the schema rather than the code, because spec and code already agreed — the strings were the outliers, and dropping clang-tidy from auto-detect to match one of them would have silently changed the coverage of every default sweep. |
+| `scope` | no | `auto` | `auto` = full-tree minus exclusions; `full` = deterministic sweep over the tracked `src/` tree via `git ls-files` (git-**diff**-independent, ANTS-2015 — it still needs a git work tree, and sees only tracked files); `files` = `git merge-base HEAD origin/<default-branch>` (falls back HEAD~1 then full) **∪ working tree**; `since-tag:<t>` = `git diff --name-only <t>..HEAD` (sanitised per INV-15) **∪ working tree**; `branch-diff` = `git diff --name-only main..HEAD` (committed only — **no** working tree); `since-last-run` = changed files since the prior run's anchor commit **∪ working tree** (ANTS-1870 findings delta). The three working-tree unions mean uncommitted edits are audited; `branch-diff` alone sees only what is committed. |
+| `cap_per_tool_seconds` | no | `30` | Per-tool wall-clock cap, [5, 300] (ANTS-3585). Out of range → `bad_args` (INV-16). |
+| `suppressions` | no | `auto` | ANTS-3615 — honoured. `auto` applies both headless suppression sources (the learned-FP ledger + `.audit_allowlist.json`); `none` applies neither; `path:<file>` reads the allowlist from the named file, which must resolve under the project root (else `bad_path`). Any other value → `bad_args`. `.audit_suppress` stays GUI-only (INV-7). |
+| `formats` | no | `["sarif"]` | Subset of `["sarif", "html"]`. Default drops HTML (~50 KiB disk write skipped — loop 3 opt L12). **Validated** since ANTS-3626 (2026-07-25): each entry must be `"sarif"` or `"html"`, checked with the other cheap request fields — before the concurrency slot and before any tool spawns — else `bad_args` naming the offending value and the accepted set. An **empty** array is valid and keeps the `["sarif"]` default. Pre-fix an unrecognised non-empty value (e.g. `["json"]`) suppressed the default, wrote no artifact, omitted `sarif_path`, and still returned `ok:true` — the silent-no-op class ANTS-3615 fixed for `suppressions`, but costlier, since the discarded work was a whole sweep. |
+| `top_findings_count` | no | `0` | If > 0, inline the first N findings into the envelope as `top_findings[]`. Bounded by N ≤ 100 and the inherited 256 B/message cap — **not** by INV-13's 18/20 KiB envelope budget, which is measured and trimmed before `top_findings` is built (see § 2.2 and INV-13). Caller hint: avoids the orchestrator-Reads-SARIF token collapse (loop 3 token H4). Out of [0, 100] → `bad_args` (INV-16). |
+| `paths` | no | `[]` | ANTS-1512 scoped-check mode — project-relative paths appended as positionals so the tool sees only those files. Honoured by **every file-scoped tool**: cppcheck, clazy, clang-tidy, ruff, bandit, semgrep, shellcheck, mypy. gitleaks and trivy are repo-global and ignore them (they skip entirely under a narrowing scope — `not_file_scoped`). Each entry validated through `isAuditArgSafe`, then through `flagSafeScopedPathImpl` per INV-18. |
+| `exclude_paths` | no | `[]` | ANTS-3710 — the **negative** counterpart to `paths`, for code that is present but not ours (a vendored dependency tree, a staged cross-build SDK, a single-header library). Narrowing is not excluding: `paths` also drops the repo-global tools and the project's own sibling lanes, which is why it is not a substitute. Applied twice — every positional file list is prefix-filtered at a **path-segment boundary** (so `src/vendor` does not swallow `src/vendorish.c`), and each tool with a native exclusion flag receives the entries on its whole-tree invocation via `toolExclusionArgs` (cppcheck `-i`, ruff `--extend-exclude`, bandit `-x`, semgrep `--exclude`, trivy `--skip-dirs`, mypy `--exclude`). **cppcheck is in that list for caller entries only** — the hardcoded `kExclusions()` set stays off it, since adding build-output names unasked would change behaviour for every existing caller. gitleaks (config-filtered), clazy / clang-tidy (compile DB) and shellcheck (positionals only) **cannot** honour it; when any of them ran, the envelope names them in `exclude_paths_ignored_by` beside `exclude_paths_applied`. Each entry validated through `isAuditArgSafe`; one bad entry refuses the whole call (`bad_args`), never a silent drop. |
+| `checks` | no | `[]` | ANTS-1512 — constrains the enabled check set; only clang-tidy honours it (rendered `--checks=-*,<joined>`). A non-empty `checks` alongside an **explicitly-named** non-clang-tidy tool refuses `bad_args` (the guard iterates `req.tools`, not the auto-detect set). Under a `tools:[]` auto-detect sweep it is **not** refused — clang-tidy picks up the filter and the other auto-detected tools run unfiltered. Each entry validated through `isAuditCheckSafe`. |
+| `async` | no | `false` | ANTS-3396 — when `true`, start the sweep detached and return a job handle (`{ok:true, async:true, job_id, status:"running", poll_with:"audit_poll", started_at_ms, note}`) immediately instead of blocking; poll `audit_poll {job_id}`. Bypasses the client's ~60 s transport timer (INV-20) for `scope:"full"` / slow tool sets. The async job registry (cap `kAuditJobsMax=16` → `too_many_jobs`) is INV-9's second half. Full async contract: `docs/specs/ANTS-3396-opt-async-audit-run-job.md`. |
+
+### 2.2 Response shape
+
+```json
+{
+  "ok": true,
+  "by_tool": {
+    "cppcheck": {
+      "status": "ok | timed_out | crashed | output_too_large",
+      "elapsed_ms": 1842,
+      "raw_count": 27,
+      "after_filter_count": 12,
+      "samples": [ { "file": "src/foo.cpp", "line": 142, "rule": "uninitvar",
+                     "severity": "HIGH", "message": "<≤ 256 B excerpt>" } ]
+    }
+  },
+  "total_raw": 184,
+  "total_actionable": 31,
+  "noise_rate_pct": 84,
+  "sarif_path": "<root>/.audit_cache/audit-<iso>-<sha>.sarif",
+  "html_path":  "<root>/.audit_cache/audit-<iso>-<sha>.html",
+  "tools_skipped": [ { "tool": "clazy", "reason": "not found on PATH" } ],
+  "elapsed_total_ms": 18450,
+  "samples_truncated": false
+}
+```
+
+| Field | Notes |
+|---|---|
+| `by_tool[t].status` | `ok` (zero or more findings); `timed_out`; `crashed` (`samples[0].message` carries a crash excerpt only when the raw output is diagnostic-shaped — best-effort, may be empty; INV-4); `output_too_large` (ANTS-5085: the tool printed more than 64 MiB and was stopped; its partial output is not parsed, and `incomplete_tools_detail` marks it `truncated`). There is **no** `not_runnable` status — a tool that isn't on PATH never enters `by_tool[]`; it lands in `tools_skipped[]` instead. |
+| `by_tool[t].samples[]` | First 10 *after-filter* findings. Each `message` ≤ 256 B (INV-13). |
+| `noise_rate_pct` | `100 - (100 * total_actionable / total_raw)` — **integer division (truncates)**, not rounded; `0` when `total_raw == 0`. |
+| `sarif_path` | Always present if `"sarif" ∈ formats` and the write succeeded. The `.audit_cache/` primary path, or the `/tmp`/XDG fallback on a read-only root (INV-12). |
+| `cache_path` | The `<root>/.audit_cache/` SARIF path. **Omitted entirely** (not emitted empty) when the cache write fell back to `/tmp`/XDG — then read `sarif_path`. ANTS-1555. |
+| `html_path` | Present iff `"html" ∈ formats` **and** the HTML write succeeded; omitted otherwise. |
+| `tools_skipped[]` | JSON objects `{tool, reason}` (engine type: `QVector<ToolSkip>` with explicit field names — not `QPair`, per loop 3 consistency). `reason` is one of exactly three strings: `not found on PATH`, `not_file_scoped`, `no_changed_files_for_languages`. |
+| `samples_truncated` | `true` iff the trim **cascade ran** — i.e. the 18 KiB soft cap was exceeded. It is *not* proof any sample was removed: the flag is raised before the trim loop, so a run whose tools already hold ≤ 3 samples each can report `true` having removed nothing (INV-13). Nor is `false` proof messages are intact — a 256 B per-message truncation never sets it (`capMessage` returns a string and cannot signal). Distinct semantics from ANTS-1397's pagination `truncated`. |
+| `top_findings[]` | Present iff `top_findings_count > 0` **and** the run produced at least one sample — the key is omitted, not emitted as `[]`, on a zero-finding sweep. Selection walks `byTool`, a `QHash`, so *which* tools' samples fill the quota is unordered and not stable across runs; treat it as "N representative findings", not "the N most severe". The first N `samples[]` objects, in the same `{file, line, rule, severity, message}` shape — **not** a fuller SARIF record (no `ruleId`/`level`/`regions`/`snippet`; the code calls this out as "v1: from samples, not full SARIF"). Built *after* the INV-13 trim cascade has run, from the already-trimmed samples, so it inherits the 256 B/message cap but is **not** itself counted toward or trimmed by the 18/20 KiB envelope budget. |
+
+The block above is the **v1 core envelope**. Later work extended it with
+additional top-level fields — `cache_path` / `prior_run` (ANTS-1555 per-project
+`.audit_cache/`), `scope_resolved` / `scope_anchor_commit` /
+`changed_files_count` / `scope_demoted` / `no_changes` (ANTS-1504 narrowing
+scope), `partial` / `incomplete_tools` / `incomplete_tools_detail` /
+`parse_failures` (ANTS-2032 + ANTS-3585 partiality signal), and `delta` /
+`delta_unavailable_reason` / `findings_truncated` (ANTS-1870 since-last-run
+delta). The authoritative field set is the `RunResult` struct in § 2.3 /
+`src/auditrunner.h` — the JSON above is illustrative, not exhaustive.
+
+### 2.3 Engine API
+
+New `auditrunner.{h,cpp}` in **`ants_audit_lib`**
+(`add_library(ants_audit_lib STATIC …)` at CMakeLists.txt:489, with
+`src/auditrunner.cpp` at :495) — alongside `auditengine.cpp`, Qt6::Core
+only. The dialog **split already shipped** (loop 3 opt M10 / Q5 below is
+now closed): `auditdialog.cpp` lives in a separate `ants_audit_dialog_lib`
+target (CMakeLists.txt:517), so engine-only consumers (the MCP verb, the
+tests) no longer pull `auditdialog.o` or QDialog into their link closure.
+`auditrunner.cpp` `#include`s no Widgets header.
+
+Namespace **`AuditRunner`** (PascalCase, matches `AuditEngine`).
+
+The v1 core structs are below; **`src/auditrunner.h` is the authoritative
+declaration** — post-v1 fields are grouped and annotated with the ANTS id that
+added each, rather than transcribed verbatim, so this block doesn't re-drift.
+
+```cpp
+namespace AuditRunner {
+struct ToolSkip { QString tool; QString reason; };
+struct RunRequest {
+    QString projectRoot;          // raw caller_cwd; canonicalised inside
+                                  // runAudit as `canonProject` (INV-2) —
+                                  // this field is NOT rewritten
+    QStringList tools;            // empty == auto-detect (9 of kKnownTools' 10)
+    QString scope;
+    int capPerToolSeconds = 30;   // range [5, 300]; out-of-range →
+                                  // bad_args (never clamped)
+    QString suppressionsMode;
+    QStringList formats;          // {"sarif"} default
+    int topFindingsCount = 0;
+    QStringList paths;            // ANTS-1512 — scoped positionals (validated)
+    QStringList checks;           // ANTS-1512 — clang-tidy check set (validated)
+};
+struct ToolResult {
+    QString tool;
+    QString status;
+    qint64 elapsedMs = 0;
+    int rawCount = 0;
+    int afterFilterCount = 0;
+    QJsonArray samples;
+    QStringList parseFailureFiles;  // ANTS-3585 — TUs the tool couldn't parse
+};
+struct RunResult {
+    bool ok = true;
+    QString error;
+    QString code;
+    QHash<QString, ToolResult> byTool;
+    int totalRaw = 0;
+    int totalActionable = 0;
+    int noiseRatePct = 0;
+    QString sarifPath;
+    QString htmlPath;
+    QVector<ToolSkip> toolsSkipped;
+    qint64 elapsedTotalMs = 0;
+    bool samplesTruncated = false;
+    QJsonArray topFindings;
+    // ── post-v1 additions (see auditrunner.h for the field docs) ──
+    QString cachePath; QJsonObject priorRun;                 // ANTS-1555
+    QString scopeResolved, scopeAnchorCommit;                // ANTS-1504
+    int changedFilesCount = 0;                               // ANTS-1504
+    QString scopeDemoted, scopeDemotedReason;                // ANTS-1504
+    bool noChanges = false;                                  // ANTS-1504
+    bool partial = false; QStringList incompleteTools;       // ANTS-2032
+    QJsonArray incompleteToolsDetail; QStringList parseFailures;  // ANTS-3585
+    QJsonObject delta; QString deltaUnavailableReason;       // ANTS-1870
+    bool findingsTruncated = false;                          // ANTS-1870
+};
+RunResult runAudit(const RunRequest &req);
+}  // namespace AuditRunner
+```
+
+### 2.4 In-flight gate (inline, not a class)
+
+Per loop 3 opt H3 + M11: with only two consumers, the abstraction is
+premature. Those two are **this verb and `indie_review_dispatch`**
+(ANTS-1352) — *not* ANTS-1397's `test_audit_partition`, which was a
+designed third consumer that was never wired (ANTS-1397 INV-12). Both consumers add two
+members on `ClaudeIntegration`:
+
+```cpp
+// claudeintegration.h additions
+mutable QHash<QPair<QString, QString>, qint64> m_verbInFlight;  // {verb, root} -> start ms
+mutable QMutex m_verbInFlightMutex;
+```
+
+The gate is factored into two `ClaudeIntegration` methods, not
+duplicated raw at each call site (as-shipped, `claudeintegration.cpp`):
+
+```cpp
+// Returns the in-flight entry's start-epoch-ms if already running,
+// else -1 (and inserts the slot). NOT a bool. The stale-slot reaper
+// compares a monotonic start stored beside it (ANTS-5090).
+qint64 verbInFlightTryAcquire(const QString &verb, const QString &projectRoot);
+void   verbInFlightRelease(const QString &verb, const QString &root);
+```
+
+Call-site usage is one acquire + a `qScopeGuard` release (per
+`mainwindow.cpp`):
+```cpp
+const qint64 existing =
+    m_claudeIntegration->verbInFlightTryAcquire("audit_run", canon);
+if (existing >= 0)
+    return {ok:false, code:"already_running",
+            running_since_ms: now - existing, retry_after_ms: 5000};
+const auto guard = qScopeGuard([this, &canon]{
+    m_claudeIntegration->verbInFlightRelease("audit_run", canon);
+});
+```
+
+The `already_running` refusal envelope carries `running_since_ms`
+(elapsed since the in-flight entry's start) and `retry_after_ms: 5000`
+(INV-9 hint) alongside `code` — the § 4 row and the §2.2 shape omit these
+two hint fields for brevity; the call site above is authoritative.
+
+**Orphan recovery (INV-11):** the guard fires on normal AND
+exceptional return; worker death via SIGKILL leaves the slot held. The
+stale-slot reaper is a **lazy sweep inside `verbInFlightTryAcquire`**
+(not a per-slot QTimer): each acquire attempt erases any entry older
+than `kVerbInFlightReapMs` before checking the requested key. Two
+consequences of the lazy design: (1) an orphaned slot for a root nobody
+revisits is *not* auto-released until the next acquire touches the map;
+(2) the reap window must always exceed the longest run the engine will
+permit, or the reaper frees a slot under a live worker. **ANTS-3611**
+made that structural rather than a maintained coincidence:
+`kVerbInFlightReapMs` is *derived* as
+`AuditRunner::kAggregateCapMs + 30'000`, and `kAuditJobReapMs` is an
+alias of it — see INV-11 for the full rationale and the regression that
+motivated it. Prevents the per-project DoS surfaced by loop 3
+security H-B.
+
+### 2.5 QProcess + worker thread model
+
+INV-9 places `runAudit` on a per-call worker thread (`QThread::create`,
+not a pool — see INV-9). Implementation:
+
+- Worker thread runs a local `QEventLoop`.
+- Each tool gets its own `QProcess`, heap-allocated via
+  `std::make_shared<QProcess>()`, stored in a `QHash<QString,
+  std::shared_ptr<QProcess>> procs` and kept alive by `shared_ptr`
+  captures (by value) in the `finished`/`errorOccurred`/timer lambdas —
+  no QObject-parent "scope-guard struct".
+- Per-tool wall-clock cap enforced via QTimer::singleShot inside the
+  same event loop. Two-phase: `terminate()` at cap; `kill()` 2 s
+  later if `state() != NotRunning`. Captures the heap pointer, not
+  a stack ref (loop 3 consistency).
+- Up to 10 tools (the `kKnownTools` set; 9 on an auto-detect sweep —
+  mypy excluded) multiplex I/O via the one event loop; `loop.exec()`
+  exits when all done OR aggregate cap fires. The in-process drift
+  lanes (INV-21) run synchronously *after* the loop returns — they are
+  free functions, not QProcesses, so they never enter the multiplex.
+
+## 3. Invariants
+
+- **INV-1 / single MCP call, blocking, ≤ 15 min.** Aggregate cap =
+  `min(resolved-tool-count × cap_per_tool_seconds × 1.5, 900 s)`
+  (ANTS-3585 raised the ceiling 240 s → 900 s so a high opt-in per-tool
+  cap is not immediately re-clamped by the aggregate). *Resolved-tool
+  count* is `toolAbsPath.size()` — the tools that resolved on PATH **and
+  were not then skipped** (a narrowing scope erases `not_file_scoped` /
+  `no_changed_files_for_languages` tools from the map before the cap is
+  computed), **not** the request's `tools` array length (which is empty on a
+  default auto-detect sweep); a default sweep resolves up to 9. Partial
+  results on aggregate-cap fire (INV-8).
+- **INV-2 / every path canonicalised and root-anchored before use.**
+  Note this verb does **not** route through `PathValidation::validatePath`
+  (the project-wide chokepoint most verbs use); it hand-rolls the
+  equivalent check in two places — `resolveInflightCallerCwd` in the
+  dispatch lambda and the engine's own guard at the top of `runAudit`,
+  both `QFileInfo::canonicalFilePath()` + `isDir()`. Note the *request*
+  carries the caller's raw `caller_cwd` as `projectRoot`; the canonical
+  form is a `runAudit` local (`canonProject`) — the struct field is not
+  rewritten. A `suppressions:"path:<file>"` argument is validated too, and
+  refuses `bad_path` when it resolves outside the root — see INV-7.
+  `compile_commands.json` is existence-checked at projectRoot with
+  `QFile::exists` (which *does* follow symlinks — the "no symlink-follow"
+  of loop 3 opt M8 was never implemented, and the DB's *contents* are
+  validated instead, below); clazy fails at runtime if the DB is
+  symlinked-out → reported
+  `crashed` (there is no `not_runnable` status — see §2.2). **ANTS-1446
+  added `-I`/`-isystem`/`-iquote`/`-include`
+  argument validation** (`validateCompileCommands`): before the first
+  clazy/clang-tidy spawn, every include-style path in the compile DB is
+  checked to not escape the project root (unless under a system-include
+  prefix), refusing `compile_commands_escape` on a violation — see INV-19,
+  § 4, and the retracted Q4. **Coverage gap:** the validator probes only
+  `<root>/build/compile_commands.json` and `<root>/compile_commands.json`,
+  and returns *pass* when neither exists — but INV-19's `-p` resolution
+  probes **seven** build-dir variants via
+  `AuditEngine::resolveCompileCommands`. So a project whose DB lives in
+  `build-fast/` has its DB passed to the tools while the escape check
+  trivially passes over nothing. Reusing `resolveCompileCommands` in the
+  validator would close it (code-side, tracked as ANTS-3624).
+- **INV-3 / Required contract, refusal BEFORE cache lookup.**
+  ANTS-1404. `audit_run` not in the idempotent-read allowlist;
+  refusal upstream of `m_idempotentReadCache`.
+- **INV-4 / tool isolation.** Tool A crash sets
+  `by_tool["A"].status = "crashed"` and the sweep continues. The
+  guaranteed part is the status + continuation; `samples[]` carries a
+  crash excerpt only when the raw output happens to contain
+  diagnostic-shaped lines the parser recognises (an `errorOccurred` with
+  no stderr, or unstructured stderr like `Segmentation fault`, yields an
+  empty `samples[]`). Stderr unredacted under same-uid trust (§ 8).
+- **INV-5 / per-tool cap is hard.** SIGTERM at cap; SIGKILL 2 s
+  later if alive (Linux-only per § 8). Implementation pattern in
+  § 2.5. POSIX precedent: `ptyhandler.cpp:29,61,72`.
+- **INV-6 / exclusion list + regex-cache.** Exclusion list lives
+  in `kExclusions()` — a file-local accessor function in `auditrunner.cpp`'s
+  anonymous namespace, not an externally addressable constant (hardcoded — loop 3 opt M5; the
+  list is *de facto* static and shipping a JSON sidecar adds two
+  writers for no win). The `/audit` skill markdown documents an
+  **overlapping superset** inline — it adds `static/images/*` and
+  `static/videos/` media dirs that `kExclusions()` does not carry. **ANTS-3394 — the set is wired into each find-everything
+  tool's whole-tree (non-scoped) invocation via
+  `toolExclusionArgs(tool)`: ruff `--extend-exclude`, bandit `-x`,
+  semgrep `--exclude` (repeated), trivy `--skip-dirs **/<dir>`
+  (repeated), mypy `--exclude <regex>`. A `scope:"full"` sweep no
+  longer drowns the real findings in `dist/` / `node_modules/` /
+  scraped-media noise. Scoped invocations (an explicit `paths` /
+  changed-file set) deliberately omit the exclusions — those files
+  were chosen on purpose. cppcheck/clazy/clang-tidy run against
+  `src/` or the compile DB (never build output) and gitleaks is
+  filtered via its generated `--config` (ANTS-2016), so none take
+  exclusion args. ruff + semgrep additionally honour `.gitignore`
+  by default; the explicit set covers the gitignore-unaware tools
+  (bandit, mypy, trivy).** **Second half — `.audit_allowlist.json`, now
+  shared by both paths (ANTS-3615).** The custom-regex allowlist was
+  GUI-only: its loader and matcher were `AuditDialog` methods, so an entry
+  that hid a finding in the Audit dialog did nothing at all under MCP or
+  CI. ANTS-3615 moved `AllowlistEntry`, `loadAllowlist`, `allowlisted` and
+  `globToRegex` into `AuditEngine` (Qt6::Core-only, so the runner can link
+  them); `AuditDialog` delegates and `AuditDialog::AllowlistEntry` is an
+  alias. `runAudit` compiles the allowlist once per run and matches every
+  finding against it at the same drop point as the learned-FP ledger
+  (INV-7). Hardening is unchanged and now covers both callers: an entry
+  whose `line_regex` trips `isCatastrophicRegex` — or fails to compile
+  after `hardenUserRegex` — is dropped with a warning, and the remaining
+  entries still load; a missing or malformed file yields an empty
+  allowlist, never an error.
+- **INV-7 / headless suppression = learned-FP ledger + allowlist, governed
+  by `suppressions`.** The headless engine has two suppression sources: the
+  ANTS-1820 learned-false-positive ledger (`.audit_cache/learned-fp.jsonl`)
+  and the project-local `.audit_allowlist.json` (INV-6, wired by ANTS-3615).
+  Both are loaded once per run and both drop at the same point — a matching
+  finding is removed from `after_filter_count`, from `samples[]` and from
+  the SARIF finding set, before sample selection. `raw_count`/`total_raw`
+  deliberately keep the tool's true raw total, so a suppressed finding still
+  counts toward `noise_rate_pct`'s denominator (it reads as noise, matching
+  the GUI's `rawCount` semantics). Neither is marked in SARIF
+  `result.suppressions[]`.
+  **The `suppressions:` request field now governs both** (ANTS-3615 — it was
+  previously parsed into `suppressionsMode` and then never read, a silent
+  no-op): `auto` (or absent) applies both sources; `none` applies neither;
+  `path:<file>` reads the allowlist from the named file instead. The named
+  file must canonicalise to a path **under the project root**, else
+  `bad_path` — otherwise the field is an arbitrary-file-read oracle, since a
+  malformed-JSON warning would confirm a file's existence. Any other value
+  refuses `bad_args`. The check runs after the cheap argument validation and
+  before any tool is resolved or spawned.
+  `.audit_suppress` remains **GUI-only** and out of scope for the headless
+  path: it is keyed by the line-grain `Finding::dedupKey` the runner never
+  materialises, and the drift-resilient fingerprint ledger supersedes it
+  here. The GUI dialog's
+  `.audit_suppress`-marks-SARIF-`result.suppressions[]` pipeline (the
+  original v1 design) is a separate path.
+- **INV-8 / SARIF + HTML emit even on partial sweep.** SARIF
+  written if `"sarif" ∈ formats`; HTML iff `"html" ∈ formats`
+  (formats default `["sarif"]` only — loop 3 opt L12). Failed
+  tools appear as SARIF `tool.driver` entries with the raw output under
+  the run's `toolExecutionNotifications[]` property.
+- **INV-9 / per-call worker thread + engine-side aggregate concurrency
+  cap.** `runAudit` runs on an ad-hoc `QThread::create()` spawned per MCP
+  call (`mainwindow.cpp`, sync + async paths); that worker owns a local
+  `QEventLoop` (§ 2.5). There is **no** `m_auditPool` thread pool — that
+  was the v2 design (ROADMAP.md:6512 — *"v1 — caller blocks; v2 will route
+  through m_auditPool worker"*) and was never built. **ANTS-3612** closed
+  the gap it left without building a pool: `runAudit` itself takes a
+  process-global counting slot (`kMaxConcurrentRuns = 2`,
+  `runSlotTryAcquire`/`RunSlotGuard` in `auditrunner.cpp`) after argument
+  validation — the cheap request-field checks (cap / top_findings /
+  scope / paths / checks) — and before any project scan or child
+  process. Note the INV-2 canonicalise + `isDir` check precedes it, and
+  several later refusals (`bad_tool`, `no_tools_runnable`, and the
+  `suppressions` `bad_path`/`bad_args`) fire *inside* the slot. Refuses
+  `server_busy` (+ `retry_after_ms: 5000`) when the cap is taken. The cap
+  lives in the engine, not at the dispatch site, so every caller — the
+  sync verb, the async job worker, any future CLI — inherits it. It is a
+  flat 2 rather than the old design's `max(2, nproc/8)` because the
+  binding resource is RAM per concurrent tool-set (~1.9 GiB), not cores;
+  `nproc/8` on a many-core host would authorise a footprint the host
+  cannot hold. Two further, narrower bounds remain: (a) the per-root
+  in-flight gate — one audit per canonical project root, else
+  `already_running` (INV-11); (b) the async job registry capped at
+  `kAuditJobsMax = 16`, a 17th concurrent async job refusing
+  `too_many_jobs`. With the aggregate cap in place the audit side is
+  bounded at `kMaxConcurrentRuns` × ~1.9 GiB ≈ 3.8 GiB; § 6 gives the
+  figure that matters in practice (≈ 6.3 GiB common / ≈ 8.1 GiB worst
+  case alongside a concurrent build).
+- **INV-10 / sandbox: same uid, scrubbed env, absolute-path tools.**
+  Tools run as Ants user; no setuid; no `sudo`. Per QProcess: stdin
+  closed (`closeWriteChannel()`), plus scrubbed env and an explicit
+  working directory. (Signal-mask/umask handling is whatever Qt's Unix
+  child setup does — this spec asserts nothing about it and no test
+  covers it.) Env
+  **allowlist** `{PATH, HOME, USER, LANG, LC_*, TERM, TMPDIR,
+  XDG_CACHE_HOME}`; **blocklist** `{SUDO_ASKPASS, SSH_AUTH_SOCK,
+  AWS_*, GH_TOKEN, OPENAI_API_KEY, ANTHROPIC_API_KEY}`. **Tools
+  resolved via `QStandardPaths::findExecutable` with 60 s TTL cache
+  keyed by tool name** (loop 3 opt M7 — was per-call; cache
+  invalidates on TTL only — the cache is keyed on tool name and does no
+  PATH-change detection). PATH-tampering window: ≤ 60 s.
+  (The feature contract `tests/features/mcp_audit_run/spec.md` splits
+  this into INV-10 *env scrub* + INV-10b *absolute-path resolution*;
+  this canonical INV-10 covers both, so no separate INV-10b is minted
+  here.)
+- **INV-11 / single in-flight per canonical projectRoot.** Inline
+  gate per § 2.4. Key: `("audit_run", canonicalProjectRoot)`. The
+  stale-slot reaper's window is `kVerbInFlightReapMs`, which — per
+  **ANTS-3611** — is *derived* as `AuditRunner::kAggregateCapMs + 30'000`
+  rather than hardcoded (`kAuditJobReapMs` is an alias of it). Before
+  ANTS-3611 both were a stale `270'000` ms (240 s + 30 s slack) left
+  behind when ANTS-3585 raised the aggregate cap to 900 s, so a run
+  legitimately still executing between 270 s and 900 s had its slot reaped
+  as worker-death and a second `audit_run` on the same root could start
+  concurrently. Deriving keeps the orphan-DoS protection (loop 3 security
+  H-B) sound for the full length of any run the cap permits; the constant
+  is public in `auditrunner.h` for exactly this reason.
+- **INV-12 / SARIF written to the per-project cache, `/tmp` only as a
+  fallback.** Primary path (ANTS-1555): `<root>/.audit_cache/audit-<iso>-
+  <sha>.sarif` (`AuditCache::sarifPathFor`; `<iso>` = 1-second timestamp,
+  `<sha>` = short commit) — set on both `sarifPath` and `cachePath`. When
+  the cache dir is unwritable, `allocSarifPath` falls back to
+  `$XDG_CACHE_HOME/Ants Terminal/audit/…` then last-resort
+  `/tmp/audit-<sid>-<seq>-<rand>.sarif` (`<sid>` = `PID-epoch`, a function-local static built on the FIRST fallback allocation (not at process start),
+  `<seq>` = monotonic counter, `<rand>` = 16-hex UUID tail defeating the
+  predictable-filename squat — indie-review-2026-05-19 H2); `cachePath`
+  stays empty on this branch. The `<rand>` fallback is per-call unique;
+  the primary `<iso>-<sha>` name is **not** strictly unique (two sweeps in
+  the same second on the same commit collide — the ANTS-2119 keep-set
+  guard stops the reaper deleting a live twin). Cleanup is a
+  **manifest-driven cache reaper** in `AuditCache` (deletes SARIF/HTML of
+  history entries dropped when the cache rotates, post-commit,
+  keep-guarded, symlink-escape-safe) — **not** a `MainWindow::aboutToQuit`
+  hook (none exists). The XDG/`/tmp` fallback artifacts live outside the
+  cache dir, which that reaper refuses to touch by design, so **ANTS-3614**
+  gave them their own sweep: `reapFallbackArtifactsOnce()` runs lazily on
+  the first fallback allocation of a process and unlinks
+  `audit-*.{sarif,html}` older than one week from
+  `$XDG_CACHE_HOME/Ants Terminal/audit/` and `/tmp`. Symlinks are excluded
+  (`QDir::NoSymLinks`) so a squatted link cannot redirect the unlink out of
+  the directory, and in `/tmp` another user's same-named file simply fails
+  to unlink under the sticky bit. Cost is zero on the common writable-root
+  path (no fallback is allocated, so the sweep never runs).
+- **INV-13 / response envelope hard-capped.** Each `samples[*].
+  message` and each `top_findings[*].message` capped 256 B. Cap
+  budget: 18 KiB soft, 20 KiB hard. Cascade trim *bottom-up per
+  tool* on `samples[]`: 10 → 5 → 3. `top_findings[]` is **not** part of
+  the cascade at all: it is built from the already-trimmed samples
+  *after* the cascade returns, and the cascade's byte measure passes an
+  empty samples argument, so `top_findings` never counts toward the
+  18/20 KiB budget. Its bound is `top_findings_count ≤ 100` plus the
+  256 B/message cap inherited from the samples it copies. A caller
+  sizing the envelope must add it on top of the budget, not inside it.
+  `samples_truncated:true`
+  set when the 18 KiB soft cap is exceeded — the flag is raised before
+  any sample is actually removed, so a run where every tool already holds
+  ≤ 3 samples can report `true` with nothing trimmed. It is **never**
+  raised by the 256 B per-message cap (see § 2.2). Implementation: ~30 LOC inline using
+  `QJsonDocument(env).toJson(QJsonDocument::Compact).size()`. SARIF
+  has **two distinct** `kSarifFindingsMax = 10000` ceilings, and only one
+  is signalled (loop 3 perf L10):
+  (a) **per-tool**, in `parseToolOutput` — one tool exceeding 10 000
+  findings sets `findingsTruncated`, surfacing as the envelope's
+  `findings_truncated:true` (ANTS-1870);
+  (b) **cross-tool cumulative**, in `writeSarif` — a single `emitted`
+  counter across all runs breaks at 10 000 and sets **nothing**. So N
+  tools each under the per-tool cap but summing over it lose SARIF
+  results silently while the envelope reports `findings_truncated:false`.
+  The drop order is deliberate (current runs emit first; the ANTS-1870
+  carried-forward run sheds first), so what is lost is least-fresh — the
+  defect is the silence. Tracked as **ANTS-3629**. SARIF carries no
+  overflow notification either way. (`toolExecutionNotifications[]` is written for every tool that
+  produced raw output — the writer guards on a non-empty excerpt, so a
+  silent tool contributes none — and is unrelated to the cap.)
+- **INV-14 / explicit-tool refusal.** `tools:[X]` + X not runnable
+  → `no_tools_runnable` (caller intent honoured). ANTS-3605 — an
+  auto-detect sweep (empty `tools`) with no external tool on PATH is
+  **not** refused: it proceeds so the in-process drift lanes (INV-21),
+  which need no external binary, still run — matching the GUI Audit
+  dialog, which always runs them. The refusal now fires only for an
+  explicit named-but-unresolvable tool.
+- **INV-15 / `scope:"since-tag:<X>"` argv-safe.** Tag must match
+  `^[A-Za-z0-9._/+-]{1,128}$` AND not start with `-`. Rejected →
+  `bad_scope`. Passed as a single QStringList argv element.
+- **INV-16 / `cap_per_tool_seconds` range-check.** Out of [5, 300]
+  or non-int → `bad_args` (ANTS-3585 raised the ceiling 60 → 300; the
+  default stays 30 s). (Was implicit in § 2.1 only — pinned per loop 3
+  consistency.)
+- **INV-17 / JSON-tool output parsed as JSON only; aborts routed
+  to `incomplete_tools[]`.** (ANTS-3395.) The JSON-emitting tools
+  (`ruff`, `bandit`, `semgrep`, `gitleaks`, `trivy`, `shellcheck`)
+  carry a single JSON document, sometimes wrapped in progress-bar /
+  log noise on the merged stdout+stderr stream. `parseToolOutput`
+  extracts the JSON span (first `{`/`[` → matching last `}`/`]`) and
+  parses **only** that; it **never** falls through to the line-based
+  parser for these tools — that fallback would mint a phantom finding
+  from bandit's Rich progress bar or a trivy timestamped log line.
+  The plain-text tools (`cppcheck`, `clazy`, `clang-tidy`, `mypy`)
+  stay line-based. A JSON tool that emits no parseable findings doc
+  **and** logs a fatal-abort marker (trivy `FATAL` + `run error:`/
+  `scan error`) is promoted from `ok` to a `crashed` status, so the
+  aborted scan surfaces in `incomplete_tools[]` (INV-4 / ANTS-2032)
+  instead of as a misleading clean zero-finding run.
+- **INV-18 / scoped-positional argv-injection guard (ANTS-2185).** A
+  scoped positional path that begins with `-` (a file named e.g.
+  `-rf.cpp` in a hostile-clone tree) would be parsed as a flag by the
+  child tool. `toolArgv` normalises every scoped path through
+  `flagSafeScopedPath` (impl `flagSafeScopedPathImpl`), which prefixes
+  `./` to dash-leading relative paths so they are unambiguously paths;
+  absolute and ordinary relative paths pass through byte-identical (so
+  the since-last-run delta keeps matching them). No tool branch may
+  append the raw `scopedPaths`. A `--` end-of-options separator is *not*
+  used: ruff/bandit/shellcheck/mypy append flags *after* the path list,
+  which `--` would swallow.
+- **INV-19 / compile-DB resolution for the C/C++ tools (ANTS-2182).**
+  `AuditEngine::resolveCompileCommands(projectRoot)` probes the canonical
+  build-dir variants (`build`, `build-fast`, `build-asan`,
+  `build-workstation`, `build-release`, `build-debug`, `build-test`) and
+  returns the first `<dir>/compile_commands.json` that exists (preferring
+  `build/`), else empty. `toolArgv` uses it so cppcheck/clazy/clang-tidy
+  resolve Qt system headers + per-TU flags from the DB instead of
+  flooding `missingIncludeSystem` or mis-parsing `namespace X {` as C.
+  cppcheck gets `--project=<db>` when a DB is found (missing-include
+  suppressions as the no-DB fallback); clazy and clang-tidy resolve `-p`
+  through the same helper. The in-app dialog shares the probe via
+  `AuditEngine::resolveBuildDir` (the dir *name*, ANTS-3367) so the two
+  never re-inline the candidate list.
+- **INV-20 / `audit_run` transport-cap guidance (ANTS-2183).** The
+  `audit_run` verb description documents that a full-tree sweep can exceed
+  the MCP client's ~60 s request timer (Claude Code's), surfacing
+  `transport: timed out` *outside* the response even though the run
+  completes server-side and writes its SARIF — and that the result is read
+  back via `last_audit_summary` (or the envelope's `cache_path`). Mirrors
+  the two-tier-timeout note `verify_changes` carries.
+- **INV-21 / in-process drift lanes on a default sweep (ANTS-3605).**
+  (Numbering note: ANTS-3609 back-ported the invariants the feature
+  contract `tests/features/mcp_audit_run/spec.md` carried but this
+  canonical spec lacked — INV-18/19/20 above, with feature-spec INV-10b
+  folded into this spec's combined INV-10. Two cross-doc *collisions*
+  plus two *fold-ins* remain by design — renumbering either side would
+  break a shipped test or code reference, so each is mapped here:
+  the feature contract's **INV-17** is *secret redaction* (ANTS-2188)
+  while this spec's INV-17 is *JSON-only parsing* (ANTS-3395), so secret
+  redaction is back-ported here as INV-22; the feature contract's
+  **INV-9** is the *in-flight gate*, which is this spec's INV-11 (this
+  spec's INV-9 is the worker thread + concurrency cap); and the feature
+  contract's **INV-9b** is the ANTS-3611 *reap-window derivation*, also
+  covered here under INV-11 (a fold-in, not a collision — this spec has
+  no INV-9b of its own, exactly as with INV-10b). INV-21 itself took the
+  next number free in both docs. One wording divergence worth knowing:
+  the feature contract titles its INV-2 "PathValidation on caller_cwd",
+  which reads as the project-wide `PathValidation::validatePath`
+  chokepoint this spec's INV-2 says is never called — the *mechanism*
+  the feature test asserts (`canonicalFilePath` + `isDir`) is correct;
+  only its title is loose.)
+  The GUI-free `FeatureCoverage` drift lanes — `spec_code_drift`,
+  `contract_doc_drift`, `changelog_test_coverage` — run inside
+  `runAudit`, *after* the external QProcess tools and *before* the
+  tally (so their counts fold into the totals), whenever the caller did
+  not name tools explicitly (`tools:[]`) **and** the resolved scope is
+  not a narrowed file-diff — i.e. the default `auto`, an explicit
+  `full`, or a narrowing scope that demoted to full. The gate in code is
+  `req.tools.isEmpty() && !scopeNarrowed`. An explicit `tools:[…]`
+  request, or a narrowed scope with changes (`files` / `branch-diff` /
+  `since-tag` / `since-last-run`), skips them: they are whole-project
+  doc-vs-code checks, meaningless against a changed-file set — the same
+  rationale as the repo-global-tool skip under a narrowed scope. Each
+  lane emits `file:line: message`, parsed
+  by the line-based fallback (the lane ids are not JSON tools, so
+  INV-17's JSON-only path never applies); results land in
+  `by_tool[<lane-id>]` like any tool. This gives the headless MCP/CI
+  workflow the doc-drift coverage that previously fired only when a
+  human opened the GUI Audit dialog, which registers all three lanes
+  `autoSelect` via `AuditDialog::populateChecks`. The lanes reuse the
+  same `finish()` ingestion seam (scrub → `parseToolOutput` →
+  `by_tool` / `fullFindingsByTool`) as the external tools, so
+  suppression, SARIF, and the delta treat them uniformly.
+- **INV-22 / secret redaction of raw tool output (ANTS-2188).** (The
+  feature contract numbers this INV-17 — see the INV-21 numbering note
+  for why the two docs diverge here.) Each tool's raw output is run
+  through `SecretRedact::scrub` in the `finish` lambda *before* it is
+  stored into `rawByTool` (→ the on-disk SARIF notification text) or
+  handed to `parseToolOutput` (→ `samples` / `top_findings`). trivy runs
+  `--scanners vuln,secret` and surfaces the literal secret value; gitleaks
+  already runs `--redact`, but trivy did not, so an unredacted secret
+  would otherwise reach both the `.audit_cache/*.sarif` artifact and the
+  MCP envelope returned to the LLM (OWASP LLM06). One scrub at the single
+  capture point covers both sinks; the scrubbed value — not the raw —
+  feeds `rawByTool` and `parseToolOutput`.
+
+## 4. Failure modes
+
+| code | INV | Notes |
+|---|---|---|
+| `caller_cwd_required` | INV-3 | Empty caller_cwd |
+| `bad_cwd` | INV-2 | ANTS-1833 — `caller_cwd` does not canonicalise to an existing directory. Emitted by the **dispatch lambda** (`resolveInflightCallerCwd`) *before* the engine runs, so this — not `bad_path` — is what an MCP caller actually sees for a bad cwd |
+| `bad_path` | INV-2 / INV-7 | A `suppressions:"path:<file>"` target that does not resolve under the project root (ANTS-3615). The engine also has its own caller_cwd `bad_path` guard, but through the MCP verb that branch is unreachable — the lambda's `bad_cwd` fires first; it applies only to a direct `runAudit` caller |
+| `compile_commands_escape` | INV-2 / INV-19 | ANTS-1446 — a compile DB include arg (`-I`/`-isystem`/`-iquote`/`-include`) escapes the project root and isn't under a system-include prefix; refused before the first clazy/clang-tidy spawn |
+| `bad_tool` | — | Unknown name in `tools[]` |
+| `bad_scope` | INV-15 | **Only** the `since-tag:<t>` branch: the tag fails `^[A-Za-z0-9._/+-]{1,128}$` or leads with `-`. There is no scope-enum validator — an unrecognised `scope` string is *not* refused; it degrades silently to a full scan (`auditscope.cpp`: "Unknown narrowing scope — treat as full scan rather than refuse") |
+| `bad_args` | INV-16 | cap_per_tool_seconds out of [5,300] (ANTS-3585), or top_findings_count out of [0,100], or a non-empty `checks` alongside an explicitly-named non-clang-tidy tool (ANTS-1512), an unsafe `paths`/`checks` entry, or an unrecognised `suppressions` value (ANTS-3615, INV-7) |
+| `too_many_jobs` | INV-9 | Async job registry full (`kAuditJobsMax = 16` concurrent) |
+| `server_busy` | INV-9 | ANTS-3612 — the engine's aggregate concurrency cap (`kMaxConcurrentRuns = 2`) is taken. Process-global, so it fires across *distinct* project roots too (unlike `already_running`). Carries `retry_after_ms: 5000` |
+| `already_running` | INV-11 | Same-project audit in flight (per-root gate) |
+| `no_tools_runnable` | INV-14 | Explicit tool named but not runnable (ANTS-3605 — an empty auto-detect sweep no longer refuses; it proceeds to the in-process lanes, INV-21) |
+| `rate_limited` | — | Dispatcher-level, before the verb runs: `audit_run` is in the Expensive tier (cap 10/min). Carries `retry_after_ms` |
+| `mcp_disabled` | — | Dispatcher-level: the `claude.mcp_enabled` master gate is off, so no verb dispatches |
+| `ok:true, samples_truncated:true` | INV-13 | Caps hit |
+| `ok:true, all timed-out` | INV-8 | Caps too low for project |
+
+## 5. Test plan
+
+`tests/features/mcp_audit_run/test_mcp_audit_run.cpp`. **Bundle:
+`test_claude`** (matches `mcp_caller_cwd_contracts`, etc). The shipped
+suite is a **source-scrape + behavioural mix** — most invariants are
+locked by grepping the shipped `.cpp`/`.h` for the implementation anchor
+(cheap regression against re-drift), or by asserting a public constant's
+value directly; a subset run the pure helpers / `runAudit` end-to-end. The actual `TEST(mcp_audit_run, …)` set (keep this
+list in step with the file — reconciled by ANTS-3609, then again by the
+ANTS-3610..3615 sweep):
+
+**Source-scrape + constant-value locks** — `Inv1AggregateCapConstant`
+(asserts `AuditRunner::kAggregateCapMs == 900'000` directly, not by
+grep — ANTS-3611 promoted the constant to the header), `Inv2PathValidationCanonical`
+(`canonicalFilePath` + `isDir`), `Inv3RequiredContract`
+(`audit_run ∈ Required`), `Inv9bReapWindowsDeriveFromAggregateCap`
+(ANTS-3611 — `kVerbInFlightReapMs` derives from
+`AuditRunner::kAggregateCapMs`, `kAuditJobReapMs` aliases it, and the
+stale `270'000` literal is gone; the feature contract numbers this
+**INV-9b**, which maps to this spec's INV-11 — see the INV-21
+numbering note), `Inv5TerminateThenKill` (`terminate`/`kill`
++ `kKillGraceMs`), `Inv9InFlightGateInline`
+(`m_verbInFlight`/`verbInFlightTryAcquire`/`verbInFlightRelease` + the
+mainwindow dispatch), `Inv10EnvScrubToolResolve` (allow/blocklist +
+`findExecutable` + `kToolResolveCacheTtlMs`), `Inv15ScopeTagRegex`
+(tag regex + leading-`-` reject), `SchemaDescriptorRegistered`,
+`DispatchProviderRegistered`, the four `Ants1456*` src-layout /
+project-config / SARIF-warning / scope-descriptor locks,
+`Ants2188RawOutputSecretScrubbed` (this spec's INV-22; the feature
+contract and this test's assertion labels number it **INV-17** — the
+test *name* carries no number — see the INV-21
+numbering note — `secretredact.h` + the
+`finish`-lambda scrub wiring), `Ants3472MypyNoteSeverityExcluded`,
+`Ants3590DropsEmptyJsonEntries`, `Ants2185ToolArgvAppliesFlagGuard`
+(INV-18 — no raw `scopedPaths` append), `Ants2182ToolArgvUsesCompileDb`
+(INV-19 — `resolveCompileCommands` + `--project`),
+`Ants3367AuditDialogUsesSharedProbe`, and `Ants2183TransportCapDocumented`
+(INV-20 descriptor).
+
+**Behavioural** — `Inv13MessageCap` (`capMessage`: short passes, long
+≤ 256 B + ellipsis), `Inv16CapRanges` (`runAudit` on a `QTemporaryDir`:
+cap 4 / 301, `top_findings_count` 101 → `bad_args`),
+`Ants2185FlagSafeScopedPathTransform` (`flagSafeScopedPath` `./`-prefix
+transform), `Ants2182ResolveCompileCommandsProbesBuildDirs` +
+`Ants3367ResolveBuildDirReturnsName` (build-dir probe order +
+precedence), `Ants3394WholeTreeExclusionsApplied` +
+`Ants3394ScopedInvocationOmitsExclusions` (`toolArgv` exclusion wiring),
+`Ants3395BanditProgressBarNotParsedAsFinding` +
+`Ants3395TrivyFatalRoutedToAbort` (INV-17 `parseWithSuppression`), and
+`Ants3605InProcessLanesDispatchedHeadless` (INV-21 — the hermetic
+headless in-process-lane end-to-end).
+
+The Required-contract (INV-3) regression is `Inv3RequiredContract` above,
+*in this file* — and it is **duplicated**: `audit_run` also appears in
+`tests/features/mcp_required_contract_baseline/`'s `expectedRequired`
+list (`Inv2RequiredBaseline`, ANTS-1404), same `test_claude` bundle. So
+changing the contract means updating both. (It is *not* in
+`mcp_caller_cwd_contracts`' Required-tools test.) **INV-2 / INV-19 compile-DB include validation
+(ANTS-1446, `compile_commands_escape`)** is covered by the sibling feature
+dir `tests/features/audit_run_compile_commands_validation/`, not this file.
+
+None of INV-7 (suppression ordering), INV-8 (partial-sweep SARIF) or
+INV-12 (SARIF-path uniqueness) has a dedicated test *in this file*; each
+is covered by a sibling feature dir, in the same way INV-2/INV-19 are
+covered by `audit_run_compile_commands_validation/`:
+
+- **INV-7** — `tests/features/audit_run_allowlist/` (ANTS-3615), 9 tests
+  over the shipped suppression surface.
+- **INV-8** — `tests/features/audit_run_partial_envelope/` (ANTS-2032,
+  including `Inv4SarifWrittenBeforeReturn`) and
+  `tests/features/audit_run_incomplete_detail/` (ANTS-3585).
+- **INV-12** — `tests/features/audit_run_cache/` locks the primary
+  `.audit_cache/` path contract.
+- **INV-20** — `tests/features/mcp_audit_run_async/` (8 tests) covers the
+  `async` handle + `audit_poll` path; §5's `Ants2183TransportCapDocumented`
+  is only the descriptor scrape.
+
+Four further sibling dirs carry `audit_run` behaviour not enumerated
+above: `audit_run_default_tools/` (3), `audit_run_delta/` (8),
+`audit_run_scoped_check/` (7), `audit_run_since_last_run/` (8).
+
+INV-11's in-flight *gate* is source-scrape-locked by
+`Inv9InFlightGateInline` and its reaper's *window derivation* by
+`Inv9bReapWindowsDeriveFromAggregateCap` (ANTS-3611). The genuinely
+untested residue is narrow: the `<rand>` fallback-name uniqueness,
+ANTS-3614's `reapFallbackArtifactsOnce()`, and the in-flight reaper's
+runtime behaviour (that a slot older than the window is released and a
+younger one is not). Filling those is future test-hardening work, not a
+v1 blocker.
+
+## 6. Performance / RAM budget
+
+**Wall time:**
+- Cold-start overhead (one-time, before first audit): ≤ 250 ms
+  (PATH probe × up to 10 tools × 8 PATH entries ≈ 50-200 ms; exclusion
+  list/regex hardening ≈ 30 ms; engine alternation build ≈ 10 ms). Note
+  the `.audit_allowlist.json` compile is **per-run**, not one-time —
+  INV-6/INV-7 recompile it on every call.
+  Runs inside the first call's per-call worker thread (INV-9, no pool)
+  — expect first-call latency.
+- Aggregate cap: 900 s (ANTS-3585 raised it from 240 s). The "~45 s
+  median on Ants Terminal" figure dates from the 2026-05-17 draft and is
+  anchored to a ~60 KSLOC tree; `src/` measured ~130 KSLOC on
+  2026-07-25, so treat the median as stale-low until re-measured.
+- Fold-in (delegated to caller's audit-triage subagent): out of
+  scope here; subagent calls `roadmap_log` itself.
+
+**RAM (Ants process):**
+- Engine working set: ~200 KiB at N=200 findings.
+- SARIF builder peak: ~150 KiB at N=200; ~1.4 MiB at N=2000.
+  Capped at N=10000 (~7 MiB) per INV-13.
+- Response envelope: ≤ 20 KiB for the INV-13-budgeted part —
+  **plus `top_findings[]`, which sits outside that budget** (up to 100
+  entries × ≤ 256 B message ≈ +30 KiB worst case). A caller sizing
+  against 20 KiB alone will under-budget an opt-in
+  `top_findings_count:100` request.
+- QProcess overhead: ~50 KiB × up to 10 ≈ 500 KiB.
+- Cached compiled regex set: ~10 KiB.
+- In-process drift lanes (INV-21): run in the Ants process *after* the
+  QProcess loop, no child process. Each walks the doc/spec/changelog
+  set + greps the tree; transient QString working set bounded by
+  project doc size (single-MiB), released per lane. Negligible beside
+  the tool children.
+
+**RAM (per-tool children):** cppcheck ~80 MiB, clazy ~400 MiB,
+clang-tidy ~400 MiB, semgrep ~500 MiB, trivy ~300 MiB, four lighter
+tools (ruff/bandit/gitleaks/shellcheck) ~50 MiB each = ~200 MiB.
+**Sum: ~1.8 GiB** peak tool-side RSS on a default auto sweep (9 tools).
+mypy (~250 MiB) is auto-excluded (ANTS-3418) and adds to the peak only
+when explicitly named in `tools`.
+
+**Aggregate (audit + concurrent build):** the common case is a **single**
+audit (the per-root in-flight gate, INV-11, allows one per project root).
+One audit's ~1.8 GiB tool-side + a concurrent build's
+`max(2, nproc/4) × ~1.5 GiB cc1plus`. The pool is `max(2, nproc/4)`, computed at
+configure time from CMake's `ProcessorCount` — **not** a fixed number;
+CMakeLists' "12-core box" wording is a tuning anecdote, not a hardcode.
+On this 12-core reference host that is **3** jobs, so ~4.5 GiB — giving
+**≈ 6.3 GiB peak**, not the ~5 GiB this section previously claimed
+(which assumed the 2-job floor). Recompute for other hosts: a 32-core
+machine gets 8 jobs ≈ 12 GiB. On the 32 GiB workstation: still fine. On the `workstation` preset's lower-spec
+target (8-16 GiB): user should not run `/audit` during a build.
+**Worst case (ANTS-3612):** the engine's aggregate concurrency cap bounds
+the audit side at `kMaxConcurrentRuns = 2` simultaneous sweeps —
+~3.6 GiB tool-side — regardless of how many distinct project roots or
+async jobs are in play; a third concurrent sweep refuses `server_busy`
+rather than allocating. Combined with the concurrent build budgeted
+above (~4.5 GiB on the 12-core reference host), the true ceiling is
+**≈ 8.1 GiB** — still comfortable on the 32 GiB workstation, but this is
+the number to use when sizing a smaller host, and it is why the
+`workstation` preset caps the build pool harder. Before ANTS-3612 there
+was no aggregate bound at all and N concurrent roots meant N × ~1.9 GiB
+(up to `kAuditJobsMax = 16` async jobs ≈ 30 GiB — an OOM path on a 32 GiB
+host). Stated explicitly per the standing "every feature states a memory
+budget" rule.
+
+*(Figures here are the spec's rounded ~1.8 GiB; `auditrunner.cpp`'s own
+comment rounds the same per-tool table to ~1.9 GiB / ≈ 3.8 GiB. Same
+measurements, different rounding — treat both as "about 2 GiB per
+sweep".)*
+
+**Disk I/O:** SARIF write ~150 KiB; HTML write (opt-in) ~50 KiB (the
+figure § 2.1's `formats` row uses).
+
+**FD pressure:** up to 10 QProcess × 3 pipes = 30 fds (plain `QProcess`
+on a local `QEventLoop`; there is no pidfd path). Well within
+RLIMIT_NOFILE.
+
+**Path-canonicalisation cost** (this verb hand-rolls it — see INV-2, it
+does not call `PathValidation::validatePath`)**:** ~5 stat syscalls per path × ~5 paths per
+call = ~25 syscalls ≈ 5 ms cold cache. Negligible.
+
+## 7. Skill-side change
+
+> **Status: APPLIED 2026-07-25 (ANTS-3613).** The live
+> `~/.claude/skills/audit/SKILL.md` now carries a `## Fast path (Ants
+> Terminal)` block between `## Usage` and `## Procedure`, and its
+> `allowed-tools` frontmatter lists `mcp__ants__audit_run`,
+> `mcp__ants__audit_poll` and `mcp__ants__last_audit_summary` (without
+> which the skill could not call the verb at all). The applied block
+> extends the sketch below with the async/transport-cap guidance (INV-20)
+> and the busy-refusal codes, both of which post-date the original draft.
+> Note this file lives under `~/.claude/`, outside the repo — it is not
+> version-controlled here.
+
+The sketch below is the original draft; the applied block extends it —
+see the status note above for what was added and where it sits.
+
+```markdown
+## Fast path (Ants Terminal)
+
+If `mcp__ants__audit_run` is available, prefer it.
+
+Flag mapping:
+- `/audit`              → `audit_run{}` (auto-detect, scope:auto)
+- `/audit --quick`      → `audit_run{tools:["cppcheck","ruff","bandit","gitleaks","shellcheck"], scope:"files"}`
+- `/audit --no-roadmap` → `audit_run{}` then DON'T call roadmap_log
+- `/audit cppcheck`     → `audit_run{tools:["cppcheck"]}`
+
+Tip: for routine sweeps where the assistant just needs to see top
+findings, set `top_findings_count: 20` to inline the highest-severity
+findings into the envelope — saves the SARIF Read round trip.
+
+After the envelope, the orchestrator dispatches the `audit-triage`
+subagent for severity ranking; the subagent itself calls
+`roadmap_log` for fold-in. MCP returns structured findings, NOT
+triaged output.
+```
+
+Skill markdown NOT deleted — documentation of record + fallback.
+
+## 8. Decisions
+
+- **Blocking response, 15-min aggregate cap** (ANTS-3585 raised it from
+  the original 4-min). A later async-poll path (the `audit_poll` verb)
+  now survives the MCP transport timeout for long sweeps — see INV-20;
+  streaming progress events (Q1) stay deferred.
+- **Per-call SARIF; HTML opt-in.** Cleanup is *not* a shutdown hook (the
+  original "cleaned at shutdown" claim was never built): primary artifacts
+  are reaped by `AuditCache`'s manifest-driven rotation, and the XDG/`/tmp`
+  fallbacks by ANTS-3614's one-week lazy sweep (INV-12).
+- **Exclusion list hardcoded in engine.** No new standards file.
+- **Fold-in out of scope.** Orchestrator's audit-triage path retains
+  `roadmap_log` calls (matches current skill flow). ANTS-1397 has
+  a dedicated fold-in verb because test-audit synthesis doesn't go
+  through a triage subagent.
+- **Stderr excerpts unredacted under same-uid trust.** Callers
+  re-publishing envelopes own further redaction — but note this is
+  narrower than it once was: since ANTS-2188 (INV-22) every tool's raw
+  output, stderr included, is run through `SecretRedact::scrub` at the
+  single capture point *before* it reaches the SARIF or the envelope, so
+  well-known secret shapes are already stripped. "Unredacted" here means
+  no *general* sanitisation of tool output, not no secret handling.
+- **Per-call worker thread; aggregate cap instead of a pool.** Ships an
+  ad-hoc `QThread::create()` per call, bounded by the per-root in-flight
+  gate + a `kAuditJobsMax = 16` async job cap. ANTS-3612 then added the
+  aggregate bound the pool was supposed to provide, without the pool: a
+  flat engine-level `kMaxConcurrentRuns = 2` counting slot with
+  `server_busy` + `retry_after_ms: 5000` back-pressure (INV-9). Flat, not
+  `max(2, nproc/8)`, because the binding resource is RAM per concurrent
+  tool-set, not cores. The `m_auditPool` thread pool itself remains
+  unbuilt and is no longer planned — the cap made it unnecessary.
+- **Namespace `AuditRunner` PascalCase.** Matches in-tree
+  convention.
+- **In-flight gate inlined (not a class).** Per loop 3 opt H3 —
+  two consumers don't warrant the abstraction.
+- **`top_findings_count` opt-in.** Lets caller dodge the SARIF Read
+  collapse when only ranking matters.
+- **Linux-only assumed.** No `WIN32`/`APPLE` blocks (precedent:
+  `ptyhandler.cpp`).
+
+## 9. Open questions
+
+- **Q1 / streaming progress events?** Defer to user feedback.
+- **Q2 / semgrep registry cache.** Defer v1; pattern would mirror
+  ANTS-1117.
+- **Q3 / offline-only mode.** Defer v1.
+- **Q4 / `compile_commands.json` deep validation.** ~~v1 existence-check
+  only~~ **PARTIALLY resolved — ANTS-1446 shipped include-arg validation**
+  (`validateCompileCommands`; INV-2 / INV-19 / § 4
+  `compile_commands_escape`): every `-I`/`-isystem`/`-iquote`/`-include`
+  path in the DB is checked against the project root, plus size/entry
+  caps, before the first clazy/clang-tidy spawn. **Still open:** the
+  validator probes only `<root>/build/` and `<root>/`, while the tools
+  resolve their `-p` DB from seven build-dir variants — so a DB in
+  e.g. `build-fast/` is passed to the tools unvalidated, and the
+  validator returns *pass* having found nothing. The loop-3 security H-C
+  concern is therefore covered for the two probed locations only.
+  Tracked as **ANTS-3624**; see INV-2's coverage-gap note.
+- **Q5 / `ants_audit_lib` split (engine/runner vs dialog).**
+  **Resolved — shipped.** `auditdialog.cpp` was split into a separate
+  `ants_audit_dialog_lib` (CMakeLists.txt:517), so `ants_audit_lib` is
+  Qt6::Core-only and engine consumers no longer link QDialog (see § 2.3).
+
+## 10. Cold-eyes loop log
+
+**Loop 1 (2026-05-17):** v1 reviewer raised 4 H, 7 M, 5 L. v2
+folded: envelope cap, blocking budget, exclusion shared config (later
+reverted in v4), env policy, contract-before-cache.
+
+**Loop 2 (2026-05-17):** three lanes (cross-spec, threat, impl).
+v3 folded: namespace → PascalCase, lock primitive → InFlightRegistry
+(later inlined in v4), PathValidation everywhere, scope tag
+sanitise, PATH-hijack via `findExecutable`, regex hardening, lib
+placement reverted to `ants_audit_lib`, QProcess+QEventLoop pattern,
+test bundle named.
+
+**Loop 3 (2026-05-17):** five lanes (performance, security,
+optimisation, token-savings, final consistency). v4 folded:
+
+- **Perf H1:** acknowledged ROADMAP.md is 763 KiB — affects
+  ANTS-1397's fold-in budget, not this spec.
+- **Perf H2:** pool size bumped `max(1, nproc/8)` → `max(2,
+  nproc/8)` (INV-9). `retry_after_ms` hint added.
+- **Perf H3:** cross-pool aggregate RAM documented in § 6.
+- **Perf M5:** cold-start cost quantified in § 6.
+- **Perf M6:** compiled regex cache (INV-6).
+- **Perf L10:** SARIF cap `kSarifFindingsMax = 10000` (INV-13).
+- **Sec H-B:** stale-slot reaper (§ 2.4 / INV-11).
+- **Sec H-C:** compile_commands.json deep validation deferred (Q4);
+  v1 existence-check only.
+- **Opt H3:** inline gate replaces class (§ 2.4).
+- **Opt M5:** exclusion list hardcoded (INV-6) — dropped new JSON
+  file from v3.
+- **Opt M7:** `findExecutable` 60 s TTL cache (INV-10).
+- **Opt M8:** compile_commands.json no symlink-follow (INV-2).
+- **Opt L12:** `formats:["sarif"]` default; HTML opt-in (§ 2.1).
+- **Token H1:** § 1 framing corrected (skill load once per session,
+  not per sweep).
+- **Token H3:** net saving stated ~60 K (not 80 K gross).
+- **Token H4:** `top_findings_count` request arg added (§ 2.1).
+- **Token M4:** `token_usage` ledger cited for the 80 K figure.
+- **Token M5:** `retry_after_ms` hint on `server_busy`.
+- **Final consistency:** `tools_skipped` typed `QVector<ToolSkip>`
+  not `QPair`; `m_auditPool` name pinned; INV-16 added for
+  `cap_per_tool_seconds` validation; loop-log L2/L3 dangling refs
+  rewritten as explicit cross-loop pointers.
+- **Final consistency on § 2.5 QTimer capture:** snippet clarified —
+  captures heap pointer not stack ref.
+
+v4 ready for sign-off. Implementation can proceed; remaining
+M/L findings either deferred to v5 (impl-time discovery), filed
+as Q4/Q5 (deliberate v1 trade-offs), or non-blocking polish.
+
+**Loop 4 (2026-07-24, ANTS-3605 edit):** two cold passes over the whole
+spec + cited code, after INV-14 was relaxed and INV-21 (headless
+in-process drift lanes) was added. Pass 1 findings folded (contract
+surfaces only, per stay-in-lane):
+
+- **Accuracy H1:** INV-1 aggregate cap 240 s → 900 s (code
+  `kAggregateCapMs = 900'000`, ANTS-3585).
+- **Accuracy H2:** INV-16 / § 2.1 / § 4 cap range `[5,60]` → `[5,300]`
+  (code `kCapPerToolMax = 300`, ANTS-3585).
+- **Accuracy M1:** § 2.1 `tools` set gains `clang-tidy` (10th
+  `kKnownTools` entry, ANTS-1512); auto-detect basis noted.
+- **Accuracy M2:** § 2.1 `scope` enum gains `full` (ANTS-2015) and
+  `since-last-run` (ANTS-1870).
+- **Clarity L1:** INV-21 "at full scope only" reworded to the actual
+  `req.tools.isEmpty() && !scopeNarrowed` gate (default `auto` also runs
+  the lanes, not only literal `full`).
+- **Consistency M3:** INV-21 numbering note expanded to name the
+  cross-doc INV-17 collision + the un-back-ported INV-10b/18/19/20,
+  pointing at ANTS-3609.
+- **Deferred to ANTS-3609** (systemic pre-existing drift, not an
+  ANTS-3605 concern): § 5 test-plan stale test *names* + `240'000`/`61`
+  values; § 6 RAM budget "9 tools"/"240 s" + no in-process-lane budget;
+  § 2.5 line "9 tools multiplex"; the INV-17 cross-doc renumber +
+  back-port of INV-10b/18/19/20 into this canonical spec. These are a
+  coherent ANTS-3585/feature-contract reconciliation, tracked separately
+  so the ANTS-3605 change stays surgical.
+
+The in-process-lane invariant (INV-21), the INV-14 relaxation, and the
+constant corrections are verified against `src/auditrunner.cpp`,
+`src/featurecoverage.h`, and `src/auditdialog.cpp`.
+
+**Loop 4 / Pass 2** re-read the doc cold and confirmed every pass-1 fix held
+(INV-14, INV-21, the `[5,300]` cap, the `900'000` aggregate, the 10-tool
+`kKnownTools` set + scope enum all re-verified against code, no
+resurfacing). It surfaced additional **pre-existing** drift unrelated to
+ANTS-3605 — a missing `compile_commands_escape` § 4 row (ANTS-1446 ships
+but INV-2/Q4 say deferred), stale § 2.3 Engine-API structs, § 2.1
+`paths`/`checks` inputs, and § 2.2 `round(` vs integer-truncation — which
+together with the pass-1 deferrals amount to a systematic ANTS-1351-audit-run-mcp-verb-server.md ↔
+code refresh, tracked in ROADMAP ANTS-3609. The ANTS-3605 change itself
+is converged: no verified finding touches what it added or edited.
+
+**Loop 5 (2026-07-24, ANTS-3609 code reconciliation).** Folded the
+loop-4 deferrals: § 5 test-plan rewritten to the 30 real
+`TEST(mcp_audit_run, …)` names; § 6 tool-count/cap/in-process-lane
+budget; § 2.5 tool count; § 2.3 structs refreshed to `auditrunner.h`;
+§ 2.1 `paths`/`checks`; § 2.2 integer-truncation; § 4
+`compile_commands_escape` row; INV-2 include-validation; back-ported
+INV-18/19/20 (ANTS-2185/2182/2183) + INV-22 secret-redaction (ANTS-2188,
+the feature contract's INV-17) with the cross-doc numbering note; INV-10b
+fold-in. Then a fresh 3-lane cold read (surface / invariants /
+tests+budget) **verified all of the above against code** and surfaced
+**deeper pre-existing drift** now also folded:
+
+- **INV-9 was fiction** — the `m_auditPool` pool / `server_busy` code /
+  `max(2, nproc/8)` sizing were never built (aspirational v2,
+  ROADMAP.md:6512). Rewrote INV-9 + § 2.5 + § 4 (`server_busy` →
+  `too_many_jobs`) + § 6 + § 8 to the shipped per-call-`QThread` +
+  in-flight-gate + `kAuditJobsMax = 16` model. Code follow-up (build the
+  v2 pool / bound multi-root RAM): **ANTS-3612**.
+- **§ 2.4 reaper** described a non-existent per-slot QTimer; rewrote to
+  the lazy sweep-on-acquire + the two shipped helpers
+  (`verbInFlightTryAcquire`/`verbInFlightRelease`). Also documented that
+  `kVerbInFlightReapMs`/`kAuditJobReapMs` are a stale `270'000` (240+30)
+  not tracking the 900 s cap — a real INV-11 bug, code fix **ANTS-3611**.
+- **INV-1** `tools.count` → *resolved-tool count* (`toolAbsPath.size()`).
+- **§ 2.1 `checks`** refusal clarified (only for an explicitly-named
+  non-clang-tidy tool; auto-detect runs unfiltered, no refusal).
+- **§ 5** Required-contract sentence corrected (`Inv3RequiredContract` in
+  this file, not `mcp_caller_cwd_contracts`).
+- **§ 7** skill fast-path marked PROPOSED — the live `audit/SKILL.md` has
+  no `audit_run` block; apply it: **ANTS-3613**.
+
+Code-side items surfaced but not fixed here (doc-review lane): ANTS-3610
+(`auditrunner.h` header comment lists 9 tools, missing clang-tidy),
+ANTS-3611, ANTS-3612, ANTS-3613. Every doc claim in this loop was verified
+against `auditrunner.{h,cpp}`, `claudeintegration.{h,cpp}`,
+`mainwindow.cpp`, `auditdialog.cpp`, `featurecoverage.h`, the shipped test
+file, and the feature contract `spec.md`.
+
+**Loop 5 / Pass 2** re-read the doc cold and re-verified pass-1 held (INV-9,
+§ 2.4, INV-1…22 all clean), then corrected finer pre-existing drift the
+first pass hadn't reached: § 2.3 CMake citation (`:315` → `:489`) + the
+already-shipped `ants_audit_dialog_lib` split (closing Q5); the § 2.4
+`verbInFlightTryAcquire` snippet (returns `qint64`/`-1`, not `bool`; the
+`already_running` envelope carries `running_since_ms` + `retry_after_ms`);
+the § 2.5 `QProcess` ownership (`std::shared_ptr` map, not a "scope-guard
+struct"); the § 2.1 `async` request field (ANTS-3396) it had omitted; the
+§ 1 net-saving arithmetic (20 KiB envelope ≈ 5 K tokens, not 20 K → ~70–75 K
+net); one leftover "pool slot / server_busy" line in § 6; the § 5
+INV-7/8/11/12 test-coverage claim (they are unasserted, not
+structurally-locked); and the header's ANTS-1397 "worker model" cross-ref.
+No new code-side items; all doc-only.
+
+**Pass 3** widened the read-set to `src/auditcache.cpp` (absent from the
+pass-1/2 set) and caught the INV-11/INV-12 cluster: INV-12 described a
+`/tmp/audit-<sid>-<seq>.sarif` primary path + a `MainWindow::aboutToQuit`
+cleanup — both wrong. Rewrote INV-12 (+ the § 2.2 example/table) to the
+shipped `<root>/.audit_cache/audit-<iso>-<sha>.sarif` primary
+(`AuditCache::sarifPathFor`, ANTS-1555), the `/tmp`/XDG `-<rand>` fallback,
+and the real manifest-driven cache reaper (there is no `aboutToQuit`
+hook); the un-reaped `/tmp` fallback is a minor leak → **ANTS-3614**.
+INV-11's "aggregate-cap + 30 s" reaper phrasing was reconciled with § 2.4's
+correct fixed-270 s / ANTS-3611 explanation. The `not_runnable` per-tool
+status (§ 2.2 example + table, § 2.3, INV-2) was dropped — the shipped
+state machine only sets `ok`/`timed_out`/`crashed` (unresolved tools →
+`tools_skipped[]`); the stale `not_runnable`/`scope` header comments in
+`auditrunner.h` were folded into **ANTS-3610**. Plus the § 6 tool-side sum
+rounding (~1.8 GiB). All doc-only.
+
+**Pass 4** deep-verified the v1 invariants prior passes had only scanned
+holistically (INV-3/4/5/6/7/8/15) and caught the same v1-contract-vs-
+shipped-headless-engine gap class again in the *suppression* surface:
+INV-6's second half (custom-regex hardening + compiled-regex cache) is
+wired only into the GUI `AuditEngine::applyFilter`, not `runAudit`; INV-7's
+`.audit_suppress`→SARIF-`result.suppressions[]` marking is likewise
+GUI-only, and the `suppressions` request field / `suppressionsMode` is
+**never read** by the headless engine (a silent no-op) — the only shipped
+headless suppression is the ANTS-1820 learned-FP ledger (drop-from-count,
+no SARIF marking). Rewrote INV-6, INV-7, § 2.1's `suppressions` row, and
+INV-2 to the shipped reality; wire-or-drop code decision → **ANTS-3615**.
+Also softened INV-4 (`samples[0]` crash excerpt is best-effort, not
+guaranteed) and corrected INV-8's SARIF property name
+(`toolExecutionNotifications`). INV-3/5/6-exclusion-half/15 verified clean.
+All doc-only.
+
+**Pass 5** (final convergence pass) re-verified all five pass-4 rewrites
+against code — INV-6/7 GUI-only, `suppressionsMode` no-op, INV-8
+`toolExecutionNotifications`, INV-4 best-effort — all confirmed accurate,
+with two refinements of the pass-4 edits: (a) INV-7 said a learned FP is
+dropped from "raw/after-filter counts", but code drops it from
+`after_filter_count` *only* (`rawCount` keeps the raw total — a suppressed
+FP still counts toward `noise_rate_pct`'s denominator; auditrunner.cpp:910);
+(b) § 2.2's `crashed`/`samples[0]` table row was softened to match INV-4's
+best-effort language (intra-doc consistency). One code-side stale comment
+(`auditrunner.h:118-119`) folded into ANTS-3610. Every INV-1…22 and every
+section is now deep-verified against code across the five passes.
+
+### Loop 6 (2026-07-25) — post-implementation reconciliation
+
+Passes 6-9 below all ran on 2026-07-25 against code the ANTS-3610…3615 +
+ANTS-1713 sweep had just changed. They continue the pass numbering above;
+Loops 1-5 used a nested "Pass N" scheme, so read these as top-level
+passes of this loop.
+
+**Pass 6** ran after the ANTS-3610…3615 + ANTS-1713 code
+sweep landed, and is the first pass to review the spec against *changed*
+code rather than to reconcile the spec to static code. Three lanes
+(§§ 1–4, §§ 5–10, and a cross-doc lane over ANTS-1397 + the error-code
+taxonomy) each read cold. Verified findings, all fixed in this pass:
+
+- **§ 2.4 asserted a live code bug that pass 5 had already fixed** — the
+  "`kVerbInFlightReapMs` is a fixed `270'000`" paragraph survived the
+  INV-11 rewrite, so the document simultaneously described the reap
+  window as broken (§ 2.4) and as derived (INV-11). Rewritten to the
+  derived form. The lesson: fixing an invariant is not the same as
+  fixing every passage that discusses it.
+- **§ 8's `m_auditPool` decision line** still called the aggregate cap
+  unbuilt, contradicting § 4 and § 6 of the same document. Rewritten to
+  record what ANTS-3612 actually decided: cap, not pool, and the pool is
+  no longer planned.
+- **§ 8's "stderr unredacted"** predated ANTS-2188's `SecretRedact::scrub`
+  (INV-22). Narrowed to what it now means.
+- **§ 2.1 / INV-2 credited `PathValidation::validatePath`**, which this
+  verb never calls — it hand-rolls canonicalise + `isDir` in two places.
+- **`bad_cwd` was missing from § 4** and is what an MCP caller actually
+  receives for a bad `caller_cwd`; the engine's `bad_path` branch is
+  unreachable through the verb.
+- **`top_findings[]` was documented with a shape and a byte bound it does
+  not have** — it is sample-shaped, and is built *after* the INV-13
+  cascade from a measure that excludes it, so it sits outside the
+  18/20 KiB budget rather than inside it.
+- **§ 5 was one test behind** (`Inv9bReapWindowsDeriveFromAggregateCap`)
+  and still claimed the stale-slot reaper was untested; its window
+  derivation is now locked, only the runtime behaviour is not.
+- Smaller: § 7's "at top" placement, an unlabelled fence that broke the
+  heading run, the `max(2, nproc/8)` → flat-2 rationale, `kExclusions()`
+  being a file-local function not a constant, the INV-9/INV-9b cross-doc
+  numbering map, `mutable` on the gate members, the combined
+  audit + build ceiling (≈ 6.6 GiB, not ~5 GiB), and a `Source:` line
+  number that had drifted in an append-only log.
+
+One finding was raised against **code**, not this doc, and was
+roadmapped rather than silently changed: the `tools` schema string claims
+auto-detect excludes clang-tidy when `kAutoDetectTools()` excludes only
+mypy (ANTS-3622). A second cross-doc finding — ANTS-1397's `Optional`
+caller_cwd claim, contradicted by all five `test_audit_*` verbs
+registering `Required` — was a *doc* defect and was corrected in
+`docs/specs/ANTS-1397-test-audit-mcp-trio-skill.md` itself, not roadmapped.
+
+**Pass 7** (2026-07-25, same day as pass 6). Ran cold against the
+pass-6 edits. It found that fixing a claim in one section reliably
+leaves its restatements elsewhere untouched — the same failure mode
+pass 6 named, now demonstrated on pass 6's own output. Verified and
+fixed:
+
+- **INV-2 still carried a pre-ANTS-3615 parenthetical** saying the
+  engine "never reads `suppressionsMode`, so there is no such path to
+  validate" — contradicting § 2.1, INV-7 and § 4, all of which pass 6
+  had already corrected, and contradicting the code. Both §§ 1–4 and
+  §§ 5–10 lanes raised it independently.
+- **INV-13 claimed SARIF-side overflow reporting via
+  `notifications[]`** — no such mechanism exists; the cap is a bare
+  `break` and overflow surfaces as the envelope's `findings_truncated`.
+- **`samples_truncated` was documented as "any cap fires"** — it is set
+  only by the cascade; a 256 B per-message truncation cannot set it, so
+  `false` is not proof messages are intact.
+- **Three "present iff" response rows were wrong in the empty case** —
+  `top_findings[]`, `html_path` and `cache_path` are *omitted*, not
+  emitted empty.
+- **§ 2.1's `scope` row omitted the working-tree union** on `files` /
+  `since-tag` / `since-last-run`, which an implementer would use to size
+  the changed-file set.
+- **§ 6 restated "envelope ≤ 20 KiB"** after INV-13 had been corrected
+  to exclude `top_findings[]` from that budget.
+- **§ 5's coverage paragraph** listed INV-7/8/12 as untested when each
+  has a sibling feature dir (INV-7's is the 9-test suite added the same
+  day); and pointed at the wrong duplicate-coverage suite for INV-3.
+- **Pass 6's own log entry misreported** ANTS-1397's contract finding as
+  roadmapped when it was fixed in place.
+- Smaller: the `tools_skipped` example used a `reason` string the engine
+  never emits; `compile_commands_escape`'s row omitted the size/entry
+  caps; INV-10 asserted signal-mask/umask behaviour nothing implements
+  or tests; `§ 2.4`'s snippet had the wrong parameter name; the INV-21
+  note counted a fold-in as a collision; and INV-2's "without
+  symlink-follow" described a guard that was never built.
+
+One genuine **code** gap surfaced and was roadmapped, not patched:
+`validateCompileCommandsImpl` probes two compile-DB locations while the
+tools resolve `-p` from seven, so a `build-fast/` DB is used unvalidated
+(**ANTS-3624**). Two stale code comments were corrected in place — the
+in-flight gate's consumer list, and an ANTS-1820 comment classifying
+`shellcheck` as line-based when `isJsonFindingTool` treats it as JSON.
+That last one had propagated into `tests/features/audit_run_allowlist/spec.md`
+(written earlier the same day) and was fixed there too.
+
+**Pass 8** (2026-07-25). Converging — no CRITICAL in either lane, and
+both lanes independently verified large clean areas (all 31 test names,
+the § 6 arithmetic end-to-end, every § 8 decision, every § 4 code).
+Fixed:
+
+- **§ 2.1's `paths` row named two tools; the code appends scoped
+  positionals for eight** (all the file-scoped tools; only gitleaks and
+  trivy ignore them), and the two-tool claim contradicted this spec's own
+  INV-18.
+- **§ 9 Q4 called the compile-DB guard "Resolved"** while § 10 recorded
+  the same gap as open ANTS-3624 — the doc contradicting itself about a
+  security guard. Now "partially resolved", with the covered scope named.
+- **§ 6 restated two things already corrected elsewhere**: a
+  "PathValidation cost" heading (this verb hand-rolls it) and an FD budget
+  citing 10 pidfds (no pidfd path exists).
+- **INV-13 vs § 2.2 flatly disagreed on `samples_truncated`** — INV-13
+  said "any cap fires", § 2.2 said the 256 B message cap does not set it.
+  Code agrees with § 2.2; INV-13 now also records that the flag is raised
+  before anything is removed, so `true` does not prove a trim occurred.
+- **INV-10 claimed the tool-resolve cache invalidates on PATH change** —
+  it is keyed on tool name with a TTL only.
+- The § 2.2 example's `noise_rate_pct` was 83 where the documented integer
+  formula gives 84; `full` was called "git-independent" when it shells
+  `git ls-files src/`; the source-scrape bucket claimed `.cpp`-only when
+  two locks scrape a header and one asserts a constant directly.
+
+Also completed a sweep pass 7 had claimed as done: the stale
+"shellcheck is line-based" comment had a second instance in
+`auditrunner.cpp` that the first sweep missed. "Corrected in place"
+should mean every instance — logging that here rather than quietly
+fixing it.
+
+**Pass 9** (2026-07-25). §§ 5-10 came back with **zero CRITICAL and zero
+HIGH** — the first lane in this loop to do so — and independently
+re-verified all 31 test names, every § 8 decision, § 9's Q4/Q5 status and
+every § 10 fix-claim. §§ 1-4 returned one HIGH. Fixed:
+
+- **§ 2.2 contradicted INV-13 on `samples_truncated`** — pass 8 corrected
+  INV-13 to say the flag is raised *before* anything is removed, and left
+  § 2.2's "iff the cascade trimmed" standing. Same drift class, now on
+  pass 8's own output. Both sides now say: raised when the soft cap is
+  exceeded, proof of neither removal nor intactness.
+- **§ 6's build-RAM arithmetic was wrong on the host it names.** It
+  budgeted a concurrent build at ~3 GiB by assuming the `max(2, nproc/4)`
+  floor, but CMakeLists sizes that pool explicitly for a 12-core box — 3
+  cc1plus, ~4.5 GiB. Common case ≈ 6.3 GiB, worst case ≈ 8.1 GiB. This is
+  the one number in § 6 a reader acts on (may I run `/audit` during a
+  build?), and it was under-stated.
+- **§ 2.4 named ANTS-1397 as the gate's second consumer** — it never
+  wired one; the real second is `indie_review_dispatch` (ANTS-1352). The
+  matching stale comment in `mainwindow.cpp` was corrected too.
+- **§ 4's `bad_scope` promised a scope-enum validator that does not
+  exist.** An unrecognised `scope` is not refused — it degrades silently
+  to a full scan, a materially costlier outcome than a refusal.
+- **`formats` is unvalidated** — an unrecognised value suppresses the
+  `["sarif"]` default and produces no artifact at all while returning
+  `ok:true`, the same silent-no-op class ANTS-3615 closed for
+  `suppressions`. Documented and roadmapped as **ANTS-3626**.
+- Smaller: INV-13 called `toolExecutionNotifications[]` unconditional
+  (it is guarded on non-empty output — pass 8's wording); `top_findings`
+  selection walks a `QHash` so its membership is unordered, not
+  "most severe"; the § 5 coverage sentence stated its claim twice with
+  the pre-pass-7 "of any kind" wording still in it; the sibling-dir list
+  omitted `mcp_audit_run_async/`; the ~60 KSLOC anchor behind the ~45 s
+  median is ~130 KSLOC today; HTML artifact size was given as ~80 KiB in
+  § 6 and ~50 KiB in § 2.1; and § 10's own numbering had unheaded passes,
+  now gathered under this Loop 6 heading.
+
+Two code-side gaps were roadmapped rather than patched under a docs
+skill: **ANTS-3626** (`formats` validation) and, from the ANTS-1397 lane,
+**ANTS-3627** and **ANTS-3628**.
+
+**Pass 10** (2026-07-25). **Both lanes returned zero CRITICAL; §§ 1-4
+returned zero HIGH as well** — the convergence point for this document.
+§§ 5-10's single HIGH was pass 9's own restatement drift: INV-9 still
+cross-referenced "§ 6's ~5 GiB audit ceiling" after pass 9 had retired
+that number in § 6 itself. Fixed, along with:
+
+- **§ 6 claimed CMakeLists "sizes the pool explicitly for a 12-core
+  box".** It does not — the cap is `max(2, nproc/4)` computed at
+  configure time from `ProcessorCount`; the 12-core wording is a tuning
+  anecdote in a comment. The 3-job / ~4.5 GiB / 6.3 / 8.1 figures are
+  right *for this host*, but reading as a hardcode would send a 32-core
+  reader to the wrong number (8 jobs ≈ 12 GiB). Now stated as a formula.
+- **INV-13 fused two different `kSarifFindingsMax` ceilings.** The
+  per-tool one sets `findings_truncated`; the cross-tool cumulative one
+  in `writeSarif` is a bare `break` that signals nothing, so a multi-tool
+  sweep can lose thousands of SARIF results while the envelope reports
+  `false`. Silent data loss in the artifact the verb exists to produce —
+  documented here, roadmapped as **ANTS-3629**.
+- **§ 2.3's struct comments contradicted INV-2 and INV-16** — "canonical
+  absolute (validated)" (the field carries the *raw* cwd) and "clamped"
+  (out-of-range refuses, never clamps). Both were mirrored in
+  `auditrunner.h` and corrected there too; the "clamped" one would have
+  had an implementer clamp where three other places say refuse.
+- Smaller: § 4's `bad_args` row omitted the ANTS-3615 `suppressions`
+  cause; INV-22 and the feature contract both said trivy runs
+  `--scanners secret` (it is `vuln,secret`); INV-1's "tools that resolved
+  on PATH" is really resolved-minus-skipped; the INV-21 note counted one
+  fold-in where it lists two; INV-12's `<sid>` is built on first fallback
+  use, not at process start; and § 10 had two blocks both labelled
+  "Pass 2", now disambiguated by loop.
+
+**Process note.** Two of pass 9's recorded fixes had not actually landed
+— a multi-edit batch aborted on one failed match and silently discarded
+the rest of its writes, and the log recorded intent rather than verified
+outcome. Both are fixed here. The lesson is the one this log keeps
+re-learning at a different level: "corrected in place" has to mean
+*verified in the file*, not *attempted*.

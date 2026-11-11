@@ -3,7 +3,7 @@
 User request 2026-04-30: surface the parsed ROADMAP.md as structured JSON
 to a Claude Code session over the existing remote-control IPC, so Claude
 can interrogate the roadmap without re-burning the 4500-line file as
-input tokens. See `docs/specs/ANTS-1117.md`.
+input tokens. See `docs/specs/ANTS-1117-claude-code-running-ants-gui.md`.
 
 ## Surface
 

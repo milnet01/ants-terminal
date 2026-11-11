@@ -1,6 +1,6 @@
 # cold_eyes_dialog — feature-conformance contract
 
-Tracks `docs/specs/ANTS-1721.md` (`ColdEyesDialog : ReviewDialogBase`).
+Tracks `docs/specs/ANTS-1721-coldeyesdialog-native-app-documentation.md` (`ColdEyesDialog : ReviewDialogBase`).
 Exercises the non-GUI composition / corroboration / fold-in paths — the
 engine calls (`ColdEyesEngine`), `BriefDispatch` inlining, the
 false-positive ledger, and the ROADMAP fold-in — not the live Qt event

@@ -1,6 +1,6 @@
 # cold_eyes_engine — feature-conformance spec
 
-**Owner:** ANTS-1319 (`docs/specs/ANTS-1319.md`)
+**Owner:** ANTS-1319 (`docs/specs/ANTS-1319-cold-eyes-mcp-fold.md`)
 **Engine:** `src/coldeyesengine.{h,cpp}`
 
 Exercises `ColdEyesEngine::derivePartition` /

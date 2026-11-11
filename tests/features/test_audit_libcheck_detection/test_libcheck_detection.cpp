@@ -1,5 +1,5 @@
 // ANTS-1624 — libcheck framework detection in test_audit_partition.
-// Asserts INV-1..INV-6 from docs/specs/ANTS-1624.md.
+// Asserts INV-1..INV-6 from docs/specs/ANTS-1624-test-audit-partition-libcheck-c.md.
 
 #include "testauditengine.h"
 

@@ -1,6 +1,6 @@
 # doc_citations_scan — the `path:line` grammar and scrape rule (ANTS-3653)
 
-Contract: [`docs/specs/ANTS-3653.md`](../../../docs/specs/ANTS-3653.md). This
+Contract: [`docs/specs/ANTS-3653-citation-scan-path-line-grammar.md`](../../../docs/specs/ANTS-3653-citation-scan-path-line-grammar.md). This
 file is the test-surface map; the spec owns the grammar and the reasoning.
 
 `src/doccitations.{h,cpp}` — `DocCitations::scan(lines, opts)` is a **pure

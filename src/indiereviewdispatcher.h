@@ -5,7 +5,7 @@
 // returns a structured manifest. Displaces the per-Agent
 // orchestration tax onto the upstream provider's billing.
 //
-// See docs/specs/ANTS-1352.md for the full design + invariants.
+// See docs/specs/ANTS-1352-indie-review-dispatch-mcp-verb.md for the full design + invariants.
 
 #pragma once
 

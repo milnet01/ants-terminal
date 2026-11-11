@@ -1,5 +1,5 @@
 // Feature-conformance test for ANTS-1974 — user-selectable home/baseline tier.
-// See tests/features/model_home_tier/spec.md and docs/specs/ANTS-1974.md.
+// See tests/features/model_home_tier/spec.md and docs/specs/ANTS-1974-user-selectable-home-baseline-model.md.
 //
 // Pure: tierForScore() is a free function; score() is exercised only against a
 // non-existent path (absent transcript ⇒ home tier).

@@ -4,7 +4,7 @@
 // Drives a project's build → tests → lint gates sequentially and
 // returns structured pass/fail data. Replaces the
 // `verification-before-completion` skill's mechanical 3-step loop.
-// See docs/specs/ANTS-1289.md for the full invariant list.
+// See docs/specs/ANTS-1289-verify-changes-mcp-tool.md for the full invariant list.
 
 #pragma once
 
@@ -33,7 +33,7 @@ struct GateConfig {
 };
 
 // Result of executing one gate. Fields whose "Present when" rule
-// in docs/specs/ANTS-1289.md § 2.3 doesn't fire are simply omitted
+// in docs/specs/ANTS-1289-verify-changes-mcp-tool.md § 2.3 doesn't fire are simply omitted
 // from the JSON serialisation by the caller — the engine fills the
 // struct unconditionally.
 struct GateResult {

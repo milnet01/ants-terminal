@@ -120,7 +120,7 @@ void MainWindow::setupClaudeMcpProviders() {
     // ANTS-1301 — recent_errors. Scans the focused terminal's recent
     // scrollback for structured errors (compiler/lint/lua/test/python).
     // TabSpecific like get_text/get_scrollback; delegates to
-    // RemoteControl::cmdRecentErrors. See docs/specs/ANTS-1301.md.
+    // RemoteControl::cmdRecentErrors. See docs/specs/ANTS-1301-recent-errors-mcp-extract-compile.md.
     m_claudeIntegration->registerToolProvider("recent_errors",
         ClaudeIntegration::CallerCwdContract::TabSpecific,
         mcp::rcDelegate(rcGetter, &RemoteControl::cmdRecentErrors));

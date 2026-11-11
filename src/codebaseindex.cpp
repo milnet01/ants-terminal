@@ -1,5 +1,5 @@
 // ANTS-1637 — codebase_index pure helper. Qt6::Core-only, FS-reading, no
-// widgets / no subprocess (mirrors findsources.cpp). See docs/specs/ANTS-1637.md.
+// widgets / no subprocess (mirrors findsources.cpp). See docs/specs/ANTS-1637-codebase-index-mcp-tool-pre.md.
 
 #include "codebaseindex.h"
 

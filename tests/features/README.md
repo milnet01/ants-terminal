@@ -143,7 +143,7 @@ reported against three prior releases.
    `test_chrome` for mainwindow/tabs, etc. Do **not** add a new
    `add_executable` unless the test legitimately needs process
    isolation (death tests, signal handlers — see Risks in
-   `docs/specs/ANTS-1217.md`).
+   `docs/specs/ANTS-1217-hybrid-googletest-bundle-consolidation.md`).
 5. Run `ctest -L features` and confirm it passes.
 6. Run it against the pre-fix code (temporarily revert the fix) to
    confirm it *would* have caught the bug. If it doesn't fail

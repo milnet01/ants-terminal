@@ -173,8 +173,8 @@ Manual recipe: run one Claude Code session through `ants-mcpd` and make a few `r
 ## 7. Cross-doc impact
 
 - `docs/specs/ANTS-4932-standalone-mcp-server.md` § 2.3: the "Deferred — tracked by ANTS-5311" sentence becomes a pointer to this spec.
-- `docs/specs/ANTS-3572.md` INV-8 forbids a new file watcher. § 2.5's watcher amends that clause: annotate it `amended by ANTS-5311` when this ships. Its other invariants, and `docs/specs/ANTS-3579.md`'s, stand; this spec adds a term to their session figures.
-- `docs/specs/ANTS-1284.md` INV-6 describes a response schema with `additionalProperties: false`. None exists in source: no `outputSchema` is registered for `token_usage`, and ANTS-3572 INV-10 already added envelope fields without one. So `mcpd` and `snapshots_skipped` need no schema change. Annotate INV-6 as superseded by ANTS-3572 INV-10 when this ships.
+- `docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md` INV-8 forbids a new file watcher. § 2.5's watcher amends that clause: annotate it `amended by ANTS-5311` when this ships. Its other invariants, and `docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md`'s, stand; this spec adds a term to their session figures.
+- `docs/specs/ANTS-1284-token-usage-mcp-telemetry-tool.md` INV-6 describes a response schema with `additionalProperties: false`. None exists in source: no `outputSchema` is registered for `token_usage`, and ANTS-3572 INV-10 already added envelope fields without one. So `mcpd` and `snapshots_skipped` need no schema change. Annotate INV-6 as superseded by ANTS-3572 INV-10 when this ships.
 - CHANGELOG bullet when it ships.
 
 **Hot reload.** A change to the writer reaches users on an MCP reconnect (`/mcp`). The reader is compiled into the terminal, so it takes one relaunch to land. Until then, snapshots accumulate harmlessly and are folded on that start.

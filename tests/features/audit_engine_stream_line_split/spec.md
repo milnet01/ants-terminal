@@ -1,6 +1,6 @@
 # Audit-engine streaming line-split
 
-See [`docs/specs/ANTS-1339.md`](../../../docs/specs/ANTS-1339.md).
+See [`docs/specs/ANTS-1339-auditengine-applyfilter-streaming-line.md`](../../../docs/specs/ANTS-1339-auditengine-applyfilter-streaming-line.md).
 
 ## Invariants
 

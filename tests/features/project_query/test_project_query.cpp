@@ -2,7 +2,7 @@
 // server-side read-only Lua query verb. The sandbox/marshaller/confinement
 // invariants drive LuaEngine::runQuery / projectQueryVerb directly against
 // QTemporaryDir fixtures; the verb-glue + registration invariants
-// source-scrape the handler/wiring. See spec.md + docs/specs/ANTS-2093.md.
+// source-scrape the handler/wiring. See spec.md + docs/specs/ANTS-2093-sandboxed-server-side-query-verb.md.
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"

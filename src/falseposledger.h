@@ -8,7 +8,7 @@
 // re-litigate findings the user already classified false-positive.
 //
 // Standard:  docs/standards/audit-false-positives.md
-// Spec:      docs/specs/ANTS-1457.md
+// Spec:      docs/specs/ANTS-1457-ants-review-falsepos-jsonl-ledger.md
 //
 // appendEntry (ANTS-2129) is the write side; v1 was read-only.
 

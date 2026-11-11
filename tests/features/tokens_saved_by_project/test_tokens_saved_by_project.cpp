@@ -2,7 +2,7 @@
 // (TokenUsageEngine::foldProjectBucket / pruneProjectBuckets) + the promoted
 // public kCharsPerToken. Source-scrape wiring tests for recordDispatch / the
 // widget / the fold live alongside; this file pins the pure math.
-// See docs/specs/ANTS-3579.md §§ 2.5 / 5, INV-1/5/5b/9.
+// See docs/specs/ANTS-3579-scope-tokens-saved-status-bar.md §§ 2.5 / 5, INV-1/5/5b/9.
 
 #include "tokenusageengine.h"
 

@@ -1,7 +1,7 @@
 // ANTS-3447 — feature-conformance test for feedback_log op:"assign_id".
 // Pure FeedbackFile::assignId over synthetic content + a live
 // RemoteControl::cmdFeedbackLog drive + schema/dispatch source-greps.
-// See spec.md + docs/specs/ANTS-3447.md.
+// See spec.md + docs/specs/ANTS-3447-feedback-log-op-assign-id.md.
 
 #include "feedbackfile.h"
 #include "remotecontrol.h"

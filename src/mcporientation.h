@@ -1,5 +1,5 @@
 // ANTS-1897 — MCP discoverability via SessionStart hook installer.
-// Spec: docs/specs/ANTS-1897.md.
+// Spec: docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md.
 //
 // Bundled orientation script + Claude Code `~/.claude/settings.json`
 // SessionStart hook entry. The hook prints a short MCP cheat-sheet at

@@ -327,7 +327,7 @@ QJsonArray formatForJsonArray(const QList<LedgerEntry> &entries,
     return arr;
 }
 
-// ANTS-2129 — write side. See docs/specs/ANTS-2129.md.
+// ANTS-2129 — write side. See docs/specs/ANTS-2129-audit-falsepos-log-mcp-write.md.
 AppendResult appendEntry(const QString &projectPath, const LedgerEntry &in,
                          bool dryRun) {
     // On-disk record must stay under the Linux atomic-write(2) bound so the

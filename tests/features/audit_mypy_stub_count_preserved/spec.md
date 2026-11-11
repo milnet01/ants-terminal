@@ -1,6 +1,6 @@
 # Mypy stub-hint consolidation — pre-collapse count preserved
 
-See [`docs/specs/ANTS-1343.md`](../../../docs/specs/ANTS-1343.md).
+See [`docs/specs/ANTS-1343-consolidatemypystubhints-finding-count.md`](../../../docs/specs/ANTS-1343-consolidatemypystubhints-finding-count.md).
 
 ## Invariants
 

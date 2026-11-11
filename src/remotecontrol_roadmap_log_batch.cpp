@@ -1244,7 +1244,7 @@ QString RemoteControl::formatRoadmapBullet(
 
 // ANTS-1878 — roadmap_log op:"create_section". Splice a new
 // ## / ### heading at after_section.lineEnd. No counter touch
-// (creating a section does not allocate an id). See docs/specs/ANTS-1878.md.
+// (creating a section does not allocate an id). See docs/specs/ANTS-1878-roadmap-log-op-create-section.md.
 int RemoteControl::createSectionSkipCount(const QVector<int> &levelsAfter,
                                           int newLevel) {
     int n = 0;
@@ -1329,7 +1329,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     // 4. Locate after_section.
     const auto index = RoadmapIndex::buildIndex(markdown);
 
-    // ANTS-5315 — docs/specs/ANTS-1878.md § 2.3a. The version checks run
+    // ANTS-5315 — docs/specs/ANTS-1878-roadmap-log-op-create-section.md § 2.3a. The version checks run
     // first, placed or supplied, so bad_title wins over missing_field and
     // slug_collision wherever both would apply.
     const QString titleVersion = RoadmapIndex::versionOfTitle(title);
@@ -2227,7 +2227,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
 
 // ANTS-1879 — roadmap_log op:"append_batch". Append N bullets to one
 // section in a single read + single atomic commit. See
-// docs/specs/ANTS-1879.md. An all-skipped batch returns ok:true, as that
+// docs/specs/ANTS-1879-roadmap-log-op-append-batch.md. An all-skipped batch returns ok:true, as that
 // spec says. flip_batch, which the spec mirrored, has returned ok:false in
 // that case since ANTS-4109; append_batch was not changed with it.
 QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {

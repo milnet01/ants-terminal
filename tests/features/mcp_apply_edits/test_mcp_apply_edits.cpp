@@ -1,7 +1,7 @@
 // Feature-conformance test for the apply_edits MCP tool (ANTS-2022).
 // Behavioural invariants exercise the pure ApplyEdits::applyToContent
 // helper; wiring invariants source-scrape the registration sites.
-// See spec.md + docs/specs/ANTS-2022.md.
+// See spec.md + docs/specs/ANTS-2022-apply-edits-mcp-tool-n.md.
 
 #include "../../_support/expect.h"
 #include "applyedits.h"

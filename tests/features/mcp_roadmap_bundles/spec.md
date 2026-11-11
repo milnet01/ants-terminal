@@ -1,6 +1,6 @@
 # Feature: roadmap_query mode:"bundles"
 
-Test contract for ANTS-1922 (`docs/specs/ANTS-1922.md`). Locks the
+Test contract for ANTS-1922 (`docs/specs/ANTS-1922-roadmap-query-mode-bundles-work.md`). Locks the
 behavioural invariants of `RemoteControl::buildRoadmapBundlesEnvelope`
 (the pure builder behind `roadmap_query mode:"bundles"`) plus the
 dispatch/schema wiring via source-grep.

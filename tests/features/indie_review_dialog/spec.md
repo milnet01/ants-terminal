@@ -1,6 +1,6 @@
 # indie_review_dialog — feature-conformance contract
 
-Tracks `docs/specs/ANTS-1258.md` (`IndieReviewDialog : ReviewDialogBase`).
+Tracks `docs/specs/ANTS-1258-indiereviewdialog-native-app-independent.md` (`IndieReviewDialog : ReviewDialogBase`).
 Exercises the non-GUI composition / corroboration / synthesis / fold-in
 paths — the engine calls (`IndieReviewEngine`), the false-positive
 ledger, and the ROADMAP fold-in — not the live Qt event loop. INV-8 is a

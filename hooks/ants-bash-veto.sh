@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ants-terminal PreToolUse(Bash) hook — token-saving veto + soft-warn.
-# Spec: docs/specs/ANTS-1252.md § 1.2; soft-warn: docs/specs/ANTS-2141.md.
+# Spec: docs/specs/ANTS-1252-token-saving-hook-pack.md § 1.2; soft-warn: docs/specs/ANTS-2141-soft-warn-grep-find-over.md.
 # Two routing classes:
 #  - SOFT-WARN (ANTS-2141): a raw source search (grep -r / rg / project find)
 #    → non-blocking PreToolUse `additionalContext` nudge toward the MCP index
@@ -38,7 +38,7 @@ esac
 # NON-blocking: emit a PreToolUse `additionalContext` reminder and let the
 # command run. Throttled per session (PPID); every eligible match is tallied
 # even when the nudge is suppressed. Fail-open (a broken cache never silences
-# the warn). See docs/specs/ANTS-2141.md §2.1-§2.4.
+# the warn). See docs/specs/ANTS-2141-soft-warn-grep-find-over.md §2.1-§2.4.
 if ants_is_source_search "$cmd"; then
     nudge_tool="${ANTS_NUDGE_TOOL:-grep}"
     if ants_grep_nudge_throttled; then
@@ -56,7 +56,7 @@ fi
 # ANTS-2023 — soft-warn a source read-dump (cat/head/tail/bat over a code file).
 # Same non-blocking shape + shared throttle/counter as the grep/find nudge above;
 # only the advice text + the tally-bucket fallback differ. Fail-open. See
-# docs/specs/ANTS-2023.md §2.1-§2.3.
+# docs/specs/ANTS-2023-soft-warn-cat-head-tail.md §2.1-§2.3.
 if ants_is_source_read "$cmd"; then
     nudge_tool="${ANTS_NUDGE_TOOL:-cat}"
     if ants_grep_nudge_throttled; then

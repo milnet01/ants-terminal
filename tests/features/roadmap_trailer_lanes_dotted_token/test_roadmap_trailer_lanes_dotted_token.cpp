@@ -64,7 +64,7 @@ const char *kSeed =
     // prose is not split into lanes.
     "- \xF0\x9F\x93\x8B [ANTS-3007] **Prose after the declaration.**\n"
     "  Lanes: hooks. Verify the resulting predicate table still matches "
-    "docs/specs/ANTS-2141.md after the dedupe.\n"
+    "docs/specs/ANTS-2141-soft-warn-grep-find-over.md after the dedupe.\n"
     // INV-6 — ANTS-1125's real declaration: a LEADING dot, mid-list.
     "- \xF0\x9F\x93\x8B [ANTS-3006] **Leading-dot lane.**\n"
     "  Lanes: RoadmapDialog, docs/standards, .claude/bump.json, "

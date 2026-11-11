@@ -137,7 +137,7 @@ void AuditDialog::populateChecks() {
     //
     // Both are left UNCAPPED (maxLines = 0): the FP-heavier docs/specs corpus
     // exceeds the default 100-line cap, which would silently drop every
-    // alphabetically-later doc's findings (docs/specs/ANTS-3600.md § 2.2).
+    // alphabetically-later doc's findings (docs/specs/ANTS-3600-audit-lane-contract-doc-literal.md § 2.2).
     {
         AuditCheck c;
         c.id          = "contract_doc_drift_standards";

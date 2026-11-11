@@ -2,7 +2,7 @@
 // file (ANTS-2160). Behavioural invariants drive the pure
 // ProjectSettings::load loader and the settings-aware CodebaseIndex /
 // DocsIndex walks; wiring invariants source-scrape the consumers.
-// See spec.md + docs/specs/ANTS-2160.md.
+// See spec.md + docs/specs/ANTS-2160-per-project-ants-settings-file.md.
 
 #include "../../_support/expect.h"
 #include "projectsettings.h"

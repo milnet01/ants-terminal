@@ -164,7 +164,7 @@ top-level array-of-objects into a columnar `{__cols__,__rows__}` form (one
 sorted header row + one value-row per element), dropping the per-row key
 repetition that dominates list replies. Opt-in per call
 (`encoding:"tabular"`), self-guarding per array. Full design + cold-eyes
-log: `docs/specs/ANTS-2090.md`. Test invariants (`McpTabular` cases):
+log: `docs/specs/ANTS-2090-tabular-columnar-encoding-homogeneous.md`. Test invariants (`McpTabular` cases):
 
 - **INV-1/8/9 — dispatch order + guard.** `mcp::tabularize` is called
   only under an `encoding == "tabular"` guard, after `mcp::appendReadHints`

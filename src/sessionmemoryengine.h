@@ -1,6 +1,6 @@
 // ANTS-1283 — per-cwd MCP session-memory key-value store. Backed by
 // ~/.cache/ants-terminal/mcp-state/<cwd-hash>.json. Lives in
-// ants_core_lib (Qt6::Core only). See docs/specs/ANTS-1283.md.
+// ants_core_lib (Qt6::Core only). See docs/specs/ANTS-1283-session-memory-mcp-key-value.md.
 
 #pragma once
 

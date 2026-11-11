@@ -5,7 +5,7 @@
 // render and edit pass blocks so the round-trip (write → reader) is
 // faithful. Qt6::Core-only; lives in ants_core_lib so the remotecontrol
 // handlers and the feature test share one implementation (mirrors
-// changeloglog.{h,cpp}). See docs/specs/ANTS-2126.md.
+// changeloglog.{h,cpp}). See docs/specs/ANTS-2126-roadmap-log-heading-format-writer.md.
 
 #pragma once
 

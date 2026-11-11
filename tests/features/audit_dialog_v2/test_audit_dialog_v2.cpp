@@ -3,7 +3,7 @@
 // INV-11  visibleSinceBaseline predicate (changed-line ∧ not-in-baseline).
 // INV-13  appendAllowlistEntry write + reload + match contract.
 // INV-14  foldFindingsIntoRoadmap orchestration (counter bump + block).
-// See tests/features/audit_dialog_v2/spec.md + docs/specs/ANTS-1111.md §12.
+// See tests/features/audit_dialog_v2/spec.md + docs/specs/ANTS-1111-fold-audit-triage-into-project.md §12.
 
 #include "auditdialog.h"
 #include "auditengine.h"

@@ -4,7 +4,7 @@
 // `last_audit_summary` discovers MCP sweeps, and ANTS-1504
 // (`since-last-run` mode) has a stable prior-run anchor.
 //
-// Layout / invariants documented in `docs/specs/ANTS-1555.md`.
+// Layout / invariants documented in `docs/specs/ANTS-1555-per-project-audit-cache-infrastructure.md`.
 
 #pragma once
 

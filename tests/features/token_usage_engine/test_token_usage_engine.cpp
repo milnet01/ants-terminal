@@ -332,7 +332,7 @@ TEST(TokenUsageEngine, Ants3361ConservativeFloorNoOverClaim) {
 // ---------------------------------------------------------------------------
 // ANTS-3572 — pure persistence helpers (foldMonthlyBucket / sumYear /
 // humanizeCount) backing the tokens-saved chip + monthly/YTD/all-time.
-// See docs/specs/ANTS-3572.md § 5.
+// See docs/specs/ANTS-3572-mcp-tokens-saved-status-bar.md § 5.
 // ---------------------------------------------------------------------------
 
 using TokenUsageEngine::foldMonthlyBucket;

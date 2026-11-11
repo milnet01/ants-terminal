@@ -4,7 +4,7 @@
 // INV-D2  debtFixInline deletes an orphan Q_UNUSED line.
 // INV-D3  debtDeferToRoadmap counter bump + block insert (+ no-op on bad heading).
 // INV-D4  debtAllow writes a matching allowlist entry; reload makes it match.
-// See tests/features/debt_sweep_dialog/spec.md + docs/specs/ANTS-1113.md §1.1.
+// See tests/features/debt_sweep_dialog/spec.md + docs/specs/ANTS-1113-fold-debt-sweep-into-project.md §1.1.
 
 #include "auditdialog.h"
 #include "auditengine.h"
