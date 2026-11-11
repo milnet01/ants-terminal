@@ -24,7 +24,7 @@
 # rehearsal=true): the run's title then says REHEARSAL, so its failure mail
 # cannot be mistaken for broken downloads.
 name: Release audit
-run-name: ${{ github.event.inputs.rehearsal == 'true' &&'Release audit — REHEARSAL, not an outage' || 'Release audit' }}
+run-name: ${{ github.event.inputs.rehearsal == 'true' && 'Release audit - REHEARSAL, not an outage' || 'Release audit' }}
 
 on:
   schedule:
@@ -50,8 +50,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           OBS_BASE: https://download.opensuse.org/repositories/home:/milnet:/ants-terminal
+          REHEARSAL: ${{ github.event.inputs.rehearsal }}
         run: |
           set -uo pipefail
+          if [ "${REHEARSAL:-}" = "true" ]; then
+            echo "::notice::REHEARSAL run: a red result here is a test, not an outage"
+          fi
           fail=0
           # A fetch that could not run is NOT drift. Reporting one as the other
           # trains people to ignore this job, which is how it stops working.
