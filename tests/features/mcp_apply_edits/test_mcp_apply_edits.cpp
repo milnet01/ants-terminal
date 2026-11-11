@@ -1045,3 +1045,104 @@ TEST(McpApplyEdits, Ants5414EditsPastTheCapRefuseAndWriteNothing) {
         }
     }
 }
+
+// ANTS-5155 — all_or_nothing:true resolves every edit before writing any
+// file, and a batch where one edit would miss refuses as a whole. The edit
+// that matches is in a DIFFERENT file listed FIRST, so a mode that writes
+// file by file would already have written it when the miss is found.
+namespace {
+
+QJsonObject ants5155Edit(const char *path, const char *o, const char *n) {
+    QJsonObject e;
+    e[QStringLiteral("path")] = QString::fromUtf8(path);
+    e[QStringLiteral("old")]  = QString::fromUtf8(o);
+    e[QStringLiteral("new")]  = QString::fromUtf8(n);
+    return e;
+}
+
+QJsonObject ants5155Run(const QTemporaryDir &dir, const QJsonArray &edits,
+                        const QJsonValue &allOrNothing, bool dry = false) {
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]     = dir.path();
+    req[QStringLiteral("edits")]          = edits;
+    req[QStringLiteral("all_or_nothing")] = allOrNothing;
+    if (dry) req[QStringLiteral("dry_run")] = true;
+    return rc.cmdApplyEdits(req).object();
+}
+
+bool ants5155Seed(const QTemporaryDir &dir) {
+    QFile f(dir.path() + QStringLiteral("/first.txt"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    f.write("one\ntwo\n");
+    f.close();
+    return !seedDoc(dir).isEmpty();
+}
+
+}  // namespace
+
+TEST(McpApplyEdits, Ants5155AllOrNothingRefusesAndWritesNothing) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(ants5155Seed(dir));
+    QJsonArray edits;
+    edits.append(ants5155Edit("first.txt", "one", "ONE"));
+    edits.append(ants5155Edit("doc.txt", "no such line", "x"));
+    const QJsonObject r = ants5155Run(dir, edits, true);
+    EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool(true));
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString().toStdString(),
+              "all_or_nothing_refused") << QJsonDocument(r).toJson().toStdString();
+    const QJsonArray skipped = r.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1);
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("index")).toInt(), 1);
+    EXPECT_EQ(r.value(QStringLiteral("would_apply_count")).toInt(), 1);
+    EXPECT_EQ(slurp(dir.path() + QStringLiteral("/first.txt")),
+              QStringLiteral("one\ntwo\n")) << "nothing may be written";
+    EXPECT_EQ(slurp(dir.path() + QStringLiteral("/doc.txt")),
+              QString::fromUtf8(kDoc));
+}
+
+TEST(McpApplyEdits, Ants5155AllOrNothingWritesAWholeBatch) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(ants5155Seed(dir));
+    QJsonArray edits;
+    edits.append(ants5155Edit("first.txt", "one", "ONE"));
+    edits.append(ants5155Edit("doc.txt", "beta", "BETA"));
+    const QJsonObject r = ants5155Run(dir, edits, true);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("files_written")).toInt(), 2);
+    EXPECT_EQ(r.value(QStringLiteral("edits_applied")).toInt(), 2);
+    EXPECT_EQ(slurp(dir.path() + QStringLiteral("/first.txt")),
+              QStringLiteral("ONE\ntwo\n"));
+    EXPECT_TRUE(slurp(dir.path() + QStringLiteral("/doc.txt"))
+                    .contains(QLatin1String("BETA")));
+}
+
+TEST(McpApplyEdits, Ants5155DryRunPreviewsTheRefusal) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(ants5155Seed(dir));
+    QJsonArray edits;
+    edits.append(ants5155Edit("first.txt", "one", "ONE"));
+    edits.append(ants5155Edit("doc.txt", "no such line", "x"));
+    const QJsonObject r = ants5155Run(dir, edits, true, /*dry=*/true);
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString().toStdString(),
+              "all_or_nothing_refused");
+    EXPECT_TRUE(r.value(QStringLiteral("dry_run")).toBool());
+    EXPECT_EQ(slurp(dir.path() + QStringLiteral("/first.txt")),
+              QStringLiteral("one\ntwo\n"));
+}
+
+TEST(McpApplyEdits, Ants5155NonBooleanFlagRefuses) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ASSERT_TRUE(ants5155Seed(dir));
+    QJsonArray edits;
+    edits.append(ants5155Edit("first.txt", "one", "ONE"));
+    const QJsonObject r = ants5155Run(dir, edits, QStringLiteral("yes"));
+    EXPECT_EQ(r.value(QStringLiteral("code")).toString().toStdString(), "bad_args");
+    EXPECT_EQ(slurp(dir.path() + QStringLiteral("/first.txt")),
+              QStringLiteral("one\ntwo\n"));
+}

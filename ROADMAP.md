@@ -85533,7 +85533,7 @@ two projects).
   Kind: enhancement.
   Source: cc-feedback-2026-09-03 Rolodex.
 
-- 📋 [ANTS-5155] **apply_edits has no all_or_nothing mode, so a coupled batch cannot refuse as a whole when one edit would miss.**
+- ✅ [ANTS-5155] **apply_edits has no all_or_nothing mode, so a coupled batch cannot refuse as a whole when one edit would miss.**
   ANTS-4856 shipped the minimum half: a batch that applied some edits and
   skipped others now carries partial:true. The opt-in half is still open.
   An all_or_nothing:true argument would resolve every edit first, which
@@ -85544,6 +85544,14 @@ two projects).
   candidates must still reach the caller, since that is how they fix the
   miss. The handler writes each file inside its edit loop today, so the
   writes must move after the loop for this mode.
+  Shipped 2026-11-12. Refusal shape decided: ok:false, code
+  all_or_nothing_refused (row added to mcp-error-codes.md § 2), carrying
+  skipped[] with candidates, edits_skipped, would_apply_count; dry_run
+  previews it. Writes now wait in a pending list under the flag. Red
+  first: a matching edit in an earlier file was written before the miss
+  was found. Tests: McpApplyEdits.Ants5155*. A disk failure mid-write
+  can still leave an earlier file written; that reports commit_failed +
+  partial as before.
   **Layman:** A batch of linked edits cannot be told to change nothing at all if any one of them would fail.
   Kind: enhancement.
   Source: split from ANTS-4856, 2026-09-14.

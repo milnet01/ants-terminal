@@ -197,6 +197,7 @@ because source comments cite its section.
 | `version_unreadable` | `version_check` (ANTS-5510): the recipe is well formed, and `version_source` cannot be read or `version_pattern` matches nothing in it. | `version_check` with a `version_source` that names a missing file. |
 | `baseline_build_failed` | `mutation_probe` with `build_command` (ANTS-5512): the build failed or timed out on the unmutated source, so no mutation was applied. The envelope carries `baseline_exit_code`, `baseline_timed_out` and `build_output_tail`. | `mutation_probe build_command:["false"]`. |
 | `not_array` | `read_spill` **row mode** (ANTS-3545): the spilled body is not a JSON object with a non-empty root array member, so it has no rows to page (a scalar-only body, a bare root array, or a fully-tabular `{__cols__,__rows__}` body). The resource exists but isn't the row-shape row mode acts on — byte-page it instead. | `read_spill row_count:10` against a spilled body with no dominant array. |
+| `all_or_nothing_refused` | `apply_edits all_or_nothing:true` (ANTS-5155): at least one edit would be skipped (`not_found`, `ambiguous`, `range_mismatch`, `count_mismatch`), so no file was written. Distinct from a `partial:true` success, which wrote the edits that matched. The envelope carries `skipped[]` with its candidates, `edits_skipped` and `would_apply_count`; a dry run adds `dry_run:true`. The caller fixes each miss and re-sends the whole batch. | `apply_edits` with two edits, one whose `old` is not in its file. |
 
 ### 3 — Caller-cwd contract (ANTS-1404 / ANTS-1372)
 

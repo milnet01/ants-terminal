@@ -2193,6 +2193,16 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                             "`match_wrapped` (ANTS-4547).");
                         props["match_wrapped"] = mw;
                     }
+                    {
+                        QJsonObject aon;
+                        aon["type"] = "boolean";
+                        aon["default"] = false;
+                        aon["description"] = QStringLiteral(
+                            "ANTS-5155: if any edit would be skipped, write no "
+                            "file and refuse all_or_nothing_refused with "
+                            "skipped[].");
+                        props["all_or_nothing"] = aon;
+                    }
                     props["caller_cwd"] = makeCallerCwdReadProp();
                     schema["properties"] = props;
                     QJsonArray required;

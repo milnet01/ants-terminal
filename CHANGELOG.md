@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **apply_edits takes `all_or_nothing`: a batch where any edit would miss writes no file** (ANTS-5155)
+  The call refuses `all_or_nothing_refused` and lists each miss in
+  `skipped[]` with its candidates, so a set of linked edits never lands
+  half-applied. A dry run previews the same refusal.
+
 - **mutation_probe takes an `env` map for its build and test commands, and refuses a baseline whose tests all skipped** (ANTS-4768)
   A suite that needs a variable, such as a machine-local path, can now be
   probed without a wrapper script. Skipped tests are read from pytest,

@@ -52,3 +52,15 @@ neither. *Test:* `McpApplyEdits.Ants4856PartialBatchIsFlagged`.
 More than 100 `edits` refuses `bad_args` before any file is read, the
 cap `file_outline` puts on `paths`; the error names the cap. Test:
 `McpApplyEdits.Ants5414EditsPastTheCapRefuseAndWriteNothing`.
+
+## ANTS-5155 — all or nothing
+
+`all_or_nothing: true` resolves every edit before writing any file. If any
+edit would be skipped, nothing is written and the call refuses
+`all_or_nothing_refused` with `skipped[]`, `edits_skipped` and
+`would_apply_count`. With `dry_run` the same refusal carries `dry_run: true`.
+When every edit matches, the files are written as without the flag. A
+non-boolean value refuses `bad_args`. *Tests:*
+`McpApplyEdits.Ants5155AllOrNothingRefusesAndWritesNothing`,
+`…AllOrNothingWritesAWholeBatch`, `…DryRunPreviewsTheRefusal`,
+`…NonBooleanFlagRefuses`.

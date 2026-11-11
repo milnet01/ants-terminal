@@ -3105,6 +3105,14 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
     // knows one knows the other.
     const bool matchWrapped =
         req.value(QStringLiteral("match_wrapped")).toBool(false);
+    // ANTS-5155 — resolve every edit before writing any file, and refuse the
+    // batch if one would be skipped. A non-boolean refuses: reading it as
+    // false would write the partial batch the caller asked to prevent.
+    const QJsonValue aonArg = req.value(QStringLiteral("all_or_nothing"));
+    if (!aonArg.isUndefined() && !aonArg.isBool())
+        return QJsonDocument(wsErr("bad_args",
+            QStringLiteral("apply_edits: `all_or_nothing` must be true or false")));
+    const bool allOrNothing = aonArg.toBool(false);
 
     const QString callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     const QString sentinelRoot = ants::expandGlobalConfigSentinel(callerRaw);
@@ -3382,6 +3390,44 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         skippedRows.replace(skippedRows.size() - 1, s);
     };
 
+    // ANTS-5155 — under all_or_nothing a file's result waits here until every
+    // file has been resolved.
+    struct PendingWrite {
+        QString resolved, rawPath, contents;
+        int replacements = 0;
+        QVector<int> appliedIdx;
+    };
+    QVector<PendingWrite> pending;
+    auto writeFile = [&](const PendingWrite &w) {
+        // Atomic write — the applyRepair idiom (QSaveFile write-full-or-fail
+        // + commit + fsyncParentDir). A whole-content substring replace, so
+        // a trailing newline is preserved without split/rejoin. A dry run
+        // (ANTS-2227) leaves the disk untouched; its tallies are the real ones
+        // because every edit was already resolved against the contents.
+        bool wrote = dryRun;
+        if (!dryRun) {
+            QSaveFile sf(w.resolved);
+            if (sf.open(QIODevice::WriteOnly)) {
+                const QByteArray bytes = w.contents.toUtf8();
+                if (sf.write(bytes) == bytes.size() && sf.commit()) {
+                    fsyncParentDir(w.resolved);
+                    wrote = true;
+                }
+            }
+        }
+        if (wrote) {
+            QJsonObject a; a["path"] = w.rawPath; a["replacements"] = w.replacements;
+            applied.append(a);
+            ++filesWritten;
+            editsApplied += w.appliedIdx.size();
+        } else {
+            for (int k : w.appliedIdx) {
+                addSkip(es[k].index, w.rawPath, QStringLiteral("commit_failed"));
+                perEdit[es[k].index] = -1;
+            }
+        }
+    };
+
     QVector<QString> fileOrder;
     QHash<QString, QVector<int>> byFile;  // resolved → indices into es
     QHash<QString, QString> rawOf;        // resolved → first-seen rawPath
@@ -3481,37 +3527,34 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             }
         }
         if (appliedIdx.isEmpty()) continue;  // nothing applied → don't touch
+        const PendingWrite w{resolved, rawPath, working, fileReplacements, appliedIdx};
+        if (allOrNothing) pending.push_back(w);
+        else              writeFile(w);
+    }
 
-        // Atomic write — the applyRepair idiom (QSaveFile write-full-or-fail
-        // + commit + fsyncParentDir). A whole-content substring replace, so
-        // a trailing newline is preserved without split/rejoin.
-        bool wrote = false;
-        if (dryRun) {
-            // ANTS-2227 — would-write: disk untouched. Every edit in this
-            // group was already resolved against `working` above, so the
-            // applied/skipped/replacements tallies below are the real ones.
-            wrote = true;
-        } else {
-            QSaveFile sf(resolved);
-            if (sf.open(QIODevice::WriteOnly)) {
-                const QByteArray bytes = working.toUtf8();
-                if (sf.write(bytes) == bytes.size() && sf.commit()) {
-                    fsyncParentDir(resolved);
-                    wrote = true;
-                }
-            }
+    if (allOrNothing) {
+        if (editsSkipped > 0) {
+            int wouldApply = 0;
+            for (const PendingWrite &w : std::as_const(pending))
+                wouldApply += w.appliedIdx.size();
+            QJsonObject o;
+            o["ok"]    = false;
+            o["code"]  = QStringLiteral("all_or_nothing_refused");
+            o["error"] = QStringLiteral(
+                "apply_edits: %1 of %2 edits would be skipped, so all_or_nothing "
+                "wrote no file. skipped[] names each miss and its candidates; "
+                "fix them and re-send the whole batch.")
+                    .arg(editsSkipped).arg(edits.size());
+            o["skipped"]           = skipped;
+            o["edits_total"]       = edits.size();
+            o["edits_skipped"]     = editsSkipped;
+            o["would_apply_count"] = wouldApply;
+            if (dryRun) o["dry_run"] = true;
+            return QJsonDocument(o);
         }
-        if (wrote) {
-            QJsonObject a; a["path"] = rawPath; a["replacements"] = fileReplacements;
-            applied.append(a);
-            ++filesWritten;
-            editsApplied += appliedIdx.size();
-        } else {
-            for (int k : appliedIdx) {
-                addSkip(es[k].index, rawPath, QStringLiteral("commit_failed"));
-                perEdit[es[k].index] = -1;
-            }
-        }
+        // Every edit matched. A disk failure can still stop a later file after
+        // an earlier one was written; that shows as commit_failed + partial.
+        for (const PendingWrite &w : std::as_const(pending)) writeFile(w);
     }
 
     QJsonObject env;
