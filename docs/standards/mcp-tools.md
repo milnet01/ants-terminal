@@ -330,7 +330,7 @@ place when it saves a Claude session real tokens or round-trips
    roadmap_log / changelog_log / spec_log keep tailored copies). Supported:
    roadmap_log, changelog_log, spec_log, apply_edits, project_settings,
    feedback_log, audit_falsepos_log, roadmap_migrate, audit_dismiss,
-   session_message.
+   session_message, know_how, run_trace.
 
    **`roadmap_migrate` is a stated deviation from the "before any disk
    write" rule** (ANTS-3855 § 2.3.1): its preview opens the store, and on a
@@ -342,7 +342,8 @@ place when it saves a Claude session real tokens or round-trips
    bounded: what a dry run may create is an empty schema (zero `project` /
    `section` / `item` / `element` / `history` rows), it writes no roadmap
    data, and it modifies an existing store no more than a rolled-back
-   transaction does.
+   transaction does — except that opening an older store climbs its
+   schema upgrade ladder and commits it, as any store open does.
 
    **Out of scope:** read-only verbs (`get_*`, `*_query`, `find_*`,
    `read_*`), and the **session-state** writers `session_memory` and

@@ -596,8 +596,11 @@ Listed only where behavior isn't obvious from the name.
   natural key (same section + migration-allocated id + identical
   headline) for the ~40% of the corpus with no id; writes only the
   fields that differ; rebuilds each section's `element` rows rather
-  than shifting positions in place; retains, re-files and reports an
-  item absent from source; allocates ids inside the transaction so a
+  than shifting positions in place; deletes an item absent from source
+  unless another row references it or the caller set `keepAbsent`, and
+  re-files and reports one it keeps; refuses to delete more than a
+  quarter of the stored items without `acceptDeletions` (ANTS-5287);
+  allocates ids inside the transaction so a
   rolled-back load burns none. Refuses an `Access::Interactive` store.
   Spec ANTS-3765.
 - `remotecontrol_roadmap_migrate` (`ants_core_lib`) — the `roadmap_migrate`

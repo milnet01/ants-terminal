@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6739 -->
+<!-- ants-roadmap-id-high-water: ANTS=6740 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91742,7 +91742,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6735] **Correct four doc statements the 2026-11-09 paired review found stale in the roadmap store and verb docs.**
+- ✅ [ANTS-6735] **Correct four doc statements the 2026-11-09 paired review found stale in the roadmap store and verb docs.**
   - L14-13 docs/subsystems.md, roadmapmigrateload entry: says an item
     absent from source is retained; the code deletes it (ANTS-5287).
   - L14-14 docs/standards/mcp-tools.md 6b's dry_run list omits
@@ -91752,10 +91752,22 @@ measured Ants adding about 5,250 tokens to every request.
   - L09-18 docs/standards/mcp-error-codes.md lacks id_taken,
     too_many_matches, body_match_not_found, headline_match_ambiguous,
     plan_failed and roadmap_write_failed.
+  Shipped 2026-11-11. Also documents body_match_ambiguous and
+  headline_match_not_found (same gap); dry_run list adds run_trace too.
   **Layman:** Four places in the docs that no longer match what the roadmap code does.
   Kind: doc-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: roadmap-store, mcp-roadmap-query-log.
+
+- 📋 [ANTS-6740] **Replace two dead symbol names in mcp-error-codes.md.**
+  doc_lint, 2026-11-11: the `rg_failed` row cites
+  `rcdetail::rgStartDiagnosis` and the "What this taxonomy is NOT"
+  section cites `pathValidationFailed`. Neither name occurs in src/.
+  Name the current function, or drop the citation.
+  **Layman:** Two code names in the error-code guide no longer exist in the code.
+  Kind: doc-fix.
+  Source: doc_lint during ANTS-6735, 2026-11-11.
+  Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-11-10 triage
 
