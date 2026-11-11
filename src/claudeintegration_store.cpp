@@ -1641,8 +1641,9 @@ void appendToolSchemasStore(QJsonArray &tools) {
                             "Apply a dry run without resending it: a successful "
                             "dry run returns `plan_id`, and a call carrying only "
                             "caller_cwd and that id runs the previewed request "
-                            "for real, re-running every check. Any other payload "
-                            "argument refuses bad_args. A plan is used once, by "
+                            "for real, re-running every check. The previewed op "
+                            "may be repeated; any other payload argument "
+                            "refuses bad_args. A plan is used once, by "
                             "an apply that lands; it lasts 15 minutes and a "
                             "server restart forgets it, both refusing "
                             "plan_not_found.");

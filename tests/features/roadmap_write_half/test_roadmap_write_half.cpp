@@ -3110,6 +3110,15 @@ TEST(RoadmapWriteHalf, Ants5704PlanIdAppliesTheDryRun) {
     EXPECT_FALSE(mixedResp.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(mixedResp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
 
+    // ANTS-6431 — an op other than the previewed one refuses; the same op is
+    // harmless and is accepted, below.
+    QJsonObject otherOp = apply;
+    otherOp[QStringLiteral("op")] = QStringLiteral("flip");
+    const QJsonObject otherResp = rc.cmdRoadmapLog(otherOp).object();
+    EXPECT_FALSE(otherResp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(otherResp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+    apply[QStringLiteral("op")] = QStringLiteral("annotate");
+
     const QJsonObject applied = rc.cmdRoadmapLog(apply).object();
     ASSERT_TRUE(applied.value(QStringLiteral("ok")).toBool()) << QJsonDocument(applied).toJson().toStdString();
     EXPECT_FALSE(applied.value(QStringLiteral("dry_run")).toBool());

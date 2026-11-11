@@ -4025,15 +4025,18 @@ std::optional<RlPlan> rlTakePlan(const QJsonObject &req, QJsonObject *refusal) {
         QStringLiteral("fields"), QStringLiteral("compact"),
         QStringLiteral("encoding"),
     };
+    // ANTS-6431 — `op` is checked against the plan below: repeating the
+    // previewed op adds no ambiguity, so only a different one refuses.
     QStringList extra;
     for (auto it = req.begin(); it != req.end(); ++it)
-        if (!kAllowed.contains(it.key())) extra << it.key();
+        if (!kAllowed.contains(it.key()) && it.key() != QLatin1String("op"))
+            extra << it.key();
     if (!extra.isEmpty()) {
         extra.sort();
         return refuse(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: plan_id applies the previewed request "
-                           "as it was sent, so it takes only caller_cwd beside "
-                           "it. Drop: %1. To change the request, dry-run it "
+                           "as it was sent, so it takes only caller_cwd and the "
+                           "previewed op beside it. Drop: %1. To change the request, dry-run it "
                            "again.").arg(extra.join(QStringLiteral(", "))));
     }
     const QString id = req.value(QStringLiteral("plan_id")).toString();
@@ -4051,6 +4054,16 @@ std::optional<RlPlan> rlTakePlan(const QJsonObject &req, QJsonObject *refusal) {
         return refuse(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: plan \"%1\" was made for another "
                            "caller_cwd.").arg(id));
+    if (req.contains(QStringLiteral("op"))) {
+        const QString planOp = it->req.value(QStringLiteral("op"))
+                                   .toString(QStringLiteral("append"));
+        const QString op = req.value(QStringLiteral("op")).toString();
+        if (op != planOp)
+            return refuse(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: plan \"%1\" previewed op \"%2\", not "
+                               "\"%3\". Drop op, or dry-run the new request.")
+                    .arg(id, planOp, op));
+    }
     const RlPlan plan = *it;
     plans.erase(it);
     return plan;
