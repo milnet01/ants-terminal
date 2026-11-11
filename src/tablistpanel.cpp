@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QScrollBar>
+#include <QSplitter>
 #include <QStyledItemDelegate>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
@@ -215,6 +216,19 @@ QRect TabListPanel::closeButtonRect(const QRect &row) {
     const int side = qBound(8, row.height() - 4, 16);
     const int pad = 4;
     return QRect(row.right() - pad - side + 1, row.top() + (row.height() - side) / 2, side, side);
+}
+
+void TabListPanel::placeInSplitter(QSplitter *splitter, QWidget *panel, bool right, int width) {
+    // insertWidget moves a widget the splitter already holds.
+    splitter->insertWidget(right ? splitter->count() - 1 : 0, panel);
+    const int at = splitter->indexOf(panel);
+    QList<int> sizes;
+    const int rest = qMax(1, (splitter->width() - width) / qMax(1, splitter->count() - 1));
+    for (int i = 0; i < splitter->count(); ++i) {
+        splitter->setStretchFactor(i, i == at ? 0 : 1);
+        sizes << (i == at ? width : rest);
+    }
+    splitter->setSizes(sizes);
 }
 
 QTreeWidgetItem *TabListPanel::closeMarkAt(const QPoint &pos) const {

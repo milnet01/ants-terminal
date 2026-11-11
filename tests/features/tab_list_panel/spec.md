@@ -29,7 +29,8 @@ item records the user's choice of a side panel over wrapping rows.
 - **INV-6 — config keys.** `tab_list_panel` (default false),
   `tab_list_panel_hides_tab_bar` (default false) and
   `tab_list_panel_width` (default 280) round-trip through `Config`, as
-  does `tab_list_panel_sort` (INV-10).
+  do `tab_list_panel_sort` (INV-10) and `tab_list_panel_right` (default
+  false, INV-14).
 - **INV-7 — live reload.** Both `onConfigFileChanged` and the Settings
   dialog's `settingsChanged` handler call `applyTabListPanelConfig`, so a
   change applies with no relaunch.
@@ -80,6 +81,12 @@ item records the user's choice of a side panel over wrapping rows.
 - **INV-13 — the tab menu (ANTS-5709).** `showTabColorMenu`, shared by the
   tab bar and the panel, has a "Close Tab" item that calls `closeTab`. Its
   colour choices sit in a "Colour" sub-menu, not on the top level.
+- **INV-14 — left or right (ANTS-6743).** `placeInSplitter` puts the
+  panel in the splitter's first slot, or its last when `right` is set,
+  with the given width and no stretch. `applyTabListPanelConfig` passes
+  it `tabListPanelOnRight()`, so a change moves the panel with no
+  relaunch, and the saved width is read from the panel's own slot. The
+  View menu's "Tab List on the Right" sets the key.
 
 ## Test
 

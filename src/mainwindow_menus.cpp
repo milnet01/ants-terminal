@@ -265,7 +265,7 @@ void MainWindow::setupViewMenu() {
     connect(distinctColours, &QAction::triggered, this,
             &MainWindow::colorTabsDistinctly);
 
-    // ANTS-5645 — every open tab by full name, in a panel on the left.
+    // ANTS-5645 — every open tab by full name, in a panel at one side.
     m_tabListPanelAction = viewMenu->addAction("&Tab List Panel");
     m_tabListPanelAction->setCheckable(true);
     m_tabListPanelAction->setChecked(m_config.tabListPanel());
@@ -286,6 +286,14 @@ void MainWindow::setupViewMenu() {
     m_tabListHidesBarAction->setChecked(m_config.tabListPanelHidesTabBar());
     connect(m_tabListHidesBarAction, &QAction::toggled, this, [this](bool on) {
         m_config.setTabListPanelHidesTabBar(on);
+        applyTabListPanelConfig();
+    });
+    // ANTS-6743 — the panel's side; the left unless this is ticked.
+    m_tabListRightAction = viewMenu->addAction("Tab List on the &Right");
+    m_tabListRightAction->setCheckable(true);
+    m_tabListRightAction->setChecked(m_config.tabListPanelOnRight());
+    connect(m_tabListRightAction, &QAction::toggled, this, [this](bool on) {
+        m_config.setTabListPanelOnRight(on);
         applyTabListPanelConfig();
     });
     // ANTS-5656 — the panel's row order. The tabs themselves never move.

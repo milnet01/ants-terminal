@@ -1475,6 +1475,15 @@ void Config::setTabListPanelWidth(int px) {
     save();
 }
 
+bool Config::tabListPanelOnRight() const {
+    return m_data.value("tab_list_panel_right").toBool(false);
+}
+
+void Config::setTabListPanelOnRight(bool right) {
+    if (!storeIfChanged("tab_list_panel_right", right)) return;
+    save();
+}
+
 // ANTS-5656 — read as-is; TabListPanel::sortModeFromKey maps an unknown
 // value to colour grouping.
 QString Config::tabListPanelSort() const {

@@ -70120,9 +70120,13 @@ interpretation. Closes the self-graded-homework loop.
   Source: user-request-2026-11-11.
   Lanes: ui.
 
-- 📋 [ANTS-6743] **Put the tab side panel on the left or the right.**
+- ✅ [ANTS-6743] **Put the tab side panel on the left or the right.**
   User request 2026-11-11: the user prefers the left, but others may
   want the side panel on the right. Left stays the default.
+  Shipped 2026-11-11. Config key tab_list_panel_right (default false);
+  View > Tab List on the Right; TabListPanel::placeInSplitter moves the
+  panel live. Tests: TabListPanel.Inv14PanelSitsLeftOrRight,
+  Inv14MainWindowPlacesThePanelFromConfig, Inv6 extended.
   **Layman:** A setting to show the side panel of tabs on the right-hand side instead of the left.
   Kind: feature.
   Source: user-request-2026-11-11.

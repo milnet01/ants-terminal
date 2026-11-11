@@ -31,8 +31,6 @@ void MainWindow::applyTabListPanelConfig() {
     if (show && !m_tabListPanel) {
         m_tabListPanel = new TabListPanel(m_tabSplitter);
         m_tabSplitter->insertWidget(0, m_tabListPanel);
-        m_tabSplitter->setStretchFactor(0, 0);
-        m_tabSplitter->setStretchFactor(1, 1);
         if (m_chromeBg.isValid())
             m_tabListPanel->setThemeColors(m_chromeBg, m_chromeText);
         connect(m_tabListPanel, &TabListPanel::tabActivated, this, [this](QWidget *page) {
@@ -68,7 +66,8 @@ void MainWindow::applyTabListPanelConfig() {
         widthSave->setInterval(500);
         connect(widthSave, &QTimer::timeout, this, [this] {
             if (m_tabListPanel && !m_tabListPanel->isHidden())
-                m_config.setTabListPanelWidth(m_tabSplitter->sizes().value(0));
+                m_config.setTabListPanelWidth(
+                    m_tabSplitter->sizes().value(m_tabSplitter->indexOf(m_tabListPanel)));
         });
         connect(m_tabSplitter, &QSplitter::splitterMoved, widthSave,
                 [widthSave](int, int) { widthSave->start(); });
@@ -76,9 +75,9 @@ void MainWindow::applyTabListPanelConfig() {
     if (m_tabListPanel) {
         m_tabListPanel->setVisible(show);
         if (show) {
-            const int width = m_config.tabListPanelWidth();
-            const int total = m_tabSplitter->width();
-            m_tabSplitter->setSizes({width, qMax(1, total - width)});
+            TabListPanel::placeInSplitter(m_tabSplitter, m_tabListPanel,
+                                          m_config.tabListPanelOnRight(),
+                                          m_config.tabListPanelWidth());
             m_tabListPanel->setFontPointSize(m_config.fontSize());
             m_tabListPanel->setSortMode(
                 TabListPanel::sortModeFromKey(m_config.tabListPanelSort()));
@@ -94,6 +93,10 @@ void MainWindow::applyTabListPanelConfig() {
     if (m_tabListHidesBarAction) {
         const QSignalBlocker block(m_tabListHidesBarAction);
         m_tabListHidesBarAction->setChecked(m_config.tabListPanelHidesTabBar());
+    }
+    if (m_tabListRightAction) {
+        const QSignalBlocker block(m_tabListRightAction);
+        m_tabListRightAction->setChecked(m_config.tabListPanelOnRight());
     }
     if (m_tabListSortGroup) {
         const QString key =

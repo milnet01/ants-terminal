@@ -13,6 +13,7 @@
 #include <QImage>
 #include <QLineEdit>
 #include <QPainter>
+#include <QSplitter>
 #include <QStyleOptionViewItem>
 #include <QTemporaryDir>
 #include <QTest>
@@ -230,14 +231,59 @@ TEST(TabListPanel, Inv6ConfigKeysRoundTrip) {
         EXPECT_FALSE(c.tabListPanel());
         EXPECT_FALSE(c.tabListPanelHidesTabBar());
         EXPECT_EQ(c.tabListPanelWidth(), 280);
+        EXPECT_FALSE(c.tabListPanelOnRight());
         c.setTabListPanel(true);
         c.setTabListPanelHidesTabBar(true);
         c.setTabListPanelWidth(400);
+        c.setTabListPanelOnRight(true);
     }
     Config again;
     EXPECT_TRUE(again.tabListPanel());
     EXPECT_TRUE(again.tabListPanelHidesTabBar());
     EXPECT_EQ(again.tabListPanelWidth(), 400);
+    EXPECT_TRUE(again.tabListPanelOnRight());
+}
+
+// ANTS-6743 — the panel moves between the splitter's ends, keeping its
+// width, and only the terminal side stretches.
+TEST(TabListPanel, Inv14PanelSitsLeftOrRight) {
+    QSplitter splitter(Qt::Horizontal);
+    auto *panel = new TabListPanel(&splitter);
+    auto *terminal = new QWidget(&splitter);
+    splitter.addWidget(panel);
+    splitter.addWidget(terminal);
+    splitter.resize(1000, 400);
+    splitter.show();
+    QCoreApplication::processEvents();
+
+    for (bool right : {true, false, true}) {
+        TabListPanel::placeInSplitter(&splitter, panel, right, 300);
+        QCoreApplication::processEvents();
+        ASSERT_EQ(splitter.count(), 2);
+        const int at = splitter.indexOf(panel);
+        EXPECT_EQ(at, right ? 1 : 0);
+        EXPECT_EQ(splitter.indexOf(terminal), right ? 0 : 1);
+        EXPECT_EQ(splitter.sizes().value(at), 300) << "right=" << right;
+        // Widening the window widens the terminal, not the panel.
+        splitter.resize(1200, 400);
+        QCoreApplication::processEvents();
+        EXPECT_EQ(splitter.sizes().value(at), 300) << "the panel stretched";
+        splitter.resize(1000, 400);
+        QCoreApplication::processEvents();
+    }
+}
+
+TEST(TabListPanel, Inv14MainWindowPlacesThePanelFromConfig) {
+    const std::string src = ants_test::slurpMainWindow();
+    ASSERT_FALSE(src.empty());
+    const std::string apply =
+        ants_test::slurpFunctionBody(src, "void MainWindow::applyTabListPanelConfig(");
+    ASSERT_FALSE(apply.empty());
+    EXPECT_NE(apply.find("placeInSplitter("), std::string::npos);
+    EXPECT_NE(apply.find("tabListPanelOnRight()"), std::string::npos)
+        << "the side setting does not reach the splitter";
+    EXPECT_EQ(apply.find("sizes().value(0)"), std::string::npos)
+        << "the saved width assumes the panel is on the left";
 }
 
 // ANTS-5659 — a new tab brought the hidden tab bar back: four sites set

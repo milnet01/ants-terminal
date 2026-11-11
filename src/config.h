@@ -514,6 +514,9 @@ public:
     void setTabListPanelHidesTabBar(bool hides);
     int tabListPanelWidth() const;
     void setTabListPanelWidth(int px);
+    // ANTS-6743 — the panel's side of the window; false is the left.
+    bool tabListPanelOnRight() const;
+    void setTabListPanelOnRight(bool right);
     // ANTS-5656 — the panel's row order: colour, colour_az, az, tab_order.
     QString tabListPanelSort() const;
     void setTabListPanelSort(const QString &key);

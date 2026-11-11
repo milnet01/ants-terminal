@@ -11,6 +11,7 @@
 
 #include <optional>
 
+class QSplitter;
 class QTreeWidget;
 class QTreeWidgetItem;
 
@@ -95,6 +96,10 @@ public:
     // rectangle in viewport coordinates: a square at its right edge, the
     // size of the tab bar's x.
     static QRect closeButtonRect(const QRect &row);
+
+    // ANTS-6743 — moves `panel` to the first or last slot of `splitter`,
+    // gives it `width` pixels and no stretch, and the rest to the others.
+    static void placeInSplitter(QSplitter *splitter, QWidget *panel, bool right, int width);
 
     QTreeWidget *treeForTest() const { return m_tree; }
 
