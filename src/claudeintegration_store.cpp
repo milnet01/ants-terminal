@@ -1754,7 +1754,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "and rolls back (it still opens the store). It never writes "
                         "ROADMAP.md. Read store_backed, updated_items[] and "
                         "notes_summary before acting on counts. A missing item is "
-                        "DELETED (items_deleted). op:\"deregister\" removes "
+                        "kept on a store-served project (absent_kept), else "
+                        "DELETED. op:\"deregister\" removes "
                         "a project's roadmap and keeps its mailbox (confirm:true "
                         "while its root exists). Refusals: "
                         "no_project, no_roadmap, case_ambiguous, not_utf8, too_large, "
@@ -2094,13 +2095,15 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         p["type"] = QStringLiteral("boolean");
                         p["default"] = false;
                         p["description"] = QStringLiteral(
-                            "An item missing from the roadmap file is DELETED "
-                            "from the store (its history too; the snapshot is "
-                            "the undo), and reported in `items_deleted` / "
-                            "`deleted_ids`. A run that would delete more than "
-                            "a quarter of the project's items refuses "
-                            "`mass_deletion`, naming them; pass true to allow "
-                            "it. An item another row references is kept.");
+                            "Once the store serves a project, an item missing "
+                            "from the roadmap file is kept (`absent_kept: "
+                            "true`) unless this is true; then every unreferenced "
+                            "one is DELETED (its history too; the snapshot is "
+                            "the undo) and reported in `items_deleted` / "
+                            "`deleted_ids`. On a project the store does not "
+                            "serve, missing items are deleted, and a run "
+                            "deleting more than a quarter of the items refuses "
+                            "`mass_deletion` unless this is true.");
                         props["accept_deletions"] = p;
                     }
                     props["dry_run"] = makeDryRunProp();

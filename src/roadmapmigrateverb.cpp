@@ -914,6 +914,12 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
     opts.idFormat    = idFormat;      // ANTS-3771 § 2.3
     opts.acceptDeletions = req.acceptDeletions;   // ANTS-5287
     opts.raiseIdMark     = req.raiseIdMark;       // ANTS-5638
+    // ANTS-6732 (user decision 2026-11-11) — once the store serves a project,
+    // its file is an output, and a stale copy re-migrated must not delete the
+    // items only the store holds. Deleting them is opt-in: accept_deletions.
+    const bool absentKept = owner && !ownerDeregistered && isStoreBackedPlan(plan)
+                            && !req.acceptDeletions;
+    opts.keepAbsent = absentKept;
     const auto out = RoadmapMigrateLoad::load(store, plan, opts);
 
     // ANTS-5287 — the ids of the deleted_item notes, bounded by max_notes. On a
@@ -999,6 +1005,7 @@ QJsonObject RoadmapMigrateVerb::run(const QString &storePath, const Request &req
         env[QStringLiteral("backup_fallback")] = backupFallback;
 
     setCounts(env, out, deletedIds, deletedNotes > maxNotes);
+    env[QStringLiteral("absent_kept")] = absentKept;   // ANTS-6732
     setRenderGate(env, out, maxNotes);
 
     env[QStringLiteral("history_rows")]     = out.historyRows;

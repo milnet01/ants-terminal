@@ -2497,34 +2497,26 @@ TEST(RoadmapMigrateVerb, Inv16DeletionsReachTheEnvelope) {
     ASSERT_TRUE(RoadmapMigrateVerb::run(storePath, request(root))
                     .value(QStringLiteral("ok")).toBool());
 
-    // One of four: deleted and named.
-    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapWith(four.mid(0, 3))));
-    const QJsonObject one = RoadmapMigrateVerb::run(storePath, request(root));
-    ASSERT_TRUE(one.value(QStringLiteral("ok")).toBool())
-        << one.value(QStringLiteral("error")).toString().toStdString();
-    EXPECT_EQ(one.value(QStringLiteral("items_deleted")).toInt(), 1);
-    EXPECT_EQ(idsOf(one.value(QStringLiteral("deleted_ids"))),
-              QStringList{QStringLiteral("demo-0004")});
-    EXPECT_TRUE(one.contains(QStringLiteral("deleted_ids_truncated")));
-
-    // Two of the remaining three: more than a quarter, refused.
+    // ANTS-6732 — the store already serves this project, so an item missing
+    // from the file is kept unless the caller accepts deletions.
     ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"), roadmapWith(four.mid(0, 1))));
-    const QJsonObject refused = RoadmapMigrateVerb::run(storePath, request(root));
-    EXPECT_FALSE(refused.value(QStringLiteral("ok")).toBool());
-    EXPECT_EQ(refused.value(QStringLiteral("code")).toString().toStdString(),
-              std::string("mass_deletion"));
-    EXPECT_EQ(refused.value(QStringLiteral("items_deleted")).toInt(), 2);
-    EXPECT_EQ(refused.value(QStringLiteral("items_stored")).toInt(), 3);
-    EXPECT_EQ(idsOf(refused.value(QStringLiteral("deleted_ids"))).size(), 2);
-    EXPECT_FALSE(refused.contains(QStringLiteral("notes")))
-        << "migrate_failed stays the one refusal that carries notes";
+    const QJsonObject kept = RoadmapMigrateVerb::run(storePath, request(root));
+    ASSERT_TRUE(kept.value(QStringLiteral("ok")).toBool())
+        << kept.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(kept.value(QStringLiteral("items_deleted")).toInt(), 0);
+    EXPECT_EQ(kept.value(QStringLiteral("items_orphaned")).toInt(), 3);
+    EXPECT_TRUE(kept.value(QStringLiteral("absent_kept")).toBool());
 
+    // Accepted: all three go, past the quarter guard, and are named.
     auto accept = request(root);
     accept.acceptDeletions = true;
     const QJsonObject taken = RoadmapMigrateVerb::run(storePath, accept);
     ASSERT_TRUE(taken.value(QStringLiteral("ok")).toBool())
         << taken.value(QStringLiteral("error")).toString().toStdString();
-    EXPECT_EQ(taken.value(QStringLiteral("items_deleted")).toInt(), 2);
+    EXPECT_EQ(taken.value(QStringLiteral("items_deleted")).toInt(), 3);
+    EXPECT_EQ(idsOf(taken.value(QStringLiteral("deleted_ids"))).size(), 3);
+    EXPECT_TRUE(taken.contains(QStringLiteral("deleted_ids_truncated")));
+    EXPECT_FALSE(taken.value(QStringLiteral("absent_kept")).toBool());
 }
 
 // ANTS-4656 — INV-10's fourth leg. Two items lose their declared `Kind:` on a

@@ -90,7 +90,7 @@ has nothing to fall back to when no project is named.
 | `export_slug` | string | slugified leaf dir | `project.export_slug`. |
 | `backup` | bool | `true` | Take the pre-migration snapshot — § 2.4. `false` migrates without one. |
 | `backup_to` | string | resolved per § 2.4 | Snapshot destination file. Not confined to the project. An explicit value that fails refuses; it never falls back. |
-| `accept_deletions` | bool | `false` | Lifts the `mass_deletion` refusal — § 2.4 (ANTS-5287). |
+| `accept_deletions` | bool | `false` | Deletes items missing from the source on a store-served project, and lifts the `mass_deletion` refusal — § 2.4 (ANTS-5287, ANTS-6732). |
 | `max_notes` | integer | `200` | Row bound for `notes[]` — § 2.4. Forwarded verbatim as `Request::maxNotes`; **`run()` applies the `[1, 2000]` clamp**, so a test calling the seam directly is bounded identically. |
 | `only_ids` | array of string | — | Report scope only (ANTS-4992): `updated_items[]` carries just these ids, case-insensitive, collected before its 200 cap, and the reply adds `only_ids` and `only_ids_not_updated`. The migration still runs whole; `items_updated` stays the full count. Forwarded as `Request::onlyIds`. |
 | `op` | enum | `"migrate"` | `"deregister"` is the inverse — see § 2.8. Declared because the handler reads it (ANTS-4617 / ANTS-4621). |
@@ -591,6 +591,16 @@ and `deleted_ids` from the refused load's `deleted_item` notes, and no
 `notes` array: `migrate_failed` stays the one refusal that carries notes. `items_orphaned` now counts only items kept because another row
 references them. The pre-migration snapshot is the undo, so
 `accept_deletions:true` with `backup:false` is allowed but unprotected.
+
+**Amended 2026-11-11 (ANTS-6732, user decision): a store-served project
+keeps what its source lost.** When the root is already registered, not
+deregistered, and its plan is store-served (`store_backed`), the verb sets
+`Options::keepAbsent` unless `accept_deletions` is true. Its file is then an
+output, so a stale copy must not delete items only the store holds. The kept
+items count in `items_orphaned` with an `orphaned_item` note each, and
+`absent_kept: true` says the rule applied. With `accept_deletions:true` every
+unreferenced absent item is deleted, past the quarter guard. Any other project
+keeps the ANTS-5287 behaviour above, `mass_deletion` included.
 
 `updated_items[].values` carries the text behind each column named in `fields`
 or `fields_suppressed`, in the load's column order:
@@ -1229,12 +1239,15 @@ ANTS-3819).
 - **INV-16** *(ANTS-5287)* — `items_deleted`, `deleted_ids` and the
   `mass_deletion` refusal carry `Outcome::itemsDeleted`, `Outcome::itemsStored`
   and the ids of its `deleted_item` notes unchanged, and `accept_deletions`
-  reaches `Options::acceptDeletions`. *Test:* feature test through `run()`: a
-  project re-migrated without one of four bullets reports `items_deleted: 1`
-  and names the id; without two of four it refuses `mass_deletion` and a
-  second call with `accept_deletions:true` succeeds.
+  reaches `Options::acceptDeletions`. *(Amended 2026-11-11, ANTS-6732.)* On a
+  store-served project, `accept_deletions` is also what clears
+  `Options::keepAbsent`. *Test:* feature test through `run()`: a store-served
+  project re-migrated without three of four bullets reports
+  `items_deleted: 0`, `items_orphaned: 3` and `absent_kept: true`; a second
+  call with `accept_deletions:true` deletes all three and names them. The
+  `mass_deletion` refusal itself is ANTS-3765 INV-17's, at the load.
   <br>*Breaks when:* the verb recounts from the notes, or drops the flag, so
-  the refusal cannot be lifted.
+  stored items cannot be deleted; or it deletes without the flag.
 
 ## 4. RAM / build cost
 
