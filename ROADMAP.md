@@ -73687,12 +73687,15 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code RC-26; draft by retroarch-1c).
   Lanes: claude-transcript.
 
-- 📋 [ANTS-5417] **slurpUtf8 reads at most the cache budget, so an oversized file is never held whole.**
+- ✅ [ANTS-5417] **slurpUtf8 reads at most the cache budget, so an oversized file is never held whole.**
   filecontentcache.h:53 does QString::fromUtf8(f.readAll()); kByteBudget
   only decides whether a body is kept. Read at most kByteBudget/2 bytes,
   report truncation through an optional out-param, and never cache a
   clipped body. coldeyesengine.cpp:1176 hashes the whole body, so it must
   flag or refuse a truncated read rather than hash a prefix.
+  Shipped 0165dfbd (2026-11-11): read capped at kMaxReadBytes with a
+  truncated out-param; cold-eyes input_hash streams a clipped file
+  whole.
   **Layman:** Reading a huge file for a review brief should stop at a size limit.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code lane dim 11; draft by retroarch-1c).
