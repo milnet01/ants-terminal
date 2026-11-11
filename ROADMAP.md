@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6743 -->
+<!-- ants-roadmap-id-high-water: ANTS=6744 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70659,6 +70659,24 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Source: self-found-2026-11-06 (ANTS-4919 kind A move).
   Lanes: tools.
+
+- 📋 [ANTS-6744] **ClaudeTabStatusIndicator INV-10 failed once in the push gate with the fake claude running but not detected.**
+  Seen 2026-11-11 in the pre-push gate (CI image, ubuntu 24.04), on 6b7aaaf7,
+  a YAML-only change, so not caused by the commit:
+  "[INV-10] FAIL before any transcript: state=0 want Idle"
+  (test_claude_tab_tracker.cpp, checkTranscriptBindsAfterClaudeStarts).
+  The test had already confirmed /proc/<child>/cmdline names claude, yet
+  trackShell -> findClaudeChildPid(getpid()) found no child, so the state
+  stayed NotRunning. Passed 30/30 locally with ctest --repeat until-fail:30
+  and on four gate runs the same evening. Suspect: children-of-thread
+  lookup (/proc/<pid>/task/<pid>/children lists only the main thread's
+  children) when QProcess forks from another thread, or the orphan-scan
+  countdown skipping the /proc fallback on the first probe. Reproduce
+  under load before fixing.
+  **Layman:** A test of the Claude status dot failed once for no reason we can see yet, which blocked a push; it passes when run alone.
+  Kind: test.
+  Source: push-gate-2026-11-11.
+  Lanes: claudeintegration.
 
 ### 🐛 Regressions + UX gaps reported post-0.7.55 (user, 2026-04-28)
 
