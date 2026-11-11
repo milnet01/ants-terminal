@@ -60,7 +60,8 @@ fi
 
 # ANTS-6720 — ants-mcpd beside it, for a program outside Claude that runs
 # `ants-mcpd --call` (a poller sending session_message). build/ is relinked
-# in place, so this copy is the stable path; it is refreshed at each launch.
+# in place, so this copy is the stable path. Each launch creates or refreshes
+# it; each ants-mcpd build refreshes it too (ANTS-6728).
 # Claude Code's own MCP server is unaffected: it is registered to build/.
 MCPD_SRC=""
 for cand in "$SCRIPT_DIR/build-fast/ants-mcpd" "$SCRIPT_DIR/build/ants-mcpd"; do

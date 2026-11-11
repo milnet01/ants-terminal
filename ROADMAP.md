@@ -87407,13 +87407,16 @@ it look feasible, and the one that bounds what is achievable, are on the item.
   Kind: feature.
   Source: user-request-2026-11-10.
 
-- 📋 [ANTS-6728] **An ants-mcpd build refreshes the installed copy that programs outside Claude call.**
+- ✅ [ANTS-6728] **An ants-mcpd build refreshes the installed copy that programs outside Claude call.**
   launch.sh copies build/ants-mcpd to
   ~/.local/share/ants-terminal/bin/ants-mcpd only at terminal launch
   (ANTS-6720). After ANTS-6726's rebuild that copy still lacked
   github_repos, so the hub's stats server kept its name-only fallback.
   Refreshed by hand 2026-11-10. Fix: the same atomic cp+mv as a
   POST_BUILD step on the ants-mcpd target, so each build refreshes it.
+  Shipped 2026-11-11: POST_BUILD runs cmake/RefreshRunCopy.cmake (cp to
+  staging + rename) when an installed copy exists; a CI/OBS build
+  without one is untouched.
   **Layman:** Programs outside Claude, like the website's stats server, get the newest Ants MCP as soon as it is built, not only after the terminal is restarted.
   Kind: fix.
   Source: ants-projects-hub-website report 2026-11-10.
@@ -88654,8 +88657,12 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions (2026-09-27 triage)
 
-- 📋 [ANTS-5494] **find_definition finds module-level Python constants assigned from a call.**
+- ✅ [ANTS-5494] **find_definition finds module-level Python constants assigned from a call.**
   find_definition symbol:"_ALIAS_RE" lang:"py" returned no definitions for `_ALIAS_RE = re.compile(...)` at column 0 of oneup/gui/repos.py. Treat `^NAME\s*(:[^=]+)?=` at column 0 in a .py file as a definition. Sibling of ANTS-5387, which covers doc_symbols.
+  Verified 2026-11-11 on ants-mcpd b681e710: find_definition
+  symbol:"_ALIAS_RE" lang:"py" in OneUp returns oneup/gui/repos.py:37;
+  _QUALIFIED in tools/rc-namespace-scan.py also resolves. Fixed by
+  earlier work; no change needed.
   **Layman:** Stops the definition finder reporting a real Python constant as missing.
   Kind: fix.
   Source: OneUp feedback 2026-09-27.

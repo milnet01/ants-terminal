@@ -1454,6 +1454,11 @@ set_target_properties(ants-mcpd PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(LUA_FOUND)
     target_compile_definitions(ants-mcpd PRIVATE ANTS_LUA_PLUGINS=1)
 endif()
+# ANTS-6728 — each build refreshes the copy launch.sh installed, if any.
+add_custom_command(TARGET ants-mcpd POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -DSRC=$<TARGET_FILE:ants-mcpd>
+            -P ${CMAKE_SOURCE_DIR}/cmake/RefreshRunCopy.cmake
+    VERBATIM)
 
 # ANTS-5428 — signs an OSC 133 marker with the key read from stdin, so the
 # shell integration never puts the key on a command line.

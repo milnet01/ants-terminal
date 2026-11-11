@@ -314,6 +314,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Each ants-mcpd build refreshes the installed copy that programs outside Claude call, with no terminal relaunch.** (ANTS-6728)
+
 - **The review engines read at most 16 MiB of one file, so a huge file is never held whole; the cold-eyes input hash still covers the whole file.** (ANTS-5417)
 
 - **ci_report's cache_key_shared stays quiet for jobs that share one downloaded cache on purpose: same path, same key, nothing compiled in it** (ANTS-6739)
