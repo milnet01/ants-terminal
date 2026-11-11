@@ -1,5 +1,6 @@
 // ANTS-1677 claudeintegration piece 4/9 — the code navigation tool descriptors
 #include "claudeintegration_internal.h"
+#include "mutationprobe.h"   // ANTS-5804 — kDefaultTransportBudgetSec
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -1197,7 +1198,7 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "meant to probe. "
                         "ANTS-4736: the batch stops when the slowest run so "
                         "far would not fit in `transport_budget_sec` (default "
-                        "60, matching the bridge's read timeout) — remaining "
+                        "1500, under the client's 30-minute idle timeout) — remaining "
                         "mutations come back `not_run` with "
                         "budget_exhausted:true and the measured arithmetic. "
                         "Without it the loop kept mutating the file after the "
@@ -1310,19 +1311,18 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                                 "Per-run wall-clock budget in seconds, clamped "
                                 "to [5, 1800].");
                         QJsonObject tbP; tbP["type"] = "integer";
-                            tbP["default"] = 60;
+                            tbP["default"] = MutationProbe::kDefaultTransportBudgetSec;
                             tbP["description"] = QStringLiteral(
                                 "ANTS-4736: batch-wide deadline in seconds, "
-                                "clamped to [0, 1800]; 0 disables it. Defaults "
-                                "to the bridge's own read timeout, so the "
+                                "clamped to [0, 1800]; 0 disables it. The "
+                                "default stays under the client's 30-minute "
+                                "idle timeout, so the "
                                 "batch stops while you are still waiting "
                                 "instead of mutating on unwatched. It is "
                                 "MEASURED, not predicted from `timeout_sec`: "
                                 "that is a worst-case cap almost never "
                                 "reached, so predicting from it would refuse "
-                                "batches that finish well inside the budget. "
-                                "Raise it only alongside "
-                                "ANTS_MCP_READ_TIMEOUT_S.");
+                                "batches that finish well inside the budget.");
                         props["transport_budget_sec"]   = tbP;
                         props["path"]                   = pathP;
                         props["test_command"]           = cmdP;

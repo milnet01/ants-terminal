@@ -2132,9 +2132,9 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
 
     // ANTS-4736 — the batch deadline.
     //
-    // The client stops waiting for a reply after its read timeout (ants-mcpd:
-    // Forwarder::m_timeoutMs in src/mcpdforwarder.h, 60 s) while this loop keeps
-    // running. So a
+    // The client stops waiting for a reply after its tool timeout
+    // (MutationProbe::kDefaultTransportBudgetSec says which) while this loop
+    // keeps running. So a
     // batch that outlives it went on mutating the file BETWEEN the caller's
     // next commands: observed as a suite that failed one test, then passed it
     // alone, then passed twice. That is the leaked-mutant failure this verb
@@ -2150,9 +2150,10 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
     // reply arrive, so the caller reads the arithmetic off its own run instead
     // of inferring it from a timeout.
     //
-    // 0 disables the deadline, for a caller that raised the env override.
+    // 0 disables the deadline, for a client whose tool timeout is longer.
     const int budgetSec =
-        qBound(0, req.value(QStringLiteral("transport_budget_sec")).toInt(60),
+        qBound(0, req.value(QStringLiteral("transport_budget_sec"))
+                      .toInt(MutationProbe::kDefaultTransportBudgetSec),
                1800);
     QElapsedTimer batchClock;
     batchClock.start();
@@ -2629,8 +2630,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             "mutate \"%4\" after this reply had stopped being awaited — the "
             "leaked-mutant failure `restored_clean` cannot report, since you "
             "would never receive it. Split the batch, lower `timeout_sec`, or "
-            "raise `transport_budget_sec` to match an increased "
-            "ANTS_MCP_READ_TIMEOUT_S.")
+            "raise `transport_budget_sec` if your client waits longer.")
                 .arg(batchClock.elapsed()).arg(slowestRunMs)
                 .arg(budgetSec).arg(allPaths);
     }

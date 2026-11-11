@@ -156,9 +156,16 @@ struct KillReport {
 // every failure is unknown or none was named, otherwise "mixed".
 [[nodiscard]] QString killedBy(const KillReport &k);
 
+// ANTS-5804 — default for transport_budget_sec. mutation_probe runs inside
+// ants-mcpd, so no forwarder deadline bounds it; a 75 s call returned
+// normally (measured 2026-10-21). The bound left is Claude Code's 30-minute
+// stdio idle timeout (CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT, per its docs read
+// 2026-10-21); this stays five minutes under it.
+inline constexpr int kDefaultTransportBudgetSec = 1500;
+
 // ANTS-4736 — whether the NEXT run would outlive the transport budget.
 //
-// The bridge stops waiting after ANTS_MCP_READ_TIMEOUT_S while the loop keeps
+// The client stops waiting after its tool timeout while the loop keeps
 // running, so a long batch went on mutating the file between the caller's
 // later commands — the leaked mutant, reached by the one route
 // `restored_clean` cannot report, because nobody is there to read it.

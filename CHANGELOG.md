@@ -121,6 +121,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **mutation_probe's batch deadline defaults to 1500 s, under Claude Code's 30-minute idle timeout, so a batch is no longer cut off after 60 s.** (ANTS-5804)
+
 - **apply_edits takes at most 100 edits, co_change_family at most 64 stems, and invariant_check returns at most `max_specs` matches (default 50)** (ANTS-5414)
   co_change_family reports `stems_truncated` and `stems_limit`.
   invariant_check reports `matched_total` and `truncated`; `matched_count`

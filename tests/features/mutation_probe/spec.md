@@ -22,8 +22,10 @@ session, this project six times in one evening.
 
 ## Why the deadline is measured rather than predicted
 
-The bridge stops waiting for a reply after `ANTS_MCP_READ_TIMEOUT_S` while
-this loop keeps running. A batch that outlives it went on mutating the file
+The client stops waiting for a reply after its tool timeout while this loop
+keeps running. The default budget, `kDefaultTransportBudgetSec` in
+`src/mutationprobe.h`, stays under Claude Code's 30-minute stdio idle
+timeout (ANTS-5804). A batch that outlives it went on mutating the file
 between the caller's later commands — the leaked mutant `restored_clean`
 exists to report, reached by the one route where the caller cannot receive
 that field.

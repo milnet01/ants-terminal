@@ -425,7 +425,7 @@ TEST(MutationProbe, Ants4736DeadlineIsMeasuredNotPredicted) {
     // exactly as it did before this change.
     EXPECT_FALSE(budgetExhausted(999'999, 0, 60));
 
-    // 0 disables it, for a caller that raised ANTS_MCP_READ_TIMEOUT_S.
+    // 0 disables it, for a client whose tool timeout is longer.
     EXPECT_FALSE(budgetExhausted(999'999, 999'999, 0));
 
     // Without this arm every assertion above is satisfied by a function that
@@ -454,6 +454,27 @@ TEST(MutationProbe, Ants4736DeadlineIsWiredIntoTheMutationLoop) {
     // Discoverable, or it cannot be raised deliberately.
     const std::string ci = ants_test::slurpClaudeIntegration();
     EXPECT_NE(ci.find("transport_budget_sec"), std::string::npos);
+}
+
+// ANTS-5804 — the 60 s default matched the read timeout of a bridge that
+// ANTS-5308 retired, and the text told callers to raise a variable nothing
+// reads. The default now comes from kDefaultTransportBudgetSec.
+TEST(MutationProbe, Ants5804BudgetDefaultIsNotTheRetiredBridgeTimeout) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(),
+        "QJsonDocument RemoteControl::cmdMutationProbe");
+    ASSERT_FALSE(body.empty()) << "cmdMutationProbe body not found";
+    EXPECT_NE(body.find("kDefaultTransportBudgetSec"), std::string::npos)
+        << "the transport_budget_sec default must be the named constant";
+    EXPECT_EQ(body.find("ANTS_MCP_READ_TIMEOUT_S"), std::string::npos)
+        << "budget_hint must not name the retired bridge variable";
+
+    const std::string ci = ants_test::slurpClaudeIntegration();
+    EXPECT_EQ(ci.find("ANTS_MCP_READ_TIMEOUT_S"), std::string::npos)
+        << "the schema text must not name the retired bridge variable";
+    EXPECT_GT(MutationProbe::kDefaultTransportBudgetSec, 60);
+    EXPECT_LE(MutationProbe::kDefaultTransportBudgetSec, 1800)
+        << "the default must sit inside the verb's own clamp";
 }
 
 // ANTS-4830 — a transport timeout is the client giving up, and its error names

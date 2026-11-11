@@ -85369,7 +85369,7 @@ two projects).
   Kind: enhancement.
   Source: split from ANTS-4856, 2026-09-14.
 
-- 📋 [ANTS-5804] **mutation_probe's transport budget is set to match a bridge read timeout that no longer exists.**
+- ✅ [ANTS-5804] **mutation_probe's transport budget is set to match a bridge read timeout that no longer exists.**
   `transport_budget_sec` defaults to 60 "matching the bridge's read
   timeout", and its schema text, the budget_hint and the
   mutation_probe spec (INV-5 rationale) tell callers to raise it with
@@ -85390,6 +85390,9 @@ two projects).
   returned normally, so nothing on the path bounds a call at 60 s. The
   default can rise toward the 30-minute idle timeout; the verb's own [0,
   1800] clamp already matches it.
+  Shipped 2026-11-11: MutationProbe::kDefaultTransportBudgetSec = 1500;
+  schema, budget_hint, comments and spec no longer name
+  ANTS_MCP_READ_TIMEOUT_S.
   **Layman:** The mutation test tool's time limit is tuned to a part that was removed, so it may stop too early or too late.
   Kind: fix.
   Source: self-found-2026-10-21 ANTS-4830 work.
