@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **workspace_search takes `context_before` and `context_after`, so a signature match can ask for the lines after it alone** (ANTS-5279)
+
+- **workspace_search points a bare-identifier search that paid for context at `find_caller` and `trace` (`call_site_hint`)** (ANTS-5278)
+
 - **apply_edits takes `all_or_nothing`: a batch where any edit would miss writes no file** (ANTS-5155)
   The call refuses `all_or_nothing_refused` and lists each miss in
   `skipped[]` with its candidates, so a set of linked edits never lands

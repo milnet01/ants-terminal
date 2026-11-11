@@ -86,3 +86,18 @@ that already starts with the lane path, or starts with `**/`, is passed
 unchanged, as is any entry with no `/`. *Test:*
 `McpWorkspaceSearch.Ants5117SlashGlobResolvesUnderLane`, through the real verb
 and ripgrep on a fixture tree.
+
+## ANTS-5279 — one side of context at a time
+
+`context_before` and `context_after` (each 0 to 10) set one side's window and
+override `context` for that side; `context` still sets both. A side left
+unset takes `context`. A symmetric request passes ripgrep `--context N` as
+before. *Test:* `McpWorkspaceSearch.Ants5279AsymmetricContext`.
+
+## ANTS-5278 — a bare identifier names the call-site verbs
+
+When the pattern is a bare identifier, matches were found, and the call
+asked for context or was cut off, the reply carries `call_site_hint` naming
+`find_caller` and `trace`. It is a hint, never a refusal: a search for
+mentions is a real question. *Test:*
+`McpWorkspaceSearch.Ants5278BareIdentifierNamesCallSiteVerbs`.

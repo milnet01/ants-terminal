@@ -82521,7 +82521,7 @@ are closed inline in the feedback files rather than filed here.
   Source: cc-feedback-2026-09-21 (claude-config), from three cold-reader gate loops on the derived standard.
   Lanes: docs, colony.
 
-- 📋 [ANTS-5261] **A measured claim about an Ants verb, written into a project's standing instructions, has no expiry and no route to correction.**
+- ✅ [ANTS-5261] **A measured claim about an Ants verb, written into a project's standing instructions, has no expiry and no route to correction.**
   AI Prompts measured roadmap_migrate dry_run reporting 17 phantom updates
   on a clean tree (2026-09-03), wrote the figure into its CLAUDE.md, and
   built a standing rule on it: never run the real verb. The defect was real
@@ -82619,6 +82619,14 @@ are closed inline in the feedback files rather than filed here.
   rather than taking the correction on trust, and it held — but the
   failure mode that produced the item in the first place applies equally
   to the message that withdraws it.
+  Closed 2026-11-12. Shape one is served by session_message, which
+  postdates this item: mail is per project, read at session start, acked
+  when read (dismissible), and to:"*" broadcasts (ANTS-5741). A fix
+  notice sent there names its id, as the reporters asked; no store table
+  is added. Shape two, and "a recorded refusal is quoted, never
+  summarised", are conventions for every project: sent to claude-config
+  as a proposed standard (message 1842, 2026-11-12). Their call to place
+  or decline.
   **Layman:** Projects write down what they measured about these tools and then act on it for months. When a tool is fixed, nothing tells them, so they keep avoiding a problem that no longer exists.
   Kind: enhancement.
   Source: cc-feedback-2026-09-21 (ai-prompts), shapes proposed by them.
@@ -83148,7 +83156,7 @@ are closed inline in the feedback files rather than filed here.
   Source: peer-session-vestige-5f, in-session-2026-09-21.
   Lanes: mcp, roadmap.
 
-- 📋 [ANTS-5278] **workspace_search is reached for where find_caller answers in a fraction.**
+- ✅ [ANTS-5278] **workspace_search is reached for where find_caller answers in a fraction.**
   Measured by peer session doom-ants-3b.
 
   THE MEASUREMENT: `workspace_search pattern:"RB_SetMode" context:4
@@ -83214,12 +83222,18 @@ are closed inline in the feedback files rather than filed here.
   header they were moving, where `find_caller` would have been useless.
   The two questions genuinely share a spelling, which is the whole problem
   and the reason the verb must not guess.
+  Shipped 2026-11-12 as a result-side hint, never a refusal:
+  call_site_hint names find_caller and trace when the pattern is a bare
+  identifier, matches were found, and the call asked for context or was
+  cut off. Narrower than the body's 'bare identifier' alone, so a cheap
+  call pays nothing, as the body requires. Red first. Test:
+  McpWorkspaceSearch.Ants5278BareIdentifierNamesCallSiteVerbs.
   **Layman:** People use the text-search tool to ask who calls a function, which is far more expensive than the tool built for that question.
   Kind: enhancement.
   Source: peer-session-doom-ants-3b, in-session-2026-09-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5279] **workspace_search context is symmetric, and a signature match only wants the tail.**
+- ✅ [ANTS-5279] **workspace_search context is symmetric, and a signature match only wants the tail.**
   Reported by peer session games-hub-78. Figures are the reporter's
   ESTIMATE from the visible payload, not a measured byte count, and they
   said so.
@@ -83242,6 +83256,10 @@ are closed inline in the feedback files rather than filed here.
   symmetric shorthand that sets both. Backwards compatible, and the
   envelope already carries `context_before` / `context_after` ARRAYS, so
   the output shape needs no change at all — only the inputs.
+  Shipped 2026-11-12: context_before / context_after (0-10) each
+  override `context` for one side; a symmetric request still passes rg
+  --context N. Red first. Test:
+  McpWorkspaceSearch.Ants5279AsymmetricContext.
   **Layman:** When searching code you can ask for surrounding lines, but only the same number on both sides, so half of what comes back is usually wasted.
   Kind: enhancement.
   Source: peer-session-games-hub-78, in-session-2026-09-21.

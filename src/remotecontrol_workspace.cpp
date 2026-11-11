@@ -436,6 +436,16 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         const int requested = ctxVal.toInt();
         if (requested > 0) context = std::min(requested, 10);
     }
+    // ANTS-5279 — each side may be set on its own, overriding `context` for
+    // that side: a signature match wants the lines after it, not before.
+    // `context` then means the wider side, so a zero still means none.
+    const auto ctxSide = [&](const char *key) {
+        const QJsonValue v = req.value(QLatin1String(key));
+        return v.isDouble() ? std::clamp(v.toInt(), 0, 10) : context;
+    };
+    const int ctxBefore = ctxSide("context_before");
+    const int ctxAfter  = ctxSide("context_after");
+    context = std::max(ctxBefore, ctxAfter);
 
     const bool isRegex = req.value("regex").toBool(false);
     const QString caseMode = req.value("case").toString(QStringLiteral("smart"));
@@ -625,7 +635,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     static const QRegularExpression needsPcre2(QStringLiteral(R"(\(\?<?[=!]|\\[1-9])"));
     if (isRegex && !matchWrapped && needsPcre2.match(pattern).hasMatch())
         argv << QStringLiteral("--pcre2");
-    if (context > 0) argv << QStringLiteral("--context") << QString::number(context);
+    if (context > 0) {
+        if (ctxBefore == ctxAfter)
+            argv << QStringLiteral("--context") << QString::number(context);
+        else
+            argv << QStringLiteral("--before-context") << QString::number(ctxBefore)
+                 << QStringLiteral("--after-context") << QString::number(ctxAfter);
+    }
     if (!glob.isEmpty()) argv << QStringLiteral("--glob") << laneGlob(glob);
     // ANTS-3704 — rendered AFTER the positive glob: rg resolves competing globs
     // by last-one-wins, so an exclusion must follow the inclusion it narrows.
@@ -744,7 +760,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             if (lastMatchIdx >= 0) {
                 const int anchorLine =
                     matches.at(lastMatchIdx).toObject().value("line").toInt();
-                if (ctxLine > anchorLine && ctxLine - anchorLine <= context) {
+                if (ctxLine > anchorLine && ctxLine - anchorLine <= ctxAfter) {
                     QJsonObject prim = matches.at(lastMatchIdx).toObject();
                     QJsonArray after = prim.value("context_after").toArray();
                     QJsonObject c;
@@ -840,7 +856,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         if (context > 0) {
             QJsonArray before;
             for (const auto &p : pendingBefore) {
-                if (p.line >= lineNo - context && p.line < lineNo) {
+                if (p.line >= lineNo - ctxBefore && p.line < lineNo) {
                     QJsonObject c;
                     c["line"] = p.line;
                     c["text"] = p.text;
@@ -1306,6 +1322,19 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                     .arg(shortTerms.join(QStringLiteral(", ")),
                          shortTerms.first());
         }
+    }
+    // ANTS-5278 — "who calls X" asked as a text search pays for every MENTION
+    // of X, prose included. A bare identifier is the shape that question
+    // takes; say so only when this call paid for it (context, or a cut-off),
+    // and never refuse: "where is X mentioned" is a real question too.
+    static const QRegularExpression bareIdent(
+        QStringLiteral("^[A-Za-z_][A-Za-z0-9_]*$"));
+    if (!matches.isEmpty() && bareIdent.match(pattern).hasMatch()
+        && (context > 0 || out.value("truncated").toBool())) {
+        out["call_site_hint"] = QStringLiteral(
+            "for who CALLS %1, find_caller or trace returns the call sites "
+            "alone; this search returns every mention, prose included.")
+                .arg(pattern);
     }
     echoEffectiveArgs(out);
     // ANTS-1876 / ANTS-3548 — activation-gated echo (INV-6). The clip

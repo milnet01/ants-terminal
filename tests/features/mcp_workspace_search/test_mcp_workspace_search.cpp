@@ -829,3 +829,59 @@ TEST(McpWorkspaceSearch, Ants6207LookaroundRuns) {
         EXPECT_TRUE(o.value(QStringLiteral("hint")).toString().contains(QStringLiteral("PCRE2")));
     }
 }
+
+// ANTS-5279 — context_before / context_after set each side on its own;
+// `context` stays the shorthand that sets both.
+namespace {
+QString contextFixture(QTemporaryDir &tmp) {
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/src"));
+    QFile f(root + QStringLiteral("/src/sig.cpp"));
+    EXPECT_TRUE(f.open(QIODevice::WriteOnly));
+    f.write("l1\nl2\nl3\nl4\nint target_5279(int x) {\nl6\nl7\nl8\nl9\n");
+    return root;
+}
+QList<int> lines5279(const QJsonObject &m, const char *key) {
+    QList<int> out;
+    for (const QJsonValue &v : m.value(QLatin1String(key)).toArray())
+        out << v.toObject().value(QStringLiteral("line")).toInt();
+    return out;
+}
+} // namespace
+
+TEST(McpWorkspaceSearch, Ants5279AsymmetricContext) {
+    QTemporaryDir tmp;
+    const QString root = contextFixture(tmp);
+    const QJsonObject tail = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("target_5279")},
+                                               {QStringLiteral("context_after"), 3}});
+    const QJsonArray ms = tail.value(QStringLiteral("matches")).toArray();
+    ASSERT_EQ(ms.size(), 1) << QJsonDocument(tail).toJson().toStdString();
+    EXPECT_EQ(lines5279(ms.at(0).toObject(), "context_before"), QList<int>{});
+    EXPECT_EQ(lines5279(ms.at(0).toObject(), "context_after"), (QList<int>{6, 7, 8}));
+
+    const QJsonObject both = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("target_5279")},
+                                               {QStringLiteral("context"), 2},
+                                               {QStringLiteral("context_before"), 1}});
+    const QJsonObject m = both.value(QStringLiteral("matches")).toArray().at(0).toObject();
+    EXPECT_EQ(lines5279(m, "context_before"), QList<int>{4}) << "a side overrides `context`";
+    EXPECT_EQ(lines5279(m, "context_after"), (QList<int>{6, 7}));
+}
+
+// ANTS-5278 — a bare-identifier search that pays for context or was cut off
+// points at the call-site verbs; one that did neither carries no hint.
+TEST(McpWorkspaceSearch, Ants5278BareIdentifierNamesCallSiteVerbs) {
+    QTemporaryDir tmp;
+    const QString root = contextFixture(tmp);
+    const QJsonObject withCtx = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("target_5279")},
+                                                  {QStringLiteral("context"), 2}});
+    const QString hint = withCtx.value(QStringLiteral("call_site_hint")).toString();
+    EXPECT_TRUE(hint.contains(QStringLiteral("find_caller")) && hint.contains(QStringLiteral("trace")))
+        << QJsonDocument(withCtx).toJson().toStdString();
+
+    const QJsonObject plain = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("target_5279")}});
+    EXPECT_FALSE(plain.contains(QStringLiteral("call_site_hint"))) << "a cheap call pays nothing";
+
+    const QJsonObject phrase = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("target_5279(int")},
+                                                 {QStringLiteral("context"), 2}});
+    EXPECT_FALSE(phrase.contains(QStringLiteral("call_site_hint"))) << "not a bare identifier";
+}

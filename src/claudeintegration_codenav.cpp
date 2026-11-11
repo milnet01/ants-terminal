@@ -716,6 +716,15 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     }
                     props["offset"]      = wsOffsetProp;      // ANTS-3547
                     props["context"]     = ctxProp;
+                    // ANTS-5279 — one side each, overriding `context`.
+                    for (const char *side : {"context_before", "context_after"}) {
+                        QJsonObject sp; sp["type"] = "integer";
+                        sp["minimum"] = 0; sp["maximum"] = 10;
+                        sp["description"] = QStringLiteral(
+                            "Lines on this side only, 0-10; overrides `context` "
+                            "for this side.");
+                        props[QLatin1String(side)] = sp;
+                    }
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;
                     props["include_hidden"]    = includeHiddenProp;
