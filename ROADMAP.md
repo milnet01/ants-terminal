@@ -84358,7 +84358,7 @@ resolver.
 
 Three were reproduced directly in this session rather than taken on report.
 
-- 📋 [ANTS-4654] **check-doc-facts' keep-the-hand-rolled-quotes decision is due for re-decision now that ANTS-4637 has shipped.**
+- ✅ [ANTS-4654] **check-doc-facts' keep-the-hand-rolled-quotes decision is due for re-decision now that ANTS-4637 has shipped.**
   `skills/check-doc-facts/references/checks.md` in the global Claude config
   carries a dated decision: "Decided 2026-08-24 (CFG-0203): keep the
   hand-rolled half", resting on the measurement that 271 of 520 quotations sit
@@ -84387,6 +84387,10 @@ Three were reproduced directly in this session rather than taken on report.
   NOT AN ANTS DEFECT — no Ants change is owed. This is a pointer so the
   consequence of ANTS-4637 is not lost, since nothing on the Ants side would
   ever surface it.
+  Closed 2026-11-11: checks.md now carries "Re-decided 2026-09-08: keep
+  the hand-rolled half, and the blocker has changed" — the trigger was
+  acted on in the config repo; the new blocker is no_target attribution.
+  No Ants change owed.
   **Layman:** A checklist elsewhere says to keep doing a job by hand until a certain fix lands. It landed today, so that instruction is now out of date.
   Kind: doc.
   Source: in-session-2026-08-25.
