@@ -78097,7 +78097,7 @@ against current source before filing.
   header's field layout, internal to the doc set.
   Lanes: claudeintegration, mainwindow.
 
-- 📋 [ANTS-3788] **Cold-eyes lanes spend ~100k tokens against a 60k budget even with a fully-built context packet.**
+- ✅ [ANTS-3788] **Cold-eyes lanes spend ~100k tokens against a 60k budget even with a fully-built context packet.**
   Measured across all six lanes of the ANTS-3786 gate (2026-08-02):
   101,985 / 101,805 (loop 1), 104,597 / 106,261 (loop 2), 106,924 /
   112,883 (loop 3) reported `subagent_tokens`, against the skill's
@@ -78126,6 +78126,13 @@ against current source before filing.
   evidence the packet was under-built, and act on it by rebuilding the
   packet. On this run that diagnosis was false, and following it would
   have meant optimising a packet that was already minimal.
+  Closed 2026-11-11: settled upstream.
+  ~/.claude/skills/_shared/review-cost.md § The unit everyone gets wrong
+  (measured 2026-09-26) and review-contract references/budget.md both
+  say the harness lane figure is a different unit from the per-turn ~60k
+  budget and must never be judged against it; /cold-eyes is retired. The
+  two files disagree on what that unit is (final-turn context vs
+  cumulative); reported to claude-config.
   **Layman:** Each reviewer we send out costs about twice what the recipe says it should, even after we did the thing that was supposed to fix it.
   Kind: investigate.
   Source: in-session-2026-08-02, ANTS-3786 cold-eyes gate.
