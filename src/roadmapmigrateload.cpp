@@ -675,7 +675,7 @@ bool Loader::matchItems() {
         // record built from it below must name the id the row holds now.
         for (RoadmapStore::ItemRef &r : existing)
             if (r.itemPk == pk)
-                r.idFold = it.id.toLower();
+                r.idFold = RoadmapParse::foldId(it.id);
         err.clear();
         const auto storedSeq = store.maxHistorySeq(pk, opts.changedAt, &err);
         if (!err.isEmpty())

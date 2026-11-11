@@ -1034,8 +1034,9 @@ TEST(RoadmapStoreSchema, Ants6649LongerPrefixDoesNotFeedShorterOnesFloor) {
 
 // ANTS-6733 L14-19 — a failed duplicate check is a failure, not "no duplicate".
 // A temp view shadows `relationship` for this connection: reading it raises an
-// integer overflow, and an INSTEAD OF trigger lets the insert through, so only
-// the check fails.
+// integer overflow, and an INSTEAD OF trigger accepts the insert and does
+// nothing, so only the check fails. The trigger body is a bare SELECT because
+// older SQLite refuses a qualified table name inside a trigger.
 TEST(RoadmapStoreSchema, Ants6733FailedDuplicateCheckRefuses) {
     Fixture f;
     QString err;
@@ -1051,8 +1052,7 @@ TEST(RoadmapStoreSchema, Ants6733FailedDuplicateCheckRefuses) {
         << q.lastError().text().toStdString();
     ASSERT_TRUE(q.exec(QStringLiteral(
         "CREATE TEMP TRIGGER rel_through INSTEAD OF INSERT ON relationship BEGIN "
-        "INSERT INTO main.relationship (type, src_pk, dst_pk) "
-        "VALUES (NEW.type, NEW.src_pk, NEW.dst_pk); END")))
+        "SELECT 1; END")))
         << q.lastError().text().toStdString();
 
     err.clear();
