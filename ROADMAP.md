@@ -83890,7 +83890,7 @@ filed below.
   Source: finbreak_Ants_MCP_Feedback.md 2026-08-20.
   Lanes: remotecontrol, roadmapwrite.
 
-- 📋 [ANTS-4571] **ANTS-4472's fallback did not reach the fifth firing, and the prelude byte cap is still the deferred decision.**
+- ✅ [ANTS-4571] **ANTS-4472's fallback did not reach the fifth firing, and the prelude byte cap is still the deferred decision.**
   ANTS-4472 was resolved 2026-08-18 by the contributor's fallback rather
   than their first choice, for a measured reason: the SessionStart prelude
   was 1390 bytes against the 1400-byte INV-10 cap in
@@ -83921,6 +83921,12 @@ filed below.
 
   Settle the eviction-or-raise decision here rather than deferring it a
   third time.
+  Closed 2026-11-11: the third surface exists. The write-test skill
+  (~/.claude/skills/write-test/SKILL.md Step 4) names
+  mcp__ants__mutation_probe as the way to decide Q3, with its
+  inert/survived verdicts, since 2026-08-22 — after this item's firings.
+  A session doing mutation testing loads that skill, so the SessionStart
+  prelude cap needs neither a raise nor an eviction for this verb.
   **Layman:** A fix that pointed people at a tool from a different place still isn't reaching them.
   Kind: investigate.
   Source: LocalWebServerManager_Ants_MCP_Feedback.md 2026-08-20 (fifth and sixth firings).
@@ -84058,7 +84064,7 @@ filed below.
   Source: in-session-2026-08-20, raised with the user and left as their decision.
   Lanes: packaging.
 
-- 📋 [ANTS-4590] **A deliberate proving run of the Release audit is indistinguishable from a real outage.**
+- ✅ [ANTS-4590] **A deliberate proving run of the Release audit is indistinguishable from a real outage.**
   Reported by the user, who received the failure email and could not tell
   whether the downloads were broken.
 
@@ -84091,6 +84097,11 @@ filed below.
   Not urgent — no user-facing breakage — but it should be settled before
   the audit's daily schedule has been running long enough that people
   stop reading its mail.
+  Shipped 2026-11-11, option (c). release-audit.yml gains a
+  workflow_dispatch input `rehearsal` (boolean) and a run-name that
+  reads "Release audit — REHEARSAL, not an outage" when it is set; the
+  header comment states the rule (prove the alarm only with
+  rehearsal:true). actionlint clean.
   **Layman:** Testing the download alarm sends the same panic email as the download actually being broken.
   Kind: enhancement.
   Source: user-report-2026-08-20.

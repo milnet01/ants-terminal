@@ -125,6 +125,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The Release audit can be run as a rehearsal, and its run title then says so, so a test of the alarm no longer looks like broken downloads** (ANTS-4590)
+
 - **`apply_edits` says when an earlier edit in the same call moved a line range: the skip carries `shifted_by`, the edit that moved it, and where the range sits now** (ANTS-4427)
 
 - **Every spec under docs/specs/ now carries a topic in its filename (ANTS-1254-last-audit-summary-mcp-tool.md, not ANTS-1254.md), and every pointer in the tree follows it** (ANTS-3755)

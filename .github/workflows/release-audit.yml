@@ -18,12 +18,23 @@
 # schedule, can.
 #
 # It is deliberately read-only and fixes nothing. Going red is the product.
+#
+# ANTS-4590 — a red run must mean a real outage. To prove this alarm fires,
+# dispatch it with `rehearsal: true` (gh workflow run release-audit.yml -f
+# rehearsal=true): the run's title then says REHEARSAL, so its failure mail
+# cannot be mistaken for broken downloads.
 name: Release audit
+run-name: ${{ inputs.rehearsal && 'Release audit — REHEARSAL, not an outage' || 'Release audit' }}
 
 on:
   schedule:
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      rehearsal:
+        description: 'A deliberate proving run: a red result is a test, not an outage'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
