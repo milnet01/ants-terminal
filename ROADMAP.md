@@ -91681,6 +91681,10 @@ measured Ants adding about 5,250 tokens to every request.
   a project the store already serves, or refuse unless deletions are
   accepted. Related: ANTS-6712.
   Finding L14-12 (whole arm, Medium).
+  User decision 2026-11-11: keep by default. Once the store serves a
+  project, a re-migration keeps items absent from the file (keep_absent
+  on) unless the caller asks for deletions. A deliberate clean-up still
+  works by opting in. No longer waiting on the user.
   **Layman:** Re-importing an old copy of the roadmap file can delete items that only exist in the database.
   Kind: investigate.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
