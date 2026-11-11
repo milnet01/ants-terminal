@@ -381,3 +381,31 @@ TEST(McpSimilarCode, WiringContract) {
 
     EXPECT_EQ(0, expect_failures());
 }
+
+// ANTS-2150 follow-on (3) — similar_code scans the brace family the symbol
+// verbs already cover (Rust, Go, JS/TS, …), and lang:"generic" restricts to it.
+TEST(McpSimilarCode, Ants2150BraceFamilyIsScanned) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("src/lib.rs"),
+              QStringLiteral("pub fn parse_config(path: &str) -> Config {\n}\n"));
+    writeFile(root, QStringLiteral("src/conf.h"),
+              QStringLiteral("Config parse_config(const char *path);\n"));
+
+    const auto all = SimilarCode::findSimilar(
+        root, QStringLiteral("fn parse_config(path: &str) -> Config"), {});
+    ASSERT_TRUE(all.ok);
+    const auto *rs = findByFile(all, QStringLiteral("src/lib.rs"));
+    ASSERT_NE(rs, nullptr) << "a Rust signature must be a candidate";
+    EXPECT_EQ(rs->lang.toStdString(), "generic");
+
+    SimilarCode::Options only;
+    only.lang = SimilarCode::parseLang(QStringLiteral("generic"));
+    const auto gen = SimilarCode::findSimilar(
+        root, QStringLiteral("fn parse_config(path: &str) -> Config"), only);
+    ASSERT_TRUE(gen.ok);
+    EXPECT_NE(findByFile(gen, QStringLiteral("src/lib.rs")), nullptr);
+    EXPECT_EQ(findByFile(gen, QStringLiteral("src/conf.h")), nullptr)
+        << "lang:\"generic\" must leave the C++ header out";
+}

@@ -47,14 +47,29 @@ bool isAsciiAlnum(QChar c) {
 Lang langForExt(const QString &ext) {
     if (FileOutline::isCFamilyExt(ext)) return Lang::Cpp;
     if (ext == QLatin1String("py") || ext == QLatin1String("pyi")) return Lang::Py;
+    if (FileOutline::isGenericExt(ext)) return Lang::Generic;   // ANTS-2150
     return Lang::Auto;
 }
 
 FileOutline::Mode modeFor(Lang l) {
-    return (l == Lang::Py) ? FileOutline::Mode::Py : FileOutline::Mode::Cpp;
+    switch (l) {
+        case Lang::Py:      return FileOutline::Mode::Py;
+        case Lang::Generic: return FileOutline::Mode::Generic;
+        case Lang::Cpp:
+        case Lang::Auto:    break;
+    }
+    return FileOutline::Mode::Cpp;
 }
 
-const char *langStr(Lang l) { return (l == Lang::Py) ? "py" : "cpp"; }
+const char *langStr(Lang l) {
+    switch (l) {
+        case Lang::Py:      return "py";
+        case Lang::Generic: return "generic";
+        case Lang::Cpp:
+        case Lang::Auto:    break;
+    }
+    return "cpp";
+}
 
 double roundScore(double x) { return std::round(x * 10000.0) / 10000.0; }
 
@@ -165,6 +180,7 @@ Lang parseLang(const QString &s) {
     if (s.isEmpty() || s == QLatin1String("auto")) return Lang::Auto;
     if (s == QLatin1String("cpp")) return Lang::Cpp;
     if (s == QLatin1String("py"))  return Lang::Py;
+    if (s == QLatin1String("generic")) return Lang::Generic;
     return Lang::Auto;
 }
 

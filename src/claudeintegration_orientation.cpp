@@ -1499,7 +1499,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     t["description"] = QStringLiteral(
                         "Find the project's existing examples of a code "
                         "shape before you write a new one (CLAUDE.md §3 "
-                        "reuse-before-rewriting). Walks C++/Python source, "
+                        "reuse-before-rewriting). Walks C++, Python and brace-family source, "
                         "extracts class/function signatures, and ranks "
                         "them by token-set Jaccard similarity to your "
                         "`shape` query. Returns {ok, shape, lang, "
@@ -1554,11 +1554,13 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         p["type"] = "string";
                         QJsonArray e;
                         e.append("auto"); e.append("cpp"); e.append("py");
+                        e.append("generic");   // ANTS-2150
                         p["enum"]        = e;
                         p["default"]     = "auto";
                         p["description"] = QStringLiteral(
                             "Restrict the scan to one language family. "
-                            "\"auto\" (default) scans C++ and Python.");
+                            "\"auto\" (default) scans C++, Python and the "
+                            "brace family (\"generic\": Rust, Go, JS/TS, …).");
                         props["lang"] = p;
                     }
                     {

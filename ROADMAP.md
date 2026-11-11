@@ -76901,7 +76901,7 @@ server build id so clients can self-diagnose this.
   Source: cross-session-2026-06-16 (DOOM Ants, renderer session).
   Resolved (2026-06-17): file_outline accepts `file_path` as an alias for `path`; codebase_index accepts `path` as an alias for `file_path` (canonical name stays source of truth; alias fills in only when absent — same idiom as workspace_search query/pattern). Wiring source-scraped in the codebase_index feature test.
 
-- 📋 [ANTS-2150] **codebase_index should cover as many programming languages as possible.**
+- ✅ [ANTS-2150] **codebase_index should cover as many programming languages as possible.**
   Follow-on to ANTS-2148 (which widened the index to the full C family + a soft empty-signal). The index is still C/C++/Python-only because both gates are narrow: codebaseindex.cpp admittedSuffix() and FileOutline::pickModeByExt only know the C/C++/Py families, and FileOutline only has a Cpp/Py/Md/Json regex mode set. A session opening a Rust/Go/JS/TS/Java/C#/Ruby/Kotlin/Swift project gets file_count:0 (now at least flagged empty:true).\nGoal: broaden language coverage as far as is practical with the regex-scanner approach. Work items: (1) extend admittedSuffix + pickModeByExt with the common suffixes (rs, go, js/jsx/ts/tsx, java, cs, rb, kt, swift, php, scala, lua, sh, …); (2) add a FileOutline Mode + a per-language symbol regex (fn/func/def/class/type/impl/struct/interface per language) for each — lean on the existing possessive-quantifier + per-line byte-cap discipline (INV-8); (3) keep SymbolQuery::langForExt in step so find_definition/find_caller cover the same set; (4) a per-language feature-test fixture asserting at least one symbol per added language. Consider a small data-driven table (suffix -> Mode -> {symbol regexes}) instead of hand-rolled if/else chains as the set grows (Rule of Three). Scope/sequence is the maintainer's call — likely several passes, one language-family per pass. RAM/perf: regex set is compiled once per process (static const), so each added language is a fixed small cost; the per-file scan stays linear.
   **Layman:** Make the project code-map understand far more languages (Rust, Go, JS/TS, Java, C#, Ruby, Kotlin, Swift, …), not just C/C++/Python — so every kind of project a Claude session opens gets a useful map.
   Kind: enhancement.
@@ -76910,6 +76910,14 @@ server build id so clients can self-diagnose this.
   Progress (2026-06-20) — first pass shipped (commit 1f15662): one shared brace-family "generic" mode added across the three named gates (FileOutline Mode::Generic + 3 regexes, SymbolQuery Lang::Generic mirrored anchors, CodebaseIndex::admittedSuffix), covering Rust, Go, JS/TS, Java, C#, Kotlin, Swift, Scala, PHP. file_outline reports the precise language name (rust/go/typescript...) not "generic". Regexes validated vs positive+negative samples; possessive quantifiers + per-line byte cap bound backtracking (INV-8). Tests: McpSymbolQuery.BraceFamilyLanguages + McpFileOutline.BraceFamilyGenericOutline; test_claude 1153/1153, test_core 329/329 green. REMAINING follow-ons: (1) Ruby (#-comment + end-block; def/class match the keyword regex but module + header_doc don't); (2) the codebase_index candidates() walk only descends src/ + tests/, so a non-src layout (Go root pkgs, JS root) still yields file_count:0 even with the suffix admitted — widen the walk roots; (3) mirror the mapping into SimilarCode::langForExt; (4) optionally surface lang:"generic" in the find_definition/find_caller/file_outline schema enums (auto-detection already covers it).
   Progress (2026-07-03) — Ruby (.rb) pass shipped (follow-on 1). Folded into the existing Lang::Generic / Mode::Generic rather than a parallel Ruby mode (reuse): `def`/`class`/`module` were already in the keyword alternation, and `end`-blocks are irrelevant to a line-oriented outline. Two safe tweaks to the shared decl regex (fileoutline rxGenericDecl + symbolquery Generic def anchor): an optional `self.` receiver (`def self.x` singleton methods) and an optional trailing `?`/`!` (Ruby predicate/bang names) — both no-ops for the brace-family languages (verified: existing BraceFamily tests still green). `.rb` admitted at the three gates (FileOutline::genericLangName→"ruby", SymbolQuery::langForExt, CodebaseIndex::isIndexableSuffix). file_outline reports language "ruby". Tests: McpFileOutline.BraceFamilyGenericOutline + McpSymbolQuery.BraceFamilyLanguages extended with a Ruby fixture (module/class/def + `def self.` singleton + `valid?`); all green, no regression. Known minor gaps (noted, not blocking): Ruby `#`-comment header_doc isn't extracted (Generic marker is `//`); paren-less Ruby calls aren't matched by the Generic call anchor (findCaller partial — definitions/outline are the primary surface); `def valid?` is findable via query "valid" (the anchor's trailing `\b`), not "valid?". REMAINING follow-ons: (2) widen the candidates() walk beyond src/+tests/ for non-src layouts (Go root pkgs, JS root) — real design surface (exclusions/perf), the higher-impact next pass; (3) SimilarCode::langForExt still only covers cpp/py (not even the brace family) — mirror the full set there; (4) optionally surface lang:"generic" in the find_definition/find_caller/file_outline schema enums (auto-detection already covers it).
   Reverted 🚧→📋 (2026-07-04): no implementation started — body describes the C/C++/Py-only gap only, no partial work. Status drifted from a prior session; genuinely planned, not in progress.
+  Closed 2026-11-12. Follow-on (3) shipped: similar_code scans
+  FileOutline's Generic mode, lang:"generic" filters to it (test
+  McpSimilarCode.Ants2150BraceFamilyIsScanned, red first). (2) is
+  covered by ANTS-2160 (source_roots override in codebaseindex
+  candidates()) and ANTS-2161 (detect suggests it); the symbol verbs
+  already walk the whole root. (4) is already true: makeSymbolLangProp
+  lists "generic" for find_definition/find_caller, and file_outline's
+  mode enum carries it.
 
 - 💭 [ANTS-3385] **settings-schema-bump advisor — given a new settings field + how it deserializes, advise whether a schema-version bump is needed.**
   Vestige (LOW/niche): additive + tolerant default ⟹ no bump; non-tolerant read ⟹ bump + migration arm. Settings-heavy projects only. Logged as considered.
@@ -77132,7 +77140,7 @@ the shared root. Ten files were clean; claude-config, DOOM Ants and Fin Break
 carried the input. Three of Fin Break's entries are positive datapoints
 requesting no action and are closed in place rather than filed.
 
-- 📋 [ANTS-3715] **A per-loop findings ledger with a novelty check — the only way to suppress repeat review findings without warm-briefing.**
+- 💭 [ANTS-3715] **A per-loop findings ledger with a novelty check — the only way to suppress repeat review findings without warm-briefing.**
   The `/cold-eyes` cold re-brief rule forbids telling a loop-2+ reviewer what loop 1
   fixed, because a fix that held is proved by nobody raising it again. That rule is
   correct, but it leaves the orchestrator with no mechanical way to tell a genuinely
@@ -77178,6 +77186,12 @@ requesting no action and are closed in place rather than filed.
   novelty count would still be a better convergence signal than raw finding
   count within the two loops there are. Re-scope to cross-run memory before
   building; the within-run half is close to worthless now.
+  Parked 2026-11-12. The 2026-08-14 note left only cross-run memory of
+  dismissals as worth building. Since rule 14 (settled 2026-11-05) only
+  a new expensive spec gets an automatic review-contract run, two loops
+  at most, so a document is rarely reviewed twice and the cross-run case
+  is rare too. Revisit if claude-config reports repeat re-litigation
+  across runs; told them (session_message, 2026-11-12).
 
 - 📋 [ANTS-3717] **Loop-health metrics — the collateral ratio and per-doc size delta, the stopping signals review currently lacks.**
   The `/cold-eyes` fix-ledger reference records a measured loop where five of nine

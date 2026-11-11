@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **similar_code finds look-alike code in Rust, Go, JS/TS, Java and the rest of the brace family (`lang: "generic"`)** (ANTS-2150)
+
 - **tool_info's catalog says whether two calls to one verb can overlap (`concurrency`)** (ANTS-5807)
   Within one session's server they queue. Two sessions can overlap, and a
   verb that rewrites a file keeps the last writer's version.

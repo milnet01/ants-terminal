@@ -52,3 +52,11 @@ Claude writes a new one.
 - `claudeintegration.cpp` carries the descriptor, the `{600,2500}`
   token-cost entry, the `pattern` `kindForName` bucket, and the
   `Required` caller-cwd contract.
+
+## ANTS-2150 — the brace family
+
+A file whose extension `FileOutline::isGenericExt` accepts (Rust, Go, JS/TS,
+Java, C#, Kotlin, Swift, Scala, PHP, Ruby, UnrealScript) is scanned with
+FileOutline's `Generic` mode, and its matches carry `lang: "generic"`.
+`lang: "generic"` restricts the scan to that family. *Test:*
+`McpSimilarCode.Ants2150BraceFamilyIsScanned`.

@@ -26,10 +26,11 @@
 
 namespace SimilarCode {
 
-// v1 covers the families FileOutline extracts code symbols for.
-enum class Lang { Auto, Cpp, Py };
+// The families FileOutline extracts code symbols for. ANTS-2150 — Generic
+// is its brace-family mode (Rust, Go, JS/TS, Java, …), as in SymbolQuery.
+enum class Lang { Auto, Cpp, Py, Generic };
 
-// "" / "auto" → Auto; "cpp"/"py" → the explicit family; anything else
+// "" / "auto" → Auto; "cpp"/"py"/"generic" → the explicit family; anything else
 // → Auto (permissive — the caller's lang hint never hard-fails).
 Lang parseLang(const QString &s);
 
@@ -38,7 +39,7 @@ struct Match {
     int     line = 0;
     QString signature;  // the matched signature line (trimmed by FileOutline)
     QString kind;       // FileOutline kind: "class" / "func" / "qt"
-    QString lang;       // "cpp" / "py"
+    QString lang;       // "cpp" / "py" / "generic"
     double  score = 0.0;// Jaccard similarity 0..1 (rounded to 4 dp)
 };
 
