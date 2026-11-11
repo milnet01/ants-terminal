@@ -3296,6 +3296,19 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                 env["catalog"]        = catalog;
                                 env["tool_count"]     = toolCount;
                                 env["category_count"] = catalog.size();
+                                // ANTS-5807 — said once, on the call a caller
+                                // makes before dispatching verbs in parallel.
+                                // Each verb is registered on one lane and
+                                // each lane is one thread (postWorkerJob).
+                                env["concurrency"] = QStringLiteral(
+                                    "Within one server, calls to the same verb run "
+                                    "one at a time, so parallel calls queue; "
+                                    "audit_run refuses already_running for a project "
+                                    "it is sweeping. Each session runs its own "
+                                    "server, so two sessions' calls can overlap: a "
+                                    "roadmap-store write is one transaction, but a "
+                                    "verb that rewrites a file (apply_edits) "
+                                    "replaces it whole, and the last writer wins.");
                                 // ANTS-2073 — stamp the running server's
                                 // build identity on the catalog (the
                                 // documented once-per-session discovery

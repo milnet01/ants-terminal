@@ -85602,11 +85602,19 @@ two projects).
   Kind: fix.
   Source: self-found-2026-10-21 ANTS-4830 work.
 
-- 📋 [ANTS-5807] **Verb schemas do not say whether concurrent calls to one verb are safe.**
+- ✅ [ANTS-5807] **Verb schemas do not say whether concurrent calls to one verb are safe.**
   Parallel dispatch is the documented way to use the Ants MCP verbs,
   but no schema states whether two concurrent calls to the same verb
   are safe (a read always is; a write to one file or store row may
   not be). Split from ANTS-4845, whose timeout half shipped.
+  Shipped 2026-11-12 on the catalog rather than in every schema: one
+  `concurrency` note on tool_info {catalog:true}, the call made before
+  parallel dispatch, so the eager tool list pays nothing. Facts read
+  from the dispatcher: one thread per lane, a lane per verb
+  (postWorkerJob); audit_run refuses already_running; one ants-mcpd per
+  session, so cross-session file rewrites are last-writer-wins. Section
+  added to mcp-behavioural-notes.md. Red first:
+  McpdCall.Ants5807CatalogStatesConcurrency.
   **Layman:** The tools don't say whether two copies of the same request can safely run at once.
   Kind: doc-fix.
   Source: split from ANTS-4845 2026-10-21 (cc-feedback-2026-09-03 RetroDB/Slipcase).

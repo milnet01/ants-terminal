@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **tool_info's catalog says whether two calls to one verb can overlap (`concurrency`)** (ANTS-5807)
+  Within one session's server they queue. Two sessions can overlap, and a
+  verb that rewrites a file keeps the last writer's version.
+
 - **workspace_search takes `context_before` and `context_after`, so a signature match can ask for the lines after it alone** (ANTS-5279)
 
 - **workspace_search points a bare-identifier search that paid for context at `find_caller` and `trace` (`call_site_hint`)** (ANTS-5278)

@@ -658,3 +658,24 @@ TEST(McpdCall, UnwrapToolTextLeavesControlPlaneTextUnchanged) {
     const QString unwrapped = QStringLiteral("{\"ok\":true,\"tool_count\":3}");
     EXPECT_EQ(mcpd::unwrapToolText(unwrapped), unwrapped);
 }
+
+// ANTS-5807 — the catalog says whether two calls to one verb can overlap,
+// since it is the call a caller makes before dispatching verbs in parallel.
+TEST(McpdCall, Ants5807CatalogStatesConcurrency) {
+    QTemporaryDir cfg, data;
+    ASSERT_TRUE(cfg.isValid() && data.isValid());
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("XDG_CONFIG_HOME"), cfg.path());
+    env.insert(QStringLiteral("XDG_DATA_HOME"), data.path());
+    const CallOutcome r = runMcpdCall(
+        {QStringLiteral("--call"), QStringLiteral("tool_info"),
+         QStringLiteral(R"({"catalog":true})")},
+        QStringLiteral(ANTS_SOURCE_DIR), env);
+    ASSERT_TRUE(r.finished) << "stderr=" << r.err.toStdString();
+    const QJsonObject body = QJsonDocument::fromJson(r.out.trimmed()).object();
+    ASSERT_TRUE(body.value(QStringLiteral("ok")).toBool()) << r.out.toStdString();
+    const QString c = body.value(QStringLiteral("concurrency")).toString();
+    EXPECT_TRUE(c.contains(QStringLiteral("one at a time"))
+                && c.contains(QStringLiteral("last writer")))
+        << "catalog concurrency note: " << c.toStdString();
+}

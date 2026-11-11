@@ -244,6 +244,21 @@ server" lever; the only other knob is the client-side per-server
 themselves. Deferral itself is a Claude Code architectural choice, not
 server-controllable beyond this per-tool hint.
 
+## Concurrent calls to one verb (ANTS-5807)
+
+`tool_info {catalog:true}` carries a `concurrency` note, because it is the
+call made before dispatching verbs in parallel.
+
+- **Within one server, calls to one verb run one at a time.** Each verb is
+  registered on one lane, and each lane runs on one thread
+  (`ClaudeIntegration::postWorkerJob`). Parallel calls queue.
+- **`audit_run` replies later**, and a second call for a project it is
+  sweeping refuses `already_running`.
+- **Each client session runs its own `ants-mcpd`**, so two sessions' calls
+  can overlap. A roadmap-store write is one transaction. A verb that
+  rewrites a file, such as `apply_edits`, replaces it whole, so the last
+  writer wins and an earlier session's edit can be lost.
+
 ## Read / incremental verbs
 
 - **`trace` is served by `ants-mcpd` only** (ANTS-5734). It is registered
