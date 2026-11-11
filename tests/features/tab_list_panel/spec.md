@@ -42,7 +42,8 @@ item records the user's choice of a side panel over wrapping rows.
   in black or white, whichever has the higher contrast with the
   state colour, and that contrast is at least 4.5:1. Under the mouse the
   whole row fills with one changed colour, with no fade, and the 4.5:1
-  floor still holds, selected or not.
+  floor still holds, selected or not. A row under a still mouse keeps
+  that colour when the rows are rebuilt (ANTS-6741).
   The current tab's row is bold, with no outline and no highlight over
   its colour: after the name it fades into the inverse of the panel
   background, whatever its state (ANTS-5660). The panel paints tab rows itself, so the app style sheet's

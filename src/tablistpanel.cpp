@@ -19,6 +19,7 @@ constexpr int kPageRole     = Qt::UserRole + 1;
 constexpr int kGlyphRole    = Qt::UserRole + 2;  // tab rows only
 constexpr int kTabColorRole = Qt::UserRole + 3;  // tab rows only
 constexpr int kCloseHoverRole = Qt::UserRole + 4;  // set while the mouse is on the x
+constexpr int kRowHoverRole = Qt::UserRole + 5;    // set while the mouse is on the row
 
 QColor inkOn(const QColor &fill) {
     const QColor black(Qt::black), white(Qt::white);
@@ -46,8 +47,11 @@ public:
         const auto glyph = static_cast<ClaudeTabIndicator::Glyph>(index.data(kGlyphRole).toInt());
         const QColor bg = m_bg.isValid() ? m_bg : opt.palette.color(QPalette::Base);
         const bool current = opt.state & QStyle::State_Selected;
-        const auto rp = TabListPanel::rowPaint(glyph, bg, opt.state & QStyle::State_MouseOver,
-                                               current);
+        // ANTS-6741 — the panel's own mark survives a rebuild; the view's
+        // State_MouseOver does not until the mouse moves.
+        const bool hovered =
+            index.data(kRowHoverRole).toBool() || (opt.state & QStyle::State_MouseOver);
+        const auto rp = TabListPanel::rowPaint(glyph, bg, hovered, current);
         const QRect r = opt.rect;
         // ANTS-5658 — 3px wider than the ANTS-5650 stripe.
         const int stripe = qMax(5, r.height() / 4) + 3;
@@ -219,11 +223,18 @@ QTreeWidgetItem *TabListPanel::closeMarkAt(const QPoint &pos) const {
     return closeButtonRect(m_tree->visualItemRect(item)).contains(pos) ? item : nullptr;
 }
 
-void TabListPanel::setCloseHover(QTreeWidgetItem *item) {
-    if (item == m_closeHover) return;
-    if (m_closeHover) m_closeHover->setData(0, kCloseHoverRole, QVariant());
-    m_closeHover = item;
-    if (m_closeHover) m_closeHover->setData(0, kCloseHoverRole, true);
+void TabListPanel::updateHover() {
+    // Moves `role` from the row in `slot` to `item`.
+    const auto mark = [](QTreeWidgetItem *&slot, QTreeWidgetItem *item, int role) {
+        if (item == slot) return;
+        if (slot) slot->setData(0, role, QVariant());
+        slot = item;
+        if (slot) slot->setData(0, role, true);
+    };
+    QTreeWidgetItem *row = m_mousePos ? m_tree->itemAt(*m_mousePos) : nullptr;
+    if (row && !row->data(0, kGlyphRole).isValid()) row = nullptr;  // a header
+    mark(m_rowHover, row, kRowHoverRole);
+    mark(m_closeHover, m_mousePos ? closeMarkAt(*m_mousePos) : nullptr, kCloseHoverRole);
 }
 
 // ANTS-5709 — a click on a close mark closes the tab and never reaches the
@@ -233,10 +244,12 @@ bool TabListPanel::eventFilter(QObject *watched, QEvent *event) {
     if (watched != m_tree->viewport()) return QWidget::eventFilter(watched, event);
     switch (event->type()) {
         case QEvent::MouseMove:
-            setCloseHover(closeMarkAt(static_cast<QMouseEvent *>(event)->position().toPoint()));
+            m_mousePos = static_cast<QMouseEvent *>(event)->position().toPoint();
+            updateHover();
             break;
         case QEvent::Leave:
-            setCloseHover(nullptr);
+            m_mousePos.reset();
+            updateHover();
             break;
         case QEvent::MouseButtonPress:
         case QEvent::MouseButtonDblClick: {
@@ -360,6 +373,7 @@ void TabListPanel::rebuild() {
     // clear() deletes every row, so drop the pointers into them first.
     m_closePressed = nullptr;
     m_closeHover = nullptr;
+    m_rowHover = nullptr;
     m_tree->clear();
     // The pages are live here: setEntries is handed the tab widget's pages.
     m_pageGuards.clear();
@@ -443,6 +457,7 @@ void TabListPanel::rebuild() {
 
     if (currentItem) m_tree->setCurrentItem(currentItem);
     if (m_tree->verticalScrollBar()) m_tree->verticalScrollBar()->setValue(scroll);
+    updateHover();  // ANTS-6741 — the mouse has not moved, but the rows are new
 }
 
 void TabListPanel::onItemActivated(QTreeWidgetItem *item) {

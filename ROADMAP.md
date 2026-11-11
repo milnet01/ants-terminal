@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6740 -->
+<!-- ants-roadmap-id-high-water: ANTS=6743 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -70095,6 +70095,38 @@ interpretation. Closes the self-graded-homework loop.
   Kind: implement.
 
 ---
+
+## Window size and tab side panel (user requests 2026-11-11)
+
+- ✅ [ANTS-6741] **A hovered tab in the side panel keeps its hover colour when the tabs redraw.**
+  User report 2026-11-11: hovering a side-panel tab highlights it, but
+  when the tabs redraw as sessions change state, the hovered tab loses
+  its hover colour until the mouse moves.
+  Shipped 2026-11-11. Cause: TabListPanel::rebuild() clears and
+  recreates every row, which drops the view's hover index until the
+  mouse moves. The panel now remembers the mouse position and re-marks
+  the hovered row and close mark after each rebuild (updateHover). Test:
+  TabListPanel.Inv8HoverSurvivesARebuild, red before the fix.
+  **Layman:** When the mouse rests on a tab in the side panel, that tab stays highlighted even while other sessions update their tabs.
+  Kind: fix.
+  Source: user-request-2026-11-11.
+  Lanes: ui.
+
+- 📋 [ANTS-6742] **Set the terminal window's size in rows and columns.**
+  User request 2026-11-11: let the user set the size of the workable
+  window, e.g. 50 rows by 200 columns.
+  **Layman:** Choose how big the terminal window opens, counted in lines and characters (for example 50 rows by 200 columns).
+  Kind: feature.
+  Source: user-request-2026-11-11.
+  Lanes: ui.
+
+- 📋 [ANTS-6743] **Put the tab side panel on the left or the right.**
+  User request 2026-11-11: the user prefers the left, but others may
+  want the side panel on the right. Left stays the default.
+  **Layman:** A setting to show the side panel of tabs on the right-hand side instead of the left.
+  Kind: feature.
+  Source: user-request-2026-11-11.
+  Lanes: ui.
 
 ## indie-review sweep + companion prep — shipped 2026-04-28+ (in flight at 0.7.59) (0.7.50–0.7.59 wave)
 

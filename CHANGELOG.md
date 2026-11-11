@@ -324,6 +324,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A tab in the side panel stays highlighted while the mouse rests on it, even as other tabs update** (ANTS-6741)
+
 - **roadmap_log and roadmap_query: eleven smaller fixes from the 2026-11-09 review** (ANTS-6734)
   `replace_text` reports the hits it replaced; `report` and `bundles`
   refuse list filters they do not apply; a note that is only leaked tool

@@ -9,6 +9,8 @@
 #include <QVector>
 #include <QWidget>
 
+#include <optional>
+
 class QTreeWidget;
 class QTreeWidgetItem;
 
@@ -114,7 +116,11 @@ private:
     void onEditorClosed(bool submitted);
     // The tab row whose close mark is at `pos`, or null.
     QTreeWidgetItem *closeMarkAt(const QPoint &pos) const;
-    void setCloseHover(QTreeWidgetItem *item);
+    // ANTS-6741 — marks the row and close mark under m_mousePos, or none.
+    // The panel tracks hover itself because a rebuild deletes the row
+    // Qt's own hover state points at, and Qt only finds it again when the
+    // mouse moves.
+    void updateHover();
     // The live page a row names, or null once that tab's widget is gone:
     // rows outlive their page until the next rebuild (the 50 ms refresh, or
     // the end of a rename), and a click in that window reached a freed page.
@@ -130,5 +136,7 @@ private:
     QPointer<QWidget> m_renamePage;         // null if the tab closes mid-edit
     QTreeWidgetItem *m_closePressed = nullptr;  // pressed on its close mark
     QTreeWidgetItem *m_closeHover = nullptr;    // mouse over its close mark
+    QTreeWidgetItem *m_rowHover = nullptr;      // tab row under the mouse
+    std::optional<QPoint> m_mousePos;           // in the viewport; unset outside it
     QHash<QObject *, QPointer<QWidget>> m_pageGuards;  // set by rebuild()
 };

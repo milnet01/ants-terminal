@@ -735,6 +735,37 @@ TEST(TabListPanel, Inv12CloseMarkClosesAndDoesNotSwitch) {
     EXPECT_EQ(activated.at(0), &p.b);
 }
 
+// ANTS-6741 — a row under a still mouse keeps its hover colour, and its
+// close mark its wash, when another tab's state change rebuilds the rows.
+TEST(TabListPanel, Inv8HoverSurvivesARebuild) {
+    Pages p;
+    ShownPanel s;
+    s.panel.setThemeColors(kDarkBg, kDarkText);
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::Thinking},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::None}},
+                       &p.b);
+    QTreeWidget *tree = s.panel.treeForTest();
+    QWidget *vp = tree->viewport();
+    const QRect row = tree->visualItemRect(tabRows(tree).at(0));
+    ASSERT_TRUE(row.isValid());
+    // Past the name, short of the close mark: at rest the row fades here.
+    const QPoint probe(TabListPanel::closeButtonRect(row).left() - 6, row.center().y());
+    const QColor hovered = TabListPanel::rowPaint(Glyph::Thinking, kDarkBg, true, false).fill;
+    const auto pixel = [&] { return QColor(vp->grab().toImage().pixel(probe)).rgb(); };
+
+    const QPoint at(row.left() + 20, row.center().y());
+    QMouseEvent move(QEvent::MouseMove, QPointF(at), vp->mapToGlobal(QPointF(at)), Qt::NoButton,
+                     Qt::NoButton, Qt::NoModifier);
+    QCoreApplication::sendEvent(vp, &move);
+    ASSERT_EQ(pixel(), hovered.rgb()) << "the row under the mouse is not hovered";
+
+    // Another tab's Claude state changes; the mouse does not move.
+    s.panel.setEntries({{&p.a, QStringLiteral("a"), QColor(), Glyph::Thinking},
+                        {&p.b, QStringLiteral("b"), QColor(), Glyph::Bash}},
+                       &p.b);
+    EXPECT_EQ(pixel(), hovered.rgb()) << "a rebuild dropped the hover colour";
+}
+
 TEST(TabListPanel, Inv12HeadersHaveNoCloseMark) {
     Pages p;
     ShownPanel s;
