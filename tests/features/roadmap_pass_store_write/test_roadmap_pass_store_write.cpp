@@ -1028,3 +1028,73 @@ TEST(RoadmapPassStoreWrite, Ants6391ScrubReportIsReturned) {
         << QJsonDocument(r2).toJson().toStdString();
     EXPECT_TRUE(hasLanes(r3, "body_scrubbed_params")) << QJsonDocument(r3).toJson().toStdString();
 }
+
+// ANTS-6734 (L09-08) — a note that is nothing but leaked tool XML scrubs to
+// empty, so annotate_batch skips it as noteless rather than writing an empty
+// annotation.
+TEST(RoadmapPassStoreWrite, Ants6734NoteEmptyAfterScrubIsSkipped) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, false);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject batch = req(root, QStringLiteral("annotate_batch"));
+    batch[QStringLiteral("locators")] = QJsonArray{
+        QJsonObject{{QStringLiteral("id"), QStringLiteral("PASS-43-5")},
+                    {QStringLiteral("note"),
+                     QStringLiteral("<parameter name=\"lanes\">a</parameter>")}}};
+    QJsonObject r;
+    {
+        RemoteControl rc(nullptr);
+        r = rc.cmdRoadmapLogFlipBatchForTest(batch).object();
+    }
+    EXPECT_TRUE(r.value(QStringLiteral("flipped")).toArray().isEmpty())
+        << QJsonDocument(r).toJson().toStdString();
+    const QJsonArray skipped = r.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("missing_field"));
+}
+
+// ANTS-6734 (L09-12) — the file and store append paths place a pass's `---`
+// by one rule: copy the section's own last block. Where it is bare (kOpenEnd),
+// the rule goes between blocks; where it closes (kDated), so does the new one.
+TEST(RoadmapPassStoreWrite, Ants6734FileAppendPutsTheRuleBetweenBlocks) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, false, nullptr, kOpenEnd);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(
+        passAppend(root, QStringLiteral("phase-59"), QStringLiteral("59.43"),
+                   QStringLiteral("Test the close."))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    EXPECT_TRUE(file.contains(QStringLiteral(
+        "Lanes: logging.\n\n---\n\n#### Pass 59.43 Test the close.")))
+        << file.toStdString();
+    EXPECT_TRUE(file.contains(QStringLiteral("`a.py`.\n\n## Done index")))
+        << "the section's new last pass carries no separator: " << file.toStdString();
+}
+
+TEST(RoadmapPassStoreWrite, Ants6734StoreAppendClosesWhereTheSectionDoes) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seed(guard, tmp, true, &projectId, kDated);
+    ASSERT_FALSE(root.isEmpty());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(
+        passAppend(root, QStringLiteral("phase-59"), QStringLiteral("59.43"),
+                   QStringLiteral("Test the close."))).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const auto item = itemOf(QStringLiteral("PASS-59-43"), projectId);
+    ASSERT_TRUE(item.has_value());
+    EXPECT_TRUE(item->body.trimmed().endsWith(QStringLiteral("---")))
+        << item->body.toStdString();
+    expectReimportIsANoOp(root);
+}

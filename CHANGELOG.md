@@ -320,6 +320,18 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log and roadmap_query: eleven smaller fixes from the 2026-11-09 review** (ANTS-6734)
+  `replace_text` reports the hits it replaced; `report` and `bundles`
+  refuse list filters they do not apply; a note that is only leaked tool
+  XML is skipped; an archived id resolves from a subfolder; a pass block's
+  `---` follows its section on both write paths; refusals echo at most 64
+  characters; a fractional or huge `offset` no longer reads as 0; a store
+  error is no longer reported as not-found; a batch treats `DEMO-1` and
+  `demo-1` as one item; a body `Kind:` in another spelling no longer
+  blocks a write.
+
+- **The MCP error-code guide names the current ripgrep diagnosis function** (ANTS-6740)
+
 - **`roadmap_migrate`'s `backup_to` replaces an existing file only when it is a roadmap store copy, never another program's SQLite database** (ANTS-6731)
 
 - **`roadmap_query` refuses `shipped_since` / `shipped_until` alongside `version=`, as it already did alongside `section=`** (ANTS-6730)

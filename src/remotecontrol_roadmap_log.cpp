@@ -295,7 +295,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         return rlErr(QStringLiteral("bad_status"),
             QStringLiteral("roadmap_log: unknown status \"%1\" — "
                            "expected planned / in-progress / "
-                           "shipped / considered / dropped").arg(status));
+                           "shipped / considered / dropped").arg(rcdetail::ceSanitiseEcho(status)));
     }
 
     // ANTS-1424 — kind enum check, against the one canonical list
@@ -304,7 +304,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         return rlErr(QStringLiteral("bad_kind"),
             QStringLiteral("roadmap_log: unknown kind \"%1\" — see "
                            "docs/standards/roadmap-format.md § 3.5.3 "
-                           "for recognised values").arg(kind));
+                           "for recognised values").arg(rcdetail::ceSanitiseEcho(kind)));
     }
 
     // Resolve ROADMAP.md path under caller_cwd. Anchored via
@@ -365,7 +365,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         return rlErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: id_prefix \"%1\" must contain a "
                            "letter and be 1-16 chars of [A-Za-z0-9_-] "
-                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(idPrefixArg));
+                           "(e.g. ANTS, 3D_E) — ANTS-3492").arg(rcdetail::ceSanitiseEcho(idPrefixArg)));
     }
     const bool dryRun =
         req.value(QStringLiteral("dry_run")).toBool();
@@ -402,7 +402,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                "shape: it must contain a letter (a bare "
                                "number is indistinguishable from a counter "
                                "ID). A leading digit is fine — 3D_E-0682")
-                    .arg(stableId));
+                    .arg(rcdetail::ceSanitiseEcho(stableId)));
         }
         QString declCode;   // ANTS-3771 § 2.3 — rlDeclaredIdRefusal()'s doc
         const QString declMsg = rcdetail::rlDeclaredIdRefusal(
@@ -1803,7 +1803,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                                "synonyms also accepted: done/complete/completed "
                                "→ shipped, wip/in_progress → in-progress, "
                                "todo/open → planned, maybe/idea → considered")
-                    .arg(toStatus));
+                    .arg(rcdetail::ceSanitiseEcho(toStatus)));
         }
     }
 
@@ -2577,7 +2577,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
                     QStringLiteral("roadmap_log: prefix_hint \"%1\" "
                                    "does not match "
                                    "^[A-Z][A-Z0-9_-]{0,15}$")
-                        .arg(prefix));
+                        .arg(rcdetail::ceSanitiseEcho(prefix)));
             }
         }
         // ANTS-3350 — beside the RESOLVED roadmap, as op:"append" does. A
@@ -3996,6 +3996,8 @@ QJsonObject rlLocateFieldChange(RoadmapStore &store, qint64 projectId,
     const QString &field = c.field;
     QString err;
     const auto pk = store.findItem(projectId, id, &err);
+    if (!pk && !err.isEmpty())   // a failed read, not a miss (ANTS-6734)
+        return rlErr(QStringLiteral("store_failed"), err);
     if (!pk)
         return rlErr(QStringLiteral("bullet_not_found"),
             QStringLiteral("roadmap_log: no bullet with id \"%1\" in this "
@@ -4231,7 +4233,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendFieldBatch(const QJsonObject &req
             skip(i, id, r);
             continue;
         }
-        const QString key = change.id + QLatin1Char('\n') + change.field;
+        // Folded as findItem() matches, so DEMO-1 and demo-1 are one item.
+        const QString key = RoadmapParse::foldId(change.id) + QLatin1Char('\n') + change.field;
         if (seen.contains(key)) {
             skip(i, id, mcp::refusal(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: an earlier entry already sets `%1` "
@@ -4479,6 +4482,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBatch(const QJsonObject &req) {
         }
         QString err;
         const auto pk = store.findItem(target->projectId, id, &err);
+        if (!pk && !err.isEmpty()) {   // a failed read, not a miss (ANTS-6734)
+            skip(i, id, QStringLiteral("store_failed"), err);
+            continue;
+        }
         if (!pk) {
             skip(i, id, QStringLiteral("bullet_not_found"),
                  QStringLiteral("roadmap_log: no bullet with id \"%1\" in this "
@@ -4637,7 +4644,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogReplaceText(const QJsonObject &req) {
         const RoadmapStore::ItemWrite &item = it.value();
         if (!slug.isEmpty() && !inScope.contains(item.sectionId)) continue;
         if (!status.isEmpty() && item.status != status) continue;
-        const int hits = int(item.body.count(oldText));
+        // Non-overlapping, as replace() consumes them; count() would also
+        // count "aa" twice in "aaa" (ANTS-6734).
+        int hits = 0;
+        for (qsizetype at = item.body.indexOf(oldText); at >= 0;
+             at = item.body.indexOf(oldText, at + oldText.size()))
+            ++hits;
         if (hits == 0) continue;
         QString body = item.body;
         body.replace(oldText, newText);

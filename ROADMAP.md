@@ -84196,6 +84196,18 @@ open, and two of these were exactly that.
   roadmap_log `ids`, invariant_check `path`, git_state `limit`. Two more
   are this project's probes (`zz_probe_ants5725`). Read it again from
   2026-11-11.
+  Second reading 2026-11-11, three weeks in, 33 lines. compact on
+  doc_lint (13) and function_sizes (1) is the only key a caller
+  meant harmlessly. Every other key is a slip that silently did
+  nothing: build_target_for file (4), workspace_search
+  caller_cwd_note (2), spec_query query (2), roadmap_log
+  text/new_string/ids, roadmap_query text/section_index,
+  session_message message_ids, read_regions ranges,
+  invariant_check path, git_state limit; plus two zz_probe lines.
+  Reading: a dispatcher-wide refusal would break nothing a caller
+  relies on once compact is accepted everywhere (declare it on the
+  two verbs, or treat it as a universal key). Recommendation:
+  refuse dispatcher-wide with bad_args naming the key.
   **Layman:** Passing a setting a tool does not have gets you a note rather than a clear error.
   Kind: fix.
   Source: in-session-2026-08-25, split out of ANTS-4626.
@@ -91727,7 +91739,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6734] **Fix the smaller bugs the 2026-11-09 paired review found in mcp-roadmap-query-log.**
+- ✅ [ANTS-6734] **Fix the smaller bugs the 2026-11-09 paired review found in mcp-roadmap-query-log.**
   Each verified at e7324f30. log = remotecontrol_roadmap_log.cpp,
   query = remotecontrol_roadmap_query.cpp, verb = ..._query_verb.cpp.
   - L09-03 log:4615 counts overlapping matches; replace() does not.
@@ -91744,6 +91756,13 @@ measured Ants adding about 5,250 tokens to every request.
   - L09-21 log:3975, :4456 a findItem error reads as bullet_not_found.
   - L09-24 log:4211 batch dedupe keys on the raw id, not the fold.
   - L09-25 query:1770 rlBodyShadows compares an uncanonicalised kind.
+  Shipped 2026-11-11. All eleven fixed. L09-06 refuses query/kind/source/status
+  on report and query/kind/source on bundles; bundles + status stays
+  ignored because ANTS-1922 INV-7 records that by design. L09-12: both
+  pass paths now copy the section's last block (closed -> new blocks
+  close; bare -> rule between). L09-14 stale_days, L09-20, L09-21 and
+  the prefix_hint echo have no red test (need a git repo or a store
+  failure); every other fix was proven red first.
   **Layman:** A batch of small roadmap-tool bugs found by a second review, each with its fix.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
@@ -91766,11 +91785,13 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: roadmap-store, mcp-roadmap-query-log.
 
-- 📋 [ANTS-6740] **Replace two dead symbol names in mcp-error-codes.md.**
+- ✅ [ANTS-6740] **Replace two dead symbol names in mcp-error-codes.md.**
   doc_lint, 2026-11-11: the `rg_failed` row cites
   `rcdetail::rgStartDiagnosis` and the "What this taxonomy is NOT"
   section cites `pathValidationFailed`. Neither name occurs in src/.
   Name the current function, or drop the citation.
+  Shipped 2026-11-11. rg_failed row names RgDiagnosis::explain;
+  the naming counter-example is no longer camelCase. doc_lint clean.
   **Layman:** Two code names in the error-code guide no longer exist in the code.
   Kind: doc-fix.
   Source: doc_lint during ANTS-6735, 2026-11-11.

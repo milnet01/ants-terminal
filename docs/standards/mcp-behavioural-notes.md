@@ -369,7 +369,8 @@ server-controllable beyond this per-tool hint.
   list path. Every median carries the
   `sample` it was computed from, which is smaller than the population it
   looks like. `scope:"all"` sums every registered project — the one view no
-  single ROADMAP.md can give.
+  single ROADMAP.md can give. It applies no list filter, so `query`, `kind`,
+  `source` and `status` refuse `bad_mode_combo` (ANTS-6734).
 - **`roadmap_query`** — recognises ants-v1 / github-task-list /
   pass-headings formats (ANTS-1530). `mode:"bundles"` (ANTS-1922)
   groups the active subset (📋/🚧, id-bearing) into thematic
@@ -387,7 +388,8 @@ server-controllable beyond this per-tool hint.
   envelope also carries `total_bundle_count` + `bundles_omitted`
   alongside the emitted `bundle_count` so a truncated response no longer
   reads as if clustering happened when it didn't. Active-only: a passed `status` is ignored;
-  refuses `bad_mode_combo` with `section`/`id`/`ids`. Each bundle:
+  refuses `bad_mode_combo` with `section`/`id`/`ids`/`query`/`kind`/`source`
+  (ANTS-6734). Each bundle:
   `{bundle_label, lanes, size, items[]}`; each item may carry
   `possibly_resolved_by`/`possibly_resolved_score` (a ✅ sibling at
   Jaccard ≥0.60 may already cover it) and `gate_note`/`blocked` (a

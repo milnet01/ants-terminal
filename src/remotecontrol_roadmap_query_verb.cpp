@@ -27,6 +27,7 @@
 #include <QDir>
 #include <QRandomGenerator>   // ANTS-5704 — plan ids
 #include <QSet>
+#include <climits>     // ANTS-6734 — INT_MAX clamps
 #include <cmath>
 #include <optional>
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
@@ -591,7 +592,9 @@ QJsonObject rcLedgerEnvelope(const QJsonObject &req, RoadmapStore *store,
         if (!v.isDouble() || v.toDouble() < 1 || v.toDouble() != std::floor(v.toDouble()))
             return refuse(QStringLiteral("bad_args"),
                           QStringLiteral("stale_days must be an integer >= 1"));
-        staleDays = v.toInt();
+        // toInt() turns a value past INT_MAX into 0, which would mark every
+        // item stale (ANTS-6734); past INT_MAX days nothing is stale anyway.
+        staleDays = int(std::min(v.toDouble(), double(INT_MAX)));
     }
     QString range = req.value(QStringLiteral("range")).toString().trimmed();
     // A range is passed to git as one argument; a leading '-' would be read as
@@ -1487,7 +1490,11 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             out["code"] = QStringLiteral("bad_args");
             return QJsonDocument(out);
         }
-        offsetArg = offsetVal.toInt();
+        // ANTS-6734 — toInt() turns 2.5 or 1e10 into 0, the first page. A
+        // fraction is refused; a huge offset is past the end, so it clamps.
+        const double offsetNum = offsetVal.toDouble();
+        offsetArg = offsetNum != std::floor(offsetNum) ? -1
+                  : int(std::clamp(offsetNum, -1.0, double(INT_MAX)));
         if (offsetArg < 0) {
             out["ok"] = false;
             out["error"] = QStringLiteral(
@@ -1743,6 +1750,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             "report mode does not accept section=, id or ids selectors");
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
+    }
+    // ANTS-6734 — neither aggregate reads a list filter, and one it dropped
+    // would read as applied. bundles + status stays ignored (ANTS-1922 INV-7).
+    if (mode == QLatin1String("report") || mode == QLatin1String("bundles")) {
+        const bool bundles = mode == QLatin1String("bundles");
+        for (const char *k : {"query", "q", "kind", "source", "status", "filter"}) {
+            const QLatin1String key(k);
+            if (!req.contains(key)) continue;
+            if (bundles && (key == QLatin1String("status") ||
+                            key == QLatin1String("filter")))
+                continue;
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "mode:\"%1\" is an aggregate and applies no list filter; it "
+                "does not accept `%2`").arg(mode, key);
+            out["code"] = QStringLiteral("bad_mode_combo");
+            return QJsonDocument(out);
+        }
     }
     // ANTS-4119 / ANTS-4993 — sources is an aggregate like report: it counts
     // the filtered list, so a row selector has nothing to count.
@@ -3736,10 +3761,12 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             QSet<QString> stillMissing;
             for (const auto &v : std::as_const(missingIds))
                 stillMissing.insert(v.toString());
+            // The project root, so a subdirectory caller reads the project's
+            // docs/roadmap/ rather than its own (ANTS-6734).
             const QString rootForArchive =
                 callerCanonical.isEmpty()
                     ? QFileInfo(path).absolutePath()
-                    : callerCanonical;
+                    : rcProjectRootFor(callerCanonical);
             const auto found =
                 RoadmapFoldIn::archivedIds(rootForArchive, stillMissing);
             if (!found.isEmpty()) {

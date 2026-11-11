@@ -1069,7 +1069,7 @@ TEST(RoadmapLogAmendFieldBatch, RefusedEntriesAreSkippedOthersApply) {
         << QJsonDocument(resp).toJson().toStdString();
     EXPECT_EQ(resp.value(QStringLiteral("amended_count")).toInt(), 1);
     const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
-    ASSERT_EQ(skipped.size(), 4);
+    ASSERT_EQ(skipped.size(), 4) << QJsonDocument(resp).toJson().toStdString();
     const QStringList codes = {QStringLiteral("bad_kind"),
                                QStringLiteral("field_shadowed_by_body"),
                                QStringLiteral("bullet_not_found"),
@@ -1351,4 +1351,189 @@ TEST(RoadmapLogReplaceText, RefusesNoMatchAndUnknownSection) {
     resp = rc.cmdRoadmapLog(req).object();
     EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
     EXPECT_EQ(readAll(roadmapPath(fx.root)), before);
+}
+
+// ANTS-6734 (L09-03) — the reported hits match what replace() did: "xx" in
+// "xxx" is replaced once, so it is one hit, not two overlapping ones.
+TEST(RoadmapLogReplaceText, HitsCountNonOverlappingMatches) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    ASSERT_TRUE(giveLayman(rc, fx.root));
+    QJsonObject req = replaceReq(fx.root, QStringLiteral("prose"), QStringLiteral("xxx"));
+    req[QStringLiteral("section")] = QStringLiteral("backlog");
+    ASSERT_TRUE(rc.cmdRoadmapLog(req).object().value(QStringLiteral("ok")).toBool());
+    req = replaceReq(fx.root, QStringLiteral("xx"), QStringLiteral("y"));
+    req[QStringLiteral("section")] = QStringLiteral("backlog");
+    const QJsonObject resp = rc.cmdRoadmapLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("replacements")).toInt(), 1);
+    const auto a = itemOf(QStringLiteral("DEMO-0009"), fx.projectId);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_TRUE(a->body.contains(QStringLiteral("Some yx about it.")))
+        << a->body.toStdString();
+}
+
+// ANTS-6734 (L09-06) — report and bundles read no list filter, so one passed
+// to them is refused rather than dropped. The one exception is bundles +
+// status, which ANTS-1922 INV-7 ignores by design.
+TEST(RoadmapQueryAggregateModes, ListFiltersAreRefusedNotIgnored) {
+    Fx fx; ASSERT_TRUE(fx.ok(batchFixture()));
+    RemoteControl rc(nullptr);
+    const QList<QPair<QString, QString>> filters = {
+        {QStringLiteral("query"), QStringLiteral("prose")},
+        {QStringLiteral("kind"), QStringLiteral("fix")},
+        {QStringLiteral("status"), QStringLiteral("shipped")},
+        {QStringLiteral("source"), QStringLiteral("seed")}};
+    for (const QString &mode : {QStringLiteral("report"), QStringLiteral("bundles")})
+        for (const auto &f : filters) {
+            if (mode == QLatin1String("bundles") && f.first == QLatin1String("status"))
+                continue;
+            QJsonObject req;
+            req[QStringLiteral("caller_cwd")] = fx.root;
+            req[QStringLiteral("mode")]       = mode;
+            req[f.first]                      = f.second;
+            const QJsonObject resp = rc.cmdRoadmapQueryForTest(req).object();
+            EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                      QStringLiteral("bad_mode_combo"))
+                << mode.toStdString() << " + " << f.first.toStdString() << ": "
+                << QJsonDocument(resp).toJson().toStdString();
+        }
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("mode")]       = QStringLiteral("bundles");
+    req[QStringLiteral("status")]     = QStringLiteral("active");
+    const QJsonObject resp = rc.cmdRoadmapQueryForTest(req).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// ANTS-6734 (L09-11) — an ids query from a subdirectory finds an id rotated
+// into the PROJECT's docs/roadmap/, not one under the caller's own folder.
+TEST(RoadmapQueryIds, ArchivedIdFoundFromASubdirectory) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    ASSERT_TRUE(QDir(fx.root).mkpath(QStringLiteral("docs/roadmap")));
+    ASSERT_TRUE(QDir(fx.root).mkpath(QStringLiteral("src")));
+    // A subdirectory caller walks up only inside a repo (ANTS-3350, ANTS-4447).
+    ASSERT_TRUE(QDir(fx.root).mkpath(QStringLiteral(".git")));
+    QFile f(fx.root + QStringLiteral("/docs/roadmap/0.5.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Text));
+    f.write("- \xE2\x9C\x85 [DEMO-0101] **Rotated out in 0.5.**\n");
+    f.close();
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root + QStringLiteral("/src");
+    req[QStringLiteral("ids")]        = QJsonArray{QStringLiteral("DEMO-0101")};
+    const QJsonObject resp = rc.cmdRoadmapQueryForTest(req).object();
+    EXPECT_TRUE(resp.value(QStringLiteral("archived_ids")).toArray()
+                    .contains(QStringLiteral("DEMO-0101")))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// ANTS-6734 (L09-13) — a refusal echoes a bad value capped at 64 chars with
+// its control bytes replaced, never the caller's raw input.
+TEST(RoadmapLogRefusalEcho, BadValuesAreCappedAndCleaned) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QString huge = QString(5000, QLatin1Char('x')) + QChar(0x01);
+    auto append = [&]() {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = fx.root;
+        r[QStringLiteral("op")]         = QStringLiteral("append");
+        r[QStringLiteral("section")]    = QStringLiteral("work");
+        r[QStringLiteral("status")]     = QStringLiteral("planned");
+        r[QStringLiteral("headline")]   = QStringLiteral("A thing.");
+        r[QStringLiteral("kind")]       = QStringLiteral("fix");
+        r[QStringLiteral("source")]     = QStringLiteral("test");
+        return r;
+    };
+    QJsonObject flip;
+    flip[QStringLiteral("caller_cwd")] = fx.root;
+    flip[QStringLiteral("op")]         = QStringLiteral("flip");
+    flip[QStringLiteral("id")]         = QStringLiteral("DEMO-0007");
+    flip[QStringLiteral("to_status")]  = huge;
+    QList<QJsonObject> reqs;
+    for (const char *k : {"status", "kind", "id_prefix"}) {
+        QJsonObject r = append();
+        r[QLatin1String(k)] = huge;
+        reqs << r;
+    }
+    QJsonObject stable = append();
+    stable[QStringLiteral("id_strategy")] = QStringLiteral("stable_prefix");
+    stable[QStringLiteral("stable_id")]   = QStringLiteral("1") + huge.left(4000)
+                                            + QChar(0x01);
+    reqs << stable << flip;
+    for (const QJsonObject &r : reqs) {
+        const bool isAppend = r.value(QStringLiteral("op")) == QLatin1String("append");
+        const QJsonObject resp = isAppend ? rc.cmdRoadmapLogAppendForTest(r).object()
+                                          : rc.cmdRoadmapLog(r).object();
+        const QString msg = resp.value(QStringLiteral("error")).toString();
+        EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool(true));
+        EXPECT_TRUE(msg.contains(QStringLiteral("xxxx")))
+            << "the refusal under test echoes the value: " << msg.left(200).toStdString();
+        EXPECT_FALSE(msg.contains(QString(65, QLatin1Char('x'))))
+            << "uncapped echo: " << msg.left(200).toStdString();
+        EXPECT_FALSE(msg.contains(QChar(0x01))) << msg.left(200).toStdString();
+    }
+}
+
+// ANTS-6734 (L09-14) — offset 2.5 is refused, and offset 1e10 pages past the
+// end; neither silently becomes offset 0.
+TEST(RoadmapQueryPaging, FractionalOrHugeOffsetIsNotZero) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = fx.root;
+    req[QStringLiteral("status")]     = QStringLiteral("all");
+    req[QStringLiteral("offset")]     = 2.5;
+    QJsonObject resp = rc.cmdRoadmapQueryForTest(req).object();
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(resp).toJson().toStdString();
+    req[QStringLiteral("offset")] = 1e10;
+    resp = rc.cmdRoadmapQueryForTest(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("bullets")).toArray().isEmpty())
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// ANTS-6734 (L09-24) — ids match case-insensitively, so two entries naming one
+// item in different case set one column twice; the second is refused.
+TEST(RoadmapLogAmendFieldBatch, DuplicateInDifferentCaseIsRefused) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    const QJsonObject resp = rc.cmdRoadmapLog(batchReq(fx.root, QJsonArray{
+        amendment(QStringLiteral("DEMO-0003"), QStringLiteral("layman"),
+                  QStringLiteral("First value.")),
+        amendment(QStringLiteral("demo-0003"), QStringLiteral("layman"),
+                  QStringLiteral("Second value."))})).object();
+    const QJsonArray skipped = resp.value(QStringLiteral("skipped")).toArray();
+    ASSERT_EQ(skipped.size(), 1) << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_EQ(skipped.at(0).toObject().value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
+// ANTS-6734 (L09-25) — a body `Kind:` line that names the requested kind in
+// another spelling (`Fix`, or the alias `bug`) does not shadow it: the column
+// stores the canonical form, so the two agree.
+TEST(RoadmapLogAppendStore, BodyKindInAnotherSpellingDoesNotShadow) {
+    Fx fx; ASSERT_TRUE(fx.ok());
+    RemoteControl rc(nullptr);
+    int n = 0;
+    for (const QString &spelling : {QStringLiteral("Fix"), QStringLiteral("bug")}) {
+        QJsonObject r;
+        r[QStringLiteral("caller_cwd")] = fx.root;
+        r[QStringLiteral("op")]         = QStringLiteral("append");
+        r[QStringLiteral("section")]    = QStringLiteral("work");
+        r[QStringLiteral("status")]     = QStringLiteral("planned");
+        r[QStringLiteral("headline")]   = QStringLiteral("Spelling %1.").arg(++n);
+        r[QStringLiteral("kind")]       = QStringLiteral("fix");
+        r[QStringLiteral("source")]     = QStringLiteral("test");
+        r[QStringLiteral("layman")]     = QStringLiteral("A thing.");
+        r[QStringLiteral("body")]       = QStringLiteral("Some text.\nKind: %1.").arg(spelling);
+        const QJsonObject resp = rc.cmdRoadmapLogAppendForTest(r).object();
+        EXPECT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+            << spelling.toStdString() << ": " << QJsonDocument(resp).toJson().toStdString();
+    }
 }

@@ -216,6 +216,23 @@ static bool rcPassBlocksUseSeparator(const QString &markdown) {
     return false;
 }
 
+// ANTS-6734 — does the section's last pass block end in its own `---`? Every
+// pass append copies the answer: a closed last block means the new blocks
+// close too (INV-17's shape); a bare one (RetroDB's) means the rule goes
+// between blocks and the new last block is bare. *hasBlock: is there one?
+static bool rcPassSectionClosesLast(const QString &markdown,
+                                    const RoadmapIndex::Section &sec, bool *hasBlock) {
+    const QStringList lines = markdown.split(QChar('\n'));
+    QString last;
+    *hasBlock = false;
+    for (int i = sec.lineStart + 1; i < sec.lineEnd && i < lines.size(); ++i) {
+        const QString t = lines.at(i).trimmed();
+        if (t.startsWith(QStringLiteral("#### Pass "))) *hasBlock = true;
+        if (!t.isEmpty()) last = t;
+    }
+    return *hasBlock && last == QStringLiteral("---");
+}
+
 // Splice `block` (already rendered, no surrounding blanks) at the end of
 // the section body, managing one leading/trailing blank line for layout.
 // Returns the updated body; *headingIdx0 ← 0-based line of the first
@@ -287,14 +304,22 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
     const auto *sec = rcPassFindSection(index, section, &refusal);
     if (!sec) return refusal;
 
-    // ANTS-4117 — close the block the way this file closes its others.
+    // ANTS-4117 — separate the block the way this section separates its
+    // others: closed like them, or with the rule moved onto the block before.
     QString block = it.block;
-    if (rcPassBlocksUseSeparator(markdown))
-        block += QStringLiteral("\n\n---");
+    QString spliced = block;
+    if (rcPassBlocksUseSeparator(markdown)) {
+        bool hasBlock = false;
+        if (rcPassSectionClosesLast(markdown, *sec, &hasBlock)) {
+            block += QStringLiteral("\n\n---");
+            spliced = block;
+        } else if (hasBlock)
+            spliced = QStringLiteral("---\n\n") + block;
+    }
 
     int headingIdx0 = 0;
     const QString updated =
-        rcSplicePassBlock(markdown, *sec, block, &headingIdx0);
+        rcSplicePassBlock(markdown, *sec, spliced, &headingIdx0);
 
     if (req.value(QStringLiteral("dry_run")).toBool()) {
         QJsonObject out;
@@ -366,15 +391,29 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
             skipped.append(s);
             continue;
         }
-        const QString block = useSeparator
-            ? it.block + QStringLiteral("\n\n---") : it.block;
-        renderedBlocks << block;
+        renderedBlocks << it.block;
         QJsonObject a;
         a["bullet_index"] = i;
         a["id"]           = it.synthId;
-        a["bullet"]       = block;   // ANTS-4117
         rcPutScrubbed(a, QStringLiteral("body_scrubbed_params"), it.bodyScrubbed);
         applied.append(a);
+    }
+    // ANTS-6734 — every block but the last takes a rule; the last takes one
+    // only where the section closes its own last block, and where it does not,
+    // that block gains the rule instead.
+    QString leadingRule;
+    bool closeLast = false;
+    if (useSeparator) {
+        bool hasBlock = false;
+        closeLast = rcPassSectionClosesLast(markdown, *sec, &hasBlock);
+        if (hasBlock && !closeLast) leadingRule = QStringLiteral("---\n\n");
+    }
+    for (qsizetype k = 0; k < renderedBlocks.size(); ++k) {
+        if (useSeparator && (closeLast || k + 1 < renderedBlocks.size()))
+            renderedBlocks[k] += QStringLiteral("\n\n---");
+        QJsonObject a = applied.at(k).toObject();
+        a["bullet"] = renderedBlocks.at(k);   // ANTS-4117
+        applied[k] = a;
     }
 
     auto envelope = [&](qint64 bytesWritten) {
@@ -394,7 +433,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
     // INV-14 — an all-invalid batch leaves the file untouched.
     if (renderedBlocks.isEmpty()) return envelope(-1);
 
-    const QString combined = renderedBlocks.join(QStringLiteral("\n\n"));
+    const QString combined = leadingRule + renderedBlocks.join(QStringLiteral("\n\n"));
     int headingIdx0 = 0;
     const QString updated =
         rcSplicePassBlock(markdown, *sec, combined, &headingIdx0);
@@ -422,8 +461,9 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
 // runs — so the stored row, provenance included, is the one a re-import of the
 // rendered file would produce. Where the file closes its blocks with `---`, the
 // store holds that rule at the END of the previous block's body (RetroDB's
-// PASS-59-89 ends "\n\n---", the last block of its section has none), so the
-// section's last item gains one and every new block but the last carries one.
+// PASS-59-89 ends "\n\n---", the last block of its section has none). Where
+// the section's last item is bare it gains one; the new blocks follow
+// rcPassSectionClosesLast()'s rule.
 QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
                                           RoadmapStore &store, qint64 projectId,
                                           const QString &callerCanonical,
@@ -443,6 +483,8 @@ QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
     const QString section = req.value(QStringLiteral("section")).toString();
     QString seamErr;
     const auto sectionId = store.findSection(projectId, section, &seamErr);
+    if (!sectionId && !seamErr.isEmpty())   // a failed read, not a miss (ANTS-6734)
+        return err(QStringLiteral("store_failed"), seamErr);
     if (!sectionId)
         return err(QStringLiteral("section_not_found"),
             QStringLiteral("section \"%1\" is not in the roadmap store").arg(section));
@@ -558,22 +600,28 @@ QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
         return QJsonDocument(out);
     }
 
+    // ANTS-6734 — the file path's rule (rcPassSectionClosesLast): a section
+    // whose last block closes gets closed blocks; otherwise that block gains
+    // the rule and the new last block stays bare.
     const bool useSeparator = rcPassBlocksUseSeparator(markdown);
-    for (qsizetype k = 0; k < planned.size(); ++k) {
-        planned[k].w.position = maxPos + 1 + int(k);
-        if (useSeparator && k + 1 < planned.size())
-            planned[k].w.body += QStringLiteral("\n\n---");
-    }
+    bool closeLast = false;
     QString prevId, prevBody, prevNewBody;
     if (useSeparator && lastItemPk) {
         const auto prev = store.readItem(lastItemPk, &seamErr);
         if (!prev)
             return err(QStringLiteral("store_failed"), seamErr);
-        if (!prev->body.trimmed().endsWith(QStringLiteral("---"))) {
+        if (prev->body.trimmed().endsWith(QStringLiteral("---"))) {
+            closeLast = true;
+        } else {
             prevId      = prev->id;
             prevBody    = prev->body;
             prevNewBody = prev->body + QStringLiteral("\n\n---");
         }
+    }
+    for (qsizetype k = 0; k < planned.size(); ++k) {
+        planned[k].w.position = maxPos + 1 + int(k);
+        if (useSeparator && (closeLast || k + 1 < planned.size()))
+            planned[k].w.body += QStringLiteral("\n\n---");
     }
 
     HistoryContext hist;   // ANTS-3822 — the separator is an edit; the inserts are not
@@ -789,6 +837,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
             skipped.append(s);
             continue;
         }
+        QStringList sc;   // ANTS-6391 — reported on this locator's row
+        rcScrubLeakedToolXml(note, sc);   // before the empty test (ANTS-6734)
         // ANTS-4470 — an annotate with no note writes nothing; refused per
         // locator, as on the GFM/ants-v1 batch path.
         if (annotateMode && note.isEmpty()) {
@@ -819,11 +869,9 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
             md = r.markdown;
             matchedId = r.matchedId;
         }
-        QStringList sc;   // ANTS-6391 — reported on this locator's row
         bool noteFailed = false;
         QString noteCode;
         if (!note.isEmpty()) {
-            rcScrubLeakedToolXml(note, sc);
             PassHeadingWrite::WriteResult an =
                 PassHeadingWrite::annotatePass(md, locId, locHeadline, note);
             if (annotateMode && !an.ok) {
@@ -1760,14 +1808,17 @@ static QString rlBodyValueFor(const RoadmapParse::TrailerValues &tv,
 //
 // `anchored` still earns its place — in the MESSAGE, where it picks between
 // the two remedies the caller is owed.
+static QString rlColumnFormOf(const RlTrailerKey &k, QString value);
+
 static bool rlBodyShadows(const RoadmapParse::TrailerValues &tv,
                           const QString &body, const RlTrailerKey &k,
                           const QString &supplied, QString *error) {
     const QString fromBody = rlBodyValueFor(tv, k);
     // Value difference, not presence. A migrated item's body agrees with its
     // columns by construction (ANTS-3808 § 2.3.1), so the ordinary bullet
-    // carrying its own `Kind:` line does not refuse.
-    if (fromBody.isEmpty() || fromBody == supplied)
+    // carrying its own `Kind:` line does not refuse. Compared in the column's
+    // form, so `Kind: Bug.` agrees with kind "fix" (ANTS-6734).
+    if (fromBody.isEmpty() || rlColumnFormOf(k, fromBody) == supplied)
         return false;
     if (!error)
         return true;

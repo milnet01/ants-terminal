@@ -42,7 +42,9 @@ design spec's INV-1..16 and from the format-mismatch test's INVs).
 - **INV-16** — a stray `pass` arg on a GFM/ants-v1 roadmap is ignored,
   not refused (the normal bullet still writes).
 - **INV-17** (ANTS-4117) — on a roadmap whose pass blocks are separated by
-  a `---` rule, an appended block closes with one too; a roadmap that does
+  a `---` rule, an appended block copies its section's last block: it closes
+  with one where that block does, and otherwise the rule moves onto that
+  block (ANTS-6734); a roadmap that does
   not use them is byte-unchanged in shape. Detected from the file (a `---`
   whose next non-blank line is a `#### Pass` heading), never assumed. Both
   the write and `dry_run` envelopes echo the rendered block as `bullet`,
