@@ -1282,3 +1282,111 @@ TEST(MutationProbe, Ants6359MalformedOrOrphanedFlagRefuses) {
     req[QStringLiteral("allow_exit_code_baseline")] = true;
     EXPECT_EQ(codeOf(rc.cmdMutationProbe(req).object()), "bad_args");
 }
+
+// ANTS-4768 — a baseline whose only tests were SKIPPED executed nothing. pytest
+// prints "1 skipped in 0.01s", which named neither passed nor failed, so it
+// parsed as unreadable and allow_exit_code_baseline let it through. Reading
+// the skips makes it 0/0, which no opt-in rescues.
+TEST(MutationProbe, Ants4768SkipsAreReadFromEachRunner) {
+    using MutationProbe::parseCounts;
+    const auto py = parseCounts(QStringLiteral(
+        "============ 1 skipped in 0.01s ============\n"));
+    EXPECT_EQ(py.passed, 0) << "pytest skipped-only";
+    EXPECT_EQ(py.failed, 0);
+    EXPECT_EQ(py.skipped, 1);
+    EXPECT_EQ(MutationProbe::judgeBaseline(false, 0, py),
+              MutationProbe::BaselineVerdict::Empty);
+
+    const auto pyMixed = parseCounts(QStringLiteral("5 passed, 2 skipped in 0.3s"));
+    EXPECT_EQ(pyMixed.passed, 5);
+    EXPECT_EQ(pyMixed.skipped, 2);
+
+    const auto gt = parseCounts(QStringLiteral(
+        "[==========] 1 test from 1 test suite ran. (0 ms total)\n"
+        "[  PASSED  ] 0 tests.\n"
+        "[  SKIPPED ] 1 test, listed below:\n"));
+    EXPECT_EQ(gt.passed, 0) << "gtest skipped-only";
+    EXPECT_EQ(gt.skipped, 1);
+
+    const auto jest = parseCounts(QStringLiteral(
+        "Test Suites: 1 skipped, 0 of 1 total\n"
+        "Tests:       3 skipped, 3 total\n"));
+    EXPECT_EQ(jest.passed, 0) << "jest skipped-only";
+    EXPECT_EQ(jest.failed, 0);
+    EXPECT_EQ(jest.skipped, 3);
+
+    EXPECT_EQ(parseCounts(QStringLiteral("we skipped 3 steps\n")).passed, -1)
+        << "a stray \"skipped\" outside a pytest summary line is not a count";
+}
+
+TEST(MutationProbe, Ants4768SkippedOnlyBaselineRefusesEvenWithExitCodeOptIn) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QString skippedOnly =
+        QStringLiteral("echo '=== 1 skipped in 0.01s ==='; exit 0");
+    for (const QJsonValue &optIn : {QJsonValue(QJsonValue::Undefined), QJsonValue(true)}) {
+        const QJsonObject env = probeBaseline(tmp, skippedOnly, optIn);
+        EXPECT_EQ(codeOf(env), "baseline_unreadable")
+            << QJsonDocument(env).toJson().toStdString();
+        EXPECT_EQ(env.value(QStringLiteral("baseline_skipped")).toInt(), 1);
+        EXPECT_TRUE(env.value(QStringLiteral("error")).toString()
+                        .contains(QLatin1String("skipped")))
+            << "the refusal must name the skips";
+    }
+}
+
+// ANTS-4768 — `env` is merged over the inherited environment for every
+// command the probe runs.
+TEST(MutationProbe, Ants4768EnvReachesTheTestCommand) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    const QString needsVar = QStringLiteral(
+        "if [ \"$ANTS4768_ARCHIVE\" = here ] && [ -n \"$PATH\" ]; "
+        "then echo '1 passed'; else echo '1 failed'; exit 1; fi");
+    QJsonArray muts;
+    muts.append(mutation(0));
+    const auto probe = [&](const QJsonValue &envArg) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")]   = tmp.path();
+        req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+        req[QStringLiteral("test_command")] = shArgv(needsVar);
+        req[QStringLiteral("mutations")]    = muts;
+        req[QStringLiteral("require_green_baseline")] = true;
+        if (!envArg.isUndefined()) req[QStringLiteral("env")] = envArg;
+        return rc.cmdMutationProbe(req).object();
+    };
+    EXPECT_EQ(codeOf(probe(QJsonValue(QJsonValue::Undefined))), "baseline_not_green");
+    const QJsonObject ok =
+        probe(QJsonObject{{QStringLiteral("ANTS4768_ARCHIVE"), QStringLiteral("here")}});
+    EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ok).toJson().toStdString();
+    EXPECT_TRUE(ok.value(QStringLiteral("restored_clean")).toBool());
+}
+
+TEST(MutationProbe, Ants4768MalformedEnvRefuses) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    seedProject(tmp);
+    QJsonArray muts;
+    muts.append(mutation(0));
+    const QList<QJsonValue> bad{
+        QJsonValue(QStringLiteral("A=b")),
+        QJsonObject{{QStringLiteral("A"), 1}},
+        QJsonObject{{QStringLiteral(""), QStringLiteral("x")}},
+        QJsonObject{{QStringLiteral("A=B"), QStringLiteral("x")}},
+    };
+    for (const QJsonValue &v : bad) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")]   = tmp.path();
+        req[QStringLiteral("path")]         = QStringLiteral("palettes.py");
+        req[QStringLiteral("test_command")] = shArgv(QStringLiteral("echo '1 passed'"));
+        req[QStringLiteral("mutations")]    = muts;
+        req[QStringLiteral("env")]          = v;
+        EXPECT_EQ(codeOf(rc.cmdMutationProbe(req).object()), "bad_args")
+            << QJsonDocument(QJsonArray{v}).toJson().toStdString();
+    }
+}

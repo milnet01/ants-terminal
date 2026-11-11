@@ -14,6 +14,13 @@ for security-relevant changes.
 
 ### Added
 
+- **mutation_probe takes an `env` map for its build and test commands, and refuses a baseline whose tests all skipped** (ANTS-4768)
+  A suite that needs a variable, such as a machine-local path, can now be
+  probed without a wrapper script. Skipped tests are read from pytest,
+  gtest, jest, vitest and Catch2 output, so a baseline that only skipped is
+  refused as empty, with `baseline_skipped`, even under
+  `allow_exit_code_baseline`.
+
 - **Size the window in columns × rows of text: View > Resize Window... for a one-off size, or Settings > Appearance > "Open windows at a fixed size" to open every window at it** (ANTS-6742)
 
 - **The tab side panel can sit on the right of the window: View > Tab List on the Right, or `tab_list_panel_right` in config.json** (ANTS-6743)

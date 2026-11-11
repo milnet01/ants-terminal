@@ -77,6 +77,9 @@ ApplyResult applyOne(const QString &content, const Mutation &m);
 struct Counts {
     int passed = -1;
     int failed = -1;
+    // ANTS-4768 — tests the runner reported skipped. 0 when it named none:
+    // skips never make a run green, so "not found" and "none" judge alike.
+    int skipped = 0;
 };
 
 // Recognises the pytest summary line ("3 failed, 5 passed in 1.2s"), ctest's

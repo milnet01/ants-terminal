@@ -163,3 +163,20 @@ stays a refusal, because an exit code is weaker evidence than counts
 non-boolean value, or the flag without `require_green_baseline`, refuses
 `bad_args`. *Test:* `MutationProbe.Ants6359ExitCodeBaselineIsOptIn`,
 `…ExitCodeOptInRescuesOnlyUnreadable`, `…MalformedOrOrphanedFlagRefuses`.
+
+## ANTS-4768 — skipped tests, and the suite's environment
+
+`parseCounts` reads skipped tests into `Counts::skipped`: pytest's `N skipped`,
+gtest's `[  SKIPPED ] N test`, the jest or vitest `Tests` line, and Catch2's
+`skipped` column. A pytest run that only skipped is read from a line shaped
+like its summary (`1 skipped in 0.01s`); `skipped` in other prose is not a
+count. Skips are neither passed nor failed, so a run that only skipped is
+`Empty`. `require_green_baseline` refuses it as `baseline_unreadable`, with
+`baseline_skipped`, even under `allow_exit_code_baseline`.
+
+`env` is an object of string values merged over the inherited environment
+for every command the call runs, build included. A non-object, a non-string
+value, or an empty key or one holding `=` refuses `bad_args`. *Test:*
+`MutationProbe.Ants4768SkipsAreReadFromEachRunner`,
+`…SkippedOnlyBaselineRefusesEvenWithExitCodeOptIn`,
+`…EnvReachesTheTestCommand`, `…MalformedEnvRefuses`.

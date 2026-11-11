@@ -84,7 +84,8 @@ Counts parseCounts(const QString &output) {
             const auto x = it.next();
             const int n = x.captured(1).toInt();
             if (x.captured(2) == QLatin1String("failed")) c.failed += n;
-            else if (x.captured(2) != QLatin1String("skipped")) c.passed += n;
+            else if (x.captured(2) == QLatin1String("skipped")) c.skipped += n;
+            else c.passed += n;
         }
         return c;
     }
@@ -98,12 +99,15 @@ Counts parseCounts(const QString &output) {
         QRegularExpression::MultilineOption);
     if (const auto jt = jsTests.match(output); jt.hasMatch()) {
         const QString line = jt.captured(1);
-        static const QRegularExpression n(QStringLiteral(R"((\d+) (passed|failed))"));
+        static const QRegularExpression n(
+            QStringLiteral(R"((\d+) (passed|failed|skipped))"));
         bool any = false;
         for (auto it = n.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
-            (m.captured(2) == QLatin1String("passed") ? c.passed : c.failed) =
-                m.captured(1).toInt();
+            const QString kind = m.captured(2);
+            (kind == QLatin1String("passed")   ? c.passed
+             : kind == QLatin1String("failed") ? c.failed
+                                               : c.skipped) = m.captured(1).toInt();
             any = true;
         }
         if (any) {
@@ -113,16 +117,28 @@ Counts parseCounts(const QString &output) {
         }
     }
 
-    // pytest: "3 failed, 5 passed in 1.23s" — either half may be absent.
+    // pytest: "3 failed, 5 passed, 1 skipped in 1.23s" — any part may be
+    // absent. ANTS-4768 — a run that only skipped prints "1 skipped in 0.01s",
+    // naming neither passed nor failed. That case is taken only from a line
+    // shaped like pytest's summary, ending in its duration, since "skipped"
+    // alone is common prose in any runner's output.
     static const QRegularExpression pyPassed(
         QStringLiteral(R"((\d+) passed)"));
     static const QRegularExpression pyFailed(
         QStringLiteral(R"((\d+) failed)"));
+    static const QRegularExpression pySkipped(
+        QStringLiteral(R"((\d+) skipped)"));
+    static const QRegularExpression pySkippedOnly(
+        QStringLiteral(R"(^[=\s]*(\d+) skipped\b[^\n]* in \d+(?:\.\d+)?s\b)"),
+        QRegularExpression::MultilineOption);
     const auto pp = pyPassed.match(output);
     const auto pf = pyFailed.match(output);
-    if (pp.hasMatch() || pf.hasMatch()) {
+    const auto pso = pySkippedOnly.match(output);
+    if (pp.hasMatch() || pf.hasMatch() || pso.hasMatch()) {
         if (pp.hasMatch()) c.passed = pp.captured(1).toInt();
         if (pf.hasMatch()) c.failed = pf.captured(1).toInt();
+        if (const auto ps = pySkipped.match(output); ps.hasMatch())
+            c.skipped = ps.captured(1).toInt();
         // A pytest run reporting only failures passed nothing, and vice
         // versa. Filling the absent half with 0 is safe HERE because the
         // summary line names every non-zero bucket — unlike the no-match case
@@ -137,11 +153,15 @@ Counts parseCounts(const QString &output) {
         QStringLiteral(R"(\[\s*PASSED\s*\]\s*(\d+) test)"));
     static const QRegularExpression gtFailed(
         QStringLiteral(R"(\[\s*FAILED\s*\]\s*(\d+) test)"));
+    static const QRegularExpression gtSkipped(
+        QStringLiteral(R"(\[\s*SKIPPED\s*\]\s*(\d+) test)"));
     const auto gp = gtPassed.match(output);
     const auto gf = gtFailed.match(output);
     if (gp.hasMatch() || gf.hasMatch()) {
         if (gp.hasMatch()) c.passed = gp.captured(1).toInt();
         if (gf.hasMatch()) c.failed = gf.captured(1).toInt();
+        if (const auto gs = gtSkipped.match(output); gs.hasMatch())
+            c.skipped = gs.captured(1).toInt();
         if (c.passed < 0) c.passed = 0;
         if (c.failed < 0) c.failed = 0;
         return c;

@@ -85312,7 +85312,7 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.
   Lanes: mcp.
 
-- 📋 [ANTS-4768] **mutation_probe cannot set environment variables for its test command, and a fully-skipped baseline passes the green gate.**
+- ✅ [ANTS-4768] **mutation_probe cannot set environment variables for its test command, and a fully-skipped baseline passes the green gate.**
   TWO HALVES, and the second is the dangerous one.
 
   HALF ONE, the reported ask. test_command is an ARGV array, which is right,
@@ -85351,6 +85351,13 @@ shipped note, which is the staleness discipline ANTS-4741 exists to prompt.
   test_claude), pure judge plus an end-to-end `sh -c` run as ANTS-5360's.
   On ship: message the Pressless session (it verifies on its code).
   Promised 2026-09-29.
+  Shipped 2026-11-12 as designed. Red first: the skipped-only baseline
+  under allow_exit_code_baseline came back accepted
+  (baseline_gate:"exit_code_only"); now refused baseline_unreadable with
+  baseline_skipped. env merged over the inherited environment for build
+  and test commands; malformed refuses bad_args. Tests:
+  MutationProbe.Ants4768*. Reaches clients after an ants-mcpd rebuild
+  and /mcp reconnect.
   **Layman:** A code-mutation check cannot run test suites that need an environment variable, and it cannot tell that such a suite ran nothing.
   Kind: enhancement.
   Source: Charls_Site_Ants_MCP_Feedback.md 2026-08-31.

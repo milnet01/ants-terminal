@@ -33,10 +33,12 @@
 #include <QSaveFile>
 #include <QCryptographicHash>
 #include <QMap>
+#include <QProcessEnvironment>
 #include <QSet>
 #include <algorithm>
 #include <functional>
 #include <limits>
+#include <optional>
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -2072,6 +2074,31 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             QStringLiteral("mutation_probe: `allow_exit_code_baseline` must "
                            "be true or false."));
     const bool allowExitCodeBaseline = exitCodeArg.toBool(false);
+
+    // ANTS-4768 — variables the suite needs, such as a machine-local path a
+    // test skips without. Merged over the inherited environment for every
+    // command this call runs. A malformed map refuses rather than running
+    // with part of it.
+    std::optional<QProcessEnvironment> procEnv;
+    if (const QJsonValue envArg = req.value(QStringLiteral("env"));
+        !envArg.isUndefined()) {
+        const auto badEnv = [&mpErr] {
+            return mpErr(QStringLiteral("bad_args"),
+                QStringLiteral("mutation_probe: `env` is an object of string "
+                               "values, e.g. {\"ARCHIVE\": \"/path\"}; a key "
+                               "may not be empty or hold '='."));
+        };
+        if (!envArg.isObject()) return badEnv();
+        QProcessEnvironment e = QProcessEnvironment::systemEnvironment();
+        const QJsonObject envObj = envArg.toObject();
+        for (auto it = envObj.begin(); it != envObj.end(); ++it) {
+            if (it.key().isEmpty() || it.key().contains(QLatin1Char('='))
+                || !it.value().isString())
+                return badEnv();
+            e.insert(it.key(), it.value().toString());
+        }
+        procEnv = e;
+    }
     if (allowExitCodeBaseline
         && !req.value(QStringLiteral("require_green_baseline")).toBool(false))
         return mpErr(QStringLiteral("bad_args"),
@@ -2185,6 +2212,7 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
         QProcess p;
         p.setWorkingDirectory(rootCanonical);
         p.setProcessChannelMode(QProcess::MergedChannels);
+        if (procEnv) p.setProcessEnvironment(*procEnv);
         HostExec::start(p, command.first(), command.mid(1));
         RunOut o{true, false, -1, QString()};
         if (!p.waitForStarted(5000)) {
@@ -2369,6 +2397,14 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
                            "this suite reports, or drop "
                            "require_green_baseline to probe "
                            "anyway.")
+                     : bc.skipped > 0
+                     ? QStringLiteral(
+                           "mutation_probe: the baseline ran no tests — 0 "
+                           "passed, 0 failed, %1 skipped, exit 0. A suite "
+                           "whose tests all skipped measured nothing. If they "
+                           "skip without a variable, pass it in `env`; or "
+                           "drop require_green_baseline to probe anyway.")
+                           .arg(bc.skipped)
                      : QStringLiteral(
                            "mutation_probe: the baseline ran no tests — 0 "
                            "passed, 0 failed, exit 0. A suite that executes "
@@ -2380,6 +2416,8 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             o2[QStringLiteral("baseline_timed_out")] = base.timedOut;
             o2[QStringLiteral("baseline_passed")]    = bc.passed;
             o2[QStringLiteral("baseline_failed")]    = bc.failed;
+            if (bc.skipped > 0)
+                o2[QStringLiteral("baseline_skipped")] = bc.skipped;
             // ANTS-4997 — the output the parser could not read, bounded, so
             // the caller can see what the runner actually printed.
             o2[QStringLiteral("baseline_output_tail")] = base.output.right(2048);

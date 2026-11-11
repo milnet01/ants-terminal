@@ -1189,7 +1189,8 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "unparsable baseline pass on exit 0 alone, for a "
                         "suite whose only signal is its exit code; the reply "
                         "then carries baseline_gate:\"exit_code_only\". An "
-                        "empty run is still refused. "
+                        "empty run is still refused, and ANTS-4768 counts a run "
+                        "whose tests all skipped as empty (baseline_skipped). "
                         "ANTS-4521: a mutation may carry "
                         "`expect_occurrences` — a mismatch refuses THAT "
                         "mutation (occurrence_mismatch) before any test runs, "
@@ -1335,6 +1336,13 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                                 "when the counts are unreadable. Reply says "
                                 "baseline_gate:\"exit_code_only\".");
                         props["allow_exit_code_baseline"] = ecP;
+                        QJsonObject envP; envP["type"] = "object";
+                            { QJsonObject v; v["type"] = "string";
+                              envP["additionalProperties"] = v; }
+                            envP["description"] = QStringLiteral(
+                                "ANTS-4768: variables merged over the inherited "
+                                "environment for the build and test commands.");
+                        props["env"] = envP;
                         props["timeout_sec"]            = toP;
                         props["caller_cwd"] = makeCallerCwdReadProp();
                         schema["properties"] = props;
