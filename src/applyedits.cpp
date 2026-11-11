@@ -275,4 +275,25 @@ EditOutcome applyRangeToContent(const QString &contents, int startLine,
     return r;
 }
 
+bool rangeMatchesAt(const QString &contents, int startLine, int endLine,
+                    const QString &expectFirst, const QString &expectLast) {
+    const QStringList lines = contents.split(QLatin1Char('\n'));
+    if (startLine < 1 || endLine < startLine || endLine > lines.size())
+        return false;
+    return lines.at(startLine - 1) == expectFirst
+        && lines.at(endLine - 1) == expectLast;
+}
+
+LineShift lineShiftBetween(const QString &before, const QString &after) {
+    LineShift s;
+    const qsizetype n = qMin(before.size(), after.size());
+    qsizetype i = 0;
+    while (i < n && before.at(i) == after.at(i)) ++i;
+    if (i == n && before.size() == after.size()) return s;   // identical
+    s.firstLine = int(QStringView(before).left(i).count(QLatin1Char('\n'))) + 1;
+    s.lineDelta = int(after.count(QLatin1Char('\n'))
+                      - before.count(QLatin1Char('\n')));
+    return s;
+}
+
 }  // namespace ApplyEdits

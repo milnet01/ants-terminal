@@ -79504,7 +79504,7 @@ against current source before filing.
   measurement. Refute by re-timing buildIndex on the live file.
   Source: in-session-2026-08-17 (ANTS-3863 implementation).
 
-- 📋 [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
+- ✅ [ANTS-4427] **apply_edits: a batch of line-range edits resolves against the mutating file, so every edit after the first fails with no hint saying why.**
   Hit 2026-08-17 converting six call sites in one `apply_edits` call. All six
   ranges were computed from one read; the first edit added five lines, and the
   other five refused `range_mismatch` — correctly, since `expect_first_line` /
@@ -79525,6 +79525,14 @@ against current source before filing.
 
   Workaround in the meantime: order range edits BOTTOM-UP, or re-read between
   batches. Neither is discoverable from the refusal.
+  Shipped 2026-11-11 (the hint option, not the resolve-against-original
+  option, which would change what a batch means). A range_mismatch skip
+  below an applied edit carries shifted_by, shifted_by_edits,
+  current_start_line/current_end_line and a hint — only when the
+  expected lines are found at the shifted place. Test:
+  McpApplyEdits.Ants4427RangeMismatchNamesTheEarlierEditThatShiftedIt.
+  Reaches clients after ants-mcpd is rebuilt and they reconnect; no
+  terminal relaunch.
   **Layman:** When I ask the editing tool to change six places at once by line number, the first change shifts the lines under the rest, and they all fail with a message that doesn't explain the cause.
   Kind: enhancement.
   Source: in-session-2026-08-17 (found implementing ANTS-3863).

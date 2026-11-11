@@ -3304,6 +3304,46 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         skipped.append(s); ++editsSkipped;
     };
 
+    // ANTS-4427 — a range_mismatch below an edit this call already applied is
+    // usually that edit's doing: it added or removed lines, and the caller
+    // computed every range from one read. Follow the applied shifts in order,
+    // and claim the cause only when the expected lines sit at the shifted
+    // place. Diagnosis only: resolving ranges against the original file would
+    // change what a batch means, and the guard is what keeps it honest.
+    auto annotateShiftedRange =
+        [](const auto &e,
+           const QVector<QPair<int, ApplyEdits::LineShift>> &shifts,
+           const QString &working, QJsonArray &skippedRows) {
+        int shift = 0;
+        QJsonArray by;
+        for (const auto &[idx, sh] : shifts) {
+            if (sh.firstLine > e.startLine + shift) continue;   // edit was below
+            shift += sh.lineDelta;
+            by.append(idx);
+        }
+        const int start = e.startLine + shift, end = e.endLine + shift;
+        if (shift == 0
+            || !ApplyEdits::rangeMatchesAt(working, start, end,
+                                           e.expectFirst, e.expectLast))
+            return;
+        QJsonObject s = skippedRows.last().toObject();
+        s["shifted_by"]         = shift;
+        s["shifted_by_edits"]   = by;
+        s["current_start_line"] = start;
+        s["current_end_line"]   = end;
+        QStringList names;
+        for (const auto &v : by) names << QString::number(v.toInt());
+        s["hint"] = QStringLiteral(
+            "Earlier edit %1 in this call moved these lines by %2; the range "
+            "now sits at %3-%4. Retry with those lines, or order range edits "
+            "bottom-up.")
+                .arg(names.join(QStringLiteral(", ")))
+                .arg(shift > 0 ? QStringLiteral("+%1").arg(shift)
+                               : QString::number(shift))
+                .arg(start).arg(end);
+        skippedRows.replace(skippedRows.size() - 1, s);
+    };
+
     QVector<QString> fileOrder;
     QHash<QString, QVector<int>> byFile;  // resolved → indices into es
     QHash<QString, QString> rawOf;        // resolved → first-seen rawPath
@@ -3337,6 +3377,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
 
         int fileReplacements = 0;
         QVector<int> appliedIdx;
+        // ANTS-4427 — each applied edit's line shift, in order, so a later
+        // range_mismatch can say an earlier edit in this call moved it.
+        QVector<QPair<int, ApplyEdits::LineShift>> shifts;   // {edit index, shift}
         for (int k : group) {
             // ANTS-3711 — a range edit resolves against `working`, i.e. the
             // file as earlier edits in this same group have left it, not as it
@@ -3365,6 +3408,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                 continue;
             }
             if (oc.applied) {
+                const auto sh = ApplyEdits::lineShiftBetween(working,
+                                                             oc.newContents);
+                if (sh.lineDelta != 0) shifts.append({es[k].index, sh});
                 working = oc.newContents;
                 fileReplacements += oc.replacements;
                 appliedIdx.push_back(k);
@@ -3391,6 +3437,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
                 // all three. `near_miss_line` alone makes the line-range form
                 // (ANTS-3711) usable as the immediate retry.
                 addSkipNearMiss(es[k].index, rawPath, oc.skipReason, oc);
+                if (oc.skipReason == QStringLiteral("range_mismatch")
+                    && !shifts.isEmpty())
+                    annotateShiftedRange(es[k], shifts, working, skipped);
             }
         }
         if (appliedIdx.isEmpty()) continue;  // nothing applied → don't touch

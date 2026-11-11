@@ -125,6 +125,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`apply_edits` says when an earlier edit in the same call moved a line range: the skip carries `shifted_by`, the edit that moved it, and where the range sits now** (ANTS-4427)
+
 - **Every spec under docs/specs/ now carries a topic in its filename (ANTS-1254-last-audit-summary-mcp-tool.md, not ANTS-1254.md), and every pointer in the tree follows it** (ANTS-3755)
   `tools/rename-specs.py` did the rename. It previews by default and acts
   only with `--apply`. `spec_query` still finds a spec by its id alone.

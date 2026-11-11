@@ -104,4 +104,19 @@ EditOutcome applyRangeToContent(const QString &contents,
                                 const QString &expectLast,
                                 const QString &newStr);
 
+// ANTS-4427 — the range guard on its own, with no edit: do lines
+// [startLine, endLine] of `contents` exist and begin and end with the expected
+// text? Used to confirm a suspected shift before reporting it.
+bool rangeMatchesAt(const QString &contents, int startLine, int endLine,
+                    const QString &expectFirst, const QString &expectLast);
+
+// ANTS-4427 — where an applied edit moved the file: the 1-based line in
+// `before` at which `after` first differs (0 when identical), and the change in
+// line count. A later range at or below that line has moved by `lineDelta`.
+struct LineShift {
+    int firstLine = 0;
+    int lineDelta = 0;
+};
+LineShift lineShiftBetween(const QString &before, const QString &after);
+
 }  // namespace ApplyEdits

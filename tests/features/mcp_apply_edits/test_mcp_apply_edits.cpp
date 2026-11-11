@@ -498,6 +498,53 @@ TEST(McpApplyEdits, Ants3711EarlierEditShiftsLaterRangeAndTheGuardCatchesIt) {
     EXPECT_EQ(slurp(p), QStringLiteral("alpha\ngamma\ndelta\nepsilon\n"));
 }
 
+// ANTS-4427 — the skip above names its cause. An earlier edit in the same call
+// moved the lines; the server applied that edit and knows by how much. So the
+// row carries the shift, the edit that made it, and where the range sits now.
+// The shift is claimed only when the expected lines are found at the new place.
+TEST(McpApplyEdits, Ants4427RangeMismatchNamesTheEarlierEditThatShiftedIt) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir); ASSERT_FALSE(p.isEmpty());
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = dir.path();
+    QJsonArray edits;
+    QJsonObject drop;
+    drop[QStringLiteral("path")] = QStringLiteral("doc.txt");
+    drop[QStringLiteral("old")]  = QStringLiteral("beta\n");
+    drop[QStringLiteral("new")]  = QString();
+    edits.append(drop);
+    edits.append(rangeEdit(4, 4, QStringLiteral("delta"),
+                           QStringLiteral("delta"), QStringLiteral("DELTA")));
+    // A range whose text is gone altogether gets no shift claim.
+    edits.append(rangeEdit(4, 4, QStringLiteral("nothing-like-this"),
+                           QStringLiteral("nothing-like-this"),
+                           QStringLiteral("X")));
+    req[QStringLiteral("edits")] = edits;
+
+    const QJsonObject env = rc.cmdApplyEdits(req).object();
+    ASSERT_TRUE(env.value("ok").toBool());
+    const QJsonArray sk = env.value("skipped").toArray();
+    ASSERT_EQ(sk.size(), 2);
+    const QJsonObject s = sk.at(0).toObject();
+    EXPECT_EQ(s.value("index").toInt(), 1);
+    EXPECT_EQ(s.value("reason").toString(), QStringLiteral("range_mismatch"));
+    ASSERT_TRUE(s.value("shifted_by").isDouble());
+    EXPECT_EQ(s.value("shifted_by").toInt(), -1);
+    EXPECT_EQ(s.value("shifted_by_edits").toArray(), QJsonArray{QJsonValue(0)});
+    EXPECT_EQ(s.value("current_start_line").toInt(), 3);
+    EXPECT_EQ(s.value("current_end_line").toInt(), 3);
+    EXPECT_TRUE(s.value("hint").toString().contains(QStringLiteral("edit 0")))
+        << s.value("hint").toString().toStdString();
+
+    const QJsonObject gone = sk.at(1).toObject();
+    EXPECT_EQ(gone.value("reason").toString(), QStringLiteral("range_mismatch"));
+    EXPECT_FALSE(gone.contains(QStringLiteral("shifted_by")));
+    // Diagnosis only: nothing beyond the deletion is written.
+    EXPECT_EQ(slurp(p), QStringLiteral("alpha\ngamma\ndelta\nepsilon\n"));
+}
+
 // ANTS-4473 — an `ambiguous` skip names WHERE the occurrences are. Filed off a
 // WORKED WELL report whose contrast was the finding: `roadmap_log
 // op:amend_body` refuses an over-broad match with a hint naming the cause AND
