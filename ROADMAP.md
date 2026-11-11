@@ -84396,7 +84396,7 @@ Three were reproduced directly in this session rather than taken on report.
   Source: in-session-2026-08-25.
   Lanes: docs, mcp.
 
-- 📋 [ANTS-4655] **invariant_check: ANTS-4644's fallback is gated on a ZERO, so a PARTIAL miss still hides a governing spec.**
+- ✅ [ANTS-4655] **invariant_check: ANTS-4644's fallback is gated on a ZERO, so a PARTIAL miss still hides a governing spec.**
   FOUND BY MEASURING ANTS-4644 ON THE REAL CORPUS, not reported by a
   contributor. ANTS-4644 is shipped and correct for what it describes: both
   reporting projects saw `matched_count:0`, and the suffix retry fixes exactly
@@ -84432,6 +84432,12 @@ Three were reproduced directly in this session rather than taken on report.
 
   NOT COVERED, same as ANTS-4644: a spec naming the module only as a symbol
   (`ProjectSettings::detect`), where no path form reaches it at all.
+  Closed 2026-11-11: shipped as ANTS-4566, which is option (a) under the
+  name basename_matches[] — run on every non-zero reply, never merged
+  into matched_specs. Checked live on build 06eb3577: invariant_check
+  files:["src/projectsettings.cpp"] returns matched_count 3 and
+  basename_matches carrying ANTS-2161-auto-detect-non-standard-layout.
+  The symbol-only case stays with ANTS-4972's scope_note.
   **Layman:** The contract check now rescues "no rules found", but if it finds three rules it stops looking — and a fourth, more important one stays hidden.
   Kind: enhancement.
   Source: in-session-2026-08-25 (found while measuring ANTS-4644).
@@ -84482,7 +84488,7 @@ it.
   Source: OneUp-feedback-2026-08-25.
   Lanes: mcp, doccitations.
 
-- 📋 [ANTS-4674] **The open CC-feedback backlog is about eight mechanisms, not thirty-six items -- the partition, so it is not re-derived.**
+- ✅ [ANTS-4674] **The open CC-feedback backlog is about eight mechanisms, not thirty-six items -- the partition, so it is not re-derived.**
   Derived by sorting the open items by MECHANISM rather than by id, and
   worth writing down because deriving it cost a full pass over every open
   body and the answer is stable.
@@ -84530,6 +84536,9 @@ it.
   NEW, all found while doing the above rather than reported: ANTS-4677 (roadmap_query's sync_checked was being dropped by compaction in every session -- ANTS-4673 in a second verb, already live), ANTS-4676 and ANTS-4666 and ANTS-4679 (three separate defects in spec_lint's skip disclosure), ANTS-4678 (doc_citations' whole quotation pass is uncontracted).
 
   THE PARTITION'S OWN THESIS HELD, with one correction worth carrying. Fixing a family did close reports nobody had filed -- ANTS-4677 was found by asking which OTHER verbs emit a false boolean meaning "nobody looked", and it was already shipping. But three of the four new items are the same shape as each other: a disclosure that EXISTS and is still unusable, because it names the wrong thing or is labelled so it cannot be matched to what it explains. That is evidence for ANTS-4675 and against a naive reading of it: the dangerous state is a PARTIAL disclosure, not an absent one, so any standing rule has to bind the label and the accuracy, not merely the presence.
+  Closed 2026-11-11: rechecked every listed id — all shipped except
+  ANTS-4670, which is considered (parked). The partition has nothing
+  left to steer.
   **Layman:** The long list of outstanding reports is really a handful of underlying problems; this records which is which.
   Kind: chore.
   Source: in-session-2026-08-25, derived while answering how to clear the backlog.
