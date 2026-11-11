@@ -318,6 +318,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_query` refuses `shipped_since` / `shipped_until` alongside `version=`, as it already did alongside `section=`** (ANTS-6730)
+
 - **Each ants-mcpd build refreshes the installed copy that programs outside Claude call, with no terminal relaunch.** (ANTS-6728)
 
 - **The review engines read at most 16 MiB of one file, so a huge file is never held whole; the cold-eyes input hash still covers the whole file.** (ANTS-5417)

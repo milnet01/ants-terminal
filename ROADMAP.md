@@ -91647,13 +91647,15 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6730] **roadmap_query's version= silently ignores shipped_since and shipped_until.**
+- ✅ [ANTS-6730] **roadmap_query's version= silently ignores shipped_since and shipped_until.**
   remotecontrol_roadmap_query_verb.cpp:1921 refuses the shipped window
   only when `section` is set. `version` answers on the section path
   (:3063) too, where the window is never applied, so the dates are
   dropped with no refusal. Remedy: test
   `!section.isEmpty() || !versionArg.isEmpty()` at :1921.
   Finding L09-05 (sliced arm, Medium).
+  Shipped 2026-11-11 in 20784bf4: version= with a shipped window refuses
+  bad_mode_combo.
   **Layman:** Asking for one release's items with a date range quietly ignores the dates.
   Kind: review-fix.
   Source: review-code paired lanes 14 + 09, 2026-11-09 (CFG-0892), via ANTS-6721.
