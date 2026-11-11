@@ -84618,7 +84618,7 @@ it.
   Source: in-session-2026-08-25, proposed while answering how to clear the backlog.
   Lanes: mcp, process.
 
-- 📋 [ANTS-4678] **doc_citations' whole quotation pass is uncontracted -- six shipped items of behaviour, no invariant anywhere.**
+- ✅ [ANTS-4678] **doc_citations' whole quotation pass is uncontracted -- six shipped items of behaviour, no invariant anywhere.**
   Noticed while looking for the contract ANTS-4664 might have made false,
   and worth filing because the answer was "there isn't one".
 
@@ -84644,6 +84644,11 @@ it.
   honest fix is a quotation section in tests/features/doc_citations/spec.md
   carrying the invariants the tests already assert, since those tests exist
   and are good. Writing it from the tests is mostly transcription.
+  Shipped 2026-11-11: tests/features/doc_citations/spec.md § Quotation
+  pass now states the status partition and one bullet per behaviour,
+  each naming the test that asserts it (4386, 4664, 4697, 4637, 4638,
+  4639, 4640, 4696, 4706, 4939). Transcribed from the tests' assertions;
+  no INV ids, for the collision reason the section already gives.
   **Layman:** A feature built over six changes has no written contract, so the only description of how it should behave is the code.
   Kind: doc.
   Source: in-session-2026-08-25 (noticed while shipping ANTS-4664).

@@ -119,6 +119,45 @@ cover it (its numbering already runs to `INV-48`, spent on a verb-layer
 refusal, so the tests below are named by ticket rather than risking an id
 collision). Read the top-of-test comment on each for the defect it locks.
 
+**Statuses.** Each checked quotation is exactly one of `ok`, `not_found`,
+`ambiguous`, `no_target` or `target_unresolved`. `quote_counts.skipped` is an
+overlay, outside that partition and outside `quotes_checked`;
+`quote_counts_overlay_keys` names it.
+
+- Matching folds runs of whitespace, newlines included, on both sides.
+  *Test:* `DocCitations.Ants4386QuotationsAreCheckedAcrossLineWraps`.
+- A quoted span is detected across a hard wrap, and one quotation's closing
+  mark never pairs with the next one's opening mark.
+  *Test:* `DocCitations.Ants4664WrappedQuotationSpansAreDetected`.
+- A blank line after a closing fence opens no detection window, so a quotation
+  below a fence is reported once.
+  *Test:* `DocCitations.Ants4697BlankLineAfterAFenceOpensNoWindow`.
+- A quotation in a loop-log row is not judged. It is counted in
+  `quote_counts.skipped`.
+  *Test:* `DocCitations.Ants4637LoopLogRowsAreSkippedAndCounted`.
+- Attribution is the same line first, then the nearest earlier line of the
+  same paragraph.
+  *Test:* `DocCitations.Ants4638AttributionWidensToTheParagraph`.
+- Only a token naming a document (`.md`, `.markdown`, `.txt`, `.rst`, `.adoc`,
+  `.org`) becomes a target. A bare basename resolves against the scanned
+  document's own directory first. A target that parsed but did not resolve is
+  `target_unresolved`, never `no_target`.
+  *Test:* `DocCitations.Ants4639SiblingResolutionAndHonestTargetStatuses`.
+- In a table row, attribution is the quotation's own cell, else the row's
+  first cell.
+  *Test:* `DocCitations.Ants4640TableRowAttributionIsCellScoped`.
+- A path-shaped token with no document extension stops attribution: the
+  quotation is `no_target` and names the token in `rejected_target`. It never
+  falls through to an older document in the paragraph.
+  *Test:* `DocCitations.Ants4696RejectedTargetDoesNotFallThrough`.
+- A quotation inside a `> ` blockquote resolves, and the leading markers are
+  stripped from its reported text. A `>` inside the quoted prose is content
+  and stays.
+  *Tests:* `DocCitations.Ants4706BlockquotedQuotationResolves`,
+  `DocCitations.Ants4706InlineAngleBracketIsContent`.
+- An `ambiguous` quotation's candidate list is capped. `candidates_total`
+  counts them all, and `truncated_candidates` says the cap cut it.
+  *Test:* `DocCitations.Ants4939QuoteAmbiguousCandidatesAreCapped`.
 - A target attributed by several quotations is read at most once per call —
   the same target-size cap and read budget the citation path already
   enforces apply here too, and a refused read never opens the file.
