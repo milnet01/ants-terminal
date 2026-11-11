@@ -91863,9 +91863,10 @@ measured Ants adding about 5,250 tokens to every request.
   Source: self-found 2026-11-06 codebase review run.
   Lanes: mcp.
 
-- 📋 [ANTS-6431] **`roadmap_log` with `plan_id` accepts an `op` equal to the previewed one instead of refusing `bad_args`.**
+- ✅ [ANTS-6431] **`roadmap_log` with `plan_id` accepts an `op` equal to the previewed one instead of refusing `bad_args`.**
   Applying a create_section dry run with plan_id plus the same op refused
   bad_args, costing a retry. A matching op adds no ambiguity.
+  Shipped 2026-11-11 in c3841d45.
   **Layman:** Applying a previewed roadmap change does not fail over a harmless repeated argument.
   Kind: ux.
   Source: self-found 2026-11-06 codebase review run.

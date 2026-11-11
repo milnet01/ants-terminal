@@ -121,6 +121,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`roadmap_log` applies a previewed `plan_id` when the call repeats the same `op`; only a different `op` is refused** (ANTS-6431)
+
 - **Re-importing ROADMAP.md into a project the roadmap database already serves keeps items the file no longer lists; pass `accept_deletions:true` to delete them** (ANTS-6732)
 
 - **mutation_probe's batch deadline defaults to 1500 s, under Claude Code's 30-minute idle timeout, so a batch is no longer cut off after 60 s.** (ANTS-5804)
