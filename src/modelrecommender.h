@@ -55,6 +55,11 @@ QString tierName(Tier tier);
 // Contains "haiku" → Haiku, contains "opus" → Opus, else → Sonnet.
 Tier tierFromModelId(const QString &modelId);
 
+// ANTS-6750 — whether `modelId` names one of the three families Tier can
+// express (haiku, sonnet, opus). tierFromModelId answers Sonnet for every
+// other id, so code that would ACT on the tier asks this first.
+bool isTierFamily(const QString &modelId);
+
 // ANTS-6748 — the name a person reads for a model id: family, then version.
 // "claude-fable-5-2" → "Fable 5.2"; "claude-sonnet-4-5-20250929" →
 // "Sonnet 4.5"; "claude-3-5-sonnet-20241022" → "Sonnet 3.5"; a bare /model

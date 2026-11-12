@@ -5,7 +5,10 @@
 // builds a Gate value and asserts decide()/clampToFloor() output.
 
 #include <gtest/gtest.h>
+#include "../../_support/srcgrep.h"
 #include "modelautoswitch.h"
+
+#include <string>
 
 namespace {
 
@@ -599,4 +602,31 @@ TEST(ModelAutoSwitch, Ants1944Inv9EndToEndAntithrash) {
     g.current = Tier::Opus;
     const Decision pre = ModelAutoSwitch::decide(g);
     EXPECT_TRUE(pre.act) << "pre-1944: stale current should have caused a re-fire";
+}
+
+// ANTS-6750 — the controller leaves a session alone when its model is outside
+// the three tiers: the gate's `current` would be a guess (Sonnet), and a
+// switch would move the user off a model they chose. The guard must sit
+// before the tier is read for the gate. isTierFamily itself is covered in
+// model_recommender (IsTierFamily).
+TEST(ModelAutoSwitch, Ants6750UnknownFamilyIsLeftAlone) {
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    const auto fn = cpp.find("void ClaudeStatusBarController::refreshAutoModelSwitch");
+    ASSERT_NE(fn, std::string::npos);
+    const auto guard = cpp.find(
+        "!ModelRecommender::isTierFamily(rec.currentModel)", fn);
+    const auto gateRead = cpp.find("ModelAutoSwitch::reconcileCurrentTier(", fn);
+    ASSERT_NE(guard, std::string::npos)
+        << "refreshAutoModelSwitch must not act on a model outside the three tiers";
+    ASSERT_NE(gateRead, std::string::npos);
+    EXPECT_LT(guard, gateRead) << "the guard must precede the gate's tier read";
+
+    // The suggestion chip (refreshModelChip) carries the same guard.
+    const auto chip = cpp.find("void ClaudeStatusBarController::refreshModelChip");
+    ASSERT_NE(chip, std::string::npos);
+    const auto chipGuard = cpp.find(
+        "!ModelRecommender::isTierFamily(rec.currentModel)", chip);
+    EXPECT_LT(chipGuard, cpp.find(
+        "void ClaudeStatusBarController::refreshModelStateChip", chip))
+        << "refreshModelChip must not suggest a tier for an unknown family";
 }

@@ -75,6 +75,15 @@ suppression — INV-14), the effectiveness ledger (INV-10..12), and the
   veto YIELDS when `toolUseElapsedMs >= kLongToolUseMs` (10 s): a long
   foreground tool/build/test run is the one downgrade-safe active window. Net
   effect: downgrades fire only during sustained active work, never at idle.
+- **INV-17 (ANTS-6750)** — a model outside the three tiers is left alone.
+  `ModelRecommender::isTierFamily(id)` is true only when the id names
+  haiku, sonnet or opus. When the focused session's model id is non-empty
+  and not a tier family, `refreshAutoModelSwitch` returns before it reads a
+  tier for the gate, and clears the stability state and any queued switch.
+  `refreshModelChip` hides the suggestion chip for the same ids. An empty
+  id keeps its earlier path. *Tests:* `ModelRecommender.IsTierFamily`
+  (behaviour), `ModelAutoSwitch.Ants6750UnknownFamilyIsLeftAlone` (source
+  scrape of both call sites).
 
 ## Method
 

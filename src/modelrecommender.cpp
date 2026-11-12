@@ -382,6 +382,15 @@ Tier tierFromModelId(const QString &modelId)
     return Tier::Sonnet;
 }
 
+bool isTierFamily(const QString &modelId)
+{
+    for (const char *family : {"haiku", "sonnet", "opus"}) {
+        if (modelId.contains(QLatin1String(family), Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
+}
+
 QString modelDisplayName(const QString &modelId)
 {
     // Keep what follows the last "claude-" (a cloud provider prefixes the id)

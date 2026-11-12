@@ -253,6 +253,19 @@ TEST(ModelRecommender, TierFromModelId) {
               ModelRecommender::Tier::Sonnet);
 }
 
+// ANTS-6750 — only the three families Tier can express are tier models;
+// tierFromModelId reads every other id as Sonnet, which is not knowledge.
+TEST(ModelRecommender, IsTierFamily) {
+    for (const char *id : {"claude-opus-5-5", "claude-sonnet-4-5-20250929",
+                           "claude-3-5-haiku-20241022", "opus", "Sonnet[1m]"}) {
+        EXPECT_TRUE(ModelRecommender::isTierFamily(QString::fromLatin1(id))) << id;
+    }
+    for (const char *id : {"claude-fable-5-2", "claude-mythos-5-2", "<synthetic>",
+                           "default", ""}) {
+        EXPECT_FALSE(ModelRecommender::isTierFamily(QString::fromLatin1(id))) << id;
+    }
+}
+
 // ANTS-6748 — the chip names the model a person chose, with its version.
 TEST(ModelRecommender, ModelDisplayName) {
     const struct { const char *id; const char *want; } cases[] = {

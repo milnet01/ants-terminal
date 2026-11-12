@@ -1751,9 +1751,13 @@ void ClaudeStatusBarController::refreshModelChip()
         ModelRecommender::score(transcriptPath, homeTierFromConfig());
 
     // INV-4: hide chip when recommendation matches current model tier.
+    // ANTS-6750 — and when the model is outside the three tiers, where its
+    // tier would be a guess and the suggestion a move off the user's choice.
     const ModelRecommender::Tier currentTier =
         ModelRecommender::tierFromModelId(rec.currentModel);
-    if (rec.tier == currentTier) {
+    if (rec.tier == currentTier
+        || (!rec.currentModel.isEmpty()
+            && !ModelRecommender::isTierFamily(rec.currentModel))) {
         m_modelBtn->hide();
         return;
     }
@@ -1978,6 +1982,20 @@ void ClaudeStatusBarController::refreshAutoModelSwitch()
     if (transcriptPath.isEmpty()) return;
     const ModelRecommender::Result rec =
         ModelRecommender::score(transcriptPath, homeTierFromConfig());
+
+    // ANTS-6750 — a model outside the three tiers (Fable, a later family) is
+    // not this switcher's to move: its tier would be a guess, and a switch
+    // would take the user off a model they chose. Drop what was accruing
+    // toward one. An empty id (no assistant turn yet) keeps its old path.
+    if (!rec.currentModel.isEmpty()
+        && !ModelRecommender::isTierFamily(rec.currentModel)) {
+        m_autoSwitchStability = ModelAutoSwitch::StabilityState{};
+        if (!m_autoSwitchPendingTier.isEmpty()) {
+            m_autoSwitchPendingTier.clear();
+            refreshModelStateChip();
+        }
+        return;
+    }
 
     // Resolve floor from config string. ANTS-1944 — floor + clampedTarget are
     // computed BEFORE `current` so reconcileCurrentTier can compare the actuator

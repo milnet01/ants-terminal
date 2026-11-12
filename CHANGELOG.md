@@ -372,6 +372,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The automatic model switcher and the model suggestion chip leave a session alone when its model is not Haiku, Sonnet or Opus.** (ANTS-6750)
+
 - **The release script reads a release's file list reliably on a busy machine.** (ANTS-6752)
 
 - **The status-bar model chip shows the model's real name and version, such as "Fable 5.2" or "Opus 5.5".** (ANTS-6748)

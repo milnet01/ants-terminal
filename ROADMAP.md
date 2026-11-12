@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6753 -->
+<!-- ants-roadmap-id-high-water: ANTS=6754 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69406,13 +69406,21 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-11-12.
   Lanes: status-bar.
 
-- 📋 [ANTS-6750] **The auto model switcher would treat a Fable session as Sonnet and could switch it away from the user's choice.**
+- ✅ [ANTS-6750] **The auto model switcher would treat a Fable session as Sonnet and could switch it away from the user's choice.**
   Same root as the model-chip item: tierFromModelId maps every unknown
   family to Sonnet, and the auto-switcher's gate reads that tier. Off for
   this user (claude.auto_model_switch false, 2026-11-12), so no harm yet.
   Fix: an unknown family is not switchable; the switcher leaves it
   alone. Also directModelSwitchVisible (src/modelautoswitch.cpp) knows
   only Sonnet/Opus/Haiku/Default banners.
+  Shipped 2026-11-12. ModelRecommender::isTierFamily;
+  refreshAutoModelSwitch returns before the gate's tier read for a
+  non-empty id outside haiku/sonnet/opus and clears stability and any
+  queued switch; refreshModelChip hides its suggestion for the same ids.
+  model_auto_switch INV-17, both tests red first.
+  directModelSwitchVisible not changed: the banner Claude Code prints
+  for a new family is not verified; filed separately. Reaches the user
+  after a terminal relaunch.
   **Layman:** If automatic model switching is turned on, it could change a Fable session to another model because it misreads which model is running.
   Kind: fix.
   Source: user-report-2026-11-12.
@@ -69430,6 +69438,21 @@ remainder, captured so they don't drop on the floor.
   **Layman:** After you clear a Claude session, the context meter and other focused-tab readings may still come from the old session.
   Kind: fix.
   Source: ANTS-6747-follow-up-2026-11-12.
+  Lanes: status-bar.
+
+- 📋 [ANTS-6754] **directModelSwitchVisible recognises only the Sonnet, Opus, Haiku and Default switch banners.**
+  src/modelautoswitch.cpp directModelSwitchVisible matches "Set model to
+  <Sonnet|Opus|Haiku|Default>" plus "saved as your default". A banner
+  naming another family is a false negative: no continuation after a
+  direct /model switch (the safe direction, per its comment). Not fixed
+  with ANTS-6750 because the banner text Claude Code prints for
+  claude-fable-5-2 is unverified. Needs: a capture of that banner (run
+  /model fable in a tab, copy the line). Then widen the title match, or
+  take the family list from one place, keeping the ANTS-2197 two-part
+  match.
+  **Layman:** After you switch to a newer model such as Fable by hand, Ants may not notice the switch and so will not nudge Claude to carry on.
+  Kind: fix.
+  Source: ANTS-6750-follow-up-2026-11-12.
   Lanes: status-bar.
 
 ### 🎨 Claude Code UX — token-saving git-context hook (user request 2026-04-24)
