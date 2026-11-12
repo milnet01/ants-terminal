@@ -88666,12 +88666,16 @@ project. Reported causes are claims until checked in source.
   Source: feedback-UT_Ants-2026-09-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5348] **workspace_search cannot return the last N matches of a file.**
+- ✅ [ANTS-5348] **workspace_search cannot return the last N matches of a file.**
   Reported by UT_Ants: finding the last loop-log row across dated records
   needed `grep | tail -2` per file. Suggested: `from_end:true` or `last:N`,
   returning the last N matches per file in file order with a per-file
   count. The user asked 2026-09-25 that any grep Ants MCP cannot do be
   built into it.
+  Shipped 2026-11-12 as `last_per_file: N` (1-500): each file's last N
+  matches in file order, plus `file_totals` [{file, count}]. A max_results
+  cap inside a file keeps its newest rows. Refuses bad_args with offset.
+  Test: McpWorkspaceSearch.Ants5348LastMatchesPerFile.
   **Layman:** Finding the newest entry in an append-only log means reading every older entry first.
   Kind: enhancement.
   Source: feedback-UT_Ants-2026-09-12.

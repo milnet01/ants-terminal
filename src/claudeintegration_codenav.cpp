@@ -725,6 +725,14 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                             "for this side.");
                         props[QLatin1String(side)] = sp;
                     }
+                    {   // ANTS-5348 — the newest rows of an append-only log.
+                        QJsonObject lp; lp["type"] = "integer";
+                        lp["minimum"] = 1; lp["maximum"] = 500;
+                        lp["description"] = QStringLiteral(
+                            "Keep each file's last N matches, in file order; "
+                            "adds file_totals [{file, count}]. Not with offset.");
+                        props["last_per_file"] = lp;
+                    }
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;
                     props["include_hidden"]    = includeHiddenProp;

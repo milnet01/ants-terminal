@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **workspace_search last_per_file: N returns each file's last N matches in file order, with every matched file's count in file_totals** (ANTS-5348)
+
 - **spec_log append_loop writes to a loop log kept in its own file: a section that only links one .md file sends the row there, and the reply names both files** (ANTS-5346)
 
 - **A workspace_search too large to return inline now says which files matched and how often (`files`)** (ANTS-4892)

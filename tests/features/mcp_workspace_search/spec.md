@@ -111,3 +111,12 @@ and `files_total`. A file named in a row's `also_at` counts too. The spill
 keeps both as preserved top-level fields, beside `rows_preview`. A reply that
 will not spill carries neither. *Test:*
 `McpWorkspaceSearch.Ants4892SpilledSearchKeepsFileCounts`.
+
+## ANTS-5348 — the last N matches of each file
+
+`last_per_file: N` (1-500) keeps each file's last N matches, in file order,
+and adds `file_totals`: `[{file, count}]`, every match in each matched file.
+Rows it drops are the request, so they do not set `truncated`. A
+`max_results` cap that lands inside a file keeps that file's newest rows and
+sets `truncated`. With `offset` it refuses `bad_args`. *Test:*
+`McpWorkspaceSearch.Ants5348LastMatchesPerFile`.

@@ -930,3 +930,46 @@ TEST(McpWorkspaceSearch, Ants4892SpilledSearchKeepsFileCounts) {
     EXPECT_FALSE(small.contains(QStringLiteral("files"))) << "a reply that will not spill pays nothing";
     mcp::setOffloadConfig(false, 16384, 2048);
 }
+
+// ANTS-5348 — `last_per_file: N` returns each file's LAST N matches, in file
+// order, with every matched file's full count in `file_totals`. A row cap that
+// lands inside a file keeps that file's latest rows, not its earliest.
+TEST(McpWorkspaceSearch, Ants5348LastMatchesPerFile) {
+    QTemporaryDir tmp;
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/docs"));
+    {
+        QFile f(root + QStringLiteral("/docs/log.md"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("loop_5348 one\nloop_5348 two\nloop_5348 three\nloop_5348 four\n");
+    }
+    const auto lineList = [](const QJsonArray &ms) {
+        QList<int> out;
+        for (const QJsonValue &v : ms) out << v.toObject().value(QStringLiteral("line")).toInt();
+        return out;
+    };
+    const QJsonObject r = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("loop_5348")},
+                                            {QStringLiteral("last_per_file"), 2}});
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(lineList(r.value(QStringLiteral("matches")).toArray()), (QList<int>{3, 4}));
+    EXPECT_FALSE(r.value(QStringLiteral("truncated")).toBool())
+        << "rows dropped by last_per_file are the request, not a truncation";
+    const QJsonArray totals = r.value(QStringLiteral("file_totals")).toArray();
+    ASSERT_EQ(totals.size(), 1);
+    EXPECT_EQ(totals.at(0).toObject().value(QStringLiteral("file")).toString(),
+              QStringLiteral("docs/log.md"));
+    EXPECT_EQ(totals.at(0).toObject().value(QStringLiteral("count")).toInt(), 4);
+
+    // The row cap inside the file keeps the newest row.
+    const QJsonObject capped = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("loop_5348")},
+                                                 {QStringLiteral("last_per_file"), 2},
+                                                 {QStringLiteral("max_results"), 1}});
+    EXPECT_EQ(lineList(capped.value(QStringLiteral("matches")).toArray()), QList<int>{4});
+    EXPECT_TRUE(capped.value(QStringLiteral("truncated")).toBool());
+
+    // Paging from the front contradicts reading from the end.
+    const QJsonObject paged = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("loop_5348")},
+                                                {QStringLiteral("last_per_file"), 2},
+                                                {QStringLiteral("offset"), 1}});
+    EXPECT_EQ(paged.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+}

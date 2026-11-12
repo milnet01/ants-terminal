@@ -562,6 +562,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // contract. Ignored by count_only / files_only (they emit no rows).
     const int offset =
         qMax(0, req.value(QStringLiteral("offset")).toInt(0));
+    // ANTS-5348 — each file's LAST N matches: the newest rows of an
+    // append-only log, without reading every older row first. Rows only;
+    // the modes that emit no rows ignore it, as they ignore `offset`.
+    int lastPerFile = 0;
+    if (const QJsonValue lv = req.value(QStringLiteral("last_per_file"));
+        lv.isDouble()) {
+        lastPerFile = lv.toInt();
+        if (lastPerFile < 1)
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("workspace-search: \"last_per_file\" must be 1 or more")));
+        if (offset > 0)
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("workspace-search: \"last_per_file\" reads from each "
+                               "file's end and \"offset\" pages from the front; "
+                               "pass one")));
+        lastPerFile = std::min(lastPerFile, kWorkspaceSearchMaxResultsCap);
+    }
 
     // ANTS-1565-INV-1/2: per-call wall-clock budget. Default 5 s
     // (kWorkspaceSearchHardKillMs); accept `timeout_sec` integer in
@@ -698,6 +715,14 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                             // (reset on each begin / end event).
     struct PendingCtx { int line = 0; QString text; };
     QList<PendingCtx> pendingBefore;
+    // ANTS-5348 — last_per_file state. rg emits a file's events between its
+    // begin and end, so the current file's rows are matches[rowsStart..].
+    int        rowsStart = 0;        // first row of the last file given rows
+    int        fileTotal = 0;        // every match in the current file
+    QString    filePath;
+    bool       fileSkipped = false;  // the row cap was full when it began
+    bool       lastCapCut  = false;
+    QJsonArray fileTotals;
     // ANTS-3405 — bound the parse loop by the wall budget too, not just the
     // rg process. rg --json over a repo with large data blobs (a ~1.2 MB
     // YAML, per-locale files, *.mo binaries) can emit an enormous match
@@ -742,6 +767,23 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                     filesOnlyCurIdx = filesOnlyOrder.size();
                     filesOnlyOrder.append(bp);
                     filesOnlyHits.append(0);
+                }
+            }
+            if (lastPerFile > 0) {
+                if (evType == QLatin1String("begin")) {
+                    filePath = ev.value("data").toObject().value("path")
+                                   .toObject().value("text").toString();
+                    if (filePath.startsWith(rootCanonical + QLatin1Char('/')))
+                        filePath = filePath.mid(rootCanonical.size() + 1);
+                    fileTotal   = 0;
+                    // Spelled so the scrape tests' anchor on the row cap
+                    // below stays that line's alone.
+                    fileSkipped = maxResults <= matches.size();
+                    if (fileSkipped) lastCapCut = true;
+                    else rowsStart = matches.size();
+                } else if (fileTotal > 0) {
+                    fileTotals.append(QJsonObject{{"file", filePath},
+                                                  {"count", fileTotal}});
                 }
             }
             lastMatchIdx = -1;
@@ -824,8 +866,13 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // within the same cap). Context lines buffered for a skipped match are
         // bounded out by the per-match line-distance filter when the first
         // kept match drains pendingBefore.
-        if (seenMatchEvents <= offset) return;
-        if (matches.size() >= maxResults) { truncated = true; return; }
+        if (lastPerFile > 0) {
+            ++fileTotal;
+            if (fileSkipped) return;
+        } else {
+            if (seenMatchEvents <= offset) return;
+            if (matches.size() >= maxResults) { truncated = true; return; }
+        }
 
         const QJsonObject data = ev.value("data").toObject();
         QString path = data.value("path").toObject().value("text").toString();
@@ -869,6 +916,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         }
         matches.append(m);
         lastMatchIdx = matches.size() - 1;
+        // ANTS-5348 — over N rows in this file: drop its oldest.
+        if (lastPerFile > 0 && matches.size() - rowsStart > lastPerFile) {
+            matches.removeAt(rowsStart);
+            --lastMatchIdx;
+        }
     };
 
     // ANTS-3716 § 2.4 — the process run (start, budget, hard kill, stderr cap)
@@ -959,9 +1011,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // there is "more" iff the total exceeds what this page covers. Capture the
     // raw (pre-dedup) page size now for the next_offset cursor below — dedup
     // reassigns matches[] to the collapsed array, losing the count.
+    // ANTS-5348 — a cap landing inside the last file given rows keeps that
+    // file's newest rows. Rows last_per_file dropped are the request, so
+    // only the cap counts as truncation.
+    if (lastPerFile > 0 && matches.size() > maxResults) {
+        const int over = static_cast<int>(matches.size()) - maxResults;
+        for (int k = 0; k < over; ++k) matches.removeAt(rowsStart);
+        lastCapCut = true;
+    }
     const int pageMatchCount = matches.size();
-    if (seenMatchEvents > offset + matches.size() ||
-        hardKilled || parseBudgetExceeded)
+    const bool rowsCut = lastPerFile > 0
+        ? lastCapCut : seenMatchEvents > offset + matches.size();
+    if (rowsCut || hardKilled || parseBudgetExceeded)
         truncated = true;
 
     // The echoes every ok:true reply ends with, in every mode, so a field
@@ -1250,8 +1311,12 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // next page resumes at the raw cursor. Not emitted on a hard-kill / parse
     // -budget / byte-cap-only truncation (there is no coherent match cursor).
     if (offset > 0) out["offset"] = offset;
-    if (seenMatchEvents > offset + pageMatchCount)
+    if (lastPerFile > 0) {
+        out["last_per_file"] = lastPerFile;   // ANTS-5348
+        out["file_totals"]   = fileTotals;
+    } else if (seenMatchEvents > offset + pageMatchCount) {
         out["next_offset"] = offset + pageMatchCount;
+    }
     if (dedupOn) {
         out["dedup"]            = true;
         out["dedup_collapsed"]  = dedupCollapsed;
