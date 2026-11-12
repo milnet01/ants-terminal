@@ -1,8 +1,8 @@
 # Feature: Per-tab model + thinking-level status-bar chip
 
 Part of **ANTS-1888**. Passive chip in `ClaudeStatusBarController` that
-always shows the focused tab's current Claude model tier (Haiku/Sonnet/Opus)
-and its last-used thinking level (standard / think / think hard /
+always shows the focused tab's current Claude model, by name and version
+("Fable 5.2", "Opus 5.5"; ANTS-6748), and its last-used thinking level (standard / think / think hard /
 ultrathink). Pairs with the recommender chip's INV-14 suppression — when
 the auto-switcher is on the recommender hides, and this chip becomes the
 visible widget in the same slot so the user is never blind to what model
@@ -31,6 +31,11 @@ is in use.
   signal to `ClaudeStatusBarController::refreshModelStateChip`.
 - `resetForTabSwitch()` hides the chip and clears its mtime cache so
   the next tick re-reads against the newly-focused tab.
+- The chip's model text comes from
+  `ModelRecommender::modelDisplayName(rec.currentModel)`, never from the
+  recommender's `Tier`, which reads every unknown family as Sonnet
+  (ANTS-6748). An id that names no family hides the chip. The parser's
+  cases are in `model_recommender` (`ModelDisplayName`).
 - The chip hides entirely when no transcript is found; hides only the
   thinking half (no " · …" suffix) when the level is undetectable
   (`thinkingLevelLabel(Unknown)` is empty by contract).

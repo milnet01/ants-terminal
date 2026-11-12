@@ -253,6 +253,28 @@ TEST(ModelRecommender, TierFromModelId) {
               ModelRecommender::Tier::Sonnet);
 }
 
+// ANTS-6748 — the chip names the model a person chose, with its version.
+TEST(ModelRecommender, ModelDisplayName) {
+    const struct { const char *id; const char *want; } cases[] = {
+        {"claude-fable-5-2",            "Fable 5.2"},
+        {"claude-opus-5-5",             "Opus 5.5"},
+        {"claude-sonnet-4-5-20250929",  "Sonnet 4.5"},
+        {"claude-3-5-sonnet-20241022",  "Sonnet 3.5"},
+        {"claude-3-opus-20240229",      "Opus 3"},
+        {"claude-opus-4-7[1m]",         "Opus 4.7"},
+        {"us.anthropic.claude-haiku-4-5-20251001-v1:0", "Haiku 4.5"},
+        {"claude-sonnet-4-5@20250929",  "Sonnet 4.5"},
+        {"opus",                        "Opus"},      // a bare /model argument
+        {"sonnet[1m]",                  "Sonnet"},
+        {"<synthetic>",                 ""},          // names no family
+        {"",                            ""},
+    };
+    for (const auto &c : cases) {
+        EXPECT_EQ(ModelRecommender::modelDisplayName(QString::fromLatin1(c.id)).toStdString(),
+                  std::string(c.want)) << "id: " << c.id;
+    }
+}
+
 // model read from transcript message.model field
 TEST(ModelRecommender, CurrentModelReadFromTranscript) {
     QTemporaryFile f;

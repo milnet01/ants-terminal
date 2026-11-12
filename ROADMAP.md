@@ -69358,7 +69358,7 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-11-12.
   Lanes: status-bar.
 
-- 📋 [ANTS-6748] **The model chip shows Sonnet for any model that is not Haiku or Opus, and never shows the version.**
+- ✅ [ANTS-6748] **The model chip shows Sonnet for any model that is not Haiku or Opus, and never shows the version.**
   Seen in the Vestige tab 2026-11-12: transcript `message.model` is
   claude-fable-5-2 on every reply, chip shows "Sonnet". Cause:
   ModelRecommender::tierFromModelId (src/modelrecommender.cpp) knows only
@@ -69371,6 +69371,12 @@ remainder, captured so they don't drop on the floor.
   argument ("opus") shows the family alone. Chip:
   refreshModelStateChip / m_modelStateBtn. Tests:
   tests/features/model_state_chip/.
+  Shipped 2026-11-12. ModelRecommender::modelDisplayName;
+  refreshModelStateChip prints it and hides on an id naming no family
+  ("<synthetic>"). Tests: ModelRecommender.ModelDisplayName (red first
+  against a stub repeating the old mapping),
+  ModelStateChip.ChipNamesTheModelFromItsId. Tier is unchanged and still
+  feeds the recommender. Reaches the user after a terminal relaunch.
   **Layman:** The status bar named a Fable 5.2 session "Sonnet"; it should show the model's real name and version, such as "Fable 5.2".
   Kind: fix.
   Source: user-report-2026-11-12.

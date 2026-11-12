@@ -55,6 +55,13 @@ QString tierName(Tier tier);
 // Contains "haiku" → Haiku, contains "opus" → Opus, else → Sonnet.
 Tier tierFromModelId(const QString &modelId);
 
+// ANTS-6748 — the name a person reads for a model id: family, then version.
+// "claude-fable-5-2" → "Fable 5.2"; "claude-sonnet-4-5-20250929" →
+// "Sonnet 4.5"; "claude-3-5-sonnet-20241022" → "Sonnet 3.5"; a bare /model
+// argument "opus" → "Opus". Empty when the id names no family (for example
+// "<synthetic>"), so a caller can hide rather than guess. Pure; no I/O.
+QString modelDisplayName(const QString &modelId);
+
 // ANTS-1888 — Passive thinking-level readout for the per-tab status chip.
 //
 // Claude Code accepts inline thinking-budget directives in the user's prompt:

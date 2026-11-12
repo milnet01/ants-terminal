@@ -368,6 +368,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The status-bar model chip shows the model's real name and version, such as "Fable 5.2" or "Opus 5.5".** (ANTS-6748)
+
 - **The Claude status chip and tab dot keep following a session after `/clear`.** (ANTS-6747)
   The tab tracker reads the live session id Claude Code records for each
   process and switches to that session's transcript.

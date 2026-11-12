@@ -69,6 +69,15 @@ TEST(ModelStateChip, ResetForTabSwitchHidesChipAndClearsMtime) {
         << "resetForTabSwitch must reset m_modelStateMtimeMs (ANTS-1888)";
 }
 
+// ANTS-6748 — the chip prints the model's own name and version, not the
+// three-value recommender tier, which reads every unknown family as Sonnet.
+// The name parser is covered in model_recommender (ModelDisplayName).
+TEST(ModelStateChip, ChipNamesTheModelFromItsId) {
+    const std::string cpp = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
+    EXPECT_TRUE(has(cpp, "ModelRecommender::modelDisplayName(rec.currentModel)"))
+        << "refreshModelStateChip must name the model with modelDisplayName";
+}
+
 // The chip must NEVER render the word "Unknown" — when the parser returns
 // Unknown, thinkingLevelLabel returns empty and the chip drops the " · …"
 // suffix. The render path checks isEmpty() before appending.

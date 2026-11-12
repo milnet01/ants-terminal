@@ -130,7 +130,7 @@ public:
     // recommender hides; this chip stays visible so the user still knows
     // what model is in use). Hides entirely when no transcript is found
     // for the focused tab; hides only the thinking half when the level is
-    // undetectable. Reuses ModelRecommender::tierFromModelId +
+    // undetectable. Reuses ModelRecommender::modelDisplayName +
     // thinkingLevelFromLatestUserTurn.
     void refreshModelStateChip();
     // ANTS-3579 — render the tokens-saved pill for the FOCUSED tab's project.

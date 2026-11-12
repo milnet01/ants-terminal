@@ -1813,16 +1813,21 @@ void ClaudeStatusBarController::refreshModelStateChip()
         m_modelStateBtn->hide();
         return;
     }
-    const ModelRecommender::Tier tier =
-        ModelRecommender::tierFromModelId(rec.currentModel);
-    const QString currentTitle = tierTitle(tier);
+    // ANTS-6748 — the model's own name and version. An id that names no
+    // family hides the chip, as an absent one does.
+    const QString currentTitle =
+        ModelRecommender::modelDisplayName(rec.currentModel);
+    if (currentTitle.isEmpty()) {
+        m_modelStateBtn->hide();
+        return;
+    }
 
     const ModelRecommender::ThinkingLevel level =
         ModelRecommender::thinkingLevelFromLatestUserTurn(transcriptPath);
     const QString thinkLabel = ModelRecommender::thinkingLevelLabel(level);
 
-    // Compose: "Opus · ultrathink" / "Sonnet · standard" / just "Haiku"
-    // when the thinking half is empty (Unknown).
+    // Compose: "Opus 5.5 · ultrathink" / "Fable 5.2 · standard" / just
+    // "Haiku 5.5" when the thinking half is empty (Unknown).
     QString text = currentTitle;
     if (!thinkLabel.isEmpty()) {
         text += QStringLiteral(" · ") + thinkLabel;

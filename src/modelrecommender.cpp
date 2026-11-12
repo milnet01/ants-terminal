@@ -383,6 +383,36 @@ Tier tierFromModelId(const QString &modelId)
     return Tier::Sonnet;
 }
 
+QString modelDisplayName(const QString &modelId)
+{
+    // Keep what follows the last "claude-" (a cloud provider prefixes the id)
+    // and drop a "[1m]", "@date" or ":0" tail.
+    QString id = modelId.trimmed().toLower();
+    const QLatin1String prefix("claude-");
+    const int at = id.lastIndexOf(prefix);
+    if (at >= 0) id = id.mid(at + prefix.size());
+    static const QRegularExpression tail(QStringLiteral("[\\[@:].*$"));
+    id.remove(tail);
+
+    // Words name the family; numbers are the version, wherever they sit.
+    // An eight-digit number is a release date, and "v1" is neither.
+    static const QRegularExpression word(QStringLiteral("^[a-z]+$"));
+    static const QRegularExpression number(QStringLiteral("^[0-9]{1,7}$"));
+    QStringList family, version;
+    const QStringList parts = id.split(QLatin1Char('-'), Qt::SkipEmptyParts);
+    for (const QString &part : parts) {
+        if (word.match(part).hasMatch())
+            family << part.at(0).toUpper() + part.mid(1);
+        else if (number.match(part).hasMatch())
+            version << part;
+    }
+    if (family.isEmpty()) return {};
+    QString name = family.join(QLatin1Char(' '));
+    if (!version.isEmpty())
+        name += QLatin1Char(' ') + version.join(QLatin1Char('.'));
+    return name;
+}
+
 // ANTS-1888 — Inline-directive parser for thinking budgets. Tail-reads the
 // transcript like score(), but walks for the most recent `{type:"user"}` line
 // rather than aggregating assistant turns. Pure regex match against the
