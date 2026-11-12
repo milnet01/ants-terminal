@@ -89013,7 +89013,7 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session request 2026-09-26 (their CFG-0024).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-5403] **doc_dedup flags near-duplicate passages that state the same figure with different values.**
+- ✅ [ANTS-5403] **doc_dedup flags near-duplicate passages that state the same figure with different values.**
   claude-config's reviews keep finding one fact stated with two values
   across a skill's files (a word budget of 600-1200 in one file and 500 in
   another), each found by a cold lane. doc_dedup already clusters
@@ -89021,6 +89021,11 @@ project. Reported causes are claims until checked in source.
   passages in one cluster differ in a number token at the same position.
   Report both locations and both values; decide nothing about which is
   right. claude-config closes CFG-0234 against this id.
+  Shipped 2026-11-12: finding kind `figure_mismatch` in `findings[]` and
+  `counts`, in doc_dedup and doc_lint. Contract:
+  docs/specs/ANTS-3660-doc-dedup-find-same-passage.md INV-12. A figure
+  is a number, decimal or range standing alone; ids, dates and section
+  numbers are not. Units glued to a number (`500ms`) are not read.
   **Layman:** When two files repeat the same sentence but one says 500 and the other 600, the checker will point it out.
   Kind: feature.
   Source: claude-config session request 2026-09-26 (their CFG-0234).

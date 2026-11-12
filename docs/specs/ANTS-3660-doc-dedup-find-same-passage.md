@@ -4,6 +4,8 @@
 
 **Amended 2026-11-01 by ANTS-5471**: § 2.4's `exclude_headings` and INV-11. No
 reviewer was dispatched.
+**Amended 2026-11-12 by ANTS-5403**: INV-12, the `figure_mismatch` finding. No
+reviewer was dispatched.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3660 (user-request-2026-07-27).
 **Blocked by:** ANTS-3664 (the finding shape). ANTS-3666 is **met** (2026-07-28).
@@ -507,6 +509,19 @@ enforce.
   the location tiebreak; either alone passes against an implementation carrying
   only the other.
 - **INV-11** — `exclude_headings` leaves out each named section and its subsections, keeps every other passage's line number, and reports `sections_excluded`. Case is ignored and a heading matches whole. Anything but an array of non-blank strings refuses `bad_args` (§ 2.4).. *Test:* `DocDedup.Ants5471ExcludedHeadingLeavesItsSectionOut` and `DocDedup.Ants5471ArgumentShape`, with a mutant for the fence, the section end, the line numbers and the case rule..
+- **INV-12** — For each reported pair, a `figure_mismatch` finding is emitted
+  for every place the two passages state a different figure between the same
+  words. It is anchored at the earlier passage, names both values and the other
+  location, and is never `autoFixable`. A figure is a number, a decimal or a
+  two-part range standing alone; an id (`ANTS-12`), a date and a number after
+  `§` are not. The words are up to two either side, with any figure among them
+  compared as `#`; fewer than three such words is no position. A place where
+  the two passages share a value reports nothing. These findings follow every
+  `near_duplicate`, in pair order. The engine does not say which value is
+  right. *Test:* `DocDedup.Ants5403DifferingFigureReports` and
+  `DocDedup.Ants5403IdsDatesAndSectionNumbersAreNotFigures`, with a mutant for
+  splitting on punctuation, for the date, for the section number and for the
+  shared value.
 
 ## 4. RAM / build cost
 
@@ -657,6 +672,7 @@ it either: § 7 *reads* as settled.
 
 | Loop | Date | Lanes | C | H | M | L | I | Outcome |
 |---|---|---|---|---|---|---|---|---|
+| impl | 2026-11-12 | ANTS-5403 amendment; no reviewer dispatched | 0 | 0 | 0 | 0 | 0 | Amended from roadmap item ANTS-5403 (claude-config's CFG-0234): INV-12 adds the `figure_mismatch` finding. Measured 2026-11-12 with `build/ants-mcpd --call doc_dedup` over this project's `docs/`: `counts.figure_mismatch` 13 beside `counts.near_duplicate` 593. |
 | 4-merge | 2026-07-28 | cross-doc knock-ons from the ANTS-3669 merge; no reviewer dispatched | 0 | 0 | 1 | 1 | 0 | Two pointer changes, no contract change. § 4's build-cost stanza was one of six identical copies — the highest-scoring duplicate ANTS-3666 measured — so it is deleted in favour of ANTS-3664 § 4's family default, leaving only this spec's genuine deviation (Jaccard over `QSet<QString>` needs no external dependency). § 5's "ANTS-3669, the write half of `doc_lint`, must never auto-fix a `doc_dedup` finding" repoints to ANTS-3663 § 2.3, which absorbed the fix path when that split was unwound; the constraint itself is unchanged and still names this spec's § 2.5 as its reason. This document's own INV-8 was adopted corpus-wide as the pointer form for the verb-contract minimum. |
 | 4-tail | 2026-07-28 | ANTS-3677 fold-in (loop 4's deferred MEDIUM/LOW, this document's share) | 0 | 3 | 3 | 1 | 0 | 7 folded, no new loop dispatched — the ledger already had them with file:line, and re-reviewing to rediscover written-down findings is the waste ANTS-3677 exists to avoid. **The fold-in re-ran the measurement instead of reasoning from the recorded table, and that is what earned its keep.** INV-1 ↔ INV-7 were genuinely contradictory; the fix is a seam, not a wording change — § 2.2 now separates candidate gathering (which `maxPostings` prunes) from scoring (exact Jaccard over full sets), and each invariant governs one half, with § 5 carrying the residual limit. § 4's "this corpus has many high-posting shingles" is **false**: zero shingles exceed 400 postings, the longest list is 176 of 12,915, and disabling the prune changes not one pair — the prune ships as insurance and § 4 now says so. § 7's two questions were answered by measuring (regions: 3/268 docs, 67/276 pairs, all one document and one cluster → ignore the mask, § 2.4; within-document: 78/198 split with a J=1.000 verbatim repeat at the top → keep, § 2.5); both had been deferred to a run that was never asked for either number. § 2.3's criterion got a number (≤150 clusters, measured 129) and a harness to check it. Four figures (79 passages, 40→21 exact duplicates, 91→21 at 0.80) were quoted off the punctuation-KEPT rows of a spec that pins punctuation stripped — restated as 109, 58→23, 111→25. Two cited line numbers had drifted 128 and 78 lines in two days; replaced with content anchors per `documentation.md` § 1.7. |
 | 4 | 2026-07-28 | dedup depth (breadth pass returned CLEAN; **overridden** — its report covered only dimension 1 and never reached the ANTS-3666 rewrite) | 1 | 6 | 7 | 7 | 0 | 21 raised; the CRITICAL and the ANTS-3666 knock-ons fixed, the rest deferred to **ANTS-3677** under a weekly-budget stop. CRITICAL: § 2.6 gave the engine no entry point at all, so an implementer would re-open every document and break ANTS-3663's one-read guarantee — now an explicit `add`/`finish` pair, stated as ANTS-3664 § 2.3's deliberate exception since this checker alone compares *between* documents. Two defects were my own ANTS-3666 fold-in: `clusters[]` was added to § 2.5 without checking the composer's hoist list (ANTS-3663 hoisted `pairs[]` only, handing `doc_lint` exactly the unreadable output clustering exists to prevent), and INV-9 shipped with no row in § 6's table. The "punctuation moves scores 35–50%" claim contradicted my own § 1.1 table — it is 47% on one pair and 7% on the other; restated with both. The lesson for the ledger: ANTS-3666's three-question gate was run against § 4, and the cell that actually broke was a sibling document's envelope. |

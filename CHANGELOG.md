@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **`doc_dedup` and `doc_lint` report a `figure_mismatch` when two near-duplicate passages state different figures in the same place.** (ANTS-5403)
+  The finding names both values and both locations, and does not say which is
+  right. An id, a date and a section number are not figures.
+
 - **A status-bar chip shows Claude Code's thinking level, such as "Thinking: medium", beside the model chip.** (ANTS-6749)
   It shows the level Claude Code records for the latest turn. The model
   chip no longer appends a level worked out from the wording of the prompt.

@@ -105,6 +105,11 @@ struct Cluster {
 };
 
 struct Result {
+    // One `near_duplicate` per pair, then (ANTS-5403, spec INV-12) one
+    // `figure_mismatch` for each place a pair's two passages state a different
+    // figure between the same words. A figure is a number, a decimal or a
+    // range standing alone: an id (`ANTS-12`), a date and a section number
+    // (`§ 2.3`) are not. Which value is right is the reader's call.
     QList<DocFinding::Finding> findings;
     QVector<Pair>              pairs;
     QVector<Cluster>           clusters;
@@ -146,10 +151,17 @@ public:
     Result finish();
 
 private:
+    // ANTS-5403 — a figure the passage states, and the words around it with
+    // every figure among them written `#`.
+    struct Figure {
+        QString context;
+        QString value;
+    };
     struct Entry {
-        QString      file;
-        int          line = 0;
-        QVector<int> shingles;   // interned ids, sorted ascending
+        QString         file;
+        int             line = 0;
+        QVector<int>    shingles;   // interned ids, sorted ascending
+        QVector<Figure> figures;    // in reading order
     };
 
     QHash<QString, int> m_vocab;

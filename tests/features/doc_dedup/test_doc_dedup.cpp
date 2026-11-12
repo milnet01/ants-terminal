@@ -585,3 +585,72 @@ TEST(DocDedup, Ants3691EmissionOrderIsStrongestThenLocation) {
                "INV-7 actually reads";
     }
 }
+
+namespace {
+
+// Thirty shared words with `figure` dropped in after the fifteenth.
+QString withFigure(const QString &figure) {
+    QStringList words = tokens(QStringLiteral("fg"), 30);
+    words.insert(15, figure);
+    return para(words);
+}
+
+// The figure_mismatch findings of a two-document run, added in the order given.
+QList<DocFinding::Finding> figureFindings(const QString &first, const QString &figA,
+                                          const QString &second, const QString &figB) {
+    const DocDedup::Result r =
+        run({{first, withFigure(figA)}, {second, withFigure(figB)}}, DocDedup::Options{});
+    EXPECT_EQ(pairsAt(r), 1) << "the fixture must pair, or the row asserts nothing";
+    QList<DocFinding::Finding> out;
+    for (const DocFinding::Finding &f : r.findings)
+        if (f.kind == QStringLiteral("figure_mismatch")) out << f;
+    return out;
+}
+
+}  // namespace
+
+// INV-12 (ANTS-5403) — two near-duplicate passages stating a different figure
+// in the same place report it, with both locations and both values, anchored
+// at the earlier passage whatever order the documents arrived in.
+TEST(DocDedup, Ants5403DifferingFigureReports) {
+    const auto a = QStringLiteral("a.md"), b = QStringLiteral("b.md");
+
+    const auto found = figureFindings(b, QStringLiteral("600"), a, QStringLiteral("500"));
+    ASSERT_EQ(found.size(), 1);
+    EXPECT_EQ(found.first().file, a);
+    EXPECT_EQ(found.first().line, 1);
+    EXPECT_FALSE(found.first().autoFixable);
+    EXPECT_EQ(found.first().message,
+              QStringLiteral("states 500 where b.md:1 states 600 (near \"fg13 fg14 # fg15 fg16\")"));
+
+    EXPECT_EQ(figureFindings(a, QStringLiteral("500"), b, QStringLiteral("500")).size(), 0)
+        << "the same figure is no finding";
+    EXPECT_EQ(figureFindings(a, QStringLiteral("**600-1200**,"), b, QStringLiteral("500")).size(), 1)
+        << "a range is one figure, and emphasis and punctuation around it are not part of it";
+    EXPECT_EQ(figureFindings(a, QStringLiteral("1.5"), b, QStringLiteral("2.5")).size(), 1)
+        << "a decimal is one figure";
+
+    // A phrase one passage repeats with both values is not a disagreement.
+    const auto twice = [](const QString &first, const QString &second) {
+        const QStringList pad = tokens(QStringLiteral("pd"), 30);
+        const QString phrase = QStringLiteral("aa bb %1 cc dd");
+        return para(pad.mid(0, 10)) + QLatin1Char(' ') + phrase.arg(first) + QLatin1Char(' ')
+               + para(pad.mid(10, 10)) + QLatin1Char(' ') + phrase.arg(second) + QLatin1Char(' ')
+               + para(pad.mid(20));
+    };
+    const DocDedup::Result shared =
+        run({{a, twice(QStringLiteral("500"), QStringLiteral("600"))},
+             {b, twice(QStringLiteral("600"), QStringLiteral("600"))}}, DocDedup::Options{});
+    ASSERT_EQ(pairsAt(shared), 1);
+    EXPECT_EQ(shared.findings.size(), 1) << "a value both passages state there reports nothing";
+}
+
+// INV-12 — what is not a figure: an id, a date, a section number. Each differs
+// between two copies on purpose far more often than by mistake.
+TEST(DocDedup, Ants5403IdsDatesAndSectionNumbersAreNotFigures) {
+    const auto a = QStringLiteral("a.md"), b = QStringLiteral("b.md");
+    EXPECT_EQ(figureFindings(a, QStringLiteral("ANTS-500"), b, QStringLiteral("ANTS-600")).size(), 0);
+    EXPECT_EQ(figureFindings(a, QStringLiteral("2026-10-08"), b, QStringLiteral("2026-11-05")).size(), 0);
+    EXPECT_EQ(figureFindings(a, QStringLiteral("§ 2.3"), b, QStringLiteral("§ 2.4")).size(), 0);
+    EXPECT_EQ(figureFindings(a, QStringLiteral("§2.3"), b, QStringLiteral("§2.4")).size(), 0);
+}

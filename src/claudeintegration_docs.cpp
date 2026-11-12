@@ -672,7 +672,8 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                     "written twice): paragraphs are shingled into word 3-grams and "
                     "pairs at or above min_similarity are reported as Jaccard. "
                     "Returns pairs[] ({a,b,similarity}) and clusters[] (the "
-                    "readable view). Fence-aware. REPORT-ONLY and never "
+                    "readable view). A pair stating different figures in the same "
+                    "place adds a figure_mismatch finding. Fence-aware. REPORT-ONLY and never "
                     "auto-fixable; it finds shared words, not shared meaning. "
                     "caller_cwd required.");
                 docDedup["detail"] = QStringLiteral(
@@ -685,6 +686,11 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                     "fact. pairs[] carries both ends ({a,b,similarity}); clusters[] groups "
                     "them into connected components, which is the readable view — N docs "
                     "sharing one stanza are N(N-1)/2 pairs but ONE thing to fix. "
+                    "Where a pair's two passages state a different figure between the "
+                    "same words (500 in one, 600 in the other), findings[] also carries "
+                    "a figure_mismatch naming both values and both locations; it does "
+                    "not say which is right. A figure is a number, decimal or range "
+                    "standing alone, so an id, a date and a section number are not. "
                     "REPORT-ONLY and never auto-fixable: which copy is canonical is a "
                     "question about document architecture, and deleting the wrong one "
                     "destroys the authoritative copy. Generated artifacts "

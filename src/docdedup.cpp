@@ -123,6 +123,43 @@ QVector<QPair<int, QString>> segment(const QStringList &lines) {
     return out;
 }
 
+// ANTS-5403 — the figures `paragraph` states, each with up to two words either
+// side. Read from the raw text, not normalise()'s words: stripping punctuation
+// turns `ANTS-12` and `2026-10-08` into bare numbers. A figure with fewer than
+// three real words around it has no position to compare (a list number).
+static QVector<QPair<QString, QString>> figuresOf(const QString &paragraph) {
+    static const QRegularExpression ws(QStringLiteral("\\s+"));
+    static const QRegularExpression edges(
+        QStringLiteral("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$"));
+    static const QRegularExpression figure(QStringLiteral(
+        "\\A\\d+(?:[.,]\\d+)*(?:-\\d+(?:[.,]\\d+)*)?\\z"));
+    const QString section = QStringLiteral("§");
+
+    QStringList words;
+    QVector<bool> isFigure;
+    for (const QString &chunk : paragraph.split(ws, Qt::SkipEmptyParts)) {
+        QString w = chunk.contains(section) ? section : chunk.toLower().remove(edges);
+        if (w.isEmpty()) continue;
+        isFigure << (figure.match(w).hasMatch()
+                     && (words.isEmpty() || words.last() != section));
+        words << w;
+    }
+
+    QVector<QPair<QString, QString>> out;
+    for (int i = 0; i < words.size(); ++i) {
+        if (!isFigure.at(i)) continue;
+        QStringList context;
+        int realWords = 0;
+        for (int j = qMax(0, i - 2); j <= qMin(i + 2, int(words.size()) - 1); ++j) {
+            const bool fig = isFigure.at(j);
+            context << (fig ? QStringLiteral("#") : words.at(j));
+            if (!fig) ++realWords;
+        }
+        if (realWords >= 3) out.push_back({context.join(QLatin1Char(' ')), words.at(i)});
+    }
+    return out;
+}
+
 QString normalise(const QString &text) {
     static const QRegularExpression emph(QStringLiteral("[*_`]+"));
     // UseUnicodePropertiesOption so \w means what it means in the reference
@@ -234,6 +271,8 @@ void Accumulator::add(const QString &text, const QString &relPath,
         e.line     = p.first;
         e.shingles = QVector<int>(ids.cbegin(), ids.cend());
         std::sort(e.shingles.begin(), e.shingles.end());
+        for (const auto &f : figuresOf(p.second))
+            e.figures.push_back({f.first, f.second});
         m_passages.push_back(std::move(e));
     }
 }
@@ -347,6 +386,47 @@ Result Accumulator::finish() {
         f.autoFixable = false;     // report-only, always — INV-5
         f.emissionIndex = int(r.findings.size());
         r.findings.push_back(f);
+    }
+
+    // ANTS-5403 — after every near_duplicate, in the same pair order, so
+    // INV-10's order still holds within each kind. A context reports only when
+    // the two passages share no value under it: a phrase one of them repeats
+    // with both values is not a disagreement.
+    for (int i = 0; i < r.pairs.size(); ++i) {
+        const Pair &p = r.pairs.at(i);
+        const Entry *ea = &m_passages.at(pairIdx.at(i).first);
+        const Entry *eb = &m_passages.at(pairIdx.at(i).second);
+        if (ea->file != p.a.file || ea->line != p.a.line) std::swap(ea, eb);
+
+        const auto valuesAt = [](const Entry &e, const QString &context) {
+            QStringList values;
+            for (const Figure &f : e.figures)
+                if (f.context == context) values << f.value;
+            return values;
+        };
+        QSet<QString> seen;
+        for (const Figure &fa : ea->figures) {
+            if (seen.contains(fa.context)) continue;
+            seen.insert(fa.context);
+            const QStringList mine   = valuesAt(*ea, fa.context);
+            const QStringList theirs = valuesAt(*eb, fa.context);
+            if (theirs.isEmpty()) continue;
+            if (std::any_of(mine.cbegin(), mine.cend(),
+                            [&](const QString &v) { return theirs.contains(v); }))
+                continue;
+
+            DocFinding::Finding f;
+            f.verb    = QStringLiteral("doc_dedup");
+            f.kind    = QStringLiteral("figure_mismatch");
+            f.file    = p.a.file;
+            f.line    = p.a.line;
+            f.message = QStringLiteral("states %1 where %2:%3 states %4 (near \"%5\")")
+                            .arg(mine.first(), p.b.file)
+                            .arg(p.b.line)
+                            .arg(theirs.first(), fa.context);
+            f.emissionIndex = int(r.findings.size());
+            r.findings.push_back(f);
+        }
     }
 
     // Clusters: connected components over the REPORTED pairs. N documents
