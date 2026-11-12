@@ -440,7 +440,7 @@ SSH key registered there.
   Kind: fix.
   Source: obs-build-failure-2026-09-22.
 
-- 📋 [ANTS-5578] **Speed up the OBS package builds, which take 24 to 30 minutes per distro.**
+- ✅ [ANTS-5578] **Speed up the OBS package builds, which take 24 to 30 minutes per distro.**
   User asked 2026-09-30 whether the OBS builds can be faster.
   Measured on the Mageia_10 staging build of 05b3b318 (4-CPU worker,
   29m51s): setup 74 s, the build step 1554 s, install and debuginfo
@@ -482,6 +482,11 @@ SSH key registered there.
   jobhistory -l 1 home:milnet:ants-terminal-staging ants-terminal
   Fedora_44 x86_64) and compare its %build phase with 3490 s. Close the
   item if Fedora is green and faster; candidates 1, 3-6 untried.
+  Shipped 2026-11-12 (3863808a), measured in staging rev 9, all four
+  distros green with 6270 tests: Fedora_44 65 -> 36 min (compile 3490 ->
+  1890 s, the Ninja cap now 4); Tumbleweed 43 -> 29 min (install 916 ->
+  32 s); Leap install 509 -> 31 s; Mageia ~31 -> 27 min. Install rebuilds
+  nothing on any distro. Candidates 1 and 3-6 untried; file anew if wanted.
   **Layman:** Each distro package takes about half an hour to build on openSUSE's servers, almost all of it compiling; a few settings could cut that.
   Kind: perf.
   Source: user-request-2026-09-30.

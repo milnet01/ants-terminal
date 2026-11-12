@@ -159,6 +159,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Distro packages build faster on openSUSE's build service: Fedora about 36 minutes instead of 65, Tumbleweed 29 instead of 43, because install no longer rebuilds and Fedora compiles on every CPU** (ANTS-5578)
+
 - **The Release audit can be run as a rehearsal (`-f rehearsal=true`), and the run page then says REHEARSAL** (ANTS-4590)
 
 - **`apply_edits` says when an earlier edit in the same call moved a line range: the skip carries `shifted_by`, the edit that moved it, and where the range sits now** (ANTS-4427)
