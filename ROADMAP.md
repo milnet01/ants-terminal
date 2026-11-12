@@ -86011,7 +86011,7 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   Source: in-session-2026-09-07, found while fixing ANTS-4848.
   Lanes: mcp, roadmap-store, tests.
 
-- 📋 [ANTS-4937] **mcp_trace records argument shape but no caller, so a lane's brief-required argument cannot be verified.**
+- 💭 [ANTS-4937] **mcp_trace records argument shape but no caller, so a lane's brief-required argument cannot be verified.**
   `McpTraceRecord` carries no caller identity: `ClaudeIntegration::recordToJson` (src/claudeintegration.cpp) emits id, ts_ms, tool, arg_keys, arg_bytes, raw_bytes, args_sha16, resp_bytes, duration_us, cache_hit and result — and nothing naming the caller. The ring is
   server-wide, so a parent session's calls, its subagents' and another tab's
   interleave with nothing separating them.
@@ -86032,6 +86032,20 @@ plus two gaps hit while sweeping stale spec citations under ANTS-4757.
   NOT asking for argument VALUES. "Raw argument values are never stored" is the
   right call and the key list is the whole question — presence of `exclude_glob`
   is what is asked, its contents are not.
+  Measured 2026-11-12, session 251. Half fixed by design: ants-mcpd is one
+  process per Claude Code session, so mcp_trace's ring holds only that
+  session's calls (a fresh session's ring starts at id 1; no other tab's
+  calls appear). The other half is blocked on the client: a subagent's
+  calls share the parent's MCP connection and interleave in the same ring
+  (probe: a one-call ants-explore agent's find_definition landed as id 11
+  between two of the parent's calls, with identical shape). Claude Code
+  2.1.322 does build `_meta` keys claudecode/agentId and
+  claudecode/agentType, but only for its own server: the builder returns
+  {} unless the server name is its internal one. No pid or connection id
+  can separate lanes inside one session. Workaround for a dispatcher:
+  run lanes one at a time and read the ring by id range between them.
+  Re-open when Claude Code sends agentId to third-party servers; the
+  change is then to copy that one key into each record.
   **Layman:** The call log shows which settings each tool call carried but not who made it, so you cannot check that a dispatched reviewer actually obeyed its instructions.
   Kind: enhancement.
   Source: cc-session-feedback claude-config 2026-08-28.
