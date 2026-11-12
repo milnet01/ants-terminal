@@ -170,6 +170,15 @@ a category block. The verb takes it as `op:"release"` with `dated:true`,
 which refuses `bad_args` alongside a `version`. *Tests:*
 `Ants5484DatedCloseAndSameDayMerge`, `Ants5484DatedReleaseThroughTheVerb`.
 
+### ANTS-5522 — a release writes its theme
+
+`op:"release"` takes a one-line `theme`. `closeUnreleased` writes it as
+`**Theme:** <theme>` under the new version heading, with a blank line either
+side, and it leads `released_body`; the reply echoes `theme`. It refuses
+`bad_args`, writing nothing, on a theme of two lines, a theme that is not a
+string, a section that already has a `**Theme:**` line, and `dated:true`.
+*Test:* `Ants5522ReleaseWritesTheTheme`.
+
 ### ANTS-5108 — a `### ` heading is read as the reader reads it
 
 The writer treats a line as a category heading only at column 0 and

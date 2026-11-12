@@ -583,7 +583,8 @@ static QString releaseHeadingDash(const QStringList &lines) {
 
 ReleaseResult closeUnreleased(const QString &markdown,
                               const QString &version,
-                              const QString &date) {
+                              const QString &date,
+                              const QString &theme) {
     ReleaseResult r;
     const QString ver = version.trimmed();
     if (ver.isEmpty()) {
@@ -640,6 +641,30 @@ ReleaseResult closeUnreleased(const QString &markdown,
             "changelog_log: `## [Unreleased]` is empty — there is nothing to "
             "release. Add entries first (op:\"add\" / \"add_batch\").");
         return r;
+    }
+
+    // ANTS-5522 — the theme goes in before the body is captured, so it is
+    // part of the section the caller gets back.
+    const QString themePrefix = QStringLiteral("**Theme:**");
+    if (const QString th = theme.trimmed(); !th.isEmpty()) {
+        const auto hasThemeLine = [&](const QString &l) {
+            return l.trimmed().startsWith(themePrefix);
+        };
+        const bool already = std::any_of(lines.cbegin() + unrel + 1,
+                                         lines.cbegin() + sectionEnd, hasThemeLine);
+        if (th.contains(QLatin1Char('\n')) || already) {
+            r.code  = QStringLiteral("bad_args");
+            r.error = already
+                ? QStringLiteral("changelog_log: `## [Unreleased]` already has a "
+                                 "**Theme:** line; drop `theme` or remove the line")
+                : QStringLiteral("changelog_log: `theme` must be one line");
+            return r;
+        }
+        const bool blankFollows = lines.at(unrel + 1).trimmed().isEmpty();
+        lines.insert(unrel + 1, themePrefix + QLatin1Char(' ') + th);
+        lines.insert(unrel + 1, QString());
+        if (!blankFollows) lines.insert(unrel + 3, QString());
+        sectionEnd += blankFollows ? 2 : 3;
     }
 
     const QString effDate = date.trimmed().isEmpty()

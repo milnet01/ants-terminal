@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`changelog_log op:"release"` takes a `theme` and writes the release's `**Theme:**` line in the same edit.** (ANTS-5522)
+
 - **`doc_dedup` and `doc_lint` report a `figure_mismatch` when two near-duplicate passages state different figures in the same place.** (ANTS-5403)
   The finding names both values and both locations, and does not say which is
   right. An id, a date and a section number are not figures.

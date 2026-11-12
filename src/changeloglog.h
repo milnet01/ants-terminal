@@ -211,9 +211,14 @@ struct ReleaseResult {
 // version already has a heading — re-cutting one silently would produce two
 // blocks the notes-extraction grep cannot choose between. `date` empty ⟹
 // today, matching the sibling ops.
+//
+// ANTS-5522 — a non-blank `theme` is written as the section's `**Theme:**`
+// line, under the heading, and leads `released_body`. Two lines, or a section
+// that already has a Theme line, refuses bad_args.
 ReleaseResult closeUnreleased(const QString &markdown,
                               const QString &version,
-                              const QString &date = QString());
+                              const QString &date = QString(),
+                              const QString &theme = QString());
 
 // ANTS-5484 — the versionless form (changelog-format.md § 4.1): close
 // [Unreleased] under `## <date>`. When that day's section already exists, a

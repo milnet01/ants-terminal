@@ -1602,3 +1602,67 @@ TEST(changelog_log_writer, Ants5673FixedEntryDropsTheDefectLayman) {
     EXPECT_FALSE(given.contains(QStringLiteral("layman_body_omitted")))
         << "nothing was omitted when the caller gave a body";
 }
+
+// ANTS-5522 — op:"release" takes a `theme` and writes it as the `**Theme:**`
+// line under the new version heading, in the same edit. It is part of the
+// closed section, so released_body carries it.
+TEST(changelog_log_writer, Ants5522ReleaseWritesTheTheme) {
+    const QByteArray before(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- **A thing.** (PROJ-1)\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n");
+    RemoteControl rc(nullptr);
+    const auto release = [&](const QString &dir, const QJsonValue &theme, bool dated) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = dir;
+        req[QStringLiteral("op")]         = QStringLiteral("release");
+        req[QStringLiteral("date")]       = QStringLiteral("2026-08-14");
+        if (dated) req[QStringLiteral("dated")] = true;
+        else       req[QStringLiteral("version")] = QStringLiteral("0.2.0");
+        if (!theme.isUndefined()) req[QStringLiteral("theme")] = theme;
+        return rc.cmdChangelogLog(req).object();
+    };
+    const auto fresh = [&](QTemporaryDir &tmp, const QByteArray &content) {
+        return tmp.isValid() && writeFile(clPath(tmp.path()), content);
+    };
+
+    QTemporaryDir themed;
+    ASSERT_TRUE(fresh(themed, before));
+    const QJsonObject resp = release(themed.path(), QStringLiteral("  Faster search  "), false);
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(resp.value(QStringLiteral("theme")).toString(), QStringLiteral("Faster search"));
+    EXPECT_TRUE(contains(readFileStd(clPath(themed.path())),
+                         "## [0.2.0] - 2026-08-14\n\n**Theme:** Faster search\n\n### Added\n"));
+    EXPECT_TRUE(resp.value(QStringLiteral("released_body")).toString()
+                    .startsWith(QStringLiteral("**Theme:** Faster search\n\n### Added")));
+
+    // No theme, no line: the existing behaviour.
+    QTemporaryDir plain;
+    ASSERT_TRUE(fresh(plain, before));
+    ASSERT_TRUE(release(plain.path(), QJsonValue::Undefined, false)
+                    .value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(contains(readFileStd(clPath(plain.path())), "**Theme:**"));
+
+    // Refusals, each writing nothing: two lines, a non-string, a section that
+    // already carries a Theme line, and the dated form, which has no heading
+    // of its own on a same-day merge.
+    QByteArray already(before);
+    already.replace("### Added", "**Theme:** Typed by hand\n\n### Added");
+    const struct { QByteArray content; QJsonValue theme; bool dated; } refused[] = {
+        {before, QStringLiteral("one\ntwo"), false},
+        {before, 7, false},
+        {already, QStringLiteral("Faster search"), false},
+        {before, QStringLiteral("Faster search"), true},
+    };
+    for (const auto &c : refused) {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(fresh(tmp, c.content));
+        EXPECT_EQ(release(tmp.path(), c.theme, c.dated).value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_args"));
+        EXPECT_EQ(readFileStd(clPath(tmp.path())), c.content.toStdString());
+    }
+}

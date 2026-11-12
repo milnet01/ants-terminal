@@ -1040,9 +1040,20 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 QStringLiteral("changelog_log: `dated:true` closes under the "
                                "date alone, so it takes no `version`"));
         }
+        // ANTS-5522 — the release's `**Theme:**` line. A dated close may
+        // merge into a section that already exists, so it has no one place
+        // for a theme and refuses one.
+        const QJsonValue themeArg = req.value(QStringLiteral("theme"));
+        if (!themeArg.isUndefined() && !themeArg.isString())
+            return clErr(QStringLiteral("bad_args"),
+                QStringLiteral("changelog_log: `theme` must be a string"));
+        const QString theme = themeArg.toString().trimmed();
+        if (dated && !theme.isEmpty())
+            return clErr(QStringLiteral("bad_args"),
+                QStringLiteral("changelog_log: `dated:true` takes no `theme`"));
         const auto res = dated
             ? ChangelogLog::closeUnreleasedDated(clMarkdown, relDate)
-            : ChangelogLog::closeUnreleased(clMarkdown, version, relDate);
+            : ChangelogLog::closeUnreleased(clMarkdown, version, relDate, theme);
         if (!res.ok) return clErr(res.code, res.error);
 
         QJsonObject out;
@@ -1054,6 +1065,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             out["merged"] = res.merged;
         } else {
             out["version"] = version.trimmed();
+            if (!theme.isEmpty()) out["theme"] = theme;
         }
         out["heading"]       = res.heading;
         // ANTS-4833 — on the dry run as well as the write. It is the release

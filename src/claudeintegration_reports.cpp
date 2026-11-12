@@ -661,7 +661,9 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "newest dated heading, ANTS-5388) and opens a fresh "
                         "empty `[Unreleased]` above it — the one changelog "
                         "edit every release makes, and previously the only one "
-                        "this verb did not own. Takes `version` (required; "
+                        "this verb did not own. An optional one-line `theme` "
+                        "is written as the section's **Theme:** line. "
+                        "Takes `version` (required; "
                         "`date` defaults to today and the RESOLVED value is "
                         "echoed back as `date`, on the dry run as well as the "
                         "write — ANTS-4833, because it is the release path's "
@@ -863,6 +865,12 @@ void appendToolSchemasReports(QJsonArray &tools) {
                             "`merged:true`. Refuses `merge_unsupported` when "
                             "[Unreleased] holds text outside a category block.");
                         clProps["dated"] = d;
+                        // ANTS-5522
+                        QJsonObject th; th["type"] = "string";
+                                        th["description"] = QStringLiteral(
+                            "release: one line written as **Theme:** under the "
+                            "new version heading. Not with dated.");
+                        clProps["theme"] = th;
                     }
                     clProps["summary"]    = clSummary;
                     clProps["category"]   = clCategory;

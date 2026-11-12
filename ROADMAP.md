@@ -89158,12 +89158,18 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of Deedbox session, 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the **Theme:** line by hand.**
+- ✅ [ANTS-5522] **changelog_log op:"release" takes no theme, so every release adds the **Theme:** line by hand.**
   cut-release adds a **Theme:** line under the new version heading on
   every cut. A `theme` argument on op:"release" would write it in the
   same edit.
   On ship: message the Pressless session (it verifies on its code).
   Promised 2026-09-29.
+  Shipped 2026-11-12: `theme` on op:"release", one line, written as
+  `**Theme:** <theme>` under the version heading and leading
+  released_body. Refuses bad_args with dated:true, on two lines, and
+  where [Unreleased] already has a Theme line. Contract:
+  tests/features/changelog_log_writer/spec.md § ANTS-5522. Pressless
+  told.
   **Layman:** Closing a release in the changelog cannot record the release's theme, so it is typed in by hand each time.
   Kind: enhancement.
   Source: claude-87 relay of Pressless session, 2026-09-28.
