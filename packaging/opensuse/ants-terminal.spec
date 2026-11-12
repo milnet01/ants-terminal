@@ -262,9 +262,24 @@ export.
 %build
 # -DANTS_TESTS=ON is the CMake default; kept explicit so distro rebuilds
 # never silently lose the ctest invocation in %%check.
+#
+# ANTS-5578 — two build-time settings, measured from the staging logs of
+# 2026-10-30 to 2026-11-12:
+# * CMAKE_SKIP_INSTALL_ALL_DEPENDENCY: openSUSE's %%cmake_install runs
+#   `make install`, which rebuilds `all` first. build_info_values.cpp carries
+#   the build time, so by then it has changed: it recompiled and every binary
+#   relinked under LTO, 916 s of Tumbleweed's install step. %%cmake_build has
+#   already built everything install needs.
+# * ANTS_COMPILE_POOL: the compile cap (a quarter of the CPUs, to keep a
+#   desktop responsive) binds only under Ninja, which Fedora uses. Its
+#   compile step took 3490 s on 4 CPUs against Mageia's 1469 s under make -j4
+#   on the same worker size. A build worker has no desktop, so use every CPU
+#   it was given. Unset, the macro is empty and CMake's own cap applies.
 %cmake \
   -DCMAKE_BUILD_TYPE=Release \
-  -DANTS_TESTS=ON
+  -DANTS_TESTS=ON \
+  -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=ON \
+  -DANTS_COMPILE_POOL=%{?_smp_build_ncpus}
 %cmake_build
 
 %install
