@@ -1,7 +1,7 @@
-// Feature-conformance test for ANTS-1888 — per-tab model + thinking-level
-// status-bar chip. See tests/features/model_state_chip/spec.md and the
-// behavioural coverage of `thinkingLevelFromLatestUserTurn` /
-// `thinkingLevelLabel` in tests/features/model_recommender/.
+// Feature-conformance test for ANTS-1888 — per-tab model and thinking-level
+// status-bar chips. See tests/features/model_state_chip/spec.md and the
+// behavioural coverage of `modelDisplayName` /
+// `effortFromLatestAssistantTurn` in tests/features/model_recommender/.
 //
 // This bundle is a source-grep contract: the chip is a GUI widget whose
 // wiring (member, refresh method, 2 s timer connect, tab-switch reset)
@@ -78,12 +78,23 @@ TEST(ModelStateChip, ChipNamesTheModelFromItsId) {
         << "refreshModelStateChip must name the model with modelDisplayName";
 }
 
-// The chip must NEVER render the word "Unknown" — when the parser returns
-// Unknown, thinkingLevelLabel returns empty and the chip drops the " · …"
-// suffix. The render path checks isEmpty() before appending.
-TEST(ModelStateChip, RenderPathGuardsAgainstUnknownLabel) {
+// ANTS-6749 — the thinking level has its own pill, fed by what Claude Code
+// recorded, and the model pill no longer carries a guessed suffix. The reader
+// is covered behaviourally in model_recommender (ModelRecommenderEffort).
+TEST(ModelStateChip, ThinkingLevelHasItsOwnPill) {
+    const std::string h   = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_H_PATH);
     const std::string cpp = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    EXPECT_TRUE(has(cpp, "thinkLabel.isEmpty()"))
-        << "refreshModelStateChip must guard the \" · \" suffix on "
-           "an empty thinkLabel so \"Unknown\" never reaches the UI";
+    EXPECT_TRUE(has(h, "m_thinkingBtn"));
+    EXPECT_TRUE(has(cpp, "ModelRecommender::effortFromLatestAssistantTurn(transcriptPath)"))
+        << "the pill must show the level the transcript records";
+    EXPECT_TRUE(has(cpp, "m_thinkingBtn->setVisible(!effort.isEmpty())"))
+        << "no recorded level, no pill: it must never show an empty value";
+    EXPECT_TRUE(has(cpp, "if (m_thinkingBtn)   m_thinkingBtn->hide();"))
+        << "resetForTabSwitch must hide the pill with the model pill";
+    EXPECT_FALSE(has(cpp, "thinkingLevelFromLatestUserTurn"))
+        << "the model pill must not append a level guessed from the prompt";
+    const auto modelPos = cpp.find("addPermanentWidget(m_modelStateBtn)");
+    const auto thinkPos = cpp.find("addPermanentWidget(m_thinkingBtn)");
+    ASSERT_NE(thinkPos, std::string::npos);
+    EXPECT_LT(modelPos, thinkPos) << "the thinking pill sits beside the model pill";
 }

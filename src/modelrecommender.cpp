@@ -95,8 +95,7 @@ QString modelTierFromLocalCommand(const QJsonObject &ev) {
 //
 // Each compiled as `(?:^|\W)/?<alt>(?:\W|$)`: word-boundary stem, optional
 // `/`-prefix for `/commit` slash-command form. Lazy-built once per process.
-// Linear; no nested quantifiers — no ReDoS surface (sibling regex idiom
-// matches `thinkingLevelFromLatestUserTurn` further down this TU).
+// Linear; no nested quantifiers — no ReDoS surface.
 const QStringList kCommitIntentAlternations{
     QStringLiteral("commit(?:s|ted|ting)?"),
     QStringLiteral("push(?:es|ed|ing)?"),
@@ -413,70 +412,23 @@ QString modelDisplayName(const QString &modelId)
     return name;
 }
 
-// ANTS-1888 — Inline-directive parser for thinking budgets. Tail-reads the
-// transcript like score(), but walks for the most recent `{type:"user"}` line
-// rather than aggregating assistant turns. Pure regex match against the
-// joined user text — Claude Code's directive set is inline keywords + the
-// canonical /ultrathink, /think, /nothink slash forms (mainwindow's Thinking
-// Level submenu). Linear regex; no ReDoS surface (fixed alternations, no
-// nested quantifiers).
-ThinkingLevel thinkingLevelFromLatestUserTurn(const QString &transcriptPath)
+QString effortFromLatestAssistantTurn(const QString &transcriptPath)
 {
-    const QStringList allLines =
+    const QStringList lines =
         ModelSwitchLedger::readTranscriptTail(transcriptPath).value_or(QStringList());
-
-    // Walk in reverse for the most recent {type:"user"} line a person typed.
-    // ANTS-1892 — Claude Code writes every tool reply as a user-role line
-    // holding only a tool_result block. Stopping there answered Unknown for
-    // nearly every live tab, so keep walking past a line with no text.
-    QString userText;
-    for (int i = allLines.size() - 1; i >= 0; --i) {
-        const QJsonObject obj =
-            QJsonDocument::fromJson(allLines[i].toUtf8()).object();
-        if (obj.value(QStringLiteral("type")).toString() !=
-                QStringLiteral("user")) continue;
-        userText = ModelSwitchLedger::userLineText(obj).toLower();
-        if (!userText.isEmpty()) break;
+    // The value goes on screen: accept a plain word and nothing else.
+    static const QRegularExpression plainWord(QStringLiteral("^[a-z]{1,16}$"));
+    for (int i = lines.size() - 1; i >= 0; --i) {
+        const QJsonObject obj = QJsonDocument::fromJson(lines[i].toUtf8()).object();
+        if (obj.value(QLatin1String("type")).toString() != QLatin1String("assistant"))
+            continue;
+        QJsonValue v = obj.value(QLatin1String("perTurnEffort"));
+        if (v.isUndefined()) v = obj.value(QLatin1String("effort"));
+        if (v.isUndefined()) continue;   // a synthetic record carries neither
+        const QString effort = v.toString().toLower();
+        return plainWord.match(effort).hasMatch() ? effort : QString();
     }
-
-    if (userText.isEmpty()) return ThinkingLevel::Unknown;
-
-    // Order matters — longest match wins so "think hard" / "ultrathink" beat
-    // the substring "think". Word boundaries prevent matches inside identifiers
-    // like "rethink" or "thinkpad". Slash-prefixed variants pair with the
-    // mainwindow.cpp Thinking-Level submenu (`/ultrathink` / `/think` /
-    // `/nothink`); `/nothink` resolves explicitly to Standard rather than
-    // Unknown so the chip shows the user's last *active* choice.
-    static const QRegularExpression kNoThink(
-        QStringLiteral("(?:^|\\W)/?nothink(?:\\W|$)"),
-        QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression kUltra(
-        QStringLiteral("(?:^|\\W)/?ultrathink(?:\\W|$)"),
-        QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression kThinkHard(
-        QStringLiteral("(?:^|\\W)/?think[ -]hard(?:er)?(?:\\W|$)"),
-        QRegularExpression::CaseInsensitiveOption);
-    static const QRegularExpression kThink(
-        QStringLiteral("(?:^|\\W)/?think(?:\\W|$)"),
-        QRegularExpression::CaseInsensitiveOption);
-
-    if (kUltra.match(userText).hasMatch())     return ThinkingLevel::Ultrathink;
-    if (kThinkHard.match(userText).hasMatch()) return ThinkingLevel::ThinkHard;
-    if (kNoThink.match(userText).hasMatch())   return ThinkingLevel::Standard;
-    if (kThink.match(userText).hasMatch())     return ThinkingLevel::Think;
-    return ThinkingLevel::Standard;
-}
-
-QString thinkingLevelLabel(ThinkingLevel level)
-{
-    switch (level) {
-    case ThinkingLevel::Ultrathink: return QStringLiteral("ultrathink");
-    case ThinkingLevel::ThinkHard:  return QStringLiteral("think hard");
-    case ThinkingLevel::Think:      return QStringLiteral("think");
-    case ThinkingLevel::Standard:   return QStringLiteral("standard");
-    case ThinkingLevel::Unknown:    return QString();
-    }
-    return QString();
+    return {};
 }
 
 }  // namespace ModelRecommender

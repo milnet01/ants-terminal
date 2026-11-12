@@ -343,169 +343,58 @@ TEST(ModelRecommender, EmptyModelCommandArgIgnored) {
     EXPECT_EQ(result.currentModel, QStringLiteral("claude-opus-4-7"));
 }
 
-// ----- ANTS-1888 — thinkingLevelFromLatestUserTurn() ---------------------
+// ----- ANTS-6749 — effortFromLatestAssistantTurn() -----------------------
 
 namespace {
 
-// Append a {type:"user"} JSONL line with the given text content. The chip
-// helper reads the LATEST user turn, so call order matters.
-void appendUserTurn(QTemporaryFile &f, const QString &text) {
-    if (!f.isOpen()) {
-        // Re-open for append between writes — QTemporaryFile auto-removes.
-        ASSERT_TRUE(f.open());
-    }
-    QJsonObject turn;
-    turn["type"] = "user";
-    QJsonObject msg;
-    QJsonArray content;
-    QJsonObject block;
-    block["type"] = "text";
-    block["text"] = text;
-    content.append(block);
-    msg["content"] = content;
-    turn["message"] = msg;
-    QTextStream out(&f);
-    out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
-    out.flush();
+// Write raw JSONL lines to a temp file and return its path.
+QString writeLines(QTemporaryFile &f, const QList<QByteArray> &lines) {
+    EXPECT_TRUE(f.open());
+    for (const QByteArray &l : lines) { f.write(l); f.write("\n"); }
+    f.close();
+    return f.fileName();
 }
 
 }  // namespace
 
-TEST(ModelRecommenderThinkingLevel, AbsentTranscriptReturnsUnknown) {
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(
-                  QStringLiteral("/no/such/file.jsonl")),
-              ModelRecommender::ThinkingLevel::Unknown);
+TEST(ModelRecommenderEffort, AbsentOrEmptyTranscriptIsEmpty) {
+    EXPECT_TRUE(ModelRecommender::effortFromLatestAssistantTurn(
+        QStringLiteral("/nonexistent/path/no-such.jsonl")).isEmpty());
+    QTemporaryFile f;
+    EXPECT_TRUE(ModelRecommender::effortFromLatestAssistantTurn(
+        writeLines(f, {})).isEmpty());
 }
 
-TEST(ModelRecommenderThinkingLevel, EmptyTranscriptReturnsUnknown) {
-    QTemporaryFile f; ASSERT_TRUE(f.open()); f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Unknown);
+TEST(ModelRecommenderEffort, ReadsPerTurnEffortOfTheNewestAssistantRecord) {
+    QTemporaryFile f;
+    const QString path = writeLines(f, {
+        R"({"type":"assistant","effort":"low","perTurnEffort":"low","message":{}})",
+        R"({"type":"user","message":{"content":"go"}})",
+        R"({"type":"assistant","effort":"medium","perTurnEffort":"High","message":{}})",
+        R"({"type":"user","message":{"content":[{"type":"tool_result"}]}})",
+    });
+    EXPECT_EQ(ModelRecommender::effortFromLatestAssistantTurn(path).toStdString(),
+              "high") << "the per-turn value of the newest record, lower-cased";
 }
 
-TEST(ModelRecommenderThinkingLevel, PlainPromptIsStandard) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("Please fix the off-by-one in foo.cpp."));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Standard);
+TEST(ModelRecommenderEffort, FallsBackToEffortAndSkipsRecordsWithout) {
+    QTemporaryFile f;
+    const QString path = writeLines(f, {
+        R"({"type":"assistant","effort":"max","message":{}})",
+        R"({"type":"assistant","message":{"model":"<synthetic>"}})",
+    });
+    EXPECT_EQ(ModelRecommender::effortFromLatestAssistantTurn(path).toStdString(),
+              "max") << "a record with neither field is passed over";
 }
 
-TEST(ModelRecommenderThinkingLevel, UltrathinkDetected) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("ultrathink about whether to refactor this."));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Ultrathink);
-}
-
-TEST(ModelRecommenderThinkingLevel, SlashUltrathinkDetected) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("/ultrathink"));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Ultrathink);
-}
-
-TEST(ModelRecommenderThinkingLevel, ThinkHardBeatsThink) {
-    // Longest-match-wins: "think hard" must not match the bare "think" rule.
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("Please think hard about the cache."));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::ThinkHard);
-}
-
-TEST(ModelRecommenderThinkingLevel, ThinkHarderAliasedToThinkHard) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("think harder than last time"));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::ThinkHard);
-}
-
-TEST(ModelRecommenderThinkingLevel, BareThinkDetected) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("think about this for a moment."));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Think);
-}
-
-TEST(ModelRecommenderThinkingLevel, NoThinkExplicitlyStandard) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("/nothink — just do the bump."));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Standard);
-}
-
-TEST(ModelRecommenderThinkingLevel, NoFalseMatchOnSubstring) {
-    // "rethink" must not match "think"; "thinkpad" must not match "think".
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("Let's rethink the thinkpad design."));
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Standard);
-}
-
-TEST(ModelRecommenderThinkingLevel, LatestUserTurnWins) {
-    QTemporaryFile f; ASSERT_TRUE(f.open());
-    appendUserTurn(f, QStringLiteral("ultrathink the design"));
-    appendUserTurn(f, QStringLiteral("just commit and push"));   // latest
-    f.close();
-    EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-              ModelRecommender::ThinkingLevel::Standard);
-}
-
-// ANTS-1892 — tool replies are user-role lines with only a tool_result block.
-// They sit after the human prompt in every live session, so the level comes
-// from the prompt behind them; a tail of tool replies alone is still Unknown.
-TEST(ModelRecommenderThinkingLevel, Ants1892ToolResultLinesAreSkipped) {
-    const auto appendToolResult = [](QTemporaryFile &f) {
-        QJsonObject block;
-        block["type"]        = "tool_result";
-        block["tool_use_id"] = "toolu_1";
-        block["content"]     = "ok";
-        QJsonArray content;
-        content.append(block);
-        QJsonObject msg;
-        msg["content"] = content;
-        QJsonObject turn;
-        turn["type"]    = "user";
-        turn["message"] = msg;
-        QTextStream out(&f);
-        out << QJsonDocument(turn).toJson(QJsonDocument::Compact) << "\n";
-        out.flush();
-    };
-    {
-        QTemporaryFile f; ASSERT_TRUE(f.open());
-        appendUserTurn(f, QStringLiteral("ultrathink the migration plan"));
-        appendToolResult(f);
-        appendToolResult(f);
-        f.close();
-        EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-                  ModelRecommender::ThinkingLevel::Ultrathink)
-            << "tool replies after the prompt must not hide it";
-    }
-    {
-        // ANTS-6142 — a line whose only text block is empty is no prompt
-        // either; the three transcript readers now share one rule.
-        QTemporaryFile f; ASSERT_TRUE(f.open());
-        appendUserTurn(f, QStringLiteral("ultrathink the migration plan"));
-        appendUserTurn(f, QString());
-        f.close();
-        EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-                  ModelRecommender::ThinkingLevel::Ultrathink)
-            << "an empty text block must not hide the prompt behind it";
-    }
-    {
-        QTemporaryFile f; ASSERT_TRUE(f.open());
-        appendToolResult(f);
-        f.close();
-        EXPECT_EQ(ModelRecommender::thinkingLevelFromLatestUserTurn(f.fileName()),
-                  ModelRecommender::ThinkingLevel::Unknown)
-            << "with no typed prompt at all there is nothing to read";
+TEST(ModelRecommenderEffort, AValueThatIsNotAPlainWordIsEmpty) {
+    for (const char *bad : {R"("<b>x</b>")", R"("two words")", "7", R"("")",
+                            R"("averyveryverylongvaluethatisnotaneffort")"}) {
+        QTemporaryFile f;
+        const QString path = writeLines(f, {
+            QByteArray(R"({"type":"assistant","perTurnEffort":)") + bad + "}"});
+        EXPECT_TRUE(ModelRecommender::effortFromLatestAssistantTurn(path).isEmpty())
+            << "value: " << bad;
     }
 }
 
@@ -790,25 +679,6 @@ TEST(ModelRecommenderCommitIntent, NonCommitUserTurnFallsThroughToLadder) {
     EXPECT_EQ(result.tier, ModelRecommender::Tier::Opus)
         << "non-commit user turn must NOT short-circuit; ladder should run. "
            "reason: " << result.reason.toStdString();
-}
-
-TEST(ModelRecommenderThinkingLevel, LabelMappings) {
-    EXPECT_EQ(ModelRecommender::thinkingLevelLabel(
-                  ModelRecommender::ThinkingLevel::Ultrathink),
-              QStringLiteral("ultrathink"));
-    EXPECT_EQ(ModelRecommender::thinkingLevelLabel(
-                  ModelRecommender::ThinkingLevel::ThinkHard),
-              QStringLiteral("think hard"));
-    EXPECT_EQ(ModelRecommender::thinkingLevelLabel(
-                  ModelRecommender::ThinkingLevel::Think),
-              QStringLiteral("think"));
-    EXPECT_EQ(ModelRecommender::thinkingLevelLabel(
-                  ModelRecommender::ThinkingLevel::Standard),
-              QStringLiteral("standard"));
-    // Unknown maps to empty so the chip hides the thinking half rather
-    // than ever rendering the word "Unknown".
-    EXPECT_TRUE(ModelRecommender::thinkingLevelLabel(
-                    ModelRecommender::ThinkingLevel::Unknown).isEmpty());
 }
 
 // ===== ANTS-1944 — score() provenance fields =====

@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **A status-bar chip shows Claude Code's thinking level, such as "Thinking: medium", beside the model chip.** (ANTS-6749)
+  It shows the level Claude Code records for the latest turn. The model
+  chip no longer appends a level worked out from the wording of the prompt.
+
 - **doc_integrity (and doc_lint) report a table_columns finding where a Markdown table row, or its delimiter row, has a different number of cells from its header, counted as GitHub counts them** (ANTS-5402)
 
 - **file_outline outlines Catch2 tests: TEST_CASE, TEST_CASE_METHOD and SCENARIO by their quoted names, and each SECTION inside one as kind "section"** (ANTS-5349)

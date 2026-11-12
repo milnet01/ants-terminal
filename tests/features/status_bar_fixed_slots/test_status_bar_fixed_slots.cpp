@@ -137,7 +137,8 @@ TEST(StatusBarFixedSlots, Inv6OccasionalLeftSteadyInOrder) {
     std::size_t at = 0;
     for (const char *m : {"m_mailChip", "m_bgTasksBtn", "m_tasksBtn",
                           "m_undoSwitchBtn", "m_errorLabel", "m_statusLabel",
-                          "m_modelBtn", "m_modelStateBtn", "m_contextBar",
+                          "m_modelBtn", "m_modelStateBtn", "m_thinkingBtn",
+                          "m_contextBar",
                           "m_tokensSavedChip", "m_reviewBtn"}) {
         const std::string call = std::string("addPermanentWidget(") + m + ")";
         const auto pos = src.find(call);
@@ -163,5 +164,9 @@ TEST(StatusBarFixedSlots, Inv6OccasionalLeftSteadyInOrder) {
     EXPECT_EQ(body.find("statusbarslot::pin(m_modelStateBtn"), std::string::npos)
         << "the model pill fits its text";
     EXPECT_NE(body.find("statusbarslot::setRetain(m_modelStateBtn, true)"),
+              std::string::npos);
+    // ANTS-6749 — so does the thinking pill beside it.
+    EXPECT_EQ(body.find("statusbarslot::pin(m_thinkingBtn"), std::string::npos);
+    EXPECT_NE(body.find("statusbarslot::setRetain(m_thinkingBtn, true)"),
               std::string::npos);
 }

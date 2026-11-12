@@ -125,13 +125,13 @@ public:
     void refreshModelChip();   // ANTS-1226
 
     // ANTS-1888 — Passive per-tab readout of the focused tab's current
-    // Claude model + last-used thinking level. Pairs with the recommender
-    // chip's INV-14 suppression (when the auto-switcher is on the
-    // recommender hides; this chip stays visible so the user still knows
-    // what model is in use). Hides entirely when no transcript is found
-    // for the focused tab; hides only the thinking half when the level is
-    // undetectable. Reuses ModelRecommender::modelDisplayName +
-    // thinkingLevelFromLatestUserTurn.
+    // Claude model, and (ANTS-6749) its thinking level in a second pill.
+    // Pairs with the recommender chip's INV-14 suppression (when the
+    // auto-switcher is on the recommender hides; this chip stays visible so
+    // the user still knows what model is in use). Both hide when no
+    // transcript is found for the focused tab; the thinking pill alone
+    // hides when the transcript records no level. Reuses
+    // ModelRecommender::modelDisplayName + effortFromLatestAssistantTurn.
     void refreshModelStateChip();
     // ANTS-3579 — render the tokens-saved pill for the FOCUSED tab's project.
     // Called from the tokensSavedUpdated nudge AND MainWindow::
@@ -390,11 +390,13 @@ private:
     QString                m_modelChipPath;
     qint64                 m_modelChipMtimeMs = -1;
 
-    // ANTS-1888 — Passive model + thinking-level readout. Sibling of
+    // ANTS-1888 — Passive model readout (the thinking level has its own
+    // pill, m_thinkingBtn, added directly after it). Sibling of
     // m_modelBtn; placed immediately after it in addPermanentWidget order
     // so when INV-14 hides the recommender chip, this chip occupies the
     // same visual slot.
     QPushButton           *m_modelStateBtn = nullptr;
+    QPushButton           *m_thinkingBtn = nullptr;   // ANTS-6749
     QString                m_modelStatePath;
     qint64                 m_modelStateMtimeMs = -1;
     // ANTS-1926 — tracks last-rendered pending tier so the mtime short-circuit

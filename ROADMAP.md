@@ -69382,7 +69382,7 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-11-12.
   Lanes: status-bar.
 
-- 📋 [ANTS-6749] **Show Claude Code's thinking level in its own status-bar chip, read from the transcript.**
+- ✅ [ANTS-6749] **Show Claude Code's thinking level in its own status-bar chip, read from the transcript.**
   User request 2026-11-12. Today the model chip appends a guess
   ("standard") made by scanning the last prompt for think/ultrathink
   (thinkingLevelFromLatestUserTurn). Claude Code records the real value:
@@ -69392,6 +69392,15 @@ remainder, captured so they don't drop on the floor.
   refreshModelStateChip, showing the last assistant record's
   perTurnEffort; drop the guessed suffix from the model chip. Hot reload:
   terminal code, needs a relaunch the user chooses; no running state.
+  Shipped 2026-11-12. m_thinkingBtn ("Thinking: <level>") after
+  m_modelStateBtn, fed by
+  ModelRecommender::effortFromLatestAssistantTurn (perTurnEffort, else
+  effort; a record with neither is passed over). Removed
+  thinkingLevelFromLatestUserTurn, thinkingLevelLabel and ThinkingLevel
+  with their tests: nothing else used them. Tests:
+  ModelRecommenderEffort (red first against a stub),
+  ModelStateChip.ThinkingLevelHasItsOwnPill, StatusBarFixedSlots INV-6.
+  Not seen on screen: needs a terminal relaunch the user chooses.
   **Layman:** A separate status-bar label will show how hard Claude is set to think (low to max), taken from Claude Code itself.
   Kind: feature.
   Source: user-report-2026-11-12.

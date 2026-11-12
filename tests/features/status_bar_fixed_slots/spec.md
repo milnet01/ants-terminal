@@ -30,13 +30,13 @@ Each pill keeps a fixed slot wide enough for its longest text.
   appears. Breaks when: either is appended with `addPermanentWidget`.
 - **INV-6** (ANTS-5762, user 2026-10-19) — the controller adds its pills in
   this order: mail, Background Tasks, task list, Undo, exit code, Claude
-  status, model suggestion, current model, context, tokens saved, Review
-  Changes. The first five are pinned with `retainWhenHidden=false`, so a
+  status, model suggestion, current model, thinking level (ANTS-6749),
+  context, tokens saved, Review Changes. The first five are pinned with `retainWhenHidden=false`, so a
   hidden one holds no gap; the group is right-aligned, so their showing and
-  hiding moves none of the pills after them. The current-model pill is not
-  pinned: it fits its text, and keeps its slot when hidden. Breaks when: a
-  pill is added out of order, an occasional pill keeps its slot, or the
-  model pill is pinned again.
+  hiding moves none of the pills after them. The current-model and
+  thinking-level pills are not pinned: each fits its text, and keeps its
+  slot when hidden. Breaks when: a pill is added out of order, an
+  occasional pill keeps its slot, or either of those two is pinned.
 
 Tests: `test_status_bar_fixed_slots.cpp` — INV-1 and INV-2 behaviourally
 on real widgets; INV-3 to INV-6 by source scrape.

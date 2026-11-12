@@ -69,9 +69,10 @@ to the user's configured floor.
   mutable state; calling it twice with the same path and unchanged
   file returns the same result.
 
-## ANTS-1892 — the thinking level reads past tool replies
+## ANTS-6749 — the thinking level is the one Claude Code recorded
 
-`thinkingLevelFromLatestUserTurn` skips a user-role line that carries no
-text, such as a `tool_result` envelope or an empty `text` block, and reads the most recent line
-a person typed. A transcript with no such line still returns `Unknown`.
-*Test:* `ModelRecommenderThinkingLevel.Ants1892ToolResultLinesAreSkipped`.
+`effortFromLatestAssistantTurn` returns the top-level `perTurnEffort`,
+else `effort`, of the newest assistant record that carries either,
+lower-cased. A record with neither is passed over. A value that is not
+a plain word of letters returns empty, as does a missing transcript.
+*Test:* the `ModelRecommenderEffort` suite.

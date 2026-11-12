@@ -447,11 +447,10 @@ Listed only where behavior isn't obvious from the name.
   `currentModelTsMs` (assistant-turn timestamp in ms, 0 on command/absent
   timestamp) so the gate can reconcile a stale transcript read against the
   actuator's actual last-set tier. No side effects. ANTS-1226. Sibling
-  `thinkingLevelFromLatestUserTurn` (ANTS-1888) is a pure helper for the
-  passive model-state chip — same tail-read pattern, but walks for the
-  most recent `{type:"user"}` line and matches the inline thinking
-  directive set (`ultrathink` / `think harder` / `think hard` / `think`
-  / `/nothink` → Standard). Scorer-v2 (ANTS-1890, shipped 2026-05-26) adds two pure helpers:
+  `modelDisplayName` (ANTS-6748) names a model id for the model chip
+  ("Fable 5.2"). `effortFromLatestAssistantTurn` (ANTS-6749) feeds the
+  thinking-level chip — same tail-read pattern, returning the
+  `perTurnEffort` Claude Code recorded on the newest assistant record. Scorer-v2 (ANTS-1890, shipped 2026-05-26) adds two pure helpers:
   `hasCommitIntent` (commit-intent hard override on the latest user turn
   — stem-regex over commit/push/stage/bump/rebase with per-keyword
   English morphology) and `weightForTurnIndex` (1.0×→3.0× linear

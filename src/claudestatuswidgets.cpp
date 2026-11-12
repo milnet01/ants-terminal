@@ -427,11 +427,21 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     // tooltip documents the source for keyboard-only users).
     m_modelStateBtn = new QPushButton(QString(), m_statusBar);
     m_modelStateBtn->setObjectName(QStringLiteral("claudeModelStateBtn"));
-    m_modelStateBtn->setAccessibleName(tr("Current Claude model and thinking level"));
+    m_modelStateBtn->setAccessibleName(tr("Current Claude model"));
     m_modelStateBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
     m_modelStateBtn->setFlat(true);   // visual cue: passive readout, not actionable
     m_modelStateBtn->setFocusPolicy(Qt::NoFocus);
     m_modelStateBtn->hide();
+
+    // ANTS-6749 — the thinking level Claude Code recorded, in its own pill
+    // beside the model. Passive, like the model pill.
+    m_thinkingBtn = new QPushButton(QString(), m_statusBar);
+    m_thinkingBtn->setObjectName(QStringLiteral("claudeThinkingBtn"));
+    m_thinkingBtn->setAccessibleName(tr("Claude thinking level"));
+    m_thinkingBtn->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Preferred);
+    m_thinkingBtn->setFlat(true);
+    m_thinkingBtn->setFocusPolicy(Qt::NoFocus);
+    m_thinkingBtn->hide();
 
     // ANTS-1893 — Undo button. Hidden by default; emitSwitchSurfacing shows it for ~10 s after
     // a live auto-switch fires.
@@ -463,6 +473,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     m_statusBar->addPermanentWidget(m_statusLabel);
     m_statusBar->addPermanentWidget(m_modelBtn);
     m_statusBar->addPermanentWidget(m_modelStateBtn);
+    m_statusBar->addPermanentWidget(m_thinkingBtn);
     m_statusBar->addPermanentWidget(m_contextBar);
     m_statusBar->addPermanentWidget(m_tokensSavedChip);
     m_statusBar->addPermanentWidget(m_reviewBtn);
@@ -474,6 +485,7 @@ ClaudeStatusBarController::ClaudeStatusBarController(QStatusBar *statusBar,
     statusinfo::attach(m_tokensSavedChip, tr("Tokens saved"));
     statusinfo::attach(m_mailChip,        tr("Mail"));
     statusinfo::attach(m_modelStateBtn,   tr("Model"));
+    statusinfo::attach(m_thinkingBtn,     tr("Thinking level"));
     statusinfo::attach(m_errorLabel,      tr("Last command error"));
 }
 
@@ -984,6 +996,7 @@ void ClaudeStatusBarController::resetForTabSwitch() {
     // ANTS-1888 — same reset for the model-state chip so it doesn't briefly
     // show the previous tab's tier after a switch.
     if (m_modelStateBtn) m_modelStateBtn->hide();
+    if (m_thinkingBtn)   m_thinkingBtn->hide();
     m_modelStatePath.clear();
     m_modelStateMtimeMs = -1;
     apply();
@@ -1100,6 +1113,10 @@ void ClaudeStatusBarController::pinSlots() {
     m_modelStateBtn->setMinimumWidth(0);
     m_modelStateBtn->setMaximumWidth(QWIDGETSIZE_MAX);
     statusbarslot::setRetain(m_modelStateBtn, true);
+    // ANTS-6749 — the thinking pill fits its text too.
+    m_thinkingBtn->setMinimumWidth(0);
+    m_thinkingBtn->setMaximumWidth(QWIDGETSIZE_MAX);
+    statusbarslot::setRetain(m_thinkingBtn, true);
     statusbarslot::pin(m_undoSwitchBtn, undo, /*retainWhenHidden=*/false);
     statusbarslot::pin(m_errorLabel, {QStringLiteral("Exit 888")},
                        /*retainWhenHidden=*/false);
@@ -1783,11 +1800,12 @@ void ClaudeStatusBarController::refreshModelStateChip()
 
     if (transcriptPath.isEmpty()) {
         m_modelStateBtn->hide();
+        m_thinkingBtn->hide();
         m_modelStatePath.clear();
         return;
     }
 
-    // mtime short-circuit — score() and thinkingLevelFromLatestUserTurn
+    // mtime short-circuit — score() and effortFromLatestAssistantTurn
     // both tail-read up to 512 KB on every tick; skip when nothing has
     // changed since the last paint.
     const qint64 mtimeMs =
@@ -1811,6 +1829,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
         // No assistant turn yet — the session is brand new. Hide rather
         // than guess at "Sonnet" (score()'s default fallback).
         m_modelStateBtn->hide();
+        m_thinkingBtn->hide();
         return;
     }
     // ANTS-6748 — the model's own name and version. An id that names no
@@ -1819,19 +1838,23 @@ void ClaudeStatusBarController::refreshModelStateChip()
         ModelRecommender::modelDisplayName(rec.currentModel);
     if (currentTitle.isEmpty()) {
         m_modelStateBtn->hide();
+        m_thinkingBtn->hide();
         return;
     }
 
-    const ModelRecommender::ThinkingLevel level =
-        ModelRecommender::thinkingLevelFromLatestUserTurn(transcriptPath);
-    const QString thinkLabel = ModelRecommender::thinkingLevelLabel(level);
-
-    // Compose: "Opus 5.5 · ultrathink" / "Fable 5.2 · standard" / just
-    // "Haiku 5.5" when the thinking half is empty (Unknown).
-    QString text = currentTitle;
-    if (!thinkLabel.isEmpty()) {
-        text += QStringLiteral(" · ") + thinkLabel;
+    // ANTS-6749 — the thinking level is what Claude Code recorded for the
+    // latest turn, in its own pill; hidden when the transcript records none.
+    const QString effort =
+        ModelRecommender::effortFromLatestAssistantTurn(transcriptPath);
+    m_thinkingBtn->setVisible(!effort.isEmpty());
+    if (!effort.isEmpty()) {
+        m_thinkingBtn->setText(tr("Thinking: %1").arg(effort));
+        m_thinkingBtn->setToolTip(
+            tr("Claude Code's thinking level for the focused tab's latest "
+               "turn: %1.\nRead from the session transcript.").arg(effort));
     }
+
+    QString text = currentTitle;
     // ANTS-1926 — pending-switch annotation. When the auto-switcher has
     // queued a switch (blocked only by composer_not_empty), append an
     // "(auto → Haiku)" suffix so the user can see the intent at a glance.
@@ -1851,10 +1874,7 @@ void ClaudeStatusBarController::refreshModelStateChip()
              "or clear the composer.").arg(pendingTitle);
     m_modelStateBtn->setToolTip(
         tr("Focused tab is using %1 (from the transcript's most recent "
-           "assistant turn).\nThinking level: %2 (parsed from the most "
-           "recent user prompt; \"standard\" when no directive is set).")
-            .arg(currentTitle)
-            .arg(thinkLabel.isEmpty() ? tr("unknown") : thinkLabel)
+           "assistant turn).").arg(currentTitle)
         + pendingTip);
     m_modelStateBtn->show();
 }
