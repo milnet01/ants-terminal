@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6746 -->
+<!-- ants-roadmap-id-high-water: ANTS=6750 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -468,6 +468,20 @@ SSH key registered there.
   2531 s in the build step under Ninja with the compile pool at 2,
   against Mageia's 1554 s under make -j4 on a 4-CPU worker. That gap is
   candidate 2's likely size.
+  2026-11-12, session 251 (user approved one staging run). Logs showed
+  openSUSE builds with make, not Ninja; only Fedora uses Ninja. Real
+  causes: openSUSE's %cmake_install runs `make install`, which rebuilt
+  build_info_values.cpp (holds the build time) and relinked all binaries
+  under LTO (Tumbleweed 916 s, Leap 509 s); Fedora's compile ran 3490 s
+  under the Ninja cap of 2 vs Mageia 1469 s at make -j4. Commit 3863808a
+  adds -DCMAKE_SKIP_INSTALL_ALL_DEPENDENCY=ON and
+  -DANTS_COMPILE_POOL=%{?_smp_build_ncpus}. Staging rev 9 results:
+  Tumbleweed install 916 -> 32 s, total 2556 -> 1725 s; Leap install
+  509 -> 31 s; install rebuilds nothing; all three green. Fedora_44 was
+  still building at handoff: read cc-job tail obs-wait-5578 (or osc
+  jobhistory -l 1 home:milnet:ants-terminal-staging ants-terminal
+  Fedora_44 x86_64) and compare its %build phase with 3490 s. Close the
+  item if Fedora is green and faster; candidates 1, 3-6 untried.
   **Layman:** Each distro package takes about half an hour to build on openSUSE's servers, almost all of it compiling; a few settings could cut that.
   Kind: perf.
   Source: user-request-2026-09-30.
@@ -69311,6 +69325,74 @@ remainder, captured so they don't drop on the floor.
   feature test. Stage 1 scope complete.
   Kind: implement.
 
+- 📋 [ANTS-6747] **The Claude state chip reads idle for the rest of a session after /clear, while Claude works.**
+  Seen in the UT_Ants tab 2026-11-12 (screenshot: spinner running, chip
+  "Claude: idle"). Cause, read in code and confirmed on disk:
+  ClaudeTabTracker::detectClaudeChild binds one transcript per Claude PID
+  (`if (!entry.transcriptPath.isEmpty()) return;`) and clears it only when
+  the process exits. /clear starts a new session id and a new .jsonl under
+  the same PID; the tracker keeps reading the old file, whose last record
+  is an end_turn, so Idle.
+  Fix: Claude Code writes ~/.claude/sessions/<pid>.json with `sessionId`
+  (and `status`, e.g. "busy"). Checked: UT_Ants pid 487445's sessionId
+  named its newest transcript. Add a pure helper (dir injectable for
+  tests) returning <bound dir>/<sessionId>.jsonl when the id differs, the
+  id is hex-and-dashes and the file exists; detectClaudeChild calls it
+  each poll and rebinds. Steady state unchanged, so
+  tests/features/claude_pid_replacement/spec.md N3 holds. Base the
+  sessions dir on ConfigPaths::claudeHome(). Red-first test on the helper.
+  Terminal code: reaches the user only after a terminal relaunch, which
+  the user chooses.
+  **Layman:** After you clear a Claude session, the status bar keeps saying it is idle even when it is busy.
+  Kind: fix.
+  Source: user-report-2026-11-12.
+  Lanes: status-bar.
+
+- 📋 [ANTS-6748] **The model chip shows Sonnet for any model that is not Haiku or Opus, and never shows the version.**
+  Seen in the Vestige tab 2026-11-12: transcript `message.model` is
+  claude-fable-5-2 on every reply, chip shows "Sonnet". Cause:
+  ModelRecommender::tierFromModelId (src/modelrecommender.cpp) knows only
+  haiku/opus and returns Tier::Sonnet otherwise; tierTitle
+  (src/claudestatuswidgets.cpp) prints the tier. User asked for the
+  version too. Fix: a display parser from model id to family + version
+  (claude-fable-5-2 -> "Fable 5.2", claude-opus-5-5 -> "Opus 5.5",
+  older dated ids such as claude-sonnet-4-5-20250929 -> "Sonnet 4.5");
+  the chip shows that; keep Tier for the recommender only. A bare /model
+  argument ("opus") shows the family alone. Chip:
+  refreshModelStateChip / m_modelStateBtn. Tests:
+  tests/features/model_state_chip/.
+  **Layman:** The status bar named a Fable 5.2 session "Sonnet"; it should show the model's real name and version, such as "Fable 5.2".
+  Kind: fix.
+  Source: user-report-2026-11-12.
+  Lanes: status-bar.
+
+- 📋 [ANTS-6749] **Show Claude Code's thinking level in its own status-bar chip, read from the transcript.**
+  User request 2026-11-12. Today the model chip appends a guess
+  ("standard") made by scanning the last prompt for think/ultrathink
+  (thinkingLevelFromLatestUserTurn). Claude Code records the real value:
+  every assistant record carries top-level `effort` and `perTurnEffort`
+  (seen: "medium"). Add a sibling QPushButton beside m_modelStateBtn
+  (src/claudestatuswidgets.h / .cpp), painted from the same mtime-guarded
+  refreshModelStateChip, showing the last assistant record's
+  perTurnEffort; drop the guessed suffix from the model chip. Hot reload:
+  terminal code, needs a relaunch the user chooses; no running state.
+  **Layman:** A separate status-bar label will show how hard Claude is set to think (low to max), taken from Claude Code itself.
+  Kind: feature.
+  Source: user-report-2026-11-12.
+  Lanes: status-bar.
+
+- 📋 [ANTS-6750] **The auto model switcher would treat a Fable session as Sonnet and could switch it away from the user's choice.**
+  Same root as the model-chip item: tierFromModelId maps every unknown
+  family to Sonnet, and the auto-switcher's gate reads that tier. Off for
+  this user (claude.auto_model_switch false, 2026-11-12), so no harm yet.
+  Fix: an unknown family is not switchable; the switcher leaves it
+  alone. Also directModelSwitchVisible (src/modelautoswitch.cpp) knows
+  only Sonnet/Opus/Haiku/Default banners.
+  **Layman:** If automatic model switching is turned on, it could change a Fable session to another model because it misreads which model is running.
+  Kind: fix.
+  Source: user-report-2026-11-12.
+  Lanes: status-bar.
+
 ### 🎨 Claude Code UX — token-saving git-context hook (user request 2026-04-24)
 
 - ✅ [ANTS-4250] **UserPromptSubmit git-context hook.**
@@ -88769,6 +88851,12 @@ project. Reported causes are claims until checked in source.
   about 3 s. Measure it with and without the hook running, and check
   whether build trees or other large ignored paths are being walked. If
   load alone explains it, an advisory naming the load would do.
+  Measured 2026-11-12: whole-repo count_only search for QStringLiteral
+  (43,6xx matches, 926 files): 174 ms idle; 179 ms while a push gate
+  configured; 175 ms at load 6 while it compiled. rg walks 3,113 files;
+  build trees are gitignored and skipped. Raw rg: 1.6 s cold, 0.06 s
+  warm. Not reproduced. Untested: a reading during the gate's ASan
+  build/test phase (page-cache pressure, build-asan is 12 GB).
   **Layman:** Code search in the terminal's tools sometimes times out when the machine is busy building.
   Kind: investigate.
   Source: in-session-2026-09-25.
