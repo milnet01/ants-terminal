@@ -16,6 +16,8 @@
 //                      skill is unexecutable as written (ANTS-3719).
 //   6. List count    — a lead-in ("Two options:") over a list holding more
 //                      items than it says (ANTS-5295).
+//   7. Table columns — a table row, or its delimiter row, whose cell count
+//                      differs from the header's (ANTS-5402).
 //
 // Consumed by the `doc_integrity` MCP verb and the cold-eyes Phase-1e feed.
 // See docs/specs/ANTS-3601-deterministic-doc-integrity-check.md.
@@ -54,6 +56,12 @@ enum class Kind {
     // did not: the stale count the lean workflow's no-counts rule exists to
     // stop. Requested by the claude_config session.
     ListCount,
+    // ANTS-5402 — a Markdown table row whose cell count differs from its
+    // header's, counted as GitHub does: split on every unescaped `|`, code
+    // spans included. A literal `|` in a cell is the usual cause, and the row
+    // renders with a cell missing or spilled. Requested by the claude_config
+    // session (their CFG-0024).
+    TableColumns,
 };
 
 // Every Kind, in declaration order. A new Kind joins this list and kindName().

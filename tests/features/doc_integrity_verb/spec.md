@@ -30,7 +30,8 @@ because the pure helpers are the sharper place to pin these two invariants.
   `EnumerateScoping` over `RemoteControl::docIntegrityEnumerate`.
 - **INV-18** — the `kinds` filter narrows both `findings[]` and `counts{}`,
   across every kind, including `heading_sequence` (ANTS-3700),
-  `ungranted_tool` (ANTS-3719) and `list_count` (ANTS-5295). The counter is a `switch` over `Kind`, not an
+  `ungranted_tool` (ANTS-3719), `list_count` (ANTS-5295) and `table_columns`
+  (ANTS-5402). The counter is a `switch` over `Kind`, not an
   `if/else` chain whose final `else` would silently tally any future kind as a
   `toc_gap`; note the switch catches a kind missing from the *counter* at
   compile time but not one missing from the *counts map*, which narrows to

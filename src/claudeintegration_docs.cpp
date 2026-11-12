@@ -167,7 +167,7 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                     "broken_link, toc_gap, heading_sequence, ungranted_tool (a "
                     "skill calling an mcp__ants__ verb its allowed-tools never "
                     "granted), list_count (a lead-in counting fewer items than its "
-                    "list holds). Fence-aware. path=<file|dir> or paths=[...] scopes "
+                    "list holds), table_columns. Fence-aware. path=<file|dir> or paths=[...] scopes "
                     "the run (default: the docs dir); kinds=[...] filters. "
                     "Suppressed cases are counted, not reported. Refusals: bad_path, not_found. "
                     "caller_cwd required, or \"~global\" with an explicit path.");
@@ -194,7 +194,12 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                     "reported, and a lead-in is trusted only where its last "
                     "sentence is at most ten words holding one number from "
                     "two to twelve, opening the sentence or closing it after "
-                    "a determiner). "
+                    "a determiner), and table_columns (ANTS-5402 — a table row, "
+                    "or its delimiter row, whose cell count differs from the "
+                    "header's, counted as GitHub does: every unescaped `|` "
+                    "splits, inside a code span too, so a literal pipe must be "
+                    "written `\\|`; a table ends at a blank line, a fence or a "
+                    "line holding no `|`). "
                     "Fence-aware (fenced examples ignored); GitHub-compatible "
                     "heading slugs. path=<file|dir> scopes the run (a dir walks "
                     "its *.md recursively); paths=[...] scopes it to the UNION "
@@ -257,7 +262,8 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                                 QStringLiteral("toc_gap"),
                                 QStringLiteral("heading_sequence"),
                                 QStringLiteral("ungranted_tool"),
-                                QStringLiteral("list_count")};
+                                QStringLiteral("list_count"),
+                                QStringLiteral("table_columns")};   // ANTS-5402
                             kindsProp["items"] = items;
                         }
                         kindsProp["description"] = QStringLiteral(

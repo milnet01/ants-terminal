@@ -68,6 +68,14 @@ struct CountedList {
     int found  = 0;
 };
 
+// ANTS-5402 — a table row whose cell count differs from its header's.
+struct TableMismatch {
+    int  line      = 0;  // 1-based
+    int  cells     = 0;
+    int  header    = 0;
+    bool delimiter = false;  // the delimiter row, which drops the whole table
+};
+
 // ANTS-3700 — the leading section number of a heading, as its components:
 // "5.7 Emission model" → [5, 7]; "5. Problem" → [5]; "Overview" → {}. A single
 // trailing dot is consumed ("## 5. Problem" is the dominant form in this
@@ -111,6 +119,8 @@ struct DocData {
     QList<QPair<int, int>> mirrors;
     // ANTS-5295 — one entry per lead-in whose list outgrew its count.
     QList<CountedList> overCounted;
+    // ANTS-5402 — one entry per table row whose cell count is wrong.
+    QList<TableMismatch> tableMismatches;
 };
 
 QList<Heading> extractHeadings(const QStringList &lines,
@@ -837,6 +847,68 @@ QList<CountedList> detectOverCountedLists(const QStringList &lines,
     return out;
 }
 
+// ANTS-5402 — a table row's cell count, as GitHub counts it: drop one leading
+// and one trailing `|`, then split on every `|` not escaped by a backslash.
+// A `|` inside a code span splits too; GitHub needs it written `\|` there.
+int gfmCellCount(const QString &line) {
+    QString t = line.trimmed();
+    if (t.startsWith(QLatin1Char('|'))) t.remove(0, 1);
+    if (t.endsWith(QLatin1Char('|')) &&
+        !(t.size() >= 2 && t.at(t.size() - 2) == QLatin1Char('\\')))
+        t.chop(1);
+    int cells = 1;
+    for (int i = 0; i < t.size(); ++i) {
+        if (t.at(i) == QLatin1Char('\\')) { ++i; continue; }
+        if (t.at(i) == QLatin1Char('|')) ++cells;
+    }
+    return cells;
+}
+
+// A table's line: at most three spaces of indent, so not an indented code
+// block, and holding a `|`.
+bool isTableLine(const QString &line) {
+    return indentOf(line) <= 3 && line.contains(QLatin1Char('|'));
+}
+
+// GitHub's delimiter row: cells of dashes with optional alignment colons.
+bool isDelimiterRow(const QString &line) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^\s{0,3}\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$)"));
+    // Without a `|` the line is a thematic break or a setext underline.
+    return line.contains(QLatin1Char('|')) && re.match(line).hasMatch();
+}
+
+// A header row followed by a delimiter row opens a table; its rows run to
+// the first blank line, fence or line holding no `|`. GitHub runs a table on
+// over a pipeless line too, but counting that one would flag the paragraph
+// that follows a table without a blank line, a case this check leaves alone.
+QList<TableMismatch> detectTableMismatches(const QStringList &lines,
+                                           const QVector<bool> &fence) {
+    QList<TableMismatch> out;
+    const auto fenced = [&](int i) { return i < fence.size() && fence.at(i); };
+    for (int i = 0; i + 1 < lines.size(); ++i) {
+        if (fenced(i) || fenced(i + 1) || !isTableLine(lines.at(i)) ||
+            isDelimiterRow(lines.at(i)) || !isDelimiterRow(lines.at(i + 1)))
+            continue;
+        const int header = gfmCellCount(lines.at(i));
+        const int delim  = gfmCellCount(lines.at(i + 1));
+        if (delim != header) {
+            out.append({i + 2, delim, header, true});
+            ++i;
+            continue;
+        }
+        int k = i + 2;
+        for (; k < lines.size(); ++k) {
+            const QString &row = lines.at(k);
+            if (fenced(k) || row.trimmed().isEmpty() || !isTableLine(row)) break;
+            const int cells = gfmCellCount(row);
+            if (cells != header) out.append({k + 1, cells, header, false});
+        }
+        i = k - 1;
+    }
+    return out;
+}
+
 }  // namespace
 
 QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
@@ -887,6 +959,7 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
         detectToc(lines, d);
         d.ungranted = detectUngrantedTools(lines, fence);  // ANTS-3719
         d.overCounted = detectOverCountedLists(lines, fence);  // ANTS-5295
+        d.tableMismatches = detectTableMismatches(lines, fence);  // ANTS-5402
 
         byRel.insert(rel, d);
         inScope.insert(rel);
@@ -993,6 +1066,19 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
                              QStringLiteral("the lead-in counts %1, but the list "
                                             "beneath it holds %2 items")
                                  .arg(c.stated).arg(c.found)});
+
+        // Check 7 — a table row with the wrong cell count (ANTS-5402).
+        for (const TableMismatch &t : d.tableMismatches)
+            findings.append({Kind::TableColumns, rel, t.line,
+                             t.delimiter
+                                 ? QStringLiteral("the delimiter row has %1 cells but "
+                                                  "the header has %2, so GitHub "
+                                                  "shows the table as plain text")
+                                       .arg(t.cells).arg(t.header)
+                                 : QStringLiteral("this row has %1 cells but the "
+                                                  "header has %2; an unescaped `|` "
+                                                  "(write `\\|`) splits a cell")
+                                       .arg(t.cells).arg(t.header)});
     }
 
     std::stable_sort(findings.begin(), findings.end(),
@@ -1006,7 +1092,8 @@ QList<Finding> check(const QString &rootCanonical, const QStringList &relDocs,
 const QList<Kind> &allKinds() {
     static const QList<Kind> kinds{Kind::DeadAnchor, Kind::BrokenLink,
                                    Kind::TocGap, Kind::HeadingSequence,
-                                   Kind::UngrantedTool, Kind::ListCount};
+                                   Kind::UngrantedTool, Kind::ListCount,
+                                   Kind::TableColumns};
     return kinds;
 }
 
@@ -1018,6 +1105,7 @@ QString kindName(Kind k) {
     case Kind::HeadingSequence: return QStringLiteral("heading_sequence");  // ANTS-3700
     case Kind::UngrantedTool:   return QStringLiteral("ungranted_tool");    // ANTS-3719
     case Kind::ListCount:       return QStringLiteral("list_count");        // ANTS-5295
+    case Kind::TableColumns:    return QStringLiteral("table_columns");     // ANTS-5402
     }
     return QString();
 }

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6745 -->
+<!-- ants-roadmap-id-high-water: ANTS=6746 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -88842,13 +88842,22 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-26.
   Lanes: mcp.
 
-- 📋 [ANTS-5402] **doc_integrity reports a Markdown table row whose cell count differs from its header.**
+- ✅ [ANTS-5402] **doc_integrity reports a Markdown table row whose cell count differs from its header.**
   A row whose cell count differs from the header row renders wrong and
   is broken by hand regularly; a literal `|` inside a cell is the common
   cause. Count cells the way GFM does: split on unescaped `|`, ignore
   pipes inside backtick code spans, trim the optional outer pipes. Skip
   tables inside fences. New finding kind on doc_integrity, so doc_lint
   picks it up. claude-config closes CFG-0024 against this id.
+  Shipped 2026-11-12 as kind table_columns. One departure from the request,
+  deliberate: a `|` inside a code span DOES split the cell, because GitHub's
+  table rule splits there unless the pipe is escaped `\|`. The request asked
+  for both "count the way GFM does" and "ignore pipes in code spans"; GFM
+  wins, since rendering on GitHub is what the check protects, and that case
+  is the common breakage. A table ends at a blank line, a fence or a line
+  with no `|`. Calibration over this repo: every in-repo hit sampled was a
+  real GitHub breakage (follow-up item filed). Tests:
+  DocIntegrity.Ants5402*, DocIntegrityVerb.KindsFilterNarrowsCounts.
   **Layman:** The document checker will flag a table row with too many or too few columns, such as one broken by a stray | character.
   Kind: feature.
   Source: claude-config session request 2026-09-26 (their CFG-0024).
@@ -88866,6 +88875,19 @@ project. Reported causes are claims until checked in source.
   Kind: feature.
   Source: claude-config session request 2026-09-26 (their CFG-0234).
   Lanes: docs, mcp.
+
+- 📋 [ANTS-6746] **Tables in docs/ and INVESTIGATION_tab_close_x.md hold rows GitHub renders with a cell spilled or missing.**
+  Found by doc_integrity kinds:["table_columns"] (ANTS-5402) over the
+  repo. Samples checked are real: a `|` inside backticks (ANTS-1305 spec
+  jaccard row, ANTS-1302 spec buildCtestRegex row), text after a row's
+  closing pipe (INVESTIGATION_tab_close_x.md). Fix each by writing `\|`
+  or moving the stray text; loop-log rows are history, so check § 9.1's
+  rule before rewriting one. Re-run the verb to list them; skip
+  local-archive/.
+  **Layman:** Some tables in the project's documents show a cell in the wrong column on GitHub, usually because a | character inside the text splits it.
+  Kind: doc-fix.
+  Source: doc_integrity table_columns first run 2026-11-12.
+  Lanes: docs.
 
 ### Ants MCP feedback from CC sessions — 2026-09-26 triage
 

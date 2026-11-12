@@ -1015,3 +1015,60 @@ TEST(DocIntegrity, Ants5295QuietCases) {
     // A colon with no list beneath it.
     EXPECT_EQ(quiet("Two options:\n\nProse follows.\n"), "");
 }
+
+// ---- ANTS-5402 — table_columns ---------------------------------------------
+//
+// Requested by the claude_config session (their CFG-0024): a table row whose
+// cell count differs from its header renders with a cell lost or spilled. Cells
+// are counted as GitHub counts them, so a `|` inside a code span splits too.
+
+namespace {
+QList<Finding> tableRun(const QString &body) {
+    QTemporaryDir tmp;
+    if (!tmp.isValid()) return {};
+    const QString root = canon(tmp);
+    writeFile(root + "/docs/t.md", body);
+    QList<Finding> out;
+    for (const Finding &f : DocIntegrity::check(root, {"docs/t.md"}))
+        if (f.kind == Kind::TableColumns) out << f;
+    return out;
+}
+}  // namespace
+
+TEST(DocIntegrity, Ants5402RowWithAnExtraCellIsReported) {
+    const auto fs = tableRun("# T\n\n"
+                             "| Flag | Meaning |\n"
+                             "|------|---------|\n"
+                             "| `-a` | all |\n"
+                             "| `a|b` | either |\n"
+                             "| `-q` | quiet |\n");
+    ASSERT_EQ(fs.size(), 1) << render(fs);
+    EXPECT_EQ(fs.first().line, 6) << "a pipe in a code span splits the cell on GitHub";
+    EXPECT_TRUE(fs.first().message.contains(QStringLiteral("3 cells"))) << render(fs);
+    EXPECT_TRUE(fs.first().message.contains(QStringLiteral("header has 2"))) << render(fs);
+}
+
+TEST(DocIntegrity, Ants5402ShortRowAndBadDelimiterAreReported) {
+    const auto shortRow = tableRun("| a | b | c |\n|---|---|---|\n| 1 | 2 |\n");
+    ASSERT_EQ(shortRow.size(), 1) << render(shortRow);
+    EXPECT_EQ(shortRow.first().line, 3);
+    // A delimiter row that disagrees with its header makes GitHub drop the
+    // table to plain text.
+    const auto delim = tableRun("| a | b | c |\n|---|---|\n| 1 | 2 | 3 |\n");
+    ASSERT_EQ(delim.size(), 1) << render(delim);
+    EXPECT_EQ(delim.first().line, 2);
+}
+
+TEST(DocIntegrity, Ants5402QuietCases) {
+    // An escaped pipe stays in its cell.
+    EXPECT_TRUE(tableRun("| a | b |\n|---|---|\n| x \\| y | z |\n").isEmpty());
+    // Outer pipes are optional.
+    EXPECT_TRUE(tableRun("a | b\n--- | :---:\n1 | 2\n").isEmpty());
+    // A fenced example is not a table.
+    EXPECT_TRUE(tableRun("```\n| a | b |\n|---|---|\n| 1 | 2 | 3 |\n```\n").isEmpty());
+    EXPECT_TRUE(tableRun("```\n| a | b | c |\n|---|---|\n```\n").isEmpty());
+    // A blank line ends the table; a later pipe line is not its row.
+    EXPECT_TRUE(tableRun("| a | b |\n|---|---|\n| 1 | 2 |\n\nx | y | z\n").isEmpty());
+    // Pipes with no delimiter row beneath are not a table.
+    EXPECT_TRUE(tableRun("a | b | c\nplain text\n").isEmpty());
+}

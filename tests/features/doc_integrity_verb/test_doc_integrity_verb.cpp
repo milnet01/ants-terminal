@@ -111,12 +111,13 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
         {Kind::HeadingSequence, "docs/a.md", 4, "m4"},   // ANTS-3700
         {Kind::UngrantedTool,   "docs/a.md", 5, "m5"},   // ANTS-3719
         {Kind::ListCount,       "docs/a.md", 6, "m6"},   // ANTS-5295
+        {Kind::TableColumns,    "docs/a.md", 7, "m7"},   // ANTS-5402
     };
 
     // Unfiltered → every kind present.
     const QJsonObject all = RemoteControl::docIntegrityBuildResponse(
         findings, {}, {"docs/a.md"});
-    EXPECT_EQ(all.value("findings").toArray().size(), 6);
+    EXPECT_EQ(all.value("findings").toArray().size(), 7);
     const QJsonObject allCounts = all.value("counts").toObject();
     EXPECT_EQ(allCounts.value("dead_anchor").toInt(), 1);
     EXPECT_EQ(allCounts.value("broken_link").toInt(), 1);
@@ -128,6 +129,7 @@ TEST(DocIntegrityVerb, KindsFilterNarrowsCounts) {
     EXPECT_EQ(allCounts.value("heading_sequence").toInt(), 1);
     EXPECT_EQ(allCounts.value("ungranted_tool").toInt(), 1);      // ANTS-3719
     EXPECT_EQ(allCounts.value("list_count").toInt(), 1);          // ANTS-5295
+    EXPECT_EQ(allCounts.value("table_columns").toInt(), 1);       // ANTS-5402
 
     // Filtered to dead_anchor → findings + counts narrow together.
     const QJsonObject only = RemoteControl::docIntegrityBuildResponse(

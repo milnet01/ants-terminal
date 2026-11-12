@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **doc_integrity (and doc_lint) report a table_columns finding where a Markdown table row, or its delimiter row, has a different number of cells from its header, counted as GitHub counts them** (ANTS-5402)
+
 - **file_outline outlines Catch2 tests: TEST_CASE, TEST_CASE_METHOD and SCENARIO by their quoted names, and each SECTION inside one as kind "section"** (ANTS-5349)
 
 - **workspace_search last_per_file: N returns each file's last N matches in file order, with every matched file's count in file_totals** (ANTS-5348)
