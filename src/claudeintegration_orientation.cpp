@@ -2630,7 +2630,9 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "debugging third-party MCP integrations. "
                         "Records are structured (shape + lengths + "
                         "hashes only) — raw argument values are never "
-                        "stored. ANTS-1360.");
+                        "stored. next_id is the paging cursor (the newest "
+                        "returned id plus one), not the next id the server "
+                        "will issue. ANTS-1360.");
                     t["selection_hint"] = QStringLiteral(
                         "Use when debugging MCP tool behaviour. "
                         "Returns recent dispatcher trace events; "
