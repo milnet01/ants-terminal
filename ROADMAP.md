@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6751 -->
+<!-- ants-roadmap-id-high-water: ANTS=6753 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97859,6 +97859,30 @@ starts 2026-05-27.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #5; ledger TL-5).
   Lanes: release.
+
+- ✅ [ANTS-6752] **release.sh can report a published release as missing a file when the machine is busy.**
+  CI run 43198662697 (commit fab57c6f) failed release_behaviour INV-7..10
+  with "the GitHub release for v0.7.98 is missing a file"; the commit
+  touched no shell. Cause: wait_for_github_release ran
+  `printf '%s\n' "$names" | grep -Fxq "$want"` under `set -o pipefail`.
+  bash writes one line per write (strace, 2026-11-12); grep -q exits at
+  its first match and a later write dies of SIGPIPE, so the pipeline
+  fails. Measured 2026-11-12 on one busy CPU: 8 false misses in 20000;
+  0 in 20000 idle. Fix: `grep -Fxq "$want" <<<"$names"`, no pipe.
+  Shipped 2026-11-12.
+  **Layman:** The release script could wrongly warn that a download was missing from a release that was complete.
+  Kind: fix.
+  Source: ci-failure-2026-11-12-run-43198662697.
+
+- 📋 [ANTS-6753] **ci-prune-caches.sh pipes into grep -q under pipefail, the shape that misread release.sh's file list.**
+  tools/ci-prune-caches.sh: `cut -d' ' -f2- <<<"$listing" | grep -qxF -- "$keep"`
+  under `set -uo pipefail`. Not observed failing. A false miss only skips
+  one prune ("deleting nothing"). cut buffers its output, so it is rarer
+  than the printf case in ANTS-6752. Fix: feed grep without a pipe whose
+  status counts.
+  **Layman:** A CI clean-up script could occasionally skip its clean-up for no reason.
+  Kind: fix.
+  Source: ci-failure-2026-11-12-run-43198662697.
 
 ### 🔌 MCP — general Claude Code workflows (2026-05-13)
 

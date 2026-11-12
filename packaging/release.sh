@@ -541,7 +541,9 @@ wait_for_github_release() {
                 "Ants_Terminal-${ver}-x86_64.AppImage.manifest" \
                 "Ants_Terminal-${ver}-x86_64.AppImage.manifest.sig" \
                 "Ants_Terminal-x86_64.AppImage"; do
-        printf '%s\n' "$names" | grep -Fxq "$want" || missing=1
+        # No pipe: under pipefail, grep -q leaving at its first match can
+        # kill a printf still writing, and a present file then reads missing.
+        grep -Fxq "$want" <<<"$names" || missing=1
     done
     if [ "$missing" = 1 ]; then
         ATTENTION+=("the GitHub release for ${tag} is missing a file. Check: gh release view ${tag}")

@@ -368,6 +368,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The release script reads a release's file list reliably on a busy machine.** (ANTS-6752)
+
 - **The status-bar model chip shows the model's real name and version, such as "Fable 5.2" or "Opus 5.5".** (ANTS-6748)
 
 - **The Claude status chip and tab dot keep following a session after `/clear`.** (ANTS-6747)
