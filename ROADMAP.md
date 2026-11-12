@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6750 -->
+<!-- ants-roadmap-id-high-water: ANTS=6751 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69330,7 +69330,7 @@ remainder, captured so they don't drop on the floor.
   feature test. Stage 1 scope complete.
   Kind: implement.
 
-- 📋 [ANTS-6747] **The Claude state chip reads idle for the rest of a session after /clear, while Claude works.**
+- ✅ [ANTS-6747] **The Claude state chip reads idle for the rest of a session after /clear, while Claude works.**
   Seen in the UT_Ants tab 2026-11-12 (screenshot: spinner running, chip
   "Claude: idle"). Cause, read in code and confirmed on disk:
   ClaudeTabTracker::detectClaudeChild binds one transcript per Claude PID
@@ -69348,6 +69348,11 @@ remainder, captured so they don't drop on the floor.
   sessions dir on ConfigPaths::claudeHome(). Red-first test on the helper.
   Terminal code: reaches the user only after a terminal relaunch, which
   the user chooses.
+  Shipped 2026-11-12. ClaudeTabTracker::liveSessionTranscript + rebind
+  in detectClaudeChild; claude_tab_status_indicator INV-11, red first.
+  Not covered: ClaudeIntegration::pollClaudeProcess (the focused tab's
+  context meter) binds the same way; filed as ANTS-6751. Reaches the
+  user after a terminal relaunch.
   **Layman:** After you clear a Claude session, the status bar keeps saying it is idle even when it is busy.
   Kind: fix.
   Source: user-report-2026-11-12.
@@ -69396,6 +69401,20 @@ remainder, captured so they don't drop on the floor.
   **Layman:** If automatic model switching is turned on, it could change a Fable session to another model because it misreads which model is running.
   Kind: fix.
   Source: user-report-2026-11-12.
+  Lanes: status-bar.
+
+- 📋 [ANTS-6751] **The focused tab's Claude integration keeps the pre-/clear transcript, as the tab tracker did.**
+  Read in code 2026-11-12, not reproduced live.
+  ClaudeIntegration::pollClaudeProcess rebinds m_transcriptPath only on a
+  PID change or an empty path (tests/features/claude_pid_replacement/spec.md
+  INV-1, § 3a), so /clear under the same PID leaves it on the old file.
+  ANTS-6747 fixed the same gap in ClaudeTabTracker. Fix: call
+  ClaudeTabTracker::liveSessionTranscript (or move it somewhere both can
+  reach) from pollClaudeProcess and rebind as INV-2 does. First confirm
+  which readings use m_transcriptPath (context meter, isFocusedTabSession).
+  **Layman:** After you clear a Claude session, the context meter and other focused-tab readings may still come from the old session.
+  Kind: fix.
+  Source: ANTS-6747-follow-up-2026-11-12.
   Lanes: status-bar.
 
 ### 🎨 Claude Code UX — token-saving git-context hook (user request 2026-04-24)

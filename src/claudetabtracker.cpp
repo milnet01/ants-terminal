@@ -1,7 +1,13 @@
 #include "claudetabtracker.h"
 
+#include "configpaths.h"
+
 #include <QDateTime>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRegularExpression>
 
 ClaudeTabTracker::ClaudeTabTracker(QObject *parent) : QObject(parent) {
     // 2 s matches ClaudeIntegration's poll cadence. We could run faster for
@@ -209,7 +215,22 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
     // routinely finds nothing. The attempt used to be made once, inside the
     // first-detection branch, and the tab then read Idle for the whole
     // session. ANTS-4457 fixed the same one-shot in pollClaudeProcess.
-    if (!entry.transcriptPath.isEmpty()) return;
+    if (!entry.transcriptPath.isEmpty()) {
+        // ANTS-6747 — /clear starts a new session, and a new transcript,
+        // under the same PID. Without this the tab reads the old file,
+        // whose last record ended a turn, and shows Idle from then on.
+        const QString live = liveSessionTranscript(
+            entry.transcriptPath, found, ConfigPaths::claudeSessionsDir());
+        if (live.isEmpty()) return;
+        releaseWatch(entry.transcriptPath);
+        // The cursor and the context reading belonged to the old file.
+        entry.bgCursor = {};
+        entry.bgAcc = {};
+        entry.state.contextTokens = -1;
+        entry.state.contextEstimated = false;
+        bindTranscript(entry, live);
+        return;
+    }
 
     // Resolve THIS shell's transcript via project-cwd encoding —
     // not the system-wide newest. Pre-0.7.48 used the latter,
@@ -241,13 +262,32 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
     const QString tx =
         ClaudeIntegration::sessionPathForCwd(cwd, procStartMs, nowMs);
     if (tx.isEmpty()) return;
+    bindTranscript(entry, tx);
+}
 
-    entry.transcriptPath = tx;
+void ClaudeTabTracker::bindTranscript(ShellEntry &entry, const QString &path) {
+    entry.transcriptPath = path;
     m_watcher.addPath(entry.transcriptPath);
     m_pathToShell.insert(entry.transcriptPath, entry.shellPid);
     // Seed state from the tail now, or the tab reads Idle until the next
     // write to the file.
     reparseTranscript(entry.shellPid);
+}
+
+QString ClaudeTabTracker::liveSessionTranscript(const QString &boundPath,
+                                                pid_t claudePid,
+                                                const QString &sessionsDir) {
+    QFile f(QStringLiteral("%1/%2.json").arg(sessionsDir).arg(claudePid));
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QString id = QJsonDocument::fromJson(f.readAll())
+                           .object().value(QLatin1String("sessionId")).toString();
+    // The id becomes a file name: accept a plain session id and nothing else.
+    static const QRegularExpression plainId(QStringLiteral("^[0-9a-fA-F-]{1,64}$"));
+    if (!plainId.match(id).hasMatch()) return {};
+    const QFileInfo bound(boundPath);
+    if (bound.completeBaseName() == id) return {};
+    const QString live = bound.path() + QLatin1Char('/') + id + QStringLiteral(".jsonl");
+    return QFile::exists(live) ? live : QString();
 }
 
 void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {

@@ -368,6 +368,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude status chip and tab dot keep following a session after `/clear`.** (ANTS-6747)
+  The tab tracker reads the live session id Claude Code records for each
+  process and switches to that session's transcript.
+
 - **A tab in the side panel stays highlighted while the mouse rests on it, even as other tabs update** (ANTS-6741)
 
 - **roadmap_log and roadmap_query: eleven smaller fixes from the 2026-11-09 review** (ANTS-6734)

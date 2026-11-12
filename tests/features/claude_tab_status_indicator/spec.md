@@ -183,6 +183,20 @@ tracker class) rather than pixel-level painting:
     `ClaudeIntegration::pollClaudeProcess` carries the same rule
     (`tests/features/transcript_resolution_retry`).
 
+11. **INV-11 The binding follows a new session under the same PID**
+    *(ANTS-6747)*. `/clear` starts a new session id, and a new `.jsonl`,
+    without restarting Claude. Claude Code records the live id as
+    `sessionId` in `~/.claude/sessions/<claude pid>.json`. On each poll
+    with a transcript bound, `detectClaudeChild` MUST rebind to
+    `<bound transcript's directory>/<sessionId>.jsonl` when that id
+    differs from the bound one and the file exists. An id that is not
+    hex digits and dashes MUST be ignored, since it becomes a file name.
+    An unchanged id MUST leave the watcher alone.
+    `ClaudeTabTracker::liveSessionTranscript` holds the decision. Tested
+    in `checkTranscriptBindsAfterClaudeStarts`: after the bound
+    transcript reads `Idle`, a sessions file names a second transcript
+    carrying a tool call, and the state MUST reach `ToolUse`.
+
 ## Rationale
 
 The existing single-global `ClaudeIntegration` design assumes one

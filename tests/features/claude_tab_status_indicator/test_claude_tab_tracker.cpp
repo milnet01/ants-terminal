@@ -633,6 +633,68 @@ int checkTranscriptBindsAfterClaudeStarts() {
 
     std::printf("[%-32s] late transcript bound, foreign one ignored  PASS\n",
                 "INV-10-late-transcript-binds");
+
+    // INV-11 (ANTS-6747) — /clear starts a new session id, and a new
+    // transcript, under the same Claude PID. Claude Code records the live
+    // id in ~/.claude/sessions/<pid>.json; the tracker must follow it.
+    // First settle the bound transcript on Idle, as a finished turn does.
+    const QString oldPath = projDir + "/session.jsonl";
+    {
+        QFile f(oldPath);
+        if (!f.open(QIODevice::Append)) {
+            std::fprintf(stderr, "[INV-11] FAIL cannot append to the bound transcript\n");
+            return 1;
+        }
+        f.write(R"({"type":"assistant","message":{"stop_reason":"end_turn","content":[{"type":"text","text":"done"}]}}
+)");
+    }
+    if (!QTest::qWaitFor([&]() {
+            return tracker.shellState(shell).state == ClaudeState::Idle;
+        }, 8000)) {
+        std::fprintf(stderr, "[INV-11] FAIL bound transcript never read Idle\n");
+        return 1;
+    }
+    const QString newId = QStringLiteral("0a1b2c3d-1111-2222-3333-444455556666");
+    const QString newPath = projDir + "/" + newId + ".jsonl";
+    write_file(newPath,
+        "{\"type\":\"assistant\",\"timestamp\":\"" + ts + "\",\"message\":"
+        "{\"stop_reason\":\"tool_use\",\"content\":[{\"type\":\"tool_use\","
+        "\"name\":\"Bash\",\"input\":{}}]}}\n");
+    const QString sessionsDir = tmp.path() + "/.claude/sessions";
+    QDir().mkpath(sessionsDir);
+    write_file(sessionsDir + QStringLiteral("/%1.json").arg(child),
+               "{\"pid\":" + QByteArray::number(child) + ",\"sessionId\":\"" +
+                   newId.toUtf8() + "\",\"status\":\"busy\"}");
+    const bool rebound = QTest::qWaitFor([&]() {
+        return tracker.transcriptPath(shell) == newPath &&
+               tracker.shellState(shell).state == ClaudeState::ToolUse;
+    }, 8000);
+    if (!rebound) {
+        std::fprintf(stderr, "[INV-11] FAIL the tracker did not follow the new "
+                             "session: path=%s state=%d want ToolUse\n",
+                     qUtf8Printable(tracker.transcriptPath(shell)),
+                     int(tracker.shellState(shell).state));
+        return 1;
+    }
+    // The old path is released: a write to it must not move the tab's state.
+    if (tracker.shellForSessionId(QStringLiteral("session")) != 0) {
+        std::fprintf(stderr, "[INV-11] FAIL the old transcript still routes to the shell\n");
+        return 1;
+    }
+    // A sessions file naming an id that is not a plain session id, or one
+    // with no transcript on disk, leaves the binding alone.
+    for (const char *bad : {"../../other/other", "ffffffff-0000-0000-0000-000000000000"}) {
+        write_file(sessionsDir + QStringLiteral("/%1.json").arg(child),
+                   QByteArray("{\"sessionId\":\"") + bad + "\"}");
+        QTest::qWait(2500);   // one poll interval and a margin
+        if (tracker.transcriptPath(shell) != newPath) {
+            std::fprintf(stderr, "[INV-11] FAIL sessionId '%s' moved the binding to %s\n",
+                         bad, qUtf8Printable(tracker.transcriptPath(shell)));
+            return 1;
+        }
+    }
+    std::printf("[%-32s] followed the new session id; bad ids ignored  PASS\n",
+                "INV-11-rebind-after-clear");
     return 0;
 }
 
