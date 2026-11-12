@@ -542,3 +542,54 @@ TEST(FileOutlineCppScanner, Ants5019GtestBlocksOutlinedAndTheirLocalsNot) {
             << "a local inside a test body is not a function: " << local
             << "; fns = " << all;
 }
+
+// ANTS-5349 — Catch2 test blocks are outlined by their quoted names, and each
+// SECTION inside one as a `section`. A Catch2 file used to outline as empty
+// (parse_empty:true): TEST_CASE("...") has no return type, like gtest's TEST.
+TEST(FileOutlineCppScanner, Ants5349Catch2BlocksAndSectionsOutlined) {
+    QTemporaryDir dir;
+    const QString path = writeCpp(dir, QStringLiteral(
+        "TEST_CASE(\"render offscreen\", \"[render][device]\") {\n"
+        "    Image img(64, 64);\n"
+        "    SECTION(\"first frame\") {\n"
+        "        REQUIRE(img.valid());\n"
+        "    }\n"
+        "    SECTION(\"say \\\"hi\\\"\") {\n"
+        "        REQUIRE(true);\n"
+        "    }\n"
+        "}\n"
+        "\n"
+        "TEST_CASE_METHOD(Fixture, \"fixture case\", \"[fx]\")\n"
+        "{\n"
+        "    QFile f(path);\n"
+        "}\n"
+        "\n"
+        "SCENARIO(\"a scenario\") {\n"
+        "    int x(3);\n"
+        "}\n"
+        "\n"
+        "int after() { return 1; }\n"));
+    const QStringList fns = funcNames(path);
+    const std::string all = fns.join(", ").toStdString();
+    for (const char *name : {"render offscreen", "fixture case", "a scenario", "after"})
+        EXPECT_TRUE(fns.contains(QString::fromUtf8(name))) << name << "; fns = " << all;
+    for (const char *local : {"img", "f", "x"})
+        EXPECT_FALSE(fns.contains(QString::fromUtf8(local)))
+            << "a local inside a test body is not a function: " << local
+            << "; fns = " << all;
+
+    QStringList sections;
+    QList<int> sectionLines;
+    for (const QJsonValue &v : FileOutline::compute(path, FileOutline::Mode::Cpp,
+                                                    false, 1000)
+                                   .value(QStringLiteral("symbols")).toArray()) {
+        const QJsonObject o = v.toObject();
+        if (o.value(QStringLiteral("kind")).toString() == QLatin1String("section")) {
+            sections << o.value(QStringLiteral("name")).toString();
+            sectionLines << o.value(QStringLiteral("line")).toInt();
+        }
+    }
+    EXPECT_EQ(sections, (QStringList{QStringLiteral("first frame"),
+                                     QStringLiteral("say \\\"hi\\\"")}));
+    EXPECT_EQ(sectionLines, (QList<int>{3, 6}));
+}

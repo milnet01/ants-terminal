@@ -168,6 +168,32 @@ const QRegularExpression &rxCppGtest() {
     return rx;
 }
 
+// ANTS-5349 — Catch2's test blocks, the same shape as gtest's: no return type,
+// so a Catch2 file outlined as empty and its locals as functions. Named by
+// the quoted test name, as written (escapes kept). TEST_CASE_METHOD's fixture
+// class comes first.
+const QRegularExpression &rxCppCatch2() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"re(^(?:TEST_CASE|TEST_CASE_METHOD|SCENARIO)\s*\(\s*(?:[\w:]+\s*,\s*)?"((?:[^"\\]|\\.)*)")re"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
+// ANTS-5349 — a SECTION inside a Catch2 test block, outlined as kind
+// "section" so a reader can see which cases a test runs.
+const QRegularExpression &rxCppCatch2Section() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"re(^\s*SECTION\s*\(\s*"((?:[^"\\]|\\.)*)")re"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
+
 const QRegularExpression &rxCppCtorDtor() {
     static const QRegularExpression rx = []{
         QRegularExpression r(QStringLiteral(
@@ -947,6 +973,17 @@ struct CppScanner {
             out.offer(lineNo, "func",
                       m.captured(1) + QLatin1Char('.') + m.captured(2), line);
             return true;
+        }
+        if (!inFuncBody && (m = rxCppCatch2().match(line)).hasMatch()) {
+            // ANTS-5349 — opens a body, like a gtest block, so its locals
+            // stay inside. Matched on the raw line: the name is a string.
+            out.offer(lineNo, "func", m.captured(1), line);
+            return true;
+        }
+        if (inFuncBody && (m = rxCppCatch2Section().match(line)).hasMatch()) {
+            // ANTS-5349 — inside the test's body; opens no new one.
+            out.offer(lineNo, "section", m.captured(1), line);
+            return false;
         }
         if (!inFuncBody && rxCppCtorDtor().match(codeLine).hasMatch()) {
             // ANTS-5021 — `Class::Class(` / `Class::~Class(`, emitted by its

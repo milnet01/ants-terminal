@@ -88681,10 +88681,15 @@ project. Reported causes are claims until checked in source.
   Source: feedback-UT_Ants-2026-09-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5349] **file_outline finds no symbols in a Catch2 test file.**
+- ✅ [ANTS-5349] **file_outline finds no symbols in a Catch2 test file.**
   Reported by UT_Ants: file_outline on tests/device/RenderOffscreenTest.cpp
   returned parse_empty:true. Suggested: TEST_CASE("name", "[tags]") and
   SECTION("name") as symbols, and functions inside an anonymous namespace.
+  Shipped 2026-11-12: TEST_CASE, TEST_CASE_METHOD and SCENARIO outline as
+  `func` named by the quoted test name and open a body (locals stay out);
+  SECTION("name") inside one outlines as kind `section`. Functions in an
+  anonymous namespace already outlined (checked on a sample). Test:
+  FileOutlineCppScanner.Ants5349Catch2BlocksAndSectionsOutlined.
   **Layman:** The file summary tool sees nothing in test files written with the common Catch2 library.
   Kind: enhancement.
   Source: feedback-UT_Ants-2026-09-12.

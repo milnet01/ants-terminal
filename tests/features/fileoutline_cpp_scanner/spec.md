@@ -98,3 +98,12 @@ body whether its `{` is on the same line or the next. A local declared inside
 that body (`FakeHttpServer server(...)`, `const QByteArray chunk(n, 'x')`) is
 not outlined. *Test:*
 `FileOutlineCppScanner.Ants5019GtestBlocksOutlinedAndTheirLocalsNot`.
+
+## ANTS-5349 — Catch2 test blocks and their sections
+
+A column-0 `TEST_CASE`, `TEST_CASE_METHOD` (fixture first) or `SCENARIO` is
+outlined as a `func` named by its quoted test name, escapes kept as written,
+and opens a body as a gtest block does, so its locals are not outlined. A
+`SECTION("name")` inside such a body is outlined as kind `section`, named by
+its quoted name. *Test:*
+`FileOutlineCppScanner.Ants5349Catch2BlocksAndSectionsOutlined`.
