@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`workspace_search` takes `exclude_preset:"history"` to leave out history, journal and review folders in one word.** (ANTS-5524)
+
 - **`changelog_log op:"release"` takes a `theme` and writes the release's `**Theme:**` line in the same edit.** (ANTS-5522)
 
 - **`doc_dedup` and `doc_lint` report a `figure_mismatch` when two near-duplicate passages state different figures in the same place.** (ANTS-5403)

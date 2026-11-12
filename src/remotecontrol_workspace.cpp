@@ -419,6 +419,18 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
             excludeGlobs << g;
         }
     }
+    // ANTS-5524 — a named set of exclusions. "history" is the folders that
+    // record old names on purpose, which a rename sweep must not report.
+    // Echoed in the reply, so the caller sees what was left out.
+    QStringList presetGlobs;
+    if (const QJsonValue preset = req.value("exclude_preset"); !preset.isUndefined()) {
+        if (preset.toString() != QLatin1String("history"))
+            return QJsonDocument(wsErr("bad_args",
+                QStringLiteral("workspace-search: \"exclude_preset\" must be \"history\"")));
+        presetGlobs = {QStringLiteral("**/history/**"), QStringLiteral("**/journal/**"),
+                       QStringLiteral("**/reviews/**")};
+        excludeGlobs << presetGlobs;
+    }
 
     // ANTS-1248-INV-4: server-side max_results clamp at 500.
     int maxResults = 50;
@@ -1035,6 +1047,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // ANTS-4547 — activation-gated: a caller reading zero matches needs
         // to know whether the wrapped rule was in force.
         if (matchWrapped) out["match_wrapped"] = true;
+        if (!presetGlobs.isEmpty())
+            out["exclude_preset_globs"] = QJsonArray::fromStringList(presetGlobs);
         // ANTS-1565-INV-4: echo effective wall-clock budget so a caller can
         // see whether they got their requested timeout_sec or the default.
         out["timeout_sec"] = budgetSec;

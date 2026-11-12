@@ -89183,11 +89183,16 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of Pressless session, 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5524] **workspace_search could take an exclude preset for history directories.**
+- ✅ [ANTS-5524] **workspace_search could take an exclude preset for history directories.**
   A sweep for a renamed term returns hits in journals, docs/history and
   loop logs, which record the old name on purpose. A named preset (e.g.
   exclude_preset:"history") expanding to those globs would save the
   round trip of spelling them each time.
+  Shipped 2026-11-12: exclude_preset:"history" adds **/history/**,
+  **/journal/** and **/reviews/** to the exclusions and echoes them as
+  exclude_preset_globs; any other value refuses bad_args. A loop log
+  inside a spec file is not reachable by a path glob. Contract:
+  tests/features/workspace_search_payload_knobs/spec.md § ANTS-5524.
   **Layman:** Searching for old names keeps finding them in history files, and there is no one-word way to skip those folders.
   Kind: enhancement.
   Source: claude-87 relay of MAME_Curator session, 2026-09-28.

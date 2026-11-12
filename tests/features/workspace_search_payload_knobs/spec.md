@@ -82,3 +82,14 @@ carries a `hint` unless the reply already has one.
 **Not tested:** the `timeout` reason. The smallest budget is 1 s, and
 no fixture makes rg reliably outlast it. It shares the stamping helper
 with `output_cap`.
+
+## ANTS-5524 — the `history` exclude preset
+
+`exclude_preset:"history"` adds three exclusions to `exclude_glob`:
+`**/history/**`, `**/journal/**` and `**/reviews/**`, the folders that record
+an old name on purpose. The reply echoes them as `exclude_preset_globs`. Any
+other value refuses `bad_args`.
+
+| Test | What it checks |
+|---|---|
+| `Ants5524HistoryPresetLeavesOutTheRecord` | The preset drops the three folders and keeps a file merely named `history_reader`; the reply lists the globs; a misspelt or non-string preset refuses. |

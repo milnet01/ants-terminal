@@ -762,3 +762,52 @@ TEST(workspace_search_payload_knobs, Ants5323CompleteReplyHasNoReason) {
     ASSERT_FALSE(resp.value(QStringLiteral("truncated")).toBool()) << env;
     EXPECT_FALSE(resp.contains(QStringLiteral("truncated_reason"))) << env;
 }
+
+// ANTS-5524 — exclude_preset:"history" leaves out the folders that record old
+// names on purpose, and the reply says which globs that was. An unknown
+// preset refuses rather than searching unfiltered.
+TEST(workspace_search_payload_knobs, Ants5524HistoryPresetLeavesOutTheRecord) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    for (const char *rel : {"docs/guide.md", "docs/history/old.md", "docs/journal/day.md",
+                            "docs/reviews/loop.md", "src/history_reader.md"}) {
+        const QString path = root + QLatin1Char('/') + QLatin1String(rel);
+        ASSERT_TRUE(QDir().mkpath(QFileInfo(path).absolutePath()));
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("the OldName lives here\n");
+    }
+    RemoteControl rc(nullptr);
+    const auto search = [&](const QJsonValue &preset) {
+        QJsonObject req{{QStringLiteral("caller_cwd"), root},
+                        {QStringLiteral("pattern"), QStringLiteral("OldName")},
+                        {QStringLiteral("files_only"), true}};
+        if (!preset.isUndefined()) req[QStringLiteral("exclude_preset")] = preset;
+        return rc.cmdWorkspaceSearch(req).object();
+    };
+    const auto filesOf = [](const QJsonObject &resp) {
+        QStringList out;
+        for (const QJsonValue &v : resp.value(QStringLiteral("files")).toArray())
+            out << v.toObject().value(QStringLiteral("file")).toString();
+        out.sort();
+        return out;
+    };
+
+    const QJsonObject all = search(QJsonValue::Undefined);
+    ASSERT_EQ(filesOf(all).size(), 5) << QJsonDocument(all).toJson().toStdString();
+    EXPECT_FALSE(all.contains(QStringLiteral("exclude_preset_globs")));
+
+    const QJsonObject kept = search(QStringLiteral("history"));
+    EXPECT_EQ(filesOf(kept), (QStringList{QStringLiteral("docs/guide.md"),
+                                          QStringLiteral("src/history_reader.md")}))
+        << QJsonDocument(kept).toJson().toStdString();
+    EXPECT_EQ(kept.value(QStringLiteral("exclude_preset_globs")).toArray(),
+              (QJsonArray{QStringLiteral("**/history/**"), QStringLiteral("**/journal/**"),
+                          QStringLiteral("**/reviews/**")}));
+
+    EXPECT_EQ(search(QStringLiteral("histroy")).value(QStringLiteral("code")).toString(),
+              QStringLiteral("bad_args"));
+    EXPECT_EQ(search(7).value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
+}

@@ -648,6 +648,14 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     props["lane"]        = laneProp;
                     props["glob"]        = globProp;
                     props["exclude_glob"] = exGlobProp;  // ANTS-3704
+                    // ANTS-5524
+                    QJsonObject exPresetProp;
+                    exPresetProp["type"] = "string";
+                    exPresetProp["enum"] = QJsonArray{QStringLiteral("history")};
+                    exPresetProp["description"] = QStringLiteral(
+                        "\"history\" also leaves out **/history/**, **/journal/** and "
+                        "**/reviews/**; echoed as exclude_preset_globs.");
+                    props["exclude_preset"] = exPresetProp;
                     props["max_results"] = maxProp;
                     props["max_bytes"]   = maxBytesProp;
                     props["max_match_bytes"] = mmbProp;       // ANTS-1876
