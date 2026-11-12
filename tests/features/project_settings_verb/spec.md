@@ -111,6 +111,12 @@ the ANTS-2160 suite used for its consumer-wiring check.
   sides go through `CodebaseIndex::isIndexableFile`, so count and index
   stay in step.
 
+- **INV-25** (ANTS-5521) — `op:"init"` replies with `undeclared[]` and
+  `unavailable[]`, split as INV-23 splits them, whether it wrote, previewed
+  under `dry_run`, or had nothing to write. After a write the two arrays
+  equal `op:"get"`'s. Test: `Ants5521InitNamesTheKeysItLeftUndeclared`, seen
+  failing on all five array assertions before the fix.
+
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

@@ -841,3 +841,44 @@ TEST(ProjectSettingsVerb, Ants4978SetRecordsANoteAndGetEchoesIt) {
     EXPECT_FALSE(call(QStringLiteral("get"), QJsonValue::Undefined)
                      .contains(QStringLiteral("note")));
 }
+
+// ANTS-5521 — op:init says which recognised keys it left out. On a standard
+// layout detect proposes no source_roots, so init writes the other keys; the
+// reply names source_roots in undeclared[], and agrees with op:get afterwards.
+TEST(ProjectSettingsVerb, Ants5521InitNamesTheKeysItLeftUndeclared) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+    writeFile(root + "/src/b.c", cFile("b"));
+    writeFile(root + "/tests/t.c", cFile("t"));
+    writeFile(root + "/docs/x.md", QStringLiteral("# d\n"));
+    writeFile(root + "/ROADMAP.md", QStringLiteral("# r\n"));
+    writeFile(root + "/CHANGELOG.md", QStringLiteral("# c\n"));
+
+    RemoteControl rc(nullptr);
+    const auto call = [&](const QString &op, bool dryRun) {
+        QJsonObject req = jobj({{QStringLiteral("caller_cwd"), root},
+                                {QStringLiteral("op"), op}});
+        if (dryRun) req[QStringLiteral("dry_run")] = true;
+        return rc.cmdProjectSettings(req).object();
+    };
+    const QJsonArray sourceRoots{QStringLiteral("source_roots")};
+    const QJsonArray specsDir{QStringLiteral("specs_dir")};
+
+    const QJsonObject preview = call(QStringLiteral("init"), true);
+    ASSERT_TRUE(preview.value(QStringLiteral("would_write")).toBool())
+        << QJsonDocument(preview).toJson().toStdString();
+    EXPECT_EQ(preview.value(QStringLiteral("undeclared")).toArray(), sourceRoots);
+
+    const QJsonObject init = call(QStringLiteral("init"), false);
+    ASSERT_TRUE(init.value(QStringLiteral("written")).toBool())
+        << QJsonDocument(init).toJson().toStdString();
+    EXPECT_FALSE(init.value(QStringLiteral("settings")).toObject()
+                     .contains(QStringLiteral("source_roots")));
+    EXPECT_EQ(init.value(QStringLiteral("undeclared")).toArray(), sourceRoots);
+    EXPECT_EQ(init.value(QStringLiteral("unavailable")).toArray(), specsDir);
+
+    const QJsonObject get = call(QStringLiteral("get"), false);
+    EXPECT_EQ(init.value(QStringLiteral("undeclared")), get.value(QStringLiteral("undeclared")));
+    EXPECT_EQ(init.value(QStringLiteral("unavailable")), get.value(QStringLiteral("unavailable")));
+}

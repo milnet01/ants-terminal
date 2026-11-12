@@ -376,6 +376,9 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`project_settings op:"init"` lists the keys it left out of `.ants/project.json`.** (ANTS-5521)
+  Its reply carries `undeclared[]` and `unavailable[]`, as `op:"get"` does.
+
 - **The automatic model switcher and the model suggestion chip leave a session alone when its model is not Haiku, Sonnet or Opus.** (ANTS-6750)
 
 - **The release script reads a release's file list reliably on a busy machine.** (ANTS-6752)

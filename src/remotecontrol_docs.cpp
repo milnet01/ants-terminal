@@ -1962,6 +1962,19 @@ QJsonDocument psWrite(const QString &rootCanonical, const QString &settingsPath,
     return QJsonDocument(o);
 }
 
+// ANTS-5521 — op:init's reply names the recognised keys it left out, split as
+// op:get splits them, so the follow-up op:set is visible without a second call.
+QJsonDocument psWithUndeclared(const QJsonDocument &reply, const QString &rootCanonical,
+                               const QStringList &declaredKeys) {
+    QJsonObject o = reply.object();
+    if (!o.value(QStringLiteral("ok")).toBool()) return reply;
+    const ProjectSettings::UndeclaredSplit split = ProjectSettings::splitUndeclared(
+        rootCanonical, ProjectSettings::detect(rootCanonical), psLayoutKeys(), declaredKeys);
+    o[QStringLiteral("undeclared")]  = QJsonArray::fromStringList(split.undeclared);
+    o[QStringLiteral("unavailable")] = QJsonArray::fromStringList(split.unavailable);
+    return QJsonDocument(o);
+}
+
 }  // namespace
 
 // ANTS-2161 — project_settings: detect a misplaced layout + create/update
@@ -2024,7 +2037,7 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
                 o[QStringLiteral("reason")]   = sug.reason.isEmpty()
                     ? QStringLiteral("layout already standard; nothing to write")
                     : sug.reason;
-                return QJsonDocument(o);
+                return psWithUndeclared(QJsonDocument(o), rootCanonical, {});
             }
         }
         QString ec, ek, ev;
@@ -2032,7 +2045,8 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             QJsonObject{}, toApply, rootCanonical, &ec, &ek, &ev);
         if (!merged)
             return psErr(ec, QStringLiteral("project_settings: invalid %1=%2").arg(ek, ev));
-        return psWrite(rootCanonical, settingsPath, *merged, dryRun);
+        return psWithUndeclared(psWrite(rootCanonical, settingsPath, *merged, dryRun),
+                                rootCanonical, merged->keys());
     }
 
     // ---- set (create-or-update; merge preserves unknown keys) ----

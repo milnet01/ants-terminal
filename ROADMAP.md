@@ -89144,11 +89144,15 @@ project. Reported causes are claims until checked in source.
   Source: claude-87 relay of Deedbox session, 2026-09-28.
   Lanes: hooks.
 
-- 📋 [ANTS-5521] **project_settings op:init leaves source_roots undeclared when detect says no override is needed, and says nothing.**
+- ✅ [ANTS-5521] **project_settings op:init leaves source_roots undeclared when detect says no override is needed, and says nothing.**
   detect reports "no source_roots override needed" and init then writes
   the other keys only, so project.json does not declare all six. Either
   init writes source_roots too, or its reply lists it under undeclared[]
   so the follow-up set is visible.
+  Shipped 2026-11-12, the second option: op:init's reply carries
+  undeclared[] and unavailable[] on a write, a dry run and a no-op. init
+  still writes no source_roots where detect proposes none. Contract:
+  tests/features/project_settings_verb/spec.md INV-25.
   **Layman:** Setting up a project's settings file skips one of the six entries without telling you, so you have to add it by hand.
   Kind: fix.
   Source: claude-87 relay of Deedbox session, 2026-09-28.
