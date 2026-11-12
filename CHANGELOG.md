@@ -378,6 +378,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The context meter follows a Claude session after `/clear`.** (ANTS-6751)
+  The focused tab now reads the new session's transcript, so the meter and the
+  other focused-tab readings come from the session on screen.
+
 - **`project_settings op:"init"` lists the keys it left out of `.ants/project.json`.** (ANTS-5521)
   Its reply carries `undeclared[]` and `unavailable[]`, as `op:"get"` does.
 

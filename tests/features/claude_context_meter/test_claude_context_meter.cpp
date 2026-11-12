@@ -10,9 +10,18 @@
 
 #include <gtest/gtest.h>
 
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QScopeGuard>
 #include <QSignalSpy>
+#include <QStandardPaths>
 #include <QTemporaryDir>
+#include <QTest>
+
+#include <unistd.h>
 
 #include <string>
 
@@ -369,4 +378,73 @@ TEST(ClaudeContextMeter, Inv13TabSwitchSeedsFromTheTracker) {
     const size_t guard = body.find("contextTokens() <= 0", set);
     EXPECT_TRUE(guard != std::string::npos && guard < seed)
         << "the seed must not overwrite a reading the integration already has";
+}
+
+// INV-14 (ANTS-6751) — /clear starts a new session, and a new transcript,
+// under the same Claude PID. The focused tab's integration follows the id in
+// ~/.claude/sessions/<pid>.json, as the tab tracker does (ANTS-6747), so the
+// meter reads the new session and not the one that was cleared.
+//
+// Staged with a real child named claude (a symlink to sleep), whose parent
+// is this process, so this process stands in for the tab's shell.
+TEST(ClaudeContextMeter, Inv14MeterFollowsTheSessionAfterClear) {
+    const QString sleepBin = QStandardPaths::findExecutable(QStringLiteral("sleep"));
+    if (sleepBin.isEmpty()) GTEST_SKIP() << "no sleep on PATH";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard envGuard;
+    envGuard.setEnv("HOME", tmp.path().toUtf8());
+
+    const QString cwd = tmp.path() + "/work/proj";
+    ASSERT_TRUE(QDir().mkpath(cwd));
+    ASSERT_TRUE(QDir().mkpath(tmp.path() + "/bin"));
+    const QString fakeClaude = tmp.path() + "/bin/claude";
+    ASSERT_TRUE(QFile::link(sleepBin, fakeClaude));
+    QProcess proc;
+    proc.setProgram(fakeClaude);
+    proc.setArguments({QStringLiteral("60")});
+    proc.setWorkingDirectory(cwd);
+    proc.start();
+    ASSERT_TRUE(proc.waitForStarted(3000));
+    const auto stopProc = qScopeGuard([&]() {
+        proc.kill();
+        proc.waitForFinished(3000);
+    });
+    const pid_t child = static_cast<pid_t>(proc.processId());
+    ASSERT_TRUE(QTest::qWaitFor([&]() {
+        QFile f(QStringLiteral("/proc/%1/cmdline").arg(child));
+        return f.open(QIODevice::ReadOnly) && f.readAll().contains("claude");
+    }, 3000));
+
+    const QString projDir = tmp.path() + "/.claude/projects/" +
+        ClaudeIntegration::encodeProjectPath(QFileInfo(cwd).canonicalFilePath());
+    ASSERT_TRUE(QDir().mkpath(projDir));
+    const QByteArray ts =
+        QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs).toUtf8();
+    const auto reply = [&](const QString &path, int cacheRead) {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(R"({"type":"assistant","timestamp":")" + ts +
+                R"(","message":{"stop_reason":"end_turn","usage":{"input_tokens":0,)"
+                R"("cache_creation_input_tokens":0,"cache_read_input_tokens":)" +
+                QByteArray::number(cacheRead) +
+                R"(,"output_tokens":0},"content":[{"type":"text","text":"x"}]}})" "\n");
+    };
+    reply(projDir + "/old-session.jsonl", 400000);
+
+    ClaudeIntegration ci;
+    ci.setShellPid(::getpid());
+    ASSERT_TRUE(QTest::qWaitFor([&]() { return ci.contextTokens() == 400000; }, 8000))
+        << "setup: the first transcript never bound; tokens=" << ci.contextTokens();
+
+    const QString newId = QStringLiteral("0a1b2c3d-1111-2222-3333-444455556666");
+    reply(projDir + "/" + newId + ".jsonl", 9000);
+    ASSERT_TRUE(QDir().mkpath(tmp.path() + "/.claude/sessions"));
+    {
+        QFile f(tmp.path() + QStringLiteral("/.claude/sessions/%1.json").arg(child));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("{\"sessionId\":\"" + newId.toUtf8() + "\"}");
+    }
+    EXPECT_TRUE(QTest::qWaitFor([&]() { return ci.contextTokens() == 9000; }, 8000))
+        << "the meter still reads the cleared session: tokens=" << ci.contextTokens();
 }

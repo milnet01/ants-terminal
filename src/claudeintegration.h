@@ -188,6 +188,14 @@ public:
                                       qint64 minLastEventMs = 0,
                                       qint64 nowMs = 0);
 
+    // ANTS-6747, ANTS-6751 — the transcript of the session `claudePid` is in now, when
+    // that is not `boundPath`: `<boundPath's dir>/<sessionId>.jsonl`, with
+    // the id read from `<sessionsDir>/<claudePid>.json`, which Claude Code
+    // rewrites on /clear. Empty when the id is unchanged, missing or not a
+    // plain session id, or when that transcript does not exist yet.
+    static QString liveSessionTranscript(const QString &boundPath, pid_t claudePid,
+                                         const QString &sessionsDir);
+
     // Wall-clock epoch ms when `pid` started, derived from
     // /proc/<pid>/stat field 22 (starttime in clock ticks since boot)
     // and /proc/stat's `btime` (boot time epoch). Returns 0 if the

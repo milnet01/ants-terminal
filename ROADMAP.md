@@ -69426,7 +69426,7 @@ remainder, captured so they don't drop on the floor.
   Source: user-report-2026-11-12.
   Lanes: status-bar.
 
-- 📋 [ANTS-6751] **The focused tab's Claude integration keeps the pre-/clear transcript, as the tab tracker did.**
+- ✅ [ANTS-6751] **The focused tab's Claude integration keeps the pre-/clear transcript, as the tab tracker did.**
   Read in code 2026-11-12, not reproduced live.
   ClaudeIntegration::pollClaudeProcess rebinds m_transcriptPath only on a
   PID change or an empty path (tests/features/claude_pid_replacement/spec.md
@@ -69435,6 +69435,14 @@ remainder, captured so they don't drop on the floor.
   ClaudeTabTracker::liveSessionTranscript (or move it somewhere both can
   reach) from pollClaudeProcess and rebind as INV-2 does. First confirm
   which readings use m_transcriptPath (context meter, isFocusedTabSession).
+  Shipped 2026-11-12. Reproduced first in a test with a real child
+  process named claude: the reading stayed at the cleared session's
+  figure. pollClaudeProcess now follows ~/.claude/sessions/<pid>.json
+  under an unchanged PID. liveSessionTranscript moved to
+  ClaudeIntegration so both callers reach it. Contract:
+  tests/features/claude_context_meter/spec.md INV-14. Terminal code:
+  seen only after a terminal relaunch the user chooses; not yet seen on
+  screen.
   **Layman:** After you clear a Claude session, the context meter and other focused-tab readings may still come from the old session.
   Kind: fix.
   Source: ANTS-6747-follow-up-2026-11-12.

@@ -16,6 +16,7 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QProcessEnvironment>
+#include <QRegularExpression>
 #include <QSet>
 
 #include <algorithm>
@@ -368,6 +369,18 @@ void ClaudeIntegration::pollClaudeProcess() {
             parseTranscriptForState(m_transcriptPath);
         }
 
+    } else if (const QString live = liveSessionTranscript(
+                   m_transcriptPath, m_claudePid, ConfigPaths::claudeSessionsDir());
+               !live.isEmpty()) {
+        // ANTS-6751 — /clear starts a new session, and a new transcript,
+        // under the same PID. Follow it as the tab tracker does (ANTS-6747),
+        // with INV-2's rebind order. The reading belonged to the old file.
+        clearContextReading();
+        if (const QStringList old = m_transcriptWatcher.files(); !old.isEmpty())
+            m_transcriptWatcher.removePaths(old);
+        m_transcriptPath = live;
+        m_transcriptWatcher.addPath(m_transcriptPath);
+        parseTranscriptForState(m_transcriptPath);
     }
 
     // Set initial Idle state, then let transcript parse refine it.
@@ -396,6 +409,22 @@ void ClaudeIntegration::pollClaudeProcess() {
 }
 
 // --- Session Transcripts ---
+
+QString ClaudeIntegration::liveSessionTranscript(const QString &boundPath,
+                                                pid_t claudePid,
+                                                const QString &sessionsDir) {
+    QFile f(QStringLiteral("%1/%2.json").arg(sessionsDir).arg(claudePid));
+    if (!f.open(QIODevice::ReadOnly)) return {};
+    const QString id = QJsonDocument::fromJson(f.readAll())
+                           .object().value(QLatin1String("sessionId")).toString();
+    // The id becomes a file name: accept a plain session id and nothing else.
+    static const QRegularExpression plainId(QStringLiteral("^[0-9a-fA-F-]{1,64}$"));
+    if (!plainId.match(id).hasMatch()) return {};
+    const QFileInfo bound(boundPath);
+    if (bound.completeBaseName() == id) return {};
+    const QString live = bound.path() + QLatin1Char('/') + id + QStringLiteral(".jsonl");
+    return QFile::exists(live) ? live : QString();
+}
 
 // ANTS-1163: read the most recent ISO 8601 `timestamp` field from the
 // JSONL tail. Walks backwards from the last 32 KB, widening only when

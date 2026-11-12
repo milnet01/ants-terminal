@@ -192,7 +192,7 @@ tracker class) rather than pixel-level painting:
     differs from the bound one and the file exists. An id that is not
     hex digits and dashes MUST be ignored, since it becomes a file name.
     An unchanged id MUST leave the watcher alone.
-    `ClaudeTabTracker::liveSessionTranscript` holds the decision. Tested
+    `ClaudeIntegration::liveSessionTranscript` holds the decision. Tested
     in `checkTranscriptBindsAfterClaudeStarts`: after the bound
     transcript reads `Idle`, a sessions file names a second transcript
     carrying a tool call, and the state MUST reach `ToolUse`.

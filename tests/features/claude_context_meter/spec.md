@@ -62,6 +62,12 @@ partially sighted, so the meter must be large and readable.
   the tracker, so the meter shows at once. *Test:*
   `Inv13TabSwitchSeedsFromTheTracker` (source scrape of
   `refreshStatusBarForActiveTab`). (ANTS-5747)
+- **INV-14** — after `/clear`, the focused tab's reading comes from the new
+  session's transcript. `pollClaudeProcess` follows the session id in
+  `~/.claude/sessions/<pid>.json` under an unchanged Claude PID, clears the
+  old reading and rebinds. *Test:* `Inv14MeterFollowsTheSessionAfterClear`,
+  staged with a real child process named `claude`; seen failing with the old
+  reading before the fix. (ANTS-6751)
 
 ## Reload
 

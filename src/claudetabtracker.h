@@ -116,14 +116,6 @@ public:
     // where the watcher needs a nudge).
     void forceRefreshForTest(pid_t shellPid, const QString &transcriptPath = {});
 
-    // ANTS-6747 — the transcript of the session `claudePid` is in now, when
-    // that is not `boundPath`: `<boundPath's dir>/<sessionId>.jsonl`, with
-    // the id read from `<sessionsDir>/<claudePid>.json`, which Claude Code
-    // rewrites on /clear. Empty when the id is unchanged, missing or not a
-    // plain session id, or when that transcript does not exist yet.
-    static QString liveSessionTranscript(const QString &boundPath, pid_t claudePid,
-                                         const QString &sessionsDir);
-
 signals:
     // Emitted whenever a tracked shell's state changes (transcript-
     // derived state, plan-mode latch, tool name, or awaitingInput).

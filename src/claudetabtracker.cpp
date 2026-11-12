@@ -219,7 +219,7 @@ void ClaudeTabTracker::detectClaudeChild(ShellEntry &entry) {
         // ANTS-6747 — /clear starts a new session, and a new transcript,
         // under the same PID. Without this the tab reads the old file,
         // whose last record ended a turn, and shows Idle from then on.
-        const QString live = liveSessionTranscript(
+        const QString live = ClaudeIntegration::liveSessionTranscript(
             entry.transcriptPath, found, ConfigPaths::claudeSessionsDir());
         if (live.isEmpty()) return;
         releaseWatch(entry.transcriptPath);
@@ -272,22 +272,6 @@ void ClaudeTabTracker::bindTranscript(ShellEntry &entry, const QString &path) {
     // Seed state from the tail now, or the tab reads Idle until the next
     // write to the file.
     reparseTranscript(entry.shellPid);
-}
-
-QString ClaudeTabTracker::liveSessionTranscript(const QString &boundPath,
-                                                pid_t claudePid,
-                                                const QString &sessionsDir) {
-    QFile f(QStringLiteral("%1/%2.json").arg(sessionsDir).arg(claudePid));
-    if (!f.open(QIODevice::ReadOnly)) return {};
-    const QString id = QJsonDocument::fromJson(f.readAll())
-                           .object().value(QLatin1String("sessionId")).toString();
-    // The id becomes a file name: accept a plain session id and nothing else.
-    static const QRegularExpression plainId(QStringLiteral("^[0-9a-fA-F-]{1,64}$"));
-    if (!plainId.match(id).hasMatch()) return {};
-    const QFileInfo bound(boundPath);
-    if (bound.completeBaseName() == id) return {};
-    const QString live = bound.path() + QLatin1Char('/') + id + QStringLiteral(".jsonl");
-    return QFile::exists(live) ? live : QString();
 }
 
 void ClaudeTabTracker::reparseTranscript(pid_t shellPid) {
