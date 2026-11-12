@@ -1170,6 +1170,7 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     f.close();
 
     SpecLog::EditResult res;
+    QString followedFrom;   // ANTS-5346 — the spec whose pointer was followed
     if (op == QStringLiteral("set_status")) {
         const QString status =
             req.value(QStringLiteral("status")).toString();
@@ -1210,7 +1211,39 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
                                         "\"loop_label\" and \"body\" (bullet "
                                         "form) or \"cells\" (table form)"));
         }
-        res = SpecLog::appendLoop(content, label, body, loopCells);
+        // ANTS-5346 — a loop-log section that only links the log's own file
+        // (documentation.md § 9.1) sends the row there. One hop: the linked
+        // file is not searched for a pointer of its own.
+        QString logContent = content;
+        const QString pointer = SpecLog::loopLogPointer(content);
+        if (!pointer.isEmpty()) {
+            const QString target = QDir::cleanPath(
+                QFileInfo(full).absolutePath() + QLatin1Char('/') + pointer);
+            const QString targetRel = QDir(rootCanonical).relativeFilePath(target);
+            if (targetRel == QStringLiteral("..") ||
+                targetRel.startsWith(QStringLiteral("../")))
+                return slErr(QStringLiteral("bad_path"),
+                             QStringLiteral("spec_log: %1's loop log points at "
+                                            "%2, outside the project. Nothing "
+                                            "was written.").arg(rel, pointer));
+            if (!QFileInfo(target).isFile())
+                return slErr(QStringLiteral("not_found"),
+                             QStringLiteral("spec_log: %1's loop log points at "
+                                            "%2, which does not exist. Nothing "
+                                            "was written.").arg(rel, targetRel));
+            QFile lf(target);
+            if (!PathValidation::openInsideProject(lf, rootCanonical, target))
+                return slErr(QStringLiteral("bad_path"),
+                             QStringLiteral("spec_log: %1's loop log points at "
+                                            "%2, which resolves outside the "
+                                            "project. Nothing was written.")
+                                 .arg(rel, targetRel));
+            logContent = QString::fromUtf8(lf.readAll());
+            followedFrom = rel;
+            rel  = targetRel;
+            full = target;
+        }
+        res = SpecLog::appendLoop(logContent, label, body, loopCells);
     } else {  // append_inv
         const QString invId =
             req.value(QStringLiteral("inv_id")).toString();
@@ -1263,6 +1296,7 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         // re-reading the file to find out.
         if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
         if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
+        if (!followedFrom.isEmpty()) out["followed_from"] = followedFrom;
         return QJsonDocument(out);
     }
 
@@ -1310,6 +1344,8 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
     // ANTS-4353/4364 — the shape written and the direction inferred.
     if (!res.rowShape.isEmpty()) out["row_shape"] = res.rowShape;
     if (!res.rowOrder.isEmpty()) out["row_order"] = res.rowOrder;
+    // ANTS-5346 — `path` is the file written; this names the spec that led there.
+    if (!followedFrom.isEmpty()) out["followed_from"] = followedFrom;
     rcSetWriteBytes(out, specBefore, static_cast<qint64>(utf8.size()));
     return QJsonDocument(out);
 }

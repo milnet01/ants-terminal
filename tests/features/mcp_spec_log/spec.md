@@ -38,13 +38,13 @@ Invariants exercised (docs/specs/ANTS-1963-spec-log-mcp-tool-write.md §3 / §6)
   value, space-joined across the field's continuation lines (a wrapped
   Status reports its whole extent, not just the opener), on the write
   envelope AND the `dry_run` preview, as does `append_status`.
-- T14 — (ANTS-6434) a spec the `id` route finds that resolves outside the
-  project root, by a symlink, refuses `bad_path` from `spec_log` and from
-  `spec_query`, and the outside file is left byte-identical.
   `append_loop` and `append_inv` omit the key — an
   empty string there would read as "the Status was blank". The verb
   validates no vocabulary, so this is the caller's only project-agnostic
   read of the one in use.
+- T14 — (ANTS-6434) a spec the `id` route finds that resolves outside the
+  project root, by a symlink, refuses `bad_path` from `spec_log` and from
+  `spec_query`, and the outside file is left byte-identical.
 - T14 — (ANTS-5476) a blank line inside a table-shaped loop log does not
   end it: rows after the gap with the header's column count are the same
   table, so append_loop writes after the log's last row. A second table
@@ -58,3 +58,8 @@ Invariants exercised (docs/specs/ANTS-1963-spec-log-mcp-tool-write.md §3 / §6)
   names that line. No Status field → unrecognised_format; an empty
   `status` → bad_args. ANTS-6364: the write and the `dry_run` preview both
   return `new_status`, the field as it reads after the edit.
+- T17 — (ANTS-5346) a loop-log section that holds no rows and links exactly
+  one relative `.md` file sends `append_loop` to that file: the row lands
+  there, the spec is byte-identical, `path` names the file written and
+  `followed_from` the spec. A link to a missing file refuses `not_found`
+  naming it; a link leaving the project refuses `bad_path`.

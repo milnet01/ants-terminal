@@ -606,6 +606,40 @@ EditResult appendLoop(const QString &content, const QString &label,
                            bullet, ewn);
 }
 
+QString loopLogPointer(const QString &content) {
+    bool ewn = false;
+    const QStringList lines = toLines(content, ewn);
+    const QString keyword = QStringLiteral("Cold-eyes loop log");
+    if (countSectionHeadings(lines, keyword) != 1) return {};
+    const int hdr = findSectionHeading(lines, keyword);
+    const int end = sectionEnd(lines, hdr);
+    const QVector<bool> fence = MarkdownScan::fenceMask(lines);
+    static const QRegularExpression linkRe(
+        QStringLiteral(R"(\[[^\]]*\]\(([^)\s]+)\))"));
+    QSet<QString> targets;
+    for (int i = hdr + 1; i < end; ++i) {
+        if (fence.at(i)) continue;
+        const QString &line = lines.at(i);
+        // A row of any shape appendLoop writes means the log is here.
+        if (line.trimmed().startsWith(QLatin1Char('|')) ||
+            line.startsWith(QStringLiteral("- **")) ||
+            line.startsWith(QStringLiteral("### ")))
+            return {};
+        auto it = linkRe.globalMatch(line);
+        while (it.hasNext()) {
+            QString target = it.next().captured(1);
+            const int hash = target.indexOf(QLatin1Char('#'));
+            if (hash >= 0) target.truncate(hash);
+            if (target.endsWith(QStringLiteral(".md")) &&
+                !target.startsWith(QLatin1Char('/')) &&
+                !target.contains(QStringLiteral("://")))
+                targets.insert(target);
+        }
+    }
+    // Two different files linked: which one is the log is a guess.
+    return targets.size() == 1 ? *targets.constBegin() : QString();
+}
+
 EditResult appendInv(const QString &content, const QString &invId,
                      const QString &body, const QString &test) {
     bool ewn = false;

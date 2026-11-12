@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_log append_loop writes to a loop log kept in its own file: a section that only links one .md file sends the row there, and the reply names both files** (ANTS-5346)
+
 - **A workspace_search too large to return inline now says which files matched and how often (`files`)** (ANTS-4892)
   The summary survives the spill, so the next, narrower search needs no
   second call to find where the matches are.

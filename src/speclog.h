@@ -91,6 +91,14 @@ EditResult appendLoop(const QString &content, const QString &label,
                       const QString &body,
                       const QStringList &cells = QStringList());
 
+// ANTS-5346 — the loop log kept in its own file (documentation.md § 9.1).
+// Where the "Cold-eyes loop log" section holds no rows (no table, no `- **`
+// bullet, no `### ` heading) and its prose links exactly one relative `.md`
+// file, returns that link target as written (an `#anchor` dropped);
+// otherwise empty. The handler follows it one hop; the target is not
+// searched for a pointer of its own.
+QString loopLogPointer(const QString &content);
+
 // op:"append_inv" — append a `- **<invId>** — <body>.` bullet (plus
 // ` *Test:* <test>.` when test non-empty) at the end of the `## …`
 // section whose heading contains "Invariants" (case-insensitive). Never

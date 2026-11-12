@@ -88638,12 +88638,18 @@ project. Reported causes are claims until checked in source.
   Source: feedback-UT_Ants-2026-09-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5346] **spec_log append_loop cannot write a loop log kept outside the spec, the layout documentation.md 9.1 prescribes.**
+- ✅ [ANTS-5346] **spec_log append_loop cannot write a loop log kept outside the spec, the layout documentation.md 9.1 prescribes.**
   Reported by UT_Ants (UTA-0014): section 12 holds a one-line pointer to
   docs/reviews/<ID>-loop-log.md; the verb read the pointer as a bullet log
   and refused bad_args. Suggested, in order: follow a single relative-path
   pointer; accept an explicit `path`; at least name the file found in the
   refusal. Related: ANTS-4934, ANTS-4935.
+  Shipped 2026-11-12: suggestion one. A loop-log section with no rows that
+  links exactly one relative .md file sends append_loop to that file (one
+  hop); the reply's `path` is the file written and `followed_from` the
+  spec. A missing target refuses not_found naming it; one leaving the
+  project refuses bad_path. Suggestion two (explicit `path`) already
+  worked. Test: McpSpecLog.Ants5346AppendLoopFollowsAPointerToASeparateLog.
   **Layman:** The tool that records review rounds refuses when the record lives in its own file, which the project rules require.
   Kind: enhancement.
   Source: feedback-UT_Ants-2026-09-12.

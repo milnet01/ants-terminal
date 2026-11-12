@@ -13,6 +13,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QIODevice>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
@@ -1232,4 +1233,84 @@ TEST(McpSpecLog, IdRouteRefusesASymlinkOutOfTheRoot) {
     const QJsonObject qenv = rc.cmdSpecQuery(q).object();
     EXPECT_FALSE(qenv.value("ok").toBool());
     EXPECT_EQ(qenv.value("code").toString(), "bad_path");
+}
+
+// T17 (ANTS-5346) — a loop-log section holding only a link to a separate file
+// (the layout documentation.md § 9.1 prescribes) sends append_loop there. The
+// row lands in the linked file, the spec is untouched, and the envelope names
+// both. A link that leaves the project, or names no file, writes nothing.
+TEST(McpSpecLog, Ants5346AppendLoopFollowsAPointerToASeparateLog) {
+    const char *pointerSpec =
+        "# ANTS-9999 — Sample spec\n"
+        "\n"
+        "**Status:** spec draft (2026-06-03).\n"
+        "\n"
+        "## 12. Cold-eyes loop log\n"
+        "\n"
+        "Rows live in [`../reviews/ANTS-9999-loop-log.md`]"
+        "(../reviews/ANTS-9999-loop-log.md#cold-eyes-loop-log).\n"
+        "\n"
+        "## 13. Resource cost\n"
+        "\n"
+        "None.\n";
+    const char *logFile =
+        "# `docs/specs/ANTS-9999.md` — cold-eyes loop log\n"
+        "\n"
+        "## Cold-eyes loop log\n"
+        "\n"
+        "| Loop | Date | Outcome |\n"
+        "|------|------|---------|\n"
+        "| 1 | 2026-08-01 | x |\n";
+
+    EXPECT_EQ(SpecLog::loopLogPointer(QString::fromUtf8(pointerSpec)),
+              QStringLiteral("../reviews/ANTS-9999-loop-log.md"));
+    EXPECT_TRUE(SpecLog::loopLogPointer(
+                    QString::fromUtf8(kSpec) +
+                    "\nNotes: [notes](../reviews/n.md).\n")
+                    .isEmpty())
+        << "a section with rows is the log itself, whatever it links";
+
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString spec = seedSpec(dir, "ANTS-9999", pointerSpec);
+    const QByteArray specBefore = readAll(spec);
+    ASSERT_TRUE(QDir(dir.path()).mkpath("docs/reviews"));
+    const QString log = dir.path() + "/docs/reviews/ANTS-9999-loop-log.md";
+    {
+        QFile f(log);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(logFile);
+    }
+
+    RemoteControl rc(nullptr);
+    const auto base = [&] {
+        QJsonObject r;
+        r["caller_cwd"] = dir.path();
+        r["id"] = "ANTS-9999";
+        r["op"] = "append_loop";
+        r["cells"] = QJsonArray{"2", "2026-08-02", "y"};
+        return r;
+    };
+    const QJsonObject env = rc.cmdSpecLog(base()).object();
+    ASSERT_TRUE(env.value("ok").toBool()) << env.value("error").toString().toStdString();
+    EXPECT_EQ(env.value("path").toString(),
+              QStringLiteral("docs/reviews/ANTS-9999-loop-log.md"));
+    EXPECT_EQ(env.value("followed_from").toString(),
+              QStringLiteral("docs/specs/ANTS-9999.md"));
+    EXPECT_EQ(env.value("row_shape").toString(), QStringLiteral("table"));
+    EXPECT_TRUE(readAll(log).contains("| 2 | 2026-08-02 | y |"));
+    EXPECT_EQ(readAll(spec), specBefore) << "the spec holding the pointer is untouched";
+
+    // A pointer naming no file refuses not_found and names the file.
+    QFile::remove(log);
+    const QJsonObject missing = rc.cmdSpecLog(base()).object();
+    EXPECT_EQ(missing.value("code").toString(), QStringLiteral("not_found"));
+    EXPECT_TRUE(missing.value("error").toString().contains("ANTS-9999-loop-log.md"));
+    EXPECT_EQ(readAll(spec), specBefore);
+
+    // A pointer leaving the project refuses bad_path.
+    QString escaping = QString::fromUtf8(pointerSpec);
+    escaping.replace("../reviews/ANTS-9999-loop-log.md", "../../../outside.md");
+    seedSpec(dir, "ANTS-9999", escaping);
+    const QJsonObject out = rc.cmdSpecLog(base()).object();
+    EXPECT_EQ(out.value("code").toString(), QStringLiteral("bad_path"));
 }
