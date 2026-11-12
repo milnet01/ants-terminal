@@ -741,7 +741,10 @@ thing that went wrong. A commit is the usual form, **and it names its repository
 whenever that is not this one** — a sha from elsewhere fails silently in
 `git log <sha>..HEAD -- <the covered paths>`. **Where there is no commit** — a
 running service, an installed binary, a machine-wide tool — name the version it
-reported and the command that reports it.
+reported and the command that reports it. **A claim about how such a system
+BEHAVES — a defect, a refusal — also names the command that reproduces it, and
+quotes the refusal as printed.** The version says what was measured. Only the
+command shows whether it still happens.
 
 **Say what the evidence did NOT cover.** A filtered population, a survey's
 exclusions, a tool that compared less than it was pointed at. The excluded amount,
