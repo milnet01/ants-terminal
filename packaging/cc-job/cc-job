@@ -203,16 +203,20 @@ clean_cmd() {
     shopt -s nullglob
     local f name removed=0 kept=()
     snapshot_running
-    for f in "$STATE"/*.info; do
+    # One grep picks this session's records. Reading each record in its own
+    # subshell took seconds once thousands of old jobs had piled up.
+    local mine
+    mine=$(grep -lxF --include='*.info' -r -e "owner=$me" "$STATE" 2>/dev/null | sort) || true
+    while IFS= read -r f; do
+        [[ -n $f ]] || continue
         name=${f##*/}; name=${name%.info}
-        [[ $(info_field "$name" owner) == "$me" ]] || continue
         rc=0; clean_one "$name" "$force" || rc=$?
         case $rc in
             0) removed=$((removed + 1)) ;;
             1) kept+=("$name (running)") ;;
             *) kept+=("$name (unread; 'cc-job tail $name' or --force)") ;;
         esac
-    done
+    done <<<"$mine"
     echo "removed $removed of this session's jobs"
     local k
     for k in "${kept[@]}"; do echo "kept $k"; done
