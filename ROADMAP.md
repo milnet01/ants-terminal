@@ -86090,10 +86090,13 @@ rather than refiled.
   Source: pressless-msg-803-2026-10-22.
   Lanes: spec-engines.
 
-- 📋 [ANTS-6357] **Five older specs write invariants in a form spec_lint and spec_query cannot read.**
+- ✅ [ANTS-6357] **Five older specs write invariants in a form spec_lint and spec_query cannot read.**
   `invariants_unparsed` fires on ANTS-1154, ANTS-1283, ANTS-1372, ANTS-1445 and
   ANTS-1446. Rewrite each Invariants section in the bullet or table form, keeping
   the ids. Done when `SpecLint.DISABLED_CorpusCalibration` reports none.
+  Shipped 2026-11-13 (5b25b5fc): the corpus calibration reports no
+  invariants_unparsed. ANTS-1446 only cites its test spec, so its lines
+  were reworded instead.
   **Layman:** Five old design documents write their rules in a layout the checking tools skip, so nothing checks those rules.
   Kind: doc-fix.
   Source: ANTS-4998 corpus measurement, 2026-11-02.
@@ -88446,10 +88449,12 @@ work headless (ANTS-4734). ANTS-4932 is what unblocks the hook callers.
   Source: found while shipping ANTS-5511, 2026-10-30.
   Lanes: mcp.
 
-- 📋 [ANTS-6316] **spec_lint's header_layman_missing could also report a Layman line absorbed into the header field above it.**
+- ✅ [ANTS-6316] **spec_lint's header_layman_missing could also report a Layman line absorbed into the header field above it.**
   spec-format.md's Layman section names the hazard: with no blank line,
   SpecParse adds a prose line to the field above it. The check passes any
   line holding the word "layman". claude-config marked this optional.
+  Shipped 2026-11-13 (9a40294b): a new kind, header_layman_absorbed,
+  names the line. Test: Ants6316LaymanLineAbsorbedIntoAField.
   **Layman:** A plain-language line placed straight under a header field gets read as part of that field, and the check does not notice.
   Kind: enhancement.
   Source: claude-config note on ANTS-5511, 2026-10-30.
@@ -89078,13 +89083,15 @@ project. Reported causes are claims until checked in source.
   Source: claude-config session request 2026-09-26 (their CFG-0234).
   Lanes: docs, mcp.
 
-- 📋 [ANTS-6746] **Tables in docs/ and INVESTIGATION_tab_close_x.md hold rows GitHub renders with a cell spilled or missing.**
+- ✅ [ANTS-6746] **Tables in docs/ and INVESTIGATION_tab_close_x.md hold rows GitHub renders with a cell spilled or missing.**
   Found by doc_integrity kinds:["table_columns"] (ANTS-5402) over the
   repo. Samples checked are real: a `|` inside backticks (ANTS-1305 spec
   jaccard row, ANTS-1302 spec buildCtestRegex row), text after a row's
   closing pipe (INVESTIGATION_tab_close_x.md). Fix each by writing `\|`
   or moving the stray text; loop-log rows are history, so check § 9.1's
   rule before rewriting one. Re-run the verb to list them; skip
+  local-archive/.
+  Shipped 2026-11-13: doc_integrity table_columns reports none outside
   local-archive/.
   **Layman:** Some tables in the project's documents show a cell in the wrong column on GitHub, usually because a | character inside the text splits it.
   Kind: doc-fix.
@@ -92510,7 +92517,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude_config_Ants_MCP_Feedback.md 2026-11-13.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-6762] **changelog_log op:amend re-wraps the line it joined.**
+- ✅ [ANTS-6762] **changelog_log op:amend re-wraps the line it joined.**
   Pressless, releasing 0.15.0: an amend on an [Unreleased] entry replied
   wrapped:true with a line_text of about 190 characters. `wrapped` means
   old_text matched across a hard wrap; WrapMatch::patchOnce
@@ -92518,6 +92525,9 @@ measured Ants adding about 5,250 tokens to every request.
   ChangelogLog::amendUnreleased (src/changeloglog.cpp) writes it unwrapped.
   The entry reads correctly; only its width differs from its neighbours.
   Also say in the verb's description what `wrapped` reports.
+  Shipped 2026-11-13 (cc258c13): the joined line is wrapped again at the
+  widest spanned line's width; the description says what wrapped
+  reports. Test: Inv10AJoinedLineIsWrappedAgain.
   **Layman:** After editing a changelog entry, its lines stay the same width as the entries around it.
   Kind: fix.
   Source: pressless-session-message-2026-11-13.

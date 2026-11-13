@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **spec_lint names a Layman line that has no blank line above it** (ANTS-6316)
+  Such a line is read as part of the header field it follows. The new
+  `header_layman_absorbed` finding points at it.
+
 - **`ci_report op:"checks"` sums up one pull request's or commit's CI checks in a few lines.** (ANTS-5706)
   It replies how many checks passed, failed, are pending or were skipped,
   names the failing and pending ones, and says which failures are new and
@@ -406,6 +410,10 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **changelog_log op:"amend" keeps an entry's line width** (ANTS-6762)
+  An edit across a line break joins the lines, then wraps the result
+  again at the old width.
 
 - **The allowlist dialog refuses an Allow rule with a `*` inside a `NAME=value` prefix.** (ANTS-6759)
   Claude Code warns about such a rule at start-up. The dialog now leaves
