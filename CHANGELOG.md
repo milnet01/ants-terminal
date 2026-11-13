@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **`cc-job wait` takes `--summary [lines]` and `--grep <regex>`.** (ANTS-5701)
+  A finished job reports its status line, with the exit code and log path,
+  then the last few lines of output or only the lines matching a pattern.
+
 - **`session_message op:send` takes a list of project slugs in `to` and sends one copy to each, reporting who received it and who was refused.** (ANTS-5700)
 
 - **`workspace_search` takes `exclude_preset:"history"` to leave out history, journal and review folders in one word.** (ANTS-5524)

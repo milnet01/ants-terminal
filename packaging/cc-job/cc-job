@@ -23,7 +23,11 @@ cc-job status [<name>]      running / finished with exit code / stopped; no name
                             running jobs and the newest 20 others
 cc-job status --all         the same for every job, by name
 cc-job tail <name> [lines]  last lines of output (default 40)
-cc-job wait <name>          block until the job ends, then exit with its exit code
+cc-job wait <name> [--summary [lines]] [--grep <regex>]
+                            block until the job ends, print its status line, then exit
+                            with its exit code. --summary adds the last lines of output
+                            (default 5); --grep adds the matching lines instead (the
+                            last of them, with --summary)
 cc-job watch <name>         open a Konsole window following the output live
 cc-job stop <name>          stop the job
 cc-job clean <name> [--force]
@@ -252,10 +256,32 @@ status_recent() {
 }
 
 wait_job() {
-    local name=${1:-}; checkname "$name"
-    [[ -f $STATE/$name.log ]] || die "no job named '$name'"
+    local name=${1:-}; checkname "$name"; shift
+    # ANTS-5701: a few lines of the log, so a caller need not read all of it.
+    local lines="" pattern=""
+    while (($#)); do
+        case $1 in
+            --summary) lines=5
+                       if [[ ${2:-} =~ ^[0-9]+$ ]]; then lines=$2; shift; fi ;;
+            --grep)    [[ -n ${2:-} ]] || die "--grep needs a regular expression"
+                       pattern=$2; shift ;;
+            *)         die "wait takes --summary [lines] and --grep <regex>, not '$1'" ;;
+        esac
+        shift
+    done
+    local log="$STATE/$name.log"
+    [[ -f $log ]] || die "no job named '$name'"
     while running "$name"; do sleep 2; done
     status_one "$name"
+    if [[ -n $pattern ]]; then
+        # grep exits 1 on no match, which is an answer here, not a failure.
+        if [[ -n $lines ]]; then { grep -E -- "$pattern" "$log" || true; } | tail -n "$lines"
+        else grep -E -- "$pattern" "$log" || true
+        fi
+        : >"$STATE/$name.read"
+    elif [[ -n $lines ]]; then
+        tail -n "$lines" "$log"; : >"$STATE/$name.read"
+    fi
     [[ -f $STATE/$name.exit ]] || exit 1
     exit "$(<"$STATE/$name.exit")"
 }

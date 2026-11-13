@@ -190,4 +190,39 @@ env CLAUDE_CODE_SESSION_ID=A CC_JOB_DIR="$mine" PATH="$fake:$PATH" "$bin" clean 
 [ -e "$mine/oldrun.log" ] || { echo "FAIL INV-12: --force removed a running job"; exit 1; }
 case "$("$bin" --help)" in *"clean --mine"*) ;; *) echo "FAIL INV-12: --help omits clean --mine"; exit 1 ;; esac
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner"
+# INV-13 — wait --summary prints the status line and the last N lines; --grep
+# prints the matching lines instead. Both exit with the job's code and count as
+# reading the log. The stand-in systemctl reports this job as not running.
+sum="$prefix/sum"
+mkdir "$sum"
+{ for i in $(seq 1 30); do echo "line $i"; if [ "$i" = 7 ] || [ "$i" = 19 ]; then echo "ERROR at $i"; fi; done; } \
+    >"$sum/build.log"
+echo 3 >"$sum/build.exit"
+echo "started=2026-01-01" >"$sum/build.info"
+rc=0
+out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --summary 2)" || rc=$?
+[ "$rc" -eq 3 ] || { echo "FAIL INV-13: wait --summary exited $rc, want the job's 3"; exit 1; }
+[ "$(wc -l <<<"$out")" = 3 ] || { echo "FAIL INV-13: --summary 2 printed: $out"; exit 1; }
+sed -n 1p <<<"$out" | grep -q "build: finished, exit 3.*$sum/build.log" ||
+    { echo "FAIL INV-13: the first line is not the status with the log path: $out"; exit 1; }
+[ "$(sed -n 2,3p <<<"$out")" = $'line 29\nline 30' ] ||
+    { echo "FAIL INV-13: --summary 2 did not end with the last two lines: $out"; exit 1; }
+[ -e "$sum/build.read" ] || { echo "FAIL INV-13: a summary did not count as reading the log"; exit 1; }
+out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --summary)" || true
+[ "$(wc -l <<<"$out")" = 6 ] || { echo "FAIL INV-13: a bare --summary printed: $out"; exit 1; }
+rc=0
+out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --grep '^ERROR')" || rc=$?
+[ "$rc" -eq 3 ] || { echo "FAIL INV-13: wait --grep exited $rc, want the job's 3"; exit 1; }
+[ "$(sed -n '2,$p' <<<"$out")" = $'ERROR at 7\nERROR at 19' ] ||
+    { echo "FAIL INV-13: --grep did not print the matching lines: $out"; exit 1; }
+out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --summary 1 --grep '^ERROR')" || true
+[ "$(sed -n '2,$p' <<<"$out")" = 'ERROR at 19' ] ||
+    { echo "FAIL INV-13: --summary 1 --grep did not keep the last match: $out"; exit 1; }
+out="$(env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build)" || true
+[ "$(wc -l <<<"$out")" = 1 ] || { echo "FAIL INV-13: a plain wait printed more than the status: $out"; exit 1; }
+rc=0
+env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --sumary >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL INV-13: an unknown wait option exited $rc, want 2"; exit 1; }
+case "$("$bin" --help)" in *"--summary"*"--grep"*) ;; *) echo "FAIL INV-13: --help omits --summary or --grep"; exit 1 ;; esac
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job"

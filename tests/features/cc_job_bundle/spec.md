@@ -40,6 +40,14 @@ source is `packaging/cc-job/cc-job`.
   `2` and removes nothing. `--help` names it.
   *Breaks when:* one session's tidy-up deletes another session's logs, as
   reported 2026-11-04 (ANTS-6370).
+- **INV-13** — `wait <name> --summary [N]` prints the status line, which
+  carries the exit code and the log path, then the log's last N lines; N
+  defaults to 5. `--grep RE` prints the lines matching the extended regex
+  instead: all of them, or the last N when `--summary N` is also given. Both
+  exit with the job's code and count as showing the log. A plain `wait` prints
+  the status line only. An unknown option exits `2`. `--help` names both.
+  *Breaks when:* a session reads a whole log to learn how a job ended
+  (ANTS-5701).
 
 The test starts its job through a stand-in `systemd-run`, so it needs no
 `systemd --user`.

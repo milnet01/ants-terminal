@@ -90134,11 +90134,15 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5701] **cc-job has a summary mode: exit code, the last N lines or regex matches, and the log path.**
+- ✅ [ANTS-5701] **cc-job has a summary mode: exit code, the last N lines or regex matches, and the log path.**
   doom-ants measured 140K-185K chars of Bash output per session. Asked by
   doom-ants, perch, snatch. e.g. `cc-job wait <name> --summary [--grep RE]`.
   RetroDB (2026-10-15): a wait loop re-printed a 14-line CI step list on
   every poll; asks for `cc-job tail --last-line`.
+  Shipped 2026-11-13: `cc-job wait <name> --summary [lines]` and `--grep
+  <regex>` (packaging/cc-job/cc-job; cc_job_bundle INV-13). `cc-job tail
+  <name> 1` already gives RetroDB's last line. Hot reload: the script
+  runs per call, so the next call uses it; it holds no running state.
   **Layman:** Report a long job's result in a few lines instead of its whole log.
   Kind: perf.
   Source: token-survey-2026-10-15.
