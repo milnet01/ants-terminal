@@ -1694,8 +1694,8 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "why, and `path` names the source the lanes came from.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to split source files for multi-reviewer "
-                        "indie-review dispatch. Pairs with "
-                        "indie_review_brief + indie_review_dispatch.");
+                        "indie-review dispatch. The review-code skill "
+                        "reads it.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;

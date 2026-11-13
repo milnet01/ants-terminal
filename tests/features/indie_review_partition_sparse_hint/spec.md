@@ -22,9 +22,9 @@ verb" (cross-session reports). This is a symmetry follow-up to ANTS-3375.
 ## Invariants
 
 - **INV-1 — hint names the ad-hoc escape hatch.** When the partition is
-  sparse, `sparse_partition_hint` points at
-  `indie_review_brief(lane=…, source_paths=[…])` and cites ANTS-3375 (the
-  code-review analogue of `cold_eyes_brief` `doc_paths[]`).
+  sparse, `sparse_partition_hint` points at the review-code skill. No hint in
+  `cmdIndieReviewPartition` names `indie_review_brief`: ANTS-5485 removed that
+  verb, and ANTS-6226 took its name out of the hints.
 - **INV-2 — hint names the override file.** The hint also points at
   `<projectPath>/.indie-review/partition.json` as the persisted-override
   path.

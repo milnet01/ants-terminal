@@ -28,7 +28,7 @@ std::string bodyOf(const std::string &src, const std::string &fnMarker) {
 }  // namespace
 
 // INV-1/2 — the hint lives inside cmdIndieReviewPartition and names both the
-// source_paths[] ad-hoc escape hatch (ANTS-3375) and the override file.
+// review-code skill and the override file.
 TEST(indie_review_partition_sparse_hint, HintMentionsAdhocAndOverride) {
     expect_reset();
     const std::string rc = ants_test::slurpRemoteControl();
@@ -40,10 +40,12 @@ TEST(indie_review_partition_sparse_hint, HintMentionsAdhocAndOverride) {
            "INV: cmdIndieReviewPartition emits sparse_partition_hint");
     expect(body.find("ANTS-3567") != std::string::npos,
            "INV: ANTS-3567 anchor present");
-    expect(body.find("source_paths") != std::string::npos,
-           "INV-1: hint points at the source_paths[] ad-hoc mode");
-    expect(body.find("ANTS-3375") != std::string::npos,
-           "INV-1: hint cites ANTS-3375");
+    // ANTS-6226 — indie_review_brief was removed (ANTS-5485); the hint names
+    // what replaced it.
+    expect(body.find("review-code skill") != std::string::npos,
+           "INV-1: hint points at the review-code skill");
+    expect(body.find("indie_review_brief") == std::string::npos,
+           "INV-1: no hint names the removed indie_review_brief verb");
     expect(body.find(".indie-review/partition.json") != std::string::npos,
            "INV-2: hint points at the override file");
     EXPECT_EQ(0, expect_failures());

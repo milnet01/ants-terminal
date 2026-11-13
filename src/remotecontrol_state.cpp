@@ -4042,8 +4042,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     // drop the quoted per-call `context` windows + the redundant per-row
     // `lang`. Those context lines are re-sent bytes when the caller opens the
     // file with read_region next; the manifest is what it actually needs to
-    // navigate. Mirrors workspace_search's files_only (ANTS-3549) and
-    // indie_review_brief's manifest-not-bodies posture (ANTS-1281). Placed
+    // navigate. Mirrors workspace_search's files_only (ANTS-3549). Placed
     // before the full callers[] loop so the context windows are never built.
     const bool filesOnly =
         req.value(QStringLiteral("files_only")).toBool(false);

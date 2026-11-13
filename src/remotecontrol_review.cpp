@@ -160,8 +160,7 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
     // (ANTS-1634a). When the module-map deriver yields ≤1 lane (no CLAUDE.md
     // `## Module map` of `- <name> — <summary>` subsystems, no
     // docs/subsystems.md, or a file-list map that doesn't partition), point
-    // the caller at indie_review_brief's source_paths[] ad-hoc mode (ANTS-3375,
-    // the code-review analogue of cold_eyes_brief doc_paths[]) and the
+    // the caller at the review-code skill and the
     // .indie-review/partition.json override, so a sweep on a non-canonical
     // layout sees the workaround inline instead of giving up on the empty
     // partition.
@@ -244,8 +243,7 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "partition will not look at those files, and `file_count` counts "
             "only what a lane covers. Cover them by editing "
             "<projectPath>/.indie-review/partition.json to name them, or "
-            "brief them ad-hoc via indie_review_brief(lane=\"<label>\", "
-            "source_paths=[...]).")
+            "give them to the review-code skill as an extra lane.")
                 .arg(unassigned.count)
                 .arg(cause);
     }
@@ -269,10 +267,9 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "zero there is \"the map yielded nothing\" and not necessarily \"there "
             "is no map\" — check which before rewriting the file. If the map is "
             "absent, the project root's CLAUDE.md wants a `## Module map` of "
-            "`- <name> — <summary>` subsystems (or a docs/subsystems.md). Pass "
-            "indie_review_brief(lane=\"<your-label>\", source_paths=[\"...\"]) "
-            "to mint a brief over an arbitrary file set without a partition "
-            "(ANTS-3375 ad-hoc mode), or commit "
+            "`- <name> — <summary>` subsystems (or a docs/subsystems.md). The "
+            "review-code skill can review an arbitrary file set without a "
+            "partition; or commit "
             "<projectPath>/.indie-review/partition.json to persist an "
             "override.")
                 .arg(mapLaneCount);
@@ -295,9 +292,8 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "map it reads; it does not split a lane for you. A lane this size "
             "gets one shallow review pass. Split it by COHESION — not by "
             "directory — and commit the result as "
-            "<projectPath>/.indie-review/partition.json, or brief each "
-            "subsystem ad-hoc via indie_review_brief(lane=\"<label>\", "
-            "source_paths=[...]).")
+            "<projectPath>/.indie-review/partition.json, or give each "
+            "subsystem to the review-code skill as its own lane.")
                 .arg(coarseLanes.size())
                 .arg(IndieReviewEngine::kMaxReviewableFilesPerLane);
     }
@@ -318,8 +314,8 @@ QJsonDocument RemoteControl::cmdIndieReviewPartition(const QJsonObject &req) {
             "whole application, which is the shape a single briefed reviewer "
             "reads shallowly. Split it by COHESION — by what the code does, "
             "which inside one file means naming line ranges or symbols — and "
-            "brief each part via indie_review_brief(lane=\"<label>\", "
-            "source_paths=[...]). `total_lines` is reported on every lane, so "
+            "give each part to the review-code skill as its own lane. "
+            "`total_lines` is reported on every lane, so "
             "apply your own budget rather than this one if it differs.")
                 .arg(oversizedLanes.size())
                 .arg(IndieReviewEngine::kMaxReviewableLinesPerLane);
