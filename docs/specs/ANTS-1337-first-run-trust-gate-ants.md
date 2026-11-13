@@ -101,7 +101,7 @@ Schema:
 {
   "version": 1,
   "trusted_shas":  { "<sha256-hex>": { "first_trusted": "<ISO8601>", "note": "<optional>" } },
-  "trusted_repos": { "<canonical-path>": { "first_trusted": "<ISO8601>", "until_sha_changes": true } }
+  "trusted_repos": { "<canonical-path>": { "first_trusted": "<ISO8601>", "sha": "<sha256-hex>", "until_sha_changes": true } }
 }
 ```
 
@@ -109,8 +109,9 @@ Schema:
   honoured regardless of which repo path holds it. Catches "trust
   this exact config; if anyone edits it I'll re-prompt."
 - `trusted_repos`: a repo whose canonical project root matches is
-  honoured. `until_sha_changes=true` means the entry is auto-purged
-  if the SHA changes from the one trusted; `false` means "trust
+  honoured. `sha` is the SHA trusted with it. `until_sha_changes=true`
+  means a file whose SHA differs from `sha` prompts again, and the entry
+  stays as it was; `false` means "trust
   any .ants/verify.json under this path forever" (rarely
   recommended — surface in UI as a checkbox "always trust this
   repo regardless of edits").
@@ -132,7 +133,8 @@ loadGateConfig(projectPath):
   case result of:
     TrustSha:   add sha to trusted_shas; honour; return gates
     TrustRepo:  add path to trusted_repos with this sha; honour
-    DenyOnce:   return empty; record nothing
+    DenyOnce:   auto-detect gates (INV-5); nothing written to disk;
+                the SHA is remembered as denied for the session (INV-9)
     Cancel:     same as DenyOnce
 ```
 
@@ -198,27 +200,29 @@ the user might expect.
 
 ### 4.5 Engine API change
 
-`loadGateConfig` gains a second arg:
+`loadGateConfig` gains two defaulted arguments:
 
 ```cpp
-struct VerifyTrust {
-    enum Outcome { Trusted, UntrustedFellBack, Headless };
-    Outcome outcome;
+namespace VerifyTrust {
+enum class Outcome { Trusted, UntrustedFellBack, Headless };
+struct Decision {
+    Outcome outcome = Outcome::Headless;
     QString shaHex;
 };
+class Client;   // outcomeForConfig() returns a Decision
+}
 
 QList<GateConfig> loadGateConfig(const QString &projectPath,
-                                 VerifyTrustClient *trustClient,
-                                 QString *configSourceOut,
-                                 VerifyTrust *trustOut);
+                                 QString *configSource,
+                                 VerifyTrust::Client *trustClient = nullptr,
+                                 bool *verifyUntrusted = nullptr);
 ```
 
-`VerifyTrustClient` is an abstract interface; the production
-implementation reads/writes `verify-trust.json` and shows the
-modal. Tests can inject a fake (`AlwaysTrust`, `AlwaysDeny`,
-`Headless` variants) without dragging the GUI in. The existing
-`verifyengine.cpp` API is preserved as a thin shim that constructs
-the default client.
+`VerifyTrust::Client` is an abstract interface.
+`FilePersistedTrustClient` reads and writes `verify-trust.json`, and
+its `prompt()` answers `Headless`; the modal client overrides
+`prompt()`. Tests inject `AlwaysTrustClient` or `AlwaysDenyClient`
+without dragging the GUI in. A null client means full trust (INV-10).
 
 This split mirrors the `auditengine` / `auditdialog` split in
 CLAUDE.md — pure-function engine, side-effecting UI client.
@@ -231,17 +235,24 @@ writing to a `<dst>.tmp` sibling. This spec composes the same
 pattern using existing helpers from `secureio.h`:
 
 ```cpp
-// VerifyTrustClient::saveLocked() — pseudo-code
+// FilePersistedTrustClient::saveToDisk() — pseudo-code
 const QString dst = trustFilePath();
 const QString tmp = dst + QStringLiteral(".tmp");
 QFile f(tmp);
 if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-f.write(QJsonDocument(toJson()).toJson(QJsonDocument::Compact));
+const bool written = f.write(bytes) == bytes.size() && f.flush();
 f.close();
-setOwnerOnlyPerms(tmp);                 // secureio.h:33 — 0600
+if (!written || f.error() != QFileDevice::NoError
+        || !setOwnerOnlyPerms(tmp)) {   // secureio.h — 0600
+    QFile::remove(tmp);                 // a short write never reaches the rename
+    return false;
+}
 if (std::rename(tmp.toLocal8Bit().constData(),
-                dst.toLocal8Bit().constData()) != 0) return false;
-fsyncParentDir(dst);                    // secureio.h:47 — ext4 durability
+                dst.toLocal8Bit().constData()) != 0) {
+    QFile::remove(tmp);
+    return false;
+}
+fsyncParentDir(dst);                    // secureio.h — ext4 durability
 return true;
 ```
 
@@ -256,10 +267,12 @@ losing the rename on power failure (ANTS-1141 pattern).
 - **INV-1 — No `.ants/verify.json` honoured without trust.** Every
   non-empty `gc.command` derived from `.ants/verify.json` requires
   the SHA-256 of the bytes to be in `trusted_shas` OR the canonical
-  project root to be in `trusted_repos`. No exceptions.
+  project root to be in `trusted_repos`. One exception:
+  `ANTS_VERIFY_TRUST_AUTOTRUST=1` in the server's environment makes
+  `cmdVerifyChanges` pass no trust client, which is full trust (INV-10).
 
 - **INV-2 — Trust persists across restarts.** `verify-trust.json`
-  is loaded on `VerifyTrustClient` construction; trusted decisions
+  is loaded on `FilePersistedTrustClient` construction; trusted decisions
   carry forward. A client also re-reads the file before each lookup
   or add when its identity (inode, size, mtime) changed since it
   loaded, so a trust granted or revoked by another process reaches a
@@ -296,19 +309,19 @@ losing the rename on power failure (ANTS-1141 pattern).
   thread without breaking. Today the handler IS main, but the
   invocation pattern is forward-compatible.
 
-- **INV-9 — One prompt per (sha, repo) pair per session.** Even if
-  the user clicks Cancel, the same sha + repo pair won't re-prompt
-  in the same Ants session (cached as "denied-this-session" in
-  RAM only; not persisted to disk). Prevents prompt-fatigue from
+- **INV-9 — One prompt per SHA per session.** Even if
+  the user clicks Cancel, the same SHA won't re-prompt
+  in the same Ants session, in whichever repo it turns up (cached as
+  "denied-this-session" in RAM only, keyed by SHA; not persisted to disk). Prevents prompt-fatigue from
   a misbehaving Claude that retries on every turn.
 
 - **INV-10 — Engine API back-compat.** Existing
   `loadGateConfig(path, source)` callers continue to compile — the
-  new `trustClient` and `trustOut` args default to nullptr, and
+  new `trustClient` and `verifyUntrusted` args default to nullptr, and
   with nullptr trust client the engine returns the existing
   behaviour (full trust, as today). This is the back-compat shim
   ONLY for in-tree callers we control; the production MCP path
-  routes through the new `VerifyTrustClient`.
+  routes through a `VerifyTrust::Client`.
 
 ## 6. Failure modes & rejection table
 
@@ -325,14 +338,14 @@ losing the rename on power failure (ANTS-1141 pattern).
 
 **`tests/features/verify_trust_gate/`** (new).
 
-### Engine tests (against fake `VerifyTrustClient`)
+### Engine tests (against a fake `VerifyTrust::Client`)
 
 - **VT-1 trusted SHA honoured** — fake client claims sha trusted →
   `loadGateConfig` returns bespoke gates;
-  `trustOut.outcome == Trusted`.
-- **VT-2 untrusted SHA falls back** — fake claims sha not trusted,
-  `prompt()` returns `DenyOnce` → `loadGateConfig` returns
-  auto-detect gates; `trustOut.outcome == UntrustedFellBack`.
+  `*verifyUntrusted == false`.
+- **VT-2 untrusted SHA falls back** — `AlwaysDenyClient` →
+  `loadGateConfig` returns auto-detect gates;
+  `*verifyUntrusted == true`.
 - **VT-3 trusted repo + SHA pin** — fake claims repo trusted with
   `until_sha_changes=true` and the current SHA matches → bespoke
   gates honoured.
@@ -342,16 +355,16 @@ losing the rename on power failure (ANTS-1141 pattern).
 - **VT-5 trusted repo, no SHA pin** — fake claims repo trusted with
   `until_sha_changes=false` → bespoke gates honoured regardless
   of current SHA.
-- **VT-6 headless** — fake constructed in Headless mode → all
-  loads fall back; no prompt() call possible.
+- **VT-6 null client** — no trust client → bespoke gates honoured;
+  `*verifyUntrusted == false` (INV-10).
 - **VT-7 session-cache denied** — fake records prompt() returning
-  DenyOnce on first call; second call in same session does NOT
+  `UntrustedFellBack` on first call; second call in same session does NOT
   re-prompt (session cache); third call after `clearSessionCache()`
   re-prompts.
 
 ### File-format tests
 
-- **TF-1 write 0600** — `VerifyTrustClient::addTrustedSha` writes
+- **TF-1 write 0600** — `FilePersistedTrustClient::addTrustedSha` writes
   `verify-trust.json` with mode 0600 (post-write lstat).
 - **TF-2 atomic** — kill the writer mid-write; the file's contents
   remain valid or the file remains the pre-write version (no
@@ -385,7 +398,7 @@ losing the rename on power failure (ANTS-1141 pattern).
 ### Wiring tests — source-grep
 
 - **WI-1** `src/verifytrust.{h,cpp}` exist; class
-  `VerifyTrustClient` exposes `outcomeForConfig`, `addTrustedSha`,
+  `VerifyTrust::Client` exposes `outcomeForConfig`, `addTrustedSha`,
   `addTrustedRepo`, `clearSessionCache`.
 - **WI-2** `verifyengine.cpp` `loadGateConfig` calls
   `trustClient->outcomeForConfig(...)` exactly once when the
@@ -422,7 +435,7 @@ gates always honoured). Loud.
 - **Trust file size:** ~120 bytes per trust entry. 100 trusted
   configs ≈ 12 KiB. Far below the 256 KiB QSettings comfort
   limit.
-- **Idle:** zero. Trust file is read on `VerifyTrustClient`
+- **Idle:** zero. Trust file is read on `FilePersistedTrustClient`
   construction and again only when a lookup or add finds it changed;
   each lookup and add costs one `stat` (ANTS-5411).
 - **RAM (steady state):** `QHash<QString sha → meta>` +

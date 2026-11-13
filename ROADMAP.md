@@ -80236,13 +80236,18 @@ in each bullet, not just the reporter's symptom.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #1; ledger TL-1).
   Lanes: ci.
 
-- 📋 [ANTS-5423] **tools/qt62-guard.sh cannot mistake a concurrent run for a failed build, and keeps its warm marker after an OOM kill.**
+- ✅ [ANTS-5423] **tools/qt62-guard.sh cannot mistake a concurrent run for a failed build, and keeps its warm marker after an OOM kill.**
   The "already running" check is a TOCTOU against `podman run --name`: a
   second run reports "FAILED to build ... newer than the Qt floor" and removes
   the first run's marker. The marker is also removed on any exit code,
   including 137 (OOM kill), so a killed run looks cold next time. Fix: take a
   flock around the run instead of probing podman, and remove the marker only
   on a real build failure.
+  2026-11-13 (34a1db45): the guard holds a flock on a per-tree lock
+  file from before the podman probe until the run ends, and keeps the
+  interrupted marker when the container exits 125 or above. Contract:
+  tests/features/qt62_guard_interrupt/spec.md INV-6 and INV-7, run
+  against a stub podman (ctest qt62_guard_markers).
   **Layman:** Two copies of the Qt 6.2 check running at once can report a misleading failure and wipe each other's progress marker.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #16; ledger TL-29).
