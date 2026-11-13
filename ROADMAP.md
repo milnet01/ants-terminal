@@ -88834,6 +88834,13 @@ parse, not that file.
   literal; `rg --files` and `ls-files -m` cost on a cold cache; the
   onLine accumulators must be reset for a second run; a test needs a
   seam to force the wall budget.
+  Spec 2026-11-13: docs/specs/ANTS-6245-search-timeout-git-fallback.md.
+  Measured the open points on a throwaway repo. Changed from the sketch:
+  narrow by `--glob '!/path'` exclusions, not by naming files (a named
+  binary file is searched, and globs are ignored for it); the needle drops
+  k and s (rg folds them to non-ASCII); byte-order-mark needles keep
+  UTF-16 files; an attribute pathspec keeps filter/ident files. Cold on
+  this repo: full scan 16.7 s, fallback about 2.2 s.
   **Layman:** Some code searches are slow enough to hit their time limit, even where a plain git search finishes in under a second.
   Kind: perf.
   Source: ANTS-5323 follow-up 2026-10-24.
