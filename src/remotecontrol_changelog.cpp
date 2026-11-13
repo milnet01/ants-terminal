@@ -1143,8 +1143,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         if (const QJsonDocument e = clAtomicWrite(clPath, utf8); !e.isNull())
             return e;
         out["written"]       = true;
-        out["bytes_written"] =
-            static_cast<qint64>(QFileInfo(clPath).size() - clBefore);
+        rcSetWriteBytes(out, clBefore, static_cast<qint64>(utf8.size()));
         return QJsonDocument(out);
     }
 

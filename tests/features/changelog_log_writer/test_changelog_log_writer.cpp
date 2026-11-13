@@ -1666,3 +1666,26 @@ TEST(changelog_log_writer, Ants5522ReleaseWritesTheTheme) {
         EXPECT_EQ(readFileStd(clPath(tmp.path())), c.content.toStdString());
     }
 }
+
+// ANTS-6264 — op:"release" reports its write as every other op does:
+// bytes_written is the size change and file_bytes the file's new size.
+TEST(changelog_log_writer, Ants6264ReleaseReportsFileBytes) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+    const qint64 before = QFileInfo(clPath(tmp.path())).size();
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("release");
+    req[QStringLiteral("version")]    = QStringLiteral("9.9.9");
+    req[QStringLiteral("date")]       = QStringLiteral("2026-11-13");
+    const QJsonObject resp = rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+    const qint64 after = QFileInfo(clPath(tmp.path())).size();
+    ASSERT_TRUE(resp.contains(QStringLiteral("file_bytes")));
+    EXPECT_EQ(resp.value(QStringLiteral("file_bytes")).toInteger(), after);
+    EXPECT_EQ(resp.value(QStringLiteral("bytes_written")).toInteger(), after - before);
+}
