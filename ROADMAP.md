@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6759 -->
+<!-- ants-roadmap-id-high-water: ANTS=6761 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91005,6 +91005,27 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15 (split from ANTS-5699, 2026-11-13).
   Lanes: mcp.
 
+- 📋 [ANTS-6760] **roadmap_log and roadmap_query load a slim schema for the common ops, with the rest behind tool_info.**
+  claude-config survey, 2026-11-13: UT_Ants measured 28,343 bytes for five
+  schemas, most of it roadmap_log's; DOOM_Ants 31 KB for two. The
+  descriptor lists every op's arguments and is held for each later
+  request. Asked: keep append, flip, annotate and append_batch in the
+  descriptor and move the rest behind tool_info, as ANTS-5725 did for rare
+  arguments. roadmap_query is the next largest.
+  **Layman:** Loading the roadmap tools costs every session a large block of text it mostly never uses; make the everyday part small.
+  Kind: perf.
+  Source: token-survey-2026-11-13.
+  Lanes: mcp.
+
+- 📋 [ANTS-6761] **The SessionStart text names know_how once, not in two hooks.**
+  mcp-orientation's last line "Shared how-to facts: know_how." repeats the
+  know-how notice hook. Measured 2026-11-13: SessionStart text is 1,137
+  bytes over three hook outputs.
+  **Layman:** Two start-up notices say the same thing; drop one.
+  Kind: perf.
+  Source: token-survey-2026-11-13.
+  Lanes: claude-hooks.
+
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 
 - ✅ [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
@@ -110466,6 +110487,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   average ~8.7. Passed 5/5 with ctest --repeat until-fail:5 locally.
   Investigate: wait until demotion or a longer deadline, rather than
   a fixed window, so a slow plugin-thread start does not miss it.
+  Second failure 2026-11-13: the push gate's build-test job (CI image,
+  ubuntu 24.04) on 252d4434, a commit touching only the allowlist
+  dialog. The local suite passed on the same tree minutes earlier.
   **Layman:** One plugin-timing test failed once when the machine was busy, then passed five times in a row; its timing window needs to tolerate load.
   Kind: test.
   Source: push-gate-2026-10-26.
