@@ -9,12 +9,16 @@ writes `ESC [ 2`, pauses, then writes `J` produces a `VtBatch` whose
 **INV-2 — output with no clear sets no hint.** A child that writes plain text
 produces no batch with `clearSelectionHint` set.
 
+**INV-3 — `CSI ? 2 J` sets the hint (ANTS-5784).** The grid has no protected
+cells, so `TerminalGrid::handleCsi` erases on DECSED as on ED, and the
+selection goes with the text.
+
 ## Rationale
 
 `VtStream::onPtyData` looked for `ESC[2J`, `ESC[3J` and form feed in each raw
 read. A sequence split across two reads matched in neither, so the selection
 survived a screen clear. The hint is now set from the parser's actions: a
-`CsiDispatch` with final `J`, no intermediate and parameter 2 or 3, or an
+`CsiDispatch` with final `J`, no intermediate or `?`, and parameter 2 or 3, or an
 `Execute` of form feed. The parser keeps its state across reads, so a split
 sequence is seen whole.
 

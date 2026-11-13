@@ -56,10 +56,11 @@ bool VtStream::start(const QString &shell, const QString &workDir, int rows, int
 void VtStream::onParsedAction(const VtAction &a) {
     // ANTS-5075 — the selection-clear hint comes from parsed actions, so a
     // clear split across two reads still counts: ED 2, ED 3, or form feed.
-    // `CSI ? J` (DECSED, selective erase) is left out: by spec it keeps
-    // protected cells, so it is not a full clear.
+    // `CSI ? J` (DECSED) counts too (ANTS-5784): the grid has no protected
+    // cells, so TerminalGrid::handleCsi erases on it exactly as on ED.
     if ((a.type == VtAction::CsiDispatch && a.finalChar == 'J' &&
-         a.intermediate.empty() && a.params.size() == 1 &&
+         (a.intermediate.empty() || a.intermediate == "?") &&
+         a.params.size() == 1 &&
          (a.params[0] == 2 || a.params[0] == 3)) ||
         (a.type == VtAction::Execute && a.controlChar == '\x0C')) {
         m_pendingClearSelection = true;
