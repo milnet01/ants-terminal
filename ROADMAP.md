@@ -112133,6 +112133,12 @@ reports are asked for separately, each time.
   new copy's item count against the newest kept snapshot and, below a
   threshold, keep the snapshot but skip the prune and fail loudly. The
   threshold is a design choice under ANTS-3794's spec, hence queued.
+  2026-11-13: waits on the user's choice of rule (asked this day).
+  Options: (a) compare with the newest kept snapshot, skip one prune and
+  fail once; (b) compare with the largest kept snapshot, and never prune
+  a snapshot holding at least twice the new copy's items until
+  ROADMAP_BACKUP_ACCEPT_SHRINK=1 is passed. Recommended: (b), shrink
+  mark at half.
   **Layman:** If the roadmap database were ever emptied, eight weekly backups later every good copy would have been deleted.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #8; ledger TL-8).
@@ -112147,6 +112153,9 @@ reports are asked for separately, each time.
   amendment: append to the archive, or refuse when the block is absent from
   it. The generated-roadmap refusal (audit TL-15, 2026-09-26) already stops
   it on this repo's own ROADMAP.md.
+  2026-11-13: waits on the user's choice (asked this day): on a re-run
+  that meets an existing archive, append the cut block to it, or refuse
+  to cut when the block is absent from it. Recommended: refuse.
   **Layman:** Re-running the roadmap archiving script can delete old roadmap sections without saving them anywhere.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #1; ledger TL-14).
@@ -112407,7 +112416,7 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5465] **Bring ANTS-1337's spec in line with the shipped trust code: seven verified drifts.**
+- ✅ [ANTS-5465] **Bring ANTS-1337's spec in line with the shipped trust code: seven verified drifts.**
   All in docs/specs/ANTS-1337-first-run-trust-gate-ants.md, verified against src 2026-09-26:
   1. § 4.5: signature, `struct VerifyTrust`/`trustOut`, `VerifyTrustClient`
   are stale; real is loadGateConfig(path, configSource, VerifyTrust::Client*
@@ -112425,6 +112434,10 @@ reports are asked for separately, each time.
   bespoke honoured" in tests/features/verify_trust_gate/spec.md.
   7. § 4.6 pseudo-code ignores the write/flush/close/setOwnerOnlyPerms
   results the code checks (TF-5).
+  2026-11-13 (bbf1a397): all seven drifts corrected in
+  docs/specs/ANTS-1337-first-run-trust-gate-ants.md, each read against
+  the source first. Its two `remotecontrol.cpp:2539` line citations are
+  stale and left for ANTS-3647.
   **Layman:** The design document for the project-trust check describes an older version of the code in seven places.
   Kind: doc-fix.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (filed at the blast-radius exit).
