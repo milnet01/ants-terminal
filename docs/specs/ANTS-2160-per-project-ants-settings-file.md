@@ -91,6 +91,7 @@ the key set here is complete.
 | `id_format` | `object` (ANTS-3771) | roadmap_query, roadmap_log, roadmap_migrate, RoadmapDialog — all via `ProjectSettings::idFormatFor()` | today's inference (a bold lead-in guarded by a trailing colon) and today's prefix chain, both unchanged |
 | `spec_test_clause_coverage` | `bool` (ANTS-4890) | spec_lint: an invariant's *Test:* clause counts as coverage for `test_coverage_gap` | `false`: the Tests section's id list alone |
 | `claude_chrome` | `bool` (ANTS-5728) | every Ants launch of Claude Code adds `--chrome`, via `ProjectSettings::claudeChromeFor()`, which reads the nearest file at or above the launch folder | `false`: no `--chrome` |
+| `generated` | `array<string>` of globs (ANTS-5705) | workspace_search and codebase_index leave matching files out, via `ProjectSettings::generatedGlobs()`, which also reads `.gitattributes` patterns set `linguist-generated` | nothing is marked |
 | `_comment` | `string` (ANTS-4978) | a reader only: written by `project_settings op:set`'s `note`, echoed by `get` and `detect` as `note`; nothing acts on it | no note |
 
 Out of scope for v1 (§ 6): `phase_*` spec routing (stays hardcoded

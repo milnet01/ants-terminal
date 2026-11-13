@@ -16,6 +16,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QString>
 #include <QStringList>
 #include <QTemporaryDir>
@@ -553,4 +555,77 @@ TEST(ProjectSettings, Ants5728EveryLaunchUsesTheHelper) {
              at = s.find("claudeLaunch(", at + 1))
             ++n;
     EXPECT_GE(n, 5u) << "the definition plus the four launches";
+}
+
+// ANTS-5705 — a project marks its machine-made files in `generated`
+// (.ants/project.json) or with `linguist-generated` (.gitattributes).
+TEST(ProjectSettings, Ants5705GeneratedGlobsComeFromBothFiles) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    EXPECT_TRUE(ProjectSettings::generatedGlobs(root).isEmpty()) << "neither file exists";
+
+    writeFile(root + "/.ants/project.json",
+              QStringLiteral("{\"generated\":[\"ROADMAP.md\",\"docs/roadmap/**\",7,\"\",\"../out\",\"!x\"]}"));
+    writeFile(root + "/.gitattributes",
+              QStringLiteral("# a comment\n"
+                             "gen/*.c linguist-generated=true\n"
+                             "*.pb.h text linguist-generated\n"
+                             "keep.c -linguist-generated\n"
+                             "no.c linguist-generated=false\n"
+                             "other.c text\n"));
+    const QStringList globs = ProjectSettings::generatedGlobs(root);
+    EXPECT_EQ(globs, (QStringList{QStringLiteral("ROADMAP.md"), QStringLiteral("docs/roadmap/**"),
+                                  QStringLiteral("gen/*.c"), QStringLiteral("*.pb.h")}));
+
+    const auto gen = [&](const char *rel) {
+        return ProjectSettings::isGeneratedPath(QLatin1String(rel), globs);
+    };
+    EXPECT_TRUE(gen("ROADMAP.md"));
+    EXPECT_TRUE(gen("sub/ROADMAP.md")) << "a glob with no slash matches at any depth";
+    EXPECT_TRUE(gen("docs/roadmap/0.5.md"));
+    EXPECT_TRUE(gen("src/a.pb.h"));
+    EXPECT_TRUE(gen("gen/x.c"));
+    EXPECT_FALSE(gen("src/gen/x.c")) << "a glob with a slash is anchored at the root";
+    EXPECT_FALSE(gen("src/main.cpp"));
+    EXPECT_FALSE(gen("keep.c"));
+    EXPECT_FALSE(gen("no.c"));
+}
+
+// ANTS-5705 — project_settings op:set refuses a `generated` it cannot use.
+TEST(ProjectSettings, Ants5705ApplyWriteValidatesGenerated) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const auto write = [&](const QJsonValue &v, QString *code) {
+        QString ek, ev;
+        return ProjectSettings::applyWrite(
+            QJsonObject{}, QJsonObject{{QStringLiteral("generated"), v}}, root, code, &ek, &ev);
+    };
+    QString code;
+    EXPECT_FALSE(write(QStringLiteral("ROADMAP.md"), &code).has_value());
+    EXPECT_EQ(code, QStringLiteral("bad_args"));
+    code.clear();
+    EXPECT_FALSE(write(QJsonArray{QStringLiteral("../out")}, &code).has_value());
+    EXPECT_EQ(code, QStringLiteral("bad_args"));
+    code.clear();
+    EXPECT_FALSE(write(QJsonArray{}, &code).has_value());
+    EXPECT_EQ(code, QStringLiteral("bad_args"));
+    const auto ok = write(QJsonArray{QStringLiteral("docs/roadmap/**")}, &code);
+    ASSERT_TRUE(ok.has_value());
+    EXPECT_EQ(ok->value(QStringLiteral("generated")).toArray(),
+              QJsonArray{QStringLiteral("docs/roadmap/**")});
+}
+
+// ANTS-5705 — codebase_index leaves a generated file out of the index.
+TEST(ProjectSettings, Ants5705CodebaseIndexSkipsGenerated) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    writeFile(root + "/src/alpha.c", cFile("alpha"));
+    writeFile(root + "/src/parser_out.c", cFile("made"));
+    writeFile(root + "/.ants/project.json", QStringLiteral("{\"generated\":[\"src/parser_out.c\"]}"));
+    const CodebaseIndex::Index idx = CodebaseIndex::build(root, 1000);
+    EXPECT_EQ(countPath(idx.files, QStringLiteral("src/alpha.c")), 1);
+    EXPECT_EQ(countPath(idx.files, QStringLiteral("src/parser_out.c")), 0);
 }

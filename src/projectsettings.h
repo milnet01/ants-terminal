@@ -42,6 +42,9 @@ struct Settings {
     // ANTS-5728 — Ants starts this project's Claude Code sessions with
     // --chrome. A bool, not a path; a non-bool is dropped.
     std::optional<bool>        claudeChrome;            // claudeChromeFor
+    // ANTS-5705 — globs naming the project's machine-made files. An entry
+    // that is not a usable glob is dropped. Read through generatedGlobs().
+    std::optional<QStringList> generated;
 };
 
 // Reads + parses <rootCanonical>/.ants/project.json on every call (no
@@ -92,6 +95,19 @@ QString repoRootOf(const QString &dirCanonical);
 // The nearest file decides, even when it leaves the key out. False when no
 // file is found.
 bool claudeChromeFor(const QString &dir);
+
+// ANTS-5705 — the globs naming this project's machine-made files: the
+// `generated` key of .ants/project.json, then each .gitattributes pattern set
+// `linguist-generated` (or `=true`). Root-relative, in ripgrep's `--glob`
+// grammar: a glob with no `/` matches at any depth, one with a `/` is
+// anchored at the root. Empty when the project marks nothing. Uncached.
+inline constexpr int kMaxGeneratedGlobs = 200;
+inline constexpr int kGeneratedGlobMaxChars = 256;
+QStringList generatedGlobs(const QString &rootCanonical);
+
+// True when root-relative `relPath` matches one of `globs`, under the grammar
+// generatedGlobs() states. A glob naming a directory covers what is below it.
+bool isGeneratedPath(const QString &relPath, const QStringList &globs);
 
 // ANTS-2160 — the specs folder every consumer reads, relative to the root: the
 // declared `specs_dir` when it names a directory, else `docs/specs`. One rule

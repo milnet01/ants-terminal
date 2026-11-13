@@ -1023,3 +1023,51 @@ TEST(McpWorkspaceSearch, Ants5348LastMatchesPerFile) {
                                                 {QStringLiteral("offset"), 1}});
     EXPECT_EQ(paged.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
 }
+
+// ANTS-5705 — a file the project marks as generated is left out of a search,
+// the reply names what was left out, and the caller can still reach it.
+TEST(McpWorkspaceSearch, Ants5705GeneratedFilesAreSkipped) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const auto write = [&](const char *rel, const char *text) {
+        QDir().mkpath(QFileInfo(root + QLatin1String(rel)).path());
+        QFile f(root + QLatin1String(rel));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write(text);
+    };
+    write("/.git/config", "");
+    write("/ROADMAP.md", "needle_5705 rendered\n");
+    write("/notes.md", "needle_5705 written\n");
+    write("/.ants/project.json", "{\"generated\":[\"ROADMAP.md\"]}");
+    const auto files = [](const QJsonObject &o) {
+        QStringList out;
+        for (const QJsonValue &v : o.value(QStringLiteral("matches")).toArray())
+            out << v.toObject().value(QStringLiteral("file")).toString();
+        out.sort();
+        return out;
+    };
+    const QJsonObject pattern{{QStringLiteral("pattern"), QStringLiteral("needle_5705")}};
+
+    const QJsonObject plain = search6188(root, pattern);
+    ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << QJsonDocument(plain).toJson().toStdString();
+    EXPECT_EQ(files(plain), QStringList{QStringLiteral("notes.md")});
+    EXPECT_EQ(plain.value(QStringLiteral("generated_skipped")).toArray(),
+              QJsonArray{QStringLiteral("ROADMAP.md")});
+
+    QJsonObject all = pattern;
+    all[QStringLiteral("include_generated")] = true;
+    const QJsonObject asked = search6188(root, all);
+    EXPECT_EQ(files(asked), (QStringList{QStringLiteral("ROADMAP.md"), QStringLiteral("notes.md")}));
+    EXPECT_FALSE(asked.contains(QStringLiteral("generated_skipped")));
+
+    // A glob that names the generated file is a request for it.
+    QJsonObject named = pattern;
+    named[QStringLiteral("glob")] = QStringLiteral("ROADMAP.md");
+    EXPECT_EQ(files(search6188(root, named)), QStringList{QStringLiteral("ROADMAP.md")});
+
+    // A wider glob is not.
+    QJsonObject wide = pattern;
+    wide[QStringLiteral("glob")] = QStringLiteral("*.md");
+    EXPECT_EQ(files(search6188(root, wide)), QStringList{QStringLiteral("notes.md")});
+}

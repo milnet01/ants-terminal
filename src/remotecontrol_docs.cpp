@@ -1775,11 +1775,13 @@ const QStringList &psLayoutKeys() {
 // - id_format (ANTS-3771) — refused `bad_args` when malformed (§ 2.5, INV-9);
 // - repo_root (ANTS-5667) — the user's decision that this folder stands for a
 //   child repository; must be a directory;
+// - generated (ANTS-5705) — globs naming the project's machine-made files;
 // - spec_test_clause_coverage (ANTS-4890) — a project's spec convention; bool;
 // - claude_chrome (ANTS-5728) — whether the project uses Claude in Chrome; bool.
 const QStringList &psSetOnlyKeys() {
     static const QStringList k = {
         QStringLiteral("id_format"), QStringLiteral("repo_root"),
+        QStringLiteral("generated"),
         QStringLiteral("spec_test_clause_coverage"), QStringLiteral("claude_chrome")};
     return k;
 }

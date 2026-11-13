@@ -746,6 +746,12 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     props["case"]        = caseProp;
                     props["respect_gitignore"] = respectGitignoreProp;
                     props["include_hidden"]    = includeHiddenProp;
+                    {   // ANTS-5705
+                        QJsonObject gp; gp["type"] = "boolean"; gp["default"] = false;
+                        gp["description"] = QStringLiteral(
+                            "true also searches files the project marks as generated.");
+                        props["include_generated"] = gp;
+                    }
                     props["dedup"]             = dedupProp;
                     props["timeout_sec"]       = timeoutSecProp;
                     // ANTS-1391 — caller_cwd anchor.

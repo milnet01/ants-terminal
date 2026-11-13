@@ -1313,6 +1313,13 @@ void appendToolSchemasDocs(QJsonArray &tools) {
                             "op:set only. true: Ants starts this project's Claude "
                             "Code sessions with --chrome. Read at each launch.");
                     props["claude_chrome"] = ccProp;
+                    // ANTS-5705 — set-only, the project's machine-made files.
+                    QJsonObject genProp; genProp["type"] = "array";
+                        genProp["items"] = QJsonObject{{QStringLiteral("type"), QStringLiteral("string")}};
+                        genProp["description"] = QStringLiteral(
+                            "op:set only. Globs naming machine-made files; "
+                            "workspace_search and codebase_index skip them.");
+                    props["generated"] = genProp;
                     // ANTS-4978 — set-only, the reason behind the settings.
                     QJsonObject noteProp; noteProp["type"] = "string";
                         noteProp["description"] = QStringLiteral(

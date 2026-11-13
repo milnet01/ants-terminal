@@ -42,6 +42,22 @@ file-static).
   `remotecontrol` finders + spec routing / `projectlayoutengine`) calls
   `ProjectSettings::load`.
 
+## ANTS-5705 — generated files
+
+- `generatedGlobs()` returns the usable entries of `generated` in
+  `.ants/project.json`, then each `.gitattributes` pattern whose line sets
+  `linguist-generated` or `linguist-generated=true`. An entry that is empty,
+  not a string, starts with `!` or holds a `..` component is dropped.
+- `isGeneratedPath()` matches a glob with no `/` at any depth and anchors a
+  glob with a `/` at the root.
+- `applyWrite()` refuses `bad_args` for a `generated` that is not a non-empty
+  array of such globs.
+- `CodebaseIndex::build()` leaves a matching file out of `Index.files`.
+
+*Tests:* `ProjectSettings.Ants5705GeneratedGlobsComeFromBothFiles`,
+`ProjectSettings.Ants5705ApplyWriteValidatesGenerated`,
+`ProjectSettings.Ants5705CodebaseIndexSkipsGenerated`.
+
 ## Pre-fix check
 
 Against pre-implementation code `src/projectsettings.{h,cpp}` does not

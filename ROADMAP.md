@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6761 -->
+<!-- ants-roadmap-id-high-water: ANTS=6762 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90148,9 +90148,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: tools.
 
-- 📋 [ANTS-5702] **A peer-request turn skips Ants orientation, git context and the start-of-session reads.**
+- 🚫 [ANTS-5702] **A peer-request turn skips Ants orientation, git context and the start-of-session reads.**
   dantes measured ~60K tokens for an idle session to reply once. Asked by
   mame-curator and Safari_Snap. Pairs with ANTS-5692 and ANTS-5693.
+  Closed 2026-11-13: nothing is left for Ants to build. A peer request
+  lands as an ordinary prompt in a running session. The Ants hooks already
+  stay quiet on it: the orientation banner runs on startup|clear only
+  (ANTS-5693), the git-context block prints only when it changed
+  (ANTS-5692), and the inbox notice speaks only when the count rose
+  (ANTS-5716). The start-of-session reads are a session rule, not Ants
+  code; passed to claude-config by session_message on 2026-11-13.
   **Layman:** When another session asks a quick question, answer it without the full start-up routine.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -90181,9 +90188,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5705] **workspace_search and codebase_index skip files a project marks as generated.**
+- ✅ [ANTS-5705] **workspace_search and codebase_index skip files a project marks as generated.**
   finbreak: a generated 1.17 MB ROADMAP.md sits in the tree. Read the
   mark from .ants/project.json (or .gitattributes linguist-generated).
+  Shipped 2026-11-13: `generated` globs in .ants/project.json plus
+  .gitattributes linguist-generated, read by
+  ProjectSettings::generatedGlobs(). workspace_search excludes them, echoes
+  `generated_skipped`, and takes `include_generated`; codebase_index drops
+  them from the index. This repo marks ROADMAP.md and docs/roadmap/**.
+  Tests: McpWorkspaceSearch.Ants5705GeneratedFilesAreSkipped and three
+  ProjectSettings.Ants5705* cases.
   **Layman:** Don't search machine-made files like the rendered roadmap.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -92468,6 +92482,19 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: claude_config_Ants_MCP_Feedback.md 2026-11-13.
   Lanes: mcp, docs.
+
+- 📋 [ANTS-6762] **changelog_log op:amend re-wraps the line it joined.**
+  Pressless, releasing 0.15.0: an amend on an [Unreleased] entry replied
+  wrapped:true with a line_text of about 190 characters. `wrapped` means
+  old_text matched across a hard wrap; WrapMatch::patchOnce
+  (src/wrapmatch.cpp) then joins the spanned lines into one and
+  ChangelogLog::amendUnreleased (src/changeloglog.cpp) writes it unwrapped.
+  The entry reads correctly; only its width differs from its neighbours.
+  Also say in the verb's description what `wrapped` reports.
+  **Layman:** After editing a changelog entry, its lines stay the same width as the entries around it.
+  Kind: fix.
+  Source: pressless-session-message-2026-11-13.
+  Lanes: mcp.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

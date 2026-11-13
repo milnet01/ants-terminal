@@ -20,6 +20,8 @@
 #include <QSet>
 #include <QStandardPaths>
 
+#include <algorithm>
+
 namespace CodebaseIndex {
 
 // Indexed-suffix set (§ 2.2): the walk admits only these. Exported
@@ -188,6 +190,12 @@ QStringList candidates(const QString &rootCanonical) {
              rootCanonical, s.testRoots, QStringLiteral("tests")))
         out += walkSubtree(rootCanonical, r);
     out.removeDuplicates();
+    // ANTS-5705 — files the project marks as generated are not indexed.
+    const QStringList generated = ProjectSettings::generatedGlobs(rootCanonical);
+    if (!generated.isEmpty())
+        out.erase(std::remove_if(out.begin(), out.end(), [&](const QString &rel) {
+            return ProjectSettings::isGeneratedPath(rel, generated);
+        }), out.end());
     return out;
 }
 

@@ -5,6 +5,7 @@
 
 #include "codebaseindex.h"
 #include "pathvalidation.h"
+#include "quotationcheckverb.h"   // ANTS-5705 — globMatch
 #include "roadmapfoldin.h"
 #include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
@@ -94,7 +95,75 @@ std::optional<RoadmapParse::IdFormat> parseIdFormat(const QJsonValue &v) {
     return fmt;
 }
 
+// ANTS-5705 — a `generated` entry usable as a root-relative glob. A leading
+// `!` would turn ripgrep's exclusion into an inclusion.
+bool validGeneratedGlob(const QString &g) {
+    return !g.isEmpty() && g.size() <= kGeneratedGlobMaxChars
+        && !g.startsWith(QLatin1Char('!'))
+        && !g.split(QLatin1Char('/')).contains(QStringLiteral(".."));
+}
+
+std::optional<QStringList> parseGenerated(const QJsonValue &v) {
+    if (!v.isArray()) return std::nullopt;
+    QStringList out;
+    const QJsonArray arr = v.toArray();
+    for (const QJsonValue &e : arr) {
+        const QString g = e.toString().trimmed();
+        if (validGeneratedGlob(g)) out << g;
+    }
+    if (out.isEmpty()) return std::nullopt;
+    return out;
+}
+
+// The .gitattributes patterns whose line sets linguist-generated. A quoted
+// pattern (one holding spaces) is skipped.
+QStringList gitattributesGenerated(const QString &rootCanonical) {
+    QStringList out;
+    QFile f(rootCanonical + QStringLiteral("/.gitattributes"));
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    static const QRegularExpression ws(QStringLiteral("\\s+"));
+    const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    for (const QString &raw : lines) {
+        const QString line = raw.trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#'))
+            || line.startsWith(QLatin1Char('"')))
+            continue;
+        const QStringList words = line.split(ws, Qt::SkipEmptyParts);
+        const bool marked = words.mid(1).contains(QStringLiteral("linguist-generated"))
+            || words.mid(1).contains(QStringLiteral("linguist-generated=true"));
+        if (marked && validGeneratedGlob(words.first())) out << words.first();
+    }
+    return out;
+}
+
 }  // namespace
+
+QStringList generatedGlobs(const QString &rootCanonical) {
+    if (rootCanonical.isEmpty()) return {};
+    QStringList out = load(rootCanonical).generated.value_or(QStringList{});
+    out += gitattributesGenerated(rootCanonical);
+    out.removeDuplicates();
+    return out.mid(0, kMaxGeneratedGlobs);
+}
+
+bool isGeneratedPath(const QString &relPath, const QStringList &globs) {
+    const QStringList parts = relPath.split(QLatin1Char('/'), Qt::SkipEmptyParts);
+    for (const QString &raw : globs) {
+        QString g = raw;
+        while (g.endsWith(QLatin1Char('/'))) g.chop(1);
+        const bool anchored = g.contains(QLatin1Char('/'));
+        if (g.startsWith(QLatin1Char('/'))) g.remove(0, 1);
+        if (anchored) {
+            if (QuotationCheck::globMatch(g, relPath)
+                || QuotationCheck::globMatch(g + QStringLiteral("/**"), relPath))
+                return true;
+            continue;
+        }
+        for (const QString &part : parts)
+            if (QuotationCheck::globMatch(g, part)) return true;
+    }
+    return false;
+}
 
 QStringList resolveRoots(const QString &rootCanonical,
                          const std::optional<QStringList> &declared,
@@ -133,6 +202,7 @@ Settings load(const QString &rootCanonical) {
     if (tcc.isBool()) s.specTestClauseCoverage = tcc.toBool();         // ANTS-4890
     const QJsonValue chrome = o.value(QStringLiteral("claude_chrome"));
     if (chrome.isBool()) s.claudeChrome = chrome.toBool();             // ANTS-5728
+    s.generated   = parseGenerated(o.value(QStringLiteral("generated")));  // ANTS-5705
     return s;
 }
 
@@ -598,6 +668,19 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
             if (!v.isBool())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not a boolean)"));
             out[key] = v;
+        } else if (key == QLatin1String("generated")) {                  // ANTS-5705
+            if (!v.isArray())
+                return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not an array)"));
+            const QJsonArray arr = v.toArray();
+            if (arr.isEmpty() || arr.size() > kMaxGeneratedGlobs)
+                return fail(QStringLiteral("bad_args"), key,
+                            QStringLiteral("(1 to %1 globs)").arg(kMaxGeneratedGlobs));
+            for (const QJsonValue &e : arr)
+                if (!e.isString() || !validGeneratedGlob(e.toString().trimmed()))
+                    return fail(QStringLiteral("bad_args"), key,
+                                QStringLiteral("(not a root-relative glob: ")
+                                    + e.toVariant().toString() + QLatin1Char(')'));
+            out[key] = arr;
         } else if (dirArray) {
             if (!v.isArray())
                 return fail(QStringLiteral("bad_args"), key, QStringLiteral("(not an array)"));

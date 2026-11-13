@@ -676,6 +676,17 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // by last-one-wins, so an exclusion must follow the inclusion it narrows.
     for (const QString &ex : std::as_const(excludeGlobs))
         argv << QStringLiteral("--glob") << (QLatin1Char('!') + laneGlob(ex));
+    // ANTS-5705 — files the project marks as generated are left out, unless
+    // the caller asks for them or the glob names one. The globs are
+    // root-relative and rg runs from the root, so they take no laneGlob.
+    QStringList generatedSkipped;
+    if (!req.value(QStringLiteral("include_generated")).toBool(false)) {
+        const QStringList marked = ProjectSettings::generatedGlobs(rootCanonical);
+        for (const QString &g : marked)
+            if (g != glob && g != laneGlob(glob)) generatedSkipped << g;
+    }
+    for (const QString &g : std::as_const(generatedSkipped))
+        argv << QStringLiteral("--glob") << (QLatin1Char('!') + g);
     // ANTS-1452-INV-1: when respect_gitignore is false, disable both the
     // VCS-specific ignore source (.gitignore, .git/info/exclude) and the
     // umbrella ignore that covers .ignore + per-user global. Belt-and-
@@ -1049,6 +1060,9 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         if (matchWrapped) out["match_wrapped"] = true;
         if (!presetGlobs.isEmpty())
             out["exclude_preset_globs"] = QJsonArray::fromStringList(presetGlobs);
+        // ANTS-5705 — a reply that left files out says which.
+        if (!generatedSkipped.isEmpty())
+            out["generated_skipped"] = QJsonArray::fromStringList(generatedSkipped);
         // ANTS-1565-INV-4: echo effective wall-clock budget so a caller can
         // see whether they got their requested timeout_sec or the default.
         out["timeout_sec"] = budgetSec;

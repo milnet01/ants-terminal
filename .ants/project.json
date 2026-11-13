@@ -1,6 +1,10 @@
 {
     "changelog": "CHANGELOG.md",
     "docs_dir": "docs",
+    "generated": [
+        "ROADMAP.md",
+        "docs/roadmap/**"
+    ],
     "id_format": {
         "prefix": "ANTS"
     },

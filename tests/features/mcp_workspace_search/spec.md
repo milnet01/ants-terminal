@@ -129,3 +129,11 @@ Rows it drops are the request, so they do not set `truncated`. A
 `max_results` cap that lands inside a file keeps that file's newest rows and
 sets `truncated`. With `offset` it refuses `bad_args`. *Test:*
 `McpWorkspaceSearch.Ants5348LastMatchesPerFile`.
+
+## ANTS-5705 — files marked as generated are left out
+
+A file matching one of `ProjectSettings::generatedGlobs()` is not searched,
+and the reply carries `generated_skipped`, the globs applied. With
+`include_generated: true` those files are searched and the field is absent.
+A `glob` equal to one of the globs searches that file; a wider `glob` does
+not. *Test:* `McpWorkspaceSearch.Ants5705GeneratedFilesAreSkipped`.

@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **A project can mark its machine-made files, and `workspace_search` and `codebase_index` leave them out.** (ANTS-5705)
+  List globs under `generated` in `.ants/project.json` (`project_settings
+  op:"set"`), or set `linguist-generated` on a `.gitattributes` pattern. A
+  search reply names what it left out in `generated_skipped`;
+  `include_generated: true` searches those files too.
+
 - **`cc-job wait` takes `--summary [lines]` and `--grep <regex>`.** (ANTS-5701)
   A finished job reports its status line, with the exit code and log path,
   then the last few lines of output or only the lines matching a pattern.
