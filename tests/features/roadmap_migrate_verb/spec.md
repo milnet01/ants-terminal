@@ -126,7 +126,11 @@ It refuses `confirm_required` while the root still exists, checked against the
 **stored** root rather than the caller's argument, so keying by slug cannot skip
 it. An absent root is the case the item was filed for and needs no ceremony.
 
-The delete is one transaction across all nine tables in foreign-key order, under
+The delete is one transaction over the project's child tables (elements,
+history, feedback references, relationships, citations, items, sections and id
+prefixes, as `RoadmapStore::DeregisterCounts` names them) in foreign-key order.
+The `project` row is kept and stamped as deregistered, and no `message` row is
+deleted (ANTS-5366). It runs under
 `PRAGMA defer_foreign_keys` — `section.parent_id` self-references, so a single
 `DELETE` over a project's sections would otherwise fail the moment it removed a
 parent before its child. Deferring moves enforcement to `COMMIT` rather than
