@@ -36,6 +36,10 @@ double wcagContrast(const QColor &a, const QColor &b) {
 }
 }  // namespace
 
+double Themes::contrastRatio(const QColor &a, const QColor &b) {
+    return wcagContrast(a, b);
+}
+
 static std::vector<Theme> buildThemes() {
     std::vector<Theme> t;
 

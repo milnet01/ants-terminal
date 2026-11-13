@@ -13,7 +13,11 @@
 #include <string>
 
 #include <QColor>
+#include <QRegularExpression>
 #include <QString>
+
+#include <algorithm>
+#include <cmath>
 
 #include "themedstylesheet.h"
 #include "themes.h"
@@ -222,4 +226,60 @@ TEST(ThemedstylesheetExtraction, Main) {
         "OK — themedstylesheet extraction INVs hold "
         "(themedstylesheet.cpp = %zu LoC).\n",
         tssLoc);
+}
+
+namespace {
+
+// WCAG 2.1 contrast ratio between two colours.
+double contrastRatio(const QColor &a, const QColor &b) {
+    const auto lin = [](int c) {
+        const double v = c / 255.0;
+        return v <= 0.03928 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4);
+    };
+    const auto lum = [&](const QColor &c) {
+        return 0.2126 * lin(c.red()) + 0.7152 * lin(c.green())
+             + 0.0722 * lin(c.blue());
+    };
+    const double la = lum(a), lb = lum(b);
+    return (std::max(la, lb) + 0.05) / (std::min(la, lb) + 0.05);
+}
+
+// The text colour a `selector { … }` rule sets, or an invalid colour.
+QColor ruleTextColour(const QString &qss, const QString &selector) {
+    const QRegularExpression rule(
+        QRegularExpression::escape(selector) + QStringLiteral("\\s*\\{([^}]*)\\}"));
+    const QString body = rule.match(qss).captured(1);
+    const QRegularExpression colour(
+        QStringLiteral("(?:^|;)\\s*color:\\s*(#[0-9a-fA-F]{6})"));
+    return QColor(colour.match(body).captured(1));
+}
+
+}  // namespace
+
+// ANTS-5576 — a highlighted menu-bar entry stays readable. In every built-in
+// theme, each highlight state names its own text colour, and that colour is
+// the more readable of the theme's two candidates against the highlight.
+TEST(ThemedstylesheetExtraction, Ants5576MenuBarHighlightTextIsReadable) {
+    for (const Theme &theme : Themes::all()) {
+        const QString builders[] = {
+            themedstylesheet::buildMenuBarStylesheet(theme),
+            themedstylesheet::buildAppStylesheet(theme),
+        };
+        const double best = std::max(contrastRatio(theme.textPrimary, theme.accent),
+                                     contrastRatio(theme.bgPrimary, theme.accent));
+        for (const QString &qss : builders) {
+            for (const char *state : {"hover", "selected", "pressed"}) {
+                const QString selector =
+                    QStringLiteral("QMenuBar::item:") + QLatin1String(state);
+                const QColor text = ruleTextColour(qss, selector);
+                ASSERT_TRUE(text.isValid())
+                    << theme.name.toStdString() << ": " << selector.toStdString()
+                    << " sets no text colour";
+                EXPECT_DOUBLE_EQ(contrastRatio(text, theme.accent), best)
+                    << theme.name.toStdString() << ": " << selector.toStdString()
+                    << " text " << text.name().toStdString() << " on highlight "
+                    << theme.accent.name().toStdString();
+            }
+        }
+    }
 }

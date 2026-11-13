@@ -10,6 +10,20 @@
 
 namespace themedstylesheet {
 
+namespace {
+
+// ANTS-5576 — the text colour for a menu-bar entry drawn on the accent
+// highlight: whichever of the theme's background and text colours reads
+// better against it. The bar's own text colour is chosen against the bar's
+// background, and on the Dark theme it is pale on a light-blue highlight.
+QColor menuBarHighlightText(const Theme &theme) {
+    return Themes::contrastRatio(theme.bgPrimary, theme.accent)
+               >= Themes::contrastRatio(theme.textPrimary, theme.accent)
+           ? theme.bgPrimary : theme.textPrimary;
+}
+
+}  // namespace
+
 QString buildAppStylesheet(const Theme &theme) {
     // UI chrome (title bar, menus, tabs, status bar) always uses opaque backgrounds.
     // The `opacity` config key only affects the terminal content area — this is
@@ -49,9 +63,9 @@ QString buildAppStylesheet(const Theme &theme) {
         // structurally by Qt::WA_OpaquePaintEvent on the menubar
         // widget (see construction site) — not by dropping this
         // rule.
-        "QMenuBar::item:hover { background-color: %5; }"
-        "QMenuBar::item:selected { background-color: %5; }"
-        "QMenuBar::item:pressed { background-color: %5; }"
+        "QMenuBar::item:hover { background-color: %5; color: %7; }"
+        "QMenuBar::item:selected { background-color: %5; color: %7; }"
+        "QMenuBar::item:pressed { background-color: %5; color: %7; }"
         "QMenu { background-color: %2; color: %3; border: 1px solid %4; padding: 4px; }"
         // The item's :selected background is a rectangle filling the
         // full item rect (no border-radius). Prior to 0.7.4 the base
@@ -210,7 +224,8 @@ QString buildAppStylesheet(const Theme &theme) {
           theme.textPrimary.name(),                            // %3
           theme.border.name(),                                 // %4
           theme.accent.name(),                                 // %5
-          theme.textSecondary.name());                         // %6
+          theme.textSecondary.name(),                          // %6
+          menuBarHighlightText(theme).name());                 // %7
 }
 
 // Repeats buildAppStylesheet's QMenuBar rules, whose comments say why each
@@ -221,13 +236,14 @@ QString buildMenuBarStylesheet(const Theme &theme) {
         "  border-bottom: 1px solid %3; }"
         "QMenuBar::item { background-color: transparent; "
         "  padding: 4px 10px; margin: 0; border-radius: 4px; }"
-        "QMenuBar::item:hover { background-color: %4; }"
-        "QMenuBar::item:selected { background-color: %4; }"
-        "QMenuBar::item:pressed { background-color: %4; }"
+        "QMenuBar::item:hover { background-color: %4; color: %5; }"
+        "QMenuBar::item:selected { background-color: %4; color: %5; }"
+        "QMenuBar::item:pressed { background-color: %4; color: %5; }"
     ).arg(theme.bgSecondary.name(),
           theme.textPrimary.name(),
           theme.border.name(),
-          theme.accent.name());
+          theme.accent.name(),
+          menuBarHighlightText(theme).name());
 }
 
 QString buildStatusMessageStylesheet(const Theme &theme) {

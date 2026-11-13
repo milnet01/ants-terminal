@@ -425,6 +425,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A highlighted menu-bar entry is readable in every built-in theme.** (ANTS-5576)
+  An open menu title, or a hovered or clicked menu-bar entry, now takes
+  whichever of the theme's text and background colours reads better on the
+  highlight. On the Dark theme the contrast ratio rises from 1.46 to 7.79.
+
 - **`find_definition` and `doc_symbols` resolve the values of a C or C++ `enum`.** (ANTS-5535)
   An enumerator is reported as a definition, whether the enum sits on one
   line or lists one value per line. A document citing `Selection::Heuristic`

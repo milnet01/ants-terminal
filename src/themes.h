@@ -24,6 +24,8 @@ public:
     static const Theme &byName(const QString &name);
     static const Theme &defaultTheme();
     static QStringList names();
+    // WCAG 2.1 contrast ratio between two colours, from 1 to 21.
+    static double contrastRatio(const QColor &a, const QColor &b);
 
     // Load user themes from ~/.config/ants-terminal/themes/*.json
     static std::vector<Theme> loadUserThemes();

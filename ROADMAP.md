@@ -113312,13 +113312,20 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Kind: enhancement.
   Source: claude-config session 2026-09-29.
 
-- 📋 [ANTS-5576] **A highlighted menu-bar entry shows pale text on a light-blue background.**
+- ✅ [ANTS-5576] **A highlighted menu-bar entry shows pale text on a light-blue background.**
   Seen 2026-09-29 in the ANTS-5560 rehearsal (Xvfb, no desktop theme,
   Dark theme): the open Help menu title and the clicked update action
   render pale text on a light-blue highlight. Screenshots:
   /mnt/Emulators/ants-update-rehearsal/keep/shot3.png and f3.png. Likely
   the selected state in themedstylesheet::buildMenuBarStylesheet; not yet
   read. Not run on a themed desktop.
+  Shipped 2026-11-13. Cause: the three QMenuBar::item highlight rules set
+  a background and no text colour, so the bar's own text colour stayed.
+  Both stylesheets now set the more readable of bgPrimary and
+  textPrimary against the accent. Contrast, before to after: Dark 1.46
+  to 7.79, Light 3.64 to 4.51, Solarized Dark 1.16 to 4.08 (the lowest
+  after). Computed from src/themes.cpp; not looked at on screen. Needs
+  a terminal relaunch to show.
   **Layman:** When you open a menu or click the update notice, its label becomes hard to read against the highlight.
   Kind: fix.
   Source: in-session-2026-09-29.
