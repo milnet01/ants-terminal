@@ -545,6 +545,9 @@ public:
     // ANTS-5052 — test-only override for the rg stdout byte ceiling
     // (0 = use the default). Lets a test reach the cap with a small tree.
     void setRgStdoutCapOverride(qint64 bytes) { m_rgStdoutCapOverride = bytes; }
+    // ANTS-6245 — test-only: workspace_search skips its first scan and treats
+    // it as stopped at the wall budget with nothing parsed.
+    void setSearchTimeoutForced(bool on) { m_searchTimeoutForced = on; }
     // ANTS-5096 — test-only override for spec_query gate_drift's walk budget
     // in ms (-1 = the default). 0 spends it before the first spec.
     void setGateDriftBudgetOverride(int ms) { m_gateDriftBudgetOverride = ms; }
@@ -1686,6 +1689,7 @@ private:
     // ANTS-5052 — test-only rg stdout ceiling override (0 = default). Set via
     // setRgStdoutCapOverride; never written on the live path.
     qint64 m_rgStdoutCapOverride = 0;
+    bool m_searchTimeoutForced = false;   // ANTS-6245, test-only
     int m_gateDriftBudgetOverride = -1;   // ANTS-5096
     // ANTS-1287 — heading index + section-slice bullet cache. Shares
     // (path, mtime, stamp) keys with the bullets cache; cleared on

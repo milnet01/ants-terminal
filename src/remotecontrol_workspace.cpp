@@ -8,6 +8,8 @@
 #include "guithread.h"
 #include "rgdiagnosis.h"   // ANTS-4650 — why rg did not start
 #include "wrapmatch.h"   // ANTS-4547 — the wrapped-quotation matching rule
+#include "searchprefilter.h"   // ANTS-6245 — the timeout fallback's skip list
+#include "gitwrap.h"
 #include "buildtargets.h"        // ANTS-3745 — build_target_for engine
 #include "fileoutline.h"
 #include "readlog.h"
@@ -27,6 +29,7 @@
 #include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 #include <QDir>
 #include <QStandardPaths>
+#include <QTemporaryFile>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -712,40 +715,72 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // around each match. Attribute them to the surrounding match by
     // line distance — pending-before buffer for events that precede
     // their owning match, direct-append for events that trail one.
-    QJsonArray matches;
-    int seenMatchEvents = 0;
-    // ANTS-3537 — distinct files that contained a match. rg --json emits
-    // exactly one `begin` event per matched file, so counting begins gives
-    // the true file count without a per-path set (and independent of the
-    // matches[] max_results cap, which count_only bypasses).
-    int filesWithMatches = 0;
-    // ANTS-3549 — files_only capture: matched files in rg output order plus a
-    // parallel per-file match count. rg groups a file's events between its
-    // begin/end, so the path is taken from the begin event and each match is
-    // attributed to the file whose begin we last saw (filesOnlyCurIdx).
-    QStringList filesOnlyOrder;
-    QList<int>  filesOnlyHits;
-    int         filesOnlyCurIdx = -1;
-    // ANTS-4388 — matches_only capture. First-appearance order, so the reply
-    // is deterministic and reads like the scan.
-    QStringList        distinctOrder;
-    QHash<QString,int> distinctIndex;
-    QList<int>         distinctHits;
-    QList<QSet<QString>> distinctFiles;
-    bool truncated = false;
-    int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
-                            // most recent match in the current file
-                            // (reset on each begin / end event).
+    //
+    // ANTS-6245 — everything onLine writes sits in one struct, so a second
+    // scan starts from a fresh one and the first scan's results can be put
+    // back. The names below are references into `scan`.
     struct PendingCtx { int line = 0; QString text; };
-    QList<PendingCtx> pendingBefore;
-    // ANTS-5348 — last_per_file state. rg emits a file's events between its
-    // begin and end, so the current file's rows are matches[rowsStart..].
-    int        rowsStart = 0;        // first row of the last file given rows
-    int        fileTotal = 0;        // every match in the current file
-    QString    filePath;
-    bool       fileSkipped = false;  // the row cap was full when it began
-    bool       lastCapCut  = false;
-    QJsonArray fileTotals;
+    struct ScanState {
+        QJsonArray matches;
+        int seenMatchEvents = 0;
+        // ANTS-3537 — distinct files that contained a match. rg --json emits
+        // exactly one `begin` event per matched file, so counting begins
+        // gives the true file count without a per-path set (and independent
+        // of the matches[] max_results cap, which count_only bypasses).
+        int filesWithMatches = 0;
+        // ANTS-3549 — files_only capture: matched files in rg output order
+        // plus a parallel per-file match count. rg groups a file's events
+        // between its begin/end, so the path is taken from the begin event
+        // and each match is attributed to the file whose begin we last saw
+        // (filesOnlyCurIdx).
+        QStringList filesOnlyOrder;
+        QList<int>  filesOnlyHits;
+        int         filesOnlyCurIdx = -1;
+        // ANTS-4388 — matches_only capture. First-appearance order, so the
+        // reply is deterministic and reads like the scan.
+        QStringList        distinctOrder;
+        QHash<QString,int> distinctIndex;
+        QList<int>         distinctHits;
+        QList<QSet<QString>> distinctFiles;
+        bool truncated = false;
+        int lastMatchIdx = -1;  // ANTS-1304: index into matches[] for the
+                                // most recent match in the current file
+                                // (reset on each begin / end event).
+        QList<PendingCtx> pendingBefore;
+        // ANTS-5348 — last_per_file state. rg emits a file's events between
+        // its begin and end, so the current file's rows are
+        // matches[rowsStart..].
+        int        rowsStart = 0;        // first row of the last file given rows
+        int        fileTotal = 0;        // every match in the current file
+        QString    filePath;
+        bool       fileSkipped = false;  // the row cap was full when it began
+        bool       lastCapCut  = false;
+        QJsonArray fileTotals;
+        bool parseBudgetExceeded = false;
+        int  scanCounter = 0;
+    };
+    ScanState scan;
+    auto &matches = scan.matches;
+    auto &seenMatchEvents = scan.seenMatchEvents;
+    auto &filesWithMatches = scan.filesWithMatches;
+    auto &filesOnlyOrder = scan.filesOnlyOrder;
+    auto &filesOnlyHits = scan.filesOnlyHits;
+    auto &filesOnlyCurIdx = scan.filesOnlyCurIdx;
+    auto &distinctOrder = scan.distinctOrder;
+    auto &distinctIndex = scan.distinctIndex;
+    auto &distinctHits = scan.distinctHits;
+    auto &distinctFiles = scan.distinctFiles;
+    auto &truncated = scan.truncated;
+    auto &lastMatchIdx = scan.lastMatchIdx;
+    auto &pendingBefore = scan.pendingBefore;
+    auto &rowsStart = scan.rowsStart;
+    auto &fileTotal = scan.fileTotal;
+    auto &filePath = scan.filePath;
+    auto &fileSkipped = scan.fileSkipped;
+    auto &lastCapCut = scan.lastCapCut;
+    auto &fileTotals = scan.fileTotals;
+    auto &parseBudgetExceeded = scan.parseBudgetExceeded;
+    auto &scanCounter = scan.scanCounter;
     // ANTS-3405 — bound the parse loop by the wall budget too, not just the
     // rg process. rg --json over a repo with large data blobs (a ~1.2 MB
     // YAML, per-locale files, *.mo binaries) can emit an enormous match
@@ -755,9 +790,8 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // no envelope (RetroDB feedback). Cap the total at rg-budget + an equal
     // parse budget and return the same soft rg_failed envelope instead.
     // Checked every 2048 events so the timer cost is negligible.
-    const qint64 totalBudgetMs = static_cast<qint64>(budgetMs) * 2;
-    bool parseBudgetExceeded = false;
-    int scanCounter = 0;
+    // ANTS-6245 — the fallback's scan moves this deadline on.
+    qint64 totalBudgetMs = static_cast<qint64>(budgetMs) * 2;
     // Once the parse budget is blown the rest of the stream is ignored; rg
     // itself stays bounded by its own wall budget.
     const auto onLine = [&](const QByteArray &line) {
@@ -950,9 +984,96 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // lives in rcRunRg() so `cited_by` shares one rg call site (INV-9). The
     // classification below stays here: it reads the parsed `matches`, which do
     // not exist until every line has been through onLine.
-    const RgRun run = rcRunRg(argv, rootCanonical, budgetMs,
-        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes,
-        onLine);
+    const qint64 stdoutCap =
+        m_rgStdoutCapOverride > 0 ? m_rgStdoutCapOverride : kRgStdoutCapBytes;
+    RgRun run;
+    // ANTS-6245 — the test seam stands in for a scan the wall budget stopped.
+    if (m_searchTimeoutForced) run.hardKilled = true;
+    else run = rcRunRg(argv, rootCanonical, budgetMs, stdoutCap, onLine);
+
+    // ANTS-6245 — a literal scan the wall budget stopped is run again without
+    // the files git has proved cannot hold the text. Returns why it did not
+    // complete (a value from the spec's § 4.1), or nothing when `run` and
+    // `scan` now hold a complete second scan.
+    const auto timeoutFallback = [&]() -> QString {
+        if (isRegex || matchWrapped) return QStringLiteral("regex");
+        const QByteArray patternBytes = pattern.toUtf8();
+        if (std::any_of(patternBytes.cbegin(), patternBytes.cend(),
+                        [](char c) { return c >= 0 && c < 0x20; }))
+            return QStringLiteral("control_char");
+        const int fallbackMs = SearchPrefilter::fallbackBudgetMs(budgetMs);
+        if (fallbackMs < kWorkspaceSearchMinBudgetMs)
+            return QStringLiteral("budget");
+        const QByteArray needle = SearchPrefilter::needle(patternBytes);
+        if (needle.size() < SearchPrefilter::kMinNeedleBytes)
+            return QStringLiteral("short_needle");
+
+        QElapsedTimer spent;
+        spent.start();
+        // The pattern reaches git as file content only, never as an argument.
+        QTemporaryFile needles;
+        if (!needles.open()) return QStringLiteral("git_failed");
+        needles.write(SearchPrefilter::needleFile(needle));
+        needles.close();
+
+        QStringList lanePathspec;
+        if (!laneRel.isEmpty() && laneRel != QLatin1String("."))
+            lanePathspec << QStringLiteral("--")
+                         << (QStringLiteral(":(literal)") + laneRel);
+        const QStringList steps[] = {
+            QStringList{QStringLiteral("ls-files"), QStringLiteral("-z"),
+                        QStringLiteral("-t"), QStringLiteral("-v"),
+                        QStringLiteral("-c"), QStringLiteral("-m"),
+                        QStringLiteral("-s")} + lanePathspec,
+            QStringList{QStringLiteral("grep"), QStringLiteral("--cached"),
+                        QStringLiteral("-l"), QStringLiteral("-z"),
+                        QStringLiteral("-i"), QStringLiteral("-F"),
+                        QStringLiteral("-f"), needles.fileName()} + lanePathspec,
+            QStringList{QStringLiteral("ls-files"), QStringLiteral("-z"),
+                        QStringLiteral("--"),
+                        QStringLiteral(":(exclude,attr:!filter !ident "
+                                       "!working-tree-encoding)")},
+        };
+        QByteArray listed[3];
+        for (int i = 0; i < 3; ++i) {
+            const qint64 left = fallbackMs - spent.elapsed();
+            if (left <= 0) return QStringLiteral("git_failed");
+            const GitWrap::Result r = GitWrap::runWithin(
+                rootCanonical, steps[i], -1, static_cast<int>(left), true);
+            // `git grep` exits 1 when no file holds the needle.
+            const bool exitOk = r.exitCode == 0 || (i == 1 && r.exitCode == 1);
+            if (!r.started || r.hardKilled || r.crashed || !exitOk)
+                return QStringLiteral("git_failed");
+            listed[i] = r.stdoutBytes;
+        }
+        const QStringList skip =
+            SearchPrefilter::skipList(listed[0], listed[1], listed[2]);
+        if (skip.isEmpty()) return QStringLiteral("no_gain");
+        const qint64 left = fallbackMs - spent.elapsed();
+        if (left <= 0) return QStringLiteral("git_failed");
+
+        // The skip globs go last among the globs, before `-- pattern lane`.
+        QStringList argv2 = argv.mid(0, argv.size() - 3);
+        argv2 << SearchPrefilter::skipArgs(skip) << argv.mid(argv.size() - 3);
+        const ScanState first = scan;
+        scan = ScanState();
+        totalBudgetMs = wall.elapsed() + left * 2;
+        const RgRun second = rcRunRg(argv2, rootCanonical,
+                                     static_cast<int>(left), stdoutCap, onLine);
+        if (second.startFailed || second.hardKilled || second.outputCapped
+            || second.crashed || second.exitCode >= 2 || parseBudgetExceeded) {
+            scan = first;
+            return QStringLiteral("scan_failed");
+        }
+        run = second;
+        return QString();
+    };
+    QString fallbackSkipped;
+    bool fallbackUsed = false;
+    if (run.hardKilled) {
+        fallbackSkipped = timeoutFallback();
+        fallbackUsed = fallbackSkipped.isEmpty();
+    }
     if (run.startFailed) {
         return QJsonDocument(wsErr("rg_failed",
             QStringLiteral("workspace-search: %1").arg(run.startDiagnosis)));
@@ -1011,6 +1132,7 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         o["hint"] = QStringLiteral(
             "try a narrower lane= or glob= filter, raise timeout_sec "
             "(max 30), or fall back to `Bash rg` for one-off queries");
+        o["timeout_fallback_skipped"] = fallbackSkipped;   // ANTS-6245
         return QJsonDocument(o);
     }
     // ANTS-3405 — parse budget blown with no partial results: return the
@@ -1067,6 +1189,10 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
         // see whether they got their requested timeout_sec or the default.
         out["timeout_sec"] = budgetSec;
         out["elapsed_ms"]  = static_cast<int>(wall.elapsed());
+        // ANTS-6245 — a timed-out scan says whether the git route finished it.
+        if (fallbackUsed) out["timeout_fallback"] = QStringLiteral("git_index");
+        else if (!fallbackSkipped.isEmpty())
+            out["timeout_fallback_skipped"] = fallbackSkipped;
         // ANTS-6188 — a zero or a cut-off reply says what the walk left out.
         if (!include_hidden && (nothingFound || truncated)) {
             QJsonArray hiddenDirs;

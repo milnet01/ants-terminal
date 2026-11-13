@@ -613,6 +613,15 @@ call made before dispatching verbs in parallel.
   of this for months. The rule itself is `src/wrapmatch.{h,cpp}`, shared
   with `roadmap_log op:"amend_body"` (ANTS-4550) so the two verbs cannot
   answer one quotation differently.
+- **`workspace_search` timeout fallback (ANTS-6245)** — a literal search
+  the wall budget stopped is run once more, leaving out the tracked files
+  git has proved cannot hold the text. A completed fallback replies as an
+  uncut scan does and adds `timeout_fallback:"git_index"`. A timeout reply
+  whose fallback did not complete carries `timeout_fallback_skipped` with
+  the reason: `regex`, `control_char`, `budget`, `short_needle`,
+  `git_failed`, `no_gain` or `scan_failed`. The rule that picks the skipped
+  files is `src/searchprefilter.{h,cpp}`; the design is
+  `docs/specs/ANTS-6245-search-timeout-git-fallback.md`.
 
 ## Write / edit verbs
 

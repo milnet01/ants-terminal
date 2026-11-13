@@ -10,11 +10,19 @@ namespace GitWrap {
 
 Result run(const QString &workingDir, const QStringList &argv,
            int maxStdoutBytes) {
+    // ANTS-1250-INV-12: 5 s wall-clock kill.
+    return runWithin(workingDir, argv, maxStdoutBytes, kHardKillMs, false);
+}
+
+Result runWithin(const QString &workingDir, const QStringList &argv,
+                 int maxStdoutBytes, int budgetMs, bool cLocale) {
     Result r;
     QProcess p;
     p.setWorkingDirectory(workingDir);
     p.setProcessChannelMode(QProcess::SeparateChannels);
-    p.setProcessEnvironment(readOnlyEnvironment());   // ANTS-4999
+    QProcessEnvironment env = readOnlyEnvironment();   // ANTS-4999
+    if (cLocale) env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
+    p.setProcessEnvironment(env);
     // ANTS-1250-INV-6: argv form of QProcess::start. Never the
     // shell-interpolated single-string form. Mirrors the
     // cmdWorkspaceSearch invocation from ANTS-1248.
@@ -25,8 +33,8 @@ Result run(const QString &workingDir, const QStringList &argv,
     }
     r.started = true;
 
-    // ANTS-1250-INV-12: 5 s wall-clock kill, 200 ms grace then SIGKILL.
-    const bool finished = p.waitForFinished(kHardKillMs);
+    // ANTS-1250-INV-12: wall-clock kill, 200 ms grace then SIGKILL.
+    const bool finished = p.waitForFinished(budgetMs);
     if (!finished) {
         r.hardKilled = true;
         p.terminate();

@@ -488,6 +488,8 @@
         "src/readregion.h",
         "src/regexharden.cpp",
         "src/regexharden.h",
+        "src/searchprefilter.cpp",
+        "src/searchprefilter.h",
         "src/similarcode.cpp",
         "src/similarcode.h",
         "src/symbolquery.cpp",

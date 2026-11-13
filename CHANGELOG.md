@@ -196,6 +196,14 @@ for security-relevant changes.
 
 ### Changed
 
+- **`workspace_search` finishes a timed-out plain-text search through the git index.** (ANTS-6245)
+  A literal search that hits its time limit on a git tree now runs once
+  more, leaving out the tracked files git has proved cannot hold the text,
+  and returns the complete answer with `timeout_fallback:"git_index"`. On
+  this repository with a cold disk the full scan took 16.7 s and the
+  fallback about 2 s. A regex search is unchanged. A timeout reply whose
+  fallback could not run says why in `timeout_fallback_skipped`.
+
 - **The openSUSE, Debian and Arch packages recommend ripgrep and git** (ANTS-5743)
 
 - **`cc-job clean --mine` finishes in a fraction of a second, however many old job records are on disk.** (ANTS-6763)

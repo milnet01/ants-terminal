@@ -61,6 +61,12 @@ constexpr int kStdoutCapBytes = 1 * 1024 * 1024;  // 1 MiB
 Result run(const QString &workingDir, const QStringList &argv,
            int maxStdoutBytes = kStdoutCapBytes);
 
+// ANTS-6245 — run() with the caller's own wall budget in place of
+// kHardKillMs. cLocale runs git under LC_ALL=C, where `grep -i` folds ASCII
+// letters only.
+Result runWithin(const QString &workingDir, const QStringList &argv,
+                 int maxStdoutBytes, int budgetMs, bool cLocale);
+
 // ANTS-3377 — parse `git diff --no-color -U<n>` output into per-file
 // hunk headers, for splitting a messy working tree into clean commits.
 // Pure: takes the diff bytes, forks nothing, returns plain structs (this

@@ -1,6 +1,6 @@
 # ANTS-6245 — Finish a timed-out plain-text search through the git index
 
-**Status:** accepted (2026-11-13).
+**Status:** implemented (2026-11-13).
 **Kind:** perf.
 **Source:** ROADMAP ANTS-6245 (ANTS-5323 follow-up 2026-10-24; five peer reports).
 **Composes with:** ANTS-1248 (`workspace_search`), ANTS-1565 (its wall budget), ANTS-5323 (`truncated_reason`).
@@ -185,7 +185,7 @@ as hard-killed with nothing parsed.
 Every test below lives in
 `tests/features/workspace_search_timeout_fallback/`. Each builds a git
 repository in a temporary directory and compares a forced-timeout reply with
-a plain reply to the same request. None has run; the code does not exist.
+a plain reply to the same request.
 
 - **INV-1** — A completed fallback returns the same match rows, in any
   order, as the plain scan, and carries `timeout_fallback:"git_index"`.
@@ -193,7 +193,7 @@ a plain reply to the same request. None has run; the code does not exist.
   *Breaks when:* the skip list holds a file that contains the pattern.
 
 - **INV-2** — A file whose only match needs Unicode case folding is found.
-  *Test:* case `unicodeFoldKept`, patterns `kelvin` and `test` against lines holding `K` and `teſt`. Isolates § 4.2's excluded letters: with them allowed in the needle, git drops both files.
+  *Test:* case `unicodeFoldKept`, patterns `kelvin` and `xyztest` against lines holding `Kelvin` (opening with U+212A) and `xyzteſt`. Plain `test` has the two-byte needle `te`, which § 4.1 skips. Isolates § 4.2's excluded letters: with them allowed in the needle, git drops both files.
   *Breaks when:* the needle contains `k` or `s`, or git runs without `LC_ALL=C`.
 
 - **INV-3** — A tracked UTF-16 file with a byte-order mark is found.

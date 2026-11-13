@@ -760,6 +760,8 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-4547/4550 — the wrapped-quotation matching rule (pure helper),
     # shared by workspace_search and roadmap_log op:amend_body.
     src/wrapmatch.cpp
+    # ANTS-6245 — which files a timed-out literal search may skip (pure helper).
+    src/searchprefilter.cpp
     src/rgdiagnosis.cpp
     # ANTS-2094 — proactive result offload: spill large read bodies to a
     # content-addressed cache file + serve a head+pointer envelope.
@@ -3096,6 +3098,9 @@ if(ANTS_TESTS)
                 # invariant is about what rg actually does), plus two source
                 # scrapes. Shares workspace_search's extracted rg runner.
                 tests/features/cited_by/test_cited_by.cpp
+                # ANTS-6245 workspace_search timeout fallback through the git index.
+                tests/features/workspace_search_timeout_fallback/test_workspace_search_timeout_fallback.cpp
+                tests/features/workspace_search_timeout_fallback/test_searchprefilter.cpp
                 tests/features/roadmap_source_witness/test_roadmap_source_witness.cpp
                 tests/features/roadmap_log_store_preview_and_counter/test_roadmap_log_store_preview_and_counter.cpp
                 # ANTS-1882 roadmap_query per-section ETag invariance.

@@ -88796,7 +88796,7 @@ parse, not that file.
   Source: RetroDB_Ants_MCP_Feedback.md 2026-09-25.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6245] **workspace_search whole-tree regexes routinely outlast the 5 s default budget that git grep beats in under 1 s.**
+- ✅ [ANTS-6245] **workspace_search whole-tree regexes routinely outlast the 5 s default budget that git grep beats in under 1 s.**
   Split from ANTS-5323, which now names a timeout but does not
   prevent one. Measured in the reports: a whole-tree regex took
   5017 ms and stopped (git grep -nE: 0.94 s); a three-term
@@ -88841,6 +88841,11 @@ parse, not that file.
   k and s (rg folds them to non-ASCII); byte-order-mark needles keep
   UTF-16 files; an attribute pathspec keeps filter/ident files. Cold on
   this repo: full scan 16.7 s, fallback about 2.2 s.
+  Shipped 2026-11-13: the fallback of the spec, in
+  src/searchprefilter.{h,cpp} and cmdWorkspaceSearch. Reaches clients
+  when ants-mcpd is rebuilt and they reconnect; no terminal relaunch.
+  Not built, by the user's choice: a regex fallback, a longer default
+  budget. Not queued: cited_by's scan, files-walked reporting.
   **Layman:** Some code searches are slow enough to hit their time limit, even where a plain git search finishes in under a second.
   Kind: perf.
   Source: ANTS-5323 follow-up 2026-10-24.
