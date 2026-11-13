@@ -53,9 +53,7 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "Read a project's GitHub Actions run history through gh and list "
                         "CI problems: flaky (failed then passed on one commit), "
                         "alternating (flips red/green across commits), near_budget, "
-                        "budget_trend, scheduled_red, queue_wait (a job's median wait "
-                        "from its own creation to its start is over 5 minutes, so one "
-                        "long wait among fast runs draws none), annotation, "
+                        "budget_trend, scheduled_red, queue_wait, annotation, "
                         "runner_latest, cache_size, cache_key_shared, cache_save_skipped, "
                         "test_parallelism, repo_ambiguous (a fork it cannot tell apart). "
                         "Each finding names its runs, SHAs and the "
@@ -69,7 +67,9 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "truncated_reason and still reports. No workflows or no GitHub "
                         "remote answers ci:\"none\". A run's budgets come from its commit's "
                         "workflow files, else today's; one it cannot read is listed in "
-                        "unread[], never guessed.");
+                        "unread[], never guessed. queue_wait (ANTS-6705): a job's "
+                        "median wait from its own creation to its start is over 5 "
+                        "minutes, so one long wait among fast runs draws none.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
