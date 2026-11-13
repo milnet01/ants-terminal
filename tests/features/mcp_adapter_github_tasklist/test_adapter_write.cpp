@@ -5,7 +5,6 @@
 // path is m_main-independent.
 
 #include "remotecontrol.h"
-#include "remotecontrol_internal.h"
 
 #include <gtest/gtest.h>
 
@@ -471,6 +470,12 @@ TEST(AdapterWriteFlip, AppendPathStillRequiresAllAppendFields) {
     // was constructed nullptr; either way it must not succeed).
     const QJsonObject env = rc.cmdRoadmapLog(req).object();
     EXPECT_FALSE(env.value("ok").toBool());
+}
+
+// Declared here, not included: remotecontrol_internal.h stays inside the
+// remotecontrol sources (RcTuSplit INV-5).
+namespace rcdetail {
+QString rcSanitizeBulletField(const QString &in, int maxLen);
 }
 
 // ANTS-6233 — a roadmap field keeps no control character: C0 and DEL went
