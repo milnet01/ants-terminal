@@ -610,8 +610,8 @@ is harvested as a header field rather than read as prose. **The blank line is
 the load-bearing part**: the parser accumulates continuation lines into the
 preceding field's value until a blank line, a new `**Name:**` marker or a
 heading, so a prose layman line written straight under `**Source:**` is
-silently absorbed into it. Nothing catches that: `spec_lint`'s
-`header_layman_missing` only looks for the word above the first `## ` heading.
+silently absorbed into it. `spec_lint`'s `header_layman_absorbed` reports a
+line starting with *Layman* in that position.
 
 Two reasons, and the second is the one that earns it. A non-technical
 reader needs a way in — but more usefully, **a change that cannot be
@@ -817,7 +817,7 @@ Unnumbered because this is a standard — see `documentation.md` §2.9.
 | §1 the trigger call — spec or no spec | **nothing.** The call is a judgement, the escape hatch is the correction for a wrong one, and `write-spec` § When NOT to run says outright that nothing observes whether it was taken |
 | §2 filename is `<ID>-<topic>.md`, and the id matches the roadmap's | **`Partial:`** `spec_lint` `filename_id_mismatch` reports a file whose id differs from its title's. **Nothing** compares either with the roadmap; `write-spec` reports siblings whose filename differs from the standard's, so a person reading that run notices |
 | §5.5 a trust boundary is stated as an invariant | **nothing** — whether a change crosses one is a judgement, and a spec that never mentions a boundary reads exactly like one with none to mention |
-| §5.6 layman line present, as prose after the header block | **`Partial:`** `spec_lint` `header_layman_missing` reports a header block where the word *layman* appears on no line. **Nothing** checks the form: a bold `**Layman:**` passes, and so does a line absorbed into the preceding header field when the blank line before it is missing, which §5.6 names as the real hazard |
+| §5.6 layman line present, as prose after the header block | **`Partial:`** `spec_lint` `header_layman_missing` reports a header block where the word *layman* appears on no line, and `header_layman_absorbed` reports a line starting with *Layman* absorbed into the preceding header field when the blank line before it is missing, which §5.6 names as the real hazard. **Nothing** checks the bold form: a `**Layman:**` line passes |
 | §4 *Resource cost* present where the feature holds state or adds a build target | **nothing** — it sits outside §3's required list, so `missing_section` cannot see it, and whether a feature holds state is a judgement |
 | §8 every plan step has a verification | **nothing mechanical** — a cold reader |
 
