@@ -465,7 +465,8 @@ task_count_hint, ants_id, save.
   the remaining steps are numbered 1 to 3 (§ 2.3). With the default,
   every task block carries both, numbered 1 to 5. The header, the
   Self-Review Checklist and the Execution Handoff are the same either
-  way. *Test:* `tests/features/plan_template_engine/`.
+  way. *Test:* the `plan_template_engine` feature test, removed with the
+  verb (ANTS-5485).
 
 ## 4. Failure modes
 

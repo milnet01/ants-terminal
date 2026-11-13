@@ -320,7 +320,7 @@ existing sub-millisecond stat-ascent (ANTS-1252 INV-9), zero tokens, zero files.
   with **no** `permissionDecision` and **no** top-level `decision`. *Test:* feed
   `{"tool_input":{"command":"grep -rn foo src/"}}`; assert with a single jq
   program:
-  `jq -e '(.hookSpecificOutput.additionalContext|length>0) and (.hookSpecificOutput|has("permissionDecision")|not) and ((.decision//"")=="")'`.
+  `jq -e '(.hookSpecificOutput.additionalContext|length>0) and (.hookSpecificOutput|has("permissionDecision")|not) and ((.decision//"")=="")'` → `true`, exit status 0.
 - **INV-2** — The git-status and `cat ROADMAP.md | grep` branches still emit
   `{"decision":"block"}` with a `reason`. *Test:* those two assertion-7 cases
   still produce `.decision=="block"`.
@@ -614,6 +614,7 @@ Convergence: loop 1 (CRITICAL/HIGH design) → loops 2-3 (MEDIUM) → loop 4
 (line-cites) → loop 5 (contract-precision polish). No architectural/structural
 finding survived a cold re-read past loop 1. Spec accepted for implementation.
 - **impl — ANTS-5520 amendment (2026-11-04), no reviewer dispatched** — PROJECT_FIND now also needs the command to pipe into an `xargs` running a content searcher; a name-only `find` no longer warns. Origin: ANTS-5520 (a Deedbox session saw the tip on `find src tests -name '*.py' | sort`). The §2.2 table row for `find src -name '*.cpp'` flips to no warn. Verdict diff over 652 past `find` commands: 20 moved to no warn, all pure listings.
+- **doc-fix (2026-11-13, ANTS-5559; no reviewer dispatched)** — INV-1's test clause now states its result (`true`, exit status 0). Run that day against `hooks/ants-bash-veto.sh`: exit 0 on the clause's input, exit 4 on a plain `ls`.
 
 ## Implementation notes (2026-06-16, shipped)
 

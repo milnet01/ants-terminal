@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6764 -->
+<!-- ants-roadmap-id-high-water: ANTS=6765 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -112589,7 +112589,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: mcp.
 
-- 📋 [ANTS-5559] **Fix the spec_lint findings that are genuinely wrong; leave the pre-layout gaps.**
+- ✅ [ANTS-5559] **Fix the spec_lint findings that are genuinely wrong; leave the pre-layout gaps.**
   User decision 2026-09-29, after ANTS-5537's live run over docs/specs
   (since:HEAD~8, all findings out of the diff). In scope: the
   test_surface_absent / _unresolved / _unwired findings, the
@@ -112598,6 +112598,13 @@ reports are asked for separately, each time.
   Out of scope by decision: invariant_no_test, missing_section and the
   test_coverage kinds on specs written before the layout existed. No
   exemption stamps. Re-measure the counts with spec_lint before starting.
+  Shipped 2026-11-13. Re-measured with spec_lint: 8 findings of the
+  in-scope kinds, 32 id-gap candidates in two specs. Fixed three test
+  clauses: ANTS-1290 INV-11 (named a test removed with the verb),
+  ANTS-2079 INV-8 (a bare `ctest`), ANTS-2141 INV-1 (now states its
+  result; run both ways). Left as correct: ANTS-1895, ANTS-1896 and
+  ANTS-5719 name tests for features not built yet; ANTS-3653 keeps its
+  parent's ids. Three checker false positives filed as ANTS-6765.
   **Layman:** Tidy the handful of design-document mistakes the checker found, without rewriting old documents for shipped features.
   Kind: doc-fix.
   Source: user-request-2026-09-29.
@@ -112861,6 +112868,23 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-11-09 (ANTS-5262).
   Lanes: mcp, docs.
+
+- 📋 [ANTS-6765] **spec_lint reports three sound clauses as candidates: a prose test clause, a range tombstone and a fixture name.**
+  Measured 2026-11-13 over docs/specs.
+  1. command_test_no_expectation on ANTS-2094 INV-12: the test clause is
+     prose ("out-of-range config values clamp; ..."), with a backticked
+     `offloadHeadBytes()` in it. No command is named.
+  2. invariant_id_gap on ANTS-1289, INV-10 to INV-13: the spec carries
+     the line "INV-10 to INV-13 — numbered in the engine test's own
+     contract". A range written this way is not read as a tombstone.
+  3. test_surface_absent on ANTS-4127 INV-9: `tests/features/absent_one`
+     is the name of a directory the described fixture cites because it
+     is absent.
+  Verify: spec_lint over those three files no longer lists them.
+  **Layman:** The design-document checker flags three things that are not mistakes, which hides the real ones.
+  Kind: fix.
+  Source: in-session-2026-11-13, found while closing ANTS-5559.
+  Lanes: mcp.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

@@ -304,8 +304,8 @@ coverage later is a description edit, not a contract change.
   `mcp_global_config_sentinel`, `roadmap_query_filter_section_headers`,
   `mcp_workspace_search`, `roadmap_query_duplicate_ids`): the moved
   phrases remain within each test's byte window, or the window is
-  re-sized in the same commit. *Test:* the named tests stay green
-  (`ctest`).
+  re-sized in the same commit. *Test:* the feature tests in those five
+  directories pass.
 
 ## 4. RAM / build cost
 
@@ -504,6 +504,7 @@ new field are the only two in `claudeintegration.cpp`.
 across all severities verified against live source and folded; loop 3
 found no CRITICAL/HIGH and only minor polish. Per the standing
 review-loop standard, the spec is **signed off for implementation**.
+- **doc-fix (2026-11-13, ANTS-5559; no reviewer dispatched)** — INV-8's test clause named `ctest` as a command with no result. It now reads as what it is, a statement that the five feature tests pass.
 
 ## 9. Implementation notes (2026-06-16, shipped)
 
