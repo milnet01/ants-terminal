@@ -1129,6 +1129,42 @@ AmendResult refuseAmend(const QString &code, const QString &error) {
 
 }  // namespace
 
+namespace {
+
+QString leadingSpace(const QString &line) {
+    int n = 0;
+    while (n < line.size() && line.at(n).isSpace()) ++n;
+    return line.left(n);
+}
+
+// Would `text` at the start of a line open a list item, heading or quote?
+bool opensBlock(const QString &text) {
+    static const QRegularExpression re(
+        QStringLiteral("\\A(?:[-*+#>]|\\d+[.)])(?:\\s|\\z)"));
+    return re.match(text).hasMatch();
+}
+
+// ANTS-6762 — break `line` at spaces so no piece is longer than `width` where a
+// space allows it. Later pieces start with `indent`. No piece starts with text
+// markdown would read as a new block.
+QStringList rewrapLine(const QString &line, int width, const QString &indent) {
+    QStringList out;
+    QString rest = line;
+    while (rest.size() > width) {
+        const int textStart = static_cast<int>(leadingSpace(rest).size());
+        int cut = static_cast<int>(rest.lastIndexOf(QLatin1Char(' '), width));
+        while (cut > textStart && opensBlock(rest.mid(cut + 1)))
+            cut = static_cast<int>(rest.lastIndexOf(QLatin1Char(' '), cut - 1));
+        if (cut <= textStart) break;   // one long word: leave the rest whole
+        out.append(rest.left(cut));
+        rest = indent + rest.mid(cut + 1);
+    }
+    out.append(rest);
+    return out;
+}
+
+}  // namespace
+
 AmendResult amendUnreleased(const QString &markdown, const QString &oldText,
                             const QString &newText, const QString &id) {
     const QStringList lines = markdown.split(QLatin1Char('\n'));
@@ -1193,10 +1229,26 @@ AmendResult amendUnreleased(const QString &markdown, const QString &oldText,
             r.lineRemoved = true;
         }
     }
+    // ANTS-6762 — a wrapped match left the lines it spanned as one. Wrap that
+    // line again at the widest of them, under the second one's indent.
+    const int spanned = static_cast<int>(hitRange.to - hitRange.from) -
+                        static_cast<int>(patched.size()) + 1;
+    if (patch.wrapped && !r.lineRemoved && spanned >= 2 &&
+        !newText.contains(QLatin1Char('\n')) && patch.line < patched.size()) {
+        const int first = hitRange.from + patch.line;
+        int width = 0;
+        for (int i = first; i < first + spanned; ++i)
+            width = std::max(width, static_cast<int>(lines.at(i).size()));
+        const QStringList wrappedLines =
+            rewrapLine(patched.at(patch.line), width, leadingSpace(lines.at(first + 1)));
+        patched.removeAt(patch.line);
+        for (int i = 0; i < wrappedLines.size(); ++i)
+            patched.insert(patch.line + i, wrappedLines.at(i));
+    }
     if (!r.lineRemoved && patch.line < patched.size())
         r.lineText = patched.at(patch.line);
 
-    r.markdown = (lines.mid(0, hitRange.from) + patched + lines.mid(hitRange.to))
+    r.markdown =(lines.mid(0, hitRange.from) + patched + lines.mid(hitRange.to))
                      .join(QLatin1Char('\n'));
     r.changed  = r.markdown != markdown;
     r.ok       = true;

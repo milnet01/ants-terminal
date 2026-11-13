@@ -29,3 +29,7 @@ reach them. There is no force switch: a released section is corrected by hand.
   as the real call, and the file's bytes stay the same.
 - **INV-9 / the same text again changes nothing.** `new_text` equal to `old_text`
   reports `changed:false`.
+- **INV-10 / a joined line is wrapped again (ANTS-6762).** A match across a hard
+  wrap joins the lines it spanned. The result is broken at spaces to the width
+  of the widest spanned line, and later pieces take the second spanned line's
+  indent. No piece starts with text markdown reads as a new block.

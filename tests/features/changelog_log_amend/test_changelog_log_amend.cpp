@@ -189,3 +189,38 @@ TEST_F(ChangelogLogAmend, Inv9SameTextChangesNothing) {
     EXPECT_FALSE(r.value(QStringLiteral("changed")).toBool());
     EXPECT_EQ(bytes(), QByteArray(kChangelog));
 }
+
+// INV-10 (ANTS-6762) — a match across a hard wrap joins the lines it spanned.
+// The joined line is wrapped again at the width those lines had, with the
+// entry's hanging indent, so the entry keeps its neighbours' width.
+TEST_F(ChangelogLogAmend, Inv10AJoinedLineIsWrappedAgain) {
+    const char *kLine1 = "  The quick brown fox jumps over the lazy dog and then keeps";
+    const char *kLine2 = "  running through the field until the evening comes around.";
+    const QByteArray doc = QByteArray("# Changelog\n\n## [Unreleased]\n\n"
+                                      "- **Long entry** (ANTS-0004)\n") +
+                           kLine1 + "\n" + kLine2 + "\n\n## [0.1.0] - 2026-01-01\n";
+    write(doc.constData());
+    const QJsonObject r = amend(
+        QStringLiteral("then keeps running through"),
+        QStringLiteral("afterwards keeps on running very quickly indeed through"));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << r.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(r.value(QStringLiteral("wrapped")).toBool());
+
+    const QString after = QString::fromUtf8(bytes());
+    const int width = static_cast<int>(qstrlen(kLine1));
+    for (const QString &line : after.split(QLatin1Char('\n'))) {
+        EXPECT_LE(line.size(), width) << line.toStdString();
+        if (!line.isEmpty() && !line.startsWith(QLatin1Char('#')) &&
+            !line.startsWith(QLatin1Char('-'))) {
+            EXPECT_TRUE(line.startsWith(QLatin1String("  ")) && line.at(2) != QLatin1Char(' '))
+                << "hanging indent: " << line.toStdString();
+        }
+    }
+    EXPECT_TRUE(after.simplified().contains(QStringLiteral(
+        "over the lazy dog and afterwards keeps on running very quickly indeed "
+        "through the field until the evening comes around. ## [0.1.0]")))
+        << after.toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("line_text")).toString(),
+              after.split(QLatin1Char('\n')).at(r.value(QStringLiteral("line")).toInt() - 1));
+}
