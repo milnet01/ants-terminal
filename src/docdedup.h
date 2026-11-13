@@ -108,8 +108,9 @@ struct Result {
     // One `near_duplicate` per pair, then (ANTS-5403, spec INV-12) one
     // `figure_mismatch` for each place a pair's two passages state a different
     // figure between the same words. A figure is a number, a decimal or a
-    // range standing alone: an id (`ANTS-12`), a date and a section number
-    // (`§ 2.3`) are not. Which value is right is the reader's call.
+    // range standing alone, with `k` or `M` after it as its magnitude: an id
+    // (`ANTS-12`), a date, a section number (`§ 2.3`) and a number with a
+    // unit (`500ms`) are not. Which value is right is the reader's call.
     QList<DocFinding::Finding> findings;
     QVector<Pair>              pairs;
     QVector<Cluster>           clusters;

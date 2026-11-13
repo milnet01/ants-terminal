@@ -413,6 +413,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_dedup`'s `figure_mismatch` reads a number ending in `k` or `M` as a figure, so `90-104k` against `140-154k` is reported.** (ANTS-6756)
+  A number followed by a unit (`500ms`, `5KB`, `5m`) is still not a
+  figure.
+
 - **`roadmap_log` flip and flip_batch accept the same `prefix_hint` shapes as append's `id_prefix`, such as `3D_E` and `mame-curator`.** (ANTS-6236)
   A hint outside that shape now refuses `bad_args`; it refused
   `bad_op_combo` before.

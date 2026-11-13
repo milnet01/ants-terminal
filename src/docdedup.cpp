@@ -131,18 +131,21 @@ static QVector<QPair<QString, QString>> figuresOf(const QString &paragraph) {
     static const QRegularExpression ws(QStringLiteral("\\s+"));
     static const QRegularExpression edges(
         QStringLiteral("^[^\\p{L}\\p{N}]+|[^\\p{L}\\p{N}]+$"));
+    // ANTS-6756 — `k` or `M` directly after a number is its magnitude
+    // (90-104k). Matched before lower-casing: `5m` is a unit, like `ms`.
     static const QRegularExpression figure(QStringLiteral(
-        "\\A\\d+(?:[.,]\\d+)*(?:-\\d+(?:[.,]\\d+)*)?\\z"));
+        "\\A\\d+(?:[.,]\\d+)*[kM]?(?:-\\d+(?:[.,]\\d+)*[kM]?)?\\z"));
     const QString section = QStringLiteral("§");
 
     QStringList words;
     QVector<bool> isFigure;
     for (const QString &chunk : paragraph.split(ws, Qt::SkipEmptyParts)) {
-        QString w = chunk.contains(section) ? section : chunk.toLower().remove(edges);
+        const QString w = chunk.contains(section) ? section : QString(chunk).remove(edges);
         if (w.isEmpty()) continue;
-        isFigure << (figure.match(w).hasMatch()
-                     && (words.isEmpty() || words.last() != section));
-        words << w;
+        const bool fig = figure.match(w).hasMatch()
+                         && (words.isEmpty() || words.last() != section);
+        isFigure << fig;
+        words << (fig ? w : w.toLower());   // a figure keeps its case: 1.5M
     }
 
     QVector<QPair<QString, QString>> out;

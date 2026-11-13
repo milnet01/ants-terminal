@@ -654,3 +654,31 @@ TEST(DocDedup, Ants5403IdsDatesAndSectionNumbersAreNotFigures) {
     EXPECT_EQ(figureFindings(a, QStringLiteral("§ 2.3"), b, QStringLiteral("§ 2.4")).size(), 0);
     EXPECT_EQ(figureFindings(a, QStringLiteral("§2.3"), b, QStringLiteral("§2.4")).size(), 0);
 }
+
+// INV-12 (ANTS-6756) — a figure may end in a magnitude, `k` or `M`. A unit
+// after the number (`ms`, `KB`, a lower-case `m`) still makes it no figure.
+TEST(DocDedup, Ants6756MagnitudeSuffixIsPartOfTheFigure) {
+    const auto a = QStringLiteral("a.md"), b = QStringLiteral("b.md");
+
+    const auto range = figureFindings(a, QStringLiteral("90-104k"), b, QStringLiteral("140-154k"));
+    ASSERT_EQ(range.size(), 1);
+    EXPECT_EQ(range.first().message,
+              QStringLiteral("states 90-104k where b.md:1 states 140-154k "
+                             "(near \"fg13 fg14 # fg15 fg16\")"));
+
+    const auto mega = figureFindings(a, QStringLiteral("1.5M"), b, QStringLiteral("2.5M"));
+    ASSERT_EQ(mega.size(), 1);
+    EXPECT_TRUE(mega.first().message.startsWith(QStringLiteral("states 1.5M where")))
+        << mega.first().message.toStdString();
+
+    EXPECT_EQ(figureFindings(a, QStringLiteral("90k-104k,"), b, QStringLiteral("140k-154k,")).size(), 1)
+        << "each end of a range may carry the magnitude";
+    EXPECT_EQ(figureFindings(a, QStringLiteral("90k"), b, QStringLiteral("90")).size(), 1)
+        << "the magnitude is part of the value";
+    EXPECT_EQ(figureFindings(a, QStringLiteral("90k"), b, QStringLiteral("90k")).size(), 0);
+
+    EXPECT_EQ(figureFindings(a, QStringLiteral("500ms"), b, QStringLiteral("600ms")).size(), 0);
+    EXPECT_EQ(figureFindings(a, QStringLiteral("5KB"), b, QStringLiteral("6KB")).size(), 0);
+    EXPECT_EQ(figureFindings(a, QStringLiteral("5m"), b, QStringLiteral("6m")).size(), 0)
+        << "a lower-case m is a unit, not a magnitude";
+}

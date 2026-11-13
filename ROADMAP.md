@@ -92493,7 +92493,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: Games Hub feedback 2026-11-10.
   Lanes: ci-report.
 
-- 📋 [ANTS-6756] **doc_dedup figure_mismatch reads a figure with a k or M suffix.**
+- ✅ [ANTS-6756] **doc_dedup figure_mismatch reads a figure with a k or M suffix.**
   ANTS-5403 follow-up. Two passages differing only in `90-104k` vs
   `140-154k` pair at 0.704 and get no figure_mismatch; `500` vs `600`
   does. That is CFG-0234's original pair. Measured by claude-config:
@@ -92502,6 +92502,12 @@ measured Ants adding about 5,250 tokens to every request.
   (magnitude); leave true units (ms, KB, %) out as now. Spec ANTS-3660
   INV-12. Red-first with the four-file repro. Reload: ants-mcpd rebuild
   and reconnect.
+  2026-11-13: shipped. figuresOf matches [kM] after each part of a
+  figure, before lower-casing, and keeps the figure's case. Red first:
+  DocDedup.Ants6756MagnitudeSuffixIsPartOfTheFigure. mutation_probe:
+  four mutants, all killed. Spec:
+  docs/specs/ANTS-3660-doc-dedup-find-same-passage.md INV-12. Over this
+  project's docs/ the finding counts did not change (13 and 593).
   **Layman:** The check for near-identical passages that quote different numbers misses numbers written like 90-104k, which is how token figures are usually written.
   Kind: fix.
   Source: claude_config_Ants_MCP_Feedback.md 2026-11-13.

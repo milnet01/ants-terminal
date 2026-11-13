@@ -6,6 +6,8 @@
 reviewer was dispatched.
 **Amended 2026-11-12 by ANTS-5403**: INV-12, the `figure_mismatch` finding. No
 reviewer was dispatched.
+**Amended 2026-11-13 by ANTS-6756**: INV-12 reads a `k` or `M` magnitude. No
+reviewer was dispatched.
 **Kind:** implement.
 **Source:** ROADMAP.md ANTS-3660 (user-request-2026-07-27).
 **Blocked by:** ANTS-3664 (the finding shape). ANTS-3666 is **met** (2026-07-28).
@@ -514,14 +516,17 @@ enforce.
   words. It is anchored at the earlier passage, names both values and the other
   location, and is never `autoFixable`. A figure is a number, a decimal or a
   two-part range standing alone; an id (`ANTS-12`), a date and a number after
-  `§` are not. The words are up to two either side, with any figure among them
+  `§` are not. A `k` or `M` directly after a number is its magnitude and part
+  of the figure (`90-104k`, `1.5M`); any other letters after it are a unit,
+  and the word is no figure (`500ms`, `5KB`, `5m`). The words are up to two either side, with any figure among them
   compared as `#`; fewer than three such words is no position. A place where
   the two passages share a value reports nothing. These findings follow every
   `near_duplicate`, in pair order. The engine does not say which value is
   right. *Test:* `DocDedup.Ants5403DifferingFigureReports` and
   `DocDedup.Ants5403IdsDatesAndSectionNumbersAreNotFigures`, with a mutant for
   splitting on punctuation, for the date, for the section number and for the
-  shared value.
+  shared value. The magnitude:
+  `DocDedup.Ants6756MagnitudeSuffixIsPartOfTheFigure`.
 
 ## 4. RAM / build cost
 
@@ -616,6 +621,7 @@ wired into existing bundles' `SOURCES`, per `tests/features/README.md`.
 | 9 | `DocDedup.Inv9ClustersAreConnectedComponents` |
 | 10 | `DocDedup.Ants3691EmissionOrderIsStrongestThenLocation` |
 | 11 | `DocDedup.Ants5471ExcludedHeadingLeavesItsSectionOut`, `DocDedup.Ants5471ArgumentShape` |
+| 12 | `DocDedup.Ants5403DifferingFigureReports`, `DocDedup.Ants5403IdsDatesAndSectionNumbersAreNotFigures`, `DocDedup.Ants6756MagnitudeSuffixIsPartOfTheFigure` |
 
 **Verified RED against feature-absent code before the implementation lands**,
 per the project convention. INV-2's and INV-3's zero-pair rows assert an absence
@@ -672,6 +678,7 @@ it either: § 7 *reads* as settled.
 
 | Loop | Date | Lanes | C | H | M | L | I | Outcome |
 |---|---|---|---|---|---|---|---|---|
+| impl | 2026-11-13 | ANTS-6756 amendment; no reviewer dispatched | 0 | 0 | 0 | 0 | 0 | Amended from roadmap item ANTS-6756 (claude-config's feedback of 2026-11-13): INV-12 reads `k` or `M` after a number as its magnitude, and the tests table gains its INV-12 row. Measured 2026-11-13 with `build/ants-mcpd --call doc_dedup` over this project's `docs/`: `counts.figure_mismatch` 13 beside `counts.near_duplicate` 593, the same as before the change. |
 | impl | 2026-11-12 | ANTS-5403 amendment; no reviewer dispatched | 0 | 0 | 0 | 0 | 0 | Amended from roadmap item ANTS-5403 (claude-config's CFG-0234): INV-12 adds the `figure_mismatch` finding. Measured 2026-11-12 with `build/ants-mcpd --call doc_dedup` over this project's `docs/`: `counts.figure_mismatch` 13 beside `counts.near_duplicate` 593. |
 | 4-merge | 2026-07-28 | cross-doc knock-ons from the ANTS-3669 merge; no reviewer dispatched | 0 | 0 | 1 | 1 | 0 | Two pointer changes, no contract change. § 4's build-cost stanza was one of six identical copies — the highest-scoring duplicate ANTS-3666 measured — so it is deleted in favour of ANTS-3664 § 4's family default, leaving only this spec's genuine deviation (Jaccard over `QSet<QString>` needs no external dependency). § 5's "ANTS-3669, the write half of `doc_lint`, must never auto-fix a `doc_dedup` finding" repoints to ANTS-3663 § 2.3, which absorbed the fix path when that split was unwound; the constraint itself is unchanged and still names this spec's § 2.5 as its reason. This document's own INV-8 was adopted corpus-wide as the pointer form for the verb-contract minimum. |
 | 4-tail | 2026-07-28 | ANTS-3677 fold-in (loop 4's deferred MEDIUM/LOW, this document's share) | 0 | 3 | 3 | 1 | 0 | 7 folded, no new loop dispatched — the ledger already had them with file:line, and re-reviewing to rediscover written-down findings is the waste ANTS-3677 exists to avoid. **The fold-in re-ran the measurement instead of reasoning from the recorded table, and that is what earned its keep.** INV-1 ↔ INV-7 were genuinely contradictory; the fix is a seam, not a wording change — § 2.2 now separates candidate gathering (which `maxPostings` prunes) from scoring (exact Jaccard over full sets), and each invariant governs one half, with § 5 carrying the residual limit. § 4's "this corpus has many high-posting shingles" is **false**: zero shingles exceed 400 postings, the longest list is 176 of 12,915, and disabling the prune changes not one pair — the prune ships as insurance and § 4 now says so. § 7's two questions were answered by measuring (regions: 3/268 docs, 67/276 pairs, all one document and one cluster → ignore the mask, § 2.4; within-document: 78/198 split with a J=1.000 verbatim repeat at the top → keep, § 2.5); both had been deferred to a run that was never asked for either number. § 2.3's criterion got a number (≤150 clusters, measured 129) and a harness to check it. Four figures (79 passages, 40→21 exact duplicates, 91→21 at 0.80) were quoted off the punctuation-KEPT rows of a spec that pins punctuation stripped — restated as 109, 58→23, 111→25. Two cited line numbers had drifted 128 and 78 lines in two days; replaced with content anchors per `documentation.md` § 1.7. |
