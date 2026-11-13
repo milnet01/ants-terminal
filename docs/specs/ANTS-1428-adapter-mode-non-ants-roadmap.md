@@ -474,7 +474,9 @@ deciding which parser branch to run.
 - **INV-11 / `prefix_hint` default.** When `roadmap_log
   op:"flip"` is called and the bullet needs anchor injection,
   the prefix is taken from the request's `prefix_hint` field
-  if present (regex `^[A-Z][A-Z0-9_-]{0,15}$`); otherwise it
+  if present. It must match `kIdPrefixShape`, the shape
+  `op:"append"`'s `id_prefix` takes; any other value refuses
+  `bad_args` (ANTS-6236). Otherwise it
   defaults to `RoadmapParse::leafIdPrefix()` of the project root's
   leaf directory (e.g. `caller_cwd:/home/user/Vestige` →
   prefix `VEST`).

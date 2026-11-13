@@ -142,7 +142,8 @@ id-lookup + allocation path gains the `contains-a-letter` lookahead:
   `src/remotecontrol_roadmap_log.cpp` and `_log_batch.cpp`;
   claudeintegration.cpp `^[A-Z][A-Z0-9_-]{0,15}$`): the caret-anchor
   injection hint on flip — cosmetic, upper-case-only by its own design;
-  not an id recogniser. Left.
+  not an id recogniser. Left. ANTS-6236 (2026-11-13) widened it to
+  `kIdPrefixShape`.
 - **plan_template `isValidAntsId`** (plantemplateengine.cpp:37/229,
   `^[A-Z][A-Z0-9]{0,15}-[0-9]{1,9}$`): a distinct upper-case-only internal
   validator for `plan_template`'s `ants_id` field, not roadmap parsing.
@@ -244,3 +245,4 @@ roadmap_index_engine) must stay green — INV-3 guards the no-regression.
   (claudeintegration.cpp:8410, remotecontrol.cpp:5950); L2 —
   `rlMaxExistingIdForPrefix` added to the `{1,8}` digit-bound list; L3 —
   row-8 `:8620` `kIdPrefixShape` check confirmed. Converged.
+- **impl (2026-11-13)** — ANTS-6236 amendment; no reviewer dispatched. The sites-LEFT entry for `prefix_hint` now says ANTS-6236 widened it to `kIdPrefixShape`. No invariant or test changed.
