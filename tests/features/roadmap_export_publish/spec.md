@@ -35,3 +35,13 @@ or `sqlite3` is missing. That skip path is why those tools are not in
   KEEP apart from the roadmap copies. With no such file it succeeds and copies
   nothing. A failed know-how copy exits non-zero, sets `error=` and notifies,
   while the roadmap copy stays and `success=` still advances.
+- **INV-15** *(ANTS-5426, user decision 2026-11-13; the parent assigns no
+  clause)* — a snapshot is sized by its row count in `item` (roadmap) or
+  `know_how` (know-how). A new copy with under half the rows of the largest
+  kept snapshot of that store is kept, and the run exits non-zero, sets
+  `error=` and notifies. A shrunken roadmap copy does not advance `success=`.
+  While that holds, KEEP removes no snapshot with at least twice the new
+  copy's rows. Exactly half is not a shrink. A run with
+  `ROADMAP_BACKUP_ACCEPT_SHRINK=1` accepts the new size: it and later plain
+  runs succeed and prune to KEEP, until a copy has under half the accepted
+  rows.

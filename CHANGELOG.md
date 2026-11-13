@@ -413,6 +413,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The store backup keeps its full snapshots when a new copy has under half their items.** (ANTS-5426)
+  The run fails and notifies instead of rotating them out.
+  `ROADMAP_BACKUP_ACCEPT_SHRINK=1` accepts the new size.
+
 - **Two `roadmap_log` calls on one project take turns** (ANTS-5420)
   Each call now waits for the one ahead, in the terminal and in every
   session's `ants-mcpd`, so two edits to a markdown roadmap sent at the

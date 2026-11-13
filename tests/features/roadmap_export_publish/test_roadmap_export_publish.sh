@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ANTS-3794 INV-7, INV-8, INV-9, INV-10, INV-12, INV-13, INV-14 — tools/roadmap-export-publish.sh
+# ANTS-3794 INV-7, INV-8, INV-9, INV-10, INV-12, INV-13, INV-14, INV-15 — tools/roadmap-export-publish.sh
 # and the snapshot record. Contract: tests/features/roadmap_export_publish/spec.md
 set -uo pipefail
 
@@ -180,6 +180,79 @@ check "INV-14 a failed copy notifies" test -s "$T/notified"
 check "INV-14 the roadmap copy still counts as a success" test "$(recval success "$SREC")" != "2000-01-01T00:00:00Z"
 check "INV-14 the roadmap copy is kept" test "$(find "$KDEST" -name 'roadmap-*.sqlite' | wc -l)" -eq 2
 check "INV-14 a failed copy leaves no partial" test -z "$(find "$KDEST" -name '*.partial')"
+
+# --- INV-15 (ANTS-5426: a shrunken copy holds the full snapshots) ---
+SDATA="$T/sdata/ants-terminal"
+SDEST="$T/ssnaps"
+SSTORE="$SDATA/roadmap.sqlite"
+mkdir -p "$SDATA" "$SDEST"
+mkstore() {  # mkstore <file> <table> <rows>
+    rm -f "$1"
+    sqlite3 "$1" "create table $2(a); with recursive n(i) as (select 1 union all select i+1 from n where i < $3) insert into $2 select i from n where $3 > 0;"
+}
+snapshot_s() { XDG_DATA_HOME="$T/sdata" "$SNAPSHOT" "$SDEST" "$@" >/dev/null 2>&1; }
+nsnaps() { find "$SDEST" -name "$1-*.sqlite" | wc -l; }
+
+# The boundary: exactly half is not a shrink, so KEEP prunes as before.
+mkstore "$SDEST/roadmap-20000101-000000.sqlite" item 10
+mkstore "$SSTORE" item 5
+snapshot_s 1
+check "INV-15 exactly half exits 0" test $? -eq 0
+check "INV-15 exactly half prunes as before" test "$(nsnaps roadmap)" -eq 1
+
+# Under half: the full snapshots stay, the small ones still rotate.
+rm -f "$SDEST"/roadmap-*.sqlite "$T/notified"
+mkstore "$SDEST/roadmap-20000101-000000.sqlite" item 10
+mkstore "$SDEST/roadmap-20000102-000000.sqlite" item 3
+mkstore "$SDEST/roadmap-20000103-000000.sqlite" item 10
+mkstore "$SSTORE" item 2
+sed -i 's/^success=.*/success=2000-01-01T00:00:00Z/' "$SREC"
+sleep 1
+snapshot_s 1
+check "INV-15 a shrunken copy exits non-zero" test $? -ne 0
+check "INV-15 the error names the shrink" grep -q "^error=.*roadmap.*2 item.*10" "$SREC"
+check "INV-15 a shrunken copy notifies" test -s "$T/notified"
+check "INV-15 a shrunken copy does not advance success" test "$(recval success "$SREC")" = "2000-01-01T00:00:00Z"
+check "INV-15 the oldest full snapshot is held" test -e "$SDEST/roadmap-20000101-000000.sqlite"
+check "INV-15 the newer full snapshot is held" test -e "$SDEST/roadmap-20000103-000000.sqlite"
+check "INV-15 a small old snapshot still rotates" test ! -e "$SDEST/roadmap-20000102-000000.sqlite"
+check "INV-15 the shrunken copy is kept too" test "$(nsnaps roadmap)" -eq 3
+
+# A second plain run changes nothing: the hold lasts until the switch.
+sleep 1
+snapshot_s 1
+check "INV-15 the hold lasts across runs" test $? -ne 0
+check "INV-15 full snapshots still held" test -e "$SDEST/roadmap-20000101-000000.sqlite" -a -e "$SDEST/roadmap-20000103-000000.sqlite"
+
+# The switch accepts the shrink once; later plain runs then pass.
+sleep 1
+ROADMAP_BACKUP_ACCEPT_SHRINK=1 snapshot_s 4
+check "INV-15 the switch exits 0" test $? -eq 0
+check "INV-15 the switch advances success" test "$(recval success "$SREC")" != "2000-01-01T00:00:00Z"
+check "INV-15 the switch prunes to KEEP" test "$(nsnaps roadmap)" -eq 4
+check "INV-15 a full snapshot inside KEEP survives the switch" test -e "$SDEST/roadmap-20000103-000000.sqlite"
+sleep 1
+snapshot_s 4
+check "INV-15 an accepted shrink stays accepted" test $? -eq 0
+
+# A further halving is a new shrink, and the old acceptance does not cover it.
+mkstore "$SSTORE" item 0
+sleep 1
+snapshot_s 4
+check "INV-15 a second shrink fails again" test $? -ne 0
+
+# The know-how store follows the same rule on its own table, and a roadmap
+# success still counts.
+rm -f "$SDEST"/roadmap-*.sqlite "$SDEST"/.*-shrink-accepted
+mkstore "$SSTORE" item 4
+mkstore "$SDEST/knowhow-20000101-000000.sqlite" know_how 10
+mkstore "$SDATA/knowhow.sqlite" know_how 1
+sed -i 's/^success=.*/success=2000-01-01T00:00:00Z/' "$SREC"
+sleep 1
+snapshot_s 1
+check "INV-15 a shrunken know-how copy exits non-zero" test $? -ne 0
+check "INV-15 the full know-how snapshot is held" test -e "$SDEST/knowhow-20000101-000000.sqlite"
+check "INV-15 the roadmap copy still counts as a success" test "$(recval success "$SREC")" != "2000-01-01T00:00:00Z"
 
 echo "$fails failure(s)"
 [ "$fails" -eq 0 ]

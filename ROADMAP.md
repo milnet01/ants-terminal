@@ -88819,6 +88819,8 @@ parse, not that file.
   `git grep --cached -l -F`, add modified and untracked files, and re-run
   rg on those files only. A regex stays as today: git's dialects differ
   from rg's, so a prefilter could drop matches.
+  User decided 2026-11-13: build the candidate design for literals only.
+  A regex stays as today; no longer default budget.
   **Layman:** Some code searches are slow enough to hit their time limit, even where a plain git search finishes in under a second.
   Kind: perf.
   Source: ANTS-5323 follow-up 2026-10-24.
@@ -92575,6 +92577,8 @@ measured Ants adding about 5,250 tokens to every request.
   still walks them. Decide the rule first: an age limit, a count limit, or
   an explicit `cc-job prune --older-than <days>`; a log nobody read is the
   only copy of its output (CFG-0729).
+  User decided 2026-11-13: automatic. A finished job whose session has
+  ended is removed once older than 30 days; also a manual prune command.
   **Layman:** Old job logs from sessions long gone are cleared away instead of piling up for ever.
   Kind: enhancement.
   Source: ants-projects-hub-website-message-2026-11-13.
@@ -112126,7 +112130,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-25.
   Lanes: mcp.
 
-- 📋 [ANTS-5426] **roadmap-store-backup.sh refuses to rotate out good snapshots when a new one is suspiciously smaller.**
+- ✅ [ANTS-5426] **roadmap-store-backup.sh refuses to rotate out good snapshots when a new one is suspiciously smaller.**
   The only test of a new snapshot is PRAGMA integrity_check, which a valid but
   emptied store passes (and `[ -f "$STORE" ]` accepts a recreated empty file).
   After KEEP runs (8 weekly) every good snapshot has rotated out. Compare the
@@ -112139,6 +112143,18 @@ reports are asked for separately, each time.
   a snapshot holding at least twice the new copy's items until
   ROADMAP_BACKUP_ACCEPT_SHRINK=1 is passed. Recommended: (b), shrink
   mark at half.
+  User decided 2026-11-13: option (b). Compare with the largest kept
+  snapshot; shrink mark at half; hold full snapshots until
+  ROADMAP_BACKUP_ACCEPT_SHRINK=1.
+  Shipped 2026-11-13. A snapshot is sized by its rows in `item`
+  (roadmap) or `know_how`. Under half of the largest kept one: the copy
+  is kept, full snapshots are held, the run fails and notifies. The
+  switch writes DEST/.<name>-shrink-accepted with the accepted size, so
+  later timer runs pass until the store halves again (added beyond the
+  asked rule: without it the alarm repeats until the full snapshots
+  rotate out). Contract: tests/features/roadmap_export_publish/spec.md
+  INV-15, red first; five mutants killed. A script the timer re-reads:
+  live on its next run.
   **Layman:** If the roadmap database were ever emptied, eight weekly backups later every good copy would have been deleted.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #8; ledger TL-8).
@@ -112156,6 +112172,8 @@ reports are asked for separately, each time.
   2026-11-13: waits on the user's choice (asked this day): on a re-run
   that meets an existing archive, append the cut block to it, or refuse
   to cut when the block is absent from it. Recommended: refuse.
+  User decided 2026-11-13: refuse to cut when the block is absent from
+  the existing archive.
   **Layman:** Re-running the roadmap archiving script can delete old roadmap sections without saving them anywhere.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #1; ledger TL-14).

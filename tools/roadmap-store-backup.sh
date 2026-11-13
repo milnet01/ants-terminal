@@ -8,7 +8,9 @@
 # Copies each store with sqlite3 .backup, which is safe while Ants holds a
 # connection (the stores run in WAL; a plain cp is not). A copy must pass
 # PRAGMA integrity_check before it is kept, then only the newest KEEP
-# snapshots (default 8) of that store survive.
+# snapshots (default 8) of that store survive. A copy with under half the
+# items of the largest kept snapshot fails the run and holds the full
+# snapshots; ROADMAP_BACKUP_ACCEPT_SHRINK=1 accepts the new size (ANTS-5426).
 #
 # This is the stop-gap half of ANTS-3794. The durable half is the per-project
 # JSONL export pushed to the private claude-config repo; a single-file
@@ -53,10 +55,25 @@ tmp=""
 trap 'rm -f "$tmp"' EXIT
 shopt -s nullglob
 
-# snapshot_store STORE NAME — copy STORE to DEST/NAME-<timestamp>.sqlite.
+# count_items FILE TABLE — the rows in TABLE; 0 where FILE has no such table.
+count_items() {
+    local n
+    n=$(sqlite3 -readonly "$1" "select count(*) from $2;" 2>/dev/null) || n=0
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    printf '%s' "$n"
+}
+
+# ANTS-5426 — set by snapshot_store when a copy shrank; the run then fails
+# after every store has been copied.
+SHRUNK=""
+
+# snapshot_store STORE NAME TABLE — copy STORE to DEST/NAME-<timestamp>.sqlite.
+# TABLE holds the store's items, and its row count sizes a snapshot.
 snapshot_store() {
-    local store=$1 name=$2 out check
+    local store=$1 name=$2 table=$3 out check s n new largest=0 accepted hold=0
+    local marker="$DEST/.$name-shrink-accepted"
     local -a snaps
+    local -A count
     out="$DEST/$name-$(date +%Y%m%d-%H%M%S).sqlite"
     tmp="$out.partial"
 
@@ -68,24 +85,55 @@ snapshot_store() {
     chmod 600 "$tmp" || fail "cannot chmod $tmp"
     mv "$tmp" "$out" || fail "cannot move the snapshot into place at $out"
 
-    # Keep the newest KEEP snapshots. The glob sorts ascending, and the names
-    # carry a timestamp, so the oldest come first.
+    # ANTS-5426 — an emptied store passes integrity_check, and KEEP runs later
+    # every good snapshot would be gone. A copy with under half the items of
+    # the largest kept snapshot holds the full ones until the shrink is
+    # accepted. The marker records the accepted size, so later plain runs pass
+    # until the store halves again.
     snaps=("$DEST/$name"-*.sqlite)
+    new=$(count_items "$out" "$table")
+    for s in "${snaps[@]}"; do
+        [ "$s" = "$out" ] && continue
+        n=$(count_items "$s" "$table")
+        count[$s]=$n
+        (( n > largest )) && largest=$n
+    done
+    if (( new * 2 < largest )); then
+        accepted=$(cat "$marker" 2>/dev/null) || accepted=""
+        if [ "${ROADMAP_BACKUP_ACCEPT_SHRINK:-}" = 1 ]; then
+            printf '%s\n' "$new" > "$marker" || fail "cannot write $marker"
+        elif ! { [[ "$accepted" =~ ^[0-9]+$ ]] && (( new * 2 >= accepted )); }; then
+            hold=1
+            SHRUNK+="the $name copy holds $new item(s), under half of the $largest in a kept snapshot; full snapshots are held until a run with ROADMAP_BACKUP_ACCEPT_SHRINK=1. "
+        fi
+    else
+        rm -f -- "$marker"
+    fi
+
+    # Keep the newest KEEP snapshots. The glob sorts ascending, and the names
+    # carry a timestamp, so the oldest come first. A held snapshot has at
+    # least twice the new copy's items.
     if (( ${#snaps[@]} > KEEP )); then
-        rm -f -- "${snaps[@]:0:${#snaps[@]}-KEEP}" || fail "cannot prune old snapshots in $DEST"
+        for s in "${snaps[@]:0:${#snaps[@]}-KEEP}"; do
+            (( hold && count[$s] > 0 && count[$s] >= new * 2 )) && continue
+            rm -f -- "$s" || fail "cannot prune old snapshots in $DEST"
+        done
     fi
     echo "roadmap-store-backup: wrote $out"
 }
 
-snapshot_store "$STORE" roadmap
+snapshot_store "$STORE" roadmap item
 
 # ANTS-5247 — the canonical folder, read by roadmap_migrate's snapshot default.
 # ANTS-5621 — and the store it backs up, so a migrate of another store skips it.
 # Recorded before the know-how copy: its failure must report an error without
-# hiding this success.
-roadmap_backup_record snapshot ok "" "$(cd "$DEST" && pwd -P)" \
-    "$(cd "$(dirname "$STORE")" && pwd -P)/$(basename "$STORE")"
+# hiding this success. A shrunken roadmap copy is not a success.
+if [ -z "$SHRUNK" ]; then
+    roadmap_backup_record snapshot ok "" "$(cd "$DEST" && pwd -P)" \
+        "$(cd "$(dirname "$STORE")" && pwd -P)/$(basename "$STORE")"
+fi
 
 if [ -f "$KNOWHOW_STORE" ]; then
-    snapshot_store "$KNOWHOW_STORE" knowhow
+    snapshot_store "$KNOWHOW_STORE" knowhow know_how
 fi
+[ -z "$SHRUNK" ] || fail "$SHRUNK"
