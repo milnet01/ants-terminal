@@ -247,7 +247,7 @@ ANTS-1404 before the handler runs, when `caller_cwd` is absent.)
 | 4 | The tree walk skips dir components beginning with `.`, named `build` or beginning with `build-`, or named `node_modules`. Symlinks are not followed. |
 | 5 | Only files whose lowercased extension is in the § 3.2 table are scanned; `Auto` scans Cpp+Py, an explicit `lang` only that family's. The explicit `FileOutline::Mode` is passed (so `.c`/`.hxx`/`.pyi` are covered). |
 | 6 | `tokenize` lowercases, splits on runs of non-`[A-Za-z0-9]`, and drops tokens shorter than 2 characters. |
-| 7 | `jaccard(a,b)` returns `|set(a) ∩ set(b)| / |set(a) ∪ set(b)|`, and 0 when the union is empty. |
+| 7 | `jaccard(a,b)` returns `\|set(a) ∩ set(b)\| / \|set(a) ∪ set(b)\|`, and 0 when the union is empty. |
 | 8 | Candidates with `score == 0` are excluded from both `matches` and `matchesTotal`. |
 | 9 | `matches` is ordered by descending `score`, tie-broken by ascending `(file, line)`. |
 | 10 | `matches` is capped at `maxResults` (default 3, hard cap 20); `matches_count` carries the pre-cap count of `score>0` candidates; `truncated:true` when the cap dropped entries. |

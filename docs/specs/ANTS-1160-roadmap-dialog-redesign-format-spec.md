@@ -430,7 +430,7 @@ Extends the existing `remotecontrol` socket. Two waves.
 | Verb | Input | Output | Purpose |
 |---|---|---|---|
 | `roadmap-query` (extend existing ANTS-1117) | optional `tab`, `filter` | `{ bullets[], sections[] }` (§7.3) | Read structured snapshot |
-| `roadmap-allocate-id` | none | `{ id: "TASK-NNNN", counter_path: ".roadmap-counter" }` | Atomic flock on `.roadmap-counter`, return next ID. **MUST run on a worker thread** (`QtConcurrent::run` or equivalent) — `flock(LOCK_EX)` on a contended counter could wedge the GUI event loop where `remotecontrol.cpp`'s dispatch lives. Use `LOCK_EX|LOCK_NB` first; on contention, fall back to a worker-thread blocking acquire. The 50 ms response-time criterion (§10.7) is the SLA for the worker-thread path. |
+| `roadmap-allocate-id` | none | `{ id: "TASK-NNNN", counter_path: ".roadmap-counter" }` | Atomic flock on `.roadmap-counter`, return next ID. **MUST run on a worker thread** (`QtConcurrent::run` or equivalent) — `flock(LOCK_EX)` on a contended counter could wedge the GUI event loop where `remotecontrol.cpp`'s dispatch lives. Use `LOCK_EX\|LOCK_NB` first; on contention, fall back to a worker-thread blocking acquire. The 50 ms response-time criterion (§10.7) is the SLA for the worker-thread path. |
 | `roadmap-archive-section` | `section-anchor` | `{ archived_path, removed_lines }` | Move closed section to archive, atomic |
 | `roadmap-archive-status` | none | `{ active_size_bytes, archives[], suggested_next }` | Drive archive banner |
 | `roadmap-validate` | optional `path` | `{ violations[] }` | Lint for spec violations, drives `/audit` and pre-commit |

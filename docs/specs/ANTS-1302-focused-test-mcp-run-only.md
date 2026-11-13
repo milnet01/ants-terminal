@@ -286,7 +286,7 @@ A run where tests *failed* (`failed > 0`, ctest exit non-zero) is a
 | 5 | In map mode, when all changed files are mapped/ignored and at least one produced patterns, `resolve` returns `Selection::Map` with the de-duplicated, order-preserved pattern union. |
 | 6 | In map mode, when every changed file is ignored (none mapped, none unmapped), `resolve` returns `Selection::Full`. |
 | 7 | `map.valid == false` selects heuristic mode; if the heuristic yields no patterns, `resolve` returns `Selection::Full`. |
-| 8 | `buildCtestRegex` OR-joins patterns into `(a|b|c)` and returns `""` for an empty list. |
+| 8 | `buildCtestRegex` OR-joins patterns into `(a\|b\|c)` and returns `""` for an empty list. |
 | 9 | `cmdFocusedTest` declared in `remotecontrol.h`, defined in `remotecontrol.cpp` with an `ANTS-1302` anchor. Resolves root via `resolveRootCanonical` (empty → `no_project`). |
 | 10 | `cmdFocusedTest` sets an in-flight flag that refuses `focused_test_in_flight`, and the flag resets via `qScopeGuard` on every return path. While the run is synchronous no second call can observe the flag set (§ 3.4 step 2). |
 | 11 | Absent `changed_files`, the changed set is auto-derived from `cmdGitState({op:"status"})`. A present-but-non-array `changed_files` refuses `bad_args`. |
