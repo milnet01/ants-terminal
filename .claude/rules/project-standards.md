@@ -9,7 +9,8 @@ paths:
 - **The shared standards are owned at `~/.claude/standards/`.**
   `coding.md`, `documentation.md`, `testing.md` and `commits.md` in
   `docs/standards/` are deltas: project rules first, then a verbatim mirror of
-  the owner below a divider. `security.md` is the mirror alone.
+  the owner below a divider. `security.md` and the other files
+  `docs/standards/README.md` lists as mirrors only are the mirror alone.
 - **Never edit a mirrored half.** Fix the owner, then run
   `tools/check-standard-mirrors.sh --write`. `tools/hooks/pre-commit` refuses a
   drifted mirror.
@@ -22,7 +23,8 @@ paths:
   the global copy, and this one governs. `specs.md`: a full standard owning a
   spec's shape; global `spec-format.md` § 1 owns whether a spec is needed.
 - `docs/standards/` is the roster: every file there binds unless it marks
-  itself superseded. `mcp-error-codes.md` is the refusal taxonomy
+  itself superseded. Where `specs.md` and the mirrored `spec-format.md` differ
+  on a spec's shape, `specs.md` governs. `mcp-error-codes.md` is the refusal taxonomy
   (`mcp-errors.md` is superseded). `dependencies.md`: a below-latest pin needs
   a Downgrade Ledger row.
 - Do not cite a delta file's section number from memory. Open the file.

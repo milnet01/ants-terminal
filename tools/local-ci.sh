@@ -15,11 +15,13 @@
 #
 # ANTS-5322 — the full gate RUNS ci.yml, through tools/ci_workflow.py, rather
 # than a copy of it (local-gate.md § 3). The build-test job always: build, the
-# whole suite, the packaging and shell lints, with the job's own env. The
-# build-asan job when a sanitizer tree already exists and is warm enough to
-# build inside a caller's timeout (ANTS-4118's cost gate, below). Then the two
-# container compile guards over a warm cache. Not here: ci.yml's cppcheck job,
-# which is informational, and a cold container leg. `tools/ci-parity.sh --full`
+# whole suite, the packaging and shell lints, with the job's own env. It runs
+# in CI's own image through `tools/qt62-guard.sh --job build-test --run-job`;
+# a cold image blocks the push, and with no podman it runs on this machine.
+# The build-asan job when a sanitizer tree already exists and is warm enough
+# to build inside a caller's timeout (ANTS-4118's cost gate, below). The Qt 6.2
+# compile guard needs a warm cache, and a cold one blocks the push. Not here:
+# ci.yml's cppcheck job, which is informational. `tools/ci-parity.sh --full`
 # runs every job.
 #
 # Documentation-only is decided by the hook, from ci.yml's push `paths-ignore`

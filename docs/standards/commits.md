@@ -82,7 +82,9 @@ answer:
   `pull_request` trigger has no `paths-ignore`, so the same change opened as a
   PR does get the lint gate.
 - Escape hatches: `SKIP_LOCAL_CI=1` and `git push --no-verify` (§ 2.3: the
-  user's call), `ANTS_PREPUSH_NO_ASAN=1`, `ANTS_PREPUSH_NO_QT62=1`.
+  user's call). `ANTS_PREPUSH_NO_ASAN=1`, `ANTS_PREPUSH_NO_QT62=1` and
+  `ANTS_PREPUSH_NO_UBUNTU24=1` each drop one leg of the gate and need the
+  user too.
 
 **Run `--full` before a release, when touching packaging- or e2e-sensitive
 code, and whenever a push ADDS a source file.** That last trigger is not

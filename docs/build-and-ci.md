@@ -69,8 +69,8 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   `tests/features/ci_workflow_deps` checks the recipes statically. **A new
   carrier that runs `ctest` must be added to that test.**
 - Escape hatches: `SKIP_LOCAL_CI=1` (skips the gate, keeps the secret
-  scan) and `git push --no-verify` both need the user (`commits.md` § 2.3);
-  `ANTS_PREPUSH_NO_ASAN=1`,
+  scan) and `git push --no-verify` both need the user (`commits.md` § 2.3).
+  So does each switch that drops one leg: `ANTS_PREPUSH_NO_ASAN=1`,
   `ANTS_PREPUSH_NO_QT62=1`, `ANTS_PREPUSH_NO_UBUNTU24=1` (runs the job on
   this machine, with no ubuntu:24.04 leg at all). The ASan leg's
   contract: `tests/features/prepush_asan_gate/spec.md`.

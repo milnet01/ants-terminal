@@ -112635,7 +112635,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-29.
   Lanes: tests.
 
-- 📋 [ANTS-5581] **CLAUDE.md says the perf tests are in no preset and not in CI; both are false, and two neighbouring claims need checking.**
+- ✅ [ANTS-5581] **CLAUDE.md says the perf tests are in no preset and not in CI; both are false, and two neighbouring claims need checking.**
   Found by the rule 14 gate on CLAUDE.md for ANTS-5577, outside that
   change, so filed rather than fixed in the run.
   1. Test harnesses, the Perf bullet: "not in the presets or CI".
@@ -112685,6 +112685,17 @@ reports are asked for separately, each time.
   ANTS_PREPUSH_NO_* switch unasked; each needs the user, like
   SKIP_LOCAL_CI. Item 6: a pending spec.md sign-off does NOT stop the
   priority loop; the session moves to the next item while it waits.
+  Shipped 2026-11-13. The text had moved out of CLAUDE.md into
+  .claude/rules/ and docs/build-and-ci.md since this was filed.
+  1: the Perf bullet now names the presets and the CI step. 2: the
+  tools/local-ci.sh header says where build-test runs. 3: moot, neither
+  the table list nor the "nine tables" comment exists any more. 4:
+  docs/standards/commits.md and docs/build-and-ci.md say each
+  ANTS_PREPUSH_NO_* switch needs the user (CLAUDE.md already did). 5:
+  the rule says which files are mirrors only, and that specs.md governs
+  a spec's shape. 6: the sign-off line says it does not hold up the
+  list. install-hooks.sh installs the Claude hook pack and
+  setup-git-hooks.sh the git hooks; two tools, nothing to change.
   **Layman:** Three small statements in the project's instruction file no longer match the code, found while reviewing the release section.
   Kind: doc-fix.
   Source: review-contract-2026-09-30 CLAUDE.md loop 1.
