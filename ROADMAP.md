@@ -90158,6 +90158,11 @@ measured Ants adding about 5,250 tokens to every request.
   (ANTS-5692), and the inbox notice speaks only when the count rose
   (ANTS-5716). The start-of-session reads are a session rule, not Ants
   code; passed to claude-config by session_message on 2026-11-13.
+  claude-config replied 2026-11-13 (message 1981): rule not taken for
+  now. It has no measure that a session still orients on a peer-request
+  turn; the 60K may be base context alone. It will add the rule if shown a
+  transcript where a session ran session_orient or start-up reads to
+  answer a peer.
   **Layman:** When another session asks a quick question, answer it without the full start-up routine.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -90203,9 +90208,14 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5706] **CI verbs: a counts-only PR check summary and a compare-with-master view.**
+- ✅ [ANTS-5706] **CI verbs: a counts-only PR check summary and a compare-with-master view.**
   retroarch: `gh pr checks` returned 22.4k chars; comparing a PR's CI with
   master took 4 calls. Returns pass/fail/pending counts plus failing names.
+  Shipped 2026-11-13 as `ci_report op:"checks"` (spec ANTS-6399 § 4.2a):
+  `pr` or `ref`, optional `base`; replies counts, failing and pending
+  names, new_failures and also_failing_on_base, in at most three gh calls.
+  Test: McpCiReport.Ants5706ChecksSummaryAndBaseComparison. Checked live on
+  this repository, including a ref holding a slash.
   **Layman:** Summarise CI results in a line instead of a long table.
   Kind: feature.
   Source: token-survey-2026-10-15.

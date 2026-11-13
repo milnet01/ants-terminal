@@ -64,4 +64,25 @@ using LogPicker = std::function<QList<qint64>(const QJsonObject &history)>;
 
 Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs);
 
+// ANTS-5706 — op:"checks": one commit's check runs, and a base ref's beside
+// them. Exactly one of `pr` and `ref` is set.
+struct ChecksQuery {
+    QString repo;                  // owner/name; empty leaves gh's own pick
+    int pr = 0;                    // a pull request number
+    QString ref;                   // a branch, tag or SHA
+    QString base;                  // compare with this ref; empty: a PR's base branch
+};
+
+struct ChecksResult {
+    QString refusal;               // "", "runner_missing" or "github_unavailable"
+    QString stderrTail;
+    QString ref;                   // the ref read: a PR's head SHA, else `ref`
+    QString baseRef;               // "" when nothing is compared
+    QJsonObject head, base;        // the check-runs API replies
+};
+
+// At most three `gh` calls: `pr view` for a PR, then one check-runs page each
+// for the head and the base. Any of them failing refuses.
+ChecksResult fetchChecks(const QString &root, const ChecksQuery &query);
+
 }  // namespace CiHistory

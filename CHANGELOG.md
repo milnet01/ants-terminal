@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`ci_report op:"checks"` sums up one pull request's or commit's CI checks in a few lines.** (ANTS-5706)
+  It replies how many checks passed, failed, are pending or were skipped,
+  names the failing and pending ones, and says which failures are new and
+  which also fail on the base branch.
+
 - **A project can mark its machine-made files, and `workspace_search` and `codebase_index` leave them out.** (ANTS-5705)
   List globs under `generated` in `.ants/project.json` (`project_settings
   op:"set"`), or set `linguist-generated` on a `.gitattributes` pattern. A

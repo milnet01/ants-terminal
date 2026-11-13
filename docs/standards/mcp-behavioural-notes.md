@@ -1077,6 +1077,9 @@ The contract is `docs/specs/ANTS-6399-ci-report-verb.md`.
 
 - **`source:"saved"` starts no process.** Nor does `session_orient`'s
   `ci_report` block, which reads the same saved file.
+- **`op:"checks"` is a separate, small read** (ANTS-5706): one pull
+  request's or ref's check counts and failing names, beside its base
+  branch's. It saves nothing and does not touch the saved report.
 - **Only a whole default report is saved:** no `workflow`, the default
   `days`, and an empty `fetch_errors`. A narrower or partly failed run never
   replaces the warning `session_orient` shows.

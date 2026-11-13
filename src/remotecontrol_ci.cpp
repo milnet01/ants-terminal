@@ -194,6 +194,69 @@ void writeSaved(const QString &path, const QJsonObject &reply) {
     QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner);
 }
 
+// ANTS-5706 — op:"checks": the check runs of one pull request or ref as
+// counts and names, with the base branch's beside them. Saves nothing and
+// takes no lock: it is three `gh` calls at most.
+QJsonDocument checksReply(const QString &root, const QJsonObject &req) {
+    // A ref goes into a `gh api` path, so it is a plain ref name and nothing else.
+    static const QRegularExpression refRe(QStringLiteral("^[A-Za-z0-9_][A-Za-z0-9._/-]{0,199}$"));
+    const auto validRef = [](const QString &r) {
+        return refRe.match(r).hasMatch() && !r.contains(QLatin1String(".."));
+    };
+    const QJsonValue prV = req.value(QStringLiteral("pr"));
+    const double prD = prV.isUndefined() ? 0 : prV.toDouble(-1);
+    if (!prV.isUndefined() && (prD != std::floor(prD) || prD < 1 || prD > 1e9))
+        return refuse("bad_args", QStringLiteral("pr must be a pull request number"));
+    const QString ref = req.value(QStringLiteral("ref")).toString();
+    const QString base = req.value(QStringLiteral("base")).toString();
+    if ((prD >= 1) == !ref.isEmpty())
+        return refuse("bad_args", QStringLiteral("op:\"checks\" takes exactly one of pr and ref"));
+    if ((!ref.isEmpty() && !validRef(ref)) || (!base.isEmpty() && !validRef(base)))
+        return refuse("bad_args", QStringLiteral("ref and base must each be a branch, tag or SHA"));
+
+    const GithubRemotes remotes = githubRemotes(root);
+    if (remotes.count == 0)
+        return QJsonDocument(QJsonObject{{QStringLiteral("ok"), true},
+                                         {QStringLiteral("op"), QStringLiteral("checks")},
+                                         {QStringLiteral("ci"), QStringLiteral("none")},
+                                         {QStringLiteral("ci_none_reason"), QStringLiteral("no_github_remote")}});
+    CiHistory::ChecksQuery query;
+    // ANTS-6722 — in a fork with no default, read the remote the branch tracks.
+    if (remotes.count > 1 && !remotes.resolved) query.repo = remotes.slugs.value(remotes.branchRemote);
+    query.pr = int(prD);
+    query.ref = ref;
+    query.base = base;
+    const CiHistory::ChecksResult got = CiHistory::fetchChecks(root, query);
+    if (got.refusal == QLatin1String("runner_missing"))
+        return refuse("runner_missing", QStringLiteral("gh did not start; install the GitHub CLI"));
+    if (got.refusal == QLatin1String("github_unavailable"))
+        return refuse("github_unavailable",
+                      QStringLiteral("a gh call failed; see stderr_tail (gh auth status)"),
+                      {{QStringLiteral("stderr_tail"), got.stderrTail}});
+
+    QJsonObject reply = CiReport::checkSummary(got.head);
+    reply[QStringLiteral("ok")] = true;
+    reply[QStringLiteral("op")] = QStringLiteral("checks");
+    reply[QStringLiteral("ci")] = QStringLiteral("github");
+    if (query.pr > 0) reply[QStringLiteral("pr")] = query.pr;
+    reply[QStringLiteral("ref")] = got.ref;
+    if (!got.baseRef.isEmpty()) {
+        QJsonObject baseSummary = CiReport::checkSummary(got.base);
+        baseSummary[QStringLiteral("ref")] = got.baseRef;
+        QJsonArray fresh, shared;
+        const QJsonArray baseFailing = baseSummary.value(QStringLiteral("failing")).toArray();
+        for (const QJsonValue &name : reply.value(QStringLiteral("failing")).toArray())
+            (baseFailing.contains(name) ? shared : fresh).append(name);
+        reply[QStringLiteral("base")] = baseSummary;
+        reply[QStringLiteral("new_failures")] = fresh;
+        reply[QStringLiteral("also_failing_on_base")] = shared;
+    }
+    // Step 5a: what this answer does not look at.
+    reply[QStringLiteral("not_covered")] =
+        QStringLiteral("commit statuses set outside check runs; check runs past the first 100");
+    return QJsonDocument(reply);
+}
+
 }  // namespace
 
 QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
@@ -201,6 +264,12 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
     if (ants::requiredCallerCwd(m_roots, req, QStringLiteral("ci_report"), &refusal).isEmpty())
         return QJsonDocument(refusal);
     const QString root = resolveRootCanonical(m_roots, req);
+
+    const QJsonValue opV = req.value(QStringLiteral("op"));
+    const QString op = opV.isUndefined() ? QStringLiteral("report") : opV.toString();
+    if (op == QLatin1String("checks")) return checksReply(root, req);
+    if (op != QLatin1String("report"))
+        return refuse("bad_args", QStringLiteral("op must be \"report\" or \"checks\""));
 
     const QJsonValue sourceV = req.value(QStringLiteral("source"));
     const QString source = sourceV.isUndefined() ? QStringLiteral("live") : sourceV.toString();

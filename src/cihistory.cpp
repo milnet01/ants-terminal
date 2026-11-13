@@ -161,7 +161,8 @@ QString errorTail(const Call &c) {
 }
 
 // The first two calls refuse the whole verb; later ones only lose a finding.
-bool refuseOn(const Call &c, Result &res) {
+template <class R>
+bool refuseOn(const Call &c, R &res) {
     if (!c.started) { res.refusal = QStringLiteral("runner_missing"); return true; }
     if (c.exitCode != 0) {
         res.refusal = QStringLiteral("github_unavailable");
@@ -394,6 +395,37 @@ Result fetch(const QString &root, const Options &opts, const LogPicker &pickLogs
     res.history[QStringLiteral("logs")] = f.logs(pickLogs ? pickLogs(res.history) : QList<qint64>());
 
     if (res.truncatedReason.isEmpty() && runLimitHit) res.truncatedReason = QStringLiteral("run_limit");
+    return res;
+}
+
+ChecksResult fetchChecks(const QString &root, const ChecksQuery &query) {
+    ChecksResult res;
+    res.ref = query.ref;
+    res.baseRef = query.base;
+    Session s(root, Options());
+
+    if (query.pr > 0) {
+        QStringList args{QStringLiteral("pr"), QStringLiteral("view"), QString::number(query.pr),
+                         QStringLiteral("--json"), QStringLiteral("headRefOid,baseRefName")};
+        if (!query.repo.isEmpty()) args << QStringLiteral("--repo") << query.repo;
+        const Call view = s.run(args);
+        if (refuseOn(view, res)) return res;
+        const QJsonObject pr = QJsonDocument::fromJson(view.out).object();
+        res.ref = pr.value(QStringLiteral("headRefOid")).toString();
+        if (res.baseRef.isEmpty()) res.baseRef = pr.value(QStringLiteral("baseRefName")).toString();
+    }
+
+    // gh fills {owner}/{repo} from the repository it picked.
+    const QString repo = query.repo.isEmpty() ? QStringLiteral("{owner}/{repo}") : query.repo;
+    const auto checkRuns = [&](const QString &ref, QJsonObject *out) {
+        const Call c = s.run({QStringLiteral("api"),
+            QStringLiteral("repos/%1/commits/%2/check-runs?per_page=100").arg(repo, ref)});
+        if (refuseOn(c, res)) return false;
+        *out = QJsonDocument::fromJson(c.out).object();
+        return true;
+    };
+    if (!checkRuns(res.ref, &res.head)) return res;
+    if (!res.baseRef.isEmpty()) checkRuns(res.baseRef, &res.base);
     return res;
 }
 

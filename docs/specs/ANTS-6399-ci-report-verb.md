@@ -153,6 +153,26 @@ carries `earlier_attempts`, `[{run, attempt}]`, for runs listed in `runs`:
 by severity (`problem` first), then `check`, then `workflow`, `job`,
 `step`.
 
+### 4.2a `op:"checks"` (ANTS-5706)
+
+```
+ci_report {caller_cwd, op: "checks", pr: number | ref: string, base?: string}
+```
+
+`op` defaults to `"report"`, the verb above. `op:"checks"` reads the check
+runs of one pull request's head commit, or of `ref`, and replies `total`,
+`counts` (`pass`, `fail`, `pending`, `skipped`), `failing[]`, `pending[]`
+and `truncated`. With `base`, or for a `pr` its base branch, it adds `base`
+(the same summary for that ref), `new_failures[]` and
+`also_failing_on_base[]`. It makes at most three `gh` calls, takes no lock,
+saves nothing, and needs a GitHub remote but no workflow file. Any of its
+calls failing refuses `github_unavailable`. Neither or both of `pr` and
+`ref`, or a `ref` or `base` that is not a plain ref name, refuses
+`bad_args`. `not_covered` names what it does not read: commit statuses set
+outside check runs, and check runs past the first page.
+`CiReport::checkSummary()` holds the classification. Locked by
+`tests/features/mcp_ci_report` (its `spec.md` names the test).
+
 ### 4.3 The checks
 
 Severity `problem` is a check that predicts a red run. `advice` is a speed

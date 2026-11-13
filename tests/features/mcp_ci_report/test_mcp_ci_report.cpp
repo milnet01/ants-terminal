@@ -125,7 +125,8 @@ private:
 };
 
 // A fake `gh` first on PATH. It logs every call, answers `repo view` and
-// `run list` from files in its directory, and an `api <path>` call from a file
+// `run list` from files in its directory, `pr view <n>` from pr_<n>.json, and
+// an `api <path>` call from a file
 // named by the path with / ? = & turned to _. FAKE_FAIL=list fails the listing;
 // a file of that name plus ".fail" fails that api call, plus ".sleep"
 // makes it outlast a short per-call limit, and plus ".delay" holding seconds
@@ -148,6 +149,9 @@ struct FakeGh {
                  "if [[ $1 == repo ]]; then\n"
                  "  r=$3; [[ -z $r || $r == --* ]] && r=o/r\n"
                  "  printf '{\"nameWithOwner\":\"%s\",\"defaultBranchRef\":{\"name\":\"main\"}}' \"$r\"\n"
+                 "elif [[ $1 == pr ]]; then\n"
+                 "  f=\"$FAKE_DIR/pr_$3.json\"; [[ -f $f ]] && printf '%s' \"$(<\"$f\")\" "
+                 "|| { echo 'no pull requests found' >&2; exit 1; }\n"
                  "elif [[ $1 == run ]]; then\n"
                  "  [[ $FAKE_FAIL == list ]] && { echo 'HTTP 401: Bad credentials' >&2; exit 1; }\n"
                  "  f=\"$FAKE_DIR/runs.json\"; [[ -f $f ]] && printf '%s' \"$(<\"$f\")\" || printf '[]'\n"
@@ -1462,4 +1466,89 @@ TEST(McpCiReport, Ants6739IdenticalDownloadCacheIsQuiet) {
         << "different paths under one key prefix";
     EXPECT_EQ(shared(twoJobs("~/.ccache", "~/.ccache")).size(), 1)
         << "a shared ccache is compiled output";
+}
+
+// ANTS-5706 — op:"checks" answers "what is red on this pull request, and is
+// it red on the base branch too?" in one reply of counts and names.
+TEST(McpCiReport, Ants5706ChecksSummaryAndBaseComparison) {
+    Env env;
+    FakeGh gh;
+    gh.install(env);
+    Project p(/*withWorkflow=*/false);   // checks need a GitHub remote, not a workflow file
+    env.set("XDG_CACHE_HOME", p.cache.path().toUtf8());
+    gh.put(QStringLiteral("pr_7.json"), R"({"headRefOid":"abc123","baseRefName":"main"})");
+    gh.put(QStringLiteral("repos_{owner}_{repo}_commits_abc123_check-runs_per_page_100"),
+           R"({"total_count":5,"check_runs":[
+              {"name":"build","status":"completed","conclusion":"success"},
+              {"name":"lint","status":"completed","conclusion":"failure"},
+              {"name":"asan","status":"completed","conclusion":"timed_out"},
+              {"name":"flatpak","status":"completed","conclusion":"skipped"},
+              {"name":"docs","status":"in_progress","conclusion":null}]})");
+    gh.put(QStringLiteral("repos_{owner}_{repo}_commits_main_check-runs_per_page_100"),
+           R"({"total_count":2,"check_runs":[
+              {"name":"build","status":"completed","conclusion":"success"},
+              {"name":"asan","status":"completed","conclusion":"failure"}]})");
+    const auto calls = [&] {
+        QFile f(gh.log());
+        return f.open(QIODevice::ReadOnly) ? f.readAll().count('\n') : 0;
+    };
+    const auto names = [](const QJsonValue &v) {
+        QStringList out;
+        for (const QJsonValue &e : v.toArray()) out << e.toString();
+        return out;
+    };
+
+    const QJsonObject r = p.call({{"op", "checks"}, {"pr", 7}});
+    ASSERT_TRUE(r.value("ok").toBool()) << dump(r);
+    EXPECT_EQ(r.value("ref").toString(), QStringLiteral("abc123"));
+    EXPECT_EQ(r.value("total").toInt(), 5);
+    const QJsonObject counts = r.value("counts").toObject();
+    EXPECT_EQ(counts.value("pass").toInt(), 1);
+    EXPECT_EQ(counts.value("fail").toInt(), 2);
+    EXPECT_EQ(counts.value("pending").toInt(), 1);
+    EXPECT_EQ(counts.value("skipped").toInt(), 1);
+    EXPECT_EQ(names(r.value("failing")), (QStringList{"asan", "lint"}));
+    EXPECT_EQ(names(r.value("pending")), QStringList{"docs"});
+    EXPECT_FALSE(r.value("truncated").toBool());
+    const QJsonObject base = r.value("base").toObject();
+    EXPECT_EQ(base.value("ref").toString(), QStringLiteral("main"));
+    EXPECT_EQ(names(base.value("failing")), QStringList{"asan"});
+    EXPECT_EQ(names(r.value("new_failures")), QStringList{"lint"});
+    EXPECT_EQ(names(r.value("also_failing_on_base")), QStringList{"asan"});
+    EXPECT_FALSE(r.contains("findings")) << "this op is not the history report";
+    EXPECT_EQ(calls(), 3) << "pr view, the head's checks, the base's checks";
+    EXPECT_FALSE(QFileInfo::exists(p.savedPath())) << "op:checks saves nothing";
+
+    // A ref alone: one call, no comparison unless `base` names one.
+    const QJsonObject byRef = p.call({{"op", "checks"}, {"ref", "abc123"}});
+    ASSERT_TRUE(byRef.value("ok").toBool()) << dump(byRef);
+    EXPECT_EQ(byRef.value("counts").toObject().value("fail").toInt(), 2);
+    EXPECT_FALSE(byRef.contains("base"));
+    EXPECT_EQ(calls(), 4);
+    const QJsonObject withBase = p.call({{"op", "checks"}, {"ref", "abc123"}, {"base", "main"}});
+    EXPECT_EQ(names(withBase.value("new_failures")), QStringList{"lint"}) << dump(withBase);
+
+    // More check runs than one page holds is said, not hidden.
+    gh.put(QStringLiteral("repos_{owner}_{repo}_commits_big_check-runs_per_page_100"),
+           R"({"total_count":240,"check_runs":[{"name":"a","status":"completed","conclusion":"success"}]})");
+    EXPECT_TRUE(p.call({{"op", "checks"}, {"ref", "big"}}).value("truncated").toBool());
+
+    const int before = calls();
+    for (const QJsonObject &bad : {QJsonObject{{"op", "checks"}},
+                                   QJsonObject{{"op", "checks"}, {"pr", 7}, {"ref", "abc123"}},
+                                   QJsonObject{{"op", "checks"}, {"pr", 0}},
+                                   QJsonObject{{"op", "checks"}, {"ref", "a b"}},
+                                   QJsonObject{{"op", "checks"}, {"ref", "-x"}},
+                                   QJsonObject{{"op", "checks"}, {"ref", "ok"}, {"base", "../x"}},
+                                   QJsonObject{{"op", "nope"}}})
+        EXPECT_EQ(p.call(bad).value("code").toString(), QStringLiteral("bad_args")) << dump(bad);
+    EXPECT_EQ(calls(), before) << "a refused call starts no process";
+
+    const QJsonObject missing = p.call({{"op", "checks"}, {"pr", 99}});
+    EXPECT_EQ(missing.value("code").toString(), QStringLiteral("github_unavailable")) << dump(missing);
+    EXPECT_TRUE(missing.value("stderr_tail").toString().contains(QLatin1String("no pull requests")));
+
+    Project noRemote(/*withWorkflow=*/true, /*withRemote=*/false);
+    const QJsonObject none = noRemote.call({{"op", "checks"}, {"pr", 7}});
+    EXPECT_EQ(none.value("ci_none_reason").toString(), QStringLiteral("no_github_remote")) << dump(none);
 }

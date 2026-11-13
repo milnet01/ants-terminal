@@ -935,4 +935,40 @@ Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflow
     return a;
 }
 
+QJsonObject checkSummary(const QJsonObject &checkRunsReply) {
+    const QJsonArray runs = checkRunsReply.value(QStringLiteral("check_runs")).toArray();
+    int pass = 0, fail = 0, pending = 0, skipped = 0;
+    QStringList failing, waiting;
+    for (const QJsonValue &v : runs) {
+        const QJsonObject r = v.toObject();
+        const QString name = r.value(QStringLiteral("name")).toString();
+        const QString conclusion = r.value(QStringLiteral("conclusion")).toString();
+        if (r.value(QStringLiteral("status")).toString() != QLatin1String("completed")) {
+            ++pending;
+            waiting << name;
+        } else if (conclusion == QLatin1String("success")) {
+            ++pass;
+        } else if (conclusion == QLatin1String("neutral") || conclusion == QLatin1String("skipped")) {
+            ++skipped;
+        } else {
+            ++fail;
+            failing << name;
+        }
+    }
+    for (QStringList *names : {&failing, &waiting}) {
+        names->sort();
+        names->removeDuplicates();
+    }
+    const int total = int(runs.size());
+    return {{QStringLiteral("total"), total},
+            {QStringLiteral("counts"), QJsonObject{{QStringLiteral("pass"), pass},
+                                                   {QStringLiteral("fail"), fail},
+                                                   {QStringLiteral("pending"), pending},
+                                                   {QStringLiteral("skipped"), skipped}}},
+            {QStringLiteral("failing"), QJsonArray::fromStringList(failing)},
+            {QStringLiteral("pending"), QJsonArray::fromStringList(waiting)},
+            {QStringLiteral("truncated"),
+             checkRunsReply.value(QStringLiteral("total_count")).toInt(total) > total}};
+}
+
 }  // namespace CiReport

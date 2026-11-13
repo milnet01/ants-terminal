@@ -34,4 +34,11 @@ struct Analysis {
 Analysis analyse(const QJsonObject &history, const CiWorkflows::Result &workflows,
                  const QDateTime &now, int days, const CiWorkflows::BySha &atCommit = {});
 
+// ANTS-5706 — one check-runs API reply as counts and names:
+// {total, counts: {pass, fail, pending, skipped}, failing[], pending[],
+// truncated}. A run not yet completed is pending; success passes; neutral and
+// skipped are skipped; every other conclusion fails. Names are sorted, each
+// once. `truncated` is true when GitHub holds more runs than the reply.
+QJsonObject checkSummary(const QJsonObject &checkRunsReply);
+
 }  // namespace CiReport

@@ -48,3 +48,15 @@ same non-empty `with: path:` under the same full key, and that path does not
 name build output (`ccache`, `sccache`, `build`): that is one download cached
 on purpose. Different paths, or a shared build-output path, still fire, as
 does a shared key with no path. Test: `McpCiReport.Ants6739IdenticalDownloadCacheIsQuiet`.
+
+## ANTS-5706 — `op:"checks"`
+
+`op:"checks"` with `pr` replies the head commit's check counts, the sorted
+names that fail and that are pending, and, against the pull request's base
+branch, `new_failures` and `also_failing_on_base`, in three `gh` calls. With
+`ref` it makes one call and compares only when `base` is given. A reply
+holding fewer runs than GitHub's `total_count` sets `truncated`. It carries
+no `findings` and saves no report. A bad argument refuses `bad_args` before
+any process starts; a failed `gh` call refuses `github_unavailable`; no
+GitHub remote answers `ci: "none"`. Test:
+`McpCiReport.Ants5706ChecksSummaryAndBaseComparison`.

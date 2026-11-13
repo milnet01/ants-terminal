@@ -58,7 +58,9 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "test_parallelism, repo_ambiguous (a fork it cannot tell apart). "
                         "Each finding names its runs, SHAs and the "
                         "standard it cites. source:\"saved\" reads the last report with no "
-                        "network. caller_cwd Required.");
+                        "network. op:\"checks\" with pr or ref instead returns one commit's "
+                        "check counts, failing names and what also fails on the base "
+                        "branch. caller_cwd Required.");
                     t["detail"] = QStringLiteral(
                         "ANTS-6399. Contract: docs/specs/ANTS-6399-ci-report-verb.md. A live "
                         "call is bounded at 120 s and 300 gh calls; a stopped fetch says "
@@ -83,6 +85,26 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         {"description", QStringLiteral(
                              "Window by run creation time (default 30). Only the default "
                              "window is saved.")}};
+                    // ANTS-5706 — op:"checks" and its three arguments.
+                    props["op"] = QJsonObject{
+                        {"type", "string"},
+                        {"enum", QJsonArray{QStringLiteral("report"), QStringLiteral("checks")}},
+                        {"default", "report"},
+                        {"description", QStringLiteral(
+                             "report (default): the history findings. checks: one commit's "
+                             "check counts; needs pr or ref.")}};
+                    props["pr"] = QJsonObject{
+                        {"type", "integer"}, {"minimum", 1},
+                        {"description", QStringLiteral(
+                             "op:checks: a pull request number; compared with its base branch.")}};
+                    props["ref"] = QJsonObject{
+                        {"type", "string"},
+                        {"description", QStringLiteral(
+                             "op:checks: a branch, tag or SHA, in place of pr.")}};
+                    props["base"] = QJsonObject{
+                        {"type", "string"},
+                        {"description", QStringLiteral(
+                             "op:checks: the ref to compare with (default: a pr's base branch).")}};
                     props["workflow"] = QJsonObject{
                         {"type", "string"},
                         {"description", QStringLiteral(
