@@ -1,7 +1,7 @@
 # ANTS-1357 — MCP idempotent-read response cache
 
 Direct-cache-API tests for the 100 ms TTL cache that wraps four MCP
-read verbs at `claudeintegration.cpp::processTools`. See the parent
+read verbs at `claudeintegration.cpp::handleMcpRequest`. See the parent
 spec at `docs/specs/ANTS-1357-mcp-idempotent-read-response-cache.md` for full rationale and invariants.
 
 The dispatch integration is exercised in `mcp_tools_list_schema` /
@@ -27,7 +27,7 @@ in isolation via the test-only seam (`tryGetIdempotentReadCacheForTest`,
 
 ## Out of scope here
 
-- Wire-byte integration with `processTools` (rides on
+- Wire-byte integration with `handleMcpRequest` (rides on
   `mcp_tools_list_schema` + INV-1 byte-identity).
 - `wrapMcpData` / `recordCall` interaction (rides on existing MCP
   lanes).

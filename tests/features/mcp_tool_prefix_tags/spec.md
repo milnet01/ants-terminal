@@ -6,7 +6,7 @@ Music_Production 2026-05-18 + MAME Curator 2026-05-18 noticed the 40+
 Ants MCP tool surface arrives as a flat alphabetical block in the
 deferred-tools list. ANTS-1518 already prepends a `[<kind>] ` prefix
 to every tool's description via `kindForName` in
-`src/claudeintegration.cpp::processTools`. But:
+`src/claudeintegration.cpp::handleMcpRequest`. But:
 
 1. **Coverage drift risk.** If a new tool is registered without a
    matching `kindForName` branch, the prefix falls back to

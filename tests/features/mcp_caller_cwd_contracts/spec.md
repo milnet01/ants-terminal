@@ -14,7 +14,7 @@ the dispatch-site refusal envelope.
   `verify_changes`) as `CallerCwdContract::Required`.
 - **CLS-2.** TabSpecific / ProcessGlobal groups appear in the table
   (Phase 3a documentation; no enforcement yet).
-- **DISP-1.** `processTools` invokes `callerCwdContractFor(toolName)`
+- **DISP-1.** `handleMcpRequest` invokes `callerCwdContractFor(toolName)`
   before the cache lookup, and refuses with
   `caller_cwd_required` when contract is Required and caller_cwd
   is empty.
@@ -28,6 +28,8 @@ the dispatch-site refusal envelope.
 - **DISP-5 (ANTS-1454).** Refusal branch sets
   `dispatchResult = "caller_cwd_required"` so `recordDispatch`
   routes the call to `token_usage`'s failed-call accumulator
-  (`recordCall` derives `succeeded = (result == "ok")`). Pre-1454
+  (`recordDispatch` derives `succeeded` from
+  `dispatchResultIsSuccess`, which counts `"ok"` and
+  `"etag_unchanged"`). Pre-1454
   the branch inherited the `"ok"` default and refusals were
   double-counted as successful calls in `token_usage`.

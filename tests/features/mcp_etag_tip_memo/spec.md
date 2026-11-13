@@ -15,7 +15,7 @@ didn't use them — no how-to memo at the description level."
 
 ## Fix
 
-In `processTools`'s tools/list post-processing loop (same site as
+In `handleMcpRequest`'s tools/list post-processing loop (same site as
 ANTS-1518's `[<kind>] ` prefix injection), append a one-line "Etag
 tip" memo to every tool description for which
 `isEtagSupportedTool(name)` returns true. Idempotent sentinel:
@@ -37,7 +37,7 @@ a hot-reload doesn't double-append.
 
 ## Scope
 
-Single block edit in `processTools`'s description post-processing
+Single block edit in `handleMcpRequest`'s description post-processing
 loop. No descriptor shape change; the memo is appended to the
 existing `description` string. Saves the cross-session
 discoverability lookup on every etag-supporting tool without

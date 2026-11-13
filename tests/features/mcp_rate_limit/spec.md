@@ -1,8 +1,9 @@
 # Feature spec: MCP per-tool rate-limit / quota (ANTS-1356)
 
 Per-(toolName, callerCwd) sliding-window rate-limit on the MCP
-dispatcher. Three tiers: Cheap (60 calls/60 s), Expensive (10
-calls/60 s), ControlPlane (uncapped). Refuses with
+dispatcher. Four tiers: Cheap (60 calls/60 s), BriefAssembly (30
+calls/60 s), Expensive (10 calls/60 s), ControlPlane (uncapped).
+Refuses with
 `{ok:false, code:"rate_limited", retry_after_ms}` when the bucket
 is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full design.
 
@@ -41,7 +42,7 @@ is full. See `docs/specs/ANTS-1356-mcp-per-tool-rate-limit.md` for the full desi
   envelope has `ok:false`, `code:"rate_limited"`, `retry_after_ms`,
   and an `error` string.
 - **INV-12 / order vs caller_cwd_required.** Source-grep verifies
-  the `caller_cwd_required` check in `processTools` runs before
+  the `caller_cwd_required` check in `handleMcpRequest` runs before
   the rate-limit branch.
 - **INV-13 / tier classification source-grep.** The ControlPlane
   allowlist contains exactly the five expected tools; the

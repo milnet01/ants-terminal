@@ -279,7 +279,7 @@ TEST_F(RateLimitTestFixture, Inv13TierClassification) {
     const std::string cc = ants_test::slurpClaudeIntegration();
     ASSERT_FALSE(cc.empty());
     // Isolate the rateLimitClassFor function body. The unqualified
-    // identifier matches a call-site in processTools first; use the
+    // identifier matches a call-site in handleMcpRequest first; use the
     // qualified name + parameter list to anchor to the definition.
     const std::string classBody =
         ants_test::slurpFunctionBody(cc,

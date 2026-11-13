@@ -3,7 +3,8 @@
 Locks ANTS-1294: MCP `tools/call` responses frame user-supplied
 content as data, not instructions, by wrapping the payload in
 `<ants_mcp_data tool="…">…</ants_mcp_data>` at the single
-chokepoint in `src/claudeintegration.cpp:processTools`.
+chokepoint, `ClaudeIntegration::wrapMcpData` in
+`src/claudeintegration_callpolicy.cpp`.
 
 Spec source: `docs/specs/ANTS-1294-mcp-output-sanitisation-frame-user.md`.
 

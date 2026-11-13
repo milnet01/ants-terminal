@@ -105643,7 +105643,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L14-F12).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6225] **Correct two feature specs that still say token_usage success means result "ok" and that the rate limit has three tiers.**
+- ✅ [ANTS-6225] **Correct two feature specs that still say token_usage success means result "ok" and that the rate limit has three tiers.**
   Found in the ANTS-6123 sweep. tests/features/mcp_caller_cwd_contracts/spec.md
   DISP-5 says recordCall derives `succeeded = (result == "ok")`; it is
   dispatchResultIsSuccess, which also counts etag_unchanged.
@@ -105659,6 +105659,12 @@ worked after these.
   mcp_rate_limit}/spec.md and a comment in
   tests/features/mcp_rate_limit/test_mcp_rate_limit.cpp. Dated specs
   under docs/specs/ are records; leave them.
+  2026-11-13: shipped. DISP-5 names dispatchResultIsSuccess;
+  mcp_rate_limit/spec.md lists four tiers with BriefAssembly; the seven
+  feature specs and the test comment name handleMcpRequest.
+  mcp_output_sanitisation's chokepoint is ClaudeIntegration::wrapMcpData
+  in claudeintegration_callpolicy.cpp, not the dispatcher, so that one
+  names wrapMcpData.
   **Layman:** Two test descriptions still state old rules for counting calls and limiting their rate.
   Kind: doc-fix.
   Source: review-readability-2026-10-22 (L14 sweep).

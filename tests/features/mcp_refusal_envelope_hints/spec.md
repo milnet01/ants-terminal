@@ -20,7 +20,7 @@ Same for the ANTS-1336 / ANTS-1372 RcGate `cwd_missing` refusal.
   hint:"…caller_cwd_info…"}` — the hint MUST contain the literal
   tool name `caller_cwd_info` so a caller scanning the envelope
   finds the diagnostic path. Anchor: `ANTS-1418` in
-  `src/claudeintegration.cpp::processTools`.
+  `src/claudeintegration.cpp::handleMcpRequest`.
 - **INV-2 / `cwd_missing` (RcGate) envelope carries the same hint.**
   When `RcGate::checkCallerCwd` returns with `errorCode ==
   "cwd_missing"` and `gateErrorEnvelope` builds the JSON, the
