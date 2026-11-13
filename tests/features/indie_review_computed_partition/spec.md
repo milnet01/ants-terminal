@@ -100,8 +100,11 @@ of the surface.
   remainder by suffix. It applies NO suffix filter: on the computed path the
   uncovered set is exactly what the suffix gate dropped, so one rule serves
   both paths and only the cause differs. The optional sample is sorted before
-  it is capped, so two runs over one tree name the same files.
-  *Test:* `Inv9DeclaredPartitionCoverageIsMeasured`,
+  it is capped, so two runs over one tree name the same files. A file a lane
+  names, by path or through a directory, is covered whatever its suffix
+  (ANTS-5640); `file_count` and `uncounted_files` are unchanged by that.
+  *Test:* `Inv9NamedNonSourceFileIsAssigned`,
+  `Inv9DeclaredPartitionCoverageIsMeasured`,
   `Inv9SampleIsDeterministicAndCapped`.
   *Breaks when:* the coverage walk and the partition walk resolve different
   source roots, or the sample is capped in directory-walk order.

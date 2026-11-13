@@ -520,6 +520,39 @@ TEST(IndieReviewComputedPartition, Inv9DeclaredPartitionCoverageIsMeasured) {
     EXPECT_FALSE(sample.contains(QStringLiteral("src/engine/core.cpp")));
 }
 
+// INV-9 (ANTS-5640) — a file a lane names is assigned whatever its suffix, by
+// path or through a directory. file_count still leaves it out.
+TEST(IndieReviewComputedPartition, Inv9NamedNonSourceFileIsAssigned) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedProse(tmp, QStringList{
+        QStringLiteral("src/app/main.cpp"),
+        QStringLiteral("src/ci/build.yml"),
+        QStringLiteral("src/pkg/AppRun"),
+        QStringLiteral("src/pkg/app.desktop"),
+        QStringLiteral("src/other/loose.yml"),
+    });
+
+    IndieReviewEngine::Lane app;
+    app.name        = QStringLiteral("app");
+    app.sourcePaths = QStringList{QStringLiteral("src/app")};
+    IndieReviewEngine::Lane gate;
+    gate.name        = QStringLiteral("ci-and-gate");
+    gate.sourcePaths = QStringList{QStringLiteral("src/ci/build.yml"),
+                                   QStringLiteral("src/pkg")};
+
+    QStringList sample;
+    const auto gap = IndieReviewEngine::unassignedForLanes(
+        root, QList<IndieReviewEngine::Lane>{app, gate}, &sample);
+    EXPECT_EQ(sample, QStringList{QStringLiteral("src/other/loose.yml")})
+        << "only the file no lane names is unassigned";
+    EXPECT_EQ(gap.count, 1);
+
+    EXPECT_EQ(IndieReviewEngine::laneFileCount(root, gate), 0)
+        << "file_count still admits only what the index can outline";
+    EXPECT_EQ(IndieReviewEngine::laneUncountedFiles(root, gate), 3);
+}
+
 // INV-9 — a partition that covers everything reports nothing, so the fields'
 // absence is a clean bill of health rather than a question nobody asked.
 TEST(IndieReviewComputedPartition, Inv9FullCoverageReportsNothing) {

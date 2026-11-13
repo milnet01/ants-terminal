@@ -89613,7 +89613,7 @@ project. Reported causes are claims until checked in source.
   Source: UT_MonsterHunt_Ants_MCP_Feedback.md 2026-10-06 (GAME-0190 spec).
   Lanes: mcp.
 
-- 📋 [ANTS-5640] **indie_review_partition counts a non-source file a pinned lane names as unassigned.**
+- ✅ [ANTS-5640] **indie_review_partition counts a non-source file a pinned lane names as unassigned.**
   Reported by Slipcase after ANTS-5583 shipped. A partition.json lane
   naming a non-.py file (.github/workflows/ci.yml, packaging/slipcase.spec,
   packaging/linux/AppRun, a .desktop file) leaves it out of the lane's
@@ -89626,6 +89626,15 @@ project. Reported causes are claims until checked in source.
   read the unassigned computation in src/remotecontrol_review.cpp /
   src/indiereviewengine.cpp.
   Reload: an ants-mcpd rebuild and /mcp, no terminal relaunch.
+  Shipped 2026-11-13. Cause: unassignedForLanes built its covered set
+  through collectLaneFiles, which admits only indexable suffixes. It now
+  asks for any suffix; file_count and uncounted_files keep the gate.
+  Covers a file named by path and one under a named directory (the same
+  defect by another route). Contract:
+  tests/features/indie_review_computed_partition/spec.md INV-9, test
+  Inv9NamedNonSourceFileIsAssigned red first (4 unassigned, want 1). Not
+  re-run against Slipcase's live tree. Reaches clients when ants-mcpd is
+  rebuilt and they reconnect.
   **Layman:** The review planner stops reporting config and packaging files as unowned when a lane already lists them.
   Kind: fix.
   Source: Slipcase_Ants_MCP_Feedback.md 2026-10-10.

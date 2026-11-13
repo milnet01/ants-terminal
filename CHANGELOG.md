@@ -382,6 +382,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`indie_review_partition` counts a file a lane names as assigned whatever its suffix, so `unassigned_count` covers only files no lane names.** (ANTS-5640)
+
 - **`read_region` symbol mode and `function_sizes` return the whole body of a function whose parameter list holds braces, such as a JavaScript destructured default.** (ANTS-5612)
 
 - **`verify_changes` with `force_refresh:true` saves its fresh result, so the next call reuses it.** (ANTS-5526)

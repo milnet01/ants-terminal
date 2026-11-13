@@ -391,8 +391,10 @@ bool underIgnoredDir(const QString &rel, const QSet<QString> &ignored) {
 // and unassignedForLanes cannot disagree about what counts as covered. Paths
 // are canonical, which is what makes set subtraction against a fresh walk
 // meaningful. `cap` bounds a pathological directory entry.
+// `anySuffix` drops the index's suffix gate: the question is then "which files
+// does this lane name", not "which can it count" (ANTS-5640).
 void collectLaneFiles(const QString &projectPath, const Lane &lane,
-                      QSet<QString> *out, int cap) {
+                      QSet<QString> *out, int cap, bool anySuffix = false) {
     const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
     if (rootCanon.isEmpty() || !out) return;
 
@@ -404,7 +406,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
             continue;
         const QFileInfo fi(canon);
         if (fi.isFile()) {
-            if (CodebaseIndex::isIndexableFile(fi)
+            if ((anySuffix || CodebaseIndex::isIndexableFile(fi))
                 && !isGeneratedSource(fi.fileName()))
                 out->insert(canon);
             continue;
@@ -413,7 +415,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
         PrunedWalk::walkFiles(canon, isPartitionNoiseDir, [&](const QString &f) {
             if (out->size() >= cap) return false;
             const QFileInfo ffi(f);
-            if (!CodebaseIndex::isIndexableFile(ffi)) return true;
+            if (!anySuffix && !CodebaseIndex::isIndexableFile(ffi)) return true;
             if (isGeneratedSource(ffi.fileName())) return true;
             const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
                                     ? f.mid(rootCanon.size() + 1) : QString();
@@ -672,7 +674,8 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
 
     QSet<QString> covered;
     for (const Lane &l : lanes)
-        collectLaneFiles(projectPath, l, &covered, kMaxFilesTotal);
+        collectLaneFiles(projectPath, l, &covered, kMaxFilesTotal,
+                         /*anySuffix=*/true);
 
     const QStringList roots = walkedSourceRoots(projectPath);
     // ANTS-4809 — an ignored file is not a coverage gap, so reporting it would
