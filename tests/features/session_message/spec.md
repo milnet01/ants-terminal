@@ -93,6 +93,14 @@ sleeping or faking a clock.
   `RemoteControl::mailBodyFields`; `Ants5699InboxAsksForBodiesOnlyOnRequest`
   reads the handler and schema.
 
+- **INV-16** (ANTS-5700) — `to` as a list (`RoadmapStore::sendToMany()`)
+  writes one message per named project, in the order given, a repeated slug
+  once. An unregistered slug is an outcome with `unknown_project`, a full
+  inbox one with `inbox_full`, and the rest still receive. A dry run reports
+  the same split and writes no row. A bad body refuses the whole call.
+  *Test:* `Ants5700SendToAListOfProjects`; `Ants5700HandlerRoutesAnArrayTo`
+  reads the handler and schema.
+
 ## Also asserted, and not from the design contract's invariant list
 
 - **The body cap is byte-valued.** 2000 three-byte characters (6000 bytes) are

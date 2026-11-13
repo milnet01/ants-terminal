@@ -2149,10 +2149,9 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "Leave a message for whoever next picks up another project, and "
                         "see when it has been read. Addressed to a project by "
                         "export_slug, never to a session. op:\"send\" (needs `to` + "
-                        "`body`; to:\"*\" reaches every registered project and "
-                        "returns sent[] and refused[]), op:\"inbox\" (default: your unacked mail, newest "
-                        "first; a longer message lists `subject`, and include_body or "
-                        "message_id returns its text), op:\"outbox\" (mail you sent), op:\"ack\" (needs "
+                        "`body`; to:\"*\" reaches every registered project, a list "
+                        "each named one; both return sent[] and refused[]), op:\"inbox\" (default: your unacked mail, newest "
+                        "first; include_body adds long bodies), op:\"outbox\" (mail you sent), op:\"ack\" (needs "
                         "`message_id`; idempotent), op:\"projects\" (every "
                         "registered slug, root and github_repo). An entry "
                         "with `acked_at` has been read. Refusals: no_project (run "
@@ -2245,7 +2244,18 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     }
                     {
                         QJsonObject p;
-                        p["type"] = "string";
+                        // ANTS-5700 — one slug, or a list of them.
+                        {
+                            QJsonObject one;
+                            one["type"] = "string";
+                            QJsonObject many;
+                            many["type"]     = "array";
+                            many["items"]    = one;
+                            many["minItems"] = 1;
+                            QJsonObject toProp;
+                            toProp["anyOf"] = QJsonArray{one, many};
+                            p = toProp;
+                        }
                         p["description"] = QStringLiteral(
                             "op:\"send\" — the recipient project's "
                             "export_slug (e.g. \"vestige\"). Resolved against "
@@ -2253,7 +2263,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                             "`unknown_project`. Self-addressed mail is allowed "
                             "on purpose: it is the note for the next session on "
                             "THIS project. \"*\" sends one copy to every "
-                            "registered project but yours (ANTS-5741). "
+                            "registered project but yours (ANTS-5741). A list "
+                            "of slugs sends one copy to each (ANTS-5700). "
                             "op:\"outbox\" — optional: only mail to this slug.");
                         props["to"] = p;
                     }

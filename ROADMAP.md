@@ -90109,9 +90109,17 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5700] **session_message sends one message to several projects in one call.**
+- ✅ [ANTS-5700] **session_message sends one message to several projects in one call.**
   Proposed by kde-kwin. A survey today cost 30 separate sends. `to` takes
   an array; each recipient gets its own row.
+  Shipped 2026-11-13. `to` takes a string or an array.
+  RoadmapStore::sendToMany writes one message per named project in one
+  transaction; an unknown slug or a full inbox is a refused[] row and the
+  rest receive. The reply is the broadcast's (sent[] / refused[], or
+  would_send_to / would_refuse on a dry run). `dedupe` with a list refuses
+  bad_args. Contract: tests/features/session_message/spec.md INV-16, red
+  first against a stand-in. Reaches clients when ants-mcpd is rebuilt and
+  they reconnect; no running state, so no stop/start control.
   **Layman:** Message several sessions at once instead of one by one.
   Kind: enhancement.
   Source: token-survey-2026-10-15.

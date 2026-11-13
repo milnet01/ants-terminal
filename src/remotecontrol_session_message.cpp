@@ -110,16 +110,11 @@ struct MailCall {
     }
 };
 
-// ANTS-5741 (§ 2.7) — `to:"*"` addresses every registered project. The store
-// owns the walk, the cap split and the dry-run split; this only shapes the
-// reply.
-QJsonDocument sendBroadcast(MailCall &c, const QString &body, const QString &from) {
-    const bool includeSelf = c.req.value(QStringLiteral("include_self")).toBool(false);
-    QVector<RoadmapStore::BroadcastOutcome> outcomes;
-    QString code, err;
-    if (!c.store.broadcastMessage(c.self, body, from, c.now, includeSelf, c.dryRun,
-                                  &outcomes, &code, &err))
-        return refuseStore(code, err);
+// One copy per recipient: who received it and who was refused, or on a dry
+// run who would be. Shared by to:"*" and a `to` list.
+QJsonDocument fanOutReply(MailCall &c,
+                          const QVector<RoadmapStore::BroadcastOutcome> &outcomes,
+                          const QJsonValue &toEcho) {
     QJsonArray went, refused;
     for (const auto &o : outcomes) {
         if (!o.code.isEmpty()) {
@@ -136,7 +131,7 @@ QJsonDocument sendBroadcast(MailCall &c, const QString &body, const QString &fro
             went.append(o.toSlug);
         }
     }
-    c.out[QStringLiteral("to")] = QStringLiteral("*");
+    c.out[QStringLiteral("to")] = toEcho;
     if (c.dryRun) {
         c.out[QStringLiteral("dry_run")]       = true;
         c.out[QStringLiteral("would_send_to")] = went;
@@ -148,6 +143,42 @@ QJsonDocument sendBroadcast(MailCall &c, const QString &body, const QString &fro
     c.out[QStringLiteral("refused")]    = refused;
     c.out[QStringLiteral("created_at")] = c.now;
     return QJsonDocument(c.out);
+}
+
+// ANTS-5741 (§ 2.7) — `to:"*"` addresses every registered project. The store
+// owns the walk, the cap split and the dry-run split; this only shapes the
+// reply.
+QJsonDocument sendBroadcast(MailCall &c, const QString &body, const QString &from) {
+    const bool includeSelf = c.req.value(QStringLiteral("include_self")).toBool(false);
+    QVector<RoadmapStore::BroadcastOutcome> outcomes;
+    QString code, err;
+    if (!c.store.broadcastMessage(c.self, body, from, c.now, includeSelf, c.dryRun,
+                                  &outcomes, &code, &err))
+        return refuseStore(code, err);
+    return fanOutReply(c, outcomes, QStringLiteral("*"));
+}
+
+// ANTS-5700 — `to` as a list of slugs. The store owns the walk; the reply is
+// the broadcast's.
+QJsonDocument sendToList(MailCall &c, const QJsonArray &to, const QString &body,
+                         const QString &from) {
+    QStringList slugs;
+    for (const QJsonValue &v : to) {
+        if (!v.isString() || v.toString().isEmpty() || v.toString() == QLatin1String("*"))
+            return refuse("bad_args",
+                          QStringLiteral("session_message: a `to` list holds "
+                                         "export_slug strings; \"*\" goes alone"));
+        slugs << v.toString();
+    }
+    if (slugs.isEmpty())
+        return refuse("bad_args",
+                      QStringLiteral("session_message: the `to` list is empty"));
+    QVector<RoadmapStore::BroadcastOutcome> outcomes;
+    QString code, err;
+    if (!c.store.sendToMany(c.self, slugs, body, from, c.now, c.dryRun, &outcomes,
+                            &code, &err))
+        return refuseStore(code, err);
+    return fanOutReply(c, outcomes, to);
 }
 
 // ANTS-4463 — a preview carries NO past-tense field: `would_send` rather than
@@ -189,6 +220,13 @@ QJsonDocument opSend(MailCall &c) {
     const QString to   = c.req.value(QStringLiteral("to")).toString();
     const QString body = c.req.value(QStringLiteral("body")).toString();
     const QString from = c.req.value(QStringLiteral("from_session")).toString();
+    if (c.req.value(QStringLiteral("to")).isArray()) {
+        if (c.req.value(QStringLiteral("dedupe")).toBool(false))
+            return refuse("bad_args",
+                          QStringLiteral("session_message: `dedupe` applies to one "
+                                         "recipient, not to a list"));
+        return sendToList(c, c.req.value(QStringLiteral("to")).toArray(), body, from);
+    }
     if (to.isEmpty())
         return refuse("bad_args",
                       QStringLiteral("session_message: op:\"send\" needs a "

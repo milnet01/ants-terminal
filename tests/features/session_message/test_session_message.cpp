@@ -1101,3 +1101,58 @@ TEST(SessionMessage, Ants5699InboxAsksForBodiesOnlyOnRequest) {
     EXPECT_TRUE(h.contains(QStringLiteral("bodies_omitted")));
     EXPECT_TRUE(sessionMessageToolBlock().contains(QStringLiteral("props[\"include_body\"]")));
 }
+
+// ANTS-5700 — one send to a list of projects: each named project gets one
+// copy, a repeat is sent once, and an unknown slug is refused by name while
+// the rest still receive. A dry run reports the same split and writes nothing.
+TEST(SessionMessage, Ants5700SendToAListOfProjects) {
+    Fixture f;
+    ASSERT_TRUE(f.init());
+    const qint64 a = f.addProject(QStringLiteral("alpha"));
+    const qint64 b = f.addProject(QStringLiteral("bravo"));
+    const qint64 c = f.addProject(QStringLiteral("charlie"));
+    ASSERT_GT(a, 0);
+    const QStringList to{QStringLiteral("bravo"), QStringLiteral("never-registered"),
+                         QStringLiteral("bravo"), QStringLiteral("charlie")};
+
+    QString code, err;
+    QVector<RoadmapStore::BroadcastOutcome> got;
+    ASSERT_TRUE(f.store->sendToMany(a, to, QStringLiteral("to some"), QString(),
+                                    QString::fromLatin1(kT1), true, &got, &code, &err))
+        << err.toStdString();
+    EXPECT_EQ(rowCount(*f.store, QStringLiteral("SELECT count(*) FROM message")), 0)
+        << "a dry run wrote";
+    ASSERT_EQ(got.size(), 3);
+    EXPECT_EQ(got[1].code, QStringLiteral("unknown_project"));
+    EXPECT_EQ(got[0].messageId, 0);
+
+    ASSERT_TRUE(f.store->sendToMany(a, to, QStringLiteral("to some"), QString(),
+                                    QString::fromLatin1(kT1), false, &got, &code, &err))
+        << err.toStdString();
+    EXPECT_EQ(inboxRows(*f.store, b), 1) << "a repeated slug is sent once";
+    EXPECT_EQ(inboxRows(*f.store, c), 1);
+    EXPECT_EQ(inboxRows(*f.store, a), 0);
+    ASSERT_EQ(got.size(), 3);
+    EXPECT_EQ(got[0].toSlug, QStringLiteral("bravo"));
+    EXPECT_GT(got[0].messageId, 0);
+    EXPECT_EQ(got[1].toSlug, QStringLiteral("never-registered"));
+    EXPECT_EQ(got[1].code, QStringLiteral("unknown_project"));
+    EXPECT_EQ(got[1].messageId, 0);
+    EXPECT_EQ(got[2].toSlug, QStringLiteral("charlie"));
+    EXPECT_TRUE(got[2].code.isEmpty());
+
+    // The whole call refuses on a bad body, before any recipient is tried.
+    EXPECT_FALSE(f.store->sendToMany(a, to, QString(), QString(),
+                                     QString::fromLatin1(kT1), false, &got, &code, &err));
+    EXPECT_EQ(code, QStringLiteral("bad_args"));
+}
+
+// ANTS-5700 — the handler routes an array `to` to sendToMany and the schema
+// admits an array (by inspection; see INV-10's note).
+TEST(SessionMessage, Ants5700HandlerRoutesAnArrayTo) {
+    const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
+    EXPECT_TRUE(h.contains(QStringLiteral("c.store.sendToMany(")));
+    EXPECT_TRUE(h.contains(QStringLiteral("req.value(QStringLiteral(\"to\")).isArray()")));
+    const QString block = sessionMessageToolBlock();
+    EXPECT_TRUE(block.contains(QStringLiteral("toProp[\"anyOf\"]")));
+}

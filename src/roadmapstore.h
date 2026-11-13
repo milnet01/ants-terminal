@@ -1131,6 +1131,17 @@ public:
                           QVector<BroadcastOutcome> *outcomes, QString *code,
                           QString *error = nullptr);
 
+    // ANTS-5700 — `to` as a list: one ordinary message per named project, in
+    // the order given, a repeated slug sent once. An unregistered slug lands
+    // in the outcome list with code `unknown_project`, a full inbox with
+    // `inbox_full`, and the rest still receive. One transaction; `dryRun`
+    // writes nothing. Whole-call refusals as broadcastMessage.
+    bool sendToMany(qint64 fromProjectId, const QStringList &toSlugs,
+                    const QString &body, const QString &fromSession,
+                    const QString &createdAt, bool dryRun,
+                    QVector<BroadcastOutcome> *outcomes, QString *code,
+                    QString *error = nullptr);
+
     // `limit <= 0` returns every row. Ordered newest first.
     bool inboxFor(qint64 projectId, bool includeAcked, int limit, int offset,
                   QVector<Message> *out, int *unackedOut,

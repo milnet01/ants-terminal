@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_message op:send` takes a list of project slugs in `to` and sends one copy to each, reporting who received it and who was refused.** (ANTS-5700)
+
 - **`workspace_search` takes `exclude_preset:"history"` to leave out history, journal and review folders in one word.** (ANTS-5524)
 
 - **`changelog_log op:"release"` takes a `theme` and writes the release's `**Theme:**` line in the same edit.** (ANTS-5522)

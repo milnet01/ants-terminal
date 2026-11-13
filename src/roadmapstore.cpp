@@ -2575,6 +2575,70 @@ bool RoadmapStore::sendMessageImpl(qint64 fromProjectId, const QString &toSlug,
     return true;
 }
 
+// ANTS-5700 — see the header. broadcastMessage's shape, over named slugs.
+bool RoadmapStore::sendToMany(qint64 fromProjectId, const QStringList &toSlugs,
+                              const QString &body, const QString &fromSession,
+                              const QString &createdAt, bool dryRun,
+                              QVector<BroadcastOutcome> *outcomes, QString *code,
+                              QString *error) {
+    const auto ioFail = [&] {
+        if (code) *code = QStringLiteral("io_error");
+        return false;
+    };
+    if (const QString bad = mailArgsError(body, fromSession); !bad.isEmpty()) {
+        if (code)  *code  = QStringLiteral("bad_args");
+        if (error) *error = bad;
+        return false;
+    }
+
+    // A dry run takes no write lock (INV-10).
+    std::optional<ImmediateTx> tx;
+    if (!dryRun) {
+        tx.emplace(m_db, m_inTransaction);
+        if (!tx->begin(error))
+            return ioFail();
+    }
+
+    QVector<BroadcastOutcome> out;
+    QSet<QString> seen;
+    for (const QString &slug : toSlugs) {
+        if (seen.contains(slug))
+            continue;
+        seen.insert(slug);
+        BroadcastOutcome o;
+        o.toSlug = slug;
+        QString lookupErr;
+        const auto toId = projectIdForSlug(slug, &lookupErr);
+        if (!toId) {
+            if (!lookupErr.isEmpty()) {
+                if (error) *error = std::move(lookupErr);
+                return ioFail();
+            }
+            o.code = QStringLiteral("unknown_project");
+            out.append(o);
+            continue;
+        }
+        const auto unacked = unackedCount(m_db, *toId, error);
+        if (!unacked)
+            return ioFail();
+        if (*unacked >= kMailInboxCap) {
+            o.code = QStringLiteral("inbox_full");
+        } else if (!dryRun) {
+            const auto id = insertMessage(m_db, fromProjectId, *toId, fromSession,
+                                          createdAt, body, error);
+            if (!id)
+                return ioFail();
+            o.messageId = *id;
+        }
+        out.append(o);
+    }
+    if (tx && !tx->commit(error))
+        return ioFail();
+    if (outcomes) *outcomes = std::move(out);
+    if (code) code->clear();
+    return true;
+}
+
 bool RoadmapStore::broadcastMessage(qint64 fromProjectId, const QString &body,
                                     const QString &fromSession,
                                     const QString &createdAt, bool includeSelf,
