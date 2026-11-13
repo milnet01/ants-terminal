@@ -26,6 +26,7 @@
 #include <QTimer>
 #include <QWidget>
 #include <algorithm>   // ANTS-5753 — std::max in statusbarslot::pin
+#include <cmath>
 #include <memory>
 // ANTS-1893 — ::kill(pid, 0) ESRCH dead-pid probe in onUndoSwitchClicked.
 #include <sys/types.h>
@@ -2623,8 +2624,8 @@ double ClaudeStatusBarController::conservatismMultiplierFor(
 
     const int measured = env.value(QStringLiteral("measured_downgrades")).toInt(0);
     const int floor    = env.value(QStringLiteral("headline_floor")).toInt(10);
-    const int regret   = static_cast<int>(
-        env.value(QStringLiteral("regret_rate")).toDouble(0.0) + 0.5);
+    const int regret   = static_cast<int>(std::lround(
+        env.value(QStringLiteral("regret_rate")).toDouble(0.0)));
 
     const double mult = ModelAutoSwitch::conservatismDwellMultiplier(
         measured, regret, floor, isMechanical);

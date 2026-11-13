@@ -28,6 +28,7 @@
 #include <QVector>
 
 #include <algorithm>
+#include <cmath>
 
 namespace IndieReviewEngine {
 
@@ -860,7 +861,7 @@ QList<MergeSuggestion> suggestedMerges(const QList<Lane> &lanes) {
                     if (sim >= kSimThreshold) {
                         rationale =
                             QStringLiteral("near-identical summary text (%1% similar)")
-                                .arg(int(sim * 100.0 + 0.5));
+                                .arg(static_cast<int>(std::lround(sim * 100.0)));
                     }
                 }
             }

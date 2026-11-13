@@ -293,7 +293,7 @@ QJsonObject RemoteControl::buildRoadmapBundlesEnvelope(
                 // Canonical dup-detector rounding (remotecontrol.cpp ~1002)
                 // so the score is byte-identical + stable (INV-11).
                 io["possibly_resolved_score"] =
-                    static_cast<int>(best * 100.0 + 0.5);
+                    static_cast<int>(std::lround(best * 100.0));
             }
             // Refinement 2 — gate_note / blocked.
             const QString gate = rcExtractGateNote(m.body);
