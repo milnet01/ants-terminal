@@ -340,7 +340,8 @@ void dropIfFree(const QString &root) {
 // Opens the root's lock file, creating it and its 0700 directory. -1 when it
 // cannot be opened: the hold then falls back to this process alone, which is
 // the guard as it stood before ANTS-4932 and never refuses a write for it.
-int openRoadmapLockFile(const QString &root) {
+int openRoadmapLockFile(const QString &root,
+                        const QString &suffix = QStringLiteral(".lock")) {
     const QString dir = QFileInfo(RoadmapStore::defaultPath()).absolutePath()
                         + QStringLiteral("/roadmap-holds");
     if (!QDir().mkpath(dir)) return -1;
@@ -348,7 +349,7 @@ int openRoadmapLockFile(const QString &root) {
     const QString path = dir + QLatin1Char('/') +
         QString::fromLatin1(QCryptographicHash::hash(
             root.toUtf8(), QCryptographicHash::Sha1).toHex()) +
-        QStringLiteral(".lock");
+        suffix;
     return ::open(QFile::encodeName(path).constData(),
                   O_RDWR | O_CREAT | O_CLOEXEC, 0600);
 }
@@ -483,4 +484,31 @@ RemoteControl::RoadmapWriteHold::RoadmapWriteHold(const QString &callerCwd)
 
 RemoteControl::RoadmapWriteHold::~RoadmapWriteHold() {
     if (m_held) releaseRoadmapShared(m_root);
+}
+
+// ANTS-5420 — one writer per root at a time. Shared holds stack, so they do
+// not order writers among themselves, and the markdown write path is a
+// read-modify-write of the whole file. The turn is an exclusive flock on a
+// second per-root file, taken on a descriptor of this call's own: flock
+// excludes between descriptors, so it orders this process's threads and the
+// other processes alike, and the kernel drops it when its holder dies.
+RemoteControl::RoadmapWriterTurn::RoadmapWriterTurn(const QString &callerCwd, int waitMs) {
+    const QString root = roadmapWriterRoot(callerCwd);
+    if (root.isEmpty()) return;   // the writer refuses on its own
+    m_fd = openRoadmapLockFile(root, QStringLiteral(".turn.lock"));
+    if (m_fd < 0) return;         // no lock file: unordered, as the holds fall back
+    const QDeadlineTimer deadline(std::max(0, waitMs));
+    while (!tryFlock(m_fd, LOCK_EX)) {
+        if (deadline.hasExpired()) {
+            ::close(m_fd);
+            m_fd = -1;
+            m_held = false;
+            return;
+        }
+        QThread::msleep(5);
+    }
+}
+
+RemoteControl::RoadmapWriterTurn::~RoadmapWriterTurn() {
+    if (m_fd >= 0) ::close(m_fd);   // releases the turn
 }

@@ -17,6 +17,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
+#include <QMutex>
 #include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QThread>
@@ -26,6 +27,8 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <thread>
+#include <vector>
 
 #include "../../_support/xdg_guard.h"
 #include "claudeintegration.h"
@@ -869,6 +872,64 @@ TEST(McpAsyncDispatch, Ants5086Inv21SharedAndExclusiveHoldsExclude) {
     RemoteControl::releaseRoadmapExclusive(root);
     EXPECT_TRUE(RemoteControl::tryHoldRoadmapShared(root));
     RemoteControl::releaseRoadmapShared(root);
+}
+
+// INV-22 (a) (ANTS-5420) — writers to one root take turns, so every write that
+// reports ok is in the file. Eight threads each flip their own bullet of an
+// unmigrated markdown roadmap at once, each on its own RemoteControl, as two
+// windows are. A writer that read the file before another's commit and wrote
+// after it would drop that flip while both report ok.
+TEST(McpAsyncDispatch, Ants5420Inv22ConcurrentWritersLoseNoUpdate) {
+    constexpr int kWriters = 8;
+    constexpr int kRounds = 5;
+    for (int round = 0; round < kRounds; ++round) {
+        QTemporaryDir dir;
+        ASSERT_TRUE(dir.isValid());
+        const QString root = QFileInfo(dir.path()).canonicalFilePath();
+        const QString file = QDir(root).filePath(QStringLiteral("ROADMAP.md"));
+        {
+            QFile f(file);
+            ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+            f.write("# Roadmap\n\n## Now\n\n");
+            for (int i = 1; i <= kWriters; ++i)
+                f.write("- \xF0\x9F\x93\x8B " +   // the planned emoji, as bytes
+                        QStringLiteral("[BUSY-%1] **Item %1.**\n  Source: seed.\n")
+                            .arg(i, 4, 10, QLatin1Char('0')).toUtf8());
+        }
+
+        std::atomic<bool> go{false};
+        std::atomic<int> okCount{0};
+        QMutex refusalMutex;
+        QByteArray firstRefusal;
+        std::vector<std::thread> writers;
+        for (int i = 1; i <= kWriters; ++i) {
+            writers.emplace_back([&, i] {
+                RemoteControl rc(nullptr);
+                QJsonObject req;
+                req[QStringLiteral("caller_cwd")] = root;
+                req[QStringLiteral("op")]         = QStringLiteral("flip");
+                req[QStringLiteral("id")]         =
+                    QStringLiteral("BUSY-%1").arg(i, 4, 10, QLatin1Char('0'));
+                req[QStringLiteral("to_status")]  = QStringLiteral("in-progress");
+                while (!go.load()) std::this_thread::yield();
+                const QJsonDocument reply = rc.cmdRoadmapLog(req);
+                if (reply.object().value(QStringLiteral("ok")).toBool()) {
+                    ++okCount;
+                } else {
+                    const QMutexLocker lock(&refusalMutex);
+                    if (firstRefusal.isEmpty()) firstRefusal = reply.toJson(QJsonDocument::Compact);
+                }
+            });
+        }
+        go.store(true);
+        for (auto &t : writers) t.join();
+
+        EXPECT_EQ(okCount.load(), kWriters) << "round " << round << ": a writer was refused: " << firstRefusal.constData();
+        const int flipped = slurp(file).count("\xF0\x9F\x9A\xA7");   // the in-progress emoji
+        EXPECT_EQ(flipped, okCount.load())
+            << "round " << round << ": " << okCount.load() << " flips reported ok and "
+            << flipped << " are in the file";
+    }
 }
 
 // ANTS-5098 / ANTS-2132 § 2.5 — a host that answers "nothing" for the fallback

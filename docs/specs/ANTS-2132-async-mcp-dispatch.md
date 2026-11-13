@@ -15,6 +15,9 @@ second worker; § 2.1, § 2.6, INV-2, INV-7, INV-8, § 4, § 5, § 6 and § 7
 change with it, and INV-19 to INV-21 are added. Gated by review-contract at
 its cap (loops 7 and 8). Built 2026-09-17 (`DispatchLane`,
 `RemoteControl::RoadmapWriteHold`).
+**Amendment (2026-11-13, ANTS-5420):** § 2.10 gives each `roadmap_log` call a
+turn on its root, and INV-22 is added. Built 2026-11-13
+(`RemoteControl::RoadmapWriterTurn`).
 **Kind:** perf.
 **Source:** ROADMAP.md ANTS-2132 (user report of intermittent whole-window
 freeze; diagnosed in-session 2026-08-25). Amended for ANTS-5051, ANTS-5073,
@@ -602,6 +605,14 @@ migration is running is refused.
   `cmdColdEyesFoldIn`, `cmdIndieReviewFoldIn`, `cmdDebtSweepDefer` and the
   `test_audit_fold_in` registration. A writer keys on `rcProjectRootFor()` of
   the canonical `caller_cwd`. It is refused while the root is held exclusively.
+- **`cmdRoadmapLog` then takes the root's turn** (`RoadmapWriterTurn`), so
+  two `roadmap_log` calls on one root never overlap. Shared holds stack, and a
+  write to a markdown roadmap reads, changes and replaces the whole file. The
+  turn is an exclusive `flock` on a second per-root file beside the hold's
+  lock file (ANTS-4932 § 2.7), taken on a descriptor the call opens itself, so
+  it orders threads and processes alike. A call waits up to
+  `kRoadmapWriterTurnWaitMs` (5 s) for the writer ahead, then is refused.
+  Where the lock file cannot be opened the call runs unordered.
 - **`cmdRoadmapMigrate` takes the exclusive hold** for the whole call. Its key
   is the root it registers or deletes: `rr.cwd` for the plain migrate and
   `op:"init"`, and for `op:"deregister"` the root of the row it deletes, which
@@ -786,6 +797,21 @@ still run one at a time, in arrival order.
   takes its shared hold before its first write. Breaks if the writer checks
   instead of holding, which (b) sees, or if the writer keys on something other
   than the root the migration holds, which (a)'s key assertion sees.
+- **INV-22** *(amendment, 2026-11-13 — ANTS-5420)* — `roadmap_log` calls on
+  one root run one at a time, in one process and across processes, so every
+  call that returns `ok:true` is in the roadmap. A call waits for the writer
+  ahead, and is refused `roadmap_busy` once its wait expires. *Test:* (a)
+  `tests/features/mcp_async_dispatch/`,
+  `Ants5420Inv22ConcurrentWritersLoseNoUpdate`: threads, each on its own
+  `RemoteControl`, flip one bullet each of a markdown roadmap at once; assert
+  every call is `ok:true` and the file holds that many flipped bullets. (b)
+  `tests/features/standalone_mcp_server/`,
+  `Ants5420WriterTurnIsSeenAcrossProcesses`: hold the turn in the test
+  process, release it from a thread after a delay, and assert `roadmap_log`
+  through `ants-mcpd` is `ok:true` no sooner than the delay; then assert a
+  second turn with a short wait is not held while the first is. Breaks if
+  `cmdRoadmapLog` takes no turn or the lock is shared, each of which fails
+  both tests.
 
 ## 4. RAM / build cost
 
@@ -939,6 +965,7 @@ unchanged. That guard's INV-6 registration regex,
 argument, or `cmdRoadmapMigrate` silently leaves INV-6's off-thread set.
 `mcp_call_site_contract` and `mcp_dispatch_forward_completeness` match on
 `rcDelegate(` and need no change. INV-21 joins `mcp_async_dispatch`.
+INV-22 (a) joins it too; (b) joins `standalone_mcp_server`.
 
 Per the project test convention, add each source to the owning bundle's
 `SOURCES` (ask `build_target_for`, do not guess), verify the ctest count moved

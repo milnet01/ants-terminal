@@ -4112,6 +4112,11 @@ QJsonDocument RemoteControl::cmdRoadmapLog(const QJsonObject &req) {
     const RoadmapWriteHold writeHold(req.value(QStringLiteral("caller_cwd")).toString());
     if (!writeHold.held())
         return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_log")));
+    // ANTS-5420 — and one writer at a time: the shared hold does not order
+    // writers, and a markdown write is a read-modify-write of the whole file.
+    const RoadmapWriterTurn turn(req.value(QStringLiteral("caller_cwd")).toString());
+    if (!turn.held())
+        return QJsonDocument(roadmapBusyRefusal(QStringLiteral("roadmap_log")));
     std::optional<RlPlan> plan;
     if (req.contains(QStringLiteral("plan_id"))) {
         QJsonObject refusal;

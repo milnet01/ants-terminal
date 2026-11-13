@@ -1133,6 +1133,22 @@ public:
         QString m_root;
         bool m_held = false;
     };
+    // ANTS-5420 — a writer's turn on its root: one roadmap_log call at a
+    // time, in this process and across processes. Waits up to `waitMs` for
+    // the writer ahead; held() false means refuse roadmap_busy.
+    static constexpr int kRoadmapWriterTurnWaitMs = 5000;
+    class RoadmapWriterTurn {
+    public:
+        explicit RoadmapWriterTurn(const QString &callerCwd,
+                                   int waitMs = kRoadmapWriterTurnWaitMs);
+        ~RoadmapWriterTurn();
+        RoadmapWriterTurn(const RoadmapWriterTurn &) = delete;
+        RoadmapWriterTurn &operator=(const RoadmapWriterTurn &) = delete;
+        bool held() const { return m_held; }
+    private:
+        int  m_fd   = -1;
+        bool m_held = true;
+    };
 
     // ANTS-4622 — the cross-session mailbox (ops send / inbox / ack).
     QJsonDocument cmdSessionMessage(const QJsonObject &req);

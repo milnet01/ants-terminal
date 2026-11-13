@@ -23,6 +23,7 @@
 #include "../../_support/srcgrep.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -38,6 +39,8 @@
 #include <QTemporaryDir>
 
 #include <atomic>
+#include <chrono>
+#include <memory>
 #include <thread>
 #include <stdexcept>
 
@@ -399,6 +402,42 @@ TEST(StandaloneMcpServer, Inv13HoldIsSeenAcrossProcesses) {
                                      appendArgs(root, QStringLiteral("After release.")));
     EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool())
         << QJsonDocument(ok).toJson().toStdString();
+}
+
+// ANTS-2132 INV-22 (b) (ANTS-5420) — a writer's turn held in this process
+// makes ants-mcpd's write wait for it, then land.
+TEST(StandaloneMcpServer, Ants5420WriterTurnIsSeenAcrossProcesses) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seedMigratedProject(tmp);
+    ASSERT_FALSE(root.isEmpty());
+    McpdSession mcpd(root, deadSocket(tmp));
+    ASSERT_TRUE(mcpd.started());
+
+    constexpr int kHeldMs = 600;
+    auto turn = std::make_unique<RemoteControl::RoadmapWriterTurn>(root, 0);
+    ASSERT_TRUE(turn->held());
+    std::thread releaser([&turn, kHeldMs] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(kHeldMs));
+        turn.reset();
+    });
+    QElapsedTimer clock;
+    clock.start();
+    const QJsonObject ok = mcpd.call(QStringLiteral("roadmap_log"),
+                                     appendArgs(root, QStringLiteral("Behind a turn.")));
+    const qint64 waited = clock.elapsed();
+    releaser.join();
+    EXPECT_TRUE(ok.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(ok).toJson().toStdString();
+    EXPECT_GE(waited, kHeldMs - 100) << "ants-mcpd wrote while this process held the turn";
+
+    // And a turn that outlasts the wait refuses, where one is free at once.
+    {
+        const RemoteControl::RoadmapWriterTurn held(root, 0);
+        ASSERT_TRUE(held.held());
+        EXPECT_FALSE(RemoteControl::RoadmapWriterTurn(root, 50).held());
+    }
+    EXPECT_TRUE(RemoteControl::RoadmapWriterTurn(root, 0).held());
 }
 
 // A verb whose handler throws answers `handler_failed` instead of

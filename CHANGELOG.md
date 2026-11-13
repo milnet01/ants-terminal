@@ -413,6 +413,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two `roadmap_log` calls on one project take turns** (ANTS-5420)
+  Each call now waits for the one ahead, in the terminal and in every
+  session's `ants-mcpd`, so two edits to a markdown roadmap sent at the
+  same moment both land. A call that waits 5 s is refused `roadmap_busy`.
+
 - **An audit tool that cannot start now gets an Info-level tool-health row, so it no longer sorts among real findings.** (ANTS-6192)
 
 - **`doc_dedup`'s `figure_mismatch` reads a number ending in `k` or `M` as a figure, so `90-104k` against `140-154k` is reported.** (ANTS-6756)
