@@ -92030,7 +92030,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: contact-list feedback 2026-11-06.
   Lanes: mcp.
 
-- 📋 [ANTS-6705] **ci_report's description states queue_wait's threshold and what it measures.**
+- ✅ [ANTS-6705] **ci_report's description states queue_wait's threshold and what it measures.**
   queue_wait fires when a job's MEDIAN wait from the job's own
   created_at to started_at exceeds 5 minutes (kQueueWaitSecs,
   src/cireport.cpp). Contact_List saw two runs wait 8-16 minutes
@@ -92038,6 +92038,8 @@ measured Ants adding about 5,250 tokens to every request.
   runs, and job-level created_at, both hide them. Fix: state both in
   the description; consider an outlier finding for a single long wait.
   Hot reload: ants-mcpd rebuild, then /mcp reconnect.
+  Shipped 2026-11-13 (01eb4748): the description states the rule. The
+  outlier finding for one long wait was not built.
   **Layman:** The CI report never says how long a wait must be before it warns.
   Kind: doc-fix.
   Source: contact-list feedback 2026-11-06.
@@ -92709,11 +92711,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06 lane 30, remedy part 3 (follow-up to ANTS-6433).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6438] **`mcp-config-keys.md` says the user-switch auto-confirm sends no continuation prompt; since ANTS-1969 it can.**
+- ✅ [ANTS-6438] **`mcp-config-keys.md` says the user-switch auto-confirm sends no continuation prompt; since ANTS-1969 it can.**
   `docs/standards/mcp-config-keys.md`, `claude.auto_model_confirm_user_switch`:
   "sends only ENTER (no continuation prompt)". `sendUnarmedConfirm` sends
   the continuation when auto mode is on and a turn is active
   (shouldContinueAfterUnarmedConfirm). Reword to say when it does.
+  Shipped 2026-11-13 (d1df54e8).
   **Layman:** One settings note says a model switch never sends a follow-up message, but sometimes it does.
   Kind: doc-fix.
   Source: close-findings sweep 2026-11-06 (out of scope, found next door).
@@ -95220,11 +95223,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-6706] **mcp-config-keys.md says the user-typed /model confirm sends no continuation prompt; it does when auto mode is on and a turn is active.**
+- ✅ [ANTS-6706] **mcp-config-keys.md says the user-typed /model confirm sends no continuation prompt; it does when auto mode is on and a turn is active.**
   docs/standards/mcp-config-keys.md, claude.auto_model_confirm_user_switch:
   "sends only ENTER (no continuation prompt)". sendUnarmedConfirm injects
   the continuation when shouldContinueAfterUnarmedConfirm holds
   (model_switch_confirm spec INV-8, ANTS-1969). Rewrite the clause.
+  Shipped 2026-11-13 (d1df54e8): the same sentence as ANTS-6438, fixed
+  once.
   **Layman:** A settings document says Ants never sends a follow-up message after confirming a model switch, but sometimes it does.
   Kind: doc-fix.
   Source: self-found 2026-11-07 (ANTS-6437 edit).
@@ -105028,7 +105033,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6170] **ANTS-1677's srcgrep.h sample shows slurpMainWindow() without the registry tail ANTS-4932 added.**
+- ✅ [ANTS-6170] **ANTS-1677's srcgrep.h sample shows slurpMainWindow() without the registry tail ANTS-4932 added.**
   docs/specs/ANTS-1677-large-file-decomposition.md shows
   slurpMainWindow() as slurpSourceList(ANTS_MAINWINDOW_SOURCES) alone.
   tests/_support/srcgrep.h now appends src/mcptoolregistry.cpp
@@ -105036,6 +105041,7 @@ worked after these.
   matches it from the L05-F1 fix. Pre-existing; found by that fix's
   sweep. Fix: amend the sample, or replace it with a pointer to
   srcgrep.h. A spec edit: rule 14 decides whether it gates.
+  Shipped 2026-11-13 (b4d7161b).
   **Layman:** A design document shows an older version of a test helper; bring it up to date.
   Kind: doc-fix.
   Source: close-findings sweep 2026-10-23 (ANTS-6153 L05-F1).
@@ -106529,13 +106535,14 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6308] **roadmap_migrate_verb spec says deregistering deletes across "all nine tables".**
+- ✅ [ANTS-6308] **roadmap_migrate_verb spec says deregistering deletes across "all nine tables".**
   tests/features/roadmap_migrate_verb/spec.md (the delete paragraph)
   says the delete runs "across all nine tables". Since ANTS-5366 it
   deletes from the child tables and keeps the project and message rows
   (src/roadmapstore.h, deregisterProject). Found by the lane 10 sweep
   (ANTS-6119); it predates that change. A spec edit: name the tables
   rather than a count, and ask rule 14's question.
+  Shipped 2026-11-13 (1aeb45c3).
   **Layman:** A test's description of project removal names the wrong set of database tables.
   Kind: doc-fix.
   Source: close-findings-sweep-2026-10-29.
@@ -112722,12 +112729,13 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-09 (ANTS-5262).
   Lanes: mcp.
 
-- 📋 [ANTS-6719] **ANTS-4932's spec still says token_usage misses ants-mcpd's calls, deferred to ANTS-5311, which has shipped.**
+- ✅ [ANTS-6719] **ANTS-4932's spec still says token_usage misses ants-mcpd's calls, deferred to ANTS-5311, which has shipped.**
   docs/specs/ANTS-4932-standalone-mcp-server.md § 2.3: "token_usage
   counts only the calls the terminal served ... Deferred — tracked by
   ANTS-5311". ANTS-5311 § 7 asked for this sentence to become a
   pointer to its spec when it shipped, and ANTS-5262 (2026-11-09) now
   also gives each ants-mcpd client its own session's figures.
+  Shipped 2026-11-13 (bf5d15e9).
   **Layman:** A design document still describes a gap in the token report that was closed weeks ago.
   Kind: doc-fix.
   Source: in-session-2026-11-09 (ANTS-5262).
