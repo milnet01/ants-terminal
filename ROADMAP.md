@@ -100185,7 +100185,7 @@ acting on it.
   Kind: perf.
   Source: user-request-2026-09-14 (CI speed and memory review).
 
-- 📋 [ANTS-5528] **The nightly ASan job goes red when its compile cache has been evicted, because a cold build does not fit the 24-minute build guard.**
+- 🚫 [ANTS-5528] **The nightly ASan job goes red when its compile cache has been evicted, because a cold build does not fit the 24-minute build guard.**
   Measured 2026-09-28: scheduled run 36389329574 restored no asan cache
   (ccache 0/514 hits), reached build step 739 of 997 in 24 minutes and
   the `timeout 24m` guard exited 124. The seven nightlies before it
@@ -100215,6 +100215,11 @@ acting on it.
   workflow_no_shell_interpolation). That needs tools/ci_workflow.py to
   give the expression a local meaning, ci_asan_budget to sum the larger
   guard, and timeout-minutes raised above 40 + 22.
+  Dropped 2026-11-13 as done elsewhere: ANTS-6327 (2026-10-31) raised
+  the build guard to 34m, sized for a cold build, and the job cap to
+  75m. Read in .github/workflows/ci.yml. The last twelve scheduled
+  runs passed (gh run list --event schedule, 2026-11-13). The
+  cache-hit-keyed guard sketched here was not built and is not needed.
   **Layman:** On a busy day of changes, the nightly memory-safety check can lose its saved build and run out of time before it tests anything.
   Kind: fix.
   Source: in-session-2026-09-28 (nightly run 36389329574).
@@ -112530,7 +112535,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: mcp.
 
-- 📋 [ANTS-5535] **find_definition and doc_symbols do not index enumerators, so a spec citing an enum value reads as a dead symbol.**
+- ✅ [ANTS-5535] **find_definition and doc_symbols do not index enumerators, so a spec citing an enum value reads as a dead symbol.**
   Measured 2026-09-28: find_definition symbol:"Heuristic" returns zero
   definitions, though src/focusedtest.h declares
   `enum class Selection { Map, Heuristic, Full };`. doc_lint's
@@ -112548,6 +112553,12 @@ reports are asked for separately, each time.
   are in engine/physics/*.h. Vestige suggests resolving a qualified
   name's last segment against its qualifier. Rest of that finding:
   ANTS-5669.
+  Shipped 2026-11-13: SymbolQuery matches an enumerator (C and C++) as a
+  definition; CppScope tracks enum bodies. Verified with the new build:
+  find_definition Heuristic returns src/focusedtest.h, and doc_lint
+  doc_symbols over the ANTS-1302 spec reports 0 unresolved. Not built:
+  the `external` class for Qt and POSIX names, which the item only said
+  to consider; enums in other languages.
   **Layman:** The tool that checks names in documents cannot see the individual values of a list type, so it reports real names as missing.
   Kind: fix.
   Source: in-session-2026-09-28, found while closing ANTS-5096.

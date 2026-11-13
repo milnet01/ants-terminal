@@ -425,6 +425,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`find_definition` and `doc_symbols` resolve the values of a C or C++ `enum`.** (ANTS-5535)
+  An enumerator is reported as a definition, whether the enum sits on one
+  line or lists one value per line. A document citing `Selection::Heuristic`
+  now resolves.
+
 - **The store backup keeps its full snapshots when a new copy has under half their items.** (ANTS-5426)
   The run fails and notifies instead of rotating them out.
   `ROADMAP_BACKUP_ACCEPT_SHRINK=1` accepts the new size.

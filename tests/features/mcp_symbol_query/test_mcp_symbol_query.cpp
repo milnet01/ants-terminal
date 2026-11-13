@@ -1695,3 +1695,60 @@ TEST(McpSymbolQuery, Ants6456SymlinkLaneOutOfRootIsIgnored) {
         EXPECT_FALSE(c.file.contains(QStringLiteral("out.cpp"))) << c.file.toStdString();
     EXPECT_EQ(r.callers.size(), 1);
 }
+
+// ANTS-5535 — an enumerator is a definition of its name. Both layouts: the
+// whole enum on one line, and one enumerator per line. A name that only
+// appears inside an enumerator's initialiser is a use, not a definition.
+TEST(SymbolQueryCppForms, Ants5535EnumeratorsResolve) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    writeFile(root, QStringLiteral("src/sel.h"), QStringLiteral(
+        "enum class Selection { Map, Heuristic, Full };\n"
+        "\n"
+        "enum Shape : int\n"
+        "{\n"
+        "    BOX = 1,   // the default\n"
+        "    SPHERE,\n"
+        "    HULL = BOX + SPHERE,\n"
+        "    LAST = wrap(BOX, SPHERE)\n"
+        "};\n"
+        "\n"
+        "int table[] = {\n"
+        "    Alpha,\n"
+        "    Beta\n"
+        "};\n"
+        "void user() { call(Map, Full); }\n"
+        "const char *quoted = \"enum Q { InAString, Other };\";\n"));
+
+    const auto defsOf = [&](const char *name) {
+        return SymbolQuery::findDefinition(root, QString::fromLatin1(name), {});
+    };
+    for (const char *name : {"Map", "Heuristic", "Full", "BOX", "SPHERE",
+                             "HULL", "LAST"}) {
+        const SymbolQuery::DefResult r = defsOf(name);
+        EXPECT_EQ(r.definitions.size(), 1) << name;
+        EXPECT_TRUE(hasDef(r, QStringLiteral("src/sel.h"),
+                           QStringLiteral("definition"))) << name;
+    }
+    // One per line: the row names the enumerator's own line.
+    EXPECT_EQ(defsOf("SPHERE").definitions.value(0).line, 6);
+    EXPECT_EQ(defsOf("HULL").definitions.value(0).line, 7);
+    // BOX and SPHERE on the HULL and LAST lines are uses.
+    EXPECT_EQ(defsOf("BOX").definitions.value(0).line, 5);
+
+    // The batch walk doc_symbols runs answers the same.
+    // An enum quoted in a string defines nothing.
+    EXPECT_EQ(defsOf("InAString").definitions.size(), 0);
+    // A brace list that is not an enum body defines nothing.
+    EXPECT_EQ(defsOf("Alpha").definitions.size(), 0);
+    EXPECT_EQ(defsOf("Beta").definitions.size(), 0);
+
+    // The batch walk doc_symbols runs answers the same.
+    const QStringList needles{QStringLiteral("Heuristic"), QStringLiteral("SPHERE"),
+                              QStringLiteral("Alpha")};
+    const auto batch = SymbolQuery::findDefinitions(root, needles, {});
+    EXPECT_EQ(batch.value(needles.at(0)).definitions.size(), 1);
+    EXPECT_EQ(batch.value(needles.at(1)).definitions.size(), 1);
+    EXPECT_EQ(batch.value(needles.at(2)).definitions.size(), 0);
+}

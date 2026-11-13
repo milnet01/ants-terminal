@@ -221,6 +221,14 @@ struct Anchors {
     // list opens on the next line (`void*` / `getsfx` / `( char* name );`).
     QRegularExpression wrappedName;
     bool hasWrapped = false;
+    // ANTS-5535 — an enumerator. `enumerator` is tried on a line that starts
+    // inside an enum body (CppScope); `enumInline` on a line that opens the
+    // body itself (`enum class E { A, B };`), anchored at the line start so
+    // an enum quoted in a string does not count. Empty for every language
+    // but C++.
+    QRegularExpression enumerator;
+    QRegularExpression enumInline;
+    bool hasEnum = false;
     bool cppKind = false;
     bool pyKind = false;   // ANTS-5387 — an assignment row may be `local`
     const char *lang = "";
@@ -350,6 +358,20 @@ Anchors buildAnchors(Lang lang, const QString &s) {
             a.wrappedPrev.optimize();
             a.wrappedName.optimize();
             a.hasWrapped = true;
+            // ANTS-5535 — the name opens a list item (line start, `{` or `,`
+            // before it) and closes one (`,`, `=`, `}` or the line end after
+            // it), so a name inside another enumerator's initialiser is not
+            // matched. Both run on the line with its comments removed.
+            {
+                const QString item =
+                    QStringLiteral("\\s*") + s + QStringLiteral("\\s*(?:[,=}]|$)");
+                a.enumerator = QRegularExpression(QStringLiteral("(?:^|[{,])") + item);
+                a.enumInline = QRegularExpression(
+                    QStringLiteral("^[ \\t]*(?:typedef\\s+)?enum\\b[^;{()]*\\{(?:[^}]*[,{])?") + item);
+                a.enumerator.optimize();
+                a.enumInline.optimize();
+                a.hasEnum = true;
+            }
             a.call = QRegularExpression(QStringLiteral("\\b") + s + QStringLiteral("\\s*\\("));
             a.cppKind = true;
             break;
@@ -507,6 +529,8 @@ void needleSlots(const QHash<QStringView, int> &bySymbol, const QString &line,
 class CppScope {
 public:
     bool local() const { return m_codeDepth > 0 || m_paren > 0; }
+    // ANTS-5535 — the innermost open brace is an enum's body.
+    bool inEnum() const { return !m_enumStack.isEmpty() && m_enumStack.last(); }
 
     void consume(const QString &line) {
         const qsizetype n = line.size();
@@ -543,11 +567,13 @@ public:
             case '{': {
                 const bool code = m_codeDepth > 0 || headOpensCode();
                 m_stack.push_back(code);
+                m_enumStack.push_back(headOpensEnum());
                 if (code) ++m_codeDepth;
                 m_head.clear();
                 continue;
             }
             case '}':
+                if (!m_enumStack.isEmpty()) m_enumStack.removeLast();
                 if (!m_stack.isEmpty() && m_stack.takeLast()) --m_codeDepth;
                 // Back at file scope nothing can still be open: a paren left
                 // unbalanced by a macro would otherwise mark the rest of the
@@ -578,7 +604,14 @@ private:
             || ctlKey.match(h).hasMatch();
     }
 
+    // `enum E f() {` is a function returning an enum, so a `)` rules it out.
+    bool headOpensEnum() const {
+        static const QRegularExpression enumKey(QStringLiteral("\\benum\\b"));
+        return !m_head.contains(QLatin1Char(')')) && enumKey.match(m_head).hasMatch();
+    }
+
     QVector<bool> m_stack;   // true = the brace opened code
+    QVector<bool> m_enumStack;   // parallel to m_stack; true = an enum body
     int m_codeDepth = 0;
     int m_paren = 0;
     bool m_inComment = false;
@@ -727,10 +760,14 @@ bool isPyDefOrClass(const QString &trimmed) {
 // a function body or a parameter list (CppScope), so the row is tagged
 // `local` and ranks after every definition.
 void recordDef(ScanState &st, const Anchors &an, const QString &rel,
-               const QString &trimmed, int lineNo, bool local = false) {
+               const QString &trimmed, int lineNo, bool local = false,
+               bool enumerator = false) {
     ++st.defsTotal;
     QString kind = QStringLiteral("definition");
-    if (an.cppKind) {
+    if (enumerator) {
+        // ANTS-5535 — an enumerator is defined where it is listed, whatever
+        // the line around it ends with.
+    } else if (an.cppKind) {
         if (trimmed.startsWith(QLatin1String("namespace"))) {
             // ANTS-4346 — neither a body nor a prototype.
             kind = QStringLiteral("namespace");
@@ -764,10 +801,21 @@ void recordDef(ScanState &st, const Anchors &an, const QString &rel,
 void matchLine(ScanState &st, const Anchors &an, const QString &rel,
                const QString &line, const QString &thisLine,
                const QString &prevLine, int lineNo,
-               bool *splitName = nullptr, bool localScope = false) {
+               bool *splitName = nullptr, bool localScope = false,
+               bool inEnum = false) {
     bool isDef = false;
     for (const QRegularExpression &re : an.def) {
         if (re.match(line).hasMatch()) { isDef = true; break; }
+    }
+
+    // ANTS-5535 — an enumerator, tried once the anchors above have missed.
+    bool isEnumerator = false;
+    if (!isDef && an.hasEnum
+        && (inEnum || line.contains(QLatin1String("enum")))) {
+        const QString code = codeWithoutComments(line);
+        isEnumerator = (inEnum && an.enumerator.match(code).hasMatch())
+                       || an.enumInline.match(code).hasMatch();
+        isDef = isEnumerator;
     }
 
     // ANTS-4603 — the wrapped-signature pair, tried only once the
@@ -790,7 +838,7 @@ void matchLine(ScanState &st, const Anchors &an, const QString &rel,
         // the symbol is, which is what a reader jumps to.
         recordDef(st, an, rel,
                   isWrapped ? prevLine + QLatin1Char(' ') + thisLine : thisLine,
-                  lineNo, localScope);
+                  lineNo, localScope, isEnumerator);
     }
 
     // ANTS-4828 — the name alone under a return type may begin a signature
@@ -867,6 +915,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
         const QString thisLine = line.trimmed();
         const bool local = trackScope ? scope.local()
                                       : (lang == Lang::Py && pyScope.step(line));
+        const bool inEnum = trackScope && scope.inEnum();
 
         // ANTS-4828 — resolve split signatures. The line after the name must
         // open the parameter list with `(`; lines then join until one holds
@@ -909,7 +958,7 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
                 bool split = false;
                 const int defsBefore = sl.defsTotal;
                 matchLine(sl, sl.anchors[langOrd], rel, line, thisLine,
-                          prevLine, lineNo, &split, local);
+                          prevLine, lineNo, &split, local, inEnum);
                 if (st.recordUse && !sl.firstUse && sl.defsTotal == defsBefore
                     && codeHits.contains(idx))
                     sl.firstUse = CallMatch{rel, lineNo, thisLine,
@@ -921,7 +970,8 @@ void scanFile(ScanState &st, const QFileInfo &fi, Lang lang) {
             }
         } else if (st.symbol.isEmpty() || line.contains(st.symbol)) {
             bool split = false;
-            matchLine(st, an, rel, line, thisLine, prevLine, lineNo, &split, local);
+            matchLine(st, an, rel, line, thisLine, prevLine, lineNo, &split, local,
+                      inEnum);
             if (split)
                 pending.append({-1, lineNo, 0,
                                 prevLine + QLatin1Char(' ') + thisLine, false, local});
