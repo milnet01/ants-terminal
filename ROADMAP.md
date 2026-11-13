@@ -112160,7 +112160,7 @@ reports are asked for separately, each time.
   Source: code-audit-2026-09-26 (peer tooling lane, part 1 #8; ledger TL-8).
   Lanes: roadmap.
 
-- 📋 [ANTS-5427] **rotate-roadmap.sh archives every block it cuts, including a closed minor split across non-adjacent sections.**
+- 🚫 [ANTS-5427] **rotate-roadmap.sh archives every block it cuts, including a closed minor split across non-adjacent sections.**
   END_LINE stops at the first `## ` heading that does not match the minor, so
   only the first contiguous run of that minor is cut. A re-run finds the next
   block, sees the archive exists, keeps it (INV-14b no-clobber) and still cuts,
@@ -112174,6 +112174,11 @@ reports are asked for separately, each time.
   to cut when the block is absent from it. Recommended: refuse.
   User decided 2026-11-13: refuse to cut when the block is absent from
   the existing archive.
+  Dropped 2026-11-13: nothing to fix. packaging/rotate-roadmap.sh was
+  removed on 2026-10-12 (ANTS-5647, commit e67bfeb1); a closed minor is
+  rotated by roadmap_log op:"rotate_minor", which moves every descendant
+  section from the store (tests/features/roadmap_rotate_minor INV-5).
+  Checked: no tracked script of that name; only release notes name it.
   **Layman:** Re-running the roadmap archiving script can delete old roadmap sections without saving them anywhere.
   Kind: fix.
   Source: code-audit-2026-09-26 (peer tooling lane, part 2 #1; ledger TL-14).
