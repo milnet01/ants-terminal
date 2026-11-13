@@ -386,6 +386,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A hand-typed `/model` switch is recognised for any model name, including Fable and names Claude Code prints in backticks.** (ANTS-6754)
+
 - **`project_settings op:detect` proposes and names top-level directories that hold source outside `src/` and `tests/`, even when the default walk covers most of the project.** (ANTS-5665)
 
 - **`indie_review_partition` counts a file a lane names as assigned whatever its suffix, so `unassigned_count` covers only files no lane names.** (ANTS-5640)

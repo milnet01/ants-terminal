@@ -4,6 +4,7 @@
 // preserves the firing-side path; near-miss telemetry consumes blockedBy.
 #include "modelautoswitch.h"
 
+#include <QRegularExpression>
 #include <algorithm>
 
 namespace ModelAutoSwitch {
@@ -280,42 +281,24 @@ bool shouldContinueAfterUnarmedConfirm(bool autoModeOn, bool activeTurn) {
     return autoModeOn && activeTurn;
 }
 
-// ANTS-1975 — when the user types `/model <tier>` with an explicit arg CC
-// switches directly (no "Switch model?" dialog) and prints a one-liner
-// "Set model to <Tier> <ver> and saved as your default for new sessions".
-// ANTS-2020 — anchor the title phrase to a known tier token immediately
-// following it, the same title+token structure switchConfirmVisible uses. The
-// bare "Set model to" substring tripped on build output / a log line / a
-// transcript quoting the phrase, which (with auto-mode on) fired an unwanted
-// continuation via shouldContinueAfterDirectSwitch. A future tier name is a
-// false-negative (no spurious continuation — the safe direction), never a
-// false-positive. Tier set verified against the model_switch_confirm
-// feature-test banners (Sonnet 4.6 / Opus 4.8).
-// ANTS-2197 — require BOTH the tier-anchored title AND the banner's distinctive
-// "saved as your default" tail, the same title+corroborator structure
-// switchConfirmVisible uses for the dialog. The tier token alone (ANTS-2020)
-// still matched a bare quote of "Set model to Opus" sitting in scrollback prose
-// or a transcript, which — with auto-mode on — could fire a continuation with no
-// real switch. Pairing it with the persistent-default clause shrinks the
-// accidental-match surface to an exact full-banner quote (then further gated by
-// the activeTurn requirement of shouldContinueAfterDirectSwitch, ANTS-2186). A
-// CC banner reword is a false-negative (no spurious continuation — the safe
-// direction). Scrollback detection of the user's own `/model` keystroke was
-// considered and rejected: CC's rendering of a submitted slash command is not
-// verifiable from here, so a token corroborator is the soundest available signal.
+// ANTS-1975 — when the user types `/model <name>` with an explicit argument,
+// Claude Code switches with no "Switch model?" dialog and prints one line:
+//   Set model to `Fable 5.2` and saved as your default for new sessions
+// (read from its transcripts, 2026-11-13; older builds printed no backticks).
+// ANTS-6754 — the banner is matched as that one sentence: "Set model to", a
+// model name of up to 40 characters with or without quotes or backticks, then
+// "and saved as your default". Any name is accepted, so a new family needs no
+// change here. The sentence shape keeps prose out: a bare "Set model to Opus"
+// in scrollback, a log line, or the two phrases apart do not match
+// (ANTS-2020, ANTS-2197), and a match is still gated on an active turn
+// (ANTS-2186). A reworded banner is a miss, which is the safe direction: no
+// continuation. Whitespace may be a line break, since a narrow terminal wraps.
 bool directModelSwitchVisible(const QString &recentOutput) {
-    const bool tierTitle =
-        recentOutput.contains(
-            QStringLiteral("Set model to Sonnet"), Qt::CaseInsensitive)
-        || recentOutput.contains(
-            QStringLiteral("Set model to Opus"), Qt::CaseInsensitive)
-        || recentOutput.contains(
-            QStringLiteral("Set model to Haiku"), Qt::CaseInsensitive)
-        || recentOutput.contains(
-            QStringLiteral("Set model to Default"), Qt::CaseInsensitive);
-    const bool persisted = recentOutput.contains(
-        QStringLiteral("saved as your default"), Qt::CaseInsensitive);
-    return tierTitle && persisted;
+    static const QRegularExpression banner(
+        QStringLiteral("Set\\s+model\\s+to\\s+[`'\"]?[A-Za-z][^`'\"]{0,39}?[`'\"]?"
+                       "\\s+and\\s+saved\\s+as\\s+your\\s+default"),
+        QRegularExpression::CaseInsensitiveOption);
+    return banner.match(recentOutput).hasMatch();
 }
 
 // ANTS-1975/ANTS-2186 — for the no-dialog direct-switch path: resume iff auto

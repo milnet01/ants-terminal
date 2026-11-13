@@ -77,9 +77,11 @@ the handshake's existing terminator. There is **no** "Esc to cancel" footer.
 - **INV-9 — direct `/model <tier>` (no-dialog) path (ANTS-1975 / 2020 / 2186 / 2197).**
   When the user types `/model <tier>` with an explicit tier, CC switches without a
   "Switch model?" dialog and prints a banner; `directModelSwitchVisible` is the
-  only signal. It requires BOTH the tier-anchored title (`Set model to <Tier>`)
-  AND the banner's `saved as your default` tail (ANTS-2197 title+corroborator) so
-  a bare quoted fragment in scrollback cannot trip it. The budget-exhausted
+  only signal. It matches the banner as one sentence (ANTS-6754): `Set model
+  to`, a model name with or without backticks, then `and saved as your default`.
+  Any model name is accepted, so a new family needs no change; a bare quoted
+  fragment, or the two phrases apart, cannot trip it (ANTS-2197). *Test:*
+  `DirectSwitchBannerNamesAnyModel`, `DirectSwitchTitleAndTailMustBeOneSentence`. The budget-exhausted
   `pollUnarmedSwitchConfirm` branch fires a continuation only when
   `shouldContinueAfterDirectSwitch(autoModeOn, activeTurn)` holds — auto mode on
   AND a turn active. ANTS-2186 added the `activeTurn` gate: `/model` typed at idle

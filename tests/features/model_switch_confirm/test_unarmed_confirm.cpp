@@ -245,3 +245,28 @@ TEST(UnarmedConfirm, DirectSwitchNoContinuationAtIdle) {
     EXPECT_FALSE(shouldContinueAfterDirectSwitch(/*autoModeOn=*/true,
                                                  /*activeTurn=*/false));
 }
+
+// ANTS-6754 — the banner Claude Code prints today, read from its transcripts
+// (2026-11-13): the model name sits in backticks, and the family may be one the
+// old list never named.
+TEST(UnarmedConfirm, DirectSwitchBannerNamesAnyModel) {
+    EXPECT_TRUE(directModelSwitchVisible(QStringLiteral(
+        "Set model to `Fable 5.2` and saved as your default for new sessions")));
+    EXPECT_TRUE(directModelSwitchVisible(QStringLiteral(
+        "Set model to `Opus 5.5` and saved as your default for new sessions")));
+    EXPECT_TRUE(directModelSwitchVisible(QStringLiteral(
+        "Set model to Fable 5.2 and saved as your default for new sessions")));
+    // Wrapped by a narrow terminal.
+    EXPECT_TRUE(directModelSwitchVisible(QStringLiteral(
+        "Set model to `Fable 5.2` and saved as\nyour default for new sessions")));
+}
+
+// ANTS-6754 — the title and the tail are one sentence. Both phrases present but
+// apart is prose, not the banner.
+TEST(UnarmedConfirm, DirectSwitchTitleAndTailMustBeOneSentence) {
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral(
+        "Set model to Opus is what I typed earlier in the session, and much later "
+        "the docs said it is saved as your default for new sessions")));
+    EXPECT_FALSE(directModelSwitchVisible(QStringLiteral(
+        "set model to value from config; saved as your default")));
+}

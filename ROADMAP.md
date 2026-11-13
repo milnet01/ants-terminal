@@ -69448,7 +69448,7 @@ remainder, captured so they don't drop on the floor.
   Source: ANTS-6747-follow-up-2026-11-12.
   Lanes: status-bar.
 
-- 📋 [ANTS-6754] **directModelSwitchVisible recognises only the Sonnet, Opus, Haiku and Default switch banners.**
+- ✅ [ANTS-6754] **directModelSwitchVisible recognises only the Sonnet, Opus, Haiku and Default switch banners.**
   src/modelautoswitch.cpp directModelSwitchVisible matches "Set model to
   <Sonnet|Opus|Haiku|Default>" plus "saved as your default". A banner
   naming another family is a false negative: no continuation after a
@@ -69458,6 +69458,15 @@ remainder, captured so they don't drop on the floor.
   /model fable in a tab, copy the line). Then widen the title match, or
   take the family list from one place, keeping the ANTS-2197 two-part
   match.
+  Shipped 2026-11-13. The banner was read from Claude Code's transcripts
+  (local-command-stdout), not from a new capture: "Set model to `Fable
+  5.2` and saved as your default for new sessions"; the same shape for
+  Opus 5.5 and Haiku 5.5. The backticks meant the old list missed every
+  family. directModelSwitchVisible now matches the banner as one sentence
+  with any model name, quoted or not. Tests DirectSwitchBannerNamesAnyModel
+  and DirectSwitchTitleAndTailMustBeOneSentence, red first. Not verified:
+  whether the screen shows the backticks; both forms match. Terminal code:
+  reaches the user after a terminal relaunch, which the user chooses.
   **Layman:** After you switch to a newer model such as Fable by hand, Ants may not notice the switch and so will not nudge Claude to carry on.
   Kind: fix.
   Source: ANTS-6750-follow-up-2026-11-12.
