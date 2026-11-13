@@ -116,6 +116,12 @@ the ANTS-2160 suite used for its consumer-wiring check.
   under `dry_run`, or had nothing to write. After a write the two arrays
   equal `op:"get"`'s. Test: `Ants5521InitNamesTheKeysItLeftUndeclared`, seen
   failing on all five array assertions before the fix.
+- **INV-26** (ANTS-5665) — on the no-override path, source outside `src/`
+  and `tests/` is named. Another top-level directory holding source is put in
+  `sourceRoots` after `src`, and the reason lists each such directory with
+  its count instead of `no source_roots override needed`. Files loose at the
+  repo root are listed and add no root. With nothing outside, the reason is
+  unchanged. *Test:* `Ants5665SourceOutsideTheDefaultWalkIsProposed`.
 
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s

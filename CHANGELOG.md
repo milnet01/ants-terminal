@@ -382,6 +382,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`project_settings op:detect` proposes and names top-level directories that hold source outside `src/` and `tests/`, even when the default walk covers most of the project.** (ANTS-5665)
+
 - **`indie_review_partition` counts a file a lane names as assigned whatever its suffix, so `unassigned_count` covers only files no lane names.** (ANTS-5640)
 
 - **`read_region` symbol mode and `function_sizes` return the whole body of a function whose parameter list holds braces, such as a JavaScript destructured default.** (ANTS-5612)

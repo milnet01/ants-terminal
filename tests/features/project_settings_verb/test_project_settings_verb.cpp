@@ -882,3 +882,26 @@ TEST(ProjectSettingsVerb, Ants5521InitNamesTheKeysItLeftUndeclared) {
     EXPECT_EQ(init.value(QStringLiteral("undeclared")), get.value(QStringLiteral("undeclared")));
     EXPECT_EQ(init.value(QStringLiteral("unavailable")), get.value(QStringLiteral("unavailable")));
 }
+
+// ANTS-5665 — the default walk covers most of the source, but tracked source
+// sits in another top-level directory. detect proposes that directory and
+// names it, instead of saying no override is needed.
+TEST(ProjectSettingsVerb, Ants5665SourceOutsideTheDefaultWalkIsProposed) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    writeFile(root + "/src/a.c", cFile("a"));
+    writeFile(root + "/src/b.c", cFile("b"));
+    writeFile(root + "/src/c.c", cFile("c"));
+    writeFile(root + "/scripts/build.sh", QStringLiteral("#!/bin/sh\necho build\n"));
+    writeFile(root + "/scripts/run.sh", QStringLiteral("#!/bin/sh\necho run\n"));
+
+    const ProjectSettings::Suggestion s = ProjectSettings::detect(root);
+    ASSERT_EQ(s.defaultSourceCount, 3);
+    ASSERT_EQ(s.totalSourceCount, 5) << "fixture: the scripts must count as source";
+    ASSERT_TRUE(s.sourceRoots.has_value()) << s.reason.toStdString();
+    EXPECT_EQ(*s.sourceRoots,
+              (QStringList{QStringLiteral("src"), QStringLiteral("scripts")}));
+    EXPECT_TRUE(s.reason.contains(QStringLiteral("scripts (2)"))) << s.reason.toStdString();
+    EXPECT_FALSE(s.reason.contains(QStringLiteral("no source_roots override needed")))
+        << s.reason.toStdString();
+}

@@ -429,9 +429,38 @@ Suggestion detect(const QString &rootCanonical, const ResolvedAux &aux) {
         proposeAuxLayout(s, rootCanonical, aux);
         // …and say what the "no override" verdict is ABOUT. It was only ever
         // true of source_roots.
+        // ANTS-5665 — "covers enough" is not "covers all". Source in another
+        // top-level directory is in no index and no review lane, so propose
+        // that directory and name it. Files loose at the repo root are named
+        // too, without proposing ".": that would widen a walk that is mostly
+        // right.
+        QStringList outsideDirs, outsideNamed;
+        for (const auto &p : dirCounts) {
+            if (p.first == QLatin1String("src") || p.first == QLatin1String("tests"))
+                continue;
+            outsideDirs << p.first;
+            outsideNamed << QStringLiteral("%1 (%2)").arg(p.first).arg(p.second);
+        }
+        if (rootLevel > 0)
+            outsideNamed << QStringLiteral("the repo root (%1)").arg(rootLevel);
+        if (outsideNamed.isEmpty()) {
+            s.reason = QStringLiteral(
+                "default src/+tests/ walk indexed %1 of %2 source files; "
+                "no source_roots override needed").arg(s.defaultSourceCount).arg(total);
+            return s;
+        }
+        if (!outsideDirs.isEmpty()) {
+            QStringList roots;
+            if (srcCount > 0) roots << QStringLiteral("src");
+            s.sourceRoots = roots + outsideDirs;
+        }
         s.reason = QStringLiteral(
-            "default src/+tests/ walk indexed %1 of %2 source files; "
-            "no source_roots override needed").arg(s.defaultSourceCount).arg(total);
+            "default src/+tests/ walk indexed %1 of %2 source files; the rest "
+            "sit outside it: %3").arg(s.defaultSourceCount).arg(total)
+            .arg(outsideNamed.join(QStringLiteral(", ")));
+        s.reason += outsideDirs.isEmpty()
+            ? QStringLiteral("; no directory to add to source_roots")
+            : QStringLiteral("; suggesting source_roots that cover those directories");
         return s;
     }
 

@@ -89441,7 +89441,7 @@ project. Reported causes are claims until checked in source.
   Source: ANTS-5571 follow-up 2026-10-11.
   Lanes: mcp.
 
-- 📋 [ANTS-5665] **project_settings detect says no source_roots override is needed while its own counts show tracked source outside the default roots.**
+- ✅ [ANTS-5665] **project_settings detect says no source_roots override is needed while its own counts show tracked source outside the default roots.**
   op:detect on rusty-psn-source: default walk indexed 16 of 18 source
   files, yet the reason string said no override needed and
   would_use_roots was [src]. The two missing were tracked scripts/*.sh,
@@ -89450,6 +89450,13 @@ project. Reported causes are claims until checked in source.
   top-level directories in suggestion.source_roots and name the
   uncovered files. Related: ANTS-5521 (op:init stays silent on the same
   advice), ANTS-4093.
+  Shipped 2026-11-13. ProjectSettings::detect, no-override path: another
+  top-level directory holding source goes into sourceRoots after src, and
+  the reason lists each with its count. Root-level files are listed, with
+  no "." proposed. It names directories and counts, not single files.
+  Contract: tests/features/project_settings_verb/spec.md INV-26, red
+  first ("indexed 3 of 5 ... no source_roots override needed"). Reaches
+  clients when ants-mcpd is rebuilt and they reconnect.
   **Layman:** The setup check tells a project its code folders are fine while two tracked scripts sit outside them, so later reviews skip those scripts.
   Kind: fix.
   Source: rusty-psn-source-feedback-2026-10-12.
