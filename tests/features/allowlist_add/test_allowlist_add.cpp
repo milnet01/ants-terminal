@@ -26,6 +26,8 @@
 #include <QApplication>
 #include <QDialog>
 #include <QFile>
+#include <QLineEdit>
+#include <QListWidget>
 #include <QMainWindow>
 #include <QString>
 
@@ -451,7 +453,94 @@ int checkHookPathRetraction() {
     return failures;
 }
 
+// --- F. No `*` inside a NAME=value prefix on the Allow list (ANTS-6759) ----
+
+// Every rule in the dialog's Allow/Deny/Ask lists.
+QStringList allRules(const ClaudeAllowlistDialog &dlg) {
+    QStringList out;
+    const auto lists = dlg.findChildren<QListWidget *>();
+    for (const QListWidget *list : lists)
+        for (int i = 0; i < list->count(); ++i) out << list->item(i)->text();
+    return out;
+}
+
+// Type `rule` into the rule box and press Return, as a user would.
+void typeAndAdd(ClaudeAllowlistDialog &dlg, const QString &rule) {
+    auto *input = dlg.findChild<QLineEdit *>();
+    if (!input) return;
+    input->setText(rule);
+    emit input->returnPressed();
+}
+
+int checkEnvValueWildcard() {
+    int failures = 0;
+
+    const QStringList refused = {
+        // The `*` sits inside a quoted value.
+        QStringLiteral(R"(Bash(QT_LOGGING_RULES="*.debug=true" QT_DEBUG_PLUGINS=1 /opt/app/bin/app))"),
+        // The whole value is `*`.
+        QStringLiteral("Bash(DESTDIR=* cmake --install * --prefix *)"),
+        // The assignment opens the second command of a compound rule.
+        QStringLiteral("Bash(cd /src && DESTDIR=/tmp/stage-* cmake --install build)"),
+    };
+    for (const QString &rule : refused) {
+        {
+            ClaudeAllowlistDialog dlg;
+            dlg.prefillRule(rule);
+            const QStringList got = allRules(dlg);
+            if (!got.isEmpty()) {
+                std::fprintf(stderr, "[F/prefill] %s was added as: %s  FAIL\n",
+                             qUtf8Printable(rule), qUtf8Printable(got.join(" , ")));
+                ++failures;
+            }
+        }
+        {
+            ClaudeAllowlistDialog dlg;
+            typeAndAdd(dlg, rule);
+            const QStringList got = allRules(dlg);
+            if (!got.isEmpty()) {
+                std::fprintf(stderr, "[F/typed] %s was added as: %s  FAIL\n",
+                             qUtf8Printable(rule), qUtf8Printable(got.join(" , ")));
+                ++failures;
+            }
+        }
+    }
+
+    // Controls: an exact value is still added, and so is a `*` that sits
+    // in the command's own arguments. Without these a dialog that adds
+    // nothing at all would pass the checks above.
+    const QStringList accepted = {
+        QStringLiteral("Bash(QT_QPA_PLATFORM=offscreen /opt/app/bin/app --version)"),
+        QStringLiteral("Bash(MANWIDTH=80 man -l *)"),
+    };
+    for (const QString &rule : accepted) {
+        {
+            ClaudeAllowlistDialog dlg;
+            dlg.prefillRule(rule);
+            if (!allRules(dlg).contains(rule)) {
+                std::fprintf(stderr, "[F/prefill-control] %s was not added  FAIL\n",
+                             qUtf8Printable(rule));
+                ++failures;
+            }
+        }
+        {
+            ClaudeAllowlistDialog dlg;
+            typeAndAdd(dlg, rule);
+            if (!allRules(dlg).contains(rule)) {
+                std::fprintf(stderr, "[F/typed-control] %s was not added  FAIL\n",
+                             qUtf8Printable(rule));
+                ++failures;
+            }
+        }
+    }
+    return failures;
+}
+
 }  // namespace
+
+TEST(AllowlistAdd, EnvValueWildcard) {
+    if (checkEnvValueWildcard()) FAIL();
+}
 
 TEST(AllowlistAdd, Main) {
     int failures = 0;

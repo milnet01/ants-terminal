@@ -37,6 +37,11 @@ public:
     // the contract directly (no widget harness required).
     static bool ruleSubsumes(const QString &broad, const QString &narrow);
 
+    // ANTS-6759 — the name of the first leading NAME=value assignment in a
+    // Bash rule whose value holds a `*`, or empty. Claude Code warns on such
+    // an allow rule ("allows any command at the * in its value").
+    static QString envWildcardVariable(const QString &rule);
+
 private slots:
     void onAddRule();
     void onRemoveRule();

@@ -123,6 +123,22 @@ symptom is identical to the Review Changes bug: "Add to allowlist
 click does nothing — no dialog opens, no visible effect" — the
 dialog IS up, just obscured by the main window.
 
+### F. No `*` inside a `NAME=value` prefix on the Allow list (ANTS-6759)
+
+Claude Code warns on an allow rule whose command starts with a
+`NAME=value` assignment holding a `*` in the value: "allows any command
+at the * in its value · use an exact value". It reads that `*` as a
+wildcard, never as the literal character.
+
+- The dialog MUST NOT put such a Bash rule on the Allow list, whether it
+  arrives from the "Add to allowlist" button (`prefillRule`) or is typed
+  and added by hand. It adds nothing and shows a hint naming the variable.
+- Every command of a compound rule (split on `&&`, `||`, `;`, `|`) is
+  checked, and a quoted value counts.
+- A `NAME=value` prefix with no `*` in the value is still added.
+- A `*` after the assignments, in the command's own arguments, is
+  unaffected.
+
 ## Rationale
 
 - The allowlist is security-sensitive user policy. A rule that looks

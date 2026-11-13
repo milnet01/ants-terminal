@@ -386,6 +386,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The allowlist dialog refuses an Allow rule with a `*` inside a `NAME=value` prefix.** (ANTS-6759)
+  Claude Code warns about such a rule at start-up. The dialog now leaves
+  it in the rule box with a hint naming the variable, from the "Add to
+  allowlist" button and from a typed rule alike.
+
 - **A hand-typed `/model` switch is recognised for any model name, including Fable and names Claude Code prints in backticks.** (ANTS-6754)
 
 - **`project_settings op:detect` proposes and names top-level directories that hold source outside `src/` and `tests/`, even when the default walk covers most of the project.** (ANTS-5665)

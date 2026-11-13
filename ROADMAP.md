@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6758 -->
+<!-- ants-roadmap-id-high-water: ANTS=6759 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -96445,6 +96445,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: close-findings ANTS-6649 sweep 2026-11-10.
   Lanes: roadmap-store.
+
+- ✅ [ANTS-6759] **The allowlist dialog adds Bash rules with a * inside a NAME=value prefix, which Claude Code warns about.**
+  Claude Code reports "allows any command at the * in its value · use an
+  exact value" for an allow rule such as
+  Bash(QT_LOGGING_RULES="*.debug=true" … ants-terminal) or
+  Bash(DESTDIR=* cmake --install * --prefix *). prefillRule and onAddRule
+  (src/claudeallowlist.cpp) add such a rule verbatim. Refuse it on the
+  Allow list with a hint naming the variable.
+  Fixed 2026-11-13: envWildcardVariable() in src/claudeallowlist.cpp;
+  prefillRule and onAddRule refuse the rule on the Allow list with a
+  hint. Test AllowlistAdd.EnvValueWildcard (spec clause F).
+  **Layman:** The "Add to allowlist" button could save a rule that Claude Code then flags with a warning at start-up. It now refuses such a rule and says why.
+  Kind: fix.
+  Source: user-request-2026-11-13.
 
 ### Readability (2026-11-06 review)
 

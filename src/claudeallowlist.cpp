@@ -22,6 +22,13 @@
 static const QString s_sudoPrefix =
     QStringLiteral("SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A ");
 
+// ANTS-6759 — why a rule envWildcardVariable() names was not added.
+static QString envWildcardHint(const QString &variable) {
+    return QStringLiteral("Not added: Claude Code reads the * inside %1=… as "
+                          "\"any command\" and warns. Use an exact value there.")
+        .arg(variable);
+}
+
 ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Claude Code - Edit Allowlist");
     setMinimumSize(550, 400);
@@ -182,6 +189,13 @@ void ClaudeAllowlistDialog::prefillRule(const QString &rule) {
     m_ruleInput->selectAll();
 
     if (finalRule.isEmpty()) return;
+
+    // ANTS-6759 — left in the rule box, so the user can make it exact.
+    const QString wildcardVariable = envWildcardVariable(finalRule);
+    if (!wildcardVariable.isEmpty()) {
+        showValidationHint(envWildcardHint(wildcardVariable), true);
+        return;
+    }
 
     // Pre-check for duplicates / subsumption BEFORE auto-adding so the
     // user always sees feedback when the rule is already present.
@@ -623,6 +637,62 @@ bool ClaudeAllowlistDialog::ruleSubsumes(const QString &broad, const QString &na
     return false;
 }
 
+QString ClaudeAllowlistDialog::envWildcardVariable(const QString &rule) {
+    static const QRegularExpression bashWrap(R"(^Bash\((.*)\)$)");
+    const auto bm = bashWrap.match(rule);
+    if (!bm.hasMatch()) return {};
+    const QString s = bm.captured(1);
+    const qsizetype n = s.size();
+    qsizetype i = 0;
+
+    const auto isOperator = [](QChar c) {
+        return c == QLatin1Char(';') || c == QLatin1Char('|') || c == QLatin1Char('&');
+    };
+    // Consumes one shell word from `i`, quotes included, and reports whether
+    // it held a `*`. A quoted or escaped `*` counts: Claude Code reads the
+    // rule text, where every `*` is a wildcard.
+    const auto wordHasStar = [&]() {
+        bool star = false;
+        QChar quote;
+        for (; i < n; ++i) {
+            const QChar c = s[i];
+            if (c == QLatin1Char('*')) star = true;
+            if (!quote.isNull()) {
+                if (c == quote) quote = QChar();
+            } else if (c == QLatin1Char('\\')) {
+                if (i + 1 < n && s[i + 1] == QLatin1Char('*')) star = true;
+                ++i;
+            } else if (c == QLatin1Char('\'') || c == QLatin1Char('"')) {
+                quote = c;
+            } else if (c.isSpace() || isOperator(c)) {
+                break;
+            }
+        }
+        return star;
+    };
+    const auto skipSpace = [&]() { while (i < n && s[i].isSpace()) ++i; };
+
+    static const QRegularExpression assign(R"(([A-Za-z_][A-Za-z0-9_]*)=)");
+    while (i < n) {
+        // Each command of a compound rule starts after an operator.
+        while (i < n && (s[i].isSpace() || isOperator(s[i]))) ++i;
+        for (;;) {
+            const auto m = assign.match(s, i, QRegularExpression::NormalMatch,
+                                        QRegularExpression::AnchorAtOffsetMatchOption);
+            if (!m.hasMatch()) break;
+            i = m.capturedEnd();
+            if (wordHasStar()) return m.captured(1);
+            skipSpace();
+        }
+        // The command and its arguments: a `*` here is an ordinary glob.
+        while (i < n && !isOperator(s[i])) {
+            wordHasStar();
+            skipSpace();
+        }
+    }
+    return {};
+}
+
 bool ClaudeAllowlistDialog::isDuplicate(QListWidget *list, const QString &rule) const {
     for (int i = 0; i < list->count(); ++i) {
         if (list->item(i)->text() == rule)
@@ -700,6 +770,15 @@ void ClaudeAllowlistDialog::onAddRule() {
     }
 
     QListWidget *list = currentList();
+
+    // ANTS-6759 — the warning is about allow rules only.
+    if (list == m_allowList) {
+        const QString variable = envWildcardVariable(rule);
+        if (!variable.isEmpty()) {
+            showValidationHint(envWildcardHint(variable), true);
+            return;
+        }
+    }
 
     // Check exact duplicate
     if (isDuplicate(list, rule)) {
