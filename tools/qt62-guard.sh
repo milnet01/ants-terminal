@@ -54,8 +54,9 @@
 # run trusts. The container is named and runs under --init, and a trap on
 # INT, TERM and HUP stops it. `podman run` is started in the background and
 # waited on, because bash runs a trap only after a foreground command returns.
-# A marker is written as the compile starts and removed only when it finishes,
-# so a run killed by a signal no trap sees leaves it too. --warm-only skips a
+# A marker is written as the compile starts and removed only when the job
+# returns its own result, so a run killed by a signal no trap sees leaves it
+# too, and so does a container that was killed or never started (ANTS-5423). --warm-only skips a
 # marked tree; a normal run discards the volume and builds cold.
 #
 # ── Usage ────────────────────────────────────────────────────────────────────
@@ -81,6 +82,9 @@
 # ANTS-5479's button test was that case. `--job build-test` implies
 # `--run-job`, because that job runs the suite. `--check-warm` exits 0 when
 # the job's caches exist and 3 when they do not.
+#
+# One run at a time per build tree: a second run is refused while the first
+# holds the tree's lock (ANTS-5423).
 #
 # Exit: 0 pass (or skipped under --warm-only), 1 compile/job failure or
 # refusal, 3 not warm (--check-warm only), 130 interrupted.
@@ -163,8 +167,12 @@ if [[ "$mode" == "clean" ]]; then
         exit 0
     fi
     echo "qt62-guard: removing cached images + build volumes"
+    # xargs runs the real podman, which is what is wanted: this branch exits
+    # before the lock's `podman` wrapper further down is defined.
+    # shellcheck disable=SC2033
     podman image ls --format '{{.Repository}}:{{.Tag}}' \
         | grep "^localhost/$qt62_prefix-baseline:" | xargs -r podman image rm -f
+    # shellcheck disable=SC2033
     podman volume ls --format '{{.Name}}' \
         | grep -E "^$qt62_prefix-(build|job)-" | xargs -r podman volume rm -f
     # This job's markers only: the other job's volume may be marked interrupted.
@@ -263,6 +271,24 @@ if ! need_podman; then
     echo "            cover it locally."
     [[ "$mode" == "warm-only" ]] && exit 0
     exit 1
+fi
+
+# --- one run per build tree (ANTS-5423) ---------------------------------------
+# A lock, not a probe of podman: a second run started before the first's
+# container exists would see nothing running. The lock is held until this
+# script and the container run it started have both ended. podman itself is
+# called without the descriptor, so a helper process it leaves behind cannot
+# keep the lock.
+if command -v flock >/dev/null 2>&1; then
+    mkdir -p "$qt62_state_dir" && exec 9>"$qt62_state_dir/$qt62_volume.lock" || {
+        echo "qt62-guard: cannot open the lock in $qt62_state_dir" >&2; exit 1; }
+    if ! flock -n 9; then
+        echo "qt62-guard: ⊘ another $job run is still running on this build tree."
+        echo "            Wait for it to finish, then run this again."
+        [[ "$mode" == "warm-only" ]] && exit 0
+        exit 1
+    fi
+    podman() { command podman "$@" 9>&-; }
 fi
 
 # --- an earlier compile still running (ANTS-5124) ----------------------------
@@ -379,6 +405,17 @@ podman run --rm --security-opt label=disable --init --name "$qt62_container" \
 wait $!
 rc=$?
 trap - INT TERM HUP
+# ANTS-5423 — 125 and above is not the job's own result: podman could not run
+# the container (125 to 127), or a signal ended it (128 + n; 137 is an OOM
+# kill). The compile did not finish, so the tree stays marked.
+if (( rc >= 125 )); then
+    echo >&2
+    echo "qt62-guard: ✗ the $job container did not finish (exit $rc): it was" >&2
+    echo "            killed, or podman could not run it. The build tree stays" >&2
+    echo "            marked interrupted, so the next run builds cold:" >&2
+    echo "              $qt62_cmd" >&2
+    exit 1
+fi
 rm -f "$qt62_interrupted_marker"
 
 if (( rc != 0 )) && [[ "$run_job" == 1 ]]; then

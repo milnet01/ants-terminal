@@ -73933,7 +73933,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: code-audit-2026-09-26 (review-code RC-11).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-5420] **Two roadmap_log writers on an unmigrated markdown ROADMAP.md cannot silently lose one update.**
+- ✅ [ANTS-5420] **Two roadmap_log writers on an unmigrated markdown ROADMAP.md cannot silently lose one update.**
   RoadmapWriteHold makes SHARED and EXCLUSIVE holds mutually exclusive, but
   two SHARED holders never block each other. On a project the store does NOT
   serve, the markdown write ops (flip_batch, append_batch, create_section,
@@ -73950,6 +73950,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   RoadmapWriteHold is shared among writers. roadmap_log is
   project-scoped, so every session's ants-mcpd runs it. The store-path
   twin is ANTS-6729.
+  2026-11-13 (26b89e75): cmdRoadmapLog takes RoadmapWriterTurn, an
+  exclusive flock on a second per-root lock file, so roadmap_log calls on
+  one root run one at a time in and across processes; a 5 s wait refuses
+  roadmap_busy. Contract: docs/specs/ANTS-2132-async-mcp-dispatch.md
+  § 2.10 and INV-22. The fold-in writers are not covered (ANTS-6482).
   **Layman:** If two sessions edit an old-style roadmap file at the same moment, one edit can vanish while both are told it worked.
   Kind: fix.
   Source: code-audit-2026-09-26 (review-code RC-49).

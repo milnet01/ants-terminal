@@ -62,11 +62,25 @@ fix; INV-5 is a guard and passed throughout.
   build inside a push, and the marker check added for INV-4 must not have
   displaced it.
 
+- **INV-6** (ANTS-5423) — one run at a time per build tree. A run started
+  while another holds the tree, before any container is visible to podman,
+  starts no container, says the other is still running, exits 1 (0 under
+  `--warm-only`) and leaves the other run's marker in place.
+- **INV-7** (ANTS-5423) — the marker is removed when the container returns the
+  job's own result, pass or failure, and kept when it exits 125 or above:
+  podman could not run it, or a signal ended it (137 is an OOM kill). That
+  case is not reported as a compile failure.
+
+INV-6 and INV-7 are run, not scraped: `test_qt62_guard_markers.py` runs the
+script with a stub `podman` first on `PATH`, registered as the ctest
+`qt62_guard_markers`. It skips where PyYAML or `flock` is missing.
+
 ## What this check does NOT cover, stated so it is not mistaken for coverage
 
-- It does not run `podman`, so it cannot prove a `podman stop` on the named
+- The scrapes (INV-1 to INV-5) do not run `podman`, so they cannot prove a `podman stop` on the named
   container actually reaches ninja's children — only that the script issues
-  one.
+  one. INV-6 and INV-7 run a stub, so they do not prove the real podman's
+  exit codes.
 - It does not prove the marker's path is a real, writable host directory —
   only that the text between the trap and the compile names "interrupted"
   and that `--warm-only` checks for it.

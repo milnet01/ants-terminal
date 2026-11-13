@@ -1790,6 +1790,15 @@ if(ANTS_TESTS)
         TIMEOUT 60
         SKIP_RETURN_CODE 77)
 
+    # ANTS-5423 — the guard's lock and marker, run against a stub podman; see
+    # tests/features/qt62_guard_interrupt/spec.md. Exits 77 without PyYAML or flock.
+    add_test(NAME qt62_guard_markers
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/qt62_guard_interrupt/test_qt62_guard_markers.py")
+    set_tests_properties(qt62_guard_markers PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 120
+        SKIP_RETURN_CODE 77)
+
     # ANTS-3428 — a below-latest dependency pin needs a Downgrade Ledger row.
     add_test(NAME dependency_pins
              COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/dependency_pins/test_dependency_pins.py")
