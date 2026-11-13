@@ -89462,7 +89462,7 @@ project. Reported causes are claims until checked in source.
   Source: rusty-psn-source-feedback-2026-10-12.
   Lanes: mcp.
 
-- 📋 [ANTS-5666] **Correct three stale passages the ANTS-5651 review left unchecked in the paging specs.**
+- ✅ [ANTS-5666] **Correct three stale passages the ANTS-5651 review left unchecked in the paging specs.**
   Filed at the review's cap, not yet verified. (1) docs/specs/ANTS-1436-roadmap-query-pagination-auto-truncate.md
   § Dispatch forwarding says it is the only dispatch lambda that
   forwards verbatim; ANTS-3422 may have changed that. (2)
@@ -89470,6 +89470,12 @@ project. Reported causes are claims until checked in source.
   allowlists, but cmdChangelogQuery calls pageBullets itself. (3)
   ANTS-3533 § 2.2 says "~20 KB" where softCapBytes() can be lower.
   Records of shipped code, so rule 14's code-exists exception applies.
+  Shipped 2026-11-13. All three checked against the code and found stale.
+  (1) ANTS-1436 § Dispatch forwarding: rcDelegate forwards the whole args
+  object (ANTS-3422); the "only lambda" claim and the per-argument snippet
+  are gone. (2) ANTS-3533 INV-6: the handler pages itself through
+  PaginationEngine::pageBullets. (3) ANTS-3533 § 2.2 names softCapBytes().
+  An amend row in each loop log; no reviewer dispatched.
   **Layman:** Tidy three out-of-date sentences in the design notes for how roadmap and changelog lookups split results into pages.
   Kind: doc-fix.
   Source: review-contract-2026-10-12 ANTS-5651 tail.

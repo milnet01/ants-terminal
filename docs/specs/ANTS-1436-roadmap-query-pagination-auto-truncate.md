@@ -160,16 +160,11 @@ fit under cap), the envelope omits `offset`/`limit`/`total`/`truncated`/
 
 ### Dispatch forwarding
 
-`mainwindow.cpp:3860` dispatch lambda forwards new args verbatim
-(NOT type-gated) so the handler can emit `bad_args` on non-numeric:
-
-```cpp
-// ANTS-1436 — forward unconditionally; handler-side type check.
-// Type-gating at dispatch (like get_text's lines) would silently
-// drop bad input and the handler couldn't return INV-8's bad_args.
-if (args.contains("offset")) req["offset"] = args.value("offset");
-if (args.contains("limit"))  req["limit"]  = args.value("limit");
-```
+The dispatch forwards `offset` and `limit` verbatim (NOT type-gated) so the
+handler can emit `bad_args` on non-numeric input. Since ANTS-3422,
+`roadmap_query` is registered through `rcDelegate` in
+`src/mcptoolregistry.cpp`, which passes the whole `args` object to the
+handler, as it does for every verb registered that way.
 
 Handler-side check in `cmdRoadmapQuery`:
 
@@ -179,12 +174,6 @@ if (!offsetVal.isUndefined() && !offsetVal.isDouble()) {
     return /* bad_args envelope per INV-8 */;
 }
 ```
-
-Cold-eyes review 2026-05-16 M6: this is the **only** dispatch
-lambda in `mainwindow.cpp` that forwards verbatim — every other
-lambda type-gates and silently drops. The deviation is deliberate
-(INV-8 needs the handler to see the bad value); add a comment to
-that effect at the dispatch site.
 
 ## Invariants
 
@@ -355,3 +344,7 @@ No removed envelope fields, no renamed fields. Schema only adds.
   stale records of shipped code. This loop's 4 fixes were read by no lane;
   the build reads them. Tail filed on ANTS-5651: whether § Dispatch
   forwarding's "only dispatch lambda that forwards verbatim" still holds.
+- **amend (2026-11-13, ANTS-5666)** — not a review; no reviewer dispatched.
+  § Dispatch forwarding no longer says one `mainwindow.cpp` lambda is the only
+  verbatim forwarder: `rcDelegate` forwards the whole `args` object
+  (ANTS-3422). The per-argument forwarding snippet is gone with it.

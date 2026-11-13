@@ -168,7 +168,9 @@ empty `entries[]`. Only a case-ONLY mismatch refuses `bad_case` (§ 2.3).
 **Pagination + counts (all list modes).** `entries`, `headline_only`, and
 `version_index` each carry `count` (items in THIS response's array) and `total`
 (the full post-filter count before pagination), plus `offset`; `truncated:true`
-+ `next_offset` appear when the list was cut at `limit` or the ~20 KB soft cap.
++ `next_offset` appear when the list was cut at `limit` or the soft cap,
+`PaginationEngine::softCapBytes()`: `kSoftCapBytes`, or less when the offload
+threshold is lower.
 `count == total - offset` when not truncated. (The `version_index` example above shows
 only `count` for brevity; `total`/`offset` are emitted the same way.)
 
@@ -467,9 +469,11 @@ changes.
   `mode:lint` → `bad_mode_combo` (§ 2.4). *(test surface: fixture with an id in two version
   blocks → both returned; an absent id → empty `entries` + `found:false`; id +
   version_index → refusal.)*
-- **INV-6** — ETag-304 (`etag_match`), `fields=`, `compact`, offload/spill, and
-  pagination (`offset`/`limit` → `next_offset` on truncation) engage via the
-  generic dispatch pipeline — `changelog_query` is a member of each allowlist.
+- **INV-6** — ETag-304 (`etag_match`), `fields=`, `compact` and offload/spill
+  engage via the generic dispatch pipeline — `changelog_query` is a member of
+  each allowlist. Pagination (`offset`/`limit` → `next_offset` on truncation)
+  is the handler's own: `cmdChangelogQuery` calls
+  `PaginationEngine::pageBullets`.
   *(test surface: source-scrape — name present in the three allowlists § 4
   names.)*
 - **INV-7** — The parsed model is cached with the mtime+TTL predicate; an mtime
@@ -673,3 +677,4 @@ saving is on the RESPONSE wire, not the in-memory model.
 - **Loop 10 (2026-10-12, ANTS-5651 amendment; review-contract, 2 cold lanes, every lane held every question)** — Q1 2 · Q2 2 · Q3 0 · Q4 0 (verified 4 / dismissed 1; fixed 4). In the amendment: the Status line now says ANTS-5651's cut is not yet built (both lanes). Records of shipped code, fixed under rule 14's code-exists exception: § 2.2's example drops `limit` and `truncated:false`, which the handler never emits, and the sentence about the example's `50` is gone; § 2.3 and INV-5 add `mode:lint` to the `bad_mode_combo` case; INV-6 and § 7 item 3 say three allowlists, as § 4 does. Dismissed as changing nothing built: § 2.1 lacking the `section` alias (the handler already accepts it).
 - **Loop 11 (2026-10-12, ANTS-5651 amendment; 2 cold lanes, every lane held every question; cap reached)** — Q1 0 · Q2 0 · Q3 0 · Q4 1 (verified 1 / dismissed 1; fixed 1). Fixed: § 7 item 2 names a test for the explicit-limit cut on this verb's own path, since the allowlist scrape INV-6 names cannot fail on a paging defect. Dismissed as changing nothing built: § 2.1 lacking the `section` alias (the handler already accepts it). Cap reached (2 for a spec): calm, 0 of this loop's 1 finding landed on text loop 10 wrote. Whole run: 2 of 5 verified findings fall inside the gated span, commit 6093600f. This loop's fix was read by no lane. Tail filed on ANTS-5651: INV-6 says paging engages through the dispatch allowlists, though the handler calls `pageBullets` itself; § 2.2's "~20 KB" can be lower under `softCapBytes()`.
 - **amend (2026-10-26, ANTS-6282)** — not a review; no reviewer dispatched. § 2.2's release citation now also reads a bullet's indented continuation lines, matching the ids `entries` mode reports; reported by frameledger, whose wrapped bullets drew five false `shipped_not_cited` findings. No gate: it changes no Goal, invariant or invariant test (rules/14-contract-gate.md § The instance).
+- **amend (2026-11-13, ANTS-5666)** — not a review; no reviewer dispatched. INV-6 now says the handler pages itself through `PaginationEngine::pageBullets`; § 2.2 names `softCapBytes()` in place of "~20 KB". Both read in `src/remotecontrol_changelog.cpp` and `src/paginationengine.cpp`.
