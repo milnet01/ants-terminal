@@ -380,6 +380,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`read_region` symbol mode and `function_sizes` return the whole body of a function whose parameter list holds braces, such as a JavaScript destructured default.** (ANTS-5612)
+
 - **`verify_changes` with `force_refresh:true` saves its fresh result, so the next call reuses it.** (ANTS-5526)
 
 - **The context meter follows a Claude session after `/clear`.** (ANTS-6751)

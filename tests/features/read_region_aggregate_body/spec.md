@@ -29,6 +29,13 @@ had to fall back to line mode and hand-compute the range (DOOM_Ants feedback S4)
   brace-end equals the outline end; a body-less declaration brace-matches past
   the next symbol so the outline end is kept; the last symbol's to-EOF end
   collapses to its closing brace.
+- **INV-5 parameter braces are not the body (ANTS-5612)** — a brace opened
+  inside the parameter list directly after `(`, `,`, `=` or `:` (a
+  destructured or braced default such as `{ days = 28 } = {}`) is skipped
+  with its match. The body is the first brace after that. A brace inside the
+  parentheses after anything else, such as a callback's `=> {`, still opens
+  the body. Tests: `ParameterBracesAreNotTheBody`,
+  `BraceScanSkipsParameterBraces`.
 
 ## Out of scope
 

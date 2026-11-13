@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6755 -->
+<!-- ants-roadmap-id-high-water: ANTS=6757 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -89259,24 +89259,30 @@ project. Reported causes are claims until checked in source.
   Source: review-contract ANTS-1359 loop 1, 2026-09-28 (outside the gated change).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5538] **Find rule-14 commit-body records across every registered project in one call.**
+- 🚫 [ANTS-5538] **Find rule-14 commit-body records across every registered project in one call.**
   Returns {repo, sha, document, verdict} for each `CLAUDE.md rule 14:`
   line in commit BODIES, across the store's registered projects. Build on
   ANTS-5508's git_state log grep, adding a scope:"all" fan-out over
   registered roots with a per-repo walk budget. Rolodex is writing a
   script version (tools/rule14-records); match its output shape.
+  Dropped 2026-11-13: withdrawn by the requester (claude-config). Rule 14
+  owes no commit-body record since 2026-11-05; tools/rule14-records reads
+  the old ones.
   **Layman:** One lookup to find every recorded review decision across all projects, instead of searching each project's history by hand.
   Kind: feature.
   Source: claude-config CFG-0659, relayed by claude-cd 2026-09-28.
   Lanes: mcp.
 
-- 📋 [ANTS-5539] **A machine-wide project-facts cache: remote, visibility, workflows, PR opt-in and contract-doc directories per project.**
+- 🚫 [ANTS-5539] **A machine-wide project-facts cache: remote, visibility, workflows, PR opt-in and contract-doc directories per project.**
   Global CLAUDE.md rule 6 has every session check .github/workflows and
   `gh repo view` visibility before a push, and rule 7 the PR opt-in
   signals. A verb reading a store-cached record per registered project
   (refreshed on a TTL, visibility fetched once) saves those gh calls.
   OneUp is building tools/project-facts; match its fields. Hot reload:
   data in the store, no relaunch.
+  Dropped 2026-11-13: withdrawn by the requester (claude-config).
+  ~/.claude/tools/project-facts already caches machine-wide; a store copy
+  would be a second home for the same facts.
   **Layman:** Every session needs the same few facts about each project; keep them in one place so nobody has to ask GitHub again.
   Kind: feature.
   Source: claude-config CFG-0658, relayed by claude-cd 2026-09-28.
@@ -89559,7 +89565,7 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-10-01 triage
 
-- 📋 [ANTS-5612] **read_region symbol: returns a JavaScript function's whole body, not just its signature line.**
+- ✅ [ANTS-5612] **read_region symbol: returns a JavaScript function's whole body, not just its signature line.**
   read_region {path:"lib/ga.mjs", symbol:"collectAnalytics"} in Ants_Projects_Hub_Website
   returned start_line 169 = end_line 169, the `export async function
   collectAnalytics(propertyId, { days = 28 } = {}) {` line alone, with no
@@ -89567,6 +89573,13 @@ project. Reported causes are claims until checked in source.
   function's extent to its matching closing brace; where the extent cannot
   be found, set body_truncated rather than returning one line as a whole
   body.
+  Shipped 2026-11-13. Cause: braceBalancedEndLine took the parameter
+  list's `{ days = 28 }` as the body. It now skips a brace inside the
+  parentheses that follows `(`, `,`, `=` or `:`. Contract:
+  tests/features/read_region_aggregate_body/spec.md INV-5, both tests red
+  first. function_sizes shares the scan. Not done: body_truncated on an
+  extent that cannot be found; the outline-end fallback is unchanged.
+  Reaches clients when ants-mcpd is rebuilt and they reconnect.
   **Layman:** Asking for a JavaScript function's code returns only its first line, so the reader thinks that is all of it.
   Kind: fix.
   Source: Pressless feedback 2026-10-01.
@@ -92338,6 +92351,32 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: Games Hub feedback 2026-11-10.
   Lanes: ci-report.
+
+- 📋 [ANTS-6756] **doc_dedup figure_mismatch reads a figure with a k or M suffix.**
+  ANTS-5403 follow-up. Two passages differing only in `90-104k` vs
+  `140-154k` pair at 0.704 and get no figure_mismatch; `500` vs `600`
+  does. That is CFG-0234's original pair. Measured by claude-config:
+  104 k-suffixed figures in 29 files under ~/.claude skills + standards.
+  Fix: read a number or range followed directly by k or M as a figure
+  (magnitude); leave true units (ms, KB, %) out as now. Spec ANTS-3660
+  INV-12. Red-first with the four-file repro. Reload: ants-mcpd rebuild
+  and reconnect.
+  **Layman:** The check for near-identical passages that quote different numbers misses numbers written like 90-104k, which is how token figures are usually written.
+  Kind: fix.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-11-13.
+  Lanes: mcp, docs.
+
+- 📋 [ANTS-6757] **doc_dedup and doc_lint take a kinds filter, and report counts by kind.**
+  Measured by claude-config: doc_dedup {path:"skills",
+  fields:["findings","ok"]} in ~/.claude returned 208,353 characters,
+  989 near_duplicate, 0 figure_mismatch; about 50k tokens to learn zero.
+  Wanted: kinds:["figure_mismatch"] on doc_dedup and doc_lint, and a
+  counts-by-kind field that survives the filter. Reload: ants-mcpd
+  rebuild and reconnect.
+  **Layman:** Let a caller ask only for one sort of finding, so checking for mismatched numbers does not mean receiving every near-duplicate too.
+  Kind: enhancement.
+  Source: claude_config_Ants_MCP_Feedback.md 2026-11-13.
+  Lanes: mcp, docs.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

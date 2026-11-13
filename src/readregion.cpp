@@ -187,6 +187,12 @@ int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
                          int *openLine) {
     int depth = 0, deepest = 0;
     bool seenOpen = false, inBlockComment = false;
+    // ANTS-5612 — braces in a parameter list are not the body. Until the body
+    // opens, a `{` inside parentheses directly after `(`, `,`, `=` or `:` is a
+    // destructured or braced default (`{ days = 28 } = {}`): it is skipped
+    // with its match. After anything else (`=> {`) it opens the body.
+    int parenDepth = 0, skipDepth = 0;
+    QChar prev;  // last code character outside comments and whitespace
     for (int lineNo = qMax(1, startLine); lineNo <= lines.size(); ++lineNo) {
         const QString &line = lines.at(lineNo - 1);
         bool inString = false, inChar = false;
@@ -209,8 +215,26 @@ int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
             }
             if (c == QLatin1Char('/') && n == QLatin1Char('/')) break;  // line comment
             if (c == QLatin1Char('/') && n == QLatin1Char('*')) { inBlockComment = true; ++i; continue; }
-            if (c == QLatin1Char('"'))  { inString = true; continue; }
-            if (c == QLatin1Char('\'')) { inChar = true; continue; }
+            if (c == QLatin1Char('"'))  { inString = true; prev = c; continue; }
+            if (c == QLatin1Char('\'')) { inChar = true; prev = c; continue; }
+            if (c.isSpace()) continue;
+            const QChar before = prev;
+            prev = c;
+            if (skipDepth > 0) {
+                if (c == QLatin1Char('{')) ++skipDepth;
+                else if (c == QLatin1Char('}')) --skipDepth;
+                continue;
+            }
+            if (!seenOpen) {
+                if (c == QLatin1Char('(')) { ++parenDepth; continue; }
+                if (c == QLatin1Char(')')) { parenDepth = qMax(0, parenDepth - 1); continue; }
+                if (c == QLatin1Char('{') && parenDepth > 0 &&
+                    (before == QLatin1Char('(') || before == QLatin1Char(',') ||
+                     before == QLatin1Char('=') || before == QLatin1Char(':'))) {
+                    skipDepth = 1;
+                    continue;
+                }
+            }
             if (c == QLatin1Char('{')) {
                 deepest = qMax(deepest, ++depth);
                 if (!seenOpen && openLine) *openLine = lineNo;

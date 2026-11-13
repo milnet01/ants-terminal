@@ -212,3 +212,39 @@ TEST(ReadRegionAggregateBody, LastFunctionCapsAtBrace) {
     ASSERT_TRUE(env.value("ok").toBool());
     EXPECT_EQ(env.value("end_line").toInt(), 3);
 }
+
+// INV-5 (ANTS-5612) — braces in a parameter list are not the body. The
+// destructured default `{ days = 28 } = {}` closed the scan on the signature
+// line, so the reply was that one line.
+TEST(ReadRegionAggregateBody, ParameterBracesAreNotTheBody) {
+    QTemporaryDir dir;
+    const QString root = QFileInfo(dir.path()).canonicalFilePath();
+    const QString path = root + "/ga.mjs";
+    const QJsonObject env = extractSym(path,
+        "export async function collectAnalytics(propertyId, { days = 28 } = {}) {\n"  // 1
+        "  const range = { days };\n"                                                 // 2
+        "  return range;\n"                                                           // 3
+        "}\n"                                                                         // 4
+        "\n"
+        "export function other() {\n"
+        "  return 1;\n"
+        "}\n",
+        "collectAnalytics");
+    ASSERT_TRUE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("start_line").toInt(), 1);
+    EXPECT_EQ(env.value("end_line").toInt(), 4);
+    EXPECT_TRUE(joinLines(env).contains("return range;"));
+}
+
+// INV-5 — the scan itself: a braced default, a parameter list over several
+// lines, and (unchanged) a callback whose body opens inside the parentheses.
+TEST(ReadRegionAggregateBody, BraceScanSkipsParameterBraces) {
+    EXPECT_EQ(ReadRegion::braceBalancedEndLine(
+                  {"void f(std::vector<int> v = {}) {", "    work();", "}"}, 1), 3);
+    EXPECT_EQ(ReadRegion::braceBalancedEndLine(
+                  {"function f(", "  { a = 1 },", "  b = {},", ") {",
+                   "  body();", "}"}, 1), 6);
+    EXPECT_EQ(ReadRegion::braceBalancedEndLine(
+                  {"app.get('/x', (req, res) => {", "  send();", "});",
+                   "function next() {", "}"}, 1), 3);
+}
