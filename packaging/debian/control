@@ -33,7 +33,9 @@ Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
          hicolor-icon-theme
-Recommends: python3,
+Recommends: ripgrep,
+            git,
+            python3,
             xvfb,
             xauth,
             ffmpeg,

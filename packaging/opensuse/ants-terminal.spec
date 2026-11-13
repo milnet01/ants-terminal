@@ -228,6 +228,11 @@ Requires:       hicolor-icon-theme
 %if 0%{?suse_version}
 Requires:       qt6-sql-sqlite
 %endif
+# ANTS-5743 — workspace_search and cited_by run rg, and the git verbs run git.
+# Recommended, not required: the terminal itself works without either, and
+# each verb says what is missing (src/rgdiagnosis.h).
+Recommends:     ripgrep
+Recommends:     git-core
 # ANTS-5617 — the bundled demoreel recorder. Weak dependencies only: the
 # terminal runs without them, and `demoreel check` names what is missing.
 Recommends:     python3

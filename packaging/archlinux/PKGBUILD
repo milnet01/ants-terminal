@@ -32,6 +32,9 @@ optdepends=(
   # on Arch, whose libexecdir is /usr/lib). Each is optional; `demoreel check`
   # names what is missing.
   'python: run the bundled demoreel recorder'
+  # ANTS-5743 — the MCP search verbs run rg and the git verbs run git.
+  'ripgrep: workspace_search and cited_by'
+  'git: git_state and the other git-backed verbs'
   'xorg-server-xvfb: demoreel records on a private display'
   'xorg-xauth: demoreel display authentication'
   'ffmpeg: demoreel video encoding'
