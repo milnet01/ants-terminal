@@ -30,6 +30,23 @@
 
 #include <optional>
 
+// ANTS-5699 — see the header.
+QJsonObject RemoteControl::mailBodyFields(const QString &body, bool wholeBody) {
+    QString subject;
+    const QStringList lines = body.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        subject = line.trimmed();
+        if (!subject.isEmpty()) break;
+    }
+    const bool clipped = subject.size() > RoadmapStore::kMailPreviewChars;
+    if (wholeBody || (!clipped && subject == body.trimmed()))
+        return QJsonObject{{QStringLiteral("body"), body}};
+    if (clipped)
+        subject = subject.left(RoadmapStore::kMailPreviewChars) + QChar(0x2026);
+    return QJsonObject{{QStringLiteral("subject"), subject},
+                       {QStringLiteral("body_bytes"), body.toUtf8().size()}};
+}
+
 namespace {
 
 QJsonDocument refuse(const char *code, const QString &message) {
@@ -50,13 +67,12 @@ QJsonDocument refuseUnknownProject(const RoadmapStore &store, const QString &to,
     return QJsonDocument(e);
 }
 
-QJsonObject messageToJson(const RoadmapStore::Message &m) {
-    QJsonObject o;
+QJsonObject messageToJson(const RoadmapStore::Message &m, bool wholeBody) {
+    QJsonObject o = RemoteControl::mailBodyFields(m.body, wholeBody);
     o[QStringLiteral("message_id")]   = double(m.id);
     o[QStringLiteral("from")]         = m.fromSlug;
     o[QStringLiteral("from_session")] = m.fromSession;
     o[QStringLiteral("created_at")]   = m.createdAt;
-    o[QStringLiteral("body")]         = m.body;
     // Absent rather than null when unread: `acked_at` present IS the read
     // state, so a null would make a client test the value instead of the key.
     if (!m.ackedAt.isEmpty())
@@ -296,12 +312,26 @@ QJsonDocument opInbox(MailCall &c, qint64 id) {
             return refuseStore(QString(), err);
     }
 
+    // ANTS-5699 — a page lists subject lines; one message by id, or
+    // include_body, returns bodies.
+    const bool wholeBody =
+        id != 0 || c.req.value(QStringLiteral("include_body")).toBool(false);
     QJsonArray arr;
-    for (const auto &m : rows)
-        arr.append(messageToJson(m));
+    int omitted = 0;
+    for (const auto &m : rows) {
+        const QJsonObject row = messageToJson(m, wholeBody);
+        if (!row.contains(QStringLiteral("body"))) ++omitted;
+        arr.append(row);
+    }
     c.out[QStringLiteral("messages")]      = arr;
     c.out[QStringLiteral("unacked_count")] = unacked;
     c.out[QStringLiteral("count")]         = arr.size();
+    if (omitted > 0) {
+        c.out[QStringLiteral("bodies_omitted")] = omitted;
+        c.out[QStringLiteral("bodies_hint")] = QStringLiteral(
+            "a row with `subject` has more text: pass include_body:true for "
+            "every body, or message_id for one");
+    }
     return QJsonDocument(c.out);
 }
 

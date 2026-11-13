@@ -17,6 +17,8 @@
 #include "../../_support/srcgrep.h"
 #include "gitorigin.h"
 #include "roadmapstore.h"
+#include "remotecontrol.h"
+#include <QJsonObject>
 #include "../../_support/roadmapstoreaccess.h"
 
 #include <QDir>
@@ -1057,4 +1059,45 @@ TEST(SessionMessage, Ants6726GithubReposListsEveryRemote) {
     const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
     EXPECT_TRUE(h.contains(QStringLiteral("GitOrigin::githubRepos(")))
         << "op:\"projects\" reports every GitHub remote";
+}
+
+// ANTS-5699 — an inbox row carries a subject line, not the body, unless the
+// body is one short line or the caller asked for bodies.
+TEST(SessionMessage, Ants5699InboxRowCarriesASubjectLine) {
+    const QString longBody = QStringLiteral(
+        "\nants-terminal: ANTS-1 shipped.\nSecond line with the detail.\nThird.");
+    const QJsonObject lean = RemoteControl::mailBodyFields(longBody, false);
+    EXPECT_FALSE(lean.contains(QStringLiteral("body")));
+    EXPECT_EQ(lean.value(QStringLiteral("subject")).toString(),
+              QStringLiteral("ants-terminal: ANTS-1 shipped."));
+    EXPECT_EQ(lean.value(QStringLiteral("body_bytes")).toInt(), longBody.toUtf8().size());
+
+    const QJsonObject whole = RemoteControl::mailBodyFields(longBody, true);
+    EXPECT_EQ(whole.value(QStringLiteral("body")).toString(), longBody);
+    EXPECT_FALSE(whole.contains(QStringLiteral("subject")));
+
+    // One short line IS the message: a second call would fetch nothing new.
+    const QJsonObject brief = RemoteControl::mailBodyFields(QStringLiteral("drop both"), false);
+    EXPECT_EQ(brief.value(QStringLiteral("body")).toString(), QStringLiteral("drop both"));
+    EXPECT_FALSE(brief.contains(QStringLiteral("subject")));
+
+    // A single line past the cap is clipped, and says so with an ellipsis.
+    const QString wide(400, QLatin1Char('x'));
+    const QJsonObject clipped = RemoteControl::mailBodyFields(wide, false);
+    const QString subject = clipped.value(QStringLiteral("subject")).toString();
+    EXPECT_EQ(subject.size(), RoadmapStore::kMailPreviewChars + 1);
+    EXPECT_TRUE(subject.endsWith(QChar(0x2026)));
+    EXPECT_EQ(clipped.value(QStringLiteral("body_bytes")).toInt(), 400);
+}
+
+// ANTS-5699 — the handler wiring, by inspection (see INV-10's note): a page
+// asks for lean rows, one message by id or include_body asks for whole ones,
+// and the schema declares the argument.
+TEST(SessionMessage, Ants5699InboxAsksForBodiesOnlyOnRequest) {
+    const QString h = codeOnly(readSrc("remotecontrol_session_message.cpp"));
+    ASSERT_FALSE(h.isEmpty());
+    EXPECT_TRUE(h.contains(QStringLiteral(
+        "id != 0 || c.req.value(QStringLiteral(\"include_body\")).toBool(false)")));
+    EXPECT_TRUE(h.contains(QStringLiteral("bodies_omitted")));
+    EXPECT_TRUE(sessionMessageToolBlock().contains(QStringLiteral("props[\"include_body\"]")));
 }

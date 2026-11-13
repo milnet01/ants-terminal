@@ -429,6 +429,12 @@ public:
         if (capClamped) out["bytes_cap_clamped"] = true;   // preserve ANTS-1293 echo
     }
 
+    // ANTS-5699 — the body half of one session_message inbox row. A body
+    // that is one short line, or any body when `wholeBody`, is returned as
+    // {body}. Otherwise {subject, body_bytes}: the first non-empty line,
+    // clipped, and the size of what was left out.
+    static QJsonObject mailBodyFields(const QString &body, bool wholeBody);
+
     // ANTS-2220 — the function/method enclosing `line`, given a file_outline
     // `symbols[]` array (each {line, name}). Nearest-preceding symbol by
     // start line; empty when `line` precedes the first symbol (e.g. a match

@@ -171,6 +171,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`session_message op:inbox` lists a longer message by its `subject` line and size; `include_body:true` or a read by `message_id` returns the text.** (ANTS-5699)
+
 - **`workspace_search` drops context lines before rows: a reply that would spill only because of its context keeps every row inline and reports `context_dropped`.** (ANTS-5588)
 
 - **Distro packages build faster on openSUSE's build service: Fedora about 36 minutes instead of 65, Tumbleweed 29 instead of 43, because install no longer rebuilds and Fedora compiles on every CPU** (ANTS-5578)

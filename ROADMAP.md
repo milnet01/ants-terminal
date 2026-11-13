@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6757 -->
+<!-- ants-roadmap-id-high-water: ANTS=6758 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -90091,11 +90091,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-10-15.
   Lanes: mcp.
 
-- 📋 [ANTS-5699] **session_message inbox shows subject lines by default; a body is fetched on demand.**
+- ✅ [ANTS-5699] **session_message inbox shows subject lines by default; a body is fetched on demand.**
   rolodex measured an inbox dump of 7 bodies at ~6k chars. Asked by
   album-builder, games-hub, mame-curator, rolodex. Add snooze/deferred
   state and auto-expiry for broadcasts, and notify only when the unread
   count changes (contact-list, finbreak, lotto-tracker, mame-curator).
+  Shipped 2026-11-13, the subject-line half. An inbox page row carries
+  `body` only when the message is one short line; otherwise `subject`
+  (first non-empty line, clipped) and `body_bytes`, with bodies_omitted
+  and bodies_hint on the reply. include_body:true or a read by message_id
+  returns bodies. Contract: tests/features/session_message/spec.md INV-15,
+  tests red first against a stand-in. Snooze, broadcast expiry and
+  notify-on-change split to ANTS-6758. Reaches clients when ants-mcpd is
+  rebuilt and they reconnect; no running state, so no stop/start control.
   **Layman:** List messages by title first, so Claude reads only the ones it needs.
   Kind: perf.
   Source: token-survey-2026-10-15.
@@ -90967,6 +90975,18 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** A test that wrongly failed on openSUSE's package builds now checks the right thing; the program itself did not change.
   Kind: fix.
   Source: release-0.7.115-staging-gate-2026-10-30.
+
+- 📋 [ANTS-6758] **session_message: snooze a message, expire a broadcast, and notify only when the unread count changes.**
+  The rest of ANTS-5699, which shipped the subject-line inbox. Asked by
+  contact-list, finbreak, lotto-tracker, mame-curator. Three parts, each
+  with a store change: a deferred state beside acked; an expiry on
+  to:"*" mail; hooks/ants-inbox-notice.sh announcing on a changed count
+  only (check first: it already keeps state under ants-inbox/). Needs a
+  schema bump, so read .claude/rules/roadmap-store.md first.
+  **Layman:** Let a session put a message aside for later, let old broadcasts lapse on their own, and stop repeating the same "you have mail" notice.
+  Kind: enhancement.
+  Source: token-survey-2026-10-15 (split from ANTS-5699, 2026-11-13).
+  Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 

@@ -2151,7 +2151,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "export_slug, never to a session. op:\"send\" (needs `to` + "
                         "`body`; to:\"*\" reaches every registered project and "
                         "returns sent[] and refused[]), op:\"inbox\" (default: your unacked mail, newest "
-                        "first), op:\"outbox\" (mail you sent), op:\"ack\" (needs "
+                        "first; a longer message lists `subject`, and include_body or "
+                        "message_id returns its text), op:\"outbox\" (mail you sent), op:\"ack\" (needs "
                         "`message_id`; idempotent), op:\"projects\" (every "
                         "registered slug, root and github_repo). An entry "
                         "with `acked_at` has been read. Refusals: no_project (run "
@@ -2305,6 +2306,15 @@ void appendToolSchemasStore(QJsonArray &tools) {
                             "acked. Default false, which is the useful view: "
                             "what still needs reading.");
                         props["include_acked"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["default"] = false;
+                        p["description"] = QStringLiteral(
+                            "op:\"inbox\" — return every body. Default false: a "
+                            "longer message shows `subject` and `body_bytes`.");
+                        props["include_body"] = p;
                     }
                     {
                         QJsonObject p;

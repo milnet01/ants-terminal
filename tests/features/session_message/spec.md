@@ -84,6 +84,15 @@ sleeping or faking a clock.
   sent to the caller stays out, which separates the sender predicate from
   every row touching the caller.
 
+- **INV-15** (ANTS-5699) — an inbox page row carries the message text only
+  when it is one short line. A longer message carries `subject`, its first
+  non-empty line clipped to `RoadmapStore::kMailPreviewChars`, and
+  `body_bytes`; the reply then carries `bodies_omitted` and `bodies_hint`.
+  `include_body:true`, or a read of one message by `message_id`, returns every
+  body. *Test:* `Ants5699InboxRowCarriesASubjectLine` drives
+  `RemoteControl::mailBodyFields`; `Ants5699InboxAsksForBodiesOnlyOnRequest`
+  reads the handler and schema.
+
 ## Also asserted, and not from the design contract's invariant list
 
 - **The body cap is byte-valued.** 2000 three-byte characters (6000 bytes) are
