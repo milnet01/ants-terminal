@@ -534,6 +534,9 @@ struct Sink {
     }
 };
 
+// ANTS-6160 — the widest "INV-a to INV-b" the coverage check expands.
+constexpr int kMaxExpandedRange = 500;
+
 struct InvId {
     int n = 0;
     QString letter;
@@ -1014,13 +1017,38 @@ void checkTestCoverage(const QStringList &lines, const QVector<bool> &fence,
             // inside such a range read as uncovered. It was the single
             // largest false-positive class in the pre-ship measurement.
             //
-            // A RANGE defeats the comparison rather than answering it. The
-            // cheaper rule of the two the item offered: say so, and report no
-            // gaps at all for this document. Expanding the range would mean
-            // guessing which ids the author meant; reporting gaps ALONGSIDE it
-            // would be worse than silence, since every id inside the range
-            // would read as uncovered.
-            // Two shapes, one meaning: notation this comparison cannot expand.
+            // ANTS-6160 — a range between two plain numbers is expanded
+            // against the declared ids: every declared id whose number lies
+            // in it counts as named, a lettered one (INV-2a) included. A
+            // number in the range that no declared id carries leaves the
+            // range unverifiable, as before: the author named something this
+            // spec does not hold.
+            static const QRegularExpression numericRangeRe(QStringLiteral(
+                R"(INV-([0-9]+)\s*(?:\.\.\.?|\x{2013}|\x{2014}|-{1,2}|\bto\b)\s*(?:INV-)?([0-9]+)(?![A-Za-z0-9]))"));
+            QSet<int> declaredNumbers;
+            for (const InvId &e : ids) declaredNumbers.insert(e.n);
+            QSet<int> rangeNamed;
+            QString unexpandable;
+            for (auto it = numericRangeRe.globalMatch(section); it.hasNext() && unexpandable.isEmpty();) {
+                const auto m = it.next();
+                const int from = m.captured(1).toInt(), to = m.captured(2).toInt();
+                if (to < from || to - from > kMaxExpandedRange) continue;   // left to rangeRe below
+                for (int n = from; n <= to && unexpandable.isEmpty(); ++n)
+                    if (!declaredNumbers.contains(n))
+                        unexpandable = QStringLiteral("%1 reaches INV-%2, which this spec does not declare")
+                                           .arg(m.captured(0)).arg(n);
+                if (!unexpandable.isEmpty()) break;
+                for (int n = from; n <= to; ++n) rangeNamed.insert(n);
+                // Blanked so the notation check below reads only what is left.
+                section.replace(m.capturedStart(0), m.capturedLength(0),
+                                QString(m.capturedLength(0), QLatin1Char(' ')));
+            }
+
+            // What is left may still hold notation this comparison cannot
+            // expand. Say so, and report no gaps at all for this document:
+            // reporting gaps ALONGSIDE it would be worse than silence, since
+            // every id inside the notation would read as uncovered.
+            // Two shapes, one meaning.
             //
             //   INV-1..INV-9   a fully-qualified range
             //   INV-1..7       a range whose second operand is BARE
@@ -1036,12 +1064,12 @@ void checkTestCoverage(const QStringList &lines, const QVector<bool> &fence,
                 R"(INV-[0-9]+[a-z]?\s*(?:\.\.\.?|\x{2013}|\x{2014}|-{1,2}|to)\s*INV-[0-9]+[a-z]?)"
                 R"(|INV-[0-9]+[a-z]?\s*(?:\.\.\.?|\x{2013}|\x{2014}|-{1,2}|/|,|\band\b|\bto\b)\s*[0-9]+[a-z]?\b)"));
             const auto rangeM = rangeRe.match(section);
-            if (rangeM.hasMatch()) {
+            if (!unexpandable.isEmpty() || rangeM.hasMatch()) {
                 add(QStringLiteral("test_coverage_unverifiable"), hdr + 1,
                     QStringLiteral("the Tests section states coverage as a "
                                    "range (%1), which cannot be compared "
                                    "against the declared ids (candidate)")
-                        .arg(rangeM.captured(0)));
+                        .arg(unexpandable.isEmpty() ? rangeM.captured(0) : unexpandable));
             } else {
                 static const QRegularExpression namedRe(
                     QStringLiteral(R"(INV-[0-9]+[a-z]?(?![A-Za-z0-9]))"));
@@ -1064,12 +1092,12 @@ void checkTestCoverage(const QStringList &lines, const QVector<bool> &fence,
                 //
                 // What survives is the defect the item described: a spec that
                 // names SOME ids and misses others.
-                if (named.isEmpty()) {
+                if (named.isEmpty() && rangeNamed.isEmpty()) {
                     r.testCoverageChecked = false;
                     return;
                 }
                 for (const InvId &e : ids) {
-                    if (named.contains(e.id)) continue;
+                    if (named.contains(e.id) || rangeNamed.contains(e.n)) continue;
                     // A withdrawn or moved invariant has nothing left to
                     // test, so the Tests section is right not to name it —
                     // the exemption both invariant checks above already make.

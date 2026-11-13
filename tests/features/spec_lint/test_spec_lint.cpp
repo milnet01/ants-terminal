@@ -1315,21 +1315,54 @@ TEST(SpecLint, Ants4623SilentWhenEveryInvariantIsNamed) {
     EXPECT_TRUE(r.testCoverageChecked);
 }
 
-// Range notation defeats the comparison. The item hit this on a real spec and
-// chose the cheaper rule: report it as unverifiable rather than teach the
-// checker to expand ranges. Reporting gaps as well would be worse than saying
-// nothing — every id inside the range would read as uncovered.
+// A range naming an id the spec does not declare defeats the comparison:
+// report it as unverifiable. Reporting gaps as well would be worse than
+// saying nothing — every id inside the range would read as uncovered.
 TEST(SpecLint, Ants4623RangeNotationIsUnverifiableNotAGap) {
     const QString doc = parityDoc(
         QStringLiteral("- **INV-1** — one. *Test:* a.\n"
                        "- **INV-2** — two. *Test:* b.\n"
                        "- **INV-3** — three. *Test:* c.\n"),
-        QStringLiteral("INV-1..INV-3 are covered by the bundle.\n"));
+        QStringLiteral("INV-1..INV-4 are covered by the bundle.\n"));
     const auto r = SpecLint::check(doc, QStringLiteral("s.md"), {});
     EXPECT_EQ(1, countKind(r, "test_coverage_unverifiable"));
+    const auto *f = firstOfKind(r, "test_coverage_unverifiable");
+    ASSERT_NE(f, nullptr);
+    EXPECT_TRUE(f->message.contains(QStringLiteral("INV-4")))
+        << "it names the id the range reaches and the spec does not declare: "
+        << f->message.toStdString();
     EXPECT_EQ(0, countKind(r, "test_coverage_gap"))
         << "a defeated comparison must not also report every id in the range";
     EXPECT_TRUE(r.testCoverageChecked);
+}
+
+// ANTS-6160 — a range whose every number the spec declares is expanded, so
+// each id inside it counts as covered and the rest are still compared.
+TEST(SpecLint, Ants6160DeclaredRangeIsExpanded) {
+    const QString invs = QStringLiteral(
+        "- **INV-1** — one. *Test:* a.\n"
+        "- **INV-2** — two. *Test:* b.\n"
+        "- **INV-2a** — two and a half. *Test:* b2.\n"
+        "- **INV-3** — three. *Test:* c.\n"
+        "- **INV-4** — four. *Test:* d.\n");
+    for (const char *tests : {"INV-1 to INV-3 are covered.\n",
+                              "INV-1..INV-3 are covered.\n",
+                              "INV-1..3 are covered.\n",
+                              "INV-1 to 3 are covered.\n",
+                              "INV-1\u2013INV-3 are covered.\n"}) {
+        const auto r = SpecLint::check(
+            parityDoc(invs, QString::fromUtf8(tests)), QStringLiteral("s.md"), {});
+        EXPECT_EQ(0, countKind(r, "test_coverage_unverifiable")) << tests;
+        ASSERT_EQ(1, countKind(r, "test_coverage_gap")) << tests;
+        EXPECT_TRUE(firstOfKind(r, "test_coverage_gap")->message.contains(QStringLiteral("INV-4")))
+            << "only the id outside the range is a gap: " << tests;
+    }
+    // A range beside a notation that still cannot be expanded stays unverifiable.
+    const auto mixed = SpecLint::check(
+        parityDoc(invs, QStringLiteral("INV-1 to INV-2 by the bundle; INV-3/4 by hand.\n")),
+        QStringLiteral("s.md"), {});
+    EXPECT_EQ(1, countKind(mixed, "test_coverage_unverifiable"));
+    EXPECT_EQ(0, countKind(mixed, "test_coverage_gap"));
 }
 
 // No Tests section: the check cannot run, and must say so rather than report
@@ -1372,7 +1405,7 @@ TEST(SpecLint, Ants4623AbbreviatedNotationsAreUnverifiable) {
     for (const char *tests : {"INV-1..7 are covered.\n",
                               "INV-1/2 source-scrape; INV-3 behavioural.\n",
                               "INV-1, 2 and 3 are covered.\n",
-                              "INV-1 to 3 are covered.\n"}) {
+                              "INV-1 to 7 are covered.\n"}) {
         const auto r = SpecLint::check(
             parityDoc(invs, QString::fromUtf8(tests)),
             QStringLiteral("s.md"), {});

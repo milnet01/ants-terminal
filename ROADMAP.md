@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6762 -->
+<!-- ants-roadmap-id-high-water: ANTS=6764 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -86074,13 +86074,17 @@ rather than refiled.
   Source: in-session-2026-10-21, found while shipping ANTS-4890.
   Lanes: mcp, specs.
 
-- 📋 [ANTS-6160] **spec_lint should expand an "INV-a to INV-b" coverage range in a Tests section against the declared invariant ids.**
+- ✅ [ANTS-6160] **spec_lint should expand an "INV-a to INV-b" coverage range in a Tests section against the declared invariant ids.**
   Pressless verified ANTS-4890 (d11fb18): test_coverage_gap 40 -> 0 over
   511 invariants. Three test_coverage_unverifiable remain, each a Tests
   section stating coverage as a range: "INV-1 to INV-13" (PRESS-0006),
   "INV-19 to INV-21" (PRESS-0019), "INV-1 to INV-5" (PRESS-0022). Expand
   the range against the spec's declared ids; an id in the range that is
   not declared stays unverifiable.
+  Shipped 2026-11-13: checkTestCoverage (src/speclint.cpp) expands a range
+  between two plain numbers against the declared ids; a number no declared
+  id carries leaves it test_coverage_unverifiable, naming that id. Tests:
+  SpecLint.Ants6160DeclaredRangeIsExpanded, seen red first.
   **Layman:** When a spec says its tests cover "INV-1 to INV-5", the checker should count every invariant in that range as covered.
   Kind: enhancement.
   Source: pressless-msg-803-2026-10-22.
@@ -92505,6 +92509,29 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: pressless-session-message-2026-11-13.
   Lanes: mcp.
+
+- ✅ [ANTS-6763] **cc-job clean --mine picks this session's records in one pass.**
+  Reported at 14.1 s to remove nothing, with 17187 files in the state
+  folder; an earlier session took it for a hang. Cause: clean_cmd read
+  every .info record in its own subshell. Now one grep lists the records
+  whose owner line is this session's. Measured here 2026-11-13 with 4958
+  records: 3.75 s before, 0.15 s after. cc_job_bundle INV-12 still passes;
+  no timing test was added, since one would be flaky.
+  **Layman:** Tidying up a session's finished jobs is instant again, however many old jobs are on disk.
+  Kind: perf.
+  Source: ants-projects-hub-website-message-2026-11-13.
+  Lanes: cc-job.
+
+- 📋 [ANTS-6764] **cc-job prunes old finished job records.**
+  Nothing removes a finished job once its session has ended, so the state
+  folder held about 5000 jobs on 2026-11-13. `cc-job status` with no name
+  still walks them. Decide the rule first: an age limit, a count limit, or
+  an explicit `cc-job prune --older-than <days>`; a log nobody read is the
+  only copy of its output (CFG-0729).
+  **Layman:** Old job logs from sessions long gone are cleared away instead of piling up for ever.
+  Kind: enhancement.
+  Source: ants-projects-hub-website-message-2026-11-13.
+  Lanes: cc-job.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

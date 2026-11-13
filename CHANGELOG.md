@@ -188,6 +188,12 @@ for security-relevant changes.
 
 ### Changed
 
+- **`cc-job clean --mine` finishes in a fraction of a second, however many old job records are on disk.** (ANTS-6763)
+
+- **`spec_lint` reads a Tests-section range such as "INV-1 to INV-5" as covering every declared rule in it.** (ANTS-6160)
+  A range that reaches a rule the spec does not declare is still reported
+  as `test_coverage_unverifiable`, and the message names that rule.
+
 - **`session_message op:inbox` lists a longer message by its `subject` line and size; `include_body:true` or a read by `message_id` returns the text.** (ANTS-5699)
 
 - **`workspace_search` drops context lines before rows: a reply that would spill only because of its context keeps every row inline and reports `context_dropped`.** (ANTS-5588)

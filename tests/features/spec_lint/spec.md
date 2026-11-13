@@ -114,3 +114,14 @@ guard, and recorded as one.
   source scrape rather than a behavioural assertion.
 - The loop-log **balance** check — dropped, with the measurement, in the owning
   spec's § 5. `ANTS-3682` carries the prerequisite.
+
+## ANTS-6160 — a range of declared ids is expanded
+
+A Tests-section range between two plain numbers (`INV-1 to INV-3`,
+`INV-1..3`, an en dash) counts every declared id whose number lies in it as
+covered, a lettered id included, and the ids outside it are still compared.
+A range reaching a number no declared id carries reports
+`test_coverage_unverifiable` naming that id, and no gaps. A range beside
+notation that cannot be expanded (`INV-3/4`) is still unverifiable. Tests:
+`SpecLint.Ants6160DeclaredRangeIsExpanded`,
+`SpecLint.Ants4623RangeNotationIsUnverifiableNotAGap`.
