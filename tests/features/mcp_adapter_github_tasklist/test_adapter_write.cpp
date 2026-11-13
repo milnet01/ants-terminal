@@ -5,6 +5,7 @@
 // path is m_main-independent.
 
 #include "remotecontrol.h"
+#include "remotecontrol_internal.h"
 
 #include <gtest/gtest.h>
 
@@ -470,4 +471,14 @@ TEST(AdapterWriteFlip, AppendPathStillRequiresAllAppendFields) {
     // was constructed nullptr; either way it must not succeed).
     const QJsonObject env = rc.cmdRoadmapLog(req).object();
     EXPECT_FALSE(env.value("ok").toBool());
+}
+
+// ANTS-6233 — a roadmap field keeps no control character: C0 and DEL went
+// already, and C1 (U+0080-U+009F) goes too. Text beside them is kept.
+TEST(AdapterWriteFlip, Ants6233BulletFieldDropsC1Controls) {
+    const QString in = QStringLiteral("a") + QChar(0x0086) + QStringLiteral("b") +
+                       QChar(0x009F) + QChar(0x0080) + QStringLiteral("c") +
+                       QChar(0x00E9);
+    EXPECT_EQ(rcdetail::rcSanitizeBulletField(in, 0),
+              QStringLiteral("abc") + QChar(0x00E9));
 }

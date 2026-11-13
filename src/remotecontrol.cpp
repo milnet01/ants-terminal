@@ -1089,8 +1089,8 @@ QString rcStatusEmoji(const QString &word) {
 // source) before splicing it into ROADMAP.md. rcHeadlineOneline folds
 // embedded \n/\r/\t + whitespace runs to single spaces so a stray
 // newline can't split the bullet and break the markdown; this then
-// drops any leftover C0 control char or DEL rcHeadlineOneline doesn't
-// treat as whitespace (C1, U+0080-U+009F, is kept), and caps length so
+// drops any leftover C0 or C1 control char or DEL rcHeadlineOneline doesn't
+// treat as whitespace (ANTS-6233 added C1, U+0080-U+009F), and caps length so
 // a pathological field can't bloat the file. `body` is exempt — it is intentionally multi-line.
 QString rcSanitizeBulletField(const QString &in, int maxLen) {
     const QString folded = rcHeadlineOneline(in);
@@ -1098,7 +1098,7 @@ QString rcSanitizeBulletField(const QString &in, int maxLen) {
     out.reserve(folded.size());
     for (QChar c : folded) {
         const ushort u = c.unicode();
-        if (u < 0x20 || u == 0x7f) continue;
+        if (u < 0x20 || (u >= 0x7f && u <= 0x9f)) continue;
         out.append(c);
     }
     if (maxLen > 0 && out.size() > maxLen) {
