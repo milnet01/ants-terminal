@@ -48,6 +48,13 @@ source is `packaging/cc-job/cc-job`.
   the status line only. An unknown option exits `2`. `--help` names both.
   *Breaks when:* a session reads a whole log to learn how a job ended
   (ANTS-5701).
+- **INV-14** *(ANTS-6764, user decision 2026-11-13)* — `prune` removes each
+  finished job whose log was last written more than 30 days ago, shown or not,
+  unless a file under Claude Code's `sessions/` folder names the job's owner
+  as a running session. `--older-than N` sets the limit in days; a
+  non-numeric limit exits `2`. A running job is never removed. `start` runs
+  the same prune first, at most once a day. `--help` names it.
+  *Breaks when:* finished jobs pile up for ever and slow every listing.
 
 The test starts its job through a stand-in `systemd-run`, so it needs no
 `systemd --user`.

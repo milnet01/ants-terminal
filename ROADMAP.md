@@ -88821,6 +88821,19 @@ parse, not that file.
   from rg's, so a prefilter could drop matches.
   User decided 2026-11-13: build the candidate design for literals only.
   A regex stays as today; no longer default budget.
+  Read 2026-11-13 (RemoteControl::cmdWorkspaceSearch, rcRunRg): needs a
+  short spec before building; edge cases can drop matches silently.
+  Sketch: on run.hardKilled, literal only (no multiline, no wrap,
+  respect_gitignore true), ask rg for its own file set (`rg --files`
+  with the same filter flags), then drop a file only when it is tracked,
+  unmodified (`git ls-files -m`) and absent from `git grep --cached -l
+  -F`; re-run rg on the rest. Open, to measure first: rg treats an
+  explicitly named file differently (binary detection, globs, ignore
+  rules); git grep -i folds ASCII only while rg folds Unicode; rg
+  transcodes UTF-16 and git grep does not; argv length for a common
+  literal; `rg --files` and `ls-files -m` cost on a cold cache; the
+  onLine accumulators must be reset for a second run; a test needs a
+  seam to force the wall budget.
   **Layman:** Some code searches are slow enough to hit their time limit, even where a plain git search finishes in under a second.
   Kind: perf.
   Source: ANTS-5323 follow-up 2026-10-24.
@@ -92571,7 +92584,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: ants-projects-hub-website-message-2026-11-13.
   Lanes: cc-job.
 
-- 📋 [ANTS-6764] **cc-job prunes old finished job records.**
+- ✅ [ANTS-6764] **cc-job prunes old finished job records.**
   Nothing removes a finished job once its session has ended, so the state
   folder held about 5000 jobs on 2026-11-13. `cc-job status` with no name
   still walks them. Decide the rule first: an age limit, a count limit, or
@@ -92579,6 +92592,14 @@ measured Ants adding about 5,250 tokens to every request.
   only copy of its output (CFG-0729).
   User decided 2026-11-13: automatic. A finished job whose session has
   ended is removed once older than 30 days; also a manual prune command.
+  Shipped 2026-11-13. `cc-job prune [--older-than <days>]`, and `start`
+  runs it once a day (stamp: <state dir>/.pruned). Age is the log's last
+  write. A job is kept while running, or while a file under Claude
+  Code's sessions/ folder names its owner. Read or unread makes no
+  difference, as the user chose. Contract:
+  tests/features/cc_job_bundle/spec.md INV-14, red first (the command
+  did not exist). No mutation run: the test installs the script from
+  the source tree. A script each call re-reads: live at once.
   **Layman:** Old job logs from sessions long gone are cleared away instead of piling up for ever.
   Kind: enhancement.
   Source: ants-projects-hub-website-message-2026-11-13.

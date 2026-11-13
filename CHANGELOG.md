@@ -14,6 +14,10 @@ for security-relevant changes.
 
 ### Added
 
+- **cc-job clears finished jobs older than 30 days whose session has ended.** (ANTS-6764)
+  `cc-job start` does it once a day. `cc-job prune --older-than <days>`
+  does it on request.
+
 - **spec_lint names a Layman line that has no blank line above it** (ANTS-6316)
   Such a line is read as part of the header field it follows. The new
   `header_layman_absorbed` finding points at it.

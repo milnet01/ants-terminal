@@ -36,6 +36,10 @@ cc-job clean <name> [--force]
 cc-job clean --mine [--force]
                             the same for every finished job this Claude Code
                             session started; names the jobs it kept
+cc-job prune [--older-than <days>]
+                            delete finished jobs older than the limit (default 30
+                            days) whose session has ended, read or not; start runs
+                            this once a day
 
 A pipeline or shell syntax needs a shell:  cc-job start build -- bash -c 'make 2>&1 | tee out'
 Exported variables reach the job, except this session's own (CLAUDE*, ANTS_MCP_SOCKET and
@@ -111,6 +115,7 @@ start_job() {
     if [[ ${1:-} == -- ]]; then shift; fi
     (($#)) || die "start needs a command after --"
     running "$name" && die "job '$name' is already running"
+    prune_daily
     systemctl --user reset-failed "$(unit "$name")" 2>/dev/null || true
 
     local log="$STATE/$name.log" rec="$STATE/$name.exit"
@@ -222,6 +227,52 @@ clean_cmd() {
     for k in "${kept[@]}"; do echo "kept $k"; done
 }
 
+# ANTS-6764 — nothing else removes a finished job once its session has ended.
+# The age is the log's: the last time the job wrote output.
+PRUNE_DAYS=30
+prune_jobs() {
+    local days=$1 quiet=${2:-0} f name owner removed=0
+    local sessions="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/sessions"
+    local -A live=()
+    # Claude Code keeps one <pid>.json per running session, naming its id.
+    while IFS= read -r owner; do
+        [[ -n $owner ]] && live[$owner]=1
+    done < <(cat "$sessions"/*.json 2>/dev/null |
+             grep -o '"sessionId" *: *"[^"]*"' | sed 's/.*"\([^"]*\)"$/\1/')
+    snapshot_running
+    while IFS= read -r -d '' f; do
+        name=${f##*/}; name=${name%.log}
+        owner=$(info_field "$name" owner)
+        [[ -n $owner && -n ${live[$owner]:-} ]] && continue
+        running "$name" && continue
+        # Not clean_one: its per-job systemctl call takes minutes over
+        # thousands of jobs, and no watch window follows a job this old.
+        rm -f "$STATE/$name".{log,exit,info,read,env}
+        removed=$((removed + 1))
+    done < <(find -H "$STATE" -maxdepth 1 -name '*.log' -mtime "+$days" -print0)
+    ((quiet)) || echo "removed $removed finished jobs older than $days days"
+}
+
+prune_cmd() {
+    local days=$PRUNE_DAYS
+    if [[ ${1:-} == --older-than ]]; then
+        [[ ${2:-} =~ ^[0-9]+$ ]] || die "prune --older-than needs a number of days"
+        days=$2
+    elif (($#)); then
+        die "prune takes only --older-than <days>"
+    fi
+    prune_jobs "$days"
+}
+
+# start prunes at most once a day; the stamp's age says when it last did. A
+# prune that fails must not stop the job from starting.
+prune_daily() {
+    local stamp="$STATE/.pruned"
+    [[ -e $stamp && -z $(find "$stamp" -mtime +0) ]] && return 0
+    : >"$stamp"
+    (prune_jobs "$PRUNE_DAYS" 1) || true
+}
+
 # Every job by name.
 status_all() {
     shopt -s nullglob
@@ -304,6 +355,7 @@ case $cmd in
     watch)  checkname "${1:-}"; watch_job "$1" ;;
     stop)   checkname "${1:-}"; systemctl --user stop "$(unit "$1")" && status_one "$1" ;;
     clean)  clean_cmd "$@" ;;
+    prune)  prune_cmd "$@" ;;
     ""|-h|--help|help) usage ;;
     *)      usage >&2; exit 2 ;;
 esac

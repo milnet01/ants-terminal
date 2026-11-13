@@ -225,4 +225,50 @@ env CC_JOB_DIR="$sum" PATH="$fake:$PATH" "$bin" wait build --sumary >/dev/null 2
 [ "$rc" -eq 2 ] || { echo "FAIL INV-13: an unknown wait option exited $rc, want 2"; exit 1; }
 case "$("$bin" --help)" in *"--summary"*"--grep"*) ;; *) echo "FAIL INV-13: --help omits --summary or --grep"; exit 1 ;; esac
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job"
+# INV-14 — prune removes finished jobs older than the limit whose session has
+# ended, read or not; start runs it at most once a day. The stand-in systemctl
+# reports oldrun as running.
+old="$prefix/old"
+cfg="$prefix/claude"
+mkdir -p "$old" "$cfg/sessions"
+echo '{"pid":1,"sessionId":"LIVE","cwd":"/"}' >"$cfg/sessions/1.json"
+mkold() { # <name> <owner, or empty> <age in days>
+    echo out >"$old/$1.log"; echo 0 >"$old/$1.exit"
+    { echo "started=2026-01-01"; if [ -n "$2" ]; then echo "owner=$2"; fi; } >"$old/$1.info"
+    touch -d "$3 days ago" "$old/$1.log"
+}
+prune() { env CC_JOB_DIR="$old" CLAUDE_CONFIG_DIR="$cfg" PATH="$fake:$PATH" "$bin" "$@"; }
+mkold old-gone GONE 40; mkold old-none "" 40; mkold old-live LIVE 40
+mkold young-gone GONE 10; mkold oldrun GONE 40
+rm -f "$old/oldrun.exit"
+: >"$listing"
+out="$(prune prune 2>&1)" || { echo "FAIL INV-14: prune failed: $out"; exit 1; }
+for gone in old-gone old-none; do
+    [ ! -e "$old/$gone.log" ] && [ ! -e "$old/$gone.info" ] && [ ! -e "$old/$gone.exit" ] ||
+        { echo "FAIL INV-14: prune kept '$gone': $out"; exit 1; }
+done
+for kept in old-live young-gone oldrun; do
+    [ -e "$old/$kept.log" ] || { echo "FAIL INV-14: prune removed '$kept': $out"; exit 1; }
+done
+case "$out" in *"removed 2 "*"30 days"*) ;; *) echo "FAIL INV-14: prune reported: $out"; exit 1 ;; esac
+out="$(prune prune --older-than 5 2>&1)"
+[ ! -e "$old/young-gone.log" ] || { echo "FAIL INV-14: --older-than 5 kept a 10-day job: $out"; exit 1; }
+[ -e "$old/old-live.log" ] || { echo "FAIL INV-14: --older-than removed a live session's job"; exit 1; }
+[ -e "$old/oldrun.log" ] || { echo "FAIL INV-14: --older-than removed a running job"; exit 1; }
+rc=0
+prune prune --older-than soon >/dev/null 2>&1 || rc=$?
+[ "$rc" -eq 2 ] || { echo "FAIL INV-14: a non-numeric limit exited $rc, want 2"; exit 1; }
+# start prunes, then not again that day, then again once the stamp is a day old.
+mkold auto-1 GONE 40
+prune start fresh -- true >/dev/null
+[ ! -e "$old/auto-1.log" ] || { echo "FAIL INV-14: start did not prune an old job"; exit 1; }
+[ -e "$old/fresh.log" ] || { echo "FAIL INV-14: start's prune removed the job it started"; exit 1; }
+mkold auto-2 GONE 40
+prune start fresh -- true >/dev/null
+[ -e "$old/auto-2.log" ] || { echo "FAIL INV-14: start pruned twice in one day"; exit 1; }
+touch -d "2 days ago" "$old/.pruned"
+prune start fresh -- true >/dev/null
+[ ! -e "$old/auto-2.log" ] || { echo "FAIL INV-14: start did not prune a day later"; exit 1; }
+case "$("$bin" --help)" in *"prune"*"--older-than"*) ;; *) echo "FAIL INV-14: --help omits prune"; exit 1 ;; esac
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job, prunes old jobs"
