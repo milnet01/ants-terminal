@@ -206,82 +206,82 @@ empty store — the next `set` will overwrite with a clean state. INV-11.
 
 ## 4. Invariants
 
-**INV-1 — store path.** Store file lives at
-`<baseDir>/<cwdHash>.json` where `baseDir` defaults to
-`~/.cache/ants-terminal/mcp-state/`. Base dir overridable via the
-`ANTS_SESSION_MEMORY_DIR` env var (for tests).
+- **INV-1** — store path. Store file lives at
+  `<baseDir>/<cwdHash>.json` where `baseDir` defaults to
+  `~/.cache/ants-terminal/mcp-state/`. Base dir overridable via the
+  `ANTS_SESSION_MEMORY_DIR` env var (for tests).
 
-**INV-2 — 100 KiB total cap.** `set` is rejected with `cap_exceeded`
-when the JSON-compact serialised post-write store would exceed 100 KiB.
-The cap is measured against the *post-write* serialised size, not the
-running in-memory representation, so users get exact accounting.
+- **INV-2** — 100 KiB total cap. `set` is rejected with `cap_exceeded`
+  when the JSON-compact serialised post-write store would exceed 100 KiB.
+  The cap is measured against the *post-write* serialised size, not the
+  running in-memory representation, so users get exact accounting.
 
-**INV-3 — atomic save.** All writes use `QSaveFile::commit()` — no
-partial writes survive a crash mid-save. The previous valid store
-remains readable until rename succeeds.
+- **INV-3** — atomic save. All writes use `QSaveFile::commit()` — no
+  partial writes survive a crash mid-save. The previous valid store
+  remains readable until rename succeeds.
 
-**INV-4 — deterministic cwd hash.** `cwdHash(cwd)` returns the same
-string for the same canonical absolute path on every invocation:
-`QCryptographicHash::Sha256` of the UTF-8 canonical path, hex-encoded,
-first 16 chars. 16 hex = 64 bits, collision probability negligible at
-the scale of one user's project tabs.
+- **INV-4** — deterministic cwd hash. `cwdHash(cwd)` returns the same
+  string for the same canonical absolute path on every invocation:
+  `QCryptographicHash::Sha256` of the UTF-8 canonical path, hex-encoded,
+  first 16 chars. 16 hex = 64 bits, collision probability negligible at
+  the scale of one user's project tabs.
 
-**INV-5 — list returns keys-only.** `op=list` returns
-`[{key, bytes}, ...]` with no inline values. Avoids the case where
-"give me a listing" accidentally returns 100 KiB of caller-supplied
-content on the wire.
+- **INV-5** — list returns keys-only. `op=list` returns
+  `[{key, bytes}, ...]` with no inline values. Avoids the case where
+  "give me a listing" accidentally returns 100 KiB of caller-supplied
+  content on the wire.
 
-**INV-6 — missing key is not an error.** `op=get` / `op=delete` on a
-key that's absent returns `ok:true, found:false` rather than
-`ok:false`. Lets callers use `get` as a probe without exception
-handling.
+- **INV-6** — missing key is not an error. `op=get` / `op=delete` on a
+  key that's absent returns `ok:true, found:false` rather than
+  `ok:false`. Lets callers use `get` as a probe without exception
+  handling.
 
-**INV-7 — key validation.** Keys must match `^[A-Za-z0-9._\-]{1,64}$`.
-Rejects path-traversal attempts, control characters, whitespace, and
-unbounded length up front. `bad_key` error includes sanitised echo.
+- **INV-7** — key validation. Keys must match `^[A-Za-z0-9._\-]{1,64}$`.
+  Rejects path-traversal attempts, control characters, whitespace, and
+  unbounded length up front. `bad_key` error includes sanitised echo.
 
-**INV-8 — per-value cap.** A single value's JSON-compact serialised
-size must be ≤ 16 KiB. Prevents one giant value monopolising the
-100 KiB total. `bad_value` error on overflow.
+- **INV-8** — per-value cap. A single value's JSON-compact serialised
+  size must be ≤ 16 KiB. Prevents one giant value monopolising the
+  100 KiB total. `bad_value` error on overflow.
 
-**INV-9 — schema required-arrays.** Tool schema requires `op`; the
-handler additionally requires `key` for get/set/delete and `value` for
-set. Schema-level `required: ["op"]` only; handler returns `bad_key` /
-`bad_value` for the conditional cases (mirrors `cold_eyes_brief` which
-also relies on handler-side enforcement past the schema's single
-required field).
+- **INV-9** — schema required-arrays. Tool schema requires `op`; the
+  handler additionally requires `key` for get/set/delete and `value` for
+  set. Schema-level `required: ["op"]` only; handler returns `bad_key` /
+  `bad_value` for the conditional cases (mirrors `cold_eyes_brief` which
+  also relies on handler-side enforcement past the schema's single
+  required field).
 
-**INV-10 — filesystem permissions.** Base directory created with mode
-`0700`; store file with mode `0600`. Per-user, not per-group / world
-readable. Matches the existing `config.json` convention.
+- **INV-10** — filesystem permissions. Base directory created with mode
+  `0700`; store file with mode `0600`. Per-user, not per-group / world
+  readable. Matches the existing `config.json` convention.
 
-**INV-11 — corrupt-store recovery.** A corrupt or unparseable store
-file is treated as empty on load (no exception). The next `set`
-overwrites with valid content. Logged once via `qWarning()` to stderr
-so a user grep-debugging this can see it happened.
+- **INV-11** — corrupt-store recovery. A corrupt or unparseable store
+  file is treated as empty on load (no exception). The next `set`
+  overwrites with valid content. Logged once via `qWarning()` to stderr
+  so a user grep-debugging this can see it happened.
 
-**INV-12 — echo hygiene.** Any user-supplied string echoed back in an
-error response is first truncated to 64 chars and has control
-characters (`< 0x20`) replaced with `?`. Mirrors the ANTS-1319
-`ceSanitiseEcho` helper.
+- **INV-12** — echo hygiene. Any user-supplied string echoed back in an
+  error response is first truncated to 64 chars and has control
+  characters (`< 0x20`) replaced with `?`. Mirrors the ANTS-1319
+  `ceSanitiseEcho` helper.
 
-**INV-13 — cwd override path validation.** When `cwd` is provided as
-an argument, it must canonicalise (i.e. `QFileInfo(cwd).canonicalFilePath()`
-non-empty) — empty / non-canonical → `no_project` error. Does NOT
-require the cwd to be inside any specific tree; the store is keyed by
-hash, not by path-prefix membership, so the override is a hash input,
-not a permission check.
+- **INV-13** — cwd override path validation. When `cwd` is provided as
+  an argument, it must canonicalise (i.e. `QFileInfo(cwd).canonicalFilePath()`
+  non-empty) — empty / non-canonical → `no_project` error. Does NOT
+  require the cwd to be inside any specific tree; the store is keyed by
+  hash, not by path-prefix membership, so the override is a hash input,
+  not a permission check.
 
-**INV-14 — locked read-modify-write (ANTS-1823).** Mutating ops
-(`set`/`delete`, and `workflow_state` which routes through it) perform
-their load → mutate → save under a `QLockFile` advisory lock keyed on
-`<store>.lock`, so two processes mutating different keys on the same cwd
-cannot last-writer-wins-drop each other. The lock is best-effort: a 5 s
-acquisition budget and 30 s stale-reclaim window mean a crashed holder is
-recovered and an acquisition timeout falls back to last-writer-wins
-rather than failing the op. Read ops (`get`/`list`) take no lock — the
-INV-3 atomic rename gives them a whole-or-nothing snapshot. Implemented
-by `SessionMemoryEngine::mutateLocked`.
+- **INV-14** — locked read-modify-write (ANTS-1823). Mutating ops
+  (`set`/`delete`, and `workflow_state` which routes through it) perform
+  their load → mutate → save under a `QLockFile` advisory lock keyed on
+  `<store>.lock`, so two processes mutating different keys on the same cwd
+  cannot last-writer-wins-drop each other. The lock is best-effort: a 5 s
+  acquisition budget and 30 s stale-reclaim window mean a crashed holder is
+  recovered and an acquisition timeout falls back to last-writer-wins
+  rather than failing the op. Read ops (`get`/`list`) take no lock — the
+  INV-3 atomic rename gives them a whole-or-nothing snapshot. Implemented
+  by `SessionMemoryEngine::mutateLocked`.
 
 ## 5. Tests
 

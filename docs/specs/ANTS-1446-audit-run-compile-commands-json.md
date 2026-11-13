@@ -110,14 +110,14 @@ mentioned in the error string.
 See `tests/features/audit_run_compile_commands_validation/spec.md`
 for the canonical list. Highlights:
 
-- INV-1/2: extractor handles both split and glued forms, ignores
-  unrelated flags.
-- INV-4/5/6: project root + system prefixes accept; everything
-  else rejects.
-- INV-7: control chars and backslashes refuse outright.
-- INV-9: absent JSON → no error (downstream handles).
-- INV-13: `runAudit` calls the validator before spawn.
-- INV-14: size caps in place.
+- Extractor handles both split and glued forms, ignores unrelated
+  flags (INV-1, INV-2 there).
+- Project root + system prefixes accept; everything else rejects
+  (INV-4, INV-5, INV-6 there).
+- Control chars and backslashes refuse outright (INV-7 there).
+- Absent JSON → no error; downstream handles (INV-9 there).
+- `runAudit` calls the validator before spawn (INV-13 there).
+- Size caps in place (INV-14 there).
 
 ## 5. Performance
 

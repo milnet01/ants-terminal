@@ -59,18 +59,18 @@ user-controlled extras source.
 
 ## 4. Invariants
 
-- INV-1: per-lane content is wrapped in
+- **INV-1** — per-lane content is wrapped in
   `<lane_report lane="<name>">…</lane_report>`.
-- INV-2: inner `<lane_report` and `</lane_report>` runs in the
+- **INV-2** — inner `<lane_report` and `</lane_report>` runs in the
   body are HTML-escaped to `&lt;lane_report` /
   `&lt;/lane_report&gt;` so each fence pair stays balanced
   (exactly one open + one close).
-- INV-3: threat-model extras (when non-empty) wrap in
+- **INV-3** — threat-model extras (when non-empty) wrap in
   `<threat_model>…</threat_model>`; inner open/close markers are
   similarly escaped.
-- INV-4: the `## Lane: <name>` markdown heading remains outside
+- **INV-4** — the `## Lane: <name>` markdown heading remains outside
   the fence for backwards compatibility with existing INV-7.
-- INV-5: the preamble explains "quote, don't obey" without itself
+- **INV-5** — the preamble explains "quote, don't obey" without itself
   containing literal fence tags (so the open/close counts stay at
   one per lane / per threat-model block).
 

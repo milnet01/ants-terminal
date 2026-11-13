@@ -289,62 +289,62 @@ bool roadmapStaysInProject(const QString &projectPath,
 
 ## 4. Invariants
 
-INV-1: **All seven mutating verbs refuse without `caller_cwd`.**
-`indie_review_fold_in`, `debt_sweep_apply_fix`, `debt_sweep_defer`,
-`cold_eyes_fold_in`, `session_memory` (set/delete only),
-`verify_changes`, and `plan_template` return `{ok:false,
-error:"...", code:"cwd_missing"}` if the `caller_cwd` argument is
-absent or empty.
+- **INV-1** — All seven mutating verbs refuse without `caller_cwd`.
+  `indie_review_fold_in`, `debt_sweep_apply_fix`, `debt_sweep_defer`,
+  `cold_eyes_fold_in`, `session_memory` (set/delete only),
+  `verify_changes`, and `plan_template` return `{ok:false,
+  error:"...", code:"cwd_missing"}` if the `caller_cwd` argument is
+  absent or empty.
 
-INV-2: **`caller_cwd` is canonicalised before comparison.**
-`/symlink/to/project` and `/real/project` (where the former resolves
-to the latter) are treated as equal.
+- **INV-2** — `caller_cwd` is canonicalised before comparison.
+  `/symlink/to/project` and `/real/project` (where the former resolves
+  to the latter) are treated as equal.
 
-INV-3: **Mismatched cwds refuse with `cwd_mismatch`.** When the
-canonicalised caller cwd differs from `resolveRootCanonical(m_main)`,
-the verb returns `{ok:false, error:"...", code:"cwd_mismatch"}`
-*before* allocating an ID, writing the counter, mutating session-
-memory, spawning a verify run, or touching any target source file.
+- **INV-3** — Mismatched cwds refuse with `cwd_mismatch`. When the
+  canonicalised caller cwd differs from `resolveRootCanonical(m_main)`,
+  the verb returns `{ok:false, error:"...", code:"cwd_mismatch"}`
+  *before* allocating an ID, writing the counter, mutating session-
+  memory, spawning a verify run, or touching any target source file.
 
-INV-4: **Non-existent `caller_cwd` refuses with `cwd_bad`.**
-When the supplied `caller_cwd` doesn't canonicalise (path doesn't
-exist), the verb returns `{ok:false, error:"...", code:"cwd_bad"}`.
+- **INV-4** — Non-existent `caller_cwd` refuses with `cwd_bad`.
+  When the supplied `caller_cwd` doesn't canonicalise (path doesn't
+  exist), the verb returns `{ok:false, error:"...", code:"cwd_bad"}`.
 
-INV-5: **Empty focused tab refuses with `no_project`.**
-When no terminal is focused or its shellCwd doesn't canonicalise,
-the verb returns `{ok:false, error:"...", code:"no_project"}` —
-matching the pre-fix behaviour when there was no project to write to.
+- **INV-5** — Empty focused tab refuses with `no_project`.
+  When no terminal is focused or its shellCwd doesn't canonicalise,
+  the verb returns `{ok:false, error:"...", code:"no_project"}` —
+  matching the pre-fix behaviour when there was no project to write to.
 
-INV-6: **`allocateIds` refuses if the counter path escapes the project
-root.** A `.roadmap-counter` symlink whose target sits outside the
-canonical project root returns `{}` from `allocateIds`. Same guard
-for `ROADMAP.md` in `insertBlock`.
+- **INV-6** — `allocateIds` refuses if the counter path escapes the project
+  root. A `.roadmap-counter` symlink whose target sits outside the
+  canonical project root returns `{}` from `allocateIds`. Same guard
+  for `ROADMAP.md` in `insertBlock`.
 
-INV-7: **Read-only verbs are unaffected.** `indie_review_corroborate`,
-`debt_sweep_scan`, `cold_eyes_partition`, `cold_eyes_brief`,
-`cold_eyes_cross_doc_diff`, `session_memory` (get/list),
-and every read-only `mcp__ants__*` tool do not require `caller_cwd`.
+- **INV-7** — Read-only verbs are unaffected. `indie_review_corroborate`,
+  `debt_sweep_scan`, `cold_eyes_partition`, `cold_eyes_brief`,
+  `cold_eyes_cross_doc_diff`, `session_memory` (get/list),
+  and every read-only `mcp__ants__*` tool do not require `caller_cwd`.
 
-INV-8: **Existing behaviour preserved for well-formed callers.** When
-caller cwd matches focused tab cwd and the counter / ROADMAP files
-sit at their expected canonical locations, the verbs behave exactly
-as before — same ID allocation, same block emission, same insertion.
+- **INV-8** — Existing behaviour preserved for well-formed callers. When
+  caller cwd matches focused tab cwd and the counter / ROADMAP files
+  sit at their expected canonical locations, the verbs behave exactly
+  as before — same ID allocation, same block emission, same insertion.
 
-INV-9: **No new state.** The gate is stateless — it reads
-`resolveRootCanonical` and the request body, returns a verdict. No
-persisted "trusted callers" list; no cross-verb memory.
+- **INV-9** — No new state. The gate is stateless — it reads
+  `resolveRootCanonical` and the request body, returns a verdict. No
+  persisted "trusted callers" list; no cross-verb memory.
 
-INV-10: **Single `resolveRootCanonical` call per handler.** After
-the gate captures `focused`, the handler body uses `gate.focused` for
-every subsequent operation. The TOCTOU window where the focused tab
-could switch between gate-check and write is closed by this
-discipline; re-calling `resolveRootCanonical` in the same handler is
-a bug.
+- **INV-10** — Single `resolveRootCanonical` call per handler. After
+  the gate captures `focused`, the handler body uses `gate.focused` for
+  every subsequent operation. The TOCTOU window where the focused tab
+  could switch between gate-check and write is closed by this
+  discipline; re-calling `resolveRootCanonical` in the same handler is
+  a bug.
 
-INV-11: **`cwd_mismatch` refusals log one `qWarning()` line.** Format:
-`[ANTS-1372] cwd_mismatch refused: verb=<v> caller=<c> focused=<f>`.
-Other refusal codes (`cwd_missing`, `cwd_bad`, `no_project`) do NOT
-log — they're caller-side bugs, not cross-project incidents.
+- **INV-11** — `cwd_mismatch` refusals log one `qWarning()` line. Format:
+  `[ANTS-1372] cwd_mismatch refused: verb=<v> caller=<c> focused=<f>`.
+  Other refusal codes (`cwd_missing`, `cwd_bad`, `no_project`) do NOT
+  log — they're caller-side bugs, not cross-project incidents.
 
 ## 5. Test strategy
 
