@@ -1097,10 +1097,11 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
     // hard-killed or the parse budget was exceeded mid-stream). The filter
     // echoes mirror the ok:true path so a 0-count stays diagnosable.
     // ANTS-4388 — matches_only: the DISTINCT matched substrings. Placed
-    // beside count_only for the same reason (no rows to dedup, clip or cap),
-    // and before it in precedence only where both are absent — count_only
-    // stays the leanest and wins if both are set, as files_only already does.
-    if (matchesOnly && !countOnly) {
+    // beside count_only for the same reason (no rows to dedup, clip or cap).
+    // Precedence is count_only, then files_only, then this mode; the parse
+    // above skips the harvest under files_only, so the reply must too
+    // (ANTS-6252).
+    if (matchesOnly && !countOnly && !filesOnly) {
         QJsonArray distinct;
         // The cap applies to DISTINCT VALUES, not occurrences. That is the
         // property the whole mode exists for: a search for `{{[A-Z_]+}}`

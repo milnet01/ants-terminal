@@ -811,3 +811,32 @@ TEST(workspace_search_payload_knobs, Ants5524HistoryPresetLeavesOutTheRecord) {
               QStringLiteral("bad_args"));
     EXPECT_EQ(search(7).value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
 }
+
+// ANTS-6252 — files_only and matches_only together: files_only wins, in the
+// parse and in the reply, as count_only wins over both.
+TEST(workspace_search_payload_knobs, Ants6252FilesOnlyWinsOverMatchesOnly) {
+    if (!rgAvailable()) GTEST_SKIP() << "ripgrep not installed";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    {
+        QFile f(root + QStringLiteral("/a.txt"));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("alpha_6252\nbeta_6252\n");
+    }
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]   = root;
+    req[QStringLiteral("pattern")]      = QStringLiteral("[a-z]+_6252");
+    req[QStringLiteral("regex")]        = true;
+    req[QStringLiteral("files_only")]   = true;
+    req[QStringLiteral("matches_only")] = true;
+    const QJsonObject resp = rc.cmdWorkspaceSearch(req).object();
+    const std::string dump =
+        QJsonDocument(resp).toJson(QJsonDocument::Compact).toStdString();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool()) << dump;
+    EXPECT_TRUE(resp.value(QStringLiteral("files_only")).toBool()) << dump;
+    EXPECT_EQ(resp.value(QStringLiteral("files")).toArray().size(), 1) << dump;
+    EXPECT_EQ(resp.value(QStringLiteral("count")).toInt(), 2) << dump;
+    EXPECT_FALSE(resp.contains(QStringLiteral("matches_only"))) << dump;
+}
