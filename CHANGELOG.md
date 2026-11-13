@@ -380,6 +380,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`verify_changes` with `force_refresh:true` saves its fresh result, so the next call reuses it.** (ANTS-5526)
+
 - **The context meter follows a Claude session after `/clear`.** (ANTS-6751)
   The focused tab now reads the new session's transcript, so the meter and the
   other focused-tab readings come from the session on screen.

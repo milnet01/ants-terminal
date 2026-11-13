@@ -294,7 +294,12 @@ Seven classes of result bypass cache insert:
    next call even after the fix lands within the TTL.
 2. **`config_source == "none"`** — no gates configured AND auto-detect
    found nothing. There's no run to cache. Caching ok=true,allPassed=true
-   here would risk hiding a config that was just added.
+   here would risk hiding a config that was just added. The class keys on
+   `config_source`, not on `ran_count == 0`: a parsed `.ants/verify.json`
+   with no usable gate reports `config_source: ".ants/verify.json"`
+   (`VerifyEngine::loadGateConfig`) and is cached. Kept as is (ANTS-5526):
+   the same file gives the same answer, and editing it changes the git
+   snapshot, subject to § 2.6 limitation 1.
 3. **`verify_untrusted == true`** — ANTS-1337 fallback path. The trust
    outcome is part of the key (§ 2.3) — so a future trust grant flips
    the outcome and busts the key — but caching an untrusted-fallback
@@ -377,7 +382,7 @@ cmdVerifyChanges(req):
   auto inFlightGuard = qScopeGuard([&]{ m_verifyInFlight = false; });
 
   preSnapshot = collectGitSnapshot(root)  // (head, status-sha) or empty
-  cacheable   = !preSnapshot.empty && !force
+  cacheable   = !preSnapshot.empty   // force skips the lookup, not the insert
 
   // Trust-aware config load FIRST. May invoke prompt() once for an
   // unknown SHA; silent on subsequent calls for the same SHA in the
@@ -570,7 +575,7 @@ direct cache-API inspectors mirroring ANTS-1357 § 3:
 // remotecontrol.h — test-only seam (private members exposed)
 int  verifyCacheSizeForTest() const;
 QStringList verifyCacheLruForTest() const;
-qint64 kVerifyCacheTtlMsForTest() const { return kVerifyCacheTtlMs; }
+void ageVerifyCacheForTest(qint64 ms);   // every entry `ms` older
 // Direct put/try to exercise put/get/TTL/LRU without standing up
 // a real build. Mirrors ANTS-1357's pattern.
 QJsonObject tryGetVerifyCacheForTest(const QString &key) const;
@@ -586,10 +591,10 @@ the verb end-to-end against the synthetic git project.
 1. **HitWithinTtl** — drive verify on a synthetic project; second
    call within 100 ms returns `cache_hit:true` with byte-identical
    `gates` array. INV-1, INV-2.
-2. **MissAfterTtl** — same project, advance time mock past TTL (or
-   `QTest::qWait(120ms)` against a test-only TTL of 100 ms via a
-   compile-flag override). Second call returns `cache_hit:false`.
-   INV-2.
+2. **MissAfterTtl** — verify once, then age the entry with
+   `ageVerifyCacheForTest`. At 240 s old the next call returns
+   `cache_hit:true`; at 301 s old it returns `cache_hit:false`. Both
+   figures are literals in the test, so it checks the 300 s value. INV-2.
 3. **TrackedEditBustsCache** — verify once; `echo // tweak >>
    src/foo.cpp`; verify again; second call is a miss (different
    `gitStatusSha`). INV-5.
@@ -635,10 +640,10 @@ the verb end-to-end against the synthetic git project.
     `skipped_reason: "command not resolvable"`; cache size 0.
     INV-4 class 6 (first half).
 13. **TimeoutKilledNotCached** — `.ants/verify.json` with
-    `build: "sleep 15"`; pass `timeout_sec: 10` (the floor at
-    `verifyengine.cpp:451-454` — `minTotalTimeoutSec` defaults to 10
-    and is NOT reachable via the public MCP `timeout_sec` arg, so
-    the test exercises the actual floor). Gate kills with
+    `build: "sleep 30"`; pass `timeout_sec: 10`, the lowest total the
+    public arg reaches: `VerifyEngine::runVerify` raises `timeout_sec`
+    to `VerifyOptions::minTotalTimeoutSec` (default 10), which no MCP
+    argument sets. Gate kills with
     `skippedReason` starting `"timeout after "`; cache size 0.
     INV-4 class 6 (second half). Test takes ~10 s wall-clock —
     acceptable as one slow test in the bundle.
@@ -686,6 +691,10 @@ the verb end-to-end against the synthetic git project.
     (TTL value is tested numerically through `MissAfterTtl` rather
     than grep — a literal `5 * 60 * 1000` vs `300000` rewrite would
     fail a grep but is semantically identical, so we don't grep it.)
+23. **ForceRefreshInsertsItsResult** — on an empty cache, verify with
+    `force_refresh:true`; cache size is 1, and a normal call after it
+    returns `cache_hit:true`. The cache starts empty, so the entry hit
+    is the forced run's. INV-8.
 
 ### 3.2 Test build cost
 
@@ -834,3 +843,8 @@ None. New behaviour layers on top of existing dispatch:
   insert condition and the envelope, and found it can fail. Outside the
   change they re-found ANTS-5526's force_refresh (Q2) and TTL (Q4) items,
   already filed. Lane spend about 93k tokens each, cumulative.
+- **impl fold-back (2026-11-13)** — ANTS-5526, no reviewer dispatched. The
+  code had § 2.7's `&& !force`, so a forced run never inserted; fixed in
+  code and pseudocode to match INV-8, with test 23 red first. Test 2 now
+  states what the shipped `MissAfterTtl` does and checks the 300 s value.
+  Test 13 restated. § 2.5 class 2 records why it keys on `config_source`.

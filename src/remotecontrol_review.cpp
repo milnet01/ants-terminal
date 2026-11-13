@@ -1227,7 +1227,8 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
 
     // Step 5 — pre-run git snapshot.
     const VerifyGitSnapshot preSnapshot = collectGitSnapshot(root);
-    const bool cacheable = preSnapshot.valid && !force;
+    // force_refresh skips the lookup (step 8) and still inserts (INV-8).
+    const bool cacheable = preSnapshot.valid;
 
     // Step 6 — trust-aware config load. May invoke prompt() at most
     // once per (SHA, session) per verifytrust.cpp:58-97.

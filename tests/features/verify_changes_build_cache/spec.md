@@ -7,8 +7,8 @@ Behavioural feature test for the session-scoped cache wrapping
 
 - **INV-1 (byte-identity)** — hit returns the same `gates` object the
   fresh run did, plus `cache_hit:true`. (HitWithinTtl)
-- **INV-2 (TTL)** — entries older than the TTL miss. (Driven via
-  direct cache-API put with a manually-rewound `stampMs`.)
+- **INV-2 (TTL)** — an entry 240 s old hits; one 301 s old misses.
+  (MissAfterTtl, ageing the entry with `ageVerifyCacheForTest`.)
 - **INV-3 (no mid-run contamination)** — INV-3 framed at the helper
   level: an entry whose pre-snapshot differs from the post-snapshot
   is not inserted. Direct-API LRU/insert tests prove the eviction
@@ -28,7 +28,7 @@ Behavioural feature test for the session-scoped cache wrapping
   trust outcome flips, so the same project state hits a different
   key after a trust grant.
 - **INV-8 (force_refresh)** — bypasses lookup; runs gates; inserts on
-  success.
+  success. (ForceRefreshBypassesLookup, ForceRefreshInsertsItsResult)
 - **INV-9 (cache_only + incompatible-args)** — `cache_only:true` on a
   miss returns the cache_miss envelope without running gates; both
   flags together return `incompatible_args`.

@@ -193,6 +193,33 @@ TEST(VerifyChangesBuildCache, HitWithinTtl) {
     EXPECT_TRUE(b.value(QStringLiteral("cache_hit")).toBool());
 }
 
+// INV-2: an entry is served up to 300 s old and is a miss after that. The
+// figures are literals, so a changed TTL constant fails here (ANTS-5526).
+TEST(VerifyChangesBuildCache, MissAfterTtl) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), R"({
+        "build": {"command": "/bin/true", "format": "plain"}
+    })");
+
+    RemoteControl rc(nullptr);
+    (void)runVerify(rc, tmp.path());
+    ASSERT_EQ(rc.verifyCacheSizeForTest(), 1);
+
+    rc.ageVerifyCacheForTest(240 * 1000);   // 240 s old: inside the TTL
+    const QJsonObject young = runVerify(rc, tmp.path());
+    ASSERT_TRUE(young.value(QStringLiteral("cache_hit")).isBool());
+    EXPECT_TRUE(young.value(QStringLiteral("cache_hit")).toBool())
+        << "a 240 s old entry is inside the 300 s TTL";
+
+    rc.ageVerifyCacheForTest(61 * 1000);    // 301 s old: past it
+    const QJsonObject old = runVerify(rc, tmp.path());
+    ASSERT_TRUE(old.value(QStringLiteral("cache_hit")).isBool());
+    EXPECT_FALSE(old.value(QStringLiteral("cache_hit")).toBool())
+        << "a 301 s old entry is past the 300 s TTL";
+}
+
 // INV-5: tracked-file edit between calls busts the cache.
 TEST(VerifyChangesBuildCache, TrackedEditBustsCache) {
     QTemporaryDir tmp;
@@ -424,6 +451,31 @@ TEST(VerifyChangesBuildCache, ForceRefreshBypassesLookup) {
         << "force_refresh must bypass the lookup";
     // The entry should be re-inserted (same key) — size stays at 1.
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 1);
+}
+
+// INV-8: a force_refresh run inserts its result. The cache starts empty, so
+// the entry the next call hits can only be the forced run's (ANTS-5526).
+TEST(VerifyChangesBuildCache, ForceRefreshInsertsItsResult) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), R"({
+        "build": {"command": "/bin/true", "format": "plain"}
+    })");
+
+    RemoteControl rc(nullptr);
+    QJsonObject extra;
+    extra[QStringLiteral("force_refresh")] = true;
+    const QJsonObject forced = runVerify(rc, tmp.path(), extra);
+    ASSERT_TRUE(forced.value(QStringLiteral("ok")).toBool());
+    ASSERT_EQ(forced.value(QStringLiteral("ran_count")).toInt(-1), 1);
+    EXPECT_EQ(rc.verifyCacheSizeForTest(), 1)
+        << "a forced run that completed must be inserted";
+
+    const QJsonObject next = runVerify(rc, tmp.path());
+    ASSERT_TRUE(next.value(QStringLiteral("cache_hit")).isBool());
+    EXPECT_TRUE(next.value(QStringLiteral("cache_hit")).toBool())
+        << "a normal call after a forced run must hit the forced run's entry";
 }
 
 // INV-9 (cache_only miss): probe before any cache entry returns

@@ -1225,6 +1225,10 @@ public:
         m_verifyCache.clear();
         m_verifyCacheLru.clear();
     }
+    // Makes every entry `ms` older, so a test reaches the TTL without waiting.
+    void ageVerifyCacheForTest(qint64 ms) {
+        for (auto &e : m_verifyCache) e.stampMs -= ms;
+    }
     bool verifyInFlightForTest() const { return m_verifyInFlight; }
     void setVerifyInFlightForTest(bool v) { m_verifyInFlight = v; }
 

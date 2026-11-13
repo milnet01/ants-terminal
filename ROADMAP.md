@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6754 -->
+<!-- ants-roadmap-id-high-water: ANTS=6755 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74083,6 +74083,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-11-09 (check-doc on ANTS-3636 during ANTS-5216).
   Lanes: mcp, docs.
 
+- 📋 [ANTS-6755] **spec_log op:append_loop refuses a bullet-list log under "## 8. Loop log" when the spec holds any table.**
+  Seen on docs/specs/ANTS-1359-verify-changes-session-build-cache.md:
+  its log is a bullet list under `## 8. Loop log`; the only table is
+  § 2.9's RAM budget. The verb replied unrecognised_format: no
+  "## Cold-eyes loop log" heading, but this file holds a markdown table.
+  Wanted: recognise a numbered or plain "Loop log" heading, and judge the
+  log's shape from that section, not from a table elsewhere in the file.
+  Red-first test with that spec's shape.
+  **Layman:** The tool that adds a line to a design note's review log refuses on notes whose log is a plain list under a numbered heading.
+  Kind: fix.
+  Source: self-found-2026-11-13 (ANTS-5526 fold-back).
+  Lanes: mcp.
+
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
 Ran the project's own `ants-audit` CLI against this repo (~300 findings,
@@ -89214,7 +89227,7 @@ project. Reported causes are claims until checked in source.
   Source: in-session-2026-09-28 (mcpd usage snapshots).
   Lanes: mcp.
 
-- 📋 [ANTS-5526] **ANTS-1359's cache spec contradicts itself on force_refresh, and two of its test clauses cannot fail.**
+- ✅ [ANTS-5526] **ANTS-1359's cache spec contradicts itself on force_refresh, and two of its test clauses cannot fail.**
   Found by both cold lanes on the ANTS-5498 gate, outside the one clause
   that gate covered, so filed rather than looped on (review-contract's
   blast-radius exit).
@@ -89234,6 +89247,13 @@ project. Reported causes are claims until checked in source.
      cache; a parsed verify.json with no usable gate reports
      ".ants/verify.json", ran_count 0, and IS cached. Decide whether
      the exclusion should key on ran_count == 0.
+  Shipped 2026-11-13. Item 1 was a code defect too: cmdVerifyChangesImpl
+  had `&& !force`, so a forced run never inserted. Fixed; test
+  ForceRefreshInsertsItsResult red first. Item 2: MissAfterTtl (240 s hits,
+  301 s misses, via ageVerifyCacheForTest); it failed against a doubled TTL.
+  Item 3: test 13 restated. Item 4: kept keying on config_source; reason
+  recorded in § 2.5. Reaches clients when ants-mcpd is rebuilt and they
+  reconnect.
   **Layman:** The design notes for the build-result cache contradict themselves on one option and leave two of their tests too weak to catch a mistake.
   Kind: doc-fix.
   Source: review-contract ANTS-1359 loop 1, 2026-09-28 (outside the gated change).
