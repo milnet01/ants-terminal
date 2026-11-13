@@ -1455,6 +1455,34 @@ QJsonDocument RemoteControl::cmdWorkspaceSearch(const QJsonObject &req) {
                                               : QStringLiteral("max_results"),
             budgetSec);
     }
+    // ANTS-5588 — context lines go before rows do. When the reply would spill
+    // and it fits inline without its context, drop the context and say so.
+    // A reply that spills either way keeps it: the spill file holds it all.
+    if (!matches.isEmpty() && mcp::offloadRequested(req)) {
+        const qint64 threshold =
+            mcp::offloadThresholdFor(QStringLiteral("workspace_search"), req);
+        const auto bytes = [](const QJsonObject &o) {
+            return QJsonDocument(o).toJson(QJsonDocument::Compact).size();
+        };
+        if (mcp::shouldOffload(bytes(out), threshold)) {
+            QJsonArray lean;
+            bool hadContext = false;
+            const QJsonArray emitted = out.value("matches").toArray();
+            for (const QJsonValue &v : emitted) {
+                QJsonObject m = v.toObject();
+                hadContext = hadContext || m.contains("context_before")
+                                        || m.contains("context_after");
+                m.remove("context_before");
+                m.remove("context_after");
+                lean.append(m);
+            }
+            QJsonObject trial = out;
+            trial["matches"] = lean;
+            trial["context_dropped"] = true;
+            if (hadContext && !mcp::shouldOffload(bytes(trial), threshold))
+                out = trial;
+        }
+    }
     // ANTS-4892 — a reply that will spill was too broad, and the next move is
     // to narrow it. The spill's verb-agnostic rows_preview cannot say which
     // files matched, so the verb adds that here, in files_only's shape, and

@@ -89481,7 +89481,7 @@ project. Reported causes are claims until checked in source.
 
 ### Ants MCP feedback from CC sessions — 2026-09-30 triage
 
-- 📋 [ANTS-5588] **A workspace_search reply that spills because of context lines keeps the context and loses the rows.**
+- ✅ [ANTS-5588] **A workspace_search reply that spills because of context lines keeps the context and loses the rows.**
   Measured by finbreak: regex search, context:2, max_results:200, whole tree.
   The reply was offloaded: 63 rows, 33,310 bytes. The preview carried 3 rows
   plus shape stubs, so the caller lost the answer and fell back to mypy.
@@ -89493,6 +89493,13 @@ project. Reported causes are claims until checked in source.
 
   Related, not the same: ANTS-3543 (downshift at max_bytes), ANTS-4892
   (file-and-count summary for a spilled search).
+  Shipped 2026-11-13. cmdWorkspaceSearch: when the reply would spill and
+  fits inline without context_before / context_after, it drops both and
+  sets context_dropped:true. A reply that spills either way keeps its
+  context (the spill file holds it). Contract:
+  tests/features/mcp_workspace_search/spec.md § ANTS-5588, test red first.
+  Reaches clients when ants-mcpd is rebuilt and they reconnect; no running
+  state, so no stop/start control.
   **Layman:** When a code search returns too much, it should throw away the surrounding lines before it throws away any results.
   Kind: enhancement.
   Source: finbreak session message 341, 2026-10-01.

@@ -498,7 +498,9 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                         "emitting `downshifted:true` + `headline_only:true` "
                         "(so headline_only may appear on a response you "
                         "did not request) and clearing the drop signals "
-                        "when the lean set is complete.");
+                        "when the lean set is complete. A reply that "
+                        "would spill only because of its context lines "
+                        "drops them instead: `context_dropped:true`.");
                     // ANTS-1876 — per-match text clip. Out-of-range
                     // values clamp to [50, 10000], which guarantees at
                     // least the ellipsis + 47 bytes of payload.

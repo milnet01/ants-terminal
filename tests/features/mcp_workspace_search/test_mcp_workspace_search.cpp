@@ -931,6 +931,56 @@ TEST(McpWorkspaceSearch, Ants4892SpilledSearchKeepsFileCounts) {
     mcp::setOffloadConfig(false, 16384, 2048);
 }
 
+// ANTS-5588 — when the context lines are what would make a reply spill, the
+// reply drops them, keeps every row inline and says `context_dropped`. A reply
+// that fits keeps its context.
+TEST(McpWorkspaceSearch, Ants5588ContextIsDroppedBeforeRows) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QDir().mkpath(root + QStringLiteral("/src"));
+    {
+        QFile out(root + QStringLiteral("/src/rows.txt"));
+        ASSERT_TRUE(out.open(QIODevice::WriteOnly));
+        for (int i = 0; i < 100; ++i)   // a needle every fifth line: 20 rows
+            out.write((i % 5 == 2
+                           ? QStringLiteral("needle_5588 row %1\n").arg(i)
+                           : QStringLiteral("filler %1 padding padding padding\n").arg(i))
+                          .toUtf8());
+        QFile one(root + QStringLiteral("/src/once.txt"));
+        ASSERT_TRUE(one.open(QIODevice::WriteOnly));
+        one.write("before\nsolo_5588\nafter\n");
+    }
+    const auto bytes = [](const QJsonObject &o) {
+        return QJsonDocument(o).toJson(QJsonDocument::Compact).size();
+    };
+
+    mcp::setOffloadConfig(true, 4096, 2048);
+    const QJsonObject bare = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("needle_5588")}});
+    ASSERT_EQ(bare.value(QStringLiteral("matches")).toArray().size(), 20);
+    ASSERT_LT(bytes(bare), 4096) << "fixture: the rows alone must fit inline";
+
+    const QJsonObject wide = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("needle_5588")},
+                                               {QStringLiteral("context"), 2}});
+    const QJsonArray rows = wide.value(QStringLiteral("matches")).toArray();
+    EXPECT_EQ(rows.size(), 20) << "every row is kept";
+    ASSERT_TRUE(wide.value(QStringLiteral("context_dropped")).isBool());
+    EXPECT_TRUE(wide.value(QStringLiteral("context_dropped")).toBool());
+    for (const QJsonValue &v : rows) {
+        EXPECT_FALSE(v.toObject().contains(QStringLiteral("context_before")));
+        EXPECT_FALSE(v.toObject().contains(QStringLiteral("context_after")));
+    }
+    EXPECT_LT(bytes(wide), 4096) << "the reply now stays inline";
+    EXPECT_FALSE(wide.contains(QStringLiteral("files"))) << "it will not spill, so no spill summary";
+
+    const QJsonObject small = search6188(root, {{QStringLiteral("pattern"), QStringLiteral("solo_5588")},
+                                                {QStringLiteral("context"), 1}});
+    const QJsonObject hit = small.value(QStringLiteral("matches")).toArray().at(0).toObject();
+    EXPECT_TRUE(hit.contains(QStringLiteral("context_before"))) << "a reply that fits keeps its context";
+    EXPECT_FALSE(small.contains(QStringLiteral("context_dropped")));
+    mcp::setOffloadConfig(false, 16384, 2048);
+}
+
 // ANTS-5348 — `last_per_file: N` returns each file's LAST N matches, in file
 // order, with every matched file's full count in `file_totals`. A row cap that
 // lands inside a file keeps that file's latest rows, not its earliest.

@@ -112,6 +112,15 @@ keeps both as preserved top-level fields, beside `rows_preview`. A reply that
 will not spill carries neither. *Test:*
 `McpWorkspaceSearch.Ants4892SpilledSearchKeepsFileCounts`.
 
+## ANTS-5588 — context lines go before rows
+
+When offload is on, the reply would spill, and it fits inline without its
+`context_before` / `context_after`, the reply drops both from every row, keeps
+every row inline and carries `context_dropped: true`. A reply that would spill
+either way keeps its context, because the spill file holds all of it. A reply
+that fits keeps its context and carries no `context_dropped`. *Test:*
+`McpWorkspaceSearch.Ants5588ContextIsDroppedBeforeRows`.
+
 ## ANTS-5348 — the last N matches of each file
 
 `last_per_file: N` (1-500) keeps each file's last N matches, in file order,
