@@ -841,7 +841,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "available.");
                     QJsonObject prefixHintProp;
                     prefixHintProp["type"] = "string";
-                    prefixHintProp["pattern"] = "^[A-Z][A-Z0-9_-]{0,15}$";
+                    prefixHintProp["pattern"] =
+                        "^(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]{0,15}$";
                     prefixHintProp["description"] = QStringLiteral(
                         "Optional prefix for newly-injected caret "
                         "anchors under op:\"flip\". Default: the first "

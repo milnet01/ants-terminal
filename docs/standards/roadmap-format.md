@@ -1412,17 +1412,14 @@ the tooling is a narrow `op:flip` anchor helper, not id handling:
   `op:append` / `op:append_batch`) is validated by the *same*
   letter-containing, case-insensitive grammar (`kIdPrefixShape` in
   `remotecontrol.cpp`), **additionally capped at 16 characters** — a
-  longer prefix parses and flips but cannot be allocated. It is
-  deliberately looser than the
-  helper below so a repo can pin a lowercase / mixed-case prefix
-  (e.g. `mame-curator`). So a repo can mint new `Sh-` / `Ed-` ids
-  directly.
-- **The lone uppercase-only rule — `op:flip`'s `prefix_hint`.**
-  That argument is validated `^[A-Z][A-Z0-9_-]{0,15}$` (`rxPrefix`
-  in `remotecontrol_roadmap_log.cpp`, and again for `flip_batch` in
-  `remotecontrol_roadmap_log_batch.cpp`), but it is used *only* when injecting a
-  caret anchor onto a GFM bullet that has no id — it never
-  constrains id allocation.
+  longer prefix parses and flips but cannot be allocated. A repo can
+  pin a lowercase / mixed-case prefix (e.g. `mame-curator`), and so
+  mint new `Sh-` / `Ed-` ids directly.
+- **`op:flip`'s `prefix_hint` takes the same shape.** `flip` and
+  `flip_batch` validate it against `kIdPrefixShape` and refuse any
+  other value `bad_args`. It is used *only* when injecting a caret
+  anchor onto a GFM bullet that has no id — it never constrains id
+  allocation. The injected anchor is lower-cased.
 
 **A prefix may not contain `#`.** The character is reserved: a store-migrated
 project keeps its synthesis counter (§ 3.5.1) in a second `id_prefix` row keyed

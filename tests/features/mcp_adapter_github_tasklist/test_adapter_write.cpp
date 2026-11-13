@@ -362,25 +362,81 @@ TEST(AdapterWriteFlip, Inv10PrefixHintDefaultLeafDir) {
               QStringLiteral("vest-0001"));
 }
 
-// INV-10 — invalid prefix_hint refuses with bad_op_combo.
+// INV-10 — a prefix_hint outside op:append's id_prefix shape refuses with
+// bad_args (ANTS-6236): no letter, or too long.
 TEST(AdapterWriteFlip, Inv10PrefixHintInvalid) {
-    QTemporaryDir dir;
-    ASSERT_TRUE(dir.isValid());
-    const QString md = QStringLiteral(
-        "## Section\n"
-        "- [ ] Headline\n");
-    const QString root = buildProject(dir, md, 0);
+    for (const QString &bad : {QStringLiteral("2026"),
+                               QStringLiteral("ABCDEFGHIJKLMNOPQ")}) {
+        QTemporaryDir dir;
+        ASSERT_TRUE(dir.isValid());
+        const QString md = QStringLiteral(
+            "## Section\n"
+            "- [ ] Headline\n");
+        const QString root = buildProject(dir, md, 0);
 
-    RemoteControl rc(nullptr);
-    QJsonObject req;
-    req["caller_cwd"]  = root;
-    req["headline"]    = QStringLiteral("Headline");
-    req["to_status"]   = QStringLiteral("shipped");
-    req["prefix_hint"] = QStringLiteral("lower-case-bad");
-    const QJsonObject env = flip(rc, req);
-    EXPECT_FALSE(env.value("ok").toBool());
-    EXPECT_EQ(env.value("code").toString(),
-              QStringLiteral("bad_op_combo"));
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req["caller_cwd"]  = root;
+        req["headline"]    = QStringLiteral("Headline");
+        req["to_status"]   = QStringLiteral("shipped");
+        req["prefix_hint"] = bad;
+        const QJsonObject env = flip(rc, req);
+        EXPECT_FALSE(env.value("ok").toBool()) << bad.toStdString();
+        EXPECT_EQ(env.value("code").toString(), QStringLiteral("bad_args"))
+            << bad.toStdString();
+        EXPECT_EQ(readFile(root + QStringLiteral("/ROADMAP.md")), md);
+    }
+}
+
+// INV-10 (ANTS-6236) — prefix_hint takes every prefix op:append's id_prefix
+// takes: digit-led with a letter, and lower case.
+TEST(AdapterWriteFlip, Inv10PrefixHintSharesAppendShape) {
+    const QPair<QString, QString> cases[] = {
+        {QStringLiteral("3D_E"), QStringLiteral("3d_e-0001")},
+        {QStringLiteral("mame-curator"), QStringLiteral("mame-curator-0001")},
+    };
+    for (const auto &c : cases) {
+        QTemporaryDir dir;
+        ASSERT_TRUE(dir.isValid());
+        const QString root = buildProject(
+            dir, QStringLiteral("## Section\n- [ ] Headline\n"), 0);
+
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req["caller_cwd"]  = root;
+        req["headline"]    = QStringLiteral("Headline");
+        req["to_status"]   = QStringLiteral("in-progress");
+        req["prefix_hint"] = c.first;
+        const QJsonObject env = flip(rc, req);
+        EXPECT_TRUE(env.value("ok").toBool())
+            << QJsonDocument(env).toJson().constData();
+        EXPECT_EQ(env.value("anchor").toString(), c.second);
+    }
+}
+
+// INV-10 (ANTS-6236) — flip_batch applies the same shape and refusal code.
+TEST(AdapterWriteFlip, Inv10PrefixHintBatchSharesAppendShape) {
+    const auto run = [](const QString &hint) {
+        QTemporaryDir dir;
+        const QString root = buildProject(
+            dir, QStringLiteral("## Section\n- [ ] Headline\n"), 0);
+        RemoteControl rc(nullptr);
+        QJsonObject loc;
+        loc["headline"] = QStringLiteral("Headline");
+        QJsonObject req;
+        req["op"]          = QStringLiteral("flip_batch");
+        req["caller_cwd"]  = root;
+        req["to_status"]   = QStringLiteral("in-progress");
+        req["locators"]    = QJsonArray{loc};
+        req["prefix_hint"] = hint;
+        return rc.cmdRoadmapLog(req).object();
+    };
+    const QJsonObject good = run(QStringLiteral("3D_E"));
+    EXPECT_TRUE(good.value("ok").toBool())
+        << QJsonDocument(good).toJson().constData();
+    const QJsonObject bad = run(QStringLiteral("2026"));
+    EXPECT_FALSE(bad.value("ok").toBool());
+    EXPECT_EQ(bad.value("code").toString(), QStringLiteral("bad_args"));
 }
 
 // INV-11 — fenced-code refusal.

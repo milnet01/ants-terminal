@@ -105790,7 +105790,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L19-F8).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6236] **flip's prefix_hint refuses a digit-leading prefix that append's id_prefix accepts.**
+- ✅ [ANTS-6236] **flip's prefix_hint refuses a digit-leading prefix that append's id_prefix accepts.**
   From ANTS-6128. flip's rxPrefix is ^[A-Z][A-Z0-9_-]{0,15}$ and refuses
   with bad_op_combo; append's kIdPrefixShape allows "3D_E". flip's
   fallback leaf.left(4).toUpper() is never checked against either. Use
@@ -105799,6 +105799,11 @@ worked after these.
   Hot reload: none needed.
   2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review
   (L09-02, remotecontrol_roadmap_log.cpp:2549).
+  2026-11-13: shipped. flip and flip_batch validate prefix_hint against
+  kIdPrefixShape and refuse bad_args. Red first:
+  AdapterWriteFlip.Inv10PrefixHint{Invalid,SharesAppendShape,BatchSharesAppendShape}.
+  The fallback already goes through RoadmapParse::leafIdPrefix, which
+  checks its result.
   **Layman:** Two roadmap tools disagree about which id prefixes are valid, so a folder named like "3D_Engine" works for one and is refused by the other.
   Kind: fix.
   Source: review-readability-2026-10-22 (L19-F9).

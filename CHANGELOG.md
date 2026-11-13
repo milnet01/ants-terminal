@@ -413,6 +413,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log` flip and flip_batch accept the same `prefix_hint` shapes as append's `id_prefix`, such as `3D_E` and `mame-curator`.** (ANTS-6236)
+  A hint outside that shape now refuses `bad_args`; it refused
+  `bad_op_combo` before.
+
 - **A screen wipe sent as CSI ? 2 J clears the text selection** (ANTS-5784)
 
 - **workspace_search with files_only and matches_only answers as files_only** (ANTS-6252)

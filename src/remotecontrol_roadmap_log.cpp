@@ -2569,16 +2569,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         if (prefix.isEmpty()) {
             prefix = RoadmapParse::leafIdPrefix(
                 QFileInfo(callerCanonical).fileName());
-        } else {
-            static const QRegularExpression rxPrefix(
-                QStringLiteral("^[A-Z][A-Z0-9_-]{0,15}$"));
-            if (!rxPrefix.match(prefix).hasMatch()) {
-                return rlErr(QStringLiteral("bad_op_combo"),
-                    QStringLiteral("roadmap_log: prefix_hint \"%1\" "
-                                   "does not match "
-                                   "^[A-Z][A-Z0-9_-]{0,15}$")
-                        .arg(rcdetail::ceSanitiseEcho(prefix)));
-            }
+        } else if (!kIdPrefixShape.match(prefix).hasMatch()) {
+            // ANTS-6236 — op:append's id_prefix shape and refusal code.
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: prefix_hint \"%1\" must contain "
+                               "a letter and be 1-16 chars of [A-Za-z0-9_-] "
+                               "(e.g. ANTS, 3D_E)")
+                    .arg(rcdetail::ceSanitiseEcho(prefix)));
         }
         // ANTS-3350 — beside the RESOLVED roadmap, as op:"append" does. A
         // subdirectory caller resolved the roadmap in a parent, and the

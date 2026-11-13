@@ -49,7 +49,9 @@ for ANTS-1428. See `docs/specs/ANTS-1428-adapter-mode-non-ants-roadmap.md` for t
   counter — only anchor-injecting writes do. INV-8 contract.
 - **INV-10 / `prefix_hint` regex + default.** Valid hint is
   used verbatim; absent hint defaults to leaf-dir uppercase
-  first 4 chars; invalid hint refuses with `bad_op_combo`.
+  first 4 chars. A valid hint is one `op:append`'s `id_prefix`
+  accepts (`kIdPrefixShape`), under `flip` and `flip_batch`
+  alike; any other refuses with `bad_args` (ANTS-6236).
 - **INV-11 / Fenced-code refusal.** Located bullet inside a
   ``` ... ``` fenced block refuses with
   `code:"anchor_unsafe_context"`; no write, no counter bump.

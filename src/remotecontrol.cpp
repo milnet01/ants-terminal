@@ -698,9 +698,9 @@ QString rlDetectCounterPrefix(const QString &markdown,
     return best;
 }
 
-// ANTS-2076 — id_prefix arg shape. Looser than op:flip's prefix_hint
-// (which is uppercase-only) so a caller can pin a lowercase or
-// mixed-case project prefix (e.g. "mame-curator", "DOOM").
+// ANTS-2076 — id_prefix arg shape; op:flip's prefix_hint shares it
+// (ANTS-6236). A caller can pin a lowercase or mixed-case project
+// prefix (e.g. "mame-curator", "DOOM").
 // ANTS-3492 — prefix may be digit-led if it contains ≥1 letter (3D_E);
 // a letter-free prefix (2026) is still rejected. {0,15} cap unchanged.
 // ANTS-3498 — the same grammar is single-sourced as
