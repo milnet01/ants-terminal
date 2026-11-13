@@ -148,3 +148,21 @@ TEST(AuditToolCrashDistinct, Main) {
         FAIL();
     }
 }
+
+// INV-5 (ANTS-6192) — a tool that cannot start is a tool-health row too: built
+// by makeToolHealthWarning, and never given the check's own severity.
+TEST(AuditToolCrashDistinct, Inv5FailedToStartIsAToolHealthRow) {
+    const std::string body =
+        extractFnBody(ants_test::slurpAuditDialog(), "AuditDialog::runNextCheck");
+    ASSERT_FALSE(body.empty()) << "runNextCheck body could not be extracted";
+    const size_t at = body.find("waitForStarted(");
+    ASSERT_NE(at, std::string::npos);
+    const std::string branch = body.substr(at);
+    ASSERT_NE(branch.find("Failed to start process"), std::string::npos);
+    EXPECT_NE(branch.find("makeToolHealthWarning("), std::string::npos)
+        << "the failed-to-start row is not built by makeToolHealthWarning";
+    EXPECT_EQ(branch.find("check.severity"), std::string::npos)
+        << "the failed-to-start row takes the check's own severity";
+    EXPECT_EQ(branch.find("check.type"), std::string::npos)
+        << "the failed-to-start row takes the check's own type";
+}

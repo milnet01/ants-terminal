@@ -105301,7 +105301,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F3).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6192] **The audit's 'Failed to start process' row uses makeToolHealthWarning, so it sorts as Info like every other tool-health row.**
+- ✅ [ANTS-6192] **The audit's 'Failed to start process' row uses makeToolHealthWarning, so it sorts as Info like every other tool-health row.**
   From ANTS-6116 (L07 MEDIUM F4). runNextCheck's waitForStarted failure
   builds its own CheckResult with check.type and check.severity, against
   the rule that tool-health rows are Info (makeToolHealthWarning). The
@@ -105309,6 +105309,12 @@ worked after these.
   pass; this one was not, because it changes what the user sees: a
   behaviour fix with its own test.
   Hot reload: none needed; no new running state.
+  2026-11-13: shipped. runNextCheck's waitForStarted failure appends
+  makeToolHealthWarning(check, "Failed to start process"). Red first:
+  AuditToolCrashDistinct.Inv5FailedToStartIsAToolHealthRow (a
+  source-text test; the failure needs /bin/bash to be missing, so no
+  behavioural run). mutation_probe: three mutants, all killed. Also
+  closes ANTS-5853.
   **Layman:** When an audit tool cannot start, its warning row keeps the tool's own severity and can sort above real findings.
   Kind: fix.
   Source: review-readability-2026-10-22 (L07-F4).
@@ -107082,13 +107088,15 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: audit-dialog.
 
-- 📋 [ANTS-5853] **src/auditdialog.cpp:2867: A "Failed to start process" warning keeps the check's own severity, so it sorts as a Critical or Blocker.**
+- ✅ [ANTS-5853] **src/auditdialog.cpp:2867: A "Failed to start process" warning keeps the check's own severity, so it sorts as a Critical or Blocker.**
   Lead L07-C7 from the readability review of 2026-10-22, lane audit-dialog.
   Location: src/auditdialog.cpp:2867
   A "Failed to start process" warning keeps the check's own severity, so it sorts as a Critical or Blocker.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-13: confirmed by reading runNextCheck, and fixed by ANTS-6192:
+  the row is now built by makeToolHealthWarning, so it is Info.
   **Layman:** A possible bug in the code-audit window, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

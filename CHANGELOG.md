@@ -413,6 +413,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An audit tool that cannot start now gets an Info-level tool-health row, so it no longer sorts among real findings.** (ANTS-6192)
+
 - **`doc_dedup`'s `figure_mismatch` reads a number ending in `k` or `M` as a figure, so `90-104k` against `140-154k` is reported.** (ANTS-6756)
   A number followed by a unit (`500ms`, `5KB`, `5m`) is still not a
   figure.

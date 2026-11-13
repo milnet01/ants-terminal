@@ -79,6 +79,13 @@ for the timeout warning. Without this, a Major-severity check that
 crashed would inherit Major severity and pollute the severity-sorted
 list.
 
+**INV-5 — A tool that cannot start is a tool-health row (ANTS-6192).**
+Source-grep: in `AuditDialog::runNextCheck`, the code after
+`waitForStarted(` builds its "Failed to start process" row with
+`makeToolHealthWarning`, and reads neither `check.severity` nor
+`check.type`. *Test:*
+`AuditToolCrashDistinct.Inv5FailedToStartIsAToolHealthRow`.
+
 ## Scope
 
 ### In scope

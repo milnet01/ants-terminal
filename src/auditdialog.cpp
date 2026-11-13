@@ -147,9 +147,8 @@ void releaseProcess(QProcess *p) {
 
 // The tool-health warning row: a tool problem, not a finding, so it is
 // Info severity and type (it must not sort among real findings) and
-// carries the warning flag. Used by the timeout, cancel, output-cap,
-// crash and non-zero-exit paths. "Failed to start" in runNextCheck still
-// builds its own row with the check's severity (ANTS-6192).
+// carries the warning flag. Used by the timeout, cancel, failed-to-start,
+// output-cap, crash and non-zero-exit paths.
 static CheckResult makeToolHealthWarning(const AuditCheck &check,
                                          const QString &message) {
     CheckResult r;
@@ -2840,15 +2839,8 @@ void AuditDialog::runNextCheck() {
     m_process->start("/bin/bash", {"-c", check.command});
     if (!m_process->waitForStarted(5000)) {
         m_timeout->stop();
-        CheckResult r;
-        r.checkId = check.id;
-        r.checkName = check.name;
-        r.category = check.category;
-        r.type = check.type;
-        r.severity = check.severity;
-        r.output = "Failed to start process";
-        r.warning = true;
-        m_completedResults.append(r);
+        m_completedResults.append(
+            makeToolHealthWarning(check, "Failed to start process"));
         ++m_checksRun;
         runNextCheck();
     }
