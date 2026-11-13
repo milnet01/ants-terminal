@@ -112574,6 +112574,13 @@ reports are asked for separately, each time.
   written retroactively (documentation.md 9.1), so record that the spec
   predates the gate rather than inventing rows. Verify: spec_lint over
   both files reports no missing_section or invariant_no_test.
+  Waits on the user (asked 2026-11-13, session 261). This item, filed
+  2026-09-28, asks for Tests and loop-log sections on two specs written
+  before the layout. The user's decision of 2026-09-29 on ANTS-5559 put
+  missing_section and invariant_no_test on such specs out of scope. Does
+  that decision cover this item (drop it), or should these two specs be
+  done anyway? Re-measured 2026-11-13: ANTS-1248 has 3 missing sections
+  and 10 invariant_no_test; ANTS-1302 has 3 missing sections.
   **Layman:** Two older design documents lack the sections that say which tests prove them.
   Kind: doc-fix.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
