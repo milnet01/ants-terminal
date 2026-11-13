@@ -101294,7 +101294,7 @@ a modern terminal" release.
   Source: user-request-2026-10-15.
   Lanes: tools, docs.
 
-- 📋 [ANTS-5743] **The packages declare ripgrep and git, which the search and git verbs run.**
+- ✅ [ANTS-5743] **The packages declare ripgrep and git, which the search and git verbs run.**
   Found 2026-10-16 while answering Groundwork (GRND-0081).
   packaging/opensuse/ants-terminal.spec Requires only hicolor-icon-theme
   and qt6-sql-sqlite, yet workspace_search and cited_by shell out to rg
@@ -101303,6 +101303,9 @@ a modern terminal" release.
   terminal must install without them) in the openSUSE spec, and the
   matching lines in packaging/debian, archlinux, flatpak and appimage.
   Reload: nothing; packaging only.
+  Shipped 2026-11-13 (f20b0cd9): Recommends in the openSUSE spec and
+  Debian control, optdepends on Arch. Flatpak was dropped (2026-10-19)
+  and the AppImage has no dependency list.
   **Layman:** Installing Ants Terminal also installs the two small tools its search features need.
   Kind: fix.
   Source: in-session-2026-10-16 (Groundwork GRND-0081 question).
@@ -103458,7 +103461,7 @@ asked for them to ship in 0.8.0.
   Source: readability-trial-review-2026-10-19.
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-5784] **CSI ? J (DECSED) erases like ED in the grid but does not clear the selection.**
+- ✅ [ANTS-5784] **CSI ? J (DECSED) erases like ED in the grid but does not clear the selection.**
   Found 2026-10-19 while fixing ANTS-5782. TerminalGrid::handleCsi's
   case 'J' calls eraseInDisplay without checking a.intermediate, so
   CSI ? 2 J wipes the screen exactly like ED 2. VtStream::onParsedAction
@@ -103467,6 +103470,9 @@ asked for them to ship in 0.8.0.
   protected cells, which needs DECSCA) and leave the hint as is, or treat
   CSI ? J as ED in both places. Either way add a vtstream_clear_hint
   case for CSI ? 2 J.
+  Shipped 2026-11-13 (0947cb56): CSI ? J is treated as ED in both
+  places; DECSED proper would need DECSCA. Test: VtstreamClearHint
+  INV-3.
   **Layman:** A program that wipes the screen with the "selective erase" command leaves your old text selection highlighted on a blank screen.
   Kind: fix.
   Source: readability-fix-pass-2026-10-19.
@@ -105634,7 +105640,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L14 sweep).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6226] **indie_review_partition's replies tell callers to brief lanes with indie_review_brief, a verb that was removed.**
+- ✅ [ANTS-6226] **indie_review_partition's replies tell callers to brief lanes with indie_review_brief, a verb that was removed.**
   Found in the ANTS-6123 sweep. remotecontrol_review.cpp's partition
   hints name `indie_review_brief(lane=..., source_paths=[...])`;
   mcpdeprecation.cpp lists the verb as removed. Two verb descriptions in
@@ -105642,6 +105648,8 @@ worked after these.
   name it too. Point each at what replaced it (mcp::removedVerbError
   holds the replacement). Schema text: run McpEagerLoad after.
   Hot reload: none needed; ants-mcpd picks it up on rebuild.
+  Shipped 2026-11-13 (6dbeb038): every hint and description names the
+  review-code skill.
   **Layman:** The review-planning tool points users at another tool that no longer exists.
   Kind: fix.
   Source: review-readability-2026-10-22 (L14 sweep, from L14-F3).
@@ -105740,11 +105748,13 @@ worked after these.
   Source: review-readability-2026-10-22 (L18-F3).
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6233] **rcSanitizeBulletField keeps C1 control characters (U+0080-U+009F) in roadmap fields.**
+- ✅ [ANTS-6233] **rcSanitizeBulletField keeps C1 control characters (U+0080-U+009F) in roadmap fields.**
   From ANTS-6127. The function drops C0 and DEL only; its comment
   claimed C0/C1 and now says C1 is kept. Decide whether C1 should go
   too; if so add the range and a red-first test.
   Hot reload: none needed.
+  Shipped 2026-11-13 (fef8ed98): C1 is dropped. Test:
+  Ants6233BulletFieldDropsC1Controls.
   **Layman:** A few invisible control characters can still reach the roadmap file through a bullet's text.
   Kind: fix.
   Source: review-readability-2026-10-22 (L18-F7).
@@ -105978,7 +105988,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L21-F18).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6252] **workspace_search with both files_only and matches_only returns an empty matches_only reply.**
+- ✅ [ANTS-6252] **workspace_search with both files_only and matches_only returns an empty matches_only reply.**
   From ANTS-6131. The parse lambda checks files_only first and skips
   the distinct-match harvest; the reply ladder checks matches_only
   first, so it reports zero distinct matches. Its comment ("before it
@@ -105986,6 +105996,8 @@ worked after these.
   state one order (files_only, as count_only already wins over both)
   and enforce it in the reply ladder; add a test with both flags.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  Shipped 2026-11-13 (7a346a8e): order is count_only, files_only,
+  matches_only. Test: Ants6252FilesOnlyWinsOverMatchesOnly.
   **Layman:** Asking code search for two summary modes at once gives an empty answer, because two parts of the code disagree on which mode wins.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F4).
@@ -106147,12 +106159,13 @@ worked after these.
   Source: review-readability-2026-10-22 (L23-F6 sweep).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6264] **changelog_log op:"release" reports bytes_written by hand and omits file_bytes.**
+- ✅ [ANTS-6264] **changelog_log op:"release" reports bytes_written by hand and omits file_bytes.**
   L24-F4. Every other changelog write calls rcSetWriteBytes, which sets
   bytes_written and file_bytes (ANTS-3723). The release write computes
   bytes_written itself and never sets file_bytes. Fix: call
   rcSetWriteBytes there. Queued, not fixed in ANTS-6133: it adds a reply
   field, so it is a behaviour change with its own test.
+  Shipped 2026-11-13 (2b12b531). Test: Ants6264ReleaseReportsFileBytes.
   **Layman:** One changelog action leaves out a size figure every other one reports.
   Kind: fix.
   Source: review-readability-2026-10-22 L24.
@@ -112246,11 +112259,13 @@ reports are asked for separately, each time.
   Kind: perf.
   Source: code-audit-2026-09-26 clang-tidy class table.
 
-- 📋 [ANTS-5450] **clang-tidy bugprone-incorrect-roundings: 6 sites in 6 files.**
+- ✅ [ANTS-5450] **clang-tidy bugprone-incorrect-roundings: 6 sites in 6 files.**
   Sites in cc-jobs/scratch/audit-20260926/clang-tidy.txt (table beside it):
   claudestatuswidgets.cpp, feedbackfile.cpp, indiereviewengine.cpp,
   mainwindow.cpp, remotecontrol.cpp (ANTS-5158), remotecontrol_roadmap_query_verb.cpp.
   Replace with std::lround.
+  Shipped 2026-11-13 (426bfddf): three sites were left; the other three
+  no longer round that way.
   **Layman:** Numbers rounded with a +0.5 trick that rounds some values the wrong way.
   Kind: fix.
   Source: code-audit-2026-09-26 clang-tidy class table.
@@ -112652,11 +112667,12 @@ reports are asked for separately, each time.
   Source: in-session-2026-10-13 (measuring ANTS-1061).
   Lanes: terminal-core.
 
-- 📋 [ANTS-5679] **image_bomb_png_header_peek/spec.md names handleKittyApc, a function that does not exist.**
+- ✅ [ANTS-5679] **image_bomb_png_header_peek/spec.md names handleKittyApc, a function that does not exist.**
   Its Motivation says the Kitty APC path is dispatched through
   `handleKittyApc`; the function is TerminalGrid::handleApc. doc_lint's
   doc_symbols reports it. Found 2026-10-13; not fixed then because that
   line was outside the ANTS-1061 edit.
+  Shipped 2026-11-13 (8eef6c34).
   **Layman:** A test's description names the wrong function for Kitty images.
   Kind: doc-fix.
   Source: in-session-2026-10-13 (doc_lint while shipping ANTS-1061).

@@ -192,6 +192,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The openSUSE, Debian and Arch packages recommend ripgrep and git** (ANTS-5743)
+
 - **`cc-job clean --mine` finishes in a fraction of a second, however many old job records are on disk.** (ANTS-6763)
 
 - **`spec_lint` reads a Tests-section range such as "INV-1 to INV-5" as covering every declared rule in it.** (ANTS-6160)
@@ -410,6 +412,16 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **A screen wipe sent as CSI ? 2 J clears the text selection** (ANTS-5784)
+
+- **workspace_search with files_only and matches_only answers as files_only** (ANTS-6252)
+
+- **changelog_log op:"release" reports file_bytes** (ANTS-6264)
+
+- **Roadmap fields drop C1 control characters** (ANTS-6233)
+
+- **indie_review_partition's hints name the review-code skill** (ANTS-6226)
 
 - **changelog_log op:"amend" keeps an entry's line width** (ANTS-6762)
   An edit across a line break joins the lines, then wraps the result
