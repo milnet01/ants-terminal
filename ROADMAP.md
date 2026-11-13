@@ -91020,7 +91020,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-22 (ANTS-5732 design measurement).
   Lanes: mcp.
 
-- 📋 [ANTS-6168] **quotation_check INV-10 names an empty caller_cwd refusal that no test drives.**
+- ✅ [ANTS-6168] **quotation_check INV-10 names an empty caller_cwd refusal that no test drives.**
   Found by both cold lanes of the ANTS-5732 amendment gate, on text the
   amendment did not change. INV-10 in docs/specs/ANTS-5502-quotation-check.md
   says an empty `caller_cwd` refuses `caller_cwd_required`, and its test is
@@ -91034,6 +91034,12 @@ measured Ants adding about 5,250 tokens to every request.
   empty caller_cwd and name that harness in § 5. Lane open question, unsettled:
   does an empty-string caller_cwd reach cmdQuotationCheck (which returns
   no_project) or refuse in the dispatcher?
+  2026-11-13: shipped, on the spec's side. INV-10 states the source-text
+  asserts QuotationCheck.Inv10Registration runs and points the refusal
+  at mcp_caller_cwd_contracts DISP-1. The open question:
+  ClaudeIntegration::handleMcpRequest refuses an empty caller_cwd for a
+  Required verb before the handler runs, so cmdQuotationCheck never sees
+  one.
   **Layman:** The quote-checking tool's design promises one safety check that its tests never actually try.
   Kind: review-fix.
   Source: review-contract ANTS-5502 loop 3, 2026-10-22 (out of blast radius).
