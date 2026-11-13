@@ -421,6 +421,7 @@ bool inDiff(const DocFinding::Finding &f, const Layout &L,
         k == QLatin1String("header_status_unknown") ||
         k == QLatin1String("header_kind_unknown") ||
         k == QLatin1String("header_field_empty") ||
+        k == QLatin1String("header_layman_absorbed") ||
         k == QLatin1String("filename_id_mismatch") ||
         k == QLatin1String("duplicate_invariant"))
         return d.touched.contains(f.line);
@@ -632,12 +633,27 @@ void checkHeaderBlock(const QStringList &lines, const QVector<bool> &fence,
         ++end;
 
     bool layman = false;
+    // ANTS-6316 — true while SpecParse would still add a line to the field
+    // above: from a field line until a blank line or a heading.
+    bool inField = false;
     for (int i = 0; i < end; ++i) {
         if (isFenced(i)) continue;
         if (lines[i].contains(QLatin1String("layman"), Qt::CaseInsensitive))
             layman = true;
         const auto m = fieldRe.match(lines[i]);
-        if (!m.hasMatch()) continue;
+        if (!m.hasMatch()) {
+            const QString text = lines[i].trimmed();
+            if (text.isEmpty() || text.startsWith(QLatin1Char('#')))
+                inField = false;
+            else if (inField && opts.laymanRequired &&
+                     text.startsWith(QLatin1String("layman"), Qt::CaseInsensitive))
+                add(QStringLiteral("header_layman_absorbed"), i + 1,
+                    QStringLiteral("the Layman line has no blank line above it, "
+                                   "so it is read as part of the header field "
+                                   "it follows"));
+            continue;
+        }
+        inField = true;
         const QString name = m.captured(1);
         QString value = m.captured(2).trimmed();
         if (value.isEmpty() && i + 1 < end) {

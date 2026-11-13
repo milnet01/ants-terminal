@@ -1313,6 +1313,29 @@ TEST(SpecLintVerb, Ants5511LaymanLine) {
               QStringList{QStringLiteral("header_layman_missing")});
 }
 
+// ANTS-6316 — a prose Layman line with no blank line above it is read as part of
+// the header field it follows (spec-format.md § 5.6). The line is named, and it
+// still counts as present. A field value that only mentions the word is not one.
+TEST(SpecLintVerb, Ants6316LaymanLineAbsorbedIntoAField) {
+    const QString absorbed = withLine("(user-request-2026-10-30).\n\n**Layman:**",
+                                      "(user-request-2026-10-30).\nLayman:");
+    EXPECT_EQ(headerKinds(absorbed), QStringList{QStringLiteral("header_layman_absorbed")});
+    SpecLint::Options opts;
+    opts.laymanRequired = true;
+    for (const auto &f : SpecLint::check(absorbed, QStringLiteral("ANTS-1-x.md"), opts).findings)
+        if (f.kind == QLatin1String("header_layman_absorbed")) EXPECT_EQ(f.line, 6);
+
+    // Under a wrapped value the line is still inside the field.
+    EXPECT_EQ(headerKinds(withLine("(user-request-2026-10-30).\n\n**Layman:**",
+                                   "(user-request-2026-10-30),\nsecond line.\nLayman:")),
+              QStringList{QStringLiteral("header_layman_absorbed")});
+    EXPECT_EQ(headerKinds(withLine("(user-request-2026-10-30).\n",
+                                   "(user-request-2026-10-30),\nwritten for a layman reader.\n")),
+              QStringList{});
+    EXPECT_EQ(headerKinds(withLine("**Layman:** One plain sentence.", "Layman: One plain sentence.")),
+              QStringList{});
+}
+
 TEST(SpecLintVerb, Ants5511FilenameId) {
     const QString doc = QString::fromUtf8(kCleanHeader);
     EXPECT_EQ(headerKinds(doc, QStringLiteral("docs/specs/ANTS-1.md")), QStringList{});

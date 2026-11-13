@@ -88791,6 +88791,19 @@ parse, not that file.
   from the index; raise the default for a whole-tree regex; report
   files walked vs total (complete:false). Profile first: why a
   26 ms scan sometimes takes 5 s (cold cache, rg --json parse cost).
+  Profiled 2026-11-13 (load average 12, /dev/sdb is a rotational
+  ST10000VX0004). File data evicted with posix_fadvise DONTNEED, pattern
+  `ancestry: cycle|"cycle"`, whole tree: rg cold 22.1 s, warm 0.02 s;
+  rg -j1 cold 54 s; rg --sort path cold 43 s; git grep (worktree) cold
+  17 s; git grep --cached cold 2.75 s, warm 0.49 s. Lane src, literal:
+  cold 2.6 s, warm 0.01 s; a fresh ants-mcpd --call answers in 11 ms, so
+  the verb adds nothing. Cause: seeks for cold file data; the cache was
+  cold again 20 minutes after a full build. Only the packfile read
+  (--cached) beats it. Candidate design: when rg hits the wall budget on
+  a git tree and the pattern is a literal, list candidate files with
+  `git grep --cached -l -F`, add modified and untracked files, and re-run
+  rg on those files only. A regex stays as today: git's dialects differ
+  from rg's, so a prefilter could drop matches.
   **Layman:** Some code searches are slow enough to hit their time limit, even where a plain git search finishes in under a second.
   Kind: perf.
   Source: ANTS-5323 follow-up 2026-10-24.
