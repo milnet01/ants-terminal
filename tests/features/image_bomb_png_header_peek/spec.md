@@ -7,7 +7,7 @@ Inline images reach Ants via two escape-sequence channels:
 - **OSC 1337** (iTerm2): base64-encoded image bytes carried inline on
   the wire, dispatched through `handleOscImage` in `src/terminalgrid.cpp`.
 - **Kitty graphics APC** (format `f=100` PNG path): base64-encoded
-  PNG bytes carried in an APC block, dispatched through `handleKittyApc`.
+  PNG bytes carried in an APC block, dispatched through `TerminalGrid::handleApc`.
 
 `QImage::loadFromData()` on either channel performs a *full* decode
 before the caller gets a chance to inspect dimensions — so a 1 KB
