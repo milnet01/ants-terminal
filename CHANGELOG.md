@@ -196,6 +196,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **`comment_claims` accepts a work-item id the changelog cites, so it reports only ids that no record names.** (ANTS-5795)
+
 - **An MCP call naming an argument its tool does not have is refused with `bad_args`, and the tool does not run.** (ANTS-4659)
   The reply lists the names in `unknown_args` and points at
   `tool_info`. The `ignored_args` note is gone. `compact` now works on

@@ -1317,7 +1317,7 @@ public:
     QJsonDocument cmdRoadmapLogDeleteSectionForTest(const QJsonObject &req);
     QJsonDocument cmdRoadmapLogMoveSectionForTest(const QJsonObject &req);
     // ANTS-4501 § 2.3 — drive the git backfill against a synthetic caller_cwd
-    // without a MainWindow. See tests/features/roadmap_backfill_dates/spec.md.
+    // without a MainWindow. See docs/specs/ANTS-4501-roadmap-report.md.
     QJsonDocument cmdRoadmapLogBackfillDatesForTest(const QJsonObject &req);
     // ANTS-4585 phase 2 — drive the trailer repair against a synthetic
     // caller_cwd. See tests/features/roadmap_repair_trailers/spec.md.

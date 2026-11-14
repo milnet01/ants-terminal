@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6769 -->
+<!-- ants-roadmap-id-high-water: ANTS=6770 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84663,6 +84663,19 @@ open, and two of these were exactly that.
   Source: in-session-2026-11-14, found while shipping ANTS-4659.
   Lanes: mcp.
 
+- 📋 [ANTS-6770] **Four plugin comments cite ANTS-1736, the keypress veto, which the roadmap no longer holds.**
+  src/luaengine.h (two places), src/pluginmanager.h and
+  src/pluginmanager.cpp say the keypress veto "is ANTS-1736" or "is
+  unbuilt". Commit 1ecb6e12 added ANTS-1736 and ANTS-1737 as plugin event
+  wiring backlog; neither the store nor CHANGELOG.md names 1736 now.
+  Find what became of it (git log -S on the roadmap), then either restore
+  the item or reword the comments to say the veto is not planned. Whether
+  the veto is still wanted is the user's call.
+  **Layman:** Notes in the plugin code point at a planned feature whose work item has gone missing.
+  Kind: doc-fix.
+  Source: in-session-2026-11-14, found while shipping ANTS-5795.
+  Lanes: plugins.
+
 ### Ants MCP feedback from CC sessions — 2026-08-24 triage
 
 Two findings, from LocalWebServerManager and the ~/.claude config project. Both
@@ -103832,7 +103845,7 @@ asked for them to ship in 0.8.0.
   Source: in-session-2026-10-01 (ANTS-5527 push-gate failure).
   Lanes: mcp, tests.
 
-- 📋 [ANTS-5795] **Source comments cite roadmap ids the store lacks, and four see-references point at nothing.**
+- ✅ [ANTS-5795] **Source comments cite roadmap ids the store lacks, and four see-references point at nothing.**
   Measured 2026-10-20 with comment_claims over src/ (ANTS-5786):
   135 unknown_ticket rows, e.g. ANTS-1168 and ANTS-1181, which
   roadmap_query also reports missing. Some may be ids that predate the
@@ -103844,6 +103857,15 @@ asked for them to ship in 0.8.0.
   Widened 2026-10-22: the tools/ readability review found the same class
   outside src/ (tools/safe-build.sh's header cites ANTS-1217). Sweep
   tools/, hooks/, cmake/ and packaging/ comments as well.
+  Shipped 2026-11-14 (session 265). Re-measured over src, tools, cmake and
+  packaging: 147 unknown_ticket rows. Nearly all cite real shipped items
+  that left the roadmap and are in CHANGELOG.md and git, so the comments
+  were true and the checker was wrong: comment_claims now treats an id the
+  changelog cites as known (Inv4ChangelogIdIsKnown). After: 28 rows, all
+  example ids (ANTS-1, ANTS-0042, FIBR-0042...) except ANTS-1736, filed
+  separately. Fixed by hand: the four dead references (remotecontrol.h,
+  roadmapstore.h, terminalgrid.{h,cpp}) and check-version-drift.sh's
+  citation of a CLAUDE.md heading that moved to .claude/rules/release.md.
   **Layman:** Some code comments point at work items or files that do not exist, so a reader following them hits a dead end.
   Kind: doc-fix.
   Source: in-session-2026-10-20 (first comment_claims run over src/).

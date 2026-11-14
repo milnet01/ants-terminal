@@ -151,6 +151,18 @@ TEST(CommentClaims, Inv4UnknownTicket) {
     EXPECT_FALSE(t.contains(QStringLiteral("CFG-12"))) << "another prefix is not checked";
 }
 
+// ANTS-5795 — an id the changelog cites is a real item that left the roadmap.
+TEST(CommentClaims, Inv4ChangelogIdIsKnown) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("ROADMAP.md"), "- 📋 [ANTS-1] **One.**\n");
+    writeFile(dir.filePath("CHANGELOG.md"),
+              "## [0.1.0]\n- **ANTS-4 — Four shipped.**\n- **Five shipped.** (ANTS-5)\n");
+    writeFile(dir.filePath("src/c.cpp"), "// ANTS-4 and ANTS-5 did this. ANTS-78 did not.\n");
+    const QStringList t = quotes(rows(call(dir), "findings", QStringLiteral("unknown_ticket")));
+    EXPECT_EQ(t, (QStringList{QStringLiteral("ANTS-78")}))
+        << t.join(QStringLiteral(" | ")).toStdString();
+}
+
 TEST(CommentClaims, Inv5CensusNumbers) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QList<QJsonObject> c = rows(call(*dir), "candidates", QStringLiteral("census_number"));

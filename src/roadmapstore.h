@@ -1153,7 +1153,7 @@ public:
     static constexpr int kMailInboxPageMax = 200;
     static int inboxPageLimit(int requested);
 
-    // ANTS-5255 — the mail a project has sent, so a sender can see `acked_at`.
+    // ANTS-5255 — the mail a project has sent, with each message's `acked_at`.
     struct SentMessage {
         qint64 id = 0;
         QString toSlug;

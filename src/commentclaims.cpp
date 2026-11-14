@@ -521,7 +521,9 @@ private:
 };
 
 // Every item id the roadmap files declare, read from the bullet that opens
-// each item (`- 📋 [ANTS-1] …` or `- **ANTS-1** …`).
+// each item (`- 📋 [ANTS-1] …` or `- **ANTS-1** …`), plus every id of a
+// declared prefix the changelog cites: a shipped item leaves the roadmap and
+// stays in the changelog (ANTS-5795).
 QSet<QString> roadmapIds(const QString &rootCanonical) {
     const QDir root(rootCanonical);
     const ProjectSettings::Settings settings = ProjectSettings::load(rootCanonical);
@@ -536,6 +538,17 @@ QSet<QString> roadmapIds(const QString &rootCanonical) {
     for (const QString &f : std::as_const(files))
         for (auto it = item.globalMatch(readText(rootCanonical, root.filePath(f))); it.hasNext();)
             ids.insert(it.next().captured(1));
+
+    QSet<QString> prefixes;
+    for (const QString &id : std::as_const(ids)) prefixes.insert(id.section(QLatin1Char('-'), 0, 0));
+    static const QRegularExpression cited(QStringLiteral("\\b([A-Z][A-Z0-9]*)-\\d+\\b"));
+    const QString changelog = readText(
+        rootCanonical,
+        root.filePath(settings.changelog.value_or(QStringLiteral("CHANGELOG.md"))));
+    for (auto it = cited.globalMatch(changelog); it.hasNext();) {
+        const QRegularExpressionMatch m = it.next();
+        if (prefixes.contains(m.captured(1))) ids.insert(m.captured(0));
+    }
     return ids;
 }
 

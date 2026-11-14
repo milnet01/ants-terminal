@@ -1845,9 +1845,9 @@ void TerminalGrid::eraseInDisplay(int mode) {
     // 0.6.26 — detect Ink's overflow-repaint: CSI 2J CSI 3J CSI H
     // (clearTerminal in ansi-escapes). The CSI 3J in that sequence is NOT
     // the user asking to wipe scrollback — it's Ink forcing a viewport
-    // reset before it replays its fullStaticOutput + dynamic frame (see
-    // ink/build/ink.js:705). When we see mode 3 within a few ms of mode 2
-    // on main screen, preserve the scrollback (conversation history is
+    // reset before it replays its fullStaticOutput + dynamic frame (Ink's
+    // own build/ink.js, not a file of this project). When we see mode 3
+    // within a few ms of mode 2 on main screen, preserve the scrollback (conversation history is
     // what the user cares about) and extend the suppression window so the
     // replay's scrollUps don't duplicate into scrollback.
     //

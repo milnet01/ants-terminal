@@ -860,7 +860,7 @@ private:
     // 0.6.26 — Ink-repaint handling. Claude Code (Ink/React TUI) v2.1+
     // emits `CSI 2J + CSI 3J + CSI H + fullStaticOutput + output` from
     // renderInteractiveFrame when the rendered frame overflows the
-    // viewport (see ink/build/ink.js:700 and ansi-escapes/base.js:124
+    // viewport (Ink's own build/ink.js and ansi-escapes' base.js:
     // clearTerminal = eraseScreen + "\x1B[3J" + "\x1B[H"). Naive
     // handling of that sequence destroys the user's scrollback (mode 3
     // clear) AND still leaves subsequent duplicates if the suppression

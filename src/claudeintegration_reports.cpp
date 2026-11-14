@@ -389,7 +389,7 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "and YAML, -- in Lua. missing_quotation: a quoted text no file named "
                         "within 80 characters contains. dead_reference: `see X` naming a "
                         "path or a project symbol that does not exist. unknown_ticket: an id "
-                        "with a roadmap prefix that the roadmap lacks. census_number: ~N, "
+                        "with a roadmap prefix that the roadmap and changelog lack. census_number: ~N, "
                         "N-line, N <plural noun>. Tests and generated files are left out "
                         "unless asked; paths defaults to source_roots, else src.");
                     QJsonObject schema;

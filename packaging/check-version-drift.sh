@@ -54,8 +54,8 @@ check() {
     fi
 }
 
-# Packaging files — keep in sync with the release checklist in
-# CLAUDE.md "Key Design Decisions" (every bump touches these). Adding
+# Packaging files — keep in sync with the release rules in
+# .claude/rules/release.md (every bump touches these). Adding
 # a new packaging file? Append a check() line here and ensure the
 # version-bearing pattern is regex-escaped for grep -E.
 check packaging/opensuse/ants-terminal.spec \
