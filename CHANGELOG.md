@@ -196,6 +196,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The render and store-schema specs describe the round-trip comparison and the acyclicity check's owner as built** (ANTS-5618)
+
 - **`workspace_search` finishes a timed-out plain-text search through the git index.** (ANTS-6245)
   A literal search that hits its time limit on a git tree now runs once
   more, leaving out the tracked files git has proved cannot hold the text,

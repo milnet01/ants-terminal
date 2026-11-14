@@ -103502,7 +103502,7 @@ here.)
   Source: in-session-2026-09-09 (found in the 0.7.109 release doc sweep).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5618] **ANTS-3758 § 2.6 and ANTS-3756 § 5 still describe the round-trip projection and the acyclicity owner as they stood before ANTS-3810.**
+- ✅ [ANTS-5618] **ANTS-3758 § 2.6 and ANTS-3756 § 5 still describe the round-trip projection and the acyclicity owner as they stood before ANTS-3810.**
   ANTS-3810 § 7 owes these, and they were not done with its build because
   each edits a spec and so needs that spec's review gate:
   - ANTS-3758 § 2.6: family 2 loses `rel` (ANTS-4079 carries all six link
@@ -103511,6 +103511,10 @@ here.)
   - ANTS-3756 § 5: split the bullet - scheduling to ANTS-3794, the
     acyclicity check to ANTS-3810, the INV-1 second-leg clause unowned.
     (Its DDL comment's owner was corrected with the build.)
+  Shipped 2026-11-14. docs/specs/ANTS-3758-roadmap-render.md § 2.6 and
+  docs/specs/ANTS-3756-roadmap-store-schema.md § 5 amended as ANTS-3810 § 7
+  asked; each has a loop-log amendment row. No review: rule 14 gates no
+  amendment.
   **Layman:** Two older design documents still describe the roadmap's round-trip check the old way.
   Kind: doc-fix.
   Source: in-session-2026-10-02 (ANTS-3810 § 7, owed after its build).
