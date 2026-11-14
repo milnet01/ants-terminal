@@ -86192,7 +86192,7 @@ rather than refiled.
   Source: UT_Ants-feedback-2026-09-06.
   Lanes: mcp, specs.
 
-- 📋 [ANTS-5808] **ANTS-3662 § 2.1 never states how test_coverage_gap and test_coverage_unverifiable decide, only their diff scope.**
+- ✅ [ANTS-5808] **ANTS-3662 § 2.1 never states how test_coverage_gap and test_coverage_unverifiable decide, only their diff scope.**
   Measured 2026-10-21: in docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md the two kinds appear
   only in § 2.4's scope table and INV-13. The ANTS-4623 comparison (Tests
   section id list vs § Invariants, the empty-set skip, the range rule,
@@ -86200,6 +86200,12 @@ rather than refiled.
   switch are specified nowhere but src/speclint.cpp comments and
   tests/features/spec_lint. Adding them to § 2.1 sets a contract, so
   it owes rule 14's gate.
+  Shipped 2026-11-14. § 2.1 gains both kinds in its table and a
+  paragraph giving the comparison's steps as src/speclint.cpp
+  checkTestCoverage builds them: the skip, range expansion (ANTS-6160),
+  the unverifiable notation, the gap with its tombstone and
+  spec_test_clause_coverage exemptions. An amendment, so no review under
+  rule 14.
   **Layman:** The spec for the spec checker does not describe one of its checks, so the rules for that check live only in code and tests.
   Kind: doc-fix.
   Source: in-session-2026-10-21, found while shipping ANTS-4890.

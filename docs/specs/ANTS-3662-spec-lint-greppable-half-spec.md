@@ -58,6 +58,8 @@ Each check is deterministic and produces `DocFinding::Finding` (ANTS-3664) with
 | `invariant_id_gap` | the doc's own `INV-N` sequence skips a number with no tombstone |
 | `loop_row_no_outcome` | a cold-eyes loop-log row has counts and an empty outcome cell |
 | `command_test_no_expectation` | *(candidate)* a `*Test:*` clause is a command but states nothing it should return |
+| `test_coverage_gap` | *(candidate)* the Tests section names some declared `INV-N` ids but not this one (ANTS-4623) |
+| `test_coverage_unverifiable` | *(candidate)* the Tests section writes coverage in a notation the comparison cannot expand (ANTS-4623) |
 
 **The required-section list is read, never assumed — and read from a
 machine-readable source.** It comes from a fenced block in the project's own
@@ -260,6 +262,31 @@ may legitimately add none. It has no § 2.4 per-kind row, so a scoped run report
 it in full. **Measured 2026-11-02** with `SpecLint.DISABLED_CorpusCalibration`:
 5 of 280 specs fire, and reading each flagged line found invariants written in
 an unread form in all 5.
+
+**The coverage comparison** (ANTS-4623) reads the ids the Tests section names
+against the ids § Invariants declares. The Tests section is the first `##`
+heading whose title starts with *Tests* after any number, else the first that
+contains the word. The steps, in order:
+
+1. **Skip** when there is no Tests section, no declared invariant, or a Tests
+   section naming no id. When no document in the run was compared,
+   `test_coverage_checked` is `false` and `skipped[]` lists both kinds.
+2. **Expand a numeric range** (`INV-3..7`, `INV-3–INV-7`, `INV-3 to 7`). Every
+   declared id whose number lies in it counts as named, a lettered one
+   included (ANTS-6160). A range wider than 500 is not expanded.
+3. **Report unverifiable**, once per document at the Tests heading, when a
+   range reaches a number no declared id carries, or when what is left holds a
+   bare continuation (`INV-1/2`, `INV-3, 4 and 5`). A document so reported gets
+   no `test_coverage_gap`.
+4. **Report a gap** at each declared id not named, unless it is a tombstone
+   (`*moved to …*`, `*withdrawn — …*`), or the project sets
+   `spec_test_clause_coverage: true` in `.ants/project.json` and the id's own
+   `*Test:*` clause is not blank (ANTS-4890). That key is re-read on every
+   call.
+
+Both kinds are candidates and never `autoFixable`. `src/speclint.cpp`,
+`checkTestCoverage`, is the implementation;
+`tests/features/spec_lint` locks it.
 
 ### 2.2 What it does not do
 
