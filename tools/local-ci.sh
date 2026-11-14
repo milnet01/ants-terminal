@@ -30,15 +30,26 @@
 # `push` trigger only, so the same change opened as a PR runs CI in full.
 set -uo pipefail
 
-repo_root="$(git rev-parse --show-toplevel)"
-cd "$repo_root" || exit 1
+# The paths, read from stdin, that can break a container compile guard.
+# `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
+# break the floor exactly as the generated file would. ci.yml counts: it
+# holds the configure flags and packages those guards build with (ANTS-5637).
+compilable_paths() {
+    grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$|^\.github/workflows/ci\.yml$' || true
+}
 
 mode=full
 case "${1:-}" in
     --docs) mode=docs ;;
+    # Prints which of ANTS_PUSH_CHANGED's paths the compile guards count, and
+    # runs nothing (tests/features/prepush_range, INV-6).
+    --compilable) printf '%s\n' "${ANTS_PUSH_CHANGED-}" | compilable_paths; exit 0 ;;
     "") ;;
-    *) echo "local-ci: unknown argument '$1' (expected --docs or nothing)" >&2; exit 2 ;;
+    *) echo "local-ci: unknown argument '$1' (expected --docs, --compilable or nothing)" >&2; exit 2 ;;
 esac
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "$repo_root" || exit 1
 
 # ANTS-5322 — the pushed repo's own runner and ci.yml. PyYAML is its one
 # dependency; without it there is no gate, and that is said, not skipped.
@@ -163,16 +174,14 @@ elif [[ -z "${ANTS_PREPUSH_NO_UBUNTU24:-}" && -n "${ANTS_GATE_SKIPPED:-}" ]]; th
         >> "$ANTS_GATE_SKIPPED"
 fi
 
-# Only a push that changes something COMPILABLE can break a container compile
-# guard, so a docs- or packaging-only push skips both guard legs below.
+# Only a push that changes something COMPILABLE, or ci.yml itself, can break a
+# container compile guard, so a docs- or packaging-only push skips both guard
+# legs below.
 # run_gate=1 means we could not compute a precise range, so we cannot rule
 # out a source change — run them rather than skip on uncertainty.
 compilable=""
 if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
-    # `.cpp.in` / `.h.in` count: a template that generates a compiled TU can
-    # break the floor exactly as the generated file would.
-    compilable="$(grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$' \
-                  <<<"$changed" || true)"
+    compilable="$(compilable_paths <<<"$changed")"
 else
     compilable="(range unknown)"
 fi
@@ -405,7 +414,7 @@ elif [[ ! -x tools/qt62-guard.sh ]]; then
     echo "pre-push: ⊘ tools/qt62-guard.sh missing — Qt-floor guard did NOT run."
 else
     if [[ -z "$compilable" ]]; then
-        echo "pre-push: qt62-baseline leg skipped — no compilable source in this push."
+        echo "pre-push: qt62-baseline leg skipped — no compilable source or ci.yml change in this push."
     elif ! tools/qt62-guard.sh --warm-only; then
         echo >&2
         echo "pre-push: Qt 6.2 FLOOR violation — push blocked." >&2

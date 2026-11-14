@@ -72,7 +72,7 @@ answer:
   runs the secret scan and then `tools/local-ci.sh` (ANTS-5542). That script
   runs `ci.yml` itself (ANTS-5322): its `build-test` job — build, suite,
   lints — always, its `build-asan` job when a warm ASan tree exists, then its
-  `qt62-baseline` job in CI's image when the push touches compilable source.
+  `qt62-baseline` job in CI's image when the push touches compilable source or `ci.yml`.
 - **A docs-only push builds and tests nothing.** The hook asks `ci.yml`'s
   `paths-ignore`, so a push touching nothing outside its list runs only
   `tools/local-ci.sh --docs`: the document checks for what the push touches.

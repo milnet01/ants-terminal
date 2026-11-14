@@ -33,6 +33,12 @@ covers the docs-only decision itself.
   `NOTHING WAS CHECKED` and let the push through (changed by user ruling,
   2026-10-10).
 
+- **INV-6** — the gate counts a push that changes only
+  `.github/workflows/ci.yml` as one its container compile guards run on.
+  `ci.yml` holds the configure flags and packages those guards build with,
+  and GitHub builds such a push. `tools/local-ci.sh --compilable` prints the
+  paths of `ANTS_PUSH_CHANGED` that the guards count, and runs nothing.
+
 ## How it is tested
 
 `test_prepush_range.sh` builds a throwaway repository with copies of the
@@ -40,6 +46,8 @@ real shim and `.ants/gate.conf`, and runs the real machine-wide hook. A stub
 `tools/ci_workflow.py` forwards to the real runner, so the real docs-only
 decision is used. A stand-in `tools/local-ci.sh` prints how it was called
 instead of building, and exits with `STUB_GATE_RC` (default 0). INV-5 runs
-the shim against an empty hooks directory. The test exits 77 (skipped) where
+the shim against an empty hooks directory. INV-6 asks the real
+`tools/local-ci.sh --compilable`, with a source path and a document as
+controls. The test exits 77 (skipped) where
 PyYAML is absent; where the machine-wide hook is absent, as on GitHub's
-runners, it runs INV-5 alone.
+runners, it runs INV-5 and INV-6 alone.

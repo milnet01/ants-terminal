@@ -425,6 +425,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The push gate's Qt 6.2 compile guard runs on a push that changes only `ci.yml`.** (ANTS-5637)
+  `tools/local-ci.sh --compilable` prints which changed paths the guard
+  counts, and runs nothing.
+
 - **A highlighted menu-bar entry is readable in every built-in theme.** (ANTS-5576)
   An open menu title, or a hovered or clicked menu-bar entry, now takes
   whichever of the theme's text and background colours reads better on the

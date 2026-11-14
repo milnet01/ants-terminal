@@ -68,6 +68,20 @@ else
     fail "INV-5 no-hook fallback: rc=$rc rc_red=$rc_red: $(grep -m2 'GATE\|pre-push' <<<"$out")"
 fi
 
+# INV-6 — the real gate counts a ci.yml-only push as one its compile guards
+# must run on. The two controls show the answer follows the path.
+compilable_of() { ANTS_PUSH_CHANGED="$1" bash "$REPO_ROOT/tools/local-ci.sh" --compilable 2>&1; }
+ci_only="$(compilable_of '.github/workflows/ci.yml')"
+src_only="$(compilable_of 'src/a.cpp')"
+doc_only="$(compilable_of 'docs/a.md')"
+if [[ "$src_only" != 'src/a.cpp' || -n "$doc_only" ]]; then
+    fail "INV-6 controls: a source path gave '$src_only', a document gave '$doc_only'"
+elif [[ "$ci_only" == '.github/workflows/ci.yml' ]]; then
+    pass "INV-6 a ci.yml-only push runs the container compile guards"
+else
+    fail "INV-6 a ci.yml-only push skips the compile guards: got '$ci_only'"
+fi
+
 if [[ "$have_global" -eq 0 ]]; then
     echo "[skip] INV-1..4: no machine-wide hook at $GLOBAL_HOOKS/pre-push"
     if [ "$failures" -gt 0 ]; then exit "$failures"; fi

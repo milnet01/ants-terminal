@@ -101214,13 +101214,16 @@ a modern terminal" release.
   Source: user-request-2026-10-10.
   Lanes: terminalwidget, config.
 
-- 📋 [ANTS-5637] **The push gate's container compile guards run on a push that changes only ci.yml.**
+- ✅ [ANTS-5637] **The push gate's container compile guards run on a push that changes only ci.yml.**
   tools/local-ci.sh runs the Qt 6.2 floor guard and the build-test
   toolchain leg only when the push changes a "compilable" path (C/C++
   sources, CMakeLists.txt, *.cmake). A push touching only
   .github/workflows/ci.yml (a configure flag, a package) skips both, while
   GitHub builds it. Add ci.yml to that filter and extend
   tests/features/prepush_range to lock it.
+  Shipped 2026-11-14: ci.yml joined the filter in tools/local-ci.sh;
+  tests/features/prepush_range INV-6 locks it through the new
+  --compilable mode.
   **Layman:** A change to the CI settings alone gets the same Qt 6.2 build check locally that GitHub gives it.
   Kind: fix.
   Source: in-session-2026-10-10 (CI parity review).

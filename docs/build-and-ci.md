@@ -48,8 +48,8 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   push again. With no podman the job runs on this machine and the image leg is
   declared skipped. It also runs
   `build-asan` when `build-asan/` is warm, and the Qt 6.2 compile guard
-  `tools/qt62-guard.sh --warm-only`. On a push with compilable source, a
-  cold Qt 6.2 cache blocks the push: run `tools/qt62-guard.sh` (about
+  `tools/qt62-guard.sh --warm-only`. On a push with compilable source or a changed
+  `ci.yml`, a cold Qt 6.2 cache blocks the push: run `tools/qt62-guard.sh` (about
   11 min, through `cc-job`), then push again.
 - `tools/asan-nightly.sh` builds `build-asan/` each night, so its push leg
   stays warm enough to run. Install the 03:30 timer once per machine with
