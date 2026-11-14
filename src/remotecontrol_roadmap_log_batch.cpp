@@ -3989,8 +3989,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
                 .arg(opName));
 
     // Normalise and check the text the section will hold. Returns a refusal,
-    // or a null document with *intro set.
-    const auto normalise = [&](QString text, QString *intro) -> QJsonDocument {
+    // or a null document with *intro set. `oneTitle` allows a single `# `
+    // line: the preamble's, or an archive file's root intro (ANTS-5608).
+    const auto normalise = [&](QString text, bool oneTitle,
+                               QString *intro) -> QJsonDocument {
         text.remove(QChar('\r'));
         QStringList lines = text.split(QChar('\n'));
         for (QString &ln : lines) {
@@ -4012,15 +4014,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
             const QString &ln = lines.at(i);
             if (fenced.value(i) || !kHeading.match(ln).hasMatch())
                 continue;
-            if (preamble && kTitle.match(ln).hasMatch() && ++titles == 1)
+            if (oneTitle && kTitle.match(ln).hasMatch() && ++titles == 1)
                 continue;
             return rcSectionOpErr(QStringLiteral("bad_intro"),
                 QStringLiteral("roadmap_log: line \"%1\" is a Markdown heading, "
                                "which the next import reads as a new section. %2")
-                    .arg(ln, preamble
-                                 ? QStringLiteral("The preamble may hold one `# ` "
+                    .arg(ln, oneTitle
+                                 ? QStringLiteral("%1 may hold one `# ` "
                                                   "title line and no other heading "
                                                   "above `####`.")
+                                       .arg(preamble
+                                                ? QStringLiteral("The preamble")
+                                                : QStringLiteral("A file's root intro"))
                                  : QStringLiteral("An intro may hold `####` and "
                                                   "deeper headings, not `#` to "
                                                   "`###`.")));
@@ -4029,9 +4034,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
         return QJsonDocument();
     };
     QString intro;
-    if (!amend) {
-        const QJsonDocument bad =
-            normalise(req.value(QStringLiteral("new_text")).toString(), &intro);
+    // The preamble's check needs no store row. set_intro's waits for the
+    // section row, which says whether one `# ` line is allowed.
+    if (!amend && preamble) {
+        const QJsonDocument bad = normalise(
+            req.value(QStringLiteral("new_text")).toString(), true, &intro);
         if (!bad.isNull()) return bad;
     }
 
@@ -4058,6 +4065,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
     if (!row)
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
     const QString previous = row->intro;
+    // ANTS-5608 — each file's root section (level 0) holds that file's title.
+    const bool oneTitle = preamble || row->level == 0;
+    if (!amend && !preamble) {
+        const QJsonDocument bad = normalise(
+            req.value(QStringLiteral("new_text")).toString(), oneTitle, &intro);
+        if (!bad.isNull()) return bad;
+    }
     if (amend) {
         const int hits = int(previous.count(oldText));
         if (hits != 1)
@@ -4070,7 +4084,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogSetIntro(const QJsonObject &req,
                                                   .arg(slug)));
         QString replaced = previous;
         replaced.replace(oldText, req.value(QStringLiteral("new_text")).toString());
-        const QJsonDocument bad = normalise(replaced, &intro);
+        const QJsonDocument bad = normalise(replaced, oneTitle, &intro);
         if (!bad.isNull()) return bad;
     }
 

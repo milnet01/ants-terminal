@@ -425,6 +425,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log set_intro and amend_intro edit an archive file's opening text, keeping its one title line** (ANTS-5608)
+
 - **`roadmap_log op:"create_section"` refuses a release version that a section in an archive file already carries.** (ANTS-5777)
 
 - **A tab no longer keeps Qt's replaced close button in memory beside the themed one.** (ANTS-5775)

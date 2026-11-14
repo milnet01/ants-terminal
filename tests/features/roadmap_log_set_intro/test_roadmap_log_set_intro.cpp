@@ -119,11 +119,15 @@ QByteArray fixture() {
 }
 
 QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
-                     qint64 *projectId) {
+                     qint64 *projectId, const QByteArray &archive = QByteArray()) {
     guard.setEnv("XDG_DATA_HOME",
                  QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
     const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
     if (!writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()))
+        return QString();
+    // ANTS-5608 — an archive beside the live file, when the test wants one.
+    if (!archive.isEmpty() &&
+        !writeFile(rawRoot + QStringLiteral("/docs/roadmap/0.5.md"), archive))
         return QString();
     const QString root = QFileInfo(rawRoot).canonicalFilePath();
 
@@ -154,9 +158,10 @@ struct Fx {
     QTemporaryDir tmp;
     qint64 projectId = 0;
     QString root;
+    QByteArray archive;   // ANTS-5608 — docs/roadmap/0.5.md, when set
     bool ok() {
         if (!tmp.isValid()) return false;
-        root = seedMigrated(guard, tmp, &projectId);
+        root = seedMigrated(guard, tmp, &projectId, archive);
         return !root.isEmpty();
     }
 };
@@ -598,4 +603,60 @@ TEST(RoadmapLogSetPreamble, Ants5523AmendPreambleKeepsTheRest) {
     req[QStringLiteral("old_text")] = QStringLiteral("Not in the preamble");
     EXPECT_EQ(rc.cmdRoadmapLog(req).object().value(QStringLiteral("code")).toString(),
               QStringLiteral("intro_match_not_found"));
+}
+
+// ANTS-5608 — an archive file's root intro holds its `# ` title, as the live
+// preamble does. amend_intro and set_intro on that root keep the one title;
+// a second title, or a `##`, still refuses.
+TEST(RoadmapLogSetIntro, Ants5608ArchiveRootIntroKeepsItsTitle) {
+    Fx fx;
+    fx.archive =
+        "<!-- ants-roadmap-format: 1 -->\n"
+        "\n"
+        "# 0.5.x archive\n"
+        "\n"
+        "This file is the archive that slash-bump rotated here.\n"
+        "\n"
+        "## Shipped wave\n"
+        "\n"
+        "- \xE2\x9C\x85 [DEMO-0001] **A shipped item.**\n"
+        "  Layman: A done thing.\n"
+        "  Kind: implement.\n"
+        "  Source: seed.\n"
+        "\n";
+    ASSERT_TRUE(fx.ok());
+    const QString archivePath =
+        QDir(fx.root).filePath(QStringLiteral("docs/roadmap/0.5.md"));
+    RemoteControl rc(nullptr);
+
+    QJsonObject amend = introReq(fx.root, QStringLiteral("0-5"),
+                                 QStringLiteral("a commit moved here"));
+    amend[QStringLiteral("op")]       = QStringLiteral("amend_intro");
+    amend[QStringLiteral("old_text")] = QStringLiteral("slash-bump rotated here");
+    const QJsonObject resp = rc.cmdRoadmapLogSetIntroForTest(amend, false).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    std::string md = readAll(archivePath).toStdString();
+    EXPECT_TRUE(has(md, "# 0.5.x archive\n\nThis file is the archive that a commit moved here.\n"))
+        << md;
+
+    // set_intro on the same root: one title is kept too.
+    const QJsonObject set = rc.cmdRoadmapLogSetIntroForTest(
+        introReq(fx.root, QStringLiteral("0-5"),
+                 QStringLiteral("# 0.5.x archive\n\nRewritten.\n")), false).object();
+    ASSERT_TRUE(set.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(set).toJson().toStdString();
+    md = readAll(archivePath).toStdString();
+    EXPECT_TRUE(has(md, "# 0.5.x archive\n\nRewritten.\n")) << md;
+    EXPECT_EQ(countLinesStarting(md, "# "), 1) << md;
+
+    // A second title or a section heading is still refused, and nothing moves.
+    const QByteArray before = readAll(archivePath);
+    for (const char *t : {"# One\n\n# Two\n", "# One\n\n## Sneaky\n"}) {
+        const QJsonObject bad = rc.cmdRoadmapLogSetIntroForTest(
+            introReq(fx.root, QStringLiteral("0-5"), QString::fromUtf8(t)), false).object();
+        EXPECT_EQ(bad.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("bad_intro")) << t;
+    }
+    EXPECT_EQ(readAll(archivePath), before);
 }

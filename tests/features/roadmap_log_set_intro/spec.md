@@ -14,6 +14,12 @@ intro text, which is what migration stores (ANTS-5373). A line inside a
 fenced code block is code and is not checked, as the import does not read
 it as a heading (ANTS-5493). The same holds for INV-7.
 
+**INV-12 (ANTS-5608) — a file's root intro keeps one title.** An archive
+file's root section holds that file's `# ` line, as the preamble holds the
+live file's. `set_intro` and `amend_intro` on a root section allow one `# `
+line and refuse `bad_intro` on a second, or on a `##` or `###` line.
+*Test:* `RoadmapLogSetIntro.Ants5608ArchiveRootIntroKeepsItsTitle`.
+
 **INV-3 — `set_intro` never reaches the preamble.** A missing `section`
 refuses `missing_field`, and the message names `set_preamble`.
 

@@ -112597,7 +112597,7 @@ reports are asked for separately, each time.
   Source: review-contract ANTS-1337 loop 2, 2026-09-26 (filed at the blast-radius exit).
   Lanes: verify, docs.
 
-- 📋 [ANTS-5529] **The markdown roadmap writers never check the file is unchanged between reading it and writing it back.**
+- 🚫 [ANTS-5529] **The markdown roadmap writers never check the file is unchanged between reading it and writing it back.**
   Split from ANTS-5095 as its own piece of work. Every markdown-path
   write reads ROADMAP.md, edits it in memory and commits with its own
   QSaveFile, so a write landing in between is overwritten. There is no
@@ -112608,6 +112608,13 @@ reports are asked for separately, each time.
   retryable code when they differ. Store-backed projects are unaffected:
   their writes go through the store's transaction. Only markdown-served
   projects (github-task-list, pass-headings, unmigrated) are exposed.
+  Dropped 2026-11-14: closed by ANTS-5420 (26b89e75). cmdRoadmapLog takes
+  RoadmapWriterTurn, an exclusive per-root flock, before its op dispatch, so
+  every markdown write site this item lists runs one call at a time, in and
+  across processes (ANTS-2132 INV-22). No per-site byte compare is needed
+  between roadmap_log callers. Not covered, by design of a lock: an editor
+  or script that writes the file without taking the turn. The fold-in
+  writers are ANTS-6482.
   **Layman:** If two tools edit an old-style roadmap file at the same moment, one edit can silently overwrite the other.
   Kind: review-fix.
   Source: code-quality-review-2026-09-11 perf pass (lane mcp-roadmap-batch), split from ANTS-5095.
@@ -112657,7 +112664,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
   Lanes: mcp.
 
-- 📋 [ANTS-5536] **ANTS-1248 and ANTS-1302 predate the spec format: no Tests or loop-log section, and ANTS-1248's invariants name no test.**
+- 🚫 [ANTS-5536] **ANTS-1248 and ANTS-1302 predate the spec format: no Tests or loop-log section, and ANTS-1248's invariants name no test.**
   doc_lint (spec_lint) 2026-09-28: both specs lack `## Tests` and
   `## Cold-eyes loop log`; ANTS-1248 INV-1 to INV-10 each report
   invariant_no_test. Both features shipped with tests
@@ -112674,6 +112681,9 @@ reports are asked for separately, each time.
   that decision cover this item (drop it), or should these two specs be
   done anyway? Re-measured 2026-11-13: ANTS-1248 has 3 missing sections
   and 10 invariant_no_test; ANTS-1302 has 3 missing sections.
+  Dropped 2026-11-14 (user decision, session 264): the 2026-09-29 ruling on
+  ANTS-5559 covers this item. Both specs predate the format; no sections
+  are added.
   **Layman:** Two older design documents lack the sections that say which tests prove them.
   Kind: doc-fix.
   Source: in-session-2026-09-28, found while closing ANTS-5096.
