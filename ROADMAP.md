@@ -112847,7 +112847,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-10-09 (ANTS-1043 window audit).
   Lanes: tests, mcp.
 
-- 📋 [ANTS-5634] **slurpSourceList and slurpRemoteControl read an unopenable path as empty text, so a wrong list silently shrinks what a scrape covers.**
+- ✅ [ANTS-5634] **slurpSourceList and slurpRemoteControl read an unopenable path as empty text, so a wrong list silently shrinks what a scrape covers.**
   Verified by reading tests/_support/srcgrep.h: both helpers append
   slurpFile()'s "" for a path that cannot be opened and say nothing. An
   "X is absent" assertion then passes over a fraction of the class. Safe
@@ -112859,6 +112859,12 @@ reports are asked for separately, each time.
   is unreadable, so each caller's existing non-empty assertion fires,
   plus a recorded check that every caller has one. Red first: a list
   with one bogus path must turn a caller red.
+  Shipped 2026-11-14. slurpSourceList records a non-fatal gtest failure
+  naming each path it cannot open, so the one calling test fails and its
+  siblings run on. slurpRemoteControl now calls it. This replaces the
+  proposed empty-list return and the caller audit: the reader fails the
+  caller itself. Contract: tests/features/srcgrep_region_bounds/spec.md
+  INV-6. Test-only change, no CHANGELOG entry.
   **Layman:** A test helper that reads the program's own source files quietly skips any file it cannot open, so some checks could pass while reading less than they should.
   Kind: fix.
   Source: cold-read 2026-10-09 by the RetroArch session (ANTS-1043).

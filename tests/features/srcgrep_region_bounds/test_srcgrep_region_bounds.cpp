@@ -5,8 +5,12 @@
 
 #include "../../_support/srcgrep.h"
 
+#include <fstream>
 #include <string>
 
+#include <QTemporaryDir>
+
+#include <gtest/gtest-spi.h>
 #include <gtest/gtest.h>
 
 namespace {
@@ -73,4 +77,28 @@ TEST(SrcgrepRegionBounds, SlurpFunctionBodyIsBraceMatchedAndFailsEmpty) {
     EXPECT_EQ(b.find("poison()"), std::string::npos)
         << "and stops there, or the region absorbs the next function";
     EXPECT_TRUE(ants_test::slurpFunctionBody(src, "Klass::absent").empty());
+}
+
+// INV-6 (ANTS-5634) — a source list naming a path that cannot be opened fails
+// the calling test. Why this exists: the readers appended "" for such a path
+// and said nothing, so an "X is absent" scrape passed over part of a class.
+TEST(SrcgrepRegionBounds, Inv6ListReaderReportsAnUnreadablePath) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    static std::string real, empty, bogus;
+    real = dir.filePath(QStringLiteral("a.cpp")).toStdString();
+    empty = dir.filePath(QStringLiteral("empty.cpp")).toStdString();
+    bogus = dir.filePath(QStringLiteral("no_such_file.cpp")).toStdString();
+    { std::ofstream(real) << "int a;"; }
+    { std::ofstream give(empty); }
+
+    // Every path opens, one of them empty: the text, and no failure.
+    EXPECT_EQ(ants_test::slurpSourceList((real + ";" + empty).c_str()),
+              "int a;\n");
+
+    // One path does not open: a non-fatal failure that names it.
+    static std::string list;
+    list = real + ";" + bogus;
+    EXPECT_NONFATAL_FAILURE(ants_test::slurpSourceList(list.c_str()),
+                            "no_such_file.cpp");
 }

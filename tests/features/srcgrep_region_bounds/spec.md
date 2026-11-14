@@ -45,3 +45,9 @@ defect being removed rather than a new one.
 - **INV-5 end anchor may repeat the start.** Bounding a repeated block by
   its own opening token works, since the search begins past the start
   anchor.
+- **INV-6 list readers report an unreadable path** (ANTS-5634). The same
+  header's `slurpSourceList`, and every reader built on it, records a
+  gtest failure naming each listed path it cannot open. The failure is
+  non-fatal, so it fails the calling test and leaves its siblings in the
+  bundle running. A list whose every path opens records nothing, and an
+  existing empty file is not a failure.

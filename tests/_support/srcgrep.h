@@ -4,8 +4,9 @@
 // during ANTS-1348 when cmdGetText's body grew past the 2500-char
 // window that the existing `remote_control_get_text` test slurped).
 //
-// Header-only; no link-time dependency. Designed to be included from
-// any test_*.cpp that already includes `<fstream>` / `<string>`.
+// Header-only. Its list readers report through gtest, which every test
+// bundle links. Designed to be included from any test_*.cpp that already
+// includes `<fstream>` / `<string>`.
 
 #pragma once
 
@@ -13,6 +14,8 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+
+#include <gtest/gtest.h>
 
 namespace ants_test {
 
@@ -35,40 +38,13 @@ inline std::string slurpFile(const std::string &path) {
     return slurpFile(path.c_str());
 }
 
-// ANTS-3833 — the RemoteControl implementation is eleven translation units.
-// A scrape that reads one of them reads a fraction of the class: a verb that
-// moved to a sibling TU is indistinguishable from a verb that was deleted.
-// Reads every path in ANTS_RC_SOURCES, in that order — the order they were
-// cut from the original file — joined with a newline, so a two-anchor window
-// (find(A), then find(B, posA)) still sees A before B. A path that cannot be
-// opened contributes "", matching slurpFile's behaviour rather than aborting
-// the shared bundle.
-//
-// THE GUARD IS REQUIRED, NOT DEFENSIVE. This header is included by 278 test
-// sources across every bundle, while ANTS_RC_SOURCES is defined for the four
-// that carry a source-path definition. An unguarded body referencing the
-// macro fails to compile every bundle that does not have it.
-#if defined(ANTS_RC_SOURCES)
-inline std::string slurpRemoteControl() {
-    const std::string list = ANTS_RC_SOURCES;
-    std::string out;
-    std::size_t start = 0;
-    while (start <= list.size()) {
-        const std::size_t sep = list.find(';', start);
-        const std::size_t end = (sep == std::string::npos) ? list.size() : sep;
-        if (!out.empty()) out += '\n';
-        out += slurpFile(list.substr(start, end - start));
-        if (sep == std::string::npos) break;
-        start = sep + 1;
-    }
-    return out;
-}
-#endif
-
 // ANTS-1677 — read every path in a `;`-separated source list, in order,
 // joined with '\n'. Unguarded: it takes the list as an argument, so it
-// compiles in every bundle. A path that cannot be opened contributes "", as
-// slurpFile does.
+// compiles in every bundle.
+// ANTS-5634 — a path that cannot be opened still contributes "", and is
+// reported as a NON-FATAL gtest failure naming it. That fails the calling
+// test and no other: an "X is absent" scrape must not pass over part of a
+// class, and a hard exit would kill every sibling in the bundle (ANTS-2060).
 inline std::string slurpSourceList(const char *list) {
     const std::string paths = list;
     std::string out;
@@ -77,12 +53,32 @@ inline std::string slurpSourceList(const char *list) {
         const std::size_t sep = paths.find(';', start);
         const std::size_t end = (sep == std::string::npos) ? paths.size() : sep;
         if (!out.empty()) out += '\n';
-        out += slurpFile(paths.substr(start, end - start));
+        const std::string path = paths.substr(start, end - start);
+        if (!std::ifstream(path).is_open())
+            ADD_FAILURE() << "source list names a path that cannot be opened: "
+                          << path;
+        out += slurpFile(path);
         if (sep == std::string::npos) break;
         start = sep + 1;
     }
     return out;
 }
+
+// ANTS-3833 — the RemoteControl implementation is eleven translation units.
+// A scrape that reads one of them reads a fraction of the class: a verb that
+// moved to a sibling TU is indistinguishable from a verb that was deleted.
+// Reads every path in ANTS_RC_SOURCES, in that order — the order they were
+// cut from the original file — joined with a newline, so a two-anchor window
+// (find(A), then find(B, posA)) still sees A before B. An unreadable path
+// fails the calling test, as slurpSourceList says.
+//
+// THE GUARD IS REQUIRED, NOT DEFENSIVE. This header is included by 278 test
+// sources across every bundle, while ANTS_RC_SOURCES is defined for the four
+// that carry a source-path definition. An unguarded body referencing the
+// macro fails to compile every bundle that does not have it.
+#if defined(ANTS_RC_SOURCES)
+inline std::string slurpRemoteControl() { return slurpSourceList(ANTS_RC_SOURCES); }
+#endif
 
 // ANTS-1677 — the AuditDialog class's text: every file of
 // ANTS_AUDITDIALOG_SOURCES, the list CMake builds from
