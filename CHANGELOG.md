@@ -434,6 +434,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The MCP error-code rulebook matches what the verbs return: which code a new verb uses for an unknown op, which refusal wins on project_query, and the rows for not_found, section_not_found, target_not_found, target_ambiguous and too_large corrected** (ANTS-5803)
+
 - **roadmap_log set_intro and amend_intro edit an archive file's opening text, keeping its one title line** (ANTS-5608)
 
 - **`roadmap_log op:"create_section"` refuses a release version that a section in an archive file already carries.** (ANTS-5777)

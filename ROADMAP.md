@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6770 -->
+<!-- ants-roadmap-id-high-water: ANTS=6772 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97543,7 +97543,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-08-28, measured while shipping ANTS-4748.
   Lanes: mcp, docs.
 
-- 📋 [ANTS-5803] **mcp-error-codes.md: out-of-radius findings from the ANTS-4752 gate.**
+- ✅ [ANTS-5803] **mcp-error-codes.md: out-of-radius findings from the ANTS-4752 gate.**
   Filed by the review-contract run that gated ANTS-4752 (0cb0f9c5).
   Each lies outside that edit, so it exits the loop here.
 
@@ -97586,9 +97586,41 @@ volume classes, and the tooling/documentation gaps the run exposed.
      feedback paths answer an open failure with `read_failed`.
   8. [open question, unverified] The `section_not_found` row does not
      say the read_region refusal can carry `candidates[]` (ANTS-4350).
+  Shipped 2026-11-14. All eight fixed in mcp-error-codes.md. (1) a new
+  verb uses bad_mode for an unknown op; the wider split is ANTS-6771.
+  (2) the tests that pin text are named. (3) assign_id_batch added. (4)
+  read_region dropped from too_large. (5) the testauditengine.cpp
+  citation fixed. (6) the code is right: the dispatcher's
+  caller_cwd_required runs first; the row and the ANTS-2093 spec now say
+  so. (7) the not_found row says what read_region does; the code fix is
+  ANTS-6772. (8) candidates[] noted.
   **Layman:** Five smaller mistakes in the error-code rulebook, found while checking the ANTS-4752 change, written down to fix later.
   Kind: doc-fix.
   Source: review-contract mcp-error-codes.md 2026-10-21 (ANTS-4752 gate, out-of-radius findings).
+
+- 📋 [ANTS-6771] **An unknown op is refused with four different codes across the multi-op verbs.**
+  mcp-error-codes.md now says a new verb answers an unknown `op` with
+  `bad_mode`. Today: `bad_op_combo` (roadmap_log, changelog_log),
+  `bad_mode` (feedback_log, spec_log), `bad_args` (know_how,
+  session_message) and `bad_op` (git_state, the cold_eyes verbs).
+  `bad_op` has no row in the taxonomy at all. Fix: give `bad_op` a row
+  or fold it into `bad_mode`, and decide whether the `bad_args` sites
+  move to `bad_mode`.
+  **Layman:** When a tool is asked for an action it does not have, different tools answer with different error labels, so a caller cannot handle them one way.
+  Kind: fix.
+  Source: in-session-2026-11-14, found while shipping ANTS-5803.
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-6772] **read_region answers not_found for a file that exists but cannot be opened.**
+  src/readregion.cpp, the f.open branch, sets `not_found` on any open
+  failure. The taxonomy has `read_failed` (section 4) for that case.
+  Fix: answer `not_found` only when the file is absent, else
+  `read_failed`; then drop the read_region sentence from the
+  `not_found` row.
+  **Layman:** When a file cannot be read, one tool says it is missing, which sends the caller looking in the wrong place.
+  Kind: fix.
+  Source: in-session-2026-11-14, found while shipping ANTS-5803.
+  Lanes: mcp-tools.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

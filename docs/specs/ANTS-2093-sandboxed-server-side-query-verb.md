@@ -302,9 +302,10 @@ tuning, all under the ANTS-1901 master `claude.mcp_enabled` gate.
   saves tokens. When false, the verb refuses with **`query_disabled`** *before*
   a VM is constructed. The feature gate is the **first** statement inside
   `cmdProjectQuery`, *before* the `caller_cwd` / `code` argument validation, so a
-  feature-off call yields `query_disabled` regardless of other arg state (an
-  empty `caller_cwd` with the feature off still returns `query_disabled`, not
-  `caller_cwd_required`). **Gate precedence:** the master gate is checked earlier
+  feature-off call yields `query_disabled` regardless of the verb's own
+  arguments. An empty `caller_cwd` is the exception: `project_query` is
+  `CallerCwdContract::Required`, so the dispatcher refuses it with
+  `caller_cwd_required` before the handler runs. **Gate precedence:** the master gate is checked earlier
   still — the **first** check in the `tools/call` dispatcher, *before any verb
   handler runs* (`claudeintegration.cpp:8688–8706`, the master-gate block, ANTS-1901) — so a caller with both
   gates off sees `mcp_disabled` (never `query_disabled`); `query_disabled` is

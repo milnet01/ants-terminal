@@ -1638,7 +1638,7 @@ SynthResult synthesize(const SynthRequest &req) {
         r.ok = false;
         // Anchor-failure under default mode → rename code from the
         // pre-fix `reports_dir_missing` to `reports_dir_outside_root`
-        // (≤ 24 chars, see docs/standards/mcp-error-codes.md § 1).
+        // (≤ 24 chars, see docs/standards/mcp-error-codes.md § Adding a new code).
         if (e.value(QStringLiteral("error")).toString()
                 .contains(QStringLiteral("escapes project root"))
             && !req.allowOutsideProject) {
