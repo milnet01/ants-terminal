@@ -73,6 +73,13 @@ public:
     // Cleanup old sessions (older than maxAgeDays)
     static void cleanupOldSessions(int maxAgeDays = 30);
 
+    // ANTS-5131 — writes `data` to `tmpPath`, fsyncs, renames it over
+    // `path` and fsyncs the directory. Safe off the GUI thread: it creates
+    // the temp file 0600 itself instead of changing the process umask.
+    // Public so tests/perf/bench_session_save can time it alone (ANTS-5661).
+    static bool writeBlob(const QString &path, const QString &tmpPath,
+                          const QByteArray &data);
+
 private:
     // ANTS-5031 — the uncompressed stream serialize() compresses, with
     // scrollback lines from `firstLine` on.
@@ -86,11 +93,6 @@ private:
                                const QString &pinnedTitle, qint64 maxRawBytes);
     // ANTS-5131 — wraps a compressed payload in the V4 envelope.
     static QByteArray seal(const QByteArray &compressed);
-    // ANTS-5131 — writes `data` to `tmpPath`, fsyncs, renames it over
-    // `path` and fsyncs the directory. Safe off the GUI thread: it creates
-    // the temp file 0600 itself instead of changing the process umask.
-    static bool writeBlob(const QString &path, const QString &tmpPath,
-                          const QByteArray &data);
 
     static constexpr uint32_t MAGIC = 0x414E5453; // "ANTS"
     // V2 added `cwd` after the window title.

@@ -182,7 +182,18 @@ int main(int argc, char **argv) {
         std::fprintf(stderr, "bench_session_save: no session file was written\n");
         return 1;
     }
-    const double writeMs = saveMs - serializeMs;
+    // ANTS-5661 — the write is timed on its own. As save minus serialize it
+    // was the difference of two means far larger than itself, and came out
+    // negative as often as not.
+    const QString benchTmp = path + QStringLiteral(".bench.tmp");
+    t.start();
+    for (int i = 0; i < iterations; ++i) {
+        if (!SessionManager::writeBlob(path, benchTmp, blob)) {
+            std::fprintf(stderr, "bench_session_save: the session write failed\n");
+            return 1;
+        }
+    }
+    const double writeMs = double(t.nsecsElapsed()) / 1e6 / iterations;
 
     // ANTS-5131 — what the GUI thread pays for the async save: the grid walk
     // and the hand-off. The wait for the previous save is outside the timer.

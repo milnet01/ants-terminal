@@ -101746,7 +101746,7 @@ a modern terminal" release.
   Kind: perf.
   Source: user-request-2026-09-12 (ANTS-5133 follow-up).
 
-- 📋 [ANTS-5661] **bench_session_save reports a negative session.write_ms, because it subtracts two separately timed means.**
+- ✅ [ANTS-5661] **bench_session_save reports a negative session.write_ms, because it subtracts two separately timed means.**
   Measured 2026-10-12 at 23aa46f0: session.write_ms -1.30 ms, with
   save_total_ms 486.3 and serialize_ms 487.6. tests/perf/bench_session_save.cpp
   computes writeMs = saveMs - serializeMs from two loops timed apart; the
@@ -101754,6 +101754,11 @@ a modern terminal" release.
   the perf report flags a regression or an improvement at random.
   Fix: time SessionManager::writeBlob directly (it is private; a test
   accessor is the likely route) or stop reporting the phase.
+  Shipped 2026-11-14: SessionManager::writeBlob is public and the
+  benchmark times it directly. Before, three runs gave 35.2, -0.9 and
+  -1.5 ms; after, 0.350, 0.365 and 0.356 ms (5 iterations each).
+  tests/perf/baseline.tsv still holds the old 0.2290 figure; re-baseline
+  on the next perf run.
   **Layman:** The session-save speed test can report that writing the file took less than no time, which makes its comparison against the baseline meaningless.
   Kind: fix.
   Source: in-session-2026-10-12 (found running ANTS-4921).

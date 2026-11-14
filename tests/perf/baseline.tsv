@@ -58,7 +58,7 @@ session.hash_ms	4.1810	ms	lower_is_better
 session.save_total_ms	488.2868	ms	lower_is_better
 session.serialize_ms	486.8652	ms	lower_is_better
 session.stream_ms	247.3328	ms	lower_is_better
-session.write_ms	0.2290	ms	lower_is_better
+session.write_ms	0.3654	ms	lower_is_better
 startup.first_paint_ms	75.9324	ms	lower_is_better
 vt.throughput.ansi_sgr	18.3636	MB/s	higher_is_better
 vt.throughput.ascii_print	31.4383	MB/s	higher_is_better

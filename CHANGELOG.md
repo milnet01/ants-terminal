@@ -425,6 +425,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The session-save benchmark times the file write on its own, so `session.write_ms` is a steady positive figure.** (ANTS-5661)
+
 - **The push gate's Qt 6.2 compile guard runs on a push that changes only `ci.yml`.** (ANTS-5637)
   `tools/local-ci.sh --compilable` prints which changed paths the guard
   counts, and runs nothing.
