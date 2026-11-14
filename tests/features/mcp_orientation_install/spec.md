@@ -64,6 +64,17 @@ Cases:
 - `MainWindowExportsSocket` — source-grep on
   `src/mainwindow.cpp` proves `qputenv("ANTS_MCP_SOCKET"…)` is called
   immediately after `startMcpServer(mcpSocket)`.
+- `ScriptPathIsUnderTheLowercaseFolder` (ANTS-5730) — with
+  `XDG_CONFIG_HOME` set and the application named as `main.cpp` names it,
+  the install path is `<config>/ants-terminal/hooks/mcp-orientation.sh`.
+  It was `<config>/Ants Terminal/hooks/…`, a second folder.
+- `LegacyManagedScriptMovesAndTheHookFollows` (ANTS-5730) — a script Ants
+  wrote in the old folder moves to the new one, the emptied old `hooks`
+  folder goes, and the one `SessionStart` entry runs the new path.
+- `LegacyUserOwnedScriptMovesIntact` (ANTS-5730) — a script in the old
+  folder without the marker moves byte for byte.
+- `LegacyUserOwnedScriptStaysWhenTheNewPathIsTaken` (ANTS-5730) — when
+  both exist and the old one is the user's, it is left where it is.
 
 Label `features;fast`. Each case must FAIL against pre-ANTS-1897
 source before the fix is restored.

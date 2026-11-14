@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6767 -->
+<!-- ants-roadmap-id-high-water: ANTS=6768 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74818,6 +74818,21 @@ indie-review finding.
   Source: in-session-2026-11-14 (left by ANTS-5686).
   Lanes: terminalwidget.
 
+- 📋 [ANTS-6768] **verify-trust.json lives in ~/.config/ants-terminal with the other settings, not in the "Ants Terminal" folder.**
+  Checked 2026-11-14: defaultTrustFilePath() in src/verifytrust.cpp
+  takes QStandardPaths::AppConfigLocation, which is
+  "~/.config/Ants Terminal". After ANTS-5730 it is the last file there.
+  Move it to GenericConfigLocation + /ants-terminal/verify-trust.json
+  and carry an existing file across on first load. It is security
+  state: keep the 0600 mode, refuse a symlinked source, and never
+  merge two files (if both exist, the new one wins and the old stays).
+  ants-mcpd sets the same application name (src/mcpdmain.cpp), so
+  check whether it reads the file too.
+  **Layman:** The list of project check commands you have trusted is saved in a second, oddly named settings folder; it should sit with the rest.
+  Kind: fix.
+  Source: in-session-2026-11-14 (split from ANTS-5730).
+  Lanes: verifytrust.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
@@ -90559,7 +90574,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-16 trailer recording.
   Lanes: sessions.
 
-- 📋 [ANTS-5730] **The MCP orientation hook lives in ~/.config/ants-terminal/hooks with the other hooks, not in a second "Ants Terminal" folder.**
+- ✅ [ANTS-5730] **The MCP orientation hook lives in ~/.config/ants-terminal/hooks with the other hooks, not in a second "Ants Terminal" folder.**
   mcporientation.cpp resolveScriptPath() takes
   QStandardPaths::AppConfigLocation, which here is "~/.config/Ants Terminal"
   (with a space). Its comment says that matches ~/.config/ants-terminal;
@@ -90570,6 +90585,11 @@ measured Ants adding about 5,250 tokens to every request.
   (verify-trust.json), pick one folder, and move existing files with a
   migration that rewrites the hook command in settings files that name the
   old path.
+  Shipped 2026-11-14: the script path comes from GenericConfigLocation +
+  /ants-terminal; install moves a script out of the old folder and the
+  settings merge repoints the hook. verify-trust.json, the other file
+  there, is a separate item filed the same day. Takes effect at the next
+  terminal launch.
   **Layman:** One helper script is saved in a second, oddly named settings folder instead of with the rest.
   Kind: fix.
   Source: in-session-2026-10-16 trailer recording.

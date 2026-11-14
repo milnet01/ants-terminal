@@ -294,12 +294,13 @@ Ants SessionStart hook entry, and writes back atomically:
   to avoid the marker collapse.
 - **Schema written:** the `command` string is the absolute path
   resolved at install time from `QStandardPaths::
-  AppConfigLocation` (typically `/home/<user>/.config/ants-terminal/
-  hooks/mcp-orientation.sh`; under XDG overrides or flatpak this
-  resolves elsewhere — the install path and the `command` string
-  are derived from the *same* `AppConfigLocation` call in the
+  GenericConfigLocation` plus `ants-terminal` (typically
+  `/home/<user>/.config/ants-terminal/hooks/mcp-orientation.sh`; under
+  XDG overrides or flatpak this resolves elsewhere — the install path
+  and the `command` string are derived from the *same* call in the
   same launch, so they always agree even under non-default
-  prefixes). The hook runner does not reliably expand `~`. The
+  prefixes). Until ANTS-5730 this was `AppConfigLocation`; see the
+  amendment at the end. The hook runner does not reliably expand `~`. The
   command **explicitly prefixes `bash`** so the shape matches the
   user's pre-existing `UserPromptSubmit` hook style (`bash
   /home/.../git-context-on-keyword.sh`, verified live) — visual
@@ -1322,3 +1323,22 @@ verified actionable findings); 1 INFO-only residue surfaced + folded.
   exist and pass.
 
 Shipped as ANTS-2038.
+
+## Amendment — ANTS-5730 (2026-11-14)
+
+No reviewer was dispatched for this amendment.
+
+`AppConfigLocation` is built from the application name, "Ants Terminal",
+so the script sat in `<config>/Ants Terminal/hooks/`, a second folder
+beside `<config>/ants-terminal/`. The passages above that name
+`AppConfigLocation` record how it was. Now:
+
+- The script path is `GenericConfigLocation` + `/ants-terminal/hooks/mcp-orientation.sh`.
+- On install, a script found at the old path moves to the new one when
+  nothing is there. When the new path is taken, an old copy that carries
+  the Ants marker is deleted and one that does not is left alone.
+- The `SessionStart` entry needs no migration of its own: an entry that
+  names the old path is not the canonical one, so the merge replaces it.
+
+Tests: the four `McpOrientation_Ants5730` cases in
+`tests/features/mcp_orientation_install`.

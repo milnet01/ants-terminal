@@ -22,6 +22,7 @@
 #include "antsversion.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -706,4 +707,108 @@ TEST(McpOrientation_Inv14, MainWindowExportsSocket) {
     EXPECT_TRUE(tail.contains(QStringLiteral("qputenv(\"ANTS_MCP_SOCKET\"")))
         << "qputenv(\"ANTS_MCP_SOCKET\", ...) not found within ~2000 chars "
            "after startMcpServer(mcpSocket) — see ANTS-1897 INV-14";
+}
+
+// ---------------------------------------------------------------------
+// ANTS-5730 — one config folder. The script lives under
+// <config>/ants-terminal with config.json and the other hooks, not under
+// the folder Qt derives from the application name ("Ants Terminal").
+
+namespace {
+
+QString legacyScriptPathIn(const QString &home) {
+    return home + QLatin1String("/.config/Ants Terminal/hooks/mcp-orientation.sh");
+}
+
+QByteArray managedBody() {
+    return MO::orientationScriptTemplate().arg(QStringLiteral(ANTS_VERSION)).toUtf8();
+}
+
+// settings.json holding one Ants SessionStart entry that runs `script`.
+bool writeSettingsPointingAt(const QString &home, const QString &script) {
+    QJsonObject entry{{"type", "command"}, {"timeout", 3},
+                      {"command", QStringLiteral("bash '%1'").arg(script)}};
+    QJsonObject outer{{"hooks", QJsonArray{entry}}, {"matcher", "startup|clear"}};
+    QJsonObject root{{"hooks", QJsonObject{{"SessionStart", QJsonArray{outer}}}}};
+    return writeFileBytes(settingsPathIn(home), QJsonDocument(root).toJson());
+}
+
+QStringList antsCommands(const QJsonObject &settings) {
+    QStringList out;
+    const auto sessions = settings.value("hooks").toObject().value("SessionStart").toArray();
+    for (const auto &outerV : sessions)
+        for (const auto &eV : outerV.toObject().value("hooks").toArray()) {
+            const QString cmd = eV.toObject().value("command").toString();
+            if (cmd.contains(MO::settingsMarkerSubstring())) out << cmd;
+        }
+    return out;
+}
+
+}  // namespace
+
+TEST(McpOrientation_Ants5730, ScriptPathIsUnderTheLowercaseFolder) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QByteArray oldXdg = qgetenv("XDG_CONFIG_HOME");
+    const bool hadXdg = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+    const QString oldName = QCoreApplication::applicationName();
+    qputenv("XDG_CONFIG_HOME", tmp.path().toLocal8Bit());
+    QCoreApplication::setApplicationName(QStringLiteral("Ants Terminal"));  // as main.cpp
+
+    const QString got = MO::scriptInstallPath();
+
+    QCoreApplication::setApplicationName(oldName);
+    if (hadXdg) qputenv("XDG_CONFIG_HOME", oldXdg); else qunsetenv("XDG_CONFIG_HOME");
+    EXPECT_EQ(got.toStdString(),
+              (tmp.path() + "/ants-terminal/hooks/mcp-orientation.sh").toStdString());
+}
+
+TEST(McpOrientation_Ants5730, LegacyManagedScriptMovesAndTheHookFollows) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString legacy = legacyScriptPathIn(tmp.path());
+    ASSERT_TRUE(writeFileBytes(legacy, managedBody()));
+    ASSERT_TRUE(writeSettingsPointingAt(tmp.path(), legacy));
+
+    auto r = MO::installAt(tmp.path());
+    ASSERT_TRUE(r.ok) << r.warning.toStdString();
+
+    EXPECT_EQ(readFileBytes(scriptPathIn(tmp.path())), managedBody());
+    EXPECT_FALSE(QFile::exists(legacy)) << "the legacy script was left behind";
+    EXPECT_FALSE(QDir(QFileInfo(legacy).absolutePath()).exists())
+        << "the emptied legacy hooks folder was left behind";
+    const QStringList cmds = antsCommands(readSettings(tmp.path()));
+    ASSERT_EQ(cmds.size(), 1);
+    EXPECT_TRUE(cmds.first().contains(scriptPathIn(tmp.path())))
+        << "the hook still runs " << cmds.first().toStdString();
+}
+
+TEST(McpOrientation_Ants5730, LegacyUserOwnedScriptMovesIntact) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString legacy = legacyScriptPathIn(tmp.path());
+    const QByteArray userBody = "#!/bin/sh\necho mine\n";
+    ASSERT_TRUE(writeFileBytes(legacy, userBody));
+
+    auto r = MO::installAt(tmp.path());
+    ASSERT_TRUE(r.ok) << r.warning.toStdString();
+
+    EXPECT_EQ(readFileBytes(scriptPathIn(tmp.path())), userBody)
+        << "the user's script did not arrive unchanged";
+    EXPECT_FALSE(QFile::exists(legacy));
+}
+
+TEST(McpOrientation_Ants5730, LegacyUserOwnedScriptStaysWhenTheNewPathIsTaken) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString legacy = legacyScriptPathIn(tmp.path());
+    const QByteArray userBody = "#!/bin/sh\necho mine\n";
+    ASSERT_TRUE(writeFileBytes(legacy, userBody));
+    ASSERT_TRUE(writeFileBytes(scriptPathIn(tmp.path()), managedBody()));
+
+    auto r = MO::installAt(tmp.path());
+    ASSERT_TRUE(r.ok) << r.warning.toStdString();
+
+    EXPECT_EQ(readFileBytes(legacy), userBody) << "a user's file was deleted";
+    EXPECT_EQ(readFileBytes(scriptPathIn(tmp.path())), managedBody());
 }

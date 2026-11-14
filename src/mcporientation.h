@@ -37,10 +37,11 @@ struct Result {
 QString orientationScriptTemplate();
 
 // Absolute path where the script is installed: typically
-// $HOME/.config/ants-terminal/hooks/mcp-orientation.sh. Resolved from
-// QStandardPaths::AppConfigLocation so the install path + the
-// settings.json `command` string always agree (matters under XDG
-// overrides + flatpak).
+// $HOME/.config/ants-terminal/hooks/mcp-orientation.sh, beside the other
+// hooks. Resolved from QStandardPaths::GenericConfigLocation so the
+// install path + the settings.json `command` string always agree (matters
+// under XDG overrides + flatpak). install() moves a script found in the
+// older "Ants Terminal" folder here (ANTS-5730).
 QString scriptInstallPath();
 
 // Absolute path to the user's Claude Code settings file

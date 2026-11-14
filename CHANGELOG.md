@@ -425,6 +425,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The MCP orientation hook script is kept in `~/.config/ants-terminal/hooks` with the other hooks.** (ANTS-5730)
+  A script in the older `~/.config/Ants Terminal/hooks` folder is moved
+  across at the next launch, and the Claude Code hook entry follows it.
+
 - **The audit's spec-drift check reports nothing on this project: the feature specs name current code, and an item id in backticks is not read as a code name.** (ANTS-5687)
 
 - **Every design document in `docs/specs/` carries a Kind line the tools can read.** (ANTS-5691)

@@ -25,11 +25,10 @@ namespace {
 
 // INV-3 — substring that identifies an Ants-owned SessionStart hook
 // entry. Suffix-only (the filename + parent dir) so the match is
-// robust to directory-name variants: `QStandardPaths::AppConfigLocation`
-// uses Qt's `applicationName` verbatim ("Ants Terminal" — capital +
-// space) while tests and the doc-comment fallback path use the
-// lowercase-hyphenated `ants-terminal`. Both forms end in the same
-// `/hooks/mcp-orientation.sh` suffix. ANTS-1901.
+// robust to directory-name variants: until ANTS-5730 the script sat in
+// the folder Qt derives from `applicationName` ("Ants Terminal" — capital
+// + space), and an entry written then still names it. Both forms end in
+// the same `/hooks/mcp-orientation.sh` suffix. ANTS-1901.
 constexpr const char *kMarkerSubstring = "/hooks/mcp-orientation.sh";
 
 // INV-1 — marker prefix at the start of the second line of the script.
@@ -95,24 +94,32 @@ constexpr const char *kOrientationScriptBody =
     "  echo \"instead of hand-editing it.\"\n"
     "fi\n";
 
-// Resolve `<home>/.config/ants-terminal/hooks/mcp-orientation.sh`.
+// Resolve `<config>/ants-terminal/hooks/mcp-orientation.sh`, the folder
+// config.json and the other hooks use. ANTS-5730 — it was
+// AppConfigLocation, which Qt builds from the application name: a second
+// folder, "Ants Terminal". GenericConfigLocation still follows
+// XDG_CONFIG_HOME, which the split-tree guard in installAt relies on.
 // Caller may pass an explicit home to bypass $HOME (test seam).
 QString resolveScriptPath(const QString &homeOverride) {
-    QString configBase;
+    QString configRoot;
     if (!homeOverride.isEmpty()) {
-        configBase = homeOverride + QLatin1String("/.config/ants-terminal");
+        configRoot = homeOverride + QLatin1String("/.config");
     } else {
-        configBase = QStandardPaths::writableLocation(
-                         QStandardPaths::AppConfigLocation);
-        if (configBase.isEmpty()) {
-            // Fallback: HOME/.config/ants-terminal — matches
-            // QStandardPaths default for AppConfigLocation when the
-            // app's organizationName/applicationName are unset.
-            const QString home = QDir::homePath();
-            configBase = home + QLatin1String("/.config/ants-terminal");
-        }
+        configRoot = QStandardPaths::writableLocation(
+                         QStandardPaths::GenericConfigLocation);
+        if (configRoot.isEmpty())
+            configRoot = QDir::homePath() + QLatin1String("/.config");
     }
-    return configBase + QLatin1String("/hooks/mcp-orientation.sh");
+    return configRoot + QLatin1String("/ants-terminal/hooks/mcp-orientation.sh");
+}
+
+// Where the script sat before ANTS-5730. Empty when Qt names no such folder.
+QString resolveLegacyScriptPath(const QString &homeOverride) {
+    const QString base = homeOverride.isEmpty()
+        ? QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+        : homeOverride + QLatin1String("/.config/Ants Terminal");
+    if (base.isEmpty()) return QString();
+    return base + QLatin1String("/hooks/mcp-orientation.sh");
 }
 
 QString resolveSettingsPath(const QString &homeOverride) {
@@ -181,10 +188,30 @@ bool writeScriptFile(const QString &path, const QByteArray &body,
     return true;
 }
 
+// ANTS-5730 — bring the script out of the legacy folder. With nothing at
+// the new path it moves, whoever wrote it; the caller's usual rules then
+// refresh an Ants-written body or keep a user's. With the new path taken,
+// only an Ants-written legacy copy is deleted: a user's file is never
+// removed. The settings merge repoints the hook entry by itself.
+void moveLegacyScript(const QString &legacy, const QString &current) {
+    if (legacy.isEmpty() || legacy == current || !QFile::exists(legacy)) return;
+    if (!QFile::exists(current)) {
+        if (!QDir().mkpath(QFileInfo(current).absolutePath())
+            || !QFile::rename(legacy, current)) {
+            qWarning().noquote() << "[mcp-orientation] could not move" << legacy
+                                 << "to" << current;
+            return;
+        }
+    } else if (parseScriptMarkerVersion(legacy).isEmpty()
+               || !QFile::remove(legacy)) {
+        return;
+    }
+    QDir().rmdir(QFileInfo(legacy).absolutePath());  // only when now empty
+}
+
 // Bash-quote a path: wrap in single quotes; any embedded `'` becomes
-// `'\''`. Required because `QStandardPaths::AppConfigLocation` builds
-// `<home>/.config/Ants Terminal/...` from Qt's applicationName (capital
-// + space) — unquoted, bash would split at the space. ANTS-1901.
+// `'\''`. Required because a home or config folder may hold a space —
+// unquoted, bash would split there. ANTS-1901.
 QString bashQuote(const QString &s) {
     QString escaped = s;
     escaped.replace(QLatin1Char('\''), QLatin1String("'\\''"));
@@ -401,7 +428,7 @@ Result installAt(const QString &homeDir) {
 
     // ANTS-3562 — refuse to touch ~/.claude/settings.json when the resolved
     // orientation-script path lives OUTSIDE the settings file's home tree.
-    // resolveScriptPath uses QStandardPaths::AppConfigLocation, which under
+    // resolveScriptPath uses QStandardPaths::GenericConfigLocation, which under
     // --e2e is redirected to a throwaway /tmp config dir; resolveSettingsPath
     // keeps the REAL ~/.claude. A naive install then wrote the user's real
     // settings a SessionStart hook pointing at the temp script, which dangles
@@ -429,6 +456,8 @@ Result installAt(const QString &homeDir) {
             return r;
         }
     }
+
+    moveLegacyScript(resolveLegacyScriptPath(homeDir), r.scriptPath);
 
     // Decide the script-write disposition per § 2.1.1.
     const QString runningVersion = QStringLiteral(ANTS_VERSION);
