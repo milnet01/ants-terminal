@@ -1546,6 +1546,24 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
             const qint64 projectId = target->projectId;
             const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
 
+            // ANTS-5777 — § 2.3a's duplicate-version rule once more, over the
+            // store's sections. The index above is the live file's, and a
+            // section rotate_minor moved to an archive file is not in it.
+            if (!titleVersion.isEmpty()) {
+                QString listErr;
+                const auto rows = store.listSections(projectId, &listErr);
+                if (!rows)
+                    return rlErr(QStringLiteral("store_failed"), listErr);
+                for (const auto &s : *rows)
+                    if (RoadmapIndex::versionOfTitle(s.title) == titleVersion)
+                        return rlErr(QStringLiteral("bad_title"),
+                            QStringLiteral("roadmap_log: section \"%1\" in %2 already "
+                                           "carries version %3")
+                                .arg(s.slug,
+                                     s.sourcePath.value_or(QStringLiteral("ROADMAP.md")),
+                                     titleVersion));
+            }
+
             const auto mutate = [&](QString *err) -> bool {
                 const QString anchor =
                     beforeSection.isEmpty() ? afterSection : beforeSection;

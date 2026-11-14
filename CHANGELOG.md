@@ -425,6 +425,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`roadmap_log op:"create_section"` refuses a release version that a section in an archive file already carries.** (ANTS-5777)
+
 - **A tab no longer keeps Qt's replaced close button in memory beside the themed one.** (ANTS-5775)
 
 - **The Roadmap window's Full tab shows intro text without quote markers, and shows a link as its text alone.** (ANTS-5611)

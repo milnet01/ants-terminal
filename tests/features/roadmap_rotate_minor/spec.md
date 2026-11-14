@@ -70,3 +70,11 @@ or a title naming a version, phase or fold-in (`bad_args`); an unknown slug
 (`section_not_found`). A re-run moves nothing and succeeds. Tests:
 `RoadmapArchiveSection.MovesASectionAndItsChildrenAndSurvivesReimport`,
 `RoadmapArchiveSection.Refusals`.
+
+## ANTS-5777 — a rotated release's version stays taken
+
+`roadmap_log op:"create_section"` refuses `bad_title` for a title whose
+version a section in an archive file already carries, as it does for a
+live one (`docs/specs/ANTS-1878-roadmap-log-op-create-section.md` § 2.3a).
+The refusal writes nothing. A version no section carries is still created.
+Test: `Ants5777CreateSectionRefusesAnArchivedVersion`.

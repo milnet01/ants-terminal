@@ -74046,13 +74046,19 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: user-request-2026-10-19.
   Lanes: mcp.
 
-- 📋 [ANTS-5777] **create_section refuses a release version that a section in an archive file already carries.**
+- ✅ [ANTS-5777] **create_section refuses a release version that a section in an archive file already carries.**
   Measured 2026-10-19 while researching ANTS-5315 step 4: the duplicate-version
   check in RemoteControl::cmdRoadmapLogCreateSection reads the heading index
   built from the live ROADMAP.md (RoadmapIndex::findByVersion), so a version
   whose section has source_path docs/roadmap/<M>.<m>.md (rotate_minor) is not
   seen, and a second section for it is accepted. ANTS-1878 § 2.3a's
   duplicate rule then fails silently on archived releases.
+  Shipped 2026-11-14. On the store route create_section also checks the
+  store's sections for the title's version, so a section rotate_minor
+  archived refuses bad_title. Contract:
+  tests/features/roadmap_rotate_minor/spec.md;
+  docs/specs/ANTS-1878-roadmap-log-op-create-section.md amended. Live
+  once ants-mcpd is rebuilt and clients reconnect.
   **Layman:** Stops the roadmap tool from making a second heading for a release whose heading was moved to an archive file.
   Kind: fix.
   Source: ANTS-5315-spec-research-2026-10-19.

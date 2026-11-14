@@ -1291,3 +1291,45 @@ TEST(RoadmapArchiveSection, Refusals) {
     EXPECT_FALSE(QFileInfo::exists(unversionedPath(root)))
         << "a refusal writes nothing";
 }
+
+// ANTS-5777 — create_section's duplicate-version rule also reads sections
+// that rotate_minor moved to an archive file.
+// Why this exists: the rule read the live file's headings only, so a second
+// section for an archived release was accepted.
+TEST(RoadmapRotateMinor, Ants5777CreateSectionRefusesAnArchivedVersion) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, twoMinorFixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    settleRender(root);
+    const QJsonObject rotated = rotate(rotateReq(root, QStringLiteral("0.7")));
+    ASSERT_TRUE(rotated.value(QStringLiteral("ok")).toBool())
+        << rotated.value(QStringLiteral("error")).toString().toStdString();
+    ASSERT_FALSE(readAll(livePath(root)).contains("## 0.7.0"))
+        << "setup: 0.7.0's heading must have left the live file";
+
+    const auto create = [&](const QString &title) {
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("create_section");
+        req[QStringLiteral("level")]      = 2;
+        req[QStringLiteral("title")]      = title;
+        RemoteControl rc(nullptr);
+        return rc.cmdRoadmapLogCreateSectionForTest(req).object();
+    };
+
+    const int sectionsBefore = sectionsOf(projectId).size();
+    const QJsonObject dup = create(QString::fromUtf8("0.7.0 \xE2\x80\x94 again"));
+    EXPECT_FALSE(dup.value(QStringLiteral("ok")).toBool())
+        << "0.7.0 is carried by an archived section:" << dumpSections(projectId);
+    EXPECT_EQ(dup.value(QStringLiteral("code")).toString(), QStringLiteral("bad_title"));
+    EXPECT_EQ(sectionsOf(projectId).size(), sectionsBefore) << "a refusal writes nothing";
+
+    // Control: a version nothing carries is still created.
+    const QJsonObject fresh = create(QString::fromUtf8("0.9.0 \xE2\x80\x94 next"));
+    EXPECT_TRUE(fresh.value(QStringLiteral("ok")).toBool())
+        << fresh.value(QStringLiteral("code")).toString().toStdString() << ": "
+        << fresh.value(QStringLiteral("error")).toString().toStdString();
+}

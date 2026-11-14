@@ -206,7 +206,8 @@ heading spliced into it.
   in `docs/standards/mcp-error-codes.md`; § 7 adds it.
 - `bad_title` — the title yields an empty slug, or (§ 2.3a) its version is
   written with a `v` or a pre-release suffix, or an existing `##` or `###`
-  title already carries it.
+  title already carries it. On the store route that includes a section in
+  an archive file (ANTS-5777).
 - `slug_collision` — computed slug already in the index. Envelope
   carries `computed_slug` so the caller sees the clash.
 - `unrecognised_format` — gate above.
@@ -557,3 +558,7 @@ own text, and both were consequences it had not propagated rather than
 repairs of repairs. All seven verified findings of the run fell inside the
 armed span, c427f0b4. The document runs to about 540 lines. Shipped to
 implementation; ANTS-5496 carries the one pre-existing finding.
+
+### impl (2026-11-14, ANTS-5777)
+
+Not a review; no reviewer was dispatched. § 2.5's `bad_title` line now says the duplicate-version check also covers a section in an archive file, on the store route.
