@@ -91194,13 +91194,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-contract-2026-10-21 ANTS-4622 blast-radius exit.
   Lanes: mcp-tools.
 
-- 📋 [ANTS-6167] **git_state op:log with grep refuses git_failed past its 5 s budget on this repository, so a search of commit messages falls back to raw git.**
+- ✅ [ANTS-6167] **git_state op:log with grep refuses git_failed past its 5 s budget on this repository, so a search of commit messages falls back to raw git.**
   Hit 2026-10-22: git_state {op:"log", grep:"Readability fix", n:40}
   on Ants Terminal refused "git log exceeded 5 s wall budget". The same
   search through git log --grep returned at once when bounded by
   --since. A grep over the whole history walks every commit before it
   can fill n. Fix: bound the walk (a since default, or stop once n match),
   or say in the refusal which argument narrows it.
+  Shipped 2026-11-14. Not reproducible warm: raw git walks all 5557
+  commits with a non-matching grep in 0.1 s, and the verb answers. The
+  likely cause was a cold disk cache on this spinning drive. A log cut
+  off at the budget now carries a hint naming `path` and a retry. Test
+  GitStateTruncation.Ants6167LogTimeoutNamesTheNextStep: red before,
+  green after.
   **Layman:** Searching the project's history for a phrase timed out, so the session had to use a slower, raw tool.
   Kind: fix.
   Source: in-session-2026-10-22 (ANTS-5732 design measurement).

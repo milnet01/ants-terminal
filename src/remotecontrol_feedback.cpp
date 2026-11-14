@@ -1386,10 +1386,19 @@ QJsonObject gitFailure(const GitWrap::Result &g, const QString &sub,
             QStringLiteral("git_state: git binary not found on PATH"));
     }
     if (g.hardKilled) {
-        return gitErr("git_failed",
+        QJsonObject e = gitErr("git_failed",
             QStringLiteral("git_state: git %1 exceeded %2 s wall budget")
                 .arg(sub).arg(GitWrap::kHardKillMs / 1000),
             g.stderrTail);
+        // ANTS-6167 — a grep that matches little walks the whole history
+        // before it can fill `n`, and on a cold disk cache that can pass the
+        // budget. Say what narrows it.
+        if (sub == QLatin1String("log"))
+            e[QStringLiteral("hint")] = QStringLiteral(
+                "the walk covers every commit until `n` match; narrow it with "
+                "`path`, or retry once, since a walk can be far slower on a "
+                "cold disk cache");
+        return e;
     }
     if (g.crashed) {
         return gitErr("git_failed",

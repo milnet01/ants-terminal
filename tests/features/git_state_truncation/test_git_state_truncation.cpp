@@ -60,6 +60,45 @@ void expectWholePaths(const QJsonObject &env, const QSet<QString> &names) {
 
 }  // namespace
 
+// ANTS-6167 — a log walk cut off at the wall budget says what to try next. A
+// stand-in `git` first on PATH stalls on `log` and hands every other call to
+// the real git, so the handler's own setup calls still work.
+TEST(GitStateTruncation, Ants6167LogTimeoutNamesTheNextStep) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path() + QStringLiteral("/repo");
+    ASSERT_TRUE(QDir().mkpath(root));
+    ASSERT_TRUE(git(root, {QStringLiteral("init"), QStringLiteral("-q")}));
+
+    const QString realGit = QStandardPaths::findExecutable(QStringLiteral("git"));
+    ASSERT_FALSE(realGit.isEmpty());
+    const QString shimDir = tmp.path() + QStringLiteral("/bin");
+    ASSERT_TRUE(QDir().mkpath(shimDir));
+    QFile shim(shimDir + QStringLiteral("/git"));
+    ASSERT_TRUE(shim.open(QIODevice::WriteOnly));
+    shim.write(QStringLiteral(
+        "#!/bin/sh\n"
+        "for a in \"$@\"; do [ \"$a\" = log ] && exec sleep 30; done\n"
+        "exec '%1' \"$@\"\n").arg(realGit).toUtf8());
+    shim.close();
+    ASSERT_TRUE(shim.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner |
+                                    QFileDevice::ExeOwner));
+
+    const QByteArray oldPath = qgetenv("PATH");
+    qputenv("PATH", shimDir.toUtf8() + ':' + oldPath);
+    const QJsonObject env = gitState(root, {{QStringLiteral("op"), QStringLiteral("log")},
+                                            {QStringLiteral("grep"), QStringLiteral("x")}});
+    qputenv("PATH", oldPath);
+
+    const std::string dump = QJsonDocument(env).toJson().toStdString();
+    ASSERT_FALSE(env.value(QStringLiteral("ok")).toBool(true)) << dump;
+    EXPECT_EQ(QStringLiteral("git_failed"), env.value(QStringLiteral("code")).toString()) << dump;
+    ASSERT_TRUE(env.value(QStringLiteral("hint")).isString())
+        << "a timed-out log names no next step:\n" << dump;
+    EXPECT_TRUE(env.value(QStringLiteral("hint")).toString().contains(QStringLiteral("`path`")))
+        << dump;
+}
+
 TEST(GitStateTruncation, StatusAndNumstatSayTheyWereCut) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

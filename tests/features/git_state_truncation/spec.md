@@ -15,9 +15,14 @@ already set `truncated` (ANTS-1839).
   dropped, never emitted as a path.
 - **INV-2** — `op:"diff"` with numstat (no `hunks`) does the same, and its
   `totals.files` counts only the whole lines kept.
+- **INV-3** (ANTS-6167) — `op:"log"` cut off at the wall budget refuses
+  `git_failed` with a `hint` string naming `path`, the argument that narrows
+  the walk.
 
 ## Test
 
 `test_git_state_truncation.cpp` builds one temporary repository with enough
 long-named files that both reads pass the cap: `status` while they are
-untracked, then `diff` with `staged:true` after `git add`.
+untracked, then `diff` with `staged:true` after `git add`. INV-3 puts a
+stand-in `git` first on `PATH` that stalls on `log` and passes every other
+call to the real git.

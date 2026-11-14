@@ -436,6 +436,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **git_state op:log that runs past its time limit says what to try next: narrow with `path`, or retry once** (ANTS-6167)
+
 - **doc_lint's table-of-contents repair puts a missing entry after the previous entry's sub-list, so the sub-entries stay under their own parent** (ANTS-6166)
 
 - **The mailbox spec describes the mailbox as shipped: mail is kept on deregistration, acked_at appears only once read, and an unknown slug's refusal offers the nearest slugs** (ANTS-5809)
