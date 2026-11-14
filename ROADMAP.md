@@ -84622,6 +84622,14 @@ open, and two of these were exactly that.
   relies on once compact is accepted everywhere (declare it on the
   two verbs, or treat it as a universal key). Recommendation:
   refuse dispatcher-wide with bad_args naming the key.
+  User decision 2026-11-14 (session 264): refuse dispatcher-wide. An
+  undeclared top-level argument refuses bad_args naming the key, on every
+  verb; `compact` is accepted everywhere first. Third reading the same day:
+  still 33 lines, none since 2026-11-09. Scope measured: the advisory is
+  built from m_toolParamKeys in ClaudeIntegration (handleMcpRequest fills
+  it; mcp::withIgnoredArgs attaches it); tests in 17 files name
+  ignored_args, among them mcp_ignored_args and mcp_offload_keeps_advisory.
+  Not started.
   **Layman:** Passing a setting a tool does not have gets you a note rather than a clear error.
   Kind: fix.
   Source: in-session-2026-08-25, split out of ANTS-4626.
