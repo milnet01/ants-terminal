@@ -346,13 +346,7 @@ Rule — copy the body's root members onto the envelope:
   `head_truncated`, `hint`, `preserved_omitted`, the four `head_rows` fields
   and the shape-preview family, all enumerated in §§ 2.3 and 2.3.1. A body
   member of the same name is dropped, not merged: those fields describe the
-  offload, not the result. **`ignored_args` is skipped for a different
-  reason** — it is the dispatcher's advisory, re-applied *after* the offload,
-  and ANTS-4626's INV-2 pins this function dropping it precisely so its INV-1
-  keeps asserting something. Preserving it would leave that test passing even
-  if the dispatcher stopped re-applying, and the caller loses nothing because
-  the dispatcher puts it back. A skipped member is **not** named in
-  `preserved_omitted` — nothing about the result was lost.
+  offload, not the result.
 - **`ok` is the one exception to that skip.** The envelope sets it as a
   placeholder, so a body carrying its own `ok` wins. An offloaded body whose
   `ok` is false must not be reported as a success.

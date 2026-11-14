@@ -3251,6 +3251,8 @@ if(ANTS_TESTS)
                 tests/features/mcpd_usage_snapshots/test_mcpd_usage_snapshots.cpp
                 # ANTS-4659 — undeclared-argument survey ledger and its wiring.
                 tests/features/mcp_undeclared_args_survey/test_mcp_undeclared_args_survey.cpp
+                # ANTS-4659 — the refusal the survey led to; compact everywhere.
+                tests/features/mcp_undeclared_args_refused/test_mcp_undeclared_args_refused.cpp
                 # ANTS-5351 — bad_status hints at `active` for a list value.
                 tests/features/roadmap_query_status_hint/test_roadmap_query_status_hint.cpp
                 # ANTS-4141 — the divergence guard: a render that would delete
@@ -4440,8 +4442,7 @@ if(ANTS_TESTS)
                 # mcpspill.cpp is in ants_core_lib (linked); the wiring INVs
                 # source-scrape claudeintegration / mainwindow / remotecontrol.
                 tests/features/mcp_result_offload/test_mcp_result_offload.cpp
-                tests/features/mcp_offload_keeps_advisory/test_mcp_offload_keeps_advisory.cpp
-                # ANTS-2175 — MCP unknown-arg `ignored_args` advisory.
+                # ANTS-2175 — which MCP arguments a verb does not declare.
                 # mcp::ignoredArgs is in ants_core_lib (linked); the dispatch
                 # wiring INVs source-scrape claudeintegration.cpp.
                 tests/features/mcp_ignored_args/test_mcp_ignored_args.cpp

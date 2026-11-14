@@ -506,7 +506,6 @@ TEST(ChangelogQueryWiring, RegisteredAndAllowlisted) {
     // scraping a table body — a body scrape pins where the list lives instead
     // of what it says. `fields=` is no longer among them: ANTS-4524 made it
     // universal, so there is nothing here for this verb to opt into.
-    EXPECT_TRUE(mcp::isCompactArgTool(QStringLiteral("changelog_query")));
     EXPECT_TRUE(mcp::isDefaultCompactTool(QStringLiteral("changelog_query")));
 
     const std::string proj = ants_test::slurpFile(SRC_MCPPROJECTION_CPP_PATH);

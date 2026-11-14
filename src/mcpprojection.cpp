@@ -74,8 +74,9 @@ namespace {
 //
 // So one row per verb, and the row answers two questions:
 //
-//   membership     — the verb declares `compact`, so an EXPLICIT compact:true
-//                    (or false) is honoured. isCompactArgTool.
+//   membership     — the verb's own schema writes `compact`. An EXPLICIT
+//                    compact is honoured on every verb, listed or not
+//                    (ANTS-4659).
 //   defaultCompact — an ABSENT `compact` falls back to mcp::terseDefault().
 //                    isDefaultCompactTool. Do not answer it by copying the
 //                    row above: a false/empty field a caller BRANCHES on
@@ -140,10 +141,6 @@ const DispatchProjection *lookupDispatchProjection(const QString &toolName) {
 }
 
 }  // namespace
-
-bool isCompactArgTool(const QString &toolName) {
-    return lookupDispatchProjection(toolName) != nullptr;
-}
 
 bool isDefaultCompactTool(const QString &toolName) {
     const DispatchProjection *row = lookupDispatchProjection(toolName);
@@ -660,21 +657,20 @@ QString tabularize(const QString &responseText) {
 
 namespace {
 
-// The args exempt from ignoredArgs on EVERY verb, each for a stated reason.
+// The args ignoredArgs accepts on EVERY verb, each for a stated reason.
 // Every verb reads `caller_cwd`. `encoding` is applied by the
 // dispatcher with no tool-name predicate (tabularize self-guards per array),
 // so it is honoured wherever it is sent.
 //
-// ANTS-4524 — `fields` joined them: the dispatcher projects for every verb and
-// declares the property on every schema, so it can never be the dropped
-// argument the advisory exists to name. The other three — compact, offload,
-// etag_match — are honoured only for the verbs on the dispatcher's allowlists,
-// so whether they were ignored is a per-call question and arrives as
-// `honoured`.
+// `fields` (ANTS-4524) and `compact` (ANTS-4659) joined them: the dispatcher
+// applies each for every verb and declares the property on every schema. The
+// other two — offload, etag_match — are honoured only for the verbs on the
+// dispatcher's allowlists, so they arrive per call as `honoured`.
 bool isUniversalDispatchArg(const QString &key) {
     return key == QStringLiteral("caller_cwd")
         || key == QStringLiteral("encoding")
-        || key == QStringLiteral("fields");
+        || key == QStringLiteral("fields")
+        || key == QStringLiteral("compact");
 }
 
 }  // namespace
@@ -718,21 +714,6 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
     }
     out.sort();  // deterministic order for callers and the feature test
     return out;
-}
-
-QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored) {
-    if (ignored.isEmpty()) return responseJson;
-    QJsonParseError perr{};
-    const QJsonDocument doc =
-        QJsonDocument::fromJson(responseJson.toUtf8(), &perr);
-    // A body this cannot parse is returned verbatim rather than replaced: the
-    // advisory is worth less than the response it would destroy.
-    if (perr.error != QJsonParseError::NoError || !doc.isObject())
-        return responseJson;
-    QJsonObject env = doc.object();
-    env[QStringLiteral("ignored_args")] = QJsonArray::fromStringList(ignored);
-    return QString::fromUtf8(
-        QJsonDocument(env).toJson(QJsonDocument::Compact));
 }
 
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,

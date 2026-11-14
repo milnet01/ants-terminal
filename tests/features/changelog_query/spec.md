@@ -83,6 +83,6 @@ category.
 
 - `changelog_query` registered via `rcDelegate(rc, &RemoteControl::cmdChangelogQuery)`.
 - Present in the opt-in allowlists (`fields=` needs none since ANTS-4524 —
-  every verb honours it): `isCompactArgTool`,
+  every verb honours it): `isDefaultCompactTool`,
   `isOffloadEligible`, `isEtagSupportedTool`, `callerCwdContractFor` (Required).
 - `canonicalCategories()` is public (hoisted for the `bad_category` echo).

@@ -418,9 +418,9 @@ place when it saves a Claude session real tokens or round-trips
    outcome reaches your handler usefully**: a strict client refuses the call
    before the dispatcher is reached (measured on `spec_lint`, ANTS-4663), and
    one that sends it anyway marshals it against no declared type — ANTS-4624
-   watched a `fields` array arrive as a string. The dispatcher itself neither
-   strips nor rejects it: it passes the arguments through and names the key
-   in `ignored_args`. Either way the 304 is silently unreachable. The shared
+   watched a `fields` array arrive as a string. The dispatcher refuses the
+   call `bad_args`, naming the key (ANTS-4659). Either way the 304 is
+   unreachable. The shared
    factory is wrong here for a
    second reason: its description names no excluded fields, so a
    handler-local etag computed over a subset would ship undocumented.
@@ -452,9 +452,9 @@ place when it saves a Claude session real tokens or round-trips
    folding, a `warning` survives folding and narrowing both.
 
    What you DO answer is compaction, in `mcp::kDispatchProjection`
-   (`src/mcpprojection.cpp`). A row there declares the `compact` argument
-   (`mcp::isCompactArgTool` — add `makeCompactProp()` to the schema in the
-   same change); its `defaultCompact` column says whether an ABSENT
+   (`src/mcpprojection.cpp`). An explicit `compact` is honoured on every
+   verb, and the dispatcher declares it on every schema (ANTS-4659). A row's
+   `defaultCompact` column says whether an ABSENT
    `compact` falls back to the default-ON `mcp::terseDefault()`. **Answer
    the second one on its own evidence.** These were one predicate with
    `fields=` until 2026-08-25, so a verb added for narrowing began
@@ -586,10 +586,11 @@ scrape window.
 
 ## Project overrides
 
-The dispatch order is load-bearing: `mcp::withIgnoredArgs` →
+The dispatch order is load-bearing: the undeclared-argument refusal
+(`mcp::ignoredArgs`, before the verb runs) →
 idempotent-read cache → `applyEtagPattern` → `mcp::projectFields` →
 `mcp::compactEnvelope` → `mcp::appendReadHints` → `mcp::tabularize` →
-`mcp::offloadBody` → `mcp::withIgnoredArgs` **again** → `<ants_mcp_data>`
+`mcp::offloadBody` → `<ants_mcp_data>`
 wrap. A new opt-in (a future projection-like transform) slots into that
 chain; read the symbols named above and `ClaudeIntegration::wrapMcpData` for
 the exact hook points before adding one.

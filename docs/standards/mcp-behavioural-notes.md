@@ -145,9 +145,6 @@ that is not the dominant array, is not a key the offload owns, fits 512 B
 — plus, regardless of that total, every key `mcp::isProtectedCompactKey`
 protects, the same floor compact mode uses. A body's own `ok` overrides the
 envelope's placeholder, so an offloaded refusal is not reported as a success.
-`ignored_args` is skipped deliberately: it is the dispatcher's advisory,
-re-applied after the offload (ANTS-4626), so preserving it here would leave
-that feature's own test passing even if the re-application stopped.
 
 **Read `preserved_omitted` before concluding a field was never returned.** A
 member dropped for the per-member cap or the running total is named there; a

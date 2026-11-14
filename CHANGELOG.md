@@ -196,6 +196,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **An MCP call naming an argument its tool does not have is refused with `bad_args`, and the tool does not run.** (ANTS-4659)
+  The reply lists the names in `unknown_args` and points at
+  `tool_info`. The `ignored_args` note is gone. `compact` now works on
+  every tool.
+
 - **The render and store-schema specs describe the round-trip comparison and the acyclicity check's owner as built** (ANTS-5618)
 
 - **`workspace_search` finishes a timed-out plain-text search through the git index.** (ANTS-6245)

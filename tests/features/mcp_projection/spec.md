@@ -125,13 +125,13 @@ short-circuits when state is unchanged.
   the argument suppressed the very hint that recommended it. Under ANTS-4524
   the same gap is available for every verb at once, which is why the
   declaration is injected rather than hand-written.
-- **INV-11 — declaring `compact` and defaulting to it are separate answers**
-  (ANTS-4524). `mcp::isCompactArgTool` says the verb declares `compact`, so an
-  EXPLICIT `compact:true`/`false` is honoured; `mcp::isDefaultCompactTool`
-  says whether an ABSENT one falls back to `mcp::terseDefault()`. Both read
-  one table in `mcpprojection.cpp`, so adding a verb makes you answer each.
-  `spec_lint` and `feedback_query` are the rows where they differ, and the
-  test asserts at least one does — if none does, membership has silently
+- **INV-11 — honouring `compact` and defaulting to it are separate answers**
+  (ANTS-4524). An EXPLICIT `compact:true`/`false` is honoured on every verb
+  (ANTS-4659, `mcp_undeclared_args_refused` INV-4);
+  `mcp::isDefaultCompactTool` says whether an ABSENT one falls back to
+  `mcp::terseDefault()`, from the table in `mcpprojection.cpp`.
+  `spec_lint` and `feedback_query` are rows not compacted by default, and the
+  test asserts at least one row is — if none is, membership has silently
   become the default again.
 
   **Compaction did not follow `fields=` into being universal, and the reason

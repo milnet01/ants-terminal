@@ -1,9 +1,8 @@
-# ANTS-4659 — survey of undeclared MCP arguments
+# ANTS-4659 — ledger of undeclared MCP arguments
 
-The dispatcher names the arguments a call sent that its verb does not declare,
-and returns them as the `ignored_args` advisory. ANTS-4659 asks whether to
-refuse such calls instead, and says to survey what callers actually send
-first. This ledger is that survey: one JSONL line per call that carried an
+The dispatcher refuses a call naming an argument its verb does not declare
+(`tests/features/mcp_undeclared_args_refused/spec.md`). This ledger records
+what callers send: one JSONL line per call that carried an
 undeclared argument, kept in `~/.cache/ants-terminal/mcp-undeclared-args.jsonl`.
 
 ## Invariants

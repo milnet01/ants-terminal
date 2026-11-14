@@ -920,9 +920,9 @@ void ClaudeIntegration::shutdownDispatchWorker() {
     // finished after the join never reaches a half-destroyed object.
 }
 
-// ANTS-5072 — the unknown-arg advisory's key set. It reads m_toolParamKeys,
-// which handleMcpRequest writes, so the dispatcher computes it on the GUI
-// thread and transformReply only applies it (spec § 2.9).
+// The call's top-level arguments its verb does not declare. ANTS-4659 — the
+// dispatcher refuses a call that has any. Reads m_toolParamKeys, so it runs
+// on the GUI thread; empty while no schema is known for the verb.
 QStringList ClaudeIntegration::ignoredArgKeysFor(
     const QString &toolName, const QJsonObject &argsObj) const {
     QStringList ignoredArgKeys;
@@ -941,11 +941,8 @@ QSet<QString> ClaudeIntegration::honouredDispatchArgs(const QString &toolName) {
     QSet<QString> honoured;
     if (isEtagSupportedTool(toolName))
         honoured.insert(QStringLiteral("etag_match"));
-    // ANTS-4524 — `fields` is not here: it is universal now
-    // (mcp::isUniversalDispatchArg), so it can never be the
-    // dropped argument this advisory exists to name.
-    if (mcp::isCompactArgTool(toolName))
-        honoured.insert(QStringLiteral("compact"));
+    // `fields` (ANTS-4524) and `compact` (ANTS-4659) are not here: both are
+    // universal (mcp::isUniversalDispatchArg), honoured on every verb.
     if (mcp::isOffloadEligible(toolName))
         honoured.insert(QStringLiteral("offload"));
     return honoured;
@@ -977,40 +974,6 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     const bool         cachedHit   = ctx.cachedHit;
     const bool         cacheable   = ctx.cacheable;
     const bool         toolHandled = ctx.toolHandled;
-    const QStringList &ignoredArgKeys = ctx.ignoredArgKeys;
-    // ANTS-2175 — unknown-arg advisory. Diff the call's arg keys
-    // against the verb's declared inputSchema properties (plus the
-    // universal dispatch-layer args, handled inside mcp::ignoredArgs)
-    // and, when a key is unrecognised, attach a non-fatal
-    // `ignored_args:[...]` field to the success envelope so a
-    // typo'd / stale param surfaces on the first call rather than
-    // masquerading as a working filter (the trigger was `query=`
-    // passed to roadmap_query, silently dropped). Runs only on a
-    // freshly-dispatched call (skip cache hits — the cached body
-    // already carries the advisory for those args) and BEFORE the
-    // cache insert so a future hit returns it too. Parses the body
-    // only when there IS an unrecognised arg (rare), so the
-    // steady-state cost is one cheap key-set diff. Empty
-    // m_toolParamKeys (no tools/list yet) degrades to no advisory.
-    //
-    // ANTS-4525 — REFUSALS are annotated too. They used to be left
-    // untouched on the reasoning that the caller already reads the
-    // error, and that is backwards for the case it matters most
-    // in: a caller with a wrong mental model of a verb passes wrong
-    // ARGUMENTS and gets a refusal, so the advisory that would
-    // correct the model is suppressed precisely because it
-    // refused. mcp::withIgnoredArgs only ADDS a key, so the
-    // ANTS-2112 refusal floor is untouched by construction.
-    //
-    // ANTS-4626 — carried as a key list because it is applied on
-    // BOTH sides of the offload below. It is computed even on a
-    // cache hit, where the pre-offload apply is skipped (the
-    // cached body already carries it) but the post-offload one is
-    // still owed, since the offload discards it either way.
-    if (toolHandled && !cachedHit && !ignoredArgKeys.isEmpty()) {
-        responseText =
-            mcp::withIgnoredArgs(responseText, ignoredArgKeys);
-    }
     // ANTS-1357 — the body the cache stores on miss-success. The
     // insert itself is finishToolDispatch's, on the GUI thread
     // (ANTS-5072). The cache stores the un-etagged response so
@@ -1068,13 +1031,11 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
     // token-saving needs no per-call flag). Absent ⟺ default makes
     // the fallback lossless; a caller needing empty-vs-absent
     // passes compact:false.
-    // ANTS-4524 — compaction did NOT follow `fields=` into being
-    // universal, and the reason is the default: a transform nobody
-    // asked for is what shipped ANTS-4673. isCompactArgTool gates
-    // the verbs declaring the argument at all; isDefaultCompactTool
-    // is the separate answer for an ABSENT one.
-    if (toolHandled && !etagUnchanged &&
-        mcp::isCompactArgTool(toolName)) {
+    // ANTS-4659 — an EXPLICIT `compact` is honoured on every verb. The
+    // DEFAULT is not universal: a transform nobody asked for is what
+    // shipped ANTS-4673, so isDefaultCompactTool still answers for an
+    // absent one.
+    if (toolHandled && !etagUnchanged) {
         const QJsonValue compactArg =
             argsObj.value(QStringLiteral("compact"));
         const bool wantCompact = compactArg.isBool()
@@ -1141,28 +1102,6 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
         if (mcp::shouldOffload(
                 bodyBytes, mcp::offloadThresholdFor(toolName, argsObj))) {
             responseText = mcp::offloadBody(toolName, responseText, argsObj);
-            // ANTS-4626 — offloadBody builds a FRESH head+pointer
-            // envelope from its own keys, so the ANTS-2175
-            // advisory attached above is discarded with the rest
-            // of the body. That put it exactly backwards: the
-            // offload fires on the largest answers, and a filter
-            // that was silently ignored is what MAKES an answer
-            // too large. The reply is then a superset of what was
-            // asked for — the one shape a caller cannot detect,
-            // since a filter that matched nothing and a filter
-            // that never ran both return rows, and the second
-            // returns more.
-            //
-            // Re-applied here rather than preserved inside
-            // offloadBody, which is deliberately content-agnostic
-            // (it Q_UNUSEDs the tool name) and whose parse is
-            // RAM-capped, so a body over that cap could not carry
-            // the advisory across at all. withIgnoredArgs only
-            // ADDS a key, so the pointer envelope is untouched.
-            if (!ignoredArgKeys.isEmpty()) {
-                responseText = mcp::withIgnoredArgs(
-                    responseText, ignoredArgKeys);
-            }
         }
     }
     if (toolHandled && !etagUnchanged && fieldsAfterOffload)
@@ -1265,7 +1204,8 @@ void ClaudeIntegration::finishToolDispatch(McpCallContext ctx,
         const qint64 wrapBytes = reply.wrapBytes;
         const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
         // dispatchResultIsSuccess decides which results count as success.
-        // ANTS-4659 — the survey of what callers send undeclared. A call
+        // ANTS-4659 — the ledger of undeclared arguments callers send, each
+        // of them refused. A call
         // ants-mcpd forwards and the terminal answers is finished only in the
         // terminal, so with both processes recording each call lands once.
         // Above recordDispatch: mcp_rate_limit INV-10 pins haveResult as the
@@ -2200,6 +2140,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         return QStringLiteral("meta");
                     return QStringLiteral("other");
                 };
+                QSet<QString> compactInjected;  // ANTS-4659, see below
                 for (int i = 0; i < tools.size(); ++i) {
                     QJsonObject t = tools[i].toObject();
                     const QString name =
@@ -2354,6 +2295,27 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             }
                         }
                     }
+                    // ANTS-4659 — `compact` is universal too, and declared
+                    // here for the reason `fields` is. Kept off the wire for
+                    // an always-loaded verb (kWireHidden below).
+                    {
+                        QJsonObject schema =
+                            t.value(QStringLiteral("inputSchema")).toObject();
+                        QJsonObject props =
+                            schema.value(QStringLiteral("properties")).toObject();
+                        if (!schema.isEmpty() &&
+                            !props.contains(QStringLiteral("compact"))) {
+                            props[QStringLiteral("compact")] = QJsonObject{
+                                {QStringLiteral("type"), QStringLiteral("boolean")},
+                                {QStringLiteral("description"), QStringLiteral(
+                                    "Drop null, false and empty fields from "
+                                    "the reply.")}};
+                            schema[QStringLiteral("properties")] = props;
+                            t[QStringLiteral("inputSchema")] = schema;
+                            compactInjected.insert(
+                                t.value(QStringLiteral("name")).toString());
+                        }
+                    }
                     // ANTS-2158 — exempt the highest-frequency verbs from
                     // Claude Code's MCP tool-search DEFERRAL so they are
                     // callable without a ToolSearch round-trip (the
@@ -2395,9 +2357,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 m_lastToolsList = tools;
 
                 // ANTS-2175 — cache each verb's declared inputSchema property
-                // names so the tools/call dispatcher can flag args a verb
-                // doesn't recognise (a typo'd / stale param, silently dropped
-                // today) via an `ignored_args` advisory. Rebuilt in lockstep
+                // names so the tools/call dispatcher can refuse a call naming
+                // one the verb does not declare (ANTS-4659). Rebuilt in lockstep
                 // with the snapshot above so it can never go stale; the schema
                 // is compile-time-literal so this fires ~once per session.
                 // Derived from the FULL array (pre-detail-strip) — the strip
@@ -2423,8 +2384,8 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 // ANTS-5506 — doc_lint's doc_facts reads this map from a
                 // dispatch worker, so it gets a COPY published under a mutex
                 // rather than m_toolParamKeys itself (GUI-thread-only,
-                // ANTS-5072). The set is what a call may pass without an
-                // ignored_args advisory: schema properties, the universal
+                // ANTS-5072). The set is what a call may pass without being
+                // refused: schema properties, the universal
                 // dispatch args, and the conditional ones this verb honours.
                 {
                     QHash<QString, QSet<QString>> published;
@@ -2778,6 +2739,9 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                             shorten(props, name);
                             for (const QString &arg : kWireHidden.value(name))
                                 props.remove(arg);
+                            // ANTS-4659 — the dispatcher's own `compact`.
+                            if (compactInjected.contains(name))
+                                props.remove(QStringLiteral("compact"));
                         } else {
                             // ANTS-5714 — every other verb: only the
                             // arguments that mean the same on every verb.
@@ -3113,6 +3077,35 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                         dispatchResult = QStringLiteral("tab_or_cwd_required");
                     }
                 }
+                // ANTS-4659 — an argument the verb does not declare refuses
+                // the call before the verb runs, on every verb. It used to
+                // run and report the argument as ignored, and every such
+                // argument surveyed was a slip that silently did nothing.
+                // Above the forwarder, so ants-mcpd refuses for the terminal.
+                if (!toolHandled && toolKnown) {
+                    const QStringList unknown =
+                        ignoredArgKeysFor(toolName, argsObj);
+                    if (!unknown.isEmpty()) {
+                        QJsonObject env;
+                        env["ok"]   = false;
+                        env["code"] = QStringLiteral("bad_args");
+                        env["error"] = QStringLiteral(
+                            "%1: unknown argument%2 %3; nothing ran.")
+                            .arg(toolName,
+                                 unknown.size() == 1 ? QString()
+                                                     : QStringLiteral("s"),
+                                 unknown.join(QStringLiteral(", ")));
+                        env["unknown_args"] =
+                            QJsonArray::fromStringList(unknown);
+                        env["hint"] = QStringLiteral(
+                            "tool_info {name:\"%1\"} lists this verb's "
+                            "arguments").arg(toolName);
+                        responseText = QString::fromUtf8(
+                            QJsonDocument(env).toJson(QJsonDocument::Compact));
+                        toolHandled    = true;
+                        dispatchResult = QStringLiteral("bad_args");
+                    }
+                }
                 // ANTS-4932 § 2.3 — ants-mcpd forwards a terminal-scoped verb
                 // whole once the gates above have passed it, and emits the
                 // terminal's reply unchanged: rate limit, cache, ETag, fields=
@@ -3180,7 +3173,7 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                 bool cacheable =
                     !toolHandled && isIdempotentReadTool(toolName);
                 // baseContext plus the cache state; a handled call also
-                // carries its ignored-arg keys.
+                // carries its undeclared-argument keys, for the ledger.
                 const auto dispatchContext = [&](bool handled) {
                     McpCallContext c = baseContext();
                     c.cachedHit   = cachedHit;

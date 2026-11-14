@@ -348,8 +348,9 @@ public:
         bool          toolHandled  = false;
         QString       dispatchResult;
         QElapsedTimer traceTimer;
-        // ANTS-5072 — the unknown-arg advisory's keys, computed on the GUI
-        // thread (they read m_toolParamKeys) before the call is dispatched.
+        // The call's undeclared arguments, for the ANTS-4659 ledger. Computed
+        // on the GUI thread (they read m_toolParamKeys); a call that has any
+        // was refused before dispatch.
         QStringList   ignoredArgKeys;
     };
 
@@ -368,12 +369,13 @@ public:
     // dispatch worker for an off-thread verb and on the GUI thread otherwise.
     static ReplyTransform transformReply(const McpCallContext &ctx,
                                          QString responseText);
-    // ANTS-5072 — the keys McpCallContext::ignoredArgKeys carries.
+    // The keys McpCallContext::ignoredArgKeys carries; non-empty refuses the
+    // call (ANTS-4659).
     QStringList ignoredArgKeysFor(const QString &toolName,
                                   const QJsonObject &argsObj) const;
     // ANTS-5506 — the conditional dispatch args `toolName` honours. One set
-    // for the advisory above and for verbArgsSnapshot(), so doc_facts and
-    // ignored_args can never disagree about what a verb accepts.
+    // for the check above and for verbArgsSnapshot(), so doc_facts and the
+    // dispatcher can never disagree about what a verb accepts.
     static QSet<QString> honouredDispatchArgs(const QString &toolName);
     // ANTS-5506 — verb -> every top-level argument it accepts: its schema
     // properties plus the dispatch args. A COPY published by the tools/list
@@ -886,10 +888,10 @@ private:
     // ANTS-2175 — per-verb declared inputSchema property names, rebuilt in
     // lockstep with m_lastToolsList at the end of the `tools/list` handler.
     // The dispatcher diffs an incoming call's arg keys against this set (plus
-    // the universal dispatch-layer args in mcp::ignoredArgs) to attach a
-    // non-fatal `ignored_args` advisory naming any unrecognised param, instead
-    // of silently dropping it. Empty until the first tools/list (Claude Code
-    // always lists before any call); an empty map degrades to "no advisory".
+    // the universal dispatch-layer args in mcp::ignoredArgs) and refuses a
+    // call naming an undeclared one (ANTS-4659). Empty until the first
+    // tools/list (Claude Code and `ants-mcpd --call` list before any call);
+    // while it is empty no call is refused on this ground.
     mutable QHash<QString, QSet<QString>> m_toolParamKeys;
     // ANTS-6325 — each verb's full `properties`, for mcp::coerceArgTypes.
     mutable QHash<QString, QJsonObject> m_toolParamSchemas;

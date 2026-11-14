@@ -1,7 +1,6 @@
 // ANTS-1720 — feature-conformance test for MCP `fields=` response
 // projection. Behavioural coverage of mcp::projectFields (pure, Qt6::Core)
-// and of the compaction table (mcp::isCompactArgTool /
-// mcp::isDefaultCompactTool), plus source-scrapes of the dispatch ordering
+// and of the compaction table (mcp::isDefaultCompactTool), plus source-scrapes of the dispatch ordering
 // invariant and of `fields=`' universality in claudeintegration.cpp.
 // See tests/features/mcp_projection/spec.md.
 
@@ -204,9 +203,10 @@ TEST(McpProjection, Ants2112SuccessNarrowingUnchanged) {
     EXPECT_TRUE(o.contains("bullets"));
 }
 
-// The verbs that declare `compact`, named ONCE. INV-11 asserts each answers
-// mcp::isCompactArgTool, and that the ones exempt from the DEFAULT answer
-// mcp::isDefaultCompactTool differently.
+// The verbs in the compaction table, named ONCE. INV-11 asserts the ones
+// exempt from the DEFAULT answer mcp::isDefaultCompactTool differently. An
+// explicit `compact` is honoured on every verb (ANTS-4659,
+// mcp_undeclared_args_refused INV-4).
 //
 // ANTS-4524 — this array used to be the `fields=` allowlist as well, and the
 // two questions are no longer the same one. `fields=` is universal: gated by
@@ -292,8 +292,6 @@ TEST(McpProjection, Inv11CompactArgAndDefaultAreSeparate) {
 
     for (const char *t : kCompactArgTools) {
         const QString tool = QString::fromUtf8(t);
-        EXPECT_TRUE(mcp::isCompactArgTool(tool))
-            << t << " must honour an explicit `compact`";
         EXPECT_EQ(mcp::isDefaultCompactTool(tool), !exempt(tool))
             << t << " answers the compaction column wrongly";
     }
@@ -305,16 +303,9 @@ TEST(McpProjection, Inv11CompactArgAndDefaultAreSeparate) {
                   "the split is only meaningful while some verb differs");
     for (const char *t : kNoDefaultCompactTools) {
         const QString tool = QString::fromUtf8(t);
-        EXPECT_TRUE(mcp::isCompactArgTool(tool))
-            << t << " declares `compact` — a caller who asks still gets it";
         EXPECT_FALSE(mcp::isDefaultCompactTool(tool))
             << t << " must NOT be compacted for a caller who never asked: "
                     "its false/empty fields carry meaning a caller branches on";
-    }
-
-    for (const char *t : {"get_scrollback", "doc_citations", ""}) {
-        EXPECT_FALSE(mcp::isCompactArgTool(QString::fromUtf8(t)))
-            << t << " declares no `compact` argument";
     }
 
     for (const char *t : {"get_scrollback", ""}) {

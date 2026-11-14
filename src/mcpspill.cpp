@@ -205,16 +205,7 @@ static bool isOffloadOwnedKey(const QString &k) {
         QStringLiteral("rows_preview_truncated"),
         QStringLiteral("rows_preview_head_chars"),
         QStringLiteral("rows_preview_hint"),
-        QStringLiteral("rows_preview_omitted"),
-        // ANTS-4626 — `ignored_args` is the DISPATCHER's advisory, attached by
-        // mcp::withIgnoredArgs and deliberately re-applied AFTER the offload.
-        // That feature's INV-2 pins offloadBody dropping it, and says why: it
-        // is the premise that keeps INV-1 -- the re-application -- an
-        // assertion about something. Preserving it here would leave INV-1
-        // passing even if the dispatcher stopped re-applying, which is the
-        // silent weakening ANTS-4626 was written to prevent. The caller loses
-        // nothing: the dispatcher puts it back.
-        QStringLiteral("ignored_args")};
+        QStringLiteral("rows_preview_omitted")};
     return kOwned.contains(k);
 }
 

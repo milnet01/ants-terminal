@@ -502,10 +502,12 @@ cache still stores the body as it stood before the ETag step. It then sets
 envelope around `wrapped` on the GUI thread: 12.3 ms for a 4 MiB reply sent
 whole, next to nothing for an offloaded one (§ 1.3).
 
-**The ignored-args keys.** The advisory reads `m_toolParamKeys`, which
+**The undeclared-argument keys.** They are read from `m_toolParamKeys`, which
 `tools/list` writes on the GUI thread. The dispatcher computes the keys on the
-GUI thread, stores them in `McpCallContext::ignoredArgKeys` before it chooses a
-path, and `transformReply` reads only the context.
+GUI thread and refuses a call that has any, before it chooses a path
+(ANTS-4659, `tests/features/mcp_undeclared_args_refused/spec.md`).
+`McpCallContext::ignoredArgKeys` carries them to `finishToolDispatch` for the
+ledger; `transformReply` no longer reads them.
 
 **Which thread.** An off-thread verb (§ 2.4) calls `transformReply` inside its
 worker job, straight after the handler, and queues `finishToolDispatch` with the
@@ -515,9 +517,8 @@ result. A synchronous verb, a cache hit and a deferred verb's `reply` call
 **What the transforms read off the GUI thread.** `mcp::terseDefault` and the
 offload settings are `std::atomic`; the hint latch is guarded by a `QMutex`.
 `isEtagSupportedTool`, `mcp::isOffloadEligible` and `mcp::isRawEligible`
-compare the tool name only; `mcp::isCompactArgTool` and
-`mcp::isDefaultCompactTool` look it up in the `const` table
-`kDispatchProjection`.
+compare the tool name only; `mcp::isDefaultCompactTool` looks it up in the
+`const` table `kDispatchProjection`.
 
 **The spill directory.** An off-thread verb can now offload while a GUI-thread
 verb offloads too. Each writes its own content-addressed file through

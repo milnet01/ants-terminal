@@ -544,12 +544,12 @@ TEST(McpAsyncDispatch, Inv18ReplyTransformsRunWhereTheHandlerRan) {
            "thread";
 }
 
-// INV-18 (ANTS-5072) — moving the transforms onto the worker keeps the
-// ignored-args advisory. Its keys read m_toolParamKeys, which only tools/list
-// fills, so the dispatcher computes them on the GUI thread and hands them over
-// in the context. The probe takes a listed verb's name so the list declares
-// its parameters.
-TEST(McpAsyncDispatch, Inv18OffThreadReplyKeepsTheIgnoredArgsAdvisory) {
+// INV-18 (ANTS-5072, ANTS-4659) — an off-thread verb is refused for an
+// undeclared argument like any other, before it reaches the worker. The keys
+// read m_toolParamKeys, which only tools/list fills, so the dispatcher
+// computes them on the GUI thread. The probe takes a listed verb's name so
+// the list declares its parameters.
+TEST(McpAsyncDispatch, Inv18OffThreadVerbRefusesAnUndeclaredArgument) {
     Harness h;
     ASSERT_TRUE(h.dir.isValid());
     ASSERT_TRUE(h.start());
@@ -583,12 +583,20 @@ TEST(McpAsyncDispatch, Inv18OffThreadReplyKeepsTheIgnoredArgsAdvisory) {
     call["params"]  = params;
     const QByteArray reply = callRemote(h.sockPath, call);
 
-    ASSERT_NE(handlerThread.load(), nullptr) << "the handler never ran";
-    ASSERT_NE(handlerThread.load(), QThread::currentThread())
-        << "setup: the RcHandler verb ran on the GUI thread";
-    EXPECT_TRUE(reply.contains("ignored_args") && reply.contains("ants_bogus_arg"))
-        << "an off-thread verb's reply lost the ignored_args advisory; got: "
+    EXPECT_EQ(handlerThread.load(), nullptr)
+        << "the verb ran although an argument was undeclared";
+    EXPECT_TRUE(reply.contains("bad_args") && reply.contains("ants_bogus_arg"))
+        << "an off-thread verb's call was not refused; got: "
         << reply.constData();
+
+    // Control: the same call without the argument runs, off the GUI thread.
+    args.remove("ants_bogus_arg");
+    params["arguments"] = args;
+    call["params"]      = params;
+    callRemote(h.sockPath, call);
+    ASSERT_NE(handlerThread.load(), nullptr) << "the handler never ran";
+    EXPECT_NE(handlerThread.load(), QThread::currentThread())
+        << "the RcHandler verb ran on the GUI thread";
 }
 
 // INV-14 (ANTS-5090) — a dispatch_queue_full refusal is not stored in the

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6768 -->
+<!-- ants-roadmap-id-high-water: ANTS=6769 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -84566,7 +84566,7 @@ ids as added evidence; two closed n/a. Every finding was checked against the
 live roadmap before filing — the delta alone shows already-fixed findings as
 open, and two of these were exactly that.
 
-- 🚧 [ANTS-4659] **An unknown argument is advised about, not refused — and the survey for refusing it dispatcher-wide has not been done.**
+- ✅ [ANTS-4659] **An unknown argument is advised about, not refused — and the survey for refusing it dispatcher-wide has not been done.**
   ANTS-4626 shipped the half that was broken: the `ignored_args` advisory was
   being discarded by the result offload, so it reached a caller only on small
   replies. It now survives.
@@ -84630,9 +84630,37 @@ open, and two of these were exactly that.
   it; mcp::withIgnoredArgs attaches it); tests in 17 files name
   ignored_args, among them mcp_ignored_args and mcp_offload_keeps_advisory.
   Not started.
+  User decisions 2026-11-14 (session 265): `compact` is to WORK on every
+  verb, not merely be let through; and every project session gets a
+  message when the refusal ships. No new spec (spec-format § 1: one
+  subsystem, design already chosen, one commit undoes it); the ANTS-2175,
+  4525 and 4626 test contracts are amended instead.
+  Shipped 2026-11-14 (session 265). The dispatcher refuses a call naming
+  an undeclared top-level argument: bad_args, unknown_args[], a tool_info
+  hint, and the verb does not run. The gate sits above the ants-mcpd
+  forwarder. `compact` is universal: honoured when explicit on every verb
+  and declared on every schema (off the wire for always-loaded verbs).
+  mcp::withIgnoredArgs and mcp::isCompactArgTool are gone. Contract:
+  tests/features/mcp_undeclared_args_refused/spec.md. Not refused: a verb
+  with no known schema, or any call before the first tools/list. The
+  ledger file keeps recording, now of refused calls.
   **Layman:** Passing a setting a tool does not have gets you a note rather than a clear error.
   Kind: fix.
   Source: in-session-2026-08-25, split out of ANTS-4626.
+  Lanes: mcp.
+
+- 📋 [ANTS-6769] **Source comments still describe the retired `ignored_args` advisory in the present tense.**
+  ANTS-4659 replaced the advisory with a bad_args refusal. Schema-site
+  comments in src/claudeintegration_*.cpp, src/remotecontrol_*.cpp and
+  docs/specs/ANTS-4622 still say the dispatcher "builds ignored_args from
+  these properties" or that an undeclared key "lands in ignored_args".
+  Their conclusion (declare the property) still holds; the mechanism named
+  is stale. Find them: workspace_search pattern ignored_args, lane src.
+  Reword the present-tense ones; leave the dated history. Several tests
+  scrape these files, so run the full suite after.
+  **Layman:** Some notes inside the code still describe a behaviour that has been replaced.
+  Kind: doc-fix.
+  Source: in-session-2026-11-14, found while shipping ANTS-4659.
   Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-08-24 triage

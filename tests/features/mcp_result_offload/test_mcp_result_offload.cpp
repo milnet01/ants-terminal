@@ -77,10 +77,10 @@ TEST_F(McpResultOffload, Inv1EligibilityAndRequestResolution) {
     for (const char *t : {"apply_edits", "roadmap_log", "get_session_info",
                           "token_usage", "tool_info", "read_spill"})
         EXPECT_FALSE(mcp::isOffloadEligible(QString::fromUtf8(t))) << t;
-    // get_scrollback is offload-eligible but NOT a field-projection tool —
+    // get_scrollback is offload-eligible but NOT compacted by default —
     // the two predicates are independent.
     EXPECT_TRUE(mcp::isOffloadEligible(QStringLiteral("get_scrollback")));
-    EXPECT_FALSE(mcp::isCompactArgTool(QStringLiteral("get_scrollback")));
+    EXPECT_FALSE(mcp::isDefaultCompactTool(QStringLiteral("get_scrollback")));
 
     QJsonObject on; on["offload"] = true;
     QJsonObject off; off["offload"] = false;
@@ -1257,39 +1257,6 @@ TEST_F(McpResultOffload, Inv15FloorCapOverrideAndCollision) {
               QStringLiteral("not-the-spill-handle"));
 
     EXPECT_LT(env.toUtf8().size(), o.value("bytes").toInteger());
-}
-
-// INV-15 — `ignored_args` is skipped, and for a reason worth pinning rather
-// than only commenting. It is the DISPATCHER's advisory, re-applied after the
-// offload; ANTS-4626's INV-2 asserts offloadBody drops it, and says that is
-// the premise keeping its INV-1 (the re-application) an assertion about
-// something. Preserving it here would leave that test green even if the
-// dispatcher stopped re-applying.
-TEST_F(McpResultOffload, Inv15SkipsTheDispatcherAdvisory) {
-    QJsonArray rows;
-    for (int i = 0; i < 400; ++i)
-        rows.append(QString(120, QLatin1Char('r')));
-    QJsonObject root;
-    root["matches"]      = rows;
-    root["ignored_args"] = QJsonArray{QStringLiteral("section_filter")};
-    root["source"]       = QStringLiteral("store");
-    const QString body =
-        QString::fromUtf8(QJsonDocument(root).toJson(QJsonDocument::Compact));
-
-    const QString env = mcp::offloadBody(QStringLiteral("roadmap_query"), body);
-    const QJsonObject o = QJsonDocument::fromJson(env.toUtf8()).object();
-    ASSERT_TRUE(o.value("offloaded").toBool()) << env.toStdString();
-
-    EXPECT_FALSE(o.contains("ignored_args"))
-        << "the dispatcher re-applies this one; preserving it would hollow "
-           "out ANTS-4626's INV-1";
-    // …and it is a SKIP, not an omission: nothing about the result was lost.
-    const QJsonArray omitted = o.value("preserved_omitted").toArray();
-    for (const QJsonValue &v : omitted)
-        EXPECT_NE(v.toString(), QStringLiteral("ignored_args"));
-    // The ordinary member beside it still survives, so this is a targeted
-    // carve-out rather than preservation failing to run.
-    EXPECT_EQ(o.value("source").toString(), QStringLiteral("store"));
 }
 
 // INV-15 — a body over kStructuredParseMaxBytes is never parsed, so nothing

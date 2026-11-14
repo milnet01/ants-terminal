@@ -752,8 +752,8 @@ order. That is the producer order INV-7's tiebreak needs.
   `project(` in the root `CMakeLists.txt`. Neither → empty, `version_drift`
   does not run, and `check_stats.doc_facts.version_unavailable` is `true`.
 - `verbArgs`: verb name → its `inputSchema` property names plus the dispatch
-  arguments the live `ignored_args` advisory accepts for that verb:
-  `caller_cwd`, `encoding`, and each conditional one the verb honours
+  arguments the dispatcher accepts for that verb without refusing:
+  `caller_cwd`, `encoding`, `fields`, and each conditional one the verb honours
   (`ClaudeIntegration::ignoredArgKeysFor`'s `honoured` set). The verb layer
   builds this set; the engine only compares keys against it. `cmdDocLint`
   fills it from a provider beside `setMcpVerbVocabularyProvider`, set in

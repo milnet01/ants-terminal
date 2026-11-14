@@ -16,7 +16,7 @@ namespace mcp {
 
 // ANTS-4524 — there is NO `fields=` allowlist. Every verb honours it, the
 // dispatcher declares the property on every schema, and `isUniversalDispatchArg`
-// says so to the ignored_args advisory. The predicate that used to gate it
+// says so to the undeclared-argument check. The predicate that used to gate it
 // (isFieldProjectionTool) is gone: it answered a question whose answer is now
 // always yes, while a caller passing `fields=` to any other verb had it dropped
 // in silence. projectFields is a pure top-level key filter with a refusal floor
@@ -33,14 +33,9 @@ bool isDefaultCompactTool(const QString &toolName);
 // that lost the field. An explicit compact:true is still honoured.
 bool isDefaultCompactExemptCall(const QString &toolName, const QJsonObject &args);
 
-// The verbs that declare `compact` and therefore honour an EXPLICIT
-// compact:true / compact:false. Membership and the default above are two
-// columns of one table in the .cpp, because they were one predicate until
-// 2026-08-25: a verb added for `fields=` acquired compaction silently, which
-// folded away spec_lint's flag saying a check had never run (ANTS-4663 →
-// ANTS-4673). Unlike `fields=`, compaction is not universal — it has a
-// default, and a default nobody asked for is what did the damage.
-bool isCompactArgTool(const QString &toolName);
+// An EXPLICIT compact:true / compact:false is honoured on every verb
+// (ANTS-4659). Only the default above is per verb: a default nobody asked for
+// folded away spec_lint's flag saying a check had never run (ANTS-4673).
 
 // ANTS-2094 — the read verbs whose bodies are large enough to be worth
 // spilling to a content-addressed cache file + returning a head+pointer
@@ -181,26 +176,16 @@ QString tabularize(const QString &responseText);
 void setTerseDefault(bool terse);
 bool terseDefault();
 
-// ANTS-2175 — return, sorted, the keys in `args` that the verb does not
-// recognise: neither in its declared inputSchema property set (`known`), nor
-// one of the three args every verb honours (caller_cwd, encoding, fields),
-// nor in `honoured`. Lets the dispatcher echo a
-// non-fatal `ignored_args` advisory on the success envelope so a typo'd or
-// stale param surfaces on the FIRST call instead of being silently dropped —
-// the trigger was a `query=` passed to roadmap_query (which has no such
-// param), which returned the full unfiltered roadmap and looked like a
-// working search. Pure (mirrors projectFields) so the dispatch layer and the
-// feature test share one implementation. `known` is empty -> every non-
-// universal key is reported (matches a verb that declares no properties).
-// ANTS-4578 — `honoured` names the DISPATCH-layer args this particular call
-// will actually act on (compact / offload / etag_match), which the
-// dispatcher knows and this pure helper cannot. `caller_cwd`, `encoding`
-// and `fields` are exempt unconditionally (isUniversalDispatchArg says why).
-//
-// Before this the four conditional args were exempt EVERYWHERE, so passing
-// `fields` to a verb with no projection support did nothing and reported
-// nothing — the caller believed the narrowing worked. `raw` was never on the
-// list and was correctly reported all along; that asymmetry is the tell.
+// Return, sorted, the keys in `args` that the verb does not declare: neither
+// in its inputSchema property set (`known`), nor one of the args every verb
+// honours (caller_cwd, encoding, fields, compact), nor in `honoured`.
+// ANTS-4659 — the dispatcher refuses a call that has any (`bad_args`). Until
+// then it ran the call and named them in an `ignored_args` advisory
+// (ANTS-2175), hence the name. An empty `known` reports every non-universal
+// key.
+// ANTS-4578 — `honoured` names the dispatch-layer args this verb acts on
+// (offload / etag_match), which the dispatcher knows and this pure helper
+// cannot.
 QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
                         const QSet<QString> &honoured);
 
@@ -210,28 +195,6 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
 // number, boolean, array or object. Text that does not parse as that type is
 // left for the verb to judge, as is every other argument.
 QJsonObject coerceArgTypes(const QJsonObject &args, const QJsonObject &properties);
-
-// ANTS-4525 — attach the `ignored_args` advisory to a response body, REFUSALS
-// INCLUDED. Returns `responseJson` unchanged when `ignored` is empty or the
-// body is not a JSON object.
-//
-// The advisory used to be suppressed on `ok:false`, on the reasoning that the
-// caller already reads the error. That is backwards for the case it matters
-// most in: a caller holding a wrong mental model of a verb passes wrong
-// ARGUMENTS and gets a refusal, so the reply that would correct the model is
-// suppressed precisely because it refused. Measured — a DOOM session called
-// read_log {max_commits:3, body:true} believing it read git log; both args are
-// unknown to the verb, nothing said so, and the reply was `not_found` on the
-// Ants debug-log path, which explains the file rather than the misconception.
-//
-// Suppression stays defensible for a refusal CAUSED by the unknown args, where
-// the error says everything; it is wrong for a refusal that happened for an
-// unrelated reason and left the wrong args unmentioned. Distinguishing the two
-// costs more than the harmless duplication, so the advisory is attached to
-// both. It only ADDS a key, so the ANTS-2112 refusal floor
-// (ok/code/error/retry_after_ms) is untouched by construction — a caller who
-// cannot see the error is worse off than one who cannot see the advisory.
-QString withIgnoredArgs(const QString &responseJson, const QStringList &ignored);
 
 // ANTS-3391 — true when the roadmap bullet object `bullet` contains `needle`
 // as a case-insensitive substring of its headline, headline_full, or body

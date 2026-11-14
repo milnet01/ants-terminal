@@ -63,8 +63,8 @@ explicit socket path and the GUI bundle's `main` already builds a
   thread. The seam `lastReplyTransformThreadForTest()` is reset before each
   call and compared for equality with the thread the verb recorded, so a
   transform that bypassed `transformReply` reads null and fails. An
-  off-thread verb's reply still carries the `ignored_args` advisory for an
-  argument its `tools/list` schema does not declare.
+  off-thread verb is refused, before it runs, for an argument its
+  `tools/list` schema does not declare (ANTS-4659).
 
 *Amendment, 2026-09-13 (ANTS-5090):*
 

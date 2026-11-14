@@ -1,9 +1,8 @@
-// ANTS-4659 — survey ledger of undeclared MCP arguments.
+// ANTS-4659 — ledger of undeclared MCP arguments.
 //
-// The dispatcher already names the arguments a call sent that the verb's
-// schema does not declare (the `ignored_args` advisory). This ledger keeps one
-// line per such call, so whether to refuse unknown arguments can be decided
-// from what callers actually send rather than by guessing.
+// The dispatcher refuses a call naming an argument the verb's schema does not
+// declare. This ledger keeps one line per such call. It began as the survey
+// that decided the refusal, and now shows what callers still get refused for.
 //
 // A line holds the time, the verb and the argument NAMES. Values are never
 // stored. Only a process that sets a path writes (ClaudeIntegration::

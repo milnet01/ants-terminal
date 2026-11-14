@@ -214,8 +214,8 @@ TEST(DocCitationsVerb, Inv19RegisteredAtSevenSites) {
     // ANTS-4524 — `fields=` is universal and harmless here (opt-in, and the
     // caller names what it wants). What would delete those flags is
     // COMPACTION, so that is the enrolment this asserts the absence of.
-    expect(!mcp::isCompactArgTool(QStringLiteral("doc_citations")),
-           "INV-19: declares no `compact` — it would drop its false flags");
+    expect(!mcp::isDefaultCompactTool(QStringLiteral("doc_citations")),
+           "INV-19: not compacted by default — it would drop its false flags");
     expect(!mcp::isRawEligible(QStringLiteral("doc_citations")),
            "INV-19: NOT raw-eligible — file text is one field among many");
     EXPECT_EQ(0, expect_failures());

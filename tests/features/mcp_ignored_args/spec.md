@@ -1,13 +1,11 @@
-# mcp_ignored_args — unknown-arg advisory (ANTS-2175)
+# mcp_ignored_args — which arguments a verb does not declare (ANTS-2175)
 
 ## Problem
 
-The MCP `tools/call` dispatcher silently drops args a verb does not
-declare. A `query="token"` passed to `roadmap_query` (whose filters are
-`status` / `section` / `id` / `mode` — there is no `query`) was ignored,
-and the verb returned the full unfiltered roadmap — which *looked* like a
-working search. The typo cost several follow-up calls to notice the filter
-was a no-op.
+A `query="token"` passed to `roadmap_query`, which had no `query`, was
+dropped in silence, and the verb returned the full unfiltered roadmap.
+ANTS-2175 named such arguments in an `ignored_args` advisory. ANTS-4659
+refuses the call instead; this contract keeps the diff both were built on.
 
 ## Surface
 
@@ -16,8 +14,7 @@ was a no-op.
   this test, mirroring `projectFields` / `offloadRequested`).
 - `src/claudeintegration.{h,cpp}` — `m_toolParamKeys` cache (rebuilt at the
   end of the `tools/list` handler from each tool's `inputSchema.properties`)
-  and the dispatch-site injection that attaches `ignored_args` to the
-  success envelope.
+  and the dispatch-site check that refuses a call naming one.
 
 ## Invariants
 
@@ -27,9 +24,10 @@ was a no-op.
 - **INV-2** — a dispatch-layer arg the verb HONOURS is never reported, even
   when its `known` set does not redeclare it. Three are unconditional:
   `caller_cwd`, which every verb reads; `encoding`, which the dispatcher
-  applies with no tool-name predicate; and `fields`, universal since
-  ANTS-4524. The rest arrive per call in `honoured`.
-- **INV-2b** (ANTS-4578) — **`etag_match`, `compact` and `offload` ARE
+  applies with no tool-name predicate; `fields`, universal since
+  ANTS-4524; and `compact`, universal since ANTS-4659. The rest arrive per
+  call in `honoured`.
+- **INV-2b** (ANTS-4578) — **`etag_match` and `offload` ARE
   reported on a verb that does not honour them.** They were exempt
   everywhere until 2026-08-25, while the dispatcher acts on them only for
   the verbs on its allowlists — so an arg sent to a verb with no support for
@@ -54,31 +52,12 @@ was a no-op.
 - **INV-5** — the `tools/list` handler populates `m_toolParamKeys` from the
   assembled tools array's `inputSchema.properties`, rebuilt in lockstep with
   `m_lastToolsList`.
-- **INV-6** — the dispatch site calls `mcp::ignoredArgs`, attaches the field
-  through `mcp::withIgnoredArgs`, and is gated so it runs only on a
-  freshly-dispatched call (`!cachedHit`).
-- **INV-7** — (ANTS-4525) the advisory is attached to **refusals** as well as
-  successes, and only ever ADDS a key, so the ANTS-2112 refusal floor
-  (`ok`/`code`/`error`/`retry_after_ms`) survives. An empty `ignored` list or
-  an unparsable body returns the response byte-identical.
-
-  INV-6 read *"never annotates a refusal (`ok:false`)"* until 2026-08-19, and
-  that is backwards for the case it matters most in: a caller holding a wrong
-  mental model of a verb passes wrong ARGUMENTS and gets a refusal, so the
-  reply that would correct the model is suppressed precisely because it
-  refused. Measured — a DOOM session called `read_log {max_commits:3,
-  body:true}` believing it read git log; both args are unknown to the verb,
-  nothing said so, and the reply was `not_found` on the Ants debug-log path,
-  which explains the file rather than the misconception. Suppression stays
-  defensible for a refusal *caused by* the unknown args; distinguishing that
-  case costs more than the harmless duplication.
-
-  **What is falsifiable against the pre-fix tree** is INV-6's scrape for the
-  absent `!= QJsonValue(false)` guard. `mcp::withIgnoredArgs` is new, so its
-  own tests could only fail to compile there.
+- **INV-6** — the dispatch site calls `mcp::ignoredArgs` for a verb whose
+  schema it knows. What it does with the result is
+  `tests/features/mcp_undeclared_args_refused/spec.md`'s.
 
 ## Tests
 
 `test_mcp_ignored_args.cpp` — behavioural coverage of `mcp::ignoredArgs`
 (INV-1..INV-4) plus source-scrapes of `claudeintegration.cpp` for the cache
-population and dispatch injection (INV-5, INV-6).
+population and the dispatch-site check (INV-5, INV-6).
