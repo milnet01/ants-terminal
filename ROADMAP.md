@@ -113423,6 +113423,15 @@ reports are asked for separately, each time.
   and 812c52b3 rotated them by hand on 2026-04-30. The text is stored
   intro data (no source match for it), so fix it in the store and
   re-render; a hand edit to the files is discarded.
+  2026-11-14, started, not fixed. The text is the paragraph under `#
+  0.N.x archive` at the top of each archive file. roadmap_log
+  op:replace_text (dry run) answers body_match_not_found for it, so it
+  is not item-body text. roadmap_query mode:section_index with query
+  "wave" lists no 0.5 or 0.6 section. Not yet found: which store row
+  holds an archive file's opening text, and whether any roadmap_log op
+  can edit it (amend_preamble and amend_intro were not tried against an
+  archive). Wanted wording: "commit 812c52b3 (2026-04-30) moved the
+  closed 0.N.x sections".
   **Layman:** Two old roadmap archive files describe how they were made incorrectly.
   Kind: doc-fix.
   Source: in-session-2026-10-01 (roadmap-format § 3.9 field pass, gap 7).
