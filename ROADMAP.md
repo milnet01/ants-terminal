@@ -113385,13 +113385,18 @@ reports are asked for separately, each time.
   Kind: doc-fix.
   Source: in-session-2026-10-01 (roadmap-format § 3.9 field pass, gap 7).
 
-- 📋 [ANTS-5611] **The Full roadmap tab shows the roadmap's intro as raw markup: HTML comments, > quote markers and [text](link).**
+- ✅ [ANTS-5611] **The Full roadmap tab shows the roadmap's intro as raw markup: HTML comments, > quote markers and [text](link).**
   Seen 2026-10-01 on 0.7.113 (store read path): the preamble renders
   `<!-- ants-roadmap-format: 1 -->`, the generated-file comment, `> `
   blockquote markers and literal `[CHANGELOG.md](CHANGELOG.md)` links,
   then bare "Legend" / "Themes" / "---" lines. Not yet checked whether
   this predates ANTS-5604; check that first with git history before
   fixing. Comments should be dropped, quotes and links rendered.
+  Shipped 2026-11-14. Comments and `---` rules went in ANTS-5727. This
+  item dropped the `>` quote markers and shows `[text](target)` as its
+  text; links stay unclickable. The Legend and Themes lines stay: they
+  are real intro text. Contract: tests/features/roadmap_viewer/spec.md
+  INV-16.
   **Layman:** The top of the Roadmap window shows formatting symbols instead of tidy text.
   Kind: fix.
   Source: in-session-2026-10-01 (website screenshot).

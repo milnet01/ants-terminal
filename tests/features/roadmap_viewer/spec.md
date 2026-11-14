@@ -227,6 +227,12 @@ source-grep + pure-helper harness, no full Qt widget tree.
   text on the Full tab. A comment is a block that starts a line with
   `<!--` and runs to the line holding `-->`, as in Markdown. A comment
   quoted inside a sentence stays.
+- INV-16 (ANTS-5611) On the Full tab, a prose line of `renderCardsHtml`
+  shows no Markdown quote marker and no link markup. A leading `>` is
+  dropped, and a quote line holding nothing else draws no row.
+  `[text](target)` shows as `text` alone; the link stays unclickable
+  (see *Dialog*). Link markup inside a backtick code span is kept as
+  written, and a bare `[ID]` with no `(target)` is untouched.
 
 ## Rationale
 

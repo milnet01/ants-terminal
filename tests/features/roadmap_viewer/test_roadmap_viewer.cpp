@@ -307,3 +307,38 @@ TEST(RoadmapViewer, Inv15CommentsAndRulesAreNotProse) {
     EXPECT_NE(html.find("quoted"), std::string::npos) << html;
     EXPECT_NE(html.find("Kept after the note."), std::string::npos) << html;
 }
+
+// INV-16 (ANTS-5611): prose shows no `>` quote marker and no link markup.
+// Why this exists: the Full tab drew the document's intro as raw Markdown,
+// `> ` markers and `[text](target)` included.
+TEST(RoadmapViewer, Inv16QuoteMarkersAndLinkMarkupAreNotProse) {
+    const QString markdown = QStringLiteral(
+        "# Title\n"
+        "\n"
+        "> **Shipped versions** are in [CHANGELOG.md](CHANGELOG.md); see\n"
+        "> [the guide](docs/guide.md#top) too.\n"
+        ">\n"
+        "> Second quoted paragraph.\n"
+        "\n"
+        "Plain line citing [ANTS-1234] and `[kept](as-code)` and a > b.\n");
+    RoadmapDialog::CardRenderOptions opts;
+    opts.activePreset = RoadmapDialog::Preset::Full;
+    const std::string html = RoadmapDialog::renderCardsHtml(
+        markdown, RoadmapDialog::filterFor(RoadmapDialog::Preset::Full), {},
+        QStringLiteral("light"), RoadmapDialog::SortOrder::Document, QString(), {}, opts)
+        .toStdString();
+
+    // The quote marker is gone, and the empty quote line draws no row.
+    EXPECT_EQ(html.find("<p>&gt;"), std::string::npos) << html;
+    EXPECT_NE(html.find("<p><strong>Shipped versions</strong> are in CHANGELOG.md; see</p>"),
+              std::string::npos) << html;
+    EXPECT_NE(html.find("<p>the guide too.</p>"), std::string::npos) << html;
+    EXPECT_NE(html.find("<p>Second quoted paragraph.</p>"), std::string::npos) << html;
+    // No link target and no bracket-paren markup survives outside code.
+    EXPECT_EQ(html.find("](CHANGELOG.md)"), std::string::npos) << html;
+    EXPECT_EQ(html.find("docs/guide.md"), std::string::npos) << html;
+    // What is not a quote marker or a link stays as written.
+    EXPECT_NE(html.find("[ANTS-1234]"), std::string::npos) << html;
+    EXPECT_NE(html.find("[kept](as-code)"), std::string::npos) << html;
+    EXPECT_NE(html.find("a &gt; b."), std::string::npos) << html;
+}

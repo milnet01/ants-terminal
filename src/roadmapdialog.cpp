@@ -311,6 +311,22 @@ QString applyInline(const QString &line) {
     return s;
 }
 
+// ANTS-5611 — a prose line as Markdown would show it: no leading `>` quote
+// marker, and `[text](target)` as its text alone. The viewer opens no links
+// (setOpenLinks(false)), so the target has nothing to do. Splitting on the
+// backtick leaves a code span's text as written: the odd parts are code.
+QString proseMarkdownText(const QString &line) {
+    static const QRegularExpression rxQuote(QStringLiteral("^\\s*(>\\s?)+"));
+    static const QRegularExpression rxLink(
+        QStringLiteral("\\[([^\\]]+)\\]\\([^)\\s]+\\)"));
+    QString s = line;
+    s.remove(rxQuote);
+    QStringList parts = s.split(QLatin1Char('`'));
+    for (int p = 0; p < parts.size(); p += 2)
+        parts[p].replace(rxLink, QStringLiteral("\\1"));
+    return parts.join(QLatin1Char('`'));
+}
+
 // Normalise a string for fuzzy matching: lowercase, hyphens/underscores
 // → space, runs of whitespace collapsed, trailing punctuation trimmed.
 QString normaliseForMatch(const QString &in) {
@@ -1660,8 +1676,9 @@ QString RoadmapDialog::renderCardsHtml(const QString &markdownText,
         // (inside a section); the top-of-document preamble always shows.
         if (!currentSlug.isEmpty() && (!sectionVisible || !sectionExpanded))
             continue;
-        if (trimmedRaw.isEmpty()) continue;
-        emitFullRow(QStringLiteral("<p>") + applyInline(raw)
+        const QString prose = proseMarkdownText(raw);
+        if (prose.trimmed().isEmpty()) continue;
+        emitFullRow(QStringLiteral("<p>") + applyInline(prose)
                     + QStringLiteral("</p>"));
     }
 
