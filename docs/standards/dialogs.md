@@ -284,4 +284,5 @@ background-task and task-list dialogs and the roadmap shortcut sheet.
 
 Every `DialogChrome::install` call in `src/` passes `resizable=true` and
 a size key; `tests/features/dialog_chrome_affordances` INV-12 checks it.
-That test cannot see a `QDialog` built without `DialogChrome` at all.
+INV-13 checks that every plain `QDialog` built in `src/` calls it. The
+paste confirmation in `terminalwidget.cpp` does not yet (ANTS-6766).

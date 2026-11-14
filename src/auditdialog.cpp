@@ -1861,8 +1861,11 @@ void AuditDialog::showRuleQualityDialog() {
     dlg->setAttribute(Qt::WA_DeleteOnClose);
     dlg->setWindowTitle("Rule Quality — last 30 days");
     dlg->resize(820, 540);
+    // ANTS-5681 — dialogs.md D1–D4.
+    auto chrome = DialogChrome::install(dlg, QString(), /*resizable=*/true,
+                                        QStringLiteral("RuleQualityDialog"));
 
-    auto *layout = new QVBoxLayout(dlg);
+    auto *layout = new QVBoxLayout(chrome.contentArea);
     auto *header = new QLabel(
         "Per-rule fire / suppression history from "
         "<code>audit_rule_quality.json</code>. Rules with a high "

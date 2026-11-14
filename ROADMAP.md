@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6765 -->
+<!-- ants-roadmap-id-high-water: ANTS=6766 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74724,7 +74724,7 @@ indie-review finding.
   Source: check-dependencies-2026-10-05.
   Lanes: lua, packaging, dependencies.
 
-- 📋 [ANTS-5681] **Four dialogs are built without DialogChrome, so they break dialogs.md D1 to D4.**
+- ✅ [ANTS-5681] **Four dialogs are built without DialogChrome, so they break dialogs.md D1 to D4.**
   Each is a bare `new QDialog` / `QDialog dlg` with no
   `DialogChrome::install` (checked 2026-10-13): the Rule Quality dialog
   in `AuditDialog::showRuleQualityDialog`, the "Plugin permissions"
@@ -74733,6 +74733,13 @@ indie-review finding.
   and OS palette (D1) and get no grip, saved size or centring (D2-D4).
   INV-12 of tests/features/dialog_chrome_affordances scans install()
   calls only, so it cannot see these.
+  Shipped 2026-11-14. Six bare dialogs were found, not four: Resize
+  Window and Add/Edit Snippet as well. Five now call
+  DialogChrome::install; INV-13 of
+  tests/features/dialog_chrome_affordances scans for a plain QDialog
+  with no install. The sixth, in terminalwidget.cpp, is ANTS-6766 (a
+  link-order problem). Not looked at on screen; needs a terminal
+  relaunch to see.
   **Layman:** Four small pop-up windows ignore the terminal's colour theme and can't remember their size.
   Kind: fix.
   Source: in-session-2026-10-13 (found during ANTS-1734).
@@ -74776,6 +74783,22 @@ indie-review finding.
   Kind: test.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
   Lanes: roadmap, tests.
+
+- 📋 [ANTS-6766] **The paste and re-run confirmation dialog uses DialogChrome, so it meets dialogs.md D1 to D4.**
+  Checked 2026-11-14: TerminalWidget::showSendConfirmation builds a bare
+  `new QDialog(this)`. src/terminalwidget.cpp is in ants_vt_lib and
+  src/dialogchrome.cpp in ants_chrome_lib, which links ants_vt_lib, so
+  the widget cannot call DialogChrome::install without a link cycle.
+  Routes: move dialogchrome.cpp and titlebar.cpp down into a library
+  ants_vt_lib may link, or have the widget emit a signal and let
+  MainWindow build the dialog. The dialog must stay non-modal (see the
+  comment above the function). INV-13 of
+  tests/features/dialog_chrome_affordances exempts terminalwidget.cpp
+  by name until this ships; remove that exemption with the fix.
+  **Layman:** The "are you sure you want to paste this?" window follows the terminal's colour theme and remembers its size, like the other pop-ups.
+  Kind: fix.
+  Source: in-session-2026-11-14 (split from ANTS-5681).
+  Lanes: terminalwidget, dialogchrome.
 
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 

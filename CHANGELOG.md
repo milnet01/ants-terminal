@@ -425,6 +425,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Five more pop-up windows follow the terminal's theme, can be resized, remember their size and open centred.** (ANTS-5681)
+  Rule Quality, Plugin permissions, Resize Window, Command Snippets and
+  its Add/Edit Snippet window.
+
 - **The session-save benchmark times the file write on its own, so `session.write_ms` is a steady positive figure.** (ANTS-5661)
 
 - **The push gate's Qt 6.2 compile guard runs on a push that changes only `ci.yml`.** (ANTS-5637)

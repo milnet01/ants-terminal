@@ -49,6 +49,11 @@ function dialogs need no `Config` plumbing).
   `DialogChrome::install(` call in a `src/*.cpp` file, outside a `//`
   comment, passes a third argument containing `true` and a fourth (the
   size key).
+- **INV-13 / no plain dialog skips the chrome (ANTS-5681).** Every
+  `new QDialog(` and every `QDialog name(` in a `src/*.cpp` file, outside
+  a `//` comment, is followed before its function ends by a
+  `DialogChrome::install(` call on that variable. `terminalwidget.cpp` is
+  exempt until ANTS-6766: its library sits below `DialogChrome`'s.
 
 ## Test scope
 
@@ -58,6 +63,7 @@ lifecycle calls — `show()`, `reject()`, `accept()`, `close()` — with events
 processed between steps, because the defect they lock is about which of
 those calls actually deliver an event `DialogChrome` can act on. INV-8 is a
 source scrape of `~MainWindow`, because this bundle cannot build a
-`MainWindow` headless. The global `Config` registration is reset to
+`MainWindow` headless. INV-12 and INV-13 are source scrapes of the call
+sites. The global `Config` registration is reset to
 `nullptr` after each test that sets it so bundle-sibling dialog tests stay
 isolated.

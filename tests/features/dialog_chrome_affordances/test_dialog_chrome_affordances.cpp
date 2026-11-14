@@ -14,6 +14,7 @@
 #include <QCloseEvent>
 #include <QDialog>
 #include <QDir>
+#include <QRegularExpression>
 #include <QShowEvent>
 #include <QSize>
 #include <QSizeGrip>
@@ -286,4 +287,49 @@ TEST(DialogChromeAffordances, INV12_EveryInstallCallIsResizableAndKeyed) {
         }
     }
     EXPECT_GT(calls, 0) << "the scan found no install() calls";
+}
+
+// INV-13 (ANTS-5681) — every plain QDialog built in src/ gets the chrome.
+// INV-12 reads install() calls, so it cannot see a dialog with none: five
+// were built bare. Each `new QDialog(` or `QDialog name(` must be followed,
+// before its function ends, by an install() call on that same variable.
+TEST(DialogChromeAffordances, INV13_EveryPlainDialogInstallsChrome) {
+    const QDir src(QStringLiteral(SRC_DIR));
+    const QStringList files =
+        src.entryList({QStringLiteral("*.cpp")}, QDir::Files, QDir::Name);
+    ASSERT_FALSE(files.isEmpty()) << "no sources under " << SRC_DIR;
+    static const QRegularExpression built(QStringLiteral(
+        R"((?:\*\s*(\w+)\s*=\s*new QDialog\(|\bQDialog\s+(\w+)\())"));
+    int dialogs = 0;
+    for (const QString &name : files) {
+        // ANTS-6766 — this file's library sits below DialogChrome's.
+        if (name == QLatin1String("terminalwidget.cpp")) continue;
+        const QString text = QString::fromStdString(
+            ants_test::slurpFile(src.filePath(name).toStdString()));
+        auto it = built.globalMatch(text);
+        while (it.hasNext()) {
+            const QRegularExpressionMatch m = it.next();
+            const int pos = static_cast<int>(m.capturedStart());
+            const int lineStart = static_cast<int>(text.lastIndexOf(QLatin1Char('\n'), pos)) + 1;
+            if (text.mid(lineStart, pos - lineStart).contains(QLatin1String("//")))
+                continue;
+            const bool onHeap = !m.captured(1).isEmpty();
+            const QString var = onHeap ? m.captured(1) : m.captured(2);
+            // A function body ends at the first `}` in column 0.
+            int end = static_cast<int>(text.indexOf(QLatin1String("\n}"), pos));
+            if (end < 0) end = static_cast<int>(text.size());
+            // Whitespace out, so a call wrapped after its `(` still matches.
+            QString rest = text.mid(pos, end - pos);
+            rest.remove(QRegularExpression(QStringLiteral("\\s")));
+            const QString call = QStringLiteral("DialogChrome::install(")
+                                 + (onHeap ? QString() : QStringLiteral("&")) + var;
+            ++dialogs;
+            const int line = static_cast<int>(text.left(pos).count(QLatin1Char('\n'))) + 1;
+            EXPECT_TRUE(rest.contains(call + QLatin1Char(','))
+                        || rest.contains(call + QLatin1Char(')')))
+                << name.toStdString() << ":" << line << " — the dialog `"
+                << var.toStdString() << "` is built without DialogChrome::install";
+        }
+    }
+    EXPECT_GT(dialogs, 0) << "the scan found no plain QDialog";
 }

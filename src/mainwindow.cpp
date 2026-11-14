@@ -513,7 +513,11 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
         [this](const PluginInfo &info, const QStringList &requested) -> QStringList {
             QDialog dlg(this);
             dlg.setWindowTitle(QString("Plugin permissions: %1").arg(info.name));
-            auto *layout = new QVBoxLayout(&dlg);
+            // ANTS-5681 — dialogs.md D1–D4.
+            auto chrome = DialogChrome::install(
+                &dlg, QString(), /*resizable=*/true,
+                QStringLiteral("PluginPermissionsDialog"));
+            auto *layout = new QVBoxLayout(chrome.contentArea);
             auto *label = new QLabel(QString(
                 "The plugin <b>%1</b> (v%2) is requesting the following "
                 "permissions. Uncheck any you don't want to grant.")
@@ -1575,7 +1579,10 @@ void MainWindow::showResizeWindowDialog() {
     if (!t) return;
     QDialog dlg(this);
     dlg.setWindowTitle(tr("Resize Window"));
-    auto *form = new QFormLayout(&dlg);
+    // ANTS-5681 — dialogs.md D1–D4.
+    auto chrome = DialogChrome::install(&dlg, QString(), /*resizable=*/true,
+                                        QStringLiteral("ResizeWindowDialog"));
+    auto *form = new QFormLayout(chrome.contentArea);
     auto *cols = new QSpinBox(&dlg);
     cols->setRange(20, 1000);
     cols->setValue(t->grid()->cols());
@@ -3183,8 +3190,11 @@ void MainWindow::showSnippetsDialog() {
     dialog->setWindowTitle("Command Snippets");
     dialog->setMinimumSize(600, 400);
     dialog->resize(700, 500);
+    // ANTS-5681 — dialogs.md D1–D4.
+    auto chrome = DialogChrome::install(dialog, QString(), /*resizable=*/true,
+                                        QStringLiteral("SnippetsDialog"));
 
-    auto *layout = new QVBoxLayout(dialog);
+    auto *layout = new QVBoxLayout(chrome.contentArea);
 
     // Search bar
     auto *searchEdit = new QLineEdit(dialog);
@@ -3247,7 +3257,11 @@ void MainWindow::showSnippetsDialog() {
     auto editSnippet = [this, snippets, loadSnippets](int editIdx = -1) {
         QDialog editDlg(this);
         editDlg.setWindowTitle(editIdx >= 0 ? "Edit Snippet" : "Add Snippet");
-        auto *form = new QFormLayout(&editDlg);
+        // ANTS-5681 — dialogs.md D1–D4.
+        auto editChrome = DialogChrome::install(
+            &editDlg, QString(), /*resizable=*/true,
+            QStringLiteral("SnippetEditDialog"));
+        auto *form = new QFormLayout(editChrome.contentArea);
 
         auto *nameEdit = new QLineEdit(&editDlg);
         auto *cmdEdit = new QLineEdit(&editDlg);
