@@ -101475,11 +101475,15 @@ a modern terminal" release.
   Source: user-report-2026-10-19 (coredump PID 772073, Ctrl+Shift+N).
   Lanes: dialogs.
 
-- 📋 [ANTS-5775] **ColoredTabBar::installCloseButton's comment says setTabButton deletes the displaced close button; Qt 6.11 only hides it, so Qt's CloseButton stays a hidden child per tab.**
+- ✅ [ANTS-5775] **ColoredTabBar::installCloseButton's comment says setTabButton deletes the displaced close button; Qt 6.11 only hides it, so Qt's CloseButton stays a hidden child per tab.**
   Qt v6.11.2 qtabbar.cpp QTabBar::setTabButton: `if (tab.rightWidget)
   tab.rightWidget->hide(); tab.rightWidget = widget;` — no delete. Fix:
   delete the displaced widget when it is not ours, and correct the
   comment in src/coloredtabbar.cpp.
+  Shipped 2026-11-14. installCloseButton deletes the button setTabButton
+  displaces; the comment and
+  tests/features/tab_close_button_visible/spec.md now say Qt only hides
+  it (INV-5). Red run: three tabs left three displaced buttons.
   **Layman:** Each tab keeps an unused hidden close button in memory; tiny waste, and a code comment says the opposite.
   Kind: fix.
   Source: found-during-ANTS-5774-2026-10-19.
@@ -112882,6 +112886,21 @@ reports are asked for separately, each time.
   quiet, so the state detector times out to idle. Check what the
   detector reads during a long ToolUse, and hold the ToolUse state
   until the tool result lands.
+  2026-11-14, read by a helper agent, not re-read by the session: the
+  "likely cause" above does not match the code. The label reads the
+  tab's ClaudeTabTracker state, which comes from
+  ClaudeIntegration::parseTranscriptTail. That has no time input: an
+  assistant record with a tool_use block gives ToolUse and holds until a
+  newer state record. So a long Bash call should read "Claude: bash".
+  Unverified candidates: the tab bound to a peer session's transcript in
+  the same project folder (sessionPathForCwd picks the newest file); a
+  final-stop assistant record such as the synthetic one after an
+  interrupt; detectClaudeChild setting Idle on a new PID with no
+  re-parse until the next write; a dropped QFileSystemWatcher watch
+  (pollAllShells does not re-parse). Waits on a sighting. Capture then:
+  the tracker's bound transcriptPath, the last assistant/user record in
+  that file, and whether ~/.claude/sessions/<claudePid>.json names the
+  same session.
   **Layman:** The status bar says Claude is idle when it is actually busy running a long command.
   Kind: fix.
   Source: user-report-2026-10-11 screenshot.

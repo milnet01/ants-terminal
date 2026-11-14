@@ -14,7 +14,10 @@
 
 #include "coloredtabbar.h"
 
+#include <QAbstractButton>
 #include <QColor>
+#include <QCoreApplication>
+#include <QEvent>
 #include <QImage>
 #include <QStyle>
 #include <QTabBar>
@@ -125,4 +128,28 @@ TEST(TabCloseButtonVisible, Main) {
     }
     std::fprintf(stderr, "tab_close_button_visible: %d failure(s)\n", failures);
     FAIL();
+}
+
+// INV-5 (ANTS-5775) — the bar keeps no displaced close button.
+// Why this exists: QTabBar::setTabButton only hides the widget it replaces,
+// so every tab left Qt's built-in close button behind as a hidden child.
+TEST(TabCloseButtonVisible, Inv5NoDisplacedCloseButtonIsKept) {
+    ColoredTabBar bar;
+    bar.setTabsClosable(true);
+    bar.addTab("Tab one");
+    bar.addTab("Tab two");
+    bar.addTab("Tab three");
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    int ours = 0;
+    int displaced = 0;
+    const auto buttons = bar.findChildren<QAbstractButton *>();
+    for (const QAbstractButton *b : buttons) {
+        if (b->objectName() == QLatin1String("antsTabClose")) ++ours;
+        else if (!qobject_cast<const QToolButton *>(b)) ++displaced;
+    }
+    EXPECT_EQ(ours, bar.count()) << "one themed close button per tab";
+    EXPECT_EQ(displaced, 0)
+        << "Qt's built-in close buttons, displaced by ours, are still "
+           "children of the bar";
 }

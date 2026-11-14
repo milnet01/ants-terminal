@@ -425,6 +425,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A tab no longer keeps Qt's replaced close button in memory beside the themed one.** (ANTS-5775)
+
 - **The Roadmap window's Full tab shows intro text without quote markers, and shows a link as its text alone.** (ANTS-5611)
 
 - **"Updated N days ago" on an in-progress roadmap card counts edits in every paragraph of the item, including those after a blank line.** (ANTS-5607)

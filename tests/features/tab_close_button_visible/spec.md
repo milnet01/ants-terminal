@@ -31,7 +31,8 @@ settable custom button is required.
 
 - `ColoredTabBar::tabInserted()` installs a `QToolButton` (objectName
   `antsTabClose`) on each new tab's close side, replacing Qt's built-in
-  button (which `setTabButton` deletes — no leak).
+  button. `setTabButton` only hides the button it displaces, so
+  `installCloseButton` deletes it (INV-5).
 - The icon is a code-drawn × (two `QPainter` lines) as a `QIcon` with a
   Normal pixmap (theme `textSecondary`) and an Active pixmap (theme
   `textPrimary`) so it re-tints on hover; rendered at the widget's
@@ -68,6 +69,10 @@ assert the glyph *renders*, which a grep cannot.
 - **INV-4 (regression)** — `themedstylesheet.cpp` contains no
   `data:image/svg+xml` rule. Reintroducing a data-URI image silently
   re-breaks the glyph (Qt6 QSS can't load it).
+- **INV-5** (ANTS-5775) — the bar keeps no displaced close button. Once
+  deferred deletes have run, the only button children of the bar are
+  `QToolButton`s: ours and Qt's scroll arrows. Qt's built-in close button
+  is a plain `QAbstractButton`, and none is left, hidden or shown.
 
 ## Regression history
 

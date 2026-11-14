@@ -287,9 +287,10 @@ void ColoredTabBar::installCloseButton(int index) {
 
     // Reuse our button if it's already there (theme re-tint path); only
     // construct one when Qt's built-in close button (or nothing) sits in
-    // the slot. setTabButton() takes ownership and deletes the displaced
-    // widget, so we never leak Qt's CloseButton.
-    auto *btn = qobject_cast<QToolButton *>(tabButton(index, side));
+    // the slot. setTabButton() only hides the widget it displaces, so that
+    // one is deleted below (ANTS-5775).
+    QWidget *const displaced = tabButton(index, side);
+    auto *btn = qobject_cast<QToolButton *>(displaced);
     if (!btn || btn->objectName() != kCloseBtnName) {
         btn = new QToolButton(this);
         btn->setObjectName(kCloseBtnName);
@@ -317,6 +318,7 @@ void ColoredTabBar::installCloseButton(int index) {
                 }
         });
         setTabButton(index, side, btn);
+        if (displaced) displaced->deleteLater();
     }
 
     // Tint only once colours have been supplied (applyTheme runs at
