@@ -384,8 +384,8 @@ Listed only where behavior isn't obvious from the name.
   keybinding/palette through `dispatchTo`, never
   `engineFor()->fireEvent()`.** A 2 s `healthTick` demotes a plugin past
   budget (atomic `m_abortRequested`); a wedged worker is detached into
-  `m_zombies` (never joined). Spec ANTS-1750; veto contract ANTS-1736
-  §2.6; process-isolation follow-up ANTS-1795.
+  `m_zombies` (never joined). Spec ANTS-1750; its § 2.6 veto contract is
+  not planned; process-isolation follow-up ANTS-1795.
 - `mcpcore` / `mcpd` (ANTS-4932) — `ants_mcpcore_lib` is every project-scoped
   MCP verb and the engines behind them, with no GUI library. `ants-mcpd`
   (`src/mcpdmain.cpp`) serves those verbs to Claude Code over stdio and

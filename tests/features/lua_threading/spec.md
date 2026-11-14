@@ -77,7 +77,7 @@ fails on pre-fix source (none of the symbols exist yet).
 ## Out of scope
 
 - Wiring the dormant `keypress`/`output`/`line`/`prompt` events and their
-  veto contract — ANTS-1736.
+  veto contract (ANTS-1750 § 2.6). The veto is not planned (ANTS-6770).
 - Full process isolation (SIGKILL-able plugin host) — ANTS-1795.
 
 ## Test

@@ -84663,7 +84663,7 @@ open, and two of these were exactly that.
   Source: in-session-2026-11-14, found while shipping ANTS-4659.
   Lanes: mcp.
 
-- 📋 [ANTS-6770] **Four plugin comments cite ANTS-1736, the keypress veto, which the roadmap no longer holds.**
+- ✅ [ANTS-6770] **Four plugin comments cite ANTS-1736, the keypress veto, which the roadmap no longer holds.**
   src/luaengine.h (two places), src/pluginmanager.h and
   src/pluginmanager.cpp say the keypress veto "is ANTS-1736" or "is
   unbuilt". Commit 1ecb6e12 added ANTS-1736 and ANTS-1737 as plugin event
@@ -84671,6 +84671,11 @@ open, and two of these were exactly that.
   Find what became of it (git log -S on the roadmap), then either restore
   the item or reword the comments to say the veto is not planned. Whether
   the veto is still wanted is the user's call.
+  Shipped 2026-11-14. User decision 2026-11-14: the keypress veto is not
+  planned. The four comments (luaengine.h twice, pluginmanager.h,
+  pluginmanager.cpp) now say so and cite this item. ANTS-1750 § 2.6
+  carries a Not planned banner, and docs/subsystems.md no longer names
+  ANTS-1736 as a live contract.
   **Layman:** Notes in the plugin code point at a planned feature whose work item has gone missing.
   Kind: doc-fix.
   Source: in-session-2026-11-14, found while shipping ANTS-5795.

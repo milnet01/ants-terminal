@@ -23,7 +23,7 @@ enum class PluginEvent {
     Line,         // Complete line received
     Prompt,       // OSC 133 prompt detected
     KeyPress,     // Key sent to the PTY — watch-only, never cancels; needs
-                  // "input.keys" (ANTS-4272; the ANTS-1736 veto is unbuilt)
+                  // "input.keys" (ANTS-4272; a veto is not planned, ANTS-6770)
     TitleChanged, // Window title changed
     TabCreated,   // New tab created
     TabClosed,    // Tab closed
@@ -64,7 +64,8 @@ public:
     static constexpr size_t MAX_LUA_MEMORY = 10 * 1024 * 1024;
 
     // Fire events to all registered handlers. Returns false if any handler
-    // requests cancellation (the dormant keypress veto — ANTS-1736). Runs
+    // requests cancellation; no caller acts on it (a veto is not planned,
+    // ANTS-6770). Runs
     // the lua_pcall loop on the owning thread; dispatchEvent() is the queued
     // worker-side wrapper. Each handler runs inside timedPcall().
     bool fireEvent(PluginEvent event, const QString &data = QString());

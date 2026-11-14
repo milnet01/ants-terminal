@@ -196,6 +196,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The plugin code and its design doc say a plugin keypress veto is not planned** (ANTS-6770)
+
 - **`comment_claims` accepts a work-item id the changelog cites, so it reports only ids that no record names.** (ANTS-5795)
 
 - **An MCP call naming an argument its tool does not have is refused with `bad_args`, and the tool does not run.** (ANTS-4659)

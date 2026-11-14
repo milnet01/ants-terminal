@@ -672,8 +672,8 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
 bool PluginManager::fireEvent(PluginEvent event, const QString &data) {
     // ANTS-1750 — non-blocking broadcast: post to each healthy worker and
     // return to the GUI event loop immediately (INV-2). No veto for async
-    // events — every event fired today is fire-and-forget; the synchronous-
-    // veto path is ANTS-1736 (§ 2.6). ANTS-5107 — a plugin with no handler
+    // events — every event is fire-and-forget, and the synchronous veto of
+    // ANTS-1750 § 2.6 is not planned (ANTS-6770). ANTS-5107 — a plugin with no handler
     // for the event is not sent it. ANTS-4272 — nor one lacking the
     // permission the event needs.
     const QString perm = permissionFor(event);

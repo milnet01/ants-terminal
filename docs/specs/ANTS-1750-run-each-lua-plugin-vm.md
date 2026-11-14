@@ -340,6 +340,10 @@ all `lua_close` off the GUI thread.
 
 ### 2.6 Veto / hot-path event contract (consumed by ANTS-1736)
 
+> **Not planned** (user, 2026-11-14, ANTS-6770). ANTS-1736 was never built
+> and has left the roadmap. No event can veto, and this contract binds
+> nothing until a new item revives it.
+
 Every `PluginEvent` fired in the current build is fire-and-forget — no
 caller consumes the `bool` return to cancel:
 

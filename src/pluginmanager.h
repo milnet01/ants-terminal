@@ -54,7 +54,7 @@ public:
 
     // Post the event asynchronously to every healthy plugin that handles it
     // and holds the permission it needs. Always returns true: nothing can
-    // veto yet (that is ANTS-1736).
+    // veto, and a veto is not planned (ANTS-6770).
     bool fireEvent(PluginEvent event, const QString &data = QString());
 
     // ANTS-4272 — the permission an event needs, or empty.
