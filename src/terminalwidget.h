@@ -576,6 +576,10 @@ private:
     void scrollToMatch();
     void searchNext();
     void searchPrev();
+    // ANTS-5686 — `dropped` lines left the front of scrollback: every stored
+    // match moves up by that many, and one whose line is gone is removed.
+    void shiftSearchMatches(int dropped);
+    void updateSearchCounter();
     bool isCellSearchMatch(int globalLine, int col) const;
     bool isCellCurrentMatch(int globalLine, int col) const;
 

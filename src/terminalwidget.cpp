@@ -53,6 +53,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <limits>
 #include <cstdio>    // ANTS-5134 — the first-paint marker on stderr
 #include <memory>
 #include <optional>  // lazily built LineColumns maps
@@ -2420,6 +2421,15 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
         }
         m_grid->processAction(batch->actions[i], predecoded);
     }
+
+    // ANTS-5686 — what was pushed and did not grow scrollback fell off its
+    // front (the cap, or a scrollback clear), renumbering every line behind.
+    const qint64 droppedFromFront =
+        static_cast<qint64>(m_grid->scrollbackPushed() - pushedBefore)
+        - (m_grid->scrollbackSize() - sbSizeBefore);
+    if (droppedFromFront > 0 && !m_searchMatches.empty())
+        shiftSearchMatches(static_cast<int>(
+            std::min<qint64>(droppedFromFront, std::numeric_limits<int>::max())));
 
     if (m_scrollOffset > 0) {
         uint64_t added64 = m_grid->scrollbackPushed() - pushedBefore;
@@ -4843,10 +4853,29 @@ void TerminalWidget::performSearch() {
         scrollToMatch();
     }
 
+    updateSearchCounter();
+    update();
+}
+
+void TerminalWidget::updateSearchCounter() {
     m_searchLabel->setText(QString("%1/%2")
         .arg(m_searchMatches.empty() ? 0 : m_currentMatchIdx + 1)
         .arg(m_searchMatches.size()));
-    update();
+}
+
+void TerminalWidget::shiftSearchMatches(int dropped) {
+    // Matches are in ascending line order, so the dropped ones lead.
+    const auto firstKept = std::find_if(
+        m_searchMatches.begin(), m_searchMatches.end(),
+        [dropped](const SearchMatch &m) { return m.globalLine >= dropped; });
+    const int gone = static_cast<int>(firstKept - m_searchMatches.begin());
+    m_searchMatches.erase(m_searchMatches.begin(), firstKept);
+    for (SearchMatch &m : m_searchMatches) m.globalLine -= dropped;
+    if (m_searchMatches.empty())
+        m_currentMatchIdx = -1;
+    else if (m_currentMatchIdx >= 0)
+        m_currentMatchIdx = std::max(0, m_currentMatchIdx - gone);
+    updateSearchCounter();
 }
 
 void TerminalWidget::scrollToMatch() {
@@ -4867,7 +4896,7 @@ void TerminalWidget::searchNext() {
     if (m_searchMatches.empty()) return;
     m_currentMatchIdx = (m_currentMatchIdx + 1) % static_cast<int>(m_searchMatches.size());
     scrollToMatch();
-    m_searchLabel->setText(QString("%1/%2").arg(m_currentMatchIdx + 1).arg(m_searchMatches.size()));
+    updateSearchCounter();
     update();
 }
 
@@ -4876,7 +4905,7 @@ void TerminalWidget::searchPrev() {
     m_currentMatchIdx = (m_currentMatchIdx - 1 + static_cast<int>(m_searchMatches.size()))
                         % static_cast<int>(m_searchMatches.size());
     scrollToMatch();
-    m_searchLabel->setText(QString("%1/%2").arg(m_currentMatchIdx + 1).arg(m_searchMatches.size()));
+    updateSearchCounter();
     update();
 }
 

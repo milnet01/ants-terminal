@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6766 -->
+<!-- ants-roadmap-id-high-water: ANTS=6767 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74800,6 +74800,19 @@ indie-review finding.
   Source: in-session-2026-11-14 (split from ANTS-5681).
   Lanes: terminalwidget, dialogchrome.
 
+- 📋 [ANTS-6767] **With the search bar open, output that arrives after the search is matched too.**
+  Checked 2026-11-14: m_searchMatches is filled only by performSearch.
+  ANTS-5686 keeps stored matches on their lines when scrollback drops
+  its oldest; it does not search new lines, and a screen line a program
+  rewrites in place keeps its old match. A full re-run per batch is too
+  dear on a 50k scrollback and performSearch also moves the view
+  (scrollToMatch) and resets the current match. Likely shape: search
+  only the lines a batch touched, keep the current match, never scroll.
+  **Layman:** While search is open, new text printed by a program is not highlighted until you change the search or toggle an option.
+  Kind: fix.
+  Source: in-session-2026-11-14 (left by ANTS-5686).
+  Lanes: terminalwidget.
+
 ### 🎨 Review Changes dialog UX (user request 2026-06-03)
 
 Navigation + scroll affordances for the Review Changes dialog, requested
@@ -74976,7 +74989,7 @@ new minor item:
   Source: indie-review-2026-06-04, split from ANTS-2000 on 2026-10-13.
   Lanes: terminalwidget.
 
-- 📋 [ANTS-5686] **Search highlights stay on the right lines after scrollback drops its oldest lines.**
+- ✅ [ANTS-5686] **Search highlights stay on the right lines after scrollback drops its oldest lines.**
   Verified 2026-10-13: m_searchMatches holds global line numbers, set
   only by performSearch. Nothing adjusts them when output arrives. Once
   scrollback is full, each pushed line drops the oldest, so every stored
@@ -74984,6 +74997,11 @@ new minor item:
   wrong rows. New lines are never matched either. Fix: shift the matches
   by the number of lines dropped (dropping those that fell off), or
   re-run the search, debounced, while the bar is open.
+  Shipped 2026-11-14: onVtBatch measures the lines that left the front
+  of scrollback and shiftSearchMatches moves the stored matches by that
+  many, removing those whose line is gone. Locked by
+  tests/features/search_matches_follow_scrollback. Matching new output
+  is a separate item, filed the same day.
   **Layman:** With search open on a full scrollback, new output can make the highlights jump to the wrong lines.
   Kind: fix.
   Source: indie-review-2026-06-04, split from ANTS-2000 on 2026-10-13.

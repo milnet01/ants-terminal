@@ -425,6 +425,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Search highlights stay on their lines while new output pushes the oldest lines out of a full scrollback.** (ANTS-5686)
+
 - **Five more pop-up windows follow the terminal's theme, can be resized, remember their size and open centred.** (ANTS-5681)
   Rule Quality, Plugin permissions, Resize Window, Command Snippets and
   its Add/Edit Snippet window.
