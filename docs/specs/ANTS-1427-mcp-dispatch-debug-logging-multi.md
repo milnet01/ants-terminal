@@ -1,6 +1,7 @@
 # ANTS-1427 — MCP dispatch debug logging (multi-checkpoint)
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** implement.
 
 ## Problem
 

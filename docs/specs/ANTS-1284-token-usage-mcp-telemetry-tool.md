@@ -1,6 +1,7 @@
 # ANTS-1284 — `token_usage` MCP telemetry tool
 
 **Status:** spec draft, pre cold-eyes (2026-05-14). Loop log at end (§ 11).
+**Kind:** implement.
 **Source:** ROADMAP.md ANTS-1284 (line in `📊 Performance — MCP telemetry`
 block).
 **Blocked by:** none — pure in-process counter; no shell-out, no file I/O

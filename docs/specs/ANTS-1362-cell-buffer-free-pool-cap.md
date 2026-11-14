@@ -1,6 +1,7 @@
 # ANTS-1362 — Cell-buffer free pool cap tuning
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** perf.
 
 ## Problem
 

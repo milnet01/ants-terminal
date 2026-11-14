@@ -1,10 +1,10 @@
 # ANTS-1148 — DEC mode 2026 (sync output) unified snapshot path
 
 **Status:** shipped 0.7.75 (2026-05-02).
+**Kind:** fix (closes a behavioural correctness gap; not a refactor).
 
 - **Source:** indie-review-2026-05-01 (L2 C-2)
 - **Lanes:** terminalwidget
-- **Kind:** fix (closes a behavioural correctness gap; not a refactor)
 
 ## Problem
 

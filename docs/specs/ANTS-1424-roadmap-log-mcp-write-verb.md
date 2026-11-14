@@ -1,6 +1,7 @@
 # ANTS-1424 — `roadmap_log` MCP write verb
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** implement.
 
 ## Problem
 

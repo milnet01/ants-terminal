@@ -1,6 +1,7 @@
 # ANTS-1118 — Smooth-scroll snapshot race during streaming
 
 **Status:** shipped 0.7.65 (2026-05-01).
+**Kind:** fix.
 
 - **Source:** user-2026-04-30 (downgraded MEDIUM 2026-05-01) +
   indie-review-2026-05-01 (L2 root cause confirmed)

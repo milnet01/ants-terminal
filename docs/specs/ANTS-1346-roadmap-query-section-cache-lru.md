@@ -1,6 +1,7 @@
 # ANTS-1346 — `roadmap_query` section cache LRU eviction
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** perf.
 **Source:** indie-review-2026-05-14 (lane-5 ME-1).
 
 ## 1. Problem

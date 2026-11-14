@@ -1,6 +1,7 @@
 # ANTS-1334 — Combining marks at wide-char right-edge attach to lead cell
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** fix.
 
 ## Problem
 

@@ -1,6 +1,7 @@
 # ANTS-1333 — Scrollback hyperlink lockstep on width reflow
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** fix.
 
 ## Problem
 

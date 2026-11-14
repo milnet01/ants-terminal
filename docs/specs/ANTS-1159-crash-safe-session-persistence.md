@@ -1,6 +1,7 @@
 # ANTS-1159 — Crash-safe session persistence
 
 **Status:** shipped 0.7.77 (2026-05-02).
+**Kind:** fix.
 
 > **Source:** user report 2026-05-02 ("after the crash, none of my
 > tabs persisted though"). Approved option B (periodic timer +
@@ -9,7 +10,6 @@
 > **Lanes:** `MainWindow` (signal hooks, `m_sessionSaveTimer`).
 > No SessionManager API change — the existing
 > `saveSession` / `saveTabOrder` are reused.
-> **Kind:** fix
 
 ## 1. Problem
 

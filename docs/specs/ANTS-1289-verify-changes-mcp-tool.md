@@ -1,6 +1,7 @@
 # ANTS-1289 — `verify_changes` MCP tool
 
 **Status:** accepted (2026-09-28). Loop log at end (§ 11).
+**Kind:** implement.
 **Source:** ROADMAP.md ANTS-1289 (line in `🔌 MCP — skill displacement` block).
 **Blocked by:** none — engine is shell-out to the project's own build/test
 plumbing; the MCP scaffolding has been proven by ANTS-1112 / ANTS-1113.

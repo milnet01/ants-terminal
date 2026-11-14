@@ -1,6 +1,7 @@
 # ANTS-1304 — `workspace_search` returns surrounding context lines
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** refactor.
 
 ## Problem
 

@@ -1,6 +1,7 @@
 # ANTS-1251 — `subsystem` MCP tool (consolidated; map / files / recent_changes)
 
 **Status:** spec, ship-ready after cold-eyes pass 2 fix-pass.
+**Kind:** feature.
 **Source:** user-2026-05-12 (token-reduction priority,
 specifically /indie-review).
 **Blocked by:** ANTS-1250 (composes with `cmdGitState` for the

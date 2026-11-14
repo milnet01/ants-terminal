@@ -1,11 +1,11 @@
 # ANTS-1341 — Mode B `in_progress` task abandonment (Bundle F pull 2)
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** fix.
 
 - **Source:** indie-review-2026-05-14 lane-3 H3 finding, logged in
   ROADMAP.md.
 - **Lanes:** `claudetasklist` (parser).
-- **Kind:** fix.
 
 ## 1. Problem
 

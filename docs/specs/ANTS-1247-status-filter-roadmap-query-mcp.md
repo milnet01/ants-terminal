@@ -1,6 +1,7 @@
 # ANTS-1247 — `status` filter on `roadmap_query` (MCP + IPC)
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** feature.
 **Source:** user-2026-05-12 (token-reduction priority).
 **Predecessor:** ANTS-1244 § 9 flagged this as the highest-leverage open
 follow-up after the 3-verb MCP wiring landed.

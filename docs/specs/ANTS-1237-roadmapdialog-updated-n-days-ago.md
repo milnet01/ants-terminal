@@ -1,13 +1,13 @@
 # ANTS-1237 — RoadmapDialog: "Updated N days ago" on 🚧 cards
 
 **Status:** shipped 0.7.84 (2026-05-11). The ANTS-4414 amendment below records the later caching change.
+**Kind:** implement.
 
 - **Source:** roadmap-v2 research synthesis 2026-05-11 (GitHub
   Projects, Linear, Jira — all surface a "last activity" line on
   in-progress items by default).
 - **Lanes:** roadmapdialog (one new helper + render hook + cache
   field; mirrors the existing `parseShippedDates` pattern).
-- **Kind:** implement.
 
 ## Amendment — ANTS-4414 (2026-08-17), recording what was built
 

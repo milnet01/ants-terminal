@@ -1,6 +1,7 @@
 # ANTS-1579 — `verify_changes` `timeout_sec` end-to-end plumb verification
 
 **Status:** implementing
+**Kind:** fix.
 **Source:** cross-session-report-2026-05-17 (Vestige /test-audit Issue #1)
 **Pull:** 12 (MCP timeout-ergonomics fold-in, 0.7.92)
 

@@ -1,6 +1,7 @@
 # ANTS-1422 — `token_usage` `no_claude_integration` diagnostic
 
 **Status:** shipped 0.7.92 (2026-05-20). The fix removed the failing path; the root cause was never found.
+**Kind:** fix.
 
 ## Problem
 

@@ -1,6 +1,7 @@
 # ANTS-1244 — Surface 3 existing remote-control verbs as MCP tools (`roadmap_query`, `tab_list`, `get_text`)
 
 **Status:** shipped 0.7.86 (2026-05-12).
+**Kind:** implement (additive; surfaces logic that already exists.
 
 - **Source:** user-2026-05-12 (token-reduction priority per memory
   `project_focus_claude_integration`).
@@ -8,7 +9,6 @@
   dispatch + 3 new provider hooks), `mainwindow`
   (`setupClaudeMcpProviders` wires the new lambdas), `remotecontrol`
   (promote 3 private cmd handlers to public — body unchanged).
-- **Kind:** implement (additive; surfaces logic that already exists
   in a different transport).
 
 ## 0. Table of contents

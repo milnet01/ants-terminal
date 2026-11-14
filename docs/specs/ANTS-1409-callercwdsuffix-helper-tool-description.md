@@ -1,6 +1,7 @@
 # ANTS-1409 — `callerCwdSuffix()` helper for tool-description phrasing
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** refactor.
 
 ## Problem
 

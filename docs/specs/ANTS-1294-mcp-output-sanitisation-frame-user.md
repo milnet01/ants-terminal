@@ -1,6 +1,7 @@
 # ANTS-1294 — MCP output sanitisation (frame user-supplied text as data)
 
 **Status:** spec draft, pre cold-eyes (2026-05-14). Loop log at end (§ 11).
+**Kind:** security.
 **Source:** ROADMAP.md ANTS-1294 (line in
 `🔒 MCP — security hardening (token-economy adjacent)` block,
 `indie-review-2026-05-13`).

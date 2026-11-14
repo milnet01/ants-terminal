@@ -1,6 +1,7 @@
 # ANTS-1366 — Sixel raster-header pre-budget
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** perf.
 
 ## Problem
 

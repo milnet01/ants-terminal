@@ -1,6 +1,7 @@
 # ANTS-1429 — `roadmap_query` / `roadmap_log` `unrecognised_format` gate
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** fix.
 
 ## Problem
 

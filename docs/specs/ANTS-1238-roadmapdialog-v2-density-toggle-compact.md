@@ -1,6 +1,7 @@
 # ANTS-1238 — RoadmapDialog v2: density toggle (compact / cozy / comfortable)
 
 **Status:** shipped 0.7.85 (2026-05-12). The future-tense prose in §2–§3 is historical; §2.f carries the font floors ANTS-2211 raised.
+**Kind:** implement (extends existing renderer; no new module,.
 
 - **Source:** roadmap-v2 research synthesis 2026-05-11 (Material 3
   density tokens; Linear "compact mode"; GitHub Projects density
@@ -9,7 +10,6 @@
 - **Lanes:** `roadmapdialog` only — adds one combo box in the
   filter-row trailing space, a `roadmapDensity` Config key, and
   three sets of CSS px values selected at `renderCardsHtml` time.
-- **Kind:** implement (extends existing renderer; no new module,
   no new test bundle).
 
 ## 0. Table of contents

@@ -2,6 +2,7 @@
 
 **Status:** shipped 0.7.83 (2026-05-11). ANTS-3392 later re-laid out
 the card container.
+**Kind:** implement.
 
 > **§3.1 / §3.2 / INV-1 / INV-2 describe the ANTS-3392 layout
 > (per-section `<table class="rm-cards">` column layout), now live in

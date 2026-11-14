@@ -1,6 +1,7 @@
 # ANTS-1283 — `session_memory` MCP key-value store
 
 **Status:** spec draft, pre cold-eyes (2026-05-14). Loop log at end (§ 11).
+**Kind:** implement.
 **Source:** ROADMAP.md ANTS-1283 (line in `🔌 MCP ergonomics — caller polish`
 block).
 **Blocked by:** none — pure file I/O, no other engines required.

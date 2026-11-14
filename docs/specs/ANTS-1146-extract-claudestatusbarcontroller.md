@@ -1,10 +1,10 @@
 # ANTS-1146 — Extract ClaudeStatusBarController from mainwindow.cpp
 
 **Status:** shipped 0.7.74 (2026-05-02), with ANTS-1147. See the INV-1 amendment below.
+**Kind:** refactor (no behavioural change).
 
 - **Source:** indie-review-2026-05-01 (L6 LoC2) + brainstorm 2026-05-02
 - **Lanes:** mainwindow, claudestatuswidgets (new)
-- **Kind:** refactor (no behavioural change)
 
 ## Problem
 

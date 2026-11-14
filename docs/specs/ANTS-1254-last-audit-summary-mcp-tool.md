@@ -2,6 +2,7 @@
 
 **Status:** spec, ship-ready after 5-loop cold-eyes pass
 (2026-05-13). Loop-by-loop fixes documented at end of file (§ 11).
+**Kind:** feature.
 **Source:** cold-eyes pass 3 finding on the 1247-1252 token-reduction
 pack, 2026-05-12.
 **Blocked by:** ANTS-1253 (uses the consolidated

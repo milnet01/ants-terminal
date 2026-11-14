@@ -1,6 +1,7 @@
 # ANTS-1248 — `workspace_search` MCP tool (ripgrep wrapper)
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** feature.
 **Source:** user-2026-05-12 (token-reduction priority).
 **Sibling specs:** ANTS-1247 (status filter), 1249 (file_outline),
 1250 (git-state tools), 1251 (subsystem_map), 1252 (hook pack).

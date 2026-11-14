@@ -1,10 +1,10 @@
 # ANTS-1145 — Extract DiffViewerDialog from mainwindow.cpp
 
 **Status:** shipped 0.7.73 (2026-05-02).
+**Kind:** refactor (no behavioural change).
 
 - **Source:** indie-review-2026-05-01 (L6 LoC1) + cold-eyes review 2026-05-02
 - **Lanes:** mainwindow, diffviewer (new)
-- **Kind:** refactor (no behavioural change)
 
 ## Problem
 

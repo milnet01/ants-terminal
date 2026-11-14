@@ -1,6 +1,7 @@
 # ANTS-1339 — `AuditEngine::applyFilter` streaming line-split
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** perf.
 
 ## Problem
 

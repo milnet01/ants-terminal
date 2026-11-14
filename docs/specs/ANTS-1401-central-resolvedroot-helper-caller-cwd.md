@@ -1,6 +1,7 @@
 # ANTS-1401 — Central `ResolvedRoot` helper for `caller_cwd`
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** refactor.
 
 ## Problem
 

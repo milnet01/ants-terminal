@@ -1,6 +1,7 @@
 # ANTS-1234 — RoadmapDialog v2: `/`-focus + Esc-clear + auto-expand on match
 
 **Status:** shipped 0.7.84 (2026-05-11).
+**Kind:** implement (extends the existing search; no new module).
 
 - **Source:** roadmap-v2 research synthesis 2026-05-11 (Linear,
   GitHub Issues, Notion, VS Code, Slack — all use `/` as the
@@ -8,7 +9,6 @@
   partially-sighted workflow.
 - **Lanes:** roadmapdialog (key event handler + renderCardsHtml
   auto-expand wiring).
-- **Kind:** implement (extends the existing search; no new module).
 
 ## 1. Problem
 

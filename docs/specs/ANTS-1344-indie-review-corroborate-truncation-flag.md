@@ -1,6 +1,7 @@
 # ANTS-1344 — indie_review_corroborate truncation flag
 
 **Status:** shipped 0.7.92 (2026-05-20). In 0.7.113 (2026-10-01) ANTS-5485 removed `cross_doc_diff` (point 4, INV-5); the rest stands.
+**Kind:** fix.
 
 ## Problem
 

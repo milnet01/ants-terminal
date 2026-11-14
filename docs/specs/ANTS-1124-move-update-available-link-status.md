@@ -1,6 +1,7 @@
 # ANTS-1124 — Move "update available" link from status bar to menu bar
 
 **Status:** shipped 0.7.62 (2026-05-01).
+**Kind:** ux.
 
 - **Source:** user-2026-04-30
 - **Lanes:** MainWindow

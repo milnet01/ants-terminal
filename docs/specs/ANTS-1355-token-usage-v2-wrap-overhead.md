@@ -1,6 +1,7 @@
 # ANTS-1355 — `token_usage` v2: wrap-overhead + latency breakdown
 
 **Status:** spec draft, pre cold-eyes (2026-05-15). Loop log at end (§ 10).
+**Kind:** refactor.
 **Source:** indie-review-2026-05-14 lane-3 follow-up — "`token_usage` v2:
 break out wrap overhead + latency." ROADMAP.md ANTS-1355.
 **Blocked by:** none (additive fields on existing in-process counter).

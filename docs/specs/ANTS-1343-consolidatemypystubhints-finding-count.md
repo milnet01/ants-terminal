@@ -1,6 +1,7 @@
 # ANTS-1343 — `consolidateMypyStubHints` finding-count preservation
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** fix.
 
 ## Problem
 

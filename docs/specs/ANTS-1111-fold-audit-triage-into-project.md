@@ -5,6 +5,7 @@ alias + framework detect). UI affordances (Fold-into-ROADMAP button,
 per-finding Allow button, Since-baseline filter pill) deferred to
 v2 — tracked under a new ROADMAP item; see § 12. Spec converged
 after 3 cold-eyes loops; loop-by-loop fixes at § 11.
+**Kind:** implement.
 **Source:** ROADMAP.md ANTS-1111; ADR-0002 dec 8 relaxed by
 [ADR-0003](../decisions/0003-cc-fold-relax-gate-and-draw-boundary.md)
 dec 1 + 2.

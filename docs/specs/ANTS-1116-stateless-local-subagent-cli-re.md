@@ -1,6 +1,7 @@
 # ANTS-1116 — Stateless local-subagent CLI (re-scoped v1, post cold-eyes)
 
 **Status:** shipped 0.7.59 (2026-04-30), v1 (`ants-helper drift-check`). Post-ship follow-ups are under "Open questions".
+**Kind:** implement.
 
 - **Owner:** Project lead
 - **Re-scoped per [ADR-0002](../decisions/0002-cold-eyes-companion-cleanup.md) and revised post cold-eyes pass 1.**

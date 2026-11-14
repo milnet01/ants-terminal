@@ -1,10 +1,10 @@
 # ANTS-1147 — Extract themedstylesheet from mainwindow.cpp
 
 **Status:** shipped 0.7.74 (2026-05-02), with ANTS-1146.
+**Kind:** refactor (no behavioural change) + enables one perf.
 
 - **Source:** indie-review-2026-05-01 (L6 LoC3) + brainstorm 2026-05-02
 - **Lanes:** mainwindow, themedstylesheet (new)
-- **Kind:** refactor (no behavioural change) + enables one perf
   follow-up (the `updateStatusBar` cache-and-compare optimization
   the roadmap entry described).
 

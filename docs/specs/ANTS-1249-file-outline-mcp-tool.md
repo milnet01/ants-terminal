@@ -1,6 +1,7 @@
 # ANTS-1249 — `file_outline` MCP tool
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** feature.
 **Source:** user-2026-05-12 (token-reduction priority).
 **Siblings:** ANTS-1247, 1248, 1250, 1251, 1252.
 

@@ -1,6 +1,7 @@
 # ANTS-1246 — Tasks chip: progress semantics (`done / total`, visible whole run)
 
 **Status:** shipped 0.7.86 (2026-05-12).
+**Kind:** fix (two coordinated UX corrections; both prompted by.
 
 - **Source:** user feedback 2026-05-12 on two live screenshots —
   (1) chip vanished mid-run while in-progress tasks remained
@@ -13,7 +14,6 @@
   `claudetasklist` (parser: batch-reset on `TaskCreate` after a
   fully-completed prior batch). No public-API change on the
   tracker — count methods still return the same `int` shape.
-- **Kind:** fix (two coordinated UX corrections; both prompted by
   the same user-visible symptom).
 
 ## 0. Table of contents

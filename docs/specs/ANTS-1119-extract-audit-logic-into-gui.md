@@ -1,6 +1,7 @@
 # ANTS-1119 — Extract audit logic into a GUI-free engine module
 
 **Status:** shipped 0.7.59 (2026-04-30), v1.
+**Kind:** refactor.
 
 - **Owner:** Project lead
 - **New bullet introduced by [ADR-0002](../decisions/0002-cold-eyes-companion-cleanup.md) cold-eyes pass 1.**

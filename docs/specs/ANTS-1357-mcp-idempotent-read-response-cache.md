@@ -1,6 +1,7 @@
 # ANTS-1357 — MCP idempotent-read response cache
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** perf.
 **Source:** indie-review-2026-05-14 (self-observed).
 **Predecessor:** ANTS-1247's per-call `roadmap_query` cache established
 the 100 ms TTL pattern; this spec generalises it across the four

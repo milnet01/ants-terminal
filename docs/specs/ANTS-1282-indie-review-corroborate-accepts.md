@@ -2,6 +2,7 @@
 
 **Status:** spec draft, pre cold-eyes (2026-05-13). Loop log at end
 (§ 11).
+**Kind:** refactor.
 **Source:** ROADMAP.md ANTS-1282 (`🔌 MCP integration deepening —
 token + perf (2026-05-13)` block).
 **Blocked by:** none — pairs with ANTS-1281 (shipped same cycle).

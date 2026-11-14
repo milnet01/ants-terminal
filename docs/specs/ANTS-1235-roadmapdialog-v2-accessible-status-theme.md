@@ -1,12 +1,12 @@
 # ANTS-1235 — RoadmapDialog v2: accessible status / theme glyph labels
 
 **Status:** shipped 0.7.84 (2026-05-11).
+**Kind:** implement (additive — pure addition of plain-text labels).
 
 - **Source:** roadmap-v2 research synthesis 2026-05-11 (NN/g, Pope.tech
   / W3C H86) + standing user accessibility context (partially sighted,
   routinely runs Orca on the Linux desktop).
 - **Lanes:** roadmapdialog (renderer), roadmapdialog (filter row).
-- **Kind:** implement (additive — pure addition of plain-text labels).
 
 ## 1. Problem
 

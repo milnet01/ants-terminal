@@ -1,11 +1,11 @@
 # ANTS-1150 — UI / chrome state persistence (Phase 1)
 
 **Status:** shipped 0.7.76 (2026-05-02), Phase 1 only. Phase 2 (§ Out of scope) is not built.
+**Kind:** implement (new persistence keys + load/save hooks; no.
 
 - **Source:** user-2026-05-01 ("Everything that makes sense to
   persist across sessions, please make that persist.")
 - **Lanes:** Config, SettingsDialog, RoadmapDialog, AuditDialog
-- **Kind:** implement (new persistence keys + load/save hooks; no
   behavioural change to the underlying dialog logic)
 - **Out of scope (Phase 2):** RoadmapDialog splitter position,
   AuditDialog filter-bar splitter, RoadmapDialog search-box content

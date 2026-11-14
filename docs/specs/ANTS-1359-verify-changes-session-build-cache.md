@@ -1,6 +1,7 @@
 # ANTS-1359 — `verify_changes` session build-cache
 
 **Status:** spec draft, pre cold-eyes (2026-05-15).
+**Kind:** perf.
 **Source:** ROADMAP.md ANTS-1359 (deferred from the ANTS-1357/1346/1364
 bundle on 2026-05-15 for an invalidation-correctness pass).
 **Predecessor:** ANTS-1289 (the `verify_changes` MCP tool + `VerifyEngine`

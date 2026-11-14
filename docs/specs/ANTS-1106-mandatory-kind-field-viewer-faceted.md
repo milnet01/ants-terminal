@@ -1,6 +1,7 @@
 # ANTS-1106 — Mandatory `Kind:` field + viewer faceted categorisation
 
 **Status:** shipped 0.7.64 (2026-05-01). ANTS-1150 later made the Kind filter persist across sessions.
+**Kind:** doc-fix.
 
 - **Source:** user-2026-04-30
 - **Lanes:** docs, RoadmapDialog

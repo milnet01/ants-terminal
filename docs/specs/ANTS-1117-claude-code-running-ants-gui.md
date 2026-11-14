@@ -1,6 +1,7 @@
 # ANTS-1117 — Claude Code → running-Ants GUI IPC (v1)
 
 **Status:** shipped 0.7.59 (2026-04-30), v1.
+**Kind:** implement.
 
 - **Owner:** Project lead
 - **Promoted ahead of ANTS-1116** per [ADR-0002](../decisions/0002-cold-eyes-companion-cleanup.md)

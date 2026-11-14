@@ -1,13 +1,13 @@
 # ANTS-1236 — RoadmapDialog v2: keyboard-shortcut cheatsheet
 
 **Status:** shipped 0.7.84 (2026-05-11).
+**Kind:** implement (additive — one new modal, one new key.
 
 - **Source:** roadmap-v2 research synthesis 2026-05-11 (Linear,
   GitHub, Notion all expose shortcut overlays via `?`); user
   keyboard-first / partially-sighted workflow.
 - **Lanes:** roadmapdialog (key event handler), roadmapshortcutsdialog
   (new module).
-- **Kind:** implement (additive — one new modal, one new key
   handler, no changes to existing behaviour).
 
 ## 1. Problem

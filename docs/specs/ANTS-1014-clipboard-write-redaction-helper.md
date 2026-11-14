@@ -1,6 +1,7 @@
 # ANTS-1014 — Clipboard-write redaction helper
 
 **Status:** shipped 0.7.63 (2026-05-01).
+**Kind:** review-fix.
 
 - **Source:** indie-review-2026-04-27 (carry from 7th-audit memory)
 - **Lanes:** TerminalWidget, MainWindow (Lua plugin glue), new

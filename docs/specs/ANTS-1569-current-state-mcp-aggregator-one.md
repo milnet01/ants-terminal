@@ -1,6 +1,7 @@
 # ANTS-1569 — `current_state` MCP aggregator (one-call session-start state recovery)
 
 **Status:** superseded (2026-10-01). Shipped 0.7.92 (2026-05-20).
+**Kind:** implement.
 **Superseded by:** ANTS-5485 (the verb was removed, 2026-10-01).
 
 ## Problem

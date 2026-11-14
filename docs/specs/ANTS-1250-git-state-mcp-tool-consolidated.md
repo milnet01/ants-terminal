@@ -1,6 +1,7 @@
 # ANTS-1250 — `git_state` MCP tool (consolidated; status / log / diff)
 
 **Status:** spec, ship-ready after cold-eyes pass 2 fix-pass.
+**Kind:** feature.
 **Source:** user-2026-05-12 (token-reduction priority).
 **Cold-eyes pass 2 decisions** (2026-05-12):
 - **Collapsed three verbs into one tool** (`git_state(op, …)`) per

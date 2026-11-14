@@ -4,6 +4,7 @@
 cold-eyes convergence (2026-05-13); § 3.5 later re-synced to the
 ANTS-3342 window-scoping in a loop-4 maintenance pass (2026-07-13).
 Loop-by-loop fixes documented at end of file (§ 11).
+**Kind:** implement.
 **Source:** ROADMAP.md ANTS-1113; ADR-0002 dec 8 relaxed by
 [ADR-0003](../decisions/0003-cc-fold-relax-gate-and-draw-boundary.md).
 **Blocked by:** none — RoadmapFoldIn ships in ANTS-1111 v1 (0.7.88),

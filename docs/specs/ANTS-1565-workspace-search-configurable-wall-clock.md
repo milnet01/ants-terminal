@@ -1,6 +1,7 @@
 # ANTS-1565 — `workspace_search` configurable wall-clock budget
 
 **Status:** implementing
+**Kind:** fix.
 **Source:** cross-session-report-2026-05-18 (Vestige Issue #8)
 **Pull:** 12 (MCP timeout-ergonomics fold-in, 0.7.92)
 

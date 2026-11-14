@@ -1,6 +1,7 @@
 # ANTS-1364 — `session_memory` Set: serialize the store once
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** perf.
 **Source:** indie-review-2026-05-14 (self-observed).
 
 ## 1. Problem

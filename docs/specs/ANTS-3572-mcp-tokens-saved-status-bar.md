@@ -2,6 +2,7 @@
 
 **Status:** implemented + shipped (2026-07-18); cold-eyes converged (4 loops). Full
 suite green (2758/2758). Loop log at end (§ 10).
+**Kind:** feature.
 **Source:** ROADMAP.md ANTS-3572 (`📊 Claude Code token-usage tracking + reports`
 block); user request 2026-07-18 ("a status-bar tokens-saved counter … keep track
 of year-to-date totals and monthly totals as well").

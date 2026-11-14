@@ -1,6 +1,7 @@
 # ANTS-1252 — token-saving hook pack
 
 **Status:** spec, ship-ready after cold-eyes pass 2 fix-pass.
+**Kind:** feature.
 **Source:** user-2026-05-12 (token-reduction priority; user note:
 "another CC session said hooks are free").
 **Cold-eyes pass 2 hardening:**

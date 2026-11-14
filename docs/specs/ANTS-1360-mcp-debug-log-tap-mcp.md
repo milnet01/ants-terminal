@@ -1,6 +1,7 @@
 # ANTS-1360 — MCP debug-log tap (`mcp_trace` tool)
 
 **Status:** spec, ship-ready after cold-eyes pass.
+**Kind:** refactor.
 **Source:** indie-review-2026-05-14 (self-observed).
 **Sibling:** ANTS-1284 (per-tool byte counters in `TokenUsageEngine`).
 ANTS-1284 is a per-tool *histogram* (sum bytes / call counts);

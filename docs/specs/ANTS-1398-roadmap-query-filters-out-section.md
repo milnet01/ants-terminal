@@ -1,6 +1,7 @@
 # ANTS-1398 — `roadmap_query` filters out section-rollup bullets
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** refactor.
 
 ## Problem
 

@@ -1,6 +1,7 @@
 # ANTS-1158 — Claude Code task-list status-bar surface
 
 **Status:** shipped 0.7.77 (2026-05-02). The amendments below record where the build departed from the draft.
+**Kind:** implement.
 
 > **Source:** user 2026-05-02 — *"When Claude Code has a task
 > list, please add a button to the task bar that brings up a
@@ -11,7 +12,6 @@
 > `claudetasklistdialog.{cpp,h}`; hooks into
 > `claudestatuswidgets` (status-bar widget) and `MainWindow`
 > (tab-switch retargeting).
-> **Kind:** implement
 
 ## 1. Problem
 

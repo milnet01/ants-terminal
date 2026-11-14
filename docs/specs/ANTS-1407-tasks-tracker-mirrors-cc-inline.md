@@ -1,13 +1,13 @@
 # ANTS-1407 — Tasks tracker mirrors CC inline view (Bundle F pull 1)
 
 **Status:** shipped 0.7.92 (2026-05-20).
+**Kind:** fix.
 
 - **Source:** user-report 2026-05-15 — two screenshots showing the
   tracker drifting from Claude Code's inline task list in opposite
   directions (undercount + overcount). Logged in ROADMAP.md at the
   Bundle F entry.
 - **Lanes:** `claudetasklist` (parser).
-- **Kind:** fix.
 
 ## 1. Problem
 

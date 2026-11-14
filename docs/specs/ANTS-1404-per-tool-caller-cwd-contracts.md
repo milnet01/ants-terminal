@@ -1,6 +1,7 @@
 # ANTS-1404 — Per-tool `caller_cwd` contracts (Phase 3a)
 
 **Status:** shipped 0.7.92 (2026-05-20), Phase 3a. Phase 3b is ANTS-1415.
+**Kind:** security.
 
 ## Problem
 
