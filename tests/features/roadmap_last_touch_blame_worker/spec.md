@@ -73,11 +73,20 @@ thread and still re-read `ROADMAP.md` from disk after ANTS-4414 moved the
 - **INV-5** (guard, not a red invariant — this must hold both before and
   after the fix). The block rule `lastTouchFromBlame()` applies — MAX
   author-time over a `- 🚧 [ID]` bullet's block: the bullet line plus every
-  contiguous 2-space-indented continuation line, stopping at a blank line,
-  a new bullet, or EOF — is unchanged by *where* the line text comes from.
+  contiguous 2-space-indented continuation line, stopping at a new bullet
+  or EOF — is unchanged by *where* the line text comes from. INV-6 states
+  what a blank line does.
   Tested with blame content and file content agreeing, so it passes
   identically whichever source today's implementation or the fixed one
   reads from.
+
+- **INV-6** (ANTS-5607). A blank line ends the block only when the next
+  non-blank line is not indented by two spaces. Where it is indented, the
+  block continues, and that later paragraph's author-times count toward
+  the MAX. This is the body rule of `collectBulletBody()`
+  (`src/roadmapparse.cpp`), so the date covers the same lines the card
+  shows. A blank line followed by column-0 text, a new bullet or EOF still
+  ends the block, and nothing after it counts.
 
 ## Scope
 
@@ -111,4 +120,5 @@ over `src/roadmapdialog.cpp` (comments stripped via
 INV-1 through INV-4 are expected to **fail** against the code as of
 ANTS-5047's filing — that is the point of this contract. INV-5 is expected
 to pass unchanged; it is a regression guard for the fix, not a lock on the
-defect.
+defect. INV-6 was added for ANTS-5607 and failed against the code as of
+that filing, on its second-paragraph case.

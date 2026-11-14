@@ -53,8 +53,9 @@ of which this roadmap has 4 out of 2,031.
 - **INV-4.** `lastTouchFromBlame()` is a pure function of blame's output
   (since ANTS-5047 the line text comes from blame's content lines, not the
   file) and takes MAX over the bullet's block — the bullet line plus
-  every contiguous 2-space-indented continuation, stopping at a blank line, a
-  new bullet, or EOF. This is the half that was previously unreachable without
+  every 2-space-indented continuation, stopping at a new bullet, EOF, or a
+  blank line not followed by an indented line
+  (`tests/features/roadmap_last_touch_blame_worker/spec.md` INV-6). This is the half that was previously unreachable without
   spawning git; splitting it out is what makes the rule testable.
 
 - **INV-5.** Only one blame runs at a time. `rebuild()` fires per filter toggle

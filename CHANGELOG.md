@@ -425,6 +425,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **"Updated N days ago" on an in-progress roadmap card counts edits in every paragraph of the item, including those after a blank line.** (ANTS-5607)
+
 - **The MCP orientation hook script is kept in `~/.config/ants-terminal/hooks` with the other hooks.** (ANTS-5730)
   A script in the older `~/.config/Ants Terminal/hooks` folder is moved
   across at the next launch, and the Claude Code hook entry follows it.

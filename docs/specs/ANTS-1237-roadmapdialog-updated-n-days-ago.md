@@ -161,21 +161,17 @@ Key decisions:
 3. **Per-bullet aggregate = MAX over the bullet's block.** Walk
    the markdown, identify each `- 🚧 [ANTS-NNNN]` bullet line,
    then walk forward through indented continuation lines (start
-   with `  `) until the **first blank line** OR a top-level
-   bullet (`- ` / `* ` at column 0) OR EOF. Take
-   `MAX(lineAuthorTime[lineNo])` over the range.
+   with `  `) until a top-level bullet (`- ` / `* ` at column 0)
+   OR EOF OR a blank line whose next non-blank line is not
+   indented. Take `MAX(lineAuthorTime[lineNo])` over the range.
 
-   **Single-paragraph contract:** the walker terminates at the
-   first blank line. ROADMAP cards are de-facto single-paragraph
-   by current convention — `docs/standards/roadmap-format.md`
-   § 3.5 documents bullet structure (status emoji + ID + headline +
-   continuation lines + optional Layman/Lanes/Source/Kind), with
-   the canonical example implying single-paragraph form via
-   absence rather than explicit prohibition. A future card with
-   internal blank-line paragraph breaks would lose later
-   paragraphs from MAX — accepted as a tradeoff. If/when this
-   bites, either tighten the format spec to forbid blank-line
-   breaks, or loosen the walker to allow them (re-open § 8.6).
+   **Multi-paragraph bodies (ANTS-5607):** a blank line followed
+   by an indented line continues the block, as
+   `collectBulletBody()` (`src/roadmapparse.cpp`) reads a body.
+   The contract is INV-6 of
+   `tests/features/roadmap_last_touch_blame_worker/spec.md`. The
+   code sketches later in this spec predate this and still show
+   the first-blank-line stop.
 
    **Encoding contract:** ROADMAP.md is UTF-8 by project convention
    (`docs/standards/roadmap-format.md`). Both git's blame output and
@@ -581,7 +577,7 @@ as the source changes — separately from this spec.
 | ANTS-1237-INV-4 | format   | The `humanAge(seconds)` ladder is: `today` (`<86400`), `yesterday` (`<2*86400`), `Nd ago` (`<14*86400`, N = sec/86400), `Nw ago` (`<60*86400`, N = sec/(7*86400)), `Nmo ago` (`<365*86400`, N = sec/(30*86400)), `Ny ago` (otherwise, N = sec/(365*86400)). Boundary values stay on the lower-side label (e.g. `12d ago` at `13×86400 − 1`; `13d ago` at exactly `13×86400`; `2w ago` at `14×86400`). |
 | ANTS-1237-INV-5 | cache    | `refreshLastTouchDatesIfStale` re-runs `parseLastTouchDates` only when `m_roadmapPath`'s mtime (ms-resolution) differs from `m_lastTouchDatesMtime`. Subsequent calls with unchanged mtime leave `m_lastTouchDatesMtime` untouched (observable via a public `lastTouchDatesMtime()` accessor added for the test). |
 | ANTS-1237-INV-6 | parser   | `parseLastTouchDates` returns an empty `QHash` when (a) the file's directory is not a git repo, (b) the file is not tracked by git, (c) `git` is not on PATH, (d) the file does not exist, or (e) blame returns empty output (empty file at HEAD). No crash, no error dialog. |
-| ANTS-1237-INV-7 | parser   | For a `- 🚧 [ANTS-NNNN]` bullet with continuation lines, the inserted timestamp is `MAX(author-time)` over the bullet line + every contiguous continuation line (a `  `-indented, non-blank line) until the **first blank line**, next top-level bullet (`- ` / `* ` at column 0), or EOF. Multi-paragraph cards (with internal blank lines) lose later paragraphs from MAX — accepted, see § 2.f.3. |
+| ANTS-1237-INV-7 | parser   | For a `- 🚧 [ANTS-NNNN]` bullet with continuation lines, the inserted timestamp is `MAX(author-time)` over the bullet line + every continuation line (a `  `-indented, non-blank line) until the next top-level bullet (`- ` / `* ` at column 0), EOF, or a blank line whose next non-blank line is not indented. Amended by ANTS-5607: a blank line followed by an indented line continues the block (`tests/features/roadmap_last_touch_blame_worker/spec.md` INV-6). |
 | ANTS-1237-INV-8 | parser   | A `- 🚧 [ANTS-NNNN]` bullet whose ID appears elsewhere in the file (e.g. a cold-eyes audit-trail mention) uses **only** the bullet block's MAX. **Mechanism:** the walker only enters block-mode at lines matching `^- 🚧 \[ANTS-NNNN\]`. ID mentions outside that pattern are never visited and contribute no timestamps. Any future refactor that loosens the entry pattern must add a discriminator to preserve INV-8. |
 
 ## 5. Acceptance
@@ -756,9 +752,8 @@ mtime change.
   (drift from the chosen "Updated" semantic — see § 3.d for the
   in-commit Layman fix).
 - **`docs/standards/roadmap-format.md` § 3.5** — documents
-  bullet structure. INV-7's first-blank-line block terminator
-  rides this convention; if future bullets gain blank-line
-  paragraph breaks, see § 8.6 for the walker-loosening re-open.
+  bullet structure. INV-7's block rule follows it; § 8.6 records
+  the multi-paragraph re-open, taken in ANTS-5607.
 
 ## 8. Re-open conditions
 
@@ -789,6 +784,7 @@ mtime change.
    (`docs/standards/roadmap-format.md` § 3.5) to forbid internal
    blank lines, or by loosening the walker to continue across
    blank lines that are followed by 2-space-indented prose.
+   **Taken by ANTS-5607:** the walker was loosened.
 
 ## 9. Out of scope
 

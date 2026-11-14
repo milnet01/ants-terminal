@@ -304,7 +304,8 @@ public:
 
     // ANTS-1237 — return ANTS-NNNN → MAX(author-time) over the
     // bullet's block (the `- 🚧 [ANTS-NNNN]` line + every
-    // continuation line until blank/next-bullet/EOF). Spawns
+    // continuation line until next-bullet/EOF, or a blank line not
+    // followed by an indented one — ANTS-5607). Spawns
     // `git blame --porcelain` (ANTS-5047) once in roadmapPath's dir;
     // returns an empty hash on any failure (not a git repo, file
     // not tracked, git not on PATH, file does not exist, empty

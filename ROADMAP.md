@@ -113357,7 +113357,7 @@ reports are asked for separately, each time.
   Source: user-request-2026-10-01.
   Lanes: roadmap-store, roadmap-dialog.
 
-- 📋 [ANTS-5607] **"Updated N days ago" on a 🚧 card ignores edits in the item's paragraphs after a blank line.**
+- ✅ [ANTS-5607] **"Updated N days ago" on a 🚧 card ignores edits in the item's paragraphs after a blank line.**
   Found 2026-10-01 while fixing ANTS-5213. RoadmapDialog's last-touch
   walk (the rxInProgress loop in src/roadmapdialog.cpp that takes the
   max git-blame time over a 🚧 bullet's block) stops at the first blank
@@ -113365,6 +113365,11 @@ reports are asked for separately, each time.
   renderer's skipBulletBlockAt, continue past a blank line when the next
   non-blank line is indented. Fix: use the same rule; test with a
   two-paragraph 🚧 fixture whose second paragraph is the newest commit.
+  Shipped 2026-11-14. The blame walk now continues past a blank line
+  when the next non-blank line is indented. Contract:
+  tests/features/roadmap_last_touch_blame_worker/spec.md INV-6;
+  docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md INV-7
+  amended.
   **Layman:** An in-progress item can say it was updated longer ago than it really was, if the change was in a later paragraph.
   Kind: fix.
   Source: in-session-2026-10-01.

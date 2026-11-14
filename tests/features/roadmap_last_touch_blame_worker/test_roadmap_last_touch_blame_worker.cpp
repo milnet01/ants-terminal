@@ -267,3 +267,61 @@ TEST(RoadmapLastTouchBlameWorker, Inv5GuardBlockRuleSurvivesEitherTextSource) {
         << "block ending at EOF (no trailing blank line after line 9) must "
            "still take MAX up to the file's last line";
 }
+
+// INV-6 (ANTS-5607) — a blank line followed by an indented line is still the
+// item's body, so an edit in a later paragraph counts toward the date.
+// Why this exists: the walk stopped at the first blank line, so a card could
+// say it was updated longer ago than it was.
+TEST(RoadmapLastTouchBlameWorker, Inv6LaterParagraphAfterBlankLineCounts) {
+    QByteArray blame;
+    blame += blameRecord(1, 1000, "## Now");
+    blame += blameRecord(2, 1000, "");
+    blame += blameRecord(3, 2000,
+        "- \xF0\x9F\x9A\xA7 [ANTS-6001] **Two paragraphs.**");
+    blame += blameRecord(4, 2000, "  First paragraph.");
+    blame += blameRecord(5, 2000, "");
+    blame += blameRecord(6, 9000, "  Second paragraph, the newest edit.");
+    blame += blameRecord(7, 2000, "  Kind: fix.");
+    blame += blameRecord(8, 2000, "");
+    blame += blameRecord(9, 2000, "");
+    blame += blameRecord(10, 9700, "  Third paragraph, after two blank lines.");
+
+    const auto out = RoadmapDialog::lastTouchFromBlame(blame);
+
+    ASSERT_TRUE(out.contains(QStringLiteral("ANTS-6001")));
+    EXPECT_EQ(out.value(QStringLiteral("ANTS-6001")), 9700)
+        << "the indented paragraphs after the blank lines (author-times 9000 "
+           "and 9700) are part of ANTS-6001's body; the date must be the "
+           "newest of them, not the first paragraph's 2000";
+}
+
+// INV-6, the other half — a blank line NOT followed by an indented line
+// still ends the block, and nothing after it counts.
+TEST(RoadmapLastTouchBlameWorker, Inv6BlankLineBeforeUnindentedTextEndsBlock) {
+    QByteArray blame;
+    blame += blameRecord(1, 2000,
+        "- \xF0\x9F\x9A\xA7 [ANTS-6002] **Then column-0 prose.**");
+    blame += blameRecord(2, 3000, "  Kind: fix.");
+    blame += blameRecord(3, 3000, "");
+    blame += blameRecord(4, 9000, "Prose at column 0, not this item's.");
+    blame += blameRecord(5, 9000, "  Indented, but under the prose.");
+    blame += blameRecord(6, 2000,
+        "- \xF0\x9F\x9A\xA7 [ANTS-6003] **Then a new bullet.**");
+    blame += blameRecord(7, 4000, "  Kind: fix.");
+    blame += blameRecord(8, 4000, "");
+    blame += blameRecord(9, 9500,
+        "- \xF0\x9F\x9A\xA7 [ANTS-6004] **Newer neighbour, block ends at EOF.**");
+    blame += blameRecord(10, 5000, "");
+
+    const auto out = RoadmapDialog::lastTouchFromBlame(blame);
+
+    EXPECT_EQ(out.value(QStringLiteral("ANTS-6002")), 3000)
+        << "column-0 prose after a blank line ends ANTS-6002's block; its "
+           "9000 must not count";
+    EXPECT_EQ(out.value(QStringLiteral("ANTS-6003")), 4000)
+        << "a new bullet after a blank line ends ANTS-6003's block; the "
+           "neighbour's 9500 must not count";
+    EXPECT_EQ(out.value(QStringLiteral("ANTS-6004")), 9500)
+        << "a trailing blank line at EOF ends the block without changing "
+           "the date";
+}

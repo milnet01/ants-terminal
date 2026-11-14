@@ -54,8 +54,10 @@ These mirror `docs/specs/ANTS-1237-roadmapdialog-updated-n-days-ago.md` § 4. ID
 - **ANTS-1237-INV-7 + ANTS-1237-INV-8.** For a `- 🚧 [ANTS-NNNN]`
   bullet with continuation lines, the inserted timestamp is
   `MAX(author-time)` over the bullet's block (bullet line +
-  contiguous 2-space-indented continuation lines until the first
-  blank line, next top-level bullet, or EOF). ID mentions
+  2-space-indented continuation lines until the next top-level
+  bullet, EOF, or a blank line not followed by an indented line;
+  `tests/features/roadmap_last_touch_blame_worker/spec.md` INV-6
+  owns the blank-line rule). ID mentions
   elsewhere (e.g. audit-trail prose in another bullet's body)
   are NOT visited and contribute no timestamps.
 

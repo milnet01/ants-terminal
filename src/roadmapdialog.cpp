@@ -1833,9 +1833,10 @@ RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut) {
     lineAuthorTime.removeFirst();
 
     // Walk the text, identify each `- 🚧 [ANTS-NNNN]` bullet,
-    // take MAX over its block (the bullet line + every contiguous
-    // 2-space-indented continuation line until blank or next-bullet
-    // or EOF). See spec § 3.b.2.
+    // take MAX over its block (the bullet line + every 2-space-indented
+    // continuation line until next-bullet or EOF). A blank line ends the
+    // block only when the next non-blank line is not indented — the body
+    // rule of RoadmapParse::collectBulletBody (ANTS-5607). See spec § 3.b.2.
     // ANTS-1660 — match any project-ID prefix, not just ANTS-.
     static const QRegularExpression rxInProgress(
         QStringLiteral("^- 🚧 \\[(") + RoadmapParse::idTokenPattern() +
@@ -1850,7 +1851,17 @@ RoadmapDialog::lastTouchFromBlame(const QByteArray &blameOut) {
         while (j < mdLines.size()) {
             const QString cont = QString::fromUtf8(mdLines.at(j));
             if (j > i) {
-                if (cont.trimmed().isEmpty()) break;
+                if (cont.trimmed().isEmpty()) {
+                    int peek = j + 1;
+                    while (peek < mdLines.size()
+                           && mdLines.at(peek).trimmed().isEmpty())
+                        ++peek;
+                    if (peek >= mdLines.size()
+                        || !mdLines.at(peek).startsWith("  "))
+                        break;
+                    j = peek;
+                    continue;
+                }
                 if (cont.startsWith(QStringLiteral("- "))
                     || cont.startsWith(QStringLiteral("* "))) break;
                 if (!cont.startsWith(QStringLiteral("  "))) break;
