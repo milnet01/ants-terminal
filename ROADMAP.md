@@ -91025,12 +91025,17 @@ measured Ants adding about 5,250 tokens to every request.
   Source: review-contract-ANTS-5734-2026-10-16.
   Lanes: mcp-tools.
 
-- 📋 [ANTS-5752] **The spec lets generated_by name a CLI version, but tools/vendor-grammars.sh cannot generate a parser.c.**
+- ✅ [ANTS-5752] **The spec lets generated_by name a CLI version, but tools/vendor-grammars.sh cannot generate a parser.c.**
   Spec § 2.3 allows generated_by to name a tree-sitter CLI version for a
   repository with no committed parser.c (tree-sitter-swift). The script
   exits 1 on a missing parser.c and has no generate step. Settle before
   swift's batch: add the step, or narrow the spec. Raised by both lanes
   of review-contract on ANTS-5734 (log rows 3-4).
+  Settled 2026-11-14 (session 265) by narrowing the spec, the simpler of
+  the two routes: ANTS-5734 § 2.3 now says the script vendors only a
+  repository that commits parser.c, and that swift, sql and perl wait on a
+  generate step their own batch adds. No script change. My call, not a
+  user ruling: it records what the script does and leaves swift open.
   **Layman:** A grammar repository that does not ship its generated parser cannot be vendored yet, though the design says it can.
   Kind: review-fix.
   Source: review-contract-ANTS-5734-2026-10-16.
