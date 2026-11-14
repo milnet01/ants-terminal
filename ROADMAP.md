@@ -113427,7 +113427,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-10-01.
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-5608] **The 0.5 and 0.6 roadmap archives say "/bump rotated" them, naming a retired skill and a rotation that was done by hand.**
+- ✅ [ANTS-5608] **The 0.5 and 0.6 roadmap archives say "/bump rotated" them, naming a retired skill and a rotation that was done by hand.**
   docs/roadmap/0.5.md and 0.6.md carry a `# 0.N.x archive` intro saying
   "/bump rotated" the sections. /bump is retired (cut-release replaced it)
   and 812c52b3 rotated them by hand on 2026-04-30. The text is stored
@@ -113442,6 +113442,9 @@ reports are asked for separately, each time.
   can edit it (amend_preamble and amend_intro were not tried against an
   archive). Wanted wording: "commit 812c52b3 (2026-04-30) moved the
   closed 0.N.x sections".
+  Shipped 2026-11-14 (f0809fc7). The text is the intro of each archive's
+  root section (slugs 0-5 and 0-6). amend_intro refused its `# ` title line;
+  a root section now keeps one. Both intros now name commit 812c52b3.
   **Layman:** Two old roadmap archive files describe how they were made incorrectly.
   Kind: doc-fix.
   Source: in-session-2026-10-01 (roadmap-format § 3.9 field pass, gap 7).
