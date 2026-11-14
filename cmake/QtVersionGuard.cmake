@@ -81,3 +81,34 @@ if(NOT _installed STREQUAL EXPECTED_QT_VERSION)
         "A reconfigure alone is NOT sufficient: it regenerates build.ninja "
         "but invalidates no objects.")
 endif()
+
+# ANTS-6171 — the check above compares against the version recorded at
+# CONFIGURE time, and any reconfigure records the new one: ninja reruns cmake
+# by itself after every CMakeLists.txt edit. Measured 2026-10-23: Qt went
+# 6.11.2 -> 6.12.0, a reconfigure silenced the check, and build-asan compiled
+# against a precompiled header built from 6.11's QtCore. So the tree also
+# keeps OBJECTS_STAMP, the Qt its objects were built against. It is written
+# once, by the first build that finds none, and only `ninja -t clean` removes
+# it (it is the guard target's BYPRODUCT). A tree that predates the stamp is
+# taken at its word on that first build.
+if(DEFINED OBJECTS_STAMP AND NOT OBJECTS_STAMP STREQUAL "")
+    if(NOT EXISTS "${OBJECTS_STAMP}")
+        file(WRITE "${OBJECTS_STAMP}" "${_installed}\n")
+    else()
+        file(READ "${OBJECTS_STAMP}" _built)
+        string(STRIP "${_built}" _built)
+        if(NOT _built STREQUAL _installed)
+            message(FATAL_ERROR
+                "Qt changed under this build tree's objects: they were built "
+                "against ${_built}, but ${_installed} is installed now.\n"
+                "\n"
+                "The tree has been reconfigured since, so it already expects "
+                "${_installed}, but no object or precompiled header was "
+                "rebuilt (ANTS-6171).\n"
+                "\n"
+                "Clean the tree and rebuild:\n"
+                "    ninja -C <builddir> -t clean\n"
+                "    cmake --build <builddir>")
+        endif()
+    endif()
+endif()

@@ -436,6 +436,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Qt version guard still stops a build after a system Qt update when the tree has been reconfigured since, so stale objects and precompiled headers are never mixed with the new Qt** (ANTS-6171)
+
 - **git_state op:log that runs past its time limit says what to try next: narrow with `path`, or retry once** (ANTS-6167)
 
 - **doc_lint's table-of-contents repair puts a missing entry after the previous entry's sub-list, so the sub-entries stay under their own parent** (ANTS-6166)

@@ -80360,7 +80360,7 @@ in each bullet, not just the reporter's symptom.
   Source: user-request-2026-09-28.
   Lanes: ci.
 
-- 📋 [ANTS-6171] **A system Qt update leaves the build trees on a stale precompiled header, and nothing rebuilds it.**
+- ✅ [ANTS-6171] **A system Qt update leaves the build trees on a stale precompiled header, and nothing rebuilds it.**
   2026-10-23: zypper moved Qt 6.11.2 -> 6.12.0 mid-session. The push
   gate's build-asan job then failed in Qt's own qhttpheaders.h (no
   qHash for std::optional): cmake_pch.hxx.gch, built 2026-10-19 from
@@ -80378,6 +80378,17 @@ in each bullet, not just the reporter's symptom.
   ("missing and no known rule to make it") until `cmake -G Ninja -B
   build` re-ran. The fix should cover the stale configure as well as
   the stale .gch.
+  Shipped 2026-11-14. The ANTS-4625 guard already existed; the hole was
+  that any reconfigure (ninja reruns cmake after a CMakeLists edit)
+  recorded the new Qt and silenced it. The guard now keeps
+  build/ants-qt-objects.stamp, the Qt the objects were built against,
+  and refuses a mismatch with the `ninja -t clean` remedy; the stamp is
+  the target's BYPRODUCT, so that clean resets it. The stale configure
+  half of the report is covered by the same refusal: its remedy is a
+  clean rebuild. Tests QtVersionGuard INV-7, INV-8: red before, green
+  after; mutation probe killed 3 of 3. Not automated: a mismatched tree
+  refuses rather than cleaning itself, because deleting objects while
+  ninja runs would race the compiles.
   **Layman:** After a Qt update the build can break, or silently mix old and new Qt, until the cached header files are deleted by hand.
   Kind: fix.
   Source: push gate failure 2026-10-23.

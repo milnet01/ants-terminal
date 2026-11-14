@@ -17,6 +17,7 @@
 #include <QProcess>
 #include <QString>
 #include <QStringList>
+#include <QTemporaryDir>
 
 #include "../../_support/expect.h"
 
@@ -35,13 +36,17 @@ struct RunResult {
 
 // Invoke the guard exactly as the build does: `cmake -P <script>` with the
 // two -D vars. Returns the merged stdout+stderr so INV-4 can read the message.
-RunResult runGuard(const QString &expectedVersion, const QString &qconfigPath) {
+// ANTS-6171 — `objectsStamp`, when given, is passed as OBJECTS_STAMP.
+RunResult runGuard(const QString &expectedVersion, const QString &qconfigPath,
+                   const QString &objectsStamp = QString()) {
     QProcess p;
     p.setProcessChannelMode(QProcess::MergedChannels);
-    p.start(QStringLiteral("cmake"),
-            {QStringLiteral("-DEXPECTED_QT_VERSION=") + expectedVersion,
-             QStringLiteral("-DQCONFIG_FILE=") + qconfigPath,
-             QStringLiteral("-P"), QStringLiteral(ANTS_QT_GUARD_SCRIPT)});
+    QStringList args{QStringLiteral("-DEXPECTED_QT_VERSION=") + expectedVersion,
+                     QStringLiteral("-DQCONFIG_FILE=") + qconfigPath};
+    if (!objectsStamp.isEmpty())
+        args << QStringLiteral("-DOBJECTS_STAMP=") + objectsStamp;
+    args << QStringLiteral("-P") << QStringLiteral(ANTS_QT_GUARD_SCRIPT);
+    p.start(QStringLiteral("cmake"), args);
     if (!p.waitForFinished(30000)) {
         p.kill();
         return {-1, QStringLiteral("(guard did not finish within 30s)")};
@@ -142,5 +147,67 @@ TEST(QtVersionGuard, Inv6WiredIntoTheBuildAsAnAllTarget) {
     ASSERT_GE(close, 0) << "INV-6: guard target block not terminated as expected";
     expect(cm.mid(t, close - t).contains(" ALL"),
            "INV-6: guard target is declared ALL so it runs every build");
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-7 (ANTS-6171) — a reconfigure does not silence the guard. After a Qt
+// update, any reconfigure records the new version as EXPECTED, so the first
+// comparison passes while the objects and precompiled headers are still the
+// old Qt's. The objects stamp names the Qt they were built against.
+TEST(QtVersionGuard, Inv7ReconfigureDoesNotSilenceTheGuard) {
+    expect_reset();
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString stamp = dir.filePath(QStringLiteral("qt-objects.stamp"));
+
+    // A fresh tree: no stamp yet. It passes and records the installed Qt.
+    const RunResult fresh = runGuard(QStringLiteral("6.11.2"),
+                                     fixture("qconfig_6_11_2.h"), stamp);
+    expect(fresh.exitCode == 0,
+           ("INV-7: a tree with no stamp must pass, output: "
+            + fresh.output.toStdString()).c_str());
+    QFile written(stamp);
+    ASSERT_TRUE(written.open(QIODevice::ReadOnly))
+        << "INV-7: the guard did not write the objects stamp";
+    expect(written.readAll().trimmed() == "6.11.2",
+           "INV-7: the stamp names the installed Qt");
+    written.close();
+
+    // Same Qt again: still passes.
+    expect(runGuard(QStringLiteral("6.11.2"), fixture("qconfig_6_11_2.h"), stamp)
+                   .exitCode == 0,
+           "INV-7: a stamp matching the installed Qt must pass");
+
+    // Objects built against 6.11.1, tree since reconfigured against 6.11.2.
+    QFile old(stamp);
+    ASSERT_TRUE(old.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    old.write("6.11.1\n");
+    old.close();
+    const RunResult r = runGuard(QStringLiteral("6.11.2"),
+                                 fixture("qconfig_6_11_2.h"), stamp);
+    expect(r.exitCode != 0,
+           "INV-7: objects built against 6.11.1 must REFUSE after a reconfigure");
+    expect(r.output.contains(QStringLiteral("6.11.1")) &&
+               r.output.contains(QStringLiteral("6.11.2")) &&
+               r.output.contains(QStringLiteral("-t clean")),
+           ("INV-7: the refusal names both versions and `-t clean`, output: "
+            + r.output.toStdString()).c_str());
+    EXPECT_EQ(0, expect_failures());
+}
+
+// INV-8 (ANTS-6171) — the build passes the stamp, and declares it a BYPRODUCT
+// so `ninja -t clean`, the remedy the refusal names, deletes it.
+TEST(QtVersionGuard, Inv8StampIsWiredAndCleanedByNinja) {
+    expect_reset();
+    QFile f(QStringLiteral(ANTS_QT_GUARD_CMAKELISTS));
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QByteArray cm = f.readAll();
+    const int t = cm.indexOf("add_custom_target(ants_qt_version_guard");
+    ASSERT_GE(t, 0);
+    const QByteArray block = cm.mid(t, cm.indexOf("VERBATIM", t) - t);
+    expect(block.contains("-DOBJECTS_STAMP="),
+           "INV-8: the guard target passes OBJECTS_STAMP");
+    expect(block.contains("BYPRODUCTS"),
+           "INV-8: the stamp is a BYPRODUCT, so `ninja -t clean` removes it");
     EXPECT_EQ(0, expect_failures());
 }

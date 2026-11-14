@@ -175,11 +175,15 @@ if(ANTS_QCONFIG_H)
     # ALL, so an ordinary `cmake --build` runs it. Ninja may schedule it in
     # any order relative to the compiles; that is fine, because the gate is
     # the non-zero exit failing the BUILD, not the position in the graph.
+    # ANTS-6171 — the objects stamp survives a reconfigure; a BYPRODUCT, so
+    # `ninja -t clean`, the remedy the guard names, deletes it.
     add_custom_target(ants_qt_version_guard ALL
         COMMAND ${CMAKE_COMMAND}
             -DEXPECTED_QT_VERSION=${Qt6_VERSION}
             -DQCONFIG_FILE=${ANTS_QCONFIG_H}
+            -DOBJECTS_STAMP=${CMAKE_BINARY_DIR}/ants-qt-objects.stamp
             -P ${CMAKE_SOURCE_DIR}/cmake/QtVersionGuard.cmake
+        BYPRODUCTS ${CMAKE_BINARY_DIR}/ants-qt-objects.stamp
         COMMENT "Checking installed Qt still matches this tree (ANTS-4625)"
         VERBATIM)
 else()

@@ -70,3 +70,24 @@ never invokes the compiler.
   prevent, and it is invisible from the script's own tests.
   *Test:* scrape `CMakeLists.txt` for the guard target declared with
   `ALL` and for the `-P` invocation naming the script.
+
+- **INV-7 (ANTS-6171) — A reconfigure does not silence the guard.**
+  Measured 2026-10-23: Qt went 6.11.2 → 6.12.0, a reconfigure recorded
+  6.12.0 as the expected version, and `build-asan` compiled against a
+  precompiled header built from 6.11's QtCore. So the guard also reads
+  `OBJECTS_STAMP`, the Qt the tree's objects were built against. The
+  first build that finds no stamp writes the installed version.
+  *Breaks when:* the stamp is never written, is written with anything
+  but the installed version, or a mismatch only warns.
+  *Test:* no stamp → exit 0 and the stamp reads `6.11.2`; a matching
+  stamp → exit 0; a `6.11.1` stamp with `EXPECTED_QT_VERSION=6.11.2`
+  against the 6.11.2 fixture → non-zero, naming both versions and
+  `-t clean`.
+
+- **INV-8 (ANTS-6171) — The stamp is wired, and `ninja -t clean`
+  deletes it.** It is the guard target's `BYPRODUCTS`, so the remedy
+  the refusal names also resets the stamp.
+  *Breaks when:* the target passes no stamp, or the stamp is not a
+  build output, so a cleaned tree keeps refusing.
+  *Test:* scrape the guard target's block in `CMakeLists.txt` for
+  `-DOBJECTS_STAMP=` and `BYPRODUCTS`.
