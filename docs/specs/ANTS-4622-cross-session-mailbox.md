@@ -67,7 +67,8 @@ touches it. So:
   already CHECK-constrained to `[a-z0-9][a-z0-9-]*`). Sixteen projects are
   registered as of 2026-08-22 (`sqlite3 -readonly … "SELECT count(*) FROM
   project;"`).
-- An unresolvable slug **refuses** `unknown_project` and lists the known slugs.
+- An unresolvable slug **refuses** `unknown_project` with `candidates[]`, the
+  nearest registered slugs (ANTS-5473).
   Mail that can never be delivered must not be accepted.
 - `to:"*"` is the one non-slug value: it addresses every registered project
   (§ 2.7). The `export_slug` CHECK admits no `*`, so it cannot collide with a
@@ -172,8 +173,9 @@ It lets a caller outside Claude find the slug for a repository. It is a read.
 `outbox` lists the mail the calling project sent, newest first (ANTS-5255).
 `to` narrows it to one recipient, and an unregistered slug refuses
 `unknown_project`. `preview` holds the body's first
-`RoadmapStore::kMailPreviewChars` characters. An entry with no `acked_at` has
-not been acked. Acked mail leaves the outbox when § 2.6 prunes it.
+`RoadmapStore::kMailPreviewChars` characters. `acked_at` is present on an
+entry only once it is acked, in `inbox` and `outbox` alike; it is absent, not
+null, on unread mail. Acked mail leaves the outbox when § 2.6 prunes it.
 `unacked_count` is the true total for that recipient filter, whatever the page.
 
 **All four ops require the CALLING project to be registered**, because
@@ -225,7 +227,8 @@ inbox read.
   row, and reports `would_send` rather than `message_id`.
 
 `ack` is **idempotent**: a second `ack` succeeds, does not move `acked_at`, and
-returns `already_acked:true`. The first ack is the fact.
+returns `already_acked:true`. The first ack is the fact. Only the first ack's
+reply carries `acked_at`.
 
 **Why two states and not three.** A third state — *acted on*, beyond *read* —
 was considered and rejected. The v2 feedback format learned this the expensive
@@ -369,19 +372,18 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
 - **INV-3** — Confirmation is two states held in one nullable column. The
   `message` DDL declares `acked_at` and no `status`, `state` or `read` column;
   unread is `acked_at IS NULL`. *Test:* schema assertion over `sqlite_master`,
-  plus a second `ack` returning `already_acked:true` with `acked_at` unchanged.
-- **INV-4** — `session_orient` reports the inbox, never the outbox. *Test:*
-  project A sends to project B and nobody acks; **the pair is the assertion** —
-  B's `mail_pending` counts one and A's is **absent**, not present-and-zero,
-  which § 2.4 requires for ETag stability. B's leg is what distinguishes a
-  working direction predicate from a block that failed to render at all, which
-  would also leave A empty. The message is unacked, so an ack filter cannot
-  account for A either.
-- **INV-5** — *Withdrawn by ANTS-5366 INV-2.* Deregistering a project removes
-  its mail from both ends and no further. *Test:* A and B exchange messages and B also holds an unrelated
-  message from C; deregister A; no `message` row referencing A survives, and
-  B's message from C is untouched. The surviving row is what distinguishes a
-  scoped delete from a table truncate.
+  plus a second `ack` returning `already_acked:true`, with `acked_at`
+  unchanged in the store.
+- **INV-4** — `session_orient` reports the inbox, never the outbox: the
+  recipient's `mail_pending` counts unacked mail, and the sender's is
+  **absent**, not present-and-zero, which § 2.4 requires for ETag stability.
+  *Test:* source inspection of the `session_orient` mail block in
+  `tests/features/session_message/test_session_message.cpp`: it reads through
+  the inbox summary `mailSummaryFor`, emits no block at zero, and never
+  registers the caller. The orient layer opens the real
+  store, so no behavioural test can run it against a temporary one.
+- **INV-5** — *withdrawn — superseded by ANTS-5366 INV-2, which keeps a
+  deregistered project's mail at both ends.*
 - **INV-6** — The bump is expressed twice and the two agree: a store created at
   version 3 and one climbed from version 2 hold the same `sqlite_master`
   statements — the table **and** both indexes, since all three ship in `ddl[]`.
@@ -413,11 +415,11 @@ feedback corpus. The user decided it on 2026-10-16 (roadmap ANTS-5741).
   recipient to § 2.6's cap, send once more, assert `code:"inbox_full"` and that
   the recipient's row count is unchanged.
 - **INV-10** — `dry_run` writes nothing and claims nothing in the past tense.
-  *Test:* `send` with `dry_run:true` against an inbox holding **one acked row
-  already past § 2.6's TTL** adds no row, deletes none, and returns an envelope
-  carrying `would_send` and no `message_id` (ANTS-4463). The aged row is what
-  makes the test discriminating: against an empty table a preview that fires the
-  prune is indistinguishable from one that does not.
+  *Test:* source inspection in
+  `tests/features/session_message/test_session_message.cpp`: each of the
+  handler's two previews, single-slug and broadcast, returns `would_send` and
+  no `message_id` (ANTS-4463), and never reaches `sendMessage()`. The handler opens the real store, so no
+  behavioural test can run it against a temporary one.
 - **INV-11** — A broadcast reaches every registered project but the sender,
   and only those. *Test:* register `alpha`, `bravo`, `charlie` and `delta`;
   deregister `delta`; broadcast from `alpha`. `bravo` and `charlie` each hold
@@ -523,8 +525,10 @@ sits at exactly the 6000 lines ANTS-3833 INV-6 caps a TU at, with no headroom
 ## 6. Tests
 
 Feature test: `tests/features/session_message/`, covering INV-1, INV-2, INV-3,
-INV-4, INV-5, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13, INV-14, INV-15 and INV-16 — written out rather than as a range, so
-the parity between this list and § 3 stays mechanically checkable. Label
+INV-4, INV-8, INV-9, INV-10, INV-11, INV-12, INV-13, INV-14, INV-15 and INV-16 — written out rather than as a range, so
+the parity between this list and § 3 stays mechanically checkable. INV-4 and
+INV-10 are covered by source inspection, the rest by behaviour against a
+temporary store. INV-5 is withdrawn. Label
 `features`. Wired into an existing bundle's `SOURCES`
 list — ask `build_target_for` which bundle owns the file rather than guessing,
 and check `ctest -N -R` moves before and after.
@@ -543,8 +547,6 @@ however well it reads.
 
 ## 7. Cross-doc impact
 
-- `CLAUDE.md` — the roadmap-store paragraph names the nine-table delete order
-  and its hand-written FK sequence; both become ten.
 - `docs/standards/mcp-error-codes.md` — gains `unknown_project` and
   `inbox_full`. Both are new; `no_project`, `not_found` and `bad_args` are
   already catalogued and this spec reuses them unchanged (checked 2026-08-22).

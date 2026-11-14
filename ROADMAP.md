@@ -91148,7 +91148,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-10-21.
   Lanes: mcp.
 
-- 📋 [ANTS-5809] **The ANTS-4622 mailbox spec matches shipped behaviour in four older passages.**
+- ✅ [ANTS-5809] **The ANTS-4622 mailbox spec matches shipped behaviour in four older passages.**
   Found by the 2026-10-21 review-contract run on
   docs/specs/ANTS-4622-cross-session-mailbox.md (the ANTS-5741 gate).
   Each is outside that amendment, so filed rather than fixed in the run.
@@ -91177,6 +91177,13 @@ measured Ants adding about 5,250 tokens to every request.
      (test_session_message.cpp, the INV-10/INV-4 inspection block). Fix:
      restate both test clauses as source-inspection clauses, as the
      feature spec.md does, and say so in § 6.
+  Shipped 2026-11-14. (1) INV-5 is a tombstone pointing at ANTS-5366
+  INV-2; § 6 drops it; § 7's CLAUDE.md bullet is struck. § 2.5's
+  DeregisterCounts sentence was left: the section's own Superseded
+  banner already covers it. (2) acked_at is present only once acked, and
+  only the first ack's reply carries it; INV-3 checks it in the store.
+  (3) § 2.1 says candidates[], the nearest slugs. (4) INV-4 and INV-10
+  are source-inspection clauses, and § 6 says so.
   **Layman:** Four older parts of the mailbox design document still describe how it used to work; they get brought up to date.
   Kind: doc-fix.
   Source: review-contract-2026-10-21 ANTS-4622 blast-radius exit.
