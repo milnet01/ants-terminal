@@ -19,6 +19,7 @@ are tested and what each mutation actually turned red.
 | INV-15 | `Inv15CapDoesNotBoundRepairs` | `max_findings` pages the findings and never the repairs |
 | INV-16 | `Inv16DryRunRequiresFix` | `dry_run` without `fix` refuses `bad_args` |
 | INV-18 | `Inv18TocRepairIsAPatch` | an H3 entry, a free-text row and an entry matching no heading all survive |
+| INV-18 | `Ants6166InsertKeepsChildrenUnderTheirParent` | an inserted entry goes after the anchor entry's nested sub-list, one or two levels deep |
 | INV-18 | `Inv18NoTemplateRefusesRatherThanGuessing` | a region with no top-level entry to copy is not repaired |
 | INV-18 | `Inv18DuplicateEntryIsDeletedKeepingTheFirst` | the other `toc_gap` cause repairs, keeping the first occurrence |
 | INV-21 | `Inv21StaleDocumentIsRefusedWhole` | a document that changed under the walk is refused whole |

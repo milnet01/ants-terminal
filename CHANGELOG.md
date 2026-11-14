@@ -436,6 +436,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **doc_lint's table-of-contents repair puts a missing entry after the previous entry's sub-list, so the sub-entries stay under their own parent** (ANTS-6166)
+
 - **The mailbox spec describes the mailbox as shipped: mail is kept on deregistration, acked_at appears only once read, and an unknown slug's refusal offers the nearest slugs** (ANTS-5809)
 
 - **The spec_lint design doc states how test_coverage_gap and test_coverage_unverifiable decide** (ANTS-5808)

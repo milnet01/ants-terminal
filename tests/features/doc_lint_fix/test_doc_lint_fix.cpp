@@ -313,6 +313,50 @@ TEST(DocLintFix, Inv18TocRepairIsAPatch) {
         << after.toStdString();
 }
 
+// ANTS-6166 — an inserted entry goes after the anchor entry's nested children,
+// never between the anchor and them: there it would adopt them. The second
+// fixture nests two deep, so a fix that skips one indented line is not enough.
+TEST(DocLintFix, Ants6166InsertKeepsChildrenUnderTheirParent) {
+    Tree t;
+    t.write(QStringLiteral("docs/rich.md"), kRich);
+    const DocLint::Result r =
+        DocLint::run({QStringLiteral("docs/rich.md")}, optsFor(t, /*fix=*/true));
+    ASSERT_EQ(1, r.filesWritten) << renderResult(r);
+    const QString after = t.read(QStringLiteral("docs/rich.md"));
+    EXPECT_TRUE(after.contains(QStringLiteral(
+                    "- [Alpha](#alpha)\n  - [Sub thing](#sub-thing)\n- [Beta](#beta)\n")))
+        << "Beta was not placed after Alpha's child:\n" << after.toStdString();
+
+    const QString deep = QStringLiteral(
+        "# Doc\n"
+        "\n"
+        "## Contents\n"
+        "\n"
+        "- [Alpha](#alpha)\n"
+        "  - [One](#one)\n"
+        "    - [Two](#two)\n"
+        "- [Gamma](#gamma)\n"
+        "\n"
+        "## Alpha\n"
+        "\n"
+        "### One\n"
+        "\n"
+        "#### Two\n"
+        "\n"
+        "## Beta\n"
+        "\n"
+        "## Gamma\n");
+    Tree t2;
+    t2.write(QStringLiteral("docs/deep.md"), deep);
+    const DocLint::Result r2 =
+        DocLint::run({QStringLiteral("docs/deep.md")}, optsFor(t2, /*fix=*/true));
+    ASSERT_EQ(1, r2.filesWritten) << renderResult(r2);
+    const QString after2 = t2.read(QStringLiteral("docs/deep.md"));
+    EXPECT_TRUE(after2.contains(QStringLiteral(
+                    "    - [Two](#two)\n- [Beta](#beta)\n- [Gamma](#gamma)\n")))
+        << "Beta was not placed after Alpha's whole sub-list:\n" << after2.toStdString();
+}
+
 // A region with no top-level entry to copy is not repaired at all.
 TEST(DocLintFix, Inv18NoTemplateRefusesRatherThanGuessing) {
     Tree t;

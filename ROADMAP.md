@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6772 -->
+<!-- ants-roadmap-id-high-water: ANTS=6773 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97640,6 +97640,18 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-11-14, found while shipping ANTS-5803.
   Lanes: mcp-tools.
 
+- 📋 [ANTS-6773] **The ANTS-2093 and ANTS-1750 specs cite source lines past the end of their files.**
+  Measured 2026-11-14 with ~/.claude/tools/check-doc.py. ANTS-2093
+  cites claudeintegration.cpp:8688 (the master-gate block, in § 2.5 and
+  again later); ANTS-1750 cites mainwindow.cpp:6686 twice. Both files are
+  now a fraction of that length. Fix: replace each line number with the
+  symbol it meant (documentation.md § 2.3), e.g. the master-gate block in
+  ClaudeIntegration's tools/call dispatch.
+  **Layman:** Two design documents point at line numbers in code files that have since shrunk, so the pointers lead nowhere.
+  Kind: doc-fix.
+  Source: in-session-2026-11-14, check-doc.py while shipping ANTS-5803 and ANTS-6770.
+  Lanes: specs.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 
 35 un-triaged findings across 9 of the 18 shared-root feedback files (AI
@@ -110871,7 +110883,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: full-suite-run-2026-10-22.
   Lanes: tests.
 
-- 📋 [ANTS-6166] **doc_lint's TOC repair inserts a missing entry between an entry and its nested sub-entries, so the sub-entries move under the new one.**
+- ✅ [ANTS-6166] **doc_lint's TOC repair inserts a missing entry between an entry and its nested sub-entries, so the sub-entries move under the new one.**
   Found 2026-10-22 next door to ANTS-6135 (L26-F2), by reading
   src/doclint.cpp patchTocRegion: an insertion is keyed on the anchor
   entry's own line, and the output loop writes it straight after that
@@ -110880,6 +110892,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   shape (Beta goes in after Alpha, above Alpha's Sub thing), and
   Inv18TocRepairIsAPatch asserts only that Sub survives, not where.
   Fix: insert after the anchor entry's last continuation line.
+  Shipped 2026-11-14. patchTocRegion inserts after the anchor entry's
+  last more-indented line. Test
+  DocLintFix.Ants6166InsertKeepsChildrenUnderTheirParent: red before the
+  fix, green after; mutation probe killed all three wrong fixes (one
+  level only, siblings too, no skip).
   **Layman:** When the document checker adds a missing line to a table of contents, it can put it in the middle of another entry's sub-list.
   Kind: fix.
   Source: close-findings-2026-10-22 (ANTS-6135 sweep).

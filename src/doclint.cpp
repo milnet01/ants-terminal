@@ -328,7 +328,21 @@ bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
         const QString   prefix = prefixRe.match(lines.at(tmpl.line - 1)).captured(1);
         const QString   row    = prefix + QStringLiteral("[%1](#%2)")
                                               .arg(target->text, target->slug);
-        insertions[anchor ? anchor->line : toc.firstLine - 1] << row;
+        // ANTS-6166 — after the anchor's nested children and wrapped lines
+        // too: inserted between the anchor and them, the row adopts them.
+        int after = anchor ? anchor->line : toc.firstLine - 1;
+        if (anchor) {
+            const auto indentOf = [](const QString &s) {
+                int n = 0;
+                while (n < s.size() && s.at(n).isSpace()) ++n;
+                return n;
+            };
+            const int own = indentOf(lines.at(after - 1));
+            while (after < lines.size() && !lines.at(after).trimmed().isEmpty()
+                   && indentOf(lines.at(after)) > own)
+                ++after;
+        }
+        insertions[after] << row;
     }
 
     QStringList out;
