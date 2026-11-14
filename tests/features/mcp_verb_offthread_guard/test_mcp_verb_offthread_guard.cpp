@@ -113,8 +113,11 @@ std::vector<std::string> rcSourcePaths() {
 
 // ANTS-4932 § 2.3 — the registration statements of both hosts: the
 // terminal-scoped ones in mainwindow.cpp and the project-scoped ones in
-// mcptoolregistry.cpp. Sorted offsets, terminated by the end of the text.
-std::vector<size_t> registrationBounds(const std::string &mw) {
+// mcptoolregistry.cpp. One string per statement, in file order, each running
+// to the next statement or to the closing brace of the function it is in,
+// whichever comes first. A statement is indented, so the first `}` at column
+// 0 after it is that brace (ANTS-5633).
+std::vector<std::string> registrationSegments(const std::string &mw) {
     std::vector<size_t> bounds;
     for (const char *stmt : {"\n    m_claudeIntegration->", "\n    sink."})
         for (size_t b = mw.find(stmt); b != std::string::npos;
@@ -122,7 +125,12 @@ std::vector<size_t> registrationBounds(const std::string &mw) {
             bounds.push_back(b);
     std::sort(bounds.begin(), bounds.end());
     bounds.push_back(mw.size());
-    return bounds;
+    std::vector<std::string> out;
+    for (size_t i = 0; i + 1 < bounds.size(); ++i)
+        out.push_back(mw.substr(
+            bounds[i],
+            std::min(bounds[i + 1], mw.find("\n}", bounds[i])) - bounds[i]));
+    return out;
 }
 
 std::string baseName(const std::string &path) {
@@ -394,15 +402,12 @@ TEST(McpVerbOffthreadGuard, Main) {
         // than paren-matching a call: callEnd() skips ' as a char literal, so
         // an apostrophe in a comment inside a handler body ("the caller's
         // cwd") opens a literal that never closes and the span runs off into
-        // unrelated code. This bound also terminates the LAST registration,
-        // which has no following registration to stop at, and it excludes the
-        // rcDelegate factory's own RcHandler{ — that is a factory definition,
-        // not a registration, and carries no verb name.
-        const std::vector<size_t> bounds = registrationBounds(mw);
-
+        // unrelated code. A segment also ends with its function, so the
+        // LAST registration, which has no following one to stop at, never
+        // reaches the rcDelegate factory's own RcHandler{ — that is a factory
+        // definition, not a registration, and carries no verb name.
         size_t seen = 0;
-        for (size_t i = 0; i + 1 < bounds.size(); ++i) {
-            const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
+        for (const std::string &seg : registrationSegments(mw)) {
             const size_t rc = seg.find("RcHandler{");
             if (rc == std::string::npos) continue;
             ants_test::SrcMatch nm;
@@ -444,9 +449,7 @@ TEST(McpVerbOffthreadGuard, Main) {
         // The rcDelegate half is INV-6's offThreadCmds. Add the RcHandler{
         // lambdas, segmented by registration statement as INV-11 does.
         std::set<std::string> twinCmds = offThreadCmds;
-        const std::vector<size_t> bounds = registrationBounds(mw);
-        for (size_t i = 0; i + 1 < bounds.size(); ++i) {
-            const std::string seg = mw.substr(bounds[i], bounds[i + 1] - bounds[i]);
+        for (const std::string &seg : registrationSegments(mw)) {
             if (seg.find("registerToolProvider(") == std::string::npos ||
                 seg.find("RcHandler{") == std::string::npos)
                 continue;
@@ -498,4 +501,30 @@ TEST(McpVerbOffthreadGuard, Main) {
     }
 
     EXPECT_EQ(0, expect_failures());
+}
+
+// INV-11 (ANTS-5633) — a registration's segment ends with the function it is
+// in. Why this exists: the last registration of a function ran on into
+// whatever followed, so the scan read the next definition's RcHandler{ as that
+// verb's handler.
+TEST(McpVerbOffthreadGuard, Inv11LastRegistrationStopsAtItsFunctionEnd) {
+    const std::string text =
+        "void Host::registerVerbs() {\n"
+        "    m_claudeIntegration->registerToolProvider(\"first\",\n"
+        "        RcHandler{[this](const QJsonObject &) { return m_one; }});\n"
+        "    m_claudeIntegration->registerToolProvider(\"last\",\n"
+        "        delegateFor(&Rc::cmdLast));\n"
+        "}\n"
+        "\n"
+        "RcHandler makeDelegate(Getter rc) {\n"
+        "    return RcHandler{[rc] { return m_notAVerbsRead; }};\n"
+        "}\n";
+    const std::vector<std::string> segs = registrationSegments(text);
+    ASSERT_EQ(segs.size(), 2u);
+    EXPECT_NE(segs[0].find("m_one"), std::string::npos) << segs[0];
+    EXPECT_NE(segs[1].find("cmdLast"), std::string::npos) << segs[1];
+    EXPECT_EQ(segs[1].find("RcHandler{"), std::string::npos)
+        << "the segment of \"last\" must end at registerVerbs()'s closing "
+           "brace; it holds the next definition's RcHandler{:\n" << segs[1];
+    EXPECT_EQ(segs[1].find("m_notAVerbsRead"), std::string::npos) << segs[1];
 }

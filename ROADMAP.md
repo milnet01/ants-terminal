@@ -112823,7 +112823,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-10-08.
   Lanes: tests.
 
-- 📋 [ANTS-5633] **mcp_verb_offthread_guard INV-11 scans the rcDelegate factory for the last registration, not that verb's handler.**
+- ✅ [ANTS-5633] **mcp_verb_offthread_guard INV-11 scans the rcDelegate factory for the last registration, not that verb's handler.**
   Found by reading during the ANTS-1043 window audit; not yet reproduced
   by a failing run. registrationBounds() segments slurpMainWindow(),
   which appends src/mcptoolregistry.cpp. The last terminal registration,
@@ -112836,6 +112836,12 @@ reports are asked for separately, each time.
   m_ member reads. Fix: end each segment at the end of MainWindow's own
   text, or at the factory, and make the comment true. Red first: a
   member read added to the token_usage handler must fail INV-11.
+  Shipped 2026-11-14. A registration's segment now ends at its
+  function's closing brace, so token_usage no longer reaches the
+  rcDelegate factory. token_usage registers through a delegate, not an
+  inline handler, so INV-11 no longer counts it; the four inline
+  handlers in mcptoolregistry.cpp are still scanned. Test-only change,
+  no CHANGELOG entry.
   **Layman:** One automated check meant to guard a tool's code reads the wrong stretch of code for the last tool in the list.
   Kind: fix.
   Source: in-session-2026-10-09 (ANTS-1043 window audit).
