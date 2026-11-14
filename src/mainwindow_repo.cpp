@@ -2,6 +2,7 @@
 #include "mainwindow.h"
 #include "antsversion.h"
 #include "gitorigin.h"          // ANTS-6720 — shared with session_message
+#include "gitrepo.h"            // ANTS-6187 — shared with the branch chip
 #include "mainwindow_internal.h"
 #include "terminalwidget.h"
 #include "themes.h"             // ANTS-1325: include directly where Themes:: is called
@@ -26,23 +27,6 @@
 
 using namespace mainwindowdetail;
 
-namespace {
-
-// Walk up `start` looking for a `.git` entry (file or directory).
-// Returns the absolute path to the directory containing `.git`, or
-// empty if none found.
-QString findGitRepoRoot(const QString &start) {
-    if (start.isEmpty()) return {};
-    QDir d(start);
-    while (true) {
-        if (QFileInfo::exists(d.filePath(QStringLiteral(".git"))))
-            return d.absolutePath();
-        if (!d.cdUp()) return {};
-    }
-}
-
-}  // namespace
-
 void MainWindow::refreshRepoVisibility() {
     if (!m_repoVisibilityLabel) return;
 
@@ -59,7 +43,7 @@ void MainWindow::refreshRepoVisibility() {
     if (auto *t = focusedTerminal()) cwd = t->shellCwd();
     if (cwd.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
 
-    const QString repoRoot = findGitRepoRoot(cwd);
+    const QString repoRoot = GitRepo::rootOf(cwd);
     if (repoRoot.isEmpty()) { m_repoVisibilityLabel->hide(); return; }
 
     const QString slug = GitOrigin::githubRepo(repoRoot);

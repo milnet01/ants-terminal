@@ -79,6 +79,15 @@ Source-grep + behavioural drive of the pure helper.
   / `padding` / `border` substrings; today's pre-fix branch
   chip already passes those (cold-eyes F8). Re-targeted to the
   substantive change.
+- **INV-9** (ANTS-6187) `GitRepo::branchOf` reads a git worktree's
+  branch: its `.git` is a file whose `gitdir:` line points at the
+  folder holding `HEAD`. A main checkout, a detached worktree (the
+  short commit) and a folder outside any repository (empty) are
+  checked too. Behavioural drive on a hand-made layout.
+- **INV-10** (ANTS-6187) The chip and the repo-visibility badge use
+  the one finder: the main window sources call `GitRepo::branchOf(`
+  and `GitRepo::rootOf(`, and read no `.git/HEAD` path themselves.
+  Source-grep.
 
 ## CMake wiring
 

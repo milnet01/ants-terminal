@@ -9,7 +9,11 @@
 // Exit 0 = all invariants hold.
 
 #include "branchchip.h"
+#include "gitrepo.h"
 
+#include <QDir>
+#include <QFile>
+#include <QTemporaryDir>
 #include <cstdio>
 #include <string>
 #include <gtest/gtest.h>
@@ -30,7 +34,49 @@ void failAt(const char *file, int line, const char *label, const char *why) {
 }
 #define fail(label, why) failAt(__FILE__, __LINE__, (label), (why))
 
+void writeFile(const QString &path, const QByteArray &bytes) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly)) << path.toStdString();
+    f.write(bytes);
+}
+
 }  // namespace
+
+// INV-9 (ANTS-6187) — the chip finds the branch the way the visibility badge
+// finds the repo: a worktree's `.git` is a FILE whose gitdir holds the HEAD.
+// Laid out by hand as `git worktree add` leaves it, so no git binary runs.
+TEST(StatusBarBranchChip, Inv9WorktreeBranchIsRead) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString main = tmp.filePath(QStringLiteral("main"));
+    const QString wt = tmp.filePath(QStringLiteral("wt"));
+    writeFile(main + QStringLiteral("/.git/HEAD"), "ref: refs/heads/main\n");
+    writeFile(main + QStringLiteral("/.git/worktrees/wt/HEAD"), "ref: refs/heads/feature-x\n");
+    writeFile(wt + QStringLiteral("/.git"), "gitdir: ../main/.git/worktrees/wt\n");
+    QDir().mkpath(main + QStringLiteral("/src/deep"));
+    QDir().mkpath(wt + QStringLiteral("/src/deep"));
+
+    EXPECT_EQ(QStringLiteral("main"), GitRepo::branchOf(main + QStringLiteral("/src/deep")));
+    EXPECT_EQ(QStringLiteral("feature-x"), GitRepo::branchOf(wt + QStringLiteral("/src/deep")))
+        << "a worktree's branch was not read through its .git file";
+    // The badge and the chip agree on the root.
+    EXPECT_EQ(QDir(wt).absolutePath(), GitRepo::rootOf(wt + QStringLiteral("/src/deep")));
+
+    // A detached worktree shows the short commit, as a detached checkout does.
+    writeFile(main + QStringLiteral("/.git/worktrees/wt/HEAD"),
+              "0123456789abcdef0123456789abcdef01234567\n");
+    EXPECT_EQ(QStringLiteral("0123456"), GitRepo::branchOf(wt));
+    EXPECT_TRUE(GitRepo::branchOf(tmp.path()).isEmpty());
+}
+
+// INV-10 (ANTS-6187) — both status-bar sites use the one finder.
+TEST(StatusBarBranchChip, Inv10OneFinderForChipAndBadge) {
+    const std::string mw = ants_test::slurpMainWindow();
+    EXPECT_TRUE(contains(mw, "GitRepo::branchOf(")) << "the branch chip has its own walk";
+    EXPECT_TRUE(contains(mw, "GitRepo::rootOf(")) << "the visibility badge has its own walk";
+    EXPECT_FALSE(contains(mw, "\"/.git/HEAD\"")) << "mainwindow still reads .git/HEAD itself";
+}
 
 TEST(StatusBarBranchChip, Main) {
     // INV-1..3: the three primary-branch names return true.

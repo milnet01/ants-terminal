@@ -350,6 +350,7 @@
         "src/remotecontrol_session_cost.cpp",
         "src/remotecontrol_session_message.cpp",
         "src/gitorigin.h",
+        "src/gitrepo.h",
         "src/remotecontrol_terminal.cpp",
         "src/runtraceverb.cpp",
         "src/runtraceverb.h",

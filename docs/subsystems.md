@@ -342,6 +342,10 @@ Listed only where behavior isn't obvious from the name.
   no semantic change (`op:"render"`).
 - `remotecontrol_session_message` — thin handler for the cross-session
   mailbox verb; the store does the work.
+- `gitrepo` (header only) — a checkout's repo root, the git directory a
+  `.git` entry names (worktrees included) and its branch, read without
+  running git. The branch chip, the visibility badge and `rcGitDirOf`
+  share it (ANTS-6187).
 - `gitorigin` (header only) — the GitHub `owner/name` of a checkout's
   `origin`, and of every GitHub remote (ANTS-6726), read from `.git/config`.
   Shared by `session_message` op `projects` and the status bar's repo label

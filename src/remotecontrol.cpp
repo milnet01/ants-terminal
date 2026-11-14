@@ -10,6 +10,7 @@
 #include <limits>
 #include "remotecontrol.h"
 #include "readregion.h"   // ANTS-4700 — shared clipToBytes
+#include "gitrepo.h"      // ANTS-6187 — rcGitDirOf's body
 #include "remotecontrol_internal.h"  // ANTS-3833 — shared rcdetail helpers
 #include "localsockethub.h"  // ANTS-5144 — one listener per path, shared
 #include "mcpspill.h"        // ANTS-2094 — read_spill
@@ -201,19 +202,7 @@ QString findRoadmapUnder(const QString &canonicalRoot, QString *ownerDir) {
 // gitdir, a `/worktrees/<name>` tail, and a main checkout that actually holds a
 // roadmap. So a non-worktree, and a worktree whose main checkout is gone,
 // behave exactly as before.
-QString rcGitDirOf(const QString &dotGit) {
-    const QFileInfo gi(dotGit);
-    if (!gi.isFile()) return dotGit;
-    QFile f(dotGit);
-    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return QString();
-    const QString first = QString::fromUtf8(f.readLine()).trimmed();
-    static const QLatin1String kGitdir("gitdir:");
-    if (!first.startsWith(kGitdir)) return QString();
-    const QString gitDir = first.mid(kGitdir.size()).trimmed();
-    if (gitDir.isEmpty()) return QString();
-    // git may write it relative to the file's directory.
-    return QDir(gi.absolutePath()).absoluteFilePath(gitDir);
-}
+QString rcGitDirOf(const QString &dotGit) { return GitRepo::gitDirOf(dotGit); }   // ANTS-6187
 
 static QString rcMainCheckoutOf(const QString &dir) {
     const QString dotGit = dir + QStringLiteral("/.git");

@@ -105545,7 +105545,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L04-F17).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6187] **One git repo-root finder for the branch chip and the repo-visibility badge.**
+- ✅ [ANTS-6187] **One git repo-root finder for the branch chip and the repo-visibility badge.**
   From ANTS-6113 (L04 MEDIUM F18). The branch chip (mainwindow.cpp,
   reads <dir>/.git/HEAD) needs a .git directory; the visibility badge
   (mainwindow_repo.cpp) accepts a .git file too, as a worktree has. Not
@@ -105553,6 +105553,13 @@ worked after these.
   in a worktree (a .git file's gitdir: line points at the real HEAD), so
   it is a behaviour fix with its own test.
   Hot reload: none needed; no new running state.
+  Shipped 2026-11-14. New header src/gitrepo.h: rootOf (the badge's old
+  finder), gitDirOf (rcGitDirOf's body; rcGitDirOf now delegates) and
+  branchOf (root, then the gitdir, then HEAD). The branch chip now shows
+  a worktree's branch. Tests StatusBarBranchChip INV-9, INV-10: red
+  before (worktree branch empty, both sites walking on their own), green
+  after. Needs a terminal relaunch to show: the chip runs in the
+  terminal process.
   **Layman:** Two parts of the status bar find the project's git folder by different rules, so one works in a git worktree and the other does not.
   Kind: fix.
   Source: review-readability-2026-10-22 (L04-F18).

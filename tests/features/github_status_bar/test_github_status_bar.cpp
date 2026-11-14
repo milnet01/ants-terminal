@@ -7,7 +7,7 @@
 //
 // INV-1 / INV-2 — both QLabel members declared + constructed +
 //                 added via addPermanentWidget + start hide()-n.
-// INV-3        — pure helpers findGitRepoRoot, GitOrigin::githubRepo,
+// INV-3        — pure helpers GitRepo::rootOf (ANTS-6187), GitOrigin::githubRepo,
 //                 compareSemver exist in the implementation.
 // INV-4        — GitOrigin::githubRepo handles both URL forms.
 // INV-5        — refreshStatusBarForActiveTab calls refreshRepoVisibility.
@@ -123,8 +123,8 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
             "ANTS-1124 (0.7.62 migration)");
 
     // INV-3: pure helpers exist.
-    if (!contains(s, "findGitRepoRoot"))
-        fail("INV-3", "findGitRepoRoot helper missing");
+    if (!contains(s, "GitRepo::rootOf("))
+        fail("INV-3", "the badge no longer finds the repo through GitRepo::rootOf (ANTS-6187)");
     if (!contains(s, "GitOrigin::githubRepo("))
         fail("INV-3", "the repo label no longer reads GitOrigin::githubRepo (ANTS-6720)");
     if (!contains(su, "int compareSemver"))

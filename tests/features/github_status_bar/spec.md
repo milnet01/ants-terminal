@@ -45,7 +45,7 @@ same per-tab lifecycle as the Roadmap button. Tab switch fires
    findExecutable("gh")`); the result is cached in `m_ghAvailable`.
    If absent, the label is hidden and never queried.
 2. Reads the active tab's `shellCwd()`.
-3. Walks the cwd up via `findGitRepoRoot()` looking for a `.git`
+3. Walks the cwd up via `GitRepo::rootOf()` looking for a `.git`
    entry (file or directory). If absent, hides.
 4. Parses `<repoRoot>/.git/config` for the
    `[remote "origin"] url = ...` line via `GitOrigin::githubRepo()`
@@ -126,8 +126,9 @@ source-grep harness, no Qt link.
   **update-available** action is on the menu bar via
   `m_menuBar->addAction`. The retired name `m_updateAvailableLabel`
   appears in neither `mainwindow.h` nor `mainwindow.cpp`.
-- **INV-3** The pure helper `findGitRepoRoot` exists in the main
-  window sources, which call `GitOrigin::githubRepo` (`gitorigin.h`,
+- **INV-3** The main window sources find the repo through
+  `GitRepo::rootOf` (`gitrepo.h`, shared with the branch chip by
+  ANTS-6187) and call `GitOrigin::githubRepo` (`gitorigin.h`,
   moved by ANTS-6720); `compareSemver` is in `selfupdate.cpp` (moved
   by ANTS-5560).
 - **INV-4** `GitOrigin::githubRepo` handles both URL forms — source-

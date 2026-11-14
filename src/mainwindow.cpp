@@ -32,6 +32,7 @@
 #include "verifytrustmodal.h"  // ANTS-1337 Phase 2
 #include "verifytrustprompt.h" // ANTS-5464
 #include "branchchip.h"           // ANTS-1109 helper
+#include "gitrepo.h"              // ANTS-6187 — one finder, worktrees too
 #include "clipboardguard.h"       // ANTS-1014 clipboard funnel
 #include "dialogfocus.h"          // ANTS-1050 helper
 #include "kwinpositiontracker.h"
@@ -2526,21 +2527,7 @@ void MainWindow::updateStatusBar() {
         if (fullCwd == m_gitCacheCwd && now - m_gitCacheMs < 5000) {
             gitBranch = m_gitCacheBranch;
         } else {
-            QString dir = fullCwd;
-            while (!dir.isEmpty() && dir != "/") {
-                QFile head(dir + "/.git/HEAD");
-                if (head.open(QIODevice::ReadOnly)) {
-                    QString ref = QString::fromUtf8(head.readAll()).trimmed();
-                    if (ref.startsWith("ref: refs/heads/"))
-                        gitBranch = ref.mid(16);
-                    else if (ref.length() >= 7)
-                        gitBranch = ref.left(7); // detached HEAD
-                    break;
-                }
-                int slash = dir.lastIndexOf('/');
-                if (slash <= 0) break;
-                dir = dir.left(slash);
-            }
+            gitBranch = GitRepo::branchOf(fullCwd);   // ANTS-6187
             m_gitCacheCwd = fullCwd;
             m_gitCacheBranch = gitBranch;
             m_gitCacheMs = now;
