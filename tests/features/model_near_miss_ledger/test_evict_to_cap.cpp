@@ -84,8 +84,9 @@ TEST(ModelNearMissLedger, Ants2119EvictionDropsContiguousOldestPrefix) {
     int prev = -1;
     for (const NM::Record &r : recs) {
         const int seq = r.sessionId.mid(prefix).toInt();
-        if (prev >= 0)
+        if (prev >= 0) {
             EXPECT_EQ(seq, prev + 1) << "survivors must be a contiguous prefix-drop";
+        }
         prev = seq;
     }
     EXPECT_EQ(prev, 40) << "newest record (seq 40) must be the last survivor";

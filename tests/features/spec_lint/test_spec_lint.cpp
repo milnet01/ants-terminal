@@ -1560,9 +1560,11 @@ TEST(SpecLint, Ants4998UnparsedInvariantsAreAFinding) {
         QStringLiteral("s.md"));
     EXPECT_EQ(unread.invariantsFound, 0);
     ASSERT_EQ(countKind(unread, "invariants_unparsed"), 1) << "one per document";
-    for (const auto &f : unread.findings)
-        if (f.kind == QLatin1String("invariants_unparsed"))
+    for (const auto &f : unread.findings) {
+        if (f.kind == QLatin1String("invariants_unparsed")) {
             EXPECT_EQ(f.line, 5) << "the first id the parser did not read";
+        }
+    }
 
     EXPECT_EQ(countKind(SpecLint::check(QStringLiteral(
         "# A spec\n\n## 5. Invariants\n\nThis spec adds none; see ANTS-1's INV-3.\n"),

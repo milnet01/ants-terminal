@@ -631,7 +631,7 @@ TEST(ClaudeBgTasksButton, DialogClosesWhenTrackerDestroyed) {
     QPointer<ClaudeBgTasksDialog> dlgGuard(dlg);
     dlg->show();
     QApplication::processEvents();
-    ASSERT_TRUE(!dlgGuard.isNull() && dlgGuard->isVisible())
+    ASSERT_TRUE(dlg->isVisible())
         << "setup: dialog must be open and visible before its tracker dies";
 
     // Reproduce untrackBgShell's cleanup exactly: no signal, no pointer
@@ -644,8 +644,9 @@ TEST(ClaudeBgTasksButton, DialogClosesWhenTrackerDestroyed) {
     QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     QApplication::processEvents();
 
-    const bool deleted = dlgGuard.isNull();
-    const bool hidden = !deleted && !dlgGuard->isVisible();
+    const ClaudeBgTasksDialog *const after = dlgGuard.data();
+    const bool deleted = !after;
+    const bool hidden = after && !after->isVisible();
     if (!deleted && !hidden) {
         ADD_FAILURE() << "INV-16: dialog is still open and visible after "
             "its tracker was destroyed the way untrackBgShell destroys it "

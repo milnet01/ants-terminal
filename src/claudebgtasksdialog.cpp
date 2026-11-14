@@ -186,11 +186,13 @@ void ClaudeBgTasksDialog::scheduleRebuild() {
 }
 
 void ClaudeBgTasksDialog::rewatch() {
-    if (!m_tracker) return;
+    const ClaudeBgTaskTracker *const tracker = m_tracker.data();
+    if (!tracker) return;
     QStringList wanted;
-    if (!m_tracker->transcriptPath().isEmpty())
-        wanted << m_tracker->transcriptPath();
-    for (const auto &t : m_tracker->tasks()) {
+    if (!tracker->transcriptPath().isEmpty())
+        wanted << tracker->transcriptPath();
+    const auto tasks = tracker->tasks();
+    for (const auto &t : tasks) {
         // ANTS-5092 — a finished task's output no longer changes.
         if (!t.finished && !t.outputPath.isEmpty() && QFileInfo::exists(t.outputPath))
             wanted << t.outputPath;
@@ -204,10 +206,11 @@ void ClaudeBgTasksDialog::rewatch() {
 }
 
 void ClaudeBgTasksDialog::rebuild() {
-    if (!m_viewer || !m_tracker) return;
+    const ClaudeBgTaskTracker *const tracker = m_tracker.data();
+    if (!m_viewer || !tracker) return;
     const Theme &th = Themes::byName(m_themeName);
 
-    const auto tasks = m_tracker->tasks();
+    const auto tasks = tracker->tasks();
     int running = 0;
     QSet<QString> liveIds;
     for (const auto &t : tasks) {

@@ -90,9 +90,9 @@ public:
     bool eventFilter(QObject *obj, QEvent *ev) override {
         if (obj != m_pill) return false;
         if (ev->type() == QEvent::ToolTipChange) {
-            if (m_window) {
-                if (m_pill->toolTip().isEmpty()) m_window->close();
-                else m_window->refresh();
+            if (InfoWindow *const window = m_window.data()) {
+                if (m_pill->toolTip().isEmpty()) window->close();
+                else window->refresh();
             }
         } else if (ev->type() == QEvent::MouseButtonRelease) {
             const auto *me = static_cast<QMouseEvent *>(ev);
@@ -110,14 +110,16 @@ public:
 private:
     void open() {
         if (m_pill->toolTip().isEmpty()) return;
-        if (!m_window) {
-            m_window = new InfoWindow(m_pill, m_title);
-            m_window->show();
+        InfoWindow *window = m_window.data();
+        if (!window) {
+            window = new InfoWindow(m_pill, m_title);
+            m_window = window;
+            window->show();
         } else {
-            m_window->refresh();
+            window->refresh();
         }
-        m_window->raise();
-        m_window->activateWindow();
+        window->raise();
+        window->activateWindow();
     }
 
     QWidget *m_pill;

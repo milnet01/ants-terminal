@@ -803,10 +803,15 @@ QJsonObject KnowHowStore::opUpdate(const QJsonObject &args, const QString &autho
         reply[QStringLiteral("last_verified")] = t;
         if (dryRun)
             return reply;
-        const QJsonObject r = !changed
-            ? execAll(db, {{QStringLiteral("UPDATE know_how SET last_verified = ?, retired_at = NULL"
-                                           " WHERE topic = ?"), {t, topic}}})
-            : execAll(db, {
+        // if/else, not ?: — GCC's -Wdangling-pointer misreads a braced list
+        // built inside a conditional expression (ANTS-5772).
+        if (!changed) {
+            const QJsonObject r = execAll(
+                db, {{QStringLiteral("UPDATE know_how SET last_verified = ?, retired_at = NULL"
+                                     " WHERE topic = ?"), {t, topic}}});
+            return r.isEmpty() ? reply : r;
+        }
+        const QJsonObject r = execAll(db, {
                 {QStringLiteral("INSERT INTO know_how_history (topic, revision, title, body, tags,"
                                 " author, replaced_at) VALUES (?, ?, ?, ?, ?, ?, ?)"),
                  {topic, row.revision, row.title, row.body, row.tags, row.author, t}},
@@ -899,11 +904,15 @@ QJsonObject KnowHowStore::opPurge(const QJsonObject &args, const QString &author
         if (dryRun)
             return reply;
         const QVariant logged = revision ? QVariant(*revision) : QVariant();
-        const QJsonObject erased = revision
-            ? execAll(db, {{QStringLiteral("DELETE FROM know_how_history WHERE topic = ? AND revision = ?"),
-                            {topic, *revision}}})
-            : execAll(db, {{QStringLiteral("DELETE FROM know_how_history WHERE topic = ?"), {topic}},
-                           {QStringLiteral("DELETE FROM know_how WHERE topic = ?"), {topic}}});
+        // if/else, not ?: — see opUpdate (ANTS-5772).
+        QJsonObject erased;
+        if (revision)
+            erased = execAll(db, {{QStringLiteral("DELETE FROM know_how_history"
+                                                  " WHERE topic = ? AND revision = ?"),
+                                   {topic, *revision}}});
+        else
+            erased = execAll(db, {{QStringLiteral("DELETE FROM know_how_history WHERE topic = ?"), {topic}},
+                                  {QStringLiteral("DELETE FROM know_how WHERE topic = ?"), {topic}}});
         if (!erased.isEmpty())
             return erased;
         const QJsonObject r = execAll(

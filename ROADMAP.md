@@ -72974,7 +72974,7 @@ class; the deferrals below cover the rest.
   Source: in-session-2026-10-13 (left by ANTS-2122).
   Lanes: featurecoverage.
 
-- 📋 [ANTS-5772] **A full build prints 41 compiler warnings from six of the project's own files.**
+- ✅ [ANTS-5772] **A full build prints 41 compiler warnings from six of the project's own files.**
   Full `cmake --build build`, 2026-10-19, after ANTS-2107. The same set
   appears with the old PCH, the new one and none:
   - src/claudebgtasksdialog.cpp: 12 -Wnull-dereference (inlined Qt).
@@ -72995,6 +72995,11 @@ class; the deferrals below cover the rest.
   2026-11-10: also src/knowhowstore.cpp, -Wdangling-pointer ("dangling
   pointer to an unnamed temporary may be used") at the session() return
   in opUpdate and opPurge, seen on a rebuild for ANTS-6649 row 151.
+  Shipped 2026-11-14. Recompiling the named files without ccache printed
+  27 warnings at seven places; after the change, none.
+  claudeintegration.cpp and test_build_target_for.cpp printed none
+  before the change. Not measured: a whole-tree build from clean, so
+  another file may still warn.
   **Layman:** Clear the leftover compiler warnings so a new one stands out.
   Kind: fix.
   Source: in-session-2026-10-19 (full build during ANTS-2107).
