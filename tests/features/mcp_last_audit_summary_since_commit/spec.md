@@ -51,7 +51,7 @@ short-circuit gate's wiring).
 - Live cmdLastAuditSummary invocation (would require a synthetic
   `.audit_cache/` + provenance SARIF; not worth the boilerplate
   for a contract this narrow).
-- `audit_precondition_summary` v2 — option (b) from the ANTS-1406
+- audit_precondition_summary v2 — option (b) from the ANTS-1406
   bullet, separate tool that reports gate state without re-running
   individual scanners. Deferred until /close-phase user feedback
   flags option (a) as insufficient.

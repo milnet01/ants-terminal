@@ -8,7 +8,7 @@ handler. A bare `disconnect()` severs every connection the button has,
 not only its own click handlers.
 
 Qt's style-sheet engine holds one of those connections. In Qt 6.11,
-`QStyleSheetStyle::initWidget` (`qstylesheetstyle.cpp`) connects a
+`QStyleSheetStyle::initWidget` (qstylesheetstyle.cpp) connects a
 widget's `destroyed` signal to the style-cache cleanup when it first
 styles the widget. It does not reconnect while the widget stays styled.
 With the link cut, deleting the button left its address in the style

@@ -18,9 +18,9 @@ in-tree `auditdialog.cpp` (INV-3 floor check).
 | 3 | `src/fileoutline.cpp` contains the six regex builders — `rxCppMember`, `rxCppType`, `rxCppFunc`, `rxCppQt`, `rxPy`, `rxMdHeading` — each a `static const QRegularExpression` with `.optimize()` called once. The per-line byte cap (`kMaxLineBytes`) and header-doc cap (`kHeaderDocByteCap`) are present. |
 | 4 | The IPC dispatcher in `RemoteControl::dispatch` routes `"file-outline"` to `cmdFileOutline`. |
 | 5 | The MCP `tools/list` block in `src/claudeintegration.cpp` registers a `"file_outline"` entry with an `inputSchema` declaring `path` + `mode`, `include_doc_comment`, `max_symbols`, and the ANTS-2223 multi-path props `paths` + `etags`. `path` is no longer in `required` (the `paths` form satisfies the verb without it). |
-| 6 | The MCP `tools/call` dispatcher has an `else-if (toolName == "file_outline" && m_fileOutlineProvider)` clause. |
-| 7 | `ClaudeIntegration` declares `setFileOutlineProvider(std::function<QString(const QJsonObject&)>)` in `src/claudeintegration.h` plus matching `m_fileOutlineProvider` member. |
-| 8 | `MainWindow::setupClaudeMcpProviders` calls `setFileOutlineProvider` with a lambda that delegates to `m_remoteControl->cmdFileOutline`. |
+| 6 | The MCP `tools/call` dispatcher finds the tool in the `m_toolProviders` registry; it has no per-tool clause (ANTS-1253). |
+| 7 | `ClaudeIntegration` declares `registerToolProvider` in `src/claudeintegration.h` plus the `m_toolProviders` registry member (ANTS-1253). |
+| 8 | `file_outline` is registered through `registerToolProvider`, delegating to `cmdFileOutline`. |
 | 9 | `FileOutline::compute` (called against the in-tree `src/auditdialog.cpp`) returns `≥ 8` symbols. Smoke-test of the regex set against a known file — flips red if the regex set ever regresses. |
 | 10 | Calling `FileOutline::compute` on a non-existent path returns `{ok:false, code:"not_found"}` and does not crash. |
 | 11 | (ANTS-2028) `FileOutline::compute` captures free functions with a single-token return type — `int alpha()`, `static QByteArray slurpBody(...)`, and the declaration `const std::string &makeName(int);` all surface — while the qualified member `Widget::method` still resolves via `rxCppMember`. Guards against `rxCppFunc` folding the return type and the name into one possessive class (which left nothing for the name capture, so free functions never matched). |

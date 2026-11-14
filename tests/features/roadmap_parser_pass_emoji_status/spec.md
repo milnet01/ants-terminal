@@ -11,7 +11,7 @@ so a **leading status emoji** (`✅`/`📋`/`🚧`/`💭`) — neither a word
 char nor whitespace — blocked the capture: `statusWord` stayed empty
 and defaulted to planned (📋).
 
-RetroDB session-5 confirmed the symptom: all of `PASS-48-1..5` read 📋
+RetroDB session-5 confirmed the symptom: all of PASS-48-1..5 read 📋
 despite `- **Status**: ✅ Done (v3.6.3x)` lines; rewriting
 `✅ Done (` → `done (` on disk flipped all five to ✅ on re-query.
 

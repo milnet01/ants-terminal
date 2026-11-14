@@ -72951,7 +72951,7 @@ class; the deferrals below cover the rest.
   Source: in-session-2026-06-12 (clangd unused-includes, surfaced while adding the ANTS-2118 merge test).
   Resolved (2026-06-25): folded into the ANTS-2072 sweep (commit 8686e66) — test_audit_engine_extraction.cpp lost <fstream>+<sstream>, kept <cstdio> (uses std::fprintf).
 
-- 📋 [ANTS-5687] **Bring the feature-spec drift lane's findings on this project down to the five its contract allows.**
+- ✅ [ANTS-5687] **Bring the feature-spec drift lane's findings on this project down to the five its contract allows.**
   Measured 2026-10-13 after ANTS-2122 (whole-word matching, non-name
   shapes dropped): runSpecDriftCheck reports 91 findings over 722
   feature specs; tests/features/feature_coverage/spec.md § Acceptance
@@ -72964,6 +72964,11 @@ class; the deferrals below cover the rest.
   setFileOutlineProvider, writeStalled, drainWriteQueue; handleKittyApc
   is ANTS-5679), fixed in the spec or the code. List them with the
   throwaway harness method in ANTS-2122's body, or run the audit.
+  Shipped 2026-11-14: 94 findings measured, 0 after. 87 fixed in the
+  specs (outside names and placeholders to plain text, renamed code to
+  its current name, seven out-of-date rows rewritten); 7 were item ids,
+  which the extractor now drops (feature_coverage 6a). List the lane's
+  findings with ANTS_PERF_DUMP=1 build/bench_drift_lanes.
   **Layman:** The audit's check that specs name real code still raises about 90 warnings here; most are wording, a few are real renames.
   Kind: audit-fix.
   Source: in-session-2026-10-13 (left by ANTS-2122).
@@ -97698,7 +97703,7 @@ defect from different angles.
   Source: in-session-2026-08-25, the actionable half of ANTS-4348's decision.
   Lanes: specs, speclint, docs.
 
-- 📋 [ANTS-5691] **Older specs carry no parseable Kind line, so spec_query reports their kind as empty.**
+- ✅ [ANTS-5691] **Older specs carry no parseable Kind line, so spec_query reports their kind as empty.**
   Measured 2026-10-15 over docs/specs/, after ANTS-4413: 16 specs write
   Kind as a list item or quote (`- **Kind:**`), which SpecParse does
   not read, and about 60 carry no Kind line in any form. Example:
@@ -97710,6 +97715,10 @@ defect from different angles.
   one can be a scripted edit. Insert or rewrite one plain `**Kind:**`
   line in the header block; leave the rest of the list alone.
   ANTS-5690 (spec_log cannot insert a field) is the tool-side fix.
+  Shipped 2026-11-14: measured 16 list or quote forms and 59 with none;
+  all 75 now carry one plain Kind line after Status. The 16 keep their
+  own wording; the 59 take the roadmap item's kind. No spec is left
+  without one.
   **Layman:** Many older design documents never say what kind of work they describe in a form the tools can read, so the tools file them as unknown.
   Kind: doc-fix.
   Source: in-session-2026-10-15 (found while closing ANTS-4413).

@@ -9,7 +9,7 @@
 constants (`kStatusLabels` in `src/roadmapdialog.cpp`, a
 `kEmojiDone`/`kEmojiInProgress`/`kEmojiPlanned`/`kEmojiConsidered` →
 `QT_TR_NOOP` table). Once a project is served by the store, its legend is
-per-project data — `project.legend_text`, written by the migration and rendered
+per-project data — `project.legend`, written by the migration and rendered
 by `roadmaprender.cpp` — and the dialog should show *that* project's vocabulary
 rather than this one's.
 

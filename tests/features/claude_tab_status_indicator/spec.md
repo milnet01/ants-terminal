@@ -100,7 +100,7 @@ tracker class) rather than pixel-level painting:
 
 3. **INV-3 Untrack releases resources.** After
    `untrackTab(tabIndex)`, a subsequent write to the old transcript
-   MUST NOT fire `tabStateChanged`. The watcher for that path must
+   MUST NOT fire `shellStateChanged`. The watcher for that path must
    be released (verify via `QFileSystemWatcher::files()` not
    containing the old path OR by asserting no signal emission on
    write).

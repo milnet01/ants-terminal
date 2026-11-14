@@ -87,7 +87,7 @@ itself (RED when authored; fixed 2026-09-12).
   immediately after `diffviewer::show(callerWidget, …)` returns (before
   any event-loop turn), the returned dialog must have at least one
   `QProcess` descendant. Today `runAsync()` parents every probe
-  `QProcess` to `callerWidget`, so the dialog has none and closing it
+  `QProcess` to callerWidget, so the dialog has none and closing it
   cannot kill them.
 
   Checked as "dialog has ≥1 `QProcess` child", not "caller has zero" —

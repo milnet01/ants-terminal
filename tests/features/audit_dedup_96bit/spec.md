@@ -60,7 +60,7 @@ function whose body queries `m_suppressedKeys` AND extracts a 16-char
 prefix (`.left(16)` substring lookup) of an input key — i.e. the
 helper accepts both a full 24-char match and the legacy 16-char prefix
 match. The helper name should reflect the role (`isSuppressed`,
-`hasSuppression`, etc.).
+hasSuppression, etc.).
 
 **INV-3 — Render-pipeline call sites use the helper, not raw `contains`.**
 Source-grep against `src/auditdialog.cpp`: at least four call sites

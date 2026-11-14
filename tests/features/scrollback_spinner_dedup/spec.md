@@ -63,14 +63,14 @@ Required from the user (or me, when a Claude session is reachable):
    - The 2 seconds before the first duplicate appeared.
    - All bytes for the next 5 seconds.
 4. **xterm A/B (if available):** repeat the same workflow under
-   `xterm` (or `konsole`, `alacritty`, `kitty`) and report whether
+   `xterm` (or konsole, alacritty, `kitty`) and report whether
    scrollback shows the same duplicates. If a non-Ants terminal
    shows the same duplication, the divergence is in Claude Code's
    output (out of scope for this spec; ANTS becomes a follow-on
    feature flag instead of a fix). If only Ants duplicates, the
    divergence is in our `scrollUp` path.
 
-Capture a `pty_dump` if convenient: `ANTS_PTY_DUMP=/tmp/pty.bin
+Capture a pty_dump if convenient: `ANTS_PTY_DUMP=/tmp/pty.bin
 <launch ants>` — that captures the raw bytes from the PTY before
 VT-parsing, which lets us replay deterministically as a test
 fixture.

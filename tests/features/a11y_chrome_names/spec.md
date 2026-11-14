@@ -22,7 +22,7 @@ sign x").
 Push buttons with **plain English text labels** (`"Background Tasks"`,
 `"Review Changes"`, `"Roadmap"`, `"Add"`, `"Edit"`, `"Delete"`, `"OK"`,
 `"Cancel"`, …) inherit their accessible name from `QPushButton::text()`
-via Qt's `QAccessibleButton` adapter and need no extra wiring — the
+via Qt's QAccessibleButton adapter and need no extra wiring — the
 test below treats them as already covered.
 
 Tab close buttons are created by Qt (`QTabBar::setTabsClosable(true)`)

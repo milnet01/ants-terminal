@@ -18,7 +18,7 @@ state and escape the sandbox. `LuaEngine::loadScript` already
 rejects files starting with `\x1b`, but the primitive
 `string.dump` was still present in the sandbox. The rejection
 surface only catches file-level bytecode; any future C API added
-to `ants.*` that wraps `luaL_loadbuffer`/`luaL_loadstring` with
+to `ants.*` that wraps `luaL_loadbuffer`/luaL_loadstring with
 plugin-supplied data would immediately give bytecode execution
 back to attackers. Closing `string.dump` at the sandbox layer
 (where the rule is adjacent to every other banned primitive) is
@@ -150,7 +150,7 @@ The test:
 - **Introduced:** 0.6.0-ish when the Lua sandbox landed. The
   `dangerous[]` global-nil loop was comprehensive for top-level
   globals but missed table members like `string.dump`. The
-  bytecode-rejection peek landed in 0.6.9 (post-`lua_bundle`
+  bytecode-rejection peek landed in 0.6.9 (post-lua_bundle
   security review) but was scoped to file load, not to the
   loader mode.
 - **Flagged:** 2026-04-23 /indie-review Tier 2 Lua reviewer.

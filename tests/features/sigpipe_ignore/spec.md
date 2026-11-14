@@ -25,7 +25,7 @@ and handle it cleanly.
 
 This is a process-wide invariant — the signal disposition is inherited
 by any thread the process spawns. We do NOT set it per-thread and we do
-NOT rely on `MSG_NOSIGNAL` (only works for sockets, not character
+NOT rely on MSG_NOSIGNAL (only works for sockets, not character
 devices, and is a per-call flag that's easy to miss in a new caller).
 
 ## Invariants

@@ -55,7 +55,7 @@ The reduction is `DocSymbols::locate()` (engine, pure); the JSON is
   (ANTS-6723) the module its path names counts too — `src/a/b.rs` is `a::b`,
   `src/a/mod.rs` is `a` — and so do `impl`, `trait`, `mod` and type blocks,
   past any lifetime. *Test:* `Inv9RustModulePathAndImpl`. With several
-  qualifiers the innermost (`B` in `A::B::c`) is the one checked. A symbol
+  qualifiers the innermost (`B` in A::B::c) is the one checked. A symbol
   whose qualifier matches no candidate is `unresolved` in this mode, although
   the default mode reports it resolved: ANTS-3661 INV-2 resolves a `::` span
   on its leaf, which is right for a list of candidates and wrong for a

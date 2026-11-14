@@ -53,10 +53,12 @@ to identifier-shaped ones.
     since the file's existence is what it claims. A `key:value` pair
     (one colon, not `::`), an id placeholder such as `ANTS-NN`, and
     test-family shorthand (`Inv4`, `Ants3815`, `Ants5118Inv1`) are
-    dropped. Given
+    dropped. So are an item id and a reference to one of its invariants
+    (ANTS-5687): they name a roadmap item, not code. Given
 
         See `aidialog.cpp:115-137`, `flipped_count:1`, `ANTS-NN`,
         `Inv3b`, `Ants5118Inv1`, `Foo::bar` and `Inv2_FullName`.
+        Also `ANTS-4146`, `ANTS-1237-INV-N` and `ANTS-1224-INV-1..3`.
 
     the extractor returns `{aidialog.cpp, Foo::bar, Inv2_FullName}`.
 

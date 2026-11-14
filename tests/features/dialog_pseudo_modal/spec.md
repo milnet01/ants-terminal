@@ -91,7 +91,7 @@ interactive" ask.
 - Wayland-specific input-shape / `xdg-popup` constraint coordination.
   The blocking is at the Qt-event-filter layer, independent of the
   compositor's input routing.
-- **Drag-and-drop events** (`DragEnter`, `DragMove`, `Drop`) are
+- **Drag-and-drop events** (DragEnter, DragMove, `Drop`) are
   not on the suppress list. Drag-drop into the terminal while a
   dialog is open is unusual; the user's "interaction" framing
   targets clicks/keys/wheel. If a future user reports drag-drop

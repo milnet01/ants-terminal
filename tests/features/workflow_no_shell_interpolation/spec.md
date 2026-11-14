@@ -14,7 +14,7 @@ zizmor graded the survivors *info* because its taint analysis does not follow a
 value out through a step output and back in, so the severity signal pointed
 away from the live path. ANTS-4792 closed all thirteen.
 
-**Nothing was watching.** `zizmor`, `actionlint` and `yamllint` are all
+**Nothing was watching.** `zizmor`, actionlint and yamllint are all
 available, and neither `.github/workflows/ci.yml` nor `tools/ci-parity.sh`
 runs any of them — so between ANTS-4772 and ANTS-4792 there was no run, local
 or remote, in which the surviving sites appeared. A guard belongs in the test
@@ -54,5 +54,5 @@ judgement and it is what let thirteen live sites be graded *info*. The
 invariant is the shape, not the provenance — a rule that no reader has to
 adjudicate is a rule that still holds in five years.
 
-**Anything else zizmor reports.** `excessive-permissions` is open against
+**Anything else zizmor reports.** excessive-permissions is open against
 `release.yml` and is a different finding with a different remedy.

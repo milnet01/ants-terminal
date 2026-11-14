@@ -425,6 +425,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The audit's spec-drift check reports nothing on this project: the feature specs name current code, and an item id in backticks is not read as a code name.** (ANTS-5687)
+
+- **Every design document in `docs/specs/` carries a Kind line the tools can read.** (ANTS-5691)
+
 - **Search highlights stay on their lines while new output pushes the oldest lines out of a full scrollback.** (ANTS-5686)
 
 - **Five more pop-up windows follow the terminal's theme, can be resized, remember their size and open centred.** (ANTS-5681)

@@ -68,7 +68,7 @@ a hardcoded `0.7.21` literal that would drift on every bump).
 ### Invariant 4 — About dialog is rich-text with clickable links
 
 The handler builds a `QDialog` containing a `QLabel` whose
-`textFormat` is `Qt::RichText`, whose `textInteractionFlags`
+textFormat is `Qt::RichText`, whose `textInteractionFlags`
 include `Qt::LinksAccessibleByMouse`, and which has
 `setOpenExternalLinks(true)` so the GitHub URL in the body
 opens in the user's browser when clicked.

@@ -40,7 +40,7 @@ output that looks like trusted local commands.
 - [xterm ctlseqs §"OSC Ps ; Pt BEL"](https://invisible-island.net/xterm/ctlseqs/ctlseqs.html#h2-Operating-System-Commands)
   — documents that a string-state ESC ends the string regardless
   of what follows; the trailing byte is consumed.
-- [xterm parser table — `vt500-state-charts.html`](https://invisible-island.net/xterm/ctlseqs/vt500-state-charts.html)
+- [xterm parser table — vt500-state-charts.html](https://invisible-island.net/xterm/ctlseqs/vt500-state-charts.html)
   — explicit state transitions for `OSC_STRING + ESC + ANY → ground`.
   No re-entry to Escape state, no dispatch of the trailing byte.
 - [xterm CVE-2022-24130 (Mosh, but same parser shape)](https://nvd.nist.gov/vuln/detail/CVE-2022-24130)

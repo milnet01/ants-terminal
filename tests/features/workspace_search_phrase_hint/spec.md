@@ -6,7 +6,7 @@ an absent string from a pattern that was written wrong or a path that was
 never read. Each invariant below adds an advisory to the `ok:true` envelope.
 None changes what the search matches.
 
-The directory keeps its first item's name, `phrase_hint` (ANTS-2045). The
+The directory keeps its first item's name, phrase_hint (ANTS-2045). The
 name is cited elsewhere, so the contract grew here instead (ANTS-4755).
 
 ## Invariants

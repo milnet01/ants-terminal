@@ -32,11 +32,11 @@ The signal we use to prove "currently-running" is two-layered:
   process exists for the focused tab (`m_claudePid > 0`),
   candidate transcripts are filtered against that process's
   start time. A transcript whose most-recent event predates the
-  process by more than `LEEWAY_MS` is from a prior session and
+  process by more than `kLeewayMs` is from a prior session and
   is dropped.
 
   **(b) Liveness floor.** Independently of (a), any transcript
-  whose most-recent event is older than `STALE_MAX_MS` (24 h)
+  whose most-recent event is older than `kStaleMaxMsWithPid` (24 h)
   is dropped. This is a defensive safety net for the case where
   `m_claudePid` is unknown (e.g. the integration's process poll
   hasn't fired yet) — it still rejects week-old transcripts.

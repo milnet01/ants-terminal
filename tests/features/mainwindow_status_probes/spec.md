@@ -8,7 +8,7 @@
 **INV-2 — the socket reaper checks it is a socket.** *withdrawn — the reaper
 moved out of `mainwindow.cpp` into `mcpd::reapStaleTerminalSockets` (ANTS-5236);
 the rule is now checked by behaviour in
-`tests/features/claude_socket_runtime_dir/` case `Inv7SweepCoversBothDirs`,
+`tests/features/claude_socket_runtime_dir/` case `Inv7SweepCoversRuntimeDirOnly`,
 which plants a regular file under a dead pid's name and asserts it survives.*
 
 **INV-3 — the review probe is keyed to its cwd.** `refreshReviewButton` records

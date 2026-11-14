@@ -12,7 +12,7 @@ source is `packaging/cc-job/cc-job`.
   Konsole for `watch`.
 - **INV-3** — With `CC_JOB_DIR` unset, the log dir is
   `$XDG_STATE_HOME/cc-job`, created on first run.
-- **INV-4** — `cc-job watch <name>` with no `konsole` on `PATH` exits `2`
+- **INV-4** — `cc-job watch <name>` with no konsole on `PATH` exits `2`
   with a message naming Konsole.
 
 - **INV-5** — A variable exported to `cc-job start` reaches the job with its

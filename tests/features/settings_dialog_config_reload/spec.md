@@ -72,7 +72,7 @@ re-enters. `deleteLater()` defers destruction until the next event-
 loop tick, after any already-queued slots drain.
 
 ### Invariant 4 — cache-invalidation is in `onConfigFileChanged`,
-not `onConfigChanged`
+not onConfigChanged
 
 The external-edit reload path is the only place where `m_config` is
 wholesale-reassigned; internal setter mutations (`m_config.setX()`)

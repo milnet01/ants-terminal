@@ -43,7 +43,7 @@ amber otherwise (`theme.ansi[3]`, matching the visibility pill's
   This asymmetry is intentional — the chip is the leftmost
   status-bar widget; the pill sits to its right.
 - Recolouring on every branch change in real time — the existing
-  `updateStatusInfo` poll runs every 2s and re-applies the
+  `updateStatusBar` poll runs every 2s and re-applies the
   stylesheet, which is fast enough for the user-visible signal.
 
 ## Invariants

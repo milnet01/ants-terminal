@@ -11,7 +11,7 @@ gate was built to close).
 Out of scope: the bullet's original "drop the handler-level RcGate
 call" goal turned out to be unsafe — `cmdSessionMemory` is reachable
 via both the MCP dispatcher AND the JSON-RPC IPC socket
-(`remotecontrol.cpp::handleConnection`), and the IPC path doesn't
+(`RemoteControl::onNewConnection`), and the IPC path doesn't
 go through `callerCwdContractFor`. So the handler-level check stays
 as IPC-path coverage; this spec locks in the dispatcher-level
 contract instead.

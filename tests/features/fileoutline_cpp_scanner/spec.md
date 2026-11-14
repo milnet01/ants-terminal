@@ -14,7 +14,7 @@ single-line `rxCppFunc` scanner and reproduced on Ants' own source:
   next line) never matched the same-line-only regex.
 
 The fix: track brace scope (a string/char/comment-aware brace counter +
-`funcBodyDepth`) so function/member symbols are emitted only at file or
+`funcOpenAtDepth`) so function/member symbols are emitted only at file or
 type-body scope, never inside a code body; and recognise a `Name(args)`
 definition whose return type and/or `{` sit on adjacent lines.
 
@@ -52,7 +52,7 @@ definition whose return type and/or `{` sit on adjacent lines.
   `workerCount` / `isSynchronous`.
 - **INV-12** (ANTS-3735) — a declaration whose `;` is followed by a
   trailing comment does NOT open a body. The discriminator
-  `funcDefOpensBody` tested `line.trimmed().endsWith(';')` on the raw
+  `matchLine` tested `line.trimmed().endsWith(';')` on the raw
   line, so `extern "C" int f(char* c);   // note` read as a definition
   awaiting its `{`. The scanner then adopted the next brace — an
   anonymous `namespace {` — as that function's body; because the latch

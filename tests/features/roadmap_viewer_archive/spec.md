@@ -356,7 +356,7 @@ ctest --test-dir build -R roadmap_viewer_archive
 - **Lazy-load on scroll.** The whole assembled markdown is rendered
   at once when archives are pulled in. Rendered HTML is cached in
   `m_lastHtml`; the cost is paid once per History switch.
-- **Per-patch archive files (`X.Y.Z.md`).** Archives are per-minor
+- **Per-patch archive files (X.Y.Z.md).** Archives are per-minor
   only — `0.7.md` covers all 0.7.x patch releases. INV-4a's
   `^[0-9]+\.[0-9]+\.md$` filter rejects `0.7.0.md` precisely so a
   future contributor doesn't accidentally introduce a parallel

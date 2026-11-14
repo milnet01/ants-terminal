@@ -52,7 +52,7 @@ nothing at all.
 |---|---|---|
 | M1 | Default `requiredSections` to a guessed list instead of skipping | RED — arm (b) and arm (c) both fail: `sectionsChecked` becomes true and `missing_section` fires against a conforming doc. |
 | M2 | Drop the `isTombstone` guard | RED — `Inv2` reports `INV-3` (both forms) and `Inv3` reports 3 findings where 1 is expected. |
-| M3 | Emit `line_count` as a `doc_size` finding | RED — `Inv6`'s first arm fails on the kind-name assertion, second arm on `findings.isEmpty()`. |
+| M3 | Emit `line_count` as a doc_size finding | RED — `Inv6`'s first arm fails on the kind-name assertion, second arm on `findings.isEmpty()`. |
 | M4 | Build the id list from the parser alone, dropping the anchor scan | RED — `Inv2`'s two-column arm reports 0 where 2 are expected. **Survived the first run**; see below. |
 | M5 | Key the loop table on an `Outcome`-named column instead of the last cell | RED — `Inv5` reports 1 where 2 is expected: the 6-column shape has no such column. |
 

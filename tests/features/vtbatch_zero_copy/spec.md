@@ -40,7 +40,7 @@ via `emit batchReady(b)`. No copy of a stack-allocated
 
 ### I4 — Receiver dereferences via pointer.
 `TerminalWidget::onVtBatch(VtBatchPtr batch)` accesses fields via
-`batch->actions`, `batch->rawBytes`, etc. — no `batch.foo` dot
+`batch->actions`, `batch->rawBytes`, etc. — no batch.foo dot
 access remains.
 
 ### I5 — Behavioural equivalence preserved.

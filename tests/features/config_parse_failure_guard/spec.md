@@ -84,7 +84,7 @@ skewed clocks still prune deterministically.
 
 ### Invariant 6 — a save that meets a held lock is retried, never dropped (ANTS-5106)
 
-With `config.json.lock` held by another holder, a setter's `save()`
+With config.json.lock held by another holder, a setter's `save()`
 returns within 1 s and writes nothing. Once the lock is free, the
 change reaches disk without another setter call. A save still deferred
 when the `Config` is destroyed is written by the destructor. Tests:

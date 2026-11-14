@@ -103,10 +103,12 @@ void testExtractLineNumbering() {
 }
 
 // INV-6a (ANTS-2122) — a file:line citation is reduced to its file; key:value
-// pairs, id placeholders and test-family shorthand are not names.
+// pairs, ids, id placeholders and test-family shorthand are not names.
 void testExtractNonNames() {
     const QString md = "See `aidialog.cpp:115-137`, `flipped_count:1`, `ANTS-NN`,\n"
-                       "`Inv3b`, `Ants5118Inv1`, `Foo::bar` and `Inv2_FullName`.\n";
+                       "`Inv3b`, `Ants5118Inv1`, `Foo::bar` and `Inv2_FullName`.\n"
+                       // ANTS-5687 — an item id and an invariant reference.
+                       "Also `ANTS-4146`, `ANTS-1237-INV-N` and `ANTS-1224-INV-1..3`.\n";
     expectTokens("extract.nonNames",
                  FeatureCoverage::extractSpecTokens(md),
                  {"aidialog.cpp", "Foo::bar", "Inv2_FullName"});

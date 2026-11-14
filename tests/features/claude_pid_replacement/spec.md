@@ -99,7 +99,7 @@ Zero new fields, zero new caches, zero new buffers.
 - Generalizing the gate from `m_claudePid == 0` to `m_claudePid != foundPid` adds no state — `foundPid` is already a stack-local in the same scope.
 - The existing `parseTranscriptForState` and `m_transcriptWatcher` calls are unchanged.
 - Test is source-grep only — peak working set ≈ size of `claudeintegration.cpp` slurp (~70 KiB at the time of writing). No fixtures.
-- Build cost: one new test source in the `test_claude` bundle (per `feedback_be_mindful_of_system_resources`); zero new `add_executable`, zero new Qt6 link step.
+- Build cost: one new test source in the `test_claude` bundle (per feedback_be_mindful_of_system_resources); zero new `add_executable`, zero new Qt6 link step.
 
 ## 7. How to verify pre-fix code fails
 
@@ -121,4 +121,4 @@ If the symptom recurs after this spec lands, the failure mode is one of:
 3. **The resolver's freshness floor rejecting the new transcript** (clock skew, post-relaunch JSONL not yet written) → ANTS-1163-INV-7 boundary; would also break the tasks chip in the same way.
 4. **A new launch flow that bypasses `pollClaudeProcess` entirely** (e.g., a hypothetical IPC-driven session-id push) → extend §4 "Out of scope" and add the corresponding INV.
 
-The existing `sessionPathForCwd/result:` debug log line already prints `procStartMs`, `winner-effMs`, and `nowMs` per call — sufficient to localise (1)-(3). Adding a `pollClaudeProcess` line would make (4) easier to spot if it ever ships, but is not required by this spec.
+A `sessionPathForCwd/result:` debug log line once printed `procStartMs`, the winner's effective time and `nowMs` per call. It is no longer in the source (checked 2026-11-14), so localising (1)-(3) needs a log line added first. A `pollClaudeProcess` line would make (4) easier to spot if it ever ships, but is not required by this spec.

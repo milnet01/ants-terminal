@@ -22,9 +22,9 @@ trade-off is that `::write` returns short — partially writing the
 payload then returning EAGAIN once the kernel buffer fills. POSIX
 correct behaviour for non-blocking I/O is "queue the remainder, install
 a writability poller, drain on the next signal." That's what every
-production Qt-based terminal does (Konsole's `Pty::sendData` uses
+production Qt-based terminal does (Konsole's Pty::sendData uses
 `KPtyDevice::write` which is itself a `QIODevice` with a Qt-managed
-write buffer; gnome-terminal's vte uses a `GIOChannel` with a write
+write buffer; gnome-terminal's vte uses a GIOChannel with a write
 queue; xterm uses select() on the master FD).
 
 A bounded queue is required: if the slave never reads (stuck child,
@@ -57,7 +57,7 @@ Source-grep: `m_writeNotifier` declared as `QSocketNotifier *`.
 **INV-4 — `onWriteReady` (or equivalent) slot exists and is connected.**
 Source-grep `src/ptyhandler.h` for an `onWriteReady` slot declaration
 and `src/ptyhandler.cpp` for a `connect(…, &Pty::onWriteReady)`
-binding. Slot name MAY differ (e.g. `drainWriteQueue`) provided the
+binding. Slot name MAY differ (e.g. drainWriteQueue) provided the
 connection target appears.
 
 **INV-5 — `Pty::write` handles `EAGAIN` distinctly from fatal errors.**
@@ -124,7 +124,7 @@ notifier, so the fix needs no second disable site.
 - Per-write coalescing / Nagle-style batching. Distinct optimization;
   this fix preserves the call-per-write API surface.
 - Backpressure feedback to the caller *before* a drop (e.g. a
-  `writeStalled` signal as the queue approaches the cap). Future
+  writeStalled signal as the queue approaches the cap). Future
   enhancement. Note: as of ANTS-1349 / ANTS-1994(3) the overflow paths
   are no longer silent — they `emit writeLost(n)` on the dropped byte
   count (INV-8) in addition to the debug log line. A *pre*-drop stall

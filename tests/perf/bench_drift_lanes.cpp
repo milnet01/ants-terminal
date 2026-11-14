@@ -12,7 +12,8 @@
 //
 // Root defaults to this project (ANTS_PROJECT_ROOT); override with
 // ANTS_PERF_ROOT=<path>. Exits 0 unless ANTS_PERF_MAX_MS=<ms> is set and
-// the total exceeds it.
+// the total exceeds it. ANTS_PERF_DUMP=1 also prints each lane's findings
+// on stderr, which is how to list them without the audit dialog.
 
 #include "featurecoverage.h"
 
@@ -38,6 +39,9 @@ Timed timeLane(QString (*fn)(const QString &), const QString &root) {
     const auto t0 = std::chrono::steady_clock::now();
     const QString out = fn(root);
     const auto t1 = std::chrono::steady_clock::now();
+    // ANTS_PERF_DUMP=1 prints each lane's findings on stderr.
+    if (std::getenv("ANTS_PERF_DUMP") && !out.isEmpty())
+        std::fprintf(stderr, "%s\n", out.toUtf8().constData());
     return {std::chrono::duration<double, std::milli>(t1 - t0).count(),
             out.isEmpty() ? 0 : int(out.count('\n')) + 1};
 }

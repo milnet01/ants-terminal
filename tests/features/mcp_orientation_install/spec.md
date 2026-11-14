@@ -18,49 +18,50 @@ codebase.
 
 Cases:
 
-- `Inv1_IdempotentRewrite` — fresh install + second install yields no
+- `IdempotentRewrite` — fresh install + second install yields no
   change.
-- `Inv1_VersionBumpOverwrites` — second install with a different
-  `ANTS_VERSION` rewrites the file.
-- `Inv2_UserOwnedPreserved` — pre-existing file without marker line
+- `InVersionBodyRefresh` — a file that carries the marker but a stale
+  body is rewritten to the template, even at the same version
+  (ANTS-2038).
+- `UserOwnedPreserved` — pre-existing file without marker line
   is not overwritten.
-- `Inv2_FirstLaunchWritesFresh` — first install writes the file fresh.
-- `Inv3_SettingsMergeIdempotent` — second install does not duplicate
+- `FirstLaunchWritesFresh` — first install writes the file fresh; its
+  body equals `orientationScriptTemplate().arg(ANTS_VERSION).toUtf8()`
+  (INV-12).
+- `SettingsMergeIdempotent` — second install does not duplicate
   the SessionStart entry.
-- `Inv3_NoOpInstallLeavesSettingsUntouched` — an install with nothing to
+- `NoOpInstallLeavesSettingsUntouched` — an install with nothing to
   change leaves settings.json byte-identical (ANTS-5104).
-- `Inv3_SweepsExistingDuplicates` — pre-existing duplicate entries
+- `SweepsExistingDuplicates` — pre-existing duplicate entries
   (capital-cased `Ants Terminal` path) are swept down to one
   canonical entry on install (ANTS-1902 self-healing).
-- `Inv3_EntryFiresOnStartupAndClearOnly` — the Ants entry carries
+- `EntryFiresOnStartupAndClearOnly` — the Ants entry carries
   `"matcher": "startup|clear"`, so it is not re-run on resume or after
   compaction; an older entry without it is upgraded to one entry
   (ANTS-5693).
-- `Inv3_CommandRunnableWithSpacesInPath` — the written `command` is
+- `CommandRunnableWithSpacesInPath` — the written `command` is
   bash-runnable when the install path contains a space (ANTS-1902).
-- `Inv4_SettingsMergePreservesUnrelated` — other top-level keys + a
+- `SettingsMergePreservesUnrelated` — other top-level keys + a
   pre-existing `UserPromptSubmit` hook survive the merge.
-- `Inv5_DisableRemovesEntry` — uninstall removes the marker-bearing
+- `DisableRemovesEntry` — uninstall removes the marker-bearing
   entry but preserves the rest.
-- `Inv6_SelectionHintCoverage` — source-grep on
+- `SelectionHintCoverage` — source-grep on
   `src/claudeintegration.cpp` proves 67/67 descriptors carry a
   selection_hint.
-- `Inv7_SelectionHintFormat` — source-grep proves every hint starts
+- `SelectionHintFormat` — source-grep proves every hint starts
   with "Use " (case-insensitive) + is ≤ 280 chars.
-- `Inv9_ScriptExitZero` — running the installed script with no
+- `ScriptExitZero` — running the installed script with no
   `ANTS_MCP_SOCKET` exits 0 silently.
-- `Inv10_ScriptOutputByteCap` — running the script against a fake
+- `ScriptOutputByteCap` — running the script against a fake
   socket prints ≤ 500 bytes (ANTS-5715).
-- `Inv11_SettingsPermsOwnerOnly` — settings.json is 0600 after the
+- `SettingsPermsOwnerOnly` — settings.json is 0600 after the
   merge.
-- `Inv12_ScriptMatchesTemplate` — after a fresh install, file body
-  equals `orientationScriptTemplate().arg(ANTS_VERSION).toUtf8()`.
-- `Inv13_BadJsonNoClobber` — when settings.json fails to parse, the
+- `BadJsonNoClobber` — when settings.json fails to parse, the
   installer refuses + reports a warning + leaves the file untouched.
-- `Inv13_WrongTypedHooksNoClobber` — valid JSON whose `hooks` is not an
+- `WrongTypedHooksNoClobber` — valid JSON whose `hooks` is not an
   object, or whose `SessionStart` is not an array, is refused the same way
   (ANTS-5104).
-- `Inv14_MainWindowExportsSocket` — source-grep on
+- `MainWindowExportsSocket` — source-grep on
   `src/mainwindow.cpp` proves `qputenv("ANTS_MCP_SOCKET"…)` is called
   immediately after `startMcpServer(mcpSocket)`.
 

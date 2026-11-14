@@ -88,7 +88,7 @@ Four rules the spec left open or stated wrongly. Each is an amendment to
 
 ## Test plan
 
-One `TEST()` per invariant, named `InvNShortName`, in
+One `TEST()` per invariant, named InvNShortName, in
 `test_roadmap_migrate_read.cpp`, on the `test_core` bundle (`features;fast`).
 Each was shown RED under the mutation its own *Breaks when* clause names before
 being accepted green; the results, including the clauses that did not redden,

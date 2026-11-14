@@ -5,7 +5,7 @@ big C/C++ sweep can't tell whether a scan actually finished or was cut off at
 the 60 s ceiling, and one huge modern-C++ TU cppcheck can't parse is silently
 absent from the findings.
 
-Three sub-asks (from `doom-feedback-2026-07-23`):
+Three sub-asks (from doom-feedback-2026-07-23):
 
 1. **Raise the time ceiling.** The per-tool wall-clock cap ceiling
    (`kCapPerToolMax`) and the aggregate ceiling (`kAggregateCapMs`) were 60 s /
@@ -58,7 +58,7 @@ and the two envelope surfaces (mirrors the `audit_run_partial_envelope` /
 - **INV-9** (ANTS-3706) — both the sync (`mainwindow.cpp`) and async-poll
   (`claudeintegration.cpp`) providers emit `parse_failures_detail`.
   `parse_failures[]` keeps its ANTS-3585 bare-path shape, so a consumer
-  already parsing it is unaffected — the same `X` / `X_detail` pairing
+  already parsing it is unaffected — the same `X` / X_detail pairing
   ANTS-3585 established with `incomplete_tools`.
 
 - **INV-3** — `parseFailureFiles(byTool)` unions every tool's

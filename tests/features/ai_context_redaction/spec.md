@@ -154,7 +154,7 @@ The following MUST return `input.text == input` and
 The commit-SHA and UUID cases exist specifically to defend against
 overly greedy generic regex — a 40-char hex SHA must NOT be caught
 by an AWS-secret-style pattern. If it is, the pattern is too loose
-and must be tightened (e.g., require the `aws_secret_access_key`
+and must be tightened (e.g., require the aws_secret_access_key
 context prefix).
 
 ### Invariant 6 — PEM block redaction is line-aware

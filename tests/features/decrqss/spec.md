@@ -56,7 +56,7 @@ a DECRQSS branch to `handleDcs` means the payload dispatch is now
 bifurcated. A naive `if (payload[0] == '$') { ... } else { sixel }`
 is correct, but any refactor that accidentally strips the `$`
 requirement (e.g. "handle anything starting with a DCS intermediate")
-would silently break Sixel-using apps (`img2sixel`, `timg`,
+would silently break Sixel-using apps (img2sixel, timg,
 `chafa --sixel`). This test pins the bifurcation boundary.
 
 ## Invariants (operational)

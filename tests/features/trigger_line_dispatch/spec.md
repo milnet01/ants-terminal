@@ -8,7 +8,7 @@ Non-instant trigger rules with a *dispatch* action (`notify` / `sound` /
 `pattern.match()`:
 
 1. A non-instant rule only fired when the batch happened to end in `\n`/`\r`
-   (`chunkEndsLine`). Under the threaded parse path a batch can end mid-line,
+   (chunkEndsLine). Under the threaded parse path a batch can end mid-line,
    so a rule the user expects "on every completed line matching X" silently
    missed lines whose newline landed in the previous batch.
 2. `match()` (not `globalMatch`, and not per-line) meant a batch spanning three
@@ -26,7 +26,7 @@ Route non-instant dispatch triggers through `onGridLineCompleted` too — the
 grid's per-newline line-completion callback — firing once per completed line on
 the finalized line text. `checkTriggers` now handles only **instant** rules
 (which must fire mid-line, e.g. a password-prompt watcher that never ends in a
-newline), so its `chunkEndsLine` gate is gone.
+newline), so its chunkEndsLine gate is gone.
 
 ## Invariants
 

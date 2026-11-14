@@ -42,7 +42,7 @@ The detached worker outlived the parse-thread's natural termination
 and the GUI's `wait(2000)`. By the time the GUI was deep in
 `~TerminalWidget` running QPainter / QTextLayout teardown, the
 escalation lambda was still alive, racing glibc's malloc arenas
-during the worker's eventual `pthread_exit` and surfacing as heap
+during the worker's eventual pthread_exit and surfacing as heap
 corruption a few free()s later.
 
 ## Fix (0.7.45+): synchronous escalation on the parse-worker
@@ -142,7 +142,7 @@ reap is bounded at 1 s (100 × 10 ms `usleep`).
 ### Invariant 5 — NO `std::thread` in the destructor
 
 Anti-regression for ANTS-1189. The destructor must not spawn any
-`std::thread`, `pthread_create`, `QThread`, or other thread that
+`std::thread`, pthread_create, `QThread`, or other thread that
 outlives the destructor's return. Heap corruption follows from any
 detached worker that races main-thread Qt teardown.
 

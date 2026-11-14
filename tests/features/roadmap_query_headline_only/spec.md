@@ -29,5 +29,5 @@ header.
 
 Before the implementation lands, every test in this file is expected
 to FAIL — the source files don't yet contain the `"headline_only"`
-literal or the `mode_headline_only` projection anchor. The fix is
+literal or the `rcProjectHeadlineOnly` projection anchor. The fix is
 restored, the tests turn GREEN.

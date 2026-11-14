@@ -55,7 +55,7 @@ on every window resize. The clamp preserves explicit DECSTBM.
 But `std::clamp` can only *narrow* a range — never widen it. So when
 the user grows the window without an explicit DECSTBM having ever
 been issued, the implicit "full-screen scroll region" (`top=0,
-bottom=oldRows-1`) stays frozen at `oldRows-1` instead of tracking
+bottom=oldRows-1`) stays frozen at oldRows-1 instead of tracking
 the new `m_rows-1`.
 
 xterm's behaviour is the right reference: when the scroll region is

@@ -51,7 +51,7 @@ combining map.
 
 ## Test execution
 
-`test_combining_on_resize.cpp` exercises the feature via the public
+`test_combining.cpp` exercises the feature via the public
 `TerminalGrid` / `VtParser` API:
 
 1. Feed `"e\xCC\x81"` (U+0065 LATIN SMALL LETTER E + U+0301 COMBINING

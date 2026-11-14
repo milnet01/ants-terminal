@@ -20,7 +20,7 @@ is the headline; two other defects share the file:
    (`unloadScript` → `QFile::remove`). If `dbus-send` exits
    non-zero, the file leaks. If the second `dbus-send` errors,
    the file leaks. If the QProcess never starts, the file
-   leaks. /tmp accumulates `kwin_pos_ants_XXXXXX.js` files at a
+   leaks. /tmp accumulates kwin_pos_ants_XXXXXX.js files at a
    rate of ~10 per Quake-mode toggle on a non-KWin desktop.
 
 3. **No KWin-presence guard.** The setPosition path runs every

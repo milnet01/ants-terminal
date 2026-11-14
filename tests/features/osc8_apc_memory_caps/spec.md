@@ -2,7 +2,7 @@
 
 ## Contract
 
-Both `TerminalGrid::processOsc` (OSC 8 hyperlinks) and
+Both `TerminalGrid::handleOsc8` (OSC 8 hyperlinks) and
 `TerminalGrid::handleApc` (Kitty graphics protocol) accumulate
 attacker-controlled bytes in long-lived state. The VT parser caps each
 OSC / APC envelope at 10 MB, but the downstream accumulators have no

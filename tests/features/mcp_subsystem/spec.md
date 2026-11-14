@@ -21,13 +21,12 @@ current `CLAUDE.md` Module map clears the spec's ≥ 15 lane floor
    `cmdSubsystem`.
 4. MCP `tools/list` registers a single `subsystem` entry with `op`
    enum `{map, files, recent_changes}` and `op` in `required[]`.
-5. MCP `tools/call` dispatcher carries
-   `toolName == "subsystem" && m_subsystemProvider`.
-6. `claudeintegration.h` declares `setSubsystemProvider` plus
-   `m_subsystemProvider` member with the
-   `std::function<QString(const QJsonObject&)>` signature.
-7. `mainwindow.cpp::setupClaudeMcpProviders` calls
-   `setSubsystemProvider` and delegates to `cmdSubsystem`.
+5. MCP `tools/call` dispatcher finds the tool in the
+   `m_toolProviders` registry; it has no per-tool clause (ANTS-1253).
+6. `claudeintegration.h` declares `registerToolProvider` plus the
+   `m_toolProviders` registry member (ANTS-1253).
+7. `subsystem` is registered through `registerToolProvider` and
+   delegates to `cmdSubsystem`.
 8. `cmdSubsystem` body contains the op-dispatch chain (string
    literals `"map"`, `"files"`, `"recent_changes"` appear) plus
    the `bad_op` and `unknown_lane` error codes.

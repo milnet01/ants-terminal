@@ -27,7 +27,7 @@ Three pieces:
    the JSONL, recognizes:
    - `assistant` events with a `tool_use` block whose
      `input.run_in_background == true` → start a partial entry keyed
-     by `tool_use.id`.
+     by tool_use.id.
    - `user` events with a `tool_result` whose
      `toolUseResult.backgroundTaskId` is set → finalize the entry by
      stamping its public id and parsing the output path out of the

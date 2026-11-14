@@ -39,7 +39,7 @@ more often than followed, and the check is not a flood.
   `audit-fix`, nor when the source names no review origin. A check that fires
   on correctly-filed work trains its reader to ignore it.
 - **INV-4** — every live spelling of one origin triggers it. The standard
-  keeps `indie-review-`, `code-quality-review-` and `review-code-` live for
+  keeps `indie-review-`, `code-quality-review-` and review-code- live for
   the same origin, so a check recognising only the current name misses most
   of the corpus.
 - **INV-5** — the suggestion matches the origin: an `audit-` or `check-code`

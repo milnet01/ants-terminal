@@ -18,7 +18,7 @@ a stale phrase) and the named deliverable in the ANTS-3406 headline.
 Full-body-replace is deliberately out of scope — nobody requested it, it
 carries a clobber risk, and it has a genuine ambiguity (what "the body"
 means when a bullet has an internal blank line). It can be added later
-under its own arg (`new_body`) if a real need appears.
+under its own arg (new_body) if a real need appears.
 
 The handler is a standalone `cmdRoadmapLogAmendBody`, NOT a new mode
 threaded into the delicate `cmdRoadmapLogFlip` (ANTS-2059 history). It

@@ -26,13 +26,12 @@ ANTS-1248 / ANTS-1249 harnesses.
 6. MCP `tools/list` registers a single `git_state` entry with
    `op` enum {status, log, diff}. (ANTS-3365 — `op` is no longer in
    `required[]`; it defaults to `"status"`.)
-7. MCP `tools/call` dispatcher carries
-   `toolName == "git_state" && m_gitStateProvider`.
-8. `claudeintegration.h` declares `setGitStateProvider` +
-   `m_gitStateProvider` member with the
-   `std::function<QString(const QJsonObject&)>` signature.
-9. `mainwindow.cpp::setupClaudeMcpProviders` calls
-   `setGitStateProvider` and delegates to `cmdGitState`.
+7. MCP `tools/call` dispatcher finds the tool in the
+   `m_toolProviders` registry; it has no per-tool clause (ANTS-1253).
+8. `claudeintegration.h` declares `registerToolProvider` and the
+   `m_toolProviders` registry member (ANTS-1253).
+9. `git_state` is registered through `registerToolProvider` and
+   delegates to `cmdGitState`.
 10. `cmdGitState` body contains the op-dispatch chain (string
     literals `"status"`, `"log"`, `"diff"` appear).
 11. Stricter range regex appears in source — the regex literal

@@ -100,9 +100,11 @@ static bool isPseudoToken(const QString &tok) {
 static bool isNonNameShape(const QString &tok) {
     // An id placeholder (`ANTS-NN`) and test-family shorthand
     // (`Inv4`, `Inv3b`, `Ants3815`, `Ants5118Inv1`) name no symbol; they
-    // resolved only as substrings of longer names.
-    static const QRegularExpression idPlaceholder(R"(^[A-Z]+-N+$)");
-    if (idPlaceholder.match(tok).hasMatch()) return true;
+    // resolved only as substrings of longer names. ANTS-5687 — a real item
+    // id (`ANTS-4146`) and a reference to its invariants
+    // (`ANTS-1237-INV-N`, `ANTS-1224-INV-1..3`) name a roadmap item.
+    static const QRegularExpression itemId(R"(^[A-Z]+-(N+|\d+)(-INV-[\dN.]+)?$)");
+    if (itemId.match(tok).hasMatch()) return true;
     static const QRegularExpression testFamily(R"(^(Ants\d+)?(Inv\d+[a-z]?)?$)");
     if (testFamily.match(tok).hasMatch()) return true;
     // A `key:value` pair (one colon, not `::`) is report or JSON text.

@@ -4,7 +4,7 @@
 
 `TerminalWidget::openHyperlink` warned before following an OSC 8 link only when
 the *visible label* itself parsed as a hostname that differed from the URL host
-(the classic homograph: label `github.com` → URL `evil.com`). The far more
+(the classic homograph: label `github.com` → URL evil.com). The far more
 common phishing shape — a benign label (`Download`, `click here`) over a hostile
 URL — yielded an empty `visibleHost`, so the guard was skipped and the link
 opened with no prompt.

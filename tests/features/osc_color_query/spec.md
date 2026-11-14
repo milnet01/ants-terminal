@@ -45,7 +45,7 @@ on a light theme, producing unreadable output.
 
 The 16-bit encoding is load-bearing: xterm's spec uses
 `rgb:RRRR/GGGG/BBBB`; many parsers accept 8-bit (`rgb:RR/GG/BB`) too
-but some (notably `xterm-query` and termenv) reject the 8-bit form.
+but some (notably xterm-query and termenv) reject the 8-bit form.
 Emitting the wider form is the conservative choice.
 
 INV-4 is a deliberate security / UX policy: a remote process inside
