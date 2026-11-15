@@ -92923,10 +92923,14 @@ measured Ants adding about 5,250 tokens to every request.
   Source: OneUp feedback 2026-11-15 (three full reviews).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-6784] **comment_claims reads INV-<n> as a spec invariant id, and a token starting with -- as a flag, not a path.**
+- ✅ [ANTS-6784] **comment_claims reads INV-<n> as a spec invariant id, and a token starting with -- as a flag, not a path.**
   42 unknown_ticket rows were spec invariants (INV-9, INV-7 ...) looked
   up on the roadmap. One dead_reference read
   `--skip-repo/--auto-skip-repos` (oneup/gui/run.py) as a path.
+  INV-<n> ids are dropped from the roadmap id set before prefixes are
+  taken; a see-token starting with - is a flag. On OneUp all 42 old
+  findings were these false alarms and none remain; Ants' own findings
+  are unchanged.
   **Layman:** The comment checker raised 43 false alarms in one OneUp run: invariant names taken for missing tickets, and command-line flags taken for missing files.
   Kind: fix.
   Source: OneUp feedback 2026-11-15 (three full reviews).

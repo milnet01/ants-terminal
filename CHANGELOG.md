@@ -442,6 +442,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`comment_claims` reads `INV-<n>` as a spec invariant and `--flag` as a flag** (ANTS-6784)
+  A roadmap that quotes an invariant no longer turns every `INV-9` in a
+  comment into a missing ticket. A `see` naming flags, such as
+  `--skip-repo/--auto-skip-repos`, is no longer looked up as a path.
+
 - **`function_sizes` finds where a shell function ends** (ANTS-6783)
   Shell files are scanned with shell rules: `#` comments, shell quoting,
   backslash escapes and heredoc bodies. A glob such as `"$dir"/*.repo` no

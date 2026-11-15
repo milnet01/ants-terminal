@@ -432,7 +432,9 @@ private:
             if (tok.isEmpty()) continue;
             const int at = int(m.capturedStart(1));
             if (tok.contains(QLatin1Char('/'))) {
+                // A token starting with `-` is a flag (`--skip-repo/--auto-skip-repos`).
                 if (tok.contains(QLatin1String("://")) || tok.startsWith(QLatin1Char('~'))
+                    || tok.startsWith(QLatin1Char('-'))
                     || tok.startsWith(QLatin1Char('/')) || tok.contains(QLatin1Char('*'))
                     || tok.contains(QLatin1Char('<')) || tok.contains(QLatin1Char('{'))
                     || tok.contains(QLatin1Char('$')))
@@ -539,6 +541,9 @@ QSet<QString> roadmapIds(const QString &rootCanonical) {
         for (auto it = item.globalMatch(readText(rootCanonical, root.filePath(f))); it.hasNext();)
             ids.insert(it.next().captured(1));
 
+    // ANTS-6784 — INV-<n> names a spec invariant; a roadmap item quoting one
+    // (`  - **INV-1** …`) does not make INV a ticket prefix.
+    ids.removeIf([](const QString &id) { return id.startsWith(QLatin1String("INV-")); });
     QSet<QString> prefixes;
     for (const QString &id : std::as_const(ids)) prefixes.insert(id.section(QLatin1Char('-'), 0, 0));
     static const QRegularExpression cited(QStringLiteral("\\b([A-Z][A-Z0-9]*)-\\d+\\b"));

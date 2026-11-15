@@ -163,6 +163,22 @@ TEST(CommentClaims, Inv4ChangelogIdIsKnown) {
         << t.join(QStringLiteral(" | ")).toStdString();
 }
 
+// ANTS-6784 — measured on OneUp: a roadmap item quoting `**INV-1**` made INV a
+// ticket prefix, and a pair of flags read as a path.
+TEST(CommentClaims, Inv4InvariantIdsAndFlagsAreNotClaims) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("ROADMAP.md"),
+              "- 📋 [ANTS-1] **One.**\n  - **INV-1** Every theme supplies every key.\n");
+    writeFile(dir.filePath("src/c.py"),
+              "# INV-9 holds here; see --skip-repo/--auto-skip-repos. ANTS-78 did not.\n");
+    const QJsonObject r = call(dir);
+    EXPECT_EQ(quotes(rows(r, "findings", QStringLiteral("unknown_ticket"))),
+              (QStringList{QStringLiteral("ANTS-78")}))
+        << QJsonDocument(r).toJson().constData();
+    EXPECT_TRUE(rows(r, "findings", QStringLiteral("dead_reference")).isEmpty())
+        << QJsonDocument(r).toJson().constData();
+}
+
 TEST(CommentClaims, Inv5CensusNumbers) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QList<QJsonObject> c = rows(call(*dir), "candidates", QStringLiteral("census_number"));
