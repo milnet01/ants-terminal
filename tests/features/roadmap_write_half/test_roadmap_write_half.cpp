@@ -3854,6 +3854,37 @@ TEST(RoadmapWriteHalf, Ants6738UnpaddedIdsStayUnpadded) {
               QStringLiteral("DEMO-13"));
 }
 
+// ANTS-6780 — one stray padded id does not set the width. RetroDB kept a
+// dropped PASS-59-0298 among unpadded ids, and every later append padded.
+// DEMO-7 and DEMO-3 with a dropped DEMO-0005: append issues DEMO-8.
+TEST(RoadmapWriteHalf, Ants6780OneStrayPaddedIdDoesNotPad) {
+    const auto dump = [](const QJsonObject &o) {
+        return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+    };
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    QByteArray md = fixture();
+    md.replace("DEMO-000", "DEMO-");
+    md.replace("## Bundles\n",
+               "- \xF0\x9F\x9A\xAB [DEMO-0005] **A dropped item.**\n"
+               "  Layman: A dropped thing.\n"
+               "  Kind: chore.\n"
+               "  Source: seed.\n"
+               "\n"
+               "## Bundles\n");
+    const QString root = seedMigrated(guard, tmp, md, &projectId);
+    ASSERT_FALSE(root.isEmpty());
+
+    RemoteControl rc(nullptr);
+    const QJsonObject plain =
+        rc.cmdRoadmapLogAppendForTest(appendReq(root, QStringLiteral("Plain.")))
+            .object();
+    ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dump(plain);
+    EXPECT_EQ(plain.value(QStringLiteral("id")).toString(), QStringLiteral("DEMO-8"));
+}
+
 // ANTS-6737 — § 3.9's unversioned archive survives a migration and a render:
 // discovery takes it as a source, its slugs carry `unversioned-`, the load
 // places it, and a render writes it back with its item.

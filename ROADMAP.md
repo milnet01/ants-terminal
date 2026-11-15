@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6779 -->
+<!-- ants-roadmap-id-high-water: ANTS=6780 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92880,6 +92880,22 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: claude-config feedback 2026-11-15.
   Lanes: mcp.
+
+- ✅ [ANTS-6780] **One stray padded id makes every later counter id padded.**
+  RetroDB's ids are PASS-59-1 .. PASS-59-313, unpadded, except the
+  dropped PASS-59-0298 filed before ANTS-6738 shipped.
+  RoadmapStore::counterIdWidth answers 4 when any all-digit id starts
+  with 0, so that one dropped id padded PASS-59-0313 on 2026-11-15.
+  Fix: decide by majority — pad when ids starting with 0 are at least
+  as many as unpadded ids shorter than four digits. Follows ANTS-6738.
+  2026-11-15: counterIdWidth decides by majority. Test:
+  RoadmapWriteHalf.Ants6780OneStrayPaddedIdDoesNotPad, red first
+  (DEMO-0008). Reaches RetroDB once ants-mcpd is rebuilt and it
+  reconnects.
+  **Layman:** After one roadmap item was once numbered 0298 by mistake, every new item in that project got a leading zero too.
+  Kind: fix.
+  Source: RetroDB feedback 2026-11-15.
+  Lanes: roadmap-write.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

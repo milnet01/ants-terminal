@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A new roadmap item follows how most of the project's ids are written, so one old zero-padded id no longer gives every new item a leading zero** (ANTS-6780)
+
 - **Answering the "Let Ants pick the Claude model?" prompt saves quietly: an open Settings window stays open and no "Config reloaded" toast appears** (ANTS-6465)
 
 - **The list of trusted project check commands is saved in ~/.config/ants-terminal with the other settings; an existing list is moved there once, safely.** (ANTS-6768)

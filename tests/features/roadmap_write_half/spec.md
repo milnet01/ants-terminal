@@ -382,8 +382,13 @@ re-layout. *Test:* `RoadmapWriteHalf.Ants5399LayoutDriftPointsAtRender`.
 ## ANTS-6738 — a counter id keeps the prefix's width
 
 On the store path, `append` and `append_batch` pad a counter id to four
-digits only where the prefix holds no all-digit id yet or one of them
-starts with `0` (`DEMO-0007`). A prefix whose ids are unpadded gets
-unpadded ids: `DEMO-7` in the store gives `DEMO-8`, and `id_hint:12`
-gives `DEMO-12`. The markdown path keeps four digits. *Test:*
+digits only where the prefix's all-digit ids starting with `0`
+(`DEMO-0007`) are at least as many as its unpadded ids under four
+digits. A prefix whose ids are unpadded gets unpadded ids: `DEMO-7` in
+the store gives `DEMO-8`, and `id_hint:12` gives `DEMO-12`. The markdown
+path keeps four digits. *Test:*
 `RoadmapWriteHalf.Ants6738UnpaddedIdsStayUnpadded`.
+
+ANTS-6780: one stray padded id among unpadded ones does not pad.
+`DEMO-7` and `DEMO-3` with a dropped `DEMO-0005` give `DEMO-8`. *Test:*
+`RoadmapWriteHalf.Ants6780OneStrayPaddedIdDoesNotPad`.

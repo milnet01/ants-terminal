@@ -1265,8 +1265,9 @@ public:
                                          QString *error = nullptr) const;
 
     // ANTS-6738 — the zero-pad width for the next counter id under `prefix`:
-    // 4 where the prefix holds no all-digit id yet or one of them starts with
-    // 0 (DEMO-0007), else 0 (PASS-59-297). A failed query answers 4, the
+    // 4 where the prefix's all-digit ids starting with 0 (DEMO-0007) are at
+    // least as many as its unpadded ids under four digits (PASS-59-297),
+    // else 0 (ANTS-6780). No such id, or a failed query, answers 4, the
     // width the allocators always used.
     int counterIdWidth(qint64 projectId, const QString &prefix) const;
     // `<prefix>-<n>`, zero-padded to `width` digits.

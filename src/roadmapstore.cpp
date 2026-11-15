@@ -4146,18 +4146,25 @@ int RoadmapStore::counterIdWidth(qint64 projectId, const QString &prefix) const 
         return kPadded;
     QSqlQuery q(const_cast<QSqlDatabase &>(m_db));
     // maxAllocatedId()'s filter: this prefix's all-digit suffixes only.
+    // ANTS-6780 — the majority decides, so one stray padded id (RetroDB's
+    // dropped PASS-59-0298) cannot pad every later id. A suffix starting
+    // with 0 votes padded; one shorter than kPadded digits votes unpadded;
+    // a longer one fits either. A tie, none included, pads.
     q.prepare(QStringLiteral(
-        "SELECT COUNT(*), COALESCE(SUM(substr(id, ?) GLOB '0?*'), 0) FROM item "
-        "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*'"));
+        "SELECT COALESCE(SUM(s GLOB '0?*'), 0), "
+        "COALESCE(SUM(s NOT GLOB '0*' AND length(s) < ?), 0) "
+        "FROM (SELECT substr(id, ?) AS s FROM item "
+        "WHERE project_id = ? AND id GLOB ? AND substr(id, ?) NOT GLOB '*[^0-9]*')"));
+    q.addBindValue(kPadded);
     q.addBindValue(prefix.size() + 2);
     q.addBindValue(projectId);
     q.addBindValue(prefix + QStringLiteral("-[0-9]*"));
     q.addBindValue(prefix.size() + 2);
     if (!q.exec() || !q.next())
         return kPadded;
-    const qint64 ids = q.value(0).toLongLong();
-    const qint64 padded = q.value(1).toLongLong();
-    return (ids == 0 || padded > 0) ? kPadded : 0;
+    const qint64 padded = q.value(0).toLongLong();
+    const qint64 unpadded = q.value(1).toLongLong();
+    return padded >= unpadded ? kPadded : 0;
 }
 
 QString RoadmapStore::formatCounterId(const QString &prefix, qint64 n, int width) {
