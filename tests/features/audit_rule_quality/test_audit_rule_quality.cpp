@@ -212,6 +212,31 @@ void testLoadsV1FireRecords() {
     if (rows.size() == 1) CHECK_EQ(rows[0].fires30d, 2, "v1 fires counted");
 }
 
+// --- Test 9 — ANTS-6480: two dialogs open on one project each keep their
+// records when both close. --------------------------------------------------
+void testTwoTrackersKeepEachOthersRecords() {
+    QTemporaryDir tmp;
+    {
+        RuleQualityTracker a(tmp.path());
+        RuleQualityTracker b(tmp.path());
+        a.recordFire("rule_a", "x");
+        a.recordSuppression("rule_a", "ka", "line a", "noise");
+        b.recordFire("rule_a", "y");
+        b.recordFire("rule_b", "z");
+        b.recordSuppression("rule_b", "kb", "line b", "noise");
+        a.save();
+        b.save();
+    }
+    RuleQualityTracker t(tmp.path());
+    int fires = 0, supps = 0;
+    for (const auto &row : t.report()) {
+        fires += row.firesAllTime;
+        supps += row.suppressionsAllTime;
+    }
+    CHECK_EQ(fires, 3, "a fire recorded by the other tracker was lost");
+    CHECK_EQ(supps, 2, "a suppression recorded by the other tracker was lost");
+}
+
 #define RQ_TEST(NAME) \
     TEST(AuditRuleQuality, NAME) { \
         int before = failures; \
@@ -227,5 +252,6 @@ RQ_TEST(PersistenceRoundTrip)
 RQ_TEST(SaveOnlyWhenChanged)
 RQ_TEST(ManyFiresStayCountedAndSmall)
 RQ_TEST(LoadsV1FireRecords)
+RQ_TEST(TwoTrackersKeepEachOthersRecords)
 
 }  // namespace

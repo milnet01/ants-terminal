@@ -448,6 +448,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two audit windows open on one project both keep their rule-quality history when they close** (ANTS-6480)
+  Saving re-reads audit_rule_quality.json under its lock and adds only
+  what that window recorded since its last save.
+
 - **Allowing an audit finding keeps every entry already in .audit_allowlist.json** (ANTS-6478)
   A file that cannot be read or parsed is left as it is and the
   status line says the allowlist could not be written. The write holds

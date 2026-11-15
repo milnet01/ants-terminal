@@ -93912,7 +93912,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 26-audit-dialog (Low).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6480] **auditrulequality.cpp: .**
+- ✅ [ANTS-6480] **auditrulequality.cpp: .**
   `auditrulequality.cpp:234` — . A whole-file rewrite with no lock. Two
   dialogs open on one project each load at construction and save on
   close, so the last writer wins and the other's suppression history is
@@ -93922,6 +93922,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): take
   `ConfigWriteLock` and merge on save, as `auditfpledger` does.
   Ledger row 314, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: RuleQualityTracker::save() holds ConfigWriteLock,
+  re-reads the file and adds the unsaved fires and suppressions. Test
+  AuditRuleQuality.TwoTrackersKeepEachOthersRecords.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 27-audit-engine (Medium).

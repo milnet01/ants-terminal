@@ -105,7 +105,10 @@ public:
 
     // Force-flush to disk. Called automatically on destruction; exposed
     // for the tests + the AuditDialog "Rule Quality" view-open path.
-    void save() const;
+    // ANTS-6480 — under the file's write lock, re-reads it and adds only
+    // what this tracker recorded since its last save, so another tracker's
+    // records on the same project survive.
+    void save();
 
     // Reload from disk — used by the unit tests, not production.
     void reload();
@@ -135,7 +138,11 @@ private:
     QVector<SuppressRecord> m_suppressions;
     // ANTS-5085 — records added since the last save; save() skips a clean
     // tracker, so closing the dialog does not rewrite an unchanged file.
-    mutable bool m_dirty = false;
+    bool m_dirty = false;
+    // ANTS-6480 — what was recorded since the last load or save, added to
+    // the file as it is at save time.
+    QHash<QPair<QString, QDate>, int> m_unsavedFires;
+    QVector<SuppressRecord> m_unsavedSuppressions;
 
     // Bounded retention. We keep at most this many suppression records —
     // older ones are pruned on save. Fire days need no clamp: one per rule
@@ -144,4 +151,8 @@ private:
     static constexpr int RETENTION_DAYS = 90;
 
     void load();
+    // False when the file exists but cannot be read or parsed; the vectors
+    // are then left empty. An absent file reads as empty history.
+    static bool readHistory(const QString &path, QVector<FireDay> &fireDays,
+                            QVector<SuppressRecord> &suppressions);
 };

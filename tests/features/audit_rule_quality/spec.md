@@ -40,6 +40,9 @@ exposes:
    (FIFO). Fires need no clamp: one entry per rule per day.
 6. **Fires stay counted and small** (ANTS-5085) — 60,000 fires for one rule
    survive save and reload with `firesAllTime` 60,000, in a file under 64 KiB.
+7. **Two trackers keep each other's records** (ANTS-6480) — `save()` holds
+   the file's write lock, re-reads the file, and adds only the fires and
+   suppressions recorded since this tracker's last save.
 
 ## Rationale
 
