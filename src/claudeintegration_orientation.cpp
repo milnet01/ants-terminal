@@ -728,7 +728,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     descProp["type"] = "string";
                     descProp["description"] = QStringLiteral(
                         "The free-text task description (the user's prompt "
-                        "or a sub-task). Parsed into ANTS-NNNN ids, "
+                        "or a sub-task). Parsed into item ids, "
                         "file-path tokens, and >=4-char terms for ranking.");
                     props["description"] = descProp;
                     props["caller_cwd"]  = makeCallerCwdReadProp();

@@ -17,7 +17,7 @@ against the source files.
   `src/remotecontrol.h` and defined in the remotecontrol TUs with an
   `ANTS-1306` anchor comment. Source: docs/specs/ANTS-1306-task-priors-mcp-bundled-context.md INV-1.
 - **INV-2**: term extraction uses the three documented regexes — id
-  `ANTS-[0-9]+`, the known-extension path set, and
+  `[A-Za-z][A-Za-z0-9_-]{0,15}-[0-9]{3,}`, the known-extension path set, and
   `[A-Za-z_][A-Za-z0-9_]{3,}` for terms — and a process-static
   stopword set. Source: ANTS-1306 §3.2 / INV-2/INV-3.
 - **INV-3**: empty/no-term `description` refuses `bad_args`; unresolved

@@ -2973,7 +2973,7 @@ const QSet<QString> &taskPriorStopwords() {
 }
 
 struct TpTerms {
-    QStringList ids;    // ANTS-NNNN, upper-cased, deduped
+    QStringList ids;    // <PREFIX>-NNN, upper-cased, deduped
     QStringList paths;  // known-extension tokens, deduped
     QStringList terms;  // lower-cased words >=4, minus stopwords, cap 25
 };
@@ -2981,9 +2981,11 @@ struct TpTerms {
 // ANTS-1306 § 3.2 — deterministic three-set extraction, fixed order.
 TpTerms tpExtract(const QString &description) {
     TpTerms t;
+    // ANTS-6256 — any project's prefix: letter-led, up to 16 characters
+    // (kIdPrefixShape's cap). Three or more digits, so UTF-8 or SHA-1 is not
+    // read as an id.
     static const QRegularExpression idRe(
-        QStringLiteral("ANTS-[0-9]+"),
-        QRegularExpression::CaseInsensitiveOption);
+        QStringLiteral("\\b[A-Za-z][A-Za-z0-9_-]{0,15}-[0-9]{3,}\\b"));
     auto idIt = idRe.globalMatch(description);
     while (idIt.hasNext()) {
         const QString id = idIt.next().captured(0).toUpper();

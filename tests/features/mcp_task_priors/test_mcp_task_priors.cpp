@@ -80,8 +80,8 @@ TEST(McpTaskPriors, WiringAndLogicContract) {
            "INV-1", "ANTS-1306 anchor comment missing");
 
     // INV-2 — the three extraction regexes + a stopword set.
-    expect(has(rcCpp, "ANTS-[0-9]+"),
-           "INV-2", "id regex ANTS-[0-9]+ missing");
+    expect(has(rcCpp, "[A-Za-z][A-Za-z0-9_-]{0,15}-[0-9]{3,}"),
+           "INV-2", "prefix-agnostic id regex missing (ANTS-6256)");
     expect(has(rcCpp, "cpp|cc|cxx|c|h|hpp|hh|hxx|py|lua|sh|md|json|cmake|txt"),
            "INV-2", "path-extension regex set missing");
     expect(has(rcCpp, "[A-Za-z_][A-Za-z0-9_]{3,}"),
@@ -339,4 +339,51 @@ TEST(McpTaskPriors, HonoursTheSpecsDirOverride) {
     ASSERT_EQ(specs.size(), 1);
     EXPECT_EQ(specs.at(0).toObject().value(QStringLiteral("path")).toString(),
               QStringLiteral("design/contracts/DOOM-0331-bloom.md"));
+}
+
+// ANTS-6256 — an id in the description is recognised whatever the project's
+// prefix, so its card gets the id boost. The description also names a word
+// only the other card holds; without the boost that card ranks first.
+TEST(McpTaskPriors, RecognisesIdsOfAnyProjectPrefix) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QFile f(root + QStringLiteral("/ROADMAP.md"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("# Roadmap\n\n## Work\n\n"
+            "- 📋 [DOOM-0041] **The zebrafish card.**\n"
+            "- 📋 [DOOM-0042] **The other card.**\n");
+    f.close();
+
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]  = root;
+    req[QStringLiteral("description")] = QStringLiteral("Fix doom-0042 and the zebrafish");
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdTaskPriors(req).object();
+
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(out.value(QStringLiteral("ids")).toArray(),
+              (QJsonArray{QStringLiteral("DOOM-0042")}))
+        << QJsonDocument(out).toJson().toStdString();
+    const QJsonArray cards = out.value(QStringLiteral("roadmap_cards")).toArray();
+    ASSERT_FALSE(cards.isEmpty()) << QJsonDocument(out).toJson().toStdString();
+    EXPECT_EQ(cards.at(0).toObject().value(QStringLiteral("id")).toString(),
+              QStringLiteral("DOOM-0042"))
+        << QJsonDocument(out).toJson().toStdString();
+}
+
+// ANTS-6256 — an id needs three or more digits after its dash, as every id in
+// the roadmap store has (2026-11-15), so UTF-8, SHA-1 and x86-64 are not ids.
+TEST(McpTaskPriors, VersionLikeTokensAreNotIds) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")]  = root;
+    req[QStringLiteral("description")] = QStringLiteral("decode UTF-8 and SHA-1 on x86-64");
+    RemoteControl rc(nullptr);
+    const QJsonObject out = rc.cmdTaskPriors(req).object();
+    EXPECT_TRUE(out.value(QStringLiteral("ids")).toArray().isEmpty())
+        << QJsonDocument(out).toJson().toStdString();
 }

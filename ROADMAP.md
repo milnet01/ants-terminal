@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6774 -->
+<!-- ants-roadmap-id-high-water: ANTS=6775 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -106403,7 +106403,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L22-F6).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6256] **task_priors recognises only ANTS- ids, so its id boosts never fire on other projects.**
+- ✅ [ANTS-6256] **task_priors recognises only ANTS- ids, so its id boosts never fire on other projects.**
   From ANTS-6131. cmdTaskPriors extracts ids with "ANTS-[0-9]+" in
   src/remotecontrol_state.cpp, so the +5 id boosts never fire for
   DOOM-, LOTTO- and other prefixes. Fix: the prefix-agnostic shape
@@ -106412,6 +106412,10 @@ worked after these.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
   The 2026-11-06 reviews also found this: row 914
   `src/remotecontrol_state.cpp:2967`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15. Ids are any letter-led prefix plus three or more
+  digits (every id in the store has three or more, measured 2026-11-15).
+  Tests: McpTaskPriors.RecognisesIdsOfAnyProjectPrefix,
+  VersionLikeTokensAreNotIds. Side finding filed as ANTS-6775.
   **Layman:** A tool that gathers context for a task only recognises this project's item numbers, so it ranks worse on every other project.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F15).
@@ -106915,6 +106919,19 @@ worked after these.
   Kind: doc-fix.
   Source: close-findings-sweep-2026-10-29.
   Lanes: roadmap-parse-render.
+
+- 📋 [ANTS-6775] **task_priors gives a spec its +5 id boost when the file name starts with the named id, topic suffix and all.**
+  cmdTaskPriors (src/remotecontrol_state.cpp) adds +5 to a spec only
+  when terms.ids contains the whole file stem upper-cased. Spec files
+  are named <ID>-<topic>.md (ANTS-1306-task-priors-....md), so the
+  stem never equals the id and the boost never fires. Fix: match the
+  id as the stem's leading <PREFIX>-<digits> part. Red test: a spec
+  named DEMO-0001-topic.md and a description naming DEMO-0001.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** The context tool's bonus for a spec named in the task never applies, because spec file names carry a topic after the number.
+  Kind: fix.
+  Source: found-while-fixing-ANTS-6256-2026-11-15.
+  Lanes: mcp-state-workspace.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

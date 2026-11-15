@@ -74,8 +74,9 @@ MCP-only: registered via `registerToolProvider` like `spec_query`;
 The `description` string is parsed once into three deterministic,
 case-folded token sets (extraction order fixed for testability):
 
-1. **ids** — every match of `ANTS-[0-9]+` (case-insensitive),
-   upper-cased and de-duplicated. (e.g. `ants-1306` → `ANTS-1306`.)
+1. **ids** — every match of `\b[A-Za-z][A-Za-z0-9_-]{0,15}-[0-9]{3,}\b`:
+   any project's prefix, three or more digits. Upper-cased and
+   de-duplicated. (e.g. `ants-1306` → `ANTS-1306`, `DOOM-0042` stays.)
 2. **paths** — every match of
    `[\w./-]+\.(?:cpp|cc|cxx|c|h|hpp|hh|hxx|py|lua|sh|md|json|cmake|txt)`
    (case-sensitive extension), de-duplicated, with any leading `./`
