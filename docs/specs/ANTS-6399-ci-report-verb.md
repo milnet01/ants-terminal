@@ -222,7 +222,10 @@ their `name:`, `uses:`, `run:` (single line or `|` block), `if:`,
   `name:`, else its path, which GitHub shows for an unnamed workflow. Its
   jobs are matched only within that file.
 - A job is matched to the API's job name by its `name:`, else its id,
-  exactly. Where none matches exactly, an API name beginning `<name> (`
+  exactly. Where none matches exactly, a `name:` holding only
+  `${{ matrix.<key> }}` expressions matches the names it expands to, each
+  key standing for one of its axis or `include` values, where exactly one
+  job's does (ANTS-6700). Failing that, an API name beginning `<name> (`
   matches the job named `<name>`: a matrix job's API name is
   `<name> (<values>)`. That fallback applies only when exactly one job
   fits and no job's `name:` holds an expression.
@@ -437,6 +440,7 @@ removed and seen to fail before it lands.
 | ANTS-6402 tests (`McpCiReport.Ants6402*`) | INV-1's amendment; § 4.4's matrix, alias, flow-map and block-map rules; § 4.5's pages and log ends |
 | `McpCiReport.Ants6415*` to `Ants6421*` | § 4.2's `window.files`; § 4.3's `alternating`, `budget_trend` detail and matrix `runner_latest`; § 4.4's `dynamic` runs and budgets at a run's commit |
 | fake-`gh` verb tests | INV-6, INV-8, INV-9, INV-10 |
+| `McpCiReport.Ants6700MatrixExpressionNameMatchesItsLegs` | § 4.4's matrix-expression job names |
 | `McpCiReport.Ants6722ForkReadsTheBranchRemote` | § 4.2's choice of repository; § 4.3's `repo_ambiguous` |
 | `session_orient` block test | INV-7 |
 | source checks, with `tests/features/standalone_mcp_server` | INV-11 |

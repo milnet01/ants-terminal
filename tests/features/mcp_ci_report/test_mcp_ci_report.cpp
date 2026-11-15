@@ -1340,6 +1340,33 @@ TEST(McpCiReport, Ants6420RunnerLatestThroughAMatrix) {
         << "a matrix it cannot read names no runner";
 }
 
+// ANTS-6700 (UT_Ants): a job named by a matrix expression matches the names
+// the matrix expands it to, from an axis or `include` entries; a value no
+// entry holds stays unread.
+TEST(McpCiReport, Ants6700MatrixExpressionNameMatchesItsLegs) {
+    const CiWorkflows::Result wf = workflow(QStringLiteral(
+        "name: CI\n"
+        "jobs:\n"
+        "  b:\n"
+        "    name: ${{ matrix.name }} on ${{ matrix.cc }}\n"
+        "    timeout-minutes: 10\n"
+        "    strategy:\n"
+        "      matrix:\n"
+        "        cc: [gcc, clang]\n"
+        "        include:\n"
+        "          - name: Linux\n"
+        "          - name: Mac\n"));
+    History h;
+    h.add(1, kNow.addSecs(-3600), QStringLiteral("Mac on clang"), 0, 540);
+    h.add(2, kNow.addSecs(-3600), QStringLiteral("Windows on gcc"), 0, 60);
+    const CiReport::Analysis a = CiReport::analyse(h.json(), wf, kNow, 30);
+    const auto near = ofCheck(a, "near_budget");
+    ASSERT_EQ(near.size(), 1) << dump(a.findings) << dump(a.unread);
+    EXPECT_EQ(near[0].value("job").toString(), QStringLiteral("Mac on clang"));
+    ASSERT_EQ(a.unread.size(), 1) << dump(a.unread);
+    EXPECT_EQ(a.unread[0].toObject().value("job").toString(), QStringLiteral("Windows on gcc"));
+}
+
 // ANTS-6417 (OneUp run 37813657203): a run is judged against the budget its
 // own commit's workflow file held. Before timeout-minutes was added, a 6 h
 // run broke no budget.

@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report matches a job named by matrix values, such as `${{ matrix.name }}`, to the legs its matrix expands it to** (ANTS-6700)
+
 - **ci_report says a CI slowdown is gradual when it grew over many runs, instead of blaming one commit.** (ANTS-6699)
 
 - **split-motion-check --scrapes no longer flags a test window a code move did not cut: an untaken ternary arm, or text added after an open-ended window.** (ANTS-6423)

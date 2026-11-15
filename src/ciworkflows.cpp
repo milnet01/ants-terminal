@@ -340,13 +340,9 @@ double budgetOf(const QVariantMap &m, Result &out, const QString &file,
     return -1;
 }
 
-// The values `runs-on: ${{ matrix.<key> }}` takes: <key>'s axis list and each
-// `include` entry's <key>. A matrix held in an expression gives none.
-QStringList matrixValues(const QString &runsOn, const QVariant &strategy) {
-    static const QRegularExpression ref(QStringLiteral(R"(^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$)"));
-    const auto m = ref.match(runsOn.trimmed());
-    if (!m.hasMatch()) return {};
-    const QString key = m.captured(1);
+// The values `${{ matrix.<key> }}` takes: <key>'s axis list and each `include`
+// entry's <key>. A matrix held in an expression gives none.
+QStringList keyValues(const QString &key, const QVariant &strategy) {
     const QVariantMap matrix = strategy.toMap().value(QStringLiteral("matrix")).toMap();
     QStringList out;
     auto add = [&](const QVariant &v) {
@@ -357,6 +353,37 @@ QStringList matrixValues(const QString &runsOn, const QVariant &strategy) {
     for (const QVariant &e : matrix.value(QStringLiteral("include")).toList())
         if (e.toMap().contains(key)) add(e.toMap().value(key));
     return out;
+}
+
+// The labels `runs-on: ${{ matrix.<key> }}` expands to.
+QStringList matrixValues(const QString &runsOn, const QVariant &strategy) {
+    static const QRegularExpression ref(QStringLiteral(R"(^\$\{\{\s*matrix\.([\w-]+)\s*\}\}$)"));
+    const auto m = ref.match(runsOn.trimmed());
+    return m.hasMatch() ? keyValues(m.captured(1), strategy) : QStringList();
+}
+
+// The API names a `name:` holding `${{ matrix.<key> }}` expands to, as an
+// anchored pattern in which each reference stands for one of its key's values.
+// Empty when the name holds no expression, any other expression, or a key
+// with no values (ANTS-6700).
+QString matrixNamePattern(const QString &name, const QVariant &strategy) {
+    static const QRegularExpression expr(QStringLiteral(R"(\$\{\{\s*(.*?)\s*\}\})"));
+    static const QRegularExpression ref(QStringLiteral(R"(^matrix\.([\w-]+)$)"));
+    QString pattern;
+    qsizetype at = 0;
+    for (auto it = expr.globalMatch(name); it.hasNext();) {
+        const auto m = it.next();
+        const auto r = ref.match(m.captured(1));
+        if (!r.hasMatch()) return {};
+        QStringList values = keyValues(r.captured(1), strategy);
+        if (values.isEmpty()) return {};
+        for (QString &v : values) v = QRegularExpression::escape(v);
+        pattern += QRegularExpression::escape(name.mid(at, m.capturedStart() - at))
+                 + QStringLiteral("(?:") + values.join(QLatin1Char('|')) + QLatin1Char(')');
+        at = m.capturedEnd();
+    }
+    if (pattern.isEmpty()) return {};
+    return QRegularExpression::anchoredPattern(pattern + QRegularExpression::escape(name.mid(at)));
 }
 
 }  // namespace
@@ -412,6 +439,7 @@ void parseInto(Result &out, const QString &rel, const QString &body) {
         j.runsOn = text(runsOn.typeId() == QMetaType::QVariantMap
                             ? runsOn.toMap().value(QStringLiteral("labels")) : runsOn);
         j.matrixRunsOn = matrixValues(j.runsOn, jm.value(QStringLiteral("strategy")));
+        j.matrixNames = matrixNamePattern(j.name, jm.value(QStringLiteral("strategy")));
         j.budgetMin = budgetOf(jm, out, rel, j.id, QStringLiteral("timeout-minutes"));
         j.envKeys = keysOf(jm.value(QStringLiteral("env")));
         for (const QVariant &sv : jm.value(QStringLiteral("steps")).toList()) {
@@ -512,6 +540,16 @@ const Workflow *matchWorkflow(const Result &r, const QString &workflowName) {
 const Job *matchJob(const Workflow &w, const QString &apiJobName) {
     for (const Job &j : w.jobs)
         if (j.name == apiJobName) return &j;
+    // A name holding matrix references matches the names it expands to, where
+    // exactly one job's does.
+    const Job *expanded = nullptr;
+    for (const Job &j : w.jobs) {
+        if (j.matrixNames.isEmpty() || !QRegularExpression(j.matrixNames).match(apiJobName).hasMatch())
+            continue;
+        if (expanded) return nullptr;
+        expanded = &j;
+    }
+    if (expanded) return expanded;
     // A matrix leg's API name is "<name> (<values>)". Fall back to that only
     // when no job's name holds an expression, which GitHub would expand into
     // the same shape, and exactly one job fits.

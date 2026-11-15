@@ -37,6 +37,9 @@ struct Job {
     // The labels a `runs-on: ${{ matrix.<key> }}` expands to: <key>'s axis
     // values and its `include` entries' values (ANTS-6420). Empty otherwise.
     QStringList matrixRunsOn;
+    // An anchored pattern for the API names a `name:` holding
+    // `${{ matrix.<key> }}` expands to (ANTS-6700). Empty otherwise.
+    QString matrixNames;
     double budgetMin = -1;  // timeout-minutes; -1 absent or unreadable
     QStringList envKeys;
     QList<Step> steps;
@@ -71,7 +74,8 @@ BySha readAtCommits(const QString &root, const QStringList &shas);
 
 // The file GitHub's `workflowName` came from: its `name:`, else its path.
 const Workflow *matchWorkflow(const Result &r, const QString &workflowName);
-// A job by API name: exact `name` (else id), else "<name> (" for a matrix leg.
+// A job by API name: exact `name` (else id), else the names its matrix
+// references expand to, else "<name> (" for a matrix leg.
 const Job *matchJob(const Workflow &w, const QString &apiJobName);
 const Step *matchStep(const Job &j, const QString &apiStepName);
 

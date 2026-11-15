@@ -92339,11 +92339,15 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config session message 2026-11-06.
   Lanes: mcp-ci.
 
-- 📋 [ANTS-6700] **ci_report: matrix jobs named `${{ matrix.name }}` come back with job "unread".**
+- ✅ [ANTS-6700] **ci_report: matrix jobs named `${{ matrix.name }}` come back with job "unread".**
   UT_Ants (via claude-config, 2026-11-06, not filed by UT_Ants): jobs
   whose name is a matrix expression return job:"unread", so per-job
   checks may skip them. Resolve the name from the run's job list, which
   carries the expanded name, before falling back to the workflow text.
+  Shipped 2026-11-15: matchJob expands a name holding matrix references
+  through its axis and include values; test
+  McpCiReport.Ants6700MatrixExpressionNameMatchesItsLegs, seen red
+  first.
   **Layman:** The CI report could not name jobs that get their names from a build matrix.
   Kind: fix.
   Source: claude-config session message 2026-11-06.
