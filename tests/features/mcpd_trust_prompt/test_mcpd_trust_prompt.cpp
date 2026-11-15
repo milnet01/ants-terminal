@@ -70,12 +70,11 @@ struct TrustSandbox {
     QString trustFile;
     explicit TrustSandbox(const QTemporaryDir &tmp) {
         const QString cfg = tmp.filePath(QStringLiteral("config"));
-        QDir().mkpath(cfg + QStringLiteral("/Ants Terminal"));
+        QDir().mkpath(cfg + QStringLiteral("/ants-terminal"));
         env.setEnv("XDG_CONFIG_HOME", cfg.toUtf8());
         env.unsetEnv("ANTS_VERIFY_TRUST_AUTOTRUST");
-        // QStandardPaths::AppConfigLocation for ants-mcpd, which sets the
-        // application name and no organisation.
-        trustFile = cfg + QStringLiteral("/Ants Terminal/verify-trust.json");
+        // The settings folder, where the default client keeps it (ANTS-6768).
+        trustFile = cfg + QStringLiteral("/ants-terminal/verify-trust.json");
     }
 };
 

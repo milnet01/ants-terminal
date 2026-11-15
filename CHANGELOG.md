@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The list of trusted project check commands is saved in ~/.config/ants-terminal with the other settings; an existing list is moved there once, safely.** (ANTS-6768)
+
 - **With the search bar open, new output is highlighted as it arrives, and a line a program rewrites loses its old highlight; the current match and the view stay put.** (ANTS-6767)
 
 - **The risky-paste and re-run confirmation windows wear the terminal's theme, can be resized, remember their size and open centred, like the other dialogs.** (ANTS-6766)

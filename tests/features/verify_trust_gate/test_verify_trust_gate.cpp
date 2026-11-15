@@ -21,6 +21,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
+#include <QStandardPaths>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -169,6 +170,105 @@ void testEngine() {
         expect(gates.size() == 1, "VT-3 repo-trust honours bespoke");
         expect(!untrusted, "VT-3 verifyUntrusted=false");
         (void)cfgBytes;
+    }
+}
+
+// ---- TF-L* default location (ANTS-6768) ---------------------------
+
+// Points XDG_CONFIG_HOME at a fresh directory, with QStandardPaths' test
+// mode off so it is honoured, and puts both back on destruction.
+struct ConfigHome {
+    QTemporaryDir dir;
+    QByteArray oldXdg = qgetenv("XDG_CONFIG_HOME");
+    bool hadXdg = qEnvironmentVariableIsSet("XDG_CONFIG_HOME");
+    bool oldTestMode = QStandardPaths::isTestModeEnabled();
+    ConfigHome() {
+        QStandardPaths::setTestModeEnabled(false);
+        qputenv("XDG_CONFIG_HOME", dir.path().toLocal8Bit());
+    }
+    ~ConfigHome() {
+        if (hadXdg) qputenv("XDG_CONFIG_HOME", oldXdg);
+        else qunsetenv("XDG_CONFIG_HOME");
+        QStandardPaths::setTestModeEnabled(oldTestMode);
+    }
+    QString target() const {
+        return dir.path() + QStringLiteral("/ants-terminal/verify-trust.json");
+    }
+    // Where the file sat before: Qt's per-application config folder.
+    QString legacy() const {
+        return QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+               + QStringLiteral("/verify-trust.json");
+    }
+};
+
+bool writeFile(const QString &path, const QByteArray &bytes) {
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile f(path);
+    return f.open(QIODevice::WriteOnly | QIODevice::Truncate)
+           && f.write(bytes) == bytes.size();
+}
+
+QByteArray readFile(const QString &path) {
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+
+// A config the old file trusts by SHA.
+constexpr char kLegacyConfig[] = "{\"build\": {\"command\": \"echo legacy\"}}\n";
+
+QByteArray legacyTrustJson() {
+    const QByteArray sha = QCryptographicHash::hash(
+        QByteArray(kLegacyConfig), QCryptographicHash::Sha256).toHex();
+    return "{\"version\":1,\"trusted_shas\":{\"" + sha + "\":{}},\"trusted_repos\":{}}";
+}
+
+void testDefaultLocation() {
+    // TF-L1 the default file sits in the settings folder.
+    {
+        ConfigHome home; ASSERT_TRUE(home.dir.isValid());
+        VerifyTrust::FilePersistedTrustClient client;
+        expect(client.trustFilePath() == home.target(),
+               ("TF-L1 default path is <config>/ants-terminal/verify-trust.json, got "
+                + client.trustFilePath().toStdString()).c_str());
+    }
+    // TF-L2 an old file is carried across whole, at mode 0600, and trusted.
+    {
+        ConfigHome home; ASSERT_TRUE(home.dir.isValid());
+        ASSERT_TRUE(writeFile(home.legacy(), legacyTrustJson()));
+        ::chmod(home.legacy().toLocal8Bit().constData(), 0644);
+        VerifyTrust::FilePersistedTrustClient client;
+        expect(readFile(home.target()) == legacyTrustJson(),
+               "TF-L2 the old file's bytes are at the new path");
+        expect(!QFile::exists(home.legacy()), "TF-L2 the old file is moved, not copied");
+        struct stat st{};
+        expect(::lstat(home.target().toLocal8Bit().constData(), &st) == 0
+                   && (st.st_mode & 0777) == 0600,
+               "TF-L2 the carried file is mode 0600");
+        expect(client.outcomeForConfig(QStringLiteral("/nowhere"), QByteArray(kLegacyConfig))
+                       .outcome == VerifyTrust::Outcome::Trusted,
+               "TF-L2 what the old file trusted is still trusted");
+    }
+    // TF-L3 both exist: the new file wins and the old one stays.
+    {
+        ConfigHome home; ASSERT_TRUE(home.dir.isValid());
+        const QByteArray current("{\"version\":1,\"trusted_shas\":{},\"trusted_repos\":{}}");
+        ASSERT_TRUE(writeFile(home.legacy(), legacyTrustJson()));
+        ASSERT_TRUE(writeFile(home.target(), current));
+        VerifyTrust::FilePersistedTrustClient client;
+        expect(readFile(home.target()) == current, "TF-L3 the new file is untouched");
+        expect(readFile(home.legacy()) == legacyTrustJson(), "TF-L3 the old file stays");
+    }
+    // TF-L4 a symlinked old file is not followed.
+    {
+        ConfigHome home; ASSERT_TRUE(home.dir.isValid());
+        const QString elsewhere = home.dir.path() + QStringLiteral("/elsewhere.json");
+        ASSERT_TRUE(writeFile(elsewhere, legacyTrustJson()));
+        QDir().mkpath(QFileInfo(home.legacy()).absolutePath());
+        ASSERT_EQ(0, ::symlink(elsewhere.toLocal8Bit().constData(),
+                               home.legacy().toLocal8Bit().constData()));
+        VerifyTrust::FilePersistedTrustClient client;
+        expect(!QFile::exists(home.target()), "TF-L4 a symlinked old file is not carried");
+        expect(QFileInfo(home.legacy()).isSymLink(), "TF-L4 the symlink is left alone");
     }
 }
 
@@ -534,6 +634,7 @@ int runMain() {
     expect_reset();
     testEngine();
     testTrustFile();
+    testDefaultLocation();
     testModalPrompt();
     testMcpWiring();
     return expect_finish();

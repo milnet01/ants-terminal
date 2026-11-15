@@ -19,6 +19,7 @@
 #include <cstdio>
 
 #include <sys/stat.h>
+#include <unistd.h>
 
 namespace VerifyTrust {
 
@@ -26,9 +27,11 @@ namespace {
 
 constexpr int kSchemaVersion = 1;
 
+// ANTS-6768 — the folder config.json uses. It was AppConfigLocation, which
+// Qt builds from the application name: a second folder, "Ants Terminal".
 QString defaultTrustFilePath() {
     const QString cfgRoot = QStandardPaths::writableLocation(
-        QStandardPaths::AppConfigLocation);
+        QStandardPaths::GenericConfigLocation);
     if (cfgRoot.isEmpty()) {
         // ANTS-1741 — refuse a predictable /tmp fallback. A
         // world-writable /tmp/ants-verify-trust-<uid>.json can be
@@ -40,7 +43,41 @@ QString defaultTrustFilePath() {
         // that needs persistence can pass an explicit path to the ctor.
         return QString();
     }
-    return cfgRoot + QStringLiteral("/verify-trust.json");
+    return cfgRoot + QStringLiteral("/ants-terminal/verify-trust.json");
+}
+
+// Moves the file from where it sat before ANTS-6768 to `path`, once. It
+// never merges: a file already at `path` wins and the old one stays. A
+// source that is not a regular file of this user's (a symlink, say) is
+// left alone. link() refuses an existing target, so a file another
+// process wrote first is never replaced.
+void carryLegacyTrustFile(const QString &path) {
+    const QString oldRoot = QStandardPaths::writableLocation(
+        QStandardPaths::AppConfigLocation);
+    if (path.isEmpty() || oldRoot.isEmpty()) return;
+    const QString legacy = oldRoot + QStringLiteral("/verify-trust.json");
+    const QByteArray from = QFile::encodeName(legacy);
+    const QByteArray to = QFile::encodeName(path);
+    struct stat st {};
+    if (from == to || ::lstat(to.constData(), &st) == 0) return;
+    if (::lstat(from.constData(), &st) != 0 || !S_ISREG(st.st_mode)
+        || st.st_uid != ::getuid())
+        return;
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    if (::link(from.constData(), to.constData()) != 0) {
+        std::fprintf(stderr, "verifytrust: could not move %s to %s; it stays\n",
+                     from.constData(), to.constData());
+        return;
+    }
+    ::chmod(to.constData(), 0600);
+    ::unlink(from.constData());
+    fsyncParentDir(path);
+}
+
+QString carriedDefaultTrustFilePath() {
+    const QString path = defaultTrustFilePath();
+    carryLegacyTrustFile(path);
+    return path;
 }
 
 QString nowIso() {
@@ -50,13 +87,13 @@ QString nowIso() {
 }  // namespace
 
 FilePersistedTrustClient::FilePersistedTrustClient()
-    : m_path(defaultTrustFilePath()) {
+    : m_path(carriedDefaultTrustFilePath()) {
     loadFromDisk();
 }
 
 FilePersistedTrustClient::FilePersistedTrustClient(
         const QString &trustFilePath)
-    : m_path(trustFilePath.isEmpty() ? defaultTrustFilePath()
+    : m_path(trustFilePath.isEmpty() ? carriedDefaultTrustFilePath()
                                      : trustFilePath) {
     loadFromDisk();
 }
@@ -290,9 +327,8 @@ bool FilePersistedTrustClient::saveToDisk() const {
     // it doesn't understand).
     if (m_futureSchema) return false;
 
-    // Ensure the parent directory exists. AppConfigLocation under
-    // XDG is `$XDG_CONFIG_HOME/ants-terminal` on Linux; first call
-    // may need the dir created.
+    // Ensure the parent directory exists; the first call may need
+    // `$XDG_CONFIG_HOME/ants-terminal` created.
     const QString parentDir = QFileInfo(m_path).absolutePath();
     if (!parentDir.isEmpty()) QDir().mkpath(parentDir);
 

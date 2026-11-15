@@ -74859,7 +74859,7 @@ indie-review finding.
   Source: in-session-2026-11-14 (left by ANTS-5686).
   Lanes: terminalwidget.
 
-- 📋 [ANTS-6768] **verify-trust.json lives in ~/.config/ants-terminal with the other settings, not in the "Ants Terminal" folder.**
+- ✅ [ANTS-6768] **verify-trust.json lives in ~/.config/ants-terminal with the other settings, not in the "Ants Terminal" folder.**
   Checked 2026-11-14: defaultTrustFilePath() in src/verifytrust.cpp
   takes QStandardPaths::AppConfigLocation, which is
   "~/.config/Ants Terminal". After ANTS-5730 it is the last file there.
@@ -74869,6 +74869,11 @@ indie-review finding.
   merge two files (if both exist, the new one wins and the old stays).
   ants-mcpd sets the same application name (src/mcpdmain.cpp), so
   check whether it reads the file too.
+  Shipped 2026-11-15: defaultTrustFilePath uses
+  GenericConfigLocation/ants-terminal; carryLegacyTrustFile moves the
+  old file once (link + unlink, regular file of this user only, never
+  over an existing one); TF-L1 to TF-L4 in verify_trust_gate. ants-mcpd
+  uses the same default ctor, so it follows.
   **Layman:** The list of project check commands you have trusted is saved in a second, oddly named settings folder; it should sit with the rest.
   Kind: fix.
   Source: in-session-2026-11-14 (split from ANTS-5730).

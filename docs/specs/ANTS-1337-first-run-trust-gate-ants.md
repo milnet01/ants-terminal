@@ -418,6 +418,11 @@ gates always honoured). Loud.
   prompt on the first `verify_changes` call. User confirms once,
   prompt never reappears for that SHA. This holds for a session
   served by `ants-mcpd` while a terminal is running (ANTS-5464).
+- **The old location (ANTS-6768):** builds before it kept the file in
+  Qt's per-application folder, `~/.config/Ants Terminal/`. The default
+  client moves it to § 4.1's location once, when only the old one
+  exists. A symlink, or a file another user owns, stays where it is;
+  a file already at the new location wins and the old one stays.
 - **CHANGELOG note** under "Security": new trust file location +
   trust prompt flow; link to this spec.
 - **Tests:** all existing `verify_changes` feature tests need to

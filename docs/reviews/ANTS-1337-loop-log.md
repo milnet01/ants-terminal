@@ -103,3 +103,4 @@ INV-2 and § 9 now say the client re-reads a changed trust file):**
   up to § 11 match, which both lanes checked.
 
 Status: gated change CLEAN; tail filed as ANTS-5464 and ANTS-5465.
+- **impl — ANTS-6768, 2026-11-15** — § 8 gains the old-location bullet: the code now writes § 4.1's path, and moves a file from the per-application folder once. Amendment; no reviewer was dispatched.
