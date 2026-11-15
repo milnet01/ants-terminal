@@ -196,6 +196,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Four roadmap tools share one refusal, and say "store_failed" if the roadmap store will not open.** (ANTS-6247)
+
 - **The plugin code and its design doc say a plugin keypress veto is not planned** (ANTS-6770)
 
 - **`comment_claims` accepts a work-item id the changelog cites, so it reports only ids that no record names.** (ANTS-5795)
@@ -435,6 +437,12 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **A crashed audit tool's findings keep both what it printed and what it logged.** (ANTS-6198)
+
+- **The model chip's switch timing uses the full caution penalty as soon as a session stops being routine.** (ANTS-6229)
+
+- **task_priors recognises item ids of any project, not only ANTS ones.** (ANTS-6256)
 
 - **The status bar's branch chip shows the branch inside a git worktree, using the same folder finder as the repo-visibility badge** (ANTS-6187)
 
