@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **token_usage counts the MCP frame's bytes correctly, and keeps a saved session's figures that an older build recorded wrongly.** (ANTS-6378)
+
 - **source_scrapes finds tests that name a source file after a build-set root macro, or by its bare name through a local helper.** (ANTS-6374)
 
 - **source_scrapes finds tests that read a source file through their own small helper built on the test file's location.** (ANTS-6292)

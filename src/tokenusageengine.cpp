@@ -435,7 +435,12 @@ bool snapshotFromJson(const QJsonObject &o, QHash<QString, ToolCounter> *tools,
         const QJsonObject c = it.value().toObject();
         ToolCounter tc;
         for (int i = 0; i < kCounterCount; ++i) {
-            const qint64 v = c.value(QLatin1String(kCounterKeys[i])).toInteger();
+            qint64 v = c.value(QLatin1String(kCounterKeys[i])).toInteger();
+            // ANTS-6378 — builds before the fix could record a negative
+            // wrap_bytes. It reads as 0 so the file's other counts survive;
+            // any other negative counter still marks the file corrupt.
+            if (v < 0 && QLatin1String(kCounterKeys[i]) == QLatin1String("wrap_bytes"))
+                v = 0;
             if (v < 0) {
                 *why = QStringLiteral("negative %1 for %2")
                            .arg(QLatin1String(kCounterKeys[i]), it.key());

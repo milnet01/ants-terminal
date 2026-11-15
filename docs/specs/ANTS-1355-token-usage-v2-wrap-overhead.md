@@ -110,7 +110,7 @@ No new args. Backwards-compatible by construction.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `wrap_bytes` | int (bytes) | Cumulative ANTS-1294 framing overhead across `n_calls`. Computed at dispatch as `wrapped.toUtf8().size() - responseText.toUtf8().size()`. Always `0` for control-plane tools (`get_session_info`, `token_usage`) whose responses bypass the wrap (verified `claudeintegration.cpp:2700–2705`). |
+| `wrap_bytes` | int (bytes) | Cumulative ANTS-1294 framing overhead across `n_calls`. Computed at dispatch as the frame's size (INV-3). Always `0` for control-plane tools (`get_session_info`, `token_usage`) whose responses bypass the wrap (verified `claudeintegration.cpp:2700–2705`). |
 | `duration_us_min` | int (µs) | Smallest single-call latency observed since `since`. `0` if `n_calls == 0` (the entry only exists when `n_calls ≥ 1`, so `0` here means a genuine sub-µs sample, not "uninitialised"). |
 | `duration_us_max` | int (µs) | Largest single-call latency observed. |
 | `duration_us_mean` | int (µs) | Integer arithmetic mean: `floor(duration_us_sum / n_calls)`. Sum is not surfaced (chosen over `_p95` because v2 has no reservoir; see § 9 out-of-scope). |
@@ -217,7 +217,7 @@ m_tokenUsage.recordCall(toolName, argBytes, outBytes);
 // v2:
 const qint64 outBytes  = wrapped.toUtf8().size();
 const qint64 rawBytes  = responseText.toUtf8().size();
-const qint64 wrapBytes = outBytes - rawBytes;          // ≥ 0 (INV-3)
+const qint64 wrapBytes = frameBytes;                   // ≥ 0 (INV-3)
 const qint64 durUs     = mcpTraceTimer.nsecsElapsed() / 1000;
 m_tokenUsage.recordCall(toolName, argBytes, outBytes, wrapBytes, durUs);
 ```
@@ -292,21 +292,14 @@ the v1 entry lives at line 2310 in the visible block).
   difference of two `.toUtf8().size()` calls — same units, so the
   subtraction is well-defined).
 
-- **INV-3 (new — wrap_bytes non-negative).** `wrapBytes` is always
-  `≥ 0`. The dispatch site computes `wrapBytes = wrapped.size() -
-  responseText.size()` where `wrapped` is one of:
-  - `responseText` itself for control-plane tools → `wrapBytes = 0`.
-  - `wrapMcpData(toolName, responseText)` otherwise. The wrap is a
-    pure-suffix-and-prefix transform (`<ants_mcp_data tool="…">` +
-    body + `</ants_mcp_data>`, plus escape substitutions verified at
-    `claudeintegration.cpp:2763–2795`); every escape substitution
-    is **non-shrinking** (a `</ants_mcp_data>` becomes
-    `<ants_mcp_data_escaped/>` — 16 chars → 24 chars; the regex
-    variant `</\s*ants_mcp_data\s*>` ≤ same source → ≥ same target;
-    HTML entity encoding of `&`/`<`/`>`/`"` in `safeTool` is also
-    strictly non-shrinking — verified `claudeintegration.cpp:
-    2790–2794`).
-    Therefore `wrapped.size() ≥ responseText.size()` strictly.
+- **INV-3 (wrap_bytes non-negative).** `wrapBytes` is always `≥ 0`: it
+  counts the frame alone.
+  - Control-plane tools add no frame → `wrapBytes = 0`.
+  - The raw frame (ANTS-2218) does not scrub the body, so
+    `wrapped.size() - responseText.size()` is exactly the frame.
+  - The default wrap scrubs the body, and its open-tag scrub (ANTS-4457)
+    can shorten it, so the frame is measured as
+    `wrapMcpData(toolName, "")` (ANTS-6378).
 
 - **INV-4 (new — duration min/max correctness).** On the first
   call for a tool (`nCalls == 0 → 1`), `durationUsMin` and
@@ -519,36 +512,4 @@ Two new questions v2 lets the assistant answer:
 
 ## 10. Cold-eyes review log
 
-- **Loop 0** (initial draft, 2026-05-15): drafted against
-  ANTS-1284's spec template + verified anchors:
-  - `claudeintegration.cpp:2700–2705` (wrap/no-wrap branch)
-  - `claudeintegration.cpp:2710–2713` (v1 `recordCall` site)
-  - `claudeintegration.cpp:2763–2795` (`wrapMcpData` body)
-  - `tokenusageengine.{h,cpp}` (v1 engine surface)
-  - `remotecontrol.cpp:3157–3199` (`cmdTokenUsage` builder)
-  - ANTS-1360's `mcpTraceTimer` declared at line 2642–2643.
-
-- **Loop 1** (2026-05-15, verify pass): re-verified every cited
-  line number against current source; counted escape-substitution
-  growth precisely; recounted registered tool providers.
-  **0 CRITICAL + 1 HIGH + 0 MEDIUM + 1 LOW** finding — both
-  addressed:
-  - HIGH-1 (INV-13 tool-count drift): spec claimed 27 registered
-    tools; `grep -c registerToolProvider src/mainwindow.cpp`
-    returned **32** (the count has grown since ANTS-1284's spec).
-    With the +1 inline `get_session_info`, current total is 33.
-    INV-13 RAM math corrected: 33 × 128 B = ~4.2 KiB.
-  - LOW-1 (INV-3 escape count): wrap-escape substitution claimed
-    `</ants_mcp_data>` (16 chars) → `<ants_mcp_data_escaped/>`
-    "26 chars". Actual target is 24 chars. Replaced with the
-    correct count + added the tool-name HTML-entity encoding to
-    the non-shrinking proof.
-
-- **Loop 2** (2026-05-15, verify pass): **CLEAN.** Re-read every
-  cited line in `claudeintegration.cpp` (2310, 2642, 2643,
-  2700–2705, 2713, 2718, 2721, 2730–2732, 2763–2795) — all match.
-  Re-counted registerToolProvider hits (32). Re-walked INV-3's
-  non-shrinking proof against `wrapMcpData` body. Re-read § 2.5
-  diff against `claudeintegration.cpp:2700–2719` — the v2
-  `recordCall` insertion site is unchanged. No new findings.
-  Sign-off ready.
+Rows: [`docs/reviews/ANTS-1355-loop-log.md`](../reviews/ANTS-1355-loop-log.md).

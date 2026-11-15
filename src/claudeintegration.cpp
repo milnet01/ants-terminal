@@ -1140,7 +1140,14 @@ ClaudeIntegration::ReplyTransform ClaudeIntegration::transformReply(
             .toJson(QJsonDocument::Compact).size();
         reply.outBytes  = wrapped.toUtf8().size();
         const qint64 rawBytes = responseText.toUtf8().size();
-        reply.wrapBytes = reply.outBytes - rawBytes;        // ANTS-1355 INV-3
+        // ANTS-1355 INV-3 — the frame's bytes. ANTS-6378: the default
+        // wrap also scrubs, and a scrubbed payload can be SHORTER than the
+        // raw one, so out minus raw went negative; that path counts the
+        // frame by wrapping nothing. The raw frame never scrubs, and the
+        // control plane adds nothing, so out minus raw is exact there.
+        reply.wrapBytes = (isControlPlane || rawRequested)
+            ? reply.outBytes - rawBytes
+            : wrapMcpData(toolName, QString()).toUtf8().size();
     }
     return reply;
 }

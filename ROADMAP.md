@@ -75426,7 +75426,7 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   Source: in-session-2026-11-05 (ANTS-6376 follow-up).
   Lanes: tests.
 
-- 📋 [ANTS-6378] **wrap_bytes goes negative when the scrub shortens a payload, and the snapshot holding it is then discarded whole.**
+- ✅ [ANTS-6378] **wrap_bytes goes negative when the scrub shortens a payload, and the snapshot holding it is then discarded whole.**
   Seen 2026-11-05: token_usage reported snapshots_skipped
   "165204-1793829070079.json: negative wrap_bytes for spec_query".
   Cause, read from src/claudeintegration.cpp: the dispatch sets
@@ -75441,6 +75441,12 @@ ops; the residual read-path is intentional per ANTS-1372 INV-7
   payload's size), and decide whether the loader should skip one bad
   tool row rather than the file. Refute by: a payload carrying N
   `<ants_mcp_data tool="x">` tags records wrap_bytes >= 0.
+  Shipped 2026-11-15. The default wrap's wrap_bytes is the frame
+  (wrapMcpData of an empty body); raw and control-plane keep out minus
+  raw, which is exact there. The loader reads an old negative wrap_bytes
+  as 0 and keeps the file; other negative counters still reject it.
+  Tests: McpdUsageSnapshots.Ants6378WrapBytesIsTheFrame,
+  Ants6378NegativeWrapBytesKeepsTheFile. ANTS-1355 INV-3 amended.
   **Layman:** A usage counter can go below zero, and when it does the saved usage figures for that whole session are thrown away.
   Kind: fix.
   Source: in-session-2026-11-05 (token_usage snapshots_skipped).

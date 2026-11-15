@@ -430,3 +430,40 @@ TEST(McpdUsageSnapshots, Ants5262OtherRepliesPassUnchanged) {
     EXPECT_EQ(overlaySessionOnReply(QByteArray("not json\n"), localSession()),
               QByteArray("not json\n"));
 }
+
+// ANTS-6378 — wrap_bytes is the frame alone. The scrub replaces each open
+// tag with attributes by a shorter sentinel, so a payload quoting wrapped
+// output comes out smaller than it went in; out minus raw then went negative.
+TEST(McpdUsageSnapshots, Ants6378WrapBytesIsTheFrame) {
+    QString payload;
+    for (int i = 0; i < 20; ++i)
+        payload += QStringLiteral("<ants_mcp_data tool=\"read_region\">quoted</ants_mcp_data>\n");
+    ClaudeIntegration::McpCallContext ctx;
+    ctx.toolName    = QStringLiteral("spec_query");
+    ctx.toolHandled = true;
+    const auto reply = ClaudeIntegration::transformReply(ctx, payload);
+    EXPECT_EQ(reply.wrapBytes,
+              ClaudeIntegration::wrapMcpData(ctx.toolName, QString()).toUtf8().size())
+        << "wrap_bytes " << reply.wrapBytes;
+}
+
+// ANTS-6378 — a snapshot written before the fix may hold a negative
+// wrap_bytes. It reads as 0, and the file's other counts are kept.
+TEST(McpdUsageSnapshots, Ants6378NegativeWrapBytesKeepsTheFile) {
+    QJsonObject o = snapshotToJson({{QStringLiteral("spec_query"), counter(1, 2, 3)},
+                                    {QStringLiteral("read_region"), counter(4, 5, 6)}},
+                                   {}, 9, 10, 11);
+    QJsonObject tools = o.value(QStringLiteral("tools")).toObject();
+    QJsonObject bad = tools.value(QStringLiteral("spec_query")).toObject();
+    bad[QStringLiteral("wrap_bytes")] = -40;
+    tools[QStringLiteral("spec_query")] = bad;
+    o[QStringLiteral("tools")] = tools;
+
+    QHash<QString, ToolCounter> t;
+    QHash<QString, qint64> r;
+    QString why;
+    ASSERT_TRUE(snapshotFromJson(o, &t, &r, &why)) << why.toStdString();
+    EXPECT_EQ(t.value(QStringLiteral("spec_query")).wrapBytes, 0);
+    EXPECT_EQ(t.value(QStringLiteral("spec_query")).nCalls, 1);
+    EXPECT_EQ(t.value(QStringLiteral("read_region")).nCalls, 4);
+}
