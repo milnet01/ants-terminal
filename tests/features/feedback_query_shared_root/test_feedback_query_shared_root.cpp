@@ -229,6 +229,45 @@ TEST(feedback_query_shared_root, Ants4647ConfiguredRootRedirectsAWrite) {
             .filePath(QStringLiteral("proj_Ants_MCP_Feedback.md"))));
 }
 
+// ANTS-6259 — the redirect picks a name the way the parent-folder route does,
+// so a leaf that only normalises to the file's stem (`Fin_Break` against
+// `finbreak_…`) finds the real file instead of starting an empty one, and the
+// reply says why it went to the configured root.
+TEST(feedback_query_shared_root, Ants6259RedirectMatchesANormalisedStem) {
+    ants_test::XdgGuard g;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    sandboxConfig(g, tmp);
+    const QString caller = QDir(tmp.path()).filePath(QStringLiteral("caller/Fin_Break"));
+    const QString corpus = QDir(tmp.path()).filePath(QStringLiteral("corpus"));
+    const QString real = QDir(corpus).filePath(QStringLiteral("finbreak_Ants_MCP_Feedback.md"));
+    QDir().mkpath(caller);
+    ASSERT_TRUE(writeFile(real, corpusFile()));
+    {
+        Config cfg;
+        cfg.setClaudeMcpFeedbackRoot(corpus);
+    }
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = caller;
+    req[QStringLiteral("op")]         = QStringLiteral("append_finding");
+    req[QStringLiteral("date")]       = QStringLiteral("2026-11-15");
+    QJsonObject f;
+    f[QStringLiteral("title")] = QStringLiteral("T");
+    f[QStringLiteral("what")]  = QStringLiteral("w");
+    QJsonArray fs; fs.append(f);
+    req[QStringLiteral("findings")] = fs;
+
+    const QJsonObject env = rc.cmdFeedbackLog(req).object();
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool())
+        << env.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_EQ(env.value(QStringLiteral("path")).toString(), real)
+        << "the redirect started a new file beside the real one";
+    EXPECT_FALSE(env.value(QStringLiteral("path_derived_reason")).toString().isEmpty())
+        << "the reply does not say the path came from claude.mcp_feedback_root";
+}
+
 // ANTS-4896 — the READ side of the same key, one call earlier. `feedback_query`
 // consults `claude.mcp_feedback_root`; `session_orient`'s `feedback_pending`
 // block hardcoded the parent of the project root, so one build answered the

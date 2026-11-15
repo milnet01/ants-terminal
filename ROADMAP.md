@@ -106450,7 +106450,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L22-F20).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6259] **resolveFeedbackPath's configured-root redirect skips the normalised-sibling match and never sets derivedReasonOut.**
+- ✅ [ANTS-6259] **resolveFeedbackPath's configured-root redirect skips the normalised-sibling match and never sets derivedReasonOut.**
   From ANTS-6131. In src/remotecontrol_workspace.cpp the no-path
   branch nests five fallbacks; its configured-root redirect repeats the
   conventional-names loop but skips the ANTS-3439 normalised-sibling
@@ -106460,6 +106460,9 @@ worked after these.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
   The 2026-11-06 reviews also found this: row 888
   `src/remotecontrol_workspace.cpp:3894`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15. pickFeedbackNameIn serves the parent folder and
+  the configured root; the redirect sets path_derived_reason. Test:
+  feedback_query_shared_root.Ants6259RedirectMatchesANormalisedStem.
   **Layman:** One way of finding a project's feedback file skips a matching step the other way uses, so the two can pick different files.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F21).

@@ -4188,6 +4188,37 @@ static QString feedbackOriginRepoName(const QString &root) {
 // false), and `existsOut` says whether it currently exists. When
 // `derivedOut` is non-null it reports whether the path was auto-derived
 // from caller_cwd (ANTS-3376) rather than supplied by the caller.
+// ANTS-6259 — the feedback file for `leaf` in `dir`, for both the parent
+// folder and the configured root. ANTS-3376's default is
+// "<leaf>_Ants_MCP_Feedback.md"; ANTS-3426 — a leaf already ending in "_Ants"
+// doubles the token, so the de-doubled name is tried first
+// (feedbackConventionalNames). The first that exists wins. Otherwise
+// ANTS-3439: a checkout folder may not equal the file's package-name stem
+// (`Fin_Break` vs `finbreak`), so a sibling whose stem normalises to the
+// leaf's is the file. Otherwise the most-preferred name, so a fresh create
+// uses the de-doubled basename rather than forking history into a doubled one.
+static QString pickFeedbackNameIn(const QString &dir, const QString &leaf,
+                                  bool &existsOut) {
+    existsOut = false;
+    QString preferred;
+    for (const QString &name : feedbackConventionalNames(leaf)) {
+        const QString cand = QDir::cleanPath(dir + QLatin1Char('/') + name);
+        if (preferred.isEmpty()) preferred = cand;
+        if (QFileInfo::exists(cand)) { existsOut = true; return cand; }
+    }
+    const QString normLeaf = normalizeFeedbackStem(leaf);
+    const QDir sdir(dir);
+    const QStringList sibs = sdir.entryList(
+        {QLatin1String("*") + QLatin1String(kFeedbackSuffix)}, QDir::Files, QDir::Name);
+    for (const QString &n : sibs) {
+        if (normalizeFeedbackStem(feedbackStemOf(n)) == normLeaf) {
+            existsOut = true;
+            return sdir.absoluteFilePath(n);
+        }
+    }
+    return preferred;
+}
+
 bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                          QString &resolvedOut, bool &existsOut,
                          QJsonObject &err, bool *derivedOut,
@@ -4271,40 +4302,7 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
             }
             return false;
         }
-        // ANTS-3376 default is "<leaf>_Ants_MCP_Feedback.md". ANTS-3426 — a
-        // leaf already ending in "_Ants" doubles the token, so try the
-        // de-doubled convention first (see feedbackConventionalNames). Adopt
-        // the first candidate that exists; when none exist, default to the
-        // most-preferred name so a fresh feedback_log create uses the correct
-        // (de-doubled) basename rather than forking history into a doubled one.
-        QString derived;
-        existsOut = false;
-        for (const QString &name : feedbackConventionalNames(leaf)) {
-            const QString cand = QDir::cleanPath(
-                sharedRoot + QLatin1Char('/') + name);
-            if (derived.isEmpty()) derived = cand;   // preferred create-default
-            if (QFileInfo::exists(cand)) { derived = cand; existsOut = true; break; }
-        }
-        resolvedOut = derived;
-        if (!existsOut) {
-            // ANTS-3439 — the checkout-dir leaf may not equal the feedback
-            // file's package-name stem (`Fin_Break` vs `finbreak`). If a
-            // sibling's stem normalizes (lowercase, strip non-alphanumerics)
-            // to the same token as the leaf, adopt that sibling as the derived
-            // default rather than pointing at a name that will never exist.
-            const QString normLeaf = normalizeFeedbackStem(leaf);
-            const QDir sdir(sharedRoot);
-            const QStringList sibs = sdir.entryList(
-                {QLatin1String("*") + QLatin1String(kFeedbackSuffix)},
-                QDir::Files, QDir::Name);
-            for (const QString &n : sibs) {
-                if (normalizeFeedbackStem(feedbackStemOf(n)) == normLeaf) {
-                    resolvedOut = sdir.absoluteFilePath(n);
-                    existsOut   = true;
-                    break;
-                }
-            }
-        }
+        resolvedOut = pickFeedbackNameIn(sharedRoot, leaf, existsOut);
         // ANTS-4647 — the derivation assumes caller_cwd sits DIRECTLY under the
         // shared root, which is every project the convention was designed
         // around. One level deeper it is wrong: a repo nested inside another
@@ -4340,19 +4338,13 @@ bool resolveFeedbackPath(const QJsonObject &req, const QString &toolName,
                 // requires ok:true + candidates from the configured root).
                 const QString declared = Config().claudeMcpFeedbackRoot();
                 if (holdsCorpus(declared)) {
-                    QString redirected;
-                    for (const QString &name : feedbackConventionalNames(leaf)) {
-                        const QString cand = QDir::cleanPath(
-                            declared + QLatin1Char('/') + name);
-                        if (redirected.isEmpty()) redirected = cand;
-                        if (QFileInfo::exists(cand)) {
-                            redirected = cand;
-                            existsOut  = true;
-                            break;
-                        }
-                    }
-                    resolvedOut = redirected;
+                    resolvedOut = pickFeedbackNameIn(declared, leaf, existsOut);
                     if (derivedOut) *derivedOut = true;
+                    if (derivedReasonOut)
+                        *derivedReasonOut = QStringLiteral(
+                            "caller_cwd's parent \"%1\" holds no feedback file; "
+                            "derived under claude.mcp_feedback_root \"%2\"")
+                                .arg(sharedRoot, declared);
                     return true;
                 }
                 // ANTS-4900 — the corpus may also be one level DOWN. Once a
