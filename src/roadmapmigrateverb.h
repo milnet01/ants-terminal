@@ -187,6 +187,10 @@ struct PlannedId {
 struct InTransactionLoad {
     bool        ok = false;
     QString     error;
+    // ANTS-6736 — a discovery failure's refusal code (no_roadmap, not_utf8,
+    // ...), so a caller does not report it as its own store failure. Empty
+    // for any other failure.
+    QString     code;
     qint64      idsAllocated  = 0;
     QStringList allocatedIds;    // capped by the caller's own budget
     int         bulletsTotal = 0;

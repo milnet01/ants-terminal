@@ -96884,7 +96884,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (bug).
   Lanes: vt-parser-pty.
 
-- 📋 [ANTS-6736] **Give roadmap_log op:convert's load failures their own refusal code, not store_failed.**
+- ✅ [ANTS-6736] **Give roadmap_log op:convert's load failures their own refusal code, not store_failed.**
   Seen next door while fixing ANTS-6649 row 1346, not verified end to end.
   The convert's mutate lambda (src/remotecontrol_roadmap_publish.cpp)
   returns false on a failed loadInOpenTransaction(); the write then
@@ -96892,6 +96892,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   code store_failed, with the load's message in error and load_error.
   A discovery failure (no_roadmap, case_ambiguous, not_utf8, too_large)
   is not a store failure. Check the Result the write returns first.
+  Shipped 2026-11-15. Confirmed first: a stray non-UTF-8 byte passes the
+  handler's read, fails the in-write load, and came back code
+  store_failed with "not_utf8: ..." in error. InTransactionLoad now
+  carries the discovery code and the convert refuses with it. Test
+  RoadmapConvert.loadDiscoveryFailureKeepsItsCode seen red first.
   **Layman:** When converting a roadmap fails because no roadmap file was found, Ants should say that, not report a database failure.
   Kind: fix.
   Source: close-findings ANTS-6649 sweep 2026-11-10.

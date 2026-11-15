@@ -383,6 +383,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     int         bulletsTotal = 0;
     int         idsParsed    = 0;
     QString     loadError;
+    QString     loadCode;   // ANTS-6736 — the load's own refusal code, if any
     // ANTS-5252 — the per-bullet id report Vestige asked for.
     QVector<RoadmapMigrateVerb::PlannedId> plannedIds;
     int         ambiguousRematches = 0;   // ANTS-5329 — uncapped
@@ -411,6 +412,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
             kMaxEchoedIds);
         if (!loaded.ok) {
             loadError = loaded.error;
+            loadCode  = loaded.code;
             if (err) *err = loaded.error;
             return false;
         }
@@ -608,6 +610,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogConvert(const QJsonObject &req) {
     if (rcRoadmapWriteRefused(env, rc, err, outcome)) {
         if (!loadError.isEmpty())
             env[QStringLiteral("load_error")] = loadError;
+        // ANTS-6736 — a load that found no usable roadmap refuses with that
+        // finding's code; the write reports it only as StoreFailed.
+        if (!loadCode.isEmpty())
+            env[QStringLiteral("code")] = loadCode;
         withBackup(env);
         return QJsonDocument(env);
     }

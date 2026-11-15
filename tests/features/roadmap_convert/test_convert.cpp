@@ -352,6 +352,30 @@ TEST(RoadmapConvert, failedConvertIsInert) {
         << "a refused convert left the store's dialect changed";
 }
 
+// ANTS-6736 — the load inside the write can still fail to find a usable
+// roadmap after the handler's own read passed: a stray non-UTF-8 byte reads
+// through fromUtf8() but fails discovery. That is the discovery's refusal,
+// not a store failure.
+TEST(RoadmapConvert, loadDiscoveryFailureKeepsItsCode) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = seed(guard, tmp, gfmRoadmap());
+    ASSERT_FALSE(root.isEmpty());
+    ASSERT_TRUE(migrate(root));
+    ASSERT_TRUE(writeFile(root + QStringLiteral("/ROADMAP.md"),
+                          gfmRoadmap() + QByteArray("\nStray byte: \xff\n")));
+
+    const QJsonObject resp = convert(root, /*dryRun=*/true);
+    EXPECT_FALSE(resp.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(resp.value(QStringLiteral("code")).toString().toStdString(),
+              std::string("not_utf8"))
+        << QJsonDocument(resp).toJson().toStdString();
+    EXPECT_TRUE(resp.value(QStringLiteral("load_error")).toString()
+                    .startsWith(QStringLiteral("not_utf8")))
+        << QJsonDocument(resp).toJson().toStdString();
+}
+
 // ----------------------------------------------------------------- INV-3 ----
 
 TEST(RoadmapConvert, convertIsIdempotent) {

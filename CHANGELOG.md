@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log op:"convert" reports a roadmap its load cannot read (not_utf8, case_ambiguous, too_large, no_roadmap) with that refusal's own code** (ANTS-6736)
+
 - **roadmap_query reads a headline holding its own bold words, such as `**Theme:**`, whole** (ANTS-6710)
 
 - **The nightly roadmap export catches up a backup clone that is only behind, instead of failing; a clone holding another store's export still stops** (ANTS-6714)

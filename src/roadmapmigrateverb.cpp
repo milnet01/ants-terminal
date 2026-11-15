@@ -1076,8 +1076,9 @@ RoadmapMigrateVerb::loadInOpenTransaction(RoadmapStore &store,
     const auto disc = RoadmapMigrate::findRoadmaps(projectRoot, &discErr);
     if (!disc) {
         // run()'s canonical code, leading the message (ANTS-6649).
+        out.code  = discoveryRefusalCode(discErr);
         out.error = QStringLiteral("%1: no usable roadmap under \"%2\" (%3)")
-                        .arg(discoveryRefusalCode(discErr), projectRoot, discErr);
+                        .arg(out.code, projectRoot, discErr);
         return out;
     }
 
