@@ -2797,6 +2797,8 @@ if(ANTS_TESTS)
                 tests/features/dispatch_result_accounting/test_dispatch_result_accounting.cpp
                 # ANTS-4457 — the switch-confirm poll reuses the cached Config.
                 tests/features/switch_confirm_config_reuse/test_switch_confirm_config_reuse.cpp
+                # ANTS-6465 — the auto-model nudge saves through m_config.
+                tests/features/auto_model_nudge_shared_config/test_auto_model_nudge_shared_config.cpp
                 # ANTS-4457 — the subsystem map must not call a parked actuator live.
                 tests/features/parked_feature_doc_truth/test_parked_feature_doc_truth.cpp
                 tests/features/allowlist_add/test_allowlist_add.cpp

@@ -93568,7 +93568,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
 
 ### Settings and records a write can lose (2026-11-06 review)
 
-- 📋 [ANTS-6465] **mainwindow_tabs.cpp: this writes `config.json` through a second `Config` object.**
+- ✅ [ANTS-6465] **mainwindow_tabs.cpp: this writes `config.json` through a second `Config` object.**
   `mainwindow_tabs.cpp:554-558` — this writes `config.json` through a
   second `Config` object. That breaks `docs/standards/config-hot-reload.md` C1/C2, which require writes to go through the same object
   the watcher reads. Two effects:
@@ -93577,6 +93577,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): use `m_config`
   setters.
   Ledger row 60, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: showClaudeAutoModelNudge writes through m_config. Test:
+  auto_model_nudge_shared_config (test_claude), red first on all three
+  assertions.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 05-mainwindow (Medium).

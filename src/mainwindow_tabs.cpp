@@ -552,10 +552,11 @@ void MainWindow::showClaudeAutoModelNudge() {
     box.setDefaultButton(enableBtn);
     box.exec();
 
-    Config cfg;
-    cfg.setClaudeAutoModelNudgeShown(true);
+    // ANTS-6465 — through m_config, so the watcher sees its own write
+    // (docs/standards/config-hot-reload.md C1).
+    m_config.setClaudeAutoModelNudgeShown(true);
     if (box.clickedButton() == enableBtn) {
-        cfg.setClaudeAutoModelSwitch(true);
+        m_config.setClaudeAutoModelSwitch(true);
     }
 }
 
