@@ -2507,7 +2507,7 @@ RunResult runAudit(const RunRequest &req) {
                        status == QLatin1String("timed_out") ? QString() : raw, ms);
             });
         QProcess::connect(proc, &QProcess::errorOccurred,
-            [tool, drain, &finish, &perToolTimer, &timedOut, &errBuf,
+            [tool, drain, &finish, &perToolTimer, &timedOut, &outBuf, &errBuf,
              &outputCapped](QProcess::ProcessError) {
                 const qint64 ms = perToolTimer.value(tool).elapsed();
                 drain();
@@ -2516,10 +2516,15 @@ RunResult runAudit(const RunRequest &req) {
                     finish(tool, QStringLiteral("output_too_large"), QString(), ms);
                     return;
                 }
-                // Stderr only, unlike the finished handler's merge (ANTS-6198).
+                // Both channels, as the finished handler merges them
+                // (ANTS-6198). Qt emits this before finished on a crash, so
+                // this recording is the one finish() keeps.
                 const bool cut = timedOut.contains(tool);
                 finish(tool, AuditRunner::internal::toolExitStatus(cut, true),
-                       cut ? QString() : QString::fromUtf8(errBuf.value(tool)),
+                       cut ? QString()
+                           : AuditEngine::mergeToolChannels(
+                                 QString::fromUtf8(outBuf.value(tool)),
+                                 QString::fromUtf8(errBuf.value(tool))),
                        ms);
             });
 

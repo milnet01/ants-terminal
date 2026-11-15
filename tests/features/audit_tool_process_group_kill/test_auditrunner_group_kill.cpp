@@ -61,10 +61,18 @@ bool writeExecutable(const QString &path, const QString &body) {
                             QFileDevice::ExeOther);
 }
 
+// One folder for every fake mypy in this binary. AuditRunner caches a tool's
+// resolved path for 60 s, so a second TEST() with its own folder would run the
+// first test's (deleted) script. Each test rewrites the script in place.
+const QTemporaryDir &sharedToolDir() {
+    static const QTemporaryDir dir;
+    return dir;
+}
+
 }  // namespace
 
 TEST(AuditRunnerGroupKill, PerToolCapStopsTheWholeToolTree) {
-    QTemporaryDir toolDir;
+    const QTemporaryDir &toolDir = sharedToolDir();
     QTemporaryDir projectDir;
     ASSERT_TRUE(toolDir.isValid());
     ASSERT_TRUE(projectDir.isValid());
@@ -119,4 +127,42 @@ TEST(AuditRunnerGroupKill, PerToolCapStopsTheWholeToolTree) {
            "a zombie); actual: still a live, non-zombie process. The cap's "
            "proc->terminate()/proc->kill() reach only the QProcess's "
            "direct child, not the tool's process group.";
+}
+
+// ANTS-6198 — a crashed tool's output is both channels merged, as for a tool
+// that exits normally. The fake mypy writes one finding to stdout and one to
+// stderr, then kills itself with SIGSEGV. Qt reports the crash through
+// errorOccurred before finished, so the crash handler's recording is the one
+// kept.
+TEST(AuditRunnerGroupKill, CrashedToolKeepsBothOutputChannels) {
+    const QTemporaryDir &toolDir = sharedToolDir();
+    QTemporaryDir projectDir;
+    ASSERT_TRUE(toolDir.isValid());
+    ASSERT_TRUE(projectDir.isValid());
+
+    const QString script = QStringLiteral(
+        "#!/bin/sh\n"
+        "echo 'out.py:1: error: from stdout'\n"
+        "echo 'err.py:2: error: from stderr' >&2\n"
+        "kill -SEGV $$\n");
+    ASSERT_TRUE(writeExecutable(toolDir.path() + QStringLiteral("/mypy"), script))
+        << "test setup: could not write the fake mypy script";
+
+    ScopedPathPrepend pathGuard(toolDir.path());
+
+    AuditRunner::RunRequest req;
+    req.projectRoot = projectDir.path();
+    req.tools       = {QStringLiteral("mypy")};
+
+    const AuditRunner::RunResult r = AuditRunner::runAudit(req);
+
+    ASSERT_TRUE(r.byTool.contains(QStringLiteral("mypy")))
+        << "test setup: the fake mypy never resolved/ran — code: "
+        << r.code.toStdString() << " error: " << r.error.toStdString();
+    const AuditRunner::ToolResult tr = r.byTool.value(QStringLiteral("mypy"));
+    EXPECT_EQ(tr.status, QStringLiteral("crashed"));
+    EXPECT_EQ(tr.rawCount, 2)
+        << "ANTS-6198: a crashed tool recorded " << tr.rawCount
+        << " finding(s); expected 2, one from each channel. The crash "
+           "handler kept stderr only.";
 }
