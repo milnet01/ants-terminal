@@ -20,8 +20,10 @@ undeclared argument, kept in `~/.cache/ants-terminal/mcp-undeclared-args.jsonl`.
 - **INV-6** — `ants-mcpd` sets the path only after its `--call` return, so a
   test running `--call` never writes the user's file. The terminal sets it
   too, since it alone finishes the calls `ants-mcpd` forwards to it.
+- **INV-7** (ANTS-6470) — An append to a ledger that exists but cannot be
+  read returns false and writes nothing, so the lines already in it survive.
 
 ## Tests
 
-`test_mcp_undeclared_args_survey.cpp`: INV-1 to INV-5 behaviourally; INV-6 by
+`test_mcp_undeclared_args_survey.cpp`: INV-1 to INV-5 and INV-7 behaviourally; INV-6 by
 reading `src/mcpdmain.cpp` and `src/mainwindow_mcp.cpp`.

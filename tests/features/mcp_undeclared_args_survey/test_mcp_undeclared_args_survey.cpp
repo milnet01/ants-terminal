@@ -97,6 +97,25 @@ TEST(McpUndeclaredArgsSurvey, Inv3CapKeepsNewestAndFileIsPrivate) {
         << "group and other must have no access";
 }
 
+// INV-7 (ANTS-6470)
+TEST(McpUndeclaredArgsSurvey, Inv7UnreadableLedgerIsNotOverwritten) {
+    QTemporaryDir tmp;
+    const QString path = tmp.filePath(QStringLiteral("survey.jsonl"));
+    ASSERT_TRUE(UA::appendRecord(path, QStringLiteral("verb1"), {QStringLiteral("k")}));
+    ASSERT_TRUE(UA::appendRecord(path, QStringLiteral("verb2"), {QStringLiteral("k")}));
+    // Write-only: the read fails while the save would still go through.
+    ASSERT_TRUE(QFile::setPermissions(path, QFileDevice::WriteOwner));
+    QFile probe(path);
+    if (probe.open(QIODevice::ReadOnly))
+        GTEST_SKIP() << "running with rights that read a write-only file";
+    EXPECT_FALSE(UA::appendRecord(path, QStringLiteral("verb3"), {QStringLiteral("k")}))
+        << "an unreadable ledger must refuse the append";
+    ASSERT_TRUE(QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner));
+    const QList<QByteArray> lines = fileLines(path);
+    ASSERT_EQ(lines.size(), 2) << "the two earlier records must survive";
+    EXPECT_EQ(parseLine(lines.last()).value("tool").toString(), QStringLiteral("verb2"));
+}
+
 // INV-4
 TEST(McpUndeclaredArgsSurvey, Inv4DispatchRecordsUndeclaredArgument) {
     QTemporaryDir tmp;

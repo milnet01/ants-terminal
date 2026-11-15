@@ -29,8 +29,11 @@ QByteArray recordLine(const QString &ts, const QString &tool,
                       const QStringList &keys);
 
 // Append one record for `tool` and drop the oldest lines past capBytes.
-// The read-modify-write holds a ConfigWriteLock, because the terminal and
-// ants-mcpd both append to the same file.
+// The read-modify-write takes a ConfigWriteLock, because the terminal and
+// ants-mcpd both append to the same file. The lock is best-effort: after
+// kGuiTimeoutMs the append goes ahead without it, as the model-switch
+// ledgers do (tests/features/ledger_write_safety/spec.md). Returns false,
+// writing nothing, when the file exists but cannot be read.
 bool appendRecord(const QString &path, const QString &tool,
                   const QStringList &keys, qint64 capBytes = kMaxLedgerBytes);
 

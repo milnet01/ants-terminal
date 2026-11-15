@@ -21,8 +21,10 @@ namespace JsonlFile {
 
 // Read a JSONL file into its non-blank lines (the trailing '\n' is stripped and
 // blank / whitespace-only lines are skipped). A missing or unreadable file
-// yields an empty list rather than an error.
-QList<QByteArray> readLines(const QString &path);
+// yields an empty list rather than an error. `readOk`, when given, is set
+// false only for a file that exists but cannot be read, so a caller about to
+// rewrite the file can tell "nothing yet" from "cannot see what is there".
+QList<QByteArray> readLines(const QString &path, bool *readOk = nullptr);
 
 // Atomically rewrite `path` with `lines` (one per line, each '\n'-terminated)
 // via QSaveFile. Creates the parent directory private (0700, ANTS-1988) and

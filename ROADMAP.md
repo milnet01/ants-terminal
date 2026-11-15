@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6784 -->
+<!-- ants-roadmap-id-high-water: ANTS=6785 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93711,7 +93711,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6470] **mcpundeclaredargs.cpp: After the timeout, the read-modify-write goes ahead without the lock.**
+- ✅ [ANTS-6470] **mcpundeclaredargs.cpp: After the timeout, the read-modify-write goes ahead without the lock.**
   `src/mcpundeclaredargs.cpp:39-43` — After the timeout, the read-
   modify-write goes ahead without the lock. The header
   (`mcpundeclaredargs.h:33-34`) says the lock is held because the
@@ -93722,6 +93722,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   when the lock is not acquired; tell "missing" apart from "unreadable"
   in `readLines`.
   Ledger row 187, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: fixed the unreadable-file half: appendRecord refuses when
+  the ledger exists but cannot be read (INV-7). The skip-on-timeout half
+  was not taken: tests/features/ledger_write_safety/spec.md makes the
+  lock best-effort on purpose (losing the record is worse), and the
+  header now says so.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
@@ -94068,6 +94073,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: review-fix.
   Source: in-session-2026-11-15 (sibling of ANTS-6466).
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6785] **The model-switch and near-miss ledgers refuse an append when the file exists but cannot be read.**
+  ModelSwitchLedger::appendRecord and ModelNearMissLedger::appendRecord
+  read with JsonlFile::readLines and rewrite the file. A file that exists
+  but cannot be read (write-only, say) reads as empty, so the rewrite
+  keeps only the new record. ANTS-6470 fixed the undeclared-argument
+  ledger with readLines' readOk out-param; use the same here. Mode 000 does
+  not reproduce: QSaveFile refuses an unwritable target.
+  **Layman:** Two history files could be wiped down to one entry if they ever became unreadable.
+  Kind: fix.
+  Source: ANTS-6470 sibling, 2026-11-15.
+  Lanes: mcp-infra.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 

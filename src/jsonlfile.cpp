@@ -9,10 +9,14 @@
 
 namespace JsonlFile {
 
-QList<QByteArray> readLines(const QString &path) {
+QList<QByteArray> readLines(const QString &path, bool *readOk) {
     QList<QByteArray> out;
     QFile f(path);
-    if (!f.open(QIODevice::ReadOnly)) return out;
+    if (readOk) *readOk = true;
+    if (!f.open(QIODevice::ReadOnly)) {
+        if (readOk) *readOk = !f.exists();
+        return out;
+    }
     const QByteArray all = f.readAll();
     for (const QByteArray &ln : all.split('\n'))
         if (!ln.trimmed().isEmpty()) out.append(ln);

@@ -37,7 +37,11 @@ bool appendRecord(const QString &path, const QString &tool,
     // lock waits only kGuiTimeoutMs and then proceeds best-effort, as the
     // model-switch ledgers do (ANTS-1989).
     ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
-    QList<QByteArray> lines = JsonlFile::readLines(path);
+    // ANTS-6470 — a ledger that exists but cannot be read would otherwise be
+    // rewritten as this one record, losing every line already in it.
+    bool readOk = true;
+    QList<QByteArray> lines = JsonlFile::readLines(path, &readOk);
+    if (!readOk) return false;
     lines.append(recordLine(ModelSwitchLedger::nowIso8601(), tool, keys));
     return JsonlFile::writeLinesAtomic(
         path, JsonlFile::dropOldestToCap(std::move(lines), capBytes));
