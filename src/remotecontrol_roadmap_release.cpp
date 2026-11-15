@@ -450,17 +450,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogPlaceByRelease(const QJsonObject &req)
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString() ==
-                QLatin1String("op_unsupported")) {
-            QString storeErr;
-            env = rlNotStoreServedRefusal(env, roadmapStoreOrNull(nullptr, &storeErr),
-                                          root, roadmapPath,
-                                          QStringLiteral("place_by_release needs a store-served project"),
-                                          QStringLiteral("Run roadmap_migrate first."));
-            return QJsonDocument(env);
-        }
-        return refusal;
+        return rlStoreOnlyOpRefusal(refusal, root, roadmapPath,
+                                    QStringLiteral("place_by_release needs a store-served project"),
+                                    QStringLiteral("Run roadmap_migrate first."));
     }
     RoadmapStore &store    = *target->store;
     const qint64 projectId = target->projectId;

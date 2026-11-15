@@ -1601,6 +1601,15 @@ private:
     std::optional<RoadmapWriteTarget>
     roadmapSectionOpTarget(const QJsonObject &req, QString *projectRoot,
                            QString *roadmapPath, QJsonDocument *refusal) const;
+    // ANTS-6247 — what a store-only op returns when roadmapSectionOpTarget()
+    // refused. Its `op_unsupported` becomes rcdetail::rlNotStoreServedRefusal's
+    // answer, or `store_failed` if the store will not open; any other refusal
+    // passes through. `opLead` and `noRowAdvice` are that function's.
+    QJsonDocument rlStoreOnlyOpRefusal(const QJsonDocument &refusal,
+                                       const QString &projectRoot,
+                                       const QString &roadmapPath,
+                                       const QString &opLead,
+                                       const QString &noRowAdvice) const;
 
     // § 2.2 rules 1 and 2 (absent → nullptr, no error; present but unopenable
     // → nullptr with *why set), plus the connection caching the p95 budget

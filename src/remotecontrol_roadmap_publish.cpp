@@ -91,37 +91,45 @@ QJsonObject rcdetail::rlNotStoreServedRefusal(QJsonObject env, RoadmapStore *sto
     return env;
 }
 
+QJsonDocument RemoteControl::rlStoreOnlyOpRefusal(const QJsonDocument &refusal,
+                                                  const QString &projectRoot,
+                                                  const QString &roadmapPath,
+                                                  const QString &opLead,
+                                                  const QString &noRowAdvice) const {
+    // Remapped for ANTS-4501's reason: the shared prologue calls "not
+    // store-migrated" `op_unsupported`, and a caller branching on `code` should
+    // get the one each op's contract promises.
+    QJsonObject env = refusal.object();
+    if (env.value(QStringLiteral("code")).toString() != QLatin1String("op_unsupported"))
+        return refusal;
+    QString openErr;
+    RoadmapStore *store = roadmapStoreOrNull(nullptr, &openErr);
+    if (!store && !openErr.isEmpty()) {
+        // ANTS-5095 — a store that will not open is not an absent row.
+        env[QStringLiteral("code")]  = QStringLiteral("store_failed");
+        env[QStringLiteral("error")] = QStringLiteral(
+            "roadmap_log: %1 — the store could not be opened: %2")
+                .arg(opLead, openErr);
+        return QJsonDocument(env);
+    }
+    return QJsonDocument(rcdetail::rlNotStoreServedRefusal(
+        env, store, projectRoot, roadmapPath, opLead, noRowAdvice));
+}
+
 QJsonDocument RemoteControl::cmdRoadmapLogRender(const QJsonObject &req) {
     QString root, roadmapPath;
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        // Remapped for ANTS-4501's reason: the shared prologue calls this
-        // `op_unsupported`, and a caller branching on `code` should get the one
-        // this op's contract promises. A markdown-backed project has nothing to
-        // publish FROM — its file already is the source of truth — so the
-        // refusal has to say that rather than look like a transient failure.
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            // ANTS-4802 — ASK the store before saying what it holds. Only
-            // RoadmapSource::storeServedDialects() are store-served, while
-            // roadmap_migrate reads every dialect, so a project can be
-            // registered, carry hundreds of rows, and still land here. Told
-            // "the store holds no row", the reader re-runs the migration — the
-            // one action that cannot help, and the one that writes a second
-            // snapshot nothing reads.
-            QString storeErr;
-            RoadmapStore *store = roadmapStoreOrNull(nullptr, &storeErr);
-            env = rcdetail::rlNotStoreServedRefusal(env, store, root, roadmapPath,
-                QStringLiteral("render publishes the STORE to the file, so it needs a "
-                               "store-served project"),
-                QStringLiteral("Run roadmap_migrate first; on a markdown-backed project "
-                               "the file is already the source of truth and there is "
-                               "nothing to publish."));
-            return QJsonDocument(env);
-        }
-        return refusal;
+        // A markdown-backed project has nothing to publish FROM — its file
+        // already is the source of truth — so the refusal says that rather
+        // than look like a transient failure.
+        return rlStoreOnlyOpRefusal(refusal, root, roadmapPath,
+            QStringLiteral("render publishes the STORE to the file, so it needs a "
+                           "store-served project"),
+            QStringLiteral("Run roadmap_migrate first; on a markdown-backed project "
+                           "the file is already the source of truth and there is "
+                           "nothing to publish."));
     }
 
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();

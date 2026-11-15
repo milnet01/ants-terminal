@@ -145,20 +145,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogRepairTrailers(const QJsonObject &req)
     QJsonDocument refusal;
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
-        // Remapped for ANTS-4501's reason: the shared prologue calls this
-        // `op_unsupported`, and a caller branching on `code` should get the one
-        // this op's contract promises.
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString()
-                == QLatin1String("op_unsupported")) {
-            QString storeErr;
-            env = rlNotStoreServedRefusal(env, roadmapStoreOrNull(nullptr, &storeErr),
-                                          root, roadmapPath,
-                                          QStringLiteral("repair_trailers needs a store-served project"),
-                                          QStringLiteral("Run roadmap_migrate first."));
-            return QJsonDocument(env);
-        }
-        return refusal;
+        return rlStoreOnlyOpRefusal(refusal, root, roadmapPath,
+                                    QStringLiteral("repair_trailers needs a store-served project"),
+                                    QStringLiteral("Run roadmap_migrate first."));
     }
     RoadmapStore &store    = *target->store;
     const qint64 projectId = target->projectId;

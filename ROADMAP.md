@@ -106270,7 +106270,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L21-F5).
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6247] **Fold the four op_unsupported remap blocks into one helper, and read the store error they drop.**
+- ✅ [ANTS-6247] **Fold the four op_unsupported remap blocks into one helper, and read the store error they drop.**
   From ANTS-6130. backfill, publish (render), release
   (place_by_release) and repair each remap op_unsupported through
   rlNotStoreServedRefusal, passing a `storeErr` to roadmapStoreOrNull
@@ -106279,6 +106279,12 @@ worked after these.
   header declaration, and the dropped storeErr is a behaviour question:
   say what a failed store open should report.
   Hot reload: none needed.
+  Shipped 2026-11-15. One member, RemoteControl::rlStoreOnlyOpRefusal,
+  serves all four ops. The behaviour question, decided in line with
+  ANTS-5095: a store that fails to open there reports store_failed.
+  Today the prologue reports that case first, so the guard cannot be
+  reached through the verb; the dropped error was always empty.
+  Ants5161RegisteredButNotServedIsNamed now covers place_by_release too.
   **Layman:** Four roadmap tools repeat the same error-translation block, and each throws away an error message it collects.
   Kind: fix.
   Source: review-readability-2026-10-22 (L21-F7).

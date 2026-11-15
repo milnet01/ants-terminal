@@ -553,7 +553,9 @@ TEST(RoadmapLogSetIntro, Ants5161RegisteredButNotServedIsNamed) {
     }
 
     RemoteControl rc(nullptr);
-    for (const char *op : {"repair_trailers", "backfill_dates", "render"}) {
+    // ANTS-6247 — place_by_release takes the same refusal path as the others.
+    for (const char *op : {"repair_trailers", "backfill_dates", "render",
+                           "place_by_release"}) {
         QJsonObject req;
         req[QStringLiteral("caller_cwd")] = root;
         req[QStringLiteral("op")]         = QLatin1String(op);

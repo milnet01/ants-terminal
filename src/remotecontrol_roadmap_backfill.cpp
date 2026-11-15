@@ -368,21 +368,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogBackfillDates(const QJsonObject &req) 
     const auto target = roadmapSectionOpTarget(req, &root, &roadmapPath, &refusal);
     if (!target) {
         // § 2.3 names `project_not_registered` for "the store holds no row for
-        // that root", which is exactly the condition the shared prologue calls
-        // `op_unsupported` (its own name for "not store-migrated"). Remapped
-        // rather than duplicated: one prologue, and the code a caller branches
-        // on is the one this op's contract promises.
-        QJsonObject env = refusal.object();
-        if (env.value(QStringLiteral("code")).toString() ==
-                QLatin1String("op_unsupported")) {
-            QString storeErr;
-            env = rlNotStoreServedRefusal(env, roadmapStoreOrNull(nullptr, &storeErr),
-                                          root, roadmapPath,
-                                          QStringLiteral("backfill_dates needs a store-served project"),
-                                          QStringLiteral("Run roadmap_migrate first."));
-            return QJsonDocument(env);
-        }
-        return refusal;
+        // that root", which is the prologue's `op_unsupported`.
+        return rlStoreOnlyOpRefusal(refusal, root, roadmapPath,
+                                    QStringLiteral("backfill_dates needs a store-served project"),
+                                    QStringLiteral("Run roadmap_migrate first."));
     }
     RoadmapStore &store    = *target->store;
     const qint64 projectId = target->projectId;
