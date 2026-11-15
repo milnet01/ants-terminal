@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6781 -->
+<!-- ants-roadmap-id-high-water: ANTS=6784 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92897,6 +92897,37 @@ measured Ants adding about 5,250 tokens to every request.
   Source: RetroDB feedback 2026-11-15.
   Lanes: roadmap-write.
 
+### Ants MCP feedback from CC sessions (2026-11-15 triage)
+
+- 📋 [ANTS-6782] **source_scrapes extracts anchors from Python and shell tests, and can drop readers that only glob.**
+  On OneUp (Python and shell tests only) scrapes_total was 0, and the
+  reader rows spilled past 16 KB with a limit set; most were
+  rglob/glob readers that pin no text. Repro: source_scrapes on
+  /mnt/Games/Scripts/Linux/OneUp.
+  **Layman:** The test-scrape finder only understands C++ tests today; it should also read Python and shell tests.
+  Kind: enhancement.
+  Source: OneUp feedback 2026-11-15 (three full reviews).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-6783] **function_sizes finds where a Bash function ends.**
+  update_system.sh in OneUp: make_cdn_reposd (8 lines) and
+  _run_system_upgrade_inner (42 lines) were both reported as ending at
+  the file's last function end (576 and 567 lines). Compare with
+  `grep -n '^}'`.
+  **Layman:** The function-size report gave two short shell functions hundreds of lines each, sending false work to reviewers.
+  Kind: fix.
+  Source: OneUp feedback 2026-11-15 (three full reviews).
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-6784] **comment_claims reads INV-<n> as a spec invariant id, and a token starting with -- as a flag, not a path.**
+  42 unknown_ticket rows were spec invariants (INV-9, INV-7 ...) looked
+  up on the roadmap. One dead_reference read
+  `--skip-repo/--auto-skip-repos` (oneup/gui/run.py) as a path.
+  **Layman:** The comment checker raised 43 false alarms in one OneUp run: invariant names taken for missing tickets, and command-line flags taken for missing files.
+  Kind: fix.
+  Source: OneUp feedback 2026-11-15 (three full reviews).
+  Lanes: mcp-tools.
+
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
 - 📋 [ANTS-6427] **Let `duplicate_blocks`, `function_sizes` and `comment_claims` write a whole-tree result to a spill file and return only a summary.**
@@ -111914,6 +111945,10 @@ contributors don't duplicate research.
   Corroborated (2026-10-15 token survey): UT_MonsterHunt hit rg_failed at
   the 5 s default on its project root (a huge work/ folder) and needed a
   retry with lane/glob; this session hit it once on this repo too.
+  2026-11-15: OneUp hit it too: a two-alternative regex with
+  exclude_preset history refused rg_failed at load ~20, while git grep
+  answered at once. Suggested: honour .gitignore and skip large
+  untracked files, or raise the budget under load.
 
 - 📋 [ANTS-5239] **A gentle donation reminder about once every 150 launches.**
   Count launches in config; on every 150th, show a short, dismissible
