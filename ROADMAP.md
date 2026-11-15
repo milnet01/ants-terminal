@@ -106708,7 +106708,7 @@ worked after these.
   Kind: test.
   Source: ctest-run-2026-10-24.
 
-- 📋 [ANTS-6278] **An invariant bullet written with two spaces after its dash swallows the bullet before it.**
+- ✅ [ANTS-6278] **An invariant bullet written with two spaces after its dash swallows the bullet before it.**
   L27-F12 remainder. specparse.cpp's bullet branch matches anchors with
   invBulletAnchorPattern (`-\s+\*\*`), but ends each body by searching
   back for the literal "\n- **INV-" (one space). For `-  **INV-3**` the
@@ -106716,6 +106716,10 @@ worked after these.
   previous body runs on to the next heading or the section end. Fix:
   keep each match's capturedStart and end the body there. Write the red
   test first (a two-space bullet after a one-space one).
+  Closed 2026-11-15. The code fix landed in fa19b7ea (2026-10-27)
+  without a test;
+  SpecParseTestSurface.Ants6278TwoSpaceBulletEndsThePreviousBody now
+  pins it, and fails with the old literal search put back.
   **Layman:** If a spec's invariant line has an extra space after the dash, the reader merges it into the invariant above.
   Kind: fix.
   Source: review-readability-2026-10-22 L27.

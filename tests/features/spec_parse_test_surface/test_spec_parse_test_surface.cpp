@@ -355,3 +355,23 @@ TEST(SpecParseTestSurface, Inv6EmptyBulletDoesNotEatTheNextOne) {
            "INV-6/next-line-separator-consumed", render(i3));
     EXPECT_EQ(0, expect_finish());
 }
+
+// ANTS-6278 — a bullet written with two spaces after its dash ends the body
+// before it. Each body ends where the next anchor match starts, not at a
+// literal "\n- **INV-" search, which a two-space bullet does not match.
+TEST(SpecParseTestSurface, Ants6278TwoSpaceBulletEndsThePreviousBody) {
+    expect_reset();
+    const auto p = parse(
+        withHeader(QStringLiteral(
+                       "- **INV-1** — First claim.\n"
+                       "-  **INV-2** — Second claim.\n"
+                       "- **INV-3** — Third claim.\n"))
+            .toUtf8()
+            .constData());
+    expect(p.value(QStringLiteral("invariants_count")).toInt() == 3, "6278/three-parsed",
+           QString::number(p.value(QStringLiteral("invariants_count")).toInt()));
+    const auto i0 = inv(p, 0), i1 = inv(p, 1);
+    expect(field(i0, "body") == QStringLiteral("First claim."), "6278/first-body", render(i0));
+    expect(field(i1, "body") == QStringLiteral("Second claim."), "6278/second-body", render(i1));
+    ASSERT_EQ(0, expect_finish());
+}
