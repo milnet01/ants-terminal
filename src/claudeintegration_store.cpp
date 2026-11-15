@@ -2465,7 +2465,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         "optional `cost` row, then the index row. op:\"get\" reads "
                         "either state. Refusals: missing_field, bad_args, "
                         "format_mismatch, already_recorded, coverage_required, "
-                        "not_found, bad_path. caller_cwd Required.");
+                        "not_found, bad_path, file_busy. caller_cwd Required.");
                     t["detail"] = QStringLiteral(
                         "ANTS-5299 (with ANTS-5298's record half). Contract: "
                         "tests/features/run_trace/spec.md. The row format is the "

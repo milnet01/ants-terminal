@@ -519,15 +519,6 @@ QJsonObject rlReviewKindAdvisory(const QString &kind, const QString &source);
 QJsonObject rlEvidenceAdvisoryForReq(const QJsonObject &bulletReq);
 bool rlFillItemBody(const QJsonObject &bulletReq, RoadmapStore::ItemWrite &w, QStringList &scrubbedNames, QString *error, int *unnamedRemovals = nullptr, QStringList *evidenceNotPathShaped = nullptr, QStringList *removedFragments = nullptr);  // ANTS-4938
 QString changelogMalformedAdvisory(int line, bool plural, bool applied);
-
-// ANTS-6468 — changelog_log takes turns on one changelog file, in this
-// process and across processes (each Claude Code session runs its own
-// ants-mcpd). The turn is an exclusive flock on a lock file named for the
-// file's path, in a private folder beside the roadmap store, so no lock
-// file lands in the project. rcOpenChangelogTurnLock returns that file's
-// descriptor, or -1. The wait defaults to 5 s; a test may shorten it.
-int  rcOpenChangelogTurnLock(const QString &changelogPath);
-void rcSetChangelogTurnWaitMsForTest(int ms);
 QStringList rcShortBareAltTerms(const QString &pattern);
 bool rcLooksLikeRegexButLiteral(const QString &pattern);
 bool rcContainsHtmlEntity(const QString &pattern);

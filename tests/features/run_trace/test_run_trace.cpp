@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include "fileturn.h"
 #include "runtraceverb.h"
 #include "remotecontrol.h"
 #include "sessioncostverb.h"
@@ -25,6 +26,9 @@
 
 #include <fstream>
 #include <sstream>
+
+#include <sys/file.h>
+#include <unistd.h>
 
 namespace {
 
@@ -616,4 +620,33 @@ TEST(RunTrace, Ants6272UsageCountsAsSessionCostCounts) {
     const QJsonObject c = r.value(QStringLiteral("cost_row")).toObject();
     EXPECT_EQ(c.value(QStringLiteral("new_tokens")).toInt(), 7);
     EXPECT_EQ(c.value(QStringLiteral("messages_counted")).toInt(), 1);
+}
+
+// ANTS-6469 — finish takes a turn on its project before reading the index,
+// so two sessions finishing at once cannot drop each other's row. While
+// another holder has the turn, finish refuses file_busy and writes nothing;
+// once it is released, finish writes.
+TEST(RunTrace, Ants6469FinishTakesTurns) {
+    ants_test::XdgGuard guard;   // the lock folder lives under XDG_DATA_HOME
+    Fixture fx;
+    ASSERT_TRUE(fx.init());
+    const QString id = startId(fx);
+    ASSERT_FALSE(id.isEmpty());
+
+    const int fd = FileTurn::openLock(QStringLiteral("file-turns"),
+                                      QStringLiteral("run_trace:") + fx.paths.root);
+    ASSERT_GE(fd, 0);
+    ASSERT_EQ(::flock(fd, LOCK_EX | LOCK_NB), 0);
+    FileTurn::setWaitMsForTest(50);
+
+    const QMap<QString, QString> before = snapshot(fx.paths.root);
+    const QJsonObject busy = finishWith(fx, id, basicArgs(2));
+    EXPECT_FALSE(busy.value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(code(busy).toStdString(), "file_busy");
+    EXPECT_EQ(snapshot(fx.paths.root), before) << "finish wrote while another held the turn";
+
+    ::close(fd);   // releases the turn
+    FileTurn::setWaitMsForTest(0);
+    const QJsonObject r = finishWith(fx, id, basicArgs(2));
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << code(r).toStdString();
 }

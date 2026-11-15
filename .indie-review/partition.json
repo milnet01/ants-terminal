@@ -355,6 +355,7 @@
         "src/remotecontrol_terminal.cpp",
         "src/runtraceverb.cpp",
         "src/runtraceverb.h",
+        "src/fileturn.h",
         "src/quotationcheckverb.cpp",
         "src/quotationcheckverb.h",
         "src/dependencyinventory.cpp",

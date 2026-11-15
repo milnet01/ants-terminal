@@ -18,6 +18,7 @@
 // `coverage_required` were minted here).
 
 #include "runtraceverb.h"
+#include "fileturn.h"   // ANTS-6469
 #include "sessioncostverb.h"   // SessionCost::folderNameFor
 
 #include <QCryptographicHash>
@@ -470,6 +471,17 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
     if (!validId(req.id))
         return refuse("bad_args", QStringLiteral("id \"%1\" is not <K>-<YYYYMMDD>-<4 hex>")
                                       .arg(req.id));
+
+    // ANTS-6469 — one finish per project at a time, from reading the index
+    // and run-costs.tsv to writing them, or a second session's row is lost
+    // (src/fileturn.h).
+    const FileTurn turn(QStringLiteral("file-turns"), QStringLiteral("run_trace:") + p.root);
+    if (!turn.held()) {
+        QJsonObject r = refuse("file_busy",
+            QStringLiteral("another call is finishing a run in this project; retry shortly"));
+        r[QStringLiteral("retry_after_ms")] = 250;
+        return r;
+    }
 
     Index ix = readIndex(p);
     if (ix.exists && ix.headerAt < 0) {

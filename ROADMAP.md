@@ -93650,16 +93650,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   write, and refuse `busy` when it cannot be taken.
   Ledger row 131, docs/reviews/close-findings-2026-11-06.md.
   2026-11-15: every changelog_log op takes an exclusive flock turn on
-  the changelog file (lock in changelog-holds/ beside the store, never
-  in the project), waiting up to 5 s, else `changelog_busy` with
-  retry_after_ms (new row in mcp-error-codes.md). Test:
+  the changelog file (lock in file-turns/ under the data folder, never
+  in the project), waiting up to 5 s, else `file_busy` with
+  retry_after_ms (mcp-error-codes.md; renamed from changelog_busy and
+  the lock moved to src/fileturn.h with ANTS-6469). Test:
   changelog_log_writer.Ants6468WritersTakeTurns, red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 12-mcp-content-verbs-a (Medium).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6469] **runtraceverb.cpp: `finish` reads, changes and rewrites `gate-log.md` and `run-costs.tsv` (`:333-363`, `:574`) with no lock.**
+- ✅ [ANTS-6469] **runtraceverb.cpp: `finish` reads, changes and rewrites `gate-log.md` and `run-costs.tsv` (`:333-363`, `:574`) with no lock.**
   `runtraceverb.cpp:558-579` — `finish` reads, changes and rewrites
   `gate-log.md` and `run-costs.tsv` (`:333-363`, `:574`) with no lock.
   Quote: `ix.lines.insert(rowLine, row); ... if
@@ -93667,6 +93668,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): take a `QLockFile`
   beside the index around the read-modify-write.
   Ledger row 145, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: finish takes a FileTurn (src/fileturn.h, flock in
+  file-turns/ under the data folder, never in the project) per project
+  root from reading the index to writing it, else `file_busy`. Not the
+  reviewer's QLockFile beside the index: that leaves an untracked file
+  in the repo after a crash. ANTS-6468's lock now uses the same class,
+  and its code is `file_busy` too. Test:
+  RunTrace.Ants6469FinishTakesTurns, red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
