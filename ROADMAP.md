@@ -93947,7 +93947,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 27-audit-engine (Low).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6482] **roadmapfoldin.cpp: The stale-lock steal checks the lock's age, then renames whatever file is at that path.**
+- ✅ [ANTS-6482] **roadmapfoldin.cpp: The stale-lock steal checks the lock's age, then renames whatever file is at that path.**
   `roadmapfoldin.cpp:196-204` — The stale-lock steal checks the lock's
   age, then renames whatever file is at that path. Those are two
   separate steps.
@@ -93957,6 +93957,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   name (add pid and a random suffix). Re-check the moved file's age. If
   it is fresh, restore it and wait.
   Ledger row 326, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: stealStaleRenameLock renames to
+  `<lock>.stale.<pid>.<random>`, re-checks the moved file's age, and
+  links a fresh one back. Tests Ants6482StaleLockSteal.* via a testing::
+  hook.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).

@@ -192,4 +192,12 @@ bool insertBlock(const QString &projectPath,
 // string when no recognisable release block exists.
 QString findActiveReleaseHeading(const QString &projectPath);
 
+// ANTS-6482 — test seams for the stale rename-lock steal.
+namespace testing {
+// Called between the lock's age check and its rename; null in production.
+extern void (*beforeStaleLockRename)(const QString &lockPath);
+// True when the lock at `lockPath` was abandoned and has been removed.
+bool stealStaleRenameLock(const QString &lockPath);
+}  // namespace testing
+
 } // namespace RoadmapFoldIn

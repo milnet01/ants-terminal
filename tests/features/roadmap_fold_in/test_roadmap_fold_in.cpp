@@ -7,8 +7,10 @@
 #include "../../_support/srcgrep.h"
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonObject>
 #include <QString>
 #include <QStringList>
@@ -827,4 +829,57 @@ TEST(RoadmapFoldIn, Inv9InteractiveWaitIsShortAndSaysBusy) {
         root, 1, RoadmapFoldIn::LockWait::Interactive, &busy);
     EXPECT_EQ(after.size(), 1);
     EXPECT_FALSE(busy) << "success clears busy";
+}
+
+// ===========================================================================
+// ANTS-6482 — the stale rename-lock steal never removes a fresh lock
+// ===========================================================================
+
+namespace {
+
+bool writeLockFile(const QString &path, const QByteArray &body, int ageSeconds) {
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    if (f.write(body) != body.size() || !f.flush()) return false;
+    const QDateTime when = QDateTime::currentDateTime().addSecs(-ageSeconds);
+    return f.setFileTime(when, QFileDevice::FileModificationTime);
+}
+
+// Another process judged the same lock stale, removed it and took a new one
+// between this process's age check and its rename.
+void replaceWithFreshLock(const QString &lockPath) {
+    QFile::remove(lockPath);
+    writeLockFile(lockPath, "fresh", 0);
+}
+
+QStringList siblingsOf(const QString &lockPath) {
+    const QFileInfo fi(lockPath);
+    return fi.absoluteDir().entryList({fi.fileName() + QStringLiteral("*")},
+                                      QDir::Files | QDir::Hidden);
+}
+
+}  // namespace
+
+TEST(Ants6482StaleLockSteal, AnAbandonedLockIsRemoved) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString lock = tmp.filePath(QStringLiteral(".roadmap-counter.lock"));
+    ASSERT_TRUE(writeLockFile(lock, "old", 600));
+    EXPECT_TRUE(RoadmapFoldIn::testing::stealStaleRenameLock(lock));
+    EXPECT_TRUE(siblingsOf(lock).isEmpty()) << siblingsOf(lock).join(' ').toStdString();
+}
+
+TEST(Ants6482StaleLockSteal, AFreshLockTakenMidStealIsKept) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString lock = tmp.filePath(QStringLiteral(".roadmap-counter.lock"));
+    ASSERT_TRUE(writeLockFile(lock, "old", 600));
+    RoadmapFoldIn::testing::beforeStaleLockRename = &replaceWithFreshLock;
+    const bool stolen = RoadmapFoldIn::testing::stealStaleRenameLock(lock);
+    RoadmapFoldIn::testing::beforeStaleLockRename = nullptr;
+    EXPECT_FALSE(stolen) << "a lock taken after the age check was stolen";
+    QFile f(lock);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly)) << "the other process's fresh lock is gone";
+    EXPECT_EQ(f.readAll(), QByteArray("fresh"));
+    EXPECT_EQ(siblingsOf(lock), QStringList{QStringLiteral(".roadmap-counter.lock")});
 }

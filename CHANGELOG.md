@@ -448,6 +448,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Clearing an abandoned roadmap id-counter lock no longer removes a lock another process has just taken** (ANTS-6482)
+  The lock is moved to a name of the clearing process's own and its age
+  checked again; a fresh lock is put back.
+
 - **Audit history files written by a newer Ants are left as they are by an older one** (ANTS-6481)
   The audit cache's index.json and audit_rule_quality.json keep their
   newer format and contents; the older build logs a warning and does not

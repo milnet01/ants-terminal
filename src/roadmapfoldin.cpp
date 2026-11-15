@@ -18,6 +18,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QScopeGuard>
@@ -34,6 +35,10 @@
 #include <unistd.h>
 
 namespace RoadmapFoldIn {
+
+namespace testing {
+void (*beforeStaleLockRename)(const QString &lockPath) = nullptr;
+}  // namespace testing
 
 namespace {
 
@@ -187,24 +192,32 @@ constexpr int kStaleLockSeconds = 120;
 // back but deleting the file by hand. inspectCounter() reports the stale
 // sibling, so the state was diagnosable and still not self-healing.
 //
-// RENAMED aside rather than unlinked, and that is the whole of the concurrency
-// argument: rename is atomic, so of two processes that both judge this lock
-// stale exactly one succeeds, and the loser cannot remove a lock the winner has
-// meanwhile re-created. Unlinking directly has no such guarantee.
+// RENAMED aside rather than unlinked: rename is atomic, so of two processes
+// that both judge this lock stale exactly one moves it. ANTS-6482 — the age
+// check and the rename are two steps, so the file moved may be a lock another
+// process took in between. The aside name is this process's own, and the
+// moved file's age is checked again (rename keeps its mtime); a fresh one is
+// linked back, which refuses if yet another lock has appeared since.
+bool isStale(const QString &path) {
+    const QDateTime mtime = QFileInfo(path).lastModified();
+    return mtime.isValid()
+        && mtime.secsTo(QDateTime::currentDateTime()) >= kStaleLockSeconds;
+}
+
 bool stealStaleRenameLock(const QString &lockPath) {
-    const QFileInfo fi(lockPath);
-    if (!fi.exists())
+    if (!QFileInfo::exists(lockPath) || !isStale(lockPath))
         return false;
-    const QDateTime mtime = fi.lastModified();
-    if (!mtime.isValid())
+    if (testing::beforeStaleLockRename) testing::beforeStaleLockRename(lockPath);
+    const QString aside = lockPath + QStringLiteral(".stale.%1.%2")
+        .arg(::getpid()).arg(QRandomGenerator::global()->generate(), 8, 16, QLatin1Char('0'));
+    const QByteArray asideUtf8 = aside.toUtf8();
+    if (::rename(lockPath.toUtf8().constData(), asideUtf8.constData()) != 0)
         return false;
-    if (mtime.secsTo(QDateTime::currentDateTime()) < kStaleLockSeconds)
-        return false;
-    const QString aside = lockPath + QStringLiteral(".stale");
-    if (::rename(lockPath.toUtf8().constData(), aside.toUtf8().constData()) != 0)
-        return false;
-    ::unlink(aside.toUtf8().constData());
-    return true;
+    const bool stale = isStale(aside);
+    if (!stale)
+        (void)::link(asideUtf8.constData(), lockPath.toUtf8().constData());
+    ::unlink(asideUtf8.constData());
+    return stale;
 }
 
 // ANTS-1490 — O_CREAT|O_EXCL rename-based locking fallback. Used when
@@ -296,6 +309,10 @@ void releaseCounterLock(CounterLock &lk) {
 }
 
 } // namespace
+
+bool testing::stealStaleRenameLock(const QString &lockPath) {
+    return RoadmapFoldIn::stealStaleRenameLock(lockPath);
+}
 
 QString counterFilePath(const QString &projectPath) {
     const QString canon = QFileInfo(projectPath).canonicalFilePath();
