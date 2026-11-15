@@ -106544,23 +106544,30 @@ worked after these.
   Source: review-readability-2026-10-22 L24.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6265] **feedback_log compact_resolved reads the format marker with its own regex, not FeedbackFile::markerVersion.**
+- 🚫 [ANTS-6265] **feedback_log compact_resolved reads the format marker with its own regex, not FeedbackFile::markerVersion.**
   L24-F5. compact_resolved matches `[0-9]+` over the whole file;
   markerVersion matches `[0-9]*` line by line and stops at the first
   marker. They disagree on an empty marker before a real one, and on a
   marker split over lines. Fix: call FeedbackFile::markerVersion. Queued:
   it changes which files compact_resolved refuses.
+  Dropped 2026-11-15: feedback_log op:compact_resolved is retired
+  (ANTS-4513 § 4.6; remotecontrol_feedback.cpp's kRetired list refuses
+  it `retired`), so its own marker regex no longer runs. markerVersion
+  is the one reader left.
   **Layman:** One feedback tool checks a file's version its own way, so it can disagree with the reader.
   Kind: fix.
   Source: review-readability-2026-10-22 L24.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6266] **feedback_query and compact_resolved scan the caller's roadmap with two copies that have drifted.**
+- 🚫 [ANTS-6266] **feedback_query and compact_resolved scan the caller's roadmap with two copies that have drifted.**
   L24-F6. compact_resolved treats 🚫 as closed (ANTS-4977); feedback_query
   does not. Only feedback_query drops a stale ship date. ANTS-6133 folded
   the shared id-prefix and ✅ copies (fbIdPrefix, fbShippedMark). Left:
   one "caller roadmap → status, prefix and ship-date maps" helper for
   both, with a test for the 🚫 rule. Behaviour change for one of them.
+  Dropped 2026-11-15: compact_resolved is retired (ANTS-4513 § 4.6), so
+  feedback_query holds the only roadmap-scan copy. Nothing is left to
+  fold.
   **Layman:** Two feedback tools judge a roadmap item's state differently.
   Kind: fix.
   Source: review-readability-2026-10-22 L24.
@@ -106575,12 +106582,17 @@ worked after these.
   Source: review-readability-2026-10-22 L24.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6268] **githooksreport sorts a failed git run by hand and folds timeout and crash into "rev-parse failed".**
+- ✅ [ANTS-6268] **githooksreport sorts a failed git run by hand and folds timeout and crash into "rev-parse failed".**
   L24-F9. ANTS-6133 added gitFailure() for the four git_state ops,
   building the timeout text from GitWrap::kHardKillMs. githooksreport.cpp
   has a fifth copy with its own refuse(), which duplicates gitErr, and
   reports a timeout or crash as "rev-parse failed". Fix: reuse
   gitFailure, or name the timeout and crash. Changes its refusal text.
+  Shipped 2026-11-15: the item's second remedy, naming the timeout and
+  crash. Reusing gitFailure would need it moved out of
+  remotecontrol_feedback.cpp into a shared header, since
+  githooksreport.cpp is its own module; refuse() stays. Test:
+  GitStateHooks.Ants6268CrashedGitIsNamed.
   **Layman:** The git-hooks report gives a vaguer error than the git tool when git times out or crashes.
   Kind: fix.
   Source: review-readability-2026-10-22 L24.

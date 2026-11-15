@@ -170,7 +170,17 @@ QJsonObject run(const QString &root, const QString &machineHooksDir) {
                             QStringLiteral("hooks")});
     if (!probe.started)
         return refuse("git_missing", QStringLiteral("git_state: git binary not found on PATH"));
-    if (probe.exitCode != 0 || probe.hardKilled || probe.crashed) {
+    // ANTS-6268 — a timeout and a crash are named, as git_state's other ops
+    // name them (gitFailure in remotecontrol_feedback.cpp).
+    if (probe.hardKilled)
+        return refuse("git_failed",
+                      QStringLiteral("git_state: git rev-parse exceeded %1 s wall budget")
+                          .arg(GitWrap::kHardKillMs / 1000),
+                      probe.stderrTail);
+    if (probe.crashed)
+        return refuse("git_failed", QStringLiteral("git_state: git rev-parse crashed"),
+                      probe.stderrTail);
+    if (probe.exitCode != 0) {
         if (QString::fromUtf8(probe.stderrTail)
                 .contains(QStringLiteral("not a git repository"), Qt::CaseInsensitive))
             return refuse("not_git_repo", QStringLiteral("git_state: not a git repository"));

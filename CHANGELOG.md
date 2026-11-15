@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **git_state op:"hooks" says when git timed out or crashed, as its other ops do.** (ANTS-6268)
+
 - **feedback_log finds a project's feedback file in the configured feedback folder even when the folder name and file name are spelled differently, and says why it looked there.** (ANTS-6259)
 
 - **focused_test shows the end of ctest's output when it cannot read it, as it already did for other test runners.** (ANTS-6257)

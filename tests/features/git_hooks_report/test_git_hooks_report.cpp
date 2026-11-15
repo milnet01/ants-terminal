@@ -259,3 +259,19 @@ TEST_F(GitStateHooks, NotARepositoryRefuses) {
     EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(env.value(QStringLiteral("code")).toString(), QStringLiteral("not_git_repo")) << dump(env);
 }
+
+// ANTS-6268 — a git that crashes is named as a crash, the way git_state's
+// other ops name it, not reported as "rev-parse failed".
+TEST_F(GitStateHooks, Ants6268CrashedGitIsNamed) {
+    QTemporaryDir tmp, bin;
+    ASSERT_TRUE(tmp.isValid() && bin.isValid());
+    const QString root = initRepo(tmp);
+    write(bin.path() + QStringLiteral("/git"), "#!/bin/sh\nkill -9 $$\n", true);
+    const QByteArray savedPath = qgetenv("PATH");
+    qputenv("PATH", bin.path().toLocal8Bit());
+    const QJsonObject env = GitHooksReport::run(root, machineHooks(tmp));
+    qputenv("PATH", savedPath);
+    EXPECT_EQ(env.value(QStringLiteral("code")).toString(), QStringLiteral("git_failed")) << dump(env);
+    EXPECT_TRUE(env.value(QStringLiteral("error")).toString().contains(QStringLiteral("crashed")))
+        << dump(env);
+}
