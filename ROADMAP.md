@@ -106615,7 +106615,7 @@ worked after these.
   Source: review-readability-2026-10-22 L24.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6271] **run_trace finds a session_id's transcript under ~/.claude/projects only, while session_cost tries every transcript folder.**
+- ✅ [ANTS-6271] **run_trace finds a session_id's transcript under ~/.claude/projects only, while session_cost tries every transcript folder.**
   L25-F4. Both handlers now share SessionCost::projectsDirs() (ANTS-6134).
   Left: cmdRunTrace resolves session_id against projectsDirs().constLast()
   and does not walk up to a parent folder, so with CLAUDE_CONFIG_DIR set,
@@ -106625,6 +106625,8 @@ worked after these.
   `remotecontrol_run_trace.cpp:97`. Details:
   docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
   ANTS-5953/ANTS-6271.)
+  Shipped 2026-11-15. SessionCost::folderFor serves both verbs. Test:
+  RunTrace.Ants6271SessionIdResolvesLikeSessionCost.
   **Layman:** Two cost tools look for a session's log in different places, so one can miss a log the other finds.
   Kind: fix.
   Source: review-readability-2026-10-22 L25.

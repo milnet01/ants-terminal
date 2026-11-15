@@ -21,6 +21,11 @@ inline constexpr qint64 kActiveWindowMs = 10LL * 60 * 1000;
 // letters and digits becomes '-'.
 QString folderNameFor(const QString &cwd);
 
+// The transcript folder for `cwd`, else for its nearest ancestor that has one,
+// trying `projectsDirs` in order at each level; empty when none has one.
+// session_cost and run_trace both resolve through it (ANTS-6271).
+QString folderFor(const QStringList &projectsDirs, const QString &cwd);
+
 // Where the harness keeps transcripts: $CLAUDE_CONFIG_DIR/projects when that
 // is set, then ~/.claude/projects. Read by the handlers, not by run(), so a
 // test passes its own list.

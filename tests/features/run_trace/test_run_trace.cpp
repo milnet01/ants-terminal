@@ -9,6 +9,9 @@
 #include "../../_support/srcgrep.h"
 
 #include "runtraceverb.h"
+#include "remotecontrol.h"
+#include "sessioncostverb.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QDir>
 #include <QDirIterator>
@@ -453,18 +456,18 @@ TEST(RunTrace, GateLogKeyIsHonoured) {
 // INV-13
 TEST(RunTrace, TranscriptIsNamedNeverGuessed) {
     EXPECT_EQ(RunTraceVerb::transcriptForSession(
-                  QStringLiteral("/h/.claude/projects"),
+                  {QStringLiteral("/h/.claude/projects")},
                   QStringLiteral("/mnt/Games/Ants_Terminal"),
                   QStringLiteral("d6db5ea4-7c86-43a5-b5c9-77937072a3e9")),
               QStringLiteral("/h/.claude/projects/-mnt-Games-Ants-Terminal/"
                              "d6db5ea4-7c86-43a5-b5c9-77937072a3e9.jsonl"));
     // ANTS-5952 — a non-ASCII letter folds to '-', as session_cost folds it.
     EXPECT_EQ(RunTraceVerb::transcriptForSession(
-                  QStringLiteral("/h/.claude/projects"),
+                  {QStringLiteral("/h/.claude/projects")},
                   QStringLiteral("/mnt/Café"), QStringLiteral("abcdef12")),
               QStringLiteral("/h/.claude/projects/-mnt-Caf-/abcdef12.jsonl"));
     EXPECT_TRUE(RunTraceVerb::transcriptForSession(
-                    QStringLiteral("/h/.claude/projects"), QStringLiteral("/x"),
+                    {QStringLiteral("/h/.claude/projects")}, QStringLiteral("/x"),
                     QStringLiteral("../../etc/passwd")).isEmpty());
 
     QTemporaryDir d;
@@ -514,4 +517,60 @@ TEST(RunTrace, RegisteredRequiredWithStrictSchema) {
     ASSERT_NE(end, std::string::npos);
     EXPECT_NE(ci.substr(schema, end - schema).find("schema[\"additionalProperties\"] = false;"),
               std::string::npos);
+}
+
+// ANTS-6271 — a session_id resolves as session_cost resolves it: every
+// transcript folder, CLAUDE_CONFIG_DIR's first, and the nearest ancestor of
+// caller_cwd that has one. Here the transcript sits under CLAUDE_CONFIG_DIR,
+// in the project's folder, and the caller is in a subfolder.
+TEST(RunTrace, Ants6271SessionIdResolvesLikeSessionCost) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard env;
+    env.setEnv("CLAUDE_CONFIG_DIR", tmp.filePath(QStringLiteral("cfg")).toUtf8());
+    env.setEnv("XDG_CACHE_HOME", tmp.filePath(QStringLiteral("cache")).toUtf8());
+    const QString proj = QDir(tmp.filePath(QStringLiteral("proj"))).absolutePath();
+    ASSERT_TRUE(QDir().mkpath(proj + QStringLiteral("/.git")));
+    ASSERT_TRUE(QDir().mkpath(proj + QStringLiteral("/sub")));
+    const QString root = QDir(proj).canonicalPath();
+    const QString sub = root + QStringLiteral("/sub");
+
+    RemoteControl rc(nullptr);
+    const auto call = [&](QJsonObject req) {
+        req[QStringLiteral("caller_cwd")] = sub;
+        return rc.cmdRunTrace(req).object();
+    };
+    const QJsonObject s = call({{QStringLiteral("op"), QStringLiteral("start")},
+                                {QStringLiteral("kind"), QStringLiteral("G")},
+                                {QStringLiteral("subject"), QStringLiteral("docs/specs/x.md")}});
+    ASSERT_TRUE(s.value(QStringLiteral("ok")).toBool()) << QJsonDocument(s).toJson().toStdString();
+
+    const QString after = utcStamp(QDateTime::currentDateTime().addSecs(60));
+    QJsonObject u{{QStringLiteral("input_tokens"), 5},
+                  {QStringLiteral("cache_creation_input_tokens"), 0},
+                  {QStringLiteral("output_tokens"), 7},
+                  {QStringLiteral("cache_read_input_tokens"), 0}};
+    QJsonObject line{{QStringLiteral("type"), QStringLiteral("assistant")},
+                     {QStringLiteral("timestamp"), after},
+                     {QStringLiteral("message"), QJsonObject{{QStringLiteral("id"), QStringLiteral("m1")},
+                                                             {QStringLiteral("usage"), u}}}};
+    ASSERT_TRUE(writeAll(tmp.filePath(QStringLiteral("cfg/projects/")) +
+                             SessionCost::folderNameFor(root) + QStringLiteral("/abcdef12.jsonl"),
+                         QString::fromUtf8(QJsonDocument(line).toJson(QJsonDocument::Compact)) + '\n'));
+
+    QJsonObject req = basicArgs(3);
+    req[QStringLiteral("op")]         = QStringLiteral("finish");
+    req[QStringLiteral("id")]         = s.value(QStringLiteral("id")).toString();
+    req[QStringLiteral("session_id")] = QStringLiteral("abcdef12");
+    req[QStringLiteral("cost")] = QJsonObject{{QStringLiteral("kind"), QStringLiteral("spec")},
+                                              {QStringLiteral("loop"), 1},
+                                              {QStringLiteral("verified"), 0},
+                                              {QStringLiteral("dismissed"), 0},
+                                              {QStringLiteral("executed"), QStringLiteral("yes")},
+                                              {QStringLiteral("outcome"), QStringLiteral("complete")},
+                                              {QStringLiteral("arm"), QStringLiteral("draft")}};
+    const QJsonObject r = call(req);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(r.value(QStringLiteral("cost_row")).toObject()
+                  .value(QStringLiteral("new_tokens")).toInt(), 12);
 }

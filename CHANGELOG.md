@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **run_trace finds a session's log wherever session_cost finds it, including under CLAUDE_CONFIG_DIR and from a project subfolder.** (ANTS-6271)
+
 - **A cut-short commit message or release note never ends in a broken character, and keeps every whole character that fits.** (ANTS-6269)
 
 - **git_state op:"hooks" says when git timed out or crashed, as its other ops do.** (ANTS-6268)

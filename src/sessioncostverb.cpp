@@ -178,6 +178,21 @@ QString folderNameFor(const QString &cwd) {
     return out;
 }
 
+QString folderFor(const QStringList &projectsDirs, const QString &cwd) {
+    // Walked by path text: QDir::cdUp() stops at a directory that is gone.
+    QString c = QDir::cleanPath(cwd);
+    while (!c.isEmpty()) {
+        for (const QString &base : projectsDirs) {
+            const QString cand = QDir(base).filePath(folderNameFor(c));
+            if (QFileInfo(cand).isDir())
+                return cand;
+        }
+        const QString parent = QFileInfo(c).path();
+        c = parent == c ? QString() : parent;
+    }
+    return {};
+}
+
 QStringList projectsDirs() {
     QStringList out;
     const QString cfg = qEnvironmentVariable("CLAUDE_CONFIG_DIR");
@@ -475,21 +490,7 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
                           .arg(sessionId));
     const int top = std::clamp(args.value(QStringLiteral("top")).toInt(kDefaultTop), 1, kMaxTop);
 
-    // The folder for cwd, else for its nearest ancestor that has one.
-    // Walked by path text: QDir::cdUp() stops at a directory that is gone.
-    QString folder;
-    QString c = QDir::cleanPath(cwd);
-    while (folder.isEmpty() && !c.isEmpty()) {
-        for (const QString &base : projectsDirs) {
-            const QString cand = QDir(base).filePath(folderNameFor(c));
-            if (QFileInfo(cand).isDir()) {
-                folder = cand;
-                break;
-            }
-        }
-        const QString parent = QFileInfo(c).path();
-        c = parent == c ? QString() : parent;
-    }
+    const QString folder = folderFor(projectsDirs, cwd);
     if (folder.isEmpty())
         return mcp::refusal("not_found",
                       QStringLiteral("session_cost: no transcript folder for %1").arg(cwd));

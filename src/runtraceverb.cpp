@@ -635,13 +635,15 @@ QJsonObject get(const Paths &p, const QString &id) {
                         ix.headerAt < 0 ? 0 : qMax(0, ix.lastRow - ix.headerAt - 1)}};
 }
 
-QString transcriptForSession(const QString &projectsDir, const QString &cwd,
+QString transcriptForSession(const QStringList &projectsDirs, const QString &cwd,
                              const QString &sessionId) {
     static const QRegularExpression sid(QStringLiteral("^[0-9A-Za-z-]{8,64}$"));
-    if (!sid.match(sessionId).hasMatch() || cwd.isEmpty())
+    if (!sid.match(sessionId).hasMatch() || cwd.isEmpty() || projectsDirs.isEmpty())
         return {};
-    return QDir(projectsDir).filePath(SessionCost::folderNameFor(cwd) + QLatin1Char('/') + sessionId
-                                      + QStringLiteral(".jsonl"));
+    QString folder = SessionCost::folderFor(projectsDirs, cwd);
+    if (folder.isEmpty())
+        folder = QDir(projectsDirs.constLast()).filePath(SessionCost::folderNameFor(cwd));
+    return QDir(folder).filePath(sessionId + QStringLiteral(".jsonl"));
 }
 
 bool transcriptAllowed(const QString &path, const QStringList &projectsDirs) {

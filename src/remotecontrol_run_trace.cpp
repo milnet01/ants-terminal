@@ -94,7 +94,7 @@ QJsonDocument RemoteControl::cmdRunTrace(const QJsonObject &req) {
             const QStringList dirs = SessionCost::projectsDirs();
             const QString path = !transcript.isEmpty()
                 ? transcript
-                : RunTraceVerb::transcriptForSession(dirs.constLast(), cwd, sessionId);
+                : RunTraceVerb::transcriptForSession(dirs, cwd, sessionId);
             if (path.isEmpty())
                 return refuse("bad_args", QStringLiteral("run_trace: session_id \"%1\" is "
                                                          "not a session id").arg(sessionId));

@@ -69,7 +69,9 @@ clock and the random source passed in.
   readable at ~/.claude commit 1b5847a; it was never installed, so nothing
   checks the index today — CFG-0596.)
 - **INV-13 — the transcript is named, never guessed.** A `session_id` resolves
-  to `<projects dir>/<slug of cwd>/<session_id>.jsonl`. A transcript path
+  to `<folder>/<session_id>.jsonl`, where `<folder>` is the one
+  `session_cost` uses: the slug of cwd or of its nearest ancestor, in the
+  first projects directory that has it (ANTS-6271). A transcript path
   outside the projects directory refuses. No code path picks "the newest"
   transcript.
 - **INV-14 — the verb is registered with the Required contract.** Its schema
