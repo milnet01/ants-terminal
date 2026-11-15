@@ -97765,12 +97765,17 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Source: in-session-2026-11-14, found while shipping ANTS-5803.
   Lanes: mcp-tools.
 
-- 📋 [ANTS-6772] **read_region answers not_found for a file that exists but cannot be opened.**
+- ✅ [ANTS-6772] **read_region answers not_found for a file that exists but cannot be opened.**
   src/readregion.cpp, the f.open branch, sets `not_found` on any open
   failure. The taxonomy has `read_failed` (section 4) for that case.
   Fix: answer `not_found` only when the file is absent, else
   `read_failed`; then drop the read_region sentence from the
   `not_found` row.
+  Shipped 2026-11-15: the open-failure branch answers read_failed when
+  the file exists. The read_region sentence is gone from the not_found
+  row of mcp-error-codes.md. Test
+  McpReadRegion.Ants6772UnopenableFileIsReadFailed (a mode-0 file) seen
+  red first.
   **Layman:** When a file cannot be read, one tool says it is missing, which sends the caller looking in the wrong place.
   Kind: fix.
   Source: in-session-2026-11-14, found while shipping ANTS-5803.

@@ -533,7 +533,9 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     QFile f(absPath);
     if (!f.open(QIODevice::ReadOnly)) {
         env["ok"] = false;
-        env["code"] = QStringLiteral("not_found");
+        // ANTS-6772 — not_found only for a file that is not there.
+        env["code"] = QFile::exists(absPath) ? QStringLiteral("read_failed")
+                                             : QStringLiteral("not_found");
         env["error"] = QStringLiteral("read_region: cannot open %1").arg(absPath);
         return env;
     }

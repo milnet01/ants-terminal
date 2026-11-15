@@ -117,7 +117,7 @@ because source comments cite its section.
 
 | Code | Meaning | Examples |
 |------|---------|----------|
-| `not_found` | Named resource doesn't exist. `read_region` also answers it for a file it cannot open, so an unreadable file reads as a missing one there. | `session_memory get` for a missing key. |
+| `not_found` | Named resource doesn't exist. | `session_memory get` for a missing key. |
 | `already_recorded` | ANTS-5299 — the trace index already carries a row whose first field is this run id. The run is done; retrying cannot record it twice, and the caller should read it with `op:"get"` rather than finish again. | `run_trace op:"finish"` on an id whose row landed. |
 | `unknown_project` | ANTS-4622 — `session_message op:"send"`: the `to` export_slug resolves to no project row, so the mail could never be delivered. ANTS-5473 — the refusal carries `candidates[]`, the nearest registered slugs (case folded, `_` read as `-`). DISTINCT from `no_project`, which is about the CALLER's own root: a caller branching on `code` has to tell "you are not registered" from "your recipient is unknown", and one code cannot say both. Also distinct from `project_not_registered`, which the taxonomy scopes to the store-only ops' remap of `op_unsupported` and which is likewise a statement about the caller. | `session_message op:"send" to:"no-such-project"`. |
 | `inbox_full` | ANTS-4622 — the recipient already holds `kMailInboxCap` (500) UNACKED messages. Refuses rather than dropping the oldest: a silently dropped message is indistinguishable from one that was never sent. Acking frees a slot, since the cap counts unacked rows. | `session_message op:"send"` to a project that has stopped reading its mail. |

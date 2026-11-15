@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **read_region answers read_failed for a file that exists but cannot be opened, keeping not_found for a missing file** (ANTS-6772)
+
 - **spec_log op:"append_loop" adds rows to a log under a plain "Loop log" heading, numbered or not, such as "## 8. Loop log"** (ANTS-6755)
 
 - **The CI cache clean-up finds the cache it keeps in any length of cache list, so it no longer skips a clean-up by mistake** (ANTS-6753)

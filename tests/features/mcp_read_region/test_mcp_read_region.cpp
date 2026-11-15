@@ -149,6 +149,23 @@ TEST(McpReadRegion, PastEof) {
     EXPECT_TRUE(env.value("lines").toArray().isEmpty());
 }
 
+// ANTS-6772 — a file that exists but cannot be opened is read_failed, not
+// not_found; an absent one stays not_found.
+TEST(McpReadRegion, Ants6772UnopenableFileIsReadFailed) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    const QString p = writeFile(dir, "f.txt", kFixture);
+    ASSERT_TRUE(QFile::setPermissions(p, QFileDevice::Permissions()));
+    QFile probe(p);
+    if (probe.open(QIODevice::ReadOnly))
+        GTEST_SKIP() << "running with rights that open a mode-0 file";
+    const QJsonObject env = ReadRegion::extract(p, lineOpts(1, 2));
+    QFile::setPermissions(p, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString(), QStringLiteral("read_failed"));
+    const QJsonObject gone = ReadRegion::extract(dir.filePath("absent.txt"), lineOpts(1, 2));
+    EXPECT_EQ(gone.value("code").toString(), QStringLiteral("not_found"));
+}
+
 // B3 — symbol-body mode resolves a qualified member definition (INV-2),
 // the realistic "read Class::method" query. file_outline catches
 // class/struct/namespace + Class::method forms.
