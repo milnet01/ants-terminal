@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6773 -->
+<!-- ants-roadmap-id-high-water: ANTS=6774 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -91287,6 +91287,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: token-survey-2026-11-13.
   Lanes: claude-hooks.
 
+- 📋 [ANTS-6774] **cc-job status lists only the jobs started in the current project folder when asked, and shows each job's folder.**
+  demoreel's token survey: `cc-job status --all` lists every
+  project's jobs with no project field, so a session greps it.
+  start_job already writes `cwd=$PWD` into each job's record. Add
+  a `--here` filter (jobs whose cwd is under the current git root,
+  or $PWD outside a repo) to status and status --all, and print
+  the folder on each line. Test in the cc_job bundle.
+  Hot reload: none needed; cc-job is a script read on each run.
+  **Layman:** The background-job list mixes every project's jobs, so a session has to search it to find its own.
+  Kind: enhancement.
+  Source: claude-config-request-2026-11-15 (demoreel token survey 2026-11-14).
+  Lanes: packaging.
+
 ### Ants MCP feedback from CC sessions — 2026-10-21 triage
 
 - ✅ [ANTS-5800] **function_sizes never measures a shell script's top-level code, yet reports scanned.unmeasured as 0.**
@@ -105689,7 +105702,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L07-F24).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6198] **audit_run's crash handler records stdout and stderr through mergeToolChannels, as the finished handler does.**
+- ✅ [ANTS-6198] **audit_run's crash handler records stdout and stderr through mergeToolChannels, as the finished handler does.**
   From ANTS-6117 (L08 MEDIUM F4). runAudit's errorOccurred handler
   (auditrunner.cpp) passes errBuf alone to finish(); the finished
   handler merges both channels (ANTS-2118). Qt emits errorOccurred
@@ -105697,6 +105710,8 @@ worked after these.
   stderr only. Not done in the lane pass: it changes the raw output a
   crashed tool reports, so it is a behaviour fix with its own test.
   Hot reload: none needed; no new running state.
+  Shipped 2026-11-15 in 0d7a2869. Test:
+  AuditRunnerGroupKill.CrashedToolKeepsBothOutputChannels.
   **Layman:** When an audit tool crashes, the headless audit keeps only half of what the tool printed, unlike a normal finish.
   Kind: fix.
   Source: review-readability-2026-10-22 (L08-F4).

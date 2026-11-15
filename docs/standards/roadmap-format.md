@@ -1394,8 +1394,7 @@ prefer **multi-prefix** schemes (`SH-`, `ED-`, `PHASE-`) for
 lane visibility. Multi-prefix is permitted. Mixed-case prefixes
 like `Sh-`, `Ed-`, `mame-curator-` parse, are fetched / flipped,
 **and** are allocated — but allocation compares the prefix exactly,
-so spell each prefix one way. The one uppercase-only check in
-the tooling is a narrow `op:flip` anchor helper, not id handling:
+so spell each prefix one way. Site by site:
 
 - **Id parsing — case-insensitive.** The `roadmap-query` parser
   accepts any letter-containing, dash-then-digit token
