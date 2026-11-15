@@ -383,6 +383,81 @@ TEST(SourceScrapes, Inv12ShellJoinsFromAKnownRoot) {
         << "a comment, a mktemp variable, a function's $1 and a rebound name read nothing";
 }
 
+// ANTS-6782 — measured on OneUp, whose tests are Python and shell only:
+// scrapes_total was 0.
+TEST(SourceScrapes, Inv15PythonAndShellAnchors) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/m.py"), "x = 1\n");
+    writeFile(dir.filePath("tests/test_m.py"),
+              "import re\n"                                                   // 1
+              "from pathlib import Path\n"                                    // 2
+              "ROOT = Path(__file__).parent.parent\n"                         // 3
+              "def test_text():\n"                                            // 4
+              "    src = (ROOT / \"src/m.py\").read_text()\n"                 // 5
+              "    assert \"needle\" in src\n"                                // 6
+              "    assert 'gone' not in src and src.count(\"twice\") == 2\n"  // 7
+              "    assert re.search(r\"pat\\d+\", src)\n"                     // 8
+              "    assert \"inline\" in (ROOT / \"src/m.py\").read_text()\n"  // 9
+              "def test_other():\n"                                           // 10
+              "    assert \"unbound\" in src\n"                               // 11
+              "    assert \"plain\" in \"plain text\"\n");                    // 12
+    writeFile(dir.filePath("tests/run.sh"),
+              "#!/bin/bash\n"                                                 // 1
+              "TOP=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")/..\" && pwd)\"\n" // 2
+              "grep -qF -- 'fixed text' \"$TOP/src/m.py\"\n"                  // 3
+              "grep -qE \"re[0-9]\" \"$TOP/src/m.py\" || exit 1\n"            // 4
+              "grep -q needle_unquoted \"$TOP/src/m.py\"\n");                 // 5
+    const QJsonObject r = forPath(dir, "src/m.py");
+    QStringList got;
+    for (const QJsonValue v : r.value(QStringLiteral("scrapes")).toArray()) {
+        const QJsonObject o = v.toObject();
+        got << QStringLiteral("%1:%2:%3:%4:%5").arg(o.value(QStringLiteral("file")).toString())
+                   .arg(o.value(QStringLiteral("line")).toInt())
+                   .arg(o.value(QStringLiteral("test")).toString(),
+                        o.value(QStringLiteral("anchor")).toString(),
+                        o.value(QStringLiteral("kind")).toString());
+    }
+    got.sort();   // two anchors share line 7
+    EXPECT_EQ(got, (QStringList{
+                       QStringLiteral("tests/run.sh:3::fixed text:literal"),
+                       QStringLiteral("tests/run.sh:4::re[0-9]:regex"),
+                       QStringLiteral("tests/test_m.py:6:test_text:needle:literal"),
+                       QStringLiteral("tests/test_m.py:7:test_text:gone:literal"),
+                       QStringLiteral("tests/test_m.py:7:test_text:twice:literal"),
+                       QStringLiteral("tests/test_m.py:8:test_text:pat\\d+:regex"),
+                       QStringLiteral("tests/test_m.py:9:test_text:inline:literal")}))
+        << QJsonDocument(r).toJson().constData();
+}
+
+// ANTS-6782 — a glob reader pins no text; skip_walks leaves it out.
+TEST(SourceScrapes, Inv16SkipWalksDropsListingReaders) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/m.py"), "x = 1\n");
+    writeFile(dir.filePath("tests/test_m.py"),
+              "from pathlib import Path\n"
+              "ROOT = Path(__file__).parent.parent\n"
+              "def test_walk():\n"
+              "    for p in (ROOT / \"src\").glob(\"*.py\"):\n"
+              "        p.read_text()\n"
+              "def test_read():\n"
+              "    (ROOT / \"src/m.py\").read_text()\n");
+    const auto tests = [&](const QJsonObject &args) {
+        QJsonObject a = args;
+        a[QStringLiteral("path")] = QStringLiteral("src/m.py");
+        QStringList out;
+        for (const QJsonObject &o : readersFrom(call(dir, a), QStringLiteral("tests/test_m.py")))
+            out << o.value(QStringLiteral("test")).toString();
+        out.sort();
+        return out;
+    };
+    EXPECT_EQ(tests({}), (QStringList{QStringLiteral("test_read"), QStringLiteral("test_walk")}));
+    EXPECT_EQ(tests({{QStringLiteral("skip_walks"), true}}), (QStringList{QStringLiteral("test_read")}));
+    const QJsonObject bad = call(dir, {{QStringLiteral("path"), QStringLiteral("src/m.py")},
+                                       {QStringLiteral("skip_walks"), QStringLiteral("yes")}});
+    EXPECT_EQ(bad.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+        << QJsonDocument(bad).toJson().constData();
+}
+
 TEST(SourceScrapes, Inv13NoticeWhenNoTestFileWasRead) {
     QTemporaryDir empty;
     writeFile(empty.filePath(".ants/project.json"), "{\"test_roots\": [\"tests\"]}\n");

@@ -48,7 +48,7 @@ QJsonDocument RemoteControl::cmdSourceScrapes(const QJsonObject &req) {
     const QString root =
         ants::requiredCallerCwd(m_roots, req, QStringLiteral("source_scrapes"), &refusal);
     if (root.isEmpty()) return QJsonDocument(refusal);
-    return QJsonDocument(SourceScrapes::run(root, forward(req, {"path", "paths", "limit"})));
+    return QJsonDocument(SourceScrapes::run(root, forward(req, {"path", "paths", "limit", "skip_walks"})));
 }
 
 QJsonDocument RemoteControl::cmdCommentClaims(const QJsonObject &req) {

@@ -49,6 +49,8 @@ agreed with claude-config (CFG-0830, 2026-10-19). The seam is
 | 12 | A shell `$VAR/<path>` gives a reader row only where `VAR` holds a repository path as "A shell test" says. A comment, a `mktemp` variable, a function's `$1` and a variable rebound to anything else give none. | `SourceScrapes.Inv12ShellJoinsFromAKnownRoot` |
 | 13 | `scanned.test_files` counts C++, Python and shell files. At zero, `notices` says empty rows do not mean nothing reads the path, and names the test roots. Otherwise `notices` is absent. | `SourceScrapes.Inv13NoticeWhenNoTestFileWasRead` |
 | 14 | A Python walk's root may be `Path(module.__file__)` for an imported module, may climb with `.parent`, may name a sub-directory in its pattern, and may be a `for` name over a module-level tuple or list of roots. A root it cannot place, such as `tmp_path`, reads nothing. | `SourceScrapes.Ants6343WalksThroughModuleRootsAndTuples` |
+| 15 | In a Python test, a name assigned from a read (`.read_text()`, `.read_bytes()`, `.read()`, `getsource`) holds that file's text until its test or function ends; `b = a` copies it. `"x" in S`, `"x" not in S` and `S.count/find/rfind/index/rindex("x")` are `literal` anchors, and `re.search/match/fullmatch/findall/finditer(r"x", S)` is a `regex` anchor, where S is such a name or a read written on the same line. In a shell test, a quoted `grep` pattern on a line reading a file is an anchor of that file: `literal` under `-F`, `regex` otherwise. A pattern holding `$` reads nothing. | `SourceScrapes.Inv15PythonAndShellAnchors` |
+| 16 | `skip_walks: true` leaves out the reader rows of a `glob`, `rglob` or `os.walk` listing, which pins no text. A non-boolean `skip_walks` refuses `bad_args`. | `SourceScrapes.Inv16SkipWalksDropsListingReaders` |
 
 ## Not covered
 
@@ -58,6 +60,7 @@ reached through an environment variable. In Python, a module passed through a
 variable. A Python `glob`, `rglob` or `os.walk` over a repository directory
 counts as reading every file it lists, leaving out build and cache directories,
 since a filter inside the loop is not read. A `for` name over anything but a
-module-level tuple or list named on that line. Anchors in a
-Python or shell test: those tests appear in `readers` only. Test files in any
+module-level tuple or list named on that line. In a Python or
+shell test, an anchor whose expression spans lines, or that searches anything
+but a read file's text, such as one line of it in a loop. Test files in any
 other language. `not_covered` in every reply says so.

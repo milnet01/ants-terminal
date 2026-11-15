@@ -39,6 +39,7 @@ struct Read {
     int line = 0;
     QString via;       // the token, helper or literal that reads
     QSet<QString> paths;
+    bool walk = false; // ANTS-6782 — a glob or os.walk listing, which pins no text
 };
 
 struct FileResult {

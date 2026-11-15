@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`source_scrapes` finds the strings Python and shell tests look for, and can leave out readers that only list files** (ANTS-6782)
+  In Python, `"x" in src`, `src.count("x")` and `re.search(r"x", src)` on a
+  file's text are anchors; in shell, a quoted `grep` pattern on a file is.
+  `skip_walks: true` drops the reader rows of a `glob` or `os.walk`
+  listing, which pin no text.
+
 - **cc-job clears finished jobs older than 30 days whose session has ended.** (ANTS-6764)
   `cc-job start` does it once a day. `cc-job prune --older-than <days>`
   does it on request.

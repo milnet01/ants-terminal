@@ -7,7 +7,7 @@
 // and the literal arguments of a scrape call on a reading value are
 // anchors. Deliberately looser than a C++ parser; what it cannot follow is
 // counted or named in not_covered, never guessed. Python and shell tests get
-// a line scan for reads only: see analyseScript.
+// a line scan for reads and one-line anchors: see analyseScript.
 
 #include "sourcescrapes.h"
 #include "mcprefusal.h"
@@ -716,6 +716,52 @@ QString moduleFile(QString dotted, const QStringList &roots,
 // Files under a repository directory matching a glob, as repository paths.
 using ListFiles = std::function<QStringList(const QString &dir, const QString &glob, bool recurse)>;
 
+// ANTS-6782 — a call that turns a path into its text.
+const QRegularExpression &pythonReadCall() {
+    static const QRegularExpression re(QStringLiteral("\\.read(?:_text|_bytes)?\\(|getsource\\("));
+    return re;
+}
+
+// ANTS-6782 — anchors on one Python line: `"x" in S`, `"x" not in S`,
+// `S.count/find/rfind/index/rindex("x")` and `re.search/match/fullmatch/
+// findall/finditer(r"x", S)`, where S is a name holding a file's text
+// (`textOf`) or a read written inline on this line (`lineText`). An f-string
+// and an expression spanning lines are not read.
+void pythonAnchors(const QString &line, int lineNo, const QString &test,
+                   const std::function<QSet<QString>(const QString &)> &textOf,
+                   const QSet<QString> &lineText, FileResult *out) {
+    const QString lit = QStringLiteral(
+        "(?<![\\w])[rRbBuU]{0,2}(\"(?:[^\"\\\\]|\\\\.)*\"|'(?:[^'\\\\]|\\\\.)*')");
+    static const QRegularExpression membership(lit + QStringLiteral("\\s+(?:not\\s+)?in\\s+"));
+    static const QRegularExpression method(QStringLiteral(
+        "(?<![\\w.])([A-Za-z_]\\w*)\\.(?:count|find|rfind|index|rindex)\\(\\s*") + lit);
+    static const QRegularExpression search(QStringLiteral(
+        "(?<![\\w.])re\\.(?:search|match|fullmatch|findall|finditer)\\(\\s*") + lit
+        + QStringLiteral("\\s*,\\s*"));
+    static const QRegularExpression name(QStringLiteral("^([A-Za-z_]\\w*)\\b(?!\\s*[(./])"));
+    // The text the expression starting at `pos` holds.
+    const auto subject = [&](qsizetype pos) -> QSet<QString> {
+        const QString rest = line.mid(pos);
+        if (const auto n = name.match(rest); n.hasMatch()) return textOf(n.captured(1));
+        return pythonReadCall().match(rest).hasMatch() ? lineText : QSet<QString>();
+    };
+    const auto add = [&](const QString &quoted, bool regex, const QSet<QString> &paths) {
+        if (!paths.isEmpty()) out->anchors.append({test, lineNo, quoted.mid(1, quoted.size() - 2), regex, paths});
+    };
+    for (auto it = membership.globalMatch(line); it.hasNext();) {
+        const auto m = it.next();
+        add(m.captured(1), false, subject(m.capturedEnd(0)));
+    }
+    for (auto it = method.globalMatch(line); it.hasNext();) {
+        const auto m = it.next();
+        add(m.captured(2), false, textOf(m.captured(1)));
+    }
+    for (auto it = search.globalMatch(line); it.hasNext();) {
+        const auto m = it.next();
+        add(m.captured(1), true, subject(m.capturedEnd(0)));
+    }
+}
+
 void scanPython(const QString &rel, const QString &text, const QStringList &moduleRoots,
                 const std::function<bool(const QString &)> &existing,
                 const ListFiles &listFiles, FileResult *out) {
@@ -756,6 +802,12 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
     QHash<QString, std::optional<QString>> globals, locals;
     // ANTS-6343 — a module-level tuple of roots, and a loop name over one.
     QHash<QString, QStringList> rootTuples, loopRoots;
+    // ANTS-6782 — names holding a file's text; an empty set shadows a global.
+    QHash<QString, QSet<QString>> textGlobals, textLocals;
+    const auto textOf = [&](const QString &name) {
+        return textLocals.contains(name) ? textLocals.value(name) : textGlobals.value(name);
+    };
+    static const QRegularExpression readTail(QStringLiteral("^\\s*\\)*\\s*\\.read(?:_text|_bytes)?\\("));
 
     // The file a name imported in this test is: "" when it is not one of ours.
     const auto importedFile = [&](const QString &arg) {
@@ -820,12 +872,15 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
             if (topLevel) {
                 locals.clear();
                 loopRoots.clear();
+                textLocals.clear();
             }
         } else if (topLevel) {
             test.clear();
             locals.clear();
             loopRoots.clear();
+            textLocals.clear();
         }
+        QSet<QString> lineText;   // files whose text this line reads inline
         for (auto it = forIn.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
             if (rootTuples.contains(m.captured(2))) loopRoots.insert(m.captured(1), rootTuples.value(m.captured(2)));
@@ -833,12 +888,16 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
         for (auto it = join.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
             const std::optional<QString> p = evaluate(m);
-            if (p && existing(*p)) out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
+            if (!p || !existing(*p)) continue;
+            out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
+            if (readTail.match(line.mid(m.capturedEnd(0))).hasMatch()) lineText.insert(*p);
         }
         for (auto it = osJoin.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
             const std::optional<QString> p = evaluateOs(m);
-            if (p && existing(*p)) out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
+            if (!p || !existing(*p)) continue;
+            out->reads.append({test, i + 1, m.captured(0).trimmed(), {*p}});
+            if (readTail.match(line.mid(m.capturedEnd(0))).hasMatch()) lineText.insert(*p);
         }
         for (auto it = walkCall.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
@@ -860,7 +919,7 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
                                                     m.captured(3) == QLatin1String("rglob"));
                 found.unite(QSet<QString>(files.cbegin(), files.cend()));
             }
-            if (!found.isEmpty()) out->reads.append({test, i + 1, m.captured(0).trimmed(), found});
+            if (!found.isEmpty()) out->reads.append({test, i + 1, m.captured(0).trimmed(), found, true});
         }
         for (auto it = osWalk.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
@@ -868,13 +927,17 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
             if (!dir) continue;
             const QStringList found = listFiles(*dir, QStringLiteral("*"), true);
             if (!found.isEmpty())
-                out->reads.append({test, i + 1, m.captured(0).trimmed(), QSet<QString>(found.cbegin(), found.cend())});
+                out->reads.append({test, i + 1, m.captured(0).trimmed(),
+                                   QSet<QString>(found.cbegin(), found.cend()), true});
         }
         for (auto it = source.globalMatch(line); it.hasNext();) {
             const auto m = it.next();
             const QString p = importedFile(took(m, 1) ? m.captured(1) : m.captured(2));
-            if (!p.isEmpty()) out->reads.append({test, i + 1, m.captured(0), {p}});
+            if (p.isEmpty()) continue;
+            out->reads.append({test, i + 1, m.captured(0), {p}});
+            lineText.insert(p);
         }
+        pythonAnchors(line, i + 1, test, textOf, lineText, out);
         if (const auto a = assign.match(line); a.hasMatch()) {
             const auto w = whole.match(a.captured(2));
             const QString value = a.captured(2);
@@ -883,6 +946,11 @@ void scanPython(const QString &rel, const QString &text, const QStringList &modu
             else if (const auto j = osJoin.match(value); j.hasMatch()) held = evaluateOs(j);
             else if (const auto h = osHereOnly.match(value); h.hasMatch()) held = osBase(h.captured(0));
             (topLevel ? globals : locals).insert(a.captured(1), held);
+            // A read binds the name to its file's text; `b = a` copies a's.
+            const QSet<QString> holds = !lineText.isEmpty() && pythonReadCall().match(value).hasMatch()
+                                            ? lineText
+                                            : textOf(value.trimmed());
+            (topLevel ? textGlobals : textLocals).insert(a.captured(1), holds);
             const QString tuple = value.trimmed();
             if (topLevel && tuple.size() > 2 && tuple.contains(QLatin1Char(','))
                 && (tuple.startsWith(QLatin1Char('(')) || tuple.startsWith(QLatin1Char('[')))) {
@@ -924,17 +992,32 @@ void scanShell(const QString &rel, const QString &text,
     static const QRegularExpression assign(QStringLiteral(
         "^(\\s*)(?:(?:export|readonly|local|declare)\\s+)?([A-Za-z_]\\w*)=(.*)$"));
     static const QRegularExpression comment(QStringLiteral("\\s#.*$"));
+    static const QRegularExpression grep(QStringLiteral(
+        "(?<![\\w-])grep\\s+((?:-[A-Za-z-]+\\s+)*)(?:--\\s+)?(?:'([^']*)'|\"((?:[^\"\\\\$]|\\\\.)*)\")"));
+    static const QRegularExpression fixedFlag(QStringLiteral("(?:^|\\s)(?:-[A-Za-z]*F|--fixed-strings)\\b"));
     const QString scriptDir = under(rel, QStringLiteral("..")).value_or(QString());
     QHash<QString, QString> known;
     const QStringList lines = text.split(QLatin1Char('\n'));
     for (int i = 0; i < lines.size(); ++i) {
         const QString code = QString(lines.at(i)).remove(comment);
         if (code.trimmed().isEmpty() || code.trimmed().startsWith(QLatin1Char('#'))) continue;
+        QSet<QString> lineReads;
         for (auto it = use.globalMatch(code); it.hasNext();) {
             const auto m = it.next();
             if (!known.contains(m.captured(1))) continue;
             const std::optional<QString> p = under(known.value(m.captured(1)), m.captured(2).mid(1));
-            if (p && existing(*p)) out->reads.append({QString(), i + 1, m.captured(0), {*p}});
+            if (!p || !existing(*p)) continue;
+            out->reads.append({QString(), i + 1, m.captured(0), {*p}});
+            lineReads.insert(*p);
+        }
+        // ANTS-6782 — a quoted grep pattern on a line reading a file is an
+        // anchor: a literal under -F, a regex otherwise. A pattern holding `$`
+        // is a variable and is not read.
+        for (auto it = grep.globalMatch(code); !lineReads.isEmpty() && it.hasNext();) {
+            const auto m = it.next();
+            const bool fixed = fixedFlag.match(m.captured(1)).hasMatch();
+            const QString pattern = took(m, 2) ? m.captured(2) : m.captured(3);
+            out->anchors.append({QString(), i + 1, pattern, !fixed, lineReads});
         }
         if (const auto a = assign.match(code); a.hasMatch()) {
             const std::optional<QString> v =
@@ -945,9 +1028,9 @@ void scanShell(const QString &rel, const QString &text,
     }
 }
 
-// Reads in one Python or shell test, no anchors: these tests look for text in
-// too many ways to read one off a line, so `readers` names them and
-// not_covered says the anchors are not seen.
+// Reads in one Python or shell test, and the anchors written on one line
+// (ANTS-6782). These tests look for text in more ways than a line shows, so
+// `readers` still names each one and not_covered says what is not seen.
 FileResult analyseScript(const QString &rel, const QString &text, const QStringList &moduleRoots,
                          const std::function<bool(const QString &)> &existing,
                          const ListFiles &listFiles) {
@@ -1009,6 +1092,11 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
             return mcp::refusal(QStringLiteral("bad_args"),
                            QStringLiteral("source_scrapes: \"limit\" must be 1 to %1").arg(kMaxLimit));
     }
+    const QJsonValue skipArg = args.value(QStringLiteral("skip_walks"));
+    if (!skipArg.isUndefined() && !skipArg.isBool())
+        return mcp::refusal(QStringLiteral("bad_args"),
+                            QStringLiteral("source_scrapes: \"skip_walks\" must be a boolean"));
+    const bool skipWalks = skipArg.toBool(false);   // ANTS-6782
     const QDir root(rootCanonical);
     QStringList wanted;
     for (const QJsonValue v : std::as_const(asked)) {
@@ -1138,7 +1226,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
                 rows.append({p, rel, a.line, o});
             }
         for (const Read &r : fr.reads)
-            for (const QString &p : matching(r.paths)) {
+            for (const QString &p : matching(skipWalks && r.walk ? QSet<QString>() : r.paths)) {
                 const QString key = p + QLatin1Char('\n') + rel + QLatin1Char('\n') + r.test
                                     + QLatin1Char('\n') + r.via;
                 if (readerSeen.contains(key)) continue;
@@ -1187,7 +1275,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         QStringLiteral("definitions in a CMakeLists.txt other than the root one and the test roots' own"),
         QStringLiteral("a file reached through an environment variable"),
         QStringLiteral("a Python module passed through a variable, such as getsource(module)"),
-        QStringLiteral("anchors in a Python or shell test, which appears in readers only"),
+        QStringLiteral("in a Python or shell test, an anchor whose expression spans lines, or that "
+                       "searches a value other than a read file's text"),
         QStringLiteral("test files other than C++, Python and shell")};
     if (files.isEmpty())
         env[QStringLiteral("notices")] = QJsonArray{

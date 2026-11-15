@@ -336,8 +336,9 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "first argument reads the file, or a regex used on it. test is "
                         "Suite.Name, for ctest -R. scanned.unresolved_anchors counts "
                         "searches by a variable; not_covered names what is not followed. "
-                        "Python and shell tests give readers rows only (ANTS-6180); notices "
-                        "warns when no test file was read.");
+                        "In Python, `\"x\" in src`, src.count/find/index(\"x\") and re.search(r\"x\", "
+                        "src) on read text are anchors; in shell, grep 'x' on a read file "
+                        "(ANTS-6782). notices warns when no test file was read.");
                     QJsonObject schema;
                     schema["type"] = "object";
                     QJsonObject props;
@@ -360,6 +361,13 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         p["description"] = QStringLiteral(
                             "Cap on scrapes and on readers (default 500); scanned holds the totals.");
                         props["limit"] = p;
+                    }
+                    {
+                        QJsonObject p;
+                        p["type"] = "boolean";
+                        p["description"] = QStringLiteral(
+                            "Leave out readers that only list files (glob, rglob, os.walk); default false.");
+                        props["skip_walks"] = p;
                     }
                     schema["properties"] = props;
                     QJsonArray req;

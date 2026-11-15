@@ -92899,11 +92899,16 @@ measured Ants adding about 5,250 tokens to every request.
 
 ### Ants MCP feedback from CC sessions (2026-11-15 triage)
 
-- 📋 [ANTS-6782] **source_scrapes extracts anchors from Python and shell tests, and can drop readers that only glob.**
+- ✅ [ANTS-6782] **source_scrapes extracts anchors from Python and shell tests, and can drop readers that only glob.**
   On OneUp (Python and shell tests only) scrapes_total was 0, and the
   reader rows spilled past 16 KB with a limit set; most were
   rglob/glob readers that pin no text. Repro: source_scrapes on
   /mnt/Games/Scripts/Linux/OneUp.
+  One-line Python anchors (in / not in, count/find/index, re.*) on a
+  name holding a read file's text or an inline read; shell grep patterns
+  on a read file. skip_walks drops glob/os.walk readers. On OneUp: 0 ->
+  2 scrapes, readers 179 -> 12 with skip_walks. Multi-line expressions
+  and per-line loops stay in not_covered.
   **Layman:** The test-scrape finder only understands C++ tests today; it should also read Python and shell tests.
   Kind: enhancement.
   Source: OneUp feedback 2026-11-15 (three full reviews).
