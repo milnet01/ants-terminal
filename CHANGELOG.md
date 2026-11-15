@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **ci_report says a CI slowdown is gradual when it grew over many runs, instead of blaming one commit.** (ANTS-6699)
+
 - **split-motion-check --scrapes no longer flags a test window a code move did not cut: an untaken ternary arm, or text added after an open-ended window.** (ANTS-6423)
 
 - **token_usage counts the MCP frame's bytes correctly, and keeps a saved session's figures that an older build recorded wrongly.** (ANTS-6378)

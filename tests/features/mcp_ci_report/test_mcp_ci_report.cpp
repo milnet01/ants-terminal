@@ -1552,3 +1552,20 @@ TEST(McpCiReport, Ants5706ChecksSummaryAndBaseComparison) {
     const QJsonObject none = noRemote.call({{"op", "checks"}, {"pr", 7}});
     EXPECT_EQ(none.value("ci_none_reason").toString(), QStringLiteral("no_github_remote")) << dump(none);
 }
+
+// ANTS-6699 (Pressless, f319b31): a step that grows a little on every run has
+// no single run where the rise starts. budget_trend says the rise is gradual
+// and names no run, rather than the run where it crossed the line.
+TEST(McpCiReport, Ants6699GradualRiseNamesNoRun) {
+    History h;
+    for (int i = 0; i < 10; ++i)
+        h.add(100 + i, kNow.addSecs(-86400 + i * 3600), QStringLiteral("Build"), 0, 0, QStringLiteral("success"),
+              {{QStringLiteral("Build"), 33, QStringLiteral("success")},
+               {QStringLiteral("Test (pytest)"), 6 + 6 * i, QStringLiteral("success")}});
+    const QList<QJsonObject> f =
+        ofCheck(CiReport::analyse(h.json(), workflow(kBuild10), kNow, 30), "budget_trend");
+    ASSERT_EQ(f.size(), 1);
+    EXPECT_FALSE(f[0].contains("rise_from")) << dump(f[0]);
+    EXPECT_TRUE(f[0].value("rise_gradual").toBool()) << dump(f[0]);
+    EXPECT_TRUE(f[0].value("message").toString().contains(QStringLiteral("gradual"))) << dump(f[0]);
+}

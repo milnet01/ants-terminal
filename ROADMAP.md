@@ -92324,11 +92324,16 @@ measured Ants adding about 5,250 tokens to every request.
   Source: claude-config session message 2026-11-06.
   Lanes: mcp-workspace.
 
-- 📋 [ANTS-6699] **ci_report: `rise_from` names one commit for a rise that grew over many.**
+- ✅ [ANTS-6699] **ci_report: `rise_from` names one commit for a rise that grew over many.**
   Pressless (via claude-config, 2026-11-06): rise_from dated a slowdown
   to f319b31, a docs-only commit; the rise was the suite growing over
   many commits. Reply should say when a rise is gradual (no single step
   accounts for it) rather than name the commit where it crossed the line.
+  Shipped 2026-11-15. When a straight line fits the job's spans at least
+  as well as the best single step, budget_trend sets rise_gradual:true,
+  says the rise is gradual, and names no run. A real step still gets
+  rise_from (Ants6419 test unchanged). Test:
+  McpCiReport.Ants6699GradualRiseNamesNoRun.
   **Layman:** The CI report blamed a slowdown on one harmless commit when the tests had grown slowly over many.
   Kind: fix.
   Source: claude-config session message 2026-11-06.

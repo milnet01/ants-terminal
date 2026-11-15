@@ -407,17 +407,37 @@ void checkNearBudget(const QList<Matched> &jobs, QList<Finding> &out) {
 // Where `v` splits into a slower after than before, best: the split whose
 // halves sit closest to their own medians (least total absolute deviation),
 // among those whose after-median is the higher. -1 when none is.
+// How far `v` sits from a single step at `k`: each side's median.
+double stepCost(const QList<double> &v, int k) {
+    const double before = median(v.mid(0, k)), after = median(v.mid(k));
+    double cost = 0;
+    for (int i = 0; i < v.size(); ++i) cost += std::abs(v[i] - (i < k ? before : after));
+    return cost;
+}
+
 int riseStart(const QList<double> &v) {
     int best = -1;
     double bestCost = 0;
     for (int k = 1; k < v.size(); ++k) {
-        const double before = median(v.mid(0, k)), after = median(v.mid(k));
-        if (after <= before) continue;
-        double cost = 0;
-        for (int i = 0; i < v.size(); ++i) cost += std::abs(v[i] - (i < k ? before : after));
+        if (median(v.mid(k)) <= median(v.mid(0, k))) continue;
+        const double cost = stepCost(v, k);
         if (best < 0 || cost < bestCost) { best = k; bestCost = cost; }
     }
     return best;
+}
+
+// ANTS-6699 — a rise no single run accounts for: a straight line through the
+// runs fits them at least as well as the best step does.
+bool riseIsGradual(const QList<double> &v, int k) {
+    const int n = int(v.size());
+    double sx = 0, sy = 0, sxx = 0, sxy = 0;
+    for (int i = 0; i < n; ++i) { sx += i; sy += v[i]; sxx += double(i) * i; sxy += i * v[i]; }
+    const double denom = n * sxx - sx * sx;
+    if (denom == 0) return false;
+    const double b = (n * sxy - sx * sy) / denom, a = (sy - b * sx) / n;
+    double lineCost = 0;
+    for (int i = 0; i < n; ++i) lineCost += std::abs(v[i] - (a + b * i));
+    return lineCost <= stepCost(v, k);
 }
 
 // budget_trend: a budgeted job's newest five successful runs against its
@@ -469,7 +489,10 @@ void checkBudgetTrend(const QList<Matched> &jobs, QList<Finding> &out) {
         if (!f.step.isEmpty())
             f.message += QStringLiteral(" Step '%1' rose most, from %2 to %3.")
                 .arg(f.step, minutes(qint64(stepBefore)), minutes(qint64(stepAfter)));
-        if (const int k = riseStart(spans); k >= 0) {
+        if (const int k = riseStart(spans); k >= 0 && riseIsGradual(spans, k)) {
+            f.extra[QStringLiteral("rise_gradual")] = true;
+            f.message += QStringLiteral(" The rise is gradual: no single run accounts for it.");
+        } else if (k >= 0) {
             const RunRec &r = *list[k]->job->run;
             f.extra[QStringLiteral("rise_from")] =
                 QJsonObject{{QStringLiteral("run"), double(r.id)}, {QStringLiteral("sha"), r.sha}};
