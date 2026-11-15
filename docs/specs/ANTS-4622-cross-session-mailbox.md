@@ -217,11 +217,9 @@ inbox read.
 - **ANTS-4621 — the schema declares what the handler reads.** Every argument
   read via `req.value()` is declared in `inputSchema.properties`, and `op`'s
   enum carries every op. The schema sets `additionalProperties: false`, so an
-  undeclared argument is refused by a strict client before the handler runs;
-  and on the permissive path ANTS-2175 builds `ignored_args` from the same
-  properties, so an undeclared argument is reported as ignored **on the call it
-  just steered**. This shipped broken once, three days ago, on the neighbouring
-  verb.
+  undeclared argument is refused by a strict client before the handler runs,
+  and on the permissive path the dispatcher refuses it against the same
+  properties (ANTS-4659).
 - **ANTS-4463 — a preview carries no past-tense field.** `send` with
   `dry_run:true` resolves the recipient and validates the body but writes no
   row, and reports `would_send` rather than `message_id`.

@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Source comments and the mailbox spec describe the current refusal of undeclared MCP arguments** (ANTS-6769)
+
 - **Every Ants MCP tool that takes an op answers an unknown op with the same code, bad_mode; roadmap_migrate no longer runs a migration for an op it does not know.** (ANTS-6771)
 
 - **When a hand-typed roadmap item blocks a write, the refusal now says how to bring just that item into the store, and warns that a full migrate re-imports everything** (ANTS-6712)

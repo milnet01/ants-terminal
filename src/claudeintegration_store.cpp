@@ -1928,11 +1928,9 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     // in neither the properties nor the enum, and this schema
                     // sets additionalProperties:false — so a strictly
                     // validating client refuses the call before the handler is
-                    // reached. The permissive path is worse: ANTS-2175 builds
-                    // `ignored_args` from inputSchema.properties, so a live
-                    // deregister answered "ignored_args":["op"] — telling the
-                    // caller its argument did nothing, on the call that
-                    // argument had just steered.
+                    // reached, and on a permissive one the dispatcher refuses
+                    // an argument inputSchema.properties does not declare
+                    // (ANTS-4659).
                     {
                         QJsonObject p;
                         p["type"] = "string";
@@ -2003,7 +2001,7 @@ void appendToolSchemasStore(QJsonArray &tools) {
                         // read by the handler for ANTS-4621's reason: this
                         // schema sets additionalProperties:false, so an
                         // undeclared argument is a refusal on a strict client
-                        // and lands in `ignored_args` on a permissive one.
+                        // and on a permissive one (ANTS-4659).
                         QJsonObject p;
                         p["type"] = "integer";
                         p["minimum"] = 1;
@@ -2113,9 +2111,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     // declared `op` and `confirm`: this schema sets
                     // additionalProperties:false, so an undeclared argument is
                     // refused by a strict client before the dispatcher is
-                    // reached, and on a permissive one ANTS-2175 reports it in
-                    // `ignored_args` — telling the caller its argument did
-                    // nothing on the call that argument had just steered.
+                    // reached, and on a permissive one the dispatcher refuses
+                    // it (ANTS-4659).
                     // Consumed by the dispatcher rather than the handler, so
                     // they narrow the report and never the migration.
                     props["fields"]  = makeFieldsProp();         // ANTS-1720
@@ -2133,10 +2130,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                 // IT (INV-7). ANTS-4621 is why that is an invariant: this
                 // schema sets additionalProperties:false, so an undeclared
                 // argument is refused by a strict client before the handler
-                // runs — and on the permissive path ANTS-2175 builds its
-                // `ignored_args` advisory from these same properties, so an
-                // undeclared argument is reported as ignored on the very call
-                // it just steered.
+                // runs, and on the permissive path the dispatcher refuses it
+                // against these same properties (ANTS-4659).
                 {
                     QJsonObject t;
                     t["name"] = "session_message";

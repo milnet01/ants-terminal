@@ -84701,7 +84701,7 @@ open, and two of these were exactly that.
   Source: in-session-2026-08-25, split out of ANTS-4626.
   Lanes: mcp.
 
-- 📋 [ANTS-6769] **Source comments still describe the retired `ignored_args` advisory in the present tense.**
+- ✅ [ANTS-6769] **Source comments still describe the retired `ignored_args` advisory in the present tense.**
   ANTS-4659 replaced the advisory with a bad_args refusal. Schema-site
   comments in src/claudeintegration_*.cpp, src/remotecontrol_*.cpp and
   docs/specs/ANTS-4622 still say the dispatcher "builds ignored_args from
@@ -84710,6 +84710,10 @@ open, and two of these were exactly that.
   is stale. Find them: workspace_search pattern ignored_args, lane src.
   Reword the present-tense ones; leave the dated history. Several tests
   scrape these files, so run the full suite after.
+  Shipped 2026-11-15: the present-tense passages in
+  claudeintegration_{orientation,store,terminal}.cpp,
+  remotecontrol_session_message.cpp and ANTS-4622 now name the ANTS-4659
+  refusal; dated history left.
   **Layman:** Some notes inside the code still describe a behaviour that has been replaced.
   Kind: doc-fix.
   Source: in-session-2026-11-14, found while shipping ANTS-4659.
@@ -93975,6 +93979,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   advisory lock from step 0 through the publish, or re-check the store
   digest before committing the file and re-render if it changed.
   Ledger row 330, docs/reviews/close-findings-2026-11-06.md.
+  Triage 2026-11-15 (session 273): a lock held across the publish's
+  render alone is enough for the last render to read the latest commit.
+  Do not put it beside ROADMAP.md: a `.lock` there is an untracked file
+  in every project, and this repo's push hook refuses untracked files.
+  Use the store's folder, keyed by project id. The race sits inside
+  RoadmapRender::render between its store read and its file write, so a
+  red test needs a seam there. Undecided: refuse or go ahead on lock
+  timeout (the store is already committed).
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).

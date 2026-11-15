@@ -627,11 +627,10 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "among path hits, the same collision `basename_matches` "
                         "is reported-and-never-merged to avoid.");
                     props["files"]      = filesProp;
-                    // ANTS-4744 — declared, not merely accepted. ANTS-2175
-                    // builds `ignored_args` from inputSchema.properties, so an
-                    // undeclared alias answers a working call with
-                    // "ignored_args":["paths"] — telling the caller its
-                    // argument did nothing, on the call that argument steered.
+                    // ANTS-4744 — declared, not merely accepted. The
+                    // dispatcher refuses an argument inputSchema.properties
+                    // does not declare (ANTS-4659), so an undeclared alias
+                    // fails the call it was meant to steer.
                     {
                         QJsonObject aliasProp = filesProp;
                         aliasProp["description"] = QStringLiteral(

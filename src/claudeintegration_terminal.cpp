@@ -841,10 +841,9 @@ void appendToolSchemasTerminal(QJsonArray &tools) {
                         "the payload at identical signal-to-noise.");
                     props["query"] = queryProp;
                     {   // ANTS-4927 — `q` as an alias for `query`. It must be
-                        // DECLARED, not merely honoured: the dispatcher builds
-                        // its ignored_args advisory from these properties, so
-                        // an undeclared key is reported as dropped even once
-                        // the handler reads it.
+                        // DECLARED, not merely honoured: the dispatcher refuses
+                        // a key these properties do not declare (ANTS-4659),
+                        // even one the handler reads.
                         QJsonObject qAlias; qAlias["type"] = "string";
                         qAlias["description"] = QStringLiteral(
                             "Alias for `query` (ANTS-4927) — the short form a "

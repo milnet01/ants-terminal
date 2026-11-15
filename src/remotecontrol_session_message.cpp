@@ -11,10 +11,8 @@
 // inputSchema.properties in claudeintegration.cpp — INV-7, and ANTS-4621 is why
 // it is an invariant rather than a habit. The schema sets
 // additionalProperties:false, so an undeclared argument is refused by a strict
-// client before the handler runs; and on the permissive path ANTS-2175 builds
-// its `ignored_args` advisory from those same properties, so an undeclared
-// argument is reported as ignored on the very call it just steered. That
-// shipped once, on roadmap_migrate, and was found only by calling the verb.
+// client before the handler runs, and on the permissive path the dispatcher
+// refuses it against those same properties (ANTS-4659).
 
 #include "remotecontrol.h"
 
