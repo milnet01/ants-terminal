@@ -70782,16 +70782,20 @@ minor tag (next: pre-0.8.0).
   Source: adr-0005-gate-loop-3-2026-09-07.
   Lanes: claude, structural.
 
-- 📋 [ANTS-6418] **GCC's -Wnull-dereference fires ten times in claudeintegration.cpp, inlined from McpReplyChannel::isOpen().**
+- ✅ [ANTS-6418] **GCC's -Wnull-dereference fires ten times in claudeintegration.cpp, inlined from McpReplyChannel::isOpen().**
   Inlined through sendMcpResponse and the tools/call reply lambda in
   handleMcpRequest (claudeintegration.h, McpReplyChannel::isOpen).
   Pre-existing: HEAD 25730e97's copy gives the same ten. Same class as
   ANTS-1554/3358/3505/4544: decide guard or silence.
+  Closed 2026-11-15: no longer reproduces. A fresh compile of
+  src/claudeintegration.cpp in ants_mcpcore_lib (-O3 -Wnull-dereference)
+  at 9fc1e51f emits no warning; the ten seen 2026-11-05 are gone. Reopen
+  if a build shows them again.
   **Layman:** Clear a compiler warning that shows up in every build of the MCP server code.
   Kind: fix.
   Source: build warning seen in ANTS-4919, session 224, 2026-11-05.
 
-- 📋 [ANTS-6423] **split-motion-check --scrapes flags the untaken arm of a ternary window as changed.**
+- ✅ [ANTS-6423] **split-motion-check --scrapes flags the untaken arm of a ternary window as changed.**
   tests/features/mcp_roadmap_log_verb's window is
   `endPos == npos ? ci.substr(pos) : ci.substr(pos, endPos - pos)`.
   The ANTS-4919 kind B carve changed the rest-of-file text, so INV-10
@@ -70800,12 +70804,16 @@ minor tag (next: pre-0.8.0).
   Fix: when the condition evaluates, judge only the taken arm; report
   the other as not cut. Test: a scrape pair where only the untaken
   arm's content differs exits 0.
+  Shipped 2026-11-15: a window in a ternary arm the condition skips at
+  both revisions is not judged (ternary_arm). On 5c0b4ab7 the old tool
+  failed mcp_roadmap_log_verb's ci.substr(pos); the new one holds. Test:
+  split_motion_scrapes INV-1.
   **Layman:** The tool that checks code moves raised a false alarm on a test line that only runs when something is missing.
   Kind: fix.
   Source: self-found-2026-11-06 (ANTS-4919 carve).
   Lanes: tools.
 
-- 📋 [ANTS-6424] **split-motion-check --scrapes flags an open-ended window when text is only appended after its subject.**
+- ✅ [ANTS-6424] **split-motion-check --scrapes flags an open-ended window when text is only appended after its subject.**
   tests/features/mcp_rate_limit's `cc.substr(rateLimitStart)` and
   `cc.substr(dispatchStart)` run from an anchor to the end of the class
   text. The ANTS-4919 kind A move appended six pieces after entry 1, so
@@ -70816,6 +70824,11 @@ minor tag (next: pre-0.8.0).
   only when that prefix differs. Test: a scrape pair whose only change
   is text appended after the window's subject exits 0.
   Related: ANTS-6423 (the untaken ternary arm).
+  Shipped 2026-11-15: an open-ended substr/mid window is unchanged when
+  the commit's window begins with the parent's. On 80506ecc the old tool
+  failed mcp_rate_limit's two windows; the new one holds. Limit: an
+  assertion that text is ABSENT from such a window could flip unseen.
+  Test: split_motion_scrapes INV-2.
   **Layman:** The tool that checks code moves raised a false alarm on two tests that read to the end of the file, when new files were only added after what they check.
   Kind: fix.
   Source: self-found-2026-11-06 (ANTS-4919 kind A move).

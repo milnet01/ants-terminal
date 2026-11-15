@@ -917,6 +917,60 @@ def receiver_start(mask: str, dot: int) -> int:
         return j
 
 
+def ternary_arm(mask: str, start: int) -> tuple[int, int, str] | None:
+    """ANTS-6423 — when the expression at `start` is one arm of `cond ? a : b`,
+    the condition's span and which arm it is ("then" or "else"); else None.
+    Walks back at the same bracket depth and stops at the statement's or the
+    assignment's start."""
+    depth = 0
+    i = start - 1
+    arm = None
+    q = -1
+    while i >= 0:
+        c = mask[i]
+        if c in ")]":
+            depth += 1
+        elif c in "([":
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0:
+            if c in ";{},":
+                break
+            if c == "=" and mask[i - 1:i] not in ("=", "!", "<", ">") and mask[i + 1:i + 2] != "=":
+                break
+            if c == ":" and mask[i - 1:i] != ":" and mask[i + 1:i + 2] != ":" and arm is None:
+                arm = "else"
+            elif c == "?":
+                if arm is None:
+                    arm = "then"
+                q = i
+                break
+        i -= 1
+    if q < 0 or arm is None:
+        return None
+    j = q - 1
+    depth = 0
+    while j >= 0:
+        c = mask[j]
+        if c in ")]":
+            depth += 1
+        elif c in "([":
+            if depth == 0:
+                break
+            depth -= 1
+        elif depth == 0 and (c in ";{}," or (c == "=" and mask[j - 1:j] not in ("=", "!", "<", ">")
+                                             and mask[j + 1:j + 2] != "=")):
+            break
+        j -= 1
+    return j + 1, q, arm
+
+
+def open_ended(node) -> bool:
+    """ANTS-6424 — `substr(pos)` / `mid(pos)`: a window running to the end."""
+    return node[0] == "method" and node[2] in ("substr", "mid") and len(node[3]) == 1
+
+
 class Site:
     def __init__(self, path: str, first_line: int, last_line: int, text: str):
         self.path, self.first_line, self.last_line, self.text = path, first_line, last_line, text
@@ -1016,6 +1070,25 @@ def check_scrapes(pre: str, post: str, stem: str) -> int:
                     unevaluated.append((site, str(why)))
                     continue
                 evaluated += 1
+                # ANTS-6423 — an arm the condition skips at both revisions
+                # cuts nothing.
+                tern = ternary_arm(mask, start)
+                if tern is not None:
+                    cs, ce, arm = tern
+                    try:
+                        cond = Parser(code[cs:ce]).parse()
+                        taken = [Evaluator(stem, code, scope, *texts).value(cond)
+                                 for texts in (pre_texts, post_texts)]
+                    except Unknown:
+                        taken = None
+                    if taken is not None and all(isinstance(t, bool) for t in taken) \
+                            and all((t if arm == "then" else not t) is False for t in taken):
+                        continue
+                # ANTS-6424 — an open-ended window is unchanged when text was
+                # only appended after what the parent's window held.
+                if open_ended(parsed) and isinstance(region_pre, bytes) \
+                        and isinstance(region_post, bytes) and region_post.startswith(region_pre):
+                    continue
                 if region_pre == region_post:
                     continue
                 if removed_lines is None:

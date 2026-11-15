@@ -1805,6 +1805,15 @@ if(ANTS_TESTS)
         TIMEOUT 120
         SKIP_RETURN_CODE 77)
 
+    # ANTS-6423 / ANTS-6424 — split-motion-check --scrapes judges only the
+    # windows a commit cut; see tests/features/split_motion_scrapes/spec.md.
+    add_test(NAME split_motion_scrapes
+             COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/split_motion_scrapes/test_split_motion_scrapes.py")
+    set_tests_properties(split_motion_scrapes PROPERTIES
+        LABELS "features;fast"
+        TIMEOUT 60
+        SKIP_RETURN_CODE 77)
+
     # ANTS-3428 — a below-latest dependency pin needs a Downgrade Ledger row.
     add_test(NAME dependency_pins
              COMMAND python3 "${CMAKE_CURRENT_SOURCE_DIR}/tests/features/dependency_pins/test_dependency_pins.py")
