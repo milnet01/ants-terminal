@@ -82,7 +82,7 @@ against same-project hostile content.
 | `verifyengine.cpp:373` | `parseVerifyJson` → `QList<GateConfig>` |
 | `verifyengine.cpp:291` | `p.start("/bin/sh", {"-c", gc.command})` |
 | `verifyengine.cpp:303-310` | Per-gate wall-clock timeout |
-| MCP `verify_changes` handler | `cmdVerifyChanges` at `remotecontrol.cpp:2539` |
+| MCP `verify_changes` handler | `RemoteControl::cmdVerifyChanges` in `src/remotecontrol_review.cpp` |
 | Persistence | none today |
 
 The anchor check at `:367` prevents `.ants/verify.json` from being
@@ -403,7 +403,7 @@ losing the rename on power failure (ANTS-1141 pattern).
 - **WI-2** `verifyengine.cpp` `loadGateConfig` calls
   `trustClient->outcomeForConfig(...)` exactly once when the
   client is non-null.
-- **WI-3** `cmdVerifyChanges` (`remotecontrol.cpp:2539`) emits the
+- **WI-3** `cmdVerifyChanges` (`src/remotecontrol_review.cpp`) emits the
   `verify_untrusted` field on the response.
 
 ### Pre-fix regression check
