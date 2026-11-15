@@ -127,6 +127,11 @@ QString buildAppStylesheet(const Theme &theme) {
         "QLabel { color: %3; background: transparent; }"
         "QPushButton { background-color: %1; color: %3;"
         "  border: 1px solid %4; padding: 6px 14px; border-radius: 4px; min-width: 60px; }"
+        // The status bar gives a button less height than 6px padding needs,
+        // which cut the tails off p and g at a 10 pt desktop font (user,
+        // 2026-11-15). 3px leaves the text its full line height.
+        // tests/features/status_bar_fixed_slots INV-7.
+        "QStatusBar QPushButton { padding: 3px 14px; }"
         // :hover must be gated by :enabled. Without the gate, a disabled
         // button still gets the hover highlight, which advertises it as
         // actionable even though Qt swallows clicks on disabled buttons
@@ -146,16 +151,16 @@ QString buildAppStylesheet(const Theme &theme) {
         // auto-switch fires. %5 = theme.accent so the border follows
         // the active theme. Triple-selector (base + hover + pressed)
         // so the generic QPushButton:hover:enabled rule doesn't override
-        // the pulse during the 600 ms window. Same padding 6px 14px
-        // as the generic rule = bit-identical interior box = zero
-        // text twitch on engage/disengage.
+        // the pulse during the 600 ms window. Same padding 3px 14px
+        // as the status-bar button rule = bit-identical interior box =
+        // zero text twitch on engage/disengage.
         "QPushButton#claudeModelStateBtn[pulse=\"true\"],"
         "QPushButton#claudeModelStateBtn[pulse=\"true\"]:hover:enabled,"
         "QPushButton#claudeModelStateBtn[pulse=\"true\"]:pressed:enabled {"
         "  background-color: %1;"
         "  color: %3;"
         "  border: 1px solid %5;"
-        "  padding: 6px 14px;"
+        "  padding: 3px 14px;"
         "  border-radius: 4px; }"
         "QLineEdit { background-color: %1; color: %3; border: 1px solid %4;"
         "  padding: 5px 8px; border-radius: 3px;"

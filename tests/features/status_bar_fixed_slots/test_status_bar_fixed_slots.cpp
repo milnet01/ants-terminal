@@ -1,13 +1,19 @@
 // ANTS-5753 — fixed status-bar slots. See spec.md.
 
 #include "claudestatuswidgets.h"
+#include "themedstylesheet.h"
+#include "themes.h"
 
 #include "../../_support/srcgrep.h"
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
+#include <QFont>
 #include <QLabel>
+#include <QMainWindow>
 #include <QPushButton>
+#include <QStatusBar>
 #include <QStringList>
 
 #include <string>
@@ -169,4 +175,24 @@ TEST(StatusBarFixedSlots, Inv6OccasionalLeftSteadyInOrder) {
     EXPECT_EQ(body.find("statusbarslot::pin(m_thinkingBtn"), std::string::npos);
     EXPECT_NE(body.find("statusbarslot::setRetain(m_thinkingBtn, true)"),
               std::string::npos);
+}
+
+// INV-7 — a status-bar button gets the full height its text needs, under the
+// app stylesheet at the user's 10 pt desktop font (user report 2026-11-15:
+// the tails of p and g were cut off).
+TEST(StatusBarFixedSlots, Inv7ButtonGetsItsFullHeight) {
+    QFont font(QStringLiteral("Noto Sans"));
+    font.setPointSize(10);
+    QMainWindow w;
+    w.setFont(font);
+    w.setStyleSheet(themedstylesheet::buildAppStylesheet(Themes::defaultTheme()));
+    w.setCentralWidget(new QWidget);
+    w.statusBar()->setMinimumHeight(32);   // as MainWindow sets it
+    auto *b = new QPushButton(QStringLiteral("Roadmap"));
+    w.statusBar()->addPermanentWidget(b);
+    w.resize(900, 300);
+    w.show();
+    QCoreApplication::processEvents();
+    EXPECT_GE(b->height(), b->sizeHint().height())
+        << "the bar squeezes the button, so its text is clipped";
 }

@@ -38,5 +38,11 @@ Each pill keeps a fixed slot wide enough for its longest text.
   slot when hidden. Breaks when: a pill is added out of order, an
   occasional pill keeps its slot, or either of those two is pinned.
 
-Tests: `test_status_bar_fixed_slots.cpp` — INV-1 and INV-2 behaviourally
-on real widgets; INV-3 to INV-6 by source scrape.
+- **INV-7** (user report 2026-11-15) — under the app stylesheet at a 10 pt
+  Noto Sans font, a button in the status bar gets at least its `sizeHint()`
+  height, so the tails of letters such as p and g are not cut off. Breaks
+  when: status-bar buttons take the generic `QPushButton` padding of 6px
+  top and bottom.
+
+Tests: `test_status_bar_fixed_slots.cpp` — INV-1, INV-2 and INV-7
+behaviourally on real widgets; INV-3 to INV-6 by source scrape.

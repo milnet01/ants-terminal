@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Status-bar buttons (model, thinking level, Review Changes, Roadmap and the rest) show the full height of their text: the tails of letters such as p and g are no longer cut off, with no change to font size.** (ANTS-6787)
+
 - **Ants no longer overwrites a change Claude Code or another Ants writer makes to `~/.claude/settings.json` while Ants adds its start-up hook: it waits for the file lock and backs off if the file changed, retrying on the next launch.** (ANTS-6471)
 
 - **The undeclared-argument ledger keeps its records when the file exists but cannot be read: the append is refused instead of rewriting the file as one line.** (ANTS-6470)

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6786 -->
+<!-- ants-roadmap-id-high-water: ANTS=6787 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92927,6 +92927,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: OneUp feedback 2026-11-15 (three full reviews).
   Lanes: mcp-tools.
+
+- ✅ [ANTS-6787] **Status-bar buttons show the full height of their text at the user's font size.**
+  At Noto Sans 10 pt the generic QPushButton padding (6px top and bottom)
+  asks for a 30-32 px button, but the status bar gives it 27 px, so the
+  text box shrank below the font's line height. Fix: status-bar buttons
+  take 3px vertical padding (font size unchanged); the model chip's pulse
+  rule matches. Measured offscreen 2026-11-15.
+  **Layman:** The tails of letters like p and g were cut off on the model, thinking, Review Changes and Roadmap buttons.
+  Kind: fix.
+  Source: user-request-2026-11-15.
+  Lanes: status-bar.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

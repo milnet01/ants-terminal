@@ -207,7 +207,7 @@ and BEFORE the `QLineEdit` block at L150:
 "  background-color: %1;"
 "  color: %3;"
 "  border: 1px solid %5;"
-"  padding: 6px 14px;"
+"  padding: 3px 14px;"
 "  border-radius: 4px; }"
 ```
 
@@ -224,8 +224,8 @@ The generic `QPushButton` rule at
 `border: 1px solid %4;` — so the un-pulsed chip ALREADY has a
 1 px border (in colour `%4`, the muted "border" role). The
 pulse rule changes only the border COLOUR (`%4` → `%5`, the
-accent role) and pins the base padding (`6px 14px`, identical
-to the generic rule). Border WIDTH is unchanged, so the
+accent role) and pins the base padding (`3px 14px`, identical
+to the `QStatusBar QPushButton` rule the chip otherwise takes). Border WIDTH is unchanged, so the
 chip's interior box is bit-for-bit identical between pulsed
 and un-pulsed states; no text twitch on engage/disengage.
 
