@@ -559,8 +559,10 @@ private:
     FileResult m_out;
 };
 
+// ANTS-6285 — `c` too, as FileOutline::isCFamilyExt has it.
 bool isCppSource(const QString &rel) {
     static const QStringList kSuffixes = {
+        QStringLiteral("c"),
         QStringLiteral("cpp"), QStringLiteral("cc"), QStringLiteral("cxx"), QStringLiteral("h"),
         QStringLiteral("hh"), QStringLiteral("hpp"), QStringLiteral("hxx")};
     return kSuffixes.contains(QFileInfo(rel).suffix());

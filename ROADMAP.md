@@ -111037,7 +111037,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: test.
   Source: push-gate-2026-10-26.
 
-- 📋 [ANTS-6285] **source_scrapes and trace leave `.c` out of their C/C++ suffix lists, which FileOutline::isCFamilyExt includes.**
+- ✅ [ANTS-6285] **source_scrapes and trace leave `.c` out of their C/C++ suffix lists, which FileOutline::isCFamilyExt includes.**
   sourcescrapes.cpp isCppSource and trace/languages.cpp's "cpp" entry list
   cpp/cc/cxx/h/hpp/hh/hxx but not c. codebase_index, file_outline,
   find_definition and similar_code now share FileOutline::isCFamilyExt,
@@ -111046,6 +111046,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   does not link ants_mcpcore_lib (walkrules.h): the shared predicate needs a
   home both can reach. buildfixhint (header/source split, adds c++) and
   commentclaims (a comment-syntax family) differ by design.
+  Shipped 2026-11-15: source_scrapes' isCppSource reads `c`. The trace
+  half was already true: trace/languages.cpp routes `c` to its own
+  tree-sitter C grammar. Test: SourceScrapes.Ants6285ReadsCTestFiles.
   **Layman:** Two code tools skip plain C files that the others read; make them read the same files.
   Kind: fix.
   Source: review-readability-2026-10-22 (L31-F14).

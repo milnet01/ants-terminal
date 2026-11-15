@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **source_scrapes reads plain C test files, as the other code tools do.** (ANTS-6285)
+
 - **run_trace and session_cost count a session's tokens by one rule.** (ANTS-6272)
 
 - **run_trace finds a session's log wherever session_cost finds it, including under CLAUDE_CONFIG_DIR and from a project subfolder.** (ANTS-6271)

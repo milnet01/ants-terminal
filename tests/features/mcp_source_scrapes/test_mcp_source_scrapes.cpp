@@ -555,3 +555,19 @@ TEST(SourceScrapes, Ants6340NestedDefinitionAndPathChain) {
     ASSERT_EQ(rows.size(), 1);
     EXPECT_EQ(rows.first().value(QStringLiteral("test")).toString(), QStringLiteral("R.Reads"));
 }
+
+// ANTS-6285 — a C test file is read too, as the other C-family verbs read it
+// (FileOutline::isCFamilyExt includes `c`).
+TEST(SourceScrapes, Ants6285ReadsCTestFiles) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    writeFile(dir->filePath("tests/three/test_three.c"),
+              "TEST(C, Three) {\n"
+              "    const char *src = slurpFile(SRC_A_PATH);\n"
+              "    EXPECT_NE(src.find(\"int three_marker(\"), npos);\n"
+              "}\n");
+    const QJsonObject a = forPath(*dir, "src/a.cpp");
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool()) << QJsonDocument(a).toJson().constData();
+    EXPECT_EQ(row(a, QStringLiteral("int three_marker(")).value(QStringLiteral("file")).toString(),
+              QStringLiteral("tests/three/test_three.c"))
+        << QJsonDocument(a).toJson().constData();
+}
