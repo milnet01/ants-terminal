@@ -71285,12 +71285,18 @@ minor tag (next: pre-0.8.0).
   Kind: fix.
   Source: user report 2026-11-07.
 
-- 📋 [ANTS-6709] **Connecting the MCP from Preferences uses an ants-mcpd that can read the roadmap store.**
+- ✅ [ANTS-6709] **Connecting the MCP from Preferences uses an ants-mcpd that can read the roadmap store.**
   The terminal launch.sh runs has no ants-mcpd beside it, so
   mcpLaunchCommand falls back to PATH: /usr/bin/ants-mcpd from the
   0.7.115 package, which refuses the store as schema 5 > 4. It should
   prefer the build launch.sh copied from (the binary ants-mcpd.path
   names), or say the found one is too old.
+  Closed 2026-11-15, no code: shipped by ANTS-6720 (launch.sh copies
+  ants-mcpd beside the run binary) and ANTS-6728 (each ants-mcpd build
+  refreshes that copy). thisBuildLaunch() passes applicationDirPath(),
+  so mcpLaunchCommand takes the sibling before PATH. Checked:
+  ~/.local/share/ants-terminal/bin/ants-mcpd reports commit 7684f338,
+  built 2026-11-15 11:42.
   **Layman:** Connecting the MCP from Preferences no longer picks an old copy that cannot open your roadmap.
   Kind: fix.
   Source: user report 2026-11-07.
