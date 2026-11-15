@@ -115,8 +115,11 @@ QStringList rankSectionCandidates(const QString &wantSlug,
 // balances. Skips braces in // and /* */ comments and "…"/'…' literals.
 // ANTS-5787 — exported for function_sizes. When given, `maxDepth` receives
 // the deepest nesting reached, the body's own braces counting 1, and
-// `openLine` the line of the body's opening brace.
+// `openLine` the line of the body's opening brace. ANTS-6783 — `Shell` reads
+// `#` comments and shell quoting instead of C's.
+enum class BraceLexis { CFamily, Shell };
 int braceBalancedEndLine(const QStringList &lines, int startLine,
-                         int *maxDepth = nullptr, int *openLine = nullptr);
+                         int *maxDepth = nullptr, int *openLine = nullptr,
+                         BraceLexis lexis = BraceLexis::CFamily);
 
 }  // namespace ReadRegion

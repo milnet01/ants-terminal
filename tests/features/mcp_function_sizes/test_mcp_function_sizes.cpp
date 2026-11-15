@@ -115,6 +115,31 @@ TEST(FunctionSizes, Inv2aNoBraceBodyIsUnmeasured) {
     EXPECT_EQ(r.value(QStringLiteral("not_covered")).toArray().size(), 1);
 }
 
+// ANTS-6783 — shell has no C comments: a glob `"$d"/*.repo` hid every brace to
+// the end of the file, so a short function took the file's last `}`. A `#`
+// comment, a '…' string, an escaped brace and a heredoc body hold no body brace.
+TEST(FunctionSizes, Inv2bShellBodyEndsAtItsBrace) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/u.sh"),
+              "copy() {\n"                                       // 1
+              "    cp \"$d\"/*.repo \"$t\"/ || { return 0; }\n"  // 2
+              "    echo '}' \\{ # don't } count\n"               // 3
+              "    echo \"a\n"                                   // 4
+              "}\"\n"                                            // 5, inside the string
+              "}\n"                                              // 6
+              "second() {\n"                                     // 7
+              "    cat <<-'EOF' | wc\n"                          // 8
+              "it's } here\n"                                    // 9, heredoc body
+              "    EOF\n"                                        // 10
+              "}\n");                                            // 11
+    const QJsonObject r = call(dir);
+    const QJsonObject copy = rowFor(r, QStringLiteral("copy"));
+    EXPECT_EQ(copy.value(QStringLiteral("body_end")).toInt(), 6)
+        << QJsonDocument(r).toJson().constData();
+    EXPECT_EQ(copy.value(QStringLiteral("nesting_depth")).toInt(), 2);
+    EXPECT_EQ(rowFor(r, QStringLiteral("second")).value(QStringLiteral("body_end")).toInt(), 11);
+}
+
 // ANTS-6352 — a named Python script with no extension is measured, not counted
 // as a scanned file holding no functions.
 TEST(FunctionSizes, Inv10ExtensionlessPythonScriptIsMeasured) {

@@ -181,10 +181,68 @@ int braceBalancedEndLine(const QString &absPath, int startLine) {
     return ReadRegion::braceBalancedEndLine(lines, startLine);
 }
 
+// ANTS-6783 — shell has no // or /* */ comments (`"$d"/*.repo` is a glob). A
+// `#` at the start of a word comments out the rest of the line; '…' holds no
+// escapes; "…" may span lines; a backslash outside '…' escapes the next
+// character. A heredoc body (`<<EOF`, `<<-'EOF'`) is skipped to the line that
+// holds only its delimiter.
+int shellBraceEndLine(const QStringList &lines, int startLine, int *maxDepth, int *openLine) {
+    static const QRegularExpression heredoc(
+        QStringLiteral(R"(^<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1)"));
+    int depth = 0, deepest = 0;
+    bool seenOpen = false, inSingle = false, inDouble = false;
+    QString heredocEnd;  // the delimiter line that ends the heredoc being skipped
+    for (int lineNo = qMax(1, startLine); lineNo <= lines.size(); ++lineNo) {
+        const QString &line = lines.at(lineNo - 1);
+        if (!heredocEnd.isEmpty()) {
+            if (line.trimmed() == heredocEnd) heredocEnd.clear();
+            continue;
+        }
+        QString opened;
+        for (int i = 0; i < line.size(); ++i) {
+            const QChar c = line.at(i);
+            if (inSingle) {
+                if (c == QLatin1Char('\'')) inSingle = false;
+                continue;
+            }
+            if (c == QLatin1Char('\\')) { ++i; continue; }
+            if (inDouble) {
+                if (c == QLatin1Char('"')) inDouble = false;
+                continue;
+            }
+            if (c == QLatin1Char('#') && (i == 0 || line.at(i - 1).isSpace() ||
+                                          line.at(i - 1) == QLatin1Char(';')))
+                break;
+            if (c == QLatin1Char('<') && !line.mid(i).startsWith(QLatin1String("<<<"))) {
+                const QRegularExpressionMatch m = heredoc.match(line.mid(i));
+                if (m.hasMatch()) {
+                    if (opened.isEmpty()) opened = m.captured(2);
+                    i += int(m.capturedLength()) - 1;
+                    continue;
+                }
+            }
+            if (c == QLatin1Char('\'')) inSingle = true;
+            else if (c == QLatin1Char('"')) inDouble = true;
+            else if (c == QLatin1Char('{')) {
+                deepest = qMax(deepest, ++depth);
+                if (!seenOpen && openLine) *openLine = lineNo;
+                seenOpen = true;
+            } else if (c == QLatin1Char('}') && --depth <= 0 && seenOpen) {
+                if (maxDepth) *maxDepth = deepest;
+                return lineNo;
+            }
+        }
+        heredocEnd = opened;
+        if (lineNo - startLine > 200000) break;  // defensive bound
+    }
+    return 0;
+}
+
 }  // namespace
 
 int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
-                         int *openLine) {
+                         int *openLine, BraceLexis lexis) {
+    if (lexis == BraceLexis::Shell) return shellBraceEndLine(lines, startLine, maxDepth, openLine);
     int depth = 0, deepest = 0;
     bool seenOpen = false, inBlockComment = false;
     // ANTS-5612 — braces in a parameter list are not the body. Until the body

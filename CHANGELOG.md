@@ -442,6 +442,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`function_sizes` finds where a shell function ends** (ANTS-6783)
+  Shell files are scanned with shell rules: `#` comments, shell quoting,
+  backslash escapes and heredoc bodies. A glob such as `"$dir"/*.repo` no
+  longer hides the rest of the file, so a short function keeps its own size.
+
 - **A settings or session save whose flush to disk fails now keeps the previous file, instead of replacing it with one that may not have reached the disk.** (ANTS-6472)
 
 - **Status-bar buttons (model, thinking level, Review Changes, Roadmap and the rest) show the full height of their text: the tails of letters such as p and g are no longer cut off, with no change to font size.** (ANTS-6787)

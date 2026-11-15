@@ -92909,11 +92909,15 @@ measured Ants adding about 5,250 tokens to every request.
   Source: OneUp feedback 2026-11-15 (three full reviews).
   Lanes: mcp-tools.
 
-- 📋 [ANTS-6783] **function_sizes finds where a Bash function ends.**
+- ✅ [ANTS-6783] **function_sizes finds where a Bash function ends.**
   update_system.sh in OneUp: make_cdn_reposd (8 lines) and
   _run_system_upgrade_inner (42 lines) were both reported as ending at
   the file's last function end (576 and 567 lines). Compare with
   `grep -n '^}'`.
+  Shell files use a shell lexer in ReadRegion::braceBalancedEndLine
+  (BraceLexis::Shell): # comments, shell quoting, backslash, heredocs.
+  On OneUp and Ants every changed row now matches the real closing
+  brace.
   **Layman:** The function-size report gave two short shell functions hundreds of lines each, sending false work to reviewers.
   Kind: fix.
   Source: OneUp feedback 2026-11-15 (three full reviews).

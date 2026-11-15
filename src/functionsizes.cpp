@@ -114,8 +114,10 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
                                        ? qMin(*next, int(lines.size()) + 1)
                                        : int(lines.size()) + 1;
             int openLine = 0;
-            f.bodyEnd = ReadRegion::braceBalancedEndLine(lines, f.bodyStart,
-                                                         &f.nestingDepth, &openLine);
+            f.bodyEnd = ReadRegion::braceBalancedEndLine(
+                lines, f.bodyStart, &f.nestingDepth, &openLine,
+                language == QLatin1String("sh") ? ReadRegion::BraceLexis::Shell
+                                                : ReadRegion::BraceLexis::CFamily);
             if (openLine >= nextSymbol) f.bodyEnd = 0;
         }
         if (f.bodyEnd < f.bodyStart) {
