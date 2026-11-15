@@ -429,7 +429,7 @@ target_compile_options(ants_warnings INTERFACE
 # Layering (PUBLIC = transitive, PRIVATE = lib-internal):
 #
 #   ants_core_lib    ← config / debuglog / IPC / session / PTY foundations
-#   ants_vt_lib      ← parser + grid + widget + themes (depends on core)
+#   ants_vt_lib      ← parser + grid + widget + themes + dialog chrome (depends on core)
 #   ants_chrome_lib  ← mainwindow + tabbar + palette (depends on vt)
 #   ants_claude_lib  ← Claude Code integration (depends on chrome)
 #   ants_audit_lib   ← audit engine + runner + hygiene (depends on core)
@@ -926,6 +926,10 @@ add_library(ants_vt_lib STATIC
     src/terminalaccessible.cpp
     src/themes.cpp
     src/shapedruncache.cpp
+    # ANTS-6766 — here, not in ants_chrome_lib, so TerminalWidget's own
+    # dialogs can take the chrome.
+    src/titlebar.cpp
+    src/dialogchrome.cpp
 )
 target_link_libraries(ants_vt_lib
     PUBLIC  ants_core_lib Qt6::OpenGL Qt6::OpenGLWidgets
@@ -955,8 +959,6 @@ string(REPLACE ";" "\\;" _ants_mainwindow_joined "${_ants_mainwindow_joined}")
 
 add_library(ants_chrome_lib STATIC
     ${ANTS_MAINWINDOW_SOURCES_REL}
-    src/titlebar.cpp
-    src/dialogchrome.cpp
     src/coloredtabbar.cpp
     src/tablistpanel.cpp
     src/commandpalette.cpp
@@ -1080,7 +1082,7 @@ list(JOIN _ants_auditdialog_abs ";" _ants_auditdialog_joined)
 string(REPLACE ";" "\\;" _ants_auditdialog_joined "${_ants_auditdialog_joined}")
 
 # ANTS-1444: AuditDialog (QDialog) + its UI deps. References AuditEngine
-# (ants_audit_lib), DialogChrome (ants_chrome_lib), and ToggleSwitch
+# (ants_audit_lib), DialogChrome (ants_vt_lib), and ToggleSwitch
 # (ants_dialogs_lib). mainwindow.cpp (in ants_chrome_lib) constructs
 # AuditDialog, so consumers form a chrome↔dialog symbol cycle resolved
 # via --start-group at the final link.

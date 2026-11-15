@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The risky-paste and re-run confirmation windows wear the terminal's theme, can be resized, remember their size and open centred, like the other dialogs.** (ANTS-6766)
+
 - **spec_lint stops flagging three sound clauses: a lone word such as `head` in a test clause, an `INV-a to INV-b` range bullet, and a path a fixture is described as citing** (ANTS-6765)
 
 - **read_region answers read_failed for a file that exists but cannot be opened, keeping not_found for a missing file** (ANTS-6772)

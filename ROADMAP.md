@@ -74824,7 +74824,7 @@ indie-review finding.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
   Lanes: roadmap, tests.
 
-- 📋 [ANTS-6766] **The paste and re-run confirmation dialog uses DialogChrome, so it meets dialogs.md D1 to D4.**
+- ✅ [ANTS-6766] **The paste and re-run confirmation dialog uses DialogChrome, so it meets dialogs.md D1 to D4.**
   Checked 2026-11-14: TerminalWidget::showSendConfirmation builds a bare
   `new QDialog(this)`. src/terminalwidget.cpp is in ants_vt_lib and
   src/dialogchrome.cpp in ants_chrome_lib, which links ants_vt_lib, so
@@ -74835,6 +74835,9 @@ indie-review finding.
   comment above the function). INV-13 of
   tests/features/dialog_chrome_affordances exempts terminalwidget.cpp
   by name until this ships; remove that exemption with the fix.
+  Shipped 2026-11-15: titlebar.cpp and dialogchrome.cpp moved into
+  ants_vt_lib; showSendConfirmation installs the chrome keyed by its
+  object name; INV-13's exemption removed.
   **Layman:** The "are you sure you want to paste this?" window follows the terminal's colour theme and remembers its size, like the other pop-ups.
   Kind: fix.
   Source: in-session-2026-11-14 (split from ANTS-5681).

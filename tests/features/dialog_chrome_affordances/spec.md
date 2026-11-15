@@ -52,8 +52,7 @@ function dialogs need no `Config` plumbing).
 - **INV-13 / no plain dialog skips the chrome (ANTS-5681).** Every
   `new QDialog(` and every `QDialog name(` in a `src/*.cpp` file, outside
   a `//` comment, is followed before its function ends by a
-  `DialogChrome::install(` call on that variable. `terminalwidget.cpp` is
-  exempt until ANTS-6766: its library sits below `DialogChrome`'s.
+  `DialogChrome::install(` call on that variable.
 
 ## Test scope
 

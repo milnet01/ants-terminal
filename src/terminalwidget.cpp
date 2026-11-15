@@ -3,6 +3,7 @@
 #include "claudepromptdetect.h" // ANTS-1993 — permission-prompt structural gate
 #include "clipboardguard.h"  // ANTS-1014 — clipboard write funnel
 #include "debuglog.h"
+#include "dialogchrome.h"     // ANTS-6766 — send-confirmation chrome
 #include "luaengine.h"  // ANTS-4272 — PluginEvent values
 #include "procstat.h"         // fields of /proc/<pid>/stat by name
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
@@ -2934,8 +2935,12 @@ void TerminalWidget::showSendConfirmation(const QString &objectName,
     dlg->setObjectName(objectName);
     dlg->setWindowTitle(title);
     dlg->setAttribute(Qt::WA_DeleteOnClose);
+    // ANTS-6766 — dialogs.md D1–D4, as the close-tab confirmation has. Each
+    // caller's object name keys its own saved size.
+    auto chrome = DialogChrome::install(dlg, QString(), /*resizable=*/true,
+                                        objectName);
 
-    auto *layout = new QVBoxLayout(dlg);
+    auto *layout = new QVBoxLayout(chrome.contentArea);
     layout->setContentsMargins(16, 16, 16, 12);
     layout->setSpacing(10);
 

@@ -302,8 +302,6 @@ TEST(DialogChromeAffordances, INV13_EveryPlainDialogInstallsChrome) {
         R"((?:\*\s*(\w+)\s*=\s*new QDialog\(|\bQDialog\s+(\w+)\())"));
     int dialogs = 0;
     for (const QString &name : files) {
-        // ANTS-6766 — this file's library sits below DialogChrome's.
-        if (name == QLatin1String("terminalwidget.cpp")) continue;
         const QString text = QString::fromStdString(
             ants_test::slurpFile(src.filePath(name).toStdString()));
         auto it = built.globalMatch(text);
