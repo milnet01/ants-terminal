@@ -249,6 +249,33 @@ TEST(AuditRunCache, LoadManifestTreatsUnknownVersionAsEmpty) {
         << "version != 1 must yield an empty raw manifest object";
 }
 
+// ANTS-6481 — a manifest a newer Ants wrote is left as it is: rewriting it
+// as version 1 would drop its history and orphan the files it names.
+TEST(AuditRunCache, Ants6481RecordRunLeavesANewerManifestAlone) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    QJsonObject seed;
+    seed[QStringLiteral("version")] = 2;
+    seed[QStringLiteral("history")] = QJsonArray{QJsonObject{{"sarif", "old.sarif"}}};
+    ASSERT_TRUE(seedManifest(root, seed));
+    QFile before(root + QLatin1String("/.audit_cache/index.json"));
+    ASSERT_TRUE(before.open(QIODevice::ReadOnly));
+    const QByteArray seeded = before.readAll();
+    before.close();
+
+    QJsonObject lastRun;
+    lastRun["iso_timestamp"] = QStringLiteral("2026-11-15T10:00:00Z");
+    lastRun["commit"]        = QStringLiteral("abc1234");
+    lastRun["sarif"]         = QStringLiteral("audit-new.sarif");
+    QJsonObject prior;
+    AuditCache::recordRun(root, lastRun, &prior);
+
+    QFile after(root + QLatin1String("/.audit_cache/index.json"));
+    ASSERT_TRUE(after.open(QIODevice::ReadOnly));
+    EXPECT_EQ(after.readAll(), seeded) << "a version-2 manifest was rewritten";
+}
+
 TEST(AuditRunCache, RecordRunSurfacesPriorRunFromManifest) {
     // INV-8 — recordRun surfaces the prior manifest's last_run via
     // priorRunOut.

@@ -66,7 +66,8 @@ struct Manifest {
 
 // Read `<root>/.audit_cache/index.json`. Missing / unparseable /
 // wrong-version files all yield an empty Manifest{} with the
-// `raw` object empty.
+// `raw` object empty. A wrong-version file's `version` is kept, so
+// recordRun can leave a newer manifest alone (ANTS-6481).
 Manifest loadManifest(const QString &canonProject);
 
 // Record a completed run into the manifest. The caller builds `lastRunJson`

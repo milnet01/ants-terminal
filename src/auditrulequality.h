@@ -151,8 +151,12 @@ private:
     static constexpr int RETENTION_DAYS = 90;
 
     void load();
-    // False when the file exists but cannot be read or parsed; the vectors
-    // are then left empty. An absent file reads as empty history.
+    // False when the file exists but cannot be read or parsed, or has a
+    // schema newer than kSchemaVersion (then `*newerSchema` is set); the
+    // vectors are then left empty. An absent file reads as empty history.
     static bool readHistory(const QString &path, QVector<FireDay> &fireDays,
-                            QVector<SuppressRecord> &suppressions);
+                            QVector<SuppressRecord> &suppressions,
+                            bool *newerSchema);
+    // ANTS-5085 — v2: fire_days replaced v1's per-fire records.
+    static constexpr int kSchemaVersion = 2;
 };

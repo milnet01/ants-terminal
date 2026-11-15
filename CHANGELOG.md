@@ -448,6 +448,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Audit history files written by a newer Ants are left as they are by an older one** (ANTS-6481)
+  The audit cache's index.json and audit_rule_quality.json keep their
+  newer format and contents; the older build logs a warning and does not
+  record into them.
+
 - **Two audit windows open on one project both keep their rule-quality history when they close** (ANTS-6480)
   Saving re-reads audit_rule_quality.json under its lock and adds only
   what that window recorded since its last save.

@@ -204,7 +204,14 @@ void RuleQualityTracker::save() {
     // cannot be read or parsed is replaced by this tracker's view, as before.
     QVector<FireDay> fireDays;
     QVector<SuppressRecord> suppOut;
-    if (readHistory(m_path, fireDays, suppOut)) {
+    bool newer = false;
+    const bool parsed = readHistory(m_path, fireDays, suppOut, &newer);
+    if (newer) {   // ANTS-6481 — a newer Ants's history is not rewritten
+        qWarning("auditrulequality: %s has a newer schema; not saved",
+                 m_path.toUtf8().constData());
+        return;
+    }
+    if (parsed) {
         for (auto it = m_unsavedFires.constBegin(); it != m_unsavedFires.constEnd(); ++it) {
             const auto day = std::find_if(fireDays.begin(), fireDays.end(),
                 [&](const FireDay &fd) {
@@ -251,7 +258,7 @@ void RuleQualityTracker::save() {
         suppJson.append(o);
     }
     QJsonObject root;
-    root["schema_version"] = 2;   // ANTS-5085 — fire_days replaced v1's fires
+    root["schema_version"] = kSchemaVersion;
     root["fire_days"]      = fireDaysJson;
     root["suppressions"]   = suppJson;
 
@@ -295,17 +302,22 @@ void RuleQualityTracker::reload() {
 }
 
 void RuleQualityTracker::load() {
-    readHistory(m_path, m_fireDays, m_suppressions);
+    readHistory(m_path, m_fireDays, m_suppressions, nullptr);
 }
 
 bool RuleQualityTracker::readHistory(const QString &path, QVector<FireDay> &fireDays,
-                                     QVector<SuppressRecord> &suppressions) {
+                                     QVector<SuppressRecord> &suppressions,
+                                     bool *newerSchema) {
     QFile f(path);
     if (!f.exists()) return true;
     if (!f.open(QIODevice::ReadOnly)) return false;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
     if (!doc.isObject()) return false;
     const QJsonObject root = doc.object();
+    if (root.value("schema_version").toInt(kSchemaVersion) > kSchemaVersion) {
+        if (newerSchema) *newerSchema = true;
+        return false;
+    }
 
     // ANTS-5085 — count fires into (rule, day) buckets: v2 fire_days as
     // stored, and a v1 file's per-fire records one each.

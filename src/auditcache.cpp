@@ -118,6 +118,7 @@ Manifest loadManifest(const QString &canonProject) {
         // schema this build can't read) rather than dropping it silently.
         qWarning() << "AuditCache: index.json version" << version
                    << "!= 1 at" << p << "— treating as empty history.";
+        m.version = version;   // ANTS-6481 — recordRun leaves a newer one alone
         return m;
     }
     m.version = version;
@@ -156,6 +157,13 @@ RecordedRun recordRun(const QString &canonProject,
     // last_run into history.
     const Manifest prev = loadManifest(canonProject);
     if (priorRunOut) *priorRunOut = prev.lastRun;
+    // ANTS-6481 — a manifest a newer Ants wrote is not rewritten as version
+    // 1: that would drop its history and orphan the files it names.
+    if (prev.version > 1) {
+        qWarning() << "AuditCache: index.json at" << manifestPath << "is version"
+                   << prev.version << "— left as it is; this run is not recorded.";
+        return out;
+    }
 
     // Pull iso/sha out of the caller's new last_run; the caller built
     // it using AuditCache::isoNow + AuditCache::gitInfo so they

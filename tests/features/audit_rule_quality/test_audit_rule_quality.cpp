@@ -237,6 +237,26 @@ void testTwoTrackersKeepEachOthersRecords() {
     CHECK_EQ(supps, 2, "a suppression recorded by the other tracker was lost");
 }
 
+// --- Test 10 — ANTS-6481: a history a newer Ants wrote is not rewritten as
+// this build's schema. --------------------------------------------------------
+void testNewerSchemaIsNotRewritten() {
+    QTemporaryDir tmp;
+    const QString path = tmp.path() + "/audit_rule_quality.json";
+    const QByteArray seed = R"({"schema_version":3,"fire_days":[],"suppressions":[],"v3_field":1})";
+    QFile f(path);
+    CHECK(f.open(QIODevice::WriteOnly), "could not write the v3 fixture");
+    f.write(seed);
+    f.close();
+    {
+        RuleQualityTracker t(tmp.path());
+        t.recordFire("rule_a", "x");
+        t.save();
+    }
+    QFile g(path);
+    CHECK(g.open(QIODevice::ReadOnly), "the v3 file is gone");
+    CHECK(g.readAll() == seed, "a newer-schema history was rewritten");
+}
+
 #define RQ_TEST(NAME) \
     TEST(AuditRuleQuality, NAME) { \
         int before = failures; \
@@ -253,5 +273,6 @@ RQ_TEST(SaveOnlyWhenChanged)
 RQ_TEST(ManyFiresStayCountedAndSmall)
 RQ_TEST(LoadsV1FireRecords)
 RQ_TEST(TwoTrackersKeepEachOthersRecords)
+RQ_TEST(NewerSchemaIsNotRewritten)
 
 }  // namespace

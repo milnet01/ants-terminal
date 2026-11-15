@@ -93930,13 +93930,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 27-audit-engine (Medium).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6481] **auditcache.cpp: a newer-version `index.json` is treated as empty, then overwritten as v1.**
+- ✅ [ANTS-6481] **auditcache.cpp: a newer-version `index.json` is treated as empty, then overwritten as v1.**
   `auditcache.cpp:116-121` — a newer-version `index.json` is treated as
   empty, then overwritten as v1. Its history is lost and its artefacts
   orphaned on downgrade. `auditrulequality.cpp:266` likewise ignores
   `schema_version` and rewrites the file as v2.
   Quote: `:293`
   Ledger row 321, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: recordRun returns without writing when
+  index.json's version > 1; RuleQualityTracker::save refuses a
+  schema_version above kSchemaVersion. Tests
+  AuditRunCache.Ants6481RecordRunLeavesANewerManifestAlone,
+  AuditRuleQuality.NewerSchemaIsNotRewritten.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 27-audit-engine (Low).
