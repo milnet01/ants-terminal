@@ -3,6 +3,7 @@
 #include "selfupdate.h"
 
 #include "ants_update_pubkey.h"  // generated from packaging/update-signing/
+#include "secureio.h"
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -306,6 +307,16 @@ bool Session::finish() {
         abort();
         return false;
     }
+    // ANTS-6474 — the target is the user's only copy of the program: the
+    // bytes reach the disk before the rename, and the rename itself is made
+    // durable after it.
+    const int syncRc = g_fsyncTempForTest ? g_fsyncTempForTest(m_file->handle())
+                                          : ::fsync(m_file->handle());
+    if (syncRc != 0) {
+        m_error = QStringLiteral("fsync failed: %1").arg(QString::fromLocal8Bit(std::strerror(errno)));
+        abort();
+        return false;
+    }
     m_file->close();
     const auto exec = QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner
                     | QFileDevice::ReadGroup | QFileDevice::ExeGroup
@@ -319,6 +330,7 @@ bool Session::finish() {
     }
     m_file->setAutoRemove(false);  // the name now belongs to the target
     m_file.reset();
+    fsyncParentDir(m_targetPath);
     return true;
 }
 

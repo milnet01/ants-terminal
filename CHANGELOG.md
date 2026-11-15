@@ -448,6 +448,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A self-update writes the new AppImage to disk before it replaces the old one** (ANTS-6474)
+  The download is synced before the swap and the folder after it, so a
+  power cut cannot leave an empty program file. A failed sync keeps the
+  old AppImage.
+
 - **Two Ants windows saving settings at once keep both changes** (ANTS-6473)
   Saving re-reads `config.json` inside the write lock and keeps every
   setting this window did not change, so a change saved by another Ants

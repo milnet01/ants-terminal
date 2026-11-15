@@ -21,6 +21,7 @@
 // need a verified manifest skip there, and InstallKind asserts that answer.
 
 #include "selfupdate.h"
+#include "secureio.h"
 
 #include "../../_support/expect.h"
 
@@ -504,6 +505,33 @@ TEST(SelfUpdate, SwapInPlace) {
            "INV-3 directory holds only the target",
            QStringLiteral("got [%1]").arg(listDir(f.dir).join(',')));
     ASSERT_EQ(0, expect_finish());
+}
+
+// ANTS-6474 — the download is synced to disk before it replaces the only copy
+// of the program; a failed sync leaves the old file in place.
+TEST(SelfUpdate, Ants6474FailedSyncKeepsTheOriginal) {
+    REQUIRE_VERIFIER();
+    Fixture f;
+    std::string skip;
+    if (!makeFixture(f, &skip)) GTEST_SKIP() << skip;
+    static int synced = 0;
+    synced = 0;
+    g_fsyncTempForTest = [](int) { ++synced; errno = EIO; return -1; };
+    QString tempPath;
+    bool finished = true;
+    {
+        SelfUpdate::Session s(f.kp.pubPem, f.target);
+        ASSERT_TRUE(accept(s, f, f.newBytes).ok());
+        ASSERT_TRUE(s.begin());
+        tempPath = s.temporaryPath();
+        s.write(f.newBytes);
+        finished = s.finish();
+    }
+    g_fsyncTempForTest = nullptr;
+    EXPECT_EQ(synced, 1) << "the download is synced once before the swap";
+    EXPECT_FALSE(finished);
+    EXPECT_EQ(readAll(f.target), f.oldBytes) << "the program file is unchanged";
+    EXPECT_FALSE(QFileInfo::exists(tempPath)) << tempPath.toStdString();
 }
 
 TEST(SelfUpdate, InstallKind) {

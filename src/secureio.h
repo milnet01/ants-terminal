@@ -113,8 +113,9 @@ inline bool fsyncParentDir(const QString &filePath) {
 enum class TempPerms { Refuse, Warn };
 
 // ANTS-6472 — TEST ONLY. When set, stands in for ::fsync on the temp file in
-// writeFileAtomicOwnerOnly, so a test can make the flush to disk fail. Clear
-// it in the same case that sets it.
+// writeFileAtomicOwnerOnly and in SelfUpdate::Session::finish (ANTS-6474), so
+// a test can make the flush to disk fail. Clear it in the same case that
+// sets it.
 inline int (*g_fsyncTempForTest)(int) = nullptr;
 
 [[nodiscard]] inline bool writeFileAtomicOwnerOnly(const QString &path,

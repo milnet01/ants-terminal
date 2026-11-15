@@ -93802,7 +93802,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6474] **selfupdate.cpp: there is no `fsync` of the temp file before the rename, and none of the directory after it.**
+- ✅ [ANTS-6474] **selfupdate.cpp: there is no `fsync` of the temp file before the rename, and none of the directory after it.**
   `selfupdate.cpp:304-315` — there is no `fsync` of the temp file before
   the rename, and none of the directory after it. If the machine crashes
   or loses power after the rename, `$APPIMAGE` can be left empty or
@@ -93816,6 +93816,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `::fsync(m_file->handle())` before `close()`, and
   `fsyncParentDir(m_targetPath)` after the rename.
   Ledger row 228, docs/reviews/close-findings-2026-11-06.md.
+  Session::finish fsyncs the temp file (through g_fsyncTempForTest)
+  before close and rename, refuses the swap on failure, and
+  fsyncParentDir(target) after the rename. Spec ANTS-5560 step 5
+  amended.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
