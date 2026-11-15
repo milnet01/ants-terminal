@@ -229,8 +229,9 @@ QStringList callArgs(const QString &code, int open, int *end) {
 class Pass {
 public:
     Pass(const QString &text, const Readers &r, const std::function<bool(const QString &)> &existing,
-         QHash<QString, QSet<QString>> *exportHelpers, const QStringList &fileDirs = {})
-        : m_r(r), m_existing(existing), m_export(exportHelpers) {
+         QHash<QString, QSet<QString>> *exportHelpers, const QStringList &fileDirs = {},
+         const ByName &byName = {})
+        : m_r(r), m_existing(existing), m_export(exportHelpers), m_byName(byName) {
         lex(text, &m_events, &m_lits);
         for (const QString &d : fileDirs) m_dirs.insert(d);
         static const QRegularExpression ident(QStringLiteral("\\b[A-Za-z_]\\w*\\b"));
@@ -279,6 +280,7 @@ private:
                 // An `=` inside the parameter list is a default argument, not
                 // an assignment, so only one before the name rules it out.
                 m_item.function = f.captured(1);
+                m_definedFns.insert(m_item.function);
                 // ANTS-6292 — a default argument naming a file
                 // (`source(const char *rel = "x.cpp")`) is what a bare call reads.
                 m_item.returnReads = reads(e.code, e.line, false);
@@ -360,6 +362,33 @@ private:
                 if (record) m_out.reads.append({m_item.test, line, id, direct});
             }
             out += boundPaths(id);
+        }
+        if (m_byName) {
+            // ANTS-6374 — `MACRO "/path"` or `std::string(MACRO) + "/path"`
+            // (a root set outside CMake) and `localHelper("name")`. Only a
+            // literal naming one file counts.
+            static const QRegularExpression glued(
+                QStringLiteral("\\b[A-Z][A-Z0-9_]+\\s*(?:\\)\\s*)?\\+?\\s*\\x01(\\d+)\\x02"));
+            static const QRegularExpression bare(
+                QStringLiteral("(?<![\\w.>])([A-Za-z_]\\w*)\\s*\\(\\s*\\x01(\\d+)\\x02\\s*\\)"));
+            static const QRegularExpression shape(
+                QStringLiteral("^/?[\\w.+-]+(?:/[\\w.+-]+)*\\.[A-Za-z0-9]+$"));
+            const auto take = [&](int litIdx) {
+                const Literal &lit = m_lits.at(litIdx);
+                if (!shape.match(lit.text).hasMatch()) return;
+                const QStringList hits = m_byName(lit.text);
+                if (hits.size() != 1 || out.contains(hits.first())) return;
+                out.insert(hits.first());
+                if (record)
+                    m_out.reads.append({m_item.test, lit.line,
+                                        QLatin1Char('"') + lit.text + QLatin1Char('"'), {hits.first()}});
+            };
+            for (auto it = glued.globalMatch(code); it.hasNext();)
+                take(it.next().captured(1).toInt());
+            for (auto it = bare.globalMatch(code); it.hasNext();) {
+                const auto m = it.next();
+                if (m_definedFns.contains(m.captured(1))) take(m.captured(2).toInt());
+            }
         }
         if (!m_dirs.isEmpty()) {
             static const QRegularExpression idx(QStringLiteral("\\x01(\\d+)\\x02"));
@@ -557,6 +586,8 @@ private:
     QList<Event> m_events;
     QList<Literal> m_lits;
     QSet<QString> m_dirs;
+    ByName m_byName;
+    QSet<QString> m_definedFns;   // functions this file defines (ANTS-6374)
     QList<bool> m_braces;   // true for a namespace brace
     int m_itemDepth = 0;
     Item m_item;
@@ -960,8 +991,8 @@ void collectHelpers(const QString &text, Readers *r) {
 
 FileResult analyse(const QString &text, const Readers &r,
                    const std::function<bool(const QString &)> &existing,
-                   const QStringList &fileDirs) {
-    return Pass(text, r, existing, nullptr, fileDirs).run();
+                   const QStringList &fileDirs, const ByName &byName) {
+    return Pass(text, r, existing, nullptr, fileDirs, byName).run();
 }
 
 QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
@@ -1037,6 +1068,28 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     QStringList moduleRoots = settings.sourceRoots.value_or(QStringList{QStringLiteral("src")});
     moduleRoots.append(QString());
 
+    // ANTS-6374 — the source roots' files by file name, for a literal whose
+    // directory the scanner cannot know (a root set by a Makefile).
+    QHash<QString, QStringList> byFileName;
+    {
+        QJsonArray srcRoots;
+        for (const QString &s : settings.sourceRoots.value_or(QStringList{QStringLiteral("src")}))
+            if (QFileInfo(root.filePath(s)).isDir()) srcRoots.append(s);
+        if (!srcRoots.isEmpty()) {
+            const CodeWalk::Result src = CodeWalk::collect(rootCanonical, srcRoots, {}, verb);
+            for (const QString &abs : src.files)
+                byFileName[QFileInfo(abs).fileName()].append(root.relativeFilePath(abs));
+        }
+    }
+    const ByName byName = [&byFileName](const QString &literal) {
+        QString want = literal;
+        while (want.startsWith(QLatin1Char('/'))) want.remove(0, 1);
+        QStringList out;
+        for (const QString &rel : byFileName.value(QFileInfo(want).fileName()))
+            if (rel == want || rel.endsWith(QLatin1Char('/') + want)) out.append(rel);
+        return out;
+    };
+
     QHash<QString, QString> texts;
     for (const QString &abs : std::as_const(files)) {
         texts.insert(abs, readText(abs));
@@ -1071,7 +1124,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         const QString rel = root.relativeFilePath(abs);
         const FileResult fr = isCppSource(abs)
                                   ? analyse(texts.value(abs), readers, existing,
-                                            fileRelativeDirs(rel, texts.value(abs), root))
+                                            fileRelativeDirs(rel, texts.value(abs), root), byName)
                                   : analyseScript(rel, texts.value(abs), moduleRoots, existing, listFiles);
         for (const Anchor &a : fr.anchors)
             for (const QString &p : matching(a.paths)) {

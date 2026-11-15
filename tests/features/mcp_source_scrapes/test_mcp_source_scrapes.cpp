@@ -617,3 +617,37 @@ TEST(SourceScrapes, Ants6292DefaultArgumentHelperReads) {
               QStringLiteral("tests/five/test_five.cpp"))
         << QJsonDocument(b).toJson().constData();
 }
+
+// ANTS-6374 — DOOM_Ants' two shapes: a macro set outside CMake glued to a
+// literal (`ROOT_MACRO "/a.cpp"`), and a file-local helper given a bare name
+// (`slurp("b.cpp")`). A literal that names exactly one file in the tree is a
+// read of it.
+TEST(SourceScrapes, Ants6374GluedMacroAndBareNameRead) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    writeFile(dir->filePath("tests/six/six_test.cpp"),
+              "static std::string slurp(const std::string &name) {\n"
+              "    std::ifstream f(name);\n"
+              "    return std::string();\n"
+              "}\n"
+              "int main() {\n"
+              "    const std::string a = slurp(OUTSIDE_ROOT \"/a.cpp\");\n"
+              "    check(a.find(\"int six_glued(\") != npos);\n"
+              "    const std::string c = slurp(std::string(OUTSIDE_ROOT) + \"/a.cpp\");\n"
+              "    check(c.find(\"int six_concat(\") != npos);\n"
+              "    const std::string b = slurp(\"b.cpp\");\n"
+              "    check(b.find(\"int six_bare(\") != npos);\n"
+              "    check(b.find(\"vtparser.h\") != npos);\n"
+              "    return 0;\n"
+              "}\n");
+    const QJsonObject a = forPath(*dir, "src/a.cpp");
+    EXPECT_EQ(row(a, QStringLiteral("int six_glued(")).value(QStringLiteral("file")).toString(),
+              QStringLiteral("tests/six/six_test.cpp"))
+        << QJsonDocument(a).toJson().constData();
+    EXPECT_EQ(row(a, QStringLiteral("int six_concat(")).value(QStringLiteral("file")).toString(),
+              QStringLiteral("tests/six/six_test.cpp"))
+        << "std::string(MACRO) + \"/a.cpp\" is the same read";
+    const QJsonObject b = forPath(*dir, "src/b.cpp");
+    EXPECT_EQ(row(b, QStringLiteral("int six_bare(")).value(QStringLiteral("file")).toString(),
+              QStringLiteral("tests/six/six_test.cpp"))
+        << QJsonDocument(b).toJson().constData();
+}

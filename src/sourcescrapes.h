@@ -55,9 +55,14 @@ void collectHelpers(const QString &text, Readers *r);
 // whether a root-relative file exists, for the directory-token rule.
 // `fileDirs` are directories this file's own literals resolve under, as a
 // directory token's do (ANTS-6292: fileRelativeDirs).
+// ANTS-6374 — `byName` gives the project files a literal such as "/r_mesh.c"
+// or "m_menu.c" could name (paths equal to it or ending in "/" + it); a
+// literal glued to an ALL-CAPS macro, or passed alone to a function this file
+// defines, is a read of the one file it names.
+using ByName = std::function<QStringList(const QString &literal)>;
 FileResult analyse(const QString &text, const Readers &r,
                    const std::function<bool(const QString &)> &existing,
-                   const QStringList &fileDirs = {});
+                   const QStringList &fileDirs = {}, const ByName &byName = {});
 
 // The whole call below the resolved project root: the envelope, or a
 // refusal {ok:false, code, error}.

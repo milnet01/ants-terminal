@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6776 -->
+<!-- ants-roadmap-id-high-water: ANTS=6777 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92178,7 +92178,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: in-session-2026-11-02, hit while working ANTS-6354.
   Lanes: packaging.
 
-- 📋 [ANTS-6374] **source_scrapes reports 0 readers when tests build a path as MACRO "/file" or pass a bare basename to a helper.**
+- ✅ [ANTS-6374] **source_scrapes reports 0 readers when tests build a path as MACRO "/file" or pass a bare basename to a helper.**
   Reported by DOOM_Ants: 54 test files scanned, 0 readers; 22 tests use
   DOOM_TESTS_ROOT "/<file>" and others slurp("<basename>"). Repro:
   grep -l DOOM_TESTS_ROOT linuxdoom-1.10/tests/*_test.cpp.
@@ -92186,9 +92186,27 @@ measured Ants adding about 5,250 tokens to every request.
   basename literal against tree files, and report unresolved path
   expressions instead of a bare 0. Related: ANTS-6292 (__FILE__-relative
   helper), ANTS-6285 (.c missing from the suffix list).
+  Shipped 2026-11-15. A literal glued to an ALL-CAPS macro (also
+  std::string(MACRO) + "x"), or passed alone to a function the file
+  defines, is a read of the one source-root file it names. Measured:
+  DOOM_Ants r_mesh.c readers 0 → 6 (the other mentions are comments);
+  this project's reader counts unchanged on three sampled files.
+  Unresolved-read reporting split to ANTS-6777. Test:
+  SourceScrapes.Ants6374GluedMacroAndBareNameRead.
   **Layman:** The tool that finds tests reading a source file misses tests that spell the path in two common ways, and says "none" instead of "could not tell".
   Kind: fix.
   Source: DOOM_Ants_MCP_Feedback.md 2026-11-04.
+  Lanes: mcp.
+
+- 📋 [ANTS-6777] **source_scrapes reports how many path expressions in the test files it could not resolve.**
+  ANTS-6374's third part. A literal naming several files, or a path
+  built in a variable, still leaves readers_total at 0 with nothing
+  said. Count such reads in scanned{} (e.g. unresolved_reads) and name
+  one example, so a 0 can be told from "could not tell".
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** When the tool cannot tell which file a test reads, it should say so instead of reporting no readers.
+  Kind: enhancement.
+  Source: split-from-ANTS-6374-2026-11-15.
   Lanes: mcp.
 
 ### Ants MCP feedback from CC sessions — 2026-11-05 triage

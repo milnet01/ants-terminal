@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **source_scrapes finds tests that name a source file after a build-set root macro, or by its bare name through a local helper.** (ANTS-6374)
+
 - **source_scrapes finds tests that read a source file through their own small helper built on the test file's location.** (ANTS-6292)
 
 - **source_scrapes reads plain C test files, as the other code tools do.** (ANTS-6285)
