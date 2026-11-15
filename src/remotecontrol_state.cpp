@@ -3573,26 +3573,46 @@ QJsonArray toJsonArray(const QStringList &xs) {
     return a;
 }
 
-// The refusal for a non-ctest run that did not finish, or empty when it did.
-// The captured tail rides along: it usually names the problem.
+// The codes a runner refuses with. ctest keeps its own, which the verb's
+// description names; every other runner shares runner_* (INV-12).
+struct FocusedRunCodes {
+    QString missing;
+    QString failed;
+};
+const FocusedRunCodes kCtestCodes{QStringLiteral("ctest_missing"),
+                                  QStringLiteral("ctest_failed")};
+const FocusedRunCodes kRunnerCodes{QStringLiteral("runner_missing"),
+                                   QStringLiteral("runner_failed")};
+
+// ANTS-6257 — the refusal for a run that did not finish, or empty when it did.
+// `label` names the run in the timeout and crash messages. The captured tail
+// rides along: it usually names the problem.
 QJsonObject focusedRunRefusal(const FocusedRun &run, const QString &program,
-                              int timeoutSec) {
-    QJsonObject err;
+                              const QString &label, int timeoutSec,
+                              const FocusedRunCodes &codes) {
     if (!run.started) {
-        return mcp::refusal(QStringLiteral("runner_missing"),
+        return mcp::refusal(codes.missing,
             QStringLiteral("focused_test: %1 not found on PATH").arg(program));
     }
+    QJsonObject err;
     if (run.timedOut) {
-        err = mcp::refusal(QStringLiteral("runner_failed"),
-            QStringLiteral("focused_test: %1 exceeded %2 s budget").arg(program).arg(timeoutSec));
+        err = mcp::refusal(codes.failed,
+            QStringLiteral("focused_test: %1 exceeded %2 s budget").arg(label).arg(timeoutSec));
     } else if (run.crashed) {
-        err = mcp::refusal(QStringLiteral("runner_failed"),
-            QStringLiteral("focused_test: %1 crashed").arg(program));
+        err = mcp::refusal(codes.failed,
+            QStringLiteral("focused_test: %1 crashed").arg(label));
     } else {
         return {};
     }
     err[QStringLiteral("output_tail")] = run.output.right(2000);
     return err;
+}
+
+// Output no parser recognised, with the tail that shows what it was.
+QJsonObject focusedUnrecognised(const FocusedRun &run, const QString &message) {
+    QJsonObject e = mcp::refusal(QStringLiteral("unrecognised_output"), message);
+    e[QStringLiteral("output_tail")] = run.output.right(2000);
+    return e;
 }
 
 QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &evidence,
@@ -3601,7 +3621,8 @@ QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &ev
                                    const QElapsedTimer &wall) {
     const TestRunners::Command cmd = TestRunners::buildCommand(runner, root, changed, map);
     FocusedRun run = runFocused(root, cmd.program, cmd.args, timeoutSec);
-    QJsonObject err = focusedRunRefusal(run, cmd.program, timeoutSec);
+    QJsonObject err = focusedRunRefusal(run, cmd.program, cmd.program, timeoutSec,
+                                        kRunnerCodes);
     if (!err.isEmpty()) return err;
     TestResCache::ParsedTests parsed = TestRunners::parse(runner, run.output);
 
@@ -3610,15 +3631,13 @@ QJsonObject focusedTestOtherRunner(TestRunners::Runner runner, const QString &ev
     const bool downgraded = cmd.selection != u"full" && parsed.total == 0;
     if (downgraded) {
         run = runFocused(root, cmd.program, cmd.fullArgs, timeoutSec);
-        err = focusedRunRefusal(run, cmd.program, timeoutSec);
+        err = focusedRunRefusal(run, cmd.program, cmd.program, timeoutSec, kRunnerCodes);
         if (!err.isEmpty()) return err;
         parsed = TestRunners::parse(runner, run.output);
     }
     if (!parsed.recognised) {
-        QJsonObject e = mcp::refusal(QStringLiteral("unrecognised_output"),
-            QStringLiteral("focused_test: %1 output not recognised").arg(TestRunners::name(runner)));
-        e[QStringLiteral("output_tail")] = run.output.right(2000);
-        return e;
+        return focusedUnrecognised(run, QStringLiteral("focused_test: %1 output not recognised")
+                                            .arg(TestRunners::name(runner)));
     }
 
     QJsonObject env = TestResCache::toJsonWire(parsed);
@@ -3775,24 +3794,11 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
 
     // ANTS-5812 — ANTS-1302 § 3.4 step 7: a timeout or crash refuses with
     // the tail ctest printed, which usually names the cause.
-    auto ctestFailed = [](const FocusedRun &r, const QString &message) {
-        QJsonObject e = mcp::refusal(QStringLiteral("ctest_failed"), message);
-        e[QStringLiteral("output_tail")] = r.output.right(2000);
-        return QJsonDocument(e);
-    };
-
+    const QString ctest = QStringLiteral("ctest");
     FocusedRun run = runCtest(isFull ? QString() : filter);
-    if (!run.started) {
-        return QJsonDocument(mcp::refusal(QStringLiteral("ctest_missing"),
-            QStringLiteral("focused_test: ctest binary not found on PATH")));
-    }
-    if (run.timedOut) {
-        return ctestFailed(run, QStringLiteral("focused_test: ctest exceeded %1 s budget")
-                                    .arg(timeoutSec));
-    }
-    if (run.crashed) {
-        return ctestFailed(run, QStringLiteral("focused_test: ctest crashed"));
-    }
+    if (const QJsonObject err = focusedRunRefusal(run, ctest, ctest, timeoutSec, kCtestCodes);
+        !err.isEmpty())
+        return QJsonDocument(err);
 
     TestResCache::ParsedTests parsed =
         TestResCache::parseCtestOutput(run.output);
@@ -3802,19 +3808,12 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     bool    downgraded = false;
     QString downgradeReason;
     if (!isFull && parsed.total == 0) {
-        FocusedRun full = runCtest(QString());
-        if (!full.started) {
-            return QJsonDocument(mcp::refusal(QStringLiteral("ctest_missing"),
-                QStringLiteral("focused_test: ctest binary not found on PATH")));
-        }
-        if (full.timedOut) {
-            return ctestFailed(full, QStringLiteral("focused_test: full-suite re-run "
-                                                    "exceeded %1 s budget").arg(timeoutSec));
-        }
-        if (full.crashed) {
-            return ctestFailed(full, QStringLiteral("focused_test: full-suite re-run crashed"));
-        }
-        parsed          = TestResCache::parseCtestOutput(full.output);
+        run = runCtest(QString());
+        if (const QJsonObject err = focusedRunRefusal(run, ctest, QStringLiteral("full-suite re-run"),
+                                                      timeoutSec, kCtestCodes);
+            !err.isEmpty())
+            return QJsonDocument(err);
+        parsed          = TestResCache::parseCtestOutput(run.output);
         downgraded      = true;
         downgradeReason = QStringLiteral("selection matched 0 tests");
         isFull          = true;
@@ -3822,7 +3821,7 @@ QJsonDocument RemoteControl::cmdFocusedTest(const QJsonObject &req) {
     }
 
     if (!parsed.recognised) {
-        return QJsonDocument(mcp::refusal(QStringLiteral("unrecognised_output"),
+        return QJsonDocument(focusedUnrecognised(run,
             QStringLiteral("focused_test: ctest output not recognised "
                            "(no summary footer or per-test lines)")));
     }

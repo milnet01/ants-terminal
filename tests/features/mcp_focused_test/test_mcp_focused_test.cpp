@@ -539,3 +539,18 @@ TEST(McpFocusedTest, Ants5812CtestFailedCarriesTail) {
     EXPECT_TRUE(out.value("output_tail").toString().contains("last words before the crash"))
         << dump(out);
 }
+
+// ANTS-6257 — ctest output nothing can parse refuses unrecognised_output with
+// the tail, as the other runners' refusal does.
+TEST(McpFocusedTest, Ants6257CtestUnrecognisedCarriesTail) {
+    QTemporaryDir td, bin;
+    ASSERT_TRUE(td.isValid() && bin.isValid());
+    writeFile(td.path() + "/CMakeLists.txt", "project(x)\n");
+    writeFile(td.path() + "/build/CMakeCache.txt", "");
+    writeStub(bin.path(), "ctest", "echo 'no tests here, only this line'\n");
+    PathGuard pg(bin.path());
+    const QJsonObject out = callFocused(td.path(), {});
+    EXPECT_EQ(out.value("code").toString(), "unrecognised_output") << dump(out);
+    EXPECT_TRUE(out.value("output_tail").toString().contains("no tests here, only this line"))
+        << dump(out);
+}

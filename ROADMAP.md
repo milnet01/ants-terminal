@@ -106421,7 +106421,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L22-F15).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6257] **focused_test's three run-failed refusals drift: the ctest ones omit output_tail and use different codes.**
+- ✅ [ANTS-6257] **focused_test's three run-failed refusals drift: the ctest ones omit output_tail and use different codes.**
   From ANTS-6131. focusedRunRefusal, the ctest first run and the
   ctest re-run in src/remotecontrol_state.cpp build the refusal
   separately; the non-ctest unrecognised_output attaches output_tail,
@@ -106429,6 +106429,11 @@ worked after these.
   Fix: one builder taking the code names; decide whether the ctest
   codes are a promise to callers first.
   Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  Shipped 2026-11-15. The ctest codes stay: the verb's description names
+  them and a test pins them, so they are a promise to callers. One
+  builder takes the code names; every unrecognised_output refusal
+  carries output_tail. Test:
+  McpFocusedTest.Ants6257CtestUnrecognisedCarriesTail.
   **Layman:** The test-runner tool reports a failed run three different ways, and one of them leaves out the output that explains the failure.
   Kind: fix.
   Source: review-readability-2026-10-22 (L22-F16).

@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **focused_test shows the end of ctest's output when it cannot read it, as it already did for other test runners.** (ANTS-6257)
+
 - **A crashed audit tool's findings keep both what it printed and what it logged.** (ANTS-6198)
 
 - **The model chip's switch timing uses the full caution penalty as soon as a session stops being routine.** (ANTS-6229)
