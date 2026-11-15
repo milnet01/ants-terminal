@@ -448,6 +448,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Claude Code setup leaves a CLAUDE.md, shell startup file or key file it cannot read untouched, and says so** (ANTS-6476)
+  Adding the Ants note or shell integration stops with a message naming
+    the file, and the file keeps its text.
+
 - **Two Ants windows trusting a project's verify.json at the same time now both keep their trust** (ANTS-6475)
   Each save of the trust file takes a write lock around re-reading,
   changing and writing it, and writes through a temp file of its own.

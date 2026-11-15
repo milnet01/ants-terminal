@@ -25,6 +25,8 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 
+#include <optional>
+
 namespace ants::claude_setup {
 
 namespace {
@@ -154,6 +156,20 @@ QJsonObject readHooks() {
 QByteArray readBytes(const QString &path) {
     QFile f(path);
     return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+
+// ANTS-6476 — for a read that a rewrite builds on: empty when the file is
+// absent, nothing when it exists but cannot be read, so the caller refuses
+// rather than replacing the user's text.
+std::optional<QByteArray> readForRewrite(const QString &path) {
+    QFile f(path);
+    if (f.open(QIODevice::ReadOnly)) return f.readAll();
+    if (!QFileInfo::exists(path)) return QByteArray();
+    return std::nullopt;
+}
+
+Outcome unreadable(const QString &path) {
+    return fail(QStringLiteral("Could not read %1, so it was left alone").arg(path));
 }
 
 bool writeBytes(const QString &path, const QByteArray &bytes) {
@@ -780,16 +796,18 @@ Status claudeMdNoteStatus(const QString &path) {
 }
 
 Outcome installClaudeMdNote(const QString &path) {
-    const QByteArray text = readBytes(path);
-    if (!writeBytes(path, withBlock(text, kMdBegin, kMdEnd,
+    const std::optional<QByteArray> text = readForRewrite(path);
+    if (!text) return unreadable(path);
+    if (!writeBytes(path, withBlock(*text, kMdBegin, kMdEnd,
                                     claudeMdNoteText().toUtf8())))
         return fail(QStringLiteral("Could not write %1").arg(path));
     return {true, QStringLiteral("Added the Ants note to %1.").arg(path)};
 }
 
 Outcome removeClaudeMdNote(const QString &path) {
-    const QByteArray text = readBytes(path);
-    if (!writeBytes(path, withoutBlock(text, kMdBegin, kMdEnd)))
+    const std::optional<QByteArray> text = readForRewrite(path);
+    if (!text) return unreadable(path);
+    if (!writeBytes(path, withoutBlock(*text, kMdBegin, kMdEnd)))
         return fail(QStringLiteral("Could not write %1").arg(path));
     return {true, QStringLiteral("Removed the Ants note from %1.").arg(path)};
 }
@@ -920,6 +938,13 @@ Status shellIntegrationStatus(const QStringList &scriptDirs) {
 Outcome installShellIntegration(const QStringList &scriptDirs) {
     const ShellPlan p = planShell(scriptDirs);
     if (p.unavailable.state == State::Unavailable) return fail(p.unavailable.detail);
+    // Read before writing anything: the key file, the profile and the rc
+    // file are each built on, so an unreadable one stops the install.
+    if (!readForRewrite(p.keyFile)) return unreadable(p.keyFile);
+    const std::optional<QByteArray> profile = readForRewrite(p.profileFile);
+    if (!profile) return unreadable(p.profileFile);
+    const std::optional<QByteArray> rc = readForRewrite(p.rcFile);
+    if (!rc) return unreadable(p.rcFile);
     if (p.sourced != p.script) {
         const QByteArray body = readBytes(p.script);
         if (body.isEmpty() || !writeBytes(p.sourced, body))
@@ -930,11 +955,10 @@ Outcome installShellIntegration(const QStringList &scriptDirs) {
     if (!writeKeyFile(p.keyFile, key))
         return fail(QStringLiteral("Could not write %1").arg(p.keyFile));
     // ANTS-6441 — the old block exports the key to every program; drop it.
-    const QByteArray profile = readBytes(p.profileFile);
-    if (!blockBody(profile, kShBegin, kShEnd).isNull() &&
-        !writeBytes(p.profileFile, withoutBlock(profile, kShBegin, kShEnd)))
+    if (!blockBody(*profile, kShBegin, kShEnd).isNull() &&
+        !writeBytes(p.profileFile, withoutBlock(*profile, kShBegin, kShEnd)))
         return fail(QStringLiteral("Could not write %1").arg(p.profileFile));
-    if (!writeBytes(p.rcFile, withBlock(readBytes(p.rcFile), kShBegin, kShEnd,
+    if (!writeBytes(p.rcFile, withBlock(*rc, kShBegin, kShEnd,
                                         sourceLine(p.sourced))))
         return fail(QStringLiteral("Could not write %1").arg(p.rcFile));
     return {true, QStringLiteral("Shell integration installed for %1. New tabs pick "

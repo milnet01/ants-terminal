@@ -33,6 +33,8 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 
+#include <unistd.h>
+
 ANTS_TEST_SCOPE();
 
 using namespace ants::claude_setup;
@@ -763,6 +765,43 @@ TEST(ClaudeSetup, Ants5109OutdatedGitContextScriptIsNotInstalled) {
     ASSERT_TRUE(installGitContextHook().ok);
     EXPECT_EQ(gitContextStatus().state, State::Installed)
         << "reinstalling must bring it back to Installed";
+}
+
+// ANTS-6476 — a file that exists but cannot be read is not rewritten. It
+// read as empty, so an install replaced the user's text with the block alone.
+TEST(ClaudeSetup, Ants6476UnreadableFileIsNotRewritten) {
+    if (::geteuid() == 0) GTEST_SKIP() << "root reads a mode-000 file";
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    const QByteArray seed = "# the user's own text\n";
+    // Restores read access, then returns the file's bytes.
+    const auto bytesOf = [](const QString &path) {
+        QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+        return readFile(path);
+    };
+
+    const QString md = sb.path(QStringLiteral("claude/CLAUDE.md"));
+    for (Outcome (*op)(const QString &) : {installClaudeMdNote, removeClaudeMdNote}) {
+        ASSERT_TRUE(writeFile(md, seed));
+        ASSERT_TRUE(QFile::setPermissions(md, QFileDevice::WriteOwner));
+        const Outcome o = op(md);
+        EXPECT_FALSE(o.ok) << "an unreadable CLAUDE.md must be refused: " << o.message.toStdString();
+        EXPECT_EQ(bytesOf(md), seed) << "an unreadable CLAUDE.md must not be rewritten";
+    }
+
+    const QString fx = sb.path(QStringLiteral("scripts"));
+    ASSERT_TRUE(writeFile(fx + QStringLiteral("/ants-osc133.bash"), "# fixture\n"));
+    for (const QString &name : {QStringLiteral("/.bashrc"), QStringLiteral("/.profile"),
+                                QStringLiteral("/.config/ants-terminal/osc133.key")}) {
+        const QString rc = sb.home + name;
+        ASSERT_TRUE(writeFile(rc, seed));
+        ASSERT_TRUE(QFile::setPermissions(rc, QFileDevice::WriteOwner));
+        const Outcome o = installShellIntegration({fx});
+        EXPECT_FALSE(o.ok) << "an unreadable " << name.toStdString()
+                           << " must be refused: " << o.message.toStdString();
+        EXPECT_EQ(bytesOf(rc), seed) << "an unreadable " << name.toStdString()
+                                     << " must not be rewritten";
+    }
 }
 
 // INV-15 — the install offer depends on this answer, and both things that

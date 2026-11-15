@@ -93847,7 +93847,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6476] **claudesetup.cpp: a file that exists but cannot be read looks the same as a missing file.**
+- ✅ [ANTS-6476] **claudesetup.cpp: a file that exists but cannot be read looks the same as a missing file.**
   `claudesetup.cpp:153-156` — a file that exists but cannot be read
   looks the same as a missing file.
   Quote: `return f.open(QIODevice::ReadOnly) ? f.readAll() :
@@ -93856,6 +93856,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   report failure separately from absence; refuse to write when the file
   exists but cannot be read.
   Ledger row 239, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: readForRewrite() tells absent from unreadable; the
+  CLAUDE.md note and shell-integration installs refuse an unreadable
+  target. Test ClaudeSetup.Ants6476UnreadableFileIsNotRewritten.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
