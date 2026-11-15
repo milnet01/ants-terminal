@@ -1,6 +1,7 @@
 // ANTS-3833 TU 5/25 — Changelog verbs.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
+#include "utf8cut.h"   // ANTS-6269
 #include "paginationengine.h"
 #include "roadmapfoldin.h"
 #include "changeloglog.h"
@@ -1103,16 +1104,9 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
                 else                        cap = want;
             }
             if (cap > 0 && fullBody.size() > cap) {
-                // Back off to a UTF-8 boundary in O(1) rather than shrinking a
-                // QString a character at a time — this body can be 600 KB.
-                QByteArray headBytes = fullBody.left(static_cast<int>(cap));
-                while (!headBytes.isEmpty() &&
-                       (static_cast<unsigned char>(headBytes.back()) & 0xC0)
-                           == 0x80)
-                    headBytes.chop(1);
-                if (!headBytes.isEmpty() &&
-                    static_cast<unsigned char>(headBytes.back()) >= 0xC0)
-                    headBytes.chop(1);
+                // Cut the bytes, not a QString a character at a time — this
+                // body can be 600 KB.
+                const QByteArray headBytes = Utf8Cut::prefix(fullBody, cap);
                 out["released_body"] =
                     QString::fromUtf8(headBytes) +
                     QStringLiteral("\n\n... [released_body truncated at %1 of "

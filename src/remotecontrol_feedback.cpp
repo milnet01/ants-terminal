@@ -2,6 +2,7 @@
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"
+#include "utf8cut.h"   // ANTS-6269
 #include "build_info.h"    // ANTS-4741 — the stale-binary comparison
 #include "guithread.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
@@ -1840,7 +1841,7 @@ QJsonObject runLogOp(const ants::RootProvider *roots, const QJsonObject &req) {
             }
             const QByteArray b = body.toUtf8();
             if (b.size() > kGitLogBodyCapBytes) {
-                body = QString::fromUtf8(b.left(kGitLogBodyCapBytes - 1)) +
+                body = QString::fromUtf8(Utf8Cut::prefix(b, kGitLogBodyCapBytes - 1)) +
                        QChar(0x2026);  // ellipsis
             }
             c["body"] = body;

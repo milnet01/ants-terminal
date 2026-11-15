@@ -346,6 +346,9 @@ Listed only where behavior isn't obvious from the name.
   `.git` entry names (worktrees included) and its branch, read without
   running git. The branch chip, the visibility badge and `rcGitDirOf`
   share it (ANTS-6187).
+- `utf8cut` (header only) — cuts UTF-8 bytes to a byte budget on a character
+  boundary. `git_state` op `log` and `changelog_log` op `release` use it
+  (ANTS-6269).
 - `gitorigin` (header only) — the GitHub `owner/name` of a checkout's
   `origin`, and of every GitHub remote (ANTS-6726), read from `.git/config`.
   Shared by `session_message` op `projects` and the status bar's repo label

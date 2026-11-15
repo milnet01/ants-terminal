@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6775 -->
+<!-- ants-roadmap-id-high-water: ANTS=6776 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -106598,13 +106598,18 @@ worked after these.
   Source: review-readability-2026-10-22 L24.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6269] **git_state op:"log" cuts a commit body mid-character; three UTF-8 truncations differ.**
+- ✅ [ANTS-6269] **git_state op:"log" cuts a commit body mid-character; three UTF-8 truncations differ.**
   L24-F10. runLogOp truncates the body at kGitLogBodyCapBytes - 1 with no
   back-off over continuation bytes, so it can split a character.
   changelog release backs off then also drops the lead byte, losing a
   whole character. feedback_query backs off correctly, as do
   cochangefamily.cpp and readregion.cpp. Fix: one shared
   truncateUtf8(bytes, cap), with a test on a multi-byte body.
+  Shipped 2026-11-15: src/utf8cut.h, Utf8Cut::prefix, used by git_state
+  op:log and changelog_log op:release. Tests:
+  GitStateTruncation.Ants6269LogBodyCutKeepsWholeCharacters,
+  changelog_log_writer.Ants6269CappedBodyKeepsWholeCharacters. The other
+  hand-rolled copies are ANTS-6776.
   **Layman:** A long commit message can end in a broken character in the git tool's reply.
   Kind: fix.
   Source: review-readability-2026-10-22 L24.
@@ -106952,6 +106957,22 @@ worked after these.
   Kind: fix.
   Source: found-while-fixing-ANTS-6256-2026-11-15.
   Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6776] **Every UTF-8 byte cap in src/ goes through Utf8Cut::prefix.**
+  ANTS-6269 added src/utf8cut.h for git_state log and changelog
+  release. Hand-rolled copies of the same back-off remain, found by
+  searching for `& 0xC0) == 0x80`: cochangefamily.cpp, readregion.cpp,
+  mcpspill.cpp (utf8BoundaryLen), auditrunner.cpp, indiereviewdispatcher.cpp,
+  trace/trace.cpp, trace/extract.cpp, filecontentcache.h
+  (dropPartialUtf8Tail), remotecontrol_feedback.cpp's feedback_query cut.
+  Some also drop a trailing lead byte; check each against
+  Utf8Cut::prefix's result before swapping, since output must stay the
+  same where it was already right.
+  Hot reload: ants-mcpd rebuild + /mcp reconnect.
+  **Layman:** The same "cut text without breaking a character" loop is written out by hand in about ten places.
+  Kind: refactor.
+  Source: found-while-fixing-ANTS-6269-2026-11-15.
+  Lanes: mcp-content-verbs.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

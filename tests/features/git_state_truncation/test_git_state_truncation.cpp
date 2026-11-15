@@ -124,3 +124,27 @@ TEST(GitStateTruncation, StatusAndNumstatSayTheyWereCut) {
     EXPECT_EQ(df.value(QStringLiteral("totals")).toObject().value(QStringLiteral("files")).toInt(),
               df.value(QStringLiteral("files")).toArray().size());
 }
+
+// ANTS-6269 — a capped commit body never ends in half a character. The body
+// puts a two-byte character across the cap's cut.
+TEST(GitStateTruncation, Ants6269LogBodyCutKeepsWholeCharacters) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(git(root, {QStringLiteral("init"), QStringLiteral("-q")}));
+    const QString body = QString(1022, QLatin1Char('a')) + QChar(0xE9) + QString(200, QLatin1Char('b'));
+    ASSERT_TRUE(git(root, {QStringLiteral("-c"), QStringLiteral("user.name=T"),
+                           QStringLiteral("-c"), QStringLiteral("user.email=t@example.invalid"),
+                           QStringLiteral("commit"), QStringLiteral("-q"), QStringLiteral("--allow-empty"),
+                           QStringLiteral("-m"), QStringLiteral("Subject"),
+                           QStringLiteral("-m"), body}));
+    const QJsonObject env = gitState(root, {{QStringLiteral("op"), QStringLiteral("log")},
+                                            {QStringLiteral("body"), true},
+                                            {QStringLiteral("n"), 1}});
+    ASSERT_TRUE(env.value(QStringLiteral("ok")).toBool()) << QJsonDocument(env).toJson().toStdString();
+    const QString got = env.value(QStringLiteral("commits")).toArray().at(0).toObject()
+                            .value(QStringLiteral("body")).toString();
+    ASSERT_TRUE(got.endsWith(QChar(0x2026))) << "the body was not capped";
+    EXPECT_FALSE(got.contains(QChar(0xFFFD)))
+        << "the cut split a character: " << got.right(8).toStdString();
+}

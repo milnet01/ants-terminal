@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A cut-short commit message or release note never ends in a broken character, and keeps every whole character that fits.** (ANTS-6269)
+
 - **git_state op:"hooks" says when git timed out or crashed, as its other ops do.** (ANTS-6268)
 
 - **feedback_log finds a project's feedback file in the configured feedback folder even when the folder name and file name are spelled differently, and says why it looked there.** (ANTS-6259)

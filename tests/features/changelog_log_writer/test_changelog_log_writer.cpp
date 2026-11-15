@@ -1689,3 +1689,39 @@ TEST(changelog_log_writer, Ants6264ReleaseReportsFileBytes) {
     EXPECT_EQ(resp.value(QStringLiteral("file_bytes")).toInteger(), after);
     EXPECT_EQ(resp.value(QStringLiteral("bytes_written")).toInteger(), after - before);
 }
+
+// ANTS-6269 — a capped released_body keeps every whole character that fits.
+// The section is two-byte characters only, and the two caps put the cut on a
+// character boundary once and inside a character once.
+TEST(changelog_log_writer, Ants6269CappedBodyKeepsWholeCharacters) {
+    auto runRelease = [](int maxBodyBytes) -> QJsonObject {
+        QByteArray cl = "# Changelog\n\n## [Unreleased]\n\n### Added\n\n";
+        for (int i = 0; i < 40; ++i)
+            cl += "- **" + QString(60, QChar(0xE9)).toUtf8() + "**\n";
+        cl += "\n";
+        QTemporaryDir tmp;
+        EXPECT_TRUE(tmp.isValid());
+        writeFile(clPath(tmp.path()), cl);
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")]     = tmp.path();
+        req[QStringLiteral("op")]             = QStringLiteral("release");
+        req[QStringLiteral("version")]        = QStringLiteral("1.2.3");
+        req[QStringLiteral("max_body_bytes")] = maxBodyBytes;
+        return rc.cmdChangelogLog(req).object();
+    };
+    const QByteArray full =
+        runRelease(0).value(QStringLiteral("released_body")).toString().toUtf8();
+    ASSERT_GT(full.size(), 2100);
+    for (int cap : {2000, 2001}) {
+        const QJsonObject out = runRelease(cap);
+        ASSERT_TRUE(out.value(QStringLiteral("released_body_truncated")).toBool()) << cap;
+        const QString body = out.value(QStringLiteral("released_body")).toString();
+        const QByteArray head =
+            body.left(body.indexOf(QStringLiteral("\n\n... [released_body truncated"))).toUtf8();
+        qsizetype want = cap;
+        while (want > 0 && (uchar(full.at(want)) & 0xC0) == 0x80) --want;
+        EXPECT_EQ(head, full.left(want))
+            << "cap " << cap << ": kept " << head.size() << " bytes, expected " << want;
+    }
+}
