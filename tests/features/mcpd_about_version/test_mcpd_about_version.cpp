@@ -9,6 +9,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QTemporaryDir>
@@ -122,6 +123,19 @@ struct RunningChild {
     explicit RunningChild(const QString &binary) {
         p.start(binary, {});
         p.waitForStarted(5000);
+        // ANTS-6330 — waitForStarted can return while the child is still this
+        // test binary between fork and exec; the push gate's container caught
+        // it with exe /src/build/test_claude. Wait for the exec to land.
+        const QByteArray exe = QFile::encodeName(QStringLiteral("/proc/%1/exe").arg(p.processId()));
+        const QString want = QFileInfo(binary).fileName();
+        for (int i = 0; i < 500; ++i) {
+            char buf[4096];
+            const ssize_t n = ::readlink(exe.constData(), buf, sizeof(buf));
+            if (n > 0 && QFileInfo(QFile::decodeName(QByteArray(buf, static_cast<int>(n))))
+                                 .fileName() == want)
+                break;
+            ::usleep(10000);
+        }
     }
     ~RunningChild() {
         p.closeWriteChannel();  // EOF: ants-mcpd quits on its own

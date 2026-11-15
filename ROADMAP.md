@@ -91838,7 +91838,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: user-request-2026-10-31.
   Lanes: ci.
 
-- 📋 [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
+- ✅ [ANTS-6330] **McpdAboutVersion.Inv6ListsARunningCopy failed once in the push gate's container: its child ants-mcpd was not listed.**
   Push of 45b13e02, 2026-10-31, in the ubuntu:24.04 image at ctest -j2: 'the child
   ants-mcpd was not listed' at line 137, in 15 ms; 1 failure in 5971 tests. It passed
   200 of 200 on this machine outside the container the same day. Cause not found.
@@ -91859,6 +91859,12 @@ measured Ants adding about 5,250 tokens to every request.
   waitForStarted returned before exec under that image's Qt, then wait
   for /proc/<pid>/exe to name ants-mcpd (or poll runningCopies) before
   asserting.
+  Shipped 2026-11-15: RunningChild waits (up to 5 s) for /proc/<pid>/exe
+  to name the binary it started, closing the fork-before-exec window the
+  2026-11-08 diagnosis showed. Not reproducible on demand (1 in about
+  7000); 50 repeats of the bundle's mcpd tests and the full suite are
+  green. procDiagnosis stays, so a recurrence names its cause; reopen
+  then.
   **Layman:** A test that looks for a running helper program failed once for no clear reason, which blocked a push.
   Kind: fix.
   Source: in-session-2026-10-31.
