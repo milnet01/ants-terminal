@@ -111119,7 +111119,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: doc-fix.
   Source: code-review-2026-10-29.
 
-- 📋 [ANTS-6292] **source_scrapes misses a test that reads source through its own __FILE__-relative helper.**
+- ✅ [ANTS-6292] **source_scrapes misses a test that reads source through its own __FILE__-relative helper.**
   Seen 2026-10-29 closing L34-F9. source_scrapes on
   src/sessionmanager.cpp did not list
   tests/features/session_save_worker/test_session_save_worker.cpp,
@@ -111133,6 +111133,13 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   test_session_save_guards.cpp reads src/sessionmanager.cpp through a
   local source() of the same shape. The full suite caught it; neither
   source_scrapes nor the up-front search did.
+  Shipped 2026-11-15. A __FILE__-relative literal names a directory the
+  file's literals resolve under, and a helper's default-argument file is
+  what a bare call reads. Verified on the real tree: source_scrapes on
+  src/sessionmanager.cpp now lists session_save_worker and
+  session_save_guards (before: neither, then worker only). Tests:
+  SourceScrapes.Ants6292FileRelativeHelperReads,
+  Ants6292DefaultArgumentHelperReads.
   **Layman:** The tool that lists which tests read a source file missed one, so an edit nearly broke a test nobody was warned about.
   Kind: fix.
   Source: session-2026-10-29-L34.

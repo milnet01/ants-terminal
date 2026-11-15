@@ -53,8 +53,11 @@ void collectHelpers(const QString &text, Readers *r);
 
 // Every anchor and direct read in one test file. `existing(rel)` says
 // whether a root-relative file exists, for the directory-token rule.
+// `fileDirs` are directories this file's own literals resolve under, as a
+// directory token's do (ANTS-6292: fileRelativeDirs).
 FileResult analyse(const QString &text, const Readers &r,
-                   const std::function<bool(const QString &)> &existing);
+                   const std::function<bool(const QString &)> &existing,
+                   const QStringList &fileDirs = {});
 
 // The whole call below the resolved project root: the envelope, or a
 // refusal {ok:false, code, error}.

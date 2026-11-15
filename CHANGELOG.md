@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **source_scrapes finds tests that read a source file through their own small helper built on the test file's location.** (ANTS-6292)
+
 - **source_scrapes reads plain C test files, as the other code tools do.** (ANTS-6285)
 
 - **run_trace and session_cost count a session's tokens by one rule.** (ANTS-6272)

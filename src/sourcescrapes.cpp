@@ -229,9 +229,10 @@ QStringList callArgs(const QString &code, int open, int *end) {
 class Pass {
 public:
     Pass(const QString &text, const Readers &r, const std::function<bool(const QString &)> &existing,
-         QHash<QString, QSet<QString>> *exportHelpers)
+         QHash<QString, QSet<QString>> *exportHelpers, const QStringList &fileDirs = {})
         : m_r(r), m_existing(existing), m_export(exportHelpers) {
         lex(text, &m_events, &m_lits);
+        for (const QString &d : fileDirs) m_dirs.insert(d);
         static const QRegularExpression ident(QStringLiteral("\\b[A-Za-z_]\\w*\\b"));
         for (const Event &e : std::as_const(m_events))
             for (auto it = ident.globalMatch(e.code); it.hasNext();) {
@@ -273,8 +274,14 @@ private:
                 m_item.test = t.captured(1) + QLatin1Char('.') + t.captured(2);
             } else if (const auto l = lambda.match(e.code); l.hasMatch()) {
                 m_item.function = l.captured(1);
-            } else if (const auto f = fn.match(e.code); f.hasMatch() && !e.code.contains(QLatin1Char('='))) {
+            } else if (const auto f = fn.match(e.code);
+                       f.hasMatch() && !e.code.left(f.capturedStart()).contains(QLatin1Char('='))) {
+                // An `=` inside the parameter list is a default argument, not
+                // an assignment, so only one before the name rules it out.
                 m_item.function = f.captured(1);
+                // ANTS-6292 — a default argument naming a file
+                // (`source(const char *rel = "x.cpp")`) is what a bare call reads.
+                m_item.returnReads = reads(e.code, e.line, false);
             }
         } else if (!isNs) {
             statement(e.code, e.line);
@@ -919,6 +926,25 @@ FileResult analyseScript(const QString &rel, const QString &text, const QStringL
     return out;
 }
 
+// ANTS-6292 — a test that reads sources through its own helper, joining
+// QFileInfo(__FILE__)'s folder with a relative literal such as
+// "/../../../src/". Each such literal that lands on a directory inside the
+// project is one the file's source-shaped literals resolve under. `rel` is the
+// test file's path from the project root; the root itself is "".
+QStringList fileRelativeDirs(const QString &rel, const QString &text, const QDir &root) {
+    if (!text.contains(QLatin1String("__FILE__"))) return {};
+    static const QRegularExpression lit(QStringLiteral(R"re("(/?(?:\.\./)+[\w./-]*)")re"));
+    const QString here = QFileInfo(rel).path();
+    QStringList out;
+    for (auto it = lit.globalMatch(text); it.hasNext();) {
+        QString d = QDir::cleanPath(here + QLatin1Char('/') + it.next().captured(1));
+        if (d.startsWith(QLatin1String(".."))) continue;
+        if (d == QLatin1String(".")) d.clear();
+        if (QFileInfo(root.filePath(d)).isDir() && !out.contains(d)) out.append(d);
+    }
+    return out;
+}
+
 QString readText(const QString &abs) {
     QFile f(abs);
     if (!f.open(QIODevice::ReadOnly)) return QString();
@@ -933,8 +959,9 @@ void collectHelpers(const QString &text, Readers *r) {
 }
 
 FileResult analyse(const QString &text, const Readers &r,
-                   const std::function<bool(const QString &)> &existing) {
-    return Pass(text, r, existing, nullptr).run();
+                   const std::function<bool(const QString &)> &existing,
+                   const QStringList &fileDirs) {
+    return Pass(text, r, existing, nullptr, fileDirs).run();
 }
 
 QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
@@ -1043,7 +1070,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     for (const QString &abs : std::as_const(files)) {
         const QString rel = root.relativeFilePath(abs);
         const FileResult fr = isCppSource(abs)
-                                  ? analyse(texts.value(abs), readers, existing)
+                                  ? analyse(texts.value(abs), readers, existing,
+                                            fileRelativeDirs(rel, texts.value(abs), root))
                                   : analyseScript(rel, texts.value(abs), moduleRoots, existing, listFiles);
         for (const Anchor &a : fr.anchors)
             for (const QString &p : matching(a.paths)) {

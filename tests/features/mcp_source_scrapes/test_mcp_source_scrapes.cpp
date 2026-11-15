@@ -571,3 +571,49 @@ TEST(SourceScrapes, Ants6285ReadsCTestFiles) {
               QStringLiteral("tests/three/test_three.c"))
         << QJsonDocument(a).toJson().constData();
 }
+
+// ANTS-6292 — a test that reads a source through its own helper, joining
+// __FILE__'s folder with a relative literal, is a reader of that source. The
+// shape is session_save_worker's `source("sessionmanager.cpp")`.
+TEST(SourceScrapes, Ants6292FileRelativeHelperReads) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    writeFile(dir->filePath("tests/four/test_four.cpp"),
+              "QString source(const char *rel) {\n"
+              "    QFile f(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()\n"
+              "            + QStringLiteral(\"/../../src/\") + QString::fromLatin1(rel));\n"
+              "    f.open(QIODevice::ReadOnly);\n"
+              "    return QString::fromUtf8(f.readAll());\n"
+              "}\n"
+              "TEST(F, Four) {\n"
+              "    const QString src = source(\"a.cpp\");\n"
+              "    EXPECT_TRUE(src.contains(\"int four_marker(\"));\n"
+              "}\n");
+    const QJsonObject a = forPath(*dir, "src/a.cpp");
+    ASSERT_TRUE(a.value(QStringLiteral("ok")).toBool()) << QJsonDocument(a).toJson().constData();
+    const QJsonObject r = row(a, QStringLiteral("int four_marker("));
+    EXPECT_EQ(r.value(QStringLiteral("file")).toString(), QStringLiteral("tests/four/test_four.cpp"))
+        << QJsonDocument(a).toJson().constData();
+    EXPECT_EQ(r.value(QStringLiteral("test")).toString(), QStringLiteral("F.Four"));
+}
+
+// ANTS-6292 — the same helper with the file as its default argument, as
+// session_save_guards writes it: `source()` reads that file.
+TEST(SourceScrapes, Ants6292DefaultArgumentHelperReads) {
+    std::unique_ptr<QTemporaryDir> dir(fixture());
+    writeFile(dir->filePath("tests/five/test_five.cpp"),
+              "QString source(const char *rel = \"b.cpp\") {\n"
+              "    QFile f(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()\n"
+              "            + QStringLiteral(\"/../../src/\") + QString::fromLatin1(rel));\n"
+              "    f.open(QIODevice::ReadOnly);\n"
+              "    return QString::fromUtf8(f.readAll());\n"
+              "}\n"
+              "TEST(F, Five) {\n"
+              "    const QString s = source();\n"
+              "    EXPECT_TRUE(s.contains(\"int five_marker(\"));\n"
+              "}\n");
+    const QJsonObject b = forPath(*dir, "src/b.cpp");
+    ASSERT_TRUE(b.value(QStringLiteral("ok")).toBool()) << QJsonDocument(b).toJson().constData();
+    EXPECT_EQ(row(b, QStringLiteral("int five_marker(")).value(QStringLiteral("file")).toString(),
+              QStringLiteral("tests/five/test_five.cpp"))
+        << QJsonDocument(b).toJson().constData();
+}
