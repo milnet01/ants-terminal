@@ -448,6 +448,15 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Allowing an audit finding keeps every entry already in .audit_allowlist.json** (ANTS-6478)
+  A file that cannot be read or parsed is left as it is and the
+  status line says the allowlist could not be written. The write holds
+  the file's lock from read to save.
+
+- **The audit trend history is copied aside, not replaced, when it cannot be parsed** (ANTS-6479)
+  An unreadable history is left as it is, and a short write is
+  discarded instead of saved.
+
 - **The model-switch record keeps every window's entries when one window fills in outcomes** (ANTS-6477)
   The rewrite re-reads the file under its lock and keeps lines another
   Ants window added since.

@@ -1125,17 +1125,20 @@ bool AuditDialog::allowlisted(const Finding &f) const {
 bool AuditDialog::appendAllowlistEntry(const Finding &f, const QString &reason) {
     const QString path = m_projectPath + "/.audit_allowlist.json";
 
+    // ANTS-6478 — held across the read and the write, and a file that
+    // exists but cannot be read or parsed is refused: the entry alone
+    // would replace every entry it holds.
+    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
+    if (!lock.acquired()) return false;
     QJsonObject rootObj;
-    QJsonArray arr;
-    QFile rf(path);
-    if (rf.open(QIODevice::ReadOnly)) {
+    if (QFileInfo::exists(path)) {
+        QFile rf(path);
+        if (!rf.open(QIODevice::ReadOnly)) return false;
         const QJsonDocument doc = QJsonDocument::fromJson(rf.readAll());
-        rf.close();
-        if (doc.isObject()) {
-            rootObj = doc.object();
-            arr = rootObj.value("allowlist").toArray();
-        }
+        if (!doc.isObject()) return false;
+        rootObj = doc.object();
     }
+    QJsonArray arr = rootObj.value("allowlist").toArray();
 
     QJsonObject entry;
     entry["rule"] = f.checkId.isEmpty() ? QStringLiteral("unknown") : f.checkId;
@@ -1700,9 +1703,15 @@ void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
     // Ants instance appending its own snapshot (last-writer-wins drops one run).
     ConfigWriteLock lock(trendPath());
     QJsonArray arr;
-    QByteArray trendBytes;
-    if (readAuditStateFile(trendPath(), &trendBytes))
-        arr = QJsonDocument::fromJson(trendBytes).array();
+    if (QFileInfo::exists(trendPath())) {
+        // ANTS-6479 — history that cannot be read is left alone, and history
+        // that does not parse is kept aside before a new one starts.
+        QByteArray trendBytes;
+        if (!readAuditStateFile(trendPath(), &trendBytes)) return;
+        const QJsonDocument doc = QJsonDocument::fromJson(trendBytes);
+        if (doc.isArray()) arr = doc.array();
+        else if (rotateCorruptFileAside(trendPath()).isEmpty()) return;
+    }
     QJsonObject entry;
     entry["timestamp"] = s.timestamp;
     entry["total"]     = s.total;
@@ -1720,8 +1729,8 @@ void AuditDialog::appendSnapshot(const TrendSnapshot &s) {
     if (sf.open(QIODevice::WriteOnly)) {
         if (!setOwnerOnlyPerms(sf))
             warnNotOwnerOnly(trendPath(), "audit trend history");
-        sf.write(QJsonDocument(arr).toJson(QJsonDocument::Compact));
-        sf.commit();
+        const QByteArray body = QJsonDocument(arr).toJson(QJsonDocument::Compact);
+        if (sf.write(body) == body.size()) sf.commit();   // else discarded
     }
 }
 

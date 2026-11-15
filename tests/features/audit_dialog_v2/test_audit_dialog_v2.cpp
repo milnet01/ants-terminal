@@ -6,6 +6,7 @@
 // See tests/features/audit_dialog_v2/spec.md + docs/specs/ANTS-1111-fold-audit-triage-into-project.md §12.
 
 #include "auditdialog.h"
+#include "configbackup.h"
 #include "auditengine.h"
 #include "config.h"
 
@@ -34,6 +35,9 @@ public:
     using AuditDialog::actionableFindings;
     using AuditDialog::foldFindingsIntoRoadmap;
     using AuditDialog::visibleSinceBaseline;
+    using AuditDialog::appendSnapshot;
+    using AuditDialog::trendPath;
+    using TrendSnapshot = AuditDialog::TrendSnapshot;
 };
 
 bool writeFile(const QString &path, const QString &body) {
@@ -142,6 +146,60 @@ TEST(AuditDialogV2, INV13_AppendAllowlistEntry) {
     EXPECT_TRUE(dlg.allowlisted(f));
     EXPECT_FALSE(dlg.allowlisted(
         mkFinding("clazy-qstring-arg", "src/bar.cpp", 1, "different", "k")));
+}
+
+// ANTS-6478 — an allowlist that does not parse is not rewritten: the new
+// entry alone would replace every entry the file held.
+TEST(AuditDialogV2, Ants6478UnparseableAllowlistIsNotRewritten) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString path = root + "/.audit_allowlist.json";
+    const QString broken = QStringLiteral("{\"allowlist\": [ {\"rule\": \"r\"},\n");
+    ASSERT_TRUE(writeFile(path, broken));
+    Config cfg;
+    Dlg dlg(root, nullptr, &cfg);
+    EXPECT_FALSE(dlg.appendAllowlistEntry(
+        mkFinding("r2", "src/a.cpp", 1, "m", "k"), QStringLiteral("why")))
+        << "an append onto an unparseable allowlist must be refused";
+    EXPECT_EQ(readFile(path), broken) << "the unparseable allowlist was rewritten";
+}
+
+// ANTS-6478 — the append holds the allowlist's write lock across its read
+// and write, so it refuses while another writer holds it.
+TEST(AuditDialogV2, Ants6478AllowlistAppendTakesTheLock) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    const QString path = root + "/.audit_allowlist.json";
+    Config cfg;
+    Dlg dlg(root, nullptr, &cfg);
+    ConfigWriteLock held(path);
+    ASSERT_TRUE(held.acquired());
+    EXPECT_FALSE(dlg.appendAllowlistEntry(
+        mkFinding("r2", "src/a.cpp", 1, "m", "k"), QStringLiteral("why")))
+        << "the append must wait for the write lock and refuse without it";
+    EXPECT_FALSE(QFileInfo::exists(path));
+}
+
+// ANTS-6479 — a trend history that does not parse is kept aside before the
+// next snapshot starts a new one.
+TEST(AuditDialogV2, Ants6479CorruptTrendIsKeptAside) {
+    QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+    const QString root = QFileInfo(tmp.path()).canonicalFilePath();
+    Config cfg;
+    Dlg dlg(root, nullptr, &cfg);
+    const QString broken = QStringLiteral("[{\"total\": 3}, {\"tot");
+    ASSERT_TRUE(writeFile(dlg.trendPath(), broken));
+    Dlg::TrendSnapshot s;
+    s.timestamp = QStringLiteral("2026-11-15T00:00:00Z");
+    s.total = 1;
+    dlg.appendSnapshot(s);
+    const QFileInfo fi(dlg.trendPath());
+    const QStringList aside = fi.absoluteDir().entryList(
+        {fi.fileName() + QStringLiteral(".corrupt-*")}, QDir::Files);
+    ASSERT_EQ(aside.size(), 1) << "the corrupt history was not kept aside";
+    EXPECT_EQ(readFile(fi.absolutePath() + "/" + aside.first()), broken);
+    EXPECT_EQ(QJsonDocument::fromJson(readFile(dlg.trendPath()).toUtf8()).array().size(), 1)
+        << "the new snapshot was not written";
 }
 
 // INV-14 — fold orchestration advances the counter by K and inserts the

@@ -93883,7 +93883,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 23-model-switching (Medium).
   Lanes: model-switching.
 
-- 📋 [ANTS-6478] **auditdialog.cpp: If `.audit_allowlist.json` fails to parse, the code writes back only the one new entry.**
+- ✅ [ANTS-6478] **auditdialog.cpp: If `.audit_allowlist.json` fails to parse, the code writes back only the one new entry.**
   `auditdialog.cpp:1133–1139` — If `.audit_allowlist.json` fails to
   parse, the code writes back only the one new entry. Every existing
   entry is silently lost.
@@ -93891,16 +93891,22 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): refuse the write on
   a parse failure, and hold the lock across the read and the write.
   Ledger row 291, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: appendAllowlistEntry holds ConfigWriteLock and
+  refuses an unreadable or unparseable file. Tests
+  AuditDialogV2.Ants6478*.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 26-audit-dialog (Medium).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6479] **auditdialog.cpp: a corrupt `trend.json` is replaced, losing its history.**
+- ✅ [ANTS-6479] **auditdialog.cpp: a corrupt `trend.json` is replaced, losing its history.**
   `auditdialog.cpp:1706` — a corrupt `trend.json` is replaced, losing
   its history. `sf.write` is unchecked.
   Quote: `trend.json`
   Ledger row 304, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: appendSnapshot rotates an unparseable trend.json
+  aside, leaves an unreadable one, and commits only a full write. Test
+  AuditDialogV2.Ants6479CorruptTrendIsKeptAside.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 26-audit-dialog (Low).

@@ -146,6 +146,19 @@ protected:
     void loadAllowlist();
     bool allowlisted(const Finding &f) const;
 
+    // Trend tracking — save a severity-count snapshot after each run, read
+    // the prior one to compute delta (shown in the summary banner). Protected
+    // for the feature-test subclass (ANTS-6479).
+    struct TrendSnapshot {
+        QString timestamp;   // ISO 8601
+        int total = 0;
+        int bySev[5] = {0, 0, 0, 0, 0};
+    };
+    QString trendPath() const;
+    TrendSnapshot loadLastSnapshot() const;
+    void appendSnapshot(const TrendSnapshot &s);
+    static constexpr int kMaxTrendHistory = 50;
+
     // ANTS-1257 v2 — testable orchestration helpers behind the new
     // AuditDialog buttons. Exposed to the feature-test subclass; the
     // QPushButton slots (onFoldRoadmapClicked / the Allow anchor) are thin
@@ -315,18 +328,6 @@ private:
     // interprets ants-suppress://<key> links, shows the reason prompt, and
     // persists via saveSuppression().
     void onResultAnchorClicked(const QUrl &url);
-
-    // Trend tracking — save a severity-count snapshot after each run, read
-    // the prior one to compute delta (shown in the summary banner).
-    struct TrendSnapshot {
-        QString timestamp;   // ISO 8601
-        int total = 0;
-        int bySev[5] = {0, 0, 0, 0, 0};
-    };
-    QString trendPath() const;
-    TrendSnapshot loadLastSnapshot() const;
-    void appendSnapshot(const TrendSnapshot &s);
-    static constexpr int kMaxTrendHistory = 50;
 
     // Present accumulated results sorted by severity with a summary banner.
     void renderResults();
