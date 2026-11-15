@@ -2,6 +2,7 @@
 // `.ants/verify.json`. See verifytrust.h + docs/specs/ANTS-1337-first-run-trust-gate-ants.md.
 
 #include "verifytrust.h"
+#include "configbackup.h"
 #include "secureio.h"
 
 #include <QByteArray>
@@ -12,6 +13,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTemporaryFile>
 
 #include <optional>
 #include <QStandardPaths>
@@ -82,6 +84,16 @@ QString carriedDefaultTrustFilePath() {
 
 QString nowIso() {
     return QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+}
+
+// ANTS-6475 — held across reload, change and save, so two processes adding
+// trust at once each build on the other's write. The parent folder must
+// exist for the lock file. The callers run on the GUI thread.
+bool lockTrustFile(const QString &path, std::optional<ConfigWriteLock> &lock) {
+    if (path.isEmpty()) return false;
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    lock.emplace(path, ConfigWriteLock::kGuiTimeoutMs);
+    return lock->acquired();
 }
 
 }  // namespace
@@ -158,6 +170,8 @@ Decision FilePersistedTrustClient::prompt(const QString &projectPath,
 bool FilePersistedTrustClient::addTrustedSha(const QString &shaHex,
                                               const QString &note) {
     if (shaHex.isEmpty()) return false;
+    std::optional<ConfigWriteLock> lock;
+    if (!lockTrustFile(m_path, lock)) return false;
     reloadIfChanged();   // build on the file as it is now, not as loaded
     // The entry must be in the map for saveToDisk() to write it, but it
     // must not outlive a failed save: outcomeForConfig() reads the map,
@@ -182,6 +196,8 @@ bool FilePersistedTrustClient::addTrustedRepo(
     if (canonicalProjectPath.isEmpty() || currentShaHex.isEmpty()) {
         return false;
     }
+    std::optional<ConfigWriteLock> lock;
+    if (!lockTrustFile(m_path, lock)) return false;
     reloadIfChanged();
     // Same rule as addTrustedSha: roll the map back if the save fails.
     const auto prior = m_trustedRepos.constFind(canonicalProjectPath);
@@ -327,11 +343,6 @@ bool FilePersistedTrustClient::saveToDisk() const {
     // it doesn't understand).
     if (m_futureSchema) return false;
 
-    // Ensure the parent directory exists; the first call may need
-    // `$XDG_CONFIG_HOME/ants-terminal` created.
-    const QString parentDir = QFileInfo(m_path).absolutePath();
-    if (!parentDir.isEmpty()) QDir().mkpath(parentDir);
-
     QJsonObject root;
     root[QStringLiteral("version")] = kSchemaVersion;
 
@@ -362,30 +373,26 @@ bool FilePersistedTrustClient::saveToDisk() const {
     }
     root[QStringLiteral("trusted_repos")] = repos;
 
-    // Atomic write: write to `<path>.tmp`, set 0600, rename, fsync
-    // the parent dir for crash-safety (ext4 journal can drop the
-    // rename otherwise — ANTS-1141 pattern).
-    const QString tmp = m_path + QStringLiteral(".tmp");
-    QFile f(tmp);
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        return false;
-    }
+    // Atomic write: write a temp file of this save's own, set 0600, rename,
+    // fsync the parent dir for crash-safety (ext4 journal can drop the
+    // rename otherwise — ANTS-1141 pattern). ANTS-6475 — a unique name, so
+    // a writer that skips the lock cannot rename this one's half-written file.
+    QTemporaryFile f(m_path + QStringLiteral(".XXXXXX"));
+    if (!f.open()) return false;
+    const QString tmp = f.fileName();
     // ANTS-5082 — a short write, a failed flush or close, or permissions that
     // cannot be narrowed must not reach the rename: on a full disk that
     // replaced the trust store with truncated JSON.
     const QByteArray bytes = QJsonDocument(root).toJson(QJsonDocument::Indented);
     const bool written = f.write(bytes) == bytes.size() && f.flush();
     f.close();
-    if (!written || f.error() != QFileDevice::NoError || !setOwnerOnlyPerms(tmp)) {
-        QFile::remove(tmp);
+    // A failed save leaves `f` to remove its own file.
+    if (!written || f.error() != QFileDevice::NoError || !setOwnerOnlyPerms(tmp))
         return false;
-    }
-
-    if (std::rename(tmp.toLocal8Bit().constData(),
-                    m_path.toLocal8Bit().constData()) != 0) {
-        QFile::remove(tmp);
+    if (std::rename(QFile::encodeName(tmp).constData(),
+                    QFile::encodeName(m_path).constData()) != 0)
         return false;
-    }
+    f.setAutoRemove(false);
     fsyncParentDir(m_path);
     return true;
 }

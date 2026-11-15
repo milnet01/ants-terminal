@@ -448,6 +448,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two Ants windows trusting a project's verify.json at the same time now both keep their trust** (ANTS-6475)
+  Each save of the trust file takes a write lock around re-reading,
+  changing and writing it, and writes through a temp file of its own.
+
 - **A self-update writes the new AppImage to disk before it replaces the old one** (ANTS-6474)
   The download is synced before the swap and the folder after it, so a
   power cut cannot leave an empty program file. A failed sync keeps the

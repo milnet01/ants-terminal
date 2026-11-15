@@ -62,6 +62,11 @@ callers (nullptr client) see no behavior change. Phase 2 wires
 - **TF-10** (ANTS-5411) A client sees a trust written to the file by
   another client after it loaded, and a revocation the same way: the
   next `outcomeForConfig` re-reads a file whose identity changed.
+- **TF-11** (ANTS-6475) Two processes adding trust at once lose neither's
+  entries. `addTrustedSha` and `addTrustedRepo` hold the `<path>.lock`
+  write lock across reload, change and save, and refuse when it cannot be
+  taken. Each save writes through a temp file of its own, so another
+  writer's temp file is never truncated or renamed into place.
 
 Phase 2 will add MD-* (modal) and MC-* (MCP envelope) tests.
 

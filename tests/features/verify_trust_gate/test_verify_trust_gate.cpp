@@ -10,6 +10,7 @@
 
 #include "../../_support/expect.h"
 #include "../../_support/srcgrep.h"
+#include "configbackup.h"
 #include "verifyengine.h"
 #include "verifytrust.h"
 
@@ -26,10 +27,12 @@
 #include <QTemporaryDir>
 
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -306,8 +309,12 @@ void testTrustFile() {
                            "89012345678901234567890")));  // 64 hex (ANTS-1614)
 
         expect(QFile::exists(path), "TF-2 final file present");
-        expect(!QFile::exists(path + QStringLiteral(".tmp")),
-               "TF-2 .tmp sibling cleaned");
+        // Only the file and its lock file remain (ANTS-6475 — the temp
+        // file's name is unique, so look for any sibling).
+        const QStringList left = QDir(tmp.path()).entryList(QDir::Files);
+        expect(left == QStringList({QStringLiteral("verify-trust.json"),
+                                    QStringLiteral("verify-trust.json.lock")}),
+               "TF-2 no temp file lingers");
     }
 
     // TF-3 corrupt JSON → empty trust set; subsequent write replaces.
@@ -571,6 +578,87 @@ void testTrustFile() {
         expect(text.contains(path.toLocal8Bit()) && text.contains("other users"),
                "TF-8 a trust file other users can read is warned about");
         expect(trusted, "TF-8 a trust file other users can read is still honoured");
+    }
+
+    // TF-11 (ANTS-6475) — two processes writing the trust file at once.
+    const QByteArray cfgA = "{\"build\":{\"command\":\"echo tf11\"}}";
+    const QString shaA = QString::fromLatin1(
+        QCryptographicHash::hash(cfgA, QCryptographicHash::Sha256).toHex());
+    // (a) The write lock is taken: while another holder has it, a save
+    // is refused and the file is not written.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path = tmp.path() + QStringLiteral("/verify-trust.json");
+        VerifyTrust::FilePersistedTrustClient client(path);
+        bool saved = true;
+        bool repoSaved = true;
+        {
+            ConfigWriteLock held(path);
+            ASSERT_TRUE(held.acquired());
+            saved = client.addTrustedSha(shaA);
+            repoSaved = client.addTrustedRepo(QStringLiteral("/tf11"), shaA);
+        }
+        expect(!repoSaved, "TF-11a a repo trust refuses without the write lock too");
+        expect(!saved && !QFile::exists(path),
+               "TF-11a a save waits for the write lock and refuses without it");
+        expect(client.outcomeForConfig(QStringLiteral("/tf11"), cfgA).outcome
+                   != VerifyTrust::Outcome::Trusted,
+               "TF-11a the refused trust is rolled back");
+    }
+    // (b) A save writes through its own temp file, so another writer's
+    // half-written `<path>.tmp` is neither truncated nor renamed into place.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path = tmp.path() + QStringLiteral("/verify-trust.json");
+        QFile other(path + QStringLiteral(".tmp"));
+        ASSERT_TRUE(other.open(QIODevice::WriteOnly));
+        ASSERT_GT(other.write("half-written"), 0);
+        other.close();
+        VerifyTrust::FilePersistedTrustClient client(path);
+        expect(client.addTrustedSha(shaA), "TF-11b the save succeeds");
+        QFile check(path + QStringLiteral(".tmp"));
+        expect(check.open(QIODevice::ReadOnly) && check.readAll() == "half-written",
+               "TF-11b another writer's temp file is left alone");
+    }
+    // (c) Writers in separate processes, each adding its own SHAs, lose
+    // none of each other's entries.
+    {
+        QTemporaryDir tmp; ASSERT_TRUE(tmp.isValid());
+        const QString path = tmp.path() + QStringLiteral("/verify-trust.json");
+        constexpr qsizetype kProcs = 4;
+        constexpr qsizetype kEach = 25;
+        std::vector<pid_t> kids;
+        for (int p = 0; p < kProcs; ++p) {
+            const pid_t pid = ::fork();
+            ASSERT_GE(pid, 0);
+            if (pid == 0) {
+                VerifyTrust::FilePersistedTrustClient client(path);
+                int failed = 0;
+                for (int i = 0; i < kEach; ++i) {
+                    const QString sha =
+                        QStringLiteral("%1%2").arg(p, 2, 10, QLatin1Char('0'))
+                            .arg(i, 62, 10, QLatin1Char('0'));
+                    if (!client.addTrustedSha(sha)) ++failed;
+                }
+                ::_exit(failed == 0 ? 0 : 1);
+            }
+            kids.push_back(pid);
+        }
+        bool allSaved = true;
+        for (pid_t pid : kids) {
+            int status = 0;
+            ::waitpid(pid, &status, 0);
+            allSaved = allSaved && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+        }
+        expect(allSaved, "TF-11c every concurrent save succeeds");
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+        const QJsonObject shas = QJsonDocument::fromJson(f.readAll()).object()
+                                     .value(QStringLiteral("trusted_shas")).toObject();
+        expect(shas.size() == kProcs * kEach,
+               (std::string("TF-11c every process's SHAs survive: expected ")
+                + std::to_string(kProcs * kEach) + ", got "
+                + std::to_string(shas.size())).c_str());
     }
 }
 

@@ -93825,7 +93825,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6475] **verifytrust.cpp: every writer uses the same temp file name, opens it with `Truncate`, and runs reload → modify → save with no lock between processes.**
+- ✅ [ANTS-6475] **verifytrust.cpp: every writer uses the same temp file name, opens it with `Truncate`, and runs reload → modify → save with no lock between processes.**
   `verifytrust.cpp:332-352` — every writer uses the same temp file name,
   opens it with `Truncate`, and runs reload → modify → save with no lock
   between processes. With two Ants instances (brief dim 16 case), one
@@ -93839,6 +93839,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   directory), and take an `flock` on a lock file around reload-modify-
   save.
   Ledger row 231, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: addTrustedSha/addTrustedRepo hold ConfigWriteLock
+  across reload-change-save; saveToDisk writes through a QTemporaryFile.
+  TF-11 in tests/features/verify_trust_gate.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
