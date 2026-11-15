@@ -93785,13 +93785,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6473] **config.cpp: the comment says flock stops "last-rename-wins silently drops one process's … settings changes".**
+- ✅ [ANTS-6473] **config.cpp: the comment says flock stops "last-rename-wins silently drops one process's … settings changes".**
   `config.cpp:194-201` — the comment says flock stops "last-rename-wins
   silently drops one process's … settings changes".
   Remedy (the reviewer's; check it before building): inside the lock,
   re-read the file and merge only the keys this process changed.
   Otherwise, correct the comment and `configbackup.h:73-80`.
   Ledger row 205, docs/reviews/close-findings-2026-11-06.md.
+  Took the reviewer's remedy as a three-way merge: Config keeps m_base
+  (the file as last read or written); save() re-reads config.json inside
+  the lock and keeps the file's value for every key not changed since.
+  configbackup.h's comment describes the tmp-file race the lock fixes
+  and stays.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).

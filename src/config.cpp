@@ -85,6 +85,7 @@ void Config::load() {
     QJsonDocument doc = QJsonDocument::fromJson(raw, &parseErr);
     if (doc.isObject()) {
         m_data = doc.object();
+        m_base = m_data;   // before migration, so migrated keys count as changed
         // ANTS-1183: schema migration. Pre-stamp configs (no
         // `_schema` key) are v0; everything written by 0.7.78+
         // carries the current version. Newer-than-current values
@@ -192,10 +193,11 @@ void Config::save() {
     QString tmpPath = path + QStringLiteral(".tmp");
 
     // Serialize against concurrent Ants instances writing the same
-    // config.json. Without this, two simultaneous saves race over the
-    // shared `.tmp` file and last-rename-wins silently drops one
-    // process's keystrokes/settings/profile changes. flock(2) on a
-    // sibling .lock file is advisory but covers cooperating callers.
+    // config.json, so two saves never share the `.tmp` file. The lock
+    // alone would not keep both processes' changes: each holds a whole
+    // copy, so the merge below (ANTS-6473) re-reads the file inside the
+    // lock. flock(2) on a sibling .lock file is advisory but covers
+    // cooperating callers.
     // ANTS-5106 — save() runs on the GUI thread, so it waits only briefly;
     // the write takes microseconds, so a longer wait means a hung holder.
     ConfigWriteLock writeLock(path, m_saveRetry.fullWait
@@ -212,6 +214,7 @@ void Config::save() {
     }
     m_saveRetry.pending = false;
     m_saveRetry.retries = 0;
+    mergeFileChanges(path);
 
     // ANTS-1183: stamp schema version on every save so the next load
     // can decide whether to migrate. Cheap; idempotent.
@@ -232,7 +235,26 @@ void Config::save() {
         // hot-reload (which would tear down an open Settings dialog on
         // Apply / tab-switch). ANTS-1981.
         m_lastWrittenBytes = json;
+        m_base = m_data;
     }
+}
+
+// ANTS-6473 — a three-way merge at top-level key granularity. A key m_data
+// changed or removed since m_base keeps this process's value; every other
+// key takes the file's, so another process's save since our load survives.
+// A missing file, or one that is not a JSON object, merges nothing: m_data
+// is written whole, as before.
+void Config::mergeFileChanges(const QString &path) {
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject()) return;
+    QJsonObject merged = doc.object();
+    for (auto it = m_data.constBegin(); it != m_data.constEnd(); ++it)
+        if (m_base.value(it.key()) != it.value()) merged[it.key()] = it.value();
+    for (auto it = m_base.constBegin(); it != m_base.constEnd(); ++it)
+        if (!m_data.contains(it.key())) merged.remove(it.key());
+    m_data = std::move(merged);
 }
 
 // Idempotent helper. Compare-then-assign on m_data; returns true only when

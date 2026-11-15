@@ -448,6 +448,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two Ants windows saving settings at once keep both changes** (ANTS-6473)
+  Saving re-reads `config.json` inside the write lock and keeps every
+  setting this window did not change, so a change saved by another Ants
+  window, or made by hand, is no longer overwritten.
+
 - **`comment_claims` reads `INV-<n>` as a spec invariant and `--flag` as a flag** (ANTS-6784)
   A roadmap that quotes an invariant no longer turns every `INV-9` in a
   comment into a missing ticket. A `see` naming flags, such as

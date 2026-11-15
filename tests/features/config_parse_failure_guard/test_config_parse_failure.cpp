@@ -311,6 +311,29 @@ TEST(ConfigParseFailureGuard, Ants5106SaveKeepsANewerSchemaStamp) {
     EXPECT_EQ(o.value(QStringLiteral("font_size")).toInt(), 15);
 }
 
+// ANTS-6473 — Invariant 8: two Ants processes loaded the same config.json;
+// each saves a different change. The second save used to write its whole
+// stale copy and wipe the first process's change.
+TEST(ConfigParseFailureGuard, Ants6473SaveKeepsAnotherProcessChange) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ants_test::XdgGuard envGuard;
+    const QString antsDir =
+        setupSandbox(tmp, envGuard, R"({"_schema":1,"font_size":14,"theme":"Dark"})");
+    Config first;
+    Config second;
+    first.setFontSize(15);
+    second.setTheme(QStringLiteral("Light"));
+    QFile f(antsDir + "/config.json");
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    const QJsonObject o = QJsonDocument::fromJson(f.readAll()).object();
+    EXPECT_EQ(o.value(QStringLiteral("font_size")).toInt(), 15) << "the first process's change";
+    EXPECT_EQ(o.value(QStringLiteral("theme")).toString(), QStringLiteral("Light"));
+    EXPECT_EQ(second.fontSize(), 15) << "the merged value is the one this process now holds";
+    second.setFontSize(16);   // a key this process changes still wins
+    EXPECT_EQ(fontSizeOnDisk(antsDir + "/config.json"), 16);
+}
+
 // ANTS-5106 — Invariant 6: a save that meets a lock another process holds
 // waits only briefly, keeps the change, and retries once the lock is free.
 TEST(ConfigParseFailureGuard, Ants5106LockedSaveIsRetried) {

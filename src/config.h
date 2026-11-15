@@ -651,9 +651,14 @@ private:
         ~SaveRetry();
     };
     void scheduleSaveRetry();
+    void mergeFileChanges(const QString &path);   // ANTS-6473; caller holds the write lock
     SaveRetry m_saveRetry;
 
     QJsonObject m_data;
+    // ANTS-6473 — config.json as this process last read or wrote it. save()
+    // keeps the file's value for every key m_data has not changed since, so
+    // another Ants process's change to that key survives.
+    QJsonObject m_base;
     QByteArray m_lastWrittenBytes;  // bytes of the last successful save() — self-write detection
     bool m_loadFailed = false;
     // ANTS-1138 — see autoProfileRulesGeneration().

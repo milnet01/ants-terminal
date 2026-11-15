@@ -96,6 +96,15 @@ When `config.json` carries a `_schema` newer than this build's
 `kSchemaVersion`, a setter's `save()` writes the change and keeps the
 newer `_schema`. Test: `Ants5106SaveKeepsANewerSchemaStamp`.
 
+### Invariant 8 — save() keeps another process's change (ANTS-6473)
+
+Inside the write lock, `save()` re-reads `config.json`. A top-level key
+this `Config` changed or removed since it last read or wrote the file
+keeps this process's value; every other key takes the file's, and the
+merged result is what this `Config` then holds. A missing file, or one
+that is not a JSON object, is written from memory as before. Test:
+`Ants6473SaveKeepsAnotherProcessChange`.
+
 ## How this test anchors to reality
 
 The test constructs a `Config` against an isolated `XDG_CONFIG_HOME`,
