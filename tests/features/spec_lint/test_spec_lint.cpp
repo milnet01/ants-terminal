@@ -390,6 +390,41 @@ TEST(SpecLint, Inv3TombstoneIsNotAGap) {
     }
 }
 
+// ANTS-6765 — three sound clauses the corpus held, each next to the shape the
+// check must still catch.
+TEST(SpecLint, Ants6765SoundClausesAreNotCandidates) {
+    // 1. A bare identifier in a code span is not a command; a command with an
+    //    argument and no expectation still is.
+    const auto prose = SpecLint::check(
+        specDoc(QString(), QStringLiteral("a short body yields a valid `head`.")),
+        QStringLiteral("a.md"), {});
+    EXPECT_EQ(countKind(prose, "command_test_no_expectation"), 0);
+    const auto bare = SpecLint::check(
+        specDoc(QString(), QStringLiteral("`grep -c foo src/a.cpp`.")),
+        QStringLiteral("b.md"), {});
+    EXPECT_EQ(countKind(bare, "command_test_no_expectation"), 1);
+
+    // 2. `**INV-a to INV-b**` accounts for the range; the gap after it is real.
+    const auto range = SpecLint::check(QStringLiteral(
+        "# ANTS-1 — r\n\n## 3. Invariants\n\n"
+        "- **INV-1** — a. *Test:* t → ok.\n"
+        "- **INV-2 to INV-4** — numbered in the engine test's own contract.\n"
+        "- **INV-6** — f. *Test:* t → ok.\n"), QStringLiteral("r.md"), {});
+    EXPECT_EQ(countKind(range, "invariant_id_gap"), 1) << "INV-5 alone is missing";
+
+    // 3. A directory named as what a fixture cites is data, not a surface.
+    const QString shipped = QStringLiteral("shipped");
+    const auto cited = SpecLint::check(
+        specDoc(shipped, QStringLiteral(
+            "one spec citing `tests/features/absent_one`, run → zero findings.")),
+        QStringLiteral("c.md"), withDirs({QStringLiteral("present")}));
+    EXPECT_EQ(countKind(cited, "test_surface_absent"), 0);
+    const auto own = SpecLint::check(
+        specDoc(shipped, QStringLiteral("`tests/features/absent_one` → ok.")),
+        QStringLiteral("d.md"), withDirs({QStringLiteral("present")}));
+    EXPECT_EQ(countKind(own, "test_surface_absent"), 1);
+}
+
 // INV-5 — a loop-log row whose LAST cell is empty produces exactly one
 // loop_row_no_outcome, in every table shape; a table whose first header cell is
 // not `Loop` is not scanned.

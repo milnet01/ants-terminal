@@ -75,7 +75,9 @@ bool isCommandSpan(const QString &content) {
     if (s.startsWith(QLatin1String("$ "))) s = s.mid(2).trimmed();
     static const QRegularExpression kSpace(QStringLiteral(R"(\s)"));
     const int sp = s.indexOf(kSpace);
-    return commandWords().contains(sp < 0 ? s : s.left(sp));
+    // ANTS-6765 — a command takes an argument. A lone word is an identifier
+    // as often as not: ANTS-2094's clause ends on the field `head`.
+    return sp > 0 && commandWords().contains(s.left(sp));
 }
 
 // True when the clause contains a command-shaped code span and no alphanumeric
@@ -802,7 +804,14 @@ void checkTestSurfaces(const QVector<InvId> &ids,
         if (!resolveSurfaces) continue;
         auto sit = surfaceRe.globalMatch(clause);
         while (sit.hasNext()) {
-            const QString name = sit.next().captured(1);
+            const auto sm = sit.next();
+            const QString name = sm.captured(1);
+            // ANTS-6765 — a path written as what a fixture cites or names is
+            // that fixture's data, not this invariant's surface (ANTS-4127
+            // INV-9: "one spec citing `tests/features/absent_one`").
+            static const QRegularExpression citedRe(QStringLiteral(
+                R"(\b(?:citing|cites|naming|names)\s+`?$)"));
+            if (citedRe.match(clause.left(sm.capturedStart())).hasMatch()) continue;
             if (seenSurfaces.contains(name)) continue;
             seenSurfaces.insert(name);
 
@@ -857,6 +866,22 @@ void checkIdGaps(const QStringList &lines, const QVector<bool> &fence,
     if (!ids.isEmpty()) {
         QSet<int> have;
         for (const InvId &e : ids) have.insert(e.n);
+        // ANTS-6765 — a `- **INV-a to INV-b**` bullet accounts for its range
+        // (ANTS-1289: "numbered in the engine test's own contract"), as a
+        // tombstone does for one id. Outside fenced code; a range over 500 is
+        // taken for a typo and accounts for nothing.
+        {
+            static const QRegularExpression rangeRe(QStringLiteral(
+                R"(^\s*[-*]\s+\*\*INV-([0-9]+)\s+(?:to|–|—)\s+INV-([0-9]+)\*\*)"));
+            for (int i = 0; i < lines.size(); ++i) {
+                if (i < fence.size() && fence.at(i)) continue;
+                const auto m = rangeRe.match(lines.at(i));
+                if (!m.hasMatch()) continue;
+                const int a = m.captured(1).toInt(), b = m.captured(2).toInt();
+                if (a < b && b - a <= 500)
+                    for (int n = a; n <= b; ++n) have.insert(n);
+            }
+        }
         // From the document's OWN MINIMUM, not from 1. A spec whose sequence
         // legitimately starts above 1 — docs/specs/ANTS-1358-debt-sweep-detector-expansion.md opens at INV-14
         // because it continues an earlier spec's numbering — has an offset

@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_lint stops flagging three sound clauses: a lone word such as `head` in a test clause, an `INV-a to INV-b` range bullet, and a path a fixture is described as citing** (ANTS-6765)
+
 - **read_region answers read_failed for a file that exists but cannot be opened, keeping not_found for a missing file** (ANTS-6772)
 
 - **spec_log op:"append_loop" adds rows to a log under a plain "Loop log" heading, numbered or not, such as "## 8. Loop log"** (ANTS-6755)

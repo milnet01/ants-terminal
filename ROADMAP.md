@@ -113398,7 +113398,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-09 (ANTS-5262).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-6765] **spec_lint reports three sound clauses as candidates: a prose test clause, a range tombstone and a fixture name.**
+- ✅ [ANTS-6765] **spec_lint reports three sound clauses as candidates: a prose test clause, a range tombstone and a fixture name.**
   Measured 2026-11-13 over docs/specs.
   1. command_test_no_expectation on ANTS-2094 INV-12: the test clause is
      prose ("out-of-range config values clamp; ..."), with a backticked
@@ -113410,6 +113410,14 @@ reports are asked for separately, each time.
      is the name of a directory the described fixture cites because it
      is absent.
   Verify: spec_lint over those three files no longer lists them.
+  Shipped 2026-11-15. Cause of 1: the clause ends on `head`, a field
+  name in the command vocabulary; a command span now needs an argument.
+  2: a `- **INV-a to INV-b**` bullet accounts for its range. 3: a path
+  after citing/cites/naming/names is not harvested. Corpus spec_lint
+  over docs/specs: command_test_no_expectation 1 to 0,
+  test_surface_absent 1 to 0, invariant_id_gap 32 to 28, every other
+  count unchanged. Specs ANTS-3662 and ANTS-4127 amended; their loop
+  logs moved to docs/reviews/.
   **Layman:** The design-document checker flags three things that are not mistakes, which hides the real ones.
   Kind: fix.
   Source: in-session-2026-11-13, found while closing ANTS-5559.
