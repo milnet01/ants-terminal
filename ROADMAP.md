@@ -98577,12 +98577,16 @@ starts 2026-05-27.
   Kind: fix.
   Source: ci-failure-2026-11-12-run-43198662697.
 
-- 📋 [ANTS-6753] **ci-prune-caches.sh pipes into grep -q under pipefail, the shape that misread release.sh's file list.**
+- ✅ [ANTS-6753] **ci-prune-caches.sh pipes into grep -q under pipefail, the shape that misread release.sh's file list.**
   tools/ci-prune-caches.sh: `cut -d' ' -f2- <<<"$listing" | grep -qxF -- "$keep"`
   under `set -uo pipefail`. Not observed failing. A false miss only skips
   one prune ("deleting nothing"). cut buffers its output, so it is rarer
   than the printf case in ANTS-6752. Fix: feed grep without a pipe whose
   status counts.
+  Shipped 2026-11-15: grep reads a here-string, so cut's SIGPIPE no
+  longer counts. Test CiCachePrune.Ants6753KeptKeyFoundInALongListing (a
+  100 KB listing, kept key first) was red 3 of 3 before the fix. The
+  only other piped grep -q in tools/ (e2e/run.sh) runs without pipefail.
   **Layman:** A CI clean-up script could occasionally skip its clean-up for no reason.
   Kind: fix.
   Source: ci-failure-2026-11-12-run-43198662697.

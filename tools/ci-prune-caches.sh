@@ -32,7 +32,10 @@ listing=$(gh api --paginate -X GET "repos/$repo/actions/caches" \
     --jq '.actions_caches[] | "\(.id) \(.key)"') \
     || warn "could not list caches for $prefix on $ref"
 
-if ! cut -d' ' -f2- <<<"$listing" | grep -qxF -- "$keep"; then
+# grep reads a here-string, not a pipe: `grep -q` quits at the first match,
+# and under pipefail the writer it leaves to SIGPIPE would read as a miss
+# (ANTS-6753).
+if ! grep -qxF -- "$keep" <<<"$(cut -d' ' -f2- <<<"$listing")"; then
     echo "ci-prune-caches: $keep is not saved; deleting nothing"
     exit 0
 fi

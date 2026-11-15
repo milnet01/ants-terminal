@@ -178,6 +178,20 @@ TEST(CiCachePrune, Inv3DeletesEveryOtherEntry) {
         << r.out;
 }
 
+// ANTS-6753 — the kept key is found in a listing longer than a pipe holds.
+// With the key first, `grep -q` quits at once and the writer feeding it dies
+// of SIGPIPE; under pipefail that read as "not saved". Deletes fail here so
+// the run stops at the first one instead of making thousands.
+TEST(CiCachePrune, Ants6753KeptKeyFoundInALongListing) {
+    std::string listing = "1 P-c\n";
+    for (int i = 2; listing.size() < std::size_t{100} * 1024; ++i)
+        listing += std::to_string(i) + " P-entry-" + std::to_string(i) + "\n";
+    const PruneRun r = runPrune(listing, "P-c", "delete");
+    EXPECT_EQ(r.exitCode, 0) << r.out;
+    EXPECT_FALSE(has(r.out, "deleting nothing")) << r.out;
+    EXPECT_TRUE(has(r.out, "could not delete")) << r.out;
+}
+
 // INV-4 — a listing or delete failure warns and exits 0.
 TEST(CiCachePrune, Inv4FailureWarnsAndDoesNotFail) {
     for (const char *fail : {"list", "delete"}) {
