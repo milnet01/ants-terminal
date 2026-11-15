@@ -16,6 +16,7 @@
 //   INV-12      script byte-equality with template after arg()
 //   INV-13      bad settings.json — no clobber
 //   INV-14      qputenv("ANTS_MCP_SOCKET", ...) after startMcpServer (grep)
+//   INV-15      settings.json merge backs off from a concurrent writer
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
@@ -38,6 +39,7 @@
 #include <QTemporaryDir>
 #include <QThread>
 
+#include "configbackup.h"  // ConfigWriteLock
 #include "mcporientation.h"
 
 namespace MO = ants::mcp_orientation;
@@ -567,6 +569,35 @@ TEST(McpOrientation_Inv13, WrongTypedHooksNoClobber) {
         EXPECT_FALSE(r.warning.isEmpty()) << body.constData();
         EXPECT_EQ(readFileBytes(sp), body) << "overwrote " << body.constData();
     }
+}
+
+// INV-15 (ANTS-6471) — a write Claude Code makes to settings.json between
+// Ants' read and its rename is not overwritten: Ants backs off.
+TEST(McpOrientation_Inv15, ConcurrentEditIsNotOverwritten) {
+    QTemporaryDir tmp;
+    const QString sp = settingsPathIn(tmp.path());
+    ASSERT_TRUE(writeFileBytes(sp, R"({"model":"opus"})"));
+    const QByteArray theirs = R"({"model":"sonnet","permissions":{}})";
+    MO::setBeforeCommitHookForTest([&] { writeFileBytes(sp, theirs); });
+    const auto r = MO::installAt(tmp.path());
+    MO::setBeforeCommitHookForTest({});
+    EXPECT_FALSE(r.ok);
+    EXPECT_FALSE(r.warning.isEmpty());
+    EXPECT_EQ(readFileBytes(sp), theirs) << "the other writer's edit was lost";
+}
+
+// INV-15 (ANTS-6471) — another Ants writer holding the settings.json lock
+// makes the merge refuse rather than write under it.
+TEST(McpOrientation_Inv15, HeldLockRefusesTheMerge) {
+    QTemporaryDir tmp;
+    const QString sp = settingsPathIn(tmp.path());
+    const QByteArray before = R"({"model":"opus"})";
+    ASSERT_TRUE(writeFileBytes(sp, before));
+    ConfigWriteLock held(sp);
+    ASSERT_TRUE(held.acquired());
+    const auto r = MO::installAt(tmp.path());
+    EXPECT_FALSE(r.ok);
+    EXPECT_EQ(readFileBytes(sp), before) << "merged while another writer held the lock";
 }
 
 // INV-6 / INV-7 / INV-14 — source-grep contracts.

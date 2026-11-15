@@ -2,6 +2,7 @@
 
 #include "mcporientation.h"
 #include "antsversion.h"
+#include "configbackup.h"  // ConfigWriteLock
 
 #include "secureio.h"
 
@@ -30,6 +31,9 @@ namespace {
 // + space), and an entry written then still names it. Both forms end in
 // the same `/hooks/mcp-orientation.sh` suffix. ANTS-1901.
 constexpr const char *kMarkerSubstring = "/hooks/mcp-orientation.sh";
+
+// ANTS-6471 — see setBeforeCommitHookForTest(). Never set outside a test.
+std::function<void()> g_beforeCommitHook;
 
 // INV-1 — marker prefix at the start of the second line of the script.
 // The version token that follows is parsed only to detect marker
@@ -279,7 +283,24 @@ MergeOutcome mergeSettings(const QString &settingsPath,
                            QString *warn) {
     QFile f(settingsPath);
     QJsonObject root;
-    bool fileExisted = f.exists();
+    const bool fileExisted = f.exists();
+    // Nothing to remove from a non-existent file.
+    if (!fileExisted && !add) return MergeOutcome::Kept;
+
+    // ANTS-6471 — one hold across read, merge and write, as the other Ants
+    // writers of this file take it (claudesetup.cpp, ANTS-5109). The lock
+    // file sits beside settings.json, so its directory must exist first.
+    QDir().mkpath(QFileInfo(settingsPath).absolutePath());
+    ConfigWriteLock writeLock(settingsPath, ConfigWriteLock::kGuiTimeoutMs);
+    if (!writeLock.acquired()) {
+        if (warn) {
+            *warn = QStringLiteral("another writer holds the lock on %1; "
+                                   "the next launch retries").arg(settingsPath);
+        }
+        return MergeOutcome::WriteFail;
+    }
+
+    QByteArray raw;
     if (fileExisted) {
         if (!f.open(QIODevice::ReadOnly)) {
             if (warn) {
@@ -288,7 +309,7 @@ MergeOutcome mergeSettings(const QString &settingsPath,
             }
             return MergeOutcome::ParseFail;
         }
-        const QByteArray raw = f.readAll();
+        raw = f.readAll();
         f.close();
         if (!raw.trimmed().isEmpty()) {
             QJsonParseError pe;
@@ -305,9 +326,6 @@ MergeOutcome mergeSettings(const QString &settingsPath,
             }
             root = doc.object();
         }
-    } else if (!add) {
-        // Nothing to remove from a non-existent file.
-        return MergeOutcome::Kept;
     }
 
     // ANTS-5104 — refuse a hooks value of the wrong type. toObject() and
@@ -392,6 +410,23 @@ MergeOutcome mergeSettings(const QString &settingsPath,
     const QByteArray out = QJsonDocument(root).toJson(QJsonDocument::Indented);
     if (saver.write(out) != out.size()) {
         if (warn) *warn = QStringLiteral("short write to %1").arg(settingsPath);
+        return MergeOutcome::WriteFail;
+    }
+    if (g_beforeCommitHook) g_beforeCommitHook();
+    // ANTS-6471 — Claude Code writes this file too and takes no lock. If it
+    // changed since our read, back off: renaming now would drop its edit.
+    // This shrinks the window to this check; it cannot close it.
+    const QFileInfo now(settingsPath);
+    QFile again(settingsPath);
+    const bool unchanged = fileExisted
+        ? (again.open(QIODevice::ReadOnly) && again.readAll() == raw)
+        : !now.exists();
+    if (!unchanged) {
+        saver.cancelWriting();
+        if (warn) {
+            *warn = QStringLiteral("%1 changed while Ants was merging; "
+                                   "the next launch retries").arg(settingsPath);
+        }
         return MergeOutcome::WriteFail;
     }
     if (!saver.commit()) {
@@ -544,6 +579,10 @@ Result uninstallAt(const QString &homeDir) {
     }
     r.ok = true;
     return r;
+}
+
+void setBeforeCommitHookForTest(std::function<void()> hook) {
+    g_beforeCommitHook = std::move(hook);
 }
 
 }  // namespace mcp_orientation

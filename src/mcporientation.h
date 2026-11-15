@@ -11,6 +11,8 @@
 
 #include <QString>
 
+#include <functional>
+
 namespace ants {
 namespace mcp_orientation {
 
@@ -70,6 +72,12 @@ Result uninstall();
 // which sets up a QTemporaryDir.
 Result installAt(const QString &homeDir);
 Result uninstallAt(const QString &homeDir);
+
+// ANTS-6471 — TEST ONLY. Runs after the settings.json merge has written its
+// temp file and before it checks the file is unchanged and renames: the
+// window in which Claude Code's own write can land. An empty function clears
+// it. Clear it in the same case that sets it.
+void setBeforeCommitHookForTest(std::function<void()> hook);
 
 }  // namespace mcp_orientation
 }  // namespace ants

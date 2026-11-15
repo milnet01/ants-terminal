@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Ants no longer overwrites a change Claude Code or another Ants writer makes to `~/.claude/settings.json` while Ants adds its start-up hook: it waits for the file lock and backs off if the file changed, retrying on the next launch.** (ANTS-6471)
+
 - **The undeclared-argument ledger keeps its records when the file exists but cannot be read: the append is refused instead of rewriting the file as one line.** (ANTS-6470)
 
 - **Two sessions finishing a run_trace at once both keep their row in the trace index and run-costs.tsv; a finish that waits 5 s is refused with `file_busy`** (ANTS-6469)

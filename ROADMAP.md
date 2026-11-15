@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6785 -->
+<!-- ants-roadmap-id-high-water: ANTS=6786 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93732,11 +93732,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6471] **mcporientation.cpp: `~/.claude/settings.json` is read, changed and rewritten with no lock against a live Claude Code writing the same file.**
+- ✅ [ANTS-6471] **mcporientation.cpp: `~/.claude/settings.json` is read, changed and rewritten with no lock against a live Claude Code writing the same file.**
   `src/mcporientation.cpp:249-381` — `~/.claude/settings.json` is read,
   changed and rewritten with no lock against a live Claude Code writing
   the same file.
   Ledger row 193, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: the merge holds ConfigWriteLock across read, merge and
+  write, and re-reads settings.json before its rename, backing off if it
+  changed (Claude Code takes no lock, so this narrows the window rather
+  than closing it). ANTS-1897 spec INV-15.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
@@ -94084,6 +94088,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   **Layman:** Two history files could be wiped down to one entry if they ever became unreadable.
   Kind: fix.
   Source: ANTS-6470 sibling, 2026-11-15.
+  Lanes: mcp-infra.
+
+- 📋 [ANTS-6786] **The ANTS-1897 spec cites code by symbol instead of stale line numbers, and keeps its amendment history out of the rules.**
+  check-doc on docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md
+  (2026-11-15): six line citations into src/mainwindow.cpp and
+  src/claudeintegration.cpp name lines past each file's end; five
+  "Amended ..." passages and the ANTS-5730 amendment section are history
+  inside the rules. Cite symbols; move the history to
+  docs/reviews/ANTS-1897-sessionstart-loop-log.md or a history file.
+  **Layman:** One design document points at code lines that have since moved, and mixes its edit history into its rules.
+  Kind: doc-fix.
+  Source: check-doc 2026-11-15 (ANTS-6471 amendment).
   Lanes: mcp-infra.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
