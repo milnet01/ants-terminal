@@ -11,6 +11,8 @@
 #include <QStringList>
 #include <QVector>
 
+#include <functional>
+
 namespace ApplyEdits {
 
 // Outcome of one old→new edit against in-memory `contents`.
@@ -118,5 +120,11 @@ struct LineShift {
     int lineDelta = 0;
 };
 LineShift lineShiftBetween(const QString &before, const QString &after);
+
+// ANTS-6467 — test only. cmdApplyEdits calls beforeWriteHookForTest() with
+// a file's path just before it re-reads and writes that file, so a test can
+// edit the file in that window. Never set outside a test.
+void setBeforeWriteHookForTest(std::function<void(const QString &)> hook);
+void beforeWriteHookForTest(const QString &path);
 
 }  // namespace ApplyEdits

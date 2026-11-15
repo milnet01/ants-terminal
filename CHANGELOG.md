@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **apply_edits leaves a file alone when another writer changed it after the read, and reports its edits as skipped with `concurrent_edit`** (ANTS-6467)
+
 - **Two sessions adding roadmap items at the same moment both succeed with their own ids, and a same-headline duplicate is still refused as duplicate_item** (ANTS-6466)
 
 - **A new roadmap item follows how most of the project's ids are written, so one old zero-padded id no longer gives every new item a leading zero** (ANTS-6780)

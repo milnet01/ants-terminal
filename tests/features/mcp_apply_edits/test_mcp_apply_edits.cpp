@@ -1146,3 +1146,31 @@ TEST(McpApplyEdits, Ants5155NonBooleanFlagRefuses) {
     EXPECT_EQ(slurp(dir.path() + QStringLiteral("/first.txt")),
               QStringLiteral("one\ntwo\n"));
 }
+
+// ANTS-6467 — an edit made to a file between apply_edits' read and its
+// write survives: the file is skipped with `concurrent_edit`, not overwritten.
+TEST(McpApplyEdits, Ants6467ConcurrentEditIsNotOverwritten) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir);
+    ASSERT_FALSE(p.isEmpty());
+    ApplyEdits::setBeforeWriteHookForTest([&p](const QString &) {
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("another session\n");
+    });
+    QJsonObject e;
+    e[QStringLiteral("path")] = QStringLiteral("doc.txt");
+    e[QStringLiteral("old")]  = QStringLiteral("beta");
+    e[QStringLiteral("new")]  = QStringLiteral("BETA");
+    const QJsonObject env = runEdit(dir.path(), e);
+    ApplyEdits::setBeforeWriteHookForTest({});
+
+    EXPECT_EQ(slurp(p), QStringLiteral("another session\n"))
+        << "the other session's edit was overwritten";
+    EXPECT_EQ(env.value("edits_applied").toInt(), 0);
+    ASSERT_EQ(env.value("skipped").toArray().size(), 1);
+    EXPECT_EQ(env.value("skipped").toArray().at(0).toObject()
+                  .value("reason").toString().toStdString(),
+              "concurrent_edit");
+}

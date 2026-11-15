@@ -93620,12 +93620,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Medium).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6467] **apply_edits: has no check for a concurrent edit between the read (`:3328`) and `commit` (`:3404`).**
+- ✅ [ANTS-6467] **apply_edits: has no check for a concurrent edit between the read (`:3328`) and `commit` (`:3404`).**
   `apply_edits` — has no check for a concurrent edit between the read
   (`:3328`) and `commit` (`:3404`). `mutation_probe` has one (RC-33). An
   edit made in that window is overwritten.
   Quote: `:3328`
   Ledger row 129, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: apply_edits re-reads each file just before its write;
+  changed bytes skip every edit on it with `concurrent_edit` (ANTS-2022
+  INV-17). Narrows the window to the re-read and the commit; nothing
+  locks a file against other writers. Test:
+  McpApplyEdits.Ants6467ConcurrentEditIsNotOverwritten, red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).

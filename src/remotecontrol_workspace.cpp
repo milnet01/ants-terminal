@@ -3709,6 +3709,7 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         QString resolved, rawPath, contents;
         int replacements = 0;
         QVector<int> appliedIdx;
+        QByteArray readBytes;   // ANTS-6467 — the file as it was read
     };
     QVector<PendingWrite> pending;
     auto writeFile = [&](const PendingWrite &w) {
@@ -3718,7 +3719,19 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
         // (ANTS-2227) leaves the disk untouched; its tallies are the real ones
         // because every edit was already resolved against the contents.
         bool wrote = dryRun;
+        // ANTS-6467 — re-read just before the write. Bytes other than those
+        // the edits were applied to mean another writer changed the file in
+        // between; writing would destroy that change, so the file is skipped.
+        // This narrows the window to the re-read and the commit; it cannot
+        // close it, since nothing locks a file against other writers.
+        bool concurrent = false;
         if (!dryRun) {
+            ApplyEdits::beforeWriteHookForTest(w.resolved);
+            QFile now(w.resolved);
+            concurrent = !now.open(QIODevice::ReadOnly) ||
+                         now.readAll() != w.readBytes;
+        }
+        if (!dryRun && !concurrent) {
             QSaveFile sf(w.resolved);
             if (sf.open(QIODevice::WriteOnly)) {
                 const QByteArray bytes = w.contents.toUtf8();
@@ -3735,7 +3748,9 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             editsApplied += w.appliedIdx.size();
         } else {
             for (int k : w.appliedIdx) {
-                addSkip(es[k].index, w.rawPath, QStringLiteral("commit_failed"));
+                addSkip(es[k].index, w.rawPath,
+                        concurrent ? QStringLiteral("concurrent_edit")
+                                   : QStringLiteral("commit_failed"));
                 perEdit[es[k].index] = -1;
             }
         }
@@ -3769,7 +3784,8 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             for (int k : group) addSkip(es[k].index, rawPath, QStringLiteral("not_found"));
             continue;
         }
-        QString working = QString::fromUtf8(in.readAll());
+        const QByteArray readBytes = in.readAll();   // ANTS-6467
+        QString working = QString::fromUtf8(readBytes);
         in.close();
 
         int fileReplacements = 0;
@@ -3840,7 +3856,8 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             }
         }
         if (appliedIdx.isEmpty()) continue;  // nothing applied → don't touch
-        const PendingWrite w{resolved, rawPath, working, fileReplacements, appliedIdx};
+        const PendingWrite w{resolved, rawPath, working, fileReplacements,
+                             appliedIdx, readBytes};
         if (allOrNothing) pending.push_back(w);
         else              writeFile(w);
     }

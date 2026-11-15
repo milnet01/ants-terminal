@@ -9,6 +9,8 @@
 
 #include <QStringList>
 
+#include <utility>
+
 namespace ApplyEdits {
 
 namespace {
@@ -294,6 +296,19 @@ LineShift lineShiftBetween(const QString &before, const QString &after) {
     s.lineDelta = int(after.count(QLatin1Char('\n'))
                       - before.count(QLatin1Char('\n')));
     return s;
+}
+
+namespace {
+std::function<void(const QString &)> g_beforeWriteHook;   // ANTS-6467
+}  // namespace
+
+void setBeforeWriteHookForTest(std::function<void(const QString &)> hook) {
+    g_beforeWriteHook = std::move(hook);
+}
+
+void beforeWriteHookForTest(const QString &path) {
+    if (const auto hook = g_beforeWriteHook)   // a copy: the hook may clear itself
+        hook(path);
 }
 
 }  // namespace ApplyEdits

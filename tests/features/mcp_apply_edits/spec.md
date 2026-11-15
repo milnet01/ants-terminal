@@ -64,3 +64,10 @@ non-boolean value refuses `bad_args`. *Tests:*
 `McpApplyEdits.Ants5155AllOrNothingRefusesAndWritesNothing`,
 `…AllOrNothingWritesAWholeBatch`, `…DryRunPreviewsTheRefusal`,
 `…NonBooleanFlagRefuses`.
+
+## ANTS-6467 — a concurrent edit is not overwritten
+
+Just before writing a file, `apply_edits` reads it again. If its bytes
+changed since the first read, the file is not written and each of its
+edits skips `concurrent_edit` (ANTS-2022 INV-17). *Test:*
+`McpApplyEdits.Ants6467ConcurrentEditIsNotOverwritten`.

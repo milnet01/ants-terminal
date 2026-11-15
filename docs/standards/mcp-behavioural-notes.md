@@ -632,7 +632,8 @@ which heading you expect it under.
 - **`apply_edits`** — applies N `{path, old, new}` edits across M project
   files in one atomic-per-file call (pure `ApplyEdits::applyToContent` +
   `QSaveFile` + `fsyncParentDir`); per-edit `skipped[]` (not_found /
-  ambiguous / too_large / commit_failed); fail-closed `bad_path` on root
+  ambiguous / too_large / commit_failed / concurrent_edit, the last when
+  the file changed between the read and the write, ANTS-6467); fail-closed `bad_path` on root
   escape; caller_cwd-Required (ANTS-2022). **Near miss on `not_found`
   (ANTS-4418):** when the file's text differs from `old` only in spacing, the
   skip row also carries `candidates:[{line,text}]`, `near_miss_line` and a
