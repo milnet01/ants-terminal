@@ -93920,8 +93920,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: in-session-2026-11-08.
   Lanes: roadmap-store, mcp.
 
-- 📋 [ANTS-6714] **The roadmap export fails whenever the claude-config clone is merely behind, not diverged.**
+- ✅ [ANTS-6714] **The roadmap export fails whenever the claude-config clone is merely behind, not diverged.**
   2026-11-08: ~/.claude was one commit behind origin/main (1dce267) and\nroadmap-export-publish.sh exited 1: "upstream origin/main has commits\nHEAD lacks". ANTS-3794 refuses to merge so that two diverged stores\nsurface. A clone that is only behind has not diverged; a fast-forward\n(git merge --ff-only, after checking the work tree is clean) is safe\nand keeps that guarantee. With the export now daily, this will recur\nwhenever the clone is pushed from elsewhere.
+  Shipped 2026-11-15: a clone only behind by commits outside
+  roadmap-export/ is fast-forwarded (git merge --ff-only; git refuses
+  one over a local change). Divergence, or an upstream commit touching
+  roadmap-export/, still stops. Spec ANTS-3794 step 3 and INV-8 amended;
+  test seen red first.
   **Layman:** The nightly roadmap backup no longer fails just because the backup folder is a little out of date.
   Kind: fix.
   Source: in-session-2026-11-08.

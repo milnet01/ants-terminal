@@ -6,9 +6,10 @@
 #
 # Writes <repo>/roadmap-export/<export_slug>.jsonl through
 # `ants-terminal --export-roadmaps`, commits only those files, and pushes.
-# It never merges or rebases: when the upstream has a commit HEAD lacks, two
-# stores (or two writers) have diverged, and that must surface rather than be
-# folded in (roadmap-data-model.md § 9).
+# It never merges or rebases: when HEAD has a commit the upstream lacks, or
+# the upstream has one touching roadmap-export/, two stores (or two writers)
+# have diverged, and that must surface rather than be folded in
+# (roadmap-data-model.md § 9). A clone merely behind is fast-forwarded.
 #
 # Exit codes: 0 done (including "nothing to commit"), 1 failed, 3 another run
 # holds the lock. Every failure writes the `export` backup record (§ 2.4) and
@@ -56,12 +57,20 @@ for marker in MERGE_HEAD rebase-merge rebase-apply CHERRY_PICK_HEAD; do
     [ -e "$gitdir/$marker" ] && fail "$REPO has a $marker in progress"
 done
 
-# Step 3 — refuse to publish over a diverged upstream.
+# Step 3 — refuse to publish over a diverged upstream. A clone only behind,
+# by commits that leave roadmap-export/ alone, has no second store in it:
+# fast-forward it (ANTS-6714). git refuses one that would overwrite a local
+# change, and that refusal is a failure here.
 git -C "$REPO" fetch --quiet "${upstream%%/*}" || fail "git fetch ${upstream%%/*} failed"
 behind=$(git -C "$REPO" rev-list --abbrev-commit HEAD.."$upstream" | tr '\n' ' ')
 if [ -n "$behind" ]; then
     touched=$(git -C "$REPO" rev-list --abbrev-commit HEAD.."$upstream" -- roadmap-export/ | tr '\n' ' ')
-    fail "upstream $upstream has commits HEAD lacks (${behind% }); touching roadmap-export/: ${touched:-none}. Not merging."
+    if [ -z "$touched" ] && git -C "$REPO" merge-base --is-ancestor HEAD "$upstream"; then
+        git -C "$REPO" merge --quiet --ff-only "$upstream" ||
+            fail "fast-forward to $upstream (${behind% }) failed; a local change may be in its way"
+    else
+        fail "upstream $upstream has commits HEAD lacks (${behind% }); touching roadmap-export/: ${touched:-none}. Not merging."
+    fi
 fi
 
 # Step 4 — export.

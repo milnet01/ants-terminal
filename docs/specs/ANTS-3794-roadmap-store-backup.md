@@ -120,10 +120,14 @@ Steps, stopping at the first failure:
    no record and touch no repository.
 2. Check `<repo>` is a git work tree with a current branch that has an
    upstream, and no merge, rebase or cherry-pick in progress.
-3. `git fetch` the upstream's remote. **If the upstream has any commit
-   `HEAD` lacks, stop.** The error lists those commits and says whether
-   any touch `roadmap-export/`. The script never merges, rebases or
-   pushes in that state. This is the divergence § 9 requires to surface.
+3. `git fetch` the upstream's remote. **If `HEAD` has a commit the
+   upstream lacks, or the upstream has one `HEAD` lacks that touches
+   `roadmap-export/`, stop.** The error lists the upstream's commits and
+   says whether any touch `roadmap-export/`. The script never merges,
+   rebases or pushes in that state. This is the divergence § 9 requires
+   to surface. A clone only behind, by commits outside `roadmap-export/`,
+   holds no second store: `git merge --ff-only` brings it level, and a
+   refused fast-forward is a failure (ANTS-6714).
 4. Run the binary (`$ANTS_ROADMAP_EXPORT_BIN`, default
    `${XDG_DATA_HOME:-$HOME/.local/share}/ants-terminal/bin/ants-terminal`)
    with `--export-roadmaps <repo>/roadmap-export`. A non-zero exit is a
@@ -316,9 +320,11 @@ timer that is disabled or lost.
   the whole directory. *Test:* `tests/features/roadmap_export_publish`, a
   clone with a staged and an unstaged unrelated edit, and a stub binary
   that also leaves a `.jsonl.lock` file.
-- **INV-8** — when the upstream has a commit `HEAD` lacks, the script
-  exits non-zero, runs no export, and creates no commit and no push.
-  Breaks if it pulls, merges or rebases. *Test:*
+- **INV-8** — when `HEAD` and the upstream have diverged, or the
+  upstream has a commit `HEAD` lacks that touches `roadmap-export/`, the
+  script exits non-zero, runs no export, and creates no commit and no
+  push. A clone only behind otherwise is fast-forwarded and published.
+  Breaks if it merges, rebases, or fast-forwards over an export commit. *Test:*
   `tests/features/roadmap_export_publish`, a second clone pushes first.
 - **INV-9** — every failure leaves `error` non-empty and `success`
   unchanged; every success, including "nothing to commit", empties `error`
@@ -433,10 +439,4 @@ before its fix, per the project convention.
 
 ## Cold-eyes loop log
 
-| Loop | Date | Lanes | Q1 | Q2 | Q3 | Q4 | Outcome |
-|---|---|---|---|---|---|---|---|
-| 1 | 2026-09-19 | 3, cold, identical shared packet | 1 | 0 | 1 | 2 | Verified 4, fixed 4, dismissed 1. Q1 (found building the packet): the publish step staged all of roadmap-export/, which would commit the .lock files ConfigWriteLock leaves beside each export; it now stages *.jsonl only (checked in a throwaway repo). Q4, all three lanes: INV-3 and INV-4 tested exit codes from main(), which no test bundle links; the steps now live in RoadmapExport::runExportCommand(storePath, dir, out). Q3: the claude-config allowlist line would have exposed the lock files to any git add -A; replaced by three lines that track *.jsonl only (checked). Q4: the publish shell test needs git, flock and sqlite3; it now exits 77 under SKIP_RETURN_CODE, so it stays out of ci_workflow_deps' required set. Dismissed: git's glob crossing / (nothing writes subdirectories). Four open questions resolved clean: no schema upgrade beyond the running instance, exit 3 is not a failure, library placement is local, export_slug is NOT NULL. |
-| 2 | 2026-09-19 | 3, cold, identical shared packet | 1 | 1 | 2 | 0 | Verified 4, fixed 4, dismissed 2. Cap reached (2 for a spec): shipped. Q1 (found resolving two lanes' open question on hooks): the commit subject 'roadmap-export: ...' fails claude-config's commit-msg hook (exit 1), so every weekly run would fail; now 'chore: weekly roadmap export (<date>)' (exit 0). Q2: the lock-held exit 3 contradicted 'every failure records and notifies'; now stated as not a failure. Q3: all three record keys are always written, and an empty value reads as absent. Q3: the snapshot timer is named (ants-roadmap-backup.timer), and the hint names each job's timer. Dismissed: an ignored roadmap-export/ making 'nothing to commit' read as success (refuted: git add exits 128 'did not match any files'); the 4 MiB figure under Access::Bulk (true, builds nothing different). Resolved clean: the newer-schema refusal is in createSchema(); cross-project rows are ANTS-5244's. Calm cap: 1 of 4 final-loop findings anchored on text this run wrote (§2.3 step 5). Gated span 977b0b69 is the whole new spec, so all 8 verified findings fall inside it. |
-| 2-impl | 2026-09-19 | none (implementation fold-back; no reviewer dispatched) | n/a | n/a | n/a | n/a | Implementation found one cross-doc line wrong: mcp-behavioural-notes.md does not document session_orient's optional blocks, and neither does any other document for feedback_pending or mail_pending, so no note was added and § 7 now says so. Also met at build time, contract unchanged: the ants-terminal target now links ants_roadmapstore_lib directly, since main.cpp calls runExportCommand(). Records what was built, so CLAUDE.md rule 14 does not re-arm the gate. |
-| 3 | 2026-10-12 | 2, cold, identical shared packet via neutral-lane (backup lib, snapshot script, roadmapbackuphealth.cpp, the INV-12 test, ANTS-3855 § 2.4's snapshot rungs); both lanes held every question | 0 | 0 | 1 | 0 | First loop of a new run gating ANTS-5621's `store=` amendment (commit ab7eee88). Verified 1, fixed 1, dismissed 1. Q3 (both lanes): "empty reads as absent" was stated for `assess()` alone, so an empty `store=` left by a failed first post-upgrade run could be read as a mismatch by `snapshotDest()`; every reader now reads empty as absent. Dismissed, out of radius and not material: line 170's "attempt is set on every run that got past the lock" is false for the snapshot script, which records failures before the lock too; no reader uses `attempt` beyond its presence. Lanes reported no git snapshot. |
-| 4 (cap) | 2026-10-12 | 2, cold, packet and scrubbed copy rebuilt from disk after loop 3; both lanes held every question | 0 | 0 | 0 | 1 | Verified 1, fixed 1, dismissed 0. Cap reached (2 for a spec): ships. Q4 (lane b): INV-13's failing run reused the successful run's `XDG_DATA_HOME`, so a writer that rewrote `store=` on failure would still pass; the failing run now uses a different `XDG_DATA_HOME` holding no store. With ANTS-3855 loop 13, `store=` now has a stated form, the store directory's canonical path plus its file name. Not run: lane a's measurement request on § 2.3 step 5's `git commit -- 'roadmap-export/*.jsonl'`, a shipped clause outside this amendment. Resolved clean: `defaultPath()` follows `XDG_DATA_HOME` as the shell does. This loop's fix is read by no lane. Calm cap: 0 of 1 final-loop findings anchor on loop 3's fix text. Whole-run span share: 1 of 2 in commit ab7eee88's changed lines. |
+Rows live in [`docs/reviews/ANTS-3794-roadmap-store-backup-loop-log.md`](../reviews/ANTS-3794-roadmap-store-backup-loop-log.md).

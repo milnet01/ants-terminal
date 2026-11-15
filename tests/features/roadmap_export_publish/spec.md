@@ -19,8 +19,11 @@ or `sqlite3` is missing. That skip path is why those tools are not in
 - **INV-7** — the publish commit holds only `roadmap-export/*.jsonl`. A
   staged and an unstaged unrelated change survive untouched, and the
   `.jsonl.lock` file the stub leaves stays untracked.
-- **INV-8** — when the upstream has a commit `HEAD` lacks, the script fails,
-  never runs the export, and makes no commit and no push.
+- **INV-8** — when `HEAD` and the upstream have diverged, or the upstream
+  has a commit `HEAD` lacks that touches `roadmap-export/`, the script fails,
+  never runs the export, and makes no commit and no push. A clone only
+  behind otherwise is fast-forwarded, keeping a staged change, and published
+  (ANTS-6714).
 - **INV-9** — a failure leaves `error` set and `success` unchanged; a success,
   including "nothing to commit", empties `error` and advances `success`.
 - **INV-10** — with the lock held, the script exits 3 and changes neither the

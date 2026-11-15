@@ -91,19 +91,47 @@ check "INV-9 failure notifies" test -s "$T/notified"
 check "INV-9 failure makes no commit" test "$(git -C "$T/a" rev-parse HEAD)" = "$head"
 git -C "$T/a" checkout -q -- roadmap-export/alpha.jsonl
 
-# --- INV-8 (diverged upstream) ---
+# --- INV-8 (ANTS-6714: a clone only behind by commits outside the export) ---
 git clone -q "$T/remote.git" "$T/b" 2>/dev/null
 echo other > "$T/b/elsewhere.txt"
 git -C "$T/b" add elsewhere.txt && git -C "$T/b" commit -qm elsewhere && git -C "$T/b" push -q origin main
+elsewhere=$(git -C "$T/b" rev-parse HEAD)
+rm -f "$T/stub-ran"
+"$PUBLISH" "$T/a" >"$T/inv8.log" 2>&1
+check "INV-8 behind-only clone publishes" test $? -eq 0
+check "INV-8 behind-only clone fast-forwards" git -C "$T/a" merge-base --is-ancestor "$elsewhere" HEAD
+check "INV-8 behind-only clone pushes" \
+    test "$(git -C "$T/a" rev-parse HEAD)" = "$(git -C "$T/remote.git" rev-parse main)"
+check "INV-8 fast-forward keeps the staged change" \
+    test "$(git -C "$T/a" status --porcelain -- other.txt)" = "M  other.txt"
+git -C "$T/b" pull -q --ff-only 2>/dev/null
+
+# --- INV-8 (another store wrote the export) ---
+mkdir -p "$T/b/roadmap-export" && echo '{"n":"b"}' > "$T/b/roadmap-export/alpha.jsonl"
+git -C "$T/b" add roadmap-export && git -C "$T/b" commit -qm "b export" && git -C "$T/b" push -q origin main
 rm -f "$T/stub-ran"
 head=$(git -C "$T/a" rev-parse HEAD)
 remote=$(git -C "$T/remote.git" rev-parse main)
 "$PUBLISH" "$T/a" >"$T/inv8.log" 2>&1
-check "INV-8 diverged upstream fails" test $? -ne 0
+check "INV-8 upstream export commit fails" test $? -ne 0
 check "INV-8 export never ran" test ! -e "$T/stub-ran"
 check "INV-8 no commit" test "$(git -C "$T/a" rev-parse HEAD)" = "$head"
 check "INV-8 no push" test "$(git -C "$T/remote.git" rev-parse main)" = "$remote"
 check "INV-8 error names the divergence" grep -q "Not merging" "$REC"
+git -C "$T/a" checkout -q -- roadmap-export/alpha.jsonl 2>/dev/null
+
+# --- INV-8 (diverged: each side holds a commit the other lacks) ---
+git -C "$T/a" fetch -q origin && git -C "$T/a" merge -q --ff-only origin/main
+echo mine > "$T/a/mine.txt" && git -C "$T/a" add mine.txt && git -C "$T/a" commit -qm mine -- mine.txt
+echo theirs > "$T/b/theirs.txt"
+git -C "$T/b" add theirs.txt && git -C "$T/b" commit -qm theirs && git -C "$T/b" push -q origin main
+rm -f "$T/stub-ran"
+head=$(git -C "$T/a" rev-parse HEAD)
+"$PUBLISH" "$T/a" >"$T/inv8.log" 2>&1
+check "INV-8 diverged clone fails" test $? -ne 0
+check "INV-8 diverged clone: no export, no commit" \
+    test ! -e "$T/stub-ran" -a "$(git -C "$T/a" rev-parse HEAD)" = "$head"
+git -C "$T/a" reset -q --hard origin/main
 
 # --- INV-10 (lock held) ---
 cp "$REC" "$T/rec.before"

@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The nightly roadmap export catches up a backup clone that is only behind, instead of failing; a clone holding another store's export still stops** (ANTS-6714)
+
 - **ci_report matches a job named by matrix values, such as `${{ matrix.name }}`, to the legs its matrix expands it to** (ANTS-6700)
 
 - **ci_report says a CI slowdown is gradual when it grew over many runs, instead of blaming one commit.** (ANTS-6699)
