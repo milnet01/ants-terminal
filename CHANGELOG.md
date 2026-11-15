@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **split-motion-check --scrapes no longer flags a test window a code move did not cut: an untaken ternary arm, or text added after an open-ended window.** (ANTS-6423)
+
 - **token_usage counts the MCP frame's bytes correctly, and keeps a saved session's figures that an older build recorded wrongly.** (ANTS-6378)
 
 - **source_scrapes finds tests that name a source file after a build-set root macro, or by its bare name through a local helper.** (ANTS-6374)
