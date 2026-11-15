@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two sessions adding roadmap items at the same moment both succeed with their own ids, and a same-headline duplicate is still refused as duplicate_item** (ANTS-6466)
+
 - **A new roadmap item follows how most of the project's ids are written, so one old zero-padded id no longer gives every new item a leading zero** (ANTS-6780)
 
 - **Answering the "Let Ants pick the Claude model?" prompt saves quietly: an open Settings window stays open and no "Config reloaded" toast appears** (ANTS-6465)

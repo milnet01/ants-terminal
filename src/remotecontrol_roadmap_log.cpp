@@ -594,7 +594,71 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 return rlErr(QStringLiteral("body_shadowed"),
                     QStringLiteral("roadmap_log: %1").arg(shadowErr));
 
+            // ANTS-4426 — the advisory's records, taken from the STORE and not
+            // from the file. ANTS-3793 INV-2 makes the store's records equal
+            // the rendered file's; rcComputePossibleDuplicates reads only `id`
+            // and `headline`, both of which INV-2 covers. Read inside `mutate`
+            // before putItem(): after it, the new item would be reported as a
+            // duplicate of itself. A read that refuses drops the advisory
+            // rather than the append.
+            std::optional<QVector<RoadmapParse::BulletRecord>> preWriteBullets;
+            // ANTS-6466 — a refusal found inside the transaction, for the
+            // envelope; mutate() can return only a bool.
+            QString lateCode;
+            QString duplicateOf;
+            const bool force   = req.value(QStringLiteral("force")).toBool();
+            const bool hinted  = req.contains(QStringLiteral("id_hint"));
+
             const auto mutate = [&](QString *err) -> bool {
+                // ANTS-6466 — another session's append can land between the
+                // reads above and this transaction (BEGIN IMMEDIATE). So the
+                // end position, the counter id and the duplicate check are
+                // re-read here, where no other writer can move them.
+                if (replaceNarrationAt < 0) {
+                    const auto now = store.listElements(*sectionId, err);
+                    if (!now)
+                        return false;
+                    int endPos = -1;
+                    for (const RoadmapStore::ElementRow &e : *now)
+                        endPos = std::max(endPos, e.position);
+                    w.position = endPos + 1;
+                }
+                if (!useStablePrefix) {
+                    const qint64 highWater =
+                        rlStoreIdHighWater(store, projectId, prefix);
+                    if (allocated <= highWater) {
+                        if (hinted) {
+                            lateCode = QStringLiteral("id_taken");
+                            *err = QStringLiteral(
+                                "roadmap_log: id_hint %1 was taken by another "
+                                "write; the highest %2 id is now %3")
+                                .arg(allocated).arg(prefix).arg(highWater);
+                            return false;
+                        }
+                        allocated = highWater + 1;
+                        idStr = RoadmapStore::formatCounterId(
+                            prefix, allocated,
+                            store.counterIdWidth(projectId, prefix));
+                        w.id = idStr;
+                    }
+                }
+                RoadmapSource::ReadError dupWhy = RoadmapSource::ReadError::None;
+                preWriteBullets = RoadmapSource::bulletsFromStore(
+                    store, projectId, /*includeArchive=*/false, &dupWhy);
+                // ANTS-4487 § 4.5 — an exact duplicate refuses before the write.
+                if (preWriteBullets && !force) {
+                    const QString dupId =
+                        rcExactDuplicateId(*preWriteBullets, headline);
+                    if (!dupId.isEmpty()) {
+                        lateCode    = QStringLiteral("duplicate_item");
+                        duplicateOf = dupId;
+                        *err = QStringLiteral(
+                            "roadmap_log: the headline exactly matches %1; "
+                            "nothing was written. Pass force:true to file it "
+                            "anyway").arg(dupId);
+                        return false;
+                    }
+                }
                 // ANTS-5379 — UNIQUE (section_id, position) holds one row per
                 // position, so the narration goes before the item arrives.
                 if (replaceNarrationAt >= 0 &&
@@ -610,45 +674,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 return store.raiseIdHighWater(projectId, prefix, allocated, err);
             };
 
-            // ANTS-4426 — the advisory's records, taken from the STORE and not
-            // from the file. This was `storeText.full()` + parseBullets over
-            // the whole of ROADMAP.md, which is 3 MiB on this project and was
-            // the one consumer keeping ANTS-3863's saving off op:append.
-            //
-            // Still PRE-write, and the position is still the whole of it:
-            // `mutate` puts the new item inside commitAndRender(), so reading
-            // the store after it would find the new bullet and report it as a
-            // duplicate of itself — the same trap the file read had.
-            //
-            // ANTS-3793 INV-2 is what makes the swap invisible: the store's
-            // records equal the rendered file's record-for-record, and
-            // includeArchive=false is the membership ROADMAP.md itself carries.
-            // rcComputePossibleDuplicates reads only `id` and `headline`, both
-            // of which INV-2 covers.
-            //
-            // A read that refuses drops the advisory rather than the append.
-            // StoreFailed is moot — commitAndRender() is about to refuse on the
-            // same store — and TooLarge means a project over kItemCeiling, for
-            // which roadmap_query's own store path already refuses outright.
-            RoadmapSource::ReadError dupWhy = RoadmapSource::ReadError::None;
-            const auto preWriteBullets = RoadmapSource::bulletsFromStore(
-                store, projectId, /*includeArchive=*/false, &dupWhy);
-            // ANTS-4487 § 4.5 — an exact duplicate refuses before the write.
-            if (preWriteBullets && !req.value(QStringLiteral("force")).toBool()) {
-                const QString dupId = rcExactDuplicateId(*preWriteBullets, headline);
-                if (!dupId.isEmpty())
-                {
-                    QJsonObject e;
-                    e["ok"]           = false;
-                    e["code"]         = QStringLiteral("duplicate_item");
-                    e["error"]        = QStringLiteral(
-                        "roadmap_log: the headline exactly matches %1; nothing was "
-                        "written. Pass force:true to file it anyway").arg(dupId);
-                    e["duplicate_of"] = dupId;
-                    return QJsonDocument(e);
-                }
-            }
-
             RoadmapRender::Outcome outcome;
             QString writeErr;
             const auto r = RoadmapWrite::commitAndRender(
@@ -661,8 +686,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             // from genuine offenders. Empty on a real write, where it is real.
             if (rcRoadmapWriteRefused(
                     env, r, writeErr, outcome,
-                    dryRun ? QStringList{idStr} : QStringList{}))
+                    dryRun ? QStringList{idStr} : QStringList{})) {
+                // ANTS-6466 — applied after the mapper, which knows only the
+                // commitAndRender result (the ANTS-4577 pattern).
+                if (!lateCode.isEmpty()) {
+                    env[QStringLiteral("code")]  = lateCode;
+                    env[QStringLiteral("error")] = writeErr;
+                }
+                if (!duplicateOf.isEmpty())
+                    env[QStringLiteral("duplicate_of")] = duplicateOf;
                 return QJsonDocument(env);
+            }
 
             env[QStringLiteral("ok")]   = true;
             // ANTS-4634 — a preview reports `would_be_id`, never `id`, for the

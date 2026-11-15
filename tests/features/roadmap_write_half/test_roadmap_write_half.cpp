@@ -19,6 +19,7 @@
 #include "roadmapmigrateload.h"
 #include "roadmapparse.h"
 #include "roadmapstore.h"
+#include "roadmapwrite.h"
 
 #include <gtest/gtest.h>
 
@@ -3883,6 +3884,66 @@ TEST(RoadmapWriteHalf, Ants6780OneStrayPaddedIdDoesNotPad) {
             .object();
     ASSERT_TRUE(plain.value(QStringLiteral("ok")).toBool()) << dump(plain);
     EXPECT_EQ(plain.value(QStringLiteral("id")).toString(), QStringLiteral("DEMO-8"));
+}
+
+// ANTS-6466 — a store append allocates its id and runs the duplicate check
+// inside the write transaction. Another session's append lands after this
+// call's reads and before its transaction (setBeforeBeginHookForTest): this
+// append takes the next id, and an exact-duplicate headline is refused.
+TEST(RoadmapWriteHalf, Ants6466AppendRechecksInsideTheTransaction) {
+    const auto dump = [](const QJsonObject &o) {
+        return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+    };
+    struct Leg { const char *name; const char *other; const char *mine; };
+    const Leg legs[] = {
+        {"id", "Other session.", "This session."},
+        {"duplicate", "Same headline.", "Same headline."},
+    };
+    for (const Leg &leg : legs) {
+        SCOPED_TRACE(leg.name);
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        qint64 projectId = 0;
+        const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+        ASSERT_FALSE(root.isEmpty());
+
+        RemoteControl rc(nullptr);
+        QString otherId;
+        RoadmapWrite::setBeforeBeginHookForTest([&rc, &root, &otherId, &leg, &dump] {
+            RoadmapWrite::setBeforeBeginHookForTest({});
+            const QJsonObject r = rc.cmdRoadmapLogAppendForTest(
+                appendReq(root, QString::fromUtf8(leg.other))).object();
+            EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+            otherId = r.value(QStringLiteral("id")).toString();
+        });
+        const QJsonObject mine = rc.cmdRoadmapLogAppendForTest(
+            appendReq(root, QString::fromUtf8(leg.mine))).object();
+        RoadmapWrite::setBeforeBeginHookForTest({});
+        ASSERT_EQ(otherId, QStringLiteral("DEMO-0008"));
+
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store);
+        const auto items = store->listItems(projectId);
+        ASSERT_TRUE(items.has_value());
+        int mineCount = 0;
+        for (const RoadmapStore::ItemRef &i : *items)
+            if (i.headline == QString::fromUtf8(leg.mine)) ++mineCount;
+
+        if (QByteArray(leg.name) == "id") {
+            EXPECT_TRUE(mine.value(QStringLiteral("ok")).toBool()) << dump(mine);
+            EXPECT_EQ(mine.value(QStringLiteral("id")).toString(),
+                      QStringLiteral("DEMO-0009"));
+            EXPECT_EQ(mineCount, 1);
+        } else {
+            EXPECT_FALSE(mine.value(QStringLiteral("ok")).toBool()) << dump(mine);
+            EXPECT_EQ(mine.value(QStringLiteral("code")).toString(),
+                      QStringLiteral("duplicate_item")) << dump(mine);
+            EXPECT_EQ(mine.value(QStringLiteral("duplicate_of")).toString(),
+                      QStringLiteral("DEMO-0008")) << dump(mine);
+            EXPECT_EQ(mineCount, 1) << "the duplicate was written";
+        }
+    }
 }
 
 // ANTS-6737 — § 3.9's unversioned archive survives a migration and a render:

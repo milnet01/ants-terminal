@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6780 -->
+<!-- ants-roadmap-id-high-water: ANTS=6781 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93601,7 +93601,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 05-mainwindow (Medium).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6466] **remotecontrol_roadmap_log.cpp: Store append allocates its id and runs the duplicate check outside the transaction.**
+- ✅ [ANTS-6466] **remotecontrol_roadmap_log.cpp: Store append allocates its id and runs the duplicate check outside the transaction.**
   `remotecontrol_roadmap_log.cpp:485-487` — Store append allocates its
   id and runs the duplicate check outside the transaction.
   Remedy (the reviewer's; check it before building): re-read
@@ -93610,6 +93610,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-10 (ANTS-6721): re-found by the 2026-11-09 paired review
   (L09-10, remotecontrol_roadmap_log.cpp:485-487). Store edits of an
   existing item have the same race: ANTS-6729.
+  2026-11-15: the end position, counter id (id_hint refuses id_taken)
+  and exact-duplicate check are read inside mutate, under BEGIN
+  IMMEDIATE; the duplicate read moved rather than repeated. Test:
+  RoadmapWriteHalf.Ants6466AppendRechecksInsideTheTransaction, red first
+  (store_failed on both legs). append_batch: ANTS-6781.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Medium).
@@ -93999,6 +94004,21 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: split from ANTS-6712, 2026-11-15.
   Lanes: roadmap-store.
+
+- 📋 [ANTS-6781] **roadmap_log append_batch allocates its ids and runs the duplicate check outside the write transaction.**
+  src/remotecontrol_roadmap_log_batch.cpp: the store path allocates ids
+  from rlStoreIdHighWater, takes end positions and runs
+  rcExactDuplicateId before commitAndRender; its mutate only calls
+  putItem. A concurrent append in that window fails the batch with a
+  UNIQUE constraint error. ANTS-6466 moved the same three reads inside
+  mutate for single append. Harder here: bodies cite {{id:N}}, so a
+  re-allocation must re-render those citations, or the batch refuses
+  and the caller retries. Test seam: RoadmapWrite::setBeforeBeginHookForTest
+  (RoadmapWriteHalf.Ants6466AppendRechecksInsideTheTransaction).
+  **Layman:** Two sessions adding several roadmap items at once can make one of them fail for no good reason.
+  Kind: review-fix.
+  Source: in-session-2026-11-15 (sibling of ANTS-6466).
+  Lanes: mcp-roadmap-query-log.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 
