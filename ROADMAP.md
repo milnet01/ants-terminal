@@ -105780,7 +105780,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L11-F8).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6213] **Clear GCC's -Wnull-dereference warning inlined from IndieReviewEngine::deriveComputedPartition.**
+- ✅ [ANTS-6213] **Clear GCC's -Wnull-dereference warning inlined from IndieReviewEngine::deriveComputedPartition.**
   Seen in the 2026-10-23 full build: qarraydatapointer.h warns of a
   potential null pointer dereference, inlined from
   indiereviewengine.cpp's single-directory split (`const Lane whole =
@@ -105788,6 +105788,10 @@ worked after these.
   rebuilt because roadmapparse.h changed. Earlier items of this class
   (ANTS-3358, ANTS-4544) were GCC false positives.
   Hot reload: none needed; no new running state.
+  Closed 2026-11-15: no longer reproduces. 56a6d6d8 (ANTS-6182,
+  2026-11-01) removed the `const Lane whole = out.first();` split. A
+  fresh compile of indiereviewengine.cpp with -O3 -Wnull-dereference
+  emits no warning.
   **Layman:** A compiler warning in the review partitioner says a list might be read through an empty pointer.
   Kind: fix.
   Source: build-warning-2026-10-23.
@@ -106029,7 +106033,7 @@ worked after these.
   Source: review-readability-2026-10-22 (L17-F5).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6229] **The model chip's dwell estimate caches its result, so a session that stops being mechanical keeps the halved penalty.**
+- ✅ [ANTS-6229] **The model chip's dwell estimate caches its result, so a session that stops being mechanical keeps the halved penalty.**
   From ANTS-6126. claudestatuswidgets.cpp repeats ModelAutoSwitch::
   conservatismDwellMultiplier's "mechanical session halves the penalty"
   rule on a cached value: filled while mechanical (1.5) it returns 1.5
@@ -106038,6 +106042,9 @@ worked after these.
   conservatismDwellMultiplier every time. Queued: a behaviour change
   that needs a red test first.
   Hot reload: none needed.
+  Shipped 2026-11-15. Test:
+  ModelAutoSwitchOutcomeFillinController.ConservatismCacheFollowsMechanicalFlag.
+  Needs a terminal relaunch to take effect (status-bar code).
   **Layman:** A timing estimate for model switching can stay wrong after the kind of work in a session changes.
   Kind: fix.
   Source: review-readability-2026-10-22 (L17-F6).

@@ -466,11 +466,17 @@ private:
     static constexpr qint64     kNearMissEmitFloorMs = 5'000;   // 5 s per project
 
     // ANTS-1940 — regret-driven conservatism cache. Reading + parsing the
-    // firing ledger every 2 s tick is wasteful, so the computed dwell
-    // multiplier is cached per project root with a TTL. Recomputed lazily on
-    // the first tick past the TTL. Process-local; same bound as the near-miss
-    // hashes above (~1 KiB for 10 projects).
-    QHash<QString, double>      m_conservatismMultByProject;
+    // firing ledger every 2 s tick is wasteful, so the ledger's three inputs
+    // are cached per project root with a TTL; the multiplier is derived from
+    // them on every tick, since isMechanical changes between ticks
+    // (ANTS-6229). Re-read lazily on the first tick past the TTL.
+    // Process-local; same bound as the near-miss hashes above.
+    struct ConservatismInputs {
+        int measured = 0;
+        int regret   = 0;
+        int floor    = 10;
+    };
+    QHash<QString, ConservatismInputs> m_conservatismInputsByProject;
     QHash<QString, qint64>      m_conservatismStampMsByProject;
     static constexpr qint64     kConservatismTtlMs = 60'000;    // 60 s per project
 
@@ -537,12 +543,15 @@ public:
                            qint64                           nowMs,
                            const QString                   &ledgerPathOverride = QString());
 
-    // ANTS-1940 — lazily recompute the per-project conservatism dwell
-    // multiplier at most once per kConservatismTtlMs (60 s). Reads the
-    // firing ledger; result cached in m_conservatismMultByProject.
+    // ANTS-1940 — the per-project conservatism dwell multiplier. Re-reads
+    // the firing ledger at most once per kConservatismTtlMs (60 s); the
+    // inputs are cached in m_conservatismInputsByProject.
     double conservatismMultiplierFor(const QString &projectRoot,
                                      qint64         nowMs,
                                      bool           isMechanical);
+private:
+    static ConservatismInputs readConservatismInputs(const QString &projectRoot);
+public:
 
     // ANTS-1854 — last emitted diagnostic-line signatures for the two
     // 2 s poll refreshers. The Claude debug lane wrote a bgtasks +

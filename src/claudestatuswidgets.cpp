@@ -2590,31 +2590,28 @@ QString shortenReason(const QString &reason) {
 
 }  // namespace
 
-// ANTS-1940 — conservatism multiplier, lazily refreshed every 60 s.
-// Reads the firing ledger (with a 30-day window) to get the current regret
-// picture. Result cached per project root; the ledger read only happens on
-// the first tick after the TTL expires, not on every 2 s tick.
+// ANTS-1940 — conservatism multiplier. The firing ledger (30-day window) is
+// re-read at most once per TTL per project root; the multiplier is derived
+// from the cached inputs on every tick, so isMechanical always counts.
 double ClaudeStatusBarController::conservatismMultiplierFor(
         const QString &projectRoot,
         qint64         nowMs,
         bool           isMechanical)
 {
-    // Check TTL.
-    if (m_conservatismStampMsByProject.contains(projectRoot)) {
-        const qint64 stamp = m_conservatismStampMsByProject.value(projectRoot);
-        if (nowMs - stamp < kConservatismTtlMs) {
-            // Cache still fresh; re-derive based on current isMechanical.
-            const double cached = m_conservatismMultByProject.value(projectRoot, 1.0);
-            // Re-apply isMechanical influence to cached multiplier if > 1.
-            if (cached > 1.0 && isMechanical) {
-                const double penalty = ModelAutoSwitch::kCalibrationDwellMult - 1.0;
-                return 1.0 + penalty * 0.5;
-            }
-            return cached;
-        }
+    const auto stamp = m_conservatismStampMsByProject.constFind(projectRoot);
+    if (stamp == m_conservatismStampMsByProject.constEnd()
+        || nowMs - *stamp >= kConservatismTtlMs) {
+        m_conservatismInputsByProject[projectRoot] = readConservatismInputs(projectRoot);
+        m_conservatismStampMsByProject[projectRoot] = nowMs;
     }
+    const ConservatismInputs in = m_conservatismInputsByProject.value(projectRoot);
+    return ModelAutoSwitch::conservatismDwellMultiplier(
+        in.measured, in.regret, in.floor, isMechanical);
+}
 
-    // TTL expired (or first call) — re-read the ledger.
+ClaudeStatusBarController::ConservatismInputs
+ClaudeStatusBarController::readConservatismInputs(const QString &projectRoot)
+{
     ModelSwitchLedger::StatsConfig sc;
     sc.scope     = QStringLiteral("project");
     sc.windowDays = ModelSwitchLedger::kDefaultStatsWindowDays;   // ANTS-1942 — shared default
@@ -2622,17 +2619,12 @@ double ClaudeStatusBarController::conservatismMultiplierFor(
     const QJsonObject env = ModelSwitchLedger::statsForScope(
         ModelSwitchLedger::defaultLedgerPath(), projectRoot, sc);
 
-    const int measured = env.value(QStringLiteral("measured_downgrades")).toInt(0);
-    const int floor    = env.value(QStringLiteral("headline_floor")).toInt(10);
-    const int regret   = static_cast<int>(std::lround(
+    ConservatismInputs in;
+    in.measured = env.value(QStringLiteral("measured_downgrades")).toInt(0);
+    in.floor    = env.value(QStringLiteral("headline_floor")).toInt(10);
+    in.regret   = static_cast<int>(std::lround(
         env.value(QStringLiteral("regret_rate")).toDouble(0.0)));
-
-    const double mult = ModelAutoSwitch::conservatismDwellMultiplier(
-        measured, regret, floor, isMechanical);
-
-    m_conservatismMultByProject[projectRoot]    = mult;
-    m_conservatismStampMsByProject[projectRoot] = nowMs;
-    return mult;
+    return in;
 }
 
 // ANTS-1894 — sole producer of near-miss records. Emits on signature change

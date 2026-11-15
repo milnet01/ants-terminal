@@ -17,8 +17,13 @@
 #include <QTemporaryFile>
 #include <QTextStream>
 
+#include <QDateTime>
+#include <QTemporaryDir>
+
 #include "claudestatuswidgets.h"
+#include "modelautoswitch.h"
 #include "modelswitchledger.h"
+#include "../../_support/xdg_guard.h"
 
 namespace {
 
@@ -144,4 +149,47 @@ TEST(ModelAutoSwitchOutcomeFillinController, OverrideCacheEmptyOnMissingLedger) 
 
     controller.seedOverrideCacheFromLedger(QStringLiteral("/no/such/ledger.jsonl"));
     EXPECT_EQ(controller.lastOverrideMsForProject(QStringLiteral("/tmp/x")), -1);
+}
+
+// ANTS-6229 — the conservatism cache keeps the ledger's inputs, not the
+// multiplier, so a session that stops being mechanical gets the full
+// penalty on the next tick. One regretted downgrade, below the floor, gives
+// regret 100 %: the mechanical multiplier is the halved penalty, the
+// non-mechanical one the full kCalibrationDwellMult.
+TEST(ModelAutoSwitchOutcomeFillinController, ConservatismCacheFollowsMechanicalFlag) {
+    QTemporaryDir cache;
+    ASSERT_TRUE(cache.isValid());
+    ants_test::XdgGuard env;
+    env.setEnv("XDG_CACHE_HOME", cache.path().toUtf8());
+
+    const QString project = QStringLiteral("/ants6229-project");
+    ModelSwitchLedger::Record r;
+    r.ts          = QDateTime::currentDateTimeUtc().toString(Qt::ISODate);
+    r.project     = project;
+    r.fromTier    = QStringLiteral("opus");
+    r.toTier      = QStringLiteral("haiku");
+    r.trigger     = QStringLiteral("auto");
+    r.scoreReason = QStringLiteral("test");
+    r.epoch       = ModelSwitchLedger::kSwitcherEpoch;
+    r.outcome.userOverrideWithin5    = true;
+    r.outcome.overrideUndidDowngrade = true;
+    r.outcome.pending                = false;
+    const QString ledger = ModelSwitchLedger::defaultLedgerPath();
+    ASSERT_TRUE(ledger.startsWith(cache.path())) << ledger.toStdString();
+    ASSERT_TRUE(ModelSwitchLedger::appendRecord(ledger, r));
+
+    QStatusBar bar;
+    ClaudeStatusBarController controller(&bar, nullptr);
+    const double full = ModelAutoSwitch::kCalibrationDwellMult;
+    const double halved = 1.0 + (full - 1.0) * 0.5;
+
+    // First tick fills the cache while the session is mechanical.
+    ASSERT_DOUBLE_EQ(controller.conservatismMultiplierFor(project, 0, true), halved)
+        << "test setup: the ledger did not give a calibrating high-regret picture";
+    // Next tick, inside the TTL, the session is no longer mechanical.
+    EXPECT_DOUBLE_EQ(controller.conservatismMultiplierFor(project, 2000, false), full)
+        << "ANTS-6229: a multiplier cached on a mechanical tick was returned "
+           "on a non-mechanical one";
+    // And back: the cached inputs give the halved penalty again.
+    EXPECT_DOUBLE_EQ(controller.conservatismMultiplierFor(project, 4000, true), halved);
 }
