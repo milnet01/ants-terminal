@@ -15,6 +15,10 @@ otherwise it removes the temp file and keeps the previous
 **INV-3 — the orphan sweep still finds the temp files.** The sweep of old temp
 files matches both the per-process names and the older fixed names.
 
+**INV-4 — a failed flush to disk is not renamed into place (ANTS-6472).**
+When the temp file's `fsync` or close fails, `writeFileAtomicOwnerOnly`
+returns false, removes the temp file and leaves the previous file as it was.
+
 ## Rationale
 
 The ANTS-5106 performance pass found that two copies of Ants shared
@@ -24,7 +28,8 @@ The ANTS-5106 performance pass found that two copies of Ants shared
 ## Test surface
 
 `test_session_save_guards.cpp` reads `src/sessionmanager.cpp` (located from the
-test's own path).
+test's own path). INV-4 runs `writeFileAtomicOwnerOnly` with a stand-in `fsync`
+(`g_fsyncTempForTest`) that fails.
 
 ## Regression history
 

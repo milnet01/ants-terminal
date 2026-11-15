@@ -101,7 +101,8 @@ inline bool fsyncParentDir(const QString &filePath) {
 // the previous `path` is unchanged, and the reason is logged and, when `why`
 // is given, stored there. `what` names the file in the log.
 //   - fsync before rename (0.6.28): without it a crash can leave a
-//     zero-length file after the rename.
+//     zero-length file after the rename. A failed fsync or close takes the
+//     false path (ANTS-6472).
 //   - std::rename, not QFile::rename (0.7.12, 0.7.52): QFile::rename will not
 //     replace an existing file, so every save after the first was lost.
 //   - chmod after rename: FAT/exFAT/SMB/NFS can drop the temp file's 0600.
@@ -110,6 +111,11 @@ inline bool fsyncParentDir(const QString &filePath) {
 // `tempPerms` is the ANTS-5151 policy for a temp file that cannot be made
 // owner-only: Refuse writes nothing, Warn logs and carries on.
 enum class TempPerms { Refuse, Warn };
+
+// ANTS-6472 — TEST ONLY. When set, stands in for ::fsync on the temp file in
+// writeFileAtomicOwnerOnly, so a test can make the flush to disk fail. Clear
+// it in the same case that sets it.
+inline int (*g_fsyncTempForTest)(int) = nullptr;
 
 [[nodiscard]] inline bool writeFileAtomicOwnerOnly(const QString &path,
                                                    const QString &tmpPath,
@@ -144,8 +150,20 @@ enum class TempPerms { Refuse, Warn };
         QFile::remove(tmpPath);
         return fail(QStringLiteral("write to %1 failed (%2)").arg(tmpPath, err));
     }
-    ::fsync(file.handle());
+    // ANTS-6472 — a failed fsync or close means the bytes may not be on
+    // disk; renaming would replace a good file with one that may not be.
+    const int syncRc = g_fsyncTempForTest ? g_fsyncTempForTest(file.handle())
+                                          : ::fsync(file.handle());
+    const int syncErr = errno;
+    file.unsetError();   // a Warn-policy setPermissions failure is not a close error
     file.close();
+    if (syncRc != 0 || file.error() != QFileDevice::NoError) {
+        QFile::remove(tmpPath);
+        return fail(syncRc != 0
+            ? QStringLiteral("fsync of %1 failed (%2)")
+                  .arg(tmpPath, QString::fromLocal8Bit(std::strerror(syncErr)))
+            : QStringLiteral("close of %1 failed (%2)").arg(tmpPath, file.errorString()));
+    }
     const int rc = std::rename(tmpPath.toLocal8Bit().constData(),
                                path.toLocal8Bit().constData());
     if (rc != 0) {

@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A settings or session save whose flush to disk fails now keeps the previous file, instead of replacing it with one that may not have reached the disk.** (ANTS-6472)
+
 - **Status-bar buttons (model, thinking level, Review Changes, Roadmap and the rest) show the full height of their text: the tails of letters such as p and g are no longer cut off, with no change to font size.** (ANTS-6787)
 
 - **Ants no longer overwrites a change Claude Code or another Ants writer makes to `~/.claude/settings.json` while Ants adds its start-up hook: it waits for the file lock and backs off if the file changed, retrying on the next launch.** (ANTS-6471)

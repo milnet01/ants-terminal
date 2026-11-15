@@ -93757,13 +93757,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 17-mcp-infra (Low).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6472] **secureio.h: the return value is ignored, and so are errors at close.**
+- ✅ [ANTS-6472] **secureio.h: the return value is ignored, and so are errors at close.**
   `secureio.h:147` — the return value is ignored, and so are errors at
   close. The code then renames the temp file over the target anyway.
   Quote: `::fsync(file.handle());`
   Remedy (the reviewer's; check it before building): if `fsync` returns
   non-zero, take the `fail()` path and remove the temp file.
   Ledger row 204, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: writeFileAtomicOwnerOnly takes the false path when the
+  temp file's fsync or close fails: temp removed, previous file kept
+  (session_save_guards INV-4).
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
