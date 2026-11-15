@@ -591,10 +591,8 @@ that is the whole edit:
    Where the reasoning must survive in the document, name a check rather than
    describe one. This is the argument for the edit being made now. Reasoning
    already in the document, dated or not, is pedigree, and goes where the
-   history-file sentence below sends it. **What this does NOT forbid is a dated record of what the rule
-   previously said** — "this read X until 2026-08-14" is § 2.3's *dated
-   historical* form, it is past tense, it carries its date, and it cannot go
-   stale. **Where the document names a history file — a record it keeps for
+   history-file sentence below sends it. **A dated record of what the rule
+   previously said is history too, and moves.** **Where the document names a history file — a record it keeps for
    rule pedigree, never its loop log, whose rows `review-contract` alone
    writes — the pedigree is written there and the rule keeps its
    instruction.** A document naming none gets one first —
@@ -1346,12 +1344,11 @@ The requirements this standard adds:
   spec's position is §2.9's, and a reviewed document with no such table puts
   the log last**. Back-filling destroys
   the audit trail, which is the only evidence the review was real.
-  **Where that section names a record, the rows are written there and the
-  section keeps the heading and a one-line pointer.** These records live
-  under `docs/reviews/`.
-  § 2.9 calls a loop log a record rather than content, and a document read in
-  full whenever it is consulted pays for that record on every read. The
-  heading stays because contents tables link to its anchor and a
+  **The rows are written to a record under `docs/reviews/`, never into the
+  document; the section keeps the heading and a one-line pointer.** A
+  document that still holds rows inline has them moved, verbatim, to its
+  record the next time it is edited. A document read in full pays for
+  inline rows on every read. The heading stays because contents tables link to its anchor and a
   required-section check needs it — `mandated-section` where the requirement
   is prose, `sections` in a spec, where it is `spec-format.md` § 3's
   machine-readable block. The `loop-log` tally check reads rows, so a
