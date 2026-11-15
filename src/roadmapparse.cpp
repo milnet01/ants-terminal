@@ -1234,9 +1234,44 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
         }
         return out;
     }();
+    // ANTS-6710 — rxBold's match, with its close moved past any bold span
+    // nested inside it. As in Markdown, a `**` run with whitespace (or nothing)
+    // before it and a non-space after it opens a span and cannot close one, so
+    // `**adds the **Theme:** line.**` is one headline, not "adds the". Where
+    // the nested opens never balance, rxBold's own close stands.
+    struct BoldSpan {
+        qsizetype start = -1, capStart = 0, capEnd = 0, end = 0;
+        bool hasMatch() const { return start >= 0; }
+        int capturedStart() const { return int(start); }
+        int capturedEnd() const { return int(end); }
+    };
+    const auto matchBold = [&maskedBody](qsizetype from) {
+        BoldSpan s;
+        const auto m = rxBold.match(maskedBody, from);
+        if (!m.hasMatch()) return s;
+        s = {m.capturedStart(), m.capturedStart(1), m.capturedEnd(1), m.capturedEnd()};
+        const auto isSpace = [&](qsizetype i) {
+            return i < 0 || i >= maskedBody.size() || maskedBody.at(i).isSpace();
+        };
+        int depth = 0;
+        for (qsizetype q = maskedBody.indexOf(QLatin1String("**"), s.capStart + 1); q >= 0;) {
+            qsizetype r = q;
+            while (r < maskedBody.size() && maskedBody.at(r) == QLatin1Char('*')) ++r;
+            if (isSpace(q - 1) && !isSpace(r)) {
+                ++depth;
+            } else if (depth > 0) {
+                --depth;
+            } else {
+                if (r - 2 > s.capStart) s = {s.start, s.capStart, r - 2, r};
+                break;
+            }
+            q = maskedBody.indexOf(QLatin1String("**"), r);
+        }
+        return s;
+    };
     // The capture, taken from the ORIGINAL at the mask's offsets.
-    const auto boldText = [&body](const QRegularExpressionMatch &m) {
-        return body.mid(m.capturedStart(1), m.capturedLength(1)).trimmed();
+    const auto boldText = [&body](const BoldSpan &m) {
+        return body.mid(m.capStart, m.capEnd - m.capStart).trimmed();
     };
 
     QString boldId;      // multi-prefix bold-ID token, e.g. "Sh4"
@@ -1452,7 +1487,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
             assignHeadline(rec, h, headLineEnd(body));  // ANTS-2075 / ANTS-1811
         }
     }
-    const auto boldMatch = rxBold.match(maskedBody);   // ANTS-4066
+    const auto boldMatch = matchBold(0);   // ANTS-4066, ANTS-6710
     // ANTS-2046 — a bold span only stands in as the headline when it is
     // HEAD-ANCHORED (the bullet text *starts* with it). A GFM task item
     // like `Ambient soundscapes (…) — **deferred to Phase 10.**` carries
@@ -1540,7 +1575,7 @@ void fillBulletRecord(BulletRecord &rec, const QString &head, const QString &bod
             // soft-wrapped bold headline — opens on the head line, closes on
             // the next — still qualifies.
             const int after = boldMatch.capturedEnd();
-            const auto m2 = rxBold.match(maskedBody, after);   // ANTS-4066
+            const auto m2 = matchBold(after);   // ANTS-4066, ANTS-6710
             if (m2.hasMatch() && m2.capturedStart() < headLineEnd(body)) {
                 h = boldText(m2);
                 consumedEnd = m2.capturedEnd();

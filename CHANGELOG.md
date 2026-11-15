@@ -438,6 +438,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_query reads a headline holding its own bold words, such as `**Theme:**`, whole** (ANTS-6710)
+
 - **The nightly roadmap export catches up a backup clone that is only behind, instead of failing; a clone holding another store's export still stops** (ANTS-6714)
 
 - **ci_report matches a job named by matrix values, such as `${{ matrix.name }}`, to the legs its matrix expands it to** (ANTS-6700)

@@ -93897,10 +93897,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-readability 2026-11-06, lane 21-claude-session-widgets-b (Info).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6710] **The roadmap render keeps bold text inside a headline on one line.**
+- ✅ [ANTS-6710] **The roadmap render keeps bold text inside a headline on one line.**
   A roadmap_log append on 2026-11-07 re-rendered ANTS-5522 ("adds the
   **Theme:** line") and ANTS-6046 ("(- **INV-N") by moving the inner **
   to the line end and wrapping, which breaks their bold.
+  Shipped 2026-11-15. The render's line-split no longer reproduced (both
+  headlines render on one line), but the parse that serves roadmap_query
+  from the store still cut each at its inner **. fillBulletRecord now
+  treats a ** with space before and a non-space after as a nested open,
+  as Markdown does. Test
+  RoadmapRender.Ants6710NestedBoldHeadlineRoundTrips seen red first; all
+  4,392 store items' queried headlines now equal the store's text.
   **Layman:** Roadmap headlines that contain bold words no longer get split and garbled when the file is rewritten.
   Kind: fix.
   Source: user report 2026-11-07.

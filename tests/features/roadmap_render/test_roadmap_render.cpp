@@ -713,6 +713,35 @@ TEST(RoadmapRender, Ants5362ItalicTailHeadlineRoundTrips) {
         << rec->bodyProse.toStdString();
 }
 
+// ANTS-6710 — a headline holding its own bold span reads back whole: a `**`
+// with a space before it and a non-space after opens a nested span, as in
+// Markdown, and cannot close the headline. The two headlines are the
+// reported ones; the third keeps the unbalanced case at today's answer.
+TEST(RoadmapRender, Ants6710NestedBoldHeadlineRoundTrips) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    for (const QString &headline :
+         {QStringLiteral("changelog_log op:\"release\" takes no theme, so every release adds the "
+                         "**Theme:** line by hand."),
+          QStringLiteral("spec_lint finds no invariants in a spec whose invariants are bold "
+                         "bullets (- **INV-N — title.**).")}) {
+        auto it = mkItem(f->projectId, QStringLiteral("ANTS-3"), headline, f->rootSection, 3);
+        it.body = QStringLiteral("Body with **bold** too.");
+        const QString text = RoadmapRender::bulletText(it);
+        const auto rec = RoadmapParse::parseAntsV1Bullet(text);
+        ASSERT_TRUE(rec.has_value()) << text.toStdString();
+        EXPECT_EQ(rec->headlineFull, headline) << text.toStdString();
+        EXPECT_FALSE(rec->bodyProse.contains(QLatin1String("by hand")) ||
+                     rec->bodyProse.contains(QLatin1String("title.")))
+            << rec->bodyProse.toStdString();
+    }
+    const auto open = RoadmapParse::parseAntsV1Bullet(
+        QStringLiteral("- 📋 [ANTS-4] **Starts **nowhere.\n  Body.\n"));
+    ASSERT_TRUE(open.has_value());
+    EXPECT_EQ(open->headlineFull, QStringLiteral("Starts"))
+        << "an opener no close balances falls back to the first close";
+}
+
 TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
     const QDir srcDir(QStringLiteral(ANTS_SRC_DIR));
     ASSERT_TRUE(srcDir.exists()) << srcDir.absolutePath().toStdString();
