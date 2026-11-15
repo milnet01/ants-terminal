@@ -448,6 +448,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The model-switch record keeps every window's entries when one window fills in outcomes** (ANTS-6477)
+  The rewrite re-reads the file under its lock and keeps lines another
+  Ants window added since.
+
 - **Claude Code setup leaves a CLAUDE.md, shell startup file or key file it cannot read untouched, and says so** (ANTS-6476)
   Adding the Ants note or shell integration stops with a message naming
     the file, and the file keeps its text.

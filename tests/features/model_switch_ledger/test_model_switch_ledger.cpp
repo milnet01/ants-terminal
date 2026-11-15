@@ -251,6 +251,29 @@ TEST(ModelSwitchLedger, OutcomeFillInLifecycle) {
     EXPECT_EQ(after[0].outcome.turnsOnToTier, 6);
 }
 
+// ANTS-6477 — a record another instance appends between the fill-in's read
+// and its rewrite survives the rewrite, and the fill-in still lands.
+TEST(ModelSwitchLedger, Ants6477RewriteKeepsAConcurrentAppend) {
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ledger.jsonl"));
+    ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","haiku",true,"fill")));
+    QList<L::Record> recs = L::readRecords(path);
+    ASSERT_EQ(recs.size(), 1);
+
+    ASSERT_TRUE(L::appendRecord(path, makeRecord("opus","sonnet",true,"other")));
+    recs[0].outcome.turnsOnToTier = 6;
+    recs[0].outcome.pending = false;
+    ASSERT_TRUE(L::writeRecords(path, recs));
+
+    const QList<L::Record> after = L::readRecords(path);
+    ASSERT_EQ(after.size(), 2) << "the other instance's record was lost";
+    EXPECT_EQ(after[0].sessionId, QStringLiteral("fill"));
+    EXPECT_FALSE(after[0].outcome.pending) << "the fill-in did not land";
+    EXPECT_EQ(after[0].outcome.turnsOnToTier, 6);
+    EXPECT_EQ(after[1].sessionId, QStringLiteral("other"));
+    EXPECT_TRUE(after[1].outcome.pending);
+}
+
 // --- §2.5 outcome fill-in: pure computeOutcome helper ---
 
 namespace {

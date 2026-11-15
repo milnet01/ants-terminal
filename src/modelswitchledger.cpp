@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
+#include <QHash>
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QJsonValue>
@@ -156,12 +157,32 @@ QList<Record> readRecords(const QString &path) {
 }
 
 bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capBytes) {
-    // ANTS-1989 — same lock as appendRecord so a full rewrite (outcome backfill)
-    // can't interleave with a concurrent append's read-modify-write.
+    // ANTS-1989 — same lock as appendRecord. ANTS-6477 — the caller read the
+    // file before the lock, so another instance may have appended since. The
+    // file is re-read here: each line whose record is in `recs` (same ts,
+    // session, project and target tier) takes the caller's version, every
+    // other line is kept, and records the file no longer holds go last.
+    const auto key = [](const Record &r) {
+        return QStringList{r.ts, r.sessionId, r.project, r.toTier}.join(QChar(0));
+    };
+    QHash<QString, QList<int>> unused;   // key → indexes into recs, in order
+    for (int i = 0; i < recs.size(); ++i) unused[key(recs.at(i))].append(i);
     ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
     QList<QByteArray> lines;
-    lines.reserve(recs.size());
-    for (const Record &r : recs) lines.append(serialize(r));
+    for (const QByteArray &ln : JsonlFile::readLines(path)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(ln);
+        const auto it = doc.isObject() ? unused.find(key(fromJson(doc.object())))
+                                       : unused.end();
+        if (it == unused.end() || it->isEmpty()) {
+            lines.append(ln);
+            continue;
+        }
+        lines.append(serialize(recs.at(it->takeFirst())));
+    }
+    for (int i = 0; i < recs.size(); ++i) {
+        const QList<int> &left = unused.value(key(recs.at(i)));
+        if (left.contains(i)) lines.append(serialize(recs.at(i)));
+    }
     lines = evictToCap(lines, capBytes);
     return JsonlFile::writeLinesAtomic(path, lines);
 }

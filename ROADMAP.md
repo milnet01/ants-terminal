@@ -93864,7 +93864,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6477] **modelswitchledger.cpp: the comment's claim is false; another instance's append can be lost.**
+- ✅ [ANTS-6477] **modelswitchledger.cpp: the comment's claim is false; another instance's append can be lost.**
   `modelswitchledger.cpp:158-161` — the comment's claim is false;
   another instance's append can be lost.
   Quote: `// ANTS-1989 — same lock as appendRecord so a full rewrite
@@ -93875,6 +93875,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `updateRecords(path, fn)` helper), or re-read and merge inside the
   lock before writing.
   Ledger row 258, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-15: writeRecords re-reads inside the lock and merges
+  by (ts, session, project, to_tier). Test
+  ModelSwitchLedger.Ants6477RewriteKeepsAConcurrentAppend.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 23-model-switching (Medium).

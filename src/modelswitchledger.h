@@ -96,8 +96,9 @@ Record      fromJson(const QJsonObject &obj);
 bool appendRecord(const QString &path, const Record &rec,
                   qint64 capBytes = kMaxLedgerBytes);
 QList<Record> readRecords(const QString &path);
-// writeRecords: replace the whole ledger (read-modify-write for outcome
-// fill-in), applying the same eviction.
+// writeRecords: write back records read from the ledger (outcome fill-in),
+// applying the same eviction. Lines appended since that read are kept; each
+// record still in the file is replaced in place, and the rest go last.
 bool writeRecords(const QString &path, const QList<Record> &recs,
                   qint64 capBytes = kMaxLedgerBytes);
 
