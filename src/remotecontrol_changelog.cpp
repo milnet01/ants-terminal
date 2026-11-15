@@ -10,14 +10,40 @@
 #include "gitwrap.h"
 #include "roadmapledger.h"
 #include "roadmapstore.h"
+#include <QCryptographicHash>
+#include <QDeadlineTimer>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QThread>
+
+#include <algorithm>
+#include <cerrno>
+#include <fcntl.h>
+#include <sys/file.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include <optional>
 
 using namespace rcdetail;  // ANTS-3833
+
+// ANTS-6468 — see remotecontrol_internal.h.
+int rcdetail::rcOpenChangelogTurnLock(const QString &changelogPath) {
+    const QString dir = QFileInfo(RoadmapStore::defaultPath()).absolutePath()
+                        + QStringLiteral("/changelog-holds");
+    if (!QDir().mkpath(dir)) return -1;
+    ::chmod(QFile::encodeName(dir).constData(), 0700);
+    const QString canonical = QFileInfo(changelogPath).canonicalFilePath();
+    const QString key = canonical.isEmpty() ? changelogPath : canonical;
+    const QString path = dir + QLatin1Char('/') +
+        QString::fromLatin1(QCryptographicHash::hash(
+            key.toUtf8(), QCryptographicHash::Sha1).toHex()) +
+        QStringLiteral(".lock");
+    return ::open(QFile::encodeName(path).constData(),
+                  O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+}
 
 namespace {
 
@@ -271,6 +297,53 @@ RoadmapCitation citeRoadmapBullet(const RoadmapParse::BulletRecord &match,
         }
     }
     return c;
+}
+
+// ANTS-6468 — see rcOpenChangelogTurnLock() in remotecontrol_internal.h.
+// Named after RoadmapWriterTurn (ANTS-5420), whose shape it copies: flock
+// excludes between descriptors, so it orders this process's threads and
+// other processes alike, and the kernel drops it when its holder dies.
+int g_changelogTurnWaitMs = 5000;
+
+class ChangelogTurn {
+public:
+    explicit ChangelogTurn(const QString &changelogPath) {
+        m_fd = rcOpenChangelogTurnLock(changelogPath);
+        if (m_fd < 0) {           // no lock file: unordered, as before
+            m_held = true;
+            return;
+        }
+        const QDeadlineTimer deadline(std::max(0, g_changelogTurnWaitMs));
+        for (;;) {
+            if (::flock(m_fd, LOCK_EX | LOCK_NB) == 0) { m_held = true; return; }
+            if (errno != EINTR && errno != EWOULDBLOCK) break;
+            if (deadline.hasExpired()) break;
+            QThread::msleep(5);
+        }
+        ::close(m_fd);
+        m_fd = -1;
+    }
+    ~ChangelogTurn() {
+        if (m_fd >= 0) ::close(m_fd);   // closing the descriptor drops the flock
+    }
+    ChangelogTurn(const ChangelogTurn &) = delete;
+    ChangelogTurn &operator=(const ChangelogTurn &) = delete;
+    bool held() const { return m_held; }
+private:
+    int  m_fd = -1;
+    bool m_held = false;
+};
+
+// The refusal when the turn could not be had: see
+// docs/standards/mcp-error-codes.md § 2, `changelog_busy`.
+QJsonDocument clBusy() {
+    QJsonObject e;
+    e[QStringLiteral("ok")]    = false;
+    e[QStringLiteral("code")]  = QStringLiteral("changelog_busy");
+    e[QStringLiteral("error")] = QStringLiteral(
+        "changelog_log: another call is writing this changelog; retry shortly");
+    e[QStringLiteral("retry_after_ms")] = 250;
+    return QJsonDocument(e);
 }
 
 // The refusal envelope, the one read and the one atomic write behind every
@@ -917,6 +990,10 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
             clFindChangelog(req, callerRaw, &callerCanonical, &clPath);
         !e.isNull())
         return e;
+    // ANTS-6468 — one writer at a time, from the read to the write.
+    const ChangelogTurn turn(clPath);
+    if (!turn.held())
+        return clBusy();
 
     if (op == QStringLiteral("amend")) return clAmend(req, clPath, dryRun);
 
@@ -1634,6 +1711,10 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
             clFindChangelog(req, callerRaw, &callerCanonical, &clPath);
         !e.isNull())
         return e;
+    // ANTS-6468 — one writer at a time, from the read to the write.
+    const ChangelogTurn turn(clPath);
+    if (!turn.held())
+        return clBusy();
 
     // Parse ROADMAP once, only if any entry is id-only (add_from_roadmap).
     QVector<RoadmapParse::BulletRecord> roadmapBullets;
@@ -1863,3 +1944,6 @@ QJsonDocument RemoteControl::cmdChangelogLogAddBatch(const QJsonObject &req) {
     return QJsonDocument(out);
 }
 
+
+// ANTS-6468 — see remotecontrol_internal.h.
+void rcdetail::rcSetChangelogTurnWaitMsForTest(int ms) { g_changelogTurnWaitMs = ms; }

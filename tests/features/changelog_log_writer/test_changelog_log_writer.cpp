@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "../../_support/xdg_guard.h"
 
 #include <QByteArray>
 #include <QDir>
@@ -24,6 +25,9 @@
 #include <QTemporaryDir>
 
 #include <string>
+
+#include <sys/file.h>
+#include <unistd.h>
 
 ANTS_TEST_SCOPE();
 
@@ -1724,4 +1728,60 @@ TEST(changelog_log_writer, Ants6269CappedBodyKeepsWholeCharacters) {
         EXPECT_EQ(head, full.left(want))
             << "cap " << cap << ": kept " << head.size() << " bytes, expected " << want;
     }
+}
+
+// Declared here, not included: remotecontrol_internal.h stays inside src/.
+namespace rcdetail {
+int  rcOpenChangelogTurnLock(const QString &changelogPath);
+void rcSetChangelogTurnWaitMsForTest(int ms);
+}  // namespace rcdetail
+
+namespace {
+QByteArray readWholeFile(const QString &path) {
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
+}  // namespace
+
+// ANTS-6468 — changelog_log takes turns on a changelog file. While another
+// holder has the file's turn lock, add and add_batch refuse changelog_busy
+// and leave the file as it was; once it is released, add writes.
+TEST(changelog_log_writer, Ants6468WritersTakeTurns) {
+    ants_test::XdgGuard guard;   // the lock folder sits beside the store
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(kChangelog)));
+
+    const int fd = rcdetail::rcOpenChangelogTurnLock(clPath(tmp.path()));
+    ASSERT_GE(fd, 0);
+    ASSERT_EQ(::flock(fd, LOCK_EX | LOCK_NB), 0);
+    rcdetail::rcSetChangelogTurnWaitMsForTest(50);
+
+    RemoteControl rc(nullptr);
+    QJsonObject add;
+    add[QStringLiteral("caller_cwd")] = tmp.path();
+    add[QStringLiteral("summary")]    = QStringLiteral("A turn-taking entry");
+    add[QStringLiteral("category")]   = QStringLiteral("Fixed");
+    QJsonObject entry;
+    entry[QStringLiteral("summary")]  = QStringLiteral("A batched entry");
+    entry[QStringLiteral("category")] = QStringLiteral("Fixed");
+    QJsonObject batch;
+    batch[QStringLiteral("caller_cwd")] = tmp.path();
+    batch[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    batch[QStringLiteral("entries")]    = QJsonArray{entry};
+
+    for (const QJsonObject &req : {add, batch}) {
+        const QJsonObject r = rc.cmdChangelogLog(req).object();
+        EXPECT_FALSE(r.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(r).toJson().toStdString();
+        EXPECT_EQ(r.value(QStringLiteral("code")).toString().toStdString(),
+                  "changelog_busy");
+        EXPECT_EQ(readWholeFile(clPath(tmp.path())), QByteArray(kChangelog));
+    }
+
+    ::close(fd);   // releases the turn
+    rcdetail::rcSetChangelogTurnWaitMsForTest(5000);
+    const QJsonObject r = rc.cmdChangelogLog(add).object();
+    EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(r).toJson().toStdString();
 }

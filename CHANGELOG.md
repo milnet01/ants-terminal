@@ -442,6 +442,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log calls from different sessions take turns on a changelog file, so one session's entry is no longer lost to another's write; a call that waits 5 s is refused with `changelog_busy`** (ANTS-6468)
+
 - **apply_edits leaves a file alone when another writer changed it after the read, and reports its edits as skipped with `concurrent_edit`** (ANTS-6467)
 
 - **Two sessions adding roadmap items at the same moment both succeed with their own ids, and a same-headline duplicate is still refused as duplicate_item** (ANTS-6466)

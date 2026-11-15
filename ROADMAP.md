@@ -93636,7 +93636,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6468] **remotecontrol_changelog.cpp: (and `:1667`→`:1833`, `clAmend`, `release`, `normalize`) — `clReadFile(clPath, &clMarkdown)` … `clAtomicWrite(clPath, utf8)` every `changelog_log` op reads, edits and writ**
+- ✅ [ANTS-6468] **remotecontrol_changelog.cpp: (and `:1667`→`:1833`, `clAmend`, `release`, `normalize`) — `clReadFile(clPath, &clMarkdown)` … `clAtomicWrite(clPath, utf8)` every `changelog_log` op reads, edits and writ**
   `remotecontrol_changelog.cpp:1368-1421` — (and `:1667`→`:1833`,
   `clAmend`, `release`, `normalize`) — `clReadFile(clPath, &clMarkdown)`
   … `clAtomicWrite(clPath, utf8)` every `changelog_log` op reads, edits
@@ -93649,6 +93649,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   a sidecar file (the same shape as `ci`'s `LiveLock`) around read →
   write, and refuse `busy` when it cannot be taken.
   Ledger row 131, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-15: every changelog_log op takes an exclusive flock turn on
+  the changelog file (lock in changelog-holds/ beside the store, never
+  in the project), waiting up to 5 s, else `changelog_busy` with
+  retry_after_ms (new row in mcp-error-codes.md). Test:
+  changelog_log_writer.Ants6468WritersTakeTurns, red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 12-mcp-content-verbs-a (Medium).
