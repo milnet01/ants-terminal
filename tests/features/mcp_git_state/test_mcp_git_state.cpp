@@ -184,15 +184,15 @@ TEST(McpGitState, WiringContract) {
            "INV-10a",
            "remotecontrol.cpp does not dispatch on op string literals "
            "{status, log, diff}");
-    // bad_op error code surfaced for unknown op.
-    expect(contains(rcCpp, "\"bad_op\""),
+    // ANTS-6771 — bad_mode error code surfaced for unknown op.
+    expect(contains(rcCpp, "gitErr(\"bad_mode\""),
            "INV-10b",
-           "remotecontrol.cpp does not surface bad_op error for "
+           "remotecontrol.cpp does not surface bad_mode error for "
            "unknown op (spec § 4 INV-1)");
     // ANTS-3365 — an omitted op defaults to "status" (a bare
     // git_state{caller_cwd} returns the one-call status read). The
     // dispatch is `if (op.isEmpty()) op = ... "status"` before the
-    // {status,log,diff} branches; a non-empty unknown op still bad_op.
+    // {status,log,diff} branches; a non-empty unknown op still bad_mode.
     expect(contains(rcCpp, "op.isEmpty()") &&
            contains(rcCpp, "ANTS-3365"),
            "INV-10c",

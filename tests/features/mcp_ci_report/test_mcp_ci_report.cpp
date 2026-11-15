@@ -1566,9 +1566,11 @@ TEST(McpCiReport, Ants5706ChecksSummaryAndBaseComparison) {
                                    QJsonObject{{"op", "checks"}, {"pr", 0}},
                                    QJsonObject{{"op", "checks"}, {"ref", "a b"}},
                                    QJsonObject{{"op", "checks"}, {"ref", "-x"}},
-                                   QJsonObject{{"op", "checks"}, {"ref", "ok"}, {"base", "../x"}},
-                                   QJsonObject{{"op", "nope"}}})
+                                   QJsonObject{{"op", "checks"}, {"ref", "ok"}, {"base", "../x"}}})
         EXPECT_EQ(p.call(bad).value("code").toString(), QStringLiteral("bad_args")) << dump(bad);
+    // ANTS-6771 — an unknown op is bad_mode, as on every multi-op verb.
+    EXPECT_EQ(p.call(QJsonObject{{"op", "nope"}}).value("code").toString(),
+              QStringLiteral("bad_mode"));
     EXPECT_EQ(calls(), before) << "a refused call starts no process";
 
     const QJsonObject missing = p.call({{"op", "checks"}, {"pr", 99}});

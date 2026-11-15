@@ -2820,6 +2820,8 @@ if(ANTS_TESTS)
                 tests/features/standalone_mcp_server/test_standalone_mcp_server.cpp
                 # ANTS-5506 — ants-mcpd --call, run as a child process.
                 tests/features/mcpd_call/test_mcpd_call.cpp
+                # ANTS-6771 — an unknown op is bad_mode on every multi-op verb.
+                tests/features/mcp_unknown_op_code/test_mcp_unknown_op_code.cpp
                 # ANTS-5485 — removed verbs say what replaced them.
                 tests/features/mcp_removed_verbs/test_mcp_removed_verbs.cpp
                 # The status bar's context meter: tokens, window, readability.
@@ -3650,6 +3652,8 @@ if(ANTS_TESTS)
                         tests/features/mcpd_trust_prompt/test_mcpd_trust_prompt.cpp
                         # ANTS-5506 — ants-mcpd --call.
                         tests/features/mcpd_call/test_mcpd_call.cpp
+                        # ANTS-6771 — sends an unknown op to each verb.
+                        tests/features/mcp_unknown_op_code/test_mcp_unknown_op_code.cpp
                         # ANTS-5506 — doc_facts INV-26/INV-28: cmdDocLint's
                         # two injected inputs (version, live verb schema)
                         # need a real MainWindow-equivalent, so these two

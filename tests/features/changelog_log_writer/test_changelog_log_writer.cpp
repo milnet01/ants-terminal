@@ -1366,7 +1366,7 @@ TEST(changelog_log_writer, Ants4475OpAliasAcceptsTheSiblingSpelling) {
     const QJsonObject refused = rc.cmdChangelogLog(bogus).object();
     EXPECT_FALSE(refused.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(refused.value(QStringLiteral("code")).toString(),
-              QStringLiteral("bad_op_combo"));
+              QStringLiteral("bad_mode"));   // ANTS-6771
     EXPECT_NE(refused.value(QStringLiteral("error")).toString()
                   .indexOf(QStringLiteral("\"add\"")), -1)
         << "the refusal keeps naming the CANONICAL form, so a caller learns "

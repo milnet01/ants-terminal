@@ -97763,7 +97763,7 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: doc-fix.
   Source: review-contract mcp-error-codes.md 2026-10-21 (ANTS-4752 gate, out-of-radius findings).
 
-- 📋 [ANTS-6771] **An unknown op is refused with four different codes across the multi-op verbs.**
+- ✅ [ANTS-6771] **An unknown op is refused with four different codes across the multi-op verbs.**
   mcp-error-codes.md now says a new verb answers an unknown `op` with
   `bad_mode`. Today: `bad_op_combo` (roadmap_log, changelog_log),
   `bad_mode` (feedback_log, spec_log), `bad_args` (know_how,
@@ -97771,6 +97771,11 @@ volume classes, and the tooling/documentation gaps the run exposed.
   `bad_op` has no row in the taxonomy at all. Fix: give `bad_op` a row
   or fold it into `bad_mode`, and decide whether the `bad_args` sites
   move to `bad_mode`.
+  User decision 2026-11-15: fold every unknown-op refusal into bad_mode.
+  Shipped 2026-11-15 across sixteen verbs
+  (tests/features/mcp_unknown_op_code names them); spec_log and
+  roadmap_migrate check op first, and roadmap_migrate no longer falls
+  through to a migration on an unknown op.
   **Layman:** When a tool is asked for an action it does not have, different tools answer with different error labels, so a caller cannot handle them one way.
   Kind: fix.
   Source: in-session-2026-11-14, found while shipping ANTS-5803.

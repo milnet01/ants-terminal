@@ -37,7 +37,7 @@ QJsonDocument RemoteControl::cmdKnowHow(const QJsonObject &req) {
 
     const QString op = req.value(QStringLiteral("op")).toString(QStringLiteral("find"));
     if (!KnowHowStore::isOp(op))
-        return refuse("bad_args",
+        return refuse("bad_mode",
                       QStringLiteral("unknown op \"%1\": expected find, get, list, add, update, "
                                      "retire or purge").arg(op));
 

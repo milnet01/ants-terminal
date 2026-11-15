@@ -60,7 +60,7 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
 
     const QString opRaw = req.value("op").toString();
     SessionMemoryEngine::Op op;
-    if (!SessionMemoryEngine::parseOp(opRaw, &op)) return ... bad_op;
+    if (!SessionMemoryEngine::parseOp(opRaw, &op)) return ... bad_mode;   // ANTS-6771
 
     // ANTS-1336 — caller_cwd is the only project-scope source for
     // every op. The pre-fix read path accepted a user-supplied `cwd`

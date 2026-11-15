@@ -4377,7 +4377,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogDispatch(const QJsonObject &req) {
         return cmdRoadmapLogConvert(req);
     }
     if (op != QStringLiteral("append")) {
-        return rlErr(QStringLiteral("bad_op_combo"),
+        return rlErr(QStringLiteral("bad_mode"),
             QStringLiteral("roadmap_log: unknown op \"%1\" — expected "
                            "\"append\" (default), \"append_batch\", "
                            "\"flip\", \"flip_batch\", \"annotate\", "

@@ -198,7 +198,7 @@ TEST(KnowHowVerb, RefusesAnUnknownOpAndAnUnresolvedCwd) {
     Sandbox s;
     const QString here = QDir(s.tmp.path()).canonicalPath();
     const QJsonObject op = s.call(here, "delete");
-    EXPECT_EQ(code(op), QStringLiteral("bad_args")) << dump(op);
+    EXPECT_EQ(code(op), QStringLiteral("bad_mode")) << dump(op);   // ANTS-6771
 
     const QJsonObject nowhere = s.call(here + QStringLiteral("/no/such/dir"), "find",
                                        {{QStringLiteral("query"), QStringLiteral("x")}});

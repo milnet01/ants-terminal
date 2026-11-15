@@ -164,8 +164,8 @@ TEST(McpSessionMemory, ErrorCodesComplete) {
     ASSERT_NE(end, std::string::npos);
     const std::string body = rc.substr(pos, end - pos);
 
-    EXPECT_NE(body.find("\"bad_op\""), std::string::npos)
-        << "bad_op error code missing";
+    EXPECT_NE(body.find("\"bad_mode\""), std::string::npos)
+        << "bad_mode error code missing";   // ANTS-6771
     EXPECT_NE(body.find("\"bad_key\""), std::string::npos)
         << "bad_key error code missing";
     EXPECT_NE(body.find("\"bad_value\""), std::string::npos)

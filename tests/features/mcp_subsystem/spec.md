@@ -29,7 +29,7 @@ current `CLAUDE.md` Module map clears the spec's ≥ 15 lane floor
    delegates to `cmdSubsystem`.
 8. `cmdSubsystem` body contains the op-dispatch chain (string
    literals `"map"`, `"files"`, `"recent_changes"` appear) plus
-   the `bad_op` and `unknown_lane` error codes.
+   the `bad_mode` and `unknown_lane` error codes.
 9. `cmdSubsystem` composes `cmdGitState({op:"log", ...})` for the
    `recent_changes` op (INV-5).
 10. `subsystemmap.h` exposes `Lane`, `parse`, and `cachedLanes`

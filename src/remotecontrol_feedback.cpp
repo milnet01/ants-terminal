@@ -1080,6 +1080,21 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         return QJsonDocument(o);
     };
 
+    // ANTS-6771 — the op is checked first, so a wrong op is named as such
+    // rather than as an argument it would have needed.
+    const QString op = req.value(QStringLiteral("op")).toString();
+    // ANTS-4959 — both Status ops echo the value they started from.
+    const bool statusOp = op == QStringLiteral("set_status") ||
+                          op == QStringLiteral("append_status");
+    if (!statusOp &&
+        op != QStringLiteral("append_loop") &&
+        op != QStringLiteral("append_inv")) {
+        return slErr(QStringLiteral("bad_mode"),
+                     QStringLiteral("spec_log: op must be \"set_status\", "
+                                    "\"append_status\", \"append_loop\", or "
+                                    "\"append_inv\""));
+    }
+
     const QString id      = req.value(QStringLiteral("id")).toString();
     const QString pathArg = req.value(QStringLiteral("path")).toString();
     if (id.isEmpty() && pathArg.isEmpty()) {
@@ -1147,19 +1162,6 @@ QJsonDocument RemoteControl::cmdSpecLog(const QJsonObject &req) {
         return slErr(QStringLiteral("not_found"),
                      QStringLiteral("spec_log: %1 does not exist")
                          .arg(rel));
-    }
-
-    const QString op = req.value(QStringLiteral("op")).toString();
-    // ANTS-4959 — both Status ops echo the value they started from.
-    const bool statusOp = op == QStringLiteral("set_status") ||
-                          op == QStringLiteral("append_status");
-    if (!statusOp &&
-        op != QStringLiteral("append_loop") &&
-        op != QStringLiteral("append_inv")) {
-        return slErr(QStringLiteral("bad_mode"),
-                     QStringLiteral("spec_log: op must be \"set_status\", "
-                                    "\"append_status\", \"append_loop\", or "
-                                    "\"append_inv\""));
     }
 
     QFile f(full);

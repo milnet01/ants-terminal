@@ -177,8 +177,8 @@ Internally composes `cmdGitState({op:"log", n, path: "src/<lane>*"})`
 
 Estimated rendered size: ~460 chars = ~115 tokens.
 
-Error codes follow `docs/standards/mcp-errors.md`: `bad_op`
-(input); `unknown_lane` (value-not-in-set).
+Error codes follow `docs/standards/mcp-error-codes.md`: `bad_mode`
+(input; ANTS-6771); `unknown_lane` (value-not-in-set).
 
 ## 6. Token math
 

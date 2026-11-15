@@ -1995,7 +1995,7 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QLatin1String("detect") && op != QLatin1String("init")
         && op != QLatin1String("set") && op != QLatin1String("get"))
-        return psErr(QStringLiteral("bad_args"),
+        return psErr(QStringLiteral("bad_mode"),
                      QStringLiteral("project_settings: op must be get|detect|init|set"));
 
     const QString settingsPath = rootCanonical + QStringLiteral("/.ants/project.json");

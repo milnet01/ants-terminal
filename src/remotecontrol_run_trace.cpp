@@ -47,7 +47,7 @@ QJsonDocument RemoteControl::cmdRunTrace(const QJsonObject &req) {
     const QString op = req.value(QStringLiteral("op")).toString();
     if (op != QStringLiteral("start") && op != QStringLiteral("finish")
         && op != QStringLiteral("get"))
-        return refuse("bad_args",
+        return refuse("bad_mode",
                       QStringLiteral("run_trace: op \"%1\" — expected start, finish or get")
                           .arg(op));
 

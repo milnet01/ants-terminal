@@ -12,7 +12,7 @@ returning one failing test's full excerpt.
 | 1 | `TestResCache::cachePath`, `TestResCache::parseCtestOutput`, `TestResCache::recordTests`, `TestResCache::loadTests`, `TestResCache::toJsonWire` declared in `src/testrescache.h`. |
 | 2 | `cmdTestResults(const QJsonObject &req)` declared public on `RemoteControl` in `src/remotecontrol.h`. |
 | 3 | `cmdTestResults` defined in the remotecontrol TUs and carries an `ANTS-1300` anchor comment. |
-| 4 | The body dispatches on `op` ∈ `{record, read}`, refuses `detail` arg on `op=record`, surfaces `bad_args` for unknown ops / missing args / unparseable output / empty `output`. |
+| 4 | The body dispatches on `op` ∈ `{record, read}`, refuses `detail` arg on `op=record`, surfaces `bad_mode` for an unknown op (ANTS-6771) and `bad_args` for missing args / unparseable output / empty `output`. |
 | 5 | The body refuses with `code:"not_cached"` when `op=read` and no cache exists, `code:"detail_not_found"` when `detail=<name>` doesn't match any failing test, and `code:"write_failed"` when `op=record` cannot persist. |
 | 6 | The body uses `toJsonWire` on the default read path so the wire envelope omits the on-disk `full_excerpt` field; the `detail` path returns `{name, excerpt}` with the full body. |
 | 7 | `MainWindow::setupClaudeMcpProviders` registers `"test_results"` via `registerToolProvider` and delegates to `m_remoteControl->cmdTestResults`. Falls back to `kRcUnavailable` when `m_remoteControl` is null. |

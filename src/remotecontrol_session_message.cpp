@@ -431,7 +431,7 @@ QJsonDocument RemoteControl::cmdSessionMessage(const QJsonObject &req) {
     if (op != QStringLiteral("send") && op != QStringLiteral("inbox")
         && op != QStringLiteral("outbox") && op != QStringLiteral("ack")
         && op != QStringLiteral("projects"))
-        return refuse("bad_args",
+        return refuse("bad_mode",
                       QStringLiteral("session_message: unknown op \"%1\" — "
                                      "expected send, inbox, outbox, ack or "
                                      "projects").arg(op));

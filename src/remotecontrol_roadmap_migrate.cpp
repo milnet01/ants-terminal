@@ -26,6 +26,7 @@
 // which must know whether a roadmap already exists before it writes one.
 
 #include "config.h"
+#include "mcprefusal.h"
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 
@@ -66,6 +67,15 @@ QJsonDocument RemoteControl::cmdRoadmapMigrate(const QJsonObject &req) {
         ants::requiredCallerCwd(m_roots, req, QStringLiteral("roadmap_migrate"), &refusal);
     if (cwd.isEmpty())
         return QJsonDocument(refusal);
+
+    // ANTS-6771 — an op this verb does not know is refused before anything
+    // else. It used to fall through to the default, and run a migration.
+    const QString op = req.value(QStringLiteral("op")).toString();
+    if (!op.isEmpty() && op != QLatin1String("migrate") && op != QLatin1String("deregister")
+        && op != QLatin1String("init") && op != QLatin1String("reroot"))
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_mode"),
+            QStringLiteral("roadmap_migrate: unknown op \"%1\" — expected \"migrate\" "
+                           "(default), \"deregister\", \"init\" or \"reroot\"").arg(op)));
 
     // cwd is canonical, and three later steps rest on that: it is the same
     // QFileInfo::canonicalFilePath() form registerProject() stores and

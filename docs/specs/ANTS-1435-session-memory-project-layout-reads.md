@@ -100,7 +100,7 @@ Replace the unconditional `RcGate::checkCallerCwd` call at
 const QString opRaw = req.value("op").toString();
 SessionMemoryEngine::Op op = SessionMemoryEngine::Op::Get;
 if (!SessionMemoryEngine::parseOp(opRaw, &op)) {
-    return /* bad_op */;
+    return /* bad_mode, ANTS-6771 */;
 }
 
 QString cwd;  // resolved tenant cwd

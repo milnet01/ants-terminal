@@ -44,7 +44,7 @@ ANTS-1248 / ANTS-1249 harnesses.
 14. ANTS-3365 — `cmdGitState` defaults an omitted/empty `op` to
     `"status"` (`if (op.isEmpty()) op = ... "status"`) so a bare
     `git_state{caller_cwd}` returns the one-call status read; a
-    non-empty unknown op still refuses `bad_op`. The schema marks
+    non-empty unknown op still refuses `bad_mode`. The schema marks
     `op` optional and advertises the default.
 
 ## Why source-grep and not integration

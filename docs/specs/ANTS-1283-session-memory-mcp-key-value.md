@@ -107,7 +107,7 @@ Op semantics:
 
 | code | when |
 |---|---|
-| `bad_op`         | `op` missing or not in {get,set,delete,list} |
+| `bad_mode`       | `op` missing or not in {get,set,delete,list} (ANTS-6771) |
 | `bad_key`        | `key` missing for get/set/delete, or fails regex `^[A-Za-z0-9._\-]{1,64}$` |
 | `bad_value`      | `value` missing for set, or serialises to > 16 KiB |
 | `cap_exceeded`   | post-write store would exceed 100 KiB |
@@ -315,7 +315,7 @@ writes from tests.
 | REG-1 | `session_memory` registered as a tool name in `claudeintegration.cpp` |
 | REG-2 | Schema has `required:["op"]` |
 | REG-3 | `RemoteControl::cmdSessionMemory` extracts `op` / `key` / `value` / `cwd` |
-| REG-4 | Handler returns `bad_op` for unknown op values |
+| REG-4 | Handler returns `bad_mode` for unknown op values |
 | REG-5 | Provider lambda registered in `mainwindow.cpp` |
 | REG-6 | Engine + handler use `SessionMemoryEngine::execute` (no inline file I/O in `cmdSessionMemory`) |
 

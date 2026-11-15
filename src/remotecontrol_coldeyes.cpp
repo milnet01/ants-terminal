@@ -403,7 +403,7 @@ QJsonDocument RemoteControl::cmdSessionMemory(const QJsonObject &req) {
     SessionMemoryEngine::Op op = SessionMemoryEngine::Op::Get;
     if (!SessionMemoryEngine::parseOp(opRaw, &op)) {
         return QJsonDocument(smErr(
-            QStringLiteral("bad_op"),
+            QStringLiteral("bad_mode"),
             QStringLiteral("session_memory: op must be one of "
                            "\"get\", \"set\", \"delete\", \"list\""),
             QString(), opRaw));
@@ -559,7 +559,7 @@ QJsonDocument RemoteControl::cmdWorkflowState(const QJsonObject &req)
             QStringLiteral("workflow_state: op and skill are required "
                            "(op must be get/set/clear)")));
     } else {
-        return QJsonDocument(mcp::refusal(QStringLiteral("bad_args"),
+        return QJsonDocument(mcp::refusal(QStringLiteral("bad_mode"),
             QStringLiteral("workflow_state: op must be get/set/clear")));
     }
 
@@ -853,7 +853,7 @@ QJsonDocument RemoteControl::cmdBuildStatus(const QJsonObject &req) {
         QStringLiteral("read"));
     if (op != QLatin1String("read") && op != QLatin1String("record")) {
         return QJsonDocument(mcp::refusal(
-            QStringLiteral("bad_args"),
+            QStringLiteral("bad_mode"),
             QStringLiteral("build_status: \"op\" must be \"read\" or "
                            "\"record\"")));
     }
@@ -937,7 +937,7 @@ QJsonDocument RemoteControl::cmdTestResults(const QJsonObject &req) {
         QStringLiteral("read"));
     if (op != QLatin1String("read") && op != QLatin1String("record")) {
         return QJsonDocument(mcp::refusal(
-            QStringLiteral("bad_args"),
+            QStringLiteral("bad_mode"),
             QStringLiteral("test_results: \"op\" must be \"read\" or "
                            "\"record\"")));
     }

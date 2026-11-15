@@ -107,7 +107,7 @@ path filter).
 
 - **INV-1.** `cmdGitState` dispatches on `op` ∈ {"status", "log",
   "diff", "rename_sweep", "hooks"}; anything else →
-  `{ok:false, code:"bad_op"}`.
+  `{ok:false, code:"bad_mode"}` (ANTS-6771).
   `"hooks"`'s contract: `tests/features/git_hooks_report/spec.md`.
   `"rename_sweep"`'s, and log's `grep`/`stat` and diff's `paths`/added
   lines: `tests/features/git_state_filters/spec.md`.
@@ -185,7 +185,7 @@ path filter).
 Estimated rendered size: ~480 chars = ~120 tokens. ~1/3 of the
 three-tool design's permanent cost (per §1).
 
-Error codes follow `docs/standards/mcp-errors.md`: `bad_op`,
+Error codes follow `docs/standards/mcp-error-codes.md`: `bad_mode`,
 `bad_range`, `bad_path` (input); `git_failed`, `git_missing` (tool);
 `not_git_repo` (state).
 

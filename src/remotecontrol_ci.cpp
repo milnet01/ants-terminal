@@ -269,7 +269,7 @@ QJsonDocument RemoteControl::cmdCiReport(const QJsonObject &req) {
     const QString op = opV.isUndefined() ? QStringLiteral("report") : opV.toString();
     if (op == QLatin1String("checks")) return checksReply(root, req);
     if (op != QLatin1String("report"))
-        return refuse("bad_args", QStringLiteral("op must be \"report\" or \"checks\""));
+        return refuse("bad_mode", QStringLiteral("op must be \"report\" or \"checks\""));
 
     const QJsonValue sourceV = req.value(QStringLiteral("source"));
     const QString source = sourceV.isUndefined() ? QStringLiteral("live") : sourceV.toString();

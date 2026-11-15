@@ -904,7 +904,7 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         op != QStringLiteral("release") &&
         op != QStringLiteral("normalize") &&
         op != QStringLiteral("amend")) {
-        return clErr(QStringLiteral("bad_op_combo"),
+        return clErr(QStringLiteral("bad_mode"),
             QStringLiteral("changelog_log: unknown op \"%1\" — expected "
                            "\"add\" (default), \"add_from_roadmap\", "
                            "\"add_batch\", \"add_subsection\", "

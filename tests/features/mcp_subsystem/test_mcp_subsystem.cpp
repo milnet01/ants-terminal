@@ -167,10 +167,10 @@ TEST(McpSubsystem, WiringContract) {
            "INV-8a",
            "remotecontrol.cpp does not dispatch on op string literals "
            "{map, files, recent_changes}");
-    expect(contains(rcCpp, "\"bad_op\"") &&
+    expect(contains(rcCpp, "mcp::refusal(\"bad_mode\"") &&
            contains(rcCpp, "\"unknown_lane\""),
            "INV-8b",
-           "remotecontrol.cpp does not surface {bad_op, unknown_lane} "
+           "remotecontrol.cpp does not surface {bad_mode, unknown_lane} "
            "error codes (ANTS-1251 § 5 trailing paragraph)");
 
     // INV-9 — cmdSubsystem composes cmdGitState for recent_changes.

@@ -196,6 +196,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Every Ants MCP tool that takes an op answers an unknown op with the same code, bad_mode; roadmap_migrate no longer runs a migration for an op it does not know.** (ANTS-6771)
+
 - **When a hand-typed roadmap item blocks a write, the refusal now says how to bring just that item into the store, and warns that a full migrate re-imports everything** (ANTS-6712)
 
 - **Four roadmap tools share one refusal, and say "store_failed" if the roadmap store will not open.** (ANTS-6247)

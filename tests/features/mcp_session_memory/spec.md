@@ -16,7 +16,7 @@ pattern: anchor on `// ANTS-1283` comments + walk to the next
 | REG-1 | `session_memory` registered under ANTS-1283 anchor | tool name + comment anchor both present in `claudeintegration.cpp` |
 | REG-2 | Schema `required:["op"]` (INV-9) | only `op` is schema-required; key/value enforcement is handler-side |
 | REG-3 | `cmdSessionMemory` extracts every arg | `op`, `key`, `value`, `cwd` all `req.value(...)`d |
-| REG-4 | Error codes complete | `bad_op`, `bad_key`, `bad_value`, `no_project` strings all present |
+| REG-4 | Error codes complete | `bad_mode`, `bad_key`, `bad_value`, `no_project` strings all present |
 | REG-5 | Provider lambda registered in `mainwindow.cpp` | `registerToolProvider("session_memory", ...)` + `cmdSessionMemory(args)` forwarded |
 | REG-6 | Handler delegates to engine | `cmdSessionMemory` body calls `SessionMemoryEngine::execute` |
 

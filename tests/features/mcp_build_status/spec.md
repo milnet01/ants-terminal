@@ -16,7 +16,7 @@ its existence is asserted as a wiring contract).
 | 1 | `BuildCache::cachePath`, `BuildCache::parseBuildOutput`, `BuildCache::recordBuild`, `BuildCache::loadBuild`, `BuildCache::checkStale` declared in `src/buildcache.h`. |
 | 2 | `cmdBuildStatus(const QJsonObject &req)` declared public on `RemoteControl` in `src/remotecontrol.h`. |
 | 3 | `cmdBuildStatus` defined in the remotecontrol TUs and carries an `ANTS-1299` anchor comment in or above the function body. |
-| 4 | The body dispatches on `op` ∈ `{record, read}` and surfaces `bad_args` for unknown ops, missing `exit_code` / missing `output` on record, or empty `output`. |
+| 4 | The body dispatches on `op` ∈ `{record, read}` and surfaces `bad_mode` for an unknown op (ANTS-6771) and `bad_args` for a missing `exit_code` / missing `output` on record, or empty `output`. |
 | 5 | The body refuses with `code:"not_cached"` when `op=read` and no cache exists, and with `code:"write_failed"` when `op=record` cannot persist the cache. |
 | 6 | `MainWindow::setupClaudeMcpProviders` (`src/mainwindow.cpp`) registers `"build_status"` via `registerToolProvider` and delegates to `m_remoteControl->cmdBuildStatus`. Falls back to `kRcUnavailable` when `m_remoteControl` is null. |
 | 7 | The `tools/list` block in `src/claudeintegration.cpp` registers a `"build_status"` entry. Schema declares `properties.caller_cwd` (required) and offers `op`, `exit_code`, `output`, `started_at_ms`, `finished_at_ms`, `etag_match` as optional properties. |

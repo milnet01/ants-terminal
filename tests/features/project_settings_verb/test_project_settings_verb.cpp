@@ -751,7 +751,7 @@ TEST(ProjectSettingsVerb, Ants4903RefusalNamesEveryOp) {
     const QJsonObject env = settingsCall(root, QStringLiteral("fetch"));
     EXPECT_FALSE(env.value(QStringLiteral("ok")).toBool());
     EXPECT_EQ(env.value(QStringLiteral("code")).toString(),
-              QStringLiteral("bad_args"));
+              QStringLiteral("bad_mode"));   // ANTS-6771
     EXPECT_TRUE(env.value(QStringLiteral("error")).toString()
                     .contains(QStringLiteral("get")))
         << "the refusal must name the read op: "

@@ -47,7 +47,7 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
     // ANTS-3365: the verb is advertised as a one-call "status + branch +
     // ahead/behind" read, so an omitted op defaults to "status" (a bare
     // git_state{caller_cwd} just works). A non-empty unknown op still
-    // refuses with bad_op below.
+    // refuses with bad_mode below (ANTS-6771).
     QString op = req.value("op").toString();
     if (op.isEmpty()) op = QStringLiteral("status");
     if (op == QLatin1String("status")) {
@@ -71,7 +71,7 @@ QJsonDocument RemoteControl::cmdGitState(const QJsonObject &req) {
         return QJsonDocument(GitHooksReport::run(
             root, GitHooksReport::defaultMachineHooksDir()));
     }
-    return QJsonDocument(gitErr("bad_op",
+    return QJsonDocument(gitErr("bad_mode",
         QStringLiteral("git_state: \"op\" must be one of "
                        "{status, log, diff, rename_sweep, hooks}, "
                        "got \"%1\"").arg(op)));
@@ -294,7 +294,7 @@ QJsonDocument RemoteControl::cmdSubsystem(const QJsonObject &req) {
     if (op != QLatin1String("map") &&
         op != QLatin1String("files") &&
         op != QLatin1String("recent_changes")) {
-        return QJsonDocument(mcp::refusal("bad_op",
+        return QJsonDocument(mcp::refusal("bad_mode",
             QStringLiteral("subsystem: \"op\" must be one of "
                            "{map, files, recent_changes}, got \"%1\"").arg(op)));
     }
