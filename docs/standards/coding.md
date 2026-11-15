@@ -469,7 +469,7 @@ Rules that hold in every language:
 **They are not in this file.** Each language has its own:
 
 ```
-languages/cpp.md      languages/python.md      languages/qt.md
+languages/asm.md      languages/cpp.md      languages/python.md      languages/qt.md
 ```
 
 Read `coding.md` always; read a language file only when the project uses
