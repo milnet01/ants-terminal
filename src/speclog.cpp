@@ -55,6 +55,22 @@ int findSectionHeading(const QStringList &lines, const QString &keyword) {
     return -1;
 }
 
+// ANTS-6755 — the one `## Loop log` heading, optionally numbered
+// (`## 8. Loop log`), case-insensitive; -1 when there is none or several.
+// Tried only where no "Cold-eyes loop log" heading exists.
+int findPlainLoopLogHeading(const QStringList &lines) {
+    static const QRegularExpression re(
+        QStringLiteral(R"(^##\s+(?:\d+(?:\.\d+)*\.?\s+)?loop log\s*$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    int found = -1;
+    for (int i : level2Headings(lines)) {
+        if (!re.match(lines.at(i)).hasMatch()) continue;
+        if (found >= 0) return -1;
+        found = i;
+    }
+    return found;
+}
+
 // ANTS-3651 — how MANY level-2 headings carry the keyword. A file that
 // already holds two is ambiguous, and appending to the first silently deepens
 // a structural defect its author has not noticed. Counting is the cheapest way
@@ -564,8 +580,8 @@ EditResult appendLoop(const QString &content, const QString &label,
                         "log split and out of order."));
     }
 
-    const int hdr = findSectionHeading(
-        lines, QStringLiteral("Cold-eyes loop log"));
+    int hdr = findSectionHeading(lines, QStringLiteral("Cold-eyes loop log"));
+    if (hdr < 0) hdr = findPlainLoopLogHeading(lines);   // ANTS-6755
     if (hdr < 0) return createLoopLog(std::move(lines), label, body, cells, bullet, ewn);
 
     // ANTS-4364 — does this section hold a TABLE? The shipped spec

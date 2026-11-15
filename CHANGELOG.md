@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_log op:"append_loop" adds rows to a log under a plain "Loop log" heading, numbered or not, such as "## 8. Loop log"** (ANTS-6755)
+
 - **The CI cache clean-up finds the cache it keeps in any length of cache list, so it no longer skips a clean-up by mistake** (ANTS-6753)
 
 - **roadmap_log op:"convert" reports a roadmap its load cannot read (not_utf8, case_ambiguous, too_large, no_roadmap) with that refusal's own code** (ANTS-6736)

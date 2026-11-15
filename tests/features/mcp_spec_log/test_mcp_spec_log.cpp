@@ -1093,6 +1093,29 @@ TEST(McpSpecLog, Ants4886RefusesRatherThanDroppingCellsIntoABullet) {
         << "created the anchoring heading it could not find";
 }
 
+// ANTS-6755 — a log under a plain "Loop log" heading, numbered or not, is the
+// loop log: its shape is judged from that section, not from a table elsewhere
+// in the file. The shape is ANTS-1359's spec: a § 2.9 table and a bullet log.
+TEST(McpSpecLog, Ants6755PlainLoopLogHeadingIsTheLog) {
+    for (const char *heading : {"## 8. Loop log", "## Loop log"}) {
+        const QString spec =
+            QStringLiteral("# Spec\n\n## 2.9 RAM budget\n\n"
+                           "| Item | Bytes |\n|---|---|\n| key | 64 |\n\n"
+                           "%1\n\n"
+                           "- **Draft 2026-05-15** — initial spec.\n"
+                           "- **Cold-eyes pass 1 (2026-05-15)** — two reviewers.\n\n"
+                           "## 9. Next\n\nText.\n").arg(QLatin1String(heading));
+        const SpecLog::EditResult r = SpecLog::appendLoop(
+            spec, QStringLiteral("impl (2026-11-15)"), QStringLiteral("built."));
+        ASSERT_TRUE(r.ok) << heading << ": " << r.error.toStdString();
+        EXPECT_EQ(r.rowShape, QStringLiteral("bullet"));
+        EXPECT_TRUE(r.content.contains(QStringLiteral(
+            "two reviewers.\n- **impl (2026-11-15)** — built.\n\n## 9. Next")))
+            << r.content.toStdString();
+        EXPECT_FALSE(r.content.contains(QStringLiteral("## Cold-eyes loop log")));
+    }
+}
+
 TEST(McpSpecLog, Ants4886RefusesCellsWhenTheLogIsBulletShaped) {
     // A genuine bullet-shaped log, correctly located. `cells` still cannot be
     // rendered into it, and silently dropping them is the same loss.

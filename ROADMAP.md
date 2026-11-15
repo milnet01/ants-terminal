@@ -74132,7 +74132,7 @@ fixes don't address. Roadmapped here as their own design tasks.
   Source: in-session-2026-11-09 (check-doc on ANTS-3636 during ANTS-5216).
   Lanes: mcp, docs.
 
-- 📋 [ANTS-6755] **spec_log op:append_loop refuses a bullet-list log under "## 8. Loop log" when the spec holds any table.**
+- ✅ [ANTS-6755] **spec_log op:append_loop refuses a bullet-list log under "## 8. Loop log" when the spec holds any table.**
   Seen on docs/specs/ANTS-1359-verify-changes-session-build-cache.md:
   its log is a bullet list under `## 8. Loop log`; the only table is
   § 2.9's RAM budget. The verb replied unrecognised_format: no
@@ -74140,6 +74140,11 @@ fixes don't address. Roadmapped here as their own design tasks.
   Wanted: recognise a numbered or plain "Loop log" heading, and judge the
   log's shape from that section, not from a table elsewhere in the file.
   Red-first test with that spec's shape.
+  Shipped 2026-11-15: without a "Cold-eyes loop log" heading, a single
+  `## Loop log` heading (optionally numbered) is the log, and its shape
+  is judged from that section. Reproduced first with a dry run on
+  ANTS-1359's spec; test McpSpecLog.Ants6755PlainLoopLogHeadingIsTheLog
+  seen red with that refusal.
   **Layman:** The tool that adds a line to a design note's review log refuses on notes whose log is a plain list under a numbered heading.
   Kind: fix.
   Source: self-found-2026-11-13 (ANTS-5526 fold-back).

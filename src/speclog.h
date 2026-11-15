@@ -71,6 +71,8 @@ EditResult appendStatus(const QString &content, const QString &text);
 // op:"append_loop" — append a `- **<label>** — <body>` bullet at the end
 // of the `## …` section whose heading contains "Cold-eyes loop log"
 // (case-insensitive); two such sections refuse `unrecognised_format`.
+// Without one, a single `## Loop log` heading, optionally numbered
+// (`## 8. Loop log`), is the log (ANTS-6755).
 // Creates the section at EOF when absent (repaired, not refused), unless
 // the file holds a markdown table anywhere: then the log is taken to be
 // under a heading this verb does not recognise, and the call refuses
