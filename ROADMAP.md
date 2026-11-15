@@ -74843,7 +74843,7 @@ indie-review finding.
   Source: in-session-2026-11-14 (split from ANTS-5681).
   Lanes: terminalwidget, dialogchrome.
 
-- 📋 [ANTS-6767] **With the search bar open, output that arrives after the search is matched too.**
+- ✅ [ANTS-6767] **With the search bar open, output that arrives after the search is matched too.**
   Checked 2026-11-14: m_searchMatches is filled only by performSearch.
   ANTS-5686 keeps stored matches on their lines when scrollback drops
   its oldest; it does not search new lines, and a screen line a program
@@ -74851,6 +74851,9 @@ indie-review finding.
   dear on a 50k scrollback and performSearch also moves the view
   (scrollToMatch) and resets the current match. Likely shape: search
   only the lines a batch touched, keep the current match, never scroll.
+  Shipped 2026-11-15: onVtBatch re-matches from the first pre-batch
+  screen line to the end while a search is active (rescanSearchFrom);
+  INV-3 to INV-5 of search_matches_follow_scrollback.
   **Layman:** While search is open, new text printed by a program is not highlighted until you change the search or toggle an option.
   Kind: fix.
   Source: in-session-2026-11-14 (left by ANTS-5686).

@@ -141,3 +141,67 @@ TEST(SearchMatchesFollowScrollback, MatchOnADroppedLineIsRemoved) {
     EXPECT_EQ(h.matchedLines(), now) << "INV-2: a match outlived its line";
     EXPECT_EQ(h.counterText().toStdString(), "1/1") << "INV-2: the counter";
 }
+
+// Every global line, scrollback and screen, whose cells start with `text`.
+static std::vector<int> linesStarting(TerminalWidget &w, const std::string &text) {
+    std::vector<int> out;
+    const TerminalGrid *g = w.grid();
+    const int sb = g->scrollbackSize();
+    for (int gl = 0; gl < sb + kRows; ++gl) {
+        bool hit = true;
+        for (std::size_t k = 0; k < text.size() && hit; ++k) {
+            const auto cp = static_cast<unsigned char>(text[k]);
+            const int col = static_cast<int>(k);
+            if (gl < sb) {
+                const auto &cells = g->scrollbackLine(gl);
+                hit = col < static_cast<int>(cells.size()) && cells[k].codepoint == cp;
+            } else {
+                hit = g->cellAt(gl - sb, col).codepoint == cp;
+            }
+        }
+        if (hit) out.push_back(gl);
+    }
+    return out;
+}
+
+TEST(SearchMatchesFollowScrollback, NewOutputIsMatched) {
+    Harness h;
+    ASSERT_TRUE(h.ready()) << "search bar widgets not found";
+    h.feed(lines(0, 20) + "NEEDLE one\r\n");
+    h.search(QStringLiteral("NEEDLE"));
+    ASSERT_EQ(h.counterText().toStdString(), "1/1");
+
+    h.feed("NEEDLE two\r\n" + lines(100, 10));
+    const std::vector<int> at = linesStarting(h.w, "NEEDLE");
+    ASSERT_EQ(at.size(), 2u);
+    EXPECT_EQ(h.matchedLines(), at) << "INV-3: new output was not matched";
+    EXPECT_EQ(h.counterText().toStdString(), "1/2") << "INV-3: the counter";
+}
+
+TEST(SearchMatchesFollowScrollback, RewrittenLineLosesItsMatch) {
+    Harness h;
+    ASSERT_TRUE(h.ready()) << "search bar widgets not found";
+    h.feed(lines(0, 20) + "NEEDLE");
+    h.search(QStringLiteral("NEEDLE"));
+    ASSERT_EQ(h.matchedLines().size(), 1u);
+
+    h.feed("\r\x1b[2Kplain");
+    EXPECT_TRUE(h.matchedLines().empty()) << "INV-4: a rewritten line kept its match";
+    EXPECT_EQ(h.counterText().toStdString(), "0/0") << "INV-4: the counter";
+}
+
+TEST(SearchMatchesFollowScrollback, CurrentMatchAndViewStay) {
+    Harness h;
+    ASSERT_TRUE(h.ready()) << "search bar widgets not found";
+    h.feed(lines(0, 50) + "NEEDLE a\r\n" + lines(50, 50));
+    h.search(QStringLiteral("NEEDLE"));
+    ASSERT_EQ(h.counterText().toStdString(), "1/1");
+    ASSERT_GT(h.w.scrollOffset(), 0) << "the search did not scroll back to its match";
+    const int topBefore = h.w.grid()->scrollbackSize() - h.w.scrollOffset();
+
+    h.feed("NEEDLE b\r\n" + lines(200, 5));
+    EXPECT_EQ(h.counterText().toStdString(), "1/2")
+        << "INV-5: the current match moved, or the new one was not counted";
+    EXPECT_EQ(h.w.grid()->scrollbackSize() - h.w.scrollOffset(), topBefore)
+        << "INV-5: the view moved";
+}

@@ -440,6 +440,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **With the search bar open, new output is highlighted as it arrives, and a line a program rewrites loses its old highlight; the current match and the view stay put.** (ANTS-6767)
+
 - **The risky-paste and re-run confirmation windows wear the terminal's theme, can be resized, remember their size and open centred, like the other dialogs.** (ANTS-6766)
 
 - **spec_lint stops flagging three sound clauses: a lone word such as `head` in a test clause, an `INV-a to INV-b` range bullet, and a path a fixture is described as citing** (ANTS-6765)

@@ -24,6 +24,7 @@
 #include <functional>
 #include <unordered_map>
 #include <memory>
+#include <optional>
 #include <sys/types.h>
 
 class QLabel;
@@ -579,6 +580,11 @@ private:
     // ANTS-5686 — `dropped` lines left the front of scrollback: every stored
     // match moves up by that many, and one whose line is gone is removed.
     void shiftSearchMatches(int dropped);
+    // ANTS-6767 — re-matches lines `firstLine` to the end after output
+    // changed them, keeping the current match and never scrolling.
+    void rescanSearchFrom(int firstLine);
+    // Appends the matches `re` finds on one line, in column order.
+    void appendLineMatches(const QRegularExpression &re, int globalLine);
     void updateSearchCounter();
     bool isCellSearchMatch(int globalLine, int col) const;
     bool isCellCurrentMatch(int globalLine, int col) const;
@@ -781,6 +787,8 @@ private:
     bool m_searchWholeWord = false;
     bool m_searchPatternInvalid = false;
     QString m_searchText;
+    // ANTS-6767 — the last valid search's pattern; empty while none is active.
+    std::optional<QRegularExpression> m_searchRe;
     std::vector<SearchMatch> m_searchMatches;
     int m_currentMatchIdx = -1;
     QColor m_searchHighlightBg{0xF9, 0xE2, 0xAF};

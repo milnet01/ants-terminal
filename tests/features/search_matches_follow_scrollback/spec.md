@@ -8,7 +8,11 @@ lines left the front of scrollback while it applied a batch, and moves the
 stored matches by that many (ANTS-5686). Before, the stored numbers stayed
 put and the highlights painted on other lines.
 
-New output is not searched until the next search runs.
+While a search is active, `onVtBatch` also re-matches every line from the
+first one that was on screen before the batch to the end (ANTS-6767).
+Scrollback above that line cannot change in a batch. The cost per batch is
+the screen plus the lines the batch pushed, and nothing while no search is
+active.
 
 ## Invariants
 
@@ -18,11 +22,20 @@ New output is not searched until the next search runs.
 - **INV-2 — a match whose line was dropped is removed.** A match on a line
   the batch pushes out of scrollback is gone, and the counter label reads
   the number left.
+- **INV-3 — new output is matched.** A line the batch prints that holds
+  the pattern carries a match, and the counter counts it.
+- **INV-4 — a line rewritten in place loses its match.** When the batch
+  erases a matched screen line and prints other text, the match is gone and
+  the counter reads `0/0`.
+- **INV-5 — the current match and the view stay.** New matches leave the
+  counter's current number where it was, and the top line of the view does
+  not move.
 
 ## Test
 
 `test_search_matches_follow_scrollback.cpp` in the `test_chrome` bundle. A
 real widget takes its lines through the real parser, the last of them as a
 `VtBatch` handed to `onVtBatch`. The expected line is found by reading the
-grid for the cells that spell the needle. Both tests fail against the code
-before the change.
+grid for the cells that spell the needle. Each test fails against the code
+before the change it locks: INV-1 and INV-2 before ANTS-5686, INV-3 to
+INV-5 before ANTS-6767.

@@ -2431,6 +2431,12 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     if (droppedFromFront > 0 && !m_searchMatches.empty())
         shiftSearchMatches(static_cast<int>(
             std::min<qint64>(droppedFromFront, std::numeric_limits<int>::max())));
+    // ANTS-6767 — the batch could change only the lines that were on screen
+    // before it; scrollback above them is fixed. Re-match those, so new
+    // output and lines rewritten in place show their matches.
+    if (m_searchRe)
+        rescanSearchFrom(static_cast<int>(std::max<qint64>(
+            0, static_cast<qint64>(sbSizeBefore) - droppedFromFront)));
 
     if (m_scrollOffset > 0) {
         uint64_t added64 = m_grid->scrollbackPushed() - pushedBefore;
@@ -4752,6 +4758,7 @@ void TerminalWidget::hideSearchBar() {
     m_searchVisible = false;
     m_searchBar->hide();
     m_searchMatches.clear();
+    m_searchRe.reset();
     m_currentMatchIdx = -1;
     m_searchText.clear();
     setFocus();
@@ -4759,9 +4766,40 @@ void TerminalWidget::hideSearchBar() {
     update();
 }
 
+void TerminalWidget::appendLineMatches(const QRegularExpression &re, int gl) {
+    QString text = lineText(gl);
+    // ANTS-2000 — search ignores the blanks that pad a line to the grid
+    // width, so a query of spaces does not match every empty cell (user
+    // decision 2026-09-12). Trailing spaces a program printed are lost
+    // with them. Only the tail is cut, so match columns are unchanged.
+    qsizetype end = text.size();
+    while (end > 0 && text.at(end - 1) == QLatin1Char(' ')) --end;
+    text.truncate(end);
+    // Match offsets are UTF-16 units; a match is stored in cells. The
+    // map is built only for a line that has a match.
+    std::optional<LineColumns> textCols;
+    auto it = re.globalMatch(text);
+    while (it.hasNext()) {
+        auto m = it.next();
+        int len = static_cast<int>(m.capturedLength());
+        if (len <= 0) {
+            // Zero-width match (e.g. `\b`, `^`): nothing to highlight. Skip
+            // it and keep scanning; the iterator advances past an empty
+            // match itself. `break` here dropped every later match on the
+            // line (ANTS-5078).
+            continue;
+        }
+        if (!textCols) textCols = lineColumns(gl);
+        const int startCol = textCols->columnAt(m.capturedStart());
+        const int lastCol = textCols->lastColumnBefore(m.capturedEnd());
+        m_searchMatches.push_back({gl, startCol, lastCol - startCol + 1});
+    }
+}
+
 void TerminalWidget::performSearch() {
     m_searchText = m_searchInput->text();
     m_searchMatches.clear();
+    m_searchRe.reset();
     m_currentMatchIdx = -1;
     m_searchPatternInvalid = false;
 
@@ -4816,35 +4854,8 @@ void TerminalWidget::performSearch() {
     m_searchLabel->setToolTip(QString());
     applyInputStyle(false);
 
-    for (int gl = 0; gl < totalLines; ++gl) {
-        QString text = lineText(gl);
-        // ANTS-2000 — search ignores the blanks that pad a line to the grid
-        // width, so a query of spaces does not match every empty cell (user
-        // decision 2026-09-12). Trailing spaces a program printed are lost
-        // with them. Only the tail is cut, so match columns are unchanged.
-        qsizetype end = text.size();
-        while (end > 0 && text.at(end - 1) == QLatin1Char(' ')) --end;
-        text.truncate(end);
-        // Match offsets are UTF-16 units; a match is stored in cells. The
-        // map is built only for a line that has a match.
-        std::optional<LineColumns> textCols;
-        auto it = re.globalMatch(text);
-        while (it.hasNext()) {
-            auto m = it.next();
-            int len = static_cast<int>(m.capturedLength());
-            if (len <= 0) {
-                // Zero-width match (e.g. `\b`, `^`): nothing to highlight. Skip
-                // it and keep scanning; the iterator advances past an empty
-                // match itself. `break` here dropped every later match on the
-                // line (ANTS-5078).
-                continue;
-            }
-            if (!textCols) textCols = lineColumns(gl);
-            const int startCol = textCols->columnAt(m.capturedStart());
-            const int lastCol = textCols->lastColumnBefore(m.capturedEnd());
-            m_searchMatches.push_back({gl, startCol, lastCol - startCol + 1});
-        }
-    }
+    for (int gl = 0; gl < totalLines; ++gl) appendLineMatches(re, gl);
+    m_searchRe = re;
 
     if (!m_searchMatches.empty()) {
         int viewCenter = scrollbackSize - m_scrollOffset + m_grid->rows() / 2;
@@ -4880,6 +4891,38 @@ void TerminalWidget::shiftSearchMatches(int dropped) {
         m_currentMatchIdx = -1;
     else if (m_currentMatchIdx >= 0)
         m_currentMatchIdx = std::max(0, m_currentMatchIdx - gone);
+    updateSearchCounter();
+}
+
+void TerminalWidget::rescanSearchFrom(int firstLine) {
+    if (!m_searchRe) return;
+    const int totalLines = m_grid->scrollbackSize() + m_grid->rows();
+    firstLine = std::clamp(firstLine, 0, totalLines);
+    std::optional<SearchMatch> current;
+    if (m_currentMatchIdx >= 0) current = m_searchMatches[m_currentMatchIdx];
+    m_searchMatches.erase(
+        std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(), firstLine,
+                         [](const SearchMatch &m, int line) { return m.globalLine < line; }),
+        m_searchMatches.end());
+    for (int gl = firstLine; gl < totalLines; ++gl) appendLineMatches(*m_searchRe, gl);
+
+    // The same match stays current; if output rewrote it, the next one after
+    // it does. With no current match the first match becomes current.
+    m_currentMatchIdx = -1;
+    if (!m_searchMatches.empty()) {
+        m_currentMatchIdx = 0;
+        if (current) {
+            const auto at = std::lower_bound(
+                m_searchMatches.begin(), m_searchMatches.end(), *current,
+                [](const SearchMatch &a, const SearchMatch &b) {
+                    return a.globalLine != b.globalLine ? a.globalLine < b.globalLine
+                                                        : a.col < b.col;
+                });
+            m_currentMatchIdx = static_cast<int>(
+                std::min<std::ptrdiff_t>(at - m_searchMatches.begin(),
+                                         static_cast<std::ptrdiff_t>(m_searchMatches.size()) - 1));
+        }
+    }
     updateSearchCounter();
 }
 
