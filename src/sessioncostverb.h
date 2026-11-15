@@ -7,6 +7,7 @@
 // can pin it.
 
 #include <QJsonObject>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 
@@ -25,6 +26,18 @@ QString folderNameFor(const QString &cwd);
 // trying `projectsDirs` in order at each level; empty when none has one.
 // session_cost and run_trace both resolve through it (ANTS-6271).
 QString folderFor(const QStringList &projectsDirs, const QString &cwd);
+
+// ANTS-6272 — which transcript lines carry a message's usage, for
+// session_cost and run_trace alike. The harness writes one assistant line per
+// content block, each with the whole message's usage, so a message counts
+// once by its id; a line with no id or no usage carries none. A helper agent's
+// line copied into a main transcript (isSidechain) is not the session's,
+// unless `sidechainIsOwn`: the transcript is the agent's own (ANTS-6189).
+enum class UsageLine { None, Duplicate, Counted };
+UsageLine messageUsage(const QJsonObject &entry, bool sidechainIsOwn,
+                       QSet<QString> &seen, QJsonObject *usage);
+// True for a helper agent's own transcript, <session>/subagents/agent-*.jsonl.
+bool isAgentTranscript(const QString &transcriptPath);
 
 // Where the harness keeps transcripts: $CLAUDE_CONFIG_DIR/projects when that
 // is set, then ~/.claude/projects. Read by the handlers, not by run(), so a

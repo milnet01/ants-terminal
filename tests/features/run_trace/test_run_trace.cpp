@@ -574,3 +574,46 @@ TEST(RunTrace, Ants6271SessionIdResolvesLikeSessionCost) {
     EXPECT_EQ(r.value(QStringLiteral("cost_row")).toObject()
                   .value(QStringLiteral("new_tokens")).toInt(), 12);
 }
+
+// ANTS-6272 — run_trace counts a message's tokens by session_cost's rule: a
+// helper agent's line copied in (isSidechain) and a line with no message id
+// carry none.
+TEST(RunTrace, Ants6272UsageCountsAsSessionCostCounts) {
+    Fixture fx;
+    ASSERT_TRUE(fx.init());
+    const QJsonObject s = RunTraceVerb::start(fx.paths, QStringLiteral("G"),
+                                              QStringLiteral("docs/specs/x.md"),
+                                              kNow(), false, seq({0x0020u}));
+    const QString id = s.value(QStringLiteral("id")).toString();
+    const QString after = utcStamp(kNow().addSecs(60));
+    const auto line = [&](const QString &mid, int out, bool sidechain) {
+        QJsonObject u{{QStringLiteral("input_tokens"), 0},
+                      {QStringLiteral("cache_creation_input_tokens"), 0},
+                      {QStringLiteral("output_tokens"), out},
+                      {QStringLiteral("cache_read_input_tokens"), 0}};
+        QJsonObject m{{QStringLiteral("usage"), u}};
+        if (!mid.isEmpty()) m[QStringLiteral("id")] = mid;
+        QJsonObject e{{QStringLiteral("type"), QStringLiteral("assistant")},
+                      {QStringLiteral("timestamp"), after},
+                      {QStringLiteral("message"), m}};
+        if (sidechain) e[QStringLiteral("isSidechain")] = true;
+        return QString::fromUtf8(QJsonDocument(e).toJson(QJsonDocument::Compact)) + '\n';
+    };
+    const QString transcript = fx.dir.filePath(QStringLiteral("t.jsonl"));
+    ASSERT_TRUE(writeAll(transcript, line(QStringLiteral("m1"), 7, false)
+                                         + line(QStringLiteral("agent-m"), 100, true)
+                                         + line(QString(), 1000, false)));
+    QJsonObject a = basicArgs(3);
+    a[QStringLiteral("cost")] = QJsonObject{{QStringLiteral("kind"), QStringLiteral("spec")},
+                                            {QStringLiteral("loop"), 1},
+                                            {QStringLiteral("verified"), 0},
+                                            {QStringLiteral("dismissed"), 0},
+                                            {QStringLiteral("executed"), QStringLiteral("yes")},
+                                            {QStringLiteral("outcome"), QStringLiteral("complete")},
+                                            {QStringLiteral("arm"), QStringLiteral("draft")}};
+    const QJsonObject r = finishWith(fx, id, a, false, transcript);
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool()) << QJsonDocument(r).toJson().toStdString();
+    const QJsonObject c = r.value(QStringLiteral("cost_row")).toObject();
+    EXPECT_EQ(c.value(QStringLiteral("new_tokens")).toInt(), 7);
+    EXPECT_EQ(c.value(QStringLiteral("messages_counted")).toInt(), 1);
+}

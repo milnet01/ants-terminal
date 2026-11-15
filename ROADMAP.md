@@ -106632,7 +106632,7 @@ worked after these.
   Source: review-readability-2026-10-22 L25.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6272] **run_trace's usage sum and session_cost's count tokens differently.**
+- ✅ [ANTS-6272] **run_trace's usage sum and session_cost's count tokens differently.**
   L25-F5. sumUsage (runtraceverb.cpp) counts isSidechain lines and counts
   every line with no message id again; SessionCost::analyse skips both.
   One shared sum, with a test pinning which rule is right. Behaviour
@@ -106641,6 +106641,12 @@ worked after these.
   `runtraceverb.cpp:246-263`. Details:
   docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
   ANTS-5954/ANTS-6272.)
+  Shipped 2026-11-15. Rule chosen: session_cost's (a message counts once
+  by id; no-id and copied-in sidechain lines carry none), now
+  SessionCost::messageUsage for both verbs. Measured first: the 15
+  newest transcripts here hold no id-less and no sidechain assistant
+  lines, so today's numbers do not move. Test:
+  RunTrace.Ants6272UsageCountsAsSessionCostCounts.
   **Layman:** Two tools that add up a session's tokens disagree on what to count.
   Kind: fix.
   Source: review-readability-2026-10-22 L25.

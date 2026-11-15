@@ -242,6 +242,8 @@ bool sumUsage(const QString &path, const QDateTime &since, Usage *u, QString *er
         *err = QStringLiteral("cannot read transcript %1").arg(path);
         return false;
     }
+    // ANTS-6272 — the lines session_cost counts, by its rule.
+    const bool sidechainIsOwn = SessionCost::isAgentTranscript(path);
     QSet<QString> seen;
     while (!f.atEnd()) {
         const QByteArray line = f.readLine();
@@ -252,16 +254,13 @@ bool sumUsage(const QString &path, const QDateTime &since, Usage *u, QString *er
             e.value(QStringLiteral("timestamp")).toString(), Qt::ISODateWithMs);
         if (!ts.isValid() || ts < since)
             continue;
-        const QJsonObject m = e.value(QStringLiteral("message")).toObject();
-        const QString mid = m.value(QStringLiteral("id")).toString();
-        if (!mid.isEmpty()) {
-            if (seen.contains(mid)) {
-                ++u->duplicates;
-                continue;
-            }
-            seen.insert(mid);
-        }
-        const QJsonObject us = m.value(QStringLiteral("usage")).toObject();
+        QJsonObject us;
+        const SessionCost::UsageLine kind =
+            SessionCost::messageUsage(e, sidechainIsOwn, seen, &us);
+        if (kind == SessionCost::UsageLine::Duplicate)
+            ++u->duplicates;
+        if (kind != SessionCost::UsageLine::Counted)
+            continue;
         const auto n = [&](const char *k) {
             return static_cast<qint64>(us.value(QLatin1String(k)).toDouble());
         };

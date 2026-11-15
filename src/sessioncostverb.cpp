@@ -193,6 +193,28 @@ QString folderFor(const QStringList &projectsDirs, const QString &cwd) {
     return {};
 }
 
+UsageLine messageUsage(const QJsonObject &entry, bool sidechainIsOwn,
+                       QSet<QString> &seen, QJsonObject *usage) {
+    if (!sidechainIsOwn && entry.value(QStringLiteral("isSidechain")).toBool())
+        return UsageLine::None;
+    if (entry.value(QStringLiteral("type")).toString() != QLatin1String("assistant"))
+        return UsageLine::None;
+    const QJsonObject m = entry.value(QStringLiteral("message")).toObject();
+    const QString id = m.value(QStringLiteral("id")).toString();
+    const QJsonObject us = m.value(QStringLiteral("usage")).toObject();
+    if (id.isEmpty() || us.isEmpty())
+        return UsageLine::None;
+    if (seen.contains(id))
+        return UsageLine::Duplicate;
+    seen.insert(id);
+    *usage = us;
+    return UsageLine::Counted;
+}
+
+bool isAgentTranscript(const QString &transcriptPath) {
+    return QFileInfo(transcriptPath).dir().dirName() == QLatin1String("subagents");
+}
+
 QStringList projectsDirs() {
     QStringList out;
     const QString cfg = qEnvironmentVariable("CLAUDE_CONFIG_DIR");
@@ -211,8 +233,7 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
     // ANTS-6189 — a helper agent's own transcript marks every line
     // isSidechain; there those lines are the session itself, not a
     // subagent's lines copied into a main transcript.
-    const bool sidechainIsOwn =
-        QFileInfo(transcriptPath).dir().dirName() == QLatin1String("subagents");
+    const bool sidechainIsOwn = isAgentTranscript(transcriptPath);
     QSet<QString> seen;
     QHash<QString, QString> toolNames;  // tool_use id -> tool name
     std::vector<Item> items;
@@ -269,13 +290,10 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                     toolNames.insert(o.value(QStringLiteral("id")).toString(),
                                      o.value(QStringLiteral("name")).toString());
             }
-            // INV-1: the harness writes one line per content block, each with
-            // the whole message's usage, so a message counts once by its id.
-            const QString id = m.value(QStringLiteral("id")).toString();
-            const QJsonObject us = m.value(QStringLiteral("usage")).toObject();
-            if (id.isEmpty() || us.isEmpty() || seen.contains(id))
+            // INV-1: a message counts once by its id (messageUsage).
+            QJsonObject us;
+            if (messageUsage(e, sidechainIsOwn, seen, &us) != UsageLine::Counted)
                 continue;
-            seen.insert(id);
             const auto n = [&](const char *k) {
                 return static_cast<qint64>(us.value(QLatin1String(k)).toDouble());
             };
