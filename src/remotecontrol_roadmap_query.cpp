@@ -1712,9 +1712,8 @@ bool rcdetail::rcRoadmapWriteRefused(QJsonObject &out, RoadmapWrite::Result r,
         }
     case RoadmapWrite::Result::WouldDrop:
         // ANTS-4141. No array beside it: unlike the gate, the offenders are
-        // named in `error` itself, because the remedy is a migration the caller
-        // runs once and not a per-id edit, and the set is ~200 wide in the case
-        // this was written for.
+        // named in `error` itself, with the remedy, because the set is ~200
+        // wide in the case this was written for.
         return fail("render_would_drop",
                     "the roadmap render would delete bullets the store has "
                     "never imported");

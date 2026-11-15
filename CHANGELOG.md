@@ -196,6 +196,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **When a hand-typed roadmap item blocks a write, the refusal now says how to bring just that item into the store, and warns that a full migrate re-imports everything** (ANTS-6712)
+
 - **Four roadmap tools share one refusal, and say "store_failed" if the roadmap store will not open.** (ANTS-6247)
 
 - **The plugin code and its design doc say a plugin keypress veto is not planned** (ANTS-6770)

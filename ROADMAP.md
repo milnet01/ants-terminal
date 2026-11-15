@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6777 -->
+<!-- ants-roadmap-id-high-water: ANTS=6778 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93912,7 +93912,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: user report 2026-11-07.
 
-- 📋 [ANTS-6712] **An item typed into ROADMAP.md by hand can only reach the store through a whole-project migrate.**
+- ✅ [ANTS-6712] **An item typed into ROADMAP.md by hand can only reach the store through a whole-project migrate.**
   ANTS-6708..6710 were hand-filed on 2026-11-07 and every roadmap_log
   write then refused (bullet_not_found / render_would_drop). The refusal
   says run roadmap_migrate, but migrate and op:"convert" re-import every
@@ -93922,6 +93922,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   re-appending them with id_hint. Wanted: an import of named ids only,
   or a refusal that names that workaround. Migrate's loss on items with
   repeated field lines is a second defect to fix with it.
+  Shipped 2026-11-15 as the second remedy the item names:
+  render_would_drop's error tells the caller to delete each named bullet
+  and re-file it with op:"append" and id_hint, and warns that
+  roadmap_migrate re-imports every item. mcp-error-codes.md updated to
+  match. Migrate's loss on repeated field lines split to ANTS-6778.
   **Layman:** Adding a roadmap item by hand no longer locks the roadmap until a risky full re-import is run.
   Kind: fix.
   Source: in-session-2026-11-08.
@@ -93937,6 +93942,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   **Layman:** The nightly roadmap backup no longer fails just because the backup folder is a little out of date.
   Kind: fix.
   Source: in-session-2026-11-08.
+  Lanes: roadmap-store.
+
+- 📋 [ANTS-6778] **roadmap_migrate loses text on an item whose body repeats a field line.**
+  Seen in ANTS-6712's dry run of 2026-11-08, which updated 2,556 items:
+  ANTS-1565's layman was cut to its last **Layman:** fragment, and
+  ANTS-4344's trailing field lines were dropped. Reproduce on a scratch
+  store copy before changing anything.
+  **Layman:** Re-importing the roadmap no longer cuts words from items that mention a field like Layman twice.
+  Kind: fix.
+  Source: split from ANTS-6712, 2026-11-15.
   Lanes: roadmap-store.
 
 ### Memory caps applied too late or missing (2026-11-06 review)

@@ -229,6 +229,13 @@ TEST(RoadmapDivergenceGuard, RefusesRatherThanDropping) {
     EXPECT_TRUE(resp.value(QStringLiteral("error")).toString()
                     .contains(QStringLiteral("DEMO-0099")))
         << resp.value(QStringLiteral("error")).toString().toStdString();
+    // ANTS-6712 — and the per-item remedy, since roadmap_migrate re-imports
+    // every item rather than the missing ones.
+    const QString error = resp.value(QStringLiteral("error")).toString();
+    EXPECT_TRUE(error.contains(QStringLiteral("op:\"append\"")) &&
+                error.contains(QStringLiteral("id_hint")) &&
+                error.contains(QStringLiteral("re-imports every item")))
+        << error.toStdString();
 
     EXPECT_EQ(readAll(roadmap), before)
         << "the refusal must not have rewritten the file";

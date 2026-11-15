@@ -824,9 +824,12 @@ Result commitAndRender(RoadmapStore &store, qint64 projectId,
                 *error = QStringLiteral(
                              "the roadmap render would DELETE %1 bullet(s) the store "
                              "has never imported: %2%3. Nothing was written and the "
-                             "store is rolled back. Import them (roadmap_migrate) "
-                             "before writing through this verb again; until then, "
-                             "edit the roadmap by hand.")
+                             "store is rolled back. To bring them in, delete each "
+                             "from the file and re-file it with roadmap_log "
+                             "op:\"append\", passing id_hint to keep an id above the "
+                             "counter (ANTS-6712). roadmap_migrate also imports "
+                             "them, but it re-imports every item, so dry-run it "
+                             "first and read what it would change.")
                              .arg(dropped.size())
                              .arg(named.join(QStringLiteral(", ")),
                                   dropped.size() > named.size()
