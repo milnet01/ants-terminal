@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6778 -->
+<!-- ants-roadmap-id-high-water: ANTS=6779 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92853,6 +92853,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: ants-projects-hub-website-message-2026-11-13.
   Lanes: cc-job.
+
+- 📋 [ANTS-6779] **trace, find_definition and find_caller read NASM x86-64 assembly.**
+  DeFragR writes its engine in NASM (.asm, .inc), and none of the
+  code-navigation verbs name assembly. Suggested grammar: a label at line
+  start (`name:`), `global` / `extern`, `%macro`, `%define`, `%include`;
+  callers are `call name` and `jmp`/`jcc name`; `;` starts a comment.
+  GAS (`.globl`, `#` comments) would be a second step.
+  **Layman:** The code-lookup tools can find functions and their callers in assembly-language projects such as DeFragR.
+  Kind: feature.
+  Source: claude-config feedback 2026-11-15.
+  Lanes: mcp.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
