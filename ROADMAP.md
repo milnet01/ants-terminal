@@ -94245,13 +94245,25 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: ANTS-6470 sibling, 2026-11-15.
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6786] **The ANTS-1897 spec cites code by symbol instead of stale line numbers, and keeps its amendment history out of the rules.**
+- ✅ [ANTS-6786] **The ANTS-1897 spec cites code by symbol instead of stale line numbers, and keeps its amendment history out of the rules.**
   check-doc on docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md
   (2026-11-15): six line citations into src/mainwindow.cpp and
   src/claudeintegration.cpp name lines past each file's end; five
   "Amended ..." passages and the ANTS-5730 amendment section are history
   inside the rules. Cite symbols; move the history to
   docs/reviews/ANTS-1897-sessionstart-loop-log.md or a history file.
+  Shipped 2026-11-16. Every line citation in the spec now names a
+  symbol, or is gone where the text already named the site. Rewritten
+  to be true where the code moved: the socket is
+  privateSocketPath("mcp-<pid>") built in
+  MainWindow::setupClaudeMcpProviders, inline dispatch is in
+  ClaudeIntegration::handleMcpRequest, the reaper is
+  mcpd::reapStaleTerminalSockets, and INV-3's quoting reason no longer
+  names AppConfigLocation. Four "Amended" passages, the Status line's
+  correction history and the ANTS-5730 framing moved verbatim to
+  docs/history/ANTS-1897-ants-mcp-discoverability-sessionstart.md; the
+  ANTS-5730 migration rules moved into § 5. § 6's own dated notes on
+  test names were left as they are.
   **Layman:** One design document points at code lines that have since moved, and mixes its edit history into its rules.
   Kind: doc-fix.
   Source: check-doc 2026-11-15 (ANTS-6471 amendment).

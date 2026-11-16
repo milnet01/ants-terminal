@@ -1,31 +1,12 @@
 # ANTS-1897 — Ants MCP discoverability via SessionStart hook + selection_hint sweep
 
-**Status:** **implemented** — accepted (2026-05-27), cold-eyes loops 1–5
-folded (user signed off at the `--max-loops` cap: 0 CRITICAL, 3 HIGH all
-mechanical, all folded); shipped, and the status corrected 2026-08-15
-(ANTS-4135) from `accepted`, which it had kept while every invariant here was
-live and locked. That was not cosmetic: `spec_lint`'s test-surface check keys
-on status, so this spec's two wrong directory names came back as
-`test_surface_unresolved` *candidates* instead of the findings they were.
+**Status:** **implemented**.
 **Kind:** feature.
 **Source:** ROADMAP.md ANTS-1897 (in-session-2026-05-26; the
 `changelog_log` foot-gun observed during ANTS-1891 fold-in).
+**History:** [`docs/history/ANTS-1897-ants-mcp-discoverability-sessionstart.md`](../history/ANTS-1897-ants-mcp-discoverability-sessionstart.md).
 **Pairs with:** ANTS-1453 (the original `selection_hint` field on tool
 descriptors), ANTS-1883 (`session_orient` bundle).
-
-**Amended 2026-06-05 (ANTS-2038):** the case-2 rewrite gate is now
-**content-parity**, not version-only. A marker-present (Ants-managed)
-script is rewritten whenever its on-disk body differs byte-for-byte
-from the rendered template — so an in-version template edit (a prelude
-reword shipped without a version bump, e.g. ANTS-1985's catalog
-repoint) reaches installed sessions on the next launch instead of going
-stale until the next bump. This **supersedes** the loop-5 MEDIUM
-trade-off below ("user edit survives until next version bump"): a user
-hand-edit to the managed body is now overwritten on the next launch;
-ownership is taken by deleting the marker line (case 3, INV-2 —
-unchanged). Touches § 2.1.1 case 2, INV-1, INV-12, and the script
-header comment. Cold-eyes loop log for this amendment at the end of
-this file.
 
 **Layman:** Right now Ants ships dozens of quick-access tools for
 Claude Code (cheaper ways to read a file, append to the changelog,
@@ -46,21 +27,20 @@ that same `tools/list` response — it is the authoritative count.
 By *handler-dispatch path*, those 67 break down as:
 
 - **65 tools** route through `m_claudeIntegration->
-  registerToolProvider(...)` (the registry surface; definition at
-  `src/claudeintegration.cpp:1253`, 65 call sites in
+  registerToolProvider(...)` (the registry surface; definition
+  `ClaudeIntegration::registerToolProvider`, 65 call sites in
   `src/mainwindow.cpp`).
-- **2 control-plane tools** (`get_session_info` at
-  `src/claudeintegration.cpp:1710`, `tool_info` at
-  `src/claudeintegration.cpp:6470`) bypass `registerToolProvider`
-  and are dispatched inline by `processTools`.
+- **2 control-plane tools** (`get_session_info` and `tool_info`)
+  bypass `registerToolProvider` and are dispatched inline by
+  `ClaudeIntegration::handleMcpRequest`.
 
 All 67 receive descriptors in the `tools/list` builder — the
 "registered vs inline-dispatched" split is about *call-routing*,
 not about which tools have descriptors. A grep approximation —
 `grep -cE '\["name"\][[:space:]]*='` returns 70 raw hits in
 `claudeintegration.cpp`; subtract three non-tool sites
-(`serverInfo["name"]` at L1514, `props["name"]` at L6494,
-`env["name"]` at L7372 inside an inner env-row loop) → 67. Many
+(`serverInfo["name"]`, `props["name"]`,
+`env["name"]` inside an inner env-row loop) → 67. Many
 of these 67 are specifically built to cut Claude's token spend —
 `changelog_log`,
 `roadmap_log`, `git_state`, `file_outline`, `find_definition`,
@@ -121,7 +101,7 @@ ships (§ 7 Cross-doc impact) to reflect the chosen mechanism.
 
 - Ants does **not** spawn `claude` directly. It watches the user's
   PTY for `claude` becoming a child of the shell
-  (`src/claudeintegration.cpp:165 findClaudeChildPid`), then attaches
+  (`ClaudeIntegration::findClaudeChildPid`), then attaches
   the MCP socket and the hook server.
 - Claude Code accepts `--append-system-prompt <prompt>` and
   `--system-prompt-file <path>` at the CLI, but Ants has no
@@ -148,19 +128,17 @@ ships (§ 7 Cross-doc impact) to reflect the chosen mechanism.
   empty).
 - `selection_hint` is used by **67 descriptors** out of 67 tools in
   `claudeintegration.cpp` (the raw `selection_hint` grep returns
-  68 hits; one of them — L7378 `env["selection_hint"]` — sits
+  68 hits; one of them — `env["selection_hint"]` — sits
   inside the same inner env-row loop excluded from the tool count
   above, so descriptor-level coverage is 67/67, 1:1). One existing
-  hint (L3104) starts with `"Call once at session start instead of
+  hint starts with `"Call once at session start instead of
   …"` rather than the canonical `"Use when …"` form. The sweep
   rewrites that one and tightens cost-cue language across the
   rest. The canonical shape is `"Use when <X>. <token-cost or
-  trade-off cue>."` (see `scrollbackTool["selection_hint"]` at
-  L1632).
-- Ants's MCP socket lives at `/tmp/ants-terminal-mcp-<applicationPid>`
-  (`src/mainwindow.cpp:3865`: `QDir::tempPath() +
-  "/ants-terminal-mcp-" + QString::number(QApplication::
-  applicationPid())`). It is **not** currently exported into the
+  trade-off cue>."` (see `scrollbackTool["selection_hint"]` in
+  `appendToolSchemasTerminal`).
+- Ants's MCP socket is `privateSocketPath("mcp-<applicationPid>")`,
+  built in `MainWindow::setupClaudeMcpProviders`. It is **not** currently exported into the
   child shell environment (a `grep -nE 'ANTS_MCP|env\.insert.*MCP'`
   on `src/claudeintegration.{cpp,h}` returns zero matches). The
   spec adds this export (§ 2.1.5, INV-14).
@@ -299,8 +277,7 @@ Ants SessionStart hook entry, and writes back atomically:
   XDG overrides or flatpak this resolves elsewhere — the install path
   and the `command` string are derived from the *same* call in the
   same launch, so they always agree even under non-default
-  prefixes). Until ANTS-5730 this was `AppConfigLocation`; see the
-  amendment at the end. The hook runner does not reliably expand `~`. The
+  prefixes). The hook runner does not reliably expand `~`. The
   command **explicitly prefixes `bash`** so the shape matches the
   user's pre-existing `UserPromptSubmit` hook style (`bash
   /home/.../git-context-on-keyword.sh`, verified live) — visual
@@ -357,7 +334,7 @@ Ants SessionStart hook entry, and writes back atomically:
   3. Else: install the script (idempotent per § 2.1.1) and merge the
      hook entry (idempotent per § 2.1.2).
 - Settings dialog → **General** tab (verified
-  `src/settingsdialog.cpp:117` — `setupGeneralTab()` hosts the
+  `SettingsDialog::setupGeneralTab()` hosts the
   existing Claude toggles: `m_claudeTabStatusIndicator` and the
   ANTS-1735 `m_claudeAutoModelSwitch` "Let Ants pick the Claude
   model for me" toggle. The "AI Assistant" tab is for the legacy
@@ -377,26 +354,24 @@ Verified gap: today no code in `src/claudeintegration.{cpp,h}` sets
 this env var, so without this spec the prelude would never fire.
 
 - **Mechanism — parent-side `qputenv`, child-side inherit.**
-  Immediately after the MCP server starts at
-  `src/mainwindow.cpp:3867`
+  Immediately after the MCP server starts in
+  `MainWindow::setupClaudeMcpProviders`
   (`m_claudeIntegration->startMcpServer(mcpSocket)`; the
-  `mcpSocket` value is defined two lines earlier at
-  `src/mainwindow.cpp:3865`), the same `mcpSocket` path is
+  `mcpSocket` value is defined just before it), the same `mcpSocket` path is
   exported into the *parent* process environment via
   `qputenv("ANTS_MCP_SOCKET", mcpSocket.toLocal8Bit())`.
-  `ptyhandler.cpp:171` (the non-flatpak shell-launch path)
+  `src/ptyhandler.cpp`'s non-flatpak shell-launch path
   iterates `extern char **environ` to populate the pre-forked
   `childEnvp[]` array, so every PTY spawned after this
   `qputenv` inherits the var without any change to
   `Pty`'s API (`src/ptyhandler.cpp`).
-- **Ordering verified:** the MainWindow ctor at
-  `src/mainwindow.cpp:240` calls `setupStatusBarChrome()` at L609
+- **Ordering verified:** the MainWindow ctor calls `setupStatusBarChrome()`
   (which in turn calls `setupClaudeMcpProviders()` → `startMcp
-  Server` at L3867) **before** the first `newTab()` at L612.
-  No PTY is spawned in the gap. The qputenv inserted right after
-  L3867 therefore lands before any child shell forks.
+  Server`) **before** the first `newTab()`.
+  No PTY is spawned in the gap. The qputenv right after
+  `startMcpServer` therefore lands before any child shell forks.
 - **Scope (INV-14):** the **non-flatpak shell-launch path** in
-  `ptyhandler.cpp` (the `environ`-copy branch at L171). The
+  `ptyhandler.cpp` (the `environ`-copy branch). The
   flatpak branch in the same file uses `flatpak-spawn` semantics
   with its own env-pass rules — covered by **ANTS-1900** (new
   follow-up). INV-14 explicitly does not enforce on the flatpak
@@ -405,8 +380,8 @@ this env var, so without this spec the prelude would never fire.
   branch is the only path.
 - **Cleanup:** the env var is set per-Ants-instance (carries the
   per-process MCP socket path). When Ants exits, the socket file
-  is removed (`src/mainwindow.cpp:3830-3863` reaper sweeping
-  `/tmp/ants-terminal-mcp-*`); the env var in still-running
+  is removed (`mcpd::reapStaleTerminalSockets` sweeps sockets
+  left by dead processes); the env var in still-running
   shells points at a now-defunct socket — the hook script's
   `[ ! -S ... ]` guard catches this and exits 0.
 
@@ -427,9 +402,9 @@ emits nothing and Claude Code sessions continue normally.
   Tools that already have one get the hint reviewed against the
   canonical format (§ 2.2.1) and tightened if weak. **Excluded
   by definition** (these are `["name"]` sites that are *not*
-  tool registrations): `serverInfo["name"]` at L1514 (MCP
-  server identity), `props["name"]` at L6494 (an
-  inputSchema property name), `env["name"]` at L7372 (an
+  tool registrations): `serverInfo["name"]` (MCP
+  server identity), `props["name"]` (an
+  inputSchema property name), `env["name"]` (an
   inner row of the `get_environment` response JSON, *not* a
   tool registration).
 - **Audit step:** during implementation, the developer runs
@@ -441,11 +416,7 @@ emits nothing and Claude Code sessions continue normally.
   `["selection_hint"]` raw** — subtract the 3 + 1 non-tool
   exclusions named in § 1.1 → 67/67 net (1:1). The runtime test
   (INV-6) is authoritative — it iterates the live `tools/list`
-  response and asserts coverage. **Amended 2026-08-15 (ANTS-4135):
-  it shipped as `McpOrientation_Inv6.SelectionHintCoverage` in
-  `tests/features/mcp_orientation_install/`, with a second angle in
-  `tests/features/mcp_selection_hint/`** — never as
-  `mcp_selection_hint_coverage/`, which does not exist. The implementation commit message records the
+  response and asserts coverage. The implementation commit message records the
   number of tightened hints.
 - **Build-time enforcement:** see INV-6 + § 6 test surface.
 
@@ -486,12 +457,12 @@ review is a judgment call that doesn't compile to a unit test.
 - New source files: `src/mcporientation.{h,cpp}` (~515 LOC total
   as built; the ~120 estimate predated the ANTS-1901/1971 fold-ins)
   added to the `ants_claude_lib` STATIC library (per CMakeLists.txt
-  L342 — the lib that hosts `claudeintegration.cpp`, the only
+  — the lib that hosts `claudeintegration.cpp`, the only
   caller). Adding to `ants_core_lib` (the foundation lib) would
   invert the dependency direction.
 - Existing `selection_hint` string literals are static; coverage
   is already 67/67 (verified § 1.1) so the sweep adds zero new
-  hints — it rewrites one outright (L3104) and tightens cost-cue
+  hints — it rewrites one outright and tightens cost-cue
   language on an estimated ~20 others. Net binary growth: ~1 KB
   of literal string data churn (the tightening expands some hints,
   trims others), no new symbols.
@@ -526,9 +497,8 @@ review is a judgment call that doesn't compile to a unit test.
   directory-name variants: lowercase `ants-terminal` vs Qt's
   verbatim-cased `Ants Terminal`) and replaces them with a
   single canonical entry. The `command` value bash-single-quotes
-  the script path so spaces in `QStandardPaths::
-  AppConfigLocation` (Qt builds `<home>/.config/Ants Terminal/...`
-  from `applicationName`) do not tokenise at hook-run time.
+  the script path so a space in it does not tokenise at hook-run
+  time.
   *Tests:* same dir, cases `settings_merge_idempotent`,
   `sweeps_existing_duplicates`, `command_runnable_with_spaces_in_path`
   (ANTS-1902 fold-in).
@@ -551,7 +521,7 @@ review is a judgment call that doesn't compile to a unit test.
   forgetting the field, not a gap-closing claim.
 - **INV-7** — Every `selection_hint` is ≤ 280 chars and starts
   with the case-insensitive prefix `"Use "`. (The one existing
-  non-conforming hint at `src/claudeintegration.cpp:3104` —
+  non-conforming hint —
   `"Call once at session start instead of …"` — is rewritten by
   the sweep to satisfy the prefix.) *Test:* same dir, case
   `selection_hint_format`.
@@ -618,23 +588,18 @@ review is a judgment call that doesn't compile to a unit test.
   `claudeIntegrationWarning` chip. *Test:* same dir, case
   `bad_json_no_clobber`. The same refusal covers valid JSON whose `hooks`
   is not an object or whose `SessionStart` is not an array, and a merge
-  that changes nothing does not rewrite the file. *(Amended 2026-09-13,
-  ANTS-5104, recording what was built; tests
-  `WrongTypedHooksNoClobber`, `NoOpInstallLeavesSettingsUntouched`.)*
+  that changes nothing does not rewrite the file.
+  *Tests:* `WrongTypedHooksNoClobber`,
+  `NoOpInstallLeavesSettingsUntouched`.
 - **INV-14** — Every PTY spawned by Ants Terminal via the
   non-flatpak shell-launch branch carries the env var
   `ANTS_MCP_SOCKET=<absolute path to the MCP socket>` (the same
-  path passed to `startMcpServer` at
-  `src/mainwindow.cpp:3867`). This is the reachability hinge the
+  path passed to `startMcpServer` in
+  `MainWindow::setupClaudeMcpProviders`). This is the reachability hinge the
   hook script tests at `[ -S "$ANTS_MCP_SOCKET" ]`. The flatpak
   branch is scoped out (§ 4 ANTS-1900). *Test:*
   `McpOrientation_Inv14.MainWindowExportsSocket` in
-  `tests/features/mcp_orientation_install/`. **Amended 2026-08-15
-  (ANTS-4135):** the separate `mcp_pty_env_carries_socket/` dir this
-  clause named was planned for a `/dev/ptmx` harness and never
-  created; the invariant is locked in the orientation bundle
-  instead, against the exported socket path rather than through a
-  live PTY.
+  `tests/features/mcp_orientation_install/`.
 
 - **INV-15** (ANTS-6471) — The `settings.json` merge writes nothing
   when another holder keeps its `ConfigWriteLock`, or when the file
@@ -696,6 +661,18 @@ review is a judgment call that doesn't compile to a unit test.
     master toggle.
   - `claude.mcp_orientation_nudge_shown` (bool, default `false`)
     — one-shot latch for the first-run toast.
+
+- **The script's old folder** (ANTS-5730): `<config>/Ants Terminal/hooks/`,
+  the folder `AppConfigLocation` names.
+  - The script path is `GenericConfigLocation` + `/ants-terminal/hooks/mcp-orientation.sh`.
+  - On install, a script found at the old path moves to the new one when
+    nothing is there. When the new path is taken, an old copy that carries
+    the Ants marker is deleted and one that does not is left alone.
+  - The `SessionStart` entry needs no migration of its own: an entry that
+    names the old path is not the canonical one, so the merge replaces it.
+
+  Tests: the four `McpOrientation_Ants5730` cases in
+  `tests/features/mcp_orientation_install`.
 
 ## 6. Tests
 
@@ -798,8 +775,8 @@ review is a judgment call that doesn't compile to a unit test.
   (escalated to CRITICAL during cold-eyes loop 1; fix baked into
   § 2.1.4 + INV-14)*: exported via parent-side `qputenv`
   immediately after `startMcpServer` returns; inherited into
-  child PTYs via the existing `environ`-copy loop at
-  `ptyhandler.cpp:171`. Scope is the non-flatpak branch — see
+  child PTYs via the existing `environ`-copy loop in
+  `src/ptyhandler.cpp`. Scope is the non-flatpak branch — see
   ANTS-1900 for the flatpak follow-up.
 - **OQ-4** — The orientation list of "high-value MCP tools" will
   grow as new tools ship. How is it kept current? *Decision*: the
@@ -811,22 +788,3 @@ review is a judgment call that doesn't compile to a unit test.
 ## 9. Cold-eyes loop log
 
 Rows live in [`docs/reviews/ANTS-1897-sessionstart-loop-log.md`](../reviews/ANTS-1897-sessionstart-loop-log.md).
-
-## Amendment — ANTS-5730 (2026-11-14)
-
-No reviewer was dispatched for this amendment.
-
-`AppConfigLocation` is built from the application name, "Ants Terminal",
-so the script sat in `<config>/Ants Terminal/hooks/`, a second folder
-beside `<config>/ants-terminal/`. The passages above that name
-`AppConfigLocation` record how it was. Now:
-
-- The script path is `GenericConfigLocation` + `/ants-terminal/hooks/mcp-orientation.sh`.
-- On install, a script found at the old path moves to the new one when
-  nothing is there. When the new path is taken, an old copy that carries
-  the Ants marker is deleted and one that does not is left alone.
-- The `SessionStart` entry needs no migration of its own: an entry that
-  names the old path is not the canonical one, so the merge replaces it.
-
-Tests: the four `McpOrientation_Ants5730` cases in
-`tests/features/mcp_orientation_install`.

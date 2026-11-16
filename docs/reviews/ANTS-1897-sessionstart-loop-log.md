@@ -533,3 +533,7 @@ Shipped as ANTS-2038.
 ### impl — ANTS-6471 (2026-11-15)
 
 Not a review loop; no reviewer was dispatched. Implementation amendment: § 2.1.2 gains "Other writers" (the merge holds ConfigWriteLock across read, merge and write, and backs off when settings.json changed before its rename), and INV-15 states it. Origin: ANTS-6471 (review-code 2026-11-06, lane 17-mcp-infra). Both INV-15 tests ran red against the pre-fix source.
+
+### impl (2026-11-16)
+
+ANTS-6786 doc-fix, not a review; no reviewer was dispatched. Line citations replaced by symbols; the dated amendment passages and the ANTS-5730 framing moved verbatim to docs/history/ANTS-1897-ants-mcp-discoverability-sessionstart.md; the ANTS-5730 migration rules moved into § 5.

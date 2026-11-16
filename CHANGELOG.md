@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The SessionStart orientation spec cites code by name instead of line numbers, and keeps its amendment history in a history file of its own** (ANTS-6786)
+
 - **Tidied the model-switch ledger and the Claude status-bar controller where clang-tidy flagged them, with no change in behaviour.** (ANTS-6789)
 
 - **Source comments and the mailbox spec describe the current refusal of undeclared MCP arguments** (ANTS-6769)
