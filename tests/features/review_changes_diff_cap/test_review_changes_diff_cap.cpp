@@ -493,3 +493,103 @@ TEST(ReviewChangesDiffCap, ClosingDoesNotDestroyRunningProbes) {
         << destroyedWhileRunning.join(QStringLiteral(" | ")).toStdString()
         << " (ANTS-5128)";
 }
+
+namespace {
+// Opens the dialog on `dir`, waits for its first render, and returns the
+// viewer's text; empty if it never rendered.
+QString renderOnce(const QString &dir) {
+    QWidget host;
+    QDialog *dialog = diffviewer::show(&host, dir, QStringLiteral("Dark"));
+    if (!dialog) return {};
+    auto *viewer = dialog->findChild<QTextBrowser *>();
+    QString text;
+    if (viewer && waitForRealRender(viewer, 120000)) text = viewer->toPlainText();
+    dialog->close();
+    QCoreApplication::processEvents();
+    return text;
+}
+
+// /proc/self/status field in KiB, or -1.
+long procStatusKiB(const char *field) {
+    QFile f(QStringLiteral("/proc/self/status"));
+    if (!f.open(QIODevice::ReadOnly)) return -1;
+    const QByteArray key = QByteArray(field) + ':';
+    for (const QByteArray &line : f.readAll().split('\n'))
+        if (line.startsWith(key)) return line.mid(key.size()).trimmed().split(' ').value(0).toLong();
+    return -1;
+}
+}  // namespace
+
+// ---------------------------------------------------------------------
+// INV-6 (ANTS-6514) — New files has a budget: at most kMaxNewFiles files
+// and about 1 MiB of content, then one line saying how many are left.
+// ---------------------------------------------------------------------
+TEST(ReviewChangesDiffCap, Ants6514NewFilesHaveABudget) {
+    if (!gitOnPath()) GTEST_SKIP() << "git not in PATH";
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        ASSERT_TRUE(makeRepoAndCommit(tmp.path(), QStringLiteral("f.txt"),
+                                      QStringLiteral("v1\n")));
+        for (int i = 0; i < 200; ++i)
+            ASSERT_TRUE(writeTextFile(tmp.filePath(QStringLiteral("n%1.txt").arg(i, 3, 10, QLatin1Char('0'))),
+                                      QStringLiteral("x\n")));
+        const QString text = renderOnce(tmp.path());
+        ASSERT_FALSE(text.isEmpty()) << "the dialog never rendered";
+        EXPECT_TRUE(text.contains(QStringLiteral("150 more new files")))
+            << "200 untracked files did not stop at 50 with a count of the rest";
+    }
+    {
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        ASSERT_TRUE(makeRepoAndCommit(tmp.path(), QStringLiteral("f.txt"),
+                                      QStringLiteral("v1\n")));
+        const QString body = QString(QStringLiteral("y").repeated(63) + QLatin1Char('\n')).repeated(480);
+        for (int i = 0; i < 80; ++i)   // 80 files of 30 KiB: 2.4 MiB
+            ASSERT_TRUE(writeTextFile(tmp.filePath(QStringLiteral("b%1.txt").arg(i, 2, 10, QLatin1Char('0'))), body));
+        const QString text = renderOnce(tmp.path());
+        ASSERT_FALSE(text.isEmpty()) << "the dialog never rendered";
+        EXPECT_LT(text.size(), 3 * 512 * 1024)
+            << "2.4 MiB of new files rendered as " << text.size() << " characters";
+        EXPECT_TRUE(text.contains(QStringLiteral("more new files")));
+    }
+}
+
+// ---------------------------------------------------------------------
+// INV-7 (ANTS-6515) — the diff probe's output is read as git writes it
+// and kept to the 1 MiB cap, so a huge diff never sits whole in memory.
+// ---------------------------------------------------------------------
+TEST(ReviewChangesDiffCap, Ants6515DiffProbeMemoryIsBounded) {
+#if defined(__SANITIZE_ADDRESS__)
+    GTEST_SKIP() << "ASan keeps freed blocks resident, so the peak measures its quarantine";
+#endif
+    if (!gitOnPath()) GTEST_SKIP() << "git not in PATH";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(makeRepoAndCommit(tmp.path(), QStringLiteral("big.txt"),
+                                  QStringLiteral("one\ntwo\n")));
+    {
+        QFile f(tmp.filePath(QStringLiteral("big.txt")));
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        QByteArray block;
+        for (int i = 0; i < 20000; ++i)
+            block += QByteArray::number(i).rightJustified(8, '0') + QByteArray(23, 'z') + '\n';
+        for (int r = 0; r < 50; ++r) ASSERT_EQ(f.write(block), block.size());   // ~30 MiB
+    }
+    renderOnce(tmp.path());   // warm: first-call allocations, fonts, styles
+
+    QFile clear(QStringLiteral("/proc/self/clear_refs"));
+    if (!clear.open(QIODevice::WriteOnly) || clear.write("5") != 1)
+        GTEST_SKIP() << "cannot reset the peak (/proc/self/clear_refs)";
+    clear.close();
+    const long before = procStatusKiB("VmRSS");
+    const QString text = renderOnce(tmp.path());
+    const long peak = procStatusKiB("VmHWM");
+    ASSERT_FALSE(text.isEmpty()) << "the dialog never rendered";
+    ASSERT_GT(before, 0);
+    const long growthMiB = (peak - before) / 1024;
+    std::fprintf(stderr, "Ants6515: peak growth %ld MiB\n", growthMiB);
+    // Measured 2026-11-16: 79 MiB before ANTS-6515, 30-32 MiB after (the
+    // render of the 1 MiB that is kept).
+    EXPECT_LT(growthMiB, 50) << "a 30 MiB diff raised peak memory " << growthMiB << " MiB";
+}

@@ -147,6 +147,16 @@ itself (RED when authored; fixed 2026-09-12).
   none of this and the test passes while the defect is live. The test
   pumps until every probe is `Running` and fails the fixture otherwise.
   Measured 2026-09-12.
+- **INV-6** (ANTS-6514, behavioural — `Ants6514NewFilesHaveABudget`):
+  New files reads and renders at most 50 files and stops starting new
+  ones once about 1 MiB of content is read, then names how many it left
+  out. 200 untracked files show "150 more new files"; 80 files of
+  30 KiB render as under 1.5 M characters.
+- **INV-7** (ANTS-6515, behavioural — `Ants6515DiffProbeMemoryIsBounded`):
+  the diff probe's output is read as git writes it and kept to its
+  1 MiB cap, so a 30 MiB diff raises peak memory by under 50 MiB, most
+  of it the render. The peak is reset through `/proc/self/clear_refs`
+  and read as `VmHWM`; the test skips under ASan.
 
 ## Rationale
 
@@ -183,9 +193,8 @@ untracked one) and has no equivalent.
   test does not attempt.
 - Diff colourization / anchor-linking correctness — covered by
   `review_changes_branches` and `review_changes_scroll_preserve`.
-- The New-files 200 KB untracked-file cap — already correct and
-  unrelated to this defect (INV-4 confirms an ordinary tracked-file
-  diff still renders in full, but does not re-test the New-files path).
+- The New-files 200 KB per-file cap; INV-6 covers only the budget
+  across files.
 - (ANTS-5128) Graceful vs. forceful process termination (`terminate()`
   vs. `kill()`), and whatever grace period the fix chooses — INV-5 pins
   only that no probe is destroyed while running.

@@ -462,6 +462,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Review Changes shows at most 50 new files and about 1 MiB of their content, then says how many more there are** (ANTS-6514)
+
+- **Review Changes reads git's diff as it arrives and keeps only the first 1 MiB, so a huge diff no longer fills memory** (ANTS-6515)
+
 - **The updater stops a manifest or signature download past 4 KiB and refuses the update** (ANTS-6513)
 
 - **Git calls behind the MCP verbs read git's output as it arrives, so their output limits bound memory too** (ANTS-6512)

@@ -94735,7 +94735,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6514] **diffviewer.cpp: every untracked file is read (up to 200 KB each) and turned into HTML on the GUI thread, with no limit on how many files.**
+- ✅ [ANTS-6514] **diffviewer.cpp: every untracked file is read (up to 200 KB each) and turned into HTML on the GUI thread, with no limit on how many files.**
   `diffviewer.cpp:676-733` — every untracked file is read (up to 200 KB
   each) and turned into HTML on the GUI thread, with no limit on how
   many files.
@@ -94744,12 +94744,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   files and the total bytes rendered in New files, and show a "… N more"
   line.
   Ledger row 241, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: New files stops at 50 files or once about 1 MiB is
+  read, then prints how many are not shown. review_changes_diff_cap
+  INV-6.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6515] **diffviewer.cpp: the whole output of `git diff --stat --patch HEAD` is buffered by QProcess and converted to UTF-16, and that copy is trimmed into a second one.**
+- ✅ [ANTS-6515] **diffviewer.cpp: the whole output of `git diff --stat --patch HEAD` is buffered by QProcess and converted to UTF-16, and that copy is trimmed into a second one.**
   `diffviewer.cpp:836` — the whole output of `git diff --stat --patch
   HEAD` is buffered by QProcess and converted to UTF-16, and that copy
   is trimmed into a second one. The 1 MiB cap (`:433-438`) only applies
@@ -94760,6 +94763,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   (`readyReadStandardOutput`) and stop or kill the process once the cap
   is reached.
   Ledger row 242, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: every probe reads stdout on readyRead; the diff
+  probe keeps 1 MiB, cut at a line boundary, and sets diffTruncated. The
+  later 1 MiB character cut in finalize is gone (the read cap makes it
+  unreachable). A 30 MiB diff: peak growth 79 MiB before, 30-32 after.
+  INV-7.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).

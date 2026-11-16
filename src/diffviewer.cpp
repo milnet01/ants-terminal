@@ -30,6 +30,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <memory>
 
 namespace diffviewer {
@@ -428,15 +429,6 @@ QDialog *show(QWidget *parent,
                     .arg(Themes::byName(themeName).ansi[2].name()));
         }
 
-        // ANTS-5059 — bound what the GUI thread turns into HTML and lays out:
-        // a rewritten lockfile or bundle is tens of thousands of lines.
-        constexpr qsizetype kMaxDiffChars = 1024LL * 1024;
-        if (state->diff.size() > kMaxDiffChars) {
-            const qsizetype cut =
-                state->diff.lastIndexOf(QLatin1Char('\n'), kMaxDiffChars);
-            state->diff.truncate(cut > 0 ? cut : kMaxDiffChars);
-            state->diffTruncated = true;
-        }
         // ANTS-5059 — skip the build when no probe's output changed. Not when
         // untracked files are listed: their content is read from disk below,
         // and an edit to one changes nothing a probe reports.
@@ -684,7 +676,15 @@ QDialog *show(QWidget *parent,
             }
             if (!newFiles.isEmpty()) {
                 section(QStringLiteral("New files"));
+                // ANTS-6514 — the GUI thread reads and renders at most this
+                // many files and about this much of their content.
+                constexpr int kMaxNewFiles = 50;
+                constexpr qint64 kMaxNewFileBytes = 1024LL * 1024;
+                int shown = 0;
+                qint64 shownBytes = 0;
                 for (const QString &rel : newFiles) {
+                    if (shown == kMaxNewFiles || shownBytes >= kMaxNewFileBytes) break;
+                    ++shown;
                     // ANTS-1965 — jump target so the Status link for an
                     // untracked file lands on its synthetic hunk.
                     html += QStringLiteral("<a name='%1'></a>")
@@ -701,6 +701,7 @@ QDialog *show(QWidget *parent,
                     constexpr qint64 kCap = 200LL * 1024;
                     const QByteArray raw = nf.read(kCap + 1);
                     nf.close();
+                    shownBytes += raw.size();
                     const bool truncated = (raw.size() > kCap);
                     const QByteArray body = truncated ? raw.left(kCap) : raw;
                     if (body.contains('\0')) {
@@ -729,6 +730,12 @@ QDialog *show(QWidget *parent,
                         html += QStringLiteral("<span style='color: %1;'>+%2</span>\n")
                                     .arg(addColor, ln.toHtmlEscaped());
                 }
+                if (shown < newFiles.size())
+                    html += QStringLiteral(
+                        "<span style='color: %1;'>… %2 more new files not shown — run "
+                        "git status in a terminal for the rest.</span>\n")
+                        .arg(lth.ansi[3].name())
+                        .arg(newFiles.size() - shown);
             }
         }
 
@@ -818,10 +825,15 @@ QDialog *show(QWidget *parent,
     // the probes, and their callbacks cannot outlive it. ANTS-5128 — via
     // the ProbeHost child, which does the killing before they are
     // destroyed rather than leaving it to ~QProcess.
+    // ANTS-6515 — stdout is read as git writes it, so QProcess never holds
+    // a whole diff. With `cut` set, at most kMaxProbeBytes are kept, ending
+    // at a line boundary, and *cut says the rest was dropped.
     auto runAsync = [dialog, probeHost, cwd, gitEnv, finalize](
                                                     const QStringList &args,
                                                     QString ProbeState::*slot,
-                                                    ProbeState *st) {
+                                                    ProbeState *st,
+                                                    bool ProbeState::*cut = nullptr) {
+        constexpr qsizetype kMaxProbeBytes = 1024LL * 1024;
         auto *p = new QProcess(probeHost);
         p->setWorkingDirectory(cwd);
         p->setProcessEnvironment(gitEnv);
@@ -830,10 +842,27 @@ QDialog *show(QWidget *parent,
         QPointer<QProcess> pg = p;
         auto st_ptr = st;  // raw — lifetime is held by the shared_ptr
                            // captured through `finalize`
+        auto out = std::make_shared<QByteArray>();
+        auto over = std::make_shared<bool>(false);
+        auto take = [pg, out, over, capped = cut != nullptr]() {
+            if (!pg) return;
+            const QByteArray chunk = pg->readAllStandardOutput();
+            const qsizetype room = capped ? kMaxProbeBytes - out->size() : chunk.size();
+            if (chunk.size() > room) *over = true;
+            if (room > 0) out->append(chunk.constData(), std::min(room, chunk.size()));
+        };
+        QObject::connect(p, &QProcess::readyReadStandardOutput, dialog, take);
         QObject::connect(p,
             QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), dialog,
-            [st_ptr, slot, pg, finalize](int /*code*/, QProcess::ExitStatus /*es*/) {
-                if (pg) st_ptr->*slot = QString::fromUtf8(pg->readAllStandardOutput()).trimmed();
+            [st_ptr, slot, cut, pg, out, over, take, finalize](int /*code*/,
+                                                              QProcess::ExitStatus /*es*/) {
+                take();
+                if (cut && *over) {
+                    const qsizetype nl = out->lastIndexOf('\n');
+                    if (nl > 0) out->truncate(nl);
+                    st_ptr->*cut = true;
+                }
+                st_ptr->*slot = QString::fromUtf8(*out).trimmed();
                 if (pg) pg->deleteLater();
                 finalize();
             });
@@ -850,7 +879,8 @@ QDialog *show(QWidget *parent,
     };
 
     runAsync({"status", "-b", "--short"},                       &ProbeState::status,   state.get());
-    runAsync({"diff", "--stat", "--patch", "HEAD"},              &ProbeState::diff,     state.get());
+    runAsync({"diff", "--stat", "--patch", "HEAD"},              &ProbeState::diff,     state.get(),
+             &ProbeState::diffTruncated);
     runAsync({"log", "--oneline", "--decorate", "@{u}..HEAD"},   &ProbeState::unpushed, state.get());
 
     // 0.7.32 — branch-aware sections. for-each-ref reports every
