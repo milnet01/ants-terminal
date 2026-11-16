@@ -460,6 +460,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **mutation_probe reads each build and test run's output while it runs, keeping only the last 512 KiB in memory.** (ANTS-6497)
+
 - **The title bar's public/private repository badge keeps a bounded cache instead of one entry per repository ever visited.** (ANTS-6495)
 
 - **Scrolling through a long history keeps the terminal's per-line link and highlight caches to a fixed size.** (ANTS-6492)

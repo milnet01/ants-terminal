@@ -1412,3 +1412,16 @@ TEST(MutationProbe, Ants4768MalformedEnvRefuses) {
             << QJsonDocument(QJsonArray{v}).toJson().toStdString();
     }
 }
+
+// INV-9 (ANTS-6497) — each run's output is read while the child runs, so
+// QProcess never holds more than one read of it.
+TEST(MutationProbe, Ants6497OutputIsDrainedWhileTheChildRuns) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(),
+        "QJsonDocument RemoteControl::cmdMutationProbe(");
+    ASSERT_FALSE(body.empty()) << "cmdMutationProbe not found";
+    EXPECT_NE(body.find("ProcessDrain::run("), std::string::npos)
+        << "runCommand does not drain the child's output as it runs";
+    EXPECT_EQ(body.find("readAllStandardOutput()"), std::string::npos)
+        << "runCommand still reads the whole output after the child exits";
+}

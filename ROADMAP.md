@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6794 -->
+<!-- ants-roadmap-id-high-water: ANTS=6795 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94384,7 +94384,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Low).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6497] **remotecontrol_workspace.cpp: `mutation_probe` keeps the child's merged output in QProcess's buffer for up to `timeoutSec` (default 300, maximum 1800).**
+- ✅ [ANTS-6497] **remotecontrol_workspace.cpp: `mutation_probe` keeps the child's merged output in QProcess's buffer for up to `timeoutSec` (default 300, maximum 1800).**
   `remotecontrol_workspace.cpp:2194-2202` — `mutation_probe` keeps the
   child's merged output in QProcess's buffer for up to `timeoutSec`
   (default 300, maximum 1800). The 512 KiB cap only applies after the
@@ -94396,6 +94396,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `waitForReadyRead` loop, keep a rolling tail, and kill the child once
   its total output passes a ceiling.
   Ledger row 122, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: new src/processdrain.{h,cpp} (ants_mcpcore_lib):
+  ProcessDrain::run drains a started QProcess's stdout as it runs and
+  keeps the first or last N bytes, with a deadline. mutation_probe's
+  runCommand uses it (Keep::Tail, 512 KiB, unchanged slice). Locked by
+  process_drain INV-1..4 and mutation_probe INV-9 (red first). No kill
+  ceiling: draining alone bounds memory. Reaches clients after an
+  ants-mcpd rebuild and /mcp reconnect.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Medium).
@@ -94845,6 +94852,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 37-diagnostics-logging (Medium).
   Lanes: diagnostics-logging.
+
+- 📋 [ANTS-6795] **focused_test holds the runner's whole output in QProcess until it exits, then keeps the last 2 MiB.**
+  rcdetail::runFocused (src/remotecontrol_state.cpp) waits with
+  waitForFinished, then reads and trims. Same defect as ANTS-6497; seen
+  2026-11-16 while fixing it. ProcessDrain::run with Keep::Tail and a
+  2 MiB cap is the fix; the crashed/timedOut flags stay as they are.
+  **Layman:** A long test run could use far more memory than the small part of its output the tool keeps.
+  Kind: fix.
+  Source: in-session-2026-11-16.
+  Lanes: mcp-state-workspace.
 
 ### High bugs (2026-11-06 review)
 
@@ -113424,6 +113441,11 @@ reports are asked for separately, each time.
   performance-implicit-conversion-in-loop warnings were fixed in the
   ANTS-5096 cited_by commit; these two were left because moving them
   touches their callers' declarations.
+  Also seen 2026-11-16: three QJsonValue loop conversions near the
+  co_change_family code, and five feedback-stem helpers
+  (feedbackSiblingCandidates, normalizeFeedbackStem, feedbackStemOf,
+  feedbackConventionalNames, feedbackOriginRepoName) that want internal
+  linkage.
   **Layman:** Two helper functions in the code-search file are declared in an older style the linter flags.
   Kind: refactor.
   Source: in-session-2026-09-28, found while closing ANTS-5096.

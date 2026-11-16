@@ -652,6 +652,8 @@
         "src/hostexec.h",
         "src/pathvalidation.cpp",
         "src/pathvalidation.h",
+        "src/processdrain.cpp",
+        "src/processdrain.h",
         "src/prunedwalk.h",
         "src/reviewbuttonstate.h",
         "src/shellutils.h",

@@ -3,6 +3,7 @@
 #include "mcprefusal.h"
 #include "mutationprobe.h"   // ANTS-4398
 #include "mutationjournal.h" // ANTS-5096
+#include "processdrain.h"   // ANTS-6497
 #include "findsources.h"
 #include "remotecontrol_internal.h"
 #include "guithread.h"
@@ -2533,16 +2534,13 @@ QJsonDocument RemoteControl::cmdMutationProbe(const QJsonObject &req) {
             o.ms = runClock.elapsed();
             return o;
         }
-        if (!p.waitForFinished(timeoutSec * 1000)) {
-            p.kill();
-            p.waitForFinished(2000);
-            o.timedOut = true;
-        }
+        // ANTS-6497 — read while the child runs, so QProcess never holds
+        // more than one read of a long build or test log.
+        const ProcessDrain::Result drained = ProcessDrain::run(
+            p, timeoutSec * 1000, qsizetype{512} * 1024, ProcessDrain::Keep::Tail);
+        o.timedOut = drained.timedOut;
         o.exitCode = p.exitCode();
-        QByteArray out = p.readAllStandardOutput();
-        static const int kCap = 512 * 1024;
-        if (out.size() > kCap) out = out.right(kCap);
-        o.output = QString::fromUtf8(out);
+        o.output = QString::fromUtf8(drained.bytes);
         o.ms = runClock.elapsed();
         return o;
     };

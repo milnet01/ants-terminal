@@ -614,6 +614,7 @@ add_library(ants_mcpcore_lib STATIC
     src/localsockethub.cpp       # ANTS-5144
     src/fileoutline.cpp
     src/mutationprobe.cpp        # ANTS-4398
+    src/processdrain.cpp         # ANTS-6497
     src/mutationjournal.cpp      # ANTS-5096
     # ANTS-1993 — Claude permission-prompt structural gate (Qt6::Core-only).
     src/claudepromptdetect.cpp
@@ -4314,6 +4315,8 @@ if(ANTS_TESTS)
                 tests/features/pty_childpid_atomic/test_pty_childpid_atomic.cpp
                 # tty_nr read as tpgid in foregroundProcess (review-code 2026-11-06).
                 tests/features/proc_stat_fields/test_proc_stat_fields.cpp
+                # ANTS-6497 — a child's output drained as it runs.
+                tests/features/process_drain/test_process_drain.cpp
                 tests/features/image_bomb_png_header_peek/test_image_bomb.cpp
                 tests/features/threaded_ptywrite_gating/test_threaded_ptywrite_gating.cpp
                 tests/features/threaded_resize_synchronous/test_threaded_resize_synchronous.cpp
