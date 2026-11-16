@@ -1013,7 +1013,7 @@ rm -rf "$dc_tmp"
 # ANTS-6488 — a settings.json that does not hold a JSON object is refused and
 # left byte-identical, on install and on uninstall. The read runs inside $( ),
 # where set -e does not reach, so a failed parse once became an empty file.
-bad_tmp="$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/ants-tests-XXXXXX")"
+bad_tmp="$(mktemp -d -t ants-bad-settings.XXXXXX)"
 for case in "install:{not json" "uninstall:{not json" "install:"; do
     mode="${case%%:*}"; body="${case#*:}"
     printf '%s' "$body" > "$bad_tmp/settings.json"
