@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The debt sweep reads git's and the packaging check's output as it arrives, so its 1 MiB limit bounds memory too** (ANTS-6525)
+
 - **The independent review's synthesis prompt fits 200 KiB, sharing the space among the lane reports and keeping its instructions whole** (ANTS-6524)
 
 - **The spec, doc and changelog drift checks read at most 2 MiB of each file** (ANTS-6523)

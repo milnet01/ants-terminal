@@ -18,6 +18,7 @@
 #include <QTemporaryDir>
 
 #include "debtsweepengine.h"
+#include "../../_support/peak_memory.h"
 
 namespace {
 
@@ -1056,4 +1057,32 @@ TEST(DebtSweepEngine, Ants5101StaleTodoDeepInALargeFile) {
         if (f.file == QLatin1String("src/big.cpp") && f.line == 60000)
             sawDeep = true;
     EXPECT_TRUE(sawDeep) << "the TODO on line 60000 must be blamed and flagged";
+}
+
+// ANTS-6525 — the packaging-drift script's output is read as it arrives and
+// kept to the 1 MiB cap, so 64 MiB of output never sits whole in memory.
+TEST(DebtSweepEngine, Ants6525ScriptOutputMemoryIsBounded) {
+    ANTS_TEST_SKIP_UNDER_ASAN();
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(QDir(tmp.path()).mkpath(QStringLiteral("packaging")));
+    const QString script = tmp.filePath(QStringLiteral("packaging/check-version-drift.sh"));
+    {
+        QFile f(script);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("#!/bin/bash\n"
+                "echo 'pkg.spec:3: version 1.0 drifts from CMakeLists.txt 2.0'\n"
+                "head -c 67108864 /dev/zero | tr '\\0' x\n");
+    }
+    ASSERT_TRUE(QFile::setPermissions(script, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
+    const DebtSweepEngine::ScanOptions opt;
+    const QString root = tmp.path();
+    DebtSweepEngine::runPackagingDrift(root, opt);   // warm first-call costs
+    const int growth = ants_test::peakGrowthMiB([&] {
+        return DebtSweepEngine::runPackagingDrift(root, opt).size() == 1;
+    });
+    ASSERT_GE(growth, 0) << "fork failed";
+    ASSERT_NE(growth, 251) << "the drift line was not found";
+    // Measured 2026-11-16: 131 MiB before ANTS-6525, 9 MiB after.
+    EXPECT_LT(growth, 24) << "64 MiB of script output raised peak memory " << growth << " MiB";
 }

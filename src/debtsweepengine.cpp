@@ -5,6 +5,7 @@
 // via QProcess with stdout caps + 30 s timeout. No persistent state.
 
 #include "debtsweepengine.h"
+#include "processdrain.h"   // ANTS-6525
 
 #include "featurecoverage.h"
 #include "filecontentcache.h"  // ANTS-5056 — shared, locked file cache
@@ -72,8 +73,10 @@ QString runGit(const QString &projectPath,
         noteGitFailure(args, QStringLiteral("did not start"));
         return {};
     }
-    if (!p.waitForFinished(kGitTimeoutMs)) {
-        p.kill();
+    // ANTS-6525 — read as git writes, so the cap bounds memory too.
+    const ProcessDrain::Result r =
+        ProcessDrain::run(p, kGitTimeoutMs, stdoutCap, ProcessDrain::Keep::Head);
+    if (r.timedOut) {
         noteGitFailure(args, QStringLiteral("timed out after %1 s")
                                  .arg(kGitTimeoutMs / 1000));
         return {};
@@ -82,9 +85,7 @@ QString runGit(const QString &projectPath,
         noteGitFailure(args, QStringLiteral("crashed"));
         return {};
     }
-    QByteArray out = p.readAllStandardOutput();
-    if (out.size() > stdoutCap) out.truncate(stdoutCap);
-    return QString::fromUtf8(out);
+    return QString::fromUtf8(r.bytes);
 }
 
 // Resolve sinceRef. Empty input → `git describe --tags --abbrev=0`,
@@ -1333,13 +1334,11 @@ QList<Finding> runPackagingDrift(
     p.setProcessChannelMode(QProcess::SeparateChannels);
     HostExec::start(p, QStringLiteral("bash"), {QStringLiteral("packaging/check-version-drift.sh")});
     if (!p.waitForStarted(2000)) return {};
-    if (!p.waitForFinished(kPackagingScriptTimeoutMs)) {
-        p.kill();
-        return {};
-    }
-    QByteArray out = p.readAllStandardOutput();
-    if (out.size() > kGitStdoutCap) out.truncate(kGitStdoutCap);
-    const QString s = QString::fromUtf8(out);
+    // ANTS-6525 — read as the script writes, keeping the first kGitStdoutCap.
+    const ProcessDrain::Result r = ProcessDrain::run(
+        p, kPackagingScriptTimeoutMs, kGitStdoutCap, ProcessDrain::Keep::Head);
+    if (r.timedOut) return {};
+    const QString s = QString::fromUtf8(r.bytes);
 
     static const QRegularExpression kDriftLine(
         QStringLiteral(R"(^([^:]+):(\d+):\s*(.*)$)"));

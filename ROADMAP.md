@@ -94938,7 +94938,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 34-review-engines (Medium).
   Lanes: review-engines.
 
-- 📋 [ANTS-6525] **debtsweepengine.cpp: the "stdout cap" is applied after QProcess has buffered the whole output.**
+- ✅ [ANTS-6525] **debtsweepengine.cpp: the "stdout cap" is applied after QProcess has buffered the whole output.**
   `debtsweepengine.cpp:85-86` — the "stdout cap" is applied after
   QProcess has buffered the whole output. The comment above it says the
   cap prevents "a massive diff or log [pinning] RAM", and it does not.
@@ -94951,6 +94951,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `readyReadStandardOutput`, and kill the process once the cap is
   reached.
   Ledger row 387, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: runGit and runPackagingDrift read through
+  ProcessDrain::run (Keep::Head, the existing caps and timeouts); not
+  killed at the cap, so exit status is kept. A 64 MiB script output: 131
+  MiB peak growth before, 9 after.
+  DebtSweepEngine.Ants6525ScriptOutputMemoryIsBounded.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 34-review-engines (Medium).
