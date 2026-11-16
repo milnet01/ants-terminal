@@ -8,6 +8,7 @@
 #include <QJsonValue>
 #include <QElapsedTimer>
 #include <QList>
+#include <QSet>
 #include <QMutex>
 #include <atomic>
 #include <memory>
@@ -100,6 +101,9 @@ public:
     // collects the counts with takeDroppedMessages() and reports them.
     static constexpr int kMaxLogsPerSecond = 100;
     static constexpr int kMaxNotificationsPerSecond = 5;
+    // ANTS-6506 — distinct ants.palette.register entries one plugin may hold;
+    // the next distinct one raises a Lua error.
+    static constexpr int kMaxPaletteEntries = 64;
     struct DroppedMessages { int logs = 0; int notifications = 0; };
     DroppedMessages takeDroppedMessages() {
         return {m_droppedLogs.exchange(0), m_droppedNotifications.exchange(0)};
@@ -342,6 +346,9 @@ private:
     int m_logsInWindow = 0;
     int m_notificationsInWindow = 0;
     std::atomic<int> m_droppedLogs{0};
+    // ANTS-6506 — title + "\n" + action of each palette entry this plugin
+    // registered. Read and written only on the plugin's own thread.
+    QSet<QString> m_paletteKeys;
     std::atomic<int> m_droppedNotifications{0};
     std::shared_ptr<UiUpdates> m_ui = std::make_shared<UiUpdates>();
     // ANTS-5107 — one bit per PluginEvent with a handler; all set until

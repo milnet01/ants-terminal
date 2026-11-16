@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A Lua plugin may hold up to 64 command-palette entries; `ants.palette.register` raises an error for a new one past that** (ANTS-6506)
+
 - **trace reads each file at most one byte past its 2 MiB limit, reporting a file that grew mid-call as too large** (ANTS-6505)
 
 - **trace keeps one compiled query per language, freeing the old one after an edited query file replaces it** (ANTS-6504)

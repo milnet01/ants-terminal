@@ -936,6 +936,23 @@ int LuaEngine::lua_ants_palette_register(lua_State *L) {
         return luaL_error(L, "ants.palette.register requires non-empty 'title' and 'action'");
     }
 
+    // ANTS-6506 — a new title and action past the cap is refused; one the
+    // plugin already holds may still be replaced. luaL_error longjmps past
+    // C++ destructors, so the key's scope ends before it is raised.
+    bool overCap = false;
+    if (engine) {
+        QString key = QString::fromUtf8(title) + QLatin1Char('\n') + QString::fromUtf8(action);
+        if (!engine->m_paletteKeys.contains(key)) {
+            if (engine->m_paletteKeys.size() >= kMaxPaletteEntries) overCap = true;
+            else engine->m_paletteKeys.insert(std::move(key));
+        }
+    }
+    if (overCap) {
+        lua_pop(L, 3);
+        return luaL_error(L, "ants.palette.register: this plugin already holds the "
+                             "limit of %d entries", kMaxPaletteEntries);
+    }
+
     if (engine) {
         PaletteEntry entry{QString::fromUtf8(title), QString::fromUtf8(action),
                            hotkey ? QString::fromUtf8(hotkey) : QString()};

@@ -31,12 +31,15 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QSet>
 #include <QStandardPaths>
 #include <QString>
 #include <QThread>
 #include <QUuid>
 
 #include <gtest/gtest.h>
+
+#include <algorithm>
 #include "../../_support/srcgrep.h"
 
 ANTS_TEST_SCOPE();
@@ -606,6 +609,50 @@ TEST(LuaThreading, Ants5107StatusAndPaletteKeepTheLatest) {
     ASSERT_FALSE(hotkeys.isEmpty());
     EXPECT_EQ(statuses.last(), QStringLiteral("s1000"));
     EXPECT_EQ(hotkeys.last(), QStringLiteral("F5"));  // 1000 % 12 + 1
+}
+
+// ANTS-6506 — a plugin holds at most kMaxPaletteEntries distinct palette
+// entries. The next distinct one raises a Lua error; re-registering one it
+// already holds still replaces it.
+TEST(LuaThreading, Ants6506PaletteEntriesPerPluginAreCapped) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("hoarder"),
+              "ants.on('load', function()\n"
+              "  for i = 1, 200 do\n"
+              "    local ok, err = pcall(ants.palette.register,\n"
+              "                          {title = 'T' .. i, action = 'a' .. i})\n"
+              "    if not ok then ants.log('refused at ' .. i .. ': ' .. tostring(err)); break end\n"
+              "  end\n"
+              "  local ok = pcall(ants.palette.register, {title = 'T1', action = 'a1', hotkey = 'F2'})\n"
+              "  ants.log('replace ' .. tostring(ok))\n"
+              "end)\n");
+    QSet<QString> entries;
+    QStringList logs;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::paletteEntryRegistered,
+                         [&entries](const QString &, const QString &t,
+                                    const QString &a, const QString &) {
+            entries.insert(t + QLatin1Char('\n') + a);
+        });
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&logs](const QString &m) { logs << m; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("hoarder")});
+        QThread::msleep(300);
+        pump(300);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_EQ(entries.size(), LuaEngine::kMaxPaletteEntries)
+        << entries.size() << " distinct entries reached the GUI";
+    const QString refusedAt =
+        QStringLiteral("refused at %1: ").arg(LuaEngine::kMaxPaletteEntries + 1);
+    EXPECT_TRUE(std::any_of(logs.cbegin(), logs.cend(), [&](const QString &m) {
+        return m.startsWith(refusedAt) && m.contains(QStringLiteral("ants.palette.register"));
+    })) << qPrintable(logs.join(QLatin1Char('|')));
+    EXPECT_TRUE(logs.contains(QStringLiteral("replace true")))
+        << "an entry already held must still be replaceable at the cap: "
+        << qPrintable(logs.join(QLatin1Char('|')));
 }
 
 namespace {

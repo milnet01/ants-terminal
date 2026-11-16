@@ -324,7 +324,9 @@ open the palette and pick it). When a `hotkey` is provided, it is also
 registered as a global QShortcut so the entry can be triggered without
 opening the palette. Registering the same `title` and `action` again
 replaces the entry; if that happens faster than the terminal applies it,
-only the latest is applied.
+only the latest is applied. A plugin may hold 64 entries; registering a
+new `title` and `action` past that raises an error, while replacing one it
+holds still works.
 
 ```lua
 ants.palette.register({

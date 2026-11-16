@@ -94575,7 +94575,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6506] **luaengine.cpp: `ants.palette.register` needs no permission.**
+- ✅ [ANTS-6506] **luaengine.cpp: `ants.palette.register` needs no permission.**
   `luaengine.cpp:920-950` — `ants.palette.register` needs no permission.
   It only replaces an entry with the same title and action, so new names
   make new entries, and nothing caps how many. A plugin running `for
@@ -94587,6 +94587,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   plugin (for example 64, like the handler cap) at
   `lua_ants_palette_register`, and raise a Lua error past the cap.
   Ledger row 194, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: LuaEngine::kMaxPaletteEntries (64) distinct
+  title+action pairs per plugin, tracked in m_paletteKeys on the
+  plugin's thread; a new pair past it raises a Lua error, re-registering
+  a held pair still replaces it. PLUGINS.md updated. Test
+  LuaThreading.Ants6506PaletteEntriesPerPluginAreCapped.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 18-plugins-lua (High).
