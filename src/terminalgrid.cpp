@@ -391,26 +391,41 @@ std::pair<int, int> TerminalGrid::promptRegionOutputLines(int index) const {
     return {first, end};
 }
 
+namespace {
+template <typename Lines>
+void swapLineColour(Lines &lines, CellColor CellAttrs::*field,
+                    const QColor &from, const QColor &to) {
+    for (auto &line : lines)
+        for (auto &cell : line.cells)
+            if (cell.attrs.*field == from)
+                cell.attrs.*field = to;
+}
+}  // namespace
+
+// A theme change swaps the old default colour for the new one everywhere a
+// cell or pen holds it: the visible screen, scrollback, the main screen saved
+// while the alternate screen is up, and every saved pen. Missing one leaves
+// the old theme's colour showing once it is restored.
+void TerminalGrid::swapDefaultColour(CellColor CellAttrs::*field,
+                                     const QColor &from, const QColor &to) {
+    swapLineColour(m_screenLines, field, from, to);
+    swapLineColour(m_scrollback, field, from, to);
+    swapLineColour(m_altScreen, field, from, to);
+    for (CellAttrs *pen : {&m_currentAttrs, &m_savedAttrs, &m_altSavedAttrs})
+        if (pen->*field == from)
+            pen->*field = to;
+}
+
 void TerminalGrid::setDefaultFg(const QColor &c) {
-    QColor oldFg = m_defaultFg;
+    const QColor oldFg = m_defaultFg;
     m_defaultFg = c;
-    for (auto &line : m_screenLines)
-        for (auto &c2 : line.cells)
-            if (c2.attrs.fg == oldFg)
-                c2.attrs.fg = c;
-    if (m_currentAttrs.fg == oldFg)
-        m_currentAttrs.fg = c;
+    swapDefaultColour(&CellAttrs::fg, oldFg, c);
 }
 
 void TerminalGrid::setDefaultBg(const QColor &c) {
-    QColor oldBg = m_defaultBg;
+    const QColor oldBg = m_defaultBg;
     m_defaultBg = c;
-    for (auto &line : m_screenLines)
-        for (auto &c2 : line.cells)
-            if (c2.attrs.bg == oldBg)
-                c2.attrs.bg = c;
-    if (m_currentAttrs.bg == oldBg)
-        m_currentAttrs.bg = c;
+    swapDefaultColour(&CellAttrs::bg, oldBg, c);
 }
 
 // ANTS-1061 — the parse worker decodes with the shared limits; the grid's

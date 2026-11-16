@@ -2358,6 +2358,8 @@ if(ANTS_TESTS)
                 tests/features/osc_title_cap/test_osc_title_cap.cpp
                 # ANTS-4456 — RIS keeps configured theme + scrollback depth.
                 tests/features/ris_preserves_configuration/test_ris_preserves_configuration.cpp
+                # Theme change recolours the saved main screen, scrollback and saved SGR.
+                tests/features/theme_change_recolours_saved_screen/test_theme_change_recolours_saved_screen.cpp
                 tests/features/decrqss/test_decrqss.cpp
                 # ANTS-2192 — query-response amplification cap.
                 tests/features/query_response_ratelimit/test_query_response_ratelimit.cpp

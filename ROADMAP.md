@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6787 -->
+<!-- ants-roadmap-id-high-water: ANTS=6788 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -72157,6 +72157,17 @@ they are one change.
   Source: user-2026-04-30.
 
 ---
+
+- ✅ [ANTS-6788] **A theme change also recolours the screen saved behind a full-screen app, the scrollback and the saved text style.**
+  TerminalGrid::setDefaultFg/Bg swapped the old default colour only in the
+  visible screen and the current pen. swapDefaultColour now covers
+  scrollback, the main screen saved during the alternate screen, and the
+  DECSC and 1049 saved pens. Test: theme_change_recolours_saved_screen,
+  red first (INV-1..4), shipped 2026-11-16.
+  **Layman:** After you change theme while Claude Code is open, quitting it no longer leaves the screen in the old theme's colours.
+  Kind: fix.
+  Source: user-report-2026-11-16.
+  Lanes: terminal-grid.
 
 ## indie-review #4 + Ants MCP roadmap pass (target: 2026-05-21) (0.7.92 wave)
 

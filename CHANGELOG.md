@@ -450,6 +450,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A theme change now recolours everything, including the screen behind a full-screen app such as Claude Code, the scrollback and saved text styles** (ANTS-6788)
+
 - **Saving the Claude allowlist keeps every other permission setting, such as the default mode and extra directories** (ANTS-6484)
 
 - **Clearing an abandoned roadmap id-counter lock no longer removes a lock another process has just taken** (ANTS-6482)

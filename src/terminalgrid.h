@@ -577,6 +577,9 @@ public:
     bool debugLog() const { return m_debugLog; }
 
 private:
+    // setDefaultFg/Bg: replace `from` with `to` in every stored cell and pen.
+    void swapDefaultColour(CellColor CellAttrs::*field,
+                           const QColor &from, const QColor &to);
     void handlePrint(uint32_t cp);
     // Fast path for the VtParser SIMD coalesced Print run. Every byte in
     // [data, data+len) is in [0x20..0x7E] (the parser's scanSafeAsciiRun
