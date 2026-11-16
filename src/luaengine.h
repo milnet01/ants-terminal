@@ -104,9 +104,14 @@ public:
     // ANTS-6506 — distinct ants.palette.register entries one plugin may hold;
     // the next distinct one raises a Lua error.
     static constexpr int kMaxPaletteEntries = 64;
-    struct DroppedMessages { int logs = 0; int notifications = 0; };
+    // ANTS-6507 — ants.send: one message over kMaxSendBytes raises a Lua
+    // error; past kMaxSendBytesPerSecond sends are dropped and counted.
+    static constexpr int kMaxSendBytes = 64 * 1024;
+    static constexpr int kMaxSendBytesPerSecond = 256 * 1024;
+    struct DroppedMessages { int logs = 0; int notifications = 0; int sends = 0; };
     DroppedMessages takeDroppedMessages() {
-        return {m_droppedLogs.exchange(0), m_droppedNotifications.exchange(0)};
+        return {m_droppedLogs.exchange(0), m_droppedNotifications.exchange(0),
+                m_droppedSends.exchange(0)};
     }
 
     // ANTS-5107 — status text and palette entries wait here until the GUI
@@ -291,9 +296,11 @@ private:
 
     // ANTS-5107 — counts one message against `sentInWindow` and its cap;
     // false (and one more in `dropped`) once the cap is reached this second.
-    // The window reset clears m_logsInWindow and m_notificationsInWindow by
-    // name: a new counter passed here must be added to that reset.
-    bool admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped);
+    // The window reset clears m_logsInWindow, m_notificationsInWindow and
+    // m_sendBytesInWindow by name: a new counter passed here must be added to
+    // that reset.
+    // ANTS-6507 — `cost` is what the message counts for: 1, or its bytes.
+    bool admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped, int cost = 1);
     // ANTS-5107 — applies `update` to uiUpdates() under its mutex, emitting
     // uiUpdatesPending if nothing was pending before.
     template <class Update> void postUiUpdate(Update update);
@@ -345,11 +352,13 @@ private:
     QElapsedTimer m_messageWindow;
     int m_logsInWindow = 0;
     int m_notificationsInWindow = 0;
+    int m_sendBytesInWindow = 0;      // ANTS-6507
     std::atomic<int> m_droppedLogs{0};
     // ANTS-6506 — title + "\n" + action of each palette entry this plugin
     // registered. Read and written only on the plugin's own thread.
     QSet<QString> m_paletteKeys;
     std::atomic<int> m_droppedNotifications{0};
+    std::atomic<int> m_droppedSends{0};
     std::shared_ptr<UiUpdates> m_ui = std::make_shared<UiUpdates>();
     // ANTS-5107 — one bit per PluginEvent with a handler; all set until
     // loadScript has run init.lua. Written on the worker, read by the GUI.

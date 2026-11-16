@@ -655,6 +655,47 @@ TEST(LuaThreading, Ants6506PaletteEntriesPerPluginAreCapped) {
         << qPrintable(logs.join(QLatin1Char('|')));
 }
 
+// ANTS-6507 — ants.send refuses one message over kMaxSendBytes, and past
+// kMaxSendBytesPerSecond drops sends and reports how many.
+TEST(LuaThreading, Ants6507SendIsCappedPerMessageAndPerSecond) {
+    const QString dir = makeTeardownDir();
+    addPlugin(dir, QStringLiteral("typist"),
+              "ants.on('load', function()\n"
+              "  local ok, err = pcall(ants.send, string.rep('x', 100 * 1024))\n"
+              "  ants.log('oversize ' .. tostring(ok) .. ' ' .. tostring(err))\n"
+              "  local chunk = string.rep('y', 10 * 1024)\n"
+              "  for i = 1, 100 do ants.send(chunk) end\n"
+              "end)\n");
+    qint64 sentBytes = 0;
+    bool oversizeSent = false;
+    QStringList logs;
+    {
+        PluginManager pm;
+        QObject::connect(&pm, &PluginManager::sendToTerminal,
+                         [&](const QString &t) {
+            sentBytes += t.size();
+            if (t.size() > 50 * 1024) oversizeSent = true;
+        });
+        QObject::connect(&pm, &PluginManager::logMessage,
+                         [&logs](const QString &m) { logs << m; });
+        pm.setPluginDir(dir + QStringLiteral("/plugins"));
+        pm.scanAndLoad({QStringLiteral("typist")});
+        pump(500);
+        runHealthTick(pm);
+    }
+    QDir(dir).removeRecursively();
+    EXPECT_FALSE(oversizeSent) << "a 100 KiB send reached the terminal";
+    EXPECT_TRUE(std::any_of(logs.cbegin(), logs.cend(), [](const QString &m) {
+        return m.startsWith(QStringLiteral("oversize false")) && m.contains(QStringLiteral("ants.send"));
+    })) << qPrintable(logs.join(QLatin1Char('|')));
+    EXPECT_LE(sentBytes, 2 * LuaEngine::kMaxSendBytesPerSecond)
+        << sentBytes << " bytes of 1 MiB sent reached the terminal";
+    EXPECT_GT(sentBytes, 0);
+    EXPECT_TRUE(std::any_of(logs.cbegin(), logs.cend(), [](const QString &m) {
+        return m.contains(QStringLiteral("dropped")) && m.contains(QStringLiteral("ants.send"));
+    })) << "the dropped sends were not reported: " << qPrintable(logs.join(QLatin1Char('|')));
+}
+
 namespace {
 
 // Counts the queued calls delivered to the object it filters.

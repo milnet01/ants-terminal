@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`ants.send` refuses text over 64 KiB and drops calls past 256 KiB a second, reporting how many in the plugin log** (ANTS-6507)
+
 - **A Lua plugin may hold up to 64 command-palette entries; `ants.palette.register` raises an error for a new one past that** (ANTS-6506)
 
 - **trace reads each file at most one byte past its 2 MiB limit, reporting a file that grew mid-call as too large** (ANTS-6505)

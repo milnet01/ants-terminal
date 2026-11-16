@@ -94597,7 +94597,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 18-plugins-lua (High).
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6507] **luaengine.cpp: `ants.send` needs no permission and has neither a rate cap nor a size cap.**
+- ✅ [ANTS-6507] **luaengine.cpp: `ants.send` needs no permission and has neither a rate cap nor a size cap.**
   `luaengine.cpp:669-676` — `ants.send` needs no permission and has
   neither a rate cap nor a size cap. Each call copies a string of up to
   about 10 MiB, which doubles to about 20 MiB once converted to Qt's
@@ -94608,6 +94608,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   message and per second for every call that crosses to the main thread,
   and count what is dropped, as `admitMessage` does.
   Ledger row 196, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: LuaEngine::kMaxSendBytes (64 KiB) raises a Lua
+  error before any copy; kMaxSendBytesPerSecond (256 KiB) through
+  admitMessage, now byte-costed, drops and counts;
+  PluginManager::reportDroppedMessages reports them. No permission
+  added: existing plugins type into the terminal without one. PLUGINS.md
+  updated. Test LuaThreading.Ants6507SendIsCappedPerMessageAndPerSecond.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 18-plugins-lua (Medium).

@@ -322,12 +322,17 @@ void PluginManager::reportDroppedMessages() {
     for (auto *engine : std::as_const(m_engines)) {
         if (!engine) continue;
         const LuaEngine::DroppedMessages d = engine->takeDroppedMessages();
-        if (d.logs == 0 && d.notifications == 0) continue;
-        emit logMessage(QString("Plugin %1 sent messages too fast: dropped %2 log "
-                                "and %3 notification messages")
-                            .arg(engine->pluginName())
-                            .arg(d.logs)
-                            .arg(d.notifications));
+        if (d.logs != 0 || d.notifications != 0)
+            emit logMessage(QString("Plugin %1 sent messages too fast: dropped %2 log "
+                                    "and %3 notification messages")
+                                .arg(engine->pluginName())
+                                .arg(d.logs)
+                                .arg(d.notifications));
+        // ANTS-6507
+        if (d.sends != 0)
+            emit logMessage(QString("Plugin %1 sent text too fast: dropped %2 ants.send calls")
+                                .arg(engine->pluginName())
+                                .arg(d.sends));
     }
 }
 

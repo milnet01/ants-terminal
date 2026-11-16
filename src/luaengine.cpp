@@ -9,6 +9,7 @@
 // openSUSE ships the headers in /usr/include/lua5.4, Fedora in /usr/include —
 // so the <lua5.4/...> prefix that worked here resolved only on openSUSE and
 // broke the Fedora build even though CMake had found Lua correctly.
+#include <climits>
 #include <lua.hpp>
 #include <atomic>
 #include <QDateTime>
@@ -668,8 +669,14 @@ void LuaEngine::setCwd(const QString &cwd) {
 
 int LuaEngine::lua_ants_send(lua_State *L) {
     LuaEngine *engine = getEngine(L);
-    const char *text = luaL_checkstring(L, 1);
-    if (engine && text) {
+    size_t len = 0;
+    const char *text = luaL_checklstring(L, 1, &len);
+    // ANTS-6507 — refused before anything is copied to the GUI thread.
+    if (len > static_cast<size_t>(kMaxSendBytes))
+        return luaL_error(L, "ants.send: text is %d bytes; the limit is %d",
+                          static_cast<int>(qMin<size_t>(len, INT_MAX)), kMaxSendBytes);
+    if (engine && engine->admitMessage(engine->m_sendBytesInWindow, kMaxSendBytesPerSecond,
+                                       engine->m_droppedSends, static_cast<int>(len))) {
         emit engine->sendToTerminal(QString::fromUtf8(text));
     }
     return 0;
@@ -687,14 +694,19 @@ int LuaEngine::lua_ants_notify(lua_State *L) {
     return 0;
 }
 
-bool LuaEngine::admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped) {
+bool LuaEngine::admitMessage(int &sentInWindow, int cap, std::atomic<int> &dropped,
+                             int cost) {
     if (!m_messageWindow.isValid() || m_messageWindow.elapsed() >= 1000) {
         m_messageWindow.start();
         // Every counter passed as sentInWindow must be reset here.
         m_logsInWindow = 0;
         m_notificationsInWindow = 0;
+        m_sendBytesInWindow = 0;
     }
-    if (++sentInWindow <= cap) return true;
+    if (cost <= cap - sentInWindow) {
+        sentInWindow += cost;
+        return true;
+    }
     dropped.fetch_add(1, std::memory_order_relaxed);
     return false;
 }

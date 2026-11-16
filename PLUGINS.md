@@ -188,6 +188,8 @@ is granted.
 ### `ants.send(text)`
 
 Write `text` to the terminal PTY verbatim. No trailing newline is added.
+Text over 64 KiB raises an error. Past 256 KiB in one second, further calls
+are dropped, and the plugin log says how many.
 
 ```lua
 ants.send("date\n")                 -- runs `date`
