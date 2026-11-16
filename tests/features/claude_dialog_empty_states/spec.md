@@ -3,9 +3,9 @@
 ## Invariants
 
 **INV-1 — an unreadable allowlist says so.** `ClaudeAllowlistDialog`
-given a settings file that is not a JSON object shows a message naming the
-file in its validation label, and a later `setSettingsPath` does not clear
-that message.
+given a settings file that is not a JSON object, or that is there but
+cannot be opened, shows a message naming the file in its validation label,
+and a later `setSettingsPath` does not clear that message.
 
 **INV-2 — a tool-result-only user entry is not an empty User line.**
 `ClaudeTranscriptDialog::formatEntry` renders a user entry whose content array
@@ -20,9 +20,12 @@ printed an empty User line for every tool result Claude received.
 ## Test surface
 
 `test_claude_dialog_empty_states.cpp`: INV-1 builds the dialog over a corrupt
-file in a temporary directory; INV-2 reads `src/claudetranscript.cpp`
+file, and over a directory standing in the file's place, in a temporary
+directory; INV-2 reads `src/claudetranscript.cpp`
 (located from the test's own path), since `formatEntry` is private.
 
 ## Regression history
 
 - **ANTS-5092:** the two defects above. Locked by this spec.
+- **ANTS-6490:** a settings file that could not be opened still showed
+  empty lists with no reason.

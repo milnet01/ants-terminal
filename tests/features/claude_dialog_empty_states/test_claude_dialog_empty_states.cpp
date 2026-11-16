@@ -2,6 +2,7 @@
 
 #include "claudeallowlist.h"
 
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QLabel>
@@ -28,6 +29,23 @@ TEST(ClaudeDialogEmptyStates, UnreadableAllowlistIsReported) {
             reported = true;
     }
     EXPECT_TRUE(reported) << "a corrupt settings file shows empty lists with no message";
+}
+
+// INV-1, ANTS-6490 — a settings file that is there but cannot be opened is
+// reported too. A directory in its place cannot be opened, even by root.
+TEST(ClaudeDialogEmptyStates, Ants6490UnopenableAllowlistIsReported) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("settings.json"));
+    ASSERT_TRUE(QDir().mkdir(path));
+    ClaudeAllowlistDialog dlg;
+    dlg.setSettingsPath(path);
+    bool reported = false;
+    for (const QLabel *label : dlg.findChildren<QLabel *>(QString())) {
+        if (label->text().contains(path) && label->text().contains(QStringLiteral("could not be read")))
+            reported = true;
+    }
+    EXPECT_TRUE(reported) << "a settings file that cannot be opened shows empty lists with no message";
 }
 
 // INV-2

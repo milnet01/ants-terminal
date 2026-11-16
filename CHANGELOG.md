@@ -452,6 +452,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Claude allowlist dialog says why its lists are empty when settings.json is there but cannot be opened, as it already did for a file it cannot parse** (ANTS-6490)
+
 - **An auto-profile rule shows its profile's theme without saving it, so the theme you chose stays your saved theme** (ANTS-6489)
 
 - **A feedback-file write checks the file again just before writing it, so a hand edit made while the write runs is kept and the write refuses with export_drift** (ANTS-6487)

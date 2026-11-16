@@ -232,22 +232,27 @@ void ClaudeAllowlistDialog::loadSettings() {
 
     if (m_settingsPath.isEmpty()) return;
 
-    QFile file(m_settingsPath);
-    if (!file.open(QIODevice::ReadOnly)) return;
-
-    // ANTS-5092 — an unparseable file showed three empty lists and no
-    // reason. Say so; saveSettings() already refuses to overwrite it.
-    QJsonParseError parseError;
-    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
-    if (!doc.isObject()) {
+    // ANTS-5092, ANTS-6490 — a file that is there but cannot be opened or
+    // parsed showed three empty lists and no reason. Say so; saveSettings()
+    // already refuses to overwrite it. A missing file is a fresh install.
+    const auto reportUnreadable = [this](const QString &reason) {
         if (m_validationLabel) {
             showValidationHint(
                 tr("%1 could not be read (%2), so no rules are shown and saving is refused.")
-                    .arg(m_settingsPath,
-                         parseError.error == QJsonParseError::NoError
-                             ? tr("not a JSON object") : parseError.errorString()),
+                    .arg(m_settingsPath, reason),
                 true);
         }
+    };
+    QFile file(m_settingsPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (file.exists()) reportUnreadable(file.errorString());
+        return;
+    }
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(file.readAll(), &parseError);
+    if (!doc.isObject()) {
+        reportUnreadable(parseError.error == QJsonParseError::NoError
+                             ? tr("not a JSON object") : parseError.errorString());
         return;
     }
 

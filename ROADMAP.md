@@ -94124,12 +94124,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-readability 2026-11-06, lane 05-mainwindow-a (Info).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6490] **claudeallowlist.cpp: If the settings file exists but cannot be opened, `loadSettings` returns silently with three empty lists and no hint.**
+- ✅ [ANTS-6490] **claudeallowlist.cpp: If the settings file exists but cannot be opened, `loadSettings` returns silently with three empty lists and no hint.**
   `src/claudeallowlist.cpp:222` — If the settings file exists but cannot
   be opened, `loadSettings` returns silently with three empty lists and
   no hint. The parse-failure case does show a hint. `saveSettings` then
   refuses with a generic "check permissions".
   Ledger row 1372, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16. loadSettings reports a file that exists but
+  will not open with the same "could not be read (reason)" hint as a
+  parse failure, the reason being QFile::errorString(); a missing file
+  stays silent. Test
+  ClaudeDialogEmptyStates.Ants6490UnopenableAllowlistIsReported (a
+  directory in the file's place, so it fails for root too). Needs a
+  terminal relaunch to reach the user.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-readability 2026-11-06, lane 21-claude-session-widgets-b (Info).
