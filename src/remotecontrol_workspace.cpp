@@ -168,6 +168,12 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
         if (capped) out.outputCapped = true;
         return capped;
     };
+    // ANTS-6499 — stderr fills QProcess's buffer while rg runs too, so it is
+    // read on every pass; only the first kWorkspaceSearchStderrCapBytes stay.
+    const auto takeErr = [&](const QByteArray &chunk) {
+        const qsizetype room = kWorkspaceSearchStderrCapBytes - out.stderrTail.size();
+        if (room > 0) out.stderrTail.append(chunk.constData(), qMin(room, chunk.size()));
+    };
     QElapsedTimer clock;
     clock.start();
     bool stop = false;
@@ -179,6 +185,7 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
             break;
         }
         rg.waitForReadyRead(static_cast<int>(qMin<qint64>(left, kRgReadSliceMs)));
+        takeErr(rg.readAllStandardError());
         if (take(rg.readAllStandardOutput())) {
             stop = true;
             break;
@@ -200,9 +207,7 @@ RgRun rcRunRg(const QStringList &argv, const QString &workingDir, int budgetMs,
 
     // ANTS-1248-INV-8: stderr cap. Read up to 4 KiB; the CALLER decides
     // whether to emit it — emitting on success leaks path enumeration.
-    out.stderrTail = rg.readAllStandardError();
-    if (out.stderrTail.size() > kWorkspaceSearchStderrCapBytes)
-        out.stderrTail.truncate(kWorkspaceSearchStderrCapBytes);
+    takeErr(rg.readAllStandardError());
     out.exitCode    = rg.exitCode();
     out.crashed     = (rg.exitStatus() != QProcess::NormalExit)
                       && !out.hardKilled && !out.outputCapped;

@@ -94429,7 +94429,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6499] **remotecontrol_workspace.cpp: rg's stderr is only read after the run, so QProcess keeps it in memory for up to 30 s, for example when searching `/` produces a flood of "permission denied".**
+- ✅ [ANTS-6499] **remotecontrol_workspace.cpp: rg's stderr is only read after the run, so QProcess keeps it in memory for up to 30 s, for example when searching `/` produces a flood of "permission denied".**
   `remotecontrol_workspace.cpp:197` — rg's stderr is only read after the
   run, so QProcess keeps it in memory for up to 30 s, for example when
   searching `/` produces a flood of "permission denied". This is a
@@ -94437,6 +94437,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `waitForReadyRead`.
   Quote: `/`
   Ledger row 130, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: rcRunRg reads rg's stderr on every pass of its drain loop,
+  keeping the first kWorkspaceSearchStderrCapBytes as before. Locked by
+  workspace_search_payload_knobs.Ants6499StderrIsDrainedWhileRgRuns
+  (source scrape), red first. Reaches clients after an ants-mcpd rebuild
+  and /mcp reconnect.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).

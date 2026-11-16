@@ -840,3 +840,17 @@ TEST(workspace_search_payload_knobs, Ants6252FilesOnlyWinsOverMatchesOnly) {
     EXPECT_EQ(resp.value(QStringLiteral("count")).toInt(), 2) << dump;
     EXPECT_FALSE(resp.contains(QStringLiteral("matches_only"))) << dump;
 }
+
+// ANTS-6499 — rg's stderr is read inside the drain loop, so QProcess never
+// holds more of it than one slice's worth.
+TEST(workspace_search_payload_knobs, Ants6499StderrIsDrainedWhileRgRuns) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::slurpRemoteControl(), "RgRun rcRunRg(");
+    ASSERT_FALSE(body.empty()) << "rcRunRg not found";
+    const auto loop = body.find("while (rg.state() != QProcess::NotRunning)");
+    const auto afterLoop = body.find("if (stop && rg.state()");
+    ASSERT_NE(loop, std::string::npos);
+    ASSERT_NE(afterLoop, std::string::npos);
+    const auto errRead = body.find("readAllStandardError()", loop);
+    EXPECT_LT(errRead, afterLoop) << "stderr is read only after rg exits";
+}

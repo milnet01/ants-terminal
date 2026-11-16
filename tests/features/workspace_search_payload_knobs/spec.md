@@ -93,3 +93,10 @@ other value refuses `bad_args`.
 | Test | What it checks |
 |---|---|
 | `Ants5524HistoryPresetLeavesOutTheRecord` | The preset drops the three folders and keeps a file merely named `history_reader`; the reply lists the globs; a misspelt or non-string preset refuses. |
+
+## ANTS-6499 — rg stderr drained while it runs
+
+`rcRunRg` reads rg's stderr on every pass of the loop that drains stdout,
+keeping the first `kWorkspaceSearchStderrCapBytes` as before. Reading it
+only after rg exited left all of it in QProcess's buffer while rg ran.
+Test: `workspace_search_payload_knobs.Ants6499StderrIsDrainedWhileRgRuns`.
