@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Terminal search keeps at most 100,000 matches, the ones nearest the end of the output; past that the counter shows the total as "100000+".** (ANTS-6494)
+
 - **The comments on the MCP reply-narrowing helpers match what the code does.** (ANTS-6290)
 
 - **Tidied the feedback store, the Claude allowlist dialog and the near-miss ledger where clang-tidy flagged them, with no change in behaviour.** (ANTS-6792)

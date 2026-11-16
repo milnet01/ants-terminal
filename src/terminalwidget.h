@@ -585,6 +585,11 @@ private:
     void rescanSearchFrom(int firstLine);
     // Appends the matches `re` finds on one line, in column order.
     void appendLineMatches(const QRegularExpression &re, int globalLine);
+    // ANTS-6494 — the most matches a search keeps. Past it the newest are
+    // kept, nearest the screen, and the counter's total reads "N+".
+    static constexpr size_t kMaxSearchMatches = 100000;
+    // Drops the oldest matches past kMaxSearchMatches and marks the list capped.
+    void capSearchMatches();
     void updateSearchCounter();
     bool isCellSearchMatch(int globalLine, int col) const;
     bool isCellCurrentMatch(int globalLine, int col) const;
@@ -790,6 +795,7 @@ private:
     // ANTS-6767 — the last valid search's pattern; empty while none is active.
     std::optional<QRegularExpression> m_searchRe;
     std::vector<SearchMatch> m_searchMatches;
+    bool m_searchMatchesCapped = false;  // ANTS-6494
     int m_currentMatchIdx = -1;
     QColor m_searchHighlightBg{0xF9, 0xE2, 0xAF};
     QColor m_searchHighlightFg{0x1E, 0x1E, 0x2E};

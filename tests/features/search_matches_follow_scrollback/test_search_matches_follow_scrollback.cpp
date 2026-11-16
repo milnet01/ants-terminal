@@ -205,3 +205,25 @@ TEST(SearchMatchesFollowScrollback, CurrentMatchAndViewStay) {
     EXPECT_EQ(h.w.grid()->scrollbackSize() - h.w.scrollOffset(), topBefore)
         << "INV-5: the view moved";
 }
+
+// INV-6 (ANTS-6494) — new output past the cap drops the oldest matches.
+TEST(SearchMatchesFollowScrollback, NewOutputPastTheCapDropsTheOldest) {
+    Harness h;
+    ASSERT_TRUE(h.ready()) << "search bar widgets not found";
+    h.w.grid()->resize(kRows, 200);
+    const std::string aLine = std::string(200, 'a') + "\r\n";
+    std::string block;
+    for (int i = 0; i < 600; ++i) block += aLine;  // 120000 single-cell matches
+    h.feed(block);
+    h.search(QStringLiteral("a"));
+    ASSERT_EQ(h.counterText().toStdString(), "99801/100000+");
+
+    std::string more;
+    for (int i = 0; i < 100; ++i) more += aLine;
+    h.feed(more);
+    const QString counter = h.counterText();
+    EXPECT_TRUE(counter.endsWith(QStringLiteral("/100000+"))) << counter.toStdString();
+    // The cursor sits on an empty last row; the line above it is the newest.
+    EXPECT_FALSE(h.w.searchMatchColumnsForTest(h.totalLines() - 2).empty())
+        << "INV-6: the newest line lost its matches";
+}

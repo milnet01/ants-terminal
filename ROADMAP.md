@@ -94333,7 +94333,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6494] **terminalwidget.cpp: the match list has no cap.**
+- ✅ [ANTS-6494] **terminalwidget.cpp: the match list has no cap.**
   `terminalwidget.cpp:4780-4806` — the match list has no cap. A one-
   character query over the 1M-line maximum scrollback can store hundreds
   of millions of 12-byte matches, about 1–2 GB, and it is all built on
@@ -94343,6 +94343,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): cap the match count
   (for example 100k) and show "N+" in the label.
   Ledger row 48, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: TerminalWidget::kMaxSearchMatches (100000). performSearch
+  scans newest first and stops at the cap, then sorts into line order;
+  rescanSearchFrom trims the oldest past the cap (at 2x during the scan,
+  so memory stays bounded). The counter's total reads "N+" when capped.
+  Locked by terminal_search_scan INV-8 and
+  search_matches_follow_scrollback INV-6, both red first. Needs a
+  terminal relaunch.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 04-terminal-widget-b (Medium).

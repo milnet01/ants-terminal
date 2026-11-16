@@ -34,6 +34,11 @@ bar's `current/total` label.
   because the line now ends at its last character. The cost, accepted by the
   user on 2026-09-12: trailing spaces a program really printed cannot be
   found.
+- **INV-8 — a search keeps at most 100000 matches, the newest** (ANTS-6494).
+  Past the cap it keeps the matches nearest the end of the output and the
+  counter's total reads `100000+`. 600 lines of 200 `a`s searched for `a`
+  read `99801/100000+`: the current match is the first on the view's centre
+  row, the second-to-last line printed.
 
 ## Test
 

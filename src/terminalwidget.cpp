@@ -4764,6 +4764,7 @@ void TerminalWidget::hideSearchBar() {
     m_searchVisible = false;
     m_searchBar->hide();
     m_searchMatches.clear();
+    m_searchMatchesCapped = false;
     m_searchRe.reset();
     m_currentMatchIdx = -1;
     m_searchText.clear();
@@ -4805,6 +4806,7 @@ void TerminalWidget::appendLineMatches(const QRegularExpression &re, int gl) {
 void TerminalWidget::performSearch() {
     m_searchText = m_searchInput->text();
     m_searchMatches.clear();
+    m_searchMatchesCapped = false;
     m_searchRe.reset();
     m_currentMatchIdx = -1;
     m_searchPatternInvalid = false;
@@ -4860,7 +4862,18 @@ void TerminalWidget::performSearch() {
     m_searchLabel->setToolTip(QString());
     applyInputStyle(false);
 
-    for (int gl = 0; gl < totalLines; ++gl) appendLineMatches(re, gl);
+    // ANTS-6494 — scan newest first and stop at the cap, so a capped search
+    // keeps the matches nearest the screen; then restore line order.
+    int gl = totalLines - 1;
+    for (; gl >= 0 && m_searchMatches.size() < kMaxSearchMatches; --gl)
+        appendLineMatches(re, gl);
+    m_searchMatchesCapped = gl >= 0;
+    std::sort(m_searchMatches.begin(), m_searchMatches.end(),
+              [](const SearchMatch &a, const SearchMatch &b) {
+                  return a.globalLine != b.globalLine ? a.globalLine < b.globalLine
+                                                      : a.col < b.col;
+              });
+    capSearchMatches();
     m_searchRe = re;
 
     if (!m_searchMatches.empty()) {
@@ -4880,9 +4893,22 @@ void TerminalWidget::performSearch() {
 }
 
 void TerminalWidget::updateSearchCounter() {
+    QString total = QString::number(m_searchMatches.size());
+    if (m_searchMatchesCapped) total += QLatin1Char('+');
     m_searchLabel->setText(QString("%1/%2")
         .arg(m_searchMatches.empty() ? 0 : m_currentMatchIdx + 1)
-        .arg(m_searchMatches.size()));
+        .arg(total));
+}
+
+void TerminalWidget::capSearchMatches() {
+    if (m_searchMatches.size() <= kMaxSearchMatches) return;
+    const auto excess =
+        static_cast<std::ptrdiff_t>(m_searchMatches.size() - kMaxSearchMatches);
+    m_searchMatches.erase(m_searchMatches.begin(), m_searchMatches.begin() + excess);
+    m_searchMatchesCapped = true;
+    if (m_currentMatchIdx >= 0)
+        m_currentMatchIdx = static_cast<int>(
+            std::max<std::ptrdiff_t>(0, m_currentMatchIdx - excess));
 }
 
 void TerminalWidget::shiftSearchMatches(int dropped) {
@@ -4910,7 +4936,13 @@ void TerminalWidget::rescanSearchFrom(int firstLine) {
         std::lower_bound(m_searchMatches.begin(), m_searchMatches.end(), firstLine,
                          [](const SearchMatch &m, int line) { return m.globalLine < line; }),
         m_searchMatches.end());
-    for (int gl = firstLine; gl < totalLines; ++gl) appendLineMatches(*m_searchRe, gl);
+    // ANTS-6494 — trimming at twice the cap keeps memory bounded while the
+    // erase from the front stays rare.
+    for (int gl = firstLine; gl < totalLines; ++gl) {
+        appendLineMatches(*m_searchRe, gl);
+        if (m_searchMatches.size() >= 2 * kMaxSearchMatches) capSearchMatches();
+    }
+    capSearchMatches();
 
     // The same match stays current; if output rewrote it, the next one after
     // it does. With no current match the first match becomes current.

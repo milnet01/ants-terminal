@@ -30,6 +30,9 @@ active.
 - **INV-5 — the current match and the view stay.** New matches leave the
   counter's current number where it was, and the top line of the view does
   not move.
+- **INV-6 — new output past the cap drops the oldest matches** (ANTS-6494).
+  A search capped at 100000 matches, then more matching output, keeps the
+  total at `100000+` and matches the newest line.
 
 ## Test
 
@@ -38,4 +41,4 @@ real widget takes its lines through the real parser, the last of them as a
 `VtBatch` handed to `onVtBatch`. The expected line is found by reading the
 grid for the cells that spell the needle. Each test fails against the code
 before the change it locks: INV-1 and INV-2 before ANTS-5686, INV-3 to
-INV-5 before ANTS-6767.
+INV-5 before ANTS-6767, INV-6 before ANTS-6494.

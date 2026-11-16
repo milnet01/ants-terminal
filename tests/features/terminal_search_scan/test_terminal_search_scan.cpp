@@ -86,3 +86,19 @@ TEST(TerminalSearchScan, ResultsMatchTheGrid) {
     EXPECT_EQ(h.count(QStringLiteral("short +$")), 0) << "INV-7: padding matched";
     EXPECT_EQ(h.count(QStringLiteral("NEEDLE one$")), 1) << "INV-7: line ends at its last character";
 }
+
+// INV-8 (ANTS-6494) — a search keeps at most 100000 matches, the newest ones.
+TEST(TerminalSearchScan, MatchListIsCappedKeepingTheNewest) {
+    Harness h;
+    ASSERT_TRUE(h.ready()) << "search bar widgets not found";
+    h.w.grid()->resize(4, 200);
+    const std::string line = std::string(200, 'a') + "\r\n";
+    for (int i = 0; i < 600; ++i) h.feed(line);  // 120000 single-cell matches
+
+    h.input->setText(QStringLiteral("a"));
+    if (h.regexBtn->isChecked()) h.regexBtn->toggle();
+    h.regexBtn->toggle();
+    // Rows 0-2 hold the last three lines; the view centre is row 2, whose
+    // first match is the 99801st of the newest 100000.
+    EXPECT_EQ(h.label->text().toStdString(), "99801/100000+");
+}
