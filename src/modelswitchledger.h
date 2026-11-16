@@ -94,6 +94,8 @@ Record      fromJson(const QJsonObject &obj);
 // --- On-disk I/O (atomic via QSaveFile, mode 0600 via setOwnerOnlyPerms) ---
 // appendRecord: append one record, then evict oldest non-pending lines until the
 // file is within capBytes (pending records are pinned; newest kept) — INV-10.
+// appendRecord and writeRecords refuse a file that exists but cannot be read:
+// false, nothing written (ANTS-6785).
 bool appendRecord(const QString &path, const Record &rec,
                   qint64 capBytes = kMaxLedgerBytes);
 QList<Record> readRecords(const QString &path);

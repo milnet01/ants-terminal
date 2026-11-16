@@ -105,7 +105,11 @@ bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
     // instances both append and the last rename drops one near-miss record.
     // Best-effort lock (see ModelSwitchLedger::appendRecord for the rationale).
     ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
-    QList<QByteArray> lines = JsonlFile::readLines(path);
+    // ANTS-6785 — a ledger that exists but cannot be read would otherwise be
+    // rewritten as this one record, losing every line already in it.
+    bool readOk = true;
+    QList<QByteArray> lines = JsonlFile::readLines(path, &readOk);
+    if (!readOk) return false;
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);
     return JsonlFile::writeLinesAtomic(path, lines);

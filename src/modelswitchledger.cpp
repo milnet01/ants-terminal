@@ -143,7 +143,11 @@ bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
     // we proceed best-effort rather than drop the record — a vanishingly rare
     // race beats losing trust-signal data.
     ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
-    QList<QByteArray> lines = JsonlFile::readLines(path);
+    // ANTS-6785 — a ledger that exists but cannot be read would otherwise be
+    // rewritten as this one record, losing every line already in it.
+    bool readOk = true;
+    QList<QByteArray> lines = JsonlFile::readLines(path, &readOk);
+    if (!readOk) return false;
     lines.append(serialize(rec));
     lines = evictToCap(lines, capBytes);
     return JsonlFile::writeLinesAtomic(path, lines);
@@ -173,8 +177,11 @@ bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capByte
     for (int i = 0; i < recs.size(); ++i) unused[key(recs.at(i))].append(i);
     if (testing::beforeRewrite) testing::beforeRewrite();
     ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
+    bool readOk = true;   // ANTS-6785 — as appendRecord
+    const QList<QByteArray> onDisk = JsonlFile::readLines(path, &readOk);
+    if (!readOk) return false;
     QList<QByteArray> lines;
-    for (const QByteArray &ln : JsonlFile::readLines(path)) {
+    for (const QByteArray &ln : onDisk) {
         const QJsonDocument doc = QJsonDocument::fromJson(ln);
         const auto it = doc.isObject() ? unused.find(key(fromJson(doc.object())))
                                        : unused.end();

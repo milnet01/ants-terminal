@@ -94225,13 +94225,21 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: in-session-2026-11-15 (sibling of ANTS-6466).
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6785] **The model-switch and near-miss ledgers refuse an append when the file exists but cannot be read.**
+- ✅ [ANTS-6785] **The model-switch and near-miss ledgers refuse an append when the file exists but cannot be read.**
   ModelSwitchLedger::appendRecord and ModelNearMissLedger::appendRecord
   read with JsonlFile::readLines and rewrite the file. A file that exists
   but cannot be read (write-only, say) reads as empty, so the rewrite
   keeps only the new record. ANTS-6470 fixed the undeclared-argument
   ledger with readLines' readOk out-param; use the same here. Mode 000 does
   not reproduce: QSaveFile refuses an unwritable target.
+  Shipped 2026-11-16. ModelSwitchLedger::appendRecord and
+  ModelNearMissLedger::appendRecord pass readLines' readOk and return
+  false, writing nothing, for a file that exists but cannot be read.
+  ModelSwitchLedger::writeRecords re-reads the file the same way and had
+  the same flaw, so it refuses too. Test
+  LedgerWriteSafety.Ants6785UnreadableLedgerIsNotOverwritten (write-only
+  file; skips where the file is still readable, as for root). Needs a
+  terminal relaunch to reach the user.
   **Layman:** Two history files could be wiped down to one entry if they ever became unreadable.
   Kind: fix.
   Source: ANTS-6470 sibling, 2026-11-15.

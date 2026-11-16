@@ -222,3 +222,48 @@ TEST(LedgerWriteSafety, Ants5105HeldLockDelaysWritesOnlyBriefly) {
     EXPECT_EQ(ModelSwitchLedger::readRecords(sw).size(), 2);
     EXPECT_EQ(ModelNearMissLedger::readRecords(nm).size(), 1);
 }
+
+// INV-7 (ANTS-6785) — a ledger that exists but cannot be read refuses each
+// write, so the records already in it survive. Write-only: the read fails
+// while the save would still go through.
+TEST(LedgerWriteSafety, Ants6785UnreadableLedgerIsNotOverwritten) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString sw = tmp.path() + QStringLiteral("/switch.jsonl");
+    const QString nm = tmp.path() + QStringLiteral("/nearmiss.jsonl");
+    ModelSwitchLedger::Record r;
+    r.ts       = QStringLiteral("2026-10-08T10:00:00Z");
+    r.project  = QStringLiteral("/mnt/proj");
+    r.fromTier = QStringLiteral("opus");
+    r.toTier   = QStringLiteral("haiku");
+    ModelNearMissLedger::Record n;
+    n.ts              = QStringLiteral("2026-10-08T10:00:00Z");
+    n.project         = QStringLiteral("/mnt/proj");
+    n.currentTier     = QStringLiteral("opus");
+    n.recommendedTier = QStringLiteral("haiku");
+    n.blockedBy       = {QStringLiteral("composer_not_empty")};
+    for (int i = 0; i < 2; ++i) {
+        ASSERT_TRUE(ModelSwitchLedger::appendRecord(sw, r));
+        ASSERT_TRUE(ModelNearMissLedger::appendRecord(nm, n));
+    }
+    for (const QString &p : {sw, nm})
+        ASSERT_TRUE(QFile::setPermissions(p, QFileDevice::WriteOwner));
+    QFile probe(sw);
+    if (probe.open(QIODevice::ReadOnly))
+        GTEST_SKIP() << "running with rights that read a write-only file";
+
+    EXPECT_FALSE(ModelSwitchLedger::appendRecord(sw, r))
+        << "an unreadable model-switch ledger must refuse the append";
+    EXPECT_FALSE(ModelSwitchLedger::writeRecords(sw, {r}))
+        << "an unreadable model-switch ledger must refuse the rewrite";
+    EXPECT_FALSE(ModelNearMissLedger::appendRecord(nm, n))
+        << "an unreadable near-miss ledger must refuse the append";
+
+    const auto readable = QFileDevice::ReadOwner | QFileDevice::WriteOwner;
+    for (const QString &p : {sw, nm})
+        ASSERT_TRUE(QFile::setPermissions(p, readable));
+    EXPECT_EQ(ModelSwitchLedger::readRecords(sw).size(), 2)
+        << "the model-switch ledger's records must survive";
+    EXPECT_EQ(ModelNearMissLedger::readRecords(nm).size(), 2)
+        << "the near-miss ledger's records must survive";
+}

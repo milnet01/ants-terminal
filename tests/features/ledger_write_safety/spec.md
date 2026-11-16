@@ -58,3 +58,8 @@ Two cross-cutting persistence bugs flagged by indie-review #7 (2026-06-04):
   `ModelSwitchLedger::appendRecord`, `ModelSwitchLedger::writeRecords` and
   `ModelNearMissLedger::appendRecord` each return within 1 s and still
   write their records. Test: `Ants5105HeldLockDelaysWritesOnlyBriefly`.
+- **INV-7** (ANTS-6785) — a ledger that exists but cannot be read makes
+  `ModelSwitchLedger::appendRecord`, `ModelSwitchLedger::writeRecords` and
+  `ModelNearMissLedger::appendRecord` return false and write nothing, so
+  the records already in it survive. Test:
+  `Ants6785UnreadableLedgerIsNotOverwritten`.

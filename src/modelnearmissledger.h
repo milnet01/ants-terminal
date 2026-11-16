@@ -57,7 +57,8 @@ Record      fromJson(const QJsonObject &o);   // missing fields → struct defau
 
 // appendRecord: append one record, evict whole oldest lines until ≤ capBytes.
 // Unlike the firing ledger, NO pending-pinning (near-miss records have no
-// outcome backfill). The newest line is never dropped (INV-8).
+// outcome backfill). The newest line is never dropped (INV-8). A file that
+// exists but cannot be read refuses: false, nothing written (ANTS-6785).
 bool appendRecord(const QString &path, const Record &rec,
                   qint64 capBytes = kMaxLedgerBytes);
 QList<Record> readRecords(const QString &path);
