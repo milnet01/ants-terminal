@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6800 -->
+<!-- ants-roadmap-id-high-water: ANTS=6801 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92979,6 +92979,17 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: DeFragR_Ants_MCP_Feedback.md 2026-11-16.
   Lanes: mcp-roadmap-query-log.
+
+- 📋 [ANTS-6801] **indie_review_partition, function_sizes and comment_claims read NASM, CMake and YAML files.**
+  On DeFragR the computed partition left out the 10 NASM files under
+  src/engine, both CMakeLists.txt files, the Containerfile and the YAML
+  (unassigned 15, reason suffix_filter). function_sizes and
+  comment_claims read none of the NASM files either. Admit .asm/.inc,
+  CMakeLists.txt/.cmake and .yml/.yaml in the suffix filter; NASM labels
+  can stand in as symbols. Check the Containerfile case too.
+  **Layman:** The review tools skipped DeFragR's assembly engine, its build files and its YAML, so reviewers had to split the project up by hand.
+  Kind: fix.
+  Source: DeFragR feedback 2026-11-16.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
