@@ -1323,7 +1323,7 @@ TEST(SpecLintVerb, Ants6316LaymanLineAbsorbedIntoAField) {
     SpecLint::Options opts;
     opts.laymanRequired = true;
     for (const auto &f : SpecLint::check(absorbed, QStringLiteral("ANTS-1-x.md"), opts).findings)
-        if (f.kind == QLatin1String("header_layman_absorbed")) EXPECT_EQ(f.line, 6);
+        if (f.kind == QLatin1String("header_layman_absorbed")) { EXPECT_EQ(f.line, 6); }
 
     // Under a wrapped value the line is still inside the field.
     EXPECT_EQ(headerKinds(withLine("(user-request-2026-10-30).\n\n**Layman:**",

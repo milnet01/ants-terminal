@@ -1221,10 +1221,12 @@ TEST(RoadmapArchiveSection, MovesASectionAndItsChildrenAndSurvivesReimport) {
     EXPECT_TRUE(live.contains("DEMO-0013")) << "only the named section moves";
     EXPECT_TRUE(arch.contains("DEMO-0011"));
     EXPECT_TRUE(arch.contains("DEMO-0012"));
-    for (const auto &s : sectionsOf(projectId))
-        if (s.sourcePath)
+    for (const auto &s : sectionsOf(projectId)) {
+        if (s.sourcePath) {
             EXPECT_TRUE(s.slug.startsWith(QStringLiteral("unversioned-")))
                 << s.slug.toStdString();
+        }
+    }
 
     // A second section joins the same file, after the first.
     const QJsonObject r2 = archiveSection(
