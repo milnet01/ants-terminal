@@ -42,6 +42,9 @@ rule-pack bytes)** so trust is narrow and self-invalidating.
 7. **Persistence.** Trust records survive across `Config` instances
    (i.e. across process restarts) because they round-trip through
    `~/.config/ants-terminal/config.json`.
+8. **Bounded (ANTS-6511).** Trusting a project drops records whose
+   project directory no longer exists. The map then holds at most
+   `Config::kMaxPathKeyedEntries`; the project just trusted is kept.
 
 ## What the test proves
 

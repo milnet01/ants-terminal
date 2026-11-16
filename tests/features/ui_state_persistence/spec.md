@@ -61,6 +61,10 @@ collision.
   no `config.json` returns the documented defaults (0, "full",
   empty list, empty object × 2, false) without throwing.
 
+- **ANTS-1150-INV-16** (ANTS-6511) `setRoadmapViewState` drops entries
+  whose roadmap file no longer exists, and the map holds at most
+  `Config::kMaxPathKeyedEntries`. The entry just written is kept.
+
 ### Wiring lane (source-grep)
 
 - **ANTS-1150-INV-9** `settingsdialog.cpp` calls

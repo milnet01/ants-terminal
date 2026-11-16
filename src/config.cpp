@@ -32,6 +32,20 @@ bool acceptablePathValue(const QString &v) {
     if (v.contains(QChar(0))) return false;
     return true;
 }
+
+// ANTS-6511: bound a map keyed by file or directory path. Drop entries
+// whose path is gone, then the lowest keys until it fits; `keep` stays.
+void prunePathKeyedMap(QJsonObject &map, const QString &keep) {
+    for (auto it = map.begin(); it != map.end();) {
+        if (it.key() != keep && !QFileInfo::exists(it.key())) it = map.erase(it);
+        else ++it;
+    }
+    for (auto it = map.begin();
+         map.size() > Config::kMaxPathKeyedEntries && it != map.end();) {
+        if (it.key() != keep) it = map.erase(it);
+        else ++it;
+    }
+}
 } // namespace
 
 Config::Config() {
@@ -474,7 +488,10 @@ void Config::setRoadmapViewState(const QString &roadmapPath, const QJsonObject &
     if (roadmapPath.isEmpty()) return;
     QJsonObject all = m_data.value("roadmap_view_state").toObject();
     if (state.isEmpty()) all.remove(roadmapPath);
-    else                 all.insert(roadmapPath, state);
+    else {
+        all.insert(roadmapPath, state);
+        prunePathKeyedMap(all, roadmapPath);
+    }
     if (!storeIfChanged("roadmap_view_state", all)) return;
     save();
 }
@@ -1144,6 +1161,7 @@ void Config::trustAuditRulePack(const QString &projectPath,
     const QString hash = rulePackSha256Hex(rulesBytes);
     if (store.value(key).toString() == hash) return;
     store[key] = hash;
+    prunePathKeyedMap(store, key);
     m_data["audit_rule_pack_trust"] = store;
     save();
 }

@@ -553,5 +553,39 @@ TEST(UiStatePersistence, Inv15_mainWindowAuditDialogCallSite) {
     EXPECT_EQ(0, expect_failures()) << "Inv15_mainWindowAuditDialogCallSite failed";
 }
 
+// ANTS-6511 — roadmap_view_state is bounded: a write drops entries whose
+// roadmap file is gone, and the map never exceeds kMaxPathKeyedEntries.
+TEST(UiStatePersistence, Inv16_roadmapViewStateBounded) {
+    Sandbox sb;
+    ASSERT_TRUE(sb.valid());
+    const QJsonObject state{{"preset", "full"}};
+    auto touch = [&](const QString &name) {
+        const QString p = sb.tmp.path() + "/" + name;
+        QFile f(p);
+        EXPECT_TRUE(f.open(QIODevice::WriteOnly)) << p.toStdString();
+        return p;
+    };
+    Config cfg;
+    const QString gone = touch("gone.md");
+    cfg.setRoadmapViewState(gone, state);
+    ASSERT_FALSE(cfg.roadmapViewState(gone).isEmpty());
+    QFile::remove(gone);
+    const QString live = touch("live.md");
+    cfg.setRoadmapViewState(live, state);
+    EXPECT_TRUE(cfg.roadmapViewState(gone).isEmpty())
+        << "an entry whose roadmap file is gone survived a write";
+    EXPECT_FALSE(cfg.roadmapViewState(live).isEmpty());
+
+    QString last;
+    for (int i = 0; i < Config::kMaxPathKeyedEntries + 5; ++i) {
+        last = touch(QStringLiteral("r%1.md").arg(i));
+        cfg.setRoadmapViewState(last, state);
+    }
+    const auto n = cfg.rawData().value("roadmap_view_state").toObject().size();
+    EXPECT_LE(n, Config::kMaxPathKeyedEntries);
+    EXPECT_FALSE(cfg.roadmapViewState(last).isEmpty())
+        << "the entry just written was evicted";
+}
+
 }  // namespace
 

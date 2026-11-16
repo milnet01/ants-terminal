@@ -11,6 +11,8 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <QTemporaryDir>
 
@@ -131,6 +133,37 @@ void testPathCanonicalization() {
 }
 
 }  // namespace
+
+// Invariant 8 (ANTS-6511) — the trust map is bounded.
+TEST(AuditCommandRuleTrust, TrustMapBounded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    auto xdgGuard = setConfigSandbox(tmp);
+    const QByteArray bytes = R"({"rules":[{"id":"b","command":"true"}]})";
+
+    Config cfg;
+    const QString gone = makeProject(tmp, "gone", bytes);
+    cfg.trustAuditRulePack(gone, bytes);
+    ASSERT_TRUE(cfg.isAuditRulePackTrusted(gone, bytes));
+    const QString goneKey = QFileInfo(gone).canonicalFilePath();
+    QDir(gone).removeRecursively();
+    const QString live = makeProject(tmp, "live", bytes);
+    cfg.trustAuditRulePack(live, bytes);
+    const QJsonObject after = cfg.rawData().value("audit_rule_pack_trust").toObject();
+    EXPECT_FALSE(after.contains(goneKey))
+        << "a removed project's trust survived a write";
+    EXPECT_TRUE(cfg.isAuditRulePackTrusted(live, bytes));
+
+    QString last;
+    for (int i = 0; i < Config::kMaxPathKeyedEntries + 5; ++i) {
+        last = makeProject(tmp, QStringLiteral("p%1").arg(i).toUtf8().constData(), bytes);
+        cfg.trustAuditRulePack(last, bytes);
+    }
+    EXPECT_LE(cfg.rawData().value("audit_rule_pack_trust").toObject().size(),
+              Config::kMaxPathKeyedEntries);
+    EXPECT_TRUE(cfg.isAuditRulePackTrusted(last, bytes))
+        << "the project just trusted was evicted";
+}
 
 TEST(AuditCommandRuleTrust, RoundTripAndHashInvalidation) {
     const int before = expect_failures();

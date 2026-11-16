@@ -103,6 +103,9 @@ public:
     // object means the project was never saved. The three global keys above,
     // and the expanded-items, expanded-sections and scroll-anchor keys below
     // (ANTS-5214), are read only to seed the first project after upgrade.
+    // ANTS-6511: a write drops entries whose path no longer exists, then
+    // keeps at most kMaxPathKeyedEntries. Same for audit_rule_pack_trust.
+    static constexpr int kMaxPathKeyedEntries = 128;
     QJsonObject roadmapViewState(const QString &roadmapPath) const;
     void setRoadmapViewState(const QString &roadmapPath, const QJsonObject &state);
     bool hasRoadmapViewStates() const;

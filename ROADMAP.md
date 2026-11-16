@@ -94678,7 +94678,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6511] **config.cpp: (`roadmap_view_state`), `:1085` (`audit_rule_pack_trust`), `:600` (`tokens_saved_by_project`) — per-path maps in `config.json` with no eviction.**
+- ✅ [ANTS-6511] **config.cpp: (`roadmap_view_state`), `:1085` (`audit_rule_pack_trust`), `:600` (`tokens_saved_by_project`) — per-path maps in `config.json` with no eviction.**
   `config.cpp:428-435` — (`roadmap_view_state`), `:1085`
   (`audit_rule_pack_trust`), `:600` (`tokens_saved_by_project`) — per-
   path maps in `config.json` with no eviction. Entries for projects that
@@ -94686,6 +94686,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   ANTS-1150 name a cap.
   Quote: `roadmap_view_state`
   Ledger row 215, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: roadmap_view_state and audit_rule_pack_trust drop
+  entries whose path is gone on each write, then cap at
+  Config::kMaxPathKeyedEntries (128). tokens_saved_by_project was
+  already capped at 64 (ANTS-3579 INV-5).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 19-config-session-project (Low).
