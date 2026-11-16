@@ -33,3 +33,8 @@ reach them. There is no force switch: a released section is corrected by hand.
   wrap joins the lines it spanned. The result is broken at spaces to the width
   of the widest spanned line, and later pieces take the second spanned line's
   indent. No piece starts with text markdown reads as a new block.
+- **INV-11 / text in the file's own layout is not indented again (ANTS-6796).**
+  Where `old_text` carries the matched line's indent after a line break,
+  `new_text` is written as given. Otherwise each continuation line of a
+  multi-line `new_text` takes that indent. A reply for a multi-line write
+  carries `line_texts`, every line written.

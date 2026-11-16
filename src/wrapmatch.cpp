@@ -183,7 +183,12 @@ Patch patchOnce(const QString &text, const QString &oldText,
         while (w < text.size() && text.at(w).isSpace() &&
                text.at(w) != QLatin1Char('\n')) ++w;
         const QString lead = text.mid(lineStart, w - lineStart);
-        if (!lead.isEmpty()) {
+        // ANTS-6796 — an oldText quoting that indent after a line break was
+        // written in the file's own layout, and so was newText: prefixing it
+        // again doubled the indent.
+        const bool quotedLayout =
+            oldText.contains(QLatin1Char('\n') + lead);
+        if (!lead.isEmpty() && !quotedLayout) {
             QStringList parts = patch.split(QLatin1Char('\n'));
             for (int i = 1; i < parts.size(); ++i)
                 if (!parts.at(i).isEmpty()) parts[i].prepend(lead);

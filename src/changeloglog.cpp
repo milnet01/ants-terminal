@@ -1233,6 +1233,7 @@ AmendResult amendUnreleased(const QString &markdown, const QString &oldText,
     // line again at the widest of them, under the second one's indent.
     const int spanned = static_cast<int>(hitRange.to - hitRange.from) -
                         static_cast<int>(patched.size()) + 1;
+    int written = static_cast<int>(newText.count(QLatin1Char('\n'))) + 1;
     if (patch.wrapped && !r.lineRemoved && spanned >= 2 &&
         !newText.contains(QLatin1Char('\n')) && patch.line < patched.size()) {
         const int first = hitRange.from + patch.line;
@@ -1244,9 +1245,12 @@ AmendResult amendUnreleased(const QString &markdown, const QString &oldText,
         patched.removeAt(patch.line);
         for (int i = 0; i < wrappedLines.size(); ++i)
             patched.insert(patch.line + i, wrappedLines.at(i));
+        written = static_cast<int>(wrappedLines.size());
     }
-    if (!r.lineRemoved && patch.line < patched.size())
+    if (!r.lineRemoved && patch.line < patched.size()) {
         r.lineText = patched.at(patch.line);
+        r.lineTexts = patched.mid(patch.line, written);
+    }
 
     r.markdown =(lines.mid(0, hitRange.from) + patched + lines.mid(hitRange.to))
                      .join(QLatin1Char('\n'));

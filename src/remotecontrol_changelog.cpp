@@ -416,6 +416,8 @@ QJsonDocument clAmend(const QJsonObject &req, const QString &clPath, bool dryRun
     if (res.wrapped) out["wrapped"] = true;
     if (res.lineRemoved) out["line_removed"] = true;
     else out["line_text"] = res.lineText;
+    if (res.lineTexts.size() > 1)  // ANTS-6796 — line_text shows only the first
+        out["line_texts"] = QJsonArray::fromStringList(res.lineTexts);
     if (!scrubbed.isEmpty()) {
         QJsonArray dropped;
         for (const QString &n : scrubbed) dropped.append(n);

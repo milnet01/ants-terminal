@@ -69,7 +69,10 @@ QString toRegex(const QString &needle);
 enum class Indent {
     None,             // splice `newText` verbatim (store bodies)
     MatchLineIndent,  // prefix each continuation line with the matched
-                      // line's own leading whitespace (markdown bodies)
+                      // line's own leading whitespace (markdown bodies),
+                      // unless `oldText` already quotes it after a line
+                      // break: then `newText` is in the file's layout too
+                      // (ANTS-6796)
 };
 
 // One occurrence of `oldText` in `text`, replaced by `newText`.

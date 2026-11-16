@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6795 -->
+<!-- ants-roadmap-id-high-water: ANTS=6796 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -98150,6 +98150,26 @@ volume classes, and the tooling/documentation gaps the run exposed.
   Kind: doc-fix.
   Source: in-session-2026-11-14, check-doc.py while shipping ANTS-5803 and ANTS-6770.
   Lanes: specs.
+
+- ✅ [ANTS-6796] **changelog_log op:amend writes a replaced continuation line with its indent doubled, and its reply echoes only the first line.**
+  Reported by OneUp 2026-11-16 (OneUp_Ants_MCP_Feedback.md). An
+  old_text spanning a hard wrap, with new_text carrying the bullet's
+  two-space body indent, came back with four spaces on the continuation
+  line. line_text echoed the line above, so the reply hid it. Suggested
+  fix: strip the matched indent from new_text's continuation lines (or
+  apply new_text verbatim), and echo every line the amend wrote.
+  2026-11-16: WrapMatch::patchOnce (MatchLineIndent) no longer prefixes
+  newText's continuation lines when oldText quotes the matched line's
+  indent after a line break; an unindented continuation still takes it.
+  changelog_log op:amend replies line_texts, every line written, when
+  there are several. Also fixes roadmap_log amend_body on markdown
+  bodies, which shares patchOnce. Locked by changelog_log_amend INV-11
+  (red: four spaces, no line_texts). Reaches clients after an ants-mcpd
+  rebuild and /mcp reconnect.
+  **Layman:** Editing a changelog entry through the tool could indent part of it wrongly without saying so.
+  Kind: fix.
+  Source: feedback-oneup-2026-11-16.
+  Lanes: changelog-feedback.
 
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-11 triage
 

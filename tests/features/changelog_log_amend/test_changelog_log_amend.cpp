@@ -7,6 +7,8 @@
 #include <gtest/gtest.h>
 
 #include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
@@ -223,4 +225,30 @@ TEST_F(ChangelogLogAmend, Inv10AJoinedLineIsWrappedAgain) {
         << after.toStdString();
     EXPECT_EQ(r.value(QStringLiteral("line_text")).toString(),
               after.split(QLatin1Char('\n')).at(r.value(QStringLiteral("line")).toInt() - 1));
+}
+
+// INV-11 (ANTS-6796) — new_text written in the file's own layout is not
+// indented again, and the reply echoes every line the amend wrote.
+TEST_F(ChangelogLogAmend, Inv11QuotedIndentIsNotDoubled) {
+    const QJsonObject r = amend(
+        QStringLiteral("A phrase that wraps over\n  two lines here."),
+        QStringLiteral("A phrase that now wraps over\n  two lines there."));
+    ASSERT_TRUE(r.value(QStringLiteral("ok")).toBool())
+        << r.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(bytes().contains("  A phrase that now wraps over\n  two lines there.\n"))
+        << bytes().toStdString();
+    const QJsonArray texts = r.value(QStringLiteral("line_texts")).toArray();
+    ASSERT_EQ(texts.size(), 2) << QJsonDocument(r).toJson().toStdString();
+    EXPECT_EQ(texts.at(0).toString(), QStringLiteral("  A phrase that now wraps over"));
+    EXPECT_EQ(texts.at(1).toString(), QStringLiteral("  two lines there."));
+
+    // A new line the caller left unindented still takes the entry's indent.
+    QJsonObject only;
+    only[QStringLiteral("id")] = QStringLiteral("ANTS-0002");
+    const QJsonObject r2 = amend(QStringLiteral("A shared phrase."),
+                                 QStringLiteral("A shared phrase.\nA second line."), only);
+    ASSERT_TRUE(r2.value(QStringLiteral("ok")).toBool())
+        << r2.value(QStringLiteral("error")).toString().toStdString();
+    EXPECT_TRUE(bytes().contains("  A shared phrase.\n  A second line.\n- **Third"))
+        << bytes().toStdString();
 }

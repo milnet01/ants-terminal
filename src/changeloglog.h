@@ -270,6 +270,7 @@ struct AmendResult {
     QString error;                 // human message iff !ok
     int     line = -1;             // 1-based line the match started on
     QString lineText;              // that line now; empty when it was removed
+    QStringList lineTexts;         // ANTS-6796 — every line the amend wrote
     bool    changed = false;
     bool    wrapped = false;       // the match spanned a hard wrap
     bool    lineRemoved = false;   // the deletion emptied the line, so it went

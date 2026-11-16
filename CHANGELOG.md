@@ -460,6 +460,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_log op:amend keeps a replaced continuation line at the file's own indent, and its reply lists every line it wrote in `line_texts`.** (ANTS-6796)
+
 - **mutation_probe reads each build and test run's output while it runs, keeping only the last 512 KiB in memory.** (ANTS-6497)
 
 - **The title bar's public/private repository badge keeps a bounded cache instead of one entry per repository ever visited.** (ANTS-6495)
