@@ -58,6 +58,11 @@ file-static).
 `ProjectSettings.Ants5705ApplyWriteValidatesGenerated`,
 `ProjectSettings.Ants5705CodebaseIndexSkipsGenerated`.
 
+- **INV-14** (ANTS-6509) — a `.ants/project.json` larger than
+  `ProjectSettings::kMaxFileBytes` (64 KiB) is malformed: `load` returns
+  all-nullopt without reading it whole.
+  *Test:* `ProjectSettings.Ants6509OversizedFileIsMalformed`.
+
 ## Pre-fix check
 
 Against pre-implementation code `src/projectsettings.{h,cpp}` does not

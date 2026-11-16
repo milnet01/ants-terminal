@@ -181,8 +181,9 @@ Settings load(const QString &rootCanonical) {
 
     QFile f(rootCanonical + QStringLiteral("/.ants/project.json"));
     if (!f.open(QIODevice::ReadOnly)) return s;       // absent / unreadable
-    const QByteArray raw = f.readAll();
+    const QByteArray raw = f.read(kMaxFileBytes + 1);
     f.close();
+    if (raw.size() > kMaxFileBytes) return s;         // ANTS-6509: too large
 
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(raw, &err);
@@ -713,6 +714,12 @@ std::optional<QJsonObject> applyWrite(const QJsonObject &existing,
             out[key] = v;                                       // unknown key — preserve (forward-compat)
         }
     }
+    // ANTS-6509 — load() treats a file over kMaxFileBytes as malformed, so a
+    // write that would produce one is refused. Measured as the verb writes it.
+    const qint64 bytes = QJsonDocument(out).toJson(QJsonDocument::Indented).size();
+    if (bytes > kMaxFileBytes)
+        return fail(QStringLiteral("bad_args"), QStringLiteral("(file size)"),
+                    QStringLiteral("%1 bytes; the limit is %2").arg(bytes).arg(kMaxFileBytes));
     return out;
 }
 

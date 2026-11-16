@@ -123,6 +123,12 @@ the ANTS-2160 suite used for its consumer-wiring check.
   repo root are listed and add no root. With nothing outside, the reason is
   unchanged. *Test:* `Ants5665SourceOutsideTheDefaultWalkIsProposed`.
 
+- **INV-27** (ANTS-6509) — `applyWrite` refuses `bad_args` when the file it
+  would write, as indented JSON, exceeds `ProjectSettings::kMaxFileBytes`,
+  since `load` treats such a file as malformed. The verb treats an existing
+  file over that size as it does one that is not a JSON object.
+  *Test:* `Ants6509WriteOverTheSizeLimitIsRefused`.
+
 - **INV-5/6/10/13 (wiring)** — `project_settings` registered
   `CallerCwdContract::Required` in `claudeintegration.cpp`'s
   `callerCwdContractFor()` + `registerToolProvider`; the handler writes

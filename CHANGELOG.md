@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`.ants/project.json` is read only up to 64 KiB; a larger file counts as malformed, and project_settings refuses to write one** (ANTS-6509)
+
 - **Copies of refused session files are removed by the 30-day session clean-up, like the sessions themselves** (ANTS-6508)
 
 - **`ants.send` refuses text over 64 KiB and drops calls past 256 KiB a second, reporting how many in the plugin log** (ANTS-6507)

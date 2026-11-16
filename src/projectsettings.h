@@ -56,6 +56,9 @@ struct Settings {
 // i.e. does not exist) is DROPPED — not the whole file. An array emptied
 // by dropping becomes nullopt. The dir-vs-file type check is left to the
 // consumer.
+// ANTS-6509 — a cloned repository supplies the file, so one over
+// kMaxFileBytes counts as malformed and is never read whole.
+inline constexpr qint64 kMaxFileBytes = 64 * 1024;
 Settings load(const QString &rootCanonical);
 
 // The folders a walk descends for one roots key: the declared entries that

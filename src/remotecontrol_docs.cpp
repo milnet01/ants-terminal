@@ -2059,10 +2059,12 @@ QJsonDocument RemoteControl::cmdProjectSettings(const QJsonObject &req) {
             return psErr(QStringLiteral("read_failed"),
                          QStringLiteral("project_settings: cannot read %1")
                              .arg(settingsPath));
-        const QByteArray raw = f.readAll();
+        // ANTS-6509 — a file over the limit is malformed, as load() reads it.
+        const QByteArray raw = f.read(ProjectSettings::kMaxFileBytes + 1);
         f.close();
         QJsonParseError pe{};
-        const QJsonDocument d = QJsonDocument::fromJson(raw, &pe);
+        const QJsonDocument d = raw.size() > ProjectSettings::kMaxFileBytes
+            ? QJsonDocument() : QJsonDocument::fromJson(raw, &pe);
         if (pe.error != QJsonParseError::NoError || !d.isObject()) {
             QJsonObject o;
             o[QStringLiteral("ok")]              = false;

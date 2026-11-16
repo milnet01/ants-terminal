@@ -629,3 +629,22 @@ TEST(ProjectSettings, Ants5705CodebaseIndexSkipsGenerated) {
     EXPECT_EQ(countPath(idx.files, QStringLiteral("src/alpha.c")), 1);
     EXPECT_EQ(countPath(idx.files, QStringLiteral("src/parser_out.c")), 0);
 }
+
+// INV-14 (ANTS-6509) — a project.json over kMaxFileBytes is malformed: it
+// loads as all-nullopt and is never read whole. The same text unpadded loads.
+TEST(ProjectSettings, Ants6509OversizedFileIsMalformed) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("lib")));
+    const QString json = QStringLiteral("{\"source_roots\": [\"lib\"]}");
+
+    writeFile(root + "/.ants/project.json", json);
+    ASSERT_TRUE(ProjectSettings::load(root).sourceRoots.has_value())
+        << "the unpadded file must load, or the next check proves nothing";
+
+    writeFile(root + "/.ants/project.json",
+              json + QString(int(ProjectSettings::kMaxFileBytes), QLatin1Char(' ')));
+    EXPECT_FALSE(ProjectSettings::load(root).sourceRoots.has_value())
+        << "a project.json over the size limit was read and used";
+}

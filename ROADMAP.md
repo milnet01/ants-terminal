@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6796 -->
+<!-- ants-roadmap-id-high-water: ANTS=6797 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94637,7 +94637,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6509] **projectsettings.cpp: The file is committed in the repo, so a cloned repo controls it (ANTS-2160 § 8 calls this a trust boundary).**
+- ✅ [ANTS-6509] **projectsettings.cpp: The file is committed in the repo, so a cloned repo controls it (ANTS-2160 § 8 calls this a trust boundary).**
   `projectsettings.cpp:113-115` — The file is committed in the repo, so
   a cloned repo controls it (ANTS-2160 § 8 calls this a trust boundary).
   There is no size cap.
@@ -94647,6 +94647,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   against a small cap (for example 64 KiB) before reading, and treat a
   larger file as malformed.
   Ledger row 208, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: ProjectSettings::kMaxFileBytes (64 KiB); load
+  reads at most that + 1 and returns all-nullopt past it; applyWrite
+  refuses bad_args when the indented file would exceed it; the verb
+  reads the existing file the same way. Tests
+  ProjectSettings.Ants6509OversizedFileIsMalformed,
+  ProjectSettingsVerb.Ants6509WriteOverTheSizeLimitIsRefused. The
+  .gitattributes read is filed separately.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
@@ -94930,6 +94937,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: in-session-2026-11-16.
   Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6797] **projectsettings.cpp: gitattributesGenerated reads a repository's .gitattributes whole, with no size limit.**
+  Found while fixing ANTS-6509. `gitattributesGenerated` calls
+  `f.readAll()` on `<root>/.gitattributes`, which the cloned repository
+  supplies, the same trust boundary as `.ants/project.json`. Bound the read
+  (say 1 MiB) and treat a larger file as declaring nothing.
+  **Layman:** A cloned project could make the terminal read a huge settings file into memory.
+  Kind: fix.
+  Source: ANTS-6509 fix, 2026-11-16.
+  Lanes: config-session-project.
 
 ### High bugs (2026-11-06 review)
 

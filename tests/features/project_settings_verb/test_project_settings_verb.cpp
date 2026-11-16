@@ -159,6 +159,25 @@ TEST(ProjectSettingsVerb, MergePreservesUnknownKeys) {
     EXPECT_TRUE(merged->contains(QStringLiteral("future_key")));   // forward-compat
 }
 
+// INV-27 (ANTS-6509) — a write whose file would exceed
+// ProjectSettings::kMaxFileBytes is refused, since load() would treat that
+// file as malformed and drop every setting in it.
+TEST(ProjectSettingsVerb, Ants6509WriteOverTheSizeLimitIsRefused) {
+    QTemporaryDir dir;
+    const QString root = canon(dir);
+    const QString big(int(ProjectSettings::kMaxFileBytes), QLatin1Char('n'));
+    QString ec, ek, ev;
+    const auto merged = ProjectSettings::applyWrite(
+        QJsonObject{}, jobj({{QStringLiteral("_comment"), big}}), root, &ec, &ek, &ev);
+    EXPECT_FALSE(merged.has_value()) << "a file load() would refuse was accepted";
+    EXPECT_EQ(ec, QStringLiteral("bad_args"));
+
+    const auto small = ProjectSettings::applyWrite(
+        QJsonObject{}, jobj({{QStringLiteral("_comment"), QStringLiteral("why")}}),
+        root, &ec, &ek, &ev);
+    EXPECT_TRUE(small.has_value()) << "a small write must still pass";
+}
+
 // INV-8 — a null value removes a key; a null-only call on an absent key is a
 // valid no-op (returns an object, never bad_args).
 TEST(ProjectSettingsVerb, NullClearsAndNullOnlyIsNoOp) {
