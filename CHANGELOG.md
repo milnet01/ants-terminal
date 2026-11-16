@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **trace reads each file at most one byte past its 2 MiB limit, reporting a file that grew mid-call as too large** (ANTS-6505)
+
 - **trace keeps one compiled query per language, freeing the old one after an edited query file replaces it** (ANTS-6504)
 
 - **trace holds only the rows a page can show, so a name with hundreds of thousands of hits stays small in memory** (ANTS-6503)

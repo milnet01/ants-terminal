@@ -4877,7 +4877,9 @@ if(ANTS_TESTS)
                         tests/features/trace/test_trace_registration.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # Spec § 3 — the fixture project each case copies to a temporary dir.
-        TRACE_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/features/trace/fixture")
+        TRACE_FIXTURE_DIR="${CMAKE_SOURCE_DIR}/tests/features/trace/fixture"
+        # INV-28 reads the engine's source.
+        TRACE_ENGINE_SOURCE="${CMAKE_SOURCE_DIR}/src/trace/trace.cpp")
     # INV-17 and INV-21 run the built ants-mcpd.
     set_property(SOURCE tests/features/trace/test_trace_registration.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS

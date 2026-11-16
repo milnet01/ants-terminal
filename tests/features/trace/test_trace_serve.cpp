@@ -9,6 +9,7 @@
 #include "trace/queries.h"
 #include "trace/trace.h"
 #include "../../_support/peak_memory.h"
+#include "../../_support/srcgrep.h"
 #include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
@@ -801,4 +802,18 @@ TEST_F(TraceServe, Ants6503HeldRowsAreTheFirstInOrder) {
     const QJsonObject head = rows.first().toObject();
     EXPECT_EQ(head.value(QStringLiteral("file")).toString(), QStringLiteral("aa.txt")) << dump(head);
     EXPECT_EQ(head.value(QStringLiteral("line")).toInt(), 1) << dump(head);
+}
+
+// INV-28 (ANTS-6505) — a file is read at most one byte past the size limit,
+// so a file that grew after the walk measured it is reported too large, not
+// read whole. Structural: no test can grow a file between the walk and the read.
+TEST(TraceSource, Ants6505FileReadIsBounded) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::stripComments(ants_test::slurpFile(TRACE_ENGINE_SOURCE)),
+        "QJsonObject serve(");
+    ASSERT_FALSE(body.empty()) << "serve's body did not scrape";
+    EXPECT_EQ(body.find("f.readAll()"), std::string::npos)
+        << "serve reads a walked file with no bound";
+    EXPECT_NE(body.find("f.read(kMaxFileBytes + 1"), std::string::npos)
+        << "serve must read one byte past the limit at most";
 }

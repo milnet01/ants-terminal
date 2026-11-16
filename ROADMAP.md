@@ -94556,7 +94556,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).
   Lanes: code-index-search.
 
-- 📋 [ANTS-6505] **trace.cpp: the 2 MiB check uses the size from the walk-time stat, then `f.readAll()` reads without a bound.**
+- ✅ [ANTS-6505] **trace.cpp: the 2 MiB check uses the size from the walk-time stat, then `f.readAll()` reads without a bound.**
   `trace.cpp:824-828` — the 2 MiB check uses the size from the walk-time
   stat, then `f.readAll()` reads without a bound. A file that grew in
   between is read whole. Fix: use `f.read(kMaxFileBytes + 1 -
@@ -94566,6 +94566,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `f.read(kMaxFileBytes + 1 - text.size())` and treat any overflow as
   too large.
   Ledger row 183, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: serve reads f.read(kMaxFileBytes + 1 -
+  text.size()) and reports any overflow as file_too_large. Spec
+  ANTS-5734 INV-28; test TraceSource.Ants6505FileReadIsBounded (source
+  scrape).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 16-code-index-search-b (Low).

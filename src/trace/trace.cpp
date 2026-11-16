@@ -898,11 +898,13 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         QByteArray text = f.read(8000);
         if (std::memchr(text.constData(), '\0', size_t(text.size())))
             continue;   // binary
-        if (fi.size() > kMaxFileBytes) {
+        // ANTS-6505 — the walk's size can be stale: read one byte past the
+        // limit at most, so a file that grew since is caught, not read whole.
+        if (fi.size() <= kMaxFileBytes) text += f.read(kMaxFileBytes + 1 - text.size());
+        if (fi.size() > kMaxFileBytes || text.size() > kMaxFileBytes) {
             g.tooLarge << rel;
             continue;
         }
-        text += f.readAll();
         if (md) {
             scanMarkdown(rel, text, pathMode, req.needle, req.relNeedle, req.baseNeedle, g);
             continue;
