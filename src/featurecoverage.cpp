@@ -631,6 +631,12 @@ bool existsInSource(const QString &blob, const QString &token) {
 // (smaller haystack) and the path runs second.
 namespace {
 
+// ANTS-6523 — the drift and coverage checks read each file only up to
+// BlobOptions' per-file bound; a longer file is checked on its head.
+QString readHead(QFile &f) {
+    return QString::fromUtf8(f.read(BlobOptions{}.maxFileBytes));
+}
+
 inline bool idChar(unsigned char c) {
     return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
         || (c >= '0' && c <= '9') || c == '_';
@@ -775,7 +781,7 @@ QString runSpecDriftCheck(const QString &projectPath) {
         const QString specPath = fi.filePath() + "/spec.md";
         QFile specFile(specPath);
         if (!specFile.open(QIODevice::ReadOnly)) continue;
-        const QString specText = QString::fromUtf8(specFile.readAll());
+        const QString specText = readHead(specFile);
         specFile.close();
 
         const QList<SpecToken> drift = findDriftTokens(specText, resolves);
@@ -801,7 +807,7 @@ QSet<QString> loadAllowlist(const QString &projectPath) {
     QSet<QString> allow;
     QFile f(projectPath + "/.ants_doc_drift_allow.txt");
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return allow;  // absent
-    const QString text = QString::fromUtf8(f.readAll());
+    const QString text = readHead(f);
     const QStringList lines = text.split('\n');
     for (const QString &raw : lines) {
         // trimmed() strips surrounding whitespace AND a trailing \r (CRLF).
@@ -862,7 +868,7 @@ static QString contractDocDriftIn(const QString &projectPath,
     for (const QString &docPath : docPaths) {
         QFile docFile(docPath);
         if (!docFile.open(QIODevice::ReadOnly)) continue;
-        const QString docText = QString::fromUtf8(docFile.readAll());
+        const QString docText = readHead(docFile);
         docFile.close();
         const QString relPath = projectDir.relativeFilePath(docPath);
         for (const SpecToken &t : extractDocLiteralTokens(docText)) {
@@ -891,7 +897,7 @@ QString runContractDocDriftSpecsCheck(const QString &projectPath) {
 QString runChangelogCoverageCheck(const QString &projectPath) {
     QFile clog(projectPath + "/CHANGELOG.md");
     if (!clog.open(QIODevice::ReadOnly)) return {};
-    const QString clogText = QString::fromUtf8(clog.readAll());
+    const QString clogText = readHead(clog);
     clog.close();
 
     // Collect all feature spec titles. Title is the first `# ` line of
@@ -906,7 +912,7 @@ QString runChangelogCoverageCheck(const QString &projectPath) {
             QFile specFile(fi.filePath() + "/spec.md");
             if (!specFile.open(QIODevice::ReadOnly)) continue;
             const QString firstLine =
-                QString::fromUtf8(specFile.readLine()).trimmed();
+                QString::fromUtf8(specFile.readLine(4096)).trimmed();
             specFile.close();
             if (firstLine.startsWith("# "))
                 titles << firstLine.mid(2).trimmed();
@@ -938,7 +944,7 @@ QString runChangelogCoverageCheck(const QString &projectPath) {
                 for (const QFileInfo &ff : files) {
                     QFile f(ff.filePath());
                     if (!f.open(QIODevice::ReadOnly)) continue;
-                    const QString text = QString::fromUtf8(f.readAll());
+                    const QString text = readHead(f);
                     f.close();
                     QRegularExpressionMatchIterator it =
                         anyIdRe.globalMatch(text);

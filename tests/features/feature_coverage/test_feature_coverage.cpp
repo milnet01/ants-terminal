@@ -616,3 +616,23 @@ TEST(FeatureCoverage, Ants6389FileExtensionTailDoesNotMatch) {
     EXPECT_TRUE(FeatureCoverage::existsInSource(blob, QStringLiteral("codec.parse_json")));
     EXPECT_TRUE(FeatureCoverage::existsInSource(index, QStringLiteral("codec.parse_json")));
 }
+
+// ANTS-6523 — every whole-file read in the drift and coverage checks stops at
+// BlobOptions' per-file bound, so an id past it in a feature file is unseen.
+TEST(FeatureCoverage, Ants6523FeatureFilesAreReadToTheBound) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(writeFile(root + "/CHANGELOG.md",
+                          "# Changelog\n\n## [1.2.0] - 2026-08-01\n### Added\n"
+                          "- **Receipts export as one bundle** (FIBR-7777)\n"));
+    ASSERT_TRUE(writeFile(root + "/tests/features/receipts/spec.md",
+                          "# Bundle writer\n\nNo id here.\n"));
+    const qint64 bound = FeatureCoverage::BlobOptions{}.maxFileBytes;
+    ASSERT_TRUE(writeFile(root + "/tests/features/receipts/fixture.bin",
+                          QString(int(bound) + 1024 * 1024, QLatin1Char('x'))
+                              + QStringLiteral(" FIBR-7777\n")));
+    const QString out = FeatureCoverage::runChangelogCoverageCheck(root);
+    EXPECT_TRUE(out.contains(QStringLiteral("FIBR-7777")))
+        << "an id past the per-file bound counted as covered, so the file was read whole";
+}

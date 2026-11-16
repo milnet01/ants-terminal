@@ -111,7 +111,7 @@ body.
 17. **Empty title list → false.** A bullet vs `[]` always returns
     `false` (nothing to match against).
 
-## On-disk runners (invariants 18-23)
+## On-disk runners (invariants 18-24)
 
 The two runners compose the parsers above with a real project tree.
 These invariants pin the resolution rules, which is where both lanes
@@ -159,6 +159,12 @@ have misfired on projects whose layout differs from this one's.
     `render` in `def render():` and `app.py` in the path `src/app.py`
     are not. The `::` and `.` tail fallbacks follow the same rule.
     The debt-sweep and contract-doc lanes keep substring matching.
+
+24. **Each file is read to the per-file bound** (ANTS-6523). The spec,
+    allowlist, contract-doc, CHANGELOG and feature-file reads stop at
+    `BlobOptions::maxFileBytes`. An id past it in a feature file is not
+    seen, so its CHANGELOG bullet is reported uncovered
+    (`Ants6523FeatureFilesAreReadToTheBound`).
 
 ## Acceptance
 

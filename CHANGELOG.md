@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The spec, doc and changelog drift checks read at most 2 MiB of each file** (ANTS-6523)
+
 - **verify_changes stops walking untracked folders after 10,000 files and runs uncached instead** (ANTS-6522)
 
 - **The automatic model switcher remembers at most 64 folders in each of its in-memory records** (ANTS-6521)

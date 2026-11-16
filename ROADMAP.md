@@ -94899,7 +94899,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 31-mcp-review-verbs (Medium).
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6523] **featurecoverage.cpp: Every file in every `tests/features/*` directory, binary fixtures included, is read whole with no cap.**
+- ✅ [ANTS-6523] **featurecoverage.cpp: Every file in every `tests/features/*` directory, binary fixtures included, is read whole with no cap.**
   `featurecoverage.cpp:933-946` — Every file in every `tests/features/*`
   directory, binary fixtures included, is read whole with no cap. So are
   the spec and doc bodies and the allowlist.
@@ -94907,6 +94907,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): apply
   `maxFileBytes`.
   Ledger row 379, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: readHead reads BlobOptions::maxFileBytes (2 MiB)
+  at the five whole-file reads (spec, allowlist, contract doc,
+  CHANGELOG, feature files); the spec-title readLine takes 4096. A
+  longer file is checked on its head (CHANGELOG's newest sections are at
+  the top). FeatureCoverage.Ants6523FeatureFilesAreReadToTheBound.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 33-spec-engines (Low).
