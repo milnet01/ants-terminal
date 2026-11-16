@@ -177,14 +177,98 @@ struct Row {
     int column = 0;
     QString tie;   // a last key, so two rows on one spot keep one order
     QJsonValue value;
+    qint64 seq = 0;   // the order rows were found in; the key after `tie`
 };
 
-void sortRows(QVector<Row> &rows) {
-    std::stable_sort(rows.begin(), rows.end(), [](const Row &a, const Row &b) {
-        return std::tie(a.file, a.line, a.column, a.tie) <
-               std::tie(b.file, b.line, b.column, b.tie);
-    });
+bool rowBefore(const Row &a, const Row &b) {
+    return std::tie(a.file, a.line, a.column, a.tie, a.seq) <
+           std::tie(b.file, b.line, b.column, b.tie, b.seq);
 }
+
+// ANTS-6503 — a section's rows: every one is counted, and only the first
+// `keep` in § 2.2's order are held. A page shows rows [offset, offset + page)
+// of one sequence spanning the sections, so a section's share of it lies in
+// its own first offset + page rows. Should the held rows run out first,
+// pageInto ends the page there, with next_offset.
+class RowWindow {
+public:
+    explicit RowWindow(qint64 keep = 1) : m_keep(qMax<qint64>(1, keep)) {}
+
+    void add(Row r) {
+        ++m_total;
+        if (m_heap.size() < m_keep) {
+            m_heap.append(std::move(r));
+            std::push_heap(m_heap.begin(), m_heap.end(), rowBefore);
+        } else if (rowBefore(r, m_heap.front())) {
+            std::pop_heap(m_heap.begin(), m_heap.end(), rowBefore);
+            m_heap.back() = std::move(r);
+            std::push_heap(m_heap.begin(), m_heap.end(), rowBefore);
+        }
+    }
+    // Another window's rows and count, as if each had been added here.
+    void absorb(RowWindow &&other) {
+        m_total += other.m_total - other.m_heap.size();
+        for (Row &r : other.m_heap) add(std::move(r));
+        other.m_heap.clear();
+    }
+    qint64 total() const { return m_total; }
+    // The held rows in § 2.2's order; the window keeps its count.
+    QVector<Row> takeSorted() {
+        std::sort_heap(m_heap.begin(), m_heap.end(), rowBefore);
+        return std::exchange(m_heap, {});
+    }
+
+private:
+    qint64 m_keep;
+    qint64 m_total = 0;
+    QVector<Row> m_heap;   // a max-heap by rowBefore: front() is the last held row
+};
+
+// ANTS-6503 — about how many rows one page holds: a row's JSON is rarely
+// under kRowBytesFloor bytes. A guess too small costs a page cut short, which
+// next_offset continues, never a row.
+constexpr int    kRowBytesFloor = 40;
+constexpr qint64 kMaxPageRows   = 65536;
+qint64 pageRows(int maxBytes) {
+    return qBound(qint64(1), qint64(maxBytes) / kRowBytesFloor + 1, kMaxPageRows);
+}
+
+// A C header's language is C++'s for matching definitions to their uses.
+QString langFamily(const QString &lang) {
+    return lang == QLatin1String("c") ? QStringLiteral("cpp") : lang;
+}
+
+struct Gathered {
+    explicit Gathered(qint64 keepRows) : keep(keepRows), defRows(keep), docRows(keep) {}
+
+    qint64 keep;                                // rows each window holds
+    qint64 nextSeq = 0;
+    RowWindow defRows, docRows;
+    // Callers and references by language family, so narrowByQualifier can
+    // drop a family whole and still hold each other family's first rows.
+    QMap<QString, RowWindow> callersByFamily, refsByFamily;
+    QSet<QString> defFamilies;
+    QSet<QString> testFiles;
+    QStringList defFiles;
+    QHash<QString, QString> fileLang;           // rel -> language id
+    QMap<QString, int> noGrammarFiles;          // lang -> files present
+    QMap<QString, QString> noGrammarDetail;     // lang -> why
+    QSet<QString> grammarLangs;                 // vendored languages with files
+    QMap<QString, QString> limitsByLang;        // ... of those, the ones with a hit
+    QStringList tooLarge, timedOut, parseErrors;
+    int filesParsed = 0, filesWithErrors = 0;
+
+    void add(RowWindow &w, Row r) {
+        r.seq = nextSeq++;
+        w.add(std::move(r));
+    }
+    RowWindow &family(QMap<QString, RowWindow> &byFamily, const QString &lang) {
+        const QString key = langFamily(lang);
+        auto it = byFamily.find(key);
+        if (it == byFamily.end()) it = byFamily.insert(key, RowWindow(keep));
+        return *it;
+    }
+};
 
 bool isMarkdown(const QString &name) {
     const QString n = name.toLower();
@@ -196,7 +280,7 @@ bool isMarkdown(const QString &name) {
 // carries the nearest heading above.
 void scanMarkdown(const QString &rel, const QByteArray &text, bool pathMode,
                   const QByteArray &needle, const QByteArray &rel2, const QByteArray &base,
-                  QVector<Row> &docs) {
+                  Gathered &g) {
     const QList<QByteArray> lines = text.split('\n');
     QStringList textLines;
     textLines.reserve(lines.size());
@@ -233,7 +317,7 @@ void scanMarkdown(const QString &rel, const QByteArray &text, bool pathMode,
                        heading ? QJsonValue(heading->text) : QJsonValue()},
                       {QStringLiteral("heading_line"),
                        heading ? QJsonValue(heading->line) : QJsonValue()}};
-        docs.append({rel, i + 1, 0, QString(), o});
+        g.add(g.docRows, {rel, i + 1, 0, QString(), o});
     }
 }
 
@@ -396,19 +480,6 @@ QVector<QFileInfo> collectFiles(const QString &root, bool *walkCapped) {
 }
 
 // What the per-file pass gathers.
-struct Gathered {
-    QVector<Row> defRows, callerRows, refRows, docRows;
-    QSet<QString> testFiles;
-    QStringList defFiles;
-    QHash<QString, QString> fileLang;           // rel -> language id
-    QMap<QString, int> noGrammarFiles;          // lang -> files present
-    QMap<QString, QString> noGrammarDetail;     // lang -> why
-    QSet<QString> grammarLangs;                 // vendored languages with files
-    QMap<QString, QString> limitsByLang;        // ... of those, the ones with a hit
-    QStringList tooLarge, timedOut, parseErrors;
-    int filesParsed = 0, filesWithErrors = 0;
-};
-
 // The last name in `Foo<T>::bar` or `pkg.mod`, with template arguments gone.
 QString lastScopePart(QString receiver) {
     receiver.replace(QLatin1Char('.'), QStringLiteral("::"));
@@ -469,7 +540,8 @@ QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const
         }
         QJsonArray sc;
         for (const QString &s : d.scope) sc.append(s);
-        g.defRows.append({rel, d.line, d.column, d.isDeclaration ? QStringLiteral("d") : QString(),
+        g.defFamilies.insert(langFamily(lang));
+        g.add(g.defRows, {rel, d.line, d.column, d.isDeclaration ? QStringLiteral("d") : QString(),
                           QJsonObject{{QStringLiteral("file"), rel},
                                       {QStringLiteral("line"), d.line},
                                       {QStringLiteral("end_line"), d.endLine},
@@ -504,7 +576,7 @@ QVector<ByteRange> addSymbolRows(const FileRows &rows, const Request &req, const
                               {QStringLiteral("depth"), 1}};
         if (scope == CallScope::Unresolved)
             callerRow[QStringLiteral("scope_unresolved")] = true;
-        g.callerRows.append({rel, c.line, c.column, QString(), callerRow});
+        g.add(g.family(g.callersByFamily, lang), {rel, c.line, c.column, QString(), callerRow});
         if (test) g.testFiles.insert(rel);
     }
     return skip;
@@ -552,7 +624,7 @@ void addReferenceRows(const QVector<int> &hits, const QVector<ByteRange> &skip,
             || (rows && rows->hasErrors && kind == QLatin1String("string_or_config"));
         if (mayBeCode && followedByParen(text, h))
             row[QStringLiteral("possible_call")] = true;
-        g.refRows.append({rel, line, lines.columnOf(h), kind, row});
+        g.add(g.family(g.refsByFamily, lang), {rel, line, lines.columnOf(h), kind, row});
         if (test) g.testFiles.insert(rel);
     }
 }
@@ -561,26 +633,20 @@ void addReferenceRows(const QVector<int> &hits, const QVector<ByteRange> &skip,
 // languages; a qualifier that matched no definition is said, not dropped.
 void narrowByQualifier(const Request &req, Gathered &g, QJsonArray &notCovered) {
     if (req.scopes.isEmpty()) return;
-    if (g.defRows.isEmpty()) {
+    if (g.defRows.total() == 0) {
         notCovered.append(QJsonObject{
             {QStringLiteral("reason"), QStringLiteral("qualifier_unmatched")},
             {QStringLiteral("detail"), QStringLiteral("no definition of %1 under %2, so references are not narrowed")
                  .arg(req.name, req.scopes.join(QStringLiteral("::")))}});
         return;
     }
-    const auto family = [](const QString &lang) {
-        return lang == QLatin1String("c") ? QStringLiteral("cpp") : lang;
+    const auto foreign = [&](const QString &family) {
+        return !family.isEmpty() && !g.defFamilies.contains(family);
     };
-    QSet<QString> langs;
-    for (const Row &d : std::as_const(g.defRows)) langs.insert(family(g.fileLang.value(d.file)));
-    const auto foreign = [&](const Row &r) {
-        const QString lang = g.fileLang.value(r.file);
-        return !lang.isEmpty() && !langs.contains(family(lang));
-    };
-    g.callerRows.erase(std::remove_if(g.callerRows.begin(), g.callerRows.end(), foreign), g.callerRows.end());
-    g.refRows.erase(std::remove_if(g.refRows.begin(), g.refRows.end(), foreign), g.refRows.end());
+    for (QMap<QString, RowWindow> *byFamily : {&g.callersByFamily, &g.refsByFamily})
+        byFamily->removeIf([&](QMap<QString, RowWindow>::iterator it) { return foreign(it.key()); });
     for (auto it = g.testFiles.begin(); it != g.testFiles.end();)
-        it = foreign(Row{*it, 0, 0, QString(), QJsonValue()}) ? g.testFiles.erase(it) : ++it;
+        it = foreign(langFamily(g.fileLang.value(*it))) ? g.testFiles.erase(it) : ++it;
 }
 
 // Spec invariants (§ 2.7) whose body names the symbol or path.
@@ -705,9 +771,11 @@ void appendCoverageGaps(Gathered &g, QJsonArray &notCovered) {
                                       {QStringLiteral("detail"), it.value()}});
 }
 
+// A section's held rows in § 2.2's order, the first `total` found.
 struct Section {
     QString key;
-    QVector<Row> *rows;
+    qint64 total;
+    QVector<Row> rows;
 };
 
 // The tests section's extra fields.
@@ -721,8 +789,8 @@ struct TestSelection {
 // maxBytes less the envelope with every section empty.
 void pageInto(QJsonObject &reply, const QVector<Section> &sections, int offset, int maxBytes,
               const TestSelection &tests) {
-    int total = 0;
-    for (const Section &s : sections) total += int(s.rows->size());
+    qint64 total = 0;
+    for (const Section &s : sections) total += s.total;
     auto sectionValue = [&](const Section &s, const QJsonArray &rows) -> QJsonValue {
         if (s.key != QLatin1String("tests")) return rows;
         QJsonObject t{{QStringLiteral("files"), rows}};
@@ -734,7 +802,7 @@ void pageInto(QJsonObject &reply, const QVector<Section> &sections, int offset, 
     };
     QJsonObject counts;
     for (const Section &s : sections)
-        counts.insert(s.key, QJsonObject{{QStringLiteral("total"), int(s.rows->size())},
+        counts.insert(s.key, QJsonObject{{QStringLiteral("total"), s.total},
                                          {QStringLiteral("returned"), 0}});
     QJsonObject sizing = reply;
     for (const Section &s : sections) sizing.insert(s.key, sectionValue(s, {}));
@@ -745,12 +813,13 @@ void pageInto(QJsonObject &reply, const QVector<Section> &sections, int offset, 
     const qint64 budget = maxBytes - envelope;
 
     qint64 used = 0;
-    int index = 0;
-    int nextOffset = -1;
+    qint64 start = 0;   // the section's first row's index in the one sequence
+    qint64 nextOffset = -1;
     for (const Section &s : sections) {
         QJsonArray page;
-        for (const Row &r : *s.rows) {
-            const int i = index++;
+        qint64 index = start;
+        for (const Row &r : s.rows) {
+            const qint64 i = index++;
             if (i < offset || nextOffset >= 0) continue;
             const qint64 bytes =
                 (r.value.isString()
@@ -764,6 +833,11 @@ void pageInto(QJsonObject &reply, const QVector<Section> &sections, int offset, 
             used += bytes;
             page.append(r.value);
         }
+        // ANTS-6503 — rows past the held ones were counted, not kept: the
+        // page ends where the held rows do, and the next call holds more.
+        const qint64 end = start + s.total;
+        if (nextOffset < 0 && index < end && offset < end) nextOffset = qMax<qint64>(offset, index);
+        start = end;
         reply.insert(s.key, sectionValue(s, page));
         QJsonObject c = counts.value(s.key).toObject();
         c.insert(QStringLiteral("returned"), int(page.size()));
@@ -813,7 +887,7 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     };
 
     // ---- per file ----
-    Gathered g;
+    Gathered g(qint64(req.offset) + pageRows(req.maxBytes));
     for (const QFileInfo &fi : files) {
         const QString rel = fi.absoluteFilePath().mid(prefixLen);
         const bool md = isMarkdown(fi.fileName());
@@ -830,7 +904,7 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         }
         text += f.readAll();
         if (md) {
-            scanMarkdown(rel, text, pathMode, req.needle, req.relNeedle, req.baseNeedle, g.docRows);
+            scanMarkdown(rel, text, pathMode, req.needle, req.relNeedle, req.baseNeedle, g);
             continue;
         }
 
@@ -912,26 +986,30 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
     appendCoverageGaps(g, notCovered);
 
     // ---- the reply ----
-    sortRows(g.defRows);
-    sortRows(g.callerRows);
-    sortRows(g.refRows);
-    sortRows(g.docRows);
-
+    RowWindow callers(g.keep), refs(g.keep);
+    for (RowWindow &w : g.callersByFamily) callers.absorb(std::move(w));
+    for (RowWindow &w : g.refsByFamily) refs.absorb(std::move(w));
     QVector<Section> sections;
+    const auto addHeld = [&](const QString &key, RowWindow &w) {
+        sections.append({key, w.total(), w.takeSorted()});
+    };
+    const auto addAll = [&](const QString &key, QVector<Row> &v) {
+        sections.append({key, v.size(), std::move(v)});
+    };
     if (req.hasSymbol && req.include.contains(QStringLiteral("definitions")))
-        sections.append({QStringLiteral("definitions"), &g.defRows});
+        addHeld(QStringLiteral("definitions"), g.defRows);
     if (req.hasSymbol && req.include.contains(QStringLiteral("callers")))
-        sections.append({QStringLiteral("callers"), &g.callerRows});
+        addHeld(QStringLiteral("callers"), callers);
     if (req.include.contains(QStringLiteral("references")))
-        sections.append({QStringLiteral("references"), &g.refRows});
+        addHeld(QStringLiteral("references"), refs);
     if (req.include.contains(QStringLiteral("tests")))
-        sections.append({QStringLiteral("tests"), &testRows});
+        addAll(QStringLiteral("tests"), testRows);
     if (req.include.contains(QStringLiteral("docs")))
-        sections.append({QStringLiteral("docs"), &g.docRows});
+        addHeld(QStringLiteral("docs"), g.docRows);
     if (req.include.contains(QStringLiteral("spec_invariants")))
-        sections.append({QStringLiteral("spec_invariants"), &specRows});
+        addAll(QStringLiteral("spec_invariants"), specRows);
     if (req.include.contains(QStringLiteral("roadmap_items")))
-        sections.append({QStringLiteral("roadmap_items"), &roadmapRows});
+        addAll(QStringLiteral("roadmap_items"), roadmapRows);
 
     QJsonArray langs;
     QStringList grammarLangs(g.grammarLangs.begin(), g.grammarLangs.end());

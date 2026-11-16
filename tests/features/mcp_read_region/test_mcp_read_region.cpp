@@ -6,16 +6,11 @@
 #include "../../_support/expect.h"
 #include "readregion.h"
 
-#include <algorithm>
 #include <cstdio>
-#include <functional>
 #include <string>
 
-#include <sys/resource.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
 #include <gtest/gtest.h>
+#include "../../_support/peak_memory.h"
 #include "../../_support/srcgrep.h"
 #include <QFile>
 #include <QJsonArray>
@@ -89,25 +84,6 @@ QString writeHugeTail(const QTemporaryDir &dir, const QString &name,
     f.write(head);
     if (!f.resize(qint64(64) * 1024 * 1024)) return {};
     return path;
-}
-
-// How far `work` raises peak memory, in MiB, measured in a forked child: its
-// high-water mark starts at its size at the fork, so an earlier test's peak
-// cannot hide this one's. -1: the fork failed; 251: `work` returned false.
-int peakGrowthMiB(const std::function<bool()> &work) {
-    const pid_t pid = fork();
-    if (pid < 0) return -1;
-    if (pid == 0) {
-        rusage before{}, after{};
-        getrusage(RUSAGE_SELF, &before);
-        const bool ok = work();
-        getrusage(RUSAGE_SELF, &after);
-        _exit(ok ? int(std::min<long>(250, (after.ru_maxrss - before.ru_maxrss) / 1024))
-                 : 251);
-    }
-    int status = 0;
-    if (waitpid(pid, &status, 0) != pid || !WIFEXITED(status)) return -1;
-    return WEXITSTATUS(status);
 }
 
 }  // namespace
@@ -508,13 +484,7 @@ TEST(McpReadRegion, Ants5281SectionTailNeedsNoLineNumbers) {
 // size. Each fixture ends in one 64 MiB line; every mode used to read that
 // line, or the whole file, into memory before applying any cap.
 TEST(McpReadRegion, Ants6502PeakMemoryStaysBounded) {
-#if defined(__SANITIZE_ADDRESS__)
-    GTEST_SKIP() << "ASan keeps freed blocks resident, so the peak measures its quarantine";
-#elif defined(__has_feature)
-#if __has_feature(address_sanitizer)
-    GTEST_SKIP() << "ASan keeps freed blocks resident, so the peak measures its quarantine";
-#endif
-#endif
+    ANTS_TEST_SKIP_UNDER_ASAN();
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     const QString txt = writeHugeTail(dir, "a.txt", "first\n");
     const QString cpp = writeHugeTail(dir, "a.cpp", "void f() {\n");
@@ -529,7 +499,7 @@ TEST(McpReadRegion, Ants6502PeakMemoryStaysBounded) {
         {"section", md, sec},
     };
     for (const auto &c : cases) {
-        const int grew = peakGrowthMiB([&] {
+        const int grew = ants_test::peakGrowthMiB([&] {
             const QJsonObject env = ReadRegion::extract(c.path, c.opts);
             return env.value("ok").toBool() && env.value("truncated").toBool();
         });

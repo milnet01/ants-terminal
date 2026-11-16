@@ -222,13 +222,14 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 - **INV-23** — A binary file is never reported as `file_too_large`. *Test:* `tests/features/trace/` writes a 3 MiB `blob.bin` holding NUL bytes and the text `kindProbe` into a temporary copy of the fixture, expecting no `not_covered` entry naming it. *Breaks when:* the size check runs before the binary check.
 - **INV-24** — `limits` rows name only languages with a file naming the symbol. *Test:* `tests/features/trace/` traces `afterError`, found only in `broken.cpp`, expecting exactly one `limits` row, for `cpp`. *Breaks when:* a language's limits are recorded for every file with a grammar.
 - **INV-25** — Two or more oversized files under one top-level directory fold to one row. *Test:* `tests/features/trace/` writes two 3 MiB files under `vendor/`, expecting one `file_too_large` row `{dir:"vendor", files:2}` with no `file` key. *Breaks when:* each file gets its own row. INV-16's lone file keeps its name.
+- **INV-26** — Each of the definitions, callers, references and docs sections counts every row it finds, and holds only its first `offset` plus one page's rows in § 2.2's order. A page whose byte cap would fit more rows than are held ends where they end, with `truncated:true` and `next_offset` (ANTS-6503).. *Test:* `tests/features/trace/` writes `many.txt` naming `zq` on 500,000 lines and expects peak memory to grow by at most 32 MiB (skipped under ASan); writes 70,000 such lines and, with a 64 MiB `max_bytes`, expects a truncated page whose next page starts at the following line; and writes 150 such lines to each of `aa.txt` and `aa/x.txt`, expecting a small page to start at `aa.txt` line 1. *Breaks when:* every row is held, a section holds the first rows found rather than the first in order, or a page runs past the held rows without `next_offset`..
 
 ## 4. Failure modes
 
 - **A grammar crashes on a file.** Grammars are generated C and can crash. A crash takes down `ants-mcpd`, not the terminal: clients see the server drop and reconnect. Each grammar's upstream commit is pinned, so a crash is reproducible. A file that crashes the parser is not yet skipped automatically (§ 6).
 - **A query file has a syntax error.** That language reports `no_grammar` with the error (§ 2.4); other languages still answer.
 - **The roadmap or a spec is unreadable.** That section is empty, and `not_covered` names `{reason:"source_unreadable", source:"roadmap"}`. The call still succeeds.
-- **A common name.** A name like `init` matches thousands of rows. The byte cap and paging bound the reply (INV-8); the 200-row caller stop bounds a depth-N walk (ship 2).
+- **A common name.** A name like `init` matches thousands of rows. The byte cap and paging bound the reply (INV-8), and each section holds only the rows a page can reach (INV-26); the 200-row caller stop bounds a depth-N walk (ship 2).
 - **Two functions share a name.** Their callers merge (§ 2.5). A qualified symbol narrows callers and references too (ANTS-6204): a call whose written qualifier differs is left out, a call with none in a language with no receiver to read carries `scope_unresolved: true`, rows in a language no matching definition has are left out, and a qualifier matching no definition is named in `not_covered` as `qualifier_unmatched`. A Python module name matches the file; a Python call counts when it goes through that module, sits in that file, or follows a `from` import of the name.
 - **A file changes during a call.** The rows come from the parse that ran; the next call sees the new mtime and re-parses.
 - **A grammar's ABI is outside 13–15.** `ts_parser_set_language` fails at first use. That language becomes `no_grammar` with the reason. A load test in the bundle (§ 7) sets every vendored language once, so this is caught before release.
@@ -254,6 +255,7 @@ Fixtures live in `tests/features/trace/fixture/`, a small project with one file 
 Feature test: `tests/features/trace/`, label `features`, its bundle taken from `build_target_for` once it exists. Every case runs against `tests/features/trace/fixture/`. Each case is run against the code before the change that makes it pass, and is seen to fail there.
 
 - INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10, INV-11, INV-12, INV-15, INV-16, INV-18, INV-22, INV-23, INV-24 and INV-25: one case each, calling `trace::serve` directly. INV-22's case needs `git` on the test host.
+- INV-26: three cases, calling `trace::serve` directly. The memory case runs in a forked child and is skipped under ASan.
 - INV-13: builds two `ClaudeIntegration` pipelines and compares their `tools/list` replies.
 - INV-14: the query re-read case, with `XDG_DATA_HOME` set for the test process.
 - INV-17: the `nm` and `ldd` commands, run by the bundle against the built `ants-mcpd`.
@@ -295,7 +297,7 @@ The fixture's `.dart` file is never parsed; it exists to be reported.
 | INV-1 to INV-16, INV-18 | `tests/features/trace/` |
 | INV-17 | **Partial:** `tests/features/trace/` (the `nm` and `ldd` checks) catches a shared link; nothing catches a `dlopen` of a system grammar |
 | INV-21 | `tests/features/trace/` |
-| INV-22, INV-23, INV-24, INV-25 | `tests/features/trace/` |
+| INV-22, INV-23, INV-24, INV-25, INV-26 | `tests/features/trace/` |
 | INV-19, INV-20 | `tests/features/trace/`, from ship 2 |
 | § 2.3 grammar pins match the vendored files | **nothing** — `tools/vendor-grammars.sh` checks hashes only when it runs; deferred; not yet queued |
 | § 2.8 preamble stays within 500 bytes | ANTS-1252 INV-3's test |

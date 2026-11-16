@@ -462,6 +462,10 @@ for security-relevant changes.
 
 ### Fixed
 
+- **trace holds only the rows a page can show, so a name with hundreds of thousands of hits stays small in memory** (ANTS-6503)
+  Every row is still counted, and paging with `next_offset` still joins up
+  to the whole answer.
+
 - **roadmap_log's batch-hint memory drops entries older than its five-minute window and holds at most 256** (ANTS-6496)
 
 - **read_region keeps its memory use near `max_bytes` on any file, in line, symbol and section modes** (ANTS-6502)

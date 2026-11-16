@@ -7,6 +7,7 @@
 
 #include "trace/extract.h"
 #include "trace/trace.h"
+#include "../../_support/peak_memory.h"
 #include "../../_support/xdg_guard.h"
 
 #include <gtest/gtest.h>
@@ -699,4 +700,77 @@ TEST_F(TraceServe, Inv23BinaryFileNeverReportedTooLarge) {
         EXPECT_NE(v.toObject().value(QStringLiteral("file")).toString(),
                   QStringLiteral("blob.bin"))
             << dump(v);
+}
+
+// INV-26 (ANTS-6503) — a name with a vast number of hits holds only the rows a
+// page can show, not every row found. One file names it on 500,000 lines.
+TEST_F(TraceServe, Ants6503ManyHitsHoldOnlyAPagesRows) {
+    ANTS_TEST_SKIP_UNDER_ASAN();
+    QByteArray many;
+    many.reserve(1500 * 1024);
+    for (int i = 0; i < 500000; ++i) many += "zq\n";
+    ASSERT_TRUE(write(QStringLiteral("many.txt"), many));
+    // A process's first call compiles the fixture languages' queries, a cost
+    // paid once whatever the rows. A name found nowhere pays it here and
+    // holds no rows, so it leaves nothing behind for the measured call to reuse.
+    traceSymbol(QStringLiteral("warmUpNameFoundNowhere"));
+
+    const int grew = ants_test::peakGrowthMiB([&] {
+        const QJsonObject r = traceSymbol(QStringLiteral("zq"));
+        const QJsonObject refs = r.value(QStringLiteral("counts")).toObject()
+                                     .value(QStringLiteral("references")).toObject();
+        return r.value(QStringLiteral("truncated")).toBool()
+            && refs.value(QStringLiteral("total")).toInt() == 500000;
+    });
+    EXPECT_NE(grew, 251) << "the reply must be truncated and count all 500000 references";
+    EXPECT_GE(grew, 0) << "fork failed";
+    EXPECT_LE(grew, 32) << "peak memory grew " << grew << " MiB for one page of rows";
+}
+
+// INV-26 (ANTS-6503) — a page whose byte cap would fit more rows than are held
+// ends where the held rows do, and the next page starts at the row after.
+TEST_F(TraceServe, Ants6503PageEndsWhereTheHeldRowsDo) {
+    constexpr int kLines = 70000;   // past the most rows one page holds
+    QByteArray many;
+    for (int i = 0; i < kLines; ++i) many += "zq\n";
+    ASSERT_TRUE(write(QStringLiteral("many.txt"), many));
+    const auto page = [&](int offset) {
+        QJsonObject args{{QStringLiteral("symbol"), QStringLiteral("zq")},
+                         {QStringLiteral("max_bytes"), 64 * 1024 * 1024}};
+        if (offset) args.insert(QStringLiteral("offset"), offset);
+        return call(args);
+    };
+
+    const QJsonObject first = page(0);
+    const QJsonArray rows = arr(first, "references");
+    ASSERT_FALSE(rows.isEmpty()) << dump(first);
+    ASSERT_LT(rows.size(), kLines) << "the page held every row";
+    ASSERT_TRUE(first.value(QStringLiteral("truncated")).toBool()) << "rows were left out silently";
+    const int next = first.value(QStringLiteral("next_offset")).toInt(-1);
+    ASSERT_EQ(next, int(rows.size()));
+    const int lastLine = rows.last().toObject().value(QStringLiteral("line")).toInt();
+    EXPECT_EQ(lastLine, next);
+
+    const QJsonArray after = arr(page(next), "references");
+    ASSERT_FALSE(after.isEmpty());
+    EXPECT_EQ(after.first().toObject().value(QStringLiteral("line")).toInt(), lastLine + 1);
+}
+
+// INV-26 (ANTS-6503) — the rows held are the first in § 2.2's order, not the
+// first found. Outside git the walk lists the folder `aa` before `aa.txt`, so
+// it finds `aa/x.txt`'s rows first; in path order `aa.txt` comes first.
+TEST_F(TraceServe, Ants6503HeldRowsAreTheFirstInOrder) {
+    QByteArray lines;
+    for (int i = 0; i < 150; ++i) lines += "zq\n";
+    ASSERT_TRUE(write(QStringLiteral("aa/x.txt"), lines));
+    ASSERT_TRUE(write(QStringLiteral("aa.txt"), lines));
+
+    // Holds about a hundred rows per section, fewer than the 300 found.
+    const QJsonObject r = call({{QStringLiteral("symbol"), QStringLiteral("zq")},
+                                {QStringLiteral("max_bytes"), 4000}});
+    const QJsonArray rows = arr(r, "references");
+    ASSERT_FALSE(rows.isEmpty()) << dump(r);
+    const QJsonObject head = rows.first().toObject();
+    EXPECT_EQ(head.value(QStringLiteral("file")).toString(), QStringLiteral("aa.txt")) << dump(head);
+    EXPECT_EQ(head.value(QStringLiteral("line")).toInt(), 1) << dump(head);
 }
