@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **verify_changes stops walking untracked folders after 10,000 files and runs uncached instead** (ANTS-6522)
+
 - **The automatic model switcher remembers at most 64 folders in each of its in-memory records** (ANTS-6521)
 
 - **An audit run keeps at most 32 million characters of source lines in memory for snippets and suppression checks** (ANTS-6520)

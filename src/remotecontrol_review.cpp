@@ -998,6 +998,8 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
         QStringLiteral(".cxx"), QStringLiteral(".c++"),
         QStringLiteral(".c")};
     const QList<QByteArray> toks = statusRaw.split('\0');
+    constexpr int kMaxUntrackedWalk = 10000;   // ANTS-6522 — files, all folders
+    int untrackedWalked = 0;
     for (int i = 0; i < toks.size(); ++i) {
         const QByteArray &t = toks.at(i);
         if (t.size() < 4) continue;               // "XY p" minimum
@@ -1019,7 +1021,12 @@ VerifyGitSnapshot collectGitSnapshot(const QString &root) {
                 QStringList inner;
                 QDirIterator it(abs, QDir::Files | QDir::Hidden,
                                 QDirIterator::Subdirectories);
-                while (it.hasNext()) inner.append(it.next());
+                while (it.hasNext()) {
+                    // ANTS-6522 — past the cap the tree is too big to stamp;
+                    // the snapshot stays invalid, so the run is not cached.
+                    if (++untrackedWalked > kMaxUntrackedWalk) return s;
+                    inner.append(it.next());
+                }
                 inner.sort();
                 for (const QString &f : std::as_const(inner))
                     statusHash.addData(f.toUtf8() + stampOf(QFileInfo(f)));

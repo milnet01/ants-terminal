@@ -20,7 +20,9 @@ Behavioural feature test for the session-scoped cache wrapping
   each bypass insert.
 - **INV-5 (git-snapshot invalidation)** — tracked-content edit between
   two calls busts the cache; untracked-file creation busts; an empty
-  commit busts.
+  commit busts. The snapshot stamps every file under an untracked folder,
+  up to 10,000 files across all of them; past that it is invalid and the
+  run is not cached (ANTS-6522).
 - **INV-6 (cap + LRU)** — cap 8; insert past cap evicts the LRU
   entry; hit on an entry bumps it to MRU.
 - **INV-7 (trust-state binding)** — driven via the `cfgSource` +

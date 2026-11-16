@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6798 -->
+<!-- ants-roadmap-id-high-water: ANTS=6799 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94877,7 +94877,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 30-claude-session-widgets (Low).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6522] **remotecontrol_review.cpp: Every untracked, non-ignored directory is walked recursively with no file cap, no byte budget and no time limit.**
+- ✅ [ANTS-6522] **remotecontrol_review.cpp: Every untracked, non-ignored directory is walked recursively with no file cap, no byte budget and no time limit.**
   `remotecontrol_review.cpp:1022-1030` — Every untracked, non-ignored
   directory is walked recursively with no file cap, no byte budget and
   no time limit. This happens twice per `verify_changes` call (before
@@ -94889,6 +94889,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   walked. When the cap trips, mark the snapshot invalid (uncacheable),
   the same way ANTS-5097 handles a failed git status.
   Ledger row 357, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: collectGitSnapshot counts files walked across all
+  untracked folders; past 10,000 it returns the snapshot invalid
+  (uncacheable), as ANTS-5097 does for a failed status.
+  VerifyChangesBuildCache.Ants6522HugeUntrackedTreeIsNotCached. Requires
+  an ants-mcpd rebuild to reach clients.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 31-mcp-review-verbs (Medium).
@@ -114032,6 +114037,15 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-11-16 (build of updatedialog.cpp for ANTS-6513).
   Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6799] **clangd reports guithread.h and claudeintegration.h as unused includes in remotecontrol_review.cpp.**
+  Seen in the editor 2026-11-16 while fixing ANTS-6522. Check each
+  against the file's uses (and any macro or inline helper that needs it)
+  before removing; build all after.
+  **Layman:** Two lines in one source file may load code it no longer uses; each needs a check before removal.
+  Kind: chore.
+  Source: in-session-2026-11-16 (clangd diagnostics, remotecontrol_review.cpp).
+  Lanes: mcp-review-verbs.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

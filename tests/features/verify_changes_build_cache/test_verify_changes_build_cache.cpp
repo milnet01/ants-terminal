@@ -302,6 +302,30 @@ TEST(VerifyChangesBuildCache, EditInsideUntrackedDirBustsCache) {
     EXPECT_EQ(rc.verifyCacheSizeForTest(), 2);
 }
 
+// ANTS-6522: the walk of untracked folders is capped. A tree with more
+// untracked files than the cap is not snapshotted, so the run is not cached.
+TEST(VerifyChangesBuildCache, Ants6522HugeUntrackedTreeIsNotCached) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(initGitProject(tmp.path()));
+    writeVerifyJson(tmp.path(), R"({
+        "build": {"command": "/bin/true", "format": "plain"}
+    })");
+    const QString bulk = QDir(tmp.path()).filePath(QStringLiteral("bulk"));
+    for (int d = 0; d < 11; ++d) {
+        const QString sub = bulk + QStringLiteral("/d%1").arg(d);
+        ASSERT_TRUE(QDir().mkpath(sub));
+        for (int i = 0; i < 1000; ++i) {
+            QFile f(sub + QStringLiteral("/f%1").arg(i));
+            ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        }
+    }
+    RemoteControl rc(nullptr);
+    (void)runVerify(rc, tmp.path());
+    EXPECT_EQ(rc.verifyCacheSizeForTest(), 0)
+        << "a run over 11000 untracked files was cached after an uncapped walk";
+}
+
 // INV-5: an empty commit changes HEAD and busts the cache.
 TEST(VerifyChangesBuildCache, CommitBustsCache) {
     QTemporaryDir tmp;
