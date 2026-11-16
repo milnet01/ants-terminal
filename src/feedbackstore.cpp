@@ -50,7 +50,13 @@ Result readForImport(const QString &path, QByteArray *bytes, QString *text) {
     if (!f.open(QIODevice::ReadOnly))
         return refusal(QStringLiteral("read_failed"),
                        QStringLiteral("cannot open \"%1\"").arg(path));
-    *bytes = f.readAll();
+    // ANTS-6527 — read one byte past the cap, so a larger file is refused
+    // without being read whole.
+    *bytes = f.read(kMaxImportBytes + 1);
+    if (bytes->size() > kMaxImportBytes)
+        return refusal(QStringLiteral("read_failed"),
+                       QStringLiteral("\"%1\" is over %2 MiB; it was not imported")
+                           .arg(path).arg(kMaxImportBytes / (qint64{1024} * 1024)));
     *text  = QString::fromUtf8(*bytes);
     // Invalid UTF-8 and a leading byte-order mark both fail this round trip;
     // QString::fromUtf8 drops the mark.

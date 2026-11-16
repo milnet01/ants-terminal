@@ -25,6 +25,10 @@ QString exportKey(const QString &filePath);
 // list, numbered. Classifies nothing itself.
 QVector<RoadmapStore::FeedbackFindingRow> rowsFor(const QString &content);
 
+// ANTS-6527 — a feedback file larger than this is refused (read_failed)
+// rather than read and imported.
+inline constexpr qint64 kMaxImportBytes = qint64{8} * 1024 * 1024;
+
 struct Result {
     QString code;              // "" on success; else a refusal code
     QString message;

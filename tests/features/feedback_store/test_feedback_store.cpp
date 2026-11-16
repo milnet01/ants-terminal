@@ -170,6 +170,21 @@ TEST(FeedbackStore, Ants6733FindingWithNoEntryHeadingImports) {
 }
 
 // INV-2 — the rows classify as parse() does; a Note line's id is not an id.
+// ANTS-6527 — a file over kMaxImportBytes is refused, not read whole.
+TEST(FeedbackStore, Ants6527OversizedFileIsRefused) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + "/s.sqlite");
+    ASSERT_TRUE(store.open());
+    const QString p = copyIn(dir, "corpus_mixed.md");
+    ASSERT_FALSE(p.isEmpty());
+    QByteArray bytes = readBytes(p);
+    while (bytes.size() <= FeedbackStore::kMaxImportBytes) bytes += QByteArray(4095, 'x') + '\n';
+    ASSERT_TRUE(writeBytes(p, bytes));
+    const FeedbackStore::Result r = FeedbackStore::load(store, p);
+    EXPECT_EQ(r.code, QStringLiteral("read_failed")) << r.message.toStdString();
+    EXPECT_FALSE(r.imported);
+}
+
 TEST(FeedbackStore, Inv2RowsClassifyAsParseDoes) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
     RoadmapStore store(dir.path() + "/s.sqlite");

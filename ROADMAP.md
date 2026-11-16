@@ -94978,13 +94978,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (Low).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6527] **feedbackstore.cpp: has no size cap, and the store keeps each reporter's full text.**
+- ✅ [ANTS-6527] **feedbackstore.cpp: has no size cap, and the store keeps each reporter's full text.**
   `feedbackstore.cpp:53` — has no size cap, and the store keeps each
   reporter's full text. With the compaction ops retired, the corpus only
   grows. Spec § 13 gives today's sizes but names no cap or eviction,
   which the project's "named cap" rule requires.
   Quote: `readAll()`
   Ledger row 430, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: readForImport reads kMaxImportBytes + 1 (8 MiB;
+  the largest file is ~155 KiB) and refuses read_failed past it, so no
+  reporter's stored text can come from a larger file. ANTS-4513 INV-14,
+  § 6, § 13. Reused read_failed rather than a new code so the verb's
+  refusal list is unchanged.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 36-changelog-feedback (Low).

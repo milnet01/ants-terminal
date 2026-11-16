@@ -348,6 +348,11 @@ relaunch is due anyway.
   *Test:* the existing refusal cases in `mcp_feedback_log` and
   `mcp_feedback_query`, plus a row count after each.
   *Breaks when:* the reporter lookup or import runs before path resolution.
+- **INV-14 — An oversized file is refused, not read whole** (ANTS-6527).
+  A file over `FeedbackStore::kMaxImportBytes` (8 MiB) refuses
+  `read_failed` and creates no row; the read stops one byte past the cap.
+  *Test:* `FeedbackStore.Ants6527OversizedFileIsRefused`.
+  *Breaks when:* the import reads the file before checking its size.
 
 ## 6. Failure modes
 
@@ -368,13 +373,15 @@ relaunch is due anyway.
   reporter.
 - **A file is not valid UTF-8.** The import refuses `not_utf8` and creates
   no row. The file is left as it is.
+- **A file is over 8 MiB.** The import refuses `read_failed` and creates no
+  row (INV-14). The file is left as it is.
 - **The terminal binary is older than the store.** Its Roadmap window fails
   until relaunch (§ 4.8).
 
 ## 7. Tests
 
 One new bundle, `tests/features/feedback_store/`, labelled `features`, holds
-INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9 and INV-10. It opens a temporary store and a temporary corpus root, never the
+INV-1, INV-2, INV-3, INV-4, INV-5, INV-6, INV-7, INV-8, INV-9, INV-10 and INV-14. It opens a temporary store and a temporary corpus root, never the
 live ones. The fixtures are copies of corpus files trimmed to the
 cases INV-1 and INV-2 name.
 
@@ -447,6 +454,7 @@ pass on both, and guard against a regression.
 | INV-11 | `tests/features/roadmap_store_upgrade/` |
 | INV-12 | `tests/features/feedback_query_shared_root/` |
 | INV-13 | `tests/features/mcp_feedback_log/`, `tests/features/mcp_feedback_query/` |
+| INV-14 | `tests/features/feedback_store/` |
 | INV-1 over the live corpus | **Partial:** the bundle runs on fixtures. A live file with a shape the fixtures miss is caught only by its own first import, which writes nothing on mismatch |
 | § 4.8's relaunch note | **nothing** — a statement for whoever ships it |
 
@@ -473,7 +481,8 @@ Rows live in `../reviews/ANTS-4513-feedback-corpus-store-loop-log.md`.
 The store grows by the corpus size, 854,071 bytes today (§ 2), plus one row
 per finding. Each write rewrites one reporter's `content`; the largest file
 is 154,949 bytes (`stat -c %s` over the corpus, 2026-11-04). No new
-dependency.
+dependency. No file over `kMaxImportBytes` (8 MiB) is imported (INV-14), so
+one reporter's text is bounded by it.
 
 ## 14. Migration / compatibility
 

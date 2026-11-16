@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The feedback verbs refuse a feedback file over 8 MiB instead of reading it whole** (ANTS-6527)
+
 - **The test-audit verbs forget a partition's recheck time when they forget the partition** (ANTS-6526)
 
 - **The debt sweep reads git's and the packaging check's output as it arrives, so its 1 MiB limit bounds memory too** (ANTS-6525)
