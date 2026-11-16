@@ -94961,7 +94961,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 34-review-engines (Medium).
   Lanes: review-engines.
 
-- 📋 [ANTS-6526] **testauditengine.cpp: this map gains one entry per token briefed and never evicts.**
+- ✅ [ANTS-6526] **testauditengine.cpp: this map gains one entry per token briefed and never evicts.**
   `testauditengine.cpp:234` — this map gains one entry per token briefed
   and never evicts. The partition cache it sits beside is capped at 16.
   It breaks the "no unbounded growth" rule.
@@ -94969,6 +94969,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): evict inside
   `cachePartition`'s LRU loop.
   Ledger row 406, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: cachePartition's LRU loop removes the evicted
+  token from g_lastMtimeRecheckByToken (cache mutex, then recheck mutex;
+  no reverse nesting exists). internal::recheckStampCount;
+  Ants6526RecheckStampsFollowTheCache (24 stamps vs 16 before).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (Low).
@@ -114057,6 +114061,8 @@ reports are asked for separately, each time.
   Seen in the editor 2026-11-16 while fixing ANTS-6522. Check each
   against the file's uses (and any macro or inline helper that needs it)
   before removing; build all after.
+  Also reported 2026-11-16: falseposledger.h, tokenusageengine.h,
+  debuglog.h and resolvedroot.h.
   **Layman:** Two lines in one source file may load code it no longer uses; each needs a check before removal.
   Kind: chore.
   Source: in-session-2026-11-16 (clangd diagnostics, remotecontrol_review.cpp).

@@ -252,6 +252,10 @@ void cachePartition(const PartitionResult &p, bool keepExisting = false) {
     while (g_partitionCacheLru.size() > kPartitionCacheCap) {
         const QString evict = g_partitionCacheLru.takeFirst();
         g_partitionCache.remove(evict);
+        // ANTS-6526 — its recheck stamp goes with it. Lock order: the cache
+        // mutex, then this one; nothing takes them the other way round.
+        QMutexLocker rk(&g_recheckMutex);
+        g_lastMtimeRecheckByToken.remove(evict);
     }
 }
 
@@ -1170,6 +1174,11 @@ std::optional<PartitionResult> lookupPartition(const QString &token) {
     auto it = g_partitionCache.find(token);
     if (it == g_partitionCache.end()) return std::nullopt;
     return it.value();
+}
+
+int recheckStampCount() {
+    QMutexLocker lk(&g_recheckMutex);
+    return static_cast<int>(g_lastMtimeRecheckByToken.size());
 }
 
 // ANTS-1451 — thin forwarder so the regression test can exercise the

@@ -218,3 +218,30 @@ TEST(TestAuditPaginationPrePass, Ants5102PrePassReadIsCapped) {
     EXPECT_TRUE(sawSleep) << "a hit inside the cap is still reported";
     EXPECT_FALSE(sawNow) << "a hit past the 1 MiB cap must not be read";
 }
+
+// ANTS-6526 — a brief stamps its token for the recheck rate limit. Those
+// stamps leave with the partition the cache evicts, so they never outnumber
+// the cached partitions.
+TEST(TestAuditPaginationPrePass, Ants6526RecheckStampsFollowTheCache) {
+    QList<QTemporaryDir *> dirs;
+    for (int i = 0; i < 24; ++i) {
+        auto *tmp = new QTemporaryDir;
+        ASSERT_TRUE(tmp->isValid());
+        dirs << tmp;
+        TestAuditEngine::PartitionRequest preq;
+        preq.callerCwd  = scaffoldPytestSuite(tmp->path());
+        preq.scope      = QStringLiteral("auto");
+        preq.dimensions = QStringLiteral("auto");
+        preq.chunkSize  = 4;
+        const TestAuditEngine::PartitionResult p = TestAuditEngine::partition(preq);
+        ASSERT_TRUE(p.ok) << p.error.toStdString();
+        TestAuditEngine::BriefRequest breq;
+        breq.callerCwd      = preq.callerCwd;
+        breq.partitionToken = p.partitionToken;
+        breq.chunkId        = p.chunks.first().id;
+        ASSERT_TRUE(TestAuditEngine::brief(breq).ok);
+    }
+    EXPECT_LE(TestAuditEngine::internal::recheckStampCount(), 16)
+        << "recheck stamps outlived the partitions the cache evicted";
+    qDeleteAll(dirs);
+}

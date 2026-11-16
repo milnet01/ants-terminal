@@ -43,4 +43,6 @@ in v2 (ANTS-1450 follow-up).
   `reports_dir` / `scope:"path:"` / `scope:"files:..."` all
   validated via `canonicalFilePath` + isDir checks.
 - **INV-15 / mtime-walk cache + 5 s recheck rate-limit.**
-  `kMtimeRecheckRateLimitMs = 5000`.
+  `kMtimeRecheckRateLimitMs = 5000`. A token's recheck stamp is dropped
+  when the partition cache evicts its partition (ANTS-6526;
+  `TestAuditPaginationPrePass.Ants6526RecheckStampsFollowTheCache`).

@@ -306,6 +306,8 @@ int pruneReportDirs(const QString &projectRoot, const QString &currentDir,
 // Bounded; LRU-evicted to kPartitionCacheCap entries.
 namespace internal {
 std::optional<PartitionResult> lookupPartition(const QString &token);
+// ANTS-6526 — how many tokens the brief's recheck stamps are held for.
+int recheckStampCount();
 
 // Exposed for ANTS-1451 regression coverage. Walks the project tree
 // honouring the test_globs, with build-tree + tooling exclusions
