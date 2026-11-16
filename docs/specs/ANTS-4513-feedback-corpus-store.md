@@ -161,6 +161,7 @@ BEGIN IMMEDIATE
   if text == row.content → ROLLBACK, answer changed:false        // today's no-op skip
   rebuild feedback_finding rows from text
   UPDATE feedback_reporter SET content=text, revision=revision+1, updated_at=now
+  if the file exists and sha256(file) != row.export_sha256 → ROLLBACK, refuse export_drift
   chmod u+w export_path if it exists; write text via QSaveFile; chmod 0444
   UPDATE feedback_reporter SET export_sha256 = sha256(text)
 COMMIT
@@ -175,6 +176,11 @@ the same text.
 `BEGIN IMMEDIATE` takes the store's write lock before the read, which is
 what § 2 item 1 lacks. The store already sets `busy_timeout` and WAL in
 `applyPragmas`.
+
+The second drift check catches a hand edit made while the op ran. A row
+this call imported carries the hash of what it read, and a created one
+none, so any file there counts. An editor takes no lock, so a save that
+lands during the file write itself is still lost (ANTS-6487).
 
 The export is written inside the transaction, so a second writer cannot
 render between this commit and this file write. The owner-write bit comes

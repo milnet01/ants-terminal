@@ -305,6 +305,41 @@ TEST(FeedbackStore, Inv6DriftRefusesAndChangesNothing) {
                     .value("ok").toBool());
 }
 
+// ANTS-6487 — INV-6 for a hand edit made while a write runs, after its
+// first drift check: the write refuses export_drift and the edit survives.
+// The op's text edit runs inside that window, so it makes the hand edit.
+// Both paths: a file already in the store, and one this write imports.
+TEST(FeedbackStore, Ants6487HandEditDuringAWriteSurvives) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    RoadmapStore store(dir.path() + "/s.sqlite");
+    ASSERT_TRUE(store.open());
+    for (const bool imported : {false, true}) {
+        const QString p = copyIn(dir, "corpus_mixed.md",
+            imported ? QStringLiteral("New_Ants_MCP_Feedback.md")
+                     : QStringLiteral("Old_Ants_MCP_Feedback.md"));
+        if (!imported) {
+            ASSERT_TRUE(FeedbackStore::load(store, p).imported);
+        }
+        const QByteArray handEdit = readBytes(p) + "\nA hand edit.\n";
+        const FeedbackStore::Result r = FeedbackStore::write(
+            store, p, QString(), false, [&](const QString &in, bool, QString *out) {
+                writeBytes(p, handEdit);
+                *out = in + QStringLiteral("\nThe op's edit.\n");
+                return true;
+            });
+        EXPECT_EQ(r.code, QStringLiteral("export_drift")) << imported;
+        EXPECT_TRUE(readBytes(p) == handEdit)
+            << "the write overwrote the hand edit; imported=" << imported;
+        const auto row = store.feedbackReporter(FeedbackStore::exportKey(p));
+        if (imported) {
+            EXPECT_FALSE(row) << "the refused write left an imported row";
+        } else {
+            ASSERT_TRUE(row);
+            EXPECT_EQ(row->revision, 1) << "the refused write changed the row";
+        }
+    }
+}
+
 // INV-7 — two appends from two connections, released together, both land.
 TEST(FeedbackStore, Inv7ConcurrentAppendsBothLand) {
     QTemporaryDir dir; ASSERT_TRUE(dir.isValid());

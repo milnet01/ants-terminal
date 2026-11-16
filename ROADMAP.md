@@ -94068,11 +94068,19 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (Medium).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6487] **feedbackstore.cpp: a hand edit made between the drift check and `writeExport` is overwritten, against INV-6.**
+- ✅ [ANTS-6487] **feedbackstore.cpp: a hand edit made between the drift check and `writeExport` is overwritten, against INV-6.**
   `feedbackstore.cpp:192` — a hand edit made between the drift check and
   `writeExport` is overwritten, against INV-6. The window is short.
   Quote: `:239`
   Ledger row 429, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16. FeedbackStore::write checks drift a second time
+  just before writeExport, still inside the transaction, so a hand edit
+  made after the first check rolls the write back with export_drift. A
+  row the write imported carries the hash it read; a created one none.
+  An editor takes no lock, so a save landing during the file write
+  itself is still lost. Test
+  FeedbackStore.Ants6487HandEditDuringAWriteSurvives; spec § 4.4
+  amended. Reaches sessions on their next /mcp reconnect (ants-mcpd).
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 36-changelog-feedback (Low).

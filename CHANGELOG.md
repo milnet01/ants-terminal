@@ -452,6 +452,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A feedback-file write checks the file again just before writing it, so a hand edit made while the write runs is kept and the write refuses with export_drift** (ANTS-6487)
+
 - **Filling in model-switch outcomes rewrites only the records it changed, so another Ants window's changes to that history stay as they are** (ANTS-6485)
 
 - **mutation_probe keeps its recovery journal when a file it changed exists but cannot be opened, so the original can still be put back** (ANTS-6486)

@@ -32,7 +32,8 @@ never the live ones: the verbs' store sits under the bundle main's
 - **INV-6** — after a hand edit, every write op refuses `export_drift` and
   changes neither the file nor the rows. `feedback_query` reports
   `export_drift`. `reimport` refuses without `confirm` and settles it with
-  it.
+  it. A hand edit made while a write runs also refuses, and survives, for a
+  file already in the store and one the write imports (ANTS-6487).
 - **INV-7** — two appends from two connections, released together, both
   land in the store and the file.
 - **INV-8** — a file is imported once, in sequence and from two threads at
