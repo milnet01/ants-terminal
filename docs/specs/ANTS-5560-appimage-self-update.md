@@ -84,10 +84,11 @@ The dialog and the update settings are read when used, so they need no relaunch.
 - **INV-7** — A skipped version shows nothing on the startup check and is still reported by Help → Check for Updates, and `update.check_on_startup` false stops the startup check. Broken by the skip hiding a manual check, or the setting being ignored. *Test:* `SelfUpdate.SkipAndStartupSetting` calls the decision function with each combination.
 - **INV-8** — The committed public key is the one the build embeds, and `tools/sign-update-manifest.sh` produces a manifest the C++ verifier accepts. Broken by a key or format mismatch between the pipeline and the app. *Test:* `SelfUpdate.PipelineSignatureRoundTrip` generates a throwaway key pair with the `openssl` CLI, runs the script on a fixture file with `ANTS_UPDATE_SIGNING_KEY` holding the private key and the throwaway public key as its third argument, and verifies its output with the verifier given that public key; it skips with a message when `openssl` is absent or lacks `-rawin`. A second arm asserts the embedded key's bytes equal the committed file's.
 - **INV-9** — `release.yml` signs and verifies before it uploads, fails without the secret, uploads the manifest and signature, and its check that the release carries its artefacts includes both. Broken by a release step order or upload list that ships an unsigned AppImage. *Test:* `SelfUpdate.ReleaseWorkflowSigns` reads `release.yml` and asserts the signing step sits between the smoke test and the upload, references `ANTS_UPDATE_SIGNING_KEY`, and that the upload list and the artefact check both carry the two new files.
+- **INV-10** — The manifest and signature downloads each stop past `SelfUpdate::kMaxSmallAssetBytes`. The reply buffers at most one byte more, is aborted once more arrive or the server announces more, and the update is refused. Broken by reading a wrong asset served under the manifest's name into memory whole. *Test:* `SelfUpdate.Ants6513SmallDownloadsCapped` drives a fake reply through `capReply`: a body of exactly the cap passes, and one byte more, arrived or announced, aborts it and `overCap` reports it. A source check asserts `UpdateDialog::fetchSmall` caps each reply and checks `overCap`.
 
 ## 4. RAM / build cost
 
-The AppImage streams to disk and is hashed as it arrives, so memory holds one network buffer, not the file. The build gains two translation units and, where found, a link to libsodium. The release job and CI's `build-test`, `build-asan` and `qt62-baseline` jobs install its development package; the RPM, deb, Arch and Flatpak recipes do not (§ 2.5).
+The AppImage streams to disk and is hashed as it arrives, so memory holds one network buffer, not the file. The manifest and its signature are read whole, each capped at `kMaxSmallAssetBytes` (INV-10). The build gains two translation units and, where found, a link to libsodium. The release job and CI's `build-test`, `build-asan` and `qt62-baseline` jobs install its development package; the RPM, deb, Arch and Flatpak recipes do not (§ 2.5).
 
 ## 5. Out of scope
 
@@ -111,6 +112,7 @@ The AppImage streams to disk and is hashed as it arrives, so memory holds one ne
 | INV-7 | `SelfUpdate.SkipAndStartupSetting` |
 | INV-8 | `SelfUpdate.PipelineSignatureRoundTrip` |
 | INV-9 | `SelfUpdate.ReleaseWorkflowSigns` |
+| INV-10 | `SelfUpdate.Ants6513SmallDownloadsCapped` |
 
 ## 7. Cross-doc impact
 

@@ -19,6 +19,7 @@
 
 class QCryptographicHash;
 class QTemporaryFile;
+class QNetworkReply;
 
 namespace SelfUpdate {
 
@@ -77,6 +78,13 @@ QByteArray embeddedPublicKeyPem();
 // § 2.4 step 3 — only https is fetched, and redirects never downgrade.
 bool isAllowedUrl(const QUrl &url);
 QNetworkRequest makeRequest(const QUrl &url);
+
+// INV-10 (ANTS-6513) — the most a .manifest or .manifest.sig may be.
+inline constexpr qint64 kMaxSmallAssetBytes = 4096;
+// The reply buffers at most cap + 1 bytes, and is aborted once more arrive
+// or the server announces more. overCap() then says why it stopped.
+void capReply(QNetworkReply *reply, qint64 cap);
+bool overCap(const QNetworkReply *reply);
 
 // § 2.4 "The relaunch".
 struct Relaunch {

@@ -197,9 +197,15 @@ void UpdateDialog::fetchSmall(const QString &name, QByteArray *into, int *pendin
         return;
     }
     QNetworkReply *reply = m_nam->get(SelfUpdate::makeRequest(url));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, into, pending] {
+    SelfUpdate::capReply(reply, SelfUpdate::kMaxSmallAssetBytes);
+    connect(reply, &QNetworkReply::finished, this, [this, reply, name, into, pending] {
         reply->deleteLater();
         if (m_failed) return;
+        if (SelfUpdate::overCap(reply)) {
+            fail(tr("The update was refused: %1 is over its %2-byte limit.")
+                     .arg(name).arg(SelfUpdate::kMaxSmallAssetBytes));
+            return;
+        }
         if (reply->error() != QNetworkReply::NoError) {
             fail(tr("Download failed: %1").arg(reply->errorString()));
             return;

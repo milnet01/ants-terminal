@@ -5,7 +5,7 @@
 // INV-2 DownloadMismatchLeavesOriginal INV-7 SkipAndStartupSetting
 // INV-3 SwapInPlace                   INV-8 PipelineSignatureRoundTrip
 // INV-4 InstallKind                   INV-9 ReleaseWorkflowSigns
-// INV-5 HttpsOnly
+// INV-5 HttpsOnly                    INV-10 Ants6513SmallDownloadsCapped
 //
 // Why this exists: an updater that installs an unsigned, downgraded, torn or
 // mis-sourced AppImage, or relaunches into the dead mount of the old
@@ -32,6 +32,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QNetworkReply>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QTemporaryDir>
@@ -803,4 +804,47 @@ TEST(SelfUpdate, ReleaseWorkflowSigns) {
         expect(listsBothManifestFiles(steps[verify].body), "INV-9 the artefact check names .manifest and .manifest.sig",
                QStringLiteral("verify step lacks one of them"));
     ASSERT_EQ(0, expect_finish());
+}
+
+namespace {
+// A reply that only records abort(); the test drives its signals by hand.
+class FakeReply : public QNetworkReply {
+public:
+    FakeReply() { setOpenMode(QIODevice::ReadOnly); }
+    void abort() override { aborted = true; }
+    bool aborted = false;
+protected:
+    qint64 readData(char *, qint64) override { return 0; }
+};
+}  // namespace
+
+// INV-10 (ANTS-6513) — the manifest and signature downloads are capped.
+TEST(SelfUpdate, Ants6513SmallDownloadsCapped) {
+    const qint64 cap = SelfUpdate::kMaxSmallAssetBytes;
+    {
+        FakeReply r;
+        SelfUpdate::capReply(&r, cap);
+        EXPECT_EQ(r.readBufferSize(), cap + 1) << "the reply may buffer the whole body";
+        emit r.downloadProgress(cap, cap);
+        EXPECT_FALSE(r.aborted) << "a body of exactly the cap was refused";
+        EXPECT_FALSE(SelfUpdate::overCap(&r));
+        emit r.downloadProgress(cap + 1, -1);
+        EXPECT_TRUE(r.aborted) << "a body past the cap kept downloading";
+        EXPECT_TRUE(SelfUpdate::overCap(&r));
+    }
+    {
+        FakeReply r;
+        SelfUpdate::capReply(&r, cap);
+        emit r.downloadProgress(0, cap + 1);
+        EXPECT_TRUE(r.aborted) << "an announced length past the cap was not refused";
+    }
+    // Both small downloads go through the cap, and say why they stopped.
+    const QString dlg = QString::fromUtf8(readAll(QString::fromUtf8(SRC_UPDATEDIALOG_CPP_PATH)));
+    ASSERT_FALSE(dlg.isEmpty()) << SRC_UPDATEDIALOG_CPP_PATH;
+    const qsizetype at = dlg.indexOf(QStringLiteral("void UpdateDialog::fetchSmall("));
+    const qsizetype end = dlg.indexOf(QStringLiteral("\nvoid UpdateDialog::"), at + 1);
+    ASSERT_GE(at, 0);
+    const QString body = dlg.mid(at, end - at);
+    EXPECT_TRUE(body.contains(QStringLiteral("capReply(reply, SelfUpdate::kMaxSmallAssetBytes)")));
+    EXPECT_TRUE(body.contains(QStringLiteral("SelfUpdate::overCap(reply)")));
 }

@@ -10,6 +10,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QNetworkReply>
 #include <QRegularExpression>
 #include <QTemporaryFile>
 
@@ -181,6 +182,24 @@ QNetworkRequest makeRequest(const QUrl &url) {
                      QNetworkRequest::NoLessSafeRedirectPolicy);
     req.setRawHeader("User-Agent", "Ants-Terminal-Updater");
     return req;
+}
+
+namespace {
+constexpr char kOverCapProperty[] = "ants_self_update_over_cap";
+}  // namespace
+
+void capReply(QNetworkReply *reply, qint64 cap) {
+    reply->setReadBufferSize(cap + 1);
+    QObject::connect(reply, &QNetworkReply::downloadProgress, reply,
+                     [reply, cap](qint64 got, qint64 total) {
+        if (got <= cap && total <= cap) return;
+        reply->setProperty(kOverCapProperty, true);
+        reply->abort();
+    });
+}
+
+bool overCap(const QNetworkReply *reply) {
+    return reply->property(kOverCapProperty).toBool();
 }
 
 Relaunch relaunchCommand(qint64 pid, const QString &appImagePath,

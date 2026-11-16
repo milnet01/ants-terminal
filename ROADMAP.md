@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6797 -->
+<!-- ants-roadmap-id-high-water: ANTS=6798 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94712,7 +94712,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 20-shared-utilities (Medium).
   Lanes: shared-utilities.
 
-- 📋 [ANTS-6513] **updatedialog.cpp: the `.manifest` and `.manifest.sig` downloads have no size limit.**
+- ✅ [ANTS-6513] **updatedialog.cpp: the `.manifest` and `.manifest.sig` downloads have no size limit.**
   `updatedialog.cpp:207` — the `.manifest` and `.manifest.sig` downloads
   have no size limit. Spec § 4 says memory "holds one network buffer,
   not the file", but that is only true of the AppImage download. A wrong
@@ -94725,6 +94725,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `downloadProgress` above a small cap (for example 4 KiB for the
   manifest), and require exactly 64 bytes for the signature.
   Ledger row 229, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: SelfUpdate::capReply (read buffer cap + 1, abort
+  past the cap or an announced length over it) on both small downloads;
+  the dialog names the over-cap file. Spec ANTS-5560 INV-10. The 64-byte
+  signature length was already enforced by verifyManifest, after the
+  read.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (Medium).
@@ -113982,6 +113987,18 @@ reports are asked for separately, each time.
   Kind: audit-fix.
   Source: in-session-2026-11-16.
   Lanes: terminal-grid.
+
+- 📋 [ANTS-6798] **GCC's -Wnull-dereference fires twice in updatedialog.cpp's readyRead handler, on m_download->readAll().**
+  Seen 2026-11-16 building test_chrome for ANTS-6513: two "potential
+  null pointer dereference" warnings on the QPointer m_download in the
+  AppImage download's readyRead lambda (fetchAppImage). They predate
+  ANTS-6513 and show only when updatedialog.cpp recompiles. Read the
+  reply through the lambda's own captured pointer, or guard the QPointer,
+  then confirm the warning is gone.
+  **Layman:** The build prints two warnings from the update download code; the code should be changed so they stop.
+  Kind: fix.
+  Source: in-session-2026-11-16 (build of updatedialog.cpp for ANTS-6513).
+  Lanes: dialog-chrome-theme.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

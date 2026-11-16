@@ -2741,6 +2741,7 @@ if(ANTS_TESTS)
     set_property(SOURCE tests/features/self_update/test_self_update.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         SRC_SELFUPDATE_CPP_PATH="${CMAKE_SOURCE_DIR}/src/selfupdate.cpp"
+        SRC_UPDATEDIALOG_CPP_PATH="${CMAKE_SOURCE_DIR}/src/updatedialog.cpp"
         SIGN_SCRIPT_PATH="${CMAKE_SOURCE_DIR}/tools/sign-update-manifest.sh"
         PUBKEY_PEM_PATH="${CMAKE_SOURCE_DIR}/packaging/update-signing/ants-update.pub.pem"
         RELEASE_YML_PATH="${CMAKE_SOURCE_DIR}/.github/workflows/release.yml")

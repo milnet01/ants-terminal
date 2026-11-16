@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The updater stops a manifest or signature download past 4 KiB and refuses the update** (ANTS-6513)
+
 - **Git calls behind the MCP verbs read git's output as it arrives, so their output limits bound memory too** (ANTS-6512)
 
 - **Saved roadmap views and audit rule-pack trust forget projects that no longer exist, and each keeps at most 128 projects** (ANTS-6511)
