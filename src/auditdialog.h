@@ -4,6 +4,7 @@
 // only) per ANTS-1119. Re-exported here transitively so existing call
 // sites that include auditdialog.h continue to compile unchanged.
 #include "auditengine.h"
+#include "auditlinecache.h"
 #include "elidedlabel.h"
 #include "auditrulequality.h"
 #include "debtsweepengine.h"
@@ -507,7 +508,7 @@ private:
                         int *startLineOut = nullptr) const;
     // Per-file cache — a single audit run may touch dozens of findings in the
     // same file; reading once is much cheaper than per-finding disk I/O.
-    mutable QHash<QString, QStringList> m_fileLineCache;
+    mutable AuditLineCache m_fileLineCache;   // ANTS-6520 — bounded
 
     // Git-blame enrichment, cached by (relPath:line). ANTS-5040 — nothing
     // here waits on the GUI thread: renderResults() applies what the cache

@@ -66,7 +66,8 @@ Listed only where behavior isn't obvious from the name.
   eslint-disable-*, pylint: disable) + native `// ants-audit: disable[=rule]`.
   Its implementation is `src/auditdialog.cpp` plus the `src/auditdialog_*.cpp`
   pieces named in `ANTS_AUDITDIALOG_SOURCES_REL`, with shared helpers in
-  `src/auditdialog_internal.h` (ANTS-1044, ANTS-1677).
+  `src/auditdialog_internal.h` (ANTS-1044, ANTS-1677). `src/auditlinecache.h`
+  holds the run's bounded cache of file lines (ANTS-6520).
 - `auditengine` (Qt6::Core) — pure-function counterparts of the dialog
   pipeline; non-GUI consumers (CI, ants-helper, MCP) link this without
   Qt6::Widgets. ANTS-1119.

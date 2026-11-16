@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An audit run keeps at most 32 million characters of source lines in memory for snippets and suppression checks** (ANTS-6520)
+
 - **The grep-nudge hook removes throttle stamps idle for over a week** (ANTS-6519)
 
 - **The drift-check hook keeps its log under 256 KiB** (ANTS-6518)

@@ -94842,12 +94842,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 24-shell-surface (Low).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6520] **auditdialog.cpp: limits each file to 4 MB but has no cap on how many files it holds during a run, which happens before `capFindings`.**
+- ✅ [ANTS-6520] **auditdialog.cpp: limits each file to 4 MB but has no cap on how many files it holds during a run, which happens before `capFindings`.**
   `auditdialog.cpp:609–623` — limits each file to 4 MB but has no cap on
   how many files it holds during a run, which happens before
   `capFindings`. `spec-format`'s "named cap" rule asks for one.
   Quote: `m_fileLineCache`
   Ledger row 307, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: readFileLines moved into header-only
+  AuditLineCache (src/auditlinecache.h); a file that would take the
+  cache past kMaxChars (32 M) clears it first.
+  tests/features/audit_line_cache.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 26-audit-dialog (Low).

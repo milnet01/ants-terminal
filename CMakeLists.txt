@@ -3852,6 +3852,7 @@ if(ANTS_TESTS)
         LIBS    ants_audit_lib ants_core_lib
         SOURCES tests/features/audit_command_rule_trust/test_audit_command_rule_trust.cpp
                 tests/features/audit_dedup_96bit/test_audit_dedup_96bit.cpp
+                tests/features/audit_line_cache/test_audit_line_cache.cpp   # ANTS-6520
                 tests/features/audit_engine_extraction/test_audit_engine_extraction.cpp
                 # ANTS-4448 — credentials must not reach SARIF or the AI POST.
                 tests/features/audit_provenance_redaction/test_audit_provenance_redaction.cpp

@@ -603,24 +603,6 @@ QString commentBody(const QString &rawLine) {
     return {};
 }
 
-// Read the file (cached by the caller) into lines. Cheap wrapper for the
-// directive scanner; shared with readSnippet() via m_fileLineCache.
-QStringList readFileLines(const QString &absPath, QHash<QString, QStringList> &cache) {
-    auto it = cache.constFind(absPath);
-    if (it != cache.constEnd()) return it.value();
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) {
-        cache.insert(absPath, {});
-        return {};
-    }
-    // Cap at 4 MB to bound worst-case memory on enormous generated files.
-    const QByteArray all = f.size() < 4LL * 1024 * 1024 ? f.readAll() : QByteArray();
-    f.close();
-    const QStringList lines = QString::fromUtf8(all).split('\n', Qt::KeepEmptyParts);
-    cache.insert(absPath, lines);
-    return lines;
-}
-
 } // namespace
 
 bool AuditDialog::inlineSuppressed(const Finding &f) const {
@@ -630,7 +612,7 @@ bool AuditDialog::inlineSuppressed(const Finding &f) const {
     // markers.
     const QString abs = resolveProjectPath(f.file);
     if (abs.isEmpty()) return false;
-    const QStringList lines = readFileLines(abs, m_fileLineCache);
+    const QStringList lines = m_fileLineCache.lines(abs);
     if (lines.isEmpty()) return false;
 
     // 1. file-scope: scan first 20 lines for disable-file markers.
@@ -762,7 +744,7 @@ bool AuditDialog::applyPathRules(Finding &f) const {
 QString AuditDialog::readSnippet(const QString &absPath, int line, int radius,
                                   int *startLineOut) const {
     if (absPath.isEmpty() || line <= 0) return {};
-    const QStringList lines = readFileLines(absPath, m_fileLineCache);
+    const QStringList lines = m_fileLineCache.lines(absPath);
     if (lines.isEmpty()) return {};
 
     const int lineIdx = line - 1;

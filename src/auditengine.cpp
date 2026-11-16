@@ -541,7 +541,7 @@ FilterResult applyFilter(const QString &raw,
                 if (cached == fileCache.constEnd()) {
                     QStringList lines;  // stays empty when unreadable
                     const QString abs = resolveProjectPathLocal(relPath, projectPath);
-                    // ANTS-5085 — the 4 MiB cap the dialog's readFileLines
+                    // ANTS-5085 — the 4 MiB cap the dialog's AuditLineCache
                     // uses (lineIsCode caps at 2 MiB); a context window
                     // needs a source file, not a generated blob.
                     constexpr qint64 kMaxContextFileBytes = 4LL * 1024 * 1024;
