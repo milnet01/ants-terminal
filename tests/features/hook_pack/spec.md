@@ -172,6 +172,12 @@ last 128 KiB from the first whole line. The test seeds a 400 KB log, runs
 the hook with a stub `ants-helper` that fails, and asserts the failure is
 logged and the file is back near the cap.
 
+## ANTS-6519 — grep-nudge stamps are pruned
+
+Each throttle stamp write deletes `*.stamp` files in the grep-nudge folder
+last modified over seven days ago. The test plants a 10-day-old stamp and a
+fresh one; after one warned grep the old one is gone and the others remain.
+
 ## ANTS-5553 — unread session_message mail is announced
 
 `ants-inbox-notice.sh` runs on SessionStart and UserPromptSubmit. A stub

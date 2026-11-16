@@ -396,9 +396,8 @@ existing sub-millisecond stat-ascent (ANTS-1252 INV-9), zero tokens, zero files.
   one JSONL counter capped at 500 lines (~40 KiB worst case) under
   `~/.cache/ants-terminal/grep-nudge/` (the same `~/.cache/ants-terminal` base
   the pack already uses for `drift-check.log` — ANTS-1252 §1.4; reuse, don't
-  re-derive). Both self-bounded. Stale 0-byte `<PPID>.stamp` files accumulate as
-  PIDs recycle but are harmless (each only gates the *next* warn for that PID
-  within a window); no reaper is specified.
+  re-derive). Both self-bounded. Each stamp write deletes stamps last modified
+  over seven days ago (ANTS-6519).
 - **Token cost:** a warn injects its `additionalContext` body (≤ 400 B ≈ ~100
   tokens, INV-3), throttled to ~once per session per window (§2.3). This is a
   *new* cost class not in ANTS-1252 §0's table, which predates PreToolUse

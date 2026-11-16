@@ -462,6 +462,19 @@ if [ "$have_jq" -eq 1 ]; then
     [ "$capn" -eq 251 ] && pass "ANTS-2141 INV-8 cap 600→251" \
         || fail "ANTS-2141 INV-8 cap got $capn (expect 251)"
 
+    # ANTS-6519: a stamp write removes stamps idle for over 7 days.
+    P_HOME="$(mktemp -d -t ants-nudge-prune.XXXXXX)"
+    pdir="$P_HOME/.cache/ants-terminal/grep-nudge"; mkdir -p "$pdir"
+    touch -d '10 days ago' "$pdir/111.stamp"; touch "$pdir/222.stamp"
+    printf '%s' '{"tool_input":{"command":"grep -rn p src/"}}' \
+        | ANTS_GREP_NUDGE_KEY=prunetest HOME="$P_HOME" bash "$HOOKS_DIR/ants-bash-veto.sh" >/dev/null 2>&1
+    if [ ! -e "$pdir/111.stamp" ] && [ -e "$pdir/222.stamp" ] && [ -e "$pdir/prunetest.stamp" ]; then
+        pass "ANTS-6519 a stamp write prunes stamps idle over 7 days"
+    else
+        fail "ANTS-6519 prune: $(cd "$pdir" && echo *.stamp)"
+    fi
+    rm -rf "$P_HOME"
+
     # INV-9: fail-open — unwritable cache (regular file blocks mkdir) still warns.
     F_HOME="$(mktemp -d -t ants-nudge-fo.XXXXXX)"
     mkdir -p "$F_HOME/.cache/ants-terminal"; : >"$F_HOME/.cache/ants-terminal/grep-nudge"

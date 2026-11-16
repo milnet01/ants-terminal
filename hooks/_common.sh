@@ -281,6 +281,8 @@ ants_grep_nudge_throttled() {
         fi
     fi
     touch "$stamp" 2>/dev/null || true
+    # ANTS-6519 — one stamp per Claude process; drop those idle a week.
+    find "$dir" -maxdepth 1 -type f -name '*.stamp' -mtime +7 -delete 2>/dev/null || true
     return 1
 }
 

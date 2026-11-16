@@ -94827,12 +94827,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6519] **_common.sh: Per-session files, one per session or process, with no eviction anywhere:.**
+- ✅ [ANTS-6519] **_common.sh: Per-session files, one per session or process, with no eviction anywhere:.**
   `_common.sh:256,268` — Per-session files, one per session or process,
   with no eviction anywhere:
   Remedy (the reviewer's; check it before building): Prune files older
   than N days on write.
   Ledger row 274, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: the per-process files the review cited are the
+  grep-nudge throttle stamps (ants_grep_nudge_throttled). Each stamp
+  write now deletes *.stamp files idle over 7 days. hook_pack test;
+  ANTS-2141 § 4 corrected (it said no reaper).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 24-shell-surface (Low).
