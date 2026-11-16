@@ -812,3 +812,20 @@ TEST(McpInvariantCheck, Ants5414MaxSpecsCapsTheMatchList) {
     EXPECT_EQ(floor.value("matched_specs").toArray().size(), 1)
         << "max_specs below 1 clamps to 1";
 }
+
+// INV-23 (ANTS-6498) — a spec longer than the read limit is skipped, not read
+// whole into memory.
+TEST(McpInvariantCheck, Ants6498OversizedSpecIsSkipped) {
+    QTemporaryDir dir; ASSERT_TRUE(dir.isValid());
+    seedSpec(dir.path(), QStringLiteral("ANTS-9001"), QStringLiteral("src/a.cpp"));
+    QFile big(dir.path() + QStringLiteral("/docs/specs/ANTS-9002.md"));
+    ASSERT_TRUE(big.open(QIODevice::WriteOnly));
+    big.write("# ANTS-9002 — huge\n\nTouches `src/a.cpp`.\n\n");
+    big.write(QByteArray(5 * 1024 * 1024, 'x'));
+    big.close();
+
+    const QJsonObject env = runCheck(dir.path(), QStringLiteral("src/a.cpp"), QString());
+    ASSERT_EQ(env.value("matched_count").toInt(), 1) << QJsonDocument(env).toJson().toStdString();
+    EXPECT_TRUE(env.value("matched_specs").toArray().at(0).toObject()
+                    .value("path").toString().contains(QStringLiteral("ANTS-9001")));
+}

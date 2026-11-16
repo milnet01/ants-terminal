@@ -2185,6 +2185,23 @@ static QString sqLastLoopDate(const QString &body) {
     return latest;
 }
 
+namespace {
+
+// ANTS-6498 — spec and decision bodies are read whole for matching. A file
+// longer than this is treated as unreadable: read() stops one byte past it,
+// so a file that grows, or a link to a device, is never held whole.
+constexpr qint64 kMaxSpecFileBytes = 4LL * 1024 * 1024;
+
+// Reads the open `f` into `body`; false when it is longer than the limit.
+bool readSpecFile(QFile &f, QString &body) {
+    const QByteArray bytes = f.read(kMaxSpecFileBytes + 1);
+    if (bytes.size() > kMaxSpecFileBytes) return false;
+    body = QString::fromUtf8(bytes);
+    return true;
+}
+
+}  // namespace
+
 // ANTS-5096 — `budgetMs` bounds the walk (one git call per spec, up to 500).
 // Past it the remaining specs are listed in `unchecked` and the reply is
 // `truncated`: an unchecked spec is not current.
@@ -2209,7 +2226,8 @@ QJsonObject specGateDriftEnvelope(const QString &rootCanonical, int budgetMs) {
         row["path"]   = rel;
         row["status"] = e.value(QStringLiteral("status"));
         QFile f(rootCanonical + QLatin1Char('/') + rel);
-        if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QString body;
+        if (!f.open(QIODevice::ReadOnly | QIODevice::Text) || !readSpecFile(f, body)) {
             // ANTS-5096 — reported, not dropped: the buckets account for
             // every spec the list holds, and a spec nobody could read is not
             // current.
@@ -2217,7 +2235,6 @@ QJsonObject specGateDriftEnvelope(const QString &rootCanonical, int budgetMs) {
             ungated.append(row);
             continue;
         }
-        const QString body = QString::fromUtf8(f.readAll());
         f.close();
 
         const QString loopDate = sqLastLoopDate(body);
@@ -2441,7 +2458,13 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
             QStringLiteral("io_error"),
             QStringLiteral("spec_query: cannot open %1").arg(rel)));
     }
-    const QString body = QString::fromUtf8(f.readAll());
+    QString body;
+    if (!readSpecFile(f, body)) {
+        return QJsonDocument(mcp::refusal(
+            QStringLiteral("io_error"),
+            QStringLiteral("spec_query: %1 is larger than %2 bytes")
+                .arg(rel).arg(kMaxSpecFileBytes)));
+    }
     f.close();
 
     QJsonObject result = SpecParse::parseSpecBody(body);
@@ -2596,8 +2619,9 @@ QJsonDocument RemoteControl::cmdInvariantCheck(const QJsonObject &req) {
                 continue;
             ++counter;
             QFile f(absDir + QLatin1Char('/') + fname);
-            if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-            const QString text = QString::fromUtf8(f.readAll());
+            QString text;
+            if (!f.open(QIODevice::ReadOnly | QIODevice::Text) || !readSpecFile(f, text))
+                continue;
             f.close();
             QStringList hits;
             for (const QString &needle : std::as_const(activeNeedles)) {
@@ -3148,8 +3172,9 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 QDir::Files | QDir::Readable, QDir::Name);
             for (const QString &fname : files) {
                 QFile f(dir.filePath(fname));
-                if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-                const QString body = QString::fromUtf8(f.readAll());
+                QString body;
+                if (!f.open(QIODevice::ReadOnly | QIODevice::Text) || !readSpecFile(f, body))
+                    continue;
                 f.close();
                 QString stem = fname;
                 if (stem.endsWith(QStringLiteral(".md"))) stem.chop(3);
@@ -3315,8 +3340,9 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 if (fname.compare(QStringLiteral("README.md"),
                                   Qt::CaseInsensitive) == 0) continue;
                 QFile f(dir.filePath(fname));
-                if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
-                const QString body = QString::fromUtf8(f.readAll());
+                QString body;
+                if (!f.open(QIODevice::ReadOnly | QIODevice::Text) || !readSpecFile(f, body))
+                    continue;
                 f.close();
                 int score = tpDistinctNeedles(body.toLower(), terms);
                 if (score <= 0) continue;

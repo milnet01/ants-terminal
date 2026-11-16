@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **spec_query, invariant_check and task_priors read at most 4 MiB of a spec or decision file, and skip or refuse a longer one.** (ANTS-6498)
+
 - **changelog_log op:amend keeps a replaced continuation line at the file's own indent, and its reply lists every line it wrote in `line_texts`.** (ANTS-6796)
 
 - **mutation_probe reads each build and test run's output while it runs, keeping only the last 512 KiB in memory.** (ANTS-6497)

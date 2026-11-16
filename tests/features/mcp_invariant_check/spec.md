@@ -31,6 +31,7 @@ substring mentions of the input `files[]`.
 | 20 | (ANTS-6332) In a linked worktree with no specs directory, where the main checkout has one, a `scanned_nothing` reply sets `main_checkout` and its hint names that path. Test: `McpInvariantCheck.Ants6332WorktreeHintNamesTheMainCheckout`. |
 | 21 | (ANTS-5270) With `specs_scanned:0`, `basename_matches` is omitted: the reply keeps `basename_matches_count`, and its hint says no spec was scanned and names `workspace_search`. `matched_specs` still lists direct hits in phase documents and ADRs (ANTS-1880, INV-19). Test: `McpInvariantCheck.Ants5270NoSpecsScannedKeepsOnlyTheNearMissCount`. |
 | 22 | (ANTS-5414) `max_specs` caps `matched_specs`: default 50, clamped to 1-200. `matched_count` is the length of the returned array, so zero still means nothing matched; `matched_total` counts every match and `truncated` says the cap cut the list. Test: `McpInvariantCheck.Ants5414MaxSpecsCapsTheMatchList`. |
+| 23 | (ANTS-6498) A spec or decision file longer than 4 MiB is skipped, never read whole; the same limit holds for `spec_query` (including `mode:"gate_drift"`) and `task_priors`. Test: `McpInvariantCheck.Ants6498OversizedSpecIsSkipped`. |
 
 INV-7's schema scrape reads the descriptor block via
 `ants_test::mcpToolDescriptor` (ANTS-3720), not a fixed-byte window:

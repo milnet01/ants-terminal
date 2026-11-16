@@ -94408,7 +94408,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Medium).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6498] **Whole-file `readAll()` with no size cap at `remotecontrol_state.cpp:2219`, `:2438`, `:2594`, `:3132` and `:3299`.**
+- ✅ [ANTS-6498] **Whole-file `readAll()` with no size cap at `remotecontrol_state.cpp:2219`, `:2438`, `:2594`, `:3132` and `:3299`.**
   `remotecontrol_state.cpp:2219` — Whole-file `readAll()` with no size
   cap at `remotecontrol_state.cpp:2219`, `:2438`, `:2594`, `:3132` and
   `:3299`. a large `.md` file (or a symlink to a large file, see above)
@@ -94417,6 +94417,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): cap the read size,
   as `specListEnvelope` does with its 8 KiB read.
   Ledger row 128, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: remotecontrol_state.cpp's readSpecFile reads at most
+  kMaxSpecFileBytes (4 MiB) + 1 byte; a longer spec or ADR is treated as
+  unreadable at all five sites: spec_query (refuses io_error), its
+  gate_drift mode (read_error row), invariant_check and task_priors'
+  spec and ADR scans (skipped). Locked by mcp_invariant_check INV-23,
+  red first. Reaches clients after an ants-mcpd rebuild and /mcp
+  reconnect.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
