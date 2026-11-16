@@ -14,6 +14,10 @@
 namespace CodeWalk {
 
 inline constexpr int kMaxFiles = 20000;
+// ANTS-6501 — every caller reads a file whole, so a larger one is left out
+// and counted in skippedTooLarge. A caller that reads re-checks the limit,
+// since a file can grow after the walk.
+inline constexpr qint64 kMaxFileBytes = qint64(2) * 1024 * 1024;
 
 struct Options {
     bool includeTests = false;
@@ -25,6 +29,7 @@ struct Result {
     QStringList files;        // canonical absolute paths, sorted
     int skippedTests = 0;
     int skippedGenerated = 0;
+    int skippedTooLarge = 0;  // over kMaxFileBytes, named or walked
     bool truncated = false;   // stopped at kMaxFiles
 };
 

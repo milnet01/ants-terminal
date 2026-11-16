@@ -164,12 +164,23 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     QList<Row> rows;
     QJsonArray unmeasuredRows;
     int unmeasured = 0;
+    int grewTooLarge = 0;
     const QDir root(rootCanonical);
     for (const QString &abs : files.files) {
         QFile in;   // ANTS-6454 — re-checked at the open, not only at the walk
         if (!PathValidation::openInsideProject(in, rootCanonical, abs)) continue;
+        // ANTS-6501 — the walk's size check can be stale; stop at the limit.
         QStringList lines;
-        while (!in.atEnd()) lines.append(QString::fromUtf8(in.readLine()));
+        qint64 bytesRead = 0;
+        while (!in.atEnd() && bytesRead <= CodeWalk::kMaxFileBytes) {
+            const QByteArray line = in.readLine(CodeWalk::kMaxFileBytes + 1);
+            bytesRead += line.size();
+            lines.append(QString::fromUtf8(line));
+        }
+        if (bytesRead > CodeWalk::kMaxFileBytes) {
+            ++grewTooLarge;
+            continue;
+        }
         const QString rel = root.relativeFilePath(abs);
         QList<Unmeasured> skipped;
         QString language;
@@ -225,6 +236,8 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
                                     {QStringLiteral("last_line"), topRows.at(i).t.lastLine}});
 
     QJsonObject scanned = CodeWalk::scannedSummary(files);
+    scanned[QStringLiteral("files")] = int(files.files.size()) - grewTooLarge;
+    scanned[QStringLiteral("skipped_too_large")] = files.skippedTooLarge + grewTooLarge;
     scanned[QStringLiteral("functions_measured")] = int(rows.size());
     scanned[QStringLiteral("unmeasured")] = unmeasured;
     scanned[QStringLiteral("top_level_lines")] = topLevelLines;

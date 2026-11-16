@@ -314,3 +314,18 @@ TEST(FunctionSizes, Inv8Wiring) {
     EXPECT_NE(body.find("schema[\"type\"] = \"object\";"), std::string::npos);
     EXPECT_NE(body.find("schema[\"additionalProperties\"] = false;"), std::string::npos);
 }
+
+// INV-11 (ANTS-6501) — a file over CodeWalk::kMaxFileBytes is never read; the
+// reply counts it in scanned.skipped_too_large.
+TEST(FunctionSizes, Inv11OversizedFileIsSkippedAndCounted) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/a.cpp"), kCpp);
+    QByteArray big = kCpp;
+    while (big.size() <= qsizetype{3} * 1024 * 1024)
+        big += "// filler line that only makes the file large\n";
+    writeFile(dir.filePath("src/big.cpp"), big);
+    const QJsonObject r = call(dir, {{QStringLiteral("paths"), QJsonArray{QStringLiteral("src")}}});
+    const QJsonObject scanned = r.value(QStringLiteral("scanned")).toObject();
+    EXPECT_EQ(scanned.value(QStringLiteral("files")).toInt(), 1);
+    EXPECT_EQ(scanned.value(QStringLiteral("skipped_too_large")).toInt(), 1);
+}

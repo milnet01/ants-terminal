@@ -167,8 +167,14 @@ Result collect(const QString &rootCanonical, const QJsonArray &paths,
         rels = rels.mid(0, kMaxFiles);
         r.truncated = true;
     }
-    for (const QString &rel : std::as_const(rels))
-        r.files.append(root.absoluteFilePath(rel));
+    for (const QString &rel : std::as_const(rels)) {
+        const QString abs = root.absoluteFilePath(rel);
+        if (QFileInfo(abs).size() > kMaxFileBytes) {
+            ++r.skippedTooLarge;
+            continue;
+        }
+        r.files.append(abs);
+    }
     return r;
 }
 
@@ -177,6 +183,7 @@ QJsonObject scannedSummary(const Result &r) {
     s[QStringLiteral("files")] = int(r.files.size());
     s[QStringLiteral("skipped_tests")] = r.skippedTests;
     s[QStringLiteral("skipped_generated")] = r.skippedGenerated;
+    s[QStringLiteral("skipped_too_large")] = r.skippedTooLarge;
     s[QStringLiteral("truncated")] = r.truncated;
     return s;
 }

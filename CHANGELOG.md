@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The code-reading verbs (function_sizes, comment_claims, duplicate_blocks, source_scrapes) skip source files over 2 MiB and count them in `scanned.skipped_too_large`; source_scrapes reads one file at a time.** (ANTS-6501)
+
 - **quotation_check holds at most 16 MiB of checked files at once, re-reading a file it dropped if a later quotation names it.** (ANTS-6500)
 
 - **The ripgrep-backed MCP verbs read ripgrep's error output while it runs, keeping only the first 4 KiB in memory.** (ANTS-6499)

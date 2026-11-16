@@ -94469,13 +94469,23 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6501] **functionsizes.cpp: Whole-file reads with no size limit, held together in memory:.**
+- ✅ [ANTS-6501] **functionsizes.cpp: Whole-file reads with no size limit, held together in memory:.**
   `functionsizes.cpp:169` — Whole-file reads with no size limit, held
   together in memory:
   Remedy (the reviewer's; check it before building): a per-file byte
   cap, reported in `scanned`. In source_scrapes, analyse each file once
   and do not keep `texts`.
   Ledger row 163, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: CodeWalk::kMaxFileBytes (2 MiB): collect leaves out a
+  larger file and counts it in skippedTooLarge, reported as
+  scanned.skipped_too_large by every verb using scannedSummary
+  (function_sizes, comment_claims, duplicate_blocks) and by
+  source_scrapes. function_sizes stops reading at the limit too (a file
+  that grew after the walk). source_scrapes no longer holds every file's
+  text: headers are read for helpers, then each file is read, analysed
+  and dropped. Locked by
+  FunctionSizes.Inv11OversizedFileIsSkippedAndCounted, red first.
+  Reaches clients after an ants-mcpd rebuild and /mcp reconnect.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 15-code-index-search-a (Medium).

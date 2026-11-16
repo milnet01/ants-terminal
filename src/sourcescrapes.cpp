@@ -1062,7 +1062,10 @@ QStringList fileRelativeDirs(const QString &rel, const QString &text, const QDir
 QString readText(const QString &abs) {
     QFile f(abs);
     if (!f.open(QIODevice::ReadOnly)) return QString();
-    return QString::fromUtf8(f.readAll());
+    // ANTS-6501 — the walk left out larger files; one that grew since reads
+    // as empty rather than whole.
+    const QByteArray bytes = f.read(CodeWalk::kMaxFileBytes + 1);
+    return bytes.size() > CodeWalk::kMaxFileBytes ? QString() : QString::fromUtf8(bytes);
 }
 
 } // namespace
@@ -1178,11 +1181,10 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
         return out;
     };
 
-    QHash<QString, QString> texts;
-    for (const QString &abs : std::as_const(files)) {
-        texts.insert(abs, readText(abs));
-        if (isHeader(abs)) collectHelpers(texts.value(abs), &readers);
-    }
+    // ANTS-6501 — the headers' helpers first; below, each file is read,
+    // analysed and dropped, so no call holds every file's text at once.
+    for (const QString &abs : std::as_const(files))
+        if (isHeader(abs)) collectHelpers(readText(abs), &readers);
     const std::function<bool(const QString &)> existing = [&](const QString &rel) {
         return QFileInfo(root.filePath(rel)).isFile();
     };
@@ -1210,10 +1212,11 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     };
     for (const QString &abs : std::as_const(files)) {
         const QString rel = root.relativeFilePath(abs);
+        const QString text = readText(abs);
         const FileResult fr = isCppSource(abs)
-                                  ? analyse(texts.value(abs), readers, existing,
-                                            fileRelativeDirs(rel, texts.value(abs), root), byName)
-                                  : analyseScript(rel, texts.value(abs), moduleRoots, existing, listFiles);
+                                  ? analyse(text, readers, existing,
+                                            fileRelativeDirs(rel, text, root), byName)
+                                  : analyseScript(rel, text, moduleRoots, existing, listFiles);
         for (const Anchor &a : fr.anchors)
             for (const QString &p : matching(a.paths)) {
                 QJsonObject o;
@@ -1261,6 +1264,7 @@ QJsonObject run(const QString &rootCanonical, const QJsonObject &args) {
     scanned[QStringLiteral("readers_total")] = int(readerRows.size());
     scanned[QStringLiteral("unresolved_anchors")] = unresolved;
     scanned[QStringLiteral("truncated")] = walk.truncated;
+    scanned[QStringLiteral("skipped_too_large")] = walk.skippedTooLarge;  // ANTS-6501
     // True when `limit` cut either list; `truncated` is the file walk's cap.
     scanned[QStringLiteral("rows_truncated")] = total > limit || readerRows.size() > limit;
     QJsonObject env;
