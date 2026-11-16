@@ -94305,12 +94305,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 02-terminal-grid (Medium).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6492] **terminalwidget.cpp: the URL span cache has no named cap.**
+- ✅ [ANTS-6492] **terminalwidget.cpp: the URL span cache has no named cap.**
   `terminalwidget.cpp:1020` — the URL span cache has no named cap.
   Quote: `invalidateSpanCaches`
   Remedy (the reviewer's; check it before building): give it an LRU cap,
   or drop entries outside the viewport ± N rows.
   Ledger row 38, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: TerminalWidget::kMaxSpanCacheLines (8192); every
+  paintEvent, after the dirty-check invalidation, clears the URL and
+  highlight span caches when either holds more. Outside the dirty check
+  because scrolling does not set it. Locked by
+  terminalwidget_hotpath_perf INV-17 (source scrape, red first). Needs a
+  terminal relaunch.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).

@@ -1022,6 +1022,12 @@ void TerminalWidget::paintEvent(QPaintEvent *event) {
     // Invalidate span caches if content changed since last paint
     if (m_spanCacheDirty)
         invalidateSpanCaches();
+    // ANTS-6492 — outside the dirty check: scrolling does not set it.
+    if (m_urlSpanCache.size() > kMaxSpanCacheLines ||
+        m_hlSpanCache.size() > kMaxSpanCacheLines) {
+        m_urlSpanCache.clear();
+        m_hlSpanCache.clear();
+    }
 
     // Order the selection bounds once per frame, not once per cell.
     const bool hasSel = m_hasSelection;

@@ -878,6 +878,10 @@ private:
     mutable std::unordered_map<int, std::vector<UrlSpan>> m_urlSpanCache;
     mutable std::unordered_map<int, std::vector<PaintHighlightSpan>> m_hlSpanCache;
     mutable bool m_spanCacheDirty = true;
+    // ANTS-6492 — paintEvent clears both caches past this many lines. Far
+    // above one screen, so a normal frame never hits it; scrolling through
+    // history adds an entry per line viewed and nothing else removes them.
+    static constexpr size_t kMaxSpanCacheLines = 8192;
     // ANTS-1134 — track the monotonic scrollback-push count so the
     // span caches can drop stale entries whose globalLine key now
     // refers to a different historical line. Without this, URL +

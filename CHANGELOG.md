@@ -458,6 +458,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Scrolling through a long history keeps the terminal's per-line link and highlight caches to a fixed size.** (ANTS-6492)
+
 - **A link that a program redraws in place with cursor moves keeps a single entry per row instead of adding one each time.** (ANTS-6491)
 
 - **The model-switch and near-miss histories leave a file they cannot read untouched, instead of rewriting it with only the newest entry** (ANTS-6785)

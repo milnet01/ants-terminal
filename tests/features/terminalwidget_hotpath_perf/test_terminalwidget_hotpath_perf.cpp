@@ -255,3 +255,20 @@ TEST(TerminalWidgetHotPathPerf, Inv16SuggestionSkipsThePrompt) {
     EXPECT_FALSE(body.contains(QStringLiteral("lineText(cursorLine).trimmed()")))
         << "updateSuggestion still matches the whole line, prompt included";
 }
+
+// INV-17 (ANTS-6492) — every paint caps the URL and highlight span caches.
+TEST(TerminalWidgetHotPathPerf, Inv17SpanCachesAreCapped) {
+    const QString body = functionBody(
+        tw(), QStringLiteral("void TerminalWidget::paintEvent("));
+    ASSERT_FALSE(body.isEmpty()) << "paintEvent not found";
+    EXPECT_TRUE(body.contains(QStringLiteral("m_urlSpanCache.size() > kMaxSpanCacheLines")))
+        << "paintEvent does not cap the URL span cache";
+    EXPECT_TRUE(body.contains(QStringLiteral("m_hlSpanCache.size() > kMaxSpanCacheLines")))
+        << "paintEvent does not cap the highlight span cache";
+    const int dirtyCheck = body.indexOf(QStringLiteral("if (m_spanCacheDirty)"));
+    const int cap = body.indexOf(QStringLiteral("kMaxSpanCacheLines"));
+    ASSERT_GE(dirtyCheck, 0) << "paintEvent's dirty check not found";
+    EXPECT_GT(cap, dirtyCheck)
+        << "the cap must run after the invalidation, outside the dirty check: "
+           "scrolling alone does not mark the caches dirty";
+}

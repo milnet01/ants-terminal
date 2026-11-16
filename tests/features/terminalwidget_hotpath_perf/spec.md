@@ -91,6 +91,13 @@ the invariants are source-scrape assertions against
   cursor is on that region's command line. Without shell integration it
   suggests nothing, because nothing marks where the prompt ends.
 
+- **INV-17 / the span caches are capped** (ANTS-6492). Scrolling through
+  history adds a URL and a highlight cache entry per line viewed, and nothing
+  else removes scrollback entries. Every `paintEvent`, after the dirty-check
+  invalidation, clears both caches when either holds more than
+  `kMaxSpanCacheLines` entries. The cap sits outside the dirty check because
+  scrolling alone does not mark the caches dirty.
+
 ## Test scope
 
 Source-scrape against `src/terminalwidget.cpp` via `SRC_TERMINALWIDGET_PATH`.
