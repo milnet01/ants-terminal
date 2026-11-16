@@ -194,6 +194,12 @@ source-grep harness, no Qt link.
   later. `MainWindow::restartForUpdate` spawns the relaunch from
   `aboutToQuit`, once the quit is committed.
 
+- **INV-18** *(added ANTS-6495)* Before a new `gh` probe,
+  `refreshRepoVisibility` removes expired cache entries, clears the cache
+  once it holds `kRepoVisibilityCacheCap` entries, and removes in-flight
+  entries whose probe has finished. Neither map grows with every repo
+  visited.
+
 ## Out of scope
 
 - Per-tab update badge. The "Update available" state is a property

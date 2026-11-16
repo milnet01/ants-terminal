@@ -188,6 +188,19 @@ TEST(GithubStatusBar, Main) {    const std::string h = ants_test::slurpFile(SRC_
         fail("INV-7",
             "10-minute TTL constant missing from refreshRepoVisibility");
 
+    // INV-18 (ANTS-6495): the cache and the in-flight map do not grow with
+    // every repo visited.
+    {
+        const std::string body = functionBody(s,
+            "void MainWindow::refreshRepoVisibility");
+        if (!contains(body, "m_repoVisibilityCache.removeIf("))
+            fail("INV-18", "expired cache entries are never removed");
+        if (!contains(body, "m_repoVisibilityCache.size() >= kRepoVisibilityCacheCap"))
+            fail("INV-18", "the cache has no named cap");
+        if (!contains(body, "m_repoVisibilityProbeInFlight.removeIf("))
+            fail("INV-18", "finished probes keep their in-flight entry");
+    }
+
     // INV-8: gh repo view invoked with --json visibility -q .visibility.
     if (!contains(s, "\"--json\""))
         fail("INV-8", "gh invocation must request only the visibility field");

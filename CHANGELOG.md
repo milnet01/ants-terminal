@@ -460,6 +460,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The title bar's public/private repository badge keeps a bounded cache instead of one entry per repository ever visited.** (ANTS-6495)
+
 - **Scrolling through a long history keeps the terminal's per-line link and highlight caches to a fixed size.** (ANTS-6492)
 
 - **A link that a program redraws in place with cursor moves keeps a single entry per row instead of adding one each time.** (ANTS-6491)

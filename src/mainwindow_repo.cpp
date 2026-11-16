@@ -98,6 +98,19 @@ void MainWindow::refreshRepoVisibility() {
     // stale value from a different repo (the previous tab's).
     m_repoVisibilityLabel->hide();
 
+    // ANTS-6495 — both maps gain an entry per repo visited, and the TTL is
+    // checked only on read: drop what has expired or finished before adding
+    // another, and clear the cache at a named cap.
+    constexpr qsizetype kRepoVisibilityCacheCap = 64;
+    m_repoVisibilityCache.removeIf(
+        [nowMs](QHash<QString, RepoVisibilityCache>::iterator e) {
+            return nowMs - e.value().fetchedAt >= kCacheTtlMs;
+        });
+    if (m_repoVisibilityCache.size() >= kRepoVisibilityCacheCap)
+        m_repoVisibilityCache.clear();
+    m_repoVisibilityProbeInFlight.removeIf(
+        [](QHash<QString, bool>::iterator e) { return !e.value(); });
+
     auto *proc = new QProcess(this);
     proc->setProgram(QStringLiteral("gh"));
     // `slug` is read verbatim from the repo's .git/config origin URL, so a

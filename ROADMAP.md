@@ -94355,12 +94355,17 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 04-terminal-widget-b (Medium).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6495] **mainwindow_repo.cpp: and `m_repoVisibilityProbeInFlight` gain one entry per repo root visited and never evict.**
+- ✅ [ANTS-6495] **mainwindow_repo.cpp: and `m_repoVisibilityProbeInFlight` gain one entry per repo root visited and never evict.**
   `mainwindow_repo.cpp:180` — and `m_repoVisibilityProbeInFlight` gain
   one entry per repo root visited and never evict. Their TTL is checked
   only on read. The spec standard requires a named cap.
   Quote: `:223`
   Ledger row 68, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: before a new gh probe, refreshRepoVisibility removes
+  expired cache entries, clears the cache at kRepoVisibilityCacheCap
+  (64), and removes finished in-flight entries. Locked by
+  github_status_bar INV-18 (source scrape), red first. Needs a terminal
+  relaunch.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 05-mainwindow (Low).
@@ -113818,6 +113823,9 @@ reports are asked for separately, each time.
     conversions, an unused <utility>.
   The applyTheme `deferred` copy is pinned by
   AutoProfileThemeUnsaved.Inv2 (applyTheme(deferred, save)).
+  Also seen 2026-11-16 in mainwindow_repo.cpp: implicit int widening in
+  the kCacheTtlMs product, a QJsonValueRef loop conversion, and a move
+  of `release` in checkForUpdates.
   **Layman:** An automatic code checker flagged more small spots in the main window code; each needs a look before it is changed.
   Kind: chore.
   Source: in-session-2026-11-16 (IDE clang-tidy diagnostics).
