@@ -94040,7 +94040,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 30-claude-session-widgets (Low).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6486] **mutationjournal.cpp: any failure to open the file is treated as "file missing": permission denied (EACCES), too many open files (EMFILE) or an I/O error (EIO), as well as a file that is really gone.**
+- ✅ [ANTS-6486] **mutationjournal.cpp: any failure to open the file is treated as "file missing": permission denied (EACCES), too many open files (EMFILE) or an I/O error (EIO), as well as a file that is really gone.**
   `mutationjournal.cpp:85-86` — any failure to open the file is treated
   as "file missing": permission denied (EACCES), too many open files
   (EMFILE) or an I/O error (EIO), as well as a file that is really gone.
@@ -94050,6 +94050,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `left_missing` only when `!QFileInfo::exists(path)`. In every other
   case keep the journal, as `restore_failed`.
   Ledger row 403, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: recover() reports left_missing only when the file
+  does not exist; an existing file that will not open is restore_failed
+  and keeps its journal. Test:
+  MutationProbe.Ants6486UnreadableFileKeepsTheJournal, red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (Medium).

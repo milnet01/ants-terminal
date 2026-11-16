@@ -5,6 +5,7 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSaveFile>
@@ -83,7 +84,10 @@ QList<MutationJournal::Recovered> MutationJournal::recover(const QString &dir) {
         Recovered r{path, QString()};
         QFile cur(path);
         if (!cur.open(QIODevice::ReadOnly)) {
-            r.outcome = QStringLiteral("left_missing");
+            // Only a file that is really gone is missing; one that exists but
+            // will not open (EACCES, EMFILE, EIO) keeps its journal.
+            r.outcome = QFileInfo::exists(path) ? QStringLiteral("restore_failed")
+                                                : QStringLiteral("left_missing");
         } else {
             const QByteArray now = cur.readAll();
             cur.close();

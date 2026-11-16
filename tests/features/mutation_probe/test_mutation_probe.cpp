@@ -772,6 +772,7 @@ TEST(MutationProbe, Ants5512DeadlineCountsTheBuild) {
 #include "../../_support/xdg_guard.h"
 
 #include <QProcess>
+#include <unistd.h>
 
 namespace {
 
@@ -851,6 +852,27 @@ TEST(MutationProbe, Ants5096JournalLeavesAnEditedFile) {
     ASSERT_EQ(rec.size(), 1);
     EXPECT_EQ(rec.first().outcome.toStdString(), "left_edited");
     EXPECT_EQ(slurp(src), QByteArray("edited by hand\n"));
+}
+
+// ANTS-6486 — a file that exists but cannot be opened is not a missing file:
+// the journal, the only copy of the original, is kept.
+TEST(MutationProbe, Ants6486UnreadableFileKeepsTheJournal) {
+    if (::geteuid() == 0)
+        GTEST_SKIP() << "root reads a mode-000 file";
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString dir = tmp.filePath(QStringLiteral("journal"));
+    const QString src = tmp.filePath(QStringLiteral("a.py"));
+    spit(src, "mutant\n");
+    ASSERT_TRUE(MutationJournal::write(dir, src, "original\n", "mutant\n"));
+    orphanJournals(dir);
+    ASSERT_TRUE(QFile::setPermissions(src, QFileDevice::Permissions()));
+
+    const auto rec = MutationJournal::recover(dir);
+    QFile::setPermissions(src, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    ASSERT_EQ(rec.size(), 1);
+    EXPECT_EQ(rec.first().outcome.toStdString(), "restore_failed");
+    EXPECT_EQ(journalCount(dir), 1) << "the journal was deleted";
 }
 
 // A live writer is a probe still running: its mutant is what its tests are

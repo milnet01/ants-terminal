@@ -38,7 +38,8 @@ struct Recovered {
     // "restored": the file held the recorded mutant and now holds the original.
     // "left_edited": the file changed since, so it is someone's edit; untouched.
     // "left_missing": the file is gone; nothing to restore.
-    // "restore_failed": the write back failed; the journal is kept.
+    // "restore_failed": the file exists but would not open, or the write back
+    // failed; the journal is kept.
     QString outcome;
 };
 
