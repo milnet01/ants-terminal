@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6790 -->
+<!-- ants-roadmap-id-high-water: ANTS=6791 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94202,7 +94202,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: split from ANTS-6712, 2026-11-15.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6781] **roadmap_log append_batch allocates its ids and runs the duplicate check outside the write transaction.**
+- ✅ [ANTS-6781] **roadmap_log append_batch allocates its ids and runs the duplicate check outside the write transaction.**
   src/remotecontrol_roadmap_log_batch.cpp: the store path allocates ids
   from rlStoreIdHighWater, takes end positions and runs
   rcExactDuplicateId before commitAndRender; its mutate only calls
@@ -94212,6 +94212,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   re-allocation must re-render those citations, or the batch refuses
   and the caller retries. Test seam: RoadmapWrite::setBeforeBeginHookForTest
   (RoadmapWriteHalf.Ants6466AppendRechecksInsideTheTransaction).
+  Shipped 2026-11-16. The store path's mutate re-reads the id
+  high-water, each section's end position and the exact-duplicate check
+  inside the transaction. Moved ids renumber the batch from the new
+  high-water and resolve its {{id:N}} citations again from the
+  unresolved text; a moved id_hint refuses id_taken; a late duplicate
+  refuses duplicate_item with duplicate_of, nothing written. Test
+  RoadmapWriteHalf.Ants6781AppendBatchRechecksInsideTheTransaction.
+  Reaches sessions on their next /mcp reconnect (ants-mcpd).
   **Layman:** Two sessions adding several roadmap items at once can make one of them fail for no good reason.
   Kind: review-fix.
   Source: in-session-2026-11-15 (sibling of ANTS-6466).
@@ -113731,6 +113739,19 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: in-session-2026-11-16 (IDE clang-tidy diagnostics, ANTS-6485 work).
   Lanes: model-switching, claude-session-widgets.
+
+- 📋 [ANTS-6791] **GCC's -Wnull-dereference fires six times compiling remotecontrol_roadmap_log_batch.cpp, inlined from rcMoveSectionsToArchive.**
+  Seen 2026-11-16: /usr/include/qt6/QtCore/qhash.h:809 "potential null
+  pointer dereference", through QHash<qint64, SectionRow>::const_iterator,
+  inlined from rcMoveSectionsToArchive (called by
+  cmdRoadmapLogArchiveSection). The committed file gives the same six,
+  so they predate ANTS-6781; they show only when this file recompiles.
+  Same class as ANTS-3358, ANTS-3505 and ANTS-6418: confirm the pointer
+  cannot be null, then restructure the lookup or add a scoped pragma.
+  **Layman:** The build prints six false warnings from the roadmap archive code; they should be silenced the way earlier ones were.
+  Kind: fix.
+  Source: in-session-2026-11-16 (build of remotecontrol_roadmap_log_batch.cpp).
+  Lanes: mcp-roadmap-query-log.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

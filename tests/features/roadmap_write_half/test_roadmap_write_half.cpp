@@ -3946,6 +3946,99 @@ TEST(RoadmapWriteHalf, Ants6466AppendRechecksInsideTheTransaction) {
     }
 }
 
+// ANTS-6781 — append_batch does the same inside its transaction: another
+// session's append between this call's reads and its BEGIN moves the batch
+// to the next ids, re-resolves its {{id:N}} citations, and an exact-duplicate
+// headline refuses the whole call.
+TEST(RoadmapWriteHalf, Ants6781AppendBatchRechecksInsideTheTransaction) {
+    const auto dump = [](const QJsonObject &o) {
+        return QJsonDocument(o).toJson(QJsonDocument::Compact).toStdString();
+    };
+    const auto bullet = [](const QString &headline, const QString &body) {
+        QJsonObject b;
+        b[QStringLiteral("status")]   = QStringLiteral("planned");
+        b[QStringLiteral("headline")] = headline;
+        b[QStringLiteral("kind")]     = QStringLiteral("implement");
+        b[QStringLiteral("source")]   = QStringLiteral("test");
+        b[QStringLiteral("layman")]   = QStringLiteral("A batched thing.");
+        if (!body.isEmpty()) b[QStringLiteral("body")] = body;
+        return b;
+    };
+    struct Leg { const char *name; const char *other; const char *first; };
+    const Leg legs[] = {
+        {"id", "Other session.", "First of the batch."},
+        {"duplicate", "Same headline.", "Same headline."},
+    };
+    for (const Leg &leg : legs) {
+        SCOPED_TRACE(leg.name);
+        ants_test::XdgGuard guard;
+        QTemporaryDir tmp;
+        ASSERT_TRUE(tmp.isValid());
+        qint64 projectId = 0;
+        const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+        ASSERT_FALSE(root.isEmpty());
+
+        RemoteControl rc(nullptr);
+        QString otherId;
+        RoadmapWrite::setBeforeBeginHookForTest([&rc, &root, &otherId, &leg, &dump] {
+            RoadmapWrite::setBeforeBeginHookForTest({});
+            const QJsonObject r = rc.cmdRoadmapLogAppendForTest(
+                appendReq(root, QString::fromUtf8(leg.other))).object();
+            EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << dump(r);
+            otherId = r.value(QStringLiteral("id")).toString();
+        });
+        QJsonObject req;
+        req[QStringLiteral("caller_cwd")] = root;
+        req[QStringLiteral("op")]         = QStringLiteral("append_batch");
+        req[QStringLiteral("section")]    = QStringLiteral("work");
+        req[QStringLiteral("bullets")]    = QJsonArray{
+            bullet(QString::fromUtf8(leg.first), QString()),
+            bullet(QStringLiteral("Second of the batch."),
+                   QStringLiteral("Follows {{id:0}}.")),
+        };
+        const QJsonObject mine = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+        RoadmapWrite::setBeforeBeginHookForTest({});
+        ASSERT_EQ(otherId, QStringLiteral("DEMO-0008"));
+
+        auto store = openStore(RoadmapStore::Access::Interactive);
+        ASSERT_TRUE(store);
+        const auto items = store->listItems(projectId);
+        ASSERT_TRUE(items.has_value());
+        int firstCount = 0, secondCount = 0;
+        qint64 secondPk = 0;
+        for (const RoadmapStore::ItemRef &i : *items) {
+            if (i.headline == QString::fromUtf8(leg.first)) ++firstCount;
+            if (i.headline == QStringLiteral("Second of the batch.")) {
+                ++secondCount;
+                secondPk = i.itemPk;
+            }
+        }
+
+        if (QByteArray(leg.name) == "id") {
+            ASSERT_TRUE(mine.value(QStringLiteral("ok")).toBool()) << dump(mine);
+            EXPECT_EQ(mine.value(QStringLiteral("ids")).toArray(),
+                      (QJsonArray{QStringLiteral("DEMO-0009"), QStringLiteral("DEMO-0010")}))
+                << dump(mine);
+            EXPECT_EQ(firstCount, 1);
+            ASSERT_EQ(secondCount, 1);
+            const auto second = store->readItem(secondPk);
+            ASSERT_TRUE(second.has_value());
+            EXPECT_EQ(second->id, QStringLiteral("DEMO-0010"));
+            EXPECT_TRUE(second->body.contains(QStringLiteral("Follows DEMO-0009.")))
+                << "the citation was not re-resolved: "
+                << second->body.toStdString();
+        } else {
+            EXPECT_FALSE(mine.value(QStringLiteral("ok")).toBool()) << dump(mine);
+            EXPECT_EQ(mine.value(QStringLiteral("code")).toString(),
+                      QStringLiteral("duplicate_item")) << dump(mine);
+            EXPECT_EQ(mine.value(QStringLiteral("duplicate_of")).toString(),
+                      QStringLiteral("DEMO-0008")) << dump(mine);
+            EXPECT_EQ(firstCount, 1) << "the duplicate was written";
+            EXPECT_EQ(secondCount, 0) << "part of a refused batch was written";
+        }
+    }
+}
+
 // ANTS-6737 — § 3.9's unversioned archive survives a migration and a render:
 // discovery takes it as a source, its slugs carry `unversioned-`, the load
 // places it, and a render writes it back with its item.

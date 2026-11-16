@@ -452,6 +452,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Filing several roadmap items at once succeeds while another session files one, taking the next free ids and keeping its cross-references right** (ANTS-6781)
+
 - **Nine roadmap items show their whole plain-English summary again, and re-importing the roadmap keeps it whole** (ANTS-6778)
 
 - **The Claude allowlist dialog says why its lists are empty when settings.json is there but cannot be opened, as it already did for a file it cannot parse** (ANTS-6490)
