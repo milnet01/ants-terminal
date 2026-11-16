@@ -9,6 +9,7 @@
 #include "focusedtest.h"
 #include "remotecontrol.h"
 #include "testrunners.h"
+#include "../../_support/peak_memory.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -463,6 +464,30 @@ TEST(McpFocusedTest, Ants5503Inv11ZeroMatchNetEveryRunner) {
     EXPECT_TRUE(out.value("selector").toArray().isEmpty());
     EXPECT_FALSE(out.contains("ctest_filter"));
     EXPECT_FALSE(out.contains("build_dir"));
+}
+
+// ANTS-6795 — the runner's output is read as it arrives and only the last
+// 2 MiB is kept, so 64 MiB of output never sits whole in memory, and the
+// summary at its end is still parsed.
+TEST(McpFocusedTest, Ants6795RunnerOutputMemoryIsBounded) {
+    ANTS_TEST_SKIP_UNDER_ASAN();
+    QTemporaryDir td, bin;
+    ASSERT_TRUE(td.isValid() && bin.isValid());
+    writeFile(td.path() + "/package.json", R"({"devDependencies":{"jest":"^30"}})");
+    writeStub(bin.path(), "npx",
+              "/usr/bin/head -c 67108864 /dev/zero | /usr/bin/tr '\\0' 'y'\necho\n"
+              "echo 'Tests:       2 passed, 2 total'\necho 'Time:        0.1 s'\n");
+    PathGuard pg(bin.path());
+    QJsonObject req;
+    req["changed_files"] = QJsonArray{"src/a.js"};
+    callFocused(td.path(), req);   // warm first-call costs
+    const int growth = ants_test::peakGrowthMiB([&] {
+        return callFocused(td.path(), req).value("passed").toInt() == 2;
+    });
+    ASSERT_GE(growth, 0) << "fork failed";
+    ASSERT_NE(growth, 251) << "the summary after 64 MiB of output was not parsed";
+    // Measured 2026-11-16: 127 MiB before ANTS-6795, 13 MiB after.
+    EXPECT_LT(growth, 32) << "64 MiB of runner output raised peak memory " << growth << " MiB";
 }
 
 // INV-12 — no marker refuses no_runner; a runner that will not start refuses

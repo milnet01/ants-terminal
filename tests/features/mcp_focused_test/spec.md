@@ -67,8 +67,11 @@ From `docs/specs/ANTS-5503-multi-runner-tests.md`:
 - **INV-13**: on a ctest project (a stub `ctest` on PATH) the envelope is
   ANTS-1302's fields plus `runner`, `runner_evidence`, `selector` and
   `nothing_ran`.
+- **INV-14** (ANTS-6795): the runner's output is read as it arrives and
+  its last 2 MiB kept, so 64 MiB of output raises peak memory by under
+  32 MiB and the summary at its end is still parsed.
 
-INV-11 to INV-13 call `cmdFocusedTest` itself, with a stub runner first on
+INV-11 to INV-14 call `cmdFocusedTest` itself, with a stub runner first on
 PATH.
 
 ## Out of scope

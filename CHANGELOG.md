@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **focused_test reads the test runner's output as it arrives and keeps only the last 2 MiB** (ANTS-6795)
+
 - **build_status ignores a build cache file over 256 KiB and keeps at most 50 errors of 240 characters when loading one** (ANTS-6528)
 
 - **The feedback verbs refuse a feedback file over 8 MiB instead of reading it whole** (ANTS-6527)

@@ -4,6 +4,7 @@
 #include "antsversion.h"
 #include "gitwrap.h"   // ANTS-4352 — gate_drift
 #include "githooksreport.h"   // ANTS-5505 — git_state op:"hooks"
+#include "processdrain.h"     // ANTS-6795 — focused_test's runner output
 #include "remotecontrol_internal.h"
 #include "buildcache.h"
 #include "feedbackfile.h"        // ANTS-1961 / ANTS-1962
@@ -3578,18 +3579,16 @@ FocusedRun runFocused(const QString &root, const QString &program,
     HostExec::start(p, program, args);
     FocusedRun o{true, false, false, QString()};
     if (!p.waitForStarted(5000)) { o.started = false; return o; }
-    if (!p.waitForFinished(timeoutSec * 1000)) {
-        p.kill();
-        p.waitForFinished(2000);
-        o.timedOut = true;
-    }
+    // ANTS-6795 — read as the runner writes, keeping the last 2 MiB, so
+    // QProcess never holds the whole output.
+    constexpr qsizetype kCap = 2LL * 1024 * 1024;
+    const ProcessDrain::Result r = ProcessDrain::run(
+        p, timeoutSec * 1000, kCap, ProcessDrain::Keep::Tail);
+    o.timedOut = r.timedOut;
     if (!o.timedOut && p.exitStatus() != QProcess::NormalExit) {
         o.crashed = true;
     }
-    QByteArray out = p.readAllStandardOutput();
-    static const int kCap = 2 * 1024 * 1024;  // 2 MiB
-    if (out.size() > kCap) out = out.right(kCap);
-    o.output = QString::fromUtf8(out);
+    o.output = QString::fromUtf8(r.bytes);
     return o;
 }
 
