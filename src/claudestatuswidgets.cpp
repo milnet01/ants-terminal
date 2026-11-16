@@ -694,7 +694,7 @@ void ClaudeStatusBarController::attach(ClaudeIntegration *integration,
         // Normalize and generalize to a useful allowlist pattern
         QString rule = ClaudeAllowlistDialog::normalizeRule(rawRule);
         QString gen = ClaudeAllowlistDialog::generalizeRule(rule);
-        if (!gen.isEmpty()) rule = gen;
+        if (!gen.isEmpty()) rule = std::move(gen);
 
         // Tab-glyph feedback: flag the owning tab's shell as awaiting input
         // so its tab-bar dot turns loud/red — ALWAYS, even for a
@@ -2274,7 +2274,7 @@ void ClaudeStatusBarController::performModelSwitchHandshake(TerminalWidget *focu
 
 // ANTS-1920 — one poll tick of the output-driven confirm; see header.
 void ClaudeStatusBarController::pollModelSwitchConfirm(
-        QPointer<TerminalWidget> g, const QString &cont, int attempt) {
+        const QPointer<TerminalWidget> &g, const QString &cont, int attempt) {
     if (!g) {            // tab closed mid-poll — nothing to confirm.
         m_modelHandshakeInFlight = false;   // ANTS-1951 — release the gate.
         return;
@@ -2291,9 +2291,8 @@ void ClaudeStatusBarController::pollModelSwitchConfirm(
         // re-arms (set false) on the next tick once the dialog is gone.
         m_unarmedSwitchConfirmed = true;
         if (!cont.isEmpty()) {
-            QPointer<TerminalWidget> g2(g);
-            QTimer::singleShot(kSwitchContinuationDelayMs, this, [g2, cont]() {
-                if (g2) g2->sendToPty((cont + QStringLiteral("\r")).toUtf8());
+            QTimer::singleShot(kSwitchContinuationDelayMs, this, [g, cont]() {
+                if (g) g->sendToPty((cont + QStringLiteral("\r")).toUtf8());
             });
         }
         return;
@@ -2532,7 +2531,7 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
 // Sentinel for "never switched yet" — large enough to clear any
 // reasonable min-dwell on the first eligible tick.
 qint64 ClaudeStatusBarController::kMaxDwellSentinel() {
-    return 1ll << 50;
+    return 1LL << 50;
 }
 
 namespace {
@@ -2681,7 +2680,7 @@ void ClaudeStatusBarController::maybeEmitNearMiss(
         : ledgerPathOverride;
     ModelNearMissLedger::appendRecord(ledgerPath, r);
 
-    m_nearMissLastSigByProject[projectRoot]    = sig;
+    m_nearMissLastSigByProject[projectRoot]    = std::move(sig);
     m_nearMissLastEmitMsByProject[projectRoot] = nowMs;
 }
 

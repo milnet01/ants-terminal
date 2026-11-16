@@ -317,7 +317,7 @@ private:
     // clear any stranded `/model`, no continuation). `g` may dangle if the tab
     // closes mid-poll; guarded each tick. `cont` is captured once at handshake
     // start so an in-flight poll uses a stable continuation prompt.
-    void pollModelSwitchConfirm(QPointer<TerminalWidget> g,
+    void pollModelSwitchConfirm(const QPointer<TerminalWidget> &g,
                                 const QString &cont, int attempt);
 
     // ANTS-1915 — fire a deferred manual chip-switch when its owning shell

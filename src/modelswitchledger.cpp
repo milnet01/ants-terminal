@@ -723,7 +723,7 @@ QString userLineText(const QJsonObject &line)
                               .value(QStringLiteral("content"));
     if (cv.isString()) return cv.toString();
     QStringList parts;
-    for (const QJsonValue &blk : cv.toArray()) {
+    for (const auto &blk : cv.toArray()) {
         const QJsonObject b = blk.toObject();
         if (b.value(QStringLiteral("type")).toString() == QStringLiteral("text"))
             parts.append(b.value(QStringLiteral("text")).toString());

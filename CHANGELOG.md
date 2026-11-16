@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Tidied the model-switch ledger and the Claude status-bar controller where clang-tidy flagged them, with no change in behaviour.** (ANTS-6789)
+
 - **Source comments and the mailbox spec describe the current refusal of undeclared MCP arguments** (ANTS-6769)
 
 - **Every Ants MCP tool that takes an op answers an unknown op with the same code, bad_mode; roadmap_migrate no longer runs a migration for an op it does not know.** (ANTS-6771)

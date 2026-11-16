@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6788 -->
+<!-- ants-roadmap-id-high-water: ANTS=6789 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -113675,6 +113675,20 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-11-13, found while closing ANTS-5559.
   Lanes: mcp.
+
+- ✅ [ANTS-6789] **The clang-tidy warnings shown in the model-switch ledger and the Claude status-bar controller are tidied.**
+  Surfaced by the editor's clang-tidy pass while working on ANTS-6485.
+  Shipped 2026-11-16: modelswitchledger.h widens kMaxLedgerBytes and
+  kCleanEndQuietMs before multiplying and gives UnderRoute a uint8_t
+  base; modelswitchledger.cpp iterates a QJsonArray with const auto &;
+  claudestatuswidgets.cpp moves 'gen' and 'sig', writes 1LL, and takes
+  pollModelSwitchConfirm's QPointer by const reference (the g2 copy is
+  gone; the timer lambda captures g by value). Other warnings in these
+  files were not shown and are not in this item.
+  **Layman:** An automatic code checker flagged a few small spots in the model-switch code; they are tidied with no change in behaviour.
+  Kind: chore.
+  Source: in-session-2026-11-16 (IDE clang-tidy diagnostics, ANTS-6485 work).
+  Lanes: model-switching, claude-session-widgets.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

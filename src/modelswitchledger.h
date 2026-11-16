@@ -18,12 +18,13 @@
 #include <QStringList>
 #include <QtGlobal>
 
+#include <cstdint>
 #include <optional>
 
 namespace ModelSwitchLedger {
 
 // INV-10 — drop-oldest byte cap. INV-11 — author-correlation window.
-constexpr qint64 kMaxLedgerBytes        = 256 * 1024;   // 256 KiB
+constexpr qint64 kMaxLedgerBytes        = 256LL * 1024; // 256 KiB
 // ANTS-2196 — hard secondary ceiling on the soft cap. evictToCap pins pending
 // records (their outcome is still settling), but fillPendingLedgerOutcomes can
 // leave outcomes permanently pending when a project dir vanishes — pending then
@@ -33,7 +34,7 @@ constexpr qint64 kMaxLedgerBytes        = 256 * 1024;   // 256 KiB
 constexpr int    kEvictHardCeilingMult  = 4;            // hard cap = 4× soft cap
 constexpr qint64 kAuthorWindowMs        = 10'000;       // 10 s
 constexpr int    kOutcomeWindowTurns    = 5;            // "within 5 turns"
-constexpr qint64 kCleanEndQuietMs       = 10 * 60 * 1000; // ANTS-1891 — 10 min
+constexpr qint64 kCleanEndQuietMs       = 10LL * 60 * 1000; // ANTS-1891 — 10 min
 constexpr int    kHeadlineFloorMeasured = 10;           // ANTS-1891 — headline floor
 constexpr int    kDefaultStatsWindowDays = 30;          // ANTS-1936/1942 — recency window
 
@@ -138,7 +139,7 @@ bool detectCorrectiveOverride(const QList<ModelEvent> &windowModelEvents,
 
 // INV-12 — under-route on a downgrade: a higher tier re-recommended within the
 // window. Zero following turns → Pending (never counted as not-under-routed).
-enum class UnderRoute { Pending, No, Yes };
+enum class UnderRoute : std::uint8_t { Pending, No, Yes };
 UnderRoute detectUnderRoute(const QString &toTier,
                             const QStringList &subsequentRecommendedTiers);
 
