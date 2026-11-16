@@ -2,6 +2,8 @@
 
 #include "roadmaprender.h"
 
+#include "configbackup.h"     // ConfigWriteLock — ANTS-6483's publish lock
+
 #include "passheadingwrite.h"   // ANTS-4803 — the pass-headings emission
 #include "roadmapparse.h"
 #include "roadmapstore.h"
@@ -24,6 +26,11 @@
 #include <vector>
 
 namespace RoadmapRender {
+
+namespace testing {
+void (*beforePublishWrite)() = nullptr;
+}  // namespace testing
+
 namespace {
 
 bool fail(QString *error, const QString &msg) {
@@ -543,6 +550,20 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     if (error)
         error->clear();
 
+    // ANTS-6483 — held from the first store read to the last file write.
+    std::optional<ConfigWriteLock> publishLock;
+    if (!opts.dryRun) {
+        publishLock.emplace(QFileInfo(store.path()).absolutePath()
+                                + QStringLiteral("/roadmap-publish-%1").arg(projectId),
+                            kPublishLockTimeoutMs);
+        if (!publishLock->acquired()) {
+            fail(error, QStringLiteral("another publish of this roadmap held its lock for "
+                                       "%1 s; the roadmap file was not rewritten; re-run the render")
+                            .arg(kPublishLockTimeoutMs / 1000));
+            return std::nullopt;
+        }
+    }
+
     // ANTS-4803 — only the per-ITEM emission differs between dialects.
     const bool passHeadings =
         opts.dialect == QLatin1String("pass-headings");
@@ -824,6 +845,9 @@ std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
     // returns two lines below) hands back the same bytes a real one would.
     if (contentOut)
         *contentOut = contentOf;
+
+    if (!opts.dryRun && testing::beforePublishWrite)
+        testing::beforePublishWrite();
 
     // ANTS-5016 — a file whose rendered bytes are already on disk is not
     // rewritten. Every owned file used to be rewritten on every write, which

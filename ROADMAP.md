@@ -93981,7 +93981,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6483] **roadmapwrite.cpp: The publish re-reads the store after the commit, outside any lock.**
+- ✅ [ANTS-6483] **roadmapwrite.cpp: The publish re-reads the store after the commit, outside any lock.**
   `roadmapwrite.cpp:860-872` — The publish re-reads the store after the
   commit, outside any lock. Nothing serialises the file write.
   Quote: `if (!store.commit(error)) … opts.dryRun = false; const auto
@@ -93998,6 +93998,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   RoadmapRender::render between its store read and its file write, so a
   red test needs a seam there. Undecided: refuse or go ahead on lock
   timeout (the store is already committed).
+  Shipped 2026-11-16: RoadmapRender::render holds a per-project
+  ConfigWriteLock (store folder, roadmap-publish-<id>.lock) from first
+  store read to last write on a real render; on a 10 s timeout it
+  refuses and RoadmapWrite reports PublishFailed with "re-run the
+  render". Test: RoadmapRender.Ants6483ConcurrentPublishKeepsLatest via
+  testing::beforePublishWrite, red 3/3 first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).

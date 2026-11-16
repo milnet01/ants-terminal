@@ -68,3 +68,10 @@ When a stored table row's cell count differs from its header, the render
 refuses with an error naming the section slug, the row number counted from
 1, the row's first cell and both counts. *Test:*
 `RoadmapRender.Ants5386RaggedRowIsLocated`.
+
+## ANTS-6483 — two publishes do not interleave
+
+A real render holds a per-project lock, kept in the store's folder, from its
+first store read to its last file write. A render that starts while another
+holds it waits, then publishes the store as it is then. *Test:*
+`RoadmapRender.Ants6483ConcurrentPublishKeepsLatest`, red without the lock.

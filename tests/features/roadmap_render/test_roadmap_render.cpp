@@ -23,6 +23,10 @@
 #include <QTemporaryDir>
 #include <QUuid>
 
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 namespace {
 
 // A store plus the project root its render writes into. Held together because
@@ -884,4 +888,67 @@ TEST(RoadmapRender, Ants5016UnchangedFilesAreNotRewritten) {
     EXPECT_EQ(second->filesUnchanged.size(), 1);
     EXPECT_EQ(QFileInfo(f->liveAbs()).lastModified(), before)
         << "an unchanged file keeps its modification time";
+}
+
+// ANTS-6483 — two real renders of one project do not interleave. Render A pauses
+// after its store reads; meanwhile a second connection adds a section and runs
+// render B. Without a publish lock B finishes first and A then writes its older
+// picture over it, so the file lacks the new section. With the lock, B waits for
+// A, then publishes the latest store.
+namespace {
+std::atomic<bool> g_raceFired{false};
+std::atomic<bool> g_raceDone{false};
+QString g_raceStorePath;
+QString g_raceRoot;
+qint64 g_raceProject = 0;
+std::thread g_raceThread;
+QString g_raceError;
+
+void raceSecondPublisher() {
+    RoadmapRender::testing::beforePublishWrite = nullptr;   // one-shot
+    g_raceFired = true;
+    g_raceThread = std::thread([] {
+        RoadmapStore second(g_raceStorePath);
+        QString err;
+        if (second.open(&err)
+            && second.addSection(g_raceProject, QStringLiteral("late"), QStringLiteral("Late"),
+                                 2, 5, std::nullopt, &err)) {
+            RoadmapRender::Options o;
+            o.liveRoadmapPath = QStringLiteral("ROADMAP.md");
+            if (!RoadmapRender::render(second, g_raceProject, g_raceRoot, o, &err))
+                g_raceError = QStringLiteral("render B: ") + err;
+        } else {
+            g_raceError = QStringLiteral("setup B: ") + err;
+        }
+        g_raceDone = true;
+    });
+    // Give B time to finish when nothing holds it back.
+    for (int i = 0; i < 40 && !g_raceDone; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+}
+}  // namespace
+
+TEST(RoadmapRender, Ants6483ConcurrentPublishKeepsLatest) {
+    auto f = makeFixture();
+    ASSERT_TRUE(f);
+    QString err;
+    ASSERT_TRUE(f->store->addSection(f->projectId, QStringLiteral("early"), QStringLiteral("Early"),
+                                     2, 1, std::nullopt, &err));
+    g_raceStorePath = f->store->path();
+    g_raceRoot = f->root();
+    g_raceProject = f->projectId;
+    RoadmapRender::testing::beforePublishWrite = &raceSecondPublisher;
+
+    const auto a = RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err);
+    RoadmapRender::testing::beforePublishWrite = nullptr;
+    if (g_raceThread.joinable())
+        g_raceThread.join();
+    ASSERT_TRUE(g_raceFired) << "the seam never ran";
+    ASSERT_TRUE(a) << err.toStdString();
+    ASSERT_TRUE(g_raceError.isEmpty()) << g_raceError.toStdString();
+
+    const QString text = readAll(f->liveAbs());
+    EXPECT_TRUE(text.contains(QStringLiteral("## Early")));
+    EXPECT_TRUE(text.contains(QStringLiteral("## Late")))
+        << "an older render's write landed after a newer one";
 }

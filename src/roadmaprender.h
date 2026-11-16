@@ -297,6 +297,13 @@ QString passBlockText(const RoadmapStore::ItemWrite &it);
 // it: comparing a dry render's text against the file that exists is the only
 // way to see a hand-edit before the next publish destroys it, and a second
 // renderer written to answer that would be a copy of this one.
+//
+// ANTS-6483 — a real render holds a per-project publish lock from its first
+// store read to its last file write, so two publishes cannot interleave and
+// leave the older picture on disk. The lock file sits in the store's folder,
+// never in the project. On timeout the render refuses (nullopt), and the
+// caller's "re-run the render" path applies. A dry render takes no lock.
+inline constexpr int kPublishLockTimeoutMs = 10000;
 std::optional<Outcome> render(RoadmapStore &store, qint64 projectId,
                               const QString &projectRoot, const Options &opts,
                               QString *error = nullptr,
@@ -323,5 +330,11 @@ void writePublishStamp(const QString &liveRoadmapPath, const QByteArray &fileByt
 
 // nullopt when there is no stamp or it cannot be parsed.
 std::optional<PublishStamp> readPublishStamp(const QString &liveRoadmapPath);
+
+namespace testing {
+// Called by a real render after its store reads and before its file writes;
+// null in production.
+extern void (*beforePublishWrite)();
+}  // namespace testing
 
 } // namespace RoadmapRender

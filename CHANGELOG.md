@@ -450,6 +450,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Two roadmap writes at once now publish in turn, so ROADMAP.md always ends up showing the latest change** (ANTS-6483)
+
 - **A theme change now recolours everything, including the screen behind a full-screen app such as Claude Code, the scrollback and saved text styles** (ANTS-6788)
 
 - **Saving the Claude allowlist keeps every other permission setting, such as the default mode and extra directories** (ANTS-6484)
