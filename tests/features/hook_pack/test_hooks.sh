@@ -1030,6 +1030,34 @@ for case in "install:{not json" "uninstall:{not json" "install:"; do
 done
 rm -rf "$bad_tmp"
 
+# ---------- ANTS-6518: drift-check.log is capped ----------
+if command -v flock >/dev/null 2>&1; then
+    dl_home="$(mktemp -d -t ants-driftlog.XXXXXX)"
+    mkdir -p "$dl_home/bin" "$dl_home/proj" "$dl_home/.cache/ants-terminal"
+    touch "$dl_home/proj/.ants-project"
+    printf '#!/bin/sh\necho helper-broke >&2\nexit 5\n' >"$dl_home/bin/ants-helper"
+    chmod +x "$dl_home/bin/ants-helper"
+    dl_log="$dl_home/.cache/ants-terminal/drift-check.log"
+    head -c 400000 /dev/zero | tr '\0' 'x' | fold -w 99 >"$dl_log"
+    ( cd "$dl_home/proj" && HOME="$dl_home" PATH="$dl_home/bin:$PATH" \
+        bash "$HOOKS_DIR/ants-drift-check.sh" </dev/null >/dev/null 2>&1 )
+    for _ in $(seq 1 50); do   # the check runs in the background
+        grep -q 'rc=5' "$dl_log" 2>/dev/null && break
+        sleep 0.1
+    done
+    dl_size="$(wc -c <"$dl_log")"
+    if ! grep -q 'rc=5' "$dl_log"; then
+        fail "ANTS-6518 the drift check never logged its failure"
+    elif [ "$dl_size" -le 270000 ]; then
+        pass "ANTS-6518 drift-check.log is cut to its cap ($dl_size bytes)"
+    else
+        fail "ANTS-6518 drift-check.log grew to $dl_size bytes past its cap"
+    fi
+    rm -rf "$dl_home"
+else
+    skip "ANTS-6518 flock not installed"
+fi
+
 if [ "$failures" -gt 0 ]; then
     printf '\n%d assertion(s) failed.\n' "$failures" >&2
     exit "$failures"

@@ -164,6 +164,14 @@ unset, and nothing with the file absent, in a directory with no
 `.ants-project`. `install-hooks.sh` registers it, and uninstall removes it. Its
 source names neither `ants-mcpd` nor `sqlite3`.
 
+## ANTS-6518 — drift-check.log is capped
+
+Before each check, `ants-drift-check.sh` runs `ants_cap_log` on
+`~/.cache/ants-terminal/drift-check.log`: past 256 KiB, the log keeps its
+last 128 KiB from the first whole line. The test seeds a 400 KB log, runs
+the hook with a stub `ants-helper` that fails, and asserts the failure is
+logged and the file is back near the cap.
+
 ## ANTS-5553 — unread session_message mail is announced
 
 `ants-inbox-notice.sh` runs on SessionStart and UserPromptSubmit. A stub

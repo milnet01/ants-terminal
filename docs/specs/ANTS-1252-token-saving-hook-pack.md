@@ -141,7 +141,8 @@ not a separate `tools/audit/drift-check.sh` script, which would
 duplicate the helper. Exit 3 from `ants-helper` means drift detected
 → write the marker; exit 0 means clean → clear the marker; any
 other non-zero is logged to `~/.cache/ants-terminal/drift-check.log`
-so backgrounded errors are recoverable (cold-eyes L8). Uses
+so backgrounded errors are recoverable (cold-eyes L8). The log is cut
+to its last 128 KiB once it passes 256 KiB (ANTS-6518). Uses
 `flock` on a PID-file to prevent overlapping runs (M5: zombie
 processes from `&` backgrounding). Exits 0 always (INV-1).
 

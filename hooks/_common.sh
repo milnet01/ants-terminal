@@ -220,6 +220,21 @@ ants_is_source_read() {
 
 # ANTS-2141-INV-8 — best-effort tally append + cap (≤500 lines, kept-last-250).
 # Never fails the caller. <warned> is the literal "true"/"false". See §2.4.
+# ANTS-6518 — keep a hook's log at or under $2 bytes: past it, keep the last
+# half, from the first whole line. Fails open.
+ants_cap_log() {
+    local f="$1" max="$2" n
+    [ -f "$f" ] || return 0
+    n="$(wc -c <"$f" 2>/dev/null)" || return 0
+    [ "${n:-0}" -gt "$max" ] 2>/dev/null || return 0
+    if tail -c "$((max / 2))" "$f" 2>/dev/null | tail -n +2 >"$f.tmp" 2>/dev/null; then
+        mv -f "$f.tmp" "$f" 2>/dev/null || rm -f "$f.tmp" 2>/dev/null
+    else
+        rm -f "$f.tmp" 2>/dev/null
+    fi
+    return 0
+}
+
 ants_grep_nudge_record() {
     local tool="$1" warned="$2"
     local dir; dir="$(ants_grep_nudge_dir)"

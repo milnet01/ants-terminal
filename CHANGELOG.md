@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The drift-check hook keeps its log under 256 KiB** (ANTS-6518)
+
 - **The git-context hook removes the state files of sessions idle for over a week** (ANTS-6516)
 
 - **Review Changes shows at most 50 new files and about 1 MiB of their content, then says how many more there are** (ANTS-6514)

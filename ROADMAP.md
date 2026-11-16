@@ -94810,7 +94810,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 23-model-switching (Low).
   Lanes: model-switching.
 
-- 📋 [ANTS-6518] **ants-drift-check.sh: `drift-check.log` is appended on every Stop event (every turn) that has helper stderr or an error rc.**
+- ✅ [ANTS-6518] **ants-drift-check.sh: `drift-check.log` is appended on every Stop event (every turn) that has helper stderr or an error rc.**
   `hooks/ants-drift-check.sh:52,59,63,65-66` — `drift-check.log` is
   appended on every Stop event (every turn) that has helper stderr or an
   error rc. It is never capped or rotated.
@@ -94818,6 +94818,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): Before appending,
   cap it the way `ants_grep_nudge_record` does (keep the last N lines).
   Ledger row 273, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: new _common.sh helper ants_cap_log;
+  ants-drift-check.sh calls it under its flock before each check (256
+  KiB cap, keeps the last 128 KiB from a whole line). hook_pack test;
+  ANTS-1252 § 1.4 sentence.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 24-shell-surface (Medium).

@@ -47,6 +47,7 @@ esac
     # bail without contention. Lock-fd 9 is the canonical bash idiom.
     exec 9>"$lockfile"
     if ! flock -n 9; then exit 0; fi
+    ants_cap_log "$logfile" 262144   # ANTS-6518 — 256 KiB
 
     # ants-helper writes a JSON object to stdout, exit code 3 = drift.
     if out="$(ants-helper drift-check --repo-root "$project_root" 2>>"$logfile")"; then
