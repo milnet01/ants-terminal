@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6789 -->
+<!-- ants-roadmap-id-high-water: ANTS=6790 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -7344,7 +7344,6 @@ for the rotation contract.
   assistant doesn't waste tokens trying.
   Kind: refactor.
   Source: cross-session-report-2026-05-15.
-  **Layman:** Claude sessions editing global Claude config under
 
 - ✅ [ANTS-1389] **MCP `caller_cwd` schema discoverability gap on ANTS-1372-gated verbs.**
   Shipped 2026-05-15. Added `caller_cwd`
@@ -7825,7 +7824,6 @@ for the rotation contract.
   Source: cross-session-report-2026-05-15 (other CC
   instance — ~50 K tokens × 30 closes/month/project
   ≈ ~1.5 M tokens/month/project on clean closes).
-  **Layman:** /close-phase used to dispatch /audit twice on
   Source: cross-session-report-2026-05-15 (~50 K tokens × 30.
 
 - ✅ [ANTS-1407] **Tasks chip / Task List dialog drift from CC session's inline view.**
@@ -10003,7 +10001,6 @@ for the rotation contract.
   Kind: fix.
   Lanes: mcp-workspace-search, remotecontrol, perf.
   Source: cross-session-report-2026-05-18 (Vestige Issue #8).
-  **Layman:** When the workspace search tool runs on a medium-
 
 - ✅ [ANTS-1566] **`session_memory` refusal envelope — include `caller_cwd: "<your $PWD>"` example in error body.**
   Shipped 2026-05-18 (MCP discoverability fold-in pull 10). The
@@ -10316,7 +10313,6 @@ for the rotation contract.
   Kind: fix.
   Lanes: mcp-verify-changes, remotecontrol, tests.
   Source: cross-session-report-2026-05-17 (Vestige /test-audit Issue #1).
-  **Layman:** The build-verification tool's timeout has two
 
 - ✅ [ANTS-1580] **Test-audit resume-an-audit pattern — document follow-up session entry path + partition_token discovery via `session_memory`.**
   Shipped 2026-05-19 (Pull 32). v1 (a) only — the recipe doc. Verified that `partition_token` is an in-process LRU handle held by `g_partitionCache` (no `/tmp/<token>/` durable state, no auto-save to `session_memory`), so the realistic recipe is "client-side save via `session_memory(op:set, key:test_audit_partition_token:<scope_id>, value:{token, scope, dimensions, saved_at_ms})` right after partition; resume with a matching `op:get` and fall back to re-running partition if `test_audit_brief` refuses with `partition_token not found`." Full recipe at `docs/standards/test-audit-resume.md` (now indexed in `docs/standards/README.md` and `CLAUDE.md`'s standards block). The `test_audit_partition` MCP description (`claudeintegration.cpp`) now ends with an inline pointer to the recipe doc so a fresh Claude session reading `tools/list` sees the resume contract. v2 follow-up (`test_audit_resume({partition_token | latest:true})`) deferred — partition cost is small (≤ 5 s on a 1 K-file suite) and durable disk storage would need eviction + GC; client-side recipe is enough for now.
@@ -13001,7 +12997,6 @@ for the rotation contract.
   Kind: fix.
   Source: in-session-2026-05-29.
   Resolved 2026-06-01: fixed priority in cmdChangelogLog — rxBoldLayman(match->body) tried first (greedy, captures full sentence with period); match->layman (period-stripped per INV-4) used as fallback. parseBullets unchanged. Both Inv7AddFromRoadmap and RoadmapDialogCards.Main pass.
-  **Layman:** The shortcut that copies a roadmap item into the changelog is currently leaving out the plain-English summary line — so changelog entries created that way are missing their friendly description
 
 - ✅ [ANTS-1934] **`model_switch_stats` should split upgrades/downgrades by trigger (auto vs manual) — current totals can't answer "is the AUTO-switcher upgrading?".**
   User's core observation 2026-05-29: "we have never seen the reverse from Haiku→Sonnet/Opus or Sonnet→Opus" — the auto-switcher only ever downgrades. But `model_switch_stats` reports `upgrades:7` (project) / `10` (global), which seems to contradict it.
@@ -13017,7 +13012,6 @@ for the rotation contract.
   Kind: enhancement.
   Source: user-report-2026-05-29.
   Resolved 2026-06-01: by_trigger:{auto,manual:{upgrades,downgrades}} added to statsEnvelope(). Note corrected: manual switches are not logged today so manual bucket is structurally 0; the split makes that guarantee explicit on the wire. New test ModelSwitchStatsV2_ANTS1934.ByTriggerSplit covers the 4-record mixed-trigger scenario.
-  **Layman:** The model-switch report mixes together the switches YOU make by hand and the ones the app makes automatically
 
 - ✅ [ANTS-1556] **`--preset=fast` is functionally identical to `--preset=default` — give it a real differentiator.**
   User reported the build time hasn't changed after the pull-7
@@ -13630,7 +13624,6 @@ for the rotation contract.
   Kind: enhancement.
   Source: in-session-2026-05-29.
   Shipped 2026-06-02: synonym normalization lambda in remotecontrol.cpp; error message updated to list synonyms.
-  **Layman:** When marking a roadmap item finished, the tool only accepts the word "shipped", not the more obvious "done" — so the first try fails and has to be redone
 
 - ✅ [ANTS-1946] **Near-miss telemetry: stop recording `target_equals_current` as a near-miss (it corrupts `dominant_blocker`).**
   Root cause found while investigating ANTS-1945. A near-miss should mean
@@ -14974,7 +14967,6 @@ for the rotation contract.
   Lanes: ci, workflow, github-actions.
   Source: in-session-2026-05-26.
   Resolved (2026-06-17): not a CI bug — expected GitHub push→run semantics. Forensics: after 94d2243 ran (2026-05-26 10:35 UTC), the next ci.yml run was e0fcf30 (12:49 UTC). The 13 commits in between (94d2243..e0fcf30: the ANTS-1882/1880/1877/1883 feat commits, their docs flips, AND the synthetic probes 4e350d8 empty-commit / 6f39928 .cipoke / 6ddac5c) were all pushed as ONE batch. GitHub creates exactly one workflow run per push event, keyed to the TIP commit — never one-per-commit — so only e0fcf30 got a run, building a tree containing all 13 commits' changes. Proof: `git merge-base --is-ancestor 6ddac5c e0fcf30` = YES, and `gh run list` shows no gap SHA ever headed a run. So the intervening commits' code WAS exercised by CI (under e0fcf30's run); they just never received an individual green check. Ruled out: paths-ignore (src/ changed), the efc99d2 v5→v6 action bump (e0fcf30 ran fine on the new actions), and an Actions outage (continuous green runs all day 2026-05-26). Already self-correcting: the current cadence (push after each logical commit per the user's push-regularly preference) makes every pushed tip its own logical commit, so each gets its own check — recent run history confirms one run per push. No code change; preventive note: to gate an individual commit, make it the push tip (push standalone, not batched).
-  **Layman:** Several feature commits this session shipped locally
 
 - ✅ [ANTS-1964] **SessionStart surfacing of pending feedback-addenda counts (ANTS-1961 follow-on "b").**
   Deferred from the ANTS-1961 feedback_query spec (§5). Run FeedbackFile::parse over each *_Ants_MCP_Feedback.md at the shared root and surface a per-file pending-addenda count (delta_present + delta_line_count) in the SessionStart hook context, so the Ants maintainer session knows at a glance which feedback files have un-triaged input without calling feedback_query per file. Depends on ANTS-1961 (the parser + verb). Source: in-session-2026-06-03.
@@ -94189,11 +94181,22 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: in-session-2026-11-08.
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6778] **roadmap_migrate loses text on an item whose body repeats a field line.**
+- ✅ [ANTS-6778] **roadmap_migrate loses text on an item whose body repeats a field line.**
   Seen in ANTS-6712's dry run of 2026-11-08, which updated 2,556 items:
   ANTS-1565's layman was cut to its last **Layman:** fragment, and
   ANTS-4344's trailing field lines were dropped. Reproduce on a scratch
   store copy before changing anything.
+  Shipped 2026-11-16 as a data repair; no code change. Reproduced on a
+  .backup copy: a full migrate cut six laymans (1390, 1884, 1931-1934)
+  to a fragment, and 1406, 1565, 1579 already held one. Each body ended
+  with a stray **Layman:** line, an earlier one's first line or first
+  sentence, written by a render from before ANTS-4505's presence rule;
+  the parser's last-declaration rule took it. Today's render writes no
+  such line. amend_batch removed the nine stray lines, and the body
+  write re-parsed each column to the full text. On a fresh copy a full
+  migrate now changes 0 laymans (was 6). ANTS-4344's "dropped" trailer
+  lines come back from the columns in canonical order: no loss. Found
+  on the way: ANTS-6790.
   **Layman:** Re-importing the roadmap no longer cuts words from items that mention a field like Layman twice.
   Kind: fix.
   Source: split from ANTS-6712, 2026-11-15.
@@ -94237,6 +94240,22 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: doc-fix.
   Source: check-doc 2026-11-15 (ANTS-6471 amendment).
   Lanes: mcp-infra.
+
+- 📋 [ANTS-6790] **roadmap_migrate keeps one section per title when a section's stored slug no longer matches its title.**
+  Seen 2026-11-16 migrating a .backup copy of the live store: the
+  rendered file gains a second "### Colony — multi-session
+  orchestration" heading and intro, with no items, before
+  "Methodology". The store's section_id 750 has the current title but
+  the slug of an older one
+  (multi-session-orchestration-one-orchestrator-n-workers-...) and
+  parent_id NULL at level 3. Migrate slugs the title, finds no match,
+  inserts a new section (parent 721) and moves the items there; row 750
+  stays and renders empty. Reproduce on a scratch copy; decide whether
+  migrate matches by title as well as slug, or retitle_section re-slugs.
+  **Layman:** Re-importing the roadmap no longer adds an empty copy of a renamed section.
+  Kind: fix.
+  Source: in-session-2026-11-16 (ANTS-6778 scratch-store migrate).
+  Lanes: roadmap-store.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 
@@ -99139,7 +99158,6 @@ partition (11 lanes) is documented in this fold-in for reuse.
   **Layman:** Ants can't see what you're typing into Claude Code's text box until you press Enter, which blocks recognising a queued /model command. We shipped button-based workarounds; the typed-command versions need Claude Code to expose its input state.
   Kind: research.
   Source: in-session-2026-05-29.
-  **Layman:** Ants can't see what you're typing into Claude Code's text box until you hit Enter
 
 - 🚫 [ANTS-1945] **Auto-switcher `ticks_target_stable_insufficient` — dominant near-miss blocker investigation and tuning.**
   model_switch_stats (2026-06-02) shows 107 of 186 near-miss events (57%)

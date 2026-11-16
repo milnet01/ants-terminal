@@ -452,6 +452,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Nine roadmap items show their whole plain-English summary again, and re-importing the roadmap keeps it whole** (ANTS-6778)
+
 - **The Claude allowlist dialog says why its lists are empty when settings.json is there but cannot be opened, as it already did for a file it cannot parse** (ANTS-6490)
 
 - **An auto-profile rule shows its profile's theme without saving it, so the theme you chose stays your saved theme** (ANTS-6489)
