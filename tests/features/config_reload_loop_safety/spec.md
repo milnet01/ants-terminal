@@ -114,7 +114,9 @@ side-effect (mtime), since the helper is private.
 theme against `m_currentTheme` and skip the `applyTheme(...)` call
 when the value is unchanged. Defense-in-depth and a small efficiency
 win on trivial reloads (e.g. window-geometry tick re-saving the same
-file).
+file). It also skips when the reloaded theme is the one saved before
+the reload, so an auto-profile's unsaved theme stays on screen
+(ANTS-6489).
 
 The expected source pattern: a `if (newTheme != m_currentTheme)
 applyTheme(newTheme);` (or equivalent) line inside

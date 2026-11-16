@@ -133,7 +133,10 @@ private:
     void setupDonateMenu();
     // ANTS-5558 — opens the welcome dialog, or raises the open one.
     void showWelcome();
-    void applyTheme(const QString &name);
+    // ANTS-6489 — Unsaved shows a theme without writing it to config.json:
+    // an auto-profile rule's theme, which must not replace the user's.
+    enum class ThemeSave : quint8 { Saved, Unsaved };
+    void applyTheme(const QString &name, ThemeSave save = ThemeSave::Saved);
     void centerWindow();
     // ANTS-6742 — size the window so the current terminal shows cols ×
     // rows; the window's other parts keep their size. Not in quake mode.

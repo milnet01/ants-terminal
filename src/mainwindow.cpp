@@ -1284,7 +1284,7 @@ void MainWindow::refreshBroadcastChip() {
     m_broadcastChip->setVisible(m_broadcastMode);
 }
 
-void MainWindow::applyTheme(const QString &name) {
+void MainWindow::applyTheme(const QString &name, ThemeSave save) {
     // ANTS-1138 — early-return when the requested theme matches
     // the current one. Pre-fix code always rewrote the entire
     // QSS even on no-op, which made the auto-profile-rules path
@@ -1292,8 +1292,12 @@ void MainWindow::applyTheme(const QString &name) {
     // → setTheme → onConfigFileChanged → applyTheme) re-entrant
     // by accident. Idempotent setTheme + this guard close the
     // loop without depending on m_inConfigReload latency.
-    if (name == m_currentTheme && !m_currentTheme.isEmpty())
+    // ANTS-6489 — the theme may be showing unsaved (an auto-profile's), so
+    // choosing it from the menu still saves it.
+    if (name == m_currentTheme && !m_currentTheme.isEmpty()) {
+        if (save == ThemeSave::Saved) m_config.setTheme(name);
         return;
+    }
 
     // ANTS-2097 — never run the app-wide restyle while a popup menu's
     // nested event loop is live. `qApp->setStyleSheet()` walks Qt's
@@ -1314,12 +1318,12 @@ void MainWindow::applyTheme(const QString &name) {
     // Startup / programmatic callers (no active popup) stay synchronous.
     if (QApplication::activePopupWidget()) {
         const QString deferred = name;
-        QTimer::singleShot(0, this, [this, deferred]() { applyTheme(deferred); });
+        QTimer::singleShot(0, this, [this, deferred, save]() { applyTheme(deferred, save); });
         return;
     }
 
     m_currentTheme = name;
-    m_config.setTheme(name);
+    if (save == ThemeSave::Saved) m_config.setTheme(name);
     // ANTS-1242 — broadcast the new theme to the DialogChrome
     // helper so any subsequently-opened dialog can theme its
     // custom frameless title bar without the call site needing
@@ -2970,6 +2974,7 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     }
 
     // Reload config from disk
+    const QString savedTheme = m_config.theme();
     m_config = Config();
 
     // ANTS-2085 — re-publish the terse-by-default preference after an
@@ -3010,8 +3015,10 @@ void MainWindow::onConfigFileChanged(const QString &path) {
     // started the inotify loop in the first place. The setter is now
     // idempotent, but skipping the whole applyTheme call is also cheaper
     // when the reload is just a window-geometry tick or similar.
+    // ANTS-6489 — only a changed saved theme is applied, so a hand edit of
+    // another setting keeps an auto-profile's unsaved theme on screen.
     const QString newTheme = m_config.theme();
-    if (newTheme != m_currentTheme) applyTheme(newTheme);
+    if (newTheme != savedTheme && newTheme != m_currentTheme) applyTheme(newTheme);
     applyFontSizeToAll(m_config.fontSize());
 
     QList<TerminalWidget *> terminals = liveTerminals();
@@ -3149,7 +3156,7 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
             // Apply the profile settings
             QJsonObject profile = profiles.value(profileName).toObject();
             if (profile.contains("theme")) {
-                applyTheme(profile.value("theme").toString());
+                applyTheme(profile.value("theme").toString(), ThemeSave::Unsaved);
             }
             if (profile.contains("font_size")) {
                 int size = profile.value("font_size").toInt();

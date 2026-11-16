@@ -94104,12 +94104,21 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 38-dev-shell-tools (High).
   Lanes: dev-shell-tools.
 
-- 📋 [ANTS-6489] **mainwindow.cpp: When an auto-profile rule matches, it calls `applyTheme`, which saves the theme to the config (`m_config.setTheme`, 1316).**
+- ✅ [ANTS-6489] **mainwindow.cpp: When an auto-profile rule matches, it calls `applyTheme`, which saves the theme to the config (`m_config.setTheme`, 1316).**
   `src/mainwindow.cpp:3114-3116` — When an auto-profile rule matches, it
   calls `applyTheme`, which saves the theme to the config
   (`m_config.setTheme`, 1316). A profile switch therefore **permanently
   overwrites the user's saved theme**.
   Ledger row 1307, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16. applyTheme takes ThemeSave (default Saved);
+  checkAutoProfileRules passes Unsaved, matching the profile's font
+  size, opacity and badge, which were never saved. Choosing the showing
+  theme from the menu still saves it (the early return saves too), and
+  the popup deferral carries the flag. onConfigFileChanged applies a
+  reloaded theme only when the saved one changed, so a hand edit of
+  another setting keeps the profile's theme. Test dir
+  auto_profile_theme_unsaved (source scrape; no test builds a
+  MainWindow). Needs a terminal relaunch to reach the user.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-readability 2026-11-06, lane 05-mainwindow-a (Info).

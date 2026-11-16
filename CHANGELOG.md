@@ -452,6 +452,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **An auto-profile rule shows its profile's theme without saving it, so the theme you chose stays your saved theme** (ANTS-6489)
+
 - **A feedback-file write checks the file again just before writing it, so a hand edit made while the write runs is kept and the write refuses with export_drift** (ANTS-6487)
 
 - **Filling in model-switch outcomes rewrites only the records it changed, so another Ants window's changes to that history stay as they are** (ANTS-6485)

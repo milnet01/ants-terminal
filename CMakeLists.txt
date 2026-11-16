@@ -3358,6 +3358,8 @@ if(ANTS_TESTS)
                 tests/features/roadmap_log_refusal_candidates/test_roadmap_log_refusal_candidates.cpp
                 # ANTS-2097 theme switch defers restyle out of popup event loop.
                 tests/features/theme_switch_popup_defer/test_theme_switch_popup_defer.cpp
+                # ANTS-6489 an auto-profile theme is shown, not saved.
+                tests/features/auto_profile_theme_unsaved/test_auto_profile_theme_unsaved.cpp
                 # ANTS-2043 roadmap_log non-blocking near-duplicate advisory.
                 tests/features/roadmap_log_possible_duplicates/test_roadmap_log_possible_duplicates.cpp
                 tests/features/roadmap_item_removal/test_item_removal.cpp
