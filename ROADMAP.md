@@ -94773,7 +94773,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Medium).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6516] **claudesetup.cpp: .**
+- ✅ [ANTS-6516] **claudesetup.cpp: .**
   `claudesetup.cpp:480-488` — . One state file per Claude session, never
   removed. On the `/tmp` fallback it persists across logins, which
   breaks the named-cap rule. fix: prune files older than N days on
@@ -94782,12 +94782,16 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): prune files older
   than N days on write.
   Ledger row 252, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: after writing a session's state file the hook runs
+  find -maxdepth 1 -type f -mtime +7 -delete on its folder.
+  claude_git_context_script test 8; spec Invariant 11. An installed hook
+  updates when Claude setup rewrites it.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 22-app-entry-dialogs (Low).
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6517] **aidialog.cpp: the chat history is kept across re-opens on purpose and has no cap.**
+- ✅ [ANTS-6517] **aidialog.cpp: the chat history is kept across re-opens on purpose and has no cap.**
   `aidialog.cpp:233` — the chat history is kept across re-opens on
   purpose and has no cap. Each reply adds up to 64 K characters. The
   project's spec standard says "no unbounded growth ships without a
@@ -94797,6 +94801,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): cap the number of
   document blocks, or set `QTextDocument::setMaximumBlockCount`.
   Ledger row 264, docs/reviews/close-findings-2026-11-06.md.
+  Already fixed by ANTS-5200 (bd594885, 2026-11-08, after this
+  2026-11-06 review): appendMessage calls trimHistory(document,
+  kMaxHistoryChars); tests/features/ai_chat_history_cap covers it.
+  Nothing new shipped here, so no CHANGELOG entry. Checked 2026-11-16.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 23-model-switching (Low).

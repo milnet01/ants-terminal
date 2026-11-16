@@ -503,6 +503,8 @@ QString gitContextHookScript() {
         "            exit 0\n"
         "        fi\n"
         "        printf '%s\\n' \"$block\" > \"$state\" 2>/dev/null || true\n"
+        "        # ANTS-6516: one file per session; drop those idle a week.\n"
+        "        find \"$state_dir\" -maxdepth 1 -type f -mtime +7 -delete 2>/dev/null || true\n"
         "    fi\n"
         "fi\n"
         "printf '%s\\n' \"$block\"\n");

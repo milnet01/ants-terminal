@@ -264,7 +264,9 @@ names the session. The script keeps the last block it printed for that
 session in `${XDG_RUNTIME_DIR:-/tmp}/ants-git-context/<session_id>`, and
 prints nothing when the new block is identical. Any change to the branch,
 ahead/behind or a count prints the block again. A different session id
-has its own state. With no `session_id` on stdin, the script prints the
+has its own state. Each write deletes state files in that folder last
+modified over seven days ago (ANTS-6516), so ended sessions do not pile
+up. With no `session_id` on stdin, the script prints the
 block every time, as before. Characters other than letters, digits, `-`
 and `_` are dropped from the id before it names a file.
 

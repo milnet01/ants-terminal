@@ -16,6 +16,8 @@
 #      and one closing tag; '<' and '>' print as '_' (ANTS-5109).
 #   7. Same session_id on stdin → an unchanged block prints once
 #      (ANTS-5692).
+#   8. Writing a state file removes those untouched for over 7 days
+#      (ANTS-6516).
 
 set -eu
 
@@ -220,10 +222,22 @@ for _ in 1 2; do
 done
 rm -f "$tmp/clean/untracked7"
 
+# --- Test 8: old session state is pruned on write (ANTS-6516) -------------
+sd="$tmp/run/ants-git-context"
+echo old > "$sd/sess-stale"; touch -d '10 days ago' "$sd/sess-stale"
+echo new > "$sd/sess-fresh"
+run7 '{"session_id":"sess-8","hook_event_name":"UserPromptSubmit","prompt":"hi"}' >/dev/null
+if [[ -e "$sd/sess-stale" ]]; then
+    report_fail "prune: a session state file untouched for 10 days survived a write"
+fi
+if [[ ! -e "$sd/sess-fresh" || ! -e "$sd/sess-8" ]]; then
+    report_fail "prune: a fresh state file was removed"
+fi
+
 if (( fail > 0 )); then
     echo
     echo "$fail behavioral invariant(s) failed — see spec.md"
     exit 1
 fi
 
-echo "OK: claude-git-context.sh — 7 behavioral invariants"
+echo "OK: claude-git-context.sh — 8 behavioral invariants"

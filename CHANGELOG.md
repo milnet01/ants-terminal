@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The git-context hook removes the state files of sessions idle for over a week** (ANTS-6516)
+
 - **Review Changes shows at most 50 new files and about 1 MiB of their content, then says how many more there are** (ANTS-6514)
 
 - **Review Changes reads git's diff as it arrives and keeps only the first 1 MiB, so a huge diff no longer fills memory** (ANTS-6515)
