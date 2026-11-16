@@ -78,6 +78,12 @@ yet, saveSettings creates it. That first-run file must also land at
 common path for this code (every user's first allowlist edit), so
 it has to be the default-safe case, not a retrofit.
 
+### Invariant 5 — a save keeps the other permission keys
+
+A save rewrites only `allow`, `deny` and `ask` inside `permissions`.
+Its other keys, such as `defaultMode` and `additionalDirectories`, and
+the file's other top-level keys, are written back unchanged (ANTS-6484).
+
 ## How this test anchors to reality
 
 The test:

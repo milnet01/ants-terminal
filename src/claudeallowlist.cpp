@@ -330,22 +330,20 @@ bool ClaudeAllowlistDialog::saveSettings() {
         // object, save proceeds and writes the file for the first time.
     }
 
-    // Build permissions object (skip empty arrays to keep file clean)
-    auto listToArray = [](QListWidget *list) {
+    // Rewrite only the three rule lists; other "permissions" keys
+    // (defaultMode, additionalDirectories, ...) stay. An empty list is
+    // removed to keep the file clean.
+    QJsonObject perms = root.value("permissions").toObject();
+    auto putList = [&perms](const char *key, QListWidget *list) {
         QJsonArray arr;
         for (int i = 0; i < list->count(); ++i)
             arr.append(list->item(i)->text());
-        return arr;
+        if (arr.isEmpty()) perms.remove(QLatin1String(key));
+        else perms[QLatin1String(key)] = arr;
     };
-
-    QJsonObject perms;
-    QJsonArray allow = listToArray(m_allowList);
-    QJsonArray deny = listToArray(m_denyList);
-    QJsonArray ask = listToArray(m_askList);
-
-    if (!allow.isEmpty()) perms["allow"] = allow;
-    if (!deny.isEmpty()) perms["deny"] = deny;
-    if (!ask.isEmpty()) perms["ask"] = ask;
+    putList("allow", m_allowList);
+    putList("deny", m_denyList);
+    putList("ask", m_askList);
     root["permissions"] = perms;
 
     // Atomic write with 0600 permissions.

@@ -9,6 +9,7 @@
 //               fake without mocking QSaveFile internals).
 // Invariant 4 — first-run creation lands 0600 even with a permissive
 //               umask (0022).
+// Invariant 5 — a save keeps the other keys inside "permissions".
 //
 // Links against src/claudeallowlist.cpp. Runs under
 // QT_QPA_PLATFORM=offscreen because ClaudeAllowlistDialog is a QDialog.
@@ -23,6 +24,9 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStandardPaths>
 #include <QString>
 #include <QUuid>
@@ -93,6 +97,46 @@ void checkPermsAfterSave() {
     QDir().rmdir(dir);
 }
 
+// Invariant 5 (ANTS-6484): a save rewrites only the three rule lists
+// inside "permissions"; its other keys and the file's other keys stay.
+void checkOtherPermissionKeysKept() {
+    const QString dir =
+        QStandardPaths::writableLocation(QStandardPaths::TempLocation)
+        + QStringLiteral("/ants-allowlist-keys-")
+        + QUuid::createUuid().toString(QUuid::Id128);
+    QDir().mkpath(dir);
+    const QString path = dir + QStringLiteral("/settings.local.json");
+    {
+        QFile seed(path);
+        expect(seed.open(QIODevice::WriteOnly), "I5/seed-open", path);
+        seed.write(R"j({"model":"opus","permissions":{"allow":["Bash(ls)"],)j"
+                   R"j("defaultMode":"acceptEdits",)j"
+                   R"j("additionalDirectories":["/srv/data"]}})j");
+    }
+
+    ClaudeAllowlistDialog dlg;
+    dlg.setSettingsPath(path);
+    expect(dlg.saveSettings(), "I5/save-returns-true", path);
+
+    QFile back(path);
+    expect(back.open(QIODevice::ReadOnly), "I5/readback-open", path);
+    const QJsonObject root = QJsonDocument::fromJson(back.readAll()).object();
+    const QJsonObject perms = root.value("permissions").toObject();
+    expect(perms.value("defaultMode").toString() == "acceptEdits",
+           "I5/defaultMode-kept");
+    expect(perms.value("additionalDirectories").toArray()
+               == QJsonArray{QStringLiteral("/srv/data")},
+           "I5/additionalDirectories-kept");
+    expect(perms.value("allow").toArray()
+               == QJsonArray{QStringLiteral("Bash(ls)")},
+           "I5/allow-rewritten");
+    expect(root.value("model").toString() == "opus", "I5/top-level-key-kept");
+
+    back.close();
+    QFile::remove(path);
+    QDir().rmdir(dir);
+}
+
 // Invariant 2: both perm-setting call sites remain in the source. A
 // refactor that drops either one silently exposes the file to the
 // race the spec describes.
@@ -144,6 +188,7 @@ TEST(AllowlistPermsPostcommit, Main) {
 expect_reset();
 
     checkPermsAfterSave();
+    checkOtherPermissionKeysKept();
     checkSourceBindings();
 
     ASSERT_EQ(0, expect_finish());

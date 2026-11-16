@@ -93992,7 +93992,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 28-roadmap-parse-render (Medium).
   Lanes: roadmap-parse-render.
 
-- 📋 [ANTS-6484] **claudeallowlist.cpp: Saving deletes other permission settings.**
+- ✅ [ANTS-6484] **claudeallowlist.cpp: Saving deletes other permission settings.**
   `claudeallowlist.cpp:327-335` — Saving deletes other permission
   settings.
   Quote: `QJsonObject perms; … root["permissions"] = perms;`
@@ -94000,6 +94000,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `root.value("permissions").toObject()` and overwrite or remove only
   the three arrays.
   Ledger row 345, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: saveSettings starts from the file's own
+  permissions object and rewrites only allow/deny/ask. Test:
+  AllowlistPermsPostcommit I5, red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 30-claude-session-widgets (High).
