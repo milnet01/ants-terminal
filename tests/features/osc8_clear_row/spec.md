@@ -47,6 +47,11 @@ opened at the last row, column 0, with the text `abcde`, then CSI T; then
 `xyz` and the close. The last row's span starts at column 5, where `xyz`
 begins, not on the blank columns before it.
 
+**INV-13 — a link closed after a cursor move keeps one span per row.** A link
+opened, followed by `CSI 10 C` with no text printed, then closed, 200 times at
+the same position, leaves exactly one span on its row. The same with `CSI B`
+leaves one span on each of the two rows.
+
 ## Rationale
 
 `TerminalGrid::clearRow` reset cells and combining characters but left the
@@ -69,3 +74,5 @@ without bound.
 - **ANTS-5218 (INV-9 to INV-12):** `scrollDown`, `insertLines` and
   `deleteLines` moved rows under an open link without moving its start row,
   so the link's span landed on the row its text had left.
+- **ANTS-6491 (INV-13):** a link closed after a cursor move pushed its spans
+  with no printed text to drop them, so each repeat added another.

@@ -2361,14 +2361,19 @@ void TerminalGrid::pushHyperlinkSpansForActive() {
         s.id = m_hyperlinkId;
         // ANTS-5076 — a link closed with no text covers no column; storing
         // it let repeated empty links grow the row's span list unbounded.
-        if (startRow >= 0 && startRow < m_rows && s.endCol >= s.startCol)
+        if (startRow >= 0 && startRow < m_rows && s.endCol >= s.startCol) {
+            // ANTS-6491 — a link closed after a cursor move printed nothing
+            // that would drop the old spans, so the new one replaces them.
+            dropHyperlinkSpans(startRow, s.startCol, s.endCol + 1);
             m_screenHyperlinks[startRow].push_back(std::move(s));
+        }
     } else {
         // Forward wrap (startRow < endRow) — emit per-row spans so
         // each wrapped row is independently clickable.
         auto pushSpan = [&](int row, int sCol, int eCol) {
             if (row < 0 || row >= m_rows) return;
             if (eCol < sCol) return;
+            dropHyperlinkSpans(row, sCol, eCol + 1);  // ANTS-6491, as above
             HyperlinkSpan s;
             s.startCol = sCol;
             s.endCol = eCol;

@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6793 -->
+<!-- ants-roadmap-id-high-water: ANTS=6794 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -94287,7 +94287,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
 
 ### Memory caps applied too late or missing (2026-11-06 review)
 
-- 📋 [ANTS-6491] **terminalgrid.cpp: A link that is opened, then followed by a cursor move (`CSI 10 C` or `CSI B`) with no text printed, then closed, still pushes spans.**
+- ✅ [ANTS-6491] **terminalgrid.cpp: A link that is opened, then followed by a cursor move (`CSI 10 C` or `CSI B`) with no text printed, then closed, still pushes spans.**
   `terminalgrid.cpp:2296` — A link that is opened, then followed by a
   cursor move (`CSI 10 C` or `CSI B`) with no text printed, then closed,
   still pushes spans. Nothing ever drops them, because only printing and
@@ -94297,6 +94297,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `dropHyperlinkSpans(row, sCol, eCol + 1)` before each push, or cap
   spans per row.
   Ledger row 13, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: pushHyperlinkSpansForActive drops the spans a new span
+  overlaps before pushing it, on both the single-row and wrapped paths.
+  Locked by osc8_clear_row INV-13 (red: 200 spans per row; green: 1).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 02-terminal-grid (Medium).
@@ -113806,6 +113809,16 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: in-session-2026-11-16 (IDE clang-tidy diagnostics).
   Lanes: mainwindow, claude-session-widgets, roadmap-store.
+
+- 📋 [ANTS-6794] **Clear the clang-tidy warnings clangd shows in terminalgrid.cpp.**
+  Seen 2026-11-16 while fixing ANTS-6491: misc-use-anonymous-namespace
+  (makeRow, isAllowedHyperlinkScheme, stripC1Controls),
+  bugprone-switch-missing-default-case (six switches) and one
+  bugprone-branch-clone. Pre-existing; none in the lines 6491 changed.
+  **Layman:** Tidy a set of code-style warnings in the terminal's screen-grid file.
+  Kind: audit-fix.
+  Source: in-session-2026-11-16.
+  Lanes: terminal-grid.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

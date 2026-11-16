@@ -184,3 +184,16 @@ TEST(Osc8ClearRow, StartPushedOffTheBottomRestartsAtCursor) {
     EXPECT_EQ(s->startCol, 5) << "the span covers the blank columns the text left";
     EXPECT_EQ(s->endCol, 7);
 }
+
+// INV-13 — no text is printed, so nothing else ever drops these spans.
+TEST(Osc8ClearRow, LinkClosedAfterCursorMoveDoesNotAccumulate) {
+    Harness h;
+    const std::string open = std::string("\033]8;;") + kMoved + "\x07";
+    for (int i = 0; i < 200; ++i)
+        h.feed(cup(10, 0) + open + "\033[10C" + "\033]8;;\x07");
+    EXPECT_EQ(h.grid.screenHyperlinks(10).size(), 1u) << "after CSI C";
+    for (int i = 0; i < 200; ++i)
+        h.feed(cup(12, 3) + open + "\033[B" + "\033]8;;\x07");
+    EXPECT_EQ(h.grid.screenHyperlinks(12).size(), 1u) << "after CSI B, start row";
+    EXPECT_EQ(h.grid.screenHyperlinks(13).size(), 1u) << "after CSI B, end row";
+}

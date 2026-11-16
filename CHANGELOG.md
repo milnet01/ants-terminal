@@ -458,6 +458,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A link that a program redraws in place with cursor moves keeps a single entry per row instead of adding one each time.** (ANTS-6491)
+
 - **The model-switch and near-miss histories leave a file they cannot read untouched, instead of rewriting it with only the newest entry** (ANTS-6785)
 
 - **Filing several roadmap items at once succeeds while another session files one, taking the next free ids and keeping its cross-references right** (ANTS-6781)
