@@ -667,9 +667,10 @@ Update `src/remotecontrol.cpp` `cmdModelSwitchStats` (L7553):
   `m_nearMissLastSigByProject` and `m_nearMissLastEmitMsByProject`.
   One entry per project seen this process. Per-entry footprint
   ~120 bytes (QString key + small value); 10 active projects =
-  ~1.2 KiB. **Eviction policy:** none required (process-lifetime
-  cache; rebuilt from disk-less state on relaunch). Bounded by the
-  number of distinct `shellCwd()` values a session encounters.
+  ~1.2 KiB. **Eviction policy:** at most
+  `ClaudeStatusBarController::kMaxProjectKeys` folders; past it the one
+  with the oldest emit is dropped from both (ANTS-6521). Process-lifetime;
+  rebuilt from disk-less state on relaunch.
 - **CPU per tick:** `decide()` now evaluates all 7 guards instead of
   short-circuiting. Each guard is a cheap boolean — a single
   comparison or a struct-field read. Worst case adds ~6 boolean

@@ -271,3 +271,51 @@ TEST(ModelAutoSwitchOutcomeFillinController, Ants6485FillWritesBackOnlyWhatItCha
     ASSERT_FALSE(after.isEmpty());
     EXPECT_FALSE(after.first().outcome.pending) << "the fill-in did not land";
 }
+
+// ANTS-6521 — every per-folder map holds at most kMaxProjectKeys folders,
+// dropping the one with the oldest time.
+TEST(ModelAutoSwitchOutcomeFillinController, Ants6521PerFolderMapsAreCapped) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    ants_test::XdgGuard env;
+    env.setEnv("XDG_CACHE_HOME", dir.path().toUtf8());
+    QStatusBar bar;
+    ClaudeStatusBarController controller(&bar, nullptr);
+    const qsizetype cap = ClaudeStatusBarController::kMaxProjectKeys;
+    const int n = int(cap) + 36;
+    const auto proj = [](int i) { return QStringLiteral("/ants6521/p%1").arg(i); };
+
+    QTemporaryFile f;
+    QStringList lines;
+    const QDateTime base = QDateTime::fromString(QStringLiteral("2026-05-26T00:00:00Z"), Qt::ISODate);
+    for (int i = 0; i < n; ++i)
+        lines << recordLine(proj(i), QStringLiteral("opus"), QStringLiteral("haiku"),
+                            base.addSecs(60LL * i).toString(Qt::ISODate), true, false);
+    writeLedger(f, lines);
+    controller.seedOverrideCacheFromLedger(f.fileName());
+    EXPECT_EQ(controller.lastOverrideMsForProject(proj(0)), -1) << "the oldest override was kept";
+    EXPECT_GT(controller.lastOverrideMsForProject(proj(n - 1)), 0) << "the newest override was dropped";
+
+    const QString nearMiss = dir.filePath(QStringLiteral("nearmiss.jsonl"));
+    ModelAutoSwitch::Decision d;
+    d.act             = false;
+    d.blockedBy       = {QStringLiteral("composer_not_empty")};
+    d.currentTier     = ModelRecommender::Tier::Opus;
+    d.recommendedTier = ModelRecommender::Tier::Haiku;
+    const ModelAutoSwitch::Gate g;
+    for (int i = 0; i < n; ++i) {
+        controller.maybeEmitNearMiss(d, g, proj(i), 1000LL * i, nearMiss);
+        controller.conservatismMultiplierFor(proj(i), 1000LL * i, false);
+    }
+    EXPECT_LE(controller.largestProjectMapSizeForTest(), cap);
+
+    // The oldest folder left the near-miss throttle with its signature, so
+    // the same blocked shape is recorded again for it.
+    const auto records = [&] {
+        QFile q(nearMiss);
+        return q.open(QIODevice::ReadOnly) ? q.readAll().count('\n') : -1;
+    };
+    const auto before = records();
+    controller.maybeEmitNearMiss(d, g, proj(0), 1000LL * n, nearMiss);
+    EXPECT_EQ(records(), before + 1);
+}

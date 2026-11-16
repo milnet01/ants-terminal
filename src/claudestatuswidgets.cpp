@@ -61,6 +61,20 @@
 
 namespace {
 
+// ANTS-6521 — drop the keys with the oldest time until `stamps` holds at
+// most `max`; returns them so a paired map can drop them too.
+QStringList dropOldestKeys(QHash<QString, qint64> &stamps, qsizetype max) {
+    QStringList dropped;
+    while (stamps.size() > max) {
+        auto oldest = stamps.cbegin();
+        for (auto it = stamps.cbegin(); it != stamps.cend(); ++it)
+            if (it.value() < oldest.value()) oldest = it;
+        dropped << oldest.key();
+        stamps.erase(oldest);
+    }
+    return dropped;
+}
+
 // The context meter. The user is partially sighted, so the label is bold,
 // 13 px and drawn with a dark outline: it stays readable over the green,
 // amber and red fills and over the empty track alike, which a plain
@@ -2525,6 +2539,7 @@ void ClaudeStatusBarController::maybeFireDeferredChipSwitch(pid_t shellPid) {
     // (mirrors the undo + chip-click-while-idle paths).
     m_lastOverrideMsByProject[term->shellCwd()] =
         QDateTime::currentMSecsSinceEpoch();
+    dropOldestKeys(m_lastOverrideMsByProject, kMaxProjectKeys);
     if (m_modelBtn) m_modelBtn->setToolTip(QString());
 }
 
@@ -2602,6 +2617,8 @@ double ClaudeStatusBarController::conservatismMultiplierFor(
         || nowMs - *stamp >= kConservatismTtlMs) {
         m_conservatismInputsByProject[projectRoot] = readConservatismInputs(projectRoot);
         m_conservatismStampMsByProject[projectRoot] = nowMs;
+        for (const QString &k : dropOldestKeys(m_conservatismStampMsByProject, kMaxProjectKeys))
+            m_conservatismInputsByProject.remove(k);
     }
     const ConservatismInputs in = m_conservatismInputsByProject.value(projectRoot);
     return ModelAutoSwitch::conservatismDwellMultiplier(
@@ -2682,6 +2699,8 @@ void ClaudeStatusBarController::maybeEmitNearMiss(
 
     m_nearMissLastSigByProject[projectRoot]    = std::move(sig);
     m_nearMissLastEmitMsByProject[projectRoot] = nowMs;
+    for (const QString &k : dropOldestKeys(m_nearMissLastEmitMsByProject, kMaxProjectKeys))
+        m_nearMissLastSigByProject.remove(k);
 }
 
 // ANTS-1893 — fire the firing-side surfacing (toast + chip-pulse +
@@ -2840,6 +2859,7 @@ void ClaudeStatusBarController::onUndoSwitchClicked()
     // (ANTS-1890 / kOverrideCooldownMs) trips on the next tick.
     m_lastOverrideMsByProject[priorProject] =
         QDateTime::currentMSecsSinceEpoch();
+    dropOldestKeys(m_lastOverrideMsByProject, kMaxProjectKeys);
 
     m_undoSwitchBtn->hide();
     m_undoSwitchPendingFromTier.clear();
@@ -2974,6 +2994,8 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
         }
     }
 
+    dropOldestKeys(m_lastOverrideMsByProject, kMaxProjectKeys);   // ANTS-6521
+
     // ANTS-6485 — only the changed records: writeRecords keeps every other
     // line as the file holds it now, so another instance's write since our
     // read survives.
@@ -2999,12 +3021,22 @@ void ClaudeStatusBarController::seedOverrideCacheFromLedger(
         qint64 &slot = m_lastOverrideMsByProject[r.project];
         if (tsMs > slot) slot = tsMs;
     }
+    dropOldestKeys(m_lastOverrideMsByProject, kMaxProjectKeys);   // ANTS-6521
 }
 
 qint64 ClaudeStatusBarController::lastOverrideMsForProject(
     const QString &project) const
 {
     return m_lastOverrideMsByProject.value(project, -1);
+}
+
+qsizetype ClaudeStatusBarController::largestProjectMapSizeForTest() const
+{
+    return std::max({m_lastOverrideMsByProject.size(),
+                     m_nearMissLastSigByProject.size(),
+                     m_nearMissLastEmitMsByProject.size(),
+                     m_conservatismInputsByProject.size(),
+                     m_conservatismStampMsByProject.size()});
 }
 
 namespace statusbarslot {

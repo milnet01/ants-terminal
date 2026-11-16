@@ -94857,7 +94857,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 26-audit-dialog (Low).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6521] **claudestatuswidgets.h: the near-miss and conservatism hashes, and `m_lastOverrideMsByProject`, are keyed by `shellCwd()`, which changes on every `cd`.**
+- ✅ [ANTS-6521] **claudestatuswidgets.h: the near-miss and conservatism hashes, and `m_lastOverrideMsByProject`, are keyed by `shellCwd()`, which changes on every `cd`.**
   `claudestatuswidgets.h:462-473` — the near-miss and conservatism
   hashes, and `m_lastOverrideMsByProject`, are keyed by `shellCwd()`,
   which changes on every `cd`. "Bounded by distinct shellCwd() values"
@@ -94867,6 +94867,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): cap the hashes, or
   key them on the repository root.
   Ledger row 351, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: dropOldestKeys caps m_lastOverrideMsByProject, the
+  near-miss pair and the conservatism pair at kMaxProjectKeys (64),
+  dropping the oldest-time folder (from both maps of a pair). Kept
+  shellCwd() keys rather than re-keying on the repo root: the gate reads
+  them by shellCwd(). ANTS-1894 § RAM corrected.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 30-claude-session-widgets (Low).

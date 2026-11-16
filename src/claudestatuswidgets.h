@@ -212,6 +212,13 @@ public:
     // value after a seed or fill-in call.
     qint64 lastOverrideMsForProject(const QString &project) const;
 
+    // ANTS-6521 — the override, near-miss and conservatism maps are keyed
+    // by shellCwd(), which changes on every cd. Each holds at most
+    // kMaxProjectKeys folders, dropping the one with the oldest time.
+    static constexpr qsizetype kMaxProjectKeys = 64;
+    // Test seam: the largest of those maps' sizes.
+    qsizetype largestProjectMapSizeForTest() const;
+
 private:
     // Sentinel returned by msSinceLastSwitch when m_autoSwitchLastMs==0
     // (no switch yet). Large enough to clear any configured min-dwell.
@@ -459,8 +466,7 @@ private:
     // last emitted (post-sort) blocked_by signature per project;
     // m_nearMissLastEmitMsByProject holds the wall-clock ts of the last
     // emit per project. Process-local, not persisted — rebuilt from disk-
-    // less state on relaunch. Bounded by the number of distinct
-    // shellCwd() values seen this process (~1 KiB for 10 projects).
+    // less state on relaunch. At most kMaxProjectKeys folders (ANTS-6521).
     QHash<QString, QStringList> m_nearMissLastSigByProject;
     QHash<QString, qint64>      m_nearMissLastEmitMsByProject;
     static constexpr qint64     kNearMissEmitFloorMs = 5'000;   // 5 s per project
