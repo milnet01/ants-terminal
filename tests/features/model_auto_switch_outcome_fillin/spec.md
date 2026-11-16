@@ -17,7 +17,8 @@ controller-side wiring against `src/claudestatuswidgets.cpp` and
    records or no record is `pending`.
 3. **Uses the pure helper** — calls
    `ModelSwitchLedger::computeOutcome(...)` per pending record, then
-   `writeRecords` if any record changed.
+   passes only the changed records to `writeRecords`, which keeps every
+   other line as the file holds it then (ANTS-6485).
 4. **Wired to the 2 s status timer** — `mainwindow.cpp` `connect`s
    `m_statusTimer::timeout` to `fillPendingLedgerOutcomes` alongside
    `refreshAutoModelSwitch`.

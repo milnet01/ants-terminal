@@ -57,8 +57,8 @@ TEST(ModelAutoSwitchOutcomeFillin, CallsComputeOutcome) {
 // Read-only when nothing changed — must check `fill.changed` before writing.
 TEST(ModelAutoSwitchOutcomeFillin, WriteOnlyWhenChanged) {
     const std::string src = ants_test::slurpFile(SRC_CLAUDESTATUSWIDGETS_CPP_PATH);
-    // The body should reference `anyChanged` or `fill.changed` and gate
-    // writeRecords on it — no unconditional writes per tick.
+    // The body should reference `fill.changed` and gate writeRecords on the
+    // changed records — no unconditional writes per tick.
     // Method is the last definition in the file; slice from the function
     // header to EOF and assert against that scope.
     const std::string marker =
@@ -66,16 +66,14 @@ TEST(ModelAutoSwitchOutcomeFillin, WriteOnlyWhenChanged) {
     const auto bodyStart = src.find(marker);
     ASSERT_NE(bodyStart, std::string::npos) << "method definition not found";
     const std::string body = src.substr(bodyStart);
-    EXPECT_TRUE(body.find("anyChanged") != std::string::npos ||
-                body.find(".changed")    != std::string::npos)
+    EXPECT_TRUE(body.find(".changed") != std::string::npos)
         << "writeRecords must be gated on a changed flag — no unconditional "
            "per-tick writes";
     const auto writePos = body.find("ModelSwitchLedger::writeRecords(");
     ASSERT_NE(writePos, std::string::npos);
     const std::string preWrite = body.substr(0, writePos);
-    EXPECT_TRUE(preWrite.find("if (anyChanged") != std::string::npos ||
-                preWrite.find("if(anyChanged")  != std::string::npos)
-        << "writeRecords must sit inside an `if (anyChanged)` guard";
+    EXPECT_NE(preWrite.find("if (!changed.isEmpty())"), std::string::npos)
+        << "writeRecords must sit inside an `if (!changed.isEmpty())` guard";
 }
 
 // MainWindow wires the fill-in onto the 2 s status timer next to

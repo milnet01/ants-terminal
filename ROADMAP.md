@@ -94025,7 +94025,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 30-claude-session-widgets (High).
   Lanes: claude-session-widgets.
 
-- 📋 [ANTS-6485] **claudestatuswidgets.cpp: runs outside the ledger lock, and `writeRecords` takes the lock only for its own write.**
+- ✅ [ANTS-6485] **claudestatuswidgets.cpp: runs outside the ledger lock, and `writeRecords` takes the lock only for its own write.**
   `claudestatuswidgets.cpp:2828-2921` — runs outside the ledger lock,
   and `writeRecords` takes the lock only for its own write. A record
   appended by another instance in between is overwritten by the stale
@@ -94035,6 +94035,15 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): one locked read-
   modify-write helper in `ModelSwitchLedger`.
   Ledger row 350, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16. ANTS-6477 already made writeRecords re-read
+  inside the lock, which keeps a concurrent append. What was left:
+  fillPendingLedgerOutcomes passed every record it read, so an
+  unchanged copy brought back a record another instance had evicted,
+  at the end of the file. It now passes only the records it changed.
+  Test ModelAutoSwitchOutcomeFillinController.Ants6485FillWritesBackOnlyWhatItChanged,
+  seam ModelSwitchLedger::testing::beforeRewrite. The reviewer's
+  locked read-modify-write helper was not used: the fill reads and
+  scores transcripts, too slow to hold a GUI-thread lock.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 30-claude-session-widgets (Low).

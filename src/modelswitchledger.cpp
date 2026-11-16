@@ -19,6 +19,10 @@
 
 namespace ModelSwitchLedger {
 
+namespace testing {
+void (*beforeRewrite)() = nullptr;
+}  // namespace testing
+
 namespace {
 
 QByteArray serialize(const Record &rec) {
@@ -167,6 +171,7 @@ bool writeRecords(const QString &path, const QList<Record> &recs, qint64 capByte
     };
     QHash<QString, QList<int>> unused;   // key → indexes into recs, in order
     for (int i = 0; i < recs.size(); ++i) unused[key(recs.at(i))].append(i);
+    if (testing::beforeRewrite) testing::beforeRewrite();
     ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
     QList<QByteArray> lines;
     for (const QByteArray &ln : JsonlFile::readLines(path)) {

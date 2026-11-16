@@ -18,8 +18,11 @@
 #include <QTextStream>
 
 #include <QDateTime>
+#include <QDir>
+#include <QFile>
 #include <QTemporaryDir>
 
+#include "claudeintegration.h"
 #include "claudestatuswidgets.h"
 #include "modelautoswitch.h"
 #include "modelswitchledger.h"
@@ -192,4 +195,79 @@ TEST(ModelAutoSwitchOutcomeFillinController, ConservatismCacheFollowsMechanicalF
            "on a non-mechanical one";
     // And back: the cached inputs give the halved penalty again.
     EXPECT_DOUBLE_EQ(controller.conservatismMultiplierFor(project, 4000, true), halved);
+}
+
+namespace {
+
+QString g6485Ledger;
+QStringList g6485OtherInstanceLines;
+bool g6485OtherInstanceWrote = false;
+
+void writeLines(const QString &path, const QStringList &lines)
+{
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        f.write((lines.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+}
+
+void ants6485OtherInstanceWrites()
+{
+    writeLines(g6485Ledger, g6485OtherInstanceLines);
+    g6485OtherInstanceWrote = true;
+}
+
+}  // namespace
+
+// ANTS-6485 — the fill-in writes back only the records it changed. Between
+// its read and its write, another instance evicts the oldest record and
+// appends one. Writing back an unchanged copy of the evicted record would
+// bring it back, at the end of the file and out of time order.
+TEST(ModelAutoSwitchOutcomeFillinController, Ants6485FillWritesBackOnlyWhatItChanged) {
+    QTemporaryDir home;
+    ASSERT_TRUE(home.isValid());
+    ants_test::XdgGuard env;
+    env.setEnv("HOME", home.path().toUtf8());
+
+    // The fill skips a project with no transcript, so give it one.
+    const QString project = home.filePath(QStringLiteral("proj"));
+    const QString sessions = home.filePath(QStringLiteral(".claude/projects/")
+        + ClaudeIntegration::encodeProjectPath(project));
+    ASSERT_TRUE(QDir().mkpath(sessions));
+    writeLines(sessions + QStringLiteral("/s.jsonl"), {QStringLiteral("{}")});
+
+    const QString opus = QStringLiteral("opus");
+    const QString sonnet = QStringLiteral("sonnet");
+    const QString haiku = QStringLiteral("haiku");
+    const QString evicted = recordLine(QStringLiteral("/elsewhere"), opus, sonnet,
+        QStringLiteral("2026-05-26T09:00:00Z"), false, /*pending*/ false);
+    // The second switch settles the first; the second stays pending.
+    const QString first = recordLine(project, opus, sonnet,
+        QStringLiteral("2026-05-26T10:00:00Z"), false, /*pending*/ true);
+    const QString second = recordLine(project, sonnet, haiku,
+        QStringLiteral("2026-05-26T10:05:00Z"), false, /*pending*/ true);
+    const QString appended = recordLine(QStringLiteral("/another"), opus, haiku,
+        QStringLiteral("2026-05-26T10:10:00Z"), false, /*pending*/ true);
+
+    g6485Ledger = home.filePath(QStringLiteral("ledger.jsonl"));
+    writeLines(g6485Ledger, {evicted, first, second});
+    g6485OtherInstanceLines = {first, second, appended};
+    g6485OtherInstanceWrote = false;
+
+    QStatusBar bar;
+    ClaudeStatusBarController controller(&bar, nullptr);
+    ModelSwitchLedger::testing::beforeRewrite = ants6485OtherInstanceWrites;
+    controller.fillPendingLedgerOutcomes(g6485Ledger);
+    ModelSwitchLedger::testing::beforeRewrite = nullptr;
+    ASSERT_TRUE(g6485OtherInstanceWrote) << "test setup: the fill wrote nothing";
+
+    const QList<ModelSwitchLedger::Record> after =
+        ModelSwitchLedger::readRecords(g6485Ledger);
+    QStringList projects;
+    for (const ModelSwitchLedger::Record &r : after) projects << r.project;
+    EXPECT_EQ(projects.join(QLatin1Char(' ')).toStdString(),
+              QStringList({project, project, QStringLiteral("/another")})
+                  .join(QLatin1Char(' ')).toStdString())
+        << "ANTS-6485: the fill wrote back a record another instance had evicted";
+    ASSERT_FALSE(after.isEmpty());
+    EXPECT_FALSE(after.first().outcome.pending) << "the fill-in did not land";
 }

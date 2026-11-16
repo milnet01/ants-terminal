@@ -450,6 +450,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Filling in model-switch outcomes rewrites only the records it changed, so another Ants window's changes to that history stay as they are** (ANTS-6485)
+
 - **mutation_probe keeps its recovery journal when a file it changed exists but cannot be opened, so the original can still be put back** (ANTS-6486)
 
 - **tools/install-hooks.sh leaves an unreadable or empty Claude settings.json as it is and says how to fix it** (ANTS-6488)

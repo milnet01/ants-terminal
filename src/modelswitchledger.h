@@ -98,9 +98,17 @@ bool appendRecord(const QString &path, const Record &rec,
 QList<Record> readRecords(const QString &path);
 // writeRecords: write back records read from the ledger (outcome fill-in),
 // applying the same eviction. Lines appended since that read are kept; each
-// record still in the file is replaced in place, and the rest go last.
+// record still in the file is replaced in place, and the rest go last. Pass
+// only the records you changed: an unchanged one that another instance has
+// since evicted would come back (ANTS-6485).
 bool writeRecords(const QString &path, const QList<Record> &recs,
                   qint64 capBytes = kMaxLedgerBytes);
+
+namespace testing {
+// Called by writeRecords before it locks and re-reads the file; null in
+// production. A test uses it to stand in for another instance's write.
+extern void (*beforeRewrite)();
+}  // namespace testing
 
 // evictToCap: drop whole oldest *non-pending* lines until total ≤ capBytes.
 // Pending records are never dropped; the newest line is never dropped; lines are

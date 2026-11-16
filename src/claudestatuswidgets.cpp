@@ -2895,7 +2895,7 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
     }
     if (!hasPending) return;
 
-    bool anyChanged = false;
+    QList<ModelSwitchLedger::Record> changed;
     for (int i = 0; i < recs.size(); ++i) {
         ModelSwitchLedger::Record &r = recs[i];
         if (!r.outcome.pending) continue;
@@ -2961,7 +2961,7 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
                 nowMs);   // ANTS-1891 — clock seam for quiet-window
         if (fill.changed) {
             r.outcome = fill.outcome;
-            anyChanged = true;
+            changed.append(r);
         }
         // ANTS-1890 INV-7 — once a record settles with userOverrideWithin5,
         // remember its timestamp per project so the gate cool-down can read
@@ -2975,8 +2975,11 @@ void ClaudeStatusBarController::fillPendingLedgerOutcomes(
         }
     }
 
-    if (anyChanged)
-        ModelSwitchLedger::writeRecords(ledgerPath, recs);
+    // ANTS-6485 — only the changed records: writeRecords keeps every other
+    // line as the file holds it now, so another instance's write since our
+    // read survives.
+    if (!changed.isEmpty())
+        ModelSwitchLedger::writeRecords(ledgerPath, changed);
 }
 
 // ANTS-1890 INV-7 — bootstrap seed. Scans the ledger once at controller
