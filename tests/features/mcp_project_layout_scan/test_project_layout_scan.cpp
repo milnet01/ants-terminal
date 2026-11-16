@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include "projectlayoutengine.h"
+#include "../../_support/peak_memory.h"
 #include "sessionmemoryengine.h"
 
 #include <QDateTime>
@@ -549,4 +550,40 @@ TEST(ProjectLayoutEngine, Ants5106LargeStandardsFallbackStillFitsTheCache) {
     EXPECT_LT(env.standardsFiles.size(), kFiles);
     EXPECT_TRUE(j.value(QStringLiteral("standards_files_truncated")).toBool());
     EXPECT_EQ(j.value(QStringLiteral("standards_files_total")).toInt(), kFiles);
+}
+
+// ANTS-1903 guard — a preamble longer than the head sniff hides the bullets
+// from it; the full-body pass still finds the format and counts them.
+TEST(ProjectLayoutEngine, Ants1903LongPreambleIsSniffedInFull) {
+    QTemporaryDir td;
+    QByteArray body = "# Roadmap\n\n";
+    while (body.size() < 16 * 1024) body += "Prose that is not a bullet.\n";
+    body += "- [ ] one\n- [x] two\n";
+    writeFile(td.path() + "/ROADMAP.md", body);
+
+    const auto env = PLE::scanLayout(td.path());
+    EXPECT_EQ(env.roadmap.format, QString("github-task-list"));
+    EXPECT_TRUE(env.roadmap.snifferTrace.fullScan);
+    EXPECT_EQ(env.roadmap.bulletCountEstimate, 2);
+}
+
+// ANTS-6510 — the roadmap is read a line at a time, never held whole. The
+// fixture ends in one 64 MiB line, a sparse run of NUL bytes.
+TEST(ProjectLayoutEngine, Ants6510RoadmapIsNotHeldWhole) {
+    ANTS_TEST_SKIP_UNDER_ASAN();
+    QTemporaryDir td;
+    const QString path = td.path() + "/ROADMAP.md";
+    writeFile(path, "# Roadmap\n- [ ] one\n");
+    {
+        QFile f(path);
+        ASSERT_TRUE(f.open(QIODevice::ReadWrite));
+        ASSERT_TRUE(f.resize(qint64(64) * 1024 * 1024));
+    }
+    const int grew = ants_test::peakGrowthMiB([&] {
+        const auto env = PLE::scanLayout(td.path());
+        return env.roadmap.bulletCountEstimate == 1;
+    });
+    EXPECT_NE(grew, 251) << "the scan must still count the one bullet";
+    EXPECT_GE(grew, 0) << "fork failed";
+    EXPECT_LE(grew, 16) << "peak memory grew " << grew << " MiB scanning the roadmap";
 }

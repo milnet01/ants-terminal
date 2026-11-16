@@ -94659,7 +94659,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6510] **projectlayoutengine.cpp: The whole roadmap is read and copied line by line, with no size bound.**
+- ✅ [ANTS-6510] **projectlayoutengine.cpp: The whole roadmap is read and copied line by line, with no size bound.**
   `projectlayoutengine.cpp:243` — The whole roadmap is read and copied
   line by line, with no size bound. The roadmap path can be declared by
   a repo-committed file.
@@ -94667,6 +94667,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): stream the file
   with `readLine`, or cap it.
   Ledger row 209, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: scanBody streams the roadmap once with
+  BoundedReadLine::readKeep (4 KiB of each line), counting each bullet
+  shape and the marker; the ANTS-1903 full-body sniff and countBullets
+  read those counts through the shared formatFrom. Tests
+  ProjectLayoutEngine.Ants6510RoadmapIsNotHeldWhole, plus the
+  Ants1903LongPreambleIsSniffedInFull guard.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).

@@ -2,6 +2,7 @@
 
 #include "projectlayoutengine.h"
 
+#include "boundedreadline.h"
 #include "projectsettings.h"   // ANTS-2160 — roadmap / changelog / specs_dir override
 
 #include <QByteArray>
@@ -51,24 +52,13 @@ bool matchesGfm(const QByteArray &ln) {
 // drop to zero on the mixed case. ANTS-1903 — every call fills the
 // trace struct so an "unknown" outcome is diagnosable from the
 // envelope (was it the 4 KB sniff budget? the marker? the bullets?).
-QString detectFormat(const QByteArray &slice,
-                     bool &markerPresent,
-                     RoadmapSnifferTrace &trace) {
-    markerPresent = false;
-    trace.headBytesScanned = slice.size();
-    if (slice.contains("<!-- ants-roadmap-format: 1 -->")) {
-        markerPresent = true;
+constexpr char kFormatMarker[] = "<!-- ants-roadmap-format: 1 -->";
+
+// The format the marker and the two bullet shapes name, recorded in `trace`.
+QString formatFrom(bool marker, bool gfmHit, bool antsHit, RoadmapSnifferTrace &trace) {
+    if (marker) {
         trace.markerHit = true;
         return QStringLiteral("ants-v1");
-    }
-    // ANTS-1632 — scan once, score both shapes.
-    bool gfmHit  = false;
-    bool antsHit = false;
-    const auto lines = slice.split('\n');
-    for (const auto &ln : lines) {
-        gfmHit  = gfmHit  || matchesGfm(ln);
-        antsHit = antsHit || matchesAnts(ln);
-        if (gfmHit && antsHit) break;
     }
     trace.gfmTaskListHit = gfmHit;
     trace.antsV1EmojiHit = antsHit;
@@ -78,27 +68,69 @@ QString detectFormat(const QByteArray &slice,
     return QStringLiteral("unknown");
 }
 
-// One streaming pass over the ROADMAP body counting bullets that
-// match the detected format. Pre-1430 native parsers already do
+QString detectFormat(const QByteArray &slice,
+                     bool &markerPresent,
+                     RoadmapSnifferTrace &trace) {
+    trace.headBytesScanned = slice.size();
+    markerPresent = slice.contains(kFormatMarker);
+    // ANTS-1632 — scan once, score both shapes.
+    bool gfmHit  = false;
+    bool antsHit = false;
+    if (!markerPresent) {
+        const auto lines = slice.split('\n');
+        for (const auto &ln : lines) {
+            gfmHit  = gfmHit  || matchesGfm(ln);
+            antsHit = antsHit || matchesAnts(ln);
+            if (gfmHit && antsHit) break;
+        }
+    }
+    return formatFrom(markerPresent, gfmHit, antsHit, trace);
+}
+
+// ANTS-6510 — the whole file in one pass, a line's head at a time: what the
+// full-body sniff (ANTS-1903) and the bullet count need. A bullet starts its
+// line, so kBodyLineKeep bytes of each line decide it.
+constexpr qint64 kBodyLineKeep = 4096;
+struct BodyScan {
+    qint64 bytes = 0;
+    bool marker = false;
+    int ants = 0;      // lines in the ants-v1 shape
+    int gfm = 0;       // lines in the GFM shape
+    int gfmOnly = 0;   // ... of those, not also ants-v1
+};
+BodyScan scanBody(QIODevice &f) {
+    BodyScan s;
+    QByteArray scratch;
+    while (!f.atEnd()) {
+        qint64 full = 0;
+        const QByteArray ln = BoundedReadLine::readKeep(f, kBodyLineKeep, scratch, &full);
+        s.bytes += full;
+        s.marker = s.marker || ln.contains(kFormatMarker);
+        const bool a = matchesAnts(ln), g = matchesGfm(ln);
+        s.ants += a;
+        s.gfm += g;
+        s.gfmOnly += g && !a;
+    }
+    return s;
+}
+
+// The bullets scanBody found that match the detected format.
+// Pre-1430 native parsers already do
 // this; we duplicate the count here because callers want it
 // without paying the full parser tax.
 // ANTS-1632 — "mixed" counts the union (a line scoring as either
 // shape ticks the counter once); "unknown" stays on the ants-v1
 // pass so back-compat callers see the same number they always have.
-int countBullets(const QByteArray &body, const QString &format) {
-    const auto lines = body.split('\n');
-    int n = 0;
+int countBullets(const BodyScan &body, const QString &format) {
     const bool wantAnts = (format == QStringLiteral("ants-v1") ||
                            format == QStringLiteral("mixed") ||
                            format == QStringLiteral("unknown") ||
                            format.isEmpty());
     const bool wantGfm  = (format == QStringLiteral("github-task-list") ||
                            format == QStringLiteral("mixed"));
-    for (const auto &ln : lines) {
-        if (wantAnts && matchesAnts(ln)) { ++n; continue; }
-        if (wantGfm  && matchesGfm(ln))  { ++n; continue; }
-    }
-    return n;
+    // A line in both shapes counts once, as ants-v1.
+    return (wantAnts ? body.ants : 0)
+         + (wantGfm ? (wantAnts ? body.gfmOnly : body.gfm) : 0);
 }
 
 // ANTS-1493 — fork-only doc tree candidates. Some projects keep
@@ -238,24 +270,26 @@ void scanRoadmap(const QString &cwd, RoadmapInfo &out,
     out.format = detectFormat(head, out.formatMarkerPresent,
                               out.snifferTrace);
 
-    // Bullet count needs the whole file. Seek to start, read all.
+    // Bullet count needs the whole file, streamed (ANTS-6510).
     f.seek(0);
-    const QByteArray body = f.readAll();
+    const BodyScan body = scanBody(f);
 
     // ANTS-1903 — when the 4 KB head sniff returns "unknown" but the
     // file is larger than the head budget, retry the sniff against
     // the full body. Vestige's 484 KB mixed-format ROADMAP had a
     // long preamble + heading block before the first bullet, which
     // exceeded the head budget on every probe. Re-sniffing the body
-    // is cheap (we just read it for countBullets anyway) and
+    // is cheap (scanBody already scored both shapes) and
     // resolves the false-unknown case without changing the common
     // back-compat path (when the head sniff hit, we skip this).
     if (out.format == QStringLiteral("unknown") &&
         out.sizeBytes > kFormatSniffBytes) {
         const QString headFormat = out.format;
         RoadmapSnifferTrace bodyTrace;
-        const QString bodyFormat =
-            detectFormat(body, out.formatMarkerPresent, bodyTrace);
+        bodyTrace.headBytesScanned = body.bytes;
+        out.formatMarkerPresent = body.marker;
+        const QString bodyFormat = formatFrom(body.marker, body.gfm > 0, body.ants > 0,
+                                              bodyTrace);
         if (bodyFormat != headFormat) {
             out.format = bodyFormat;
             out.snifferTrace = bodyTrace;

@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The project-layout scan reads the roadmap a line at a time to find its format and count its items, never holding the whole file** (ANTS-6510)
+
 - **`.ants/project.json` is read only up to 64 KiB; a larger file counts as malformed, and project_settings refuses to write one** (ANTS-6509)
 
 - **Copies of refused session files are removed by the 30-day session clean-up, like the sessions themselves** (ANTS-6508)
