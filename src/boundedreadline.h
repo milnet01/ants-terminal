@@ -44,4 +44,25 @@ inline QByteArray readTight(QIODevice &dev, qint64 maxSize, QByteArray &scratch)
     return n > 0 ? QByteArray(scratch.constData(), n) : QByteArray();
 }
 
+// ANTS-6502 — read() through readTight's `scratch`: up to `keep` bytes of the
+// next line, the rest skipped in place, so a long line allocates nothing
+// beyond `scratch` and the returned head. `*fullBytes` as read() has it.
+inline QByteArray readKeep(QIODevice &dev, qint64 keep, QByteArray &scratch,
+                           qint64 *fullBytes = nullptr) {
+    constexpr qint64 kDrainChunk = qint64(64) * 1024;
+    QByteArray line = readTight(dev, qMax<qint64>(keep, 1) + 1, scratch);
+    qint64 total = line.size();
+    if (!line.isEmpty() && !line.endsWith('\n')) {
+        if (scratch.size() < kDrainChunk) scratch.resize(kDrainChunk);
+        while (!dev.atEnd()) {
+            const qint64 n = dev.readLine(scratch.data(), kDrainChunk);
+            if (n <= 0) break;
+            total += n;
+            if (scratch.at(n - 1) == '\n') break;
+        }
+    }
+    if (fullBytes) *fullBytes = total;
+    return line;
+}
+
 }  // namespace BoundedReadLine

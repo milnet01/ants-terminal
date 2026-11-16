@@ -83,62 +83,55 @@ QVector<bool> fenceMask(const QStringList &lines) {
 }
 
 QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine) {
-    if (unterminatedOpenerLine) *unterminatedOpenerLine = -1;
     QVector<bool> mask(lines.size(), false);
-    QChar openFence;         // null when not inside a fence
-    int   openLine      = -1;// 1-based line of the open fence's opener
-    int   openAllowance = 3; // indent the closer of the open fence may carry
-    // ANTS-3678 — CommonMark § 4.5: the closer must be at least as long as
-    // the opener. Without the run length a ``` line ended a ```` block, and
-    // everything after it — headings included — leaked out of the sample as
-    // prose. A document quoting fence syntax is the ordinary way to hit it.
-    int   openRun       = 0; // length of the open fence's character run
-    // Content columns of the open list items, outermost → innermost. Empty
-    // at top level, where the allowance is CommonMark's plain 3 spaces.
-    QVector<int> listCols;
-    for (int i = 0; i < lines.size(); ++i) {
-        const QString &line = lines.at(i);
-        if (!openFence.isNull()) {
-            // Inside a fence — the opener, body, and closer all mask true.
-            // The container stack is frozen: a bullet inside a code sample
-            // is sample text, not a list.
-            mask[i] = true;
-            // ANTS-4987 — the shared closer rule, so this mask and the
-            // hand-rolled fence loops cannot disagree about the same file.
-            if (fenceCloses(line, openFence, openRun, openAllowance)) {
-                openFence = QChar();
-                openLine  = -1;
-                openRun   = 0;
-            }
-            continue;
-        }
-        if (!line.trimmed().isEmpty()) {
-            // A line indented less than the innermost item's content column
-            // has left that item (blank lines do not — a list item may span
-            // them). Then a marker line opens the next container.
-            const int ind = leadingSpaces(line);
-            while (!listCols.isEmpty() && ind < listCols.last())
-                listCols.removeLast();
-            const auto lm = listMarkerRe().match(line);
-            if (lm.hasMatch()) listCols.append(lm.capturedLength());
-        }
-        const int allowance =
-            (listCols.isEmpty() ? 0 : listCols.last()) + 3;
-        int openerRun = 0;
-        const QChar opener = fenceOpenerChar(line, allowance, &openerRun);
-        if (!opener.isNull()) {
-            openFence     = opener;
-            openLine      = i + 1;
-            openAllowance = allowance;
-            openRun       = openerRun;
-            mask[i]       = true;
-        }
-    }
-    // Only the OUTERMOST unclosed opener: a fence char inside an open fence is
-    // body text, so `openLine` can only be the one that never closed.
-    if (unterminatedOpenerLine && !openFence.isNull())
-        *unterminatedOpenerLine = openLine;
+    FenceTracker fence;
+    for (int i = 0; i < lines.size(); ++i) mask[i] = fence.feed(lines.at(i));
+    if (unterminatedOpenerLine) *unterminatedOpenerLine = fence.unterminatedOpenerLine();
     return mask;
+}
+
+bool FenceTracker::feed(const QString &line) {
+    ++m_lineNo;
+    if (!m_open.isNull()) {
+        // Inside a fence — the opener, body, and closer all mask true.
+        // The container stack is frozen: a bullet inside a code sample
+        // is sample text, not a list.
+        // ANTS-4987 — the shared closer rule, so this mask and the
+        // hand-rolled fence loops cannot disagree about the same file.
+        // ANTS-3678 — CommonMark § 4.5: the closer must be at least as long
+        // as the opener (m_openRun). Without the run length a ``` line ended
+        // a ```` block, and everything after it — headings included — leaked
+        // out of the sample as prose.
+        if (fenceCloses(line, m_open, m_openRun, m_openAllowance)) {
+            m_open     = QChar();
+            m_openLine = -1;
+            m_openRun  = 0;
+        }
+        return true;
+    }
+    if (!line.trimmed().isEmpty()) {
+        // A line indented less than the innermost item's content column
+        // has left that item (blank lines do not — a list item may span
+        // them). Then a marker line opens the next container. At top level
+        // the allowance is CommonMark's plain 3 spaces.
+        const int ind = leadingSpaces(line);
+        while (!m_listCols.isEmpty() && ind < m_listCols.last())
+            m_listCols.removeLast();
+        const auto lm = listMarkerRe().match(line);
+        if (lm.hasMatch()) m_listCols.append(lm.capturedLength());
+    }
+    const int allowance =
+        (m_listCols.isEmpty() ? 0 : m_listCols.last()) + 3;
+    int openerRun = 0;
+    const QChar opener = fenceOpenerChar(line, allowance, &openerRun);
+    if (opener.isNull()) return false;
+    // Only the OUTERMOST unclosed opener is ever recorded: a fence char inside
+    // an open fence is body text, handled above.
+    m_open          = opener;
+    m_openLine      = m_lineNo;
+    m_openAllowance = allowance;
+    m_openRun       = openerRun;
+    return true;
 }
 
 // ANTS-4598 — two passes, and the order between them is the fix. Pass 1 pairs
@@ -336,36 +329,42 @@ QString stripBlockquote(const QString &trimmedLine, int *depth) {
 }
 
 QVector<Heading> headings(const QStringList &lines) {
-    QVector<Heading> out;
-    const QVector<bool> fence = fenceMask(lines);
-    for (int i = 0; i < lines.size(); ++i) {
-        if (fence.value(i)) continue;   // opener, closer and body are all masked
-        const QString trimmed = lines.at(i).trimmed();
-        // ANTS-4520 — a blockquoted heading is a heading. The fence mask above
-        // still wins, so `> ## x` inside a fenced block stays sample text.
-        int quoteDepth = 0;
-        const QString content = stripBlockquote(trimmed, &quoteDepth);
-        const int level = headingLevel(content);
-        if (level == 0) continue;
-        const QString text = content.mid(level).trimmed();
-        out.push_back({i + 1, level, text, headingSlug(text), 0, quoteDepth});
-    }
-    // Second pass for the spans: a section ends at the line before the next
-    // heading that TERMINATES it, else at the last input line. A heading
-    // terminates an earlier one when it is less deeply quoted (leaving the
-    // quote ends the quoted section — ANTS-4520), or equally quoted at the
-    // same or a higher level (the original rule, which is what depth 0 to
-    // depth 0 reduces to). A MORE deeply quoted heading is nested inside.
-    for (int i = 0; i < out.size(); ++i) {
-        out[i].endLine = lines.size();
-        for (int j = i + 1; j < out.size(); ++j) {
+    HeadingScanner scan;
+    for (const QString &line : lines) scan.feed(line);
+    return scan.finish();
+}
+
+void HeadingScanner::feed(const QString &line) {
+    ++m_lineNo;
+    if (m_fence.feed(line)) return;   // opener, closer and body are all masked
+    const QString trimmed = line.trimmed();
+    // ANTS-4520 — a blockquoted heading is a heading. The fence mask above
+    // still wins, so `> ## x` inside a fenced block stays sample text.
+    int quoteDepth = 0;
+    const QString content = stripBlockquote(trimmed, &quoteDepth);
+    const int level = headingLevel(content);
+    if (level == 0) return;
+    const QString text = content.mid(level).trimmed();
+    m_out.push_back({m_lineNo, level, text, headingSlug(text), 0, quoteDepth});
+}
+
+QVector<Heading> HeadingScanner::finish() {
+    // The spans: a section ends at the line before the next heading that
+    // TERMINATES it, else at the last input line. A heading terminates an
+    // earlier one when it is less deeply quoted (leaving the quote ends the
+    // quoted section — ANTS-4520), or equally quoted at the same or a higher
+    // level (the original rule, which is what depth 0 to depth 0 reduces
+    // to). A MORE deeply quoted heading is nested inside.
+    for (int i = 0; i < m_out.size(); ++i) {
+        m_out[i].endLine = m_lineNo;
+        for (int j = i + 1; j < m_out.size(); ++j) {
             const bool terminates =
-                out[j].quoteDepth < out[i].quoteDepth ||
-                (out[j].quoteDepth == out[i].quoteDepth && out[j].level <= out[i].level);
-            if (terminates) { out[i].endLine = out[j].line - 1; break; }
+                m_out[j].quoteDepth < m_out[i].quoteDepth ||
+                (m_out[j].quoteDepth == m_out[i].quoteDepth && m_out[j].level <= m_out[i].level);
+            if (terminates) { m_out[i].endLine = m_out[j].line - 1; break; }
         }
     }
-    return out;
+    return m_out;
 }
 
 }  // namespace MarkdownScan

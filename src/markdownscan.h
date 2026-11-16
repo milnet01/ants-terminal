@@ -94,6 +94,24 @@ bool fenceCloses(const QString &line, QChar openChar, int openRun,
 // block — most specs in this repo. Only the scanner knows.
 QVector<bool> fenceMask(const QStringList &lines, int *unterminatedOpenerLine);
 
+// ANTS-6502 — fenceMask one line at a time, for a caller that must not hold
+// the document. fenceMask is this loop, so the two cannot disagree.
+class FenceTracker {
+public:
+    // Feed the next line; true when it is masked (opener, body or closer).
+    bool feed(const QString &line);
+    // fenceMask's *unterminatedOpenerLine for the lines fed so far.
+    int unterminatedOpenerLine() const { return m_open.isNull() ? -1 : m_openLine; }
+
+private:
+    QChar        m_open;            // null when not inside a fence
+    int          m_openLine = -1;   // 1-based line of the open fence's opener
+    int          m_openAllowance = 3;
+    int          m_openRun = 0;     // length of the open fence's character run
+    int          m_lineNo = 0;      // lines fed
+    QVector<int> m_listCols;        // open list items' content columns
+};
+
 // ANTS-3649 — one inline code span's CONTENT bounds. `startCol`/`endCol` are
 // half-open [start, end) column indices excluding the delimiters, and
 // `delimLen` is the backtick-run length, so the opening run starts at
@@ -207,6 +225,19 @@ struct Heading {
     int     quoteDepth = 0;  // '>' markers the heading sits behind
 };
 QVector<Heading> headings(const QStringList &lines);
+
+// ANTS-6502 — headings() one line at a time: feed() every line in order, then
+// finish(). Holds the headings, never the document. headings() is this loop.
+class HeadingScanner {
+public:
+    void feed(const QString &line);
+    QVector<Heading> finish();   // fills each endLine; call once, after the last line
+
+private:
+    FenceTracker     m_fence;
+    QVector<Heading> m_out;
+    int              m_lineNo = 0;
+};
 
 // ANTS-4520 — strip a leading blockquote prefix (`>` plus one optional space,
 // repeated, each marker admitting up to 3 leading spaces per CommonMark) and

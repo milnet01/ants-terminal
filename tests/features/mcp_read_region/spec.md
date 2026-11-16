@@ -17,8 +17,10 @@ invariants source-scrape the registration sites. Full design contract:
 | B8 | `Ants4700ClampsAndReportsTheLineCap` | An out-of-range `max_line_bytes` is clamped to [50, 10000] and says so via `line_cap_clamped`. A guard on the echoed contract rather than a red-to-green case: it passes with the clip disabled, because clamping is plumbing. It also asserts clamping does not INVENT clipping (`lines_clipped: 0` on short lines). |
 | B9 | `Ants5281SectionTailNeedsNoLineNumbers` | `tail_lines:N` with `section` returns the section's last N lines, stopping at the section's end. Above the section's size it returns the whole section. Without `section` it refuses `bad_args`. `section_end_line` appears when `tail_lines` is set or a section read is truncated. |
 
+| B10 | `Ants6502PeakMemoryStaysBounded` (INV-9) | On a file ending in one 64 MiB line, line-range, symbol and section reads each raise the process's peak memory by at most 16 MiB, and say `truncated`. Measured in a forked child; skipped under ASan, whose quarantine keeps freed blocks resident. |
+
 INV-4 (path validation), INV-5 (caller_cwd Required), INV-6 (ETag), INV-7
-(fields projection), INV-9 (bounded read) are covered by the W1 source-scrape
+(fields projection) are covered by the W1 source-scrape
 (registration-presence) — the pure helper emits no path/etag itself.
 
 Label: `features;fast`. Verify each fails against pre-implementation source.

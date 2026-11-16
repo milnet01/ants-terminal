@@ -6,6 +6,7 @@
 
 #include "readregion.h"
 
+#include "boundedreadline.h"
 #include "fileoutline.h"
 #include "markdownscan.h"
 #include "pathvalidation.h"
@@ -167,33 +168,24 @@ struct SymRange {
     int  matchCount = 0;
 };
 
-// ANTS-2222 / ANTS-2224 — brace-balanced scan from a symbol's declaration line
-// to its matching closing brace. Returns the 1-based closing-brace line, or 0
-// if no balanced close is found (caller keeps the outline-derived fallback).
-// Serves both aggregate bodies (struct/class/union) and function bodies. Skips
-// braces inside // and /* */ comments and "…"/'…' literals (heuristic, the
-// same altitude as file_outline).
-int braceBalancedEndLine(const QString &absPath, int startLine) {
-    QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return 0;
-    QStringList lines;
-    while (!f.atEnd()) lines.append(QString::fromUtf8(f.readLine()));
-    return ReadRegion::braceBalancedEndLine(lines, startLine);
-}
+// ANTS-6502 — the brace scans take their lines from `next(QString &)`, which
+// yields line `startLine`, then each line after it, and returns false at the
+// end. A list and a file feed the same scan; the file holds one line at a time.
 
 // ANTS-6783 — shell has no // or /* */ comments (`"$d"/*.repo` is a glob). A
 // `#` at the start of a word comments out the rest of the line; '…' holds no
 // escapes; "…" may span lines; a backslash outside '…' escapes the next
 // character. A heredoc body (`<<EOF`, `<<-'EOF'`) is skipped to the line that
 // holds only its delimiter.
-int shellBraceEndLine(const QStringList &lines, int startLine, int *maxDepth, int *openLine) {
+template <class NextLine>
+int shellBraceEndLine(NextLine &next, int startLine, int *maxDepth, int *openLine) {
     static const QRegularExpression heredoc(
         QStringLiteral(R"(^<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1)"));
     int depth = 0, deepest = 0;
     bool seenOpen = false, inSingle = false, inDouble = false;
     QString heredocEnd;  // the delimiter line that ends the heredoc being skipped
-    for (int lineNo = qMax(1, startLine); lineNo <= lines.size(); ++lineNo) {
-        const QString &line = lines.at(lineNo - 1);
+    QString line;
+    for (int lineNo = qMax(1, startLine); next(line); ++lineNo) {
         if (!heredocEnd.isEmpty()) {
             if (line.trimmed() == heredocEnd) heredocEnd.clear();
             continue;
@@ -238,11 +230,9 @@ int shellBraceEndLine(const QStringList &lines, int startLine, int *maxDepth, in
     return 0;
 }
 
-}  // namespace
-
-int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
-                         int *openLine, BraceLexis lexis) {
-    if (lexis == BraceLexis::Shell) return shellBraceEndLine(lines, startLine, maxDepth, openLine);
+// ANTS-2222 / ANTS-2224 — the C-family scan behind braceBalancedEndLine.
+template <class NextLine>
+int cFamilyBraceEndLine(NextLine &next, int startLine, int *maxDepth, int *openLine) {
     int depth = 0, deepest = 0;
     bool seenOpen = false, inBlockComment = false;
     // ANTS-5612 — braces in a parameter list are not the body. Until the body
@@ -251,8 +241,8 @@ int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
     // with its match. After anything else (`=> {`) it opens the body.
     int parenDepth = 0, skipDepth = 0;
     QChar prev;  // last code character outside comments and whitespace
-    for (int lineNo = qMax(1, startLine); lineNo <= lines.size(); ++lineNo) {
-        const QString &line = lines.at(lineNo - 1);
+    QString line;
+    for (int lineNo = qMax(1, startLine); next(line); ++lineNo) {
         bool inString = false, inChar = false;
         for (int i = 0; i < line.size(); ++i) {
             const QChar c = line.at(i);
@@ -309,7 +299,64 @@ int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
     return 0;
 }
 
+template <class NextLine>
+int scanBraces(NextLine &next, int startLine, int *maxDepth, int *openLine,
+               BraceLexis lexis) {
+    return lexis == BraceLexis::Shell
+        ? shellBraceEndLine(next, startLine, maxDepth, openLine)
+        : cFamilyBraceEndLine(next, startLine, maxDepth, openLine);
+}
+
+// ANTS-6502 — what the file-reading scans hold of one line, and how much of
+// the file a brace scan reads before it gives up.
+constexpr qint64 kScanLineBytes  = qint64(1) * 1024 * 1024;
+constexpr qint64 kBraceScanBytes = qint64(64) * 1024 * 1024;
+
+}  // namespace
+
+int braceBalancedEndLine(const QStringList &lines, int startLine, int *maxDepth,
+                         int *openLine, BraceLexis lexis) {
+    int i = qMax(1, startLine) - 1;
+    auto fromList = [&](QString &out) {
+        if (i >= lines.size()) return false;
+        out = lines.at(i++);
+        return true;
+    };
+    return scanBraces(fromList, startLine, maxDepth, openLine, lexis);
+}
+
 namespace {
+
+// ANTS-2222 / ANTS-2224 — brace-balanced scan from a symbol's declaration line
+// to its matching closing brace. Returns the 1-based closing-brace line, or 0
+// if no balanced close is found (caller keeps the outline-derived fallback).
+// Serves both aggregate bodies (struct/class/union) and function bodies. Skips
+// braces inside // and /* */ comments and "…"/'…' literals (heuristic, the
+// same altitude as file_outline).
+//
+// ANTS-6502 — read from the file one line at a time. A line over
+// kScanLineBytes, or a body over kBraceScanBytes, ends the scan with -1:
+// the end is unknown, and the body is far longer than read_region returns.
+int braceBalancedEndLine(const QString &absPath, int startLine) {
+    QFile f(absPath);
+    if (!f.open(QIODevice::ReadOnly)) return 0;
+    QByteArray scratch;
+    for (int skip = 1; skip < startLine && !f.atEnd(); ++skip)
+        BoundedReadLine::readKeep(f, 1, scratch);
+    qint64 budget = kBraceScanBytes;
+    bool gaveUp = false;
+    auto fromFile = [&](QString &out) {
+        if (f.atEnd()) return false;
+        qint64 full = 0;
+        const QByteArray raw = BoundedReadLine::readKeep(f, kScanLineBytes, scratch, &full);
+        budget -= full;
+        if (full > raw.size() || budget < 0) { gaveUp = true; return false; }
+        out = QString::fromUtf8(raw);
+        return true;
+    };
+    const int end = scanBraces(fromFile, startLine, nullptr, nullptr, BraceLexis::CFamily);
+    return (end == 0 && gaveUp) ? -1 : end;
+}
 
 SymRange resolveSymbol(const QString &absPath, const QString &name) {
     SymRange r;
@@ -421,8 +468,9 @@ SymRange resolveSymbol(const QString &absPath, const QString &name) {
     if (isAggregate) {
         // The flat outline's "next entry" for a struct is its first member, so
         // the outline-derived end stops there. Brace-match to the real close.
+        // An end the scan gave up on (-1) lies past what the byte cap returns.
         const int braceEnd = braceBalancedEndLine(absPath, r.start);
-        r.end = (braceEnd >= r.start) ? braceEnd : outlineEnd;
+        r.end = (braceEnd >= r.start) ? braceEnd : braceEnd < 0 ? INT_MAX : outlineEnd;
     } else if (braceDelimited && kind == QLatin1String("func")) {
         // ANTS-2224 — belt-and-braces cap on function bodies. When file_outline
         // misses the next symbol (e.g. an extern "C" fn — the ANTS-2159 gap),
@@ -483,13 +531,17 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     // demonstrates a fence (```` ```cpp ````) read as an opener, so every
     // heading after it went invisible and section mode refused
     // `section_not_found` on any document that teaches fenced code.
-    QStringList lines;
+    //
+    // ANTS-6502 — streamed: the scanner holds the headings, never the
+    // document, and sees at most kScanLineBytes of any one line.
+    MarkdownScan::HeadingScanner scan;
+    QByteArray scratch;
     while (!f.atEnd()) {
-        QString line = QString::fromUtf8(f.readLine());
-        if (line.endsWith(QLatin1Char('\n'))) line.chop(1);
-        lines.push_back(line);
+        QByteArray raw = BoundedReadLine::readKeep(f, kScanLineBytes, scratch);
+        if (raw.endsWith('\n')) raw.chop(1);
+        scan.feed(QString::fromUtf8(raw));
     }
-    const QVector<MarkdownScan::Heading> heads = MarkdownScan::headings(lines);
+    const QVector<MarkdownScan::Heading> heads = scan.finish();
 
     // Tier 1 — exact slug (back-compat: full heading text / full slug). First
     // match wins. Tier 2 (ANTS-2234) — when no exact match, a dash-bounded
@@ -682,8 +734,11 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
     int effectiveEnd = startLine - 1;  // none emitted yet
     bool truncated = false;
 
+    // ANTS-6502 — every line read holds at most maxBytes + 1 of itself: enough
+    // to see it is over the cap, which is all the loop below asks of it.
+    QByteArray scratch;
     while (!f.atEnd()) {
-        QByteArray raw = f.readLine();
+        QByteArray raw = BoundedReadLine::readKeep(f, qint64(maxBytes) + 1, scratch);
         if (raw.endsWith('\n')) raw.chop(1);
         ++lineNo;
         if (lineNo < startLine) continue;
