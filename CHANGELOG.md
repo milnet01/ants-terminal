@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Git calls behind the MCP verbs read git's output as it arrives, so their output limits bound memory too** (ANTS-6512)
+
 - **Saved roadmap views and audit rule-pack trust forget projects that no longer exist, and each keeps at most 128 projects** (ANTS-6511)
 
 - **The project-layout scan reads the roadmap a line at a time to find its format and count its items, never holding the whole file** (ANTS-6510)

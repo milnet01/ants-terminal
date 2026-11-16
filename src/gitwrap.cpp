@@ -3,10 +3,18 @@
 #include "gitwrap.h"
 #include "hostexec.h"   // ANTS-5527 — tools run on the host inside a Flatpak
 
+#include <QElapsedTimer>
 #include <QProcess>
 #include <QRegularExpression>
 
+#include <algorithm>
+#include <limits>
+
 namespace GitWrap {
+
+namespace {
+constexpr int kReadSliceMs = 200;   // ANTS-6512 — one wait between reads
+}  // namespace
 
 Result run(const QString &workingDir, const QStringList &argv,
            int maxStdoutBytes) {
@@ -33,29 +41,41 @@ Result runWithin(const QString &workingDir, const QStringList &argv,
     }
     r.started = true;
 
-    // ANTS-1250-INV-12: wall-clock kill, 200 ms grace then SIGKILL.
-    const bool finished = p.waitForFinished(budgetMs);
-    if (!finished) {
-        r.hardKilled = true;
-        p.terminate();
-        if (!p.waitForFinished(kKillGraceMs)) {
-            p.kill();
-            p.waitForFinished(kKillGraceMs);
-        }
-    }
+    // ANTS-6512 — read both channels as git writes them, so QProcess never
+    // holds more than one read and the caps bound memory. Past a cap the
+    // bytes are dropped and git runs on to its own exit code. A negative
+    // maxStdoutBytes keeps all of stdout (ANTS-1839).
+    const auto keepHead = [](QByteArray &into, const QByteArray &chunk,
+                             qsizetype cap, bool *truncated) {
+        const qsizetype room = cap - into.size();
+        if (chunk.size() > room && truncated) *truncated = true;
+        if (room > 0) into.append(chunk.constData(), std::min(room, chunk.size()));
+    };
+    const qsizetype outCap = maxStdoutBytes >= 0
+        ? maxStdoutBytes : std::numeric_limits<qsizetype>::max();
+    const auto drain = [&] {
+        keepHead(r.stdoutBytes, p.readAllStandardOutput(), outCap, &r.stdoutTruncated);
+        keepHead(r.stderrTail, p.readAllStandardError(), kStderrCapBytes, nullptr);
+    };
 
-    r.stdoutBytes = p.readAllStandardOutput();
-    // ANTS-1839 — bound stdout like stderr so an unexpectedly large output
-    // (e.g. a future `git diff` caller) can't feed an unbounded blob into a
-    // JSON envelope. stdoutTruncated lets the caller flag the partial read.
-    if (maxStdoutBytes >= 0 && r.stdoutBytes.size() > maxStdoutBytes) {
-        r.stdoutBytes.truncate(maxStdoutBytes);
-        r.stdoutTruncated = true;
+    // ANTS-1250-INV-12: wall-clock kill, 200 ms grace then SIGKILL.
+    QElapsedTimer clock;
+    clock.start();
+    while (p.state() != QProcess::NotRunning) {
+        const qint64 left = budgetMs - clock.elapsed();
+        if (left <= 0) {
+            r.hardKilled = true;
+            p.terminate();
+            if (!p.waitForFinished(kKillGraceMs)) {
+                p.kill();
+                p.waitForFinished(kKillGraceMs);
+            }
+            break;
+        }
+        p.waitForReadyRead(static_cast<int>(std::min<qint64>(left, kReadSliceMs)));
+        drain();
     }
-    r.stderrTail  = p.readAllStandardError();
-    if (r.stderrTail.size() > kStderrCapBytes) {
-        r.stderrTail.truncate(kStderrCapBytes);
-    }
+    drain();   // what arrived last
     r.exitCode = p.exitCode();
     r.crashed  = (p.exitStatus() != QProcess::NormalExit) && !r.hardKilled;
     return r;

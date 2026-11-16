@@ -94695,13 +94695,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 19-config-session-project (Low).
   Lanes: config-session-project.
 
-- 📋 [ANTS-6512] **gitwrap.cpp: The 1 MiB stdout cap does not limit memory.**
+- ✅ [ANTS-6512] **gitwrap.cpp: The 1 MiB stdout cap does not limit memory.**
   `gitwrap.cpp:29,39-44` — The 1 MiB stdout cap does not limit memory.
   Quote: `p.waitForFinished(kHardKillMs); … r.stdoutBytes =
   p.readAllStandardOutput(); if (… > maxStdoutBytes) truncate`
   Remedy (the reviewer's; check it before building): read in a loop with
   `waitForReadyRead`, and kill the process once the cap is reached.
   Ledger row 218, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: GitWrap::runWithin reads stdout and stderr in a
+  loop and keeps the head up to each cap; git runs on to its own exit
+  (not killed at the cap, so callers keep its exit code). The two-tier
+  kill (ANTS-1250 INV-12) is unchanged. A 48 MiB diff at a 64 KiB cap
+  rose peak memory 105 MiB before.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 20-shared-utilities (Medium).

@@ -17,3 +17,6 @@ envelope. ANTS-1839 adds a per-caller stdout budget.
   truncated to exactly the cap and `stdoutTruncated` is set.
 - **INV-2** With a cap larger than the output, nothing is truncated and
   `stdoutTruncated` is false.
+- **INV-3** (ANTS-6512) The cap bounds memory. Stdout is read as git
+  writes it, so a run never holds more than the cap plus one read: a
+  48 MiB diff run with a 64 KiB cap raises peak memory by under 16 MiB.
