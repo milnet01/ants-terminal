@@ -21,8 +21,8 @@
 
 namespace ModelNearMissLedger {
 
-constexpr qint64 kMaxLedgerBytes = 256 * 1024;             // 256 KiB; mirrors firing ledger INV-10
-constexpr qint64 kStatsWindowMs  = 24 * 60 * 60 * 1000;    // 24 h cutoff used by statsSlim / statsFull
+constexpr qint64 kMaxLedgerBytes = 256LL * 1024;           // 256 KiB; mirrors firing ledger INV-10
+constexpr qint64 kStatsWindowMs  = 24LL * 60 * 60 * 1000;  // 24 h cutoff used by statsSlim / statsFull
 
 // Record schema — § 2.3. JSON keys are snake_case, matching the firing
 // ledger's style. Optional fields default via the struct defaults; fromJson

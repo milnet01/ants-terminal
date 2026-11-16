@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6791 -->
+<!-- ants-roadmap-id-high-water: ANTS=6793 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -113772,6 +113772,35 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-11-16 (build of remotecontrol_roadmap_log_batch.cpp).
   Lanes: mcp-roadmap-query-log.
+
+- ✅ [ANTS-6792] **The clang-tidy warnings shown in feedbackstore.cpp, claudeallowlist.cpp and modelnearmissledger.h are tidied.**
+  Shipped 2026-11-16: feedbackstore.cpp moves two local `text` values;
+  modelnearmissledger.h widens kMaxLedgerBytes and kStatsWindowMs
+  before multiplying; claudeallowlist.cpp puts envWildcardHint in an
+  anonymous namespace and iterates a QJsonArray with const auto &.
+  claudeallowlist.cpp's s_sudoPrefix warning is in ANTS-6793.
+  **Layman:** An automatic code checker flagged a few small spots in three files; they are tidied with no change in behaviour.
+  Kind: chore.
+  Source: in-session-2026-11-16 (IDE clang-tidy diagnostics).
+  Lanes: changelog-feedback, claude-session-widgets, model-switching.
+
+- 📋 [ANTS-6793] **Tidy the clang-tidy warnings shown in mainwindow.cpp, mainwindow.h, claudeallowlist.cpp's s_sudoPrefix and test_roadmap_write_half.cpp.**
+  Seen in the editor 2026-11-16, not yet triaged:
+  - mainwindow.cpp: internal linkage for sweepKwinScriptOrphansOnce and
+    safeShellNames; an unneeded copy `deferred` in applyTheme; moves of
+    fullCwd, plugin and actionId; two QJsonArray loop conversions;
+    bugprone-branch-clone in a conditional chain; clangd reports about a
+    dozen includes as unused (check each against the split TUs first).
+  - mainwindow.h: eventFilter's visibility differs from QObject's.
+  - claudeallowlist.cpp: s_sudoPrefix's static initialisation may throw.
+  - test_roadmap_write_half.cpp: a const local blocks a move, two loop
+    conversions, an unused <utility>.
+  The applyTheme `deferred` copy is pinned by
+  AutoProfileThemeUnsaved.Inv2 (applyTheme(deferred, save)).
+  **Layman:** An automatic code checker flagged more small spots in the main window code; each needs a look before it is changed.
+  Kind: chore.
+  Source: in-session-2026-11-16 (IDE clang-tidy diagnostics).
+  Lanes: mainwindow, claude-session-widgets, roadmap-store.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

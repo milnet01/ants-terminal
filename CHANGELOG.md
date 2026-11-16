@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Tidied the feedback store, the Claude allowlist dialog and the near-miss ledger where clang-tidy flagged them, with no change in behaviour.** (ANTS-6792)
+
 - **The SessionStart orientation spec cites code by name instead of line numbers, and keeps its amendment history in a history file of its own** (ANTS-6786)
 
 - **Tidied the model-switch ledger and the Claude status-bar controller where clang-tidy flagged them, with no change in behaviour.** (ANTS-6789)

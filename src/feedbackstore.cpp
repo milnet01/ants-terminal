@@ -80,7 +80,7 @@ Result importRow(RoadmapStore &store, const QString &key, const QString &path,
     if (!id) return storeFailed(err);
     row->reporterId   = *id;
     row->exportPath   = key;
-    row->content      = text;
+    row->content      = std::move(text);
     row->revision     = 1;
     row->exportSha256 = sha256Hex(bytes);
     return {};
@@ -303,7 +303,7 @@ Result reimport(RoadmapStore &store, const QString &filePath, bool confirm) {
         || !store.commit(&err))
         return abort(store, storeFailed(err));
     out.changed = true;
-    out.content = text;
+    out.content = std::move(text);
     return out;
 }
 

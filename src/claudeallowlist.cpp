@@ -22,12 +22,16 @@
 static const QString s_sudoPrefix =
     QStringLiteral("SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A ");
 
+namespace {
+
 // ANTS-6759 — why a rule envWildcardVariable() names was not added.
-static QString envWildcardHint(const QString &variable) {
+QString envWildcardHint(const QString &variable) {
     return QStringLiteral("Not added: Claude Code reads the * inside %1=… as "
                           "\"any command\" and warns. Use an exact value there.")
         .arg(variable);
 }
+
+}  // namespace
 
 ClaudeAllowlistDialog::ClaudeAllowlistDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle("Claude Code - Edit Allowlist");
@@ -259,7 +263,7 @@ void ClaudeAllowlistDialog::loadSettings() {
     QJsonObject perms = doc.object().value("permissions").toObject();
 
     auto loadList = [](QListWidget *list, const QJsonArray &arr) {
-        for (const QJsonValue &v : arr) {
+        for (const auto &v : arr) {
             if (v.isString())
                 list->addItem(v.toString());
         }
