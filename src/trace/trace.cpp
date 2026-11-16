@@ -936,7 +936,7 @@ QJsonObject serve(const QJsonObject &args, const QString &rootCanonical, const E
         std::shared_ptr<const FileRows> rows;
         if (vendored && q.query) {
             rows = rowsFor(fi.absoluteFilePath(), fi.lastModified().toMSecsSinceEpoch(),
-                           fi.size(), lang, q.query, q.hash, text);
+                           fi.size(), lang, q.query.get(), q.hash, text);
             if (rows->timedOut) {
                 g.timedOut << rel;
                 rows.reset();

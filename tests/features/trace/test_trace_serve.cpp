@@ -6,6 +6,7 @@
 // Contract: docs/specs/ANTS-5734-trace-verb.md.
 
 #include "trace/extract.h"
+#include "trace/queries.h"
 #include "trace/trace.h"
 #include "../../_support/peak_memory.h"
 #include "../../_support/xdg_guard.h"
@@ -494,6 +495,33 @@ TEST_F(TraceServe, Inv14EditedQueryFileChangesNextAnswer) {
     ASSERT_TRUE(after.value(QStringLiteral("ok")).toBool()) << dump(after);
     EXPECT_TRUE(arr(after, "callers").isEmpty()) << dump(after);
     EXPECT_EQ(arr(after, "definitions").size(), 1);
+}
+
+// INV-27 (ANTS-6504) — an edited query file's old compiled query is freed once
+// nothing holds it, and lives on while a caller still does.
+TEST_F(TraceServe, Ants6504SupersededQueryIsFreedOnceUnheld) {
+    const QString dir = m_data.path() + QStringLiteral("/ants-terminal/trace-queries");
+    ASSERT_TRUE(QDir().mkpath(dir));
+    const QByteArray builtin = trace::builtinQueryText(QStringLiteral("python"));
+    ASSERT_FALSE(builtin.isEmpty());
+    const auto writeQuery = [&](const QByteArray &suffix) {
+        QFile user(dir + QStringLiteral("/python.scm"));
+        return user.open(QIODevice::WriteOnly) && user.write(builtin + suffix) > 0;
+    };
+
+    ASSERT_TRUE(writeQuery(";; first\n"));
+    trace::Query first = trace::queryFor(QStringLiteral("python"));
+    ASSERT_TRUE(first.query) << first.error.toStdString();
+    const std::weak_ptr<const TSQuery> old = first.query;
+
+    ASSERT_TRUE(writeQuery(";; second, a different size\n"));
+    const trace::Query second = trace::queryFor(QStringLiteral("python"));
+    ASSERT_TRUE(second.query) << second.error.toStdString();
+    ASSERT_NE(second.query, first.query) << "the edited text was not recompiled";
+    EXPECT_FALSE(old.expired()) << "a query was freed while a caller still held it";
+
+    first = {};
+    EXPECT_TRUE(old.expired()) << "the superseded query outlived its last holder";
 }
 
 // INV-15 — a file whose parse has errors still yields its definitions.

@@ -8,21 +8,25 @@
 #include <QByteArray>
 #include <QString>
 
+#include <memory>
+
 struct TSQuery;
 
 namespace trace {
 
 struct Query {
-    const TSQuery *query = nullptr;  // null when it failed to compile
+    // Null when it failed to compile. The query lives while any copy of this
+    // Query does, so a call may keep using it after a newer text replaces it.
+    std::shared_ptr<const TSQuery> query;
     QByteArray hash;                 // of the text compiled; part of the cache key
     QString limits;                  // the `;; limits:` sentence, if any
     QString error;                   // why `query` is null
     bool userCopy = false;           // read from the user directory
 };
 
-// The compiled query for a vendored language. Compiled queries are kept for
-// the process's life, keyed by text hash, and are safe to share between
-// threads. Thread-safe.
+// The compiled query for a vendored language: one per language, compiled again
+// when its text changes. A compiled query is safe to share between threads.
+// Thread-safe.
 Query queryFor(const QString &langId);
 
 // The built-in query text for `langId`, empty when there is none.

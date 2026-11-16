@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **trace keeps one compiled query per language, freeing the old one after an edited query file replaces it** (ANTS-6504)
+
 - **trace holds only the rows a page can show, so a name with hundreds of thousands of hits stays small in memory** (ANTS-6503)
   Every row is still counted, and paging with `next_offset` still joins up
   to the whole answer.

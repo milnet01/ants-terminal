@@ -20,7 +20,8 @@ namespace trace {
 namespace {
 
 struct Compiled {
-    TSQuery *query = nullptr;  // never freed: one per distinct text, process-lived
+    QByteArray hash;                       // of the text compiled
+    std::shared_ptr<const TSQuery> query;
     QString error;
 };
 
@@ -33,12 +34,14 @@ struct UserFile {
 
 QMutex g_mutex;
 
-// Key: lang + '\0' + text hash. Heap-held and never destroyed, so the queries
-// stay reachable at exit: a static table is torn down before LeakSanitizer
-// looks, which orphans every TSQuery in it. Not freed at exit either, since a
-// worker thread may still be matching with one.
-QHash<QByteArray, Compiled> &compiled() {
-    static auto *table = new QHash<QByteArray, Compiled>;
+// Key: language id. ANTS-6504 — one entry per language: a new text replaces
+// the last, whose query is freed once no caller's Query holds it. Heap-held
+// and never destroyed, so the current queries stay reachable at exit: a static
+// table is torn down before LeakSanitizer looks, which orphans every TSQuery
+// in it. Not freed at exit either, since a worker thread may still be
+// matching with one.
+QHash<QString, Compiled> &compiled() {
+    static auto *table = new QHash<QString, Compiled>;
     return *table;
 }
 
@@ -120,15 +123,14 @@ Query queryFor(const QString &langId) {
     }
     out.hash = QCryptographicHash::hash(text, QCryptographicHash::Sha1).toHex();
     out.limits = limitsOf(text);
-    const QByteArray key = langId.toUtf8() + '\0' + out.hash;
-    QHash<QByteArray, Compiled> &table = compiled();
-    auto it = table.find(key);
-    if (it == table.end()) {
-        Compiled c;
+    Compiled &c = compiled()[langId];
+    if (c.hash != out.hash) {
+        c = Compiled{out.hash, {}, {}};
         uint32_t errOffset = 0;
         TSQueryError err = TSQueryErrorNone;
-        c.query = ts_query_new(lang, text.constData(), uint32_t(text.size()),
-                               &errOffset, &err);
+        TSQuery *q = ts_query_new(lang, text.constData(), uint32_t(text.size()),
+                                  &errOffset, &err);
+        if (q) c.query.reset(q, [](const TSQuery *p) { ts_query_delete(const_cast<TSQuery *>(p)); });
         if (!c.query) {
             const int line = int(text.left(errOffset).count('\n')) + 1;
             c.error = QStringLiteral("%1 query %2 at line %3%4")
@@ -137,10 +139,9 @@ Query queryFor(const QString &langId) {
                           .arg(out.userCopy ? QStringLiteral(" of ") + userPath
                                             : QString());
         }
-        it = table.insert(key, c);
     }
-    out.query = it->query;
-    out.error = it->error;
+    out.query = c.query;
+    out.error = c.error;
     return out;
 }
 
