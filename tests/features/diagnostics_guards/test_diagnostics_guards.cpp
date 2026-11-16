@@ -7,6 +7,9 @@
 
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -134,4 +137,38 @@ TEST(DiagnosticsGuards, DebugLogReopensWhenRotatedAway) {
     EXPECT_TRUE(ScratchLog::read(path).contains("after rotation"))
         << "the writer kept appending to the rotated-away file";
     EXPECT_FALSE(ScratchLog::read(rotated).contains("after rotation"));
+}
+
+// INV-7 (ANTS-6528) — a build cache over kMaxCacheFileBytes is not loaded.
+TEST(DiagnosticsGuards, Ants6528OversizedBuildCacheIsNotLoaded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    BuildCache::ParsedBuild b;
+    b.recordedAtMs = 1;
+    ASSERT_TRUE(BuildCache::recordBuild(tmp.path(), b));
+    ASSERT_TRUE(BuildCache::loadBuild(tmp.path()).has_value());
+    QJsonObject o = BuildCache::toJson(b);
+    o[QStringLiteral("padding")] =
+        QString(int(BuildCache::kMaxCacheFileBytes), QLatin1Char('p'));
+    QFile f(BuildCache::cachePath(tmp.path()));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    f.close();
+    EXPECT_FALSE(BuildCache::loadBuild(tmp.path()).has_value())
+        << "a cache file over the cap was read and loaded";
+}
+
+// INV-8 (ANTS-6528) — fromJson keeps the writer's caps.
+TEST(DiagnosticsGuards, Ants6528FromJsonKeepsTheWritersCaps) {
+    QJsonArray errs;
+    for (int i = 0; i < 80; ++i)
+        errs.append(QJsonObject{{"file", "a.cpp"}, {"line", i}, {"severity", "error"},
+                                {"message", QString(1000, QLatin1Char('m'))}});
+    QJsonObject o = BuildCache::toJson(BuildCache::ParsedBuild{});
+    o[QStringLiteral("errors")] = errs;
+    bool ok = false;
+    const BuildCache::ParsedBuild b = BuildCache::fromJson(o, &ok);
+    ASSERT_TRUE(ok);
+    EXPECT_EQ(b.errors.size(), 50);
+    for (const auto &e : b.errors) EXPECT_LE(e.message.size(), 240);
 }

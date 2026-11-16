@@ -94995,7 +94995,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 36-changelog-feedback (Low).
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6528] **buildcache.cpp: and `fromJson` at `:292` (`for (const auto &v2 : errs)`) is not capped either.**
+- ✅ [ANTS-6528] **buildcache.cpp: and `fromJson` at `:292` (`for (const auto &v2 : errs)`) is not capped either.**
   `buildcache.cpp:175` — and `fromJson` at `:292` (`for (const auto &v2
   : errs)`) is not capped either. loading applies no size cap, no
   50-entry cap and no 240-character cap. Spec § 5 says the cache file is
@@ -95005,6 +95005,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   about 64 KiB, and re-apply `kMaxErrors` and `kMessageCharCap` in
   `fromJson`.
   Ledger row 434, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: loadBuild reads kMaxCacheFileBytes + 1 (256 KiB,
+  not the reviewer's 64: the writer does not cap path length) and
+  returns nothing past it; fromJson stops at kMaxErrors and cuts
+  messages to kMessageCharCap. diagnostics_guards INV-7, INV-8;
+  ANTS-1299 § RAM.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 37-diagnostics-logging (Medium).

@@ -24,6 +24,13 @@ With no category active there is no log file to write it to.
 `DebugLog::write` checks that its open file is still the one at the log path,
 so it never appends to a `debug.log.1` another instance renamed it to.
 
+**INV-7 — a build cache over `kMaxCacheFileBytes` is not loaded**
+(ANTS-6528). `BuildCache::loadBuild` reads one byte past the cap and
+returns nothing when it gets it.
+
+**INV-8 — `BuildCache::fromJson` keeps the writer's caps** (ANTS-6528): at
+most 50 errors, each message at most 240 characters.
+
 ## Rationale
 
 The ANTS-5110 performance pass found each of these. For INV-1 and INV-2:
@@ -34,7 +41,7 @@ file without limit, and a FIFO path blocked the worker on open.
 
 `test_diagnostics_guards.cpp` reads `src/debuglog.cpp` and
 `src/remotecontrol_workspace.cpp` (located from the test's own path) for
-INV-1 and INV-2. INV-3 to INV-6 call `BuildCache::parseBuildOutput` and
+INV-1 and INV-2. INV-3 to INV-8 call `BuildCache` and
 `DebugLog` directly, with the debug log in a temporary directory.
 
 ## Regression history

@@ -51,7 +51,9 @@ ParsedBuild parseBuildOutput(const QString &output);
 bool recordBuild(const QString &canonProject, ParsedBuild &build);
 
 // Read + parse the cache file. Returns empty optional on missing
-// file, malformed JSON, or schema_version != 1.
+// file, malformed JSON, schema_version != 1, or (ANTS-6528) a file
+// over kMaxCacheFileBytes, which is not read whole.
+inline constexpr qint64 kMaxCacheFileBytes = qint64{256} * 1024;
 std::optional<ParsedBuild> loadBuild(const QString &canonProject);
 
 // Walk the project's compile-input set looking for any file with
@@ -67,7 +69,8 @@ struct StaleCheck {
 StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs);
 
 // Render to/from JSON object (1:1 with the on-disk shape). Caller
-// uses this when building the MCP envelope.
+// uses this when building the MCP envelope. fromJson keeps the writer's
+// caps (ANTS-6528): at most 50 errors, each message at most 240 chars.
 QJsonObject toJson(const ParsedBuild &build);
 ParsedBuild fromJson(const QJsonObject &obj, bool *okOut = nullptr);
 

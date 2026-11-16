@@ -172,8 +172,11 @@ std::optional<ParsedBuild> loadBuild(const QString &canonProject) {
     QFile f(p);
     if (!f.exists()) return std::nullopt;
     if (!f.open(QIODevice::ReadOnly)) return std::nullopt;
-    const QByteArray bytes = f.readAll();
+    // ANTS-6528 — the writer keeps the file small; one byte past the cap
+    // says this one is not ours to trust, without reading it whole.
+    const QByteArray bytes = f.read(kMaxCacheFileBytes + 1);
     f.close();
+    if (bytes.size() > kMaxCacheFileBytes) return std::nullopt;
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(bytes, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
@@ -290,12 +293,13 @@ ParsedBuild fromJson(const QJsonObject &obj, bool *okOut) {
     const QJsonArray errs =
         obj.value(QStringLiteral("errors")).toArray();
     for (const auto &v2 : errs) {
+        if (b.errors.size() == kMaxErrors) break;   // ANTS-6528 — the writer's caps
         const QJsonObject eo = v2.toObject();
         ParsedError e;
         e.file     = eo.value(QStringLiteral("file")).toString();
         e.line     = eo.value(QStringLiteral("line")).toInt(0);
         e.severity = eo.value(QStringLiteral("severity")).toString();
-        e.message  = eo.value(QStringLiteral("message")).toString();
+        e.message  = eo.value(QStringLiteral("message")).toString().left(kMessageCharCap);
         b.errors.append(e);
     }
     b.errorsCount    = obj.value(QStringLiteral("errors_count")).toInt(0);

@@ -250,7 +250,7 @@ that ships the implementations.
 
 ## 5. Memory & cost budget
 
-- Per call: one `QJsonDocument` + one `QFile`. Cache file is ≤ ~50 KiB in the worst case: 50 errors × (240-char `message` cap + ~240 bytes of envelope per entry, dominated by absolute path + JSON quoting + structural keys). The 240-char message cap is the load-bearing constant; continuations folded into one diagnostic share that budget.
+- Per call: one `QJsonDocument` + one `QFile`. Cache file is ≤ ~50 KiB in the worst case: 50 errors × (240-char `message` cap + ~240 bytes of envelope per entry, dominated by absolute path + JSON quoting + structural keys). The 240-char message cap is the load-bearing constant; continuations folded into one diagnostic share that budget. The writer alone keeps that bound; `loadBuild` refuses a file over `kMaxCacheFileBytes` (256 KiB) unread, and `fromJson` re-applies the 50-error and 240-char caps (ANTS-6528).
 - Stale-check walk: bounded by 5 000-file cap; on this project's `src/` (~150 files) the walk completes in < 5 ms.
 - Atomic write fits in one `QSaveFile` commit; no risk of partial files on crash.
 - No new in-process state. The cache is read-on-demand each call (no in-memory mirror).

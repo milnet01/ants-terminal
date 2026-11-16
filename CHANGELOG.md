@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **build_status ignores a build cache file over 256 KiB and keeps at most 50 errors of 240 characters when loading one** (ANTS-6528)
+
 - **The feedback verbs refuse a feedback file over 8 MiB instead of reading it whole** (ANTS-6527)
 
 - **The test-audit verbs forget a partition's recheck time when they forget the partition** (ANTS-6526)
