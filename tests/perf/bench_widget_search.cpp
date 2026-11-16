@@ -14,8 +14,9 @@
 //
 //   literal_term   a needle on 1 line in 8
 //   regex_term     a character-class regex on the same lines
-//   single_space   one space — matches every blank cell, the unbounded
-//                  match-list case ANTS-2000's 2026-09-11 note names
+//   single_space   one space — more matches than the search keeps, so the
+//                  scan stops at its cap (ANTS-6494) and its rate is the
+//                  capped scan's, over fewer lines than `lines` says
 //
 // Output is one CSV line per case:
 //
@@ -72,11 +73,14 @@ std::string buildCorpus(int lines) {
     return buf;
 }
 
-// The label reads "current/total"; total is the match count.
+// The label reads "current/total"; total is the match count, with a trailing
+// "+" when the search stopped at its cap (ANTS-6494).
 long matchCount(const QLabel *label) {
-    const QString t = label->text();
+    QString t = label->text();
     const int slash = t.indexOf(QLatin1Char('/'));
-    return slash < 0 ? -1 : t.mid(slash + 1).toLong();
+    if (slash < 0) return -1;
+    if (t.endsWith(QLatin1Char('+'))) t.chop(1);
+    return t.mid(slash + 1).toLong();
 }
 
 }  // namespace

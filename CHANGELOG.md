@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The widget search benchmark reads a capped match total ("100000+") and notes that its single-space case measures a capped scan.** (ANTS-6494)
+
 - **Terminal search keeps at most 100,000 matches, the ones nearest the end of the output; past that the counter shows the total as "100000+".** (ANTS-6494)
 
 - **The comments on the MCP reply-narrowing helpers match what the code does.** (ANTS-6290)
