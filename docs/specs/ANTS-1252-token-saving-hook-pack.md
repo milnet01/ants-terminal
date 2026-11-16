@@ -170,8 +170,10 @@ silent.
    `jq` strips JSON comments (M6 / INV-6).
 4. Write to **tmpfile** (`settings.json.tmp` in same dir for
    atomic-rename guarantees).
-5. **Validate the tmpfile BEFORE rename**: `jq empty
-   settings.json.tmp` (exit non-zero on parse fail). If validation
+5. **Validate the tmpfile BEFORE rename**: `jq -e 'type == "object"'
+   settings.json.tmp` (non-zero on a parse failure or an empty file;
+   ANTS-6488). The existing settings.json passes the same check before
+   any merge runs. If validation
    fails, leave settings.json untouched and abort (INV-8 — closes
    S1252-5).
 6. `rename(tmpfile, settings.json)` only after validation succeeds.
@@ -207,8 +209,9 @@ re-serialisation).
 - **INV-7.** Hooks parse payloads via `jq -r '<path>'` only, never
   regex on raw JSON. Test fixture asserts the bash-veto script
   uses `jq` (source-grep). (Closes S1252-4.)
-- **INV-8.** Install script validates tmpfile with `jq empty`
-  **before** rename; failure leaves `settings.json` untouched.
+- **INV-8.** Install script checks that both the existing
+  `settings.json` and the tmpfile hold a JSON object **before** any
+  rename; failure leaves `settings.json` untouched (ANTS-6488).
   (Closes S1252-5.)
 - **INV-9.** Per-project gate: every hook script aborts (exit 0
   silent) if `git rev-parse --show-toplevel` is missing, equal to

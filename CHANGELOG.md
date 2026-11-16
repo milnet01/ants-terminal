@@ -450,6 +450,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **tools/install-hooks.sh leaves an unreadable or empty Claude settings.json as it is and says how to fix it** (ANTS-6488)
+
 - **Two roadmap writes at once now publish in turn, so ROADMAP.md always ends up showing the latest change** (ANTS-6483)
 
 - **A theme change now recolours everything, including the screen behind a full-screen app such as Claude Code, the scrollback and saved text styles** (ANTS-6788)

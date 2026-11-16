@@ -94065,7 +94065,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 36-changelog-feedback (Low).
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6488] **install-hooks.sh: an invalid `settings.json` is replaced with an empty file.**
+- ✅ [ANTS-6488] **install-hooks.sh: an invalid `settings.json` is replaced with an empty file.**
   `tools/install-hooks.sh:108` — an invalid `settings.json` is replaced
   with an empty file.
   Quote: `current="$(read_settings)"`
@@ -94074,6 +94074,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   empty `new_content` (`[ -n "$new_content" ] || abort`) before calling
   `atomic_write_settings`.
   Ledger row 446, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: install-hooks.sh refuses, in the main shell, a
+  settings.json that is not a JSON object, and the tmpfile check
+  requires an object (jq empty passed an empty file). Test: hook_pack
+  ANTS-6488 cases (install, uninstall, empty), red first.
   **Layman:** Saving could lose some of your settings or records.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 38-dev-shell-tools (High).

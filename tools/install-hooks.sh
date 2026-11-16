@@ -6,7 +6,8 @@
 #  - INV-5: lstat ~/.claude/settings.json; abort if it's a symlink.
 #  - INV-6: sentinel-key fence (`ants_hooks_pack_v1`) — NOT text-fence
 #    comments (jq strips JSON comments).
-#  - INV-8: write tmpfile, validate with `jq empty`, ONLY then rename.
+#  - INV-8: refuse a settings.json that is not a JSON object; write
+#    tmpfile, check it holds one, ONLY then rename.
 #  - cp --no-dereference for the backup (don't follow malicious link).
 #  - Idempotent: re-runs detect sentinel + identical scripts → no-op.
 #
@@ -53,6 +54,15 @@ command -v jq >/dev/null 2>&1 || { echo "jq required" >&2; exit 1; }
 # ANTS-1252-INV-5 — lstat target. Symlinks abort hard.
 if [ -L "$target" ]; then
     echo "settings.json is a symlink — resolve manually before installing" >&2
+    echo "  target: $target" >&2
+    exit 1
+fi
+
+# ANTS-6488 — checked here, in the main shell: the splices read the file
+# inside $( ), where set -e does not reach, so a failed parse there yields
+# empty text rather than stopping the script.
+if [ -f "$target" ] && ! jq -e 'type == "object"' "$target" >/dev/null 2>&1; then
+    echo "settings.json is not a JSON object — fix or remove it, then re-run" >&2
     echo "  target: $target" >&2
     exit 1
 fi
@@ -159,16 +169,17 @@ already_installed() {
     return 0
 }
 
-# ANTS-1252-INV-8 — atomic-rename: write tmpfile in same dir, jq empty
-# validates parseability, only then mv -f.
+# ANTS-1252-INV-8 — atomic-rename: write tmpfile in same dir, check it
+# holds a JSON object, only then mv -f.
 atomic_write_settings() {
     local content="$1"
     local tmp
     tmp="$(mktemp "${target}.XXXXXX")"
     printf '%s\n' "$content" > "$tmp"
-    if ! jq empty "$tmp" >/dev/null 2>&1; then
+    # `jq empty` alone passes an empty file, so require an object.
+    if ! jq -e 'type == "object"' "$tmp" >/dev/null 2>&1; then
         rm -f "$tmp"
-        echo "ERROR: would have written invalid JSON; aborting" >&2
+        echo "ERROR: would have written something other than a JSON object; aborting" >&2
         return 1
     fi
     chmod 0600 "$tmp"

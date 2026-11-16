@@ -1010,6 +1010,26 @@ else
 fi
 rm -rf "$dc_tmp"
 
+# ANTS-6488 — a settings.json that does not hold a JSON object is refused and
+# left byte-identical, on install and on uninstall. The read runs inside $( ),
+# where set -e does not reach, so a failed parse once became an empty file.
+bad_tmp="$(mktemp -d "${XDG_CACHE_HOME:-$HOME/.cache}/ants-tests-XXXXXX")"
+for case in "install:{not json" "uninstall:{not json" "install:"; do
+    mode="${case%%:*}"; body="${case#*:}"
+    printf '%s' "$body" > "$bad_tmp/settings.json"
+    cp "$bad_tmp/settings.json" "$bad_tmp/before.json"
+    flag=""; [ "$mode" = "uninstall" ] && flag="--uninstall"
+    rc=0
+    bash "$INSTALLER" $flag --target "$bad_tmp/settings.json" --hooks-dir "$bad_tmp/hooks" \
+        >/dev/null 2>&1 || rc=$?
+    if [ "$rc" -ne 0 ] && cmp -s "$bad_tmp/settings.json" "$bad_tmp/before.json"; then
+        pass "ANTS-6488 $mode refuses settings.json '${body:-<empty>}' and leaves it as it was"
+    else
+        fail "ANTS-6488 $mode on settings.json '${body:-<empty>}': rc=$rc, now holds '$(cat "$bad_tmp/settings.json")'"
+    fi
+done
+rm -rf "$bad_tmp"
+
 if [ "$failures" -gt 0 ]; then
     printf '\n%d assertion(s) failed.\n' "$failures" >&2
     exit "$failures"
