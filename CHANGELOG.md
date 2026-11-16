@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **quotation_check holds at most 16 MiB of checked files at once, re-reading a file it dropped if a later quotation names it.** (ANTS-6500)
+
 - **The ripgrep-backed MCP verbs read ripgrep's error output while it runs, keeping only the first 4 KiB in memory.** (ANTS-6499)
 
 - **spec_query, invariant_check and task_priors read at most 4 MiB of a spec or decision file, and skip or refuse a longer one.** (ANTS-6498)

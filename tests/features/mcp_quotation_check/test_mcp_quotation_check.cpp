@@ -307,6 +307,22 @@ TEST(QuotationCheck, Inv8SubjectReadOncePerCall)
     EXPECT_EQ(env.value("items_checked").toInt(), 3);
 }
 
+// INV-8 (ANTS-6500) — past kMaxHeldSubjectBytes the least recently used
+// subject is dropped, and read again when a later item names it.
+TEST(QuotationCheck, Inv8HeldSubjectsStayUnderTheBudget)
+{
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QByteArray filler(qsizetype{9} * 1024 * 1024, 'x');
+    ASSERT_TRUE(writeFile(dir.filePath("a.md"), "alpha\n" + filler + "\n"));
+    ASSERT_TRUE(writeFile(dir.filePath("b.md"), "beta\n" + filler + "\n"));
+    const QJsonObject env = call(dir.path(),
+        QJsonArray{item("a.md", "alpha"), item("b.md", "beta"), item("a.md", "alpha")});
+    EXPECT_EQ(env.value("files_read").toInt(), 3)
+        << "two 9 MiB subjects were held at once";
+    EXPECT_EQ(env.value("counts").toObject().value("hit").toInt(), 3);
+}
+
 // INV-9
 TEST(QuotationCheck, Inv9Caps)
 {

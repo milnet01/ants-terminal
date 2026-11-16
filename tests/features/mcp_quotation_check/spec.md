@@ -29,7 +29,7 @@ with the temporary directory as the project root.
 | INV-5 | `QuotationCheck.Inv5SymlinkOutsideRootIsOutsideAllowed`, `QuotationCheck.Inv5AllowedGlobsMatchResolvedPath` |
 | INV-6 | `QuotationCheck.Inv6RefReadsTheBlob` |
 | INV-7 | `QuotationCheck.Inv7MissPointsAtNearestText` |
-| INV-8 | `QuotationCheck.Inv8SubjectReadOncePerCall` |
+| INV-8 | `QuotationCheck.Inv8SubjectReadOncePerCall`, `QuotationCheck.Inv8HeldSubjectsStayUnderTheBudget` |
 | INV-9 | `QuotationCheck.Inv9Caps` |
 | INV-10 | `QuotationCheck.Inv10Registration` |
 | INV-11 | `QuotationCheck.Inv11DisplacedQuoteNearestOccurrenceDecides` (ANTS-5732) |

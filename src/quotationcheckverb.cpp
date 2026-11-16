@@ -422,6 +422,9 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
     const QString root = QFileInfo(rootIn).canonicalFilePath();
     const QDir rootDir(root);
     std::map<std::pair<QString, QString>, Subject> subjects;
+    // ANTS-6500 — the item that last named each held subject, and their bytes.
+    std::map<std::pair<QString, QString>, qsizetype> lastUse;
+    qsizetype heldBytes = 0;
     int filesRead = 0;
     int nHit = 0, nDisplaced = 0, nMiss = 0, nNotRun = 0, nOutside = 0;
     QJsonArray results, findings, checkErrors;
@@ -493,9 +496,22 @@ QJsonObject run(const QString &rootIn, const QJsonObject &args)
                     for (qsizetype n = s.raw.indexOf('\n'); n >= 0; n = s.raw.indexOf('\n', n + 1))
                         s.newlines.push_back(n);
                     ++filesRead;
+                } else {
+                    s.raw = QByteArray();  // a refused read keeps only its reason
                 }
+                while (!subjects.empty() &&
+                       heldBytes + s.raw.size() > kMaxHeldSubjectBytes) {
+                    const auto oldest = std::min_element(
+                        lastUse.begin(), lastUse.end(),
+                        [](const auto &a, const auto &b) { return a.second < b.second; });
+                    heldBytes -= subjects.at(oldest->first).raw.size();
+                    subjects.erase(oldest->first);
+                    lastUse.erase(oldest);
+                }
+                heldBytes += s.raw.size();
                 it = subjects.emplace(key, std::move(s)).first;
             }
+            lastUse[key] = i;
             const Subject &s = it->second;
             if (!s.reason.isEmpty()) {
                 result = QStringLiteral("not_run");

@@ -19,6 +19,10 @@ inline constexpr const char *kNormaliser = "quotation-check.sh 60fd0be";
 inline constexpr int kMaxItems = 500;
 inline constexpr qsizetype kMaxTextBytes = 8 * 1024;
 inline constexpr qsizetype kMaxSubjectBytes = 16 * 1024 * 1024;
+// ANTS-6500 — the most subject bytes one call holds at once. A subject costs
+// about ten times its size once normalised; past this the least recently
+// used is dropped, and read again if a later item names it.
+inline constexpr qsizetype kMaxHeldSubjectBytes = kMaxSubjectBytes;
 inline constexpr int kNearestBytes = 200;
 
 // A normalised text, with the offset in the original bytes each output

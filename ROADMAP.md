@@ -94447,7 +94447,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (Low).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6500] **quotationcheckverb.cpp: and `:497` keeps every subject until the call ends.**
+- ✅ [ANTS-6500] **quotationcheckverb.cpp: and `:497` keeps every subject until the call ends.**
   `quotationcheckverb.cpp:424` — and `:497` keeps every subject until
   the call ends. each subject holds its raw bytes plus a `Normalised`,
   which is the text plus an 8-byte offset for every byte. That is about
@@ -94458,6 +94458,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   of subjects per call (reason `too_large` past it), or drop a subject
   after the last item that names it.
   Ledger row 140, docs/reviews/close-findings-2026-11-06.md.
+  2026-11-16: QuotationCheck::kMaxHeldSubjectBytes (16 MiB of file
+  bytes). Past it the least recently used subject is dropped and read
+  again if named later; a refused read keeps no bytes. Spec
+  docs/specs/ANTS-5502-quotation-check.md INV-8 amended (loop-log amend
+  row). Locked by QuotationCheck.Inv8HeldSubjectsStayUnderTheBudget, red
+  first. Reaches clients after an ants-mcpd rebuild and /mcp reconnect.
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 13-mcp-content-verbs-b (Medium).
