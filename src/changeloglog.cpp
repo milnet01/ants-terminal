@@ -405,9 +405,126 @@ QString formatBullet(const QString &summary, const QString &body,
     return out;
 }
 
+namespace {
+
+// ANTS-6800 — one bullet as written: its lines, and whether a blank line (or
+// anything but another bullet) follows it.
+struct WrittenBullet {
+    QStringList lines;
+    bool        gapAfter = false;
+};
+
+QList<WrittenBullet> writtenBullets(const QStringList &lines, int from, int to) {
+    QList<WrittenBullet> out;
+    const QVector<bool> fenced = fencedLines(lines, from, to);
+    for (int i = from; i < to; ++i) {
+        const QString &l = lines.at(i);
+        if (fenced.at(i)) continue;
+        if (l.startsWith(QStringLiteral("- "))) {
+            out.append(WrittenBullet{{l}, false});
+        } else if (out.isEmpty() || out.last().gapAfter) {
+            continue;
+        } else if (l.startsWith(QStringLiteral("  ")) && !l.trimmed().isEmpty()) {
+            out.last().lines.append(l);
+        } else {
+            out.last().gapAfter = true;
+        }
+    }
+    return out;
+}
+
+BulletStyle styleOf(const QList<WrittenBullet> &bullets) {
+    BulletStyle st;
+    if (bullets.isEmpty()) return st;
+    static const QRegularExpression idThenPeriod(
+        QStringLiteral(R"(\([A-Za-z][A-Za-z0-9_]{0,15}-\d+\)\.$)"));
+    int bold = 0, plain = 0, idBefore = 0, widest = 0;
+    bool wrapped = false;
+    for (const WrittenBullet &b : bullets) {
+        if (b.lines.first().startsWith(QStringLiteral("- **"))) { ++bold; continue; }
+        ++plain;
+        wrapped = wrapped || b.lines.size() > 1;
+        for (const QString &l : b.lines) widest = std::max(widest, int(l.size()));
+        if (idThenPeriod.match(b.lines.last().trimmed()).hasMatch()) ++idBefore;
+    }
+    st.bold = bold >= plain;
+    if (!st.bold) {
+        st.idBeforePeriod = idBefore * 2 > plain;
+        if (wrapped) st.wrap = std::clamp(widest, 40, 120);
+    }
+    // The last bullet's gap is the block's end, not the house style.
+    int pairs = 0, gaps = 0;
+    for (int i = 0; i + 1 < bullets.size(); ++i) {
+        ++pairs;
+        if (bullets.at(i).gapAfter) ++gaps;
+    }
+    if (pairs > 0) st.blankAfter = gaps * 2 >= pairs;
+    return st;
+}
+
+// "- " + `text`, wrapped at `width` with two-space continuations.
+QString wrapBullet(const QString &text, int width) {
+    if (width <= 0) return QStringLiteral("- ") + text;
+    QStringList rows;
+    QString row = QStringLiteral("-");
+    bool rowHasWord = false;
+    for (const QString &w : text.split(QLatin1Char(' '), Qt::SkipEmptyParts)) {
+        if (rowHasWord && row.size() + 1 + w.size() > width) {
+            rows << row;
+            row = QStringLiteral(" ");
+        }
+        row += QLatin1Char(' ') + w;
+        rowHasWord = true;
+    }
+    rows << row;
+    return rows.join(QLatin1Char('\n'));
+}
+
+}  // namespace
+
+BulletStyle unreleasedBulletStyle(const QString &markdown, const QString &category) {
+    const QStringList lines = markdown.split(QLatin1Char('\n'));
+    const UnreleasedBounds ub = findUnreleased(lines);
+    if (ub.heading < 0) return {};
+    for (int i = ub.heading + 1; i < ub.end; ++i) {
+        if (!isCategoryHeading(lines.at(i))) continue;
+        if (lines.at(i).trimmed().mid(4).trimmed().compare(category, Qt::CaseInsensitive) != 0)
+            continue;
+        int end = i + 1;
+        while (end < ub.end && !lines.at(end).startsWith(QStringLiteral("### "))) ++end;
+        const QList<WrittenBullet> own = writtenBullets(lines, i + 1, end);
+        if (!own.isEmpty()) return styleOf(own);
+        break;
+    }
+    return styleOf(writtenBullets(lines, ub.heading + 1, ub.end));
+}
+
+QString formatBullet(const QString &summary, const QString &body,
+                     const QString &id, const BulletStyle &style) {
+    if (style.bold) return formatBullet(summary, body, id);
+    QString text = oneLine(summary);
+    const QString tag = oneLine(id);
+    if (!tag.isEmpty()) {
+        if (style.idBeforePeriod && text.endsWith(QLatin1Char('.')))
+            text = text.chopped(1) + QStringLiteral(" (") + tag + QStringLiteral(").");
+        else
+            text += QStringLiteral(" (") + tag + QStringLiteral(")");
+    }
+    QString out = wrapBullet(text, style.wrap);
+    if (!body.trimmed().isEmpty()) {
+        for (const QString &ln : body.split(QLatin1Char('\n'))) {
+            const QString t = ln.trimmed();
+            out += QLatin1Char('\n');
+            if (!t.isEmpty()) out += QStringLiteral("  ") + t;
+        }
+    }
+    return out;
+}
+
 InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
-                                   const QString &bulletBlock) {
+                                   const QString &bulletBlock,
+                                   bool blankAfter) {
     InsertResult r;
     if (!isValidCategory(category)) return refuseBadCategory(r, category);
 
@@ -528,7 +645,7 @@ InsertResult insertUnreleasedEntry(const QString &markdown,
         if (insertAt < sectionEnd && lines.at(insertAt).trimmed().isEmpty())
             ++insertAt;
         QStringList block = bulletLines;
-        block.append(QString());  // blank line after the new bullet
+        if (blankAfter) block.append(QString());  // ANTS-6800 — as the block does
         for (int k = 0; k < block.size(); ++k)
             lines.insert(insertAt + k, block.at(k));
         r.ok = true;

@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **changelog_log writes new entries in the style the changelog already uses: bold or plain, wrapped or not, with or without blank lines between** (ANTS-6800)
+
 - **`source_scrapes` finds the strings Python and shell tests look for, and can leave out readers that only list files** (ANTS-6782)
   In Python, `"x" in src`, `src.count("x")` and `re.search(r"x", src)` on a
   file's text are anchors; in shell, a quoted `grep` pattern on a file is.

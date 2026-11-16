@@ -189,7 +189,12 @@ ClRoutedInsert routeOrInsertUnreleased(const QString &markdown,
         ChangelogLog::classifyUnreleased(markdown);
     out.routed = shape.mixed && shape.datedLeads;
     if (!out.routed) {
-        out.res = ChangelogLog::insertUnreleasedEntry(markdown, category, bullet);
+        // ANTS-6800 — written in the style the target block already uses.
+        const ChangelogLog::BulletStyle style =
+            ChangelogLog::unreleasedBulletStyle(markdown, category);
+        out.echoLine = ChangelogLog::formatBullet(summary, body, id, style);
+        out.res = ChangelogLog::insertUnreleasedEntry(markdown, category,
+                                                      out.echoLine, style.blankAfter);
         return out;
     }
     // The id rides the headline, which is where op:"add_subsection" documents

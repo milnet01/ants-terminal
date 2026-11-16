@@ -42,6 +42,24 @@ const QStringList &canonicalCategories();
 QString formatBullet(const QString &summary, const QString &body,
                      const QString &id);
 
+// ANTS-6800 — how the bullets already in a block are written. The default is
+// formatBullet()'s own: bold, one line, a blank line after each.
+struct BulletStyle {
+    bool bold           = true;   // `- **summary** (id)`
+    bool idBeforePeriod = false;  // plain: `- summary (id).`
+    int  wrap           = 0;      // plain: wrap at this column; 0 = one line
+    bool blankAfter     = true;   // a blank line after each bullet
+};
+
+// The style of the bullets under `## [Unreleased]` > `### <category>`, or of
+// any bullet in `[Unreleased]` when that block has none; the default when
+// there are none at all.
+BulletStyle unreleasedBulletStyle(const QString &markdown, const QString &category);
+
+// formatBullet() in `style`. The default style gives formatBullet()'s output.
+QString formatBullet(const QString &summary, const QString &body,
+                     const QString &id, const BulletStyle &style);
+
 // ANTS-4629 — why a caller-supplied `summary` must be refused, or empty when it
 // is fine. formatBullet() wraps in `**` and appends the id unconditionally, so
 // a summary already carrying either renders as an empty-strong followed by
@@ -112,9 +130,11 @@ UnreleasedShape classifyUnreleased(const QStringList &lines, int sectionStart,
 //                     entry to insertUnreleasedSubsection instead (ANTS-5098),
 //                     so a caller still gets a write — at the top. Refused
 //                     HERE as well so no direct caller can bury an entry.
+// `blankAfter` (ANTS-6800) puts a blank line after the new bullet.
 InsertResult insertUnreleasedEntry(const QString &markdown,
                                    const QString &category,
-                                   const QString &bulletBlock);
+                                   const QString &bulletBlock,
+                                   bool blankAfter = true);
 
 struct SubsectionResult {
     bool    ok = false;

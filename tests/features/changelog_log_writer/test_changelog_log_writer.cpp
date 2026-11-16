@@ -180,6 +180,41 @@ TEST(changelog_log_writer, Ants5108NewlinesFoldIntoOneLine) {
         << "the dated subsection heading does not fold its headline";
 }
 
+// INV-12 (ANTS-6800) — the style is read from the block, else the section,
+// else it is the default; the default style renders as formatBullet() does.
+TEST(changelog_log_writer, Ants6800BulletStyleIsReadFromTheFile) {
+    using CL = ChangelogLog::BulletStyle;
+    const CL none = ChangelogLog::unreleasedBulletStyle(
+        QStringLiteral("# C\n\n## [Unreleased]\n\n## [1.0.0]\n\n- old.\n"),
+        QStringLiteral("Added"));
+    EXPECT_TRUE(none.bold);
+    EXPECT_TRUE(none.blankAfter);
+    EXPECT_EQ(none.wrap, 0);
+
+    const CL bold = ChangelogLog::unreleasedBulletStyle(
+        QStringLiteral("## [Unreleased]\n\n### Fixed\n\n- **A.** (X-1)\n\n- **B.** (X-2)\n"),
+        QStringLiteral("Fixed"));
+    EXPECT_TRUE(bold.bold);
+    EXPECT_TRUE(bold.blankAfter);
+    EXPECT_EQ(ChangelogLog::formatBullet(QStringLiteral("Hi."), QStringLiteral("b"),
+                                         QStringLiteral("X-3"), bold),
+              ChangelogLog::formatBullet(QStringLiteral("Hi."), QStringLiteral("b"),
+                                         QStringLiteral("X-3")));
+
+    // No Added bullets yet: the section's Fixed bullets set the style.
+    const CL plain = ChangelogLog::unreleasedBulletStyle(
+        QStringLiteral("## [Unreleased]\n\n### Added\n\n### Fixed\n\n"
+                       "- Repairs a thing. (X-1)\n- Repairs another. (X-2)\n"),
+        QStringLiteral("Added"));
+    EXPECT_FALSE(plain.bold);
+    EXPECT_FALSE(plain.blankAfter);
+    EXPECT_FALSE(plain.idBeforePeriod);
+    EXPECT_EQ(plain.wrap, 0);
+    EXPECT_EQ(ChangelogLog::formatBullet(QStringLiteral("New thing."), QString(),
+                                         QStringLiteral("X-3"), plain),
+              QStringLiteral("- New thing. (X-3)"));
+}
+
 // INV-2 — bullet formatting.
 TEST(changelog_log_writer, Inv2FormatBullet) {
     EXPECT_EQ(ChangelogLog::formatBullet(QStringLiteral("Hi."),

@@ -148,6 +148,17 @@ the bold-run signal. A section whose every `### ` heading is a dated topic
 (`### YYYY-MM-DD …`, the date parsed) needs no bold run: its topics may
 carry plain prose (ANTS-4946).
 
+### INV-12 — new bullets copy the block's style (ANTS-6800)
+
+op:"add" and each op:"add_batch" entry on a flat section render through
+`unreleasedBulletStyle`, which reads the bullets under the target
+`### <category>`, else any bullet in `[Unreleased]`: bold or plain; for
+plain, the wrap width (the widest line, 40 to 120, when a bullet wraps)
+and whether the id sits before the final period; and whether bullets are
+separated by blank lines. With no bullets the style is INV-2's.
+*Tests:* `changelog_log_writer.Ants6800BulletStyleIsReadFromTheFile`,
+`changelog_log_add_batch.Ants6800NewBulletsMatchThePlainWrappedStyle`.
+
 ## Test plan
 
 INV-1..5 are exercised behaviourally on the pure `ChangelogLog` helpers.

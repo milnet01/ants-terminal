@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6799 -->
+<!-- ants-roadmap-id-high-water: ANTS=6800 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92958,6 +92958,27 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: user-request-2026-11-15.
   Lanes: status-bar.
+
+### Ants MCP feedback from CC sessions (2026-11-16 triage)
+
+- ✅ [ANTS-6800] **changelog_log add and add_batch write bullets in the style the target block already uses.**
+  Reported by DeFragR 2026-11-16: add_batch with {category, id,
+  summary} wrote bold, unwrapped bullets with the id after the bold and a
+  blank line after each, while the [Unreleased] > Added block held plain
+  bullets wrapped near 70 columns with the id inside the sentence. The
+  reporter rewrote all three entries by hand. Sniff the block's existing
+  bullets (bold or plain, wrap width, id placement, blank lines) and match
+  them, or offer an explicit style option. Check whether op:add has the
+  same gap.
+  Shipped 2026-11-16: unreleasedBulletStyle sniffs the target block
+  (else the section); formatBullet(…, style) and
+  insertUnreleasedEntry(…, blankAfter) follow it on op:add and
+  op:add_batch. Reaches sessions after an ants-mcpd rebuild and /mcp
+  reconnect. changelog_log_writer INV-12.
+  **Layman:** The changelog tool writes new entries in the same style as the entries already there, so nobody has to rewrite them.
+  Kind: fix.
+  Source: DeFragR_Ants_MCP_Feedback.md 2026-11-16.
+  Lanes: mcp-roadmap-query-log.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

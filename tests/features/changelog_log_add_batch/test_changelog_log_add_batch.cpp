@@ -530,3 +530,69 @@ TEST(changelog_log_add_batch, Ants6393YamlChangelogInAnAncestorIsFound) {
               QStringLiteral("format_mismatch"))
         << QJsonDocument(resp).toJson().toStdString();
 }
+
+// ANTS-6800 — add and add_batch write in the style the block already uses:
+// here plain bullets, wrapped near 70 columns, the id inside the sentence,
+// no blank line between bullets (the DeFragR report).
+TEST(changelog_log_add_batch, Ants6800NewBulletsMatchThePlainWrappedStyle) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(clPath(tmp.path()), QByteArray(
+        "# Changelog\n\n"
+        "## [Unreleased]\n\n"
+        "### Added\n\n"
+        "- A running report shows each pass's progress in the status bar\n"
+        "  while it runs (DFR-0043).\n"
+        "- Scans skip the recycle bin by default, so restore points stay\n"
+        "  where they are (DFR-0041).\n\n"
+        "## [0.1.0] - 2026-01-01\n\n"
+        "- old.\n")));
+
+    QJsonArray entries;
+    QJsonObject a;
+    a[QStringLiteral("category")] = QStringLiteral("Added");
+    a[QStringLiteral("id")]       = QStringLiteral("DFR-0050");
+    a[QStringLiteral("summary")]  = QStringLiteral(
+        "The defragment view lists every file it moved, with its old and new "
+        "place on the disk, so a user can check what changed.");
+    entries.append(a);
+    QJsonObject b;
+    b[QStringLiteral("category")] = QStringLiteral("Added");
+    b[QStringLiteral("id")]       = QStringLiteral("DFR-0051");
+    b[QStringLiteral("summary")]  = QStringLiteral("Short one.");
+    entries.append(b);
+
+    RemoteControl rc(nullptr);
+    QJsonObject req;
+    req[QStringLiteral("caller_cwd")] = tmp.path();
+    req[QStringLiteral("op")]         = QStringLiteral("add_batch");
+    req[QStringLiteral("entries")]    = entries;
+    QJsonObject resp = rc.cmdChangelogLog(req).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+
+    QJsonObject single;
+    single[QStringLiteral("caller_cwd")] = tmp.path();
+    single[QStringLiteral("category")]   = QStringLiteral("Added");
+    single[QStringLiteral("id")]         = QStringLiteral("DFR-0052");
+    single[QStringLiteral("summary")]    = QStringLiteral("One added alone.");
+    resp = rc.cmdChangelogLog(single).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << resp.value(QStringLiteral("error")).toString().toStdString();
+
+    const std::string md = readFileStd(clPath(tmp.path()));
+    EXPECT_FALSE(contains(md, "- **")) << md;
+    EXPECT_TRUE(contains(md, "- Short one (DFR-0051).\n")) << md;
+    EXPECT_TRUE(contains(md, "- One added alone (DFR-0052).\n")) << md;
+    EXPECT_TRUE(contains(md, "(DFR-0050).\n")) << md;   // the id ends the sentence, wrapped or not
+    const auto added = md.substr(md.find("### Added"), md.find("## [0.1.0]") - md.find("### Added"));
+    EXPECT_FALSE(contains(added.substr(added.find("- ")), "\n\n- ")) << added;
+    size_t at = 0;
+    while (at < added.size()) {
+        const size_t nl = added.find('\n', at);
+        const size_t len = (nl == std::string::npos ? added.size() : nl) - at;
+        EXPECT_LE(len, 70u) << added.substr(at, len);
+        if (nl == std::string::npos) break;
+        at = nl + 1;
+    }
+}
