@@ -94619,7 +94619,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 18-plugins-lua (Medium).
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6508] **sessionmanager.cpp: `loadSession` copies each refused blob to `session_<id>.dat.corrupt-<ms>`.**
+- ✅ [ANTS-6508] **sessionmanager.cpp: `loadSession` copies each refused blob to `session_<id>.dat.corrupt-<ms>`.**
   `sessionmanager.cpp:594` — `loadSession` copies each refused blob to
   `session_<id>.dat.corrupt-<ms>`. Each copy can be up to 100 MiB, and a
   file over the cap is copied too.
@@ -94627,6 +94627,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): add
   `session_*.dat.corrupt-*` to the age sweep.
   Ledger row 207, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: cleanupOldSessions also sweeps
+  session_*.dat.corrupt-* by age. A refused file over the size cap is
+  still copied aside, since ANTS-5031 keeps every refused file; the
+  sweep bounds how long. Test
+  SessionRestoreRefusal.Ants6508OldCopiesAsideAreSwept (INV-D).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 19-config-session-project (Medium).

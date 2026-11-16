@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <QByteArray>
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -96,6 +97,37 @@ TEST(SessionRestoreRefusal, InvBRefusedFileIsKeptAside) {
     QFile kept(dir.filePath(aside.first()));
     ASSERT_TRUE(kept.open(QIODevice::ReadOnly));
     EXPECT_EQ(kept.readAll(), junk);
+    removeMatching(dir, stem);
+}
+
+// INV-D (ANTS-6508) — the age sweep removes a copy kept aside once it is past
+// the age limit, as it does a session file, and keeps a recent one.
+TEST(SessionRestoreRefusal, Ants6508OldCopiesAsideAreSwept) {
+    ants_test::XdgGuard xdg;
+    xdg.setTestMode(true);  // restored on scope exit
+    const QString path = SessionManager::sessionPath(QStringLiteral("ants-6508-swept"));
+    ASSERT_FALSE(path.isEmpty());
+    const QDir dir = QFileInfo(path).absoluteDir();
+    const QString stem = QFileInfo(path).fileName();
+    removeMatching(dir, stem);
+
+    const QString oldCopy = path + QStringLiteral(".corrupt-1");
+    const QString newCopy = path + QStringLiteral(".corrupt-2");
+    for (const QString &p : {oldCopy, newCopy}) {
+        QFile f(p);
+        ASSERT_TRUE(f.open(QIODevice::WriteOnly));
+        f.write("refused bytes");
+    }
+    {
+        QFile f(oldCopy);
+        ASSERT_TRUE(f.open(QIODevice::ReadWrite));
+        ASSERT_TRUE(f.setFileTime(QDateTime::currentDateTime().addDays(-60),
+                                  QFileDevice::FileModificationTime));
+    }
+
+    SessionManager::cleanupOldSessions(30);
+    EXPECT_FALSE(QFile::exists(oldCopy)) << "a 60-day-old copy aside was kept";
+    EXPECT_TRUE(QFile::exists(newCopy)) << "a recent copy aside was removed";
     removeMatching(dir, stem);
 }
 

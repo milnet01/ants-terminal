@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Copies of refused session files are removed by the 30-day session clean-up, like the sessions themselves** (ANTS-6508)
+
 - **`ants.send` refuses text over 64 KiB and drops calls past 256 KiB a second, reporting how many in the plugin log** (ANTS-6507)
 
 - **A Lua plugin may hold up to 64 command-palette entries; `ants.palette.register` raises an error for a new one past that** (ANTS-6506)

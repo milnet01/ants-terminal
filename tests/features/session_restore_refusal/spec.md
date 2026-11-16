@@ -25,6 +25,9 @@ defects turned a refusal into data loss.
   scrollback lines that fit, so its output is within both caps and
   `restore` accepts it. The defaults are `MAX_RESTORE_RAW_BYTES` and
   `MAX_RESTORE_FILE_BYTES`, the limits `restore` enforces.
+- **INV-D — a copy kept aside is swept by age (ANTS-6508).**
+  `cleanupOldSessions` removes a `session_*.dat.corrupt-*` copy older than
+  its age limit, as it does a session file, and keeps a recent one.
 
 ## Test scope
 

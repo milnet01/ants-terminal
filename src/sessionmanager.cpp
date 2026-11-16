@@ -695,7 +695,10 @@ QStringList SessionManager::loadTabOrder(int *activeIndex) {
 
 void SessionManager::cleanupOldSessions(int maxAgeDays) {
     QDir dir(sessionDir());
-    QFileInfoList files = dir.entryInfoList({"session_*.dat"}, QDir::Files);
+    // ANTS-6508 — a refused file kept aside (loadSession) ages out with the
+    // rest; each copy can be as large as the file it was taken from.
+    QFileInfoList files =
+        dir.entryInfoList({"session_*.dat", "session_*.dat.corrupt-*"}, QDir::Files);
     QDateTime cutoff = QDateTime::currentDateTime().addDays(-maxAgeDays);
     for (const QFileInfo &fi : files) {
         if (fi.lastModified() < cutoff)
