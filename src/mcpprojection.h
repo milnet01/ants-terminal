@@ -67,10 +67,11 @@ bool isProtectedCompactKey(const QString &key);
 //   - `fields` empty                    -> responseText returned unchanged.
 //   - responseText not a JSON object    -> responseText returned unchanged.
 //   - field present in source           -> copied verbatim.
-//   - field absent / non-string / empty -> omitted, and NAMED in
+//   - field absent                      -> omitted, and NAMED in
 //                                          `fields_unmatched` (ANTS-4567),
 //                                          beside `fields_available`, the
 //                                          source's top-level keys.
+//   - name non-string or empty          -> skipped: neither copied nor named.
 //   - NO requested field matched        -> `ok` is carried, so a narrowed
 //                                          success is distinguishable from a
 //                                          call that produced no envelope
@@ -168,8 +169,9 @@ QString tabularize(const QString &responseText);
 // on every call (generalises ANTS-2082 across the whole read surface).
 // Precedence: an explicit per-call compact (true OR false) always wins;
 // this only fills the default when the arg is absent. A false a caller
-// branches on survives only through isProtectedCompactKey, so a new flag of
-// that kind belongs there. Process-global + atomic: read on every dispatch,
+// branches on survives by one of two routes: isProtectedCompactKey, which
+// keeps it on every verb, or a defaultCompact=false row in mcpprojection.cpp's
+// table, which spares the whole verb from default compaction. Process-global + atomic: read on every dispatch,
 // written from MainWindow (config load + external reload) and the Settings
 // Apply. Cache-free — no per-call config I/O. The module default is false;
 // claude.mcp_terse_responses (default true) turns it on at startup.

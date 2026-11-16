@@ -202,6 +202,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The comments on the MCP reply-narrowing helpers match what the code does.** (ANTS-6290)
+
 - **Tidied the feedback store, the Claude allowlist dialog and the near-miss ledger where clang-tidy flagged them, with no change in behaviour.** (ANTS-6792)
 
 - **The SessionStart orientation spec cites code by name instead of line numbers, and keeps its amendment history in a history file of its own** (ANTS-6786)

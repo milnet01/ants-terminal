@@ -111541,7 +111541,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: review-fix.
   Source: code-review-2026-10-29.
 
-- 📋 [ANTS-6290] **mcpprojection.h's comments contradict the code: ignoredArgs keeps a stale "four conditional args" paragraph, terseDefault names one mechanism of two, and projectFields claims non-string names are reported.**
+- ✅ [ANTS-6290] **mcpprojection.h's comments contradict the code: ignoredArgs keeps a stale "four conditional args" paragraph, terseDefault names one mechanism of two, and projectFields claims non-string names are reported.**
   src/mcpprojection.h: the ANTS-4578 paragraph under ignoredArgs still says
   the four conditional args, including fields, were exempt everywhere,
   beside text saying fields is exempt unconditionally. terseDefault says a
@@ -111549,6 +111549,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   compaction table's defaultCompact=false rows are the other route.
   projectFields' contract says absent, non-string and empty names are
   named in fields_unmatched; check whether the code skips the latter two.
+  2026-11-16: the "four conditional args" paragraph was already gone.
+  terseDefault's comment now names both routes (isProtectedCompactKey
+  and a defaultCompact=false table row); projectFields' contract now
+  says non-string and empty names are skipped, not named in
+  fields_unmatched (the code, and mcp_projection INV-5, skip them).
   **Layman:** Three code comments in the MCP layer describe behaviour the code no longer has, which would mislead the next person editing it.
   Kind: doc-fix.
   Source: code-review-2026-10-29.
@@ -114327,10 +114332,16 @@ A first-run welcome dialog, and the one-click setup actions it offers.
   Source: user-request-2026-10-30.
   Lanes: ui, claude.
 
-- 📋 [ANTS-6318] **The orientation hook script lands in ~/.config/Ants Terminal/hooks, not the ants-terminal folder its comments name.**
+- ✅ [ANTS-6318] **The orientation hook script lands in ~/.config/Ants Terminal/hooks, not the ants-terminal folder its comments name.**
   Seen on a first launch with an empty home. resolveScriptPath in src/mcporientation.cpp uses
   AppConfigLocation; its comment and mcporientation.h name .config/ants-terminal. Decide which is meant:
   correct the comments, or move the script and keep existing installs working.
+  Resolved by ANTS-5730 (6099e0d6, 2026-11-14): resolveScriptPath now
+  uses GenericConfigLocation + /ants-terminal/hooks, matching its
+  comments, and a legacy "Ants Terminal" copy is migrated. Checked
+  2026-11-16: the script is at
+  ~/.config/ants-terminal/hooks/mcp-orientation.sh and settings.json
+  points there; no old folder remains.
   **Layman:** One helper script is saved in a differently named settings folder than the code's notes say; it still runs.
   Kind: doc-fix.
   Source: in-session-2026-10-30.
