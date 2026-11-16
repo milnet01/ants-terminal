@@ -403,6 +403,25 @@ TEST(IndieReviewEngine, Inv11SynthesisPromptEscapesThreatModelCloseTag) {
     EXPECT_TRUE(prompt.contains("&lt;/threat_model&gt;"));
 }
 
+// ANTS-6524 — the synthesis prompt fits its cap; the tasks, every fence and
+// a short report survive whole.
+TEST(IndieReviewEngine, Ants6524SynthesisPromptIsCapped) {
+    QHash<QString, QString> reports;
+    for (int i = 0; i < 30; ++i)
+        reports[QStringLiteral("lane%1").arg(i, 2, 10, QLatin1Char('0'))] =
+            QString(1024 * 1024, QLatin1Char('r'));
+    reports[QStringLiteral("small")] = QStringLiteral("Small report kept whole.");
+    const QString extras(1024 * 1024, QLatin1Char('e'));
+    const QString prompt = IndieReviewEngine::synthesisPrompt(reports, extras);
+    EXPECT_LE(prompt.toUtf8().size(), IndieReviewEngine::kSynthesisPromptCapBytes);
+    EXPECT_TRUE(prompt.contains(QStringLiteral("=== Your tasks ===")));
+    EXPECT_TRUE(prompt.contains(QStringLiteral("Small report kept whole.")));
+    EXPECT_EQ(prompt.count(QStringLiteral("<lane_report lane=")), 31);
+    EXPECT_EQ(prompt.count(QStringLiteral("</lane_report>")), 31);
+    EXPECT_EQ(prompt.count(QStringLiteral("</threat_model>")), 1);
+    EXPECT_TRUE(prompt.contains(QStringLiteral("[report cut")));
+}
+
 TEST(IndieReviewEngine, Inv8TemplateFoldInShape) {
     IndieReviewEngine::CorroboratedFinding f;
     f.file = "src/foo.cpp";

@@ -193,13 +193,22 @@ subclass-owns-fold-in model, ANTS-1727 § 2.4):
 - **INV-8** — Dispatch is disabled when `ai_endpoint` is unset/invalid
   (inherited `ReviewDialogBase::endpointDispatchable`). *Test:* covered by
   ANTS-1727 INV-12; dialog smoke asserts the disabled state.
+- **INV-9** (ANTS-6524) — the synthesis prompt fits
+  `IndieReviewEngine::kSynthesisPromptCapBytes` (200 KiB of UTF-8). Past
+  it every heading, fence and the task list stay; the lane reports and
+  the threat-model extras share the rest, the shortest whole, the others
+  cut to equal shares inside their fences and marked. Broken by clipping
+  the prompt's tail, which drops the tasks. *Test:*
+  `IndieReviewEngine.Ants6524SynthesisPromptIsCapped` in
+  `tests/features/indie_review_engine/`.
 
 ## 4. RAM / build cost
 
 - **Prompt budget** — 200 KiB per composed lane prompt (INV-3). With the
   ANTS-1727 default concurrency of 2, peak inlined-body memory is
   ≈ 2 × 200 KiB plus the `LlmClient` stream buffers (bounded by
-  ANTS-1727 § 4).
+  ANTS-1727 § 4). The one synthesis prompt has the same 200 KiB budget
+  (INV-9).
 - **Stored reports** — one verbatim report per lane; lane count is
   bounded by the module-map subsystem count (~30 today), each report
   ≤ the 10 MiB `LlmClient` cap (realistically KB-scale). Reports are
@@ -258,3 +267,4 @@ subclass-owns-fold-in model, ANTS-1727 § 2.4):
   `corroboratedFindings` minLanes, `dispatchOne` non-re-entry, base
   services, menu wiring `mainwindow.cpp:1525-1533`, `ants::falsepos`
   API) verified accurate against current source. Clean after fold.
+- **impl (2026-11-16, amendment; no reviewer dispatched)** — ANTS-6524: INV-9 caps the synthesis prompt at kSynthesisPromptCapBytes; § 4 names the budget. Test: `IndieReviewEngine.Ants6524SynthesisPromptIsCapped`.

@@ -417,6 +417,10 @@ QList<CorroboratedFinding> corroboratedFindingsFromCanonicalDir(
     CorroborateStats *stats = nullptr,
     int lineSlop = 0);
 
+// ANTS-6524 — the prompt fits kSynthesisPromptCapBytes (UTF-8). Past it the
+// lane reports and the threat-model extras share what is left: the shortest
+// whole, the rest cut to equal shares, each inside its own fence and marked.
+inline constexpr qint64 kSynthesisPromptCapBytes = qint64{200} * 1024;
 QString synthesisPrompt(
     const QHash<QString, QString> &reports,
     const QString &threatModelExtras);

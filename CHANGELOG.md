@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The independent review's synthesis prompt fits 200 KiB, sharing the space among the lane reports and keeping its instructions whole** (ANTS-6524)
+
 - **The spec, doc and changelog drift checks read at most 2 MiB of each file** (ANTS-6523)
 
 - **verify_changes stops walking untracked folders after 10,000 files and runs uncached instead** (ANTS-6522)
