@@ -94371,7 +94371,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 05-mainwindow (Low).
   Lanes: mainwindow.
 
-- 📋 [ANTS-6496] **(`remotecontrol_roadmap_query_verb.cpp:3958`) is keyed on the raw, uncanonicalised `caller_cwd`, has no cap or eviction, and lives for the whole process.**
+- ✅ [ANTS-6496] **(`remotecontrol_roadmap_query_verb.cpp:3958`) is keyed on the raw, uncanonicalised `caller_cwd`, has no cap or eviction, and lives for the whole process.**
   `remotecontrol_roadmap_query_verb.cpp:3958` —
   (`remotecontrol_roadmap_query_verb.cpp:3958`) is keyed on the raw,
   uncanonicalised `caller_cwd`, has no cap or eviction, and lives for
@@ -94379,6 +94379,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   unbounded growth ships without a named cap.
   Quote: `remotecontrol_roadmap_query_verb.cpp:3958`
   Ledger row 110, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-16: rlBatchHint drops entries past kBatchHintWindowMs
+  before each insert and clears the map at kMaxBatchHintKeys (256). The
+  key stays the raw caller_cwd: a second spelling of one project only
+  misses a hint, and the sweep bounds both. Test:
+  RoadmapWriteHalf.Ants6496BatchHintClockIsBounded (source scrape).
   **Layman:** A large file or a long output could use far more memory than it should.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 09-mcp-roadmap-query-log (Low).

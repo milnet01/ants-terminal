@@ -299,6 +299,7 @@ reply with no `warning`, which `fields` narrowed to `{ok:true, ids:[]}`.
 |---|---|
 | `Ants5735CallLevelKindAndLanesAreTheFallback` | An `append_batch` with a call-level `kind` and `lanes` files a bullet that carries neither with those values, and a bullet carrying its own with its own; nothing lands in `skipped[]`. |
 | `Ants5735RepeatedSingleWritesHintTheBatchOp` | On one project, the first `annotate` carries no `batch_hint` and the second carries a string naming `annotate_batch`. The first `flip` after them carries none and the second names `flip_batch`. |
+| `Ants6496BatchHintClockIsBounded` | (ANTS-6496) Source scrape: `rlBatchHint` drops entries past the hint window and caps its map at `kMaxBatchHintKeys`. Structural, because no reply shows the map's size. |
 
 **Would break this:** reading each bullet's kind and lanes without the
 call-level fallback, which skipped a kind-less bullet `bad_kind` and filed a

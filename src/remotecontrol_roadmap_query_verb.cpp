@@ -3972,6 +3972,7 @@ namespace {
 // landed within the window, name its batch form. Keyed by caller_cwd and op,
 // in memory only: an ants-mcpd restart forgets it, which costs one hint.
 constexpr qint64 kBatchHintWindowMs = 5 * 60 * 1000;
+constexpr qsizetype kMaxBatchHintKeys = 256;   // ANTS-6496
 
 QString rlBatchHint(const QString &cwd, const QString &op) {
     static const QHash<QString, QString> kBatchOf = {
@@ -3987,6 +3988,12 @@ QString rlBatchHint(const QString &cwd, const QString &op) {
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     const QMutexLocker lock(&mutex);
     const qint64 last = lastWriteMs.value(key, -1);
+    // ANTS-6496 — an entry past the window can give no hint, so it goes;
+    // past kMaxBatchHintKeys live entries the map starts again.
+    lastWriteMs.removeIf([now](QHash<QString, qint64>::iterator e) {
+        return now - e.value() > kBatchHintWindowMs;
+    });
+    if (lastWriteMs.size() >= kMaxBatchHintKeys) lastWriteMs.clear();
     lastWriteMs.insert(key, now);
     if (last < 0 || now - last > kBatchHintWindowMs) return {};
     return QStringLiteral("Another `%1` landed here in the last 5 minutes. "

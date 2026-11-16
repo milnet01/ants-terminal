@@ -3066,6 +3066,21 @@ TEST(RoadmapWriteHalf, Ants5735RepeatedSingleWritesHintTheBatchOp) {
     EXPECT_TRUE(flipHint.toString().contains(QStringLiteral("flip_batch")));
 }
 
+// ANTS-6496 — the batch-hint clock keeps an entry only while it can still
+// produce a hint. Structural: the map is private to rlBatchHint, and no reply
+// shows its size.
+TEST(RoadmapWriteHalf, Ants6496BatchHintClockIsBounded) {
+    const std::string body = ants_test::slurpFunctionBody(
+        ants_test::stripComments(ants_test::slurpFile(
+            ANTS_SOURCE_DIR "/src/remotecontrol_roadmap_query_verb.cpp")),
+        "QString rlBatchHint(");
+    ASSERT_FALSE(body.empty()) << "rlBatchHint's body did not scrape";
+    EXPECT_NE(body.find("lastWriteMs.removeIf("), std::string::npos)
+        << "entries past the hint window must be dropped";
+    EXPECT_NE(body.find("kMaxBatchHintKeys"), std::string::npos)
+        << "the map needs a named cap";
+}
+
 // A dry run returns a `plan_id`; a call carrying only that id applies the
 // previewed request, once. Before, applying a preview meant sending the whole
 // payload a second time.

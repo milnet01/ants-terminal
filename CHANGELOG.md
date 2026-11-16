@@ -462,6 +462,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_log's batch-hint memory drops entries older than its five-minute window and holds at most 256** (ANTS-6496)
+
 - **read_region keeps its memory use near `max_bytes` on any file, in line, symbol and section modes** (ANTS-6502)
   A very long line, or a large file read by symbol or section, is now read
   a line at a time with a bounded buffer, never held whole.
