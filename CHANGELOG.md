@@ -481,6 +481,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The stuck-plugin health test waits for the demotion instead of a fixed window, so it holds on a busy machine** (ANTS-6283)
+
 - **The trust-file concurrent-save test passes on a heavily loaded machine: a writer retries a save the lock refused** (ANTS-6808)
 
 - **remotecontrol_roadmap_log_batch.cpp builds without GCC's -Wnull-dereference warnings** (ANTS-6791)

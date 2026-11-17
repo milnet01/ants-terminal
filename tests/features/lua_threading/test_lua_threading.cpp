@@ -425,13 +425,28 @@ TEST(LuaThreading, Ants5107HealthSeesAWedgedInitLua) {
               "string.find(string.rep('a', 3000), '.-.-.-.-b')\n");
     const int demoted = countDemotions(dir, QStringLiteral("wedgedinit"),
                                        [](PluginManager &pm) {
+        // ANTS-6283 — on a loaded host the plugin thread starts late, so the
+        // stall passes budget + grace well after any fixed window. Wait for
+        // the demotion, then tick a little longer so a second one would show.
+        // `ctx` cuts the connection before `seen` goes out of scope.
+        QObject ctx;
+        bool seen = false;
+        QObject::connect(&pm, &PluginManager::logMessage, &ctx,
+                         [&seen](const QString &m) {
+            if (m.contains(QStringLiteral("demoted"))) seen = true;
+        });
         QElapsedTimer t; t.start();
-        while (t.elapsed() < 3200) {
+        while (!seen && t.elapsed() < 15000) {
+            pump(100);
+            runHealthTick(pm);
+        }
+        for (int i = 0; i < 5; ++i) {
             pump(100);
             runHealthTick(pm);
         }
     });
-    EXPECT_EQ(demoted, 1) << "a plugin stuck in init.lua was never demoted";
+    EXPECT_EQ(demoted, 1) << "a plugin stuck in init.lua must be demoted "
+                             "exactly once";
 }
 
 // Time a handler spends blocked in settings.get is the GUI thread's time,

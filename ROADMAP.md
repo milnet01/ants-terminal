@@ -111824,7 +111824,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: close-findings-2026-10-22 (ANTS-6135 sweep).
   Lanes: doc-engines.
 
-- 📋 [ANTS-6283] **LuaThreading.Ants5107HealthSeesAWedgedInitLua failed once in the push gate's container under load and passes locally.**
+- ✅ [ANTS-6283] **LuaThreading.Ants5107HealthSeesAWedgedInitLua failed once in the push gate's container under load and passes locally.**
   2026-10-26, push of 1a7188a6: test_lua_threading.cpp asserts
   "demoted == 1" after a fixed 3.2 s pump loop; got 0 with load
   average ~8.7. Passed 5/5 with ctest --repeat until-fail:5 locally.
@@ -111833,6 +111833,11 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Second failure 2026-11-13: the push gate's build-test job (CI image,
   ubuntu 24.04) on 252d4434, a commit touching only the allowlist
   dialog. The local suite passed on the same tree minutes earlier.
+  Third failure 2026-11-17 (push of 430bfc3c, CI container). Fixed: the
+  test now ticks until the demotion appears (15 s ceiling), then five
+  more ticks to catch a second one. 15/15 LuaThreading passes locally
+  (--repeat until-fail:5); the load failure itself was not reproduced
+  locally.
   **Layman:** One plugin-timing test failed once when the machine was busy, then passed five times in a row; its timing window needs to tolerate load.
   Kind: test.
   Source: push-gate-2026-10-26.
