@@ -214,8 +214,8 @@ bool stealStaleRenameLock(const QString &lockPath) {
     if (::rename(lockPath.toUtf8().constData(), asideUtf8.constData()) != 0)
         return false;
     const bool stale = isStale(aside);
-    if (!stale)
-        (void)::link(asideUtf8.constData(), lockPath.toUtf8().constData());
+    // A failed link-back means another lock appeared since; that one stands.
+    if (!stale && ::link(asideUtf8.constData(), lockPath.toUtf8().constData()) != 0) {}
     ::unlink(asideUtf8.constData());
     return stale;
 }

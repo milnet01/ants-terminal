@@ -114159,12 +114159,14 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-16 (clangd diagnostics, remotecontrol_review.cpp).
   Lanes: mcp-review-verbs.
 
-- 🚧 [ANTS-6805] **roadmapfoldin.cpp builds without GCC's -Wunused-result warning on the stale-lock link-back.**
+- ✅ [ANTS-6805] **roadmapfoldin.cpp builds without GCC's -Wunused-result warning on the stale-lock link-back.**
   Seen 2026-11-17 when a projectsettings.h change recompiled the file:
   stealStaleRenameLock's `(void)::link(...)` still warns, because GCC
   does not let a void cast discard a warn_unused_result value. The
   result is ignored on purpose: a failed link-back means another lock
   appeared, which then stands.
+  Shipped 2026-11-17: the link-back result is tested in an if, which GCC
+  accepts as a use.
   **Layman:** The build printed a warning about an ignored result in the roadmap lock code; the result is now checked explicitly.
   Kind: fix.
   Source: in-session-2026-11-17 (ANTS-6797 build).
