@@ -95287,7 +95287,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 07-claude-integration-a (High).
   Lanes: claude-integration.
 
-- 📋 [ANTS-6534] **remotecontrol_workspace.cpp: `apply_edits` decodes the whole file as UTF-8 and writes the whole buffer back.**
+- ✅ [ANTS-6534] **remotecontrol_workspace.cpp: `apply_edits` decodes the whole file as UTF-8 and writes the whole buffer back.**
   `remotecontrol_workspace.cpp:3328` — `apply_edits` decodes the whole
   file as UTF-8 and writes the whole buffer back. Qt replaces every
   invalid UTF-8 byte with U+FFFD, which is written as `EF BF BD`. So
@@ -95298,6 +95298,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `QStringDecoder` and check `hasError()`. On error, skip the edit with
   reason `not_utf8` and never write.
   Ledger row 121, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. cmdApplyEdits decodes strictly (QStringDecoder,
+  hasError) and skips a non-UTF-8 file with reason not_utf8, never
+  writing it. ConvertInitialBom keeps a leading BOM, which the lossy
+  decode also kept. Tests:
+  McpApplyEdits.Ants6534NonUtf8FileIsSkippedAndLeftIntact,
+  …LeadingBomSurvivesAnEdit.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (High).

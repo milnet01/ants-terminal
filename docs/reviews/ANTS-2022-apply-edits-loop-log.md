@@ -75,3 +75,4 @@
   overwritten (INV-17, § 2.3, § 2.4). Loop rows moved out of the spec
   into this file. Test seen red first
   (`McpApplyEdits.Ants6467ConcurrentEditIsNotOverwritten`).
+- **impl-6534 (2026-11-17)** — implementation fold-back; no reviewer dispatched. ANTS-6534: a file that is not valid UTF-8 is skipped with the new reason `not_utf8`, never rewritten; a leading BOM is kept (§ 2.3 skip list and its closed reason set). Test seen red first (`McpApplyEdits.Ants6534NonUtf8FileIsSkippedAndLeftIntact`); the BOM test was killed by a mutant dropping the BOM flag.

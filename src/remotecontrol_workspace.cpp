@@ -35,6 +35,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSaveFile>
+#include <QStringDecoder>
 #include <QCryptographicHash>
 #include <QMap>
 #include <QProcessEnvironment>
@@ -3788,8 +3789,18 @@ QJsonDocument RemoteControl::cmdApplyEdits(const QJsonObject &req) {
             continue;
         }
         const QByteArray readBytes = in.readAll();   // ANTS-6467
-        QString working = QString::fromUtf8(readBytes);
         in.close();
+        // ANTS-6534 — a lossy decode writes U+FFFD over every byte that is not
+        // UTF-8, so such a file is skipped, never rewritten. A leading BOM is
+        // kept as a character so the write puts it back.
+        QStringDecoder utf8(QStringDecoder::Utf8,
+                            QStringDecoder::Flag::Stateless
+                                | QStringDecoder::Flag::ConvertInitialBom);
+        QString working = utf8(readBytes);
+        if (utf8.hasError()) {
+            for (int k : group) addSkip(es[k].index, rawPath, QStringLiteral("not_utf8"));
+            continue;
+        }
 
         int fileReplacements = 0;
         QVector<int> appliedIdx;

@@ -71,3 +71,10 @@ Just before writing a file, `apply_edits` reads it again. If its bytes
 changed since the first read, the file is not written and each of its
 edits skips `concurrent_edit` (ANTS-2022 INV-17). *Test:*
 `McpApplyEdits.Ants6467ConcurrentEditIsNotOverwritten`.
+
+## ANTS-6534 — a file that is not UTF-8 is never rewritten
+
+A file whose bytes are not valid UTF-8 is not written, and each of its
+edits skips `not_utf8`. A leading UTF-8 BOM survives an edit. *Tests:*
+`McpApplyEdits.Ants6534NonUtf8FileIsSkippedAndLeftIntact`,
+`…LeadingBomSurvivesAnEdit`.

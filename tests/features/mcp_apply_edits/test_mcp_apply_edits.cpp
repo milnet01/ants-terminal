@@ -1174,3 +1174,46 @@ TEST(McpApplyEdits, Ants6467ConcurrentEditIsNotOverwritten) {
                   .value("reason").toString().toStdString(),
               "concurrent_edit");
 }
+
+// ANTS-6534 — a file that is not valid UTF-8 (here Latin-1 "café") is never
+// rewritten: decoding it replaced each bad byte with U+FFFD, so one edit
+// corrupted every other non-UTF-8 byte and the reply still said ok.
+TEST(McpApplyEdits, Ants6534NonUtf8FileIsSkippedAndLeftIntact) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir, "caf\xe9\nbeta\n");
+    ASSERT_FALSE(p.isEmpty());
+    QJsonObject e;
+    e[QStringLiteral("path")] = QStringLiteral("doc.txt");
+    e[QStringLiteral("old")]  = QStringLiteral("beta");
+    e[QStringLiteral("new")]  = QStringLiteral("BETA");
+    const QJsonObject env = runEdit(dir.path(), e);
+
+    QFile f(p);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    EXPECT_EQ(f.readAll(), QByteArray("caf\xe9\nbeta\n"));
+    EXPECT_EQ(env.value("edits_applied").toInt(), 0);
+    ASSERT_EQ(env.value("skipped").toArray().size(), 1);
+    EXPECT_EQ(env.value("skipped").toArray().at(0).toObject()
+                  .value("reason").toString().toStdString(),
+              "not_utf8");
+}
+
+// ANTS-6534 — the strict decode must not drop a leading UTF-8 BOM: the old
+// lossy decode kept it, and the write put it back.
+TEST(McpApplyEdits, Ants6534LeadingBomSurvivesAnEdit) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString p = seedDoc(dir, "\xEF\xBB\xBF" "alpha\nbeta\n");
+    ASSERT_FALSE(p.isEmpty());
+    QJsonObject e;
+    e[QStringLiteral("path")] = QStringLiteral("doc.txt");
+    e[QStringLiteral("old")]  = QStringLiteral("beta");
+    e[QStringLiteral("new")]  = QStringLiteral("BETA");
+    const QJsonObject env = runEdit(dir.path(), e);
+
+    EXPECT_EQ(env.value("edits_applied").toInt(), 1);
+    QFile f(p);
+    ASSERT_TRUE(f.open(QIODevice::ReadOnly));
+    EXPECT_EQ(f.readAll(), QByteArray("\xEF\xBB\xBF" "alpha\nBETA\n"));
+}

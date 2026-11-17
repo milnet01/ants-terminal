@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`apply_edits` leaves a file that is not UTF-8 untouched and reports it skipped as `not_utf8`; a leading byte-order mark survives an edit.** (ANTS-6534)
+
 - **A Claude permission prompt in a background tab now shows while the focused tab has no Claude running.** (ANTS-6533)
 
 - **A double-click in an app that uses the mouse, such as vim or htop, reaches the app as two clicks; Shift+double-click still selects a word.** (ANTS-6532)

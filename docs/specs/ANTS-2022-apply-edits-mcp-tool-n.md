@@ -162,6 +162,9 @@ After the path gate, each edit is applied to its file's working content:
 - the file exceeds `RemoteControl::kReadToolMaxBytesCeiling` (4 MiB,
   `src/remotecontrol.h:234`) → `skipped[]` reason `"too_large"` (memory
   bound, § 4).
+- the file is not valid UTF-8 → `skipped[]` reason `"not_utf8"`, and the
+  file is not written (ANTS-6534). A lossy decode would write U+FFFD over
+  every invalid byte. A leading UTF-8 BOM is kept.
 - a range selector whose `expect_first_line` / `expect_last_line` no
   longer match the file's lines at `start_line` / `end_line` →
   `skipped[]` reason `"range_mismatch"` (ANTS-3711). This is the range's
@@ -173,9 +176,9 @@ After the path gate, each edit is applied to its file's working content:
 
 The closed set of `skipped[].reason` values is
 `{"not_found", "ambiguous", "too_large", "commit_failed",
-"range_mismatch", "range_out_of_bounds", "concurrent_edit"}` (§ 2.4
-defines `commit_failed` and `concurrent_edit`; ANTS-3711 added the two
-`range_` reasons, ANTS-6467 `concurrent_edit`). These are **in-envelope field values**, not the top-level
+"range_mismatch", "range_out_of_bounds", "concurrent_edit", "not_utf8"}`
+(§ 2.4 defines `commit_failed` and `concurrent_edit`; ANTS-3711 added the
+two `range_` reasons, ANTS-6467 `concurrent_edit`, ANTS-6534 `not_utf8`). These are **in-envelope field values**, not the top-level
 refusal `code` taxonomy — in particular `commit_failed` is deliberately
 **not** the taxonomy's top-level `write_failed` code
 (`docs/standards/mcp-error-codes.md`), to avoid a caller string-matching a
