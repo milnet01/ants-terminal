@@ -4001,6 +4001,12 @@ void TerminalWidget::mouseReleaseEvent(QMouseEvent *event) {
 }
 
 void TerminalWidget::mouseDoubleClickEvent(QMouseEvent *event) {
+    // ANTS-6532 — Qt delivers a double-click's second press here, not to
+    // mousePressEvent; while the app reports the mouse, the press is its.
+    if (mouseReportingActive() && !(event->modifiers() & Qt::ShiftModifier)) {
+        sendMouseEvent(event, true, false);
+        return;
+    }
     if (event->button() == Qt::LeftButton) {
         QPoint cell = pixelToCell(event->pos());
         int globalLine = cell.x();

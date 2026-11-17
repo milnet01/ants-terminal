@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A double-click in an app that uses the mouse, such as vim or htop, reaches the app as two clicks; Shift+double-click still selects a word.** (ANTS-6532)
+
 - **Alt shortcuts such as Alt+B, Alt+D and Alt+Backspace reach the shell, and Shift, Alt or Ctrl with an arrow, Home, End, Insert, Delete, Page or F key sends xterm's modified sequence.** (ANTS-6531)
 
 - **Making a window shorter keeps the cursor line and the newest output on screen; the rows above move into scrollback.** (ANTS-6530)

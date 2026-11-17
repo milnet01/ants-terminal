@@ -95242,7 +95242,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (High).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6532] **terminalwidget.cpp: Qt delivers the second press of a double-click as a double-click event.**
+- ✅ [ANTS-6532] **terminalwidget.cpp: Qt delivers the second press of a double-click as a double-click event.**
   `terminalwidget.cpp:3895` — Qt delivers the second press of a double-
   click as a double-click event. The base
   `QWidget::mouseDoubleClickEvent` would forward it to
@@ -95254,6 +95254,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   with `if (mouseReportingActive() && !(event->modifiers() &
   Qt::ShiftModifier)) { sendMouseEvent(event, true, false); return; }`.
   Ledger row 42, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-17. mouseDoubleClickEvent now reports the press with
+  sendMouseEvent while mouse reporting is on, unless Shift is held, as
+  mousePressEvent does. Locked by tests/features/mouse_report_double_click
+  (the report bytes themselves need a live PTY and are not asserted).
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 04-terminal-widget-b (High).

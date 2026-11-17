@@ -2540,6 +2540,8 @@ if(ANTS_TESTS)
                 tests/features/terminal_search_scan/test_terminal_search_scan.cpp
                 # ANTS-6531 — legacy keys carry Alt, Shift and Ctrl.
                 tests/features/legacy_key_modifiers/test_legacy_key_modifiers.cpp
+                # ANTS-6532 — a double-click goes to a mouse-reporting app.
+                tests/features/mouse_report_double_click/test_mouse_report_double_click.cpp
                 # URL / highlight / search / quick-select spans land on the
                 # cells that hold them after non-BMP or combining characters.
                 tests/features/span_cell_columns/test_span_cell_columns.cpp
