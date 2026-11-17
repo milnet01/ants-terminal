@@ -114106,7 +114106,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-16 (IDE clang-tidy diagnostics, ANTS-6485 work).
   Lanes: model-switching, claude-session-widgets.
 
-- 📋 [ANTS-6791] **GCC's -Wnull-dereference fires six times compiling remotecontrol_roadmap_log_batch.cpp, inlined from rcMoveSectionsToArchive.**
+- ✅ [ANTS-6791] **GCC's -Wnull-dereference fires six times compiling remotecontrol_roadmap_log_batch.cpp, inlined from rcMoveSectionsToArchive.**
   Seen 2026-11-16: /usr/include/qt6/QtCore/qhash.h:809 "potential null
   pointer dereference", through QHash<qint64, SectionRow>::const_iterator,
   inlined from rcMoveSectionsToArchive (called by
@@ -114114,6 +114114,10 @@ reports are asked for separately, each time.
   so they predate ANTS-6781; they show only when this file recompiles.
   Same class as ANTS-3358, ANTS-3505 and ANTS-6418: confirm the pointer
   cannot be null, then restructure the lookup or add a scoped pragma.
+  Shipped 2026-11-17: both QHash lookups (rcMoveSectionsToArchive's
+  candidate loop and archive_section's row lookup) are checked against
+  constEnd() before the dereference. Recompiling the file alone: 6
+  warnings before, 0 after.
   **Layman:** The build prints six false warnings from the roadmap archive code; they should be silenced the way earlier ones were.
   Kind: fix.
   Source: in-session-2026-11-16 (build of remotecontrol_roadmap_log_batch.cpp).

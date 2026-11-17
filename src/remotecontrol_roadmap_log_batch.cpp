@@ -3553,7 +3553,11 @@ QJsonDocument rcMoveSectionsToArchive(
     QVector<RoadmapStore::SectionRow> moveSet;
     QSet<qint64> moveIds;
     for (qint64 id : candidates) {
-        const RoadmapStore::SectionRow &row = *rowById.constFind(id);
+        // ANTS-6791 — checked against constEnd(), though every candidate is a
+        // rowById key: GCC cannot see that and warned -Wnull-dereference.
+        const auto rowIt = rowById.constFind(id);
+        if (rowIt == rowById.constEnd()) continue;
+        const RoadmapStore::SectionRow &row = *rowIt;
         if (row.sourcePath && *row.sourcePath == archiveRel) continue;
         moveSet.append(row);
         moveIds.insert(id);
@@ -3854,9 +3858,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogArchiveSection(const QJsonObject &req)
         rowById.insert(s.sectionId, s);
         if (s.parentId) childrenOf[*s.parentId].append(s.sectionId);
     }
-    if (!idBySlug.contains(slug))
+    // ANTS-6791 — one lookup checked against constEnd(), so GCC can see the
+    // dereference is safe (it warned -Wnull-dereference on the unchecked form).
+    const auto rowIt = rowById.constFind(idBySlug.value(slug, -1));
+    if (rowIt == rowById.constEnd())
         return rcSectionNotFound(store, projectId, slug);
-    const RoadmapStore::SectionRow &row = *rowById.constFind(idBySlug.value(slug));
+    const RoadmapStore::SectionRow &row = *rowIt;
 
     if (row.level != 2)
         return rcSectionOpErr(QStringLiteral("bad_args"),
