@@ -11,9 +11,11 @@ through.
 
 ## Invariants exercised by this test
 
-- **INV-1 / `/build*/` glob excluded.** `build/`, `build-asan/`,
+- **INV-1 / build trees excluded.** `build/`, `build-asan/`,
   `build-workstation/`, `build-debug/`, any future `build-*` preset
-  must be skipped — not just the bare `build/` segment.
+  and `cmake-build-*` must be skipped — not just the bare `build/`
+  segment. A source folder whose name only starts with `build`
+  (`buildtools/`, `builders/`) is walked (ANTS-6544).
 - **INV-2 / CMake autogen subtrees excluded.** `_deps/`,
   `CMakeFiles/`, `autogen/` segments must be skipped wherever
   they appear in the path.

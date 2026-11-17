@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The test audit skips only build trees (`build`, `build-*`, `cmake-build-*`) and reads tests in folders such as `buildtools/`.** (ANTS-6544)
+
 - **`test_audit_brief` serves a chunk from any page of a paginated `test_audit_partition`, whichever page was fetched last.** (ANTS-6543)
 
 - **`doc_lint` with `fix:true` removes the duplicated table-of-contents entry itself, even when the document changed after the check, and leaves a line holding two entries alone.** (ANTS-6542)

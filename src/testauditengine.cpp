@@ -437,9 +437,12 @@ QString globPathPrefix(const QString &glob) {
 // ANTS-1451: single source of truth for build-tree + tooling exclusions,
 // used by walkTestFiles and by partition's framework probe. `path` is
 // "/"-led, so a whole directory name between slashes is what matches.
+// ANTS-6544 — build trees by name only (`build`, `build-*`, `cmake-build-*`):
+// `buildtools/` or `builders/` is source and holds real tests.
 bool pathIsExcluded(const QString &path) {
     static const QRegularExpression excludeRx(QStringLiteral(
-        "/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"
+        "/(node_modules|\\.venv|__pycache__|build|build-[^/]*|cmake-build-[^/]*"
+        "|dist|_deps"
         "|CMakeFiles|autogen)/"));
     return excludeRx.match(path).hasMatch();
 }

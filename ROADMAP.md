@@ -95497,7 +95497,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (High).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6544] **testauditengine.cpp: this excludes every directory whose name starts with `build`, not just build trees.**
+- ✅ [ANTS-6544] **testauditengine.cpp: this excludes every directory whose name starts with `build`, not just build trees.**
   `testauditengine.cpp:437-439` — this excludes every directory whose
   name starts with `build`, not just build trees.
   Quote: `"/(node_modules|\\.venv|__pycache__|build[^/]*|dist|_deps"`
@@ -95505,6 +95505,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `build-*` and `cmake-build-*` only, or exclude a directory only when
   it contains `CMakeCache.txt`.
   Ledger row 399, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. The test-audit exclusion regex names build trees
+  exactly: build, build-*, cmake-build-* (the last was not excluded
+  before). buildtools/ and builders/ are walked. Test:
+  TestAuditWalkExclusions.Ants6544OnlyBuildTreesAreExcluded; the INV-5
+  scrape re-fixtured from build[^/]* to build-[^/]*.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (High).

@@ -145,8 +145,8 @@ TEST(TestAuditWalkExclusions, Inv5SingleRegexSourceOfTruth) {
     EXPECT_NE(cpp.find("static const QRegularExpression excludeRx"),
               std::string::npos)
         << "INV-5: exclusion list must be one static compiled regex";
-    EXPECT_NE(cpp.find("build[^/]*"), std::string::npos)
-        << "INV-5: /build*/ pattern in exclusion regex";
+    EXPECT_NE(cpp.find("build-[^/]*"), std::string::npos)
+        << "INV-5: /build-*/ pattern in exclusion regex (ANTS-6544)";
     EXPECT_NE(cpp.find("_deps"), std::string::npos)
         << "INV-5: _deps/ in exclusion regex";
     EXPECT_NE(cpp.find("CMakeFiles"), std::string::npos)
@@ -201,4 +201,22 @@ TEST(TestAuditWalkExclusions, Inv7RoutesThroughPrunedWalk) {
     EXPECT_NE(indieReview.find("PrunedWalk::walkFiles("), std::string::npos)
         << "INV-7: the review engine's whole-tree walks must route through "
            "the shared pruning walk";
+}
+
+// ANTS-6544 — only build trees are excluded: `build`, `build-*` and
+// `cmake-build-*`. A source folder whose name merely starts with "build"
+// holds real tests.
+TEST(TestAuditWalkExclusions, Ants6544OnlyBuildTreesAreExcluded) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    touch(tmp.path(), "buildtools/tests/test_tool.cpp");
+    touch(tmp.path(), "builders/test_builder.cpp");
+    touch(tmp.path(), "cmake-build-debug/test_gen.cpp");
+
+    const QStringList out = TestAuditEngine::internal::walkTestFiles(
+        tmp.path(), ctestGlobs(), QStringLiteral("auto"));
+
+    EXPECT_TRUE(contains(out, "/buildtools/tests/test_tool.cpp"));
+    EXPECT_TRUE(contains(out, "/builders/test_builder.cpp"));
+    EXPECT_FALSE(contains(out, "/cmake-build-debug/"));
 }
