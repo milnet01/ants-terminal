@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6814 -->
+<!-- ants-roadmap-id-high-water: ANTS=6815 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -75098,7 +75098,7 @@ new minor item:
   ChipSwitch, onUndoSwitchClicked). The cold loop is exactly what surfaced
   this — the loop-1 lane saw the auto path, not the user paths.
 
-- 📋 [ANTS-5685] **Shell history for suggestions loads off the GUI thread, with a size cap.**
+- ✅ [ANTS-5685] **Shell history for suggestions loads off the GUI thread, with a size cap.**
   Verified 2026-10-13: TerminalWidget::loadHistory() calls readAll() on
   ~/.zsh_history (then bash, then fish) with no size cap, decodes and
   splits it on the GUI thread. It runs from updateSuggestion(), which
@@ -75106,6 +75106,11 @@ new minor item:
   already O(1) (ANTS-1841); the prepend is QList's, amortised constant in
   Qt 6, so re-measure before touching it. Fix: read the tail of the file
   up to a cap, on a worker, and publish the list back.
+  Shipped 2026-11-17: src/shellhistory.{h,cpp} reads the last 2 MiB of
+  the history file, cut at a line start, and parses it;
+  TerminalWidget::loadHistory runs it on a QThread::create worker and
+  takes the list back on the GUI thread. Test: shell_history_tail
+  INV-1..4.
   **Layman:** Opening a tab should not pause while it reads your whole shell history file.
   Kind: perf.
   Source: indie-review-2026-06-04, split from ANTS-2000 on 2026-10-13.
@@ -75128,6 +75133,22 @@ new minor item:
   Kind: fix.
   Source: indie-review-2026-06-04, split from ANTS-2000 on 2026-10-13.
   Lanes: terminalwidget.
+
+- 📋 [ANTS-6815] **Autocomplete suggests fish's metadata lines, and ranks a repeated command by its oldest use.**
+  Found reading shellhistory::parse (src/shellhistory.cpp) while moving
+  it for ANTS-5685; behaviour unchanged by that move, and its test avoids
+  both cases. (1) fish_history is YAML-like: "  when: <time>" and "  paths:"
+  lines follow each "- cmd:". parse keeps every non-empty line, so those
+  become suggestions. Keep only "- cmd:" lines for fish. (2) Dedup keeps a
+  command's FIRST occurrence in file order, so its rank is its oldest use.
+  updateSuggestion takes the first prefix match, so a command used often
+  and recently loses to a rarer one first used later. Iterate newest to
+  oldest and append instead. Red tests: a fish file with when: lines, and
+  "a, b, a" expecting a before b.
+  **Layman:** Typing in a fish shell can suggest junk like "when: 1700000000", and a command you use daily can rank below one you ran once last week.
+  Kind: fix.
+  Source: in-session-2026-11-17 (ANTS-5685).
+  Lanes: terminal-widget.
 
 ### 🔍 Indie-review #8 + audit fold-in (2026-06-26)
 

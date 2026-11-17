@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **A new tab reads the shell history for autocomplete in the background, and only the newest 2 MiB of it, so a long history no longer delays the tab's first output** (ANTS-5685)
+
 - **The roadmap_log batch handler, the migration loader, the terminal widget and the roadmap render test pass the clang-tidy checks their warnings came from.** (ANTS-6807)
 
 - **The main window, Claude allowlist and roadmap write-half test code pass clang-tidy clean, with twelve unused includes gone from mainwindow.cpp.** (ANTS-6793)

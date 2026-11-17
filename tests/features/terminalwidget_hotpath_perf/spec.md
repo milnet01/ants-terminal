@@ -20,8 +20,9 @@ the invariants are source-scrape assertions against
   hovered line on every move. The cache is what the last paint left, i.e.
   what the user sees, so it is also the correct hit-test source.
 
-- **INV-2 / history dedup is not O(n²).** `loadHistory` MUST dedup with a
-  `QSet<QString>` membership check, NOT `m_historyEntries.contains(...)`
+- **INV-2 / history dedup is not O(n²).** `shellhistory::parse`
+  (`src/shellhistory.cpp`, where ANTS-5685 moved the parse) MUST dedup with a
+  `QSet<QString>` membership check, NOT `entries.contains(...)`
   (a linear scan per line → O(n²) on a large shell history). Ordering is
   unchanged: first occurrence keeps its most-recent-first prepend slot.
 

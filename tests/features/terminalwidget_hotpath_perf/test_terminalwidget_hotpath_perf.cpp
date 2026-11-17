@@ -54,15 +54,17 @@ TEST(TerminalWidgetHotPathPerf, Inv1HoverUsesSpanCache) {
            "regex runs on every pixel of motion";
 }
 
-// INV-2 — loadHistory dedups with a set, not a linear list scan.
+// INV-2 — the history parse dedups with a set, not a linear list scan. The
+// parse moved to shellhistory::parse with ANTS-5685.
 TEST(TerminalWidgetHotPathPerf, Inv2HistoryDedupNotQuadratic) {
     const QString body = functionBody(
-        tw(), QStringLiteral("void TerminalWidget::loadHistory()"));
-    ASSERT_FALSE(body.isEmpty()) << "loadHistory not found";
+        readSource(QStringLiteral(SRC_SHELLHISTORY_PATH)),
+        QStringLiteral("QStringList parse(const QByteArray &content)"));
+    ASSERT_FALSE(body.isEmpty()) << "shellhistory::parse not found";
     EXPECT_TRUE(body.contains(QStringLiteral("QSet<QString>")))
-        << "loadHistory must dedup via a QSet (O(1) membership)";
-    EXPECT_FALSE(body.contains(QStringLiteral("m_historyEntries.contains")))
-        << "loadHistory still uses m_historyEntries.contains() — O(n^2) "
+        << "shellhistory::parse must dedup via a QSet (O(1) membership)";
+    EXPECT_FALSE(body.contains(QStringLiteral("entries.contains")))
+        << "shellhistory::parse uses entries.contains() — O(n^2) "
            "dedup over the whole shell history";
 }
 

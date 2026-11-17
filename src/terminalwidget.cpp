@@ -9,6 +9,7 @@
 #include "regexharden.h"     // ANTS-1665 — harden user search / rule patterns
 #include "secureio.h"        // ANTS-4456 — ensurePrivateDir / setOwnerOnlyPerms
 #include "selectiontail.h"   // ANTS-5623 — tail-capped selection assembly
+#include "shellhistory.h"    // ANTS-5685 — history read on a worker
 #include "shellutils.h"      // ANTS-3828 — shellQuote() for pasted file paths
 #include "stickycommandtext.h" // ANTS-5027 — sticky-header command text
 
@@ -16,7 +17,6 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QUuid>
-#include <QSet>
 #include <QTextLayout>
 #include <QEvent>
 #include <QKeyEvent>
@@ -6301,56 +6301,26 @@ void TerminalWidget::onGridLineCompleted(int screenRow) {
 
 // --- History / Autocomplete ---
 
+// ANTS-5685 — the read and parse run on a worker, so a long history file
+// does not stall the tab's first output. Suggestions start once it lands.
 void TerminalWidget::loadHistory() {
-    if (m_historyLoaded) return;
-    m_historyEntries.clear();
-
-    // Try zsh history first, then bash
-    QStringList histPaths = {
-        QDir::homePath() + "/.zsh_history",
-        QDir::homePath() + "/.bash_history",
-        QDir::homePath() + "/.local/share/fish/fish_history"
-    };
-
-    for (const QString &path : histPaths) {
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly)) continue;
-
-        QByteArray content = file.readAll();
-        QStringList lines = QString::fromUtf8(content).split('\n', Qt::SkipEmptyParts);
-
-        // ANTS-1841 — O(1) dedup via a seen-set. The previous linear
-        // membership scan over m_historyEntries cost O(n²) per line on a
-        // large ~50k-line .zsh_history at the first suggestion lookup. The
-        // set mirrors the list exactly (first occurrence wins its prepend
-        // position; later duplicates skip), so most-recent-first ordering
-        // is unchanged.
-        QSet<QString> seen;
-        seen.reserve(lines.size());
-        for (const QString &line : lines) {
-            QString cmd = line.trimmed();
-            // zsh extended history format: ": timestamp:0;command"
-            if (cmd.startsWith(": ")) {
-                int semi = cmd.indexOf(';');
-                if (semi >= 0) cmd = cmd.mid(semi + 1);
-                else continue;
-            }
-            // fish history format: "- cmd: command"
-            if (cmd.startsWith("- cmd: ")) {
-                cmd = cmd.mid(7);
-            }
-            if (!cmd.isEmpty() && !seen.contains(cmd)) {
-                seen.insert(cmd);
-                m_historyEntries.prepend(cmd); // Most recent first
-            }
-        }
-        if (!m_historyEntries.isEmpty()) break; // Use the first available history
-    }
-    m_historyLoaded = true;
+    if (m_historyRequested) return;
+    m_historyRequested = true;
+    auto entries = std::make_shared<QStringList>();
+    QThread *worker = QThread::create([home = QDir::homePath(), entries]() {
+        *entries = shellhistory::load(home);
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    // `this` as the delivery context drops the result if the tab closes first.
+    connect(worker, &QThread::finished, this, [this, entries]() {
+        m_historyEntries = std::move(*entries);
+        m_lastSuggestionInput.clear();  // the next batch matches against it
+    }, Qt::QueuedConnection);
+    worker->start();
 }
 
 void TerminalWidget::updateSuggestion() {
-    if (!m_historyLoaded) loadHistory();
+    if (!m_historyRequested) loadHistory();
 
     // Don't suggest in alt screen (vim, htop, etc.)
     if (m_grid->altScreenActive()) {

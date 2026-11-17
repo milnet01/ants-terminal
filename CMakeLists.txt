@@ -852,6 +852,7 @@ add_library(ants_core_lib STATIC
     src/inlineimagedecode.cpp # ANTS-1061
     src/appimageenv.cpp       # ANTS-5574
     src/appimagedesktop.cpp   # AppImage menu entry + panel icon
+    src/shellhistory.cpp      # ANTS-5685
 )
 target_link_libraries(ants_core_lib
     PUBLIC  ants_mcpcore_lib
@@ -2392,12 +2393,15 @@ if(ANTS_TESTS)
                 # ANTS-5131 — a changed tab's save compresses and writes on a worker.
                 tests/features/session_save_worker/test_session_save_worker.cpp
                 # ANTS-5033 — desktop-notification quota shared by OSC 9/777.
-                tests/features/osc_notify_quota/test_osc_notify_quota.cpp)
+                tests/features/osc_notify_quota/test_osc_notify_quota.cpp
+                # ANTS-5685 — shell history is read from its tail, on a worker.
+                tests/features/shell_history_tail/test_shell_history_tail.cpp)
     # scrollback_frozen_view test reads terminalwidget.cpp source via grep —
     # the path must be passed as a compile definition same as the standalone
     # had it. Apply target-wide so any future bundle source can reuse.
     target_compile_definitions(test_vt PRIVATE
         SRC_TERMINALWIDGET_PATH="${CMAKE_SOURCE_DIR}/src/terminalwidget.cpp"
+        SRC_SHELLHISTORY_PATH="${CMAKE_SOURCE_DIR}/src/shellhistory.cpp"
         SRC_TERMINALGRID_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_TERMINALGRID_CPP_PATH="${CMAKE_SOURCE_DIR}/src/terminalgrid.cpp"
         SRC_VTPARSER_PATH="${CMAKE_SOURCE_DIR}/src/vtparser.cpp"

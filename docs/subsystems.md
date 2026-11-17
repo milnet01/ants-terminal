@@ -50,6 +50,8 @@ Listed only where behavior isn't obvious from the name.
   HarfBuzz ligatures. SGR mouse, focus reporting, sync output, undercurl,
   per-pixel bg alpha. (Was QOpenGLWidget pre-0.7.4; glyph-atlas
   `GlRenderer` retired in 0.7.44.)
+- `shellhistory` (`ants_core_lib`) — reads the tail of the shell's history
+  file for autocomplete. `TerminalWidget` runs it on a worker. ANTS-5685.
 - `ptyhandler` — forkpty + QSocketNotifier.
 - `mainwindow` (`ants_chrome_lib`) — the window: tabs, panes, menus,
   sessions, quake mode, the MCP providers that read tab state. Its

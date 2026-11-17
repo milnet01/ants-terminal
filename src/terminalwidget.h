@@ -1018,7 +1018,7 @@ private:
     // Autocomplete / history suggestions
     QStringList m_historyEntries;
     QString m_currentSuggestion;
-    bool m_historyLoaded = false;
+    bool m_historyRequested = false;  // loadHistory's worker has started
     // ANTS-3455 — last input line updateSuggestion() computed against.
     // The suggestion is a pure function of the trimmed input line, so
     // when the line is unchanged since the last call the O(history)

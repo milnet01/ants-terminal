@@ -37,6 +37,8 @@
         "src/selectiontail.h",
         "src/shapedruncache.cpp",
         "src/shapedruncache.h",
+        "src/shellhistory.cpp",
+        "src/shellhistory.h",
         "src/stickycommandtext.h",
         "src/terminalaccessible.cpp",
         "src/terminalaccessible.h",
