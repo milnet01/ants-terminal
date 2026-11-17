@@ -658,6 +658,7 @@ void TerminalWidget::setSessionLogging(bool enabled) {
             m_logFile->setFileName(filename);
             opened = m_logFile->open(QIODevice::WriteOnly | QIODevice::NewOnly);
         }
+        m_logBytes = 0;   // ANTS-6493 — a new log starts a fresh 1 GB
         if (!opened) {
             qWarning("Failed to open log file: %s", qPrintable(filename));
             m_logFile.reset();
@@ -2481,8 +2482,23 @@ void TerminalWidget::onVtBatch(VtBatchPtr batch) {
     // and paint matches legacy behaviour at a slightly coarser granularity
     // (one write per batch instead of one per PTY read).
     if (m_loggingEnabled && m_logFile && m_logFile->isOpen()) {
-        m_logFile->write(batch->rawBytes);
-        m_logFile->flush();
+        // ANTS-6493 — at 1 GB the tab writes what fits, keeps the file and
+        // stops logging; no rotation (user, 2026-11-17).
+        const qint64 incoming = batch->rawBytes.size();
+        const qint64 room = sessionLogRoom(m_logBytes, incoming);
+        if (room > 0) {
+            m_logFile->write(batch->rawBytes.constData(), room);
+            m_logFile->flush();
+            m_logBytes += room;
+        }
+        if (room < incoming) {
+            const QString name = m_logFile->fileName();
+            m_logFile->close();
+            m_logFile.reset();
+            m_loggingEnabled = false;
+            emit captureFailed(tr("Session log is full (1 GB), so this tab stopped "
+                                  "logging. Saved: %1").arg(name));
+        }
     }
     if (m_recording && m_recordFile && m_recordFile->isOpen()) {
         // Asciicast timestamp: sampled on the worker at flush time, which

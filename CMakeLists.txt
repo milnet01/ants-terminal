@@ -2555,6 +2555,8 @@ if(ANTS_TESTS)
                 tests/features/scratchpad_submit_ordering/test_scratchpad_submit_ordering.cpp
                 # ANTS-4456 — session log + recording land 0600 in a 0700 dir.
                 tests/features/session_capture_perms/test_session_capture_perms.cpp
+                # ANTS-6493 — each tab's session log stops at 1 GB and says so.
+                tests/features/session_log_cap/test_session_log_cap.cpp
                 # ANTS-3828 — copied image FILE pastes its path, not a file:// URI.
                 tests/features/image_paste_uri_list/test_image_paste_uri_list.cpp
                 # ANTS-5077 — keys reach the shell through sendKeyData only; a failed

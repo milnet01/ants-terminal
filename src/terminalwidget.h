@@ -21,6 +21,7 @@
 #include <QStringDecoder>
 #include <QJsonArray>
 #include <QScrollBar>
+#include <algorithm>
 #include <functional>
 #include <unordered_map>
 #include <memory>
@@ -221,6 +222,15 @@ public:
     static constexpr int kPluginLinesPerSecond = 200;
     static constexpr int kPluginKeysPerSecond = 100;
     static bool takeEventBudget(EventBudget &budget, int cap = kEventsPerSecond);
+
+    // ANTS-6493 — each tab's session log stops at 1 GB (user, 2026-11-17).
+    static constexpr qint64 kSessionLogCapBytes = 1'000'000'000;
+    // How many of `incoming` bytes fit in a log already holding `written`
+    // bytes under `cap`; 0 once it is full.
+    static qint64 sessionLogRoom(qint64 written, qint64 incoming,
+                                 qint64 cap = kSessionLogCapBytes) {
+        return std::clamp<qint64>(cap - written, 0, incoming);
+    }
 
     // Font family
     void setFontFamily(const QString &family);
@@ -812,6 +822,7 @@ private:
     // Session logging
     bool m_loggingEnabled = false;
     std::unique_ptr<QFile> m_logFile;
+    qint64 m_logBytes = 0;   // ANTS-6493 — bytes in m_logFile, for the 1 GB cap
 
     // Idle notification (detect when long-running command finishes)
     QTimer m_idleTimer;

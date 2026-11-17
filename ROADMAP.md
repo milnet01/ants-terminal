@@ -94416,7 +94416,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6493] **terminalwidget.cpp: the session log grows with no size limit.**
+- ✅ [ANTS-6493] **terminalwidget.cpp: the session log grows with no size limit.**
   `terminalwidget.cpp:2431-2433` — the session log grows with no size
   limit. It may be by design as a user-requested capture; see Open
   questions.
@@ -94426,6 +94426,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   1 GB. At the cap that tab stops logging and a message says the log
   is full; what is already saved stays. No rotation.
   Note: the log is a file on disk, not memory.
+  Shipped 2026-11-17: TerminalWidget::sessionLogRoom() and
+  kSessionLogCapBytes (1,000,000,000 bytes). onVtBatch writes what fits,
+  then closes the log, turns logging off for the tab and emits
+  captureFailed (status bar, 8 s). Turning logging off and on starts a
+  fresh log. Test: tests/features/session_log_cap. Reaches a running
+  terminal only after a relaunch.
   **Layman:** A tab's session log stops at 1 GB and says so, instead of growing until the drive is full.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).
