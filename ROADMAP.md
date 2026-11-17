@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6813 -->
+<!-- ants-roadmap-id-high-water: ANTS=6814 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95411,7 +95411,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 26-audit-dialog (High).
   Lanes: audit-dialog.
 
-- 📋 [ANTS-6540] **auditdelta.cpp: , fed from `auditrunner.cpp:2645`.**
+- ✅ [ANTS-6540] **auditdelta.cpp: , fed from `auditrunner.cpp:2645`.**
   `auditdelta.cpp:56-57` — , fed from `auditrunner.cpp:2645`. Any
   earlier finding in a changed file whose tool did not run this time is
   classed as removed and dropped from the recorded baseline
@@ -95422,6 +95422,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `priorOnChanged` to tools that ran and finished "ok". Carry the rest
   forward.
   Ledger row 310, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. Each recorded finding carries `tool`; computeDelta
+  takes toolsRanOk (internal::toolsRanOk(byTool), status "ok"), and a
+  prior finding is re-checked only when its file changed and its tool
+  ran ok. Untagged findings from older sidecars are carried forward.
+  Tests: AuditRunDelta.Ants6540FindingOfAToolThatDidNotRunIsKept,
+  …RunnerTagsFindingsAndCountsOnlyOkTools. ANTS-1870 § 2.4 amended.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 27-audit-engine (High).
@@ -95511,6 +95517,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: ux.
   Source: found-while-fixing-ANTS-6531.
   Lanes: terminal-widget.
+
+- 📋 [ANTS-6814] **The ANTS-1870 spec cites src/mainwindow.cpp:4595, a line the file no longer has.**
+  check-doc.py lineref on docs/specs/ANTS-1870-audit-run-precise-since-last.md
+  names src/mainwindow.cpp:4595; the file is shorter now. Re-point the
+  citation at the symbol it meant, written as file:N:token.
+  **Layman:** A design document points at a line of code that has moved.
+  Kind: doc-fix.
+  Source: check-doc 2026-11-17, while amending ANTS-1870.
 
 ### One-edit comment fixes (2026-11-06 review)
 

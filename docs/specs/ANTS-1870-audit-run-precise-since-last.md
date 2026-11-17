@@ -173,14 +173,18 @@ struct DeltaResult {
 };
 DeltaResult computeDelta(const QJsonArray &current,        // this run, changed-set
                          const QJsonArray &prior,          // prior run, whole-tree
-                         const QSet<QString> &changedFiles);
+                         const QSet<QString> &changedFiles,
+                         const QSet<QString> &toolsRanOk);  // status "ok"
 ```
 
 Each array element is a § 2.1 finding object (`{file, line, rule,
-severity, message, fp}`); identity is the `fp` field (§ 2.2). Logic:
+severity, message, fp, tool}`); identity is the `fp` field (§ 2.2). Logic:
 
-1. Partition `prior` by `changedFiles.contains(file)` →
-   `priorOnChanged`, `priorOnUntouched`.
+1. Partition `prior` → `priorOnChanged` (its `file` is in `changedFiles`
+   and its `tool` is in `toolsRanOk`) and `priorOnUntouched` (the rest).
+   A tool skipped under narrowing, or one that failed, re-checked nothing,
+   so its findings are not counted as removed (ANTS-6540). A finding with
+   no `tool`, from a sidecar written before ANTS-6540, is carried forward.
 2. `added` = `current` whose `fp` ∉ `priorOnChanged` fps.
 3. `removed` = `priorOnChanged` whose `fp` ∉ `current` fps.
 4. `carriedForward` = (`current` ∩ `priorOnChanged` by fp) ∪
@@ -537,3 +541,4 @@ pre-implementation source before the wiring lands.
   was resolved in Loops 1–4 and held without re-surfacing; Loop 5 yielded
   only test-precision + one localized cap-policy detail (all fixed). At the
   5-loop cap with no architectural finding outstanding, the loop converges.
+- **impl-6540 (2026-11-17)** — implementation fold-back; no reviewer dispatched. ANTS-6540: each recorded finding carries `tool`, and `computeDelta` takes `toolsRanOk`; a prior finding counts toward `removed` only when its file changed and its tool finished ok (§ 2.4 step 1). Tests seen red first (`AuditRunDelta.Ants6540FindingOfAToolThatDidNotRunIsKept`).

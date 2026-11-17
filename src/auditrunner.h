@@ -262,6 +262,10 @@ qint64 measureEnvelopeBytes(const QJsonArray &samples,
 // the derivation without spawning a real tool.
 QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool);
 
+// ANTS-6540 — the spawned tools whose status is "ok": the ones whose prior
+// findings a since-last-run delta may count as removed. Pure over byTool.
+QSet<QString> toolsRanOk(const QHash<QString, ToolResult> &byTool);
+
 // ANTS-5067 — one in-process audit lane (a GUI-free FeatureCoverage runner),
 // and what running it under a deadline produced.
 // docs/specs/ANTS-5067-drift-lanes-off-thread.md § 2.3.
@@ -333,6 +337,8 @@ struct ParsedCounts {
     int  findingsCount = 0;
     bool findingsTruncated = false;
     bool allFindingsHaveHexFp = false;
+    // ANTS-6540 — every finding's `tool` names the tool that parsed it.
+    bool allFindingsNameTheirTool = false;
     // ANTS-3395 — true when a JSON tool logged a fatal abort and produced no
     // parseable findings (the runner promotes this to a "crashed" status).
     bool aborted = false;

@@ -4,7 +4,7 @@
 // merged whole-tree set the carry-forward SARIF + recorded sidecar persist.
 //
 // Operates entirely on the `QJsonArray findings` shape the runner builds
-// (`{file, line, rule, severity, message, fp}`) — no struct⇄JSON bridge,
+// (`{file, line, rule, severity, message, fp, tool}`) — no struct⇄JSON bridge,
 // no QProcess, no filesystem (INV-9 parity with AuditScope). Identity is
 // the `fp` field (ANTS-1820 content fingerprint), line-insensitive.
 //
@@ -32,9 +32,14 @@ struct DeltaResult {
 // `prior`   — the prior run's whole-tree findings (from the sidecar).
 // `changedFiles` — the files re-scanned this run; prior findings on any
 //                  other file are assumed still present (carried forward).
+// `toolsRanOk`   — ANTS-6540: the tools that finished "ok" this run. A prior
+//                  finding whose `tool` is not among them (skipped, failed,
+//                  timed out, or untagged) was not re-checked, so it too is
+//                  carried forward rather than counted as removed.
 DeltaResult computeDelta(const QJsonArray &current,
                          const QJsonArray &prior,
-                         const QSet<QString> &changedFiles);
+                         const QSet<QString> &changedFiles,
+                         const QSet<QString> &toolsRanOk);
 
 // ANTS-5085 — bound the set the recorded sidecar persists to `maxEntries`,
 // keeping the head. `merged` lists current findings before carried-forward

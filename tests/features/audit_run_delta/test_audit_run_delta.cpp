@@ -37,8 +37,12 @@ QJsonObject mk(const QString &file, int line, const QString &rule,
     o["severity"] = QStringLiteral("UNKNOWN");
     o["message"]  = msg;
     o["fp"] = ants::auditfp::computeFingerprint(file, rule, msg);
+    o["tool"] = rule;   // ANTS-6540 — these line-based findings key on the tool
     return o;
 }
+
+// ANTS-6540 — the tool every finding above comes from, as having run ok.
+const QSet<QString> kRanOk{QStringLiteral("cppcheck")};
 
 bool has(const std::string &hay, const char *needle) {
     return hay.find(needle) != std::string::npos;
@@ -82,7 +86,7 @@ TEST(AuditRunDelta, Inv2FingerprintLineInsensitive) {
     QJsonObject prev = mk(QStringLiteral("a.cpp"), 99,
                           QStringLiteral("cppcheck"), QStringLiteral("dup msg"));
     const auto d = AuditDelta::computeDelta(
-        QJsonArray{cur}, QJsonArray{prev}, {QStringLiteral("a.cpp")});
+        QJsonArray{cur}, QJsonArray{prev}, {QStringLiteral("a.cpp")}, kRanOk);
     EXPECT_EQ(d.addedCount, 0);
     EXPECT_EQ(d.removedCount, 0);
     EXPECT_EQ(d.carriedForwardCount, 1);
@@ -132,22 +136,22 @@ TEST(AuditRunDelta, Inv3Partition) {
 
     const QJsonArray current{added, unchanged};
     const QJsonArray prior{fixed, unchanged, b1, b2};
-    const auto d = AuditDelta::computeDelta(current, prior, {A});
+    const auto d = AuditDelta::computeDelta(current, prior, {A}, kRanOk);
     EXPECT_EQ(d.addedCount, 1);              // new
     EXPECT_EQ(d.removedCount, 1);            // fixed
     EXPECT_EQ(d.carriedForwardCount, 3);     // unchanged + b1 + b2
     EXPECT_EQ(d.merged.size(), 4);           // current(2) ∪ untouched(2)
 
     // Degenerate: empty current → every priorOnChanged removed.
-    const auto e1 = AuditDelta::computeDelta({}, QJsonArray{fixed}, {A});
+    const auto e1 = AuditDelta::computeDelta({}, QJsonArray{fixed}, {A}, kRanOk);
     EXPECT_EQ(e1.removedCount, 1);
     EXPECT_EQ(e1.addedCount, 0);
     // Degenerate: empty prior → every current added.
-    const auto e2 = AuditDelta::computeDelta(QJsonArray{added}, {}, {A});
+    const auto e2 = AuditDelta::computeDelta(QJsonArray{added}, {}, {A}, kRanOk);
     EXPECT_EQ(e2.addedCount, 1);
     EXPECT_EQ(e2.removedCount, 0);
     // Degenerate: both empty → all arrays empty.
-    const auto e3 = AuditDelta::computeDelta({}, {}, {A});
+    const auto e3 = AuditDelta::computeDelta({}, {}, {A}, kRanOk);
     EXPECT_EQ(e3.addedCount, 0);
     EXPECT_EQ(e3.removedCount, 0);
     EXPECT_EQ(e3.carriedForwardCount, 0);
@@ -158,11 +162,49 @@ TEST(AuditRunDelta, Inv3Partition) {
     // merged twice, carried forward once.
     const QString H = QStringLiteral("b.h");
     const QJsonObject hdr = mk(H, 7, QStringLiteral("cppcheck"), QStringLiteral("header"));
-    const auto h = AuditDelta::computeDelta(QJsonArray{hdr}, QJsonArray{hdr}, {A});
+    const auto h = AuditDelta::computeDelta(QJsonArray{hdr}, QJsonArray{hdr}, {A}, kRanOk);
     EXPECT_EQ(h.addedCount, 0);
     EXPECT_EQ(h.removedCount, 0);
     EXPECT_EQ(h.carriedForwardCount, 1);
     EXPECT_EQ(h.merged.size(), 1);
+}
+
+// ── ANTS-6540 — a tool that did not run re-checked nothing ─────────────
+
+TEST(AuditRunDelta, Ants6540FindingOfAToolThatDidNotRunIsKept) {
+    const QString A = QStringLiteral("a.cpp");   // changed
+    // gitleaks is skipped under narrowing (not_file_scoped); an old sidecar
+    // finding carries no tool at all.
+    const QJsonObject leak = mk(A, 4, QStringLiteral("gitleaks"), QStringLiteral("key"));
+    QJsonObject untagged = mk(A, 5, QStringLiteral("cppcheck"), QStringLiteral("old"));
+    untagged.remove(QStringLiteral("tool"));
+
+    const auto d = AuditDelta::computeDelta({}, QJsonArray{leak, untagged}, {A}, kRanOk);
+    EXPECT_EQ(d.removedCount, 0) << "a finding nobody re-checked was counted as fixed";
+    EXPECT_EQ(d.carriedForwardCount, 2);
+    EXPECT_EQ(d.merged.size(), 2) << "the recorded baseline dropped it";
+}
+
+// ANTS-6540 — the runner's half: findings name their tool, from the JSON and
+// the line-based parsers alike, and only tools that finished ok count as run.
+TEST(AuditRunDelta, Ants6540RunnerTagsFindingsAndCountsOnlyOkTools) {
+    const auto line = AuditRunner::internal::parseWithSuppression(
+        QStringLiteral("cppcheck"),
+        QStringLiteral("src/f.cpp:3: warning: unused var v\n"), 10, {});
+    EXPECT_TRUE(line.allFindingsNameTheirTool) << "line-based findings";
+    const auto json = AuditRunner::internal::parseWithSuppression(
+        QStringLiteral("semgrep"),
+        QStringLiteral(R"([{"path":"a.py","message":"leak","check_id":"r1","line":3}])"),
+        10, {});
+    ASSERT_EQ(json.findingsCount, 1);
+    EXPECT_TRUE(json.allFindingsNameTheirTool) << "JSON findings";
+
+    QHash<QString, AuditRunner::ToolResult> byTool;
+    for (const auto &[name, status] :
+         {std::pair{"cppcheck", "ok"}, {"semgrep", "timed_out"}, {"trivy", "crashed"}})
+        byTool[QString::fromLatin1(name)].status = QString::fromLatin1(status);
+    EXPECT_EQ(AuditRunner::internal::toolsRanOk(byTool),
+              QSet<QString>{QStringLiteral("cppcheck")});
 }
 
 // ── INV-4 — sidecar round-trip ────────────────────────────────────────

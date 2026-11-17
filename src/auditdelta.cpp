@@ -29,17 +29,20 @@ QSet<QString> fpSet(const QJsonArray &a) {
 
 DeltaResult computeDelta(const QJsonArray &current,
                          const QJsonArray &prior,
-                         const QSet<QString> &changedFiles) {
+                         const QSet<QString> &changedFiles,
+                         const QSet<QString> &toolsRanOk) {
     DeltaResult d;
 
-    // 1. Partition prior by whether its file was re-scanned this run.
-    //    Only priorOnChanged can yield added/removed — an untouched file
-    //    was not re-scanned, so its prior findings are assumed still present.
+    // 1. Partition prior by whether it was re-checked this run: its file was
+    //    re-scanned AND its tool finished ok (ANTS-6540). Only priorOnChanged
+    //    can yield added/removed — anything else is assumed still present.
     QJsonArray priorOnChanged;
     QJsonArray priorOnUntouched;
     for (const QJsonValue &v : prior) {
-        if (changedFiles.contains(fileOf(v))) priorOnChanged.append(v);
-        else                                  priorOnUntouched.append(v);
+        const bool rechecked = changedFiles.contains(fileOf(v))
+            && toolsRanOk.contains(v.toObject().value(QStringLiteral("tool")).toString());
+        if (rechecked) priorOnChanged.append(v);
+        else           priorOnUntouched.append(v);
     }
 
     const QSet<QString> currentFps        = fpSet(current);

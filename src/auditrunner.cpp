@@ -983,6 +983,7 @@ ParsedOutput parseToolOutput(const QString &tool,
                     QJsonObject f = s;
                     f["fp"] = ants::auditfp::computeFingerprint(
                         fileStr, ruleStr, msg);
+                    f["tool"] = tool;   // ANTS-6540 — computeDelta's toolsRanOk
                     out.findings.append(f);
                 } else {
                     out.findingsTruncated = true;
@@ -1099,6 +1100,7 @@ ParsedOutput parseToolOutput(const QString &tool,
         if (out.findings.size() < kSarifFindingsMax) {
             QJsonObject f = s;
             f["fp"] = ants::auditfp::computeFingerprint(fileStr, tool, msg);
+            f["tool"] = tool;   // ANTS-6540 — computeDelta's toolsRanOk
             out.findings.append(f);
         } else {
             out.findingsTruncated = true;
@@ -1670,6 +1672,13 @@ QStringList incompleteToolNames(const QHash<QString, ToolResult> &byTool) {
     return names;
 }
 
+QSet<QString> toolsRanOk(const QHash<QString, ToolResult> &byTool) {
+    QSet<QString> ok;
+    for (auto it = byTool.constBegin(); it != byTool.constEnd(); ++it)
+        if (it->status == QLatin1String("ok")) ok.insert(it.key());
+    return ok;
+}
+
 QList<InProcessLaneOutcome> runInProcessLanes(const QList<InProcessLane> &lanes,
                                               const QString &projectRoot,
                                               qint64 budgetMs) {
@@ -1879,7 +1888,11 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
             break;
         }
     }
+    bool allTagged = !p.findings.isEmpty();
+    for (const QJsonValue &v : p.findings)
+        if (v.toObject().value(QStringLiteral("tool")).toString() != tool) allTagged = false;
     ParsedCounts c{};
+    c.allFindingsNameTheirTool = allTagged;   // ANTS-6540
     c.rawCount              = p.rawCount;
     c.afterFilterCount      = p.rawCount - p.suppressedCount;
     c.sampleCount           = static_cast<int>(p.samples.size());
@@ -2854,8 +2867,11 @@ RunResult runAudit(const RunRequest &req) {
             r.deltaUnavailableReason =
                 QStringLiteral("prior_findings_unreadable");
         } else {
+            // ANTS-6540 — a tool skipped under narrowing (gitleaks, trivy)
+            // or one that failed re-checked nothing; its prior findings stay.
             const AuditDelta::DeltaResult d = AuditDelta::computeDelta(
-                currentFindings, prior.findings, sinceLastRunChangedFiles);
+                currentFindings, prior.findings, sinceLastRunChangedFiles,
+                internal::toolsRanOk(r.byTool));
             mergedForRecord = d.merged;
             // carriedForward ∖ current = priorOnUntouched ∖ current (the
             // current ∩ prior half is already emitted by the per-tool SARIF
