@@ -44,7 +44,8 @@ cc-job prune [--older-than <days>]
 A pipeline or shell syntax needs a shell:  cc-job start build -- bash -c 'make 2>&1 | tee out'
 Exported variables reach the job, except this session's own (CLAUDE*, ANTS_MCP_SOCKET and
 the like). Unsetting one does not hide it from the job if the systemd --user manager has it.
-Logs live in $XDG_STATE_HOME/cc-job/<name>.log (CC_JOB_DIR overrides)
+Logs live in $XDG_STATE_HOME/cc-job/<name>.log (CC_JOB_DIR overrides). A start under a
+used name keeps an unread log as <name>.prev.
 Needs systemd --user; watch also needs Konsole.
 EOF
 }
@@ -119,6 +120,11 @@ start_job() {
     systemctl --user reset-failed "$(unit "$name")" 2>/dev/null || true
 
     local log="$STATE/$name.log" rec="$STATE/$name.exit"
+    # The log is the only copy of the output (ANTS-6538): keep an unread one.
+    if [[ -s $log && ! -e $STATE/$name.read ]]; then
+        mv -f "$log" "$STATE/$name.prev"
+        echo "kept the unread output of the last '$name' as $STATE/$name.prev"
+    fi
     rm -f "$rec" "$STATE/$name.read"
     : >"$log"
     {
@@ -187,7 +193,7 @@ clean_one() {
     if ((!force)) && [[ -s $STATE/$name.log && ! -e $STATE/$name.read ]]; then return 2; fi
     # Close any watch window first, or it reports the log vanishing.
     systemctl --user stop "cc-job-watch-$name-*" 2>/dev/null || true
-    rm -f "$STATE/$name".{log,exit,info,read,env}
+    rm -f "$STATE/$name".{log,exit,info,read,env,prev}
 }
 
 clean_cmd() {
@@ -247,7 +253,7 @@ prune_jobs() {
         running "$name" && continue
         # Not clean_one: its per-job systemctl call takes minutes over
         # thousands of jobs, and no watch window follows a job this old.
-        rm -f "$STATE/$name".{log,exit,info,read,env}
+        rm -f "$STATE/$name".{log,exit,info,read,env,prev}
         removed=$((removed + 1))
     done < <(find -H "$STATE" -maxdepth 1 -name '*.log' -mtime "+$days" -print0)
     ((quiet)) || echo "removed $removed finished jobs older than $days days"

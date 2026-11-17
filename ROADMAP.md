@@ -95377,7 +95377,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 24-shell-surface (High).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6538] **cc-job: Starting a job under a reused name truncates the previous job's log without any check.**
+- ✅ [ANTS-6538] **cc-job: Starting a job under a reused name truncates the previous job's log without any check.**
   `packaging/cc-job/cc-job:113-114` — Starting a job under a reused name
   truncates the previous job's log without any check.
   Quote: `rm -f "$rec" "$STATE/$name.read"`
@@ -95385,6 +95385,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   refuse when `-s log && ! -e .read`, with the same message as `clean`
   and a `--force` flag.
   Ledger row 267, docs/reviews/close-findings-2026-11-06.md.
+  User decision 2026-11-17: keep the old output rather than refuse. A
+  start under a reused name whose log is unread moves it to
+  .prev (not .prev.log: status lists every *.log as a job) and
+    prints one line saying so. cc-job is symlinked
+  into ~/.local/bin from this file, so the edit lands by an atomic
+  rename.
+  Shipped 2026-11-17: start moves an unread non-empty log to <name>.prev
+  and names it; clean and prune remove it. cc_job_bundle INV-15.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 24-shell-surface (High).

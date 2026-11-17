@@ -271,4 +271,33 @@ prune start fresh -- true >/dev/null
 [ ! -e "$old/auto-2.log" ] || { echo "FAIL INV-14: start did not prune a day later"; exit 1; }
 case "$("$bin" --help)" in *"prune"*"--older-than"*) ;; *) echo "FAIL INV-14: --help omits prune"; exit 1 ;; esac
 
-echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job, prunes old jobs"
+# INV-15 — start under a reused name keeps an unread log as <name>.prev and
+# says so; a read log is cleared. clean and prune remove the .prev with the job.
+re="$prefix/reuse"
+mkdir "$re"
+: >"$re/.pruned"   # keep start's daily prune out of this check
+rerun() { env CC_JOB_DIR="$re" PATH="$fake:$PATH" "$bin" "$@"; }
+echo "first output" >"$re/again.log"; echo 0 >"$re/again.exit"
+out="$(rerun start again -- true)"
+[ "$(cat "$re/again.prev" 2>/dev/null)" = "first output" ] ||
+    { echo "FAIL INV-15: start dropped an unread log: $out"; exit 1; }
+case "$out" in *"$re/again.prev"*) ;; *) echo "FAIL INV-15: start did not name the kept log: $out"; exit 1 ;; esac
+echo "second output" >"$re/again.log"
+out="$(rerun start again -- true)"
+[ "$(cat "$re/again.prev")" = "second output" ] ||
+    { echo "FAIL INV-15: a second unread log did not replace the older .prev"; exit 1; }
+echo "read output" >"$re/again.log"; : >"$re/again.read"
+out="$(rerun start again -- true)"
+[ "$(cat "$re/again.prev")" = "second output" ] ||
+    { echo "FAIL INV-15: start moved a log that tail had shown"; exit 1; }
+case "$out" in *".prev"*) echo "FAIL INV-15: start named a .prev for a read log: $out"; exit 1 ;; esac
+[ "$(rerun status --all | wc -l)" = 1 ] ||
+    { echo "FAIL INV-15: status --all listed the .prev as a job: $(rerun status --all)"; exit 1; }
+rerun clean again --force >/dev/null
+[ ! -e "$re/again.prev" ] || { echo "FAIL INV-15: clean left the .prev behind"; exit 1; }
+echo "old" >"$re/stale.log"; echo 0 >"$re/stale.exit"; echo kept >"$re/stale.prev"
+touch -d "40 days ago" "$re/stale.log"
+rerun prune >/dev/null
+[ ! -e "$re/stale.prev" ] || { echo "FAIL INV-15: prune left the .prev behind"; exit 1; }
+
+echo "PASS: $bin installs, names its needs, logs under XDG_STATE_HOME, refuses watch without Konsole, forwards exported variables, lists status cheaply, records and cleans by owner, summarises a finished job, prunes old jobs, keeps an unread log on a reused name"

@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **cc-job keeps the unread output of an earlier job when a new one starts under the same name, as <name>.prev, and says where** (ANTS-6538)
+
 - **The `audit_run` since-last-run design names the function that builds its reply instead of a line number that had moved.** (ANTS-6814)
 
 - **Making the window shorter while a full-screen app such as less is open keeps the newest lines of the normal screen behind it; the older ones move to scrollback.** (ANTS-6812)

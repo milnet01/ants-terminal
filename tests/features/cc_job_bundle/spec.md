@@ -55,6 +55,12 @@ source is `packaging/cc-job/cc-job`.
   non-numeric limit exits `2`. A running job is never removed. `start` runs
   the same prune first, at most once a day. `--help` names it.
   *Breaks when:* finished jobs pile up for ever and slow every listing.
+- **INV-15** *(ANTS-6538, user decision 2026-11-17)* — `start` under a name
+  whose log is non-empty and not yet shown moves that log to `<name>.prev`,
+  replacing any older one, and prints a line naming it. A shown or empty log
+  is cleared as before. `status --all` lists no job for a `.prev` file.
+  `clean` and `prune` remove it with the job.
+  *Breaks when:* re-using a job name wipes output nobody has read.
 
 The test starts its job through a stand-in `systemd-run`, so it needs no
 `systemd --user`.
