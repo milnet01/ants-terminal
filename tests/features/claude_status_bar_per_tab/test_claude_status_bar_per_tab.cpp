@@ -175,13 +175,15 @@ int runPrePollTolerance() {
 }
 
 int runColdStartPermissionRequestDropped() {
-    // I5 (ANTS-2190) — during cold-start (m_transcriptPath empty,
-    // isFocusedTabSession() returns true for ANY session_id) a
-    // PermissionRequest cannot be attributed to the focused tab, so it must be
-    // DROPPED rather than fired + committed to m_lastHookSessionId. Pre-fix it
-    // self-routed via the poisoned last-seen session field, mis-attributing a
-    // sibling tab's prompt to the focused tab when two Claude tabs are live.
-    auto *ci = new ClaudeIntegration();   // cold-start: no transcript path set
+    // I5 (ANTS-2190) — during cold-start (the focused tab's Claude found,
+    // its transcript not yet resolved, so isFocusedTabSession() returns true
+    // for ANY session_id) a PermissionRequest cannot be attributed to the
+    // focused tab, so it must be DROPPED rather than fired + committed to
+    // m_lastHookSessionId. Pre-fix it self-routed via the poisoned last-seen
+    // session field, mis-attributing a sibling tab's prompt to the focused
+    // tab when two Claude tabs are live.
+    auto *ci = new ClaudeIntegration();   // no transcript path set
+    ci->setClaudePidForTest(4242);        // ...but a Claude was found
     QSignalSpy permSpy(ci, &ClaudeIntegration::permissionRequested);
 
     ci->processHookEventForTest(permissionRequest(kSiblingSession, "Bash"));
@@ -200,6 +202,21 @@ int runColdStartPermissionRequestDropped() {
 }
 
 }  // namespace
+
+TEST(ClaudeStatusBarPerTab, NoClaudeInFocusedTabPermissionRequestFires) {
+    // I6 (ANTS-6533) — the focused tab has no Claude (m_claudePid 0, so the
+    // transcript path stays empty, not for a moment). A Claude in another tab
+    // asks for permission: the prompt must still fire and stash its session
+    // id, so the slot can route it to that tab.
+    ClaudeIntegration ci;   // no Claude under the focused shell
+    QSignalSpy permSpy(&ci, &ClaudeIntegration::permissionRequested);
+
+    ci.processHookEventForTest(permissionRequest(kSiblingSession, "Bash"));
+    QCoreApplication::processEvents();
+
+    EXPECT_EQ(permSpy.count(), 1);
+    EXPECT_EQ(ci.lastHookSessionId(), QString::fromLatin1(kSiblingSession));
+}
 
 
 TEST(ClaudeStatusBarPerTab, ForeignSessionIsDropped) {

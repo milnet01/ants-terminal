@@ -95263,7 +95263,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 04-terminal-widget-b (High).
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6533] **claudeintegration.cpp: together with `src/claudeintegration_sessions.cpp:276` `m_transcriptPath.clear();` (the branch for "no Claude under the focused shell").**
+- ✅ [ANTS-6533] **claudeintegration.cpp: together with `src/claudeintegration_sessions.cpp:276` `m_transcriptPath.clear();` (the branch for "no Claude under the focused shell").**
   `src/claudeintegration.cpp:312-314` — together with
   `src/claudeintegration_sessions.cpp:276` `m_transcriptPath.clear();`
   (the branch for "no Claude under the focused shell").
@@ -95275,6 +95275,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   poll. Drop `PermissionRequest` only while that flag is set; otherwise
   route it by `session_id` alone.
   Ledger row 82, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. PermissionRequest is dropped only while the poll has
+  found the focused tab's Claude but not its transcript (m_claudePid >
+  0, path empty); with no Claude in the focused tab it fires and routes
+  by session id. The reviewer's m_coldStartPending flag would do
+  nothing: setShellPid runs the first poll synchronously. Test:
+  ClaudeStatusBarPerTab.NoClaudeInFocusedTabPermissionRequestFires (spec
+  I6).
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 07-claude-integration-a (High).

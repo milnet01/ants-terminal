@@ -39,8 +39,9 @@ For every hook event arriving on the singleton's UDS:
   first `SessionStart` would be dropped before `m_activeSessionId`
   could be set.
 - **I5 — Cold-start PermissionRequest is dropped (ANTS-2190).** During
-  cold-start (`m_transcriptPath` empty) `isFocusedTabSession()` returns
-  true for ANY `session_id`, so a sibling tab's `PermissionRequest`
+  cold-start (the poll has found the focused tab's Claude, `m_claudePid`
+  non-zero, but `m_transcriptPath` is still empty) `isFocusedTabSession()`
+  returns true for ANY `session_id`, so a sibling tab's `PermissionRequest`
   cannot be attributed to the focused tab. It MUST be dropped — neither
   `permissionRequested` emitted nor `m_lastHookSessionId` committed —
   rather than self-route via a poisoned last-seen session and
@@ -48,6 +49,12 @@ For every hook event arriving on the singleton's UDS:
   still falls through cold-start (it bootstraps `m_activeSessionId`,
   and is itself refused from committing the session id, ANTS-1996). The
   warm-path I3 behaviour is unchanged.
+- **I6 — With no Claude in the focused tab, PermissionRequest fires
+  (ANTS-6533).** When `m_claudePid` is zero the transcript path stays
+  empty, which is not cold-start. A `PermissionRequest` from another
+  tab's Claude MUST emit `permissionRequested` and commit
+  `m_lastHookSessionId`, so the slot routes it to that tab. State
+  hooks are still dropped.
 
 ## Out of scope
 

@@ -311,8 +311,16 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
     // the safe action is to drop it (mirrors the state-mutating-hook drop): a
     // missed prompt indicator during a 1-3 s window beats a wrong-tab one.
     // Only SessionStart still falls through (it bootstraps m_activeSessionId).
+    //
+    // ANTS-6533 — an empty path is that window only while the poll has found
+    // the focused tab's Claude but not yet its transcript. With no Claude in
+    // the focused tab (m_claudePid 0) the path stays empty, and a prompt from
+    // another tab's Claude must still reach the slot, which routes it by
+    // session id.
     const bool coldStart = m_transcriptPath.isEmpty();
-    const bool isColdStartDroppable = hookName != "SessionStart";
+    const bool transcriptPending = coldStart && m_claudePid > 0;
+    const bool isColdStartDroppable = hookName != "SessionStart"
+        && (hookName != "PermissionRequest" || transcriptPending);
     if (coldStart && isColdStartDroppable) {
         if (DebugLog::enabled(DebugLog::Claude)) {
             ANTS_LOG(DebugLog::Claude,
@@ -325,8 +333,8 @@ void ClaudeIntegration::processHookEvent(const QJsonObject &event) {
 
     // The event passed the cold-start gate; commit to last-seen.
     //
-    // ANTS-1996 / ANTS-2190 — during cold-start ONLY SessionStart reaches
-    // here now (PermissionRequest is dropped above, ANTS-2190). A cold-start
+    // ANTS-1996 / ANTS-2190 — during cold-start only SessionStart and, with
+    // no Claude in the focused tab, PermissionRequest reach here. A cold-start
     // SessionStart must NOT commit m_lastHookSessionId: m_transcriptPath is
     // empty so isFocusedTabSession() optimistically returns true for ANY
     // session_id, and a sibling tab's SessionStart would otherwise poison the

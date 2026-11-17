@@ -678,6 +678,9 @@ public:
     void setTranscriptPathForTest(const QString &path) {
         m_transcriptPath = path;
     }
+    // ANTS-6533 — stands in for a poll that found the focused tab's Claude
+    // but has not resolved its transcript yet.
+    void setClaudePidForTest(pid_t pid) { m_claudePid = pid; }
 
     // Pure tail parser. Reads a 32 KiB suffix, growing up to the per-record cap
     // (kMaxTranscriptRecordBytes), of the
