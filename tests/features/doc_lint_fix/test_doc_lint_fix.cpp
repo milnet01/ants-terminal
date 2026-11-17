@@ -607,6 +607,62 @@ TEST(DocLintFix, Inv21ShiftedLinesStillRepair) {
     EXPECT_TRUE(after.contains(QStringLiteral("- [Beta](#beta)"))) << after.toStdString();
 }
 
+// ANTS-6542 — the duplicate arm of the row above. The gap is the same gap, so
+// the staleness check passes it; deleting by the walk's line number then hits
+// whatever the shift moved there.
+TEST(DocLintFix, Ants6542ShiftedDuplicateDeletesTheDuplicate) {
+    Tree t;
+    t.write(QStringLiteral("docs/a.md"), kDuplicate);
+
+    const QString added = QStringLiteral("<!-- added -->\n\n");
+    DocLint::Options o = optsFor(t, /*fix=*/true);
+    o.afterWalkHook = [&] { t.write(QStringLiteral("docs/a.md"), added + kDuplicate); };
+
+    const DocLint::Result r = DocLint::run({QStringLiteral("docs/a.md")}, o);
+
+    EXPECT_EQ(1, r.filesWritten) << renderResult(r);
+    EXPECT_EQ(added + kDuplicateFixed, t.read(QStringLiteral("docs/a.md")))
+        << "the repair deleted the line the walk named, not the duplicate";
+}
+
+// Two gaps for one slug delete its second and third entries, not one twice.
+TEST(DocLintFix, Ants6542ThirdCopyIsDeletedToo) {
+    Tree t;
+    t.write(QStringLiteral("docs/a.md"),
+            QString(kDuplicate).replace(QStringLiteral("- [Beta](#beta)"),
+                                        QStringLiteral("- [Alpha](#alpha)\n- [Beta](#beta)")));
+
+    const DocLint::Result r =
+        DocLint::run({QStringLiteral("docs/a.md")}, optsFor(t, /*fix=*/true));
+
+    EXPECT_EQ(1, r.filesWritten) << renderResult(r);
+    EXPECT_EQ(kDuplicateFixed, t.read(QStringLiteral("docs/a.md")));
+}
+
+// A duplicate sharing its line with another entry cannot be deleted alone.
+TEST(DocLintFix, Ants6542DuplicateSharingALineIsRefused) {
+    Tree t;
+    const QString shared = QStringLiteral(
+        "# Doc\n"
+        "\n"
+        "## Contents\n"
+        "\n"
+        "- [Alpha](#alpha)\n"
+        "- [Alpha](#alpha) · [Beta](#beta)\n"
+        "\n"
+        "## Alpha\n"
+        "\n"
+        "## Beta\n");
+    t.write(QStringLiteral("docs/a.md"), shared);
+
+    const DocLint::Result r =
+        DocLint::run({QStringLiteral("docs/a.md")}, optsFor(t, /*fix=*/true));
+
+    EXPECT_EQ(0, r.filesWritten) << renderResult(r);
+    EXPECT_EQ(shared, t.read(QStringLiteral("docs/a.md")))
+        << "deleting the duplicate's line took another entry with it";
+}
+
 // ---------------------------------------------------------------------------
 // INV-16 — dry_run without fix refuses. cmdDocLint needs a live MainWindow, so
 // the guard is scraped where it lives.

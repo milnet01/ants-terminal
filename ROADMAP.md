@@ -95457,7 +95457,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 29-roadmap-dialog (High).
   Lanes: roadmap-dialog.
 
-- 📋 [ANTS-6542] **doclint.cpp: What goes wrong.**
+- ✅ [ANTS-6542] **doclint.cpp: What goes wrong.**
   `doclint.cpp:294` — What goes wrong. The duplicate-TOC repair deletes
   the whole physical line at the walk-time line number. It never re-
   locates the entry.
@@ -95467,6 +95467,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   entry with that slug). Remove only that link's list item. Refuse when
   that item shares its line with another entry.
   Ledger row 365, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. patchTocRegion finds a duplicate by slug in the
+  freshly detected TOC (the n-th gap for a slug is its (n+1)-th entry)
+  and refuses as stale when it no longer exists or shares its line with
+  another entry. Tests:
+  DocLintFix.Ants6542ShiftedDuplicateDeletesTheDuplicate,
+  …ThirdCopyIsDeletedToo, …DuplicateSharingALineIsRefused. ANTS-3663 §
+  2.3 repair table amended.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 32-doc-engines (High).

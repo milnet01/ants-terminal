@@ -284,14 +284,26 @@ bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
     // same anchor — document order is the one thing this repair is for.
     QMap<int, QStringList> insertions;  // after 1-based line -> rendered entries
 
+    QHash<QString, int> duplicatesSeen;   // slug -> gaps handled so far
     for (const DocFinding::Finding &g : gaps) {
         QString slug, headingText;
         if (isDuplicateEntryGap(g.message, &slug)) {
-            if (g.line < 1 || g.line > lines.size()) {
-                *reason = QStringLiteral("stale");
-                return false;
-            }
-            deletions.insert(g.line);
+            // ANTS-6542 — located in the TOC just read, never by the walk's
+            // line: a save in between shifts lines but leaves the gap the same
+            // gap. The n-th gap for a slug is its (n+1)-th entry, the first
+            // being the one kept. An entry sharing its line with another
+            // cannot be deleted alone, so that refuses too.
+            QVector<int> at;
+            for (const TocEntry &e : toc.entries)
+                if (e.slug == slug) at.append(e.line);
+            const int nth = ++duplicatesSeen[slug];
+            if (nth >= at.size()) { *reason = QStringLiteral("stale"); return false; }
+            const int line = at.at(nth);
+            int onLine = 0;
+            for (const TocEntry &e : toc.entries)
+                if (e.line == line) ++onLine;
+            if (onLine != 1) { *reason = QStringLiteral("stale"); return false; }
+            deletions.insert(line);
             continue;
         }
         if (!isMissingSectionGap(g.message, &headingText)) {

@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`doc_lint` with `fix:true` removes the duplicated table-of-contents entry itself, even when the document changed after the check, and leaves a line holding two entries alone.** (ANTS-6542)
+
 - **The Roadmap dialog remembers its open cards, open sections and scroll position when closed with Esc or the title-bar ×.** (ANTS-6541)
 
 - **An `audit_run` since-last-run delta counts a finding as removed only when the tool that reported it ran again and finished; findings of skipped or failed tools stay in the recorded baseline.** (ANTS-6540)
