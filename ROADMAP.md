@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6812 -->
+<!-- ants-roadmap-id-high-water: ANTS=6813 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95223,7 +95223,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6531] **terminalwidget.cpp: legacy key encoding ignores Alt everywhere, and Shift on cursor and function keys.**
+- ✅ [ANTS-6531] **terminalwidget.cpp: legacy key encoding ignores Alt everywhere, and Shift on cursor and function keys.**
   `terminalwidget.cpp:3085-3118` — legacy key encoding ignores Alt
   everywhere, and Shift on cursor and function keys.
   Quote: `:3069`
@@ -95231,6 +95231,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   for Alt on text keys and Ctrl chords, and modifier parameters on
   arrow, Home/End and F-keys. Intent is under Open questions.
   Ledger row 32, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-17. Legacy encoding now prefixes ESC for Alt on text
+  keys, Enter, Backspace, Tab, Escape and Ctrl chords, and sends xterm's
+  modifier parameter (1 + Shift 1 + Alt 2 + Ctrl 4) on arrows,
+  Home/End, Insert/Delete, PageUp/PageDown and F1-F12. Locked by
+  tests/features/legacy_key_modifiers. Alt+F/E/V/S/T stay menu
+  mnemonics: ANTS-6813.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (High).
@@ -95455,6 +95461,18 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: fix.
   Source: found-while-fixing-ANTS-6530.
   Lanes: terminal-grid.
+
+- 💭 [ANTS-6813] **A setting turns off the menu access keys so Alt+F, Alt+E, Alt+V, Alt+S and Alt+T reach the shell.**
+  The menu bar's mnemonics (&File, &Edit, &View, &Split, &Tools in
+  mainwindow_menus.cpp) take Alt+F/E/V/S/T as shortcuts before the
+  terminal widget sees the key, so readline's forward-word (Alt+F) and
+  transpose-words (Alt+T) never arrive. GNOME Terminal offers "Enable
+  menu access keys" for the same conflict. Needs the user's decision:
+  default on or off, and where the setting lives.
+  **Layman:** Some Alt shortcuts open menus instead of reaching the shell; a setting could hand them to the shell.
+  Kind: ux.
+  Source: found-while-fixing-ANTS-6531.
+  Lanes: terminal-widget.
 
 ### One-edit comment fixes (2026-11-06 review)
 

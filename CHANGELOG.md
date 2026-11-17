@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Alt shortcuts such as Alt+B, Alt+D and Alt+Backspace reach the shell, and Shift, Alt or Ctrl with an arrow, Home, End, Insert, Delete, Page or F key sends xterm's modified sequence.** (ANTS-6531)
+
 - **Making a window shorter keeps the cursor line and the newest output on screen; the rows above move into scrollback.** (ANTS-6530)
 
 - **A Kitty image that is shown as it is sent now counts once against the 256 MB image cap, and the cap holds once reached.** (ANTS-6529)

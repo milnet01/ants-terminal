@@ -3067,6 +3067,36 @@ void TerminalWidget::performPaste(const QByteArray &data) {
                               Q_ARG(QByteArray, payload));
 }
 
+namespace {
+
+// ANTS-6531 — xterm's modifier parameter: 1 + Shift 1 + Alt 2 + Ctrl 4.
+int xtermModifierParam(Qt::KeyboardModifiers mods) {
+    int m = 1;
+    if (mods & Qt::ShiftModifier)   m += 1;
+    if (mods & Qt::AltModifier)     m += 2;
+    if (mods & Qt::ControlModifier) m += 4;
+    return m;
+}
+
+// A cursor key or F1-F4: SS3 or CSI `final` plain, CSI 1;m `final` modified.
+QByteArray xtermLetterKey(char final, int mod, bool ss3) {
+    if (mod > 1) return "\x1B[1;" + QByteArray::number(mod) + final;
+    return QByteArray(ss3 ? "\x1BO" : "\x1B[") + final;
+}
+
+// An editing key or F5-F12: CSI n ~ plain, CSI n;m ~ modified.
+QByteArray xtermTildeKey(int n, int mod) {
+    QByteArray s = "\x1B[" + QByteArray::number(n);
+    if (mod > 1) {
+        s += ';';
+        s += QByteArray::number(mod);
+    }
+    s += '~';
+    return s;
+}
+
+}  // namespace
+
 // ANTS-5224 — encodeKey and its halves sit below keyPressEvent so the file
 // keeps the Ctrl+Shift+Enter scratchpad handler ahead of the Shift+Enter
 // sequence (tests/features/shift_enter_bracketed_paste reads that order).
@@ -3127,16 +3157,18 @@ QByteArray TerminalWidget::encodeEarlyKey(const QKeyEvent *event) const {
 
     if ((mods & Qt::ControlModifier) && !(mods & Qt::ShiftModifier)) {
         // Ctrl+arrow keys — word movement (xterm modifier encoding: CSI 1;5 X)
-        if (key == Qt::Key_Left)  return QByteArrayLiteral("\x1B[1;5D");
-        if (key == Qt::Key_Right) return QByteArrayLiteral("\x1B[1;5C");
-        if (key == Qt::Key_Up)    return QByteArrayLiteral("\x1B[1;5A");
-        if (key == Qt::Key_Down)  return QByteArrayLiteral("\x1B[1;5B");
-        // Ctrl+key combinations
+        const int mod = xtermModifierParam(mods);
+        if (key == Qt::Key_Left)  return xtermLetterKey('D', mod, false);
+        if (key == Qt::Key_Right) return xtermLetterKey('C', mod, false);
+        if (key == Qt::Key_Up)    return xtermLetterKey('A', mod, false);
+        if (key == Qt::Key_Down)  return xtermLetterKey('B', mod, false);
+        // Ctrl+key combinations; Alt adds an ESC prefix (ANTS-6531)
+        const QByteArray esc = (mods & Qt::AltModifier) ? QByteArrayLiteral("\x1B") : QByteArray();
         if (key >= Qt::Key_A && key <= Qt::Key_Z)
-            return QByteArray(1, static_cast<char>(key - Qt::Key_A + 1));
-        if (key == Qt::Key_BracketLeft)  return QByteArrayLiteral("\x1B");
-        if (key == Qt::Key_Backslash)    return QByteArrayLiteral("\x1C");
-        if (key == Qt::Key_BracketRight) return QByteArrayLiteral("\x1D");
+            return esc + QByteArray(1, static_cast<char>(key - Qt::Key_A + 1));
+        if (key == Qt::Key_BracketLeft)  return esc + "\x1B";
+        if (key == Qt::Key_Backslash)    return esc + "\x1C";
+        if (key == Qt::Key_BracketRight) return esc + "\x1D";
     }
     return {};
 }
@@ -3144,37 +3176,45 @@ QByteArray TerminalWidget::encodeEarlyKey(const QKeyEvent *event) const {
 QByteArray TerminalWidget::encodeLegacyKey(const QKeyEvent *event) const {
     // Special keys (legacy encoding). Shift+Home/End/PageUp/PageDown scroll
     // the view in keyPressEvent and never get here from the source pane.
+    // ANTS-6531 — a modified cursor or function key carries xterm's modifier
+    // parameter, and Alt sends ESC ahead of the key's bytes (metaSendsEscape).
     const bool appCursor = m_grid->applicationCursorKeys();
+    const int mod = xtermModifierParam(event->modifiers());
+    const QByteArray esc = (event->modifiers() & Qt::AltModifier)
+        ? QByteArrayLiteral("\x1B") : QByteArray();
     switch (event->key()) {
     case Qt::Key_Return:
-    case Qt::Key_Enter:     return QByteArrayLiteral("\r");
-    case Qt::Key_Backspace: return QByteArrayLiteral("\x7F");
-    case Qt::Key_Tab:       return QByteArrayLiteral("\t");
+    case Qt::Key_Enter:     return esc + "\r";
+    case Qt::Key_Backspace: return esc + "\x7F";
+    case Qt::Key_Tab:       return esc + "\t";
     case Qt::Key_Backtab:   return QByteArrayLiteral("\x1B[Z");
-    case Qt::Key_Escape:    return QByteArrayLiteral("\x1B");
-    case Qt::Key_Up:    return appCursor ? QByteArrayLiteral("\x1BOA") : QByteArrayLiteral("\x1B[A");
-    case Qt::Key_Down:  return appCursor ? QByteArrayLiteral("\x1BOB") : QByteArrayLiteral("\x1B[B");
-    case Qt::Key_Right: return appCursor ? QByteArrayLiteral("\x1BOC") : QByteArrayLiteral("\x1B[C");
-    case Qt::Key_Left:  return appCursor ? QByteArrayLiteral("\x1BOD") : QByteArrayLiteral("\x1B[D");
-    case Qt::Key_Home:  return appCursor ? QByteArrayLiteral("\x1BOH") : QByteArrayLiteral("\x1B[H");
-    case Qt::Key_End:   return appCursor ? QByteArrayLiteral("\x1BOF") : QByteArrayLiteral("\x1B[F");
-    case Qt::Key_Insert:   return QByteArrayLiteral("\x1B[2~");
-    case Qt::Key_Delete:   return QByteArrayLiteral("\x1B[3~");
-    case Qt::Key_PageUp:   return QByteArrayLiteral("\x1B[5~");
-    case Qt::Key_PageDown: return QByteArrayLiteral("\x1B[6~");
-    case Qt::Key_F1:  return QByteArrayLiteral("\x1BOP");
-    case Qt::Key_F2:  return QByteArrayLiteral("\x1BOQ");
-    case Qt::Key_F3:  return QByteArrayLiteral("\x1BOR");
-    case Qt::Key_F4:  return QByteArrayLiteral("\x1BOS");
-    case Qt::Key_F5:  return QByteArrayLiteral("\x1B[15~");
-    case Qt::Key_F6:  return QByteArrayLiteral("\x1B[17~");
-    case Qt::Key_F7:  return QByteArrayLiteral("\x1B[18~");
-    case Qt::Key_F8:  return QByteArrayLiteral("\x1B[19~");
-    case Qt::Key_F9:  return QByteArrayLiteral("\x1B[20~");
-    case Qt::Key_F10: return QByteArrayLiteral("\x1B[21~");
-    case Qt::Key_F11: return QByteArrayLiteral("\x1B[23~");
-    case Qt::Key_F12: return QByteArrayLiteral("\x1B[24~");
-    default:          return event->text().toUtf8();
+    case Qt::Key_Escape:    return esc + "\x1B";
+    case Qt::Key_Up:    return xtermLetterKey('A', mod, appCursor);
+    case Qt::Key_Down:  return xtermLetterKey('B', mod, appCursor);
+    case Qt::Key_Right: return xtermLetterKey('C', mod, appCursor);
+    case Qt::Key_Left:  return xtermLetterKey('D', mod, appCursor);
+    case Qt::Key_Home:  return xtermLetterKey('H', mod, appCursor);
+    case Qt::Key_End:   return xtermLetterKey('F', mod, appCursor);
+    case Qt::Key_Insert:   return xtermTildeKey(2, mod);
+    case Qt::Key_Delete:   return xtermTildeKey(3, mod);
+    case Qt::Key_PageUp:   return xtermTildeKey(5, mod);
+    case Qt::Key_PageDown: return xtermTildeKey(6, mod);
+    case Qt::Key_F1:  return xtermLetterKey('P', mod, true);
+    case Qt::Key_F2:  return xtermLetterKey('Q', mod, true);
+    case Qt::Key_F3:  return xtermLetterKey('R', mod, true);
+    case Qt::Key_F4:  return xtermLetterKey('S', mod, true);
+    case Qt::Key_F5:  return xtermTildeKey(15, mod);
+    case Qt::Key_F6:  return xtermTildeKey(17, mod);
+    case Qt::Key_F7:  return xtermTildeKey(18, mod);
+    case Qt::Key_F8:  return xtermTildeKey(19, mod);
+    case Qt::Key_F9:  return xtermTildeKey(20, mod);
+    case Qt::Key_F10: return xtermTildeKey(21, mod);
+    case Qt::Key_F11: return xtermTildeKey(23, mod);
+    case Qt::Key_F12: return xtermTildeKey(24, mod);
+    default: {
+        const QByteArray text = event->text().toUtf8();
+        return text.isEmpty() ? text : esc + text;
+    }
     }
 }
 

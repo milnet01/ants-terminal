@@ -2538,6 +2538,8 @@ if(ANTS_TESTS)
                 tests/features/terminal_a11y/test_terminal_a11y.cpp
                 # ANTS-2000 — search results are fixed by the grid.
                 tests/features/terminal_search_scan/test_terminal_search_scan.cpp
+                # ANTS-6531 — legacy keys carry Alt, Shift and Ctrl.
+                tests/features/legacy_key_modifiers/test_legacy_key_modifiers.cpp
                 # URL / highlight / search / quick-select spans land on the
                 # cells that hold them after non-BMP or combining characters.
                 tests/features/span_cell_columns/test_span_cell_columns.cpp
