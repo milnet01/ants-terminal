@@ -108,7 +108,10 @@ TEST(McpTaskPriors, WiringAndLogicContract) {
     // INV-5 — id boost + descending score sort.
     expect(has(body, "score += 5"),
            "INV-5", "+5 id-in-filename boost missing");
-    expect(has(body, "a.score > b.score"),
+    // ANTS-6131 — the buckets rank through tpEmitRanked.
+    const std::string ranker =
+        fnBody(rcCpp, "void tpEmitRanked(");
+    expect(has(body, "tpEmitRanked(") && has(ranker, "a.score > b.score"),
            "INV-5", "descending score sort comparator missing");
 
     // INV-6 — caps with defaults + clamp.

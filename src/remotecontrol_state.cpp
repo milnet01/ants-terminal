@@ -108,7 +108,7 @@ int RemoteControl::runClient(const QString &command,
     }
     // ANTS-1995 — verify the SERVER's peer UID before any payload leaves
     // this process. The server already checks the client's UID via
-    // SO_PEERCRED (line ~1296), but the client never checked the server's:
+    // SO_PEERCRED (RemoteControl::onNewConnection), but the client never checked the server's:
     // a process that wins the socket path ($ANTS_REMOTE_SOCKET override,
     // or a predictable default in a shared dir) could accept the
     // connection and harvest the request body (caller_cwd, file paths,
@@ -813,7 +813,9 @@ QJsonDocument RemoteControl::cmdLastAuditSummary(const QJsonObject &req) {
                                    "report")));
             }
             f.close();
-            // INV-10: empty results / no runs[] → not_audited.
+            // A malformed report and an empty runs[] both land here as
+            // parse_failed; spec INV-10 owes the second not_audited
+            // (ANTS-6819).
             return QJsonDocument(mcp::refusal(QStringLiteral("parse_failed"),
                 QStringLiteral("last_audit_summary: report malformed or "
                                "missing findings (%1)").arg(sourceFormat)));
@@ -1393,11 +1395,6 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
 }
 
 
-// ANTS-1883 — session_orient: bundle of current_state + project_layout
-// + roadmap_query mode:section_index status:active. Composer-only,
-// no new caches; each upstream call hits its existing cache. The
-// dispatch-layer applyEtagPattern wraps the bundle response with one
-// ETag — flips when any of the three upstreams' payload changes.
 // --- feedback_pending (ANTS-1964, ANTS-1961 follow-on "b") ---
 // Surface the un-triaged-addenda backlog across the cross-session
 // *_Ants_MCP_Feedback.md files at the shared root, so the maintainer
@@ -1405,8 +1402,8 @@ QJsonDocument RemoteControl::cmdModelSwitchStats(const QJsonObject &req) {
 // without one feedback_query round-trip per file. Reuses the canonical
 // FeedbackFile::parse (no bash reimplementation of the fence-aware
 // parser); the pure-shell SessionStart hooks can't reach it, and
-// session_orient is the documented first read (parity with
-// server_build / codebase_index above).
+// session_orient is the documented first read (parity with its
+// server_build and codebase_index blocks).
 //
 // Maintainer-only gate: this is meaningful solely for the Ants repo
 // (it owns the ANTS-NNNN triage). Detect it by the format-standard doc
@@ -1628,6 +1625,11 @@ QJsonObject RemoteControl::buildMailPendingBlock(const QString &rootCanonical) {
     return mp;
 }
 
+// ANTS-1883 — session_orient: bundle of current_state + project_layout
+// + roadmap_query mode:section_index status:active, and the later blocks
+// built below. Composer-only, no new caches; each upstream call hits its
+// existing cache. The dispatch-layer applyEtagPattern wraps the bundle
+// response with one ETag, which flips when any block's payload changes.
 QJsonDocument RemoteControl::cmdSessionOrient(const QJsonObject &req)
 {
     if (!m_roots) {
@@ -2021,9 +2023,9 @@ namespace rcdetail {
 
 // Strict id check accepting either <PREFIX>-NNNN (canonical
 // docs/specs/ layout) or phase_<NN>_<topic> (docs/phases/ layout
-// used by some sister projects — ANTS-1880). The two arms are
-// disjoint (arm 1 ends in `-<digits>`, the phase arm never does), so
-// the routing in cmdSpecQuery is unambiguous.
+// used by some sister projects — ANTS-1880). The arms overlap
+// (`phase_22_x-3` matches arm 1 and the phase arm), so cmdSpecQuery
+// routes on the `phase_` prefix alone.
 bool isValidSpecId(const QString &id) {
     // ANTS-1906 — widened the `phase_*` arm to accept hyphens and
     // mixed case in the topic suffix so non-Ants projects (Vestige
@@ -2393,9 +2395,9 @@ QJsonDocument RemoteControl::cmdSpecQuery(const QJsonObject &req) {
             QStringLiteral("spec_query: project root unresolved")));
     }
     // ANTS-1880 — per-id-shape routing. ANTS-NNNN ids resolve under
-    // docs/specs/; phase_* ids resolve under docs/phases/. The two
-    // regexes are disjoint (isValidSpecId enforces this), so the
-    // routing is unambiguous. Response carries a `source` field so
+    // docs/specs/; phase_* ids resolve under docs/phases/. The id
+    // arms can overlap, so the `phase_` prefix test below decides the
+    // route. Response carries a `source` field so
     // a caller scanning results can branch on layout without
     // re-parsing the path.
     // ANTS-1906 — when `path` is set, skip id-shape routing entirely
@@ -3107,6 +3109,23 @@ struct TpScored {
     QString     sortKey;
 };
 
+// Ranks `hits` best score first, then by sortKey; stable, so hits with equal
+// keys keep their scan order. Writes every hit's count under `countKey` and
+// the top `cap` under `listKey`.
+void tpEmitRanked(QJsonObject &out, QVector<TpScored> &hits,
+                  const QString &countKey, const QString &listKey, int cap) {
+    std::stable_sort(hits.begin(), hits.end(),
+                     [](const TpScored &a, const TpScored &b) {
+        if (a.score != b.score) return a.score > b.score;
+        return a.sortKey < b.sortKey;
+    });
+    out[countKey] = static_cast<int>(hits.size());
+    QJsonArray arr;
+    for (int i = 0; i < hits.size() && i < cap; ++i)
+        arr.append(hits[i].obj);
+    out[listKey] = arr;
+}
+
 }  // namespace rcdetail
 
 QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
@@ -3195,16 +3214,8 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 hits.append({e, score, fname});
             }
         }
-        std::sort(hits.begin(), hits.end(),
-                  [](const TpScored &a, const TpScored &b) {
-            if (a.score != b.score) return a.score > b.score;
-            return a.sortKey < b.sortKey;
-        });
-        result["specs_count"] = static_cast<int>(hits.size());
-        QJsonArray arr;
-        for (int i = 0; i < hits.size() && i < maxSpecs; ++i)
-            arr.append(hits[i].obj);
-        result["specs"] = arr;
+        tpEmitRanked(result, hits, QStringLiteral("specs_count"),
+                     QStringLiteral("specs"), maxSpecs);
     }
 
     // (2) roadmap_cards — compose over cmdRoadmapQuery (status:all,
@@ -3259,16 +3270,8 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 ++order;
             }
         }
-        std::stable_sort(hits.begin(), hits.end(),
-                         [](const TpScored &a, const TpScored &b) {
-            if (a.score != b.score) return a.score > b.score;
-            return a.sortKey < b.sortKey;
-        });
-        result["cards_count"] = static_cast<int>(hits.size());
-        QJsonArray arr;
-        for (int i = 0; i < hits.size() && i < maxCards; ++i)
-            arr.append(hits[i].obj);
-        result["roadmap_cards"] = arr;
+        tpEmitRanked(result, hits, QStringLiteral("cards_count"),
+                     QStringLiteral("roadmap_cards"), maxCards);
     }
 
     // (3) commits — compose over cmdGitState(op:log). Path-filtered
@@ -3362,16 +3365,8 @@ QJsonDocument RemoteControl::cmdTaskPriors(const QJsonObject &req) {
                 hits.append({e, score, fname});
             }
         }
-        std::sort(hits.begin(), hits.end(),
-                  [](const TpScored &a, const TpScored &b) {
-            if (a.score != b.score) return a.score > b.score;
-            return a.sortKey < b.sortKey;
-        });
-        result["adrs_count"] = static_cast<int>(hits.size());
-        QJsonArray arr;
-        for (int i = 0; i < hits.size() && i < maxAdrs; ++i)
-            arr.append(hits[i].obj);
-        result["adrs"] = arr;
+        tpEmitRanked(result, hits, QStringLiteral("adrs_count"),
+                     QStringLiteral("adrs"), maxAdrs);
     }
 
     return QJsonDocument(result);
@@ -4063,6 +4058,28 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
     // partial-reads-as-complete trap `truncated` exists for.
     const QString lane = opts.lane;
 
+    // The fields both reply shapes carry.
+    QJsonObject out;
+    out["ok"]            = true;
+    out["symbol"]        = symbol;
+    out["lang"]          = sqLangEcho(req);
+    out["callers_count"] = res.callersTotal;
+    if (!lane.isEmpty()) out["lane"] = lane;   // ANTS-3805
+    if (res.definition.has_value()) {
+        // ANTS-2087 — the called symbol's definition (a body only when
+        // include_body is set). One small object, not a context window, so
+        // files_only keeps it too: the "where + who" pairing survives the trim.
+        QJsonObject dj = defMatchToJson(res.definition.value());
+        if (req.value(QStringLiteral("include_body")).toBool())
+            sqAttachBody(dj, root, symbol);
+        out["definition"] = dj;
+        addTypeNoCallersHint(out, symbol, res.definition.value(),
+                             res.callersTotal);
+    }
+    out["files_scanned"] = res.filesScanned;
+    out["truncated"]     = res.truncated;
+    out["walk_capped"]   = res.walkCapped;
+
     // ANTS-3555 — files_only manifest mode: return the distinct set of files
     // that call the symbol (per-file call count + the exact line numbers) and
     // drop the quoted per-call `context` windows + the redundant per-row
@@ -4103,29 +4120,9 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
             fe["lines"] = linesByFile.at(i);
             files.append(fe);
         }
-        QJsonObject out;
-        out["ok"]            = true;
-        out["symbol"]        = symbol;
-        out["lang"]          = sqLangEcho(req);
-        out["files"]         = files;
-        out["files_count"]   = static_cast<int>(order.size());
-        out["callers_count"] = res.callersTotal;
-        if (!lane.isEmpty()) out["lane"] = lane;   // ANTS-3805
-        out["files_only"]    = true;
-        if (res.definition.has_value()) {
-            // Keep the "where + who" pairing: the definition is a single small
-            // object (a body only when include_body is set), not a context
-            // window, so it survives the manifest trim.
-            QJsonObject dj = defMatchToJson(res.definition.value());
-            if (req.value(QStringLiteral("include_body")).toBool())
-                sqAttachBody(dj, root, symbol);
-            out["definition"] = dj;
-            addTypeNoCallersHint(out, symbol, res.definition.value(),
-                                 res.callersTotal);
-        }
-        out["files_scanned"] = res.filesScanned;
-        out["truncated"]     = res.truncated;
-        out["walk_capped"]   = res.walkCapped;
+        out["files"]       = files;
+        out["files_count"] = static_cast<int>(order.size());
+        out["files_only"]  = true;
         return QJsonDocument(out);
     }
 
@@ -4138,27 +4135,7 @@ QJsonDocument RemoteControl::cmdFindCaller(const QJsonObject &req) {
         o["lang"]    = c.lang;
         callers.append(o);
     }
-
-    QJsonObject out;
-    out["ok"]            = true;
-    out["symbol"]        = symbol;
-    out["lang"]          = sqLangEcho(req);
-    out["callers"]       = callers;
-    out["callers_count"] = res.callersTotal;
-    if (!lane.isEmpty()) out["lane"] = lane;   // ANTS-3805
-    if (res.definition.has_value()) {
-        // ANTS-2087 — body of the called symbol's definition (not the
-        // call sites, which are already context lines).
-        QJsonObject dj = defMatchToJson(res.definition.value());
-        if (req.value(QStringLiteral("include_body")).toBool())
-            sqAttachBody(dj, root, symbol);
-        out["definition"] = dj;
-        addTypeNoCallersHint(out, symbol, res.definition.value(),
-                                 res.callersTotal);
-    }
-    out["files_scanned"] = res.filesScanned;
-    out["truncated"]     = res.truncated;
-    out["walk_capped"]   = res.walkCapped;
+    out["callers"] = callers;
     return QJsonDocument(out);
 }
 

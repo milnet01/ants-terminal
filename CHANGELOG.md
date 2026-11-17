@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **find_caller builds its shared reply fields once, task_priors ranks its three buckets through one helper, and the state verbs' comments say what the code does; replies unchanged** (ANTS-6131)
+
 - **roadmap_log's batch ops share one atomic write, one section-slug lookup, one element-position lookup and one locator matcher, with replies unchanged** (ANTS-6130)
 
 - **roadmap_log's write code reads true to a newcomer: its file header, amend_body's and amend_headline's notes, and the counter-seed and pass-headings comments say what the code does; two flags in flip's pass path are renamed isPassFormat and noteIsResolution** (ANTS-6128)

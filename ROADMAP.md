@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6818 -->
+<!-- ants-roadmap-id-high-water: ANTS=6820 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -105656,7 +105656,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-batch.
 
-- 📋 [ANTS-6131] **Readability fixes, mcp-state-workspace lane: remotecontrol_state.cpp, remotecontrol_workspace.cpp.**
+- ✅ [ANTS-6131] **Readability fixes, mcp-state-workspace lane: remotecontrol_state.cpp, remotecontrol_workspace.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-state-workspace:
   1 high, 14 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/22-mcp-state-workspace.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105680,6 +105680,17 @@ worked after these.
   `src/remotecontrol_state.cpp:2023`; row 910
   `src/remotecontrol_state.cpp:814`; row 911
   `src/remotecontrol_state.cpp:1394`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-17 LOWs and review rows 909-911 done. find_caller sets its
+  shared fields once (files_only adds files, the default adds callers).
+  tpEmitRanked ranks specs, cards and ADRs (stable sort for all; spec
+  and ADR keys are file names, so unique). Comments: peer check named
+  (onNewConnection); isValidSpecId and cmdSpecQuery say the arms overlap
+  and the phase_ prefix routes; session_orient header moved onto
+  cmdSessionOrient and refreshed; feedback_pending's "above" fixed; the
+  INV-10 line states what the code does. Filed: ANTS-6819 (empty runs[]
+  refuses parse_failed, spec says not_audited), ANTS-6820
+  (baseline_unreadable also for an empty baseline). The seven error
+  builders joined ANTS-6816. MEDIUM leftovers are ANTS-6252..6259.
   **Layman:** Tidy the project and search tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107985,7 +107996,7 @@ worked after these.
   Source: found-while-fixing-ANTS-6269-2026-11-15.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6816] **One shared refusal builder for roadmap_log's {ok, code, error} envelopes.**
+- 📋 [ANTS-6816] **One shared refusal builder for the roadmap and state verbs' {ok, code, error} envelopes.**
   L21 LOW (dup:56e49d79f856, 7eee97b9aad0, 284680dfe2ad). The same
   {ok:false, code, error} builder is a local rlErr lambda in
   remotecontrol_roadmap_log.cpp, _log_batch.cpp and _query_verb.cpp,
@@ -107994,6 +108005,11 @@ worked after these.
   `example`. A field added to every refusal misses some. Fix: one
   helper in remotecontrol_internal.h, with the two extras as options.
   Too wide for a LOW fix in ANTS-6130: six files, many call sites.
+  2026-11-17: L22 LOW (dup:fc1ae3da1c5c) adds seven more identical
+  builders: csErr, sqErr, tpErr (which also serves project_conventions
+  and focused_test), irErr, subsystemErr and lasErr in
+  remotecontrol_state.cpp, and fbErr in remotecontrol_workspace.cpp.
+  Fold them into the same helper.
   **Layman:** The roadmap tools build their error replies in many separate copies; make them share one.
   Kind: refactor.
   Source: review-readability-2026-10-22 L21.
@@ -114561,6 +114577,30 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-11-17 (ANTS-6130).
   Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6819] **last_audit_summary refuses parse_failed for a SARIF with an empty runs[], where its spec's INV-10 owes not_audited.**
+  AuditEngine's SARIF summary returns nullopt for an empty runs[]
+  (auditengine.cpp, "INV-10 → not_audited"), and also for a malformed
+  report. cmdLastAuditSummary maps every nullopt to parse_failed, so the
+  empty case never reaches not_audited as
+  docs/specs/ANTS-1254-last-audit-summary-mcp-tool.md INV-10 and its § 8
+  table say. The INV-10 test checks only the parser's nullopt. Fix: tell
+  the two nullopt causes apart, and an end-to-end red test first.
+  **Layman:** An audit report that ran but holds no results is reported as broken rather than as "not audited".
+  Kind: fix.
+  Source: in-session-2026-11-17 (ANTS-6131, review row 910).
+  Lanes: mcp-state-workspace.
+
+- 📋 [ANTS-6820] **mutation_probe answers baseline_unreadable for a baseline that parsed but ran nothing, so a caller cannot tell the two apart.**
+  L22 LOW: remotecontrol_workspace.cpp returns code baseline_unreadable
+  both when the baseline output does not parse and when it parsed with 0
+  passed and 0 failed. Fix: a separate code (e.g. baseline_empty). The
+  code is pinned by test_mutation_probe.cpp and callers see it, so the
+  change needs its error-code entry and the test moved with it.
+  **Layman:** The mutation test tool reports "could not read the results" when the tests ran zero cases, which sends the caller looking for the wrong problem.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L22.
+  Lanes: mcp-state-workspace.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
