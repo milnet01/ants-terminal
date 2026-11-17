@@ -245,3 +245,34 @@ TEST(TestAuditPaginationPrePass, Ants6526RecheckStampsFollowTheCache) {
         << "recheck stamps outlived the partitions the cache evicted";
     qDeleteAll(dirs);
 }
+
+// ANTS-6543 — every page shares one token, so the cache must hold the whole
+// partition: fetching page 2 used to overwrite page 1's chunks.
+TEST(TestAuditPaginationPrePass, Ants6543EarlierPageStillBriefsAfterALaterOne) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = scaffoldPytestSuite(tmp.path());
+
+    TestAuditEngine::PartitionRequest preq;
+    preq.callerCwd  = root;
+    preq.scope      = QStringLiteral("auto");
+    preq.dimensions = QStringLiteral("auto");
+    preq.chunkSize  = 4;
+    preq.limit      = 1;
+    const TestAuditEngine::PartitionResult page1 = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(page1.ok) << page1.error.toStdString();
+    ASSERT_EQ(page1.chunks.size(), 1);
+    preq.offset = 1;
+    const TestAuditEngine::PartitionResult page2 = TestAuditEngine::partition(preq);
+    ASSERT_TRUE(page2.ok) << page2.error.toStdString();
+    ASSERT_EQ(page2.partitionToken, page1.partitionToken);
+
+    TestAuditEngine::BriefRequest breq;
+    breq.callerCwd      = root;
+    breq.partitionToken = page1.partitionToken;
+    breq.chunkId        = page1.chunks.first().id;
+    const TestAuditEngine::BriefResult b = TestAuditEngine::brief(breq);
+    EXPECT_TRUE(b.ok) << "page 1's chunk is gone after fetching page 2: "
+                      << b.error.toStdString();
+    EXPECT_FALSE(b.prePassFindings.isEmpty()) << "page 1's pre-pass findings were lost";
+}

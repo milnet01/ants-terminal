@@ -1483,6 +1483,15 @@ PartitionResult partition(const PartitionRequest &req) {
             r.chunks.append(c);
         }
     }
+    // Cache partition for brief/synth lookup. ANTS-5126 — a pre-pass-free
+    // result seeds the cache but never displaces a full one: synthesis looks
+    // the partition up by token, and the dialog's panel refresh is what
+    // seeds it on open, so skipping the insert entirely left synthesis with
+    // no partition. Displacing a full entry would instead empty every brief,
+    // which is the ANTS-2096 failure by another route. ANTS-6543 — cached
+    // before the page is cut: every page shares one token, so a cached page
+    // replaced the one before it.
+    cachePartition(r, /*keepExisting=*/!req.prePass);
     // INV-10 — pagination. If caller passed offset/limit, slice.
     r.offset = req.offset;
     r.limit  = req.limit;
@@ -1502,21 +1511,12 @@ PartitionResult partition(const PartitionRequest &req) {
         }
         r.prePassFindingsByChunk = filtered;
         // ANTS-2096 — page 2+ omits the inline pre_pass map from the
-        // ENVELOPE (the serializer honours prePassCached), but the map
-        // MUST stay on the cached PartitionResult so test_audit_brief can
-        // serve each chunk's findings. The old code cleared it here, which
-        // emptied the cache too → brief returned [] for every page-2+ chunk.
+        // ENVELOPE (the serializer honours prePassCached); the cached
+        // result above keeps every chunk's findings for test_audit_brief.
         if (off > 0) {
             r.prePassCached = true;
         }
     }
-    // Cache partition for brief/synth lookup. ANTS-5126 — a pre-pass-free
-    // result seeds the cache but never displaces a full one: synthesis looks
-    // the partition up by token, and the dialog's panel refresh is what
-    // seeds it on open, so skipping the insert entirely left synthesis with
-    // no partition. Displacing a full entry would instead empty every brief,
-    // which is the ANTS-2096 failure by another route.
-    cachePartition(r, /*keepExisting=*/!req.prePass);
     // Byte count (informational).
     QJsonObject env;
     env["framework"]    = r.framework;

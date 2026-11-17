@@ -95479,7 +95479,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 32-doc-engines (High).
   Lanes: doc-engines.
 
-- 📋 [ANTS-6543] **testauditengine.cpp: a paginated partition caches only the page it was asked for.**
+- ✅ [ANTS-6543] **testauditengine.cpp: a paginated partition caches only the page it was asked for.**
   `testauditengine.cpp:1484-1485` — a paginated partition caches only
   the page it was asked for. The pre-pass map is also cut to that page
   at `:1494`. Every page has the same token (`computeToken` takes no
@@ -95488,6 +95488,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Remedy (the reviewer's; check it before building): cache the full
   result before slicing, and slice a copy for the envelope.
   Ledger row 398, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. partition() caches the whole result before cutting
+  the requested page; every page shares one token, so a cached page used
+  to replace the previous one. Test:
+  TestAuditPaginationPrePass.Ants6543EarlierPageStillBriefsAfterALaterOne.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (High).
