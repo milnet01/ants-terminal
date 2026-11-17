@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6806 -->
+<!-- ants-roadmap-id-high-water: ANTS=6807 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -114200,6 +114200,25 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-11-17 (ANTS-6797 build).
   Lanes: roadmap-store.
+
+- 📋 [ANTS-6807] **Tidy the clang-tidy warnings shown in remotecontrol_roadmap_log_batch.cpp, roadmapmigrateload.cpp and test_roadmap_render.cpp.**
+  Seen in the editor 2026-11-17, not yet triaged:
+  - remotecontrol_roadmap_log_batch.cpp: QJsonValueRef loop
+    conversions (performance-implicit-conversion-in-loop) in several
+    loops; three const copies that could be references
+    (performance-unnecessary-copy-initialization) in the
+    rotate_minor and move_section code; rlExplainCounterFloor is
+    static rather than in an anonymous namespace;
+    cmdRoadmapLogAppendBatch is in a recursive call chain
+    (misc-no-recursion; check whether that is intended).
+  - roadmapmigrateload.cpp: bugprone-branch-clone in a conditional
+    chain inside rebuildElements().
+  - test_roadmap_render.cpp: bugprone-optional-value-conversion on
+    an optional unwrapped and rewrapped.
+  **Layman:** An automatic code checker flagged more small spots in the roadmap code; each needs a look before it is changed.
+  Kind: chore.
+  Source: in-session-2026-11-17 (IDE clang-tidy diagnostics).
+  Lanes: mcp-roadmap-query-log, roadmap-store.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
