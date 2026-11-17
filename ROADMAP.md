@@ -105547,7 +105547,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-transport.
 
-- 📋 [ANTS-6128] **Readability fixes, mcp-roadmap-query-log-a lane: src/remotecontrol_roadmap_log.cpp.**
+- ✅ [ANTS-6128] **Readability fixes, mcp-roadmap-query-log-a lane: src/remotecontrol_roadmap_log.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-roadmap-query-log-a:
   2 high, 14 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/19-mcp-roadmap-query-log-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105565,6 +105565,13 @@ worked after these.
   the INV-6 comment says which fields are checked before IO. Queued: F6
   ANTS-6234, F8 ANTS-6235, F9 ANTS-6236, F10 ANTS-6237, F13 ANTS-6238,
   F14 ANTS-6239. LOWs remain.
+  2026-11-17 LOWs done: header names the batch file's ops; cf holds the
+  seed; "every slug"; ranker comment drops its caller list; empty anchor
+  `if` deleted; flip's pass-headings note points at the ANTS-2126 route;
+  amend_body's doc moved onto its handler (and says it serves
+  amend_headline and set_body); amend_headline says only the first line
+  is searched; passBody → isPassFormat, resolution → noteIsResolution.
+  MEDIUM leftovers are ANTS-6234..6239.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

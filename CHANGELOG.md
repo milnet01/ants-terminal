@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **roadmap_log's write code reads true to a newcomer: its file header, amend_body's and amend_headline's notes, and the counter-seed and pass-headings comments say what the code does; two flags in flip's pass path are renamed isPassFormat and noteIsResolution** (ANTS-6128)
+
 - **A new tab reads the shell history for autocomplete in the background, and only the newest 2 MiB of it, so a long history no longer delays the tab's first output** (ANTS-5685)
 
 - **The roadmap_log batch handler, the migration loader, the terminal widget and the roadmap render test pass the clang-tidy checks their warnings came from.** (ANTS-6807)

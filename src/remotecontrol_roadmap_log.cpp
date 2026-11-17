@@ -1,4 +1,6 @@
-// ANTS-3833 TU 6/25 — Roadmap single-item write ops.
+// ANTS-3833 TU 6/25 — roadmap_log write ops on items, single and batched.
+// append_batch, flip_batch and the section and element ops live in
+// remotecontrol_roadmap_log_batch.cpp.
 #include "roadmapparse.h"
 #include "remotecontrol.h"
 #include "mcprefusal.h"
@@ -907,9 +909,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                                            "\"%1\"").arg(counterPath));
                     }
                 }
-                // cf now reads "0"; fall through to the shared
-                // counter-read block below (counter=0 → newId=1,
-                // id_hint honoured).
+                // cf now holds the seed; fall through to the shared
+                // counter-read block below (newId = seed + 1, id_hint
+                // honoured).
             }
         }
         if (!counterResolved) {
@@ -1000,7 +1002,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
         }
         // ANTS-4556 — a bad_section that offers nothing discards the body the
         // caller just composed and leaves one route: a section_index call
-        // answering 141 slugs. Three sibling refusals already rank near-misses
+        // answering every slug. Three sibling refusals already rank near-misses
         // (read_region section mode on both section_ambiguous and
         // section_not_found; apply_edits on not_found and ambiguous), so this
         // verb was the outlier rather than the precedent. Ranked by the SHARED
@@ -1267,8 +1269,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
 // id like "3D_E-0031" shares a leading "3" with every headline starting "3");
 // same-project siblings that share an id prefix are the useful hint. Returns
 // indices into `candidateIds` (≤ limit); empty when nothing shares a prefix, so
-// the caller emits no suggestions rather than misleading ones. Shared by the
-// GFM step-7 block and the ants-v1 zero-match block below.
+// the caller emits no suggestions rather than misleading ones.
 static QVector<int> rcRankIdsBySharedPrefix(const QStringList &candidateIds,
                                             const QString &locId, int limit) {
     const QString need = locId.toLower();
@@ -1448,18 +1449,18 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
     // with a dated Status line. The note goes above the separator, inside the
     // item, and a status change re-dates that line: keeping the planning date
     // beside `done` reads as the ship date (RetroDB, 2026-09-26).
-    const bool passBody = c.format == QLatin1String("pass-headings");
+    const bool isPassFormat = c.format == QLatin1String("pass-headings");
     const QString today = rlStampToday();
     // ANTS-5404 — a pass note is a bullet: a shipping note is the item's
     // Resolution, above its Status line, where RetroDB's shipped passes carry
     // theirs; any other note is a Progress bullet at the item's end.
-    const bool resolution = passBody && !annotateMode
+    const bool noteIsResolution = isPassFormat && !annotateMode
                          && targetStatusWord == QLatin1String("shipped");
     QString newBody = before->body;
     if (!note.isEmpty() && !alreadyPresent) {
-        if (!passBody)
+        if (!isPassFormat)
             newBody = rlAppendBodyNote(before->body, note);
-        else if (resolution)
+        else if (noteIsResolution)
             newBody = PassHeadingWrite::insertPassNoteAboveStatus(before->body,
                 PassHeadingWrite::formatPassNote(
                     note, PassHeadingWrite::PassNoteKind::Resolution, today));
@@ -1468,7 +1469,7 @@ QJsonDocument rlStoreFlipOrAnnotate(const RlStoreFlipCall &c) {
                 PassHeadingWrite::formatPassNote(
                     note, PassHeadingWrite::PassNoteKind::Progress, today));
     }
-    if (passBody && !annotateMode && before->status != targetStatusWord) {
+    if (isPassFormat && !annotateMode && before->status != targetStatusWord) {
         // ANTS-5404 — write the word this roadmap already uses for the new
         // status (RetroDB's `shipped`), not the canonical keyword, so the
         // render finds a word meaning the same status and keeps the line.
@@ -2232,12 +2233,6 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
         // ANTS-1441 — try ants-v1 native format. Different bullet
         // shape (`- 📋 [ANTS-NNNN] **headline**`); no anchor
         // injection or counter use.
-        if (locAnchor.isEmpty()) {
-            // anchor locator is GFM-specific; ants-v1 only supports
-            // id + headline. If caller passed anchor, it's a hard
-            // mismatch — surface as bad_op_combo only after we've
-            // confirmed the file is ants-v1.
-        }
         const QVector<AntsV1Bullet> v1bullets = walkAntsV1Bullets(lines);
         if (!v1bullets.isEmpty()) {
             // Reject anchor locator (ants-v1 doesn't use caret anchors).
@@ -2336,8 +2331,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlip(const QJsonObject &req) {
             return applyAntsV1FlipResult(v1bullets, v1matches.first());
         }
         // Neither GFM nor ants-v1 — genuinely unrecognised.
-        // (Pass-headings is caught earlier; see the format_mismatch
-        // gate just after the file read — ANTS-2031.)
+        // (A pass-headings roadmap never gets here: it is routed to its
+        // own writer before the file read — the ANTS-2126 route above.)
         // ANTS-1463 — the same path, bytes, hint and expected_format fields
         // as append's gate (rlUnrecognisedFormat). amend_body's two
         // unrecognised_format refusals carry code and error only.
@@ -2831,18 +2826,6 @@ static QString rcAmendedParagraph(const QStringList &lines, int editedIdx) {
     return out;
 }
 
-// ANTS-3406 — roadmap_log op:"amend_body". Locate a bullet (id > anchor
-// > headline, same rules as flip) and replace an exact substring of its
-// continuation body (`old_text` → `new_text`), guarded by
-// amendBodyExact's single-occurrence uniqueness check so it can never
-// silently clobber unrelated prose. ANTS-4550 — "exact" is exact apart
-// from whitespace runs, which match across a hard-wrapped line break on a
-// second pass taken only when the exact one finds nothing. Standalone handler — deliberately NOT
-// threaded into the delicate flip/annotate path (ANTS-2059 history); it
-// reuses the free walk/scrub/write helpers so flip/annotate stay
-// untouched. Exact-match patch only this pass; full-body-replace is out
-// of scope (see tests/features/roadmap_log_amend_body/spec.md).
-// m_main-independent (caller_cwd + filesystem only).
 // ANTS-4808 — op:"set_body"'s store write. Deliberately amend_body's own
 // mutate with the match removed, so the two cannot come to disagree about what
 // writing a body entails: the column, the re-derived trailers, the modified
@@ -2933,6 +2916,18 @@ QJsonDocument rlSetBodyStore(
 
 }  // namespace
 
+// ANTS-3406 — roadmap_log op:"amend_body". Locate a bullet (id > anchor
+// > headline, same rules as flip) and replace an exact substring of its
+// continuation body (`old_text` → `new_text`), guarded by
+// amendBodyExact's single-occurrence uniqueness check so it can never
+// silently clobber unrelated prose. ANTS-4550 — "exact" is exact apart
+// from whitespace runs, which match across a hard-wrapped line break on a
+// second pass taken only when the exact one finds nothing. Standalone
+// handler — deliberately NOT threaded into the delicate flip/annotate path
+// (ANTS-2059 history); it reuses the free walk/scrub/write helpers so
+// flip/annotate stay untouched. The same handler serves amend_headline
+// (headlineMode) and set_body (setBodyMode), which replaces the whole body.
+// m_main-independent (caller_cwd + filesystem only).
 QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
                                                     bool headlineMode,
                                                     bool setBodyMode) {
@@ -3726,8 +3721,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendBody(const QJsonObject &req,
     // the next diff.
     bool wrappedMatch = false;
     if (headlineMode) {
-        // The headline is one physical line, so the "spans a line break"
-        // failure mode does not exist here; uniqueness is still enforced,
+        // Only the bullet's first line is searched: text on a GFM headline's
+        // continuation lines refuses as not found. Uniqueness is enforced,
         // for the same reason it is on the body — a phrase occurring twice
         // must not be clobbered on a guess.
         if (bodyAnchorLine >= 0 && bodyAnchorLine < lines.size()) {
