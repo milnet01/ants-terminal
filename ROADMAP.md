@@ -95331,7 +95331,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 18-plugins-lua (High).
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6536] **dialogfocus.h: Qt counts a minimised (iconified) window as visible.**
+- ✅ [ANTS-6536] **dialogfocus.h: Qt counts a minimised (iconified) window as visible.**
   `dialogfocus.h:100` — Qt counts a minimised (iconified) window as
   visible. Every chromed dialog has a working Minimise button:
   `dialogchrome.cpp:203-204` connects `minimizeRequested` to
@@ -95344,6 +95344,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   `d->isMinimized()`, here and in `shouldRefocusOnDialogClose` (line
   38). Or hide the chrome's minimise button.
   Ledger row 227, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. dialogfocus::isDialogOnScreen (visible and not
+  minimised) now decides both shouldSuppressEventForDialog and
+  shouldRefocusOnDialogClose. Test:
+  DialogPseudoModal.Ants6536MinimisedDialogDoesNotBlockTheTerminal (spec
+  INV-6); a mutant at each site was killed.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (High).

@@ -269,3 +269,26 @@ TEST(DialogPseudoModal, Main) {    const std::string focusHdr = ants_test::slurp
     return;
 }
 
+
+// ANTS-6536 — Qt counts a minimised dialog as visible. Every chromed dialog
+// has a Minimise button, so once one is minimised the terminal must take
+// input again, and closing another dialog must still hand focus back.
+TEST(DialogPseudoModal, Ants6536MinimisedDialogDoesNotBlockTheTerminal) {
+    QDialog minimised;
+    minimised.showMinimized();
+    QWidget outside;
+    outside.show();
+    QApplication::processEvents();
+    ASSERT_TRUE(minimised.isVisible());   // the premise: Qt still says visible
+    ASSERT_TRUE(minimised.isMinimized());
+
+    QEvent *press = makeEvent(QEvent::MouseButtonPress);
+    EXPECT_FALSE(dialogfocus::shouldSuppressEventForDialog(&outside, press));
+    delete press;
+
+    QDialog closing;
+    closing.show();
+    QApplication::processEvents();
+    QEvent close(QEvent::Close);
+    EXPECT_TRUE(dialogfocus::shouldRefocusOnDialogClose(&closing, &close));
+}

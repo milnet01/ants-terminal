@@ -204,6 +204,12 @@ Source-grep + pure-helper drive (no MainWindow instantiation).
   helpers are called and at most one returns `true`. INV-2d's
   explicit inclusion of `Close` in its sample guarantees this.
 
+- **INV-6 (ANTS-6536)** A minimised dialog does not count as open.
+  Qt reports it visible, so both helpers also check
+  `isMinimized()`: it suppresses no terminal input, and closing
+  another dialog still refocuses the terminal. *Test:*
+  `DialogPseudoModal.Ants6536MinimisedDialogDoesNotBlockTheTerminal`.
+
 ## How to verify pre-fix code fails
 
 ```bash

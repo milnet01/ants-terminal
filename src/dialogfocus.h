@@ -21,6 +21,14 @@ namespace dialogfocus {
 //   * after this dialog closes, no other QDialog is still visible
 //     (so a stacked-dialog close doesn't refocus through the
 //     remaining dialog).
+//
+// ANTS-6536 — Qt counts a minimised window as visible, and every chromed
+// dialog can be minimised; one sitting in the taskbar must not hold the
+// terminal's input or focus.
+inline bool isDialogOnScreen(const QDialog *d) {
+    return d->isVisible() && !d->isMinimized();
+}
+
 inline bool shouldRefocusOnDialogClose(QObject *watched, QEvent *event) {
     if (!event || event->type() != QEvent::Close) return false;
     auto *dlg = qobject_cast<QDialog *>(watched);
@@ -35,7 +43,7 @@ inline bool shouldRefocusOnDialogClose(QObject *watched, QEvent *event) {
     for (QWidget *w : tops) {
         if (w == dlg) continue;
         auto *other = qobject_cast<QDialog *>(w);
-        if (other && other->isVisible()) return false;
+        if (other && isDialogOnScreen(other)) return false;
     }
     return true;
 }
@@ -97,7 +105,7 @@ inline bool shouldSuppressEventForDialog(QObject *watched, QEvent *event) {
     const QWidgetList tops = QApplication::topLevelWidgets();
     for (QWidget *w : tops) {
         auto *d = qobject_cast<QDialog *>(w);
-        if (!d || !d->isVisible()) continue;
+        if (!d || !isDialogOnScreen(d)) continue;
         anyDialogVisible = true;
         if (target == d || d->isAncestorOf(target)) {
             // target is inside this dialog's tree — allow.
