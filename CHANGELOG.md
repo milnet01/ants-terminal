@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Making the window shorter while a full-screen app such as less is open keeps the newest lines of the normal screen behind it; the older ones move to scrollback.** (ANTS-6812)
+
 - **The test audit skips only build trees (`build`, `build-*`, `cmake-build-*`) and reads tests in folders such as `buildtools/`.** (ANTS-6544)
 
 - **`test_audit_brief` serves a chunk from any page of a paginated `test_audit_partition`, whichever page was fetched last.** (ANTS-6543)

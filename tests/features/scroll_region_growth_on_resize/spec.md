@@ -174,6 +174,12 @@ unchanged and rows 0..4 still show `L0`..`L4`.
 In the alt screen, fill all 24 rows and resize to 10. Scrollback is
 unchanged.
 
+### Invariant 11 — the saved main screen keeps its cursor line (ANTS-6812)
+
+Print `L0`..`L23` on the primary screen, enter the alt screen, resize
+to 10×80, leave the alt screen. As in Invariant 8: the cursor is on row
+9, which shows `L23`; row 0 shows `L14`; `L0`..`L13` went to scrollback.
+
 ## How this test anchors to reality
 
 Direct assertions via `TerminalGrid::scrollTop()` / `scrollBottom()`

@@ -74855,6 +74855,9 @@ indie-review finding.
   step. The scheduled run of the same commit (44053973311) measured 32.2
   ms and passed; green runs the day before measured 31.6 and 37.4 ms.
   The pushed range touched no roadmap read path.
+  2026-11-17: p95 109.2 ms (budget 50 ms) when ctest --preset=perf ran
+  straight after a full ctest --preset=default; the same test alone a
+  minute later passed.
   **Layman:** A speed test for reading the roadmap fails now and then when the machine is busy with other tests.
   Kind: test.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
@@ -95515,7 +95518,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (High).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6812] **A height-only shrink during an alt-screen app drops the bottom rows of the saved main screen.**
+- ✅ [ANTS-6812] **A height-only shrink during an alt-screen app drops the bottom rows of the saved main screen.**
   TerminalGrid::resize's rows-only branch for m_altScreen (the saved
   main screen while the alt screen is active) copies the top rows and
   clamps m_altCursorRow, the same shape ANTS-6530 fixed for the live
@@ -95524,6 +95527,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Fix: shift by max(0, m_altCursorRow - rows + 1) into m_scrollback,
   moving m_altScreenHyperlinks in lockstep, then copy. Left out of
   ANTS-6530 to keep that fix to its finding.
+  Fixed 2026-11-17. resize's rows-only branch for the saved main screen
+  pushes max(0, altCursorRow - rows + 1) top rows into the main
+  scrollback (bytes, push counter and hyperlink spans in lockstep), then
+  copies the rest, as ANTS-6530 does for the live screen. Test:
+  ScrollRegionGrowthOnResize.SavedMainScreenHeightShrinkKeepsCursorLine
+  (spec Invariant 11).
   **Layman:** Shrinking the window while a full-screen app such as less is open can lose the newest lines of the normal screen behind it.
   Kind: fix.
   Source: found-while-fixing-ANTS-6530.

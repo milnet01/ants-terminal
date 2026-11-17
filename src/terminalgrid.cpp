@@ -3091,16 +3091,37 @@ void TerminalGrid::resize(int rows, int cols) {
             // Same combining-map preservation as the main-screen simple-copy
             // path above (alt-screen TUIs render accented filenames / ZWJ emoji
             // that would otherwise disappear).
+            // ANTS-6812 — the saved main screen keeps its cursor line as the
+            // live one does (ANTS-6530): rows above it go to the main
+            // scrollback, which is this screen's while the alt screen runs.
+            const int altRows = static_cast<int>(m_altScreen.size());
+            const int altShift = std::clamp(m_altCursorRow - rows + 1, 0, altRows);
+            const int altHlSize = static_cast<int>(m_altScreenHyperlinks.size());
+            for (int r = 0; r < altShift; ++r) {
+                m_scrollback.push_back(trimmedForScrollback(std::move(m_altScreen[r])));
+                m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
+                ++m_scrollbackPushed;
+                if (r < altHlSize)
+                    addBackScrollbackHyperlinks(std::move(m_altScreenHyperlinks[r]));
+            }
+            if (altShift > 0) {
+                m_altScreenHyperlinks.erase(
+                    m_altScreenHyperlinks.begin(),
+                    m_altScreenHyperlinks.begin() + std::min(altShift, altHlSize));
+                m_altCursorRow -= altShift;
+            }
+
             std::vector<TermLine> newAlt(rows);
             for (auto &line : newAlt)
                 line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-            int altCopyRows = std::min(rows, static_cast<int>(m_altScreen.size()));
+            int altCopyRows = std::min(rows, altRows - altShift);
             int altCopyCols = std::min(cols, oldCols);
             for (int r = 0; r < altCopyRows; ++r) {
-                for (int c = 0; c < altCopyCols && c < static_cast<int>(m_altScreen[r].cells.size()); ++c)
-                    newAlt[r].cells[c] = m_altScreen[r].cells[c];
-                newAlt[r].softWrapped = m_altScreen[r].softWrapped;
-                for (const auto &kv : m_altScreen[r].combining) {
+                const TermLine &src = m_altScreen[r + altShift];
+                for (int c = 0; c < altCopyCols && c < static_cast<int>(src.cells.size()); ++c)
+                    newAlt[r].cells[c] = src.cells[c];
+                newAlt[r].softWrapped = src.softWrapped;
+                for (const auto &kv : src.combining) {
                     if (kv.first < altCopyCols)
                         newAlt[r].combining.emplace(kv.first, kv.second);
                 }

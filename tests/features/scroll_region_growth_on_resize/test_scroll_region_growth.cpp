@@ -231,4 +231,22 @@ TEST(ScrollRegionGrowthOnResize, AltHeightShrinkPushesNothing) {
     EXPECT_EQ(grid.scrollbackSize(), before);
 }
 
+// ----- INV-11 (ANTS-6812) — the main screen saved behind an alt-screen app
+// keeps its cursor line too: INV-8's shrink, applied while the app runs.
+TEST(ScrollRegionGrowthOnResize, SavedMainScreenHeightShrinkKeepsCursorLine) {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+    printLines(parser, kRows);  // main cursor on row 23, showing "L23"
+    enterAltScreen(parser);
+    const int before = grid.scrollbackSize();
+    grid.resize(10, kCols);
+    const std::string leave = "\x1b[?1049l";
+    parser.feed(leave.data(), static_cast<int>(leave.size()));
+    EXPECT_EQ(grid.cursorRow(), 9);
+    EXPECT_EQ(rowText(grid, 9), "L23");
+    EXPECT_EQ(rowText(grid, 0), "L14");
+    ASSERT_EQ(grid.scrollbackSize(), before + 14);
+    EXPECT_EQ(scrollbackText(grid, grid.scrollbackSize() - 1), "L13");
+}
+
 
