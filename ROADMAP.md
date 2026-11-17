@@ -95354,7 +95354,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 21-dialog-chrome-theme (High).
   Lanes: dialog-chrome-theme.
 
-- 📋 [ANTS-6537] **ants-session-preamble.sh: The resume line that ANTS-1252 §1.1 promises ("even when the resume snapshot from PreCompact is present") keys on `CLAUDE_SESSION_ID`.**
+- ✅ [ANTS-6537] **ants-session-preamble.sh: The resume line that ANTS-1252 §1.1 promises ("even when the resume snapshot from PreCompact is present") keys on `CLAUDE_SESSION_ID`.**
   `hooks/ants-session-preamble.sh:32` — The resume line that ANTS-1252
   §1.1 promises ("even when the resume snapshot from PreCompact is
   present") keys on `CLAUDE_SESSION_ID`. Nothing in the tree sets that
@@ -95364,6 +95364,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   from the SessionStart stdin payload with `jq`, as precompact already
   does. Fall back to `CLAUDE_CODE_SESSION_ID`.
   Ledger row 266, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. The preamble reads .session_id from the SessionStart
+  stdin payload (as PreCompact does), falls back to
+  CLAUDE_CODE_SESSION_ID, and validates with ants_validate_session_id.
+  The old test set the dead CLAUDE_SESSION_ID itself, so it passed.
+  Reaches the machine once tools/install-hooks.sh runs.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 24-shell-surface (High).

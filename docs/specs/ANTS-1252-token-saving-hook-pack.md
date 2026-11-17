@@ -194,7 +194,8 @@ re-serialisation).
 
 - **INV-1.** All five hooks exit 0 on the no-op path. Test runs
   each with `printf '{}\n'` as stdin and asserts exit 0.
-- **INV-2.** `sessionId` (PreCompact, drift-check use) validated
+- **INV-2.** `sessionId` (PreCompact, SessionStart preamble, drift-check
+  use) validated
   against `^[a-zA-Z0-9_-]{1,64}$` before any filesystem
   interpolation. Failure → exit 0 silent. (Closes S1252-2.)
 - **INV-3.** `ants-session-preamble.sh` stdout ≤ 500 bytes.

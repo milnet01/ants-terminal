@@ -29,7 +29,14 @@ last_log="$(git log -1 --format='%s' 2>/dev/null | head -c 80)"
 # same one. Capped to 240 bytes so the project header always fits in
 # the 500 B INV-3 envelope.
 resume_line=""
-sid="$(printf '%s' "${CLAUDE_SESSION_ID:-}" | LC_ALL=C tr -cd 'A-Za-z0-9_-' | head -c 64)"
+# ANTS-6537 — the id comes from SessionStart's stdin payload, as PreCompact's
+# does, so both name the same snapshot; CLAUDE_CODE_SESSION_ID is the fallback.
+raw_sid=""
+if [ ! -t 0 ] && command -v jq >/dev/null 2>&1; then
+    raw_sid="$(jq -r '.session_id // .sessionId // empty' 2>/dev/null)"
+fi
+[ -z "$raw_sid" ] && raw_sid="${CLAUDE_CODE_SESSION_ID:-}"
+sid="$(ants_validate_session_id "$raw_sid")"
 if [ -n "$sid" ]; then
     snap="${HOME}/.cache/ants-terminal/precompact_${sid}.json"
     if [ -r "$snap" ] && command -v jq >/dev/null 2>&1; then

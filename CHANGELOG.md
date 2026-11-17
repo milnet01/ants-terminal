@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **After Claude Code compacts a conversation, the session preamble lists the tasks that were still open, read from the snapshot taken before the compact.** (ANTS-6537)
+
 - **The terminal takes typing and clicks while a dialog is minimised.** (ANTS-6536)
 
 - **Closing a window unloads its Lua plugins first, so a plugin that saves a setting as it unloads saves it safely.** (ANTS-6535)

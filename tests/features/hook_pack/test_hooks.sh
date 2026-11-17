@@ -71,7 +71,9 @@ if [ "$have_jq" -eq 1 ]; then
     rc_sid="sess-resume-test"
     printf '%s' '{"ts":"2026-07-17T00:00:00Z","todos":[{"content":"Finish parser fix","status":"in_progress"},{"content":"Write test","status":"pending"},{"content":"Old done","status":"completed"}]}' \
         > "$RC_HOME/.cache/ants-terminal/precompact_${rc_sid}.json"
-    rc_out="$(cd "$REPO_ROOT" && printf '{}\n' | CLAUDE_SESSION_ID="$rc_sid" HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
+    # ANTS-6537 — the session id arrives in SessionStart's stdin payload, as
+    # it does for PreCompact; no Claude Code release sets CLAUDE_SESSION_ID.
+    rc_out="$(cd "$REPO_ROOT" && printf '{"session_id":"%s"}\n' "$rc_sid" | env -u CLAUDE_CODE_SESSION_ID HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
     if printf '%s' "$rc_out" | grep -q '\[ants:resume\].*Finish parser fix' \
        && printf '%s' "$rc_out" | grep -q 'Write test'; then
         pass "auto-compact resume: [ants:resume] surfaces in_progress+pending todos"
@@ -83,8 +85,15 @@ if [ "$have_jq" -eq 1 ]; then
     else
         pass "auto-compact resume: completed todos excluded"
     fi
+    # A payload without one falls back to CLAUDE_CODE_SESSION_ID.
+    rc_env="$(cd "$REPO_ROOT" && printf '{}\n' | env CLAUDE_CODE_SESSION_ID="$rc_sid" HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
+    if printf '%s' "$rc_env" | grep -q '\[ants:resume\].*Finish parser fix'; then
+        pass "auto-compact resume: CLAUDE_CODE_SESSION_ID fallback finds the snapshot"
+    else
+        fail "auto-compact resume: CLAUDE_CODE_SESSION_ID fallback missed the snapshot: ${rc_env}"
+    fi
     # No session id → no snapshot lookup → no stale resume line.
-    rc_none="$(cd "$REPO_ROOT" && printf '{}\n' | CLAUDE_SESSION_ID="" HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
+    rc_none="$(cd "$REPO_ROOT" && printf '{}\n' | env -u CLAUDE_CODE_SESSION_ID HOME="$RC_HOME" bash "$HOOKS_DIR/ants-session-preamble.sh" 2>/dev/null)"
     if printf '%s' "$rc_none" | grep -q '\[ants:resume\]'; then
         fail "auto-compact resume: emitted a resume line with no session id"
     else
