@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing the Project Audit dialog while a check runs stops the check safely in the background.** (ANTS-6539)
+
 - **After Claude Code compacts a conversation, the session preamble lists the tasks that were still open, read from the snapshot taken before the compact.** (ANTS-6537)
 
 - **The terminal takes typing and clicks while a dialog is minimised.** (ANTS-6536)

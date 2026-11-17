@@ -95387,7 +95387,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 24-shell-surface (High).
   Lanes: shell-surface.
 
-- 📋 [ANTS-6539] **auditdialog.cpp: the dialog is created with `WA_DeleteOnClose` (`mainwindow_menus.cpp:472`), so closing it mid-check destroys it.**
+- ✅ [ANTS-6539] **auditdialog.cpp: the dialog is created with `WA_DeleteOnClose` (`mainwindow_menus.cpp:472`), so closing it mid-check destroys it.**
   `auditdialog.cpp:184` — the dialog is created with `WA_DeleteOnClose`
   (`mainwindow_menus.cpp:472`), so closing it mid-check destroys it. The
   members (`m_checks`, `m_completedResults` and so on) are destroyed
@@ -95400,6 +95400,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   and do the same for every blame `QProcess`, then stop them with
   `releaseProcess`.
   Ledger row 289, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. ~AuditDialog un-parents each child QProcess and
+  hands it to releaseProcess, so none is deleted (and none emits) inside
+  ~QWidget. The reviewer's disconnect was dropped: ~QObject already
+  removes the dialog's connections, and a mutation probe confirmed it
+  changed nothing. Test:
+  AuditDialogCloseMidCheck.NoProcessSignalDuringDestruction.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 26-audit-dialog (High).

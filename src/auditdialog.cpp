@@ -242,7 +242,17 @@ AuditDialog::AuditDialog(const QString &projectPath,
     if (m_baselineOutdated) m_statusLabel->setFullText(outdatedBaselineText());
 }
 
-AuditDialog::~AuditDialog() = default;
+AuditDialog::~AuditDialog() {
+    // ANTS-6539 — closing mid-check deletes the dialog (WA_DeleteOnClose).
+    // Left as children, the check and blame processes died in ~QWidget,
+    // after the members, and ~QProcess emitted finished into this dialog's
+    // slots. Detach them first and let each finish on its own; ~QObject drops
+    // this dialog's connections before any of them can signal again.
+    for (QProcess *p : findChildren<QProcess *>(Qt::FindDirectChildrenOnly)) {
+        p->setParent(nullptr);
+        auditdialogdetail::releaseProcess(p);
+    }
+}
 
 Config &AuditDialog::liveConfig() {
     if (m_config) return *m_config;

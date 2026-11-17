@@ -4111,6 +4111,8 @@ if(ANTS_TESTS)
                 tests/features/audit_state_file_caps/test_audit_state_file_caps.cpp
                 # ANTS-6446 — audit lanes that run project code start off.
                 tests/features/audit_project_code_lanes_off/test_audit_project_code_lanes_off.cpp
+                # ANTS-6539 — closing the audit dialog mid-check.
+                tests/features/audit_dialog_close_mid_check/test_audit_dialog_close_mid_check.cpp
                 # ANTS-5084 — git history is read off the GUI thread.
                 tests/features/audit_recent_scope_async/test_audit_recent_scope_async.cpp
                 # ANTS-1259 — AuditDialog Debt Sweep tab (fix / defer / allow).
