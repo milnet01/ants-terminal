@@ -95433,7 +95433,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 27-audit-engine (High).
   Lanes: audit-engine.
 
-- 📋 [ANTS-6541] **roadmapdialog.cpp: the open cards and sections, and the scroll position, are saved only in `closeEvent`.**
+- ✅ [ANTS-6541] **roadmapdialog.cpp: the open cards and sections, and the scroll position, are saved only in `closeEvent`.**
   `roadmapdialog.cpp:2588-2598` — the open cards and sections, and the
   scroll position, are saved only in `closeEvent`. Closing with Esc or
   the title-bar × goes through `QDialog::reject`, and
@@ -95445,6 +95445,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   save in `done()` or `hideEvent`, or call `saveViewState()` from
   `handleAnchorClicked`.
   Ledger row 337, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. RoadmapDialog::persistOnClose() (capture scroll
+  anchor + saveViewState) now runs from done() as well as closeEvent():
+  Esc and the title-bar × reach only done(); a close() of a never-shown
+  dialog reaches only closeEvent. A repeat save writes nothing
+  (storeIfChanged). Test:
+  RoadmapFilterBar.Ants6541RejectSavesTheOpenCards; each call site
+  killed by its own test.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 29-roadmap-dialog (High).

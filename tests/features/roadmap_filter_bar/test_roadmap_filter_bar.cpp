@@ -17,6 +17,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QLineEdit>
 #include <QString>
 #include <QTabBar>
@@ -368,4 +370,25 @@ TEST(RoadmapFilterBar, OpenSectionsAreRememberedPerProject) {
             << "another project's same-named section opened with this one's";
         dlg.close();
     }
+}
+
+// ANTS-6541 — Esc and the title-bar × close through reject(), which never
+// reaches closeEvent. The open cards must still be saved.
+TEST(RoadmapFilterBar, Ants6541RejectSavesTheOpenCards) {
+    Harness h;
+    Config cfg;
+    const QString key = QFileInfo(h.path).canonicalFilePath();
+    {
+        RoadmapDialog dlg(h.path, QStringLiteral("light"), nullptr, &cfg);
+        dlg.show();
+        QCoreApplication::processEvents();
+        auto *browser = dlg.findChild<QTextBrowser *>();
+        ASSERT_NE(browser, nullptr);
+        emit browser->anchorClicked(QUrl(QStringLiteral("ants://expand/ANTS-0001")));
+        dlg.reject();
+    }
+    const QJsonArray open =
+        cfg.roadmapViewState(key).value(QStringLiteral("expanded_items")).toArray();
+    EXPECT_TRUE(open.contains(QStringLiteral("ANTS-0001")))
+        << "the card opened before Esc was not saved";
 }

@@ -95,7 +95,7 @@ TEST(RoadmapScrollPersistence, Inv6SourceWiring) {
         return src.find(needle) != std::string::npos;
     };
     EXPECT_TRUE(has("captureScrollAnchor()"))
-        << "closeEvent must capture the scroll anchor";
+        << "closing must capture the scroll anchor";
     EXPECT_TRUE(has("restoreScrollAnchor()"))
         << "showEvent must restore the scroll anchor";
     EXPECT_TRUE(has("void RoadmapDialog::showEvent"))

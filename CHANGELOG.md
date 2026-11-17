@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The Roadmap dialog remembers its open cards, open sections and scroll position when closed with Esc or the title-bar ×.** (ANTS-6541)
+
 - **An `audit_run` since-last-run delta counts a finding as removed only when the tool that reported it ran again and finished; findings of skipped or failed tools stay in the recorded baseline.** (ANTS-6540)
 
 - **Closing the Project Audit dialog while a check runs stops the check safely in the background.** (ANTS-6539)

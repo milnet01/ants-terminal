@@ -29,8 +29,9 @@ deterministic contract is the pure resolver
 - **INV-5 (empty anchor)** — an anchor with empty `id` and empty
   `sectionSlug` resolves to `Top` (empty fields never match a present
   entry, even if the present set happens to contain an empty string).
-- **INV-6 (source wiring)** — `roadmapdialog.cpp` captures on `closeEvent`
-  (`captureScrollAnchor`) and restores on `showEvent`
+- **INV-6 (source wiring)** — `roadmapdialog.cpp` captures on close,
+  in both `done()` and `closeEvent` (`captureScrollAnchor`; Esc and the
+  title-bar × reach only `done()`, ANTS-6541), and restores on `showEvent`
   (`restoreScrollAnchor`), and round-trips through the project's view
   state: `saveViewState` writes `state["scroll"]`, the ctor reads it back.
   The global `Config::roadmapScrollAnchors` is read only to seed the first

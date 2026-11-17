@@ -2618,17 +2618,27 @@ RoadmapDialog::~RoadmapDialog() {
     releaseReverseMemo();   // ANTS-5088
 }
 
-void RoadmapDialog::closeEvent(QCloseEvent *event) {
+void RoadmapDialog::persistOnClose() {
     // Size is persisted by DialogChrome on close (D3, "RoadmapDialog"
     // sizeKey); ANTS-2012 dropped the hand-rolled geometry blob, which
     // also stored window position (D4 violation).
-    if (m_config) {
-        // ANTS-1154 §4.5 / INV-13 — remember where the user scrolled to,
-        // then save it with the open cards and sections as this project's
-        // view state (ANTS-5214).
-        captureScrollAnchor();
-        saveViewState();
-    }
+    if (!m_config) return;
+    // ANTS-1154 §4.5 / INV-13 — remember where the user scrolled to, then
+    // save it with the open cards and sections as this project's view state
+    // (ANTS-5214). A second call with nothing changed writes nothing.
+    captureScrollAnchor();
+    saveViewState();
+}
+
+// ANTS-6541 — Esc and the title-bar × reach done() through reject() alone,
+// never closeEvent; a close() of a hidden dialog reaches closeEvent alone.
+void RoadmapDialog::done(int result) {
+    persistOnClose();
+    QDialog::done(result);
+}
+
+void RoadmapDialog::closeEvent(QCloseEvent *event) {
+    persistOnClose();
     QDialog::closeEvent(event);
 }
 

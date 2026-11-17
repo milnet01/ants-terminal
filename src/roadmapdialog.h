@@ -185,6 +185,8 @@ public:
                   QWidget *parent = nullptr,
                   Config *cfg = nullptr);
     ~RoadmapDialog() override;
+    // ANTS-6541 — Esc and the title-bar × close through here, not closeEvent.
+    void done(int result) override;
 
     // ANTS-1154 v2 card-renderer state, packed into one struct so the
     // new `renderCardsHtml` signature stays manageable. Default-
@@ -560,6 +562,9 @@ private:
     std::array<QCheckBox *, 6> statusBoxes() const;
     // Write the active tab and every tab's filters to Config.
     void saveViewState();
+    // ANTS-6541 — capture the scroll anchor and save the view state; called
+    // from both done() and closeEvent(), since each misses one way out.
+    void persistOnClose();
     static QString presetName(Preset p);
 
     // ANTS-1125 instance wrappers — bind the active dialog state
@@ -702,7 +707,7 @@ private:
     bool m_scrollRestored = false;
     // ANTS-1154 v2 card-renderer in-memory state. Loaded from Config
     // in the ctor, mutated by handleAnchorClicked, persisted back to
-    // Config in closeEvent.
+    // Config by persistOnClose().
     QSet<QString> m_expandedItems;
     QSet<QString> m_expandedSections;
     // ANTS-5214 — per-tab scroll anchors for THIS project, keyed by preset
