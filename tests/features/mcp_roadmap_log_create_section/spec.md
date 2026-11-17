@@ -26,8 +26,8 @@ Part of **ANTS-1878**. Full design + invariants live in
   punctuation → expected slug).
 - **INV-6** computed slug already present → `slug_collision`.
 - **INV-7** `line == lineEnd + 1` (1-based heading line).
-- **INV-8** source-grep: handler uses `QSaveFile::commit()` as the
-  only write path.
+- **INV-8** source-grep: the handler writes through `rlAtomicWrite`,
+  whose `QSaveFile::commit()` is the only write path.
 - **INV-9** `unrecognised_format` gate (parseBullets empty AND
   bytes > `kRoadmapMinParseableSize`).
 - **INV-10** `bad_intro` regex `^#{1,6}\s` — positive (`## stray`) +

@@ -121,6 +121,50 @@ void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
         "consecutive calls are contiguous.")
             .arg(counterFileValue).arg(corpusMax);
 }
+
+// Write `text` over the roadmap at `path` in one QSaveFile commit. Empty on
+// success; otherwise the roadmap_write_failed message.
+QString rlAtomicWrite(const QString &path, const QString &text) {
+    QSaveFile rw(path);
+    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
+        return QStringLiteral("roadmap_log: could not open \"%1\" for writing").arg(path);
+    const QByteArray utf8 = text.toUtf8();
+    if (rw.write(utf8) != utf8.size() || !rw.commit())
+        return QStringLiteral("roadmap_log: atomic write of \"%1\" failed").arg(path);
+    return {};
+}
+
+// The first free element position in a section: one past the highest in use.
+int rlNextElementPosition(const QVector<RoadmapStore::ElementRow> &elements) {
+    int maxPos = -1;
+    for (const RoadmapStore::ElementRow &e : elements)
+        maxPos = std::max(maxPos, e.position);
+    return maxPos + 1;
+}
+
+// The first section whose slug equals `slug` in all but case, or null. A hit
+// turns a slug lookup miss into bad_case rather than bad_section.
+const RoadmapIndex::Section *rlCaseOnlyMatch(
+        const QVector<RoadmapIndex::Section> &index, const QString &slug) {
+    const QString needCi = slug.toLower();
+    for (const auto &s : index)
+        if (s.slug != slug && s.slug.toLower() == needCi) return &s;
+    return nullptr;
+}
+
+// The bad_case refusal for `given`, naming the slug it should have been.
+// `what` is the argument's name in the message ("section", "after_section").
+QJsonDocument rlBadCase(const QString &what, const QString &given,
+                        const QString &canonical) {
+    QJsonObject env;
+    env["ok"]             = false;
+    env["code"]           = QStringLiteral("bad_case");
+    env["error"]          = QStringLiteral(
+        "roadmap_log: %1 slug case mismatch: \"%2\" — did you mean \"%3\"?")
+            .arg(what, given, canonical);
+    env["canonical_slug"] = canonical;
+    return QJsonDocument(env);
+}
 }  // namespace
 
 // ANTS-1690 — roadmap_log op:"flip_batch". Flip N bullets to one
@@ -246,7 +290,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     const qint64 markdownBytes = markdown.toUtf8().size();
     QStringList lines = markdown.split(QChar('\n'));
 
-    // 5. format detect (GFM first, then ants-v1 — mirrors single-flip).
+    // 5. format detect (pass-headings, then GFM, then ants-v1 — mirrors
+    // single-flip).
     // ANTS-2048 — pass-headings check FIRST, unconditionally, mirroring the
     // single-flip path (cmdRoadmapLogFlip). A `#### Pass N.M` heading
     // roadmap routinely carries stray `- [ ]` sub-tasks under its passes;
@@ -330,6 +375,29 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
 
     auto headlineHash = [](const QString &h) {
         return RoadmapParse::fnv1a64(RoadmapParse::normaliseHeadline(h));
+    };
+    // The firstLines a locator picks from either bullet shape: by id (the
+    // field `idField` names), else by headline, else by a 1-based inclusive
+    // line range. The GFM-only anchor is matched at its call.
+    const auto matchLocator = [&headlineHash](const auto &bullets, auto idField,
+                                              const QString &id,
+                                              const QString &headline,
+                                              const QJsonArray &range) {
+        QVector<int> picked;
+        if (!id.isEmpty()) {
+            for (const auto &b : bullets)
+                if (b.*idField == id) picked.append(b.firstLine);
+        } else if (!headline.isEmpty()) {
+            const quint64 need = headlineHash(headline);
+            for (const auto &b : bullets)
+                if (headlineHash(b.headline) == need) picked.append(b.firstLine);
+        } else {
+            const int a = range.at(0).toInt(), z = range.at(1).toInt();
+            for (const auto &b : bullets)
+                if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
+                    picked.append(b.firstLine);
+        }
+        return picked;
     };
 
     // 6. Phase 1 — resolve every locator against ONE walk. A target
@@ -533,23 +601,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
         bool isRange = false;
         bool locViaV1 = !isGfm;  // ANTS-3565 — this locator resolved via ants-v1
         if (isGfm) {
-            if (!locId.isEmpty()) {
-                for (const auto &b : gbs)
-                    if (b.boldId == locId) candFirstLines.append(b.firstLine);
-            } else if (!locAnchor.isEmpty()) {
+            isRange = locId.isEmpty() && locAnchor.isEmpty() && locHeadline.isEmpty();
+            if (locId.isEmpty() && !locAnchor.isEmpty()) {
                 for (const auto &b : gbs)
                     if (b.anchor == locAnchor) candFirstLines.append(b.firstLine);
-            } else if (!locHeadline.isEmpty()) {
-                const quint64 need = headlineHash(locHeadline);
-                for (const auto &b : gbs)
-                    if (headlineHash(b.headline) == need)
-                        candFirstLines.append(b.firstLine);
             } else {
-                isRange = true;
-                const int a = locRange.at(0).toInt(), z = locRange.at(1).toInt();
-                for (const auto &b : gbs)
-                    if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
-                        candFirstLines.append(b.firstLine);
+                candFirstLines = matchLocator(gbs, &GfmBullet::boldId, locId,
+                                              locHeadline, locRange);
             }
             // ANTS-3565 — mixed-format fallback: no GFM candidate for an
             // id/headline locator → try the appended ants-v1 emoji bullets
@@ -558,21 +616,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             // sits on a line no GFM row occupies, so a range that matched zero
             // GFM rows must still walk the ants-v1 set for a line in-range.
             if (candFirstLines.isEmpty() && locAnchor.isEmpty()) {
-                if (!locId.isEmpty()) {
-                    for (const auto &b : vbs)
-                        if (b.id == locId) candFirstLines.append(b.firstLine);
-                } else if (!locHeadline.isEmpty()) {
-                    const quint64 need = headlineHash(locHeadline);
-                    for (const auto &b : vbs)
-                        if (headlineHash(b.headline) == need)
-                            candFirstLines.append(b.firstLine);
-                } else if (isRange) {
-                    const int a = locRange.at(0).toInt(),
-                              z = locRange.at(1).toInt();
-                    for (const auto &b : vbs)
-                        if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
-                            candFirstLines.append(b.firstLine);
-                }
+                candFirstLines = matchLocator(vbs, &AntsV1Bullet::id, locId,
+                                              locHeadline, locRange);
                 if (!candFirstLines.isEmpty()) locViaV1 = true;
             }
         } else {  // ants-v1
@@ -588,21 +633,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                                     "— use id or headline"));
                 continue;
             }
-            if (!locId.isEmpty()) {
-                for (const auto &b : vbs)
-                    if (b.id == locId) candFirstLines.append(b.firstLine);
-            } else if (!locHeadline.isEmpty()) {
-                const quint64 need = headlineHash(locHeadline);
-                for (const auto &b : vbs)
-                    if (headlineHash(b.headline) == need)
-                        candFirstLines.append(b.firstLine);
-            } else {
-                isRange = true;
-                const int a = locRange.at(0).toInt(), z = locRange.at(1).toInt();
-                for (const auto &b : vbs)
-                    if (b.firstLine + 1 >= a && b.firstLine + 1 <= z)
-                        candFirstLines.append(b.firstLine);
-            }
+            isRange = locId.isEmpty() && locHeadline.isEmpty();
+            candFirstLines = matchLocator(vbs, &AntsV1Bullet::id, locId,
+                                          locHeadline, locRange);
         }
 
         if (candFirstLines.isEmpty()) {
@@ -965,6 +998,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
             counterPath = QFileInfo(roadmapPath).absolutePath() +
                           QLatin1Char('/') +
                           QStringLiteral(".roadmap-counter");
+            // An absent or empty counter reads as 0 here, where append_batch
+            // refuses counter_missing: flip_batch issues only anchors, and the
+            // floor below to the file's own anchors stops one being reissued.
             qint64 counter = 0;
             if (QFile::exists(counterPath)) {
                 QFile cf(counterPath);
@@ -1109,16 +1145,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
                            "failed"));
 
     const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
-                .arg(roadmapPath));
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit())
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
-                .arg(roadmapPath));
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
     // 10. envelope — `flipped` in firstLine-ascending order.
     QList<int> orderedFirstLines = claimedFirstLines.values();
@@ -1153,7 +1181,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
     out["flipped_count"] = flipped.size();
     out["skipped"]       = skipped;
     out["skipped_count"] = skipped.size();
-    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(utf8.size()));
+    rcSetWriteBytes(out, sizeBefore, static_cast<qint64>(updated.toUtf8().size()));
     if (newCounter >= 0 && newCounter != counterStart)
         out["counter"] = newCounter;
     if (echoHeadline) out["post_bullets"] = postBullets;
@@ -1161,7 +1189,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogFlipBatch(const QJsonObject &req) {
 }
 
 // ANTS-1879 INV-10 — shared bullet-formatting helper. Extracted from
-// cmdRoadmapLogAppend's :3293-3344 block so cmdRoadmapLogAppendBatch
+// cmdRoadmapLogAppend's bullet-text block so cmdRoadmapLogAppendBatch
 // can format each bullet through the same code path. `bulletReq` is
 // the per-bullet object (single-bullet path passes the whole `req`).
 QString RemoteControl::formatRoadmapBullet(
@@ -1405,20 +1433,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
         index, beforeSection.isEmpty() ? afterSection : beforeSection);
     if (!sec) {
         // bad_case parity (canonical_slug echoed if a case-only match exists).
-        const QString needCi = afterSection.toLower();
-        for (const auto &s : index) {
-            if (s.slug.toLower() == needCi && s.slug != afterSection) {
-                QJsonObject env;
-                env["ok"]             = false;
-                env["code"]           = QStringLiteral("bad_case");
-                env["error"]          = QStringLiteral(
-                    "roadmap_log: after_section slug case mismatch: "
-                    "\"%1\" — did you mean \"%2\"?")
-                        .arg(afterSection, s.slug);
-                env["canonical_slug"] = s.slug;
-                return QJsonDocument(env);
-            }
-        }
+        if (const auto *ci = rlCaseOnlyMatch(index, afterSection))
+            return rlBadCase(QStringLiteral("after_section"), afterSection, ci->slug);
         return rlErr(QStringLiteral("bad_section"),
             QStringLiteral("roadmap_log: unknown after_section slug \"%1\"")
                 .arg(afterSection));
@@ -1716,16 +1732,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogCreateSection(const QJsonObject &req) 
     }
 
     // 7. Atomic write.
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
-                .arg(roadmapPath));
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit())
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
-                .arg(roadmapPath));
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
     // 8. Success envelope.
     qint64 bytesInserted = 0;
@@ -1852,19 +1860,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     const RoadmapIndex::Section *sec =
         RoadmapIndex::findBySlug(index, section);
     if (!sec) {
-        const QString needCi = section.toLower();
-        for (const auto &s : index) {
-            if (s.slug.toLower() == needCi && s.slug != section) {
-                QJsonObject env;
-                env["ok"]             = false;
-                env["code"]           = QStringLiteral("bad_case");
-                env["error"]          = QStringLiteral(
-                    "roadmap_log: section slug case mismatch: \"%1\" — "
-                    "did you mean \"%2\"?").arg(section, s.slug);
-                env["canonical_slug"] = s.slug;
-                return QJsonDocument(env);
-            }
-        }
+        if (const auto *ci = rlCaseOnlyMatch(index, section))
+            return rlBadCase(QStringLiteral("section"), section, ci->slug);
         return rlErr(QStringLiteral("bad_section"),
             QStringLiteral("roadmap_log: unknown section slug \"%1\"")
                 .arg(section));
@@ -1911,9 +1908,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
             // rather than taken as listElements()' first hit, so the choice
             // does not silently depend on that reader's ordering.
             const RoadmapStore::ElementRow *tableRow = nullptr;
-            int maxPos = -1;
             for (const RoadmapStore::ElementRow &e : *elements) {
-                maxPos = std::max(maxPos, e.position);
                 if (e.kind == QLatin1String("table") &&
                     (!tableRow || e.position < tableRow->position))
                     tableRow = &e;
@@ -2006,7 +2001,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
             const QString payloadText = QString::fromUtf8(
                 QJsonDocument(payload).toJson(QJsonDocument::Compact));
 
-            const int tablePos = tableRow ? tableRow->position : maxPos + 1;
+            const int tablePos = tableRow ? tableRow->position
+                                           : rlNextElementPosition(*elements);
             const auto mutate = [&](QString *err) -> bool {
                 if (tableRow)
                     return store.setElementPayload(*sectionId, tablePos,
@@ -2221,16 +2217,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
     }
 
     // 7. Atomic write.
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
-                .arg(roadmapPath));
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit())
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
-                .arg(roadmapPath));
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
     // 8. Success envelope.
     QJsonObject out;
@@ -2514,7 +2502,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                         QStringLiteral("roadmap_log: could not read the "
                                        "just-created .roadmap-counter at "
                                        "\"%1\"").arg(counterPath));
-                // cf now reads "0"; fall through.
+                // cf now holds the seed; fall through.
             }
         }
         if (!counterResolved) {
@@ -2557,19 +2545,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     const auto index = RoadmapIndex::buildIndex(markdown);
     const auto *sec = RoadmapIndex::findBySlug(index, section);
     if (!sec) {
-        const QString needCi = section.toLower();
-        for (const auto &s : index) {
-            if (s.slug.toLower() == needCi && s.slug != section) {
-                QJsonObject env;
-                env["ok"]             = false;
-                env["code"]           = QStringLiteral("bad_case");
-                env["error"]          = QStringLiteral(
-                    "roadmap_log: section slug case mismatch: \"%1\" "
-                    "— did you mean \"%2\"?").arg(section, s.slug);
-                env["canonical_slug"] = s.slug;
-                return QJsonDocument(env);
-            }
-        }
+        if (const auto *ci = rlCaseOnlyMatch(index, section))
+            return rlBadCase(QStringLiteral("section"), section, ci->slug);
         return rlErr(QStringLiteral("bad_section"),
             QStringLiteral("roadmap_log: unknown section slug \"%1\"")
                 .arg(section));
@@ -2611,11 +2588,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         const auto elements = writeTarget->store->listElements(*sid, &seamErr);
         if (!elements)
             return rlErr(QStringLiteral("store_failed"), seamErr);
-        int maxPos = -1;
-        for (const RoadmapStore::ElementRow &e : *elements)
-            maxPos = std::max(maxPos, e.position);
         storeSectionId = *sid;
-        storePosition  = maxPos + 1;
+        storePosition  = rlNextElementPosition(*elements);
     }
 
     // 6. Per-bullet validation: kinds against RoadmapParse::canonicalKinds(),
@@ -2785,13 +2759,10 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         const QString bulletSection = b.value(QStringLiteral("section")).toString();
         if (writeTarget && !bulletSection.isEmpty() && !secSlots.contains(bulletSection)) {
             if (!RoadmapIndex::findBySlug(index, bulletSection)) {
-                QString canonical;
-                for (const auto &s : index)
-                    if (s.slug.toLower() == bulletSection.toLower()) canonical = s.slug;
-                if (!canonical.isEmpty())
+                if (const auto *ci = rlCaseOnlyMatch(index, bulletSection))
                     skip(QStringLiteral("bad_case"),
                          QStringLiteral("section slug case mismatch: \"%1\" — did "
-                                        "you mean \"%2\"?").arg(bulletSection, canonical));
+                                        "you mean \"%2\"?").arg(bulletSection, ci->slug));
                 else
                     skip(QStringLiteral("bad_section"),
                          QStringLiteral("unknown section slug \"%1\"").arg(bulletSection));
@@ -2809,10 +2780,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             const auto elements = writeTarget->store->listElements(*sid, &seamErr);
             if (!elements)
                 return rlErr(QStringLiteral("store_failed"), seamErr);
-            int maxPos = -1;
-            for (const RoadmapStore::ElementRow &e : *elements)
-                maxPos = std::max(maxPos, e.position);
-            secSlots.insert(bulletSection, SecSlot{*sid, maxPos + 1});
+            secSlots.insert(bulletSection,
+                            SecSlot{*sid, rlNextElementPosition(*elements)});
         }
 
         // ANTS-3809 § 2.5 / § 2.6 — the store path's body + trailer columns.
@@ -3305,16 +3274,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             QStringLiteral("roadmap_log: atomic write of "
                            ".roadmap-counter failed"));
 
-    QSaveFile rw(roadmapPath);
-    if (!rw.open(QIODevice::WriteOnly | QIODevice::Text))
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: could not open \"%1\" for writing")
-                .arg(roadmapPath));
-    const QByteArray utf8 = updated.toUtf8();
-    if (rw.write(utf8) != utf8.size() || !rw.commit())
-        return rlErr(QStringLiteral("roadmap_write_failed"),
-            QStringLiteral("roadmap_log: atomic write of \"%1\" failed")
-                .arg(roadmapPath));
+    if (const QString err = rlAtomicWrite(roadmapPath, updated); !err.isEmpty())
+        return rlErr(QStringLiteral("roadmap_write_failed"), err);
 
     // 10. Success envelope.
     QJsonArray ids;
@@ -3505,7 +3466,7 @@ RemoteControl::roadmapSectionOpTarget(const QJsonObject &req,
 
     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
     QString seamErr;
-    // ANTS-3863 — fromMemory: `markdown` is already read and spliced below.
+    // ANTS-3863 — fromMemory: `markdown` is already read.
     auto seamText = RoadmapSource::RoadmapText::fromMemory(markdown);
     const auto target =
         roadmapWriteTarget(callerCanonical, seamText, &why, &seamErr);

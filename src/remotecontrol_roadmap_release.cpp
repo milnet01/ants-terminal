@@ -4,7 +4,7 @@
 //
 // Its own TU, beside remotecontrol_roadmap_backfill.cpp, because it is the
 // same kind of member: a one-off, store-only migration op that reads git,
-// plans every write first, and writes them in one commitAndRender().
+// and plans every write before making any.
 #include "remotecontrol.h"
 #include "remotecontrol_internal.h"
 #include "changelogquery.h"

@@ -222,10 +222,18 @@ TEST(McpRoadmapLogCreateSection, Inv8AtomicWriteViaQSaveFile) {
     const std::string body =
         src.substr(defPos, (nextDef == std::string::npos ? src.size() - defPos
                                                           : nextDef - defPos));
-    EXPECT_NE(body.find("QSaveFile"),  std::string::npos)
-        << "handler must use QSaveFile for atomic write";
-    EXPECT_NE(body.find(".commit()"),  std::string::npos)
-        << "handler must call QSaveFile::commit()";
+    // ANTS-6130 — the handler writes through rlAtomicWrite, which commits a
+    // QSaveFile.
+    const auto helperPos = src.find("QString rlAtomicWrite(");
+    ASSERT_NE(helperPos, std::string::npos);
+    const std::string helper =
+        src.substr(helperPos, src.find("\n}\n", helperPos) - helperPos);
+    EXPECT_NE(body.find("rlAtomicWrite("), std::string::npos)
+        << "handler must write through rlAtomicWrite";
+    EXPECT_NE(helper.find("QSaveFile"), std::string::npos)
+        << "rlAtomicWrite must use QSaveFile for atomic write";
+    EXPECT_NE(helper.find(".commit()"), std::string::npos)
+        << "rlAtomicWrite must call QSaveFile::commit()";
 }
 
 // INV-10 — bad_intro positive case.

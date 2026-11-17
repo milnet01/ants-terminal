@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6815 -->
+<!-- ants-roadmap-id-high-water: ANTS=6818 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -105624,7 +105624,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6130] **Readability fixes, mcp-roadmap-batch lane: src/remotecontrol_roadmap_backfill.cpp, src/remotecontrol_roadmap_log_batch.cpp, src/remotecontrol_roadmap_migrate.cpp, src/remotecontrol_roadmap_publish.cp.**
+- ✅ [ANTS-6130] **Readability fixes, mcp-roadmap-batch lane: src/remotecontrol_roadmap_backfill.cpp, src/remotecontrol_roadmap_log_batch.cpp, src/remotecontrol_roadmap_migrate.cpp, src/remotecontrol_roadmap_publish.cp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-roadmap-batch:
   4 high, 14 medium, 10 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/21-mcp-roadmap-batch.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105639,6 +105639,18 @@ worked after these.
   rlNothingResolved for flip_batch's two no-resolve refusals. Queued
   F5 ANTS-6246, F7 ANTS-6247, F11 move ANTS-6248, F15 ANTS-6249, F17
   ANTS-6250, F18 ANTS-6251. LOWs F19-F28 open.
+  2026-11-17 LOWs F19-F28 done. Dedups in
+  remotecontrol_roadmap_log_batch.cpp: rlAtomicWrite (4 write blocks;
+  create_section INV-8 and bundle_row INV-11 now follow the call),
+  rlNextElementPosition (3), rlCaseOnlyMatch + rlBadCase (4 slug
+  lookups; the per-bullet copy now takes the first match), matchLocator
+  (3 id/headline/range loops). Counter parse: flip_batch says why an
+  empty counter is 0 there. Comments: step 5 label, stale line range,
+  "spliced below", release.cpp's commitAndRender claim, append_batch's
+  "reads 0". The refusal-builder dedup is ANTS-6816 (six files). Found
+  on the way: ANTS-6817 (create_section before_section refusals),
+  ANTS-6818 (release.cpp -Wnull-dereference). MEDIUM leftovers are
+  ANTS-6246..6251, HIGH F4 is ANTS-6176.
   **Layman:** Tidy the bulk roadmap tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107972,6 +107984,20 @@ worked after these.
   Kind: refactor.
   Source: found-while-fixing-ANTS-6269-2026-11-15.
   Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6816] **One shared refusal builder for roadmap_log's {ok, code, error} envelopes.**
+  L21 LOW (dup:56e49d79f856, 7eee97b9aad0, 284680dfe2ad). The same
+  {ok:false, code, error} builder is a local rlErr lambda in
+  remotecontrol_roadmap_log.cpp, _log_batch.cpp and _query_verb.cpp,
+  plus rcSectionOpErr, refuseWith, blErr (backfill), rpErr (repair)
+  and pbErr (release, which adds `hint`). The dispatcher's rlErr adds
+  `example`. A field added to every refusal misses some. Fix: one
+  helper in remotecontrol_internal.h, with the two extras as options.
+  Too wide for a LOW fix in ANTS-6130: six files, many call sites.
+  **Layman:** The roadmap tools build their error replies in many separate copies; make them share one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22 L21.
+  Lanes: mcp-roadmap-batch, mcp-roadmap-query-log.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -114511,6 +114537,30 @@ reports are asked for separately, each time.
   Kind: fix.
   Source: in-session-2026-11-17 (pre-push gate, CI image).
   Lanes: dialog-chrome-theme.
+
+- 📋 [ANTS-6817] **create_section names after_section in its slug refusals when before_section was the slug looked up.**
+  cmdRoadmapLogCreateSection looks up
+  `beforeSection.isEmpty() ? afterSection : beforeSection`, but its
+  bad_case and bad_section refusals test and quote afterSection. With
+  a wrong before_section and no after_section the caller reads
+  `unknown after_section slug ""`, and a case-only typo in
+  before_section is never offered as bad_case. Found reading the code
+  for ANTS-6130; not reproduced yet. Red test first.
+  **Layman:** Adding a roadmap section before a mistyped section reports the wrong argument as the problem.
+  Kind: fix.
+  Source: in-session-2026-11-17 (ANTS-6130).
+  Lanes: mcp-roadmap-batch.
+
+- 📋 [ANTS-6818] **GCC's -Wnull-dereference fires in remotecontrol_roadmap_release.cpp, inlined from place_by_release's itemAt lambda.**
+  14 warnings at qhash.h, inlined from `*items.constFind(pk)` in
+  cmdRoadmapLogPlaceByRelease's itemAt lambda, through the std::sort
+  of `order`. GCC cannot prove the key is present. Every pk is a key
+  (the comment above says so), so this is the ANTS-6791 class. Seen
+  2026-11-17 when a comment edit recompiled the file.
+  **Layman:** Clear a compiler warning in the release-placement roadmap tool.
+  Kind: fix.
+  Source: in-session-2026-11-17 (ANTS-6130).
+  Lanes: mcp-roadmap-batch.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

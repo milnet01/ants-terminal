@@ -60,7 +60,7 @@ so it lives only here (no `docs/specs/ANTS-1691.md`).
   `sort_col` column stays in ascending order under numeric-aware
   comparison (`QCollator` numeric mode): `9` sorts before `78`.
 - **INV-11** atomic write — source-grep: handler's only write path is
-  `QSaveFile` … `.commit()`.
+  `rlAtomicWrite`, a `QSaveFile` … `.commit()`.
 - **INV-12** success envelope — `{ok:true, file:"ROADMAP.md", section,
   row_index (1-based among data rows), columns, created_table,
   bytes_written>0}`.

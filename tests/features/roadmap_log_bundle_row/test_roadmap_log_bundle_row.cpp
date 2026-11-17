@@ -277,8 +277,14 @@ TEST(RoadmapLogBundleRow, Inv11AtomicWrite) {
     const std::string body = src.substr(
         defPos, (nextDef == std::string::npos ? src.size() - defPos
                                               : nextDef - defPos));
-    EXPECT_NE(body.find("QSaveFile"), std::string::npos);
-    EXPECT_NE(body.find(".commit()"), std::string::npos);
+    // ANTS-6130 — through rlAtomicWrite, which commits a QSaveFile.
+    const auto helperPos = src.find("QString rlAtomicWrite(");
+    ASSERT_NE(helperPos, std::string::npos);
+    const std::string helper =
+        src.substr(helperPos, src.find("\n}\n", helperPos) - helperPos);
+    EXPECT_NE(body.find("rlAtomicWrite("), std::string::npos);
+    EXPECT_NE(helper.find("QSaveFile"), std::string::npos);
+    EXPECT_NE(helper.find(".commit()"), std::string::npos);
 }
 
 // INV-12 — success envelope shape.
