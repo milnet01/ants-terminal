@@ -38,7 +38,6 @@
 #include <QTemporaryDir>
 
 #include <memory>
-#include <utility>
 
 ANTS_TEST_SCOPE();
 
@@ -160,7 +159,7 @@ QString seedMigrated(ants_test::XdgGuard &guard, const QTemporaryDir &tmp,
         return QString();
     // The store keys a project on its CANONICAL root (ANTS-3756 INV-8), and
     // /tmp is a symlink on some hosts.
-    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    QString root = QFileInfo(rawRoot).canonicalFilePath();
 
     auto store = openStore(RoadmapStore::Access::Bulk);
     if (!store) return QString();
@@ -380,7 +379,7 @@ TEST(RoadmapWriteHalf, Ants4591StoreSectionRefusalRanksCandidates) {
         << "a near-miss slug must be offered, or the caller's only route is a "
            "full section_index round-trip";
     QStringList got;
-    for (const QJsonValue &v : cands) got << v.toString();
+    for (const auto &v : cands) got << v.toString();
     EXPECT_TRUE(got.contains(QStringLiteral("work")))
         << "ranker did not surface the obvious near miss: "
         << got.join(QStringLiteral(",")).toStdString();
@@ -1383,7 +1382,7 @@ TEST(RoadmapWriteHalf, Ants4715ShippedWindowNarrowsTheListPath) {
         QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd"));
     const auto idsOf = [](const QJsonObject &env) {
         QStringList ids;
-        for (const QJsonValue &v : env.value(QStringLiteral("bullets")).toArray())
+        for (const auto &v : env.value(QStringLiteral("bullets")).toArray())
             ids << v.toObject().value(QStringLiteral("id")).toString();
         return ids;
     };

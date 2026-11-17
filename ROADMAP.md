@@ -74822,6 +74822,11 @@ indie-review finding.
   before it printed 25.7-41.9 ms, so this is runner noise, not a
   read-path regression. First CI miss since ANTS-6163's 2026-10-30
   speed-up. User forwarded the failure email.
+  Seen again 2026-11-17 in CI: the push run of e69cd0c0 (run
+  44052223045) measured p95 53.5 ms in the Release job's serial perf
+  step. The scheduled run of the same commit (44053973311) measured 32.2
+  ms and passed; green runs the day before measured 31.6 and 37.4 ms.
+  The pushed range touched no roadmap read path.
   **Layman:** A speed test for reading the roadmap fails now and then when the machine is busy with other tests.
   Kind: test.
   Source: in-session-2026-11-08 (ANTS-5141 test run).
@@ -114140,7 +114145,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-16 (IDE clang-tidy diagnostics).
   Lanes: changelog-feedback, claude-session-widgets, model-switching.
 
-- 📋 [ANTS-6793] **Tidy the clang-tidy warnings shown in mainwindow.cpp, mainwindow.h, claudeallowlist.cpp's s_sudoPrefix and test_roadmap_write_half.cpp.**
+- ✅ [ANTS-6793] **Tidy the clang-tidy warnings shown in mainwindow.cpp, mainwindow.h, claudeallowlist.cpp's s_sudoPrefix and test_roadmap_write_half.cpp.**
   Seen in the editor 2026-11-16, not yet triaged:
   - mainwindow.cpp: internal linkage for sweepKwinScriptOrphansOnce and
     safeShellNames; an unneeded copy `deferred` in applyTheme; moves of
@@ -114156,6 +114161,14 @@ reports are asked for separately, each time.
   Also seen 2026-11-16 in mainwindow_repo.cpp: implicit int widening in
   the kCacheTtlMs product, a QJsonValueRef loop conversion, and a move
   of `release` in checkForUpdates.
+  Shipped 2026-11-17. Every named warning fixed; clang-tidy reports none
+  on the four files. The applyTheme copy became an init-capture, so
+  AutoProfileThemeUnsaved.Inv2's applyTheme(deferred, save) text holds;
+  kCacheTtlMs keeps GithubStatusBar INV-7's "10 * 60 * 1000" inside an
+  explicit qint64 cast. Left as false positives:
+  bugprone-unchecked-optional-access in test_roadmap_write_half.cpp,
+  where each access follows an ASSERT_TRUE(has_value()) the checker does
+  not model.
   **Layman:** An automatic code checker flagged more small spots in the main window code; each needs a look before it is changed.
   Kind: chore.
   Source: in-session-2026-11-16 (IDE clang-tidy diagnostics).

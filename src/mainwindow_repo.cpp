@@ -85,7 +85,7 @@ void MainWindow::refreshRepoVisibility() {
     };
 
     // Cache hit (10 min TTL) → render immediately, skip the shell-out.
-    constexpr qint64 kCacheTtlMs = 10 * 60 * 1000;
+    constexpr qint64 kCacheTtlMs = qint64(10 * 60 * 1000);
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     auto it = m_repoVisibilityCache.find(repoRoot);
     if (it != m_repoVisibilityCache.end() &&
@@ -261,12 +261,12 @@ void MainWindow::checkForUpdates(bool userInitiated) {
         release.tag = rawTag;
         release.notes = rel.value("body").toString();
         release.pageUrl = QUrl(url);
-        for (const QJsonValue &a : rel.value("assets").toArray()) {
+        for (const auto &a : rel.value("assets").toArray()) {
             const QJsonObject o = a.toObject();
             release.assets.insert(o.value("name").toString(),
                                   QUrl(o.value("browser_download_url").toString()));
         }
-        win->m_latestRelease = release;
+        win->m_latestRelease = std::move(release);
         // Plain QAction text (no rich-text — menu bars render the
         // string verbatim). The leading ↗ keeps the call-to-action
         // glyph the user is used to from the status-bar variant.

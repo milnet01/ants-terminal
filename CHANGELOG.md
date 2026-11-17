@@ -209,6 +209,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The main window, Claude allowlist and roadmap write-half test code pass clang-tidy clean, with twelve unused includes gone from mainwindow.cpp.** (ANTS-6793)
+
 - **Each tab's session log stops at 1 GB: the tab keeps what it saved, stops logging, and the status bar says the log is full** (ANTS-6493)
 
 - **The widget search benchmark reads a capped match total ("100000+") and notes that its single-space case measures a capped scan.** (ANTS-6494)

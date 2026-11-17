@@ -69,13 +69,13 @@ public:
     explicit MainWindow(bool quakeMode = false, bool e2eMode = false,
                         QWidget *parent = nullptr);
     ~MainWindow() override;
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
 protected:
     void closeEvent(QCloseEvent *event) override;
     void showEvent(QShowEvent *event) override;
     void moveEvent(QMoveEvent *event) override;
     bool event(QEvent *event) override;
-    bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
     void onTitleChanged(const QString &title);

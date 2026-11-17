@@ -3,7 +3,6 @@
 #include "mainwindow_internal.h"
 
 #include "tokenusageengine.h"  // ANTS-3572 — foldMonthlyBucket / sumYear
-#include "guithread.h"       // ANTS-4682 — ants::onGuiThread in inline verbs
 #include <QDate>
 #include <QJsonObject>
 #include "themes.h"             // ANTS-1325: include directly where Themes:: is called
@@ -15,16 +14,11 @@
 #include "titlebar.h"
 #include "commandpalette.h"
 #include "dialogchrome.h"
-#include "aidialog.h"
-#include "sshdialog.h"
 #include "settingsdialog.h"
 #include "sessionmanager.h"
 #include "remotecontrol.h"
 #include "localsockethub.h"
-#include "resolvedroot.h"      // ANTS-1401 — terminalForCaller helper
-#include "rootprovider.h"      // ANTS-4932 § 2.4
 #include "mcptoolregistry.h"   // ANTS-4932 § 2.3
-#include "mcpdsocket.h"         // ANTS-5236 — reapStaleTerminalSockets
 #include "secureio.h"          // ANTS-4456 — ensurePrivateDir (0700)
 #include "reviewbuttonstate.h" // ANTS-1874 — Review-button porcelain predicate
 #include "gitwrap.h"           // ANTS-4999 — readOnlyEnvironment for git probes
@@ -43,14 +37,12 @@
 #include "claudetasklistdialog.h"
 #include "roadmapdialog.h"
 #include "claudeintegration.h"
-#include "claudesetup.h"        // ANTS-5236 — refreshStatusHookScript
 #include "claudestatuswidgets.h"
 #include "claudetabtracker.h"
 #include "tablistpanel.h"      // ANTS-5645 — side tab list
 #include <QSplitter>
 #include "mcpprojection.h"   // ANTS-2085 — mcp::setTerseDefault
 #include "mcpspill.h"        // ANTS-2094 — mcp::setOffloadConfig / spillSweep
-#include "mcporientation.h"  // ANTS-1897 — SessionStart hook installer.
 #include "themedstylesheet.h"
 #include "claudeprojects.h"
 #include "claudetranscript.h"
@@ -58,8 +50,6 @@
 #include "welcomedialog.h"         // ANTS-5558 — first-run welcome
 #include "selfupdate.h"           // ANTS-5560 — the self-updater
 #include "auditdialog.h"
-#include "auditrunner.h"      // ANTS-1351 — server-side audit runner.
-#include "testauditengine.h"  // ANTS-1397 — test_audit_* trio engine.
 #include "coldeyesdialog.h"   // ANTS-1721 — native cold-eyes review dialog.
 #include "testauditdialog.h"  // ANTS-1722 — native test-suite review dialog.
 #include "indiereviewdialog.h"  // ANTS-1258 — native independent code review.
@@ -67,26 +57,17 @@
 #include "projectsettings.h"    // ANTS-5728 — claude_chrome at launch
 #include "elidedlabel.h"
 #include "statusinfowindow.h"   // ANTS-5759 — a pill's tooltip in a window
-#include "globalshortcutsportal.h"
 #include "debuglog.h"
 #include "dialogshowtracer.h"
 #include "diffviewer.h"           // ANTS-1145 carve-out
 
 using namespace mainwindowdetail;
 
-namespace mainwindowdetail {
-
-// Defined below, after the Qt includes — sweeps stale
-// `/tmp/kwin_*_ants_*.js` orphans on startup.
-void sweepKwinScriptOrphansOnce();
-}  // namespace mainwindowdetail
-
 #ifdef ANTS_LUA_PLUGINS
 #include "pluginmanager.h"
 #include "luaengine.h"  // ANTS-2093 — project_query provider lambda
 #endif
 
-#include <algorithm>
 #include <QAbstractButton>
 #include <QApplication>
 #include <QCoreApplication>
@@ -169,6 +150,7 @@ bool g_relaunchOnQuit = false;
 }  // namespace mainwindowdetail
 
 namespace mainwindowdetail {
+namespace {
 // Names of shells that don't warrant a confirm-on-close prompt.
 // If a tab's only descendants are these, the close is silent.
 const QSet<QString> &safeShellNames() {
@@ -182,6 +164,7 @@ const QSet<QString> &safeShellNames() {
     };
     return kSet;
 }
+}  // namespace
 
 // Return the comm of the first non-shell descendant of `shellPid`,
 // or empty if every descendant is a safe shell (or there are no
@@ -230,6 +213,7 @@ QString firstNonShellDescendant(pid_t shellPid) {
 // without racing an in-flight script that another instance just wrote.
 // Runs once per process; a second MainWindow (File → New Window) does
 // not re-sweep.
+namespace {
 void sweepKwinScriptOrphansOnce() {
     static bool swept = false;
     if (swept) return;
@@ -249,6 +233,7 @@ void sweepKwinScriptOrphansOnce() {
         }
     }
 }
+}  // namespace
 
 
 // ANTS-1357: the literal lives at ClaudeIntegration::kMcpRcUnavailable
@@ -1317,8 +1302,7 @@ void MainWindow::applyTheme(const QString &name, ThemeSave save) {
     // unwind, so the restyle runs against a quiescent widget set.
     // Startup / programmatic callers (no active popup) stay synchronous.
     if (QApplication::activePopupWidget()) {
-        const QString deferred = name;
-        QTimer::singleShot(0, this, [this, deferred, save]() { applyTheme(deferred, save); });
+        QTimer::singleShot(0, this, [this, deferred = name, save]() { applyTheme(deferred, save); });
         return;
     }
 
@@ -2532,7 +2516,7 @@ void MainWindow::updateStatusBar() {
             gitBranch = m_gitCacheBranch;
         } else {
             gitBranch = GitRepo::branchOf(fullCwd);   // ANTS-6187
-            m_gitCacheCwd = fullCwd;
+            m_gitCacheCwd = std::move(fullCwd);
             m_gitCacheBranch = gitBranch;
             m_gitCacheMs = now;
         }
@@ -2752,10 +2736,8 @@ void MainWindow::refreshReviewButton() {
             stillCurrent = now && now->shellCwd() == cwd;
         }
         if (btn && stillCurrent) {
-            if (status != QProcess::NormalExit || exitCode == 128) {
-                btn->hide();           // not a git repo / git crash
-            } else if (exitCode != 0) {
-                btn->hide();
+            if (status != QProcess::NormalExit || exitCode != 0) {
+                btn->hide();           // not a git repo (128), git crash or error
             } else {
                 const QByteArray raw = guard ? guard->readAllStandardOutput()
                                               : QByteArray();
@@ -3121,7 +3103,7 @@ void MainWindow::checkAutoProfileRules(TerminalWidget *terminal) {
         s_lastRulesGen = currentGen;
     }
 
-    for (const QJsonValue &rv : rules) {
+    for (const auto &rv : rules) {
         QJsonObject rule = rv.toObject();
         QString pattern = rule.value("pattern").toString();
         QString type = rule.value("type").toString("title");
@@ -3217,7 +3199,7 @@ void MainWindow::showSnippetsDialog() {
     connect(dialog, &QObject::destroyed, dialog, [snippets]() { delete snippets; });
     auto loadSnippets = [snippets, table](const QString &filter = "") {
         table->setRowCount(0);
-        for (const QJsonValue &sv : *snippets) {
+        for (const auto &sv : *snippets) {
             QJsonObject s = sv.toObject();
             QString name = s.value("name").toString();
             QString cmd = s.value("command").toString();
@@ -3404,10 +3386,8 @@ void MainWindow::onPluginPaletteRegistered(const QString &pluginName,
         QKeySequence ks(hotkey);
         if (!ks.isEmpty()) entry.qaction->setShortcut(ks);
     }
-    QString plugin = pluginName;  // capture by value
-    QString actionId = action;
-    connect(entry.qaction, &QAction::triggered, this, [this, plugin, actionId]() {
-        if (m_pluginManager) m_pluginManager->firePaletteAction(plugin, actionId);
+    connect(entry.qaction, &QAction::triggered, this, [this, pluginName, action]() {
+        if (m_pluginManager) m_pluginManager->firePaletteAction(pluginName, action);
     });
 
     // Optional standalone QShortcut so the hotkey works even when the palette
@@ -3419,8 +3399,8 @@ void MainWindow::onPluginPaletteRegistered(const QString &pluginName,
         if (!ks.isEmpty()) {
             entry.shortcut = new QShortcut(ks, this);
             connect(entry.shortcut, &QShortcut::activated, this,
-                    [this, plugin, actionId]() {
-                if (m_pluginManager) m_pluginManager->firePaletteAction(plugin, actionId);
+                    [this, pluginName, action]() {
+                if (m_pluginManager) m_pluginManager->firePaletteAction(pluginName, action);
             });
         }
     }

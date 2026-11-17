@@ -19,10 +19,9 @@
 #include <QSaveFile>
 #include <QRegularExpression>
 
-static const QString s_sudoPrefix =
-    QStringLiteral("SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A ");
-
 namespace {
+
+constexpr char kSudoPrefix[] = "SUDO_ASKPASS=/usr/libexec/ssh/ksshaskpass sudo -A ";
 
 // ANTS-6759 — why a rule envWildcardVariable() names was not added.
 QString envWildcardHint(const QString &variable) {
@@ -426,7 +425,7 @@ QString ClaudeAllowlistDialog::normalizeRule(const QString &raw) {
         // Strip any existing -A flag to avoid doubling
         static const QRegularExpression reDashA(R"(^-A\s+)");  // ANTS-1647
         rest.remove(reDashA);
-        rule = QStringLiteral("Bash(") + s_sudoPrefix + rest + ")";
+        rule = QStringLiteral("Bash(") + QLatin1String(kSudoPrefix) + rest + ")";
     }
 
     // Bash commands without wildcard: Bash(git) → Bash(git *)
@@ -527,7 +526,7 @@ QString ClaudeAllowlistDialog::generalizeRule(const QString &rule) {
             static const QRegularExpression rootDeny(
                 R"(^(rm|sh|bash|zsh|dash|ksh|fish|env|python[0-9.]*|perl|ruby|node)$)");
             if (rootDeny.match(cmd.section(QLatin1Char('/'), -1)).hasMatch()) return {};
-            return QStringLiteral("Bash(") + s_sudoPrefix + cmd + " *)";
+            return QStringLiteral("Bash(") + QLatin1String(kSudoPrefix) + cmd + " *)";
         }
     }
 
