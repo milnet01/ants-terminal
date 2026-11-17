@@ -469,6 +469,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The trust-file concurrent-save test passes on a heavily loaded machine: a writer retries a save the lock refused** (ANTS-6808)
+
 - **remotecontrol_roadmap_log_batch.cpp builds without GCC's -Wnull-dereference warnings** (ANTS-6791)
 
 - **roadmap_migrate reuses a renamed section whose stored slug is out of date, so re-importing a roadmap no longer adds an empty copy of it** (ANTS-6790)

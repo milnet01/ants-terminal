@@ -638,7 +638,14 @@ void testTrustFile() {
                     const QString sha =
                         QStringLiteral("%1%2").arg(p, 2, 10, QLatin1Char('0'))
                             .arg(i, 62, 10, QLatin1Char('0'));
-                    if (!client.addTrustedSha(sha)) ++failed;
+                    // ANTS-6808 — TF-11 lets a save refuse when the lock
+                    // stays busy past its GUI-thread wait, which a loaded
+                    // run (the CI image) reaches. What TF-11c guards is that
+                    // no SAVED entry is lost, so a refusal is retried.
+                    bool saved = false;
+                    for (int t = 0; t < 20 && !saved; ++t)
+                        saved = client.addTrustedSha(sha);
+                    if (!saved) ++failed;
                 }
                 ::_exit(failed == 0 ? 0 : 1);
             }

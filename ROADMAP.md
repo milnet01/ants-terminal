@@ -114220,7 +114220,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-17 (IDE clang-tidy diagnostics).
   Lanes: mcp-roadmap-query-log, roadmap-store.
 
-- 📋 [ANTS-6808] **VerifyTrustGate TF-11c's concurrent saves all succeed under a loaded test run.**
+- ✅ [ANTS-6808] **VerifyTrustGate TF-11c's concurrent saves all succeed under a loaded test run.**
   Seen 2026-11-17 in the pre-push gate's build-test job (CI image,
   full suite in parallel): "TF-11c every concurrent save succeeds"
   failed and 99 of 100 SHAs survived. It passed 8 of 8 reruns alone.
@@ -114232,6 +114232,10 @@ reports are asked for separately, each time.
   Decide whether the test should retry a refused save, space its
   writers, or the lock should block (flock without LOCK_NB, under a
   timer) so a waiter is not starved.
+  Shipped 2026-11-17: TF-11c's writers retry a refused save (up to 20
+  tries), as TF-11 allows a refusal; the test still fails if a saved
+  entry is lost. Locally 48 of 48 loaded runs passed before and after;
+  the CI image failed it on two pushes before the fix.
   **Layman:** A test that saves the trust file from four processes at once sometimes fails when the machine is busy; it should pass every time.
   Kind: fix.
   Source: in-session-2026-11-17 (pre-push gate, CI image).
