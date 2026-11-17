@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6808 -->
+<!-- ants-roadmap-id-high-water: ANTS=6809 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74176,7 +74176,7 @@ the single highest-impact FP lever (untuned SAST 30-60% FP → tuned
 report initial FP rates 92% → as low as 6%); fingerprint/data-flow
 suppression that survives line drift.
 
-- 📋 [ANTS-1706] **Headless audit FP-parity — run the AuditDialog filter + baseline + AI-triage pipeline in `ants-audit` CLI / MCP `audit_run`.**
+- 📋 [ANTS-1706] **`audit_run` reports the findings that are new since a pinned baseline, and can hide findings below a confidence floor.**
   The report that triggered this section came from the
   headless generator, which emits raw aggregated findings: no
   baseline-diff, no `.audit_suppress`/comment-strip/dedup beyond the
@@ -74196,6 +74196,25 @@ suppression that survives line drift.
   Lanes: auditrunner, auditengine, auditdialog.
   Source: self-audit 2026-05-20; pairs with ANTS-1449.
   Progress (2026-07-25): one of the three legs landed via ANTS-3615 — the `.audit_allowlist.json` custom-regex filter is no longer GUI-only; its loader/matcher moved into AuditEngine and `runAudit` applies it per finding, alongside the ANTS-1820 learned-FP ledger, with the `suppressions` request field now governing both. So headless sweeps get the dialog's *pre-triage drop* parity. STILL OPEN, and this item stays the tracker for them: (i) baseline-diff — "new since `.audit_cache/baseline.json`" needs a `baseline` / `--new-only` request option (note ANTS-1870's since-last-run delta is adjacent but distinct: it diffs against the PRIOR RUN's findings sidecar, not a pinned baseline); (ii) a confidence floor — `AuditEngine::computeConfidence` exists but `runAudit` never materialises `Finding` objects, so wiring it means the v2 per-finding path deciding whether to build them; (iii) the AI-triage stage, which needs an LLM round-trip the headless verb currently has no seam for. Re-scope (i)+(ii) as one item and (iii) separately when picked up — they have very different costs.
+  Split (2026-11-17): (iii) AI triage is ANTS-6809. Leg (i) shipped:
+  `save_baseline` pins `.audit_cache/baseline-findings.json` (sidecar
+  format + tools[]; separate from the dialog's line-sensitive
+  baseline.json); every run with a baseline returns `since_baseline`.
+  Tests tests/features/audit_run_baseline/. STILL OPEN: (ii) the
+  confidence floor.
+
+- 📋 [ANTS-6809] **`audit_run` gets the audit dialog's AI-triage stage, so a headless run can mark findings as likely false positives.**
+  Leg (iii) of ANTS-1706. The dialog's triage round-trips each
+  finding through an LLM (auditdialog_triage.cpp) and caps confidence
+  at FALSE_POSITIVE <= 30 / TRUE_POSITIVE >= 80. The headless verb has
+  no seam for an LLM call: it runs synchronously in ants-mcpd with no
+  network client. Needs a design for where the call runs, its cost cap,
+  and what the envelope reports when no model is configured.
+  **Layman:** The pop-up audit window can ask an AI whether each warning is real; the Claude-facing audit can't yet.
+  Kind: enhancement.
+  Source: split from ANTS-1706 (2026-11-17).
+  Lanes: auditrunner, auditengine, auditdialog.
+  Splits-from: ANTS-1706.
 
 ### ⚡ Other improvements (performance, security, optimisations)
 

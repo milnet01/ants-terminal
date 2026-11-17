@@ -1912,6 +1912,82 @@ QList<internal::InProcessLane> inProcessLanes() {
     };
 }
 
+// The envelope's preview of a findings array: at most
+// kSamplesPerToolDefault entries (NOT the caller's top_findings_count, which
+// defaults to 0), without the internal `fp`. Callers keep exact counts.
+QJsonArray previewFindings(const QJsonArray &src) {
+    QJsonArray out;
+    for (int i = 0; i < src.size() && out.size() < kSamplesPerToolDefault; ++i) {
+        QJsonObject o = src.at(i).toObject();
+        o.remove(QStringLiteral("fp"));
+        out.append(o);
+    }
+    return out;
+}
+
+// ANTS-1706 — compare this run against the pinned baseline, then (on
+// saveBaseline) pin this run in its place. Only tools present in both are
+// compared: a tool the baseline never ran would report every finding as new.
+void applyBaseline(const QString &canonProject, const RunRequest &req,
+                   const QHash<QString, QJsonArray> &findingsByTool,
+                   bool findingsTruncated, RunResult &r) {
+    const AuditCache::SidecarLoad base = AuditCache::readFindingsSidecar(
+        canonProject, QLatin1String(AuditCache::kBaselineBasename));
+    if (base.present) {
+        QJsonObject sb;
+        if (!base.valid) {
+            sb[QStringLiteral("unavailable_reason")] =
+                QStringLiteral("baseline_unreadable");
+        } else if (base.truncated) {
+            sb[QStringLiteral("unavailable_reason")] =
+                QStringLiteral("baseline_truncated");
+        } else if (findingsTruncated) {
+            sb[QStringLiteral("unavailable_reason")] =
+                QStringLiteral("findings_truncated");
+        } else {
+            QJsonArray current;
+            QJsonArray notInBaseline;
+            for (auto it = r.byTool.constBegin(); it != r.byTool.constEnd(); ++it) {
+                if (!base.tools.contains(it.key())) {
+                    notInBaseline.append(it.key());
+                    continue;
+                }
+                for (const QJsonValue &v : findingsByTool.value(it.key()))
+                    current.append(v);
+            }
+            const QJsonArray fresh =
+                AuditDelta::newSinceBaseline(current, base.findings);
+            sb[QStringLiteral("new")]               = previewFindings(fresh);
+            sb[QStringLiteral("new_count")]         = fresh.size();
+            sb[QStringLiteral("baseline_commit")]   = base.commit;
+            sb[QStringLiteral("baseline_saved_at")] = base.isoTimestamp;
+            if (!notInBaseline.isEmpty())
+                sb[QStringLiteral("tools_not_in_baseline")] = notInBaseline;
+        }
+        r.sinceBaseline = sb;
+    }
+    if (!req.saveBaseline) return;
+    // A tool that timed out or crashed reported part of its findings; pinning
+    // them would show the rest as new next time. Leave it out.
+    QStringList tools;
+    QJsonArray findings;
+    for (auto it = r.byTool.constBegin(); it != r.byTool.constEnd(); ++it) {
+        if (it->status != QLatin1String("ok")) continue;
+        tools.append(it.key());
+        for (const QJsonValue &v : findingsByTool.value(it.key()))
+            findings.append(v);
+    }
+    tools.sort();
+    const QString path = AuditCache::writeBaseline(
+        canonProject, findings, tools, findingsTruncated);
+    if (path.isEmpty()) return;
+    QJsonObject saved;
+    saved[QStringLiteral("path")]           = path;
+    saved[QStringLiteral("findings_count")] = findings.size();
+    saved[QStringLiteral("tools")]          = QJsonArray::fromStringList(tools);
+    r.baselineSaved = saved;
+}
+
 }  // namespace
 
 RunResult runAudit(const RunRequest &req) {
@@ -1951,6 +2027,22 @@ RunResult runAudit(const RunRequest &req) {
                 .arg(req.topFindingsCount)
                 .arg(kTopFindingsMin).arg(kTopFindingsMax);
         return r;
+    }
+
+    // ── ANTS-1706 — a baseline pinned from a narrowed run would hold only
+    // part of the tree, so every finding outside it would read as new.
+    if (req.saveBaseline) {
+        const bool wholeTree = req.scope.isEmpty()
+            || req.scope == QLatin1String("auto")
+            || req.scope == QLatin1String("full");
+        if (!wholeTree || !req.paths.isEmpty() || !req.checks.isEmpty()) {
+            r.ok = false;
+            r.code  = QStringLiteral("bad_args");
+            r.error = QStringLiteral(
+                "audit_run: save_baseline needs a whole-tree run (scope "
+                "auto or full, no paths, no checks)");
+            return r;
+        }
     }
 
     // ── INV-15 / scope tag sanitisation.
@@ -2698,22 +2790,10 @@ RunResult runAudit(const RunRequest &req) {
                 r.deltaUnavailableReason =
                     QStringLiteral("findings_truncated");
             } else {
-                // Envelope arrays cap at kSamplesPerToolDefault (NOT the
-                // caller's top_findings_count, which defaults to 0) and drop
-                // the internal `fp`; the *_count fields stay exact (§ 2.8).
-                auto previewArray = [](const QJsonArray &src) {
-                    QJsonArray out;
-                    for (int i = 0; i < src.size()
-                                 && out.size() < kSamplesPerToolDefault; ++i) {
-                        QJsonObject o = src.at(i).toObject();
-                        o.remove(QStringLiteral("fp"));
-                        out.append(o);
-                    }
-                    return out;
-                };
+                // Preview arrays, exact *_count fields (§ 2.8).
                 QJsonObject delta;
-                delta[QStringLiteral("added")]   = previewArray(d.added);
-                delta[QStringLiteral("removed")] = previewArray(d.removed);
+                delta[QStringLiteral("added")]   = previewFindings(d.added);
+                delta[QStringLiteral("removed")] = previewFindings(d.removed);
                 delta[QStringLiteral("added_count")]   = d.addedCount;
                 delta[QStringLiteral("removed_count")] = d.removedCount;
                 delta[QStringLiteral("carried_forward_count")] =
@@ -2727,6 +2807,8 @@ RunResult runAudit(const RunRequest &req) {
     if (AuditDelta::capRecordedFindings(mergedForRecord, kSarifFindingsMax))
         mergedTruncated = true;
     r.findingsTruncated = mergedTruncated;
+
+    applyBaseline(canonProject, req, fullFindingsByTool, anyFindingsTruncated, r);
 
     // ── INV-12 / SARIF + optional HTML.
     //

@@ -97,6 +97,10 @@ struct RunRequest {
     // a silent partial exclusion would be worse than the noise it removes.
     // Each entry is validated through `isAuditArgSafe`, like `paths`.
     QStringList excludePaths;
+    // ANTS-1706 — pin this run's findings as the baseline later runs report
+    // against (`.audit_cache/baseline-findings.json`). Whole-tree runs only:
+    // a narrowing scope, `paths` or `checks` refuses bad_args.
+    bool        saveBaseline = false;
 };
 
 struct ToolResult {
@@ -217,6 +221,13 @@ struct RunResult {
     QJsonObject                delta;
     QString                    deltaUnavailableReason;
     bool                       findingsTruncated = false;
+    // ANTS-1706 — present when a baseline file exists:
+    // {new[], new_count, baseline_commit, baseline_saved_at,
+    // tools_not_in_baseline[]?}, or {unavailable_reason} when it cannot be
+    // compared. `baselineSaved` ({path, findings_count, tools[]}) is set when
+    // saveBaseline wrote a new one.
+    QJsonObject                sinceBaseline;
+    QJsonObject                baselineSaved;
 };
 
 // Aggregate cap = min((tools + in-process lanes) * capPerToolSeconds * 1.5,

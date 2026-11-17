@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QString>
+#include <QStringList>
 
 namespace AuditCache {
 
@@ -120,11 +121,26 @@ struct SidecarLoad {
     bool       valid = false;
     bool       truncated = false;
     QJsonArray findings;
+    QString    commit;         // as recorded; empty when absent
+    QString    isoTimestamp;
+    QStringList tools;         // ANTS-1706 — the baseline's; a run sidecar has none
 };
 SidecarLoad readFindingsSidecar(const QString &canonProject,
                                 const QString &basename);
 // Convenience: the `findings[]` array only (empty on any failure).
 QJsonArray loadFindingsSidecar(const QString &canonProject,
                                const QString &basename);
+
+// ANTS-1706 — the pinned baseline `audit_run` reports new findings against:
+// `<cacheDir>/baseline-findings.json`, a version-1 findings sidecar plus a
+// `tools` list naming the tools whose findings it holds. Read it with
+// readFindingsSidecar(canonProject, kBaselineBasename). It is not the audit
+// dialog's `baseline.json`, which holds line-sensitive dedup keys.
+inline constexpr const char *kBaselineBasename = "baseline-findings.json";
+
+// Write the baseline owner-only, replacing any earlier one. Returns its
+// absolute path, or an empty string when the write failed.
+QString writeBaseline(const QString &canonProject, const QJsonArray &findings,
+                      const QStringList &tools, bool truncated);
 
 }  // namespace AuditCache

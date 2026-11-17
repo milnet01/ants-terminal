@@ -39,6 +39,25 @@ bool ensureCacheDir(const QString &canonProject) {
     return ensurePrivateDir(d);
 }
 
+// ANTS-5151 — a findings file holds the full findings: written owner-only,
+// or not at all. An uncommitted QSaveFile discards its temp file. Shared by
+// the per-run sidecar and the ANTS-1706 baseline.
+bool writePrivateJson(const QString &path, const QJsonObject &doc) {
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly)) return false;
+    const QByteArray body = QJsonDocument(doc).toJson(QJsonDocument::Compact);
+    if (!setOwnerOnlyPerms(f) || f.write(body) != body.size() || !f.commit())
+        return false;
+    if (!setOwnerOnlyPerms(path)) {
+        QFile::remove(path);
+        qWarning() << "AuditCache: could not make" << path
+                   << "owner-only; removed";
+        return false;
+    }
+    fsyncParentDir(path);
+    return true;
+}
+
 }  // namespace
 
 QString cacheDir(const QString &canonProject) {
@@ -213,27 +232,11 @@ RecordedRun recordRun(const QString &canonProject,
         sidecar[QStringLiteral("findings")]      = mergedFindings;
         const QString sidecarPath =
             dir + QLatin1Char('/') + findingsBasename;
-        QSaveFile sc(sidecarPath);
-        if (sc.open(QIODevice::WriteOnly)) {
-            const QByteArray scBody =
-                QJsonDocument(sidecar).toJson(QJsonDocument::Compact);
-            // ANTS-5151 — the sidecar holds the full findings: private or not
-            // written. An uncommitted QSaveFile discards its temp file.
-            if (setOwnerOnlyPerms(sc) && sc.write(scBody) == scBody.size()
-                && sc.commit()) {
-                if (setOwnerOnlyPerms(sidecarPath)) {
-                    fsyncParentDir(sidecarPath);
-                    lastRun[QStringLiteral("findings_file")] = findingsBasename;
-                } else {
-                    QFile::remove(sidecarPath);
-                    qWarning() << "AuditCache: could not make findings sidecar "
-                                  "owner-only; removed" << sidecarPath;
-                }
-            } else {
-                qWarning() << "AuditCache: failed to write findings sidecar"
-                           << sidecarPath;
-            }
-        }
+        if (writePrivateJson(sidecarPath, sidecar))
+            lastRun[QStringLiteral("findings_file")] = findingsBasename;
+        else
+            qWarning() << "AuditCache: failed to write findings sidecar"
+                       << sidecarPath;
     }
 
     // Build the new manifest: version + last_run + history[].
@@ -432,12 +435,32 @@ AuditCache::SidecarLoad readFindingsSidecar(const QString &canonProject,
     s.valid     = true;
     s.truncated = o.value(QStringLiteral("truncated")).toBool(false);
     s.findings  = o.value(QStringLiteral("findings")).toArray();
+    s.commit    = o.value(QStringLiteral("commit")).toString();
+    s.isoTimestamp = o.value(QStringLiteral("iso_timestamp")).toString();
+    for (const QJsonValue &v : o.value(QStringLiteral("tools")).toArray())
+        s.tools.append(v.toString());
     return s;
 }
 
 QJsonArray loadFindingsSidecar(const QString &canonProject,
                                const QString &basename) {
     return readFindingsSidecar(canonProject, basename).findings;
+}
+
+QString writeBaseline(const QString &canonProject, const QJsonArray &findings,
+                      const QStringList &tools, bool truncated) {
+    if (!ensureCacheDir(canonProject)) return {};
+    const IsoNow now = isoNow();
+    QJsonObject doc;
+    doc[QStringLiteral("version")]       = 1;
+    doc[QStringLiteral("iso_timestamp")] = now.forManifest;
+    doc[QStringLiteral("commit")]        = gitInfo(canonProject).shortSha;
+    doc[QStringLiteral("truncated")]     = truncated;
+    doc[QStringLiteral("tools")]         = QJsonArray::fromStringList(tools);
+    doc[QStringLiteral("findings")]      = findings;
+    const QString path = cacheDirImpl(canonProject) + QLatin1Char('/')
+                         + QLatin1String(kBaselineBasename);
+    return writePrivateJson(path, doc) ? path : QString();
 }
 
 }  // namespace AuditCache

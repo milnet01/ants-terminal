@@ -319,6 +319,9 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
                 QStringLiteral("exclude_paths")).toArray();
             for (const QJsonValue &v : exclArr)
                 req.excludePaths.append(v.toString());
+            // ANTS-1706 — pin this run as the baseline later runs report against.
+            req.saveBaseline =
+                args.value(QStringLiteral("save_baseline")).toBool();
             // ANTS-3396 — opt-in async mode: spawn the sweep detached,
             // register a job, and return a handle immediately so the caller
             // never blocks on the ~60 s MCP transport cap. Default false →
@@ -604,6 +607,12 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
                         env["delta_unavailable_reason"] = r.deltaUnavailableReason;
                     if (r.findingsTruncated)
                         env["findings_truncated"] = true;
+                    // ANTS-1706 — findings new since the pinned baseline, and
+                    // the baseline this run saved. Each absent when empty.
+                    if (!r.sinceBaseline.isEmpty())
+                        env["since_baseline"] = r.sinceBaseline;
+                    if (!r.baselineSaved.isEmpty())
+                        env["baseline_saved"] = r.baselineSaved;
                     reply(QString::fromUtf8(
                         QJsonDocument(env).toJson(QJsonDocument::Compact)));
                 }, Qt::QueuedConnection);

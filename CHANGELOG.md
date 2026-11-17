@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_run` can pin a baseline and report what is new since it** (ANTS-1706)
+  `save_baseline:true` on a whole-tree run saves its findings to
+  `.audit_cache/baseline-findings.json`. Every later run then returns
+  `since_baseline` with the findings the baseline lacks (`new[]`,
+  `new_count`), so a sweep shows only fresh warnings.
+
 - **Review Changes names the work in progress, the way its commit will be named** (ANTS-6806)
   A "Work in progress" section above Status lists each roadmap id the
   uncommitted changes add, as `<ID>: <summary>`. The summary is the

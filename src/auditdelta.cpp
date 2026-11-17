@@ -82,4 +82,13 @@ bool capRecordedFindings(QJsonArray &merged, int maxEntries) {
     return true;
 }
 
+QJsonArray newSinceBaseline(const QJsonArray &current,
+                            const QJsonArray &baseline) {
+    const QSet<QString> pinned = fpSet(baseline);
+    QJsonArray out;
+    for (const QJsonValue &v : current)
+        if (!pinned.contains(fpOf(v))) out.append(v);
+    return out;
+}
+
 }  // namespace AuditDelta

@@ -3460,6 +3460,8 @@ if(ANTS_TESTS)
                 tests/features/audit_scope_flat_layout/test_audit_scope_flat_layout.cpp
                 # ANTS-1870 audit_run since-last-run findings delta.
                 tests/features/audit_run_delta/test_audit_run_delta.cpp
+                # ANTS-1706 audit_run pinned baseline.
+                tests/features/audit_run_baseline/test_audit_run_baseline.cpp
                 # ANTS-3846 a tool that printed its usage banner analysed
                 # nothing, and must not read as findings.
                 tests/features/audit_usage_not_findings/test_audit_usage_not_findings.cpp
@@ -3816,6 +3818,10 @@ if(ANTS_TESTS)
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1870 — since-last-run findings delta source-scrape.
         SRC_AUDITDELTA_CPP_PATH="${CMAKE_SOURCE_DIR}/src/auditdelta.cpp")
+    set_property(SOURCE tests/features/audit_run_baseline/test_audit_run_baseline.cpp
+        APPEND PROPERTY COMPILE_DEFINITIONS
+        # ANTS-1706 — the audit_run envelope copies the baseline blocks.
+        SRC_MCPTOOLREGISTRY_CPP_PATH="${CMAKE_SOURCE_DIR}/src/mcptoolregistry.cpp")
     set_property(SOURCE tests/features/indie_review_dispatch/test_indie_review_dispatch.cpp
         APPEND PROPERTY COMPILE_DEFINITIONS
         # ANTS-1352 — indie_review_dispatch source-scrape paths.

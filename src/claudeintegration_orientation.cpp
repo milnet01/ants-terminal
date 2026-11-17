@@ -2315,6 +2315,13 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "~60 s request timer — the async path never trips "
                         "the `transport: timed out` cap. Results are "
                         "written to .audit_cache regardless.");
+                    // ANTS-1706 — pin a baseline for since_baseline.
+                    QJsonObject saveBaselineProp;
+                    saveBaselineProp["type"] = "boolean";
+                    saveBaselineProp["description"] = QStringLiteral(
+                        "Pin this run's findings as the baseline. Whole-tree "
+                        "runs only. Every later run then returns "
+                        "since_baseline:{new[], new_count}.");
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
@@ -2331,6 +2338,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     props["exclude_paths"]        = exclProp;   // ANTS-3710
                     props["checks"]               = checksProp;
                     props["async"]                = asyncProp;
+                    props["save_baseline"]        = saveBaselineProp;  // ANTS-1706
                     props["caller_cwd"]           = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;

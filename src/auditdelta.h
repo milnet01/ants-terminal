@@ -43,4 +43,11 @@ DeltaResult computeDelta(const QJsonArray &current,
 // truncated:true.
 bool capRecordedFindings(QJsonArray &merged, int maxEntries);
 
+// ANTS-1706 — the findings in `current` whose `fp` is absent from
+// `baseline`, in `current`'s order: what is new since a pinned baseline.
+// Line-insensitive, like computeDelta, so a finding that only moved lines
+// is not new.
+QJsonArray newSinceBaseline(const QJsonArray &current,
+                            const QJsonArray &baseline);
+
 }  // namespace AuditDelta
