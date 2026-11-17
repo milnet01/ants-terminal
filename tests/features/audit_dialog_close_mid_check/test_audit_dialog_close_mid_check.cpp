@@ -22,7 +22,7 @@ TEST(AuditDialogCloseMidCheck, NoProcessSignalDuringDestruction) {
     Config cfg;
     auto *dlg = new AuditDialog(project.path(), nullptr, &cfg);
 
-    const auto procs = dlg->findChildren<QProcess *>(Qt::FindDirectChildrenOnly);
+    const auto procs = dlg->findChildren<QProcess *>(QString(), Qt::FindDirectChildrenOnly);
     ASSERT_FALSE(procs.isEmpty()) << "the dialog owns no QProcess";
     QPointer<QProcess> proc = procs.first();
     proc->start(QStringLiteral("sleep"), {QStringLiteral("30")});

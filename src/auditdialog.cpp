@@ -248,7 +248,7 @@ AuditDialog::~AuditDialog() {
     // after the members, and ~QProcess emitted finished into this dialog's
     // slots. Detach them first and let each finish on its own; ~QObject drops
     // this dialog's connections before any of them can signal again.
-    for (QProcess *p : findChildren<QProcess *>(Qt::FindDirectChildrenOnly)) {
+    for (QProcess *p : findChildren<QProcess *>(QString(), Qt::FindDirectChildrenOnly)) {
         p->setParent(nullptr);
         auditdialogdetail::releaseProcess(p);
     }
