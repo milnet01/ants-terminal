@@ -94359,7 +94359,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: check-doc 2026-11-15 (ANTS-6471 amendment).
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6790] **roadmap_migrate keeps one section per title when a section's stored slug no longer matches its title.**
+- ✅ [ANTS-6790] **roadmap_migrate keeps one section per title when a section's stored slug no longer matches its title.**
   Seen 2026-11-16 migrating a .backup copy of the live store: the
   rendered file gains a second "### Colony — multi-session
   orchestration" heading and intro, with no items, before
@@ -94370,6 +94370,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   inserts a new section (parent 721) and moves the items there; row 750
   stays and renders empty. Reproduce on a scratch copy; decide whether
   migrate matches by title as well as slug, or retitle_section re-slugs.
+  Shipped 2026-11-17: resolveSections() adopts, by title, the one stored
+  section the plan no longer names, and re-slugs it. Verified on a
+  scratch copy of the live store: the Colony section stays one row
+  (750), re-slugged and re-parented.
   **Layman:** Re-importing the roadmap no longer adds an empty copy of a renamed section.
   Kind: fix.
   Source: in-session-2026-11-16 (ANTS-6778 scratch-store migrate).

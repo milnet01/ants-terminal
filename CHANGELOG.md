@@ -469,6 +469,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **roadmap_migrate reuses a renamed section whose stored slug is out of date, so re-importing a roadmap no longer adds an empty copy of it** (ANTS-6790)
+
 - **`file_outline` reads NASM, CMake and YAML, and the review verbs read them too** (ANTS-6801)
   NASM labels, macros and `equ` constants; CMake functions, macros and
   build targets (`CMakeLists.txt` included); YAML top-level keys. The

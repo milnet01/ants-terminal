@@ -771,7 +771,12 @@ TEST(RoadmapRender, Ants3818NoUnsortedSectionConsumer) {
                              // so document order cannot reach the answer, and
                              // sorting to count would be work whose result is
                              // discarded.
-                             QStringLiteral("roadmapmigrateverb.cpp")};
+                             QStringLiteral("roadmapmigrateverb.cpp"),
+                             // ANTS-6790 — resolveSections() groups the rows
+                             // the plan no longer names by title, and adopts a
+                             // title only when one row holds it, so the order
+                             // the rows arrive in cannot change the answer.
+                             QStringLiteral("roadmapmigrateload.cpp")};
     QStringList offenders;
     const QStringList files = srcDir.entryList(
         {QStringLiteral("*.cpp"), QStringLiteral("*.h")}, QDir::Files, QDir::Name);

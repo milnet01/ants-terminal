@@ -2223,3 +2223,58 @@ TEST(RoadmapMigrateLoad, LinkToAnItemThisRunDeletesIsNotStored) {
     EXPECT_TRUE(f.scalar(QStringLiteral("SELECT extras FROM item WHERE id = 'A-2'"))
                     .contains(QStringLiteral("unresolved_links")));
 }
+
+// ANTS-6790 — a stored section whose slug no longer matches its title is
+// re-slugged, not duplicated. Run 1 stores the section under an old slug; run 2
+// derives a new slug for the same title. Before the fix, findSection() missed,
+// addSection() added a second row, and the old one rendered as an empty copy.
+TEST(RoadmapMigrateLoad, Ants6790StaleSlugSectionIsReslugged) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    PlannedSection old = section(QStringLiteral("old-slug"));
+    old.title = QStringLiteral("Colony");
+    const auto first = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("old-slug"), 0)},
+               {old}),
+        f.opts());
+    ASSERT_TRUE(first.ok) << first.error.toStdString();
+    const QString idBefore = f.scalar(QStringLiteral("SELECT section_id FROM section"));
+
+    PlannedSection fresh = section(QStringLiteral("colony"));
+    fresh.title = QStringLiteral("Colony");
+    const auto again = RoadmapMigrateLoad::load(
+        f.store,
+        planOf({item(QStringLiteral("A-1"), QStringLiteral("one"), QStringLiteral("colony"), 0)},
+               {fresh}),
+        f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    EXPECT_EQ(f.count(QStringLiteral("section")), 1)
+        << "the stale-slug row was kept beside a new one";
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT slug FROM section")).toStdString(), "colony");
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT section_id FROM section")), idBefore)
+        << "the existing row is reused, so element and item filing keep pointing at it";
+}
+
+// ANTS-6790 — the title match adopts only an unambiguous row: two stale rows
+// with one title cannot say which is meant, so the plan's section is added.
+TEST(RoadmapMigrateLoad, Ants6790AmbiguousTitleIsNotAdopted) {
+    Fixture f;
+    QString err;
+    ASSERT_TRUE(f.store.open(&err)) << err.toStdString();
+
+    PlannedSection a = section(QStringLiteral("a"));
+    PlannedSection b = section(QStringLiteral("b"));
+    a.title = b.title = QStringLiteral("Notes");
+    ASSERT_TRUE(RoadmapMigrateLoad::load(f.store, planOf({}, {a, b}), f.opts()).ok);
+
+    PlannedSection fresh = section(QStringLiteral("notes"));
+    fresh.title = QStringLiteral("Notes");
+    const auto again = RoadmapMigrateLoad::load(f.store, planOf({}, {fresh}), f.opts());
+    ASSERT_TRUE(again.ok) << again.error.toStdString();
+    EXPECT_EQ(f.count(QStringLiteral("section")), 3);
+    EXPECT_EQ(f.scalar(QStringLiteral("SELECT COUNT(*) FROM section WHERE slug IN ('a','b')")),
+              QStringLiteral("2"));
+}

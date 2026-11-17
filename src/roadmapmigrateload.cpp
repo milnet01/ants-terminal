@@ -357,6 +357,25 @@ bool Loader::resolveSections() {
                          return a->level < b->level;
                      });
 
+    // ANTS-6790 — a stored row whose slug the plan no longer derives, keyed by
+    // title. A slug is derived from its heading, so a row retitled without a
+    // re-slug misses findSection() below; adopting it by title keeps one row
+    // where an insert would leave the old one rendering as an empty copy. Only
+    // a title held by exactly one such row is adopted: two cannot say which.
+    QHash<QString, QVector<qint64>> staleByTitle;
+    {
+        QSet<QString> planSlugs;
+        for (const PlannedSection &s : plan.sections)
+            planSlugs.insert(notNull(s.slug));
+        err.clear();
+        const auto stored = store.listSections(projectId, &err);
+        if (!stored)
+            return fail(err);
+        for (const auto &row : *stored)
+            if (!planSlugs.contains(row.slug))
+                staleByTitle[row.title].push_back(row.sectionId);
+    }
+
     for (const PlannedSection *s : ordered) {
         std::optional<qint64> parentId;
         if (!s->parentSlug.isEmpty()) {
@@ -376,9 +395,19 @@ bool Loader::resolveSections() {
         }
 
         err.clear();
-        const auto found = store.findSection(projectId, notNull(s->slug), &err);
+        auto found = store.findSection(projectId, notNull(s->slug), &err);
         if (!err.isEmpty())
             return fail(err);
+        bool reslugged = false;
+        if (const auto stale = staleByTitle.constFind(s->title);
+            !found && stale != staleByTitle.constEnd() && stale->size() == 1) {
+            // findSection() missed, so the plan's slug is free: no collision.
+            if (!store.setSectionSlug(stale->first(), notNull(s->slug), &err))
+                return fail(err);
+            found = stale->first();
+            reslugged = true;
+            staleByTitle.remove(s->title);
+        }
 
         // ANTS-3782 § 2.2 — which file this section came from, resolved
         // through plan.sources. Index 0 is the live roadmap and writes NULL.
@@ -415,7 +444,7 @@ bool Loader::resolveSections() {
         if (!cur)
             return fail(err.isEmpty() ? QStringLiteral("section %1 vanished").arg(*found)
                                       : err);
-        bool changed = false;
+        bool changed = reslugged;
         // ANTS-3796 § 2.3.1 — position joins the comparison, or a section that
         // MOVED reads as unchanged and Outcome::sectionsWritten stops counting
         // it. Note the dense sequence means a heading inserted mid-file
