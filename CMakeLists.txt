@@ -1100,6 +1100,8 @@ add_library(ants_dialogs_lib STATIC
     src/roadmapdialog.cpp
     src/roadmapshortcutsdialog.cpp
     src/diffviewer.cpp
+    # ANTS-6806 — the "Work in progress" lines diffviewer renders.
+    src/reviewwip.cpp
     src/sshdialog.cpp
     src/aidialog.cpp
     src/aboutdialogs.cpp
@@ -4176,7 +4178,9 @@ if(ANTS_TESTS)
                 # ANTS-5774 — rendering the diff must not sever others'
                 # links to the Copy Diff button (Qt's style-cache cleanup).
                 # Behavioural, real diffviewer::show().
-                tests/features/review_changes_style_cache/test_review_changes_style_cache.cpp)
+                tests/features/review_changes_style_cache/test_review_changes_style_cache.cpp
+                # ANTS-6806 — the "Work in progress" section above Status.
+                tests/features/review_changes_wip/test_review_changes_wip.cpp)
     target_compile_definitions(test_dialogs PRIVATE
         # ANTS-3346 — debt-sweep bulk-defer gate source-grep lock.
         "ANTS_AUDITDIALOG_SOURCES=\"${_ants_auditdialog_joined}\""

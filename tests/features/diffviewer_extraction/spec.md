@@ -11,7 +11,7 @@ asserts.
 
 - **INV-1** `src/diffviewer.h` declares the exact signature
   `QDialog *show(QWidget *parent, const QString &cwd, const
-  QString &themeName);`. Locks parameter order/types so a future
+  QString &themeName, const QString &roadmapPath = QString());`. Locks parameter order/types so a future
   "minor cleanup" PR can't silently reorder them.
 - **INV-2a** `src/diffviewer.cpp` contains the structural markers:
   `reviewChangesDialog` objectName, `struct ProbeState`,

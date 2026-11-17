@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **Review Changes names the work in progress, the way its commit will be named** (ANTS-6806)
+  A "Work in progress" section above Status lists each roadmap id the
+  uncommitted changes add, as `<ID>: <summary>`. The summary is the
+  CHANGELOG entry those changes add for the id, else its roadmap headline.
+
 - **changelog_log writes new entries in the style the changelog already uses: bold or plain, wrapped or not, with or without blank lines between** (ANTS-6800)
 
 - **`source_scrapes` finds the strings Python and shell tests look for, and can leave out readers that only list files** (ANTS-6782)

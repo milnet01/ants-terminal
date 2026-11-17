@@ -93,13 +93,15 @@ static int runMain() {
     static const char *kSignature =
         "QDialog *show(QWidget *parent,\n"
         "              const QString &cwd,\n"
-        "              const QString &themeName);";
+        "              const QString &themeName,\n"
+        "              const QString &roadmapPath = QString());";
     if (!contains(dvHeader, kSignature))
         fail("INV-1",
             "src/diffviewer.h does not declare the exact signature "
             "`QDialog *show(QWidget *parent, const QString &cwd, "
-            "const QString &themeName);` — refactor must preserve "
-            "parameter order and types");
+            "const QString &themeName, const QString &roadmapPath = "
+            "QString());` — refactor must preserve parameter order and "
+            "types");
 
     // INV-2a: structural markers in diffviewer.cpp.
     if (dvImpl.empty())

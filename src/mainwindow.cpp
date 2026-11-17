@@ -2914,7 +2914,12 @@ void MainWindow::showDiffViewer() {
     if (reviewBtn) reviewBtn->setEnabled(false);
     QPointer<QPushButton> reviewBtnGuard(reviewBtn);
 
-    QDialog *dialog = diffviewer::show(this, cwd, m_currentTheme);
+    // ANTS-6806 — the roadmap names the dialog's "Work in progress" lines;
+    // the same finder the Roadmap button uses.
+    const QString canonical = QFileInfo(cwd).canonicalFilePath();
+    const QString roadmapPath = canonical.isEmpty()
+        ? QString() : RemoteControl::roadmapFileFor(canonical);
+    QDialog *dialog = diffviewer::show(this, cwd, m_currentTheme, roadmapPath);
 
     connect(dialog, &QObject::destroyed, this, [this, reviewBtnGuard]() {
         if (reviewBtnGuard) {

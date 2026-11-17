@@ -5,6 +5,7 @@
 #include "themes.h"
 #include "treewatcher.h"
 #include "hostexec.h"   // ANTS-5598 — git and gh run on the host inside a Flatpak
+#include "reviewwip.h"  // ANTS-6806 — the Work in progress lines
 
 #include <QDialog>
 #include <QFile>
@@ -169,7 +170,8 @@ QString lineCountSuffix(const QString &baseDir, const QString &rel) {
 
 QDialog *show(QWidget *parent,
               const QString &cwd,
-              const QString &themeName) {
+              const QString &themeName,
+              const QString &roadmapPath) {
     // Build the dialog BEFORE running any git command. Plain
     // Qt::Dialog flags — no modality (ApplicationModal was causing
     // flaky first-open on KWin when combined with the frameless
@@ -397,7 +399,7 @@ QDialog *show(QWidget *parent,
     // refresh can't poison the new render.
     auto runProbes = [dialog, probeHost, cwd, dlgGuard, viewerGuard, copyGuard,
                       liveStatusGuard, themeName, lastHtml, gitEnv,
-                      generation, lastRaw]() {
+                      generation, lastRaw, roadmapPath]() {
         if (!dlgGuard) return;
         if (liveStatusGuard) {
             liveStatusGuard->setText(QStringLiteral("● refreshing…"));
@@ -416,7 +418,7 @@ QDialog *show(QWidget *parent,
     // the full HTML.
     auto finalize = [state, dlgGuard, viewerGuard, copyGuard,
                      liveStatusGuard, themeName, lastHtml, generation,
-                     lastRaw]() {
+                     lastRaw, roadmapPath]() {
         if (--state->pending > 0) return;
         if (!dlgGuard || !viewerGuard) return;
         // ANTS-5059 — a newer round has started; its render wins.
@@ -496,6 +498,28 @@ QDialog *show(QWidget *parent,
                 .arg(lth.textSecondary.name(), s.toHtmlEscaped());
         };
 
+        // ANTS-6806 — name the uncommitted work the way its commit will be
+        // named: "<ID>: <summary>" per roadmap id the diff adds.
+        if (!roadmapPath.isEmpty()) {
+            const QStringList wip = reviewwip::lines(
+                state->diff, reviewwip::headlines(roadmapPath));
+            if (!wip.isEmpty()) {
+                section(QStringLiteral("Work in progress"));
+                constexpr int kMaxWipLines = 20;
+                for (int i = 0; i < wip.size() && i < kMaxWipLines; ++i) {
+                    const QString &w = wip.at(i);
+                    const qsizetype colon = w.indexOf(QStringLiteral(": "));
+                    html += QStringLiteral("<span style='color: %1;'>%2</span>%3\n")
+                                .arg(lth.ansi[4].name(), w.left(colon).toHtmlEscaped(),
+                                     w.mid(colon).toHtmlEscaped());
+                }
+                if (wip.size() > kMaxWipLines)
+                    html += QStringLiteral("<span style='color: %1;'>… %2 more</span>\n")
+                                .arg(lth.textSecondary.name())
+                                .arg(wip.size() - kMaxWipLines);
+                html += "\n";
+            }
+        }
         if (!state->status.isEmpty()) {
             section(QStringLiteral("Status"));
             for (const QString &line : state->status.split('\n')) {

@@ -74917,7 +74917,7 @@ Navigation + scroll affordances for the Review Changes dialog, requested
   Source: user-request-2026-08-28.
   Lanes: diffviewer.
 
-- 📋 [ANTS-6806] **Review Changes names the uncommitted work in a "Work in progress" section above Status.**
+- ✅ [ANTS-6806] **Review Changes names the uncommitted work in a "Work in progress" section above Status.**
   User request 2026-11-17: the dialog names work only once it is
   committed (the Unpushed commits subjects); uncommitted files show
   under Status with no heading. Decided 2026-11-17 by the user: name it

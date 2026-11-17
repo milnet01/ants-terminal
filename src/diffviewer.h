@@ -25,9 +25,11 @@ namespace diffviewer {
 // Build and show the Review Changes dialog for `cwd`. Returns the
 // dialog so the caller can connect to its destroyed() signal for
 // post-close work. The dialog handles its own lifetime via
-// WA_DeleteOnClose.
+// WA_DeleteOnClose. `roadmapPath` is the project's roadmap file, which
+// names the "Work in progress" lines (ANTS-6806); empty shows none.
 QDialog *show(QWidget *parent,
               const QString &cwd,
-              const QString &themeName);
+              const QString &themeName,
+              const QString &roadmapPath = QString());
 
 }  // namespace diffviewer

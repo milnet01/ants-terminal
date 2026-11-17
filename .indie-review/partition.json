@@ -616,6 +616,8 @@
         "src/diffviewer.cpp",
         "src/diffviewer.h",
         "src/main.cpp",
+        "src/reviewwip.cpp",
+        "src/reviewwip.h",
         "src/settingsdialog.cpp",
         "src/settingsdialog.h",
         "src/sshdialog.cpp",
