@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6805 -->
+<!-- ants-roadmap-id-high-water: ANTS=6806 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74916,6 +74916,23 @@ Navigation + scroll affordances for the Review Changes dialog, requested
   Kind: enhancement.
   Source: user-request-2026-08-28.
   Lanes: diffviewer.
+
+- 📋 [ANTS-6806] **Review Changes names the uncommitted work in a "Work in progress" section above Status.**
+  User request 2026-11-17: the dialog names work only once it is
+  committed (the Unpushed commits subjects); uncommitted files show
+  under Status with no heading. Decided 2026-11-17 by the user: name it
+  the way a commit is named. For each roadmap id the uncommitted diff
+  mentions, one line `<ID>: <summary>`, the summary taken from the
+  CHANGELOG bullet the diff adds citing that id; with no bullet yet, the
+  id's roadmap headline. No ids, no section. Built in diffviewer.cpp's
+  show(), above section("Status").
+  Hot reload: the dialog runs in the terminal process, so it reaches a
+  running terminal only after a relaunch; it holds no running state
+  (rebuilt each time the dialog opens or refreshes).
+  **Layman:** The Review Changes window will show a heading for the job in progress, worded like the commit it becomes, not only for work already committed.
+  Kind: feature.
+  Source: user-request-2026-11-17.
+  Lanes: review-changes.
 
 ### 🐛 v0.7.94 ship-day findings (2026-06-04)
 
