@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The `audit_run` since-last-run design names the function that builds its reply instead of a line number that had moved.** (ANTS-6814)
+
 - **Making the window shorter while a full-screen app such as less is open keeps the newest lines of the normal screen behind it; the older ones move to scrollback.** (ANTS-6812)
 
 - **The test audit skips only build trees (`build`, `build-*`, `cmake-build-*`) and reads tests in folders such as `buildtools/`.** (ANTS-6544)

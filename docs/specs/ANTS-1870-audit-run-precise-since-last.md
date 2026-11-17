@@ -284,8 +284,8 @@ non-empty `since-last-run` with a readable, untruncated prior baseline.
 
 ### 2.8 Envelope additions
 
-Added to the `audit_run` reply built at `src/mainwindow.cpp:4595`+ (beside
-`prior_run` `:4605` / `changed_files_count` `:4612`):
+Added to the `audit_run` reply built in `mcp::registerProjectScopedVerbs()`
+(`src/mcptoolregistry.cpp`), beside `prior_run` and `changed_files_count`:
 
 ```json
 {

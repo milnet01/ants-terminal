@@ -95550,10 +95550,13 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: found-while-fixing-ANTS-6531.
   Lanes: terminal-widget.
 
-- 📋 [ANTS-6814] **The ANTS-1870 spec cites src/mainwindow.cpp:4595, a line the file no longer has.**
+- ✅ [ANTS-6814] **The ANTS-1870 spec cites src/mainwindow.cpp:4595, a line the file no longer has.**
   check-doc.py lineref on docs/specs/ANTS-1870-audit-run-precise-since-last.md
   names src/mainwindow.cpp:4595; the file is shorter now. Re-point the
   citation at the symbol it meant, written as file:N:token.
+  Fixed 2026-11-17. § 2.8 now names mcp::registerProjectScopedVerbs() in
+  src/mcptoolregistry.cpp, with no line numbers; check-doc's lineref
+  finding is gone.
   **Layman:** A design document points at a line of code that has moved.
   Kind: doc-fix.
   Source: check-doc 2026-11-17, while amending ANTS-1870.
