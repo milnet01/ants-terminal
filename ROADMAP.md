@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6807 -->
+<!-- ants-roadmap-id-high-water: ANTS=6808 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -114219,6 +114219,23 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: in-session-2026-11-17 (IDE clang-tidy diagnostics).
   Lanes: mcp-roadmap-query-log, roadmap-store.
+
+- 📋 [ANTS-6808] **VerifyTrustGate TF-11c's concurrent saves all succeed under a loaded test run.**
+  Seen 2026-11-17 in the pre-push gate's build-test job (CI image,
+  full suite in parallel): "TF-11c every concurrent save succeeds"
+  failed and 99 of 100 SHAs survived. It passed 8 of 8 reruns alone.
+  Cause, read from the code: FilePersistedTrustClient takes
+  ConfigWriteLock with kGuiTimeoutMs (250 ms), and the lock polls
+  flock every 50 ms with no fairness, so a writer can lose five polls
+  in a row to the other three back-to-back writers and refuse. The
+  refusal is reported, not silent, so no entry is lost unreported.
+  Decide whether the test should retry a refused save, space its
+  writers, or the lock should block (flock without LOCK_NB, under a
+  timer) so a waiter is not starved.
+  **Layman:** A test that saves the trust file from four processes at once sometimes fails when the machine is busy; it should pass every time.
+  Kind: fix.
+  Source: in-session-2026-11-17 (pre-push gate, CI image).
+  Lanes: dialog-chrome-theme.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 
