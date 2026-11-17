@@ -1892,6 +1892,62 @@ ParsedCounts parseWithSuppression(const QString &tool, const QString &raw,
     return c;
 }
 
+int confidenceFor(const QString &tool, const QJsonObject &finding,
+                  bool corroborated) {
+    Finding f;
+    const QString level =
+        sarifLevelFor(finding.value(QStringLiteral("severity")).toString());
+    f.severity = level == QLatin1String("error")   ? Severity::Critical
+               : level == QLatin1String("warning") ? Severity::Major
+                                                   : Severity::Minor;
+    // ANTS-2003 — the dialog scores gitleaks as its secrets check.
+    f.source = tool == QLatin1String("gitleaks") ? QStringLiteral("secrets")
+                                                 : tool;
+    // Tools print project-relative paths; the dialog's test-path match wants
+    // a separator before `tests/`, so give a relative path a leading one.
+    const QString file = finding.value(QStringLiteral("file")).toString();
+    f.file = file.startsWith(QLatin1Char('/')) ? file : QLatin1Char('/') + file;
+    f.message = finding.value(QStringLiteral("message")).toString();
+    f.highConfidence = corroborated;
+    return AuditEngine::computeConfidence(f);
+}
+
+QHash<QString, QJsonArray> applyConfidenceFloor(
+    const QHash<QString, QJsonArray> &findingsByTool, int floor,
+    QHash<QString, int> *dropped) {
+    // file:line -> the tools that reported it, the dialog's corroboration.
+    auto locationOf = [](const QJsonObject &o) {
+        const int line = o.value(QStringLiteral("line")).toInt();
+        const QString file = o.value(QStringLiteral("file")).toString();
+        return (file.isEmpty() || line <= 0)
+            ? QString() : file + QLatin1Char(':') + QString::number(line);
+    };
+    QHash<QString, QSet<QString>> toolsAt;
+    for (auto it = findingsByTool.constBegin(); it != findingsByTool.constEnd(); ++it)
+        for (const QJsonValue &v : it.value()) {
+            const QString loc = locationOf(v.toObject());
+            if (!loc.isEmpty()) toolsAt[loc].insert(it.key());
+        }
+
+    QHash<QString, QJsonArray> kept;
+    for (auto it = findingsByTool.constBegin(); it != findingsByTool.constEnd(); ++it) {
+        QJsonArray &out = kept[it.key()];
+        int gone = 0;
+        for (const QJsonValue &v : it.value()) {
+            QJsonObject o = v.toObject();
+            const QString loc = locationOf(o);
+            const bool corroborated =
+                !loc.isEmpty() && toolsAt.value(loc).size() >= 2;
+            const int score = confidenceFor(it.key(), o, corroborated);
+            if (score < floor) { ++gone; continue; }
+            o[QStringLiteral("confidence")] = score;
+            out.append(o);
+        }
+        if (dropped) (*dropped)[it.key()] = gone;
+    }
+    return kept;
+}
+
 }  // namespace internal
 
 namespace {
@@ -1928,8 +1984,11 @@ QJsonArray previewFindings(const QJsonArray &src) {
 // ANTS-1706 — compare this run against the pinned baseline, then (on
 // saveBaseline) pin this run in its place. Only tools present in both are
 // compared: a tool the baseline never ran would report every finding as new.
+// The comparison reads the findings the confidence floor left shown; the save
+// reads them all, so a floor never shrinks the baseline.
 void applyBaseline(const QString &canonProject, const RunRequest &req,
                    const QHash<QString, QJsonArray> &findingsByTool,
+                   const QHash<QString, QJsonArray> &shownFindingsByTool,
                    bool findingsTruncated, RunResult &r) {
     const AuditCache::SidecarLoad base = AuditCache::readFindingsSidecar(
         canonProject, QLatin1String(AuditCache::kBaselineBasename));
@@ -1952,7 +2011,7 @@ void applyBaseline(const QString &canonProject, const RunRequest &req,
                     notInBaseline.append(it.key());
                     continue;
                 }
-                for (const QJsonValue &v : findingsByTool.value(it.key()))
+                for (const QJsonValue &v : shownFindingsByTool.value(it.key()))
                     current.append(v);
             }
             const QJsonArray fresh =
@@ -2029,6 +2088,14 @@ RunResult runAudit(const RunRequest &req) {
         return r;
     }
 
+    if (req.minConfidence < 0 || req.minConfidence > 100) {
+        r.ok = false;
+        r.code  = QStringLiteral("bad_args");
+        r.error = QStringLiteral(
+            "audit_run: min_confidence %1 out of [0, 100]")
+                .arg(req.minConfidence);
+        return r;
+    }
     // ── ANTS-1706 — a baseline pinned from a narrowed run would hold only
     // part of the tree, so every finding outside it would read as new.
     if (req.saveBaseline) {
@@ -2702,6 +2769,24 @@ RunResult runAudit(const RunRequest &req) {
             finish(o.id, o.status, o.output, o.elapsedMs);
     }
 
+    // ── ANTS-1706 — the confidence floor. It changes what the reply shows
+    // (counts, samples, top_findings, since_baseline.new) and nothing the
+    // run records: the SARIF, the findings sidecar and a saved baseline
+    // still read fullFindingsByTool.
+    QHash<QString, QJsonArray> shownFindingsByTool = fullFindingsByTool;
+    r.minConfidence = req.minConfidence;
+    if (req.minConfidence > 0) {
+        QHash<QString, int> dropped;
+        shownFindingsByTool = internal::applyConfidenceFloor(
+            fullFindingsByTool, req.minConfidence, &dropped);
+        for (auto it = r.byTool.begin(); it != r.byTool.end(); ++it) {
+            const int gone = dropped.value(it.key());
+            it->afterFilterCount -= gone;
+            r.belowConfidenceFloor += gone;
+            it->samples = previewFindings(shownFindingsByTool.value(it.key()));
+        }
+    }
+
     // ── Tally totals.
     for (auto it = r.byTool.constBegin(); it != r.byTool.constEnd(); ++it) {
         r.totalRaw         += it->rawCount;
@@ -2808,7 +2893,8 @@ RunResult runAudit(const RunRequest &req) {
         mergedTruncated = true;
     r.findingsTruncated = mergedTruncated;
 
-    applyBaseline(canonProject, req, fullFindingsByTool, anyFindingsTruncated, r);
+    applyBaseline(canonProject, req, fullFindingsByTool, shownFindingsByTool,
+                  anyFindingsTruncated, r);
 
     // ── INV-12 / SARIF + optional HTML.
     //

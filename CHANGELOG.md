@@ -14,6 +14,12 @@ for security-relevant changes.
 
 ### Added
 
+- **`audit_run` takes a confidence floor** (ANTS-1706)
+  `min_confidence:N` scores each finding as the audit window does and
+  hides those below N from the counts, samples, top findings and
+  `since_baseline`. Each shown sample carries its `confidence`. The
+  saved report, run record and baseline keep every finding.
+
 - **`audit_run` can pin a baseline and report what is new since it** (ANTS-1706)
   `save_baseline:true` on a whole-tree run saves its findings to
   `.audit_cache/baseline-findings.json`. Every later run then returns

@@ -2322,6 +2322,12 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                         "Pin this run's findings as the baseline. Whole-tree "
                         "runs only. Every later run then returns "
                         "since_baseline:{new[], new_count}.");
+                    QJsonObject minConfProp;
+                    minConfProp["type"] = "integer";
+                    minConfProp["description"] = QStringLiteral(
+                        "Hide findings below this confidence (0-100, default "
+                        "0 = off) from counts and samples; saved files keep "
+                        "them.");
                     QJsonObject callerProp;
                     callerProp["type"] = "string";
                     callerProp["description"] = QStringLiteral(
@@ -2339,6 +2345,7 @@ void appendToolSchemasOrientation(QJsonArray &tools) {
                     props["checks"]               = checksProp;
                     props["async"]                = asyncProp;
                     props["save_baseline"]        = saveBaselineProp;  // ANTS-1706
+                    props["min_confidence"]       = minConfProp;       // ANTS-1706
                     props["caller_cwd"]           = callerProp;
                     schema["properties"] = props;
                     QJsonArray req;

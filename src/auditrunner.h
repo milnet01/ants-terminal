@@ -101,6 +101,11 @@ struct RunRequest {
     // against (`.audit_cache/baseline-findings.json`). Whole-tree runs only:
     // a narrowing scope, `paths` or `checks` refuses bad_args.
     bool        saveBaseline = false;
+    // ANTS-1706 — hide findings scored below this (0-100; 0 = off) from the
+    // reply's counts, samples, top_findings and since_baseline.new. The
+    // SARIF, the run's findings sidecar and a saved baseline keep them.
+    // Out of range refuses bad_args.
+    int         minConfidence = 0;
 };
 
 struct ToolResult {
@@ -228,6 +233,9 @@ struct RunResult {
     // saveBaseline wrote a new one.
     QJsonObject                sinceBaseline;
     QJsonObject                baselineSaved;
+    // ANTS-1706 — echo of the request's floor, and how many findings it hid.
+    int                        minConfidence = 0;
+    int                        belowConfidenceFloor = 0;
 };
 
 // Aggregate cap = min((tools + in-process lanes) * capPerToolSeconds * 1.5,
@@ -400,6 +408,19 @@ QString severityFromMessagePrefix(const QString &message);
 // itself defaults an absent level to, so the mapping never invents a
 // confidence the tool did not express.
 QString sarifLevelFor(const QString &severity);
+
+// ANTS-1706 — the audit dialog's 0-100 confidence (AuditEngine::
+// computeConfidence) for one headless finding ({file, line, severity, ...}).
+// `corroborated`: another tool reported the same file:line.
+int confidenceFor(const QString &tool, const QJsonObject &finding,
+                  bool corroborated);
+
+// ANTS-1706 — each tool's findings scored by confidenceFor (stamped as
+// `confidence`), keeping those at or above `floor`. `dropped` gets the
+// per-tool count removed.
+QHash<QString, QJsonArray> applyConfidenceFloor(
+    const QHash<QString, QJsonArray> &findingsByTool, int floor,
+    QHash<QString, int> *dropped);
 
 // ANTS-3394 — test hook exposing the per-tool argv builder so the default
 // exclusion-set wiring can be asserted without spawning a real tool.

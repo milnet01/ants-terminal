@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6809 -->
+<!-- ants-roadmap-id-high-water: ANTS=6811 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -74176,7 +74176,7 @@ the single highest-impact FP lever (untuned SAST 30-60% FP → tuned
 report initial FP rates 92% → as low as 6%); fingerprint/data-flow
 suppression that survives line drift.
 
-- 📋 [ANTS-1706] **`audit_run` reports the findings that are new since a pinned baseline, and can hide findings below a confidence floor.**
+- 🚧 [ANTS-1706] **`audit_run` reports the findings that are new since a pinned baseline, and can hide findings below a confidence floor.**
   The report that triggered this section came from the
   headless generator, which emits raw aggregated findings: no
   baseline-diff, no `.audit_suppress`/comment-strip/dedup beyond the
@@ -74202,6 +74202,15 @@ suppression that survives line drift.
   baseline.json); every run with a baseline returns `since_baseline`.
   Tests tests/features/audit_run_baseline/. STILL OPEN: (ii) the
   confidence floor.
+  Leg (ii) shipped 2026-11-17: `min_confidence` (0-100). Scores via
+  AuditEngine::computeConfidence (severity through sarifLevelFor: error
+  Critical, warning Major, note Minor; gitleaks as secrets; relative
+  paths get a leading slash for the test-path penalty; cross-tool
+  file:line corroboration). Filters the reply only; SARIF, sidecar and
+  baseline keep every finding. Tests INV-9..12 in
+  tests/features/audit_run_baseline/. Both legs this item names have
+  shipped; it stays open only because the store holds a parent until its
+  split part ANTS-6809 ships.
 
 - 📋 [ANTS-6809] **`audit_run` gets the audit dialog's AI-triage stage, so a headless run can mark findings as likely false positives.**
   Leg (iii) of ANTS-1706. The dialog's triage round-trips each
@@ -111963,6 +111972,27 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: ux.
   Source: review-readability-2026-10-22.
   Lanes: claude-session-widgets.
+
+- 📋 [ANTS-6810] **The audit window's test-path confidence penalty may miss a project-relative path that starts with `tests/`.**
+  AuditEngine::computeConfidence matches "/tests/" and "/test/" with
+  a leading slash. A tool that prints `tests/_support/x.h` matches
+  neither (nor `test_`), so it misses the -20. audit_run's
+  confidenceFor prefixes a slash; check what paths the dialog's
+  Finding::file holds and fix there if they are relative.
+  **Layman:** Warnings in test files are meant to rank lower; some test files may not be recognised.
+  Kind: investigate.
+  Source: in-session 2026-11-17 (ANTS-1706).
+  Lanes: auditengine.
+
+- 📋 [ANTS-6811] **Two clang-tidy notes in test_lua_threading.cpp: a const local blocks a move, and an int multiplication widens to qsizetype.**
+  performance-no-automatic-move on the const `path` local near the
+  top of the file; bugprone-implicit-widening-of-multiplication-result
+  in a later test's size expression. Seen as IDE diagnostics while
+  editing ANTS-6283.
+  **Layman:** Two small compiler-style warnings in a test file.
+  Kind: chore.
+  Source: in-session 2026-11-17 (ANTS-1706).
+  Lanes: tests.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

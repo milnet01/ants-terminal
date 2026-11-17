@@ -322,6 +322,10 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
             // ANTS-1706 — pin this run as the baseline later runs report against.
             req.saveBaseline =
                 args.value(QStringLiteral("save_baseline")).toBool();
+            // ANTS-1706 — hide findings below this confidence from the reply.
+            if (args.value(QStringLiteral("min_confidence")).isDouble())
+                req.minConfidence =
+                    args.value(QStringLiteral("min_confidence")).toInt();
             // ANTS-3396 — opt-in async mode: spawn the sweep detached,
             // register a job, and return a handle immediately so the caller
             // never blocks on the ~60 s MCP transport cap. Default false →
@@ -613,6 +617,8 @@ void registerProjectScopedVerbs(ToolSink &sink, RemoteControlGetter rc,
                         env["since_baseline"] = r.sinceBaseline;
                     if (!r.baselineSaved.isEmpty())
                         env["baseline_saved"] = r.baselineSaved;
+                    if (r.minConfidence > 0)
+                        env["below_confidence_floor_count"] = r.belowConfidenceFloor;
                     reply(QString::fromUtf8(
                         QJsonDocument(env).toJson(QJsonDocument::Compact)));
                 }, Qt::QueuedConnection);

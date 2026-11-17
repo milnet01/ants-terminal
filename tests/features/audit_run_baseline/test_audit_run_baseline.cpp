@@ -66,15 +66,31 @@ private:
 };
 
 AuditRunner::RunResult run(const QString &root, bool save,
-                           const QString &scope = {}) {
+                           const QString &scope = {}, int minConfidence = 0) {
     AuditRunner::RunRequest req;
     req.projectRoot       = root;
     req.tools             = {QStringLiteral("mypy")};
     req.scope             = scope;
     req.capPerToolSeconds = 30;
     req.saveBaseline      = save;
+    req.minConfidence     = minConfidence;
     return AuditRunner::runAudit(req);
 }
+
+QJsonObject finding(const QString &file, const QString &severity) {
+    QJsonObject o;
+    o["file"]     = file;
+    o["line"]     = 1;
+    o["severity"] = severity;
+    o["message"]  = QStringLiteral("a finding message long enough to count");
+    return o;
+}
+
+// One kept finding (65), one note (35) and one test-path error (45).
+const char *kMixed =
+    "src/a.py:1: error: keep me\n"
+    "src/a.py:2: style: hide me\n"
+    "tests/t.py:3: error: hide me too\n";
 
 QString baselinePath(const QString &root) {
     return root + QStringLiteral("/.audit_cache/baseline-findings.json");
@@ -287,4 +303,113 @@ TEST(AuditRunBaseline, Inv8EnvelopeCarriesBlocks) {
               std::string::npos);
     EXPECT_NE(src.find("env[\"baseline_saved\"] = r.baselineSaved"),
               std::string::npos);
+    EXPECT_NE(src.find("QStringLiteral(\"min_confidence\")"), std::string::npos);
+    EXPECT_NE(src.find("env[\"below_confidence_floor_count\"]"),
+              std::string::npos);
+}
+
+// INV-9 — the dialog's formula, fed from a headless finding.
+TEST(AuditRunBaseline, Inv9ConfidenceForUsesTheDialogFormula) {
+    using AuditRunner::internal::confidenceFor;
+    // floor 10 + Critical 45 + external tool 10
+    EXPECT_EQ(confidenceFor("mypy", finding("src/a.py", "error"), false), 65);
+    EXPECT_EQ(confidenceFor("mypy", finding("src/a.py", "warning"), false), 50);
+    EXPECT_EQ(confidenceFor("mypy", finding("src/a.py", "style"), false), 35);
+    EXPECT_EQ(confidenceFor("mypy", finding("src/a.py", "error"), true), 85)
+        << "INV-9: corroboration adds 20";
+    EXPECT_EQ(confidenceFor("mypy", finding("tests/t.py", "error"), false), 45)
+        << "INV-9: a relative tests/ path takes the test penalty";
+    EXPECT_EQ(confidenceFor("mypy", finding("test/t.py", "error"), false), 45);
+    EXPECT_EQ(confidenceFor("trivy", finding("go.sum", "error"), false), 55)
+        << "INV-9: trivy is not in the external-tool set";
+    EXPECT_EQ(confidenceFor("gitleaks", finding(".env", "error"), false), 65)
+        << "INV-9: gitleaks scores as the secrets source";
+}
+
+// INV-9 — corroboration is another tool at the same file:line.
+TEST(AuditRunBaseline, Inv9FloorCountsCorroboration) {
+    QHash<QString, QJsonArray> byTool;
+    byTool["mypy"]  = QJsonArray{finding("src/a.py", "style")};    // 35, +20 = 55
+    byTool["ruff"]  = QJsonArray{finding("src/a.py", "style")};    // 55
+    byTool["bandit"] = QJsonArray{finding("src/b.py", "style")};   // 35, alone
+    QHash<QString, int> dropped;
+    const auto kept =
+        AuditRunner::internal::applyConfidenceFloor(byTool, 50, &dropped);
+    EXPECT_EQ(kept.value("mypy").size(), 1);
+    EXPECT_EQ(kept.value("ruff").size(), 1);
+    EXPECT_EQ(kept.value("bandit").size(), 0);
+    EXPECT_EQ(dropped.value("bandit"), 1);
+    EXPECT_EQ(dropped.value("mypy"), 0);
+    EXPECT_EQ(kept.value("mypy").at(0).toObject().value("confidence").toInt(), 55);
+}
+
+// INV-10 — the floor hides low findings from the reply's counts and samples.
+TEST(AuditRunBaseline, Inv10FloorHidesLowFindings) {
+    FakeMypy mypy;
+    QTemporaryDir proj;
+    ASSERT_TRUE(proj.isValid());
+    mypy.prints(QString::fromLatin1(kMixed));
+
+    const AuditRunner::RunResult r = run(proj.path(), false, {}, 50);
+    ASSERT_TRUE(r.ok) << r.code.toStdString() << ": " << r.error.toStdString();
+    ASSERT_TRUE(r.byTool.contains(QStringLiteral("mypy")));
+    const AuditRunner::ToolResult t = r.byTool.value(QStringLiteral("mypy"));
+    EXPECT_EQ(t.rawCount, 3) << "the raw total is the tool's own";
+    EXPECT_EQ(t.afterFilterCount, 1) << "INV-10: two findings are below 50";
+    EXPECT_EQ(r.totalActionable, 1);
+    EXPECT_EQ(r.belowConfidenceFloor, 2);
+    EXPECT_EQ(r.minConfidence, 50);
+    ASSERT_EQ(t.samples.size(), 1);
+    const QJsonObject s0 = t.samples.at(0).toObject();
+    EXPECT_EQ(s0.value("file").toString(), QStringLiteral("src/a.py"));
+    ASSERT_TRUE(s0.value("confidence").isDouble())
+        << "INV-10: a kept sample carries its confidence";
+    EXPECT_EQ(s0.value("confidence").toInt(), 65);
+}
+
+// INV-11 — floor 0 is off; out of range refuses.
+TEST(AuditRunBaseline, Inv11ZeroIsOffAndRangeIsChecked) {
+    FakeMypy mypy;
+    QTemporaryDir proj;
+    ASSERT_TRUE(proj.isValid());
+    mypy.prints(QString::fromLatin1(kMixed));
+
+    const AuditRunner::RunResult r = run(proj.path(), false, {}, 0);
+    ASSERT_TRUE(r.ok) << r.code.toStdString() << ": " << r.error.toStdString();
+    EXPECT_EQ(r.byTool.value(QStringLiteral("mypy")).afterFilterCount, 3);
+    EXPECT_EQ(r.belowConfidenceFloor, 0);
+
+    for (int bad : {-1, 101}) {
+        const AuditRunner::RunResult rb = run(proj.path(), false, {}, bad);
+        EXPECT_FALSE(rb.ok) << "INV-11: min_confidence " << bad;
+        EXPECT_EQ(rb.code, QStringLiteral("bad_args")) << bad;
+    }
+}
+
+// INV-12 — the floor filters the new-since-baseline view, never the saved
+// baseline.
+TEST(AuditRunBaseline, Inv12FloorNeverShrinksTheBaseline) {
+    FakeMypy mypy;
+    QTemporaryDir proj;
+    ASSERT_TRUE(proj.isValid());
+    mypy.prints(QString::fromLatin1(kMixed));
+
+    const AuditRunner::RunResult saved = run(proj.path(), true, {}, 50);
+    ASSERT_TRUE(saved.ok) << saved.code.toStdString();
+    EXPECT_EQ(saved.baselineSaved.value("findings_count").toInt(), 3)
+        << "INV-12: the baseline keeps the findings the floor hid";
+
+    // Without a floor the hidden two are not new.
+    const AuditRunner::RunResult noFloor = run(proj.path(), false);
+    ASSERT_TRUE(noFloor.sinceBaseline.value("new_count").isDouble());
+    EXPECT_EQ(noFloor.sinceBaseline.value("new_count").toInt(), 0);
+
+    // A fresh low finding is new without a floor, hidden with one.
+    mypy.prints(QString::fromLatin1(kMixed)
+                + QStringLiteral("src/c.py:4: style: fresh and low\n"));
+    EXPECT_EQ(run(proj.path(), false).sinceBaseline.value("new_count").toInt(), 1);
+    const AuditRunner::RunResult floored = run(proj.path(), false, {}, 50);
+    ASSERT_TRUE(floored.sinceBaseline.value("new_count").isDouble());
+    EXPECT_EQ(floored.sinceBaseline.value("new_count").toInt(), 0)
+        << "INV-12: since_baseline.new honours the floor";
 }

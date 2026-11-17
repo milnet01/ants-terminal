@@ -1,8 +1,9 @@
-# audit_run pinned baseline (ANTS-1706)
+# audit_run pinned baseline and confidence floor (ANTS-1706)
 
 `audit_run` can pin a run's findings as a baseline, and every later run
-reports which of its findings are new since that baseline. This is the
-headless form of the audit dialog's "Save baseline" and "New only".
+reports which of its findings are new since that baseline. It can also
+hide findings below a confidence floor. These are the headless forms of
+the audit dialog's "Save baseline", "New only" and confidence filter.
 
 The baseline is `<root>/.audit_cache/baseline-findings.json`, in the
 ANTS-1870 findings-sidecar format (version 1) plus a `tools` list. It is
@@ -32,12 +33,29 @@ line-insensitive `fp` over external tools.
   `truncated` gives `"baseline_truncated"`.
 - **INV-7** — `AuditDelta::newSinceBaseline` keeps exactly the current
   findings whose `fp` is absent from the baseline, in order.
-- **INV-8** — The MCP envelope copies `since_baseline` and
-  `baseline_saved`, and the handler reads `save_baseline` (source-scrape:
+- **INV-8** — The MCP envelope copies `since_baseline`,
+  `baseline_saved` and `below_confidence_floor_count`, and the handler
+  reads `save_baseline` and `min_confidence` (source-scrape:
   the handler needs a live `ClaudeIntegration`).
+- **INV-9** — `internal::confidenceFor` scores a headless finding with
+  `AuditEngine::computeConfidence`: the severity maps through
+  `sarifLevelFor` (error → Critical, warning → Major, note → Minor), the
+  tool is the source (`gitleaks` as `secrets`), a path under `tests/` or
+  `test/` takes the test-path penalty even without a leading slash, and
+  `corroborated` adds the cross-tool bonus.
+- **INV-10** — With `min_confidence:N`, findings scored below N leave the
+  tool's `after_filter_count`, its samples and `total_actionable`; each
+  kept sample carries `confidence`; `below_confidence_floor_count` counts
+  what was hidden.
+- **INV-11** — `min_confidence` 0 (the default) changes nothing, and
+  outside 0-100 refuses `bad_args`.
+- **INV-12** — The floor filters `since_baseline.new`, but a baseline
+  saved under a floor still holds every finding, so a later run with a
+  lower floor does not report the hidden ones as new.
 
 ## Out of scope
 
-The confidence floor (the other half of ANTS-1706), AI triage
-(ANTS-6809), and the async `audit_poll` envelope, which carries no
-per-finding blocks, as for ANTS-1870's `delta`.
+AI triage (ANTS-6809). The async `audit_poll` envelope, which carries no
+per-finding blocks, as for ANTS-1870's `delta`. The floor does not touch
+the SARIF, the run's findings sidecar or the since-last-run `delta`: they
+record the run, not the view of it.
