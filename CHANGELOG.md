@@ -464,6 +464,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`read_region section:"4"` returns section 4 with its subsections** (ANTS-6802)
+  A bare section number now picks the heading whose leading number equals
+  it, so `4.1` and `4.2` no longer make `4` ambiguous. Two headings with
+  the same number are still refused.
+
 - **focused_test reads the test runner's output as it arrives and keeps only the last 2 MiB** (ANTS-6795)
 
 - **build_status ignores a build cache file over 256 KiB and keeps at most 50 errors of 240 characters when loading one** (ANTS-6528)

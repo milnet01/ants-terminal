@@ -327,6 +327,34 @@ TEST(ReadRegionMdSection, StrippedNumberAmbiguityRefuses) {
     EXPECT_EQ(env.value("candidates").toArray().size(), 2);
 }
 
+// MD-15 (ANTS-6802) — a bare section number picks the heading whose leading
+// number equals it, not every subsection that starts with it.
+TEST(ReadRegionMdSection, BareSectionNumberPicksExactNumber) {
+    QTemporaryDir dir;
+    const char *doc =
+        "# Spec\n"
+        "## 4. Design\n"
+        "Design body.\n"
+        "### 4.1 Layout\n"
+        "### 4.2 Colours\n"
+        "## 5. Tests\n"
+        "### 4.1 Layout\n";
+    const QString path = writeDoc(dir, "n.md");
+    QJsonObject env = extractFrom(path, doc, "4");
+    ASSERT_TRUE(env.value("ok").toBool()) << env.value("code").toString().toStdString();
+    EXPECT_EQ(env.value("start_line").toInt(), 2);
+    EXPECT_EQ(env.value("end_line").toInt(), 5);
+    EXPECT_EQ(env.value("section_slug").toString().toStdString(), "4-design");
+    env = extractFrom(path, doc, "4.2");
+    ASSERT_TRUE(env.value("ok").toBool()) << env.value("code").toString().toStdString();
+    EXPECT_EQ(env.value("start_line").toInt(), 5);
+    // The same number on two headings is still refused.
+    env = extractFrom(path, doc, "4.1");
+    EXPECT_FALSE(env.value("ok").toBool());
+    EXPECT_EQ(env.value("code").toString().toStdString(), "section_ambiguous");
+    EXPECT_EQ(env.value("candidates").toArray().size(), 2);
+}
+
 // MD-8 — handler + schema wiring (the handler needs a live MainWindow).
 TEST(ReadRegionMdSection, WiringContract) {
     expect_reset();

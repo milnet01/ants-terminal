@@ -551,6 +551,24 @@ SecRange resolveSection(const QString &absPath, const QString &wantSlug) {
     int idx = -1;
     for (int i = 0; i < heads.size(); ++i)
         if (heads[i].slug == wantSlug) { idx = i; break; }
+    // ANTS-6802 — a bare section number (`4`, `4.2`) means the heading whose
+    // leading number equals it, so `4.1` and `4.2` do not make `4` ambiguous.
+    static const QRegularExpression kBareNumber(QStringLiteral("^\\d+(?:-\\d+)*$"));
+    if (idx < 0 && kBareNumber.match(wantSlug).hasMatch()) {
+        const QString pfx = wantSlug + QLatin1Char('-');
+        QVector<int> cands;
+        for (int i = 0; i < heads.size(); ++i) {
+            const QString &s = heads[i].slug;
+            if (s.startsWith(pfx) && !s.at(pfx.size()).isDigit()) cands.push_back(i);
+        }
+        if (cands.size() == 1) {
+            idx = cands.front();
+        } else if (cands.size() > 1) {
+            r.ambiguous = true;
+            for (int i : cands) r.candidates << heads[i].slug;
+            return r;
+        }
+    }
     if (idx < 0 && !wantSlug.isEmpty()) {
         const QString pfx = wantSlug + QLatin1Char('-');
         QVector<int> cands;

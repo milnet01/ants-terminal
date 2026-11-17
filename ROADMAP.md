@@ -92991,7 +92991,7 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: DeFragR feedback 2026-11-16.
 
-- 📋 [ANTS-6802] **read_region section="4" returns the one heading whose leading number is exactly 4.**
+- ✅ [ANTS-6802] **read_region section="4" returns the one heading whose leading number is exactly 4.**
   Repro: read_region on Pressless docs/specs/PRESS-0276-imported-site-look.md
   with section:"4" refuses section_ambiguous, listing 4-design and the
   4-1..4-4 subsections. When the selector is a bare section number
@@ -92999,6 +92999,8 @@ measured Ants adding about 5,250 tokens to every request.
   return that section with its subsections. Refuse only when two headings
   carry the same number. Cost: one extra call per lane on a 20-lane
   review (2026-11-16).
+  Shipped 2026-11-17: a bare number picks the heading whose leading
+  number equals it (MD-15, BareSectionNumberPicksExactNumber).
   **Layman:** Asking for section 4 of a spec refused as ambiguous because its subsections 4.1 to 4.4 also start with 4; a reviewer had to fall back to line numbers.
   Kind: fix.
   Source: Pressless feedback 2026-11-17.

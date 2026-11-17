@@ -53,6 +53,11 @@ it is unique.
 - **MD-14 stripped-number ambiguity** — when two headings match after the
   strip (`## 3. Setup`, `## 7. Setup`), refuse with `section_ambiguous` as
   MD-10 does.
+- **MD-15 bare section number (ANTS-6802)** — with no exact match,
+  `section:"4"` resolves the one heading whose leading number is exactly `4`
+  (`## 4. Design`), subsections included, before the MD-9 prefix runs. `4.1`
+  and `4.2` do not compete. Two headings with the same leading number refuse
+  `section_ambiguous`.
 
 - **MD-9 inline fence example (ANTS-3674)** — a heading following an inline
   code span that *demonstrates* a fence (```` ```cpp ```` on one line) still
