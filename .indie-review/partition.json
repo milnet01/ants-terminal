@@ -663,6 +663,16 @@
         "src/treewatcher.cpp",
         "src/treewatcher.h"
       ]
+    },
+    {
+      "name": "ci-workflows",
+      "summary": "GitHub Actions workflows that build, test, audit and release the project, and its funding file.",
+      "sourcePaths": [
+        ".github/FUNDING.yml",
+        ".github/workflows/ci.yml",
+        ".github/workflows/release-audit.yml",
+        ".github/workflows/release.yml"
+      ]
     }
   ]
 }

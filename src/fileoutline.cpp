@@ -47,6 +47,19 @@ bool isShExt(const QString &ext) {
     return ext == QLatin1String("sh") || ext == QLatin1String("bash");
 }
 
+// ANTS-6801 — `.inc` is how a NASM project names its include files.
+bool isAsmExt(const QString &ext) {
+    return ext == QLatin1String("asm") || ext == QLatin1String("nasm")
+        || ext == QLatin1String("inc");
+}
+bool isCmakeExt(const QString &ext) { return ext == QLatin1String("cmake"); }
+bool isCmakeFileName(const QString &fileName) {
+    return fileName == QLatin1String("CMakeLists.txt");
+}
+bool isYamlExt(const QString &ext) {
+    return ext == QLatin1String("yml") || ext == QLatin1String("yaml");
+}
+
 // ANTS-4826 — the interpreter a shebang names, empty when `firstLine` is not
 // one. Reads the direct form (`#!/bin/sh`) and the env form
 // (`#!/usr/bin/env bash`), which is what these scripts are actually written with.
@@ -676,7 +689,9 @@ bool isCFamilyExt(const QString &ext) {
 namespace {
 
 Mode pickModeByExt(const QString &absPath) {
-    const QString ext = QFileInfo(absPath).suffix().toLower();
+    const QFileInfo fi(absPath);
+    if (isCmakeFileName(fi.fileName())) return Mode::Cmake;  // before `.txt` → md
+    const QString ext = fi.suffix().toLower();
     if (isCFamilyExt(ext)) return Mode::Cpp;
     if (ext == QLatin1String("py"))  return Mode::Py;
     if (ext == QLatin1String("md")   || ext == QLatin1String("markdown") ||
@@ -685,6 +700,9 @@ Mode pickModeByExt(const QString &absPath) {
     if (isGlslExt(ext)) return Mode::Glsl;        // ANTS-3800 shader stages
     if (isShExt(ext))   return Mode::Sh;          // ANTS-4826
     if (isHtmlExt(ext)) return Mode::Html;       // ANTS-4361 / ANTS-4425
+    if (isAsmExt(ext))   return Mode::Asm;       // ANTS-6801
+    if (isCmakeExt(ext)) return Mode::Cmake;
+    if (isYamlExt(ext))  return Mode::Yaml;
     if (isGenericExt(ext)) return Mode::Generic;  // ANTS-2150 brace family
     return Mode::Auto;  // sentinel meaning "unknown" downstream
 }
@@ -699,6 +717,9 @@ const char *modeToLanguageString(Mode m) {
         case Mode::Html:    return "html";     // ANTS-4361
         case Mode::Glsl:    return "glsl";     // ANTS-3800
         case Mode::Sh:      return "sh";       // ANTS-4826
+        case Mode::Asm:     return "asm";      // ANTS-6801
+        case Mode::Cmake:   return "cmake";
+        case Mode::Yaml:    return "yaml";
         case Mode::Auto:    return "unknown";
     }
     return "unknown";
@@ -711,6 +732,9 @@ QString headerCommentMarker(Mode m) {
         case Mode::Html:    return QStringLiteral("<!--"); // ANTS-4361
         case Mode::Glsl:    return QStringLiteral("//");  // ANTS-3800
         case Mode::Sh:      return QStringLiteral("#");   // ANTS-4826
+        case Mode::Asm:     return QStringLiteral(";");   // ANTS-6801
+        case Mode::Cmake:   return QStringLiteral("#");
+        case Mode::Yaml:    return QStringLiteral("#");
         case Mode::Py:      return QStringLiteral("#");
         case Mode::Md:      return QStringLiteral("<!--");
         default:            return QString();
@@ -1253,6 +1277,49 @@ void scanShLine(const QString &line, int lineNo, SymbolSink &out) {
     }
 }
 
+// ANTS-6801 — the NASM, CMake and YAML landmarks below. Captures name=group1.
+QRegularExpression landmark(const char *pattern, bool caseless) {
+    QRegularExpression r(QString::fromLatin1(pattern),
+                         caseless ? QRegularExpression::CaseInsensitiveOption
+                                  : QRegularExpression::NoPatternOption);
+    r.optimize();
+    return r;
+}
+
+// NASM: a `%macro`, an `equ` constant, a global label. A label must start in
+// column 0 and end in `:`; a local `.label` belongs to the label above it.
+void scanAsmLine(const QString &line, int lineNo, SymbolSink &out) {
+    static const QRegularExpression macro =
+        landmark(R"(^\s*%i?macro\s+([A-Za-z_?@$][\w$#@~?.]*))", true);
+    static const QRegularExpression equ =
+        landmark(R"(^([A-Za-z_?@$][\w$#@~?.]*):?\s+equ\b)", true);
+    static const QRegularExpression label =
+        landmark(R"(^([A-Za-z_?@$][\w$#@~?.]*):)", false);
+    QRegularExpressionMatch m;
+    if ((m = macro.match(line)).hasMatch())      out.offer(lineNo, "func", m.captured(1), line);
+    else if ((m = equ.match(line)).hasMatch())   out.offer(lineNo, "const", m.captured(1), line);
+    else if ((m = label.match(line)).hasMatch()) out.offer(lineNo, "func", m.captured(1), line);
+}
+
+// CMake commands ignore letter case. A target named by a variable is skipped:
+// its name is not in the file.
+void scanCmakeLine(const QString &line, int lineNo, SymbolSink &out) {
+    static const QRegularExpression func =
+        landmark(R"(^\s*(?:function|macro)\s*\(\s*([A-Za-z_][\w.+-]*))", true);
+    static const QRegularExpression target = landmark(
+        R"(^\s*add_(?:executable|library|custom_target)\s*\(\s*([A-Za-z_][\w.+-]*))", true);
+    QRegularExpressionMatch m;
+    if ((m = func.match(line)).hasMatch())        out.offer(lineNo, "func", m.captured(1), line);
+    else if ((m = target.match(line)).hasMatch()) out.offer(lineNo, "type", m.captured(1), line);
+}
+
+// YAML: the top-level keys, which are a workflow's or a config's sections.
+void scanYamlLine(const QString &line, int lineNo, SymbolSink &out) {
+    static const QRegularExpression key = landmark(R"(^([A-Za-z_][\w.-]*)\s*:(?:\s|$))", false);
+    const QRegularExpressionMatch m = key.match(line);
+    if (m.hasMatch()) out.offer(lineNo, "const", m.captured(1), line);
+}
+
 // The brace family. Try the typed-function form, then keyword decl, then
 // C-style method, then arrow assignment, then binding; first hit wins
 // (ANTS-2150). ANTS-4902 puts the typed form first: on `function bool Foo(`
@@ -1337,6 +1404,9 @@ Mode parseMode(const QString &s) {
     if (s == QLatin1String("generic")) return Mode::Generic;
     if (s == QLatin1String("glsl")) return Mode::Glsl;   // ANTS-3800
     if (s == QLatin1String("sh"))   return Mode::Sh;     // ANTS-4826
+    if (s == QLatin1String("asm"))   return Mode::Asm;   // ANTS-6801
+    if (s == QLatin1String("cmake")) return Mode::Cmake;
+    if (s == QLatin1String("yaml"))  return Mode::Yaml;
     return Mode::Auto;
 }
 
@@ -1440,6 +1510,9 @@ QJsonObject compute(const QString &absPath,
         case Mode::Md:      md.scan(line, totalLines, sink);            break;
         case Mode::Html:    html.scan(line, totalLines, sink);          break;
         case Mode::Sh:      scanShLine(line, totalLines, sink);         break;
+        case Mode::Asm:     scanAsmLine(line, totalLines, sink);        break;
+        case Mode::Cmake:   scanCmakeLine(line, totalLines, sink);      break;
+        case Mode::Yaml:    scanYamlLine(line, totalLines, sink);       break;
         case Mode::Generic: scanGenericLine(line, totalLines, sink);    break;
         case Mode::Auto:
         case Mode::Json:                                                break;

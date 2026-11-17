@@ -464,6 +464,13 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`file_outline` reads NASM, CMake and YAML, and the review verbs read them too** (ANTS-6801)
+  NASM labels, macros and `equ` constants; CMake functions, macros and
+  build targets (`CMakeLists.txt` included); YAML top-level keys. The
+  computed `indie_review_partition`, `codebase_index`, `function_sizes`
+  and `comment_claims` now take these files, and `comment_claims` reads
+  NASM's `;` comments.
+
 - **`read_region section:"4"` returns section 4 with its subsections** (ANTS-6802)
   A bare section number now picks the heading whose leading number equals
   it, so `4.1` and `4.2` no longer make `4` ambiguous. Two headings with

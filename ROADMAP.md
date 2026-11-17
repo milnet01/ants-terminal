@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6802 -->
+<!-- ants-roadmap-id-high-water: ANTS=6804 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -92980,13 +92980,18 @@ measured Ants adding about 5,250 tokens to every request.
   Source: DeFragR_Ants_MCP_Feedback.md 2026-11-16.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6801] **indie_review_partition, function_sizes and comment_claims read NASM, CMake and YAML files.**
+- ✅ [ANTS-6801] **indie_review_partition, function_sizes and comment_claims read NASM, CMake and YAML files.**
   On DeFragR the computed partition left out the 10 NASM files under
   src/engine, both CMakeLists.txt files, the Containerfile and the YAML
   (unassigned 15, reason suffix_filter). function_sizes and
   comment_claims read none of the NASM files either. Admit .asm/.inc,
   CMakeLists.txt/.cmake and .yml/.yaml in the suffix filter; NASM labels
   can stand in as symbols. Check the Containerfile case too.
+  Shipped 2026-11-17: file_outline asm/cmake/yaml modes; isIndexableFile
+  admits them and CMakeLists.txt; function_sizes measures NASM labels
+  and CMake functions; comment_claims reads `;` comments
+  (tests/features/file_outline_asm_cmake_yaml). Follow-ups: ANTS-6803
+  (find_definition), ANTS-6804 (Containerfile).
   **Layman:** The review tools skipped DeFragR's assembly engine, its build files and its YAML, so reviewers had to split the project up by hand.
   Kind: fix.
   Source: DeFragR feedback 2026-11-16.
@@ -93004,6 +93009,28 @@ measured Ants adding about 5,250 tokens to every request.
   **Layman:** Asking for section 4 of a spec refused as ambiguous because its subsections 4.1 to 4.4 also start with 4; a reviewer had to fall back to line numbers.
   Kind: fix.
   Source: Pressless feedback 2026-11-17.
+
+- 📋 [ANTS-6803] **find_definition and find_caller resolve NASM labels and YAML keys, as file_outline now does.**
+  ANTS-6801 taught file_outline and CodebaseIndex::isIndexableSuffix
+  NASM (.asm/.nasm/.inc), CMake and YAML. SymbolQuery::langForExt maps
+  .cmake only, so find_definition answers nothing for a NASM label or a
+  YAML key that file_outline lists. The in-step rule in codebaseindex.cpp
+  is that count, outline and symbol query cover the same files. Also
+  map Lang::Cmake to Mode::Cmake in similarcode.cpp's modeFor.
+  **Layman:** Jumping to a definition in an assembly or YAML file finds nothing yet, though the file outline now lists those names.
+  Kind: fix.
+  Source: ANTS-6801 fix, 2026-11-17.
+  Lanes: mcp-tools.
+
+- 📋 [ANTS-6804] **file_outline reads a Containerfile or Dockerfile, so the review partition assigns it.**
+  DeFragR's Containerfile stayed unassigned after ANTS-6801: file_outline
+  has no mode for it, and isIndexableFile admits only what the outline
+  reads. Landmarks would be each FROM stage (`AS name`) and ENTRYPOINT.
+  Match by file name (Containerfile, Dockerfile, *.Dockerfile).
+  **Layman:** Container build files are still left out when a review splits a project into parts.
+  Kind: enhancement.
+  Source: ANTS-6801 fix, 2026-11-17.
+  Lanes: mcp-tools.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

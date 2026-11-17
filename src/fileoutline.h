@@ -81,6 +81,14 @@ enum class Mode {
     // assignments. A script is also routinely EXTENSIONLESS (a hook, a
     // launcher), so the shebang promotes one when the extension says nothing.
     Sh,
+    // ANTS-6801 — NASM, CMake and YAML, landmarks only: global labels,
+    // macros and `equ` constants; function(), macro() and build targets;
+    // top-level keys. Without them CodebaseIndex::isIndexableFile, which
+    // follows this outliner, left them out of the review partition,
+    // function_sizes and comment_claims.
+    Asm,
+    Cmake,
+    Yaml,
 };
 
 Mode parseMode(const QString &s);
@@ -104,6 +112,13 @@ bool isHtmlExt(const QString &ext);
 // rule in codebaseindex.cpp is that count → outline → symbol query cover the
 // same files, and a second list there is that drift with an extra step.
 bool isShExt(const QString &ext);
+
+// ANTS-6801 — exported for the reason isShExt is. CMake is also known by
+// the file name CMakeLists.txt, whose `.txt` would otherwise read as md.
+bool isAsmExt(const QString &ext);
+bool isCmakeExt(const QString &ext);
+bool isCmakeFileName(const QString &fileName);
+bool isYamlExt(const QString &ext);
 
 // True for a C or C++ extension (lowercase, no dot): outlined by the C++ set.
 // True for a brace-family extension (Rust, Go, JS/TS, … — genericLangName).

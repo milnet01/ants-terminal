@@ -63,7 +63,11 @@ bool isIndexableSuffix(const QString &suffixLower) {
     // and FileOutline has no CSS mode — admitting it here would count files the
     // outline cannot read, which is the drift in the other direction. It needs
     // an outline mode first, or an explicit decision to count-but-not-outline.
-        || FileOutline::isHtmlExt(suffixLower);
+        || FileOutline::isHtmlExt(suffixLower)
+    // ANTS-6801 — NASM, CMake and YAML, once FileOutline read them.
+        || FileOutline::isAsmExt(suffixLower)
+        || FileOutline::isCmakeExt(suffixLower)
+        || FileOutline::isYamlExt(suffixLower);
 }
 
 // ANTS-4963 — a one-file tool is often an executable with no extension, so
@@ -72,6 +76,7 @@ bool isIndexableSuffix(const QString &suffixLower) {
 // admits, keeping count and outline in step. The execute bit keeps an
 // extensionless data file such as LICENSE from being opened at all.
 bool isIndexableFile(const QFileInfo &fi) {
+    if (FileOutline::isCmakeFileName(fi.fileName())) return true;  // ANTS-6801
     const QString suffix = fi.suffix();
     if (!suffix.isEmpty()) return isIndexableSuffix(suffix.toLower());
     if (!fi.isExecutable()) return false;

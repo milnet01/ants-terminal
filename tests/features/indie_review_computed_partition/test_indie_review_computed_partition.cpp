@@ -146,12 +146,13 @@ TEST(IndieReviewComputedPartition, Inv6SuffixFilteredFilesAreReported) {
     // on CodebaseIndex::isIndexableSuffix, so a shell-first project's own
     // sources used to be invisible to the review lanes, which is the harm
     // codebaseindex.cpp names for shaders and HTML in the same breath.
+    // ANTS-6801 indexed YAML too, so the example moved again, to `.toml`.
     const QString root = seedProse(tmp, QStringList{
         QStringLiteral("oneup/updater.py"),
         QStringLiteral("oneup/bump.py"),
         QStringLiteral("oneup/update_system.sh"),
-        QStringLiteral("oneup/settings.yml"),
-        QStringLiteral("packaging/appimage.yml"),
+        QStringLiteral("oneup/settings.toml"),
+        QStringLiteral("packaging/appimage.toml"),
         QStringLiteral("packaging/release.py"),
     });
 
@@ -165,7 +166,7 @@ TEST(IndieReviewComputedPartition, Inv6SuffixFilteredFilesAreReported) {
         << "ANTS-4826 — shell is a lane member now, beside the two Python files";
 
     // ...and it is not silent about the config it skipped.
-    EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("yml")), 2)
+    EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("toml")), 2)
         << "reported per suffix, so a caller sees WHAT was dropped";
     EXPECT_FALSE(dropped.bySuffix.contains(QStringLiteral("py")))
         << "a file that made it into a lane is not unassigned";
@@ -176,7 +177,7 @@ TEST(IndieReviewComputedPartition, Inv6SuffixFilteredFilesAreReported) {
     // markdown does not count would reintroduce the judgement about which
     // extensions matter that this whole approach exists to avoid. The
     // per-suffix breakdown is what keeps it readable — a caller sees
-    // `yml: 2` next to `md: 1` and can tell the signal from the prose.
+    // `toml: 2` next to `md: 1` and can tell the signal from the prose.
     EXPECT_EQ(dropped.bySuffix.value(QStringLiteral("md")), 1);
     EXPECT_EQ(dropped.count, 3) << "count is the sum across suffixes";
 }
@@ -247,12 +248,15 @@ TEST(IndieReviewComputedPartition, Ants4805CiSurfaceIsNotSilentlyDropped) {
     QStringList sample;
     const auto gap = IndieReviewEngine::unassignedForLanes(root, lanes, &sample);
 
-    // The workflows are YAML, so no lane claims them — but they are now
-    // REPORTED as uncovered instead of vanishing before every filter.
-    EXPECT_EQ(gap.bySuffix.value(QStringLiteral("yml")), 2)
-        << "the CI surface must be visible to the coverage report";
+    // ANTS-6801 — YAML is lane source now, so a lane claims the workflows
+    // rather than the coverage report listing them.
+    int laneFiles = 0;
+    for (const auto &l : lanes) laneFiles += IndieReviewEngine::laneFileCount(root, l);
+    EXPECT_EQ(laneFiles, 4) << "the two workflows sit in lanes beside the two Python files";
+    EXPECT_FALSE(gap.bySuffix.contains(QStringLiteral("yml")));
     // .venv is still noise, and its .py would otherwise be indexable — so if
-    // the dot rule had been widened rather than excepted, this would fire.
+    // the dot rule had been widened rather than excepted, the count above
+    // would be 5 and this would fire.
     for (const QString &p : sample)
         EXPECT_FALSE(p.contains(QStringLiteral(".venv")))
             << "the exception must be one directory, not the whole dot rule";
@@ -527,10 +531,10 @@ TEST(IndieReviewComputedPartition, Inv9NamedNonSourceFileIsAssigned) {
     ASSERT_TRUE(tmp.isValid());
     const QString root = seedProse(tmp, QStringList{
         QStringLiteral("src/app/main.cpp"),
-        QStringLiteral("src/ci/build.yml"),
+        QStringLiteral("src/ci/build.toml"),
         QStringLiteral("src/pkg/AppRun"),
         QStringLiteral("src/pkg/app.desktop"),
-        QStringLiteral("src/other/loose.yml"),
+        QStringLiteral("src/other/loose.toml"),
     });
 
     IndieReviewEngine::Lane app;
@@ -538,13 +542,13 @@ TEST(IndieReviewComputedPartition, Inv9NamedNonSourceFileIsAssigned) {
     app.sourcePaths = QStringList{QStringLiteral("src/app")};
     IndieReviewEngine::Lane gate;
     gate.name        = QStringLiteral("ci-and-gate");
-    gate.sourcePaths = QStringList{QStringLiteral("src/ci/build.yml"),
+    gate.sourcePaths = QStringList{QStringLiteral("src/ci/build.toml"),
                                    QStringLiteral("src/pkg")};
 
     QStringList sample;
     const auto gap = IndieReviewEngine::unassignedForLanes(
         root, QList<IndieReviewEngine::Lane>{app, gate}, &sample);
-    EXPECT_EQ(sample, QStringList{QStringLiteral("src/other/loose.yml")})
+    EXPECT_EQ(sample, QStringList{QStringLiteral("src/other/loose.toml")})
         << "only the file no lane names is unassigned";
     EXPECT_EQ(gap.count, 1);
 
@@ -695,14 +699,14 @@ TEST(IndieReviewComputedPartition, Ants6182ReplyNamesWhatNoLaneCovers) {
     writeFile(root, QStringLiteral("CLAUDE.md"), "# Proj\n");
     writeFile(root, QStringLiteral("src/a/one.cpp"), "int x;\n");
     writeFile(root, QStringLiteral("src/b/two.cpp"), "int y;\n");
-    writeFile(root, QStringLiteral("src/a/CMakeLists.txt"), "project(x)\n");
+    writeFile(root, QStringLiteral("src/a/Containerfile"), "FROM scratch\n");
     writeFile(root, QStringLiteral("scripts/run.sh"), "#!/bin/sh\n");
     writeFile(root, QStringLiteral(".githooks/pre-push"), "#!/bin/sh\n");
     writeFile(root, QStringLiteral("notes/readme.md"), "# no code\n");
     SubsystemMap::clearCacheForTests();
     IndieReviewEngine::UnassignedSources skipped;
     ASSERT_FALSE(IndieReviewEngine::deriveComputedPartition(root, &skipped).isEmpty());
-    EXPECT_EQ(skipped.sample, QStringList{QStringLiteral("src/a/CMakeLists.txt")});
+    EXPECT_EQ(skipped.sample, QStringList{QStringLiteral("src/a/Containerfile")});
     const QMap<QString, int> outside = IndieReviewEngine::codeOutsideRoots(root);
     EXPECT_EQ(outside.value(QStringLiteral("scripts")), 1);
     EXPECT_EQ(outside.value(QStringLiteral(".githooks")), 1);

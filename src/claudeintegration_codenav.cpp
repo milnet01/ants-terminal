@@ -1017,6 +1017,9 @@ void appendToolSchemasCodeNav(QJsonArray &tools) {
                     // (makeSymbolLangProp) has listed "sh" since ANTS-3558.
                     modeEnum.append("sh");
                     modeEnum.append("html");     // ANTS-4361
+                    modeEnum.append("asm");      // ANTS-6801
+                    modeEnum.append("cmake");
+                    modeEnum.append("yaml");
                     modeProp["enum"]    = modeEnum;
                     modeProp["default"] = "auto";
                     QJsonObject hdrProp;      hdrProp["type"]      = "boolean";

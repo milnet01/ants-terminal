@@ -4603,6 +4603,9 @@ if(ANTS_TESTS)
                 # ANTS-5786 — comment_claims: the seam against a QTemporaryDir;
                 # INV-9 scrapes ANTS_SRC_DIR.
                 tests/features/mcp_comment_claims/test_mcp_comment_claims.cpp
+                # ANTS-6801 — NASM, CMake and YAML in file_outline and the
+                # verbs that walk by its file filter.
+                tests/features/file_outline_asm_cmake_yaml/test_file_outline_asm_cmake_yaml.cpp
                 # ANTS-5785 — duplicate_blocks: the seam against a QTemporaryDir;
                 # INV-9 scrapes ANTS_SRC_DIR.
                 tests/features/mcp_duplicate_blocks/test_mcp_duplicate_blocks.cpp

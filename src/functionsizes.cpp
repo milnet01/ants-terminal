@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
+#include <QRegularExpression>
 
 #include <algorithm>
 
@@ -104,6 +105,21 @@ QList<Function> measure(const QString &absPath, const QStringList &lines,
         }
         if (python) {
             f.bodyEnd = pythonEnd(lines, f.bodyStart, &f.nestingDepth);
+        } else if (language == QLatin1String("asm")) {
+            // ANTS-6801 — a label has no closing mark: its code runs until the
+            // next symbol, less the blank lines before it.
+            const auto next = std::upper_bound(symbolLines.cbegin(),
+                                               symbolLines.cend(), f.bodyStart);
+            f.bodyEnd = next != symbolLines.cend() ? qMin(*next - 1, int(lines.size()))
+                                                   : int(lines.size());
+            while (f.bodyEnd > f.bodyStart && lines.at(f.bodyEnd - 1).trimmed().isEmpty())
+                --f.bodyEnd;
+        } else if (language == QLatin1String("cmake")) {
+            static const QRegularExpression end(
+                QStringLiteral(R"(^\s*end(?:function|macro)\s*\()"),
+                QRegularExpression::CaseInsensitiveOption);
+            for (int n = f.bodyStart + 1; n <= lines.size() && f.bodyEnd == 0; ++n)
+                if (end.match(lines.at(n - 1)).hasMatch()) f.bodyEnd = n;
         } else {
             // A body's opening brace comes before the next symbol starts. An
             // expression-bodied function (`fun f() = x`) has none, and the

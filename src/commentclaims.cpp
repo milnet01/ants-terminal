@@ -10,6 +10,7 @@
 #include "mcprefusal.h"
 
 #include "codewalk.h"
+#include "fileoutline.h"
 #include "pathvalidation.h"
 #include "projectsettings.h"
 #include "quotationcheckverb.h"
@@ -49,7 +50,7 @@ bool attributes(QString between) {
     return between.isEmpty() || kLinks.contains(between);
 }
 
-enum class Family { None, CLike, Hash, Lua };
+enum class Family { None, CLike, Hash, Lua, Asm };
 
 Family familyOf(const QString &fileName) {
     if (fileName == QLatin1String("CMakeLists.txt") || fileName == QLatin1String("Makefile"))
@@ -72,6 +73,7 @@ Family familyOf(const QString &fileName) {
     if (kC.contains(s)) return Family::CLike;
     if (kHash.contains(s)) return Family::Hash;
     if (s == QLatin1String("lua")) return Family::Lua;
+    if (FileOutline::isAsmExt(s)) return Family::Asm;   // ANTS-6801
     return Family::None;
 }
 
@@ -112,6 +114,12 @@ public:
                 if (at("--")) { lineComment(2); continue; }
                 if (at("[[")) { skipPast(QStringLiteral("]]"), 2); continue; }
                 if (c == QLatin1Char('"') || c == QLatin1Char('\'')) { quoted(c); continue; }
+            } else if (m_f == Family::Asm) {
+                if (c == QLatin1Char(';')) { lineComment(1); continue; }
+                if (c == QLatin1Char('"') || c == QLatin1Char('\'') || c == QLatin1Char('`')) {
+                    quoted(c);
+                    continue;
+                }
             }
             ++m_i;
         }
