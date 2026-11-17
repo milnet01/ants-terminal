@@ -3036,16 +3036,37 @@ void TerminalGrid::resize(int rows, int cols) {
         // old copy walked cells only, so resize that widened/shrank the
         // terminal wiped accents/ZWJ/diacritics on all lines. Filter
         // entries whose column is now out of bounds (shrink case).
+        // ANTS-6530 — on the main screen, a shrink that would cut off the
+        // cursor row moves the rows above it into scrollback, as xterm
+        // does, so the cursor line and the newest output stay on screen.
+        int shift = 0;
+        if (!m_altScreenActive)
+            shift = std::max(0, m_cursorRow - rows + 1);
+        const int hlSize = static_cast<int>(m_screenHyperlinks.size());
+        for (int r = 0; r < shift; ++r) {
+            m_scrollback.push_back(trimmedForScrollback(std::move(m_screenLines[r])));
+            m_scrollbackBytes += cellBytes(m_scrollback.back());  // ANTS-4534
+            ++m_scrollbackPushed;
+            if (r < hlSize)
+                addBackScrollbackHyperlinks(std::move(m_screenHyperlinks[r]));
+        }
+        if (shift > 0) {
+            m_screenHyperlinks.erase(m_screenHyperlinks.begin(),
+                                     m_screenHyperlinks.begin() + std::min(shift, hlSize));
+            m_cursorRow -= shift;
+        }
+
         std::vector<TermLine> newScreen(rows);
         for (auto &line : newScreen)
             line.cells = makeRow(cols, m_defaultFg, m_defaultBg);
-        int copyRows = std::min(rows, m_rows);
+        int copyRows = std::min(rows, m_rows - shift);
         int copyCols = std::min(cols, m_cols);
         for (int r = 0; r < copyRows; ++r) {
+            const TermLine &src = m_screenLines[r + shift];
             for (int c = 0; c < copyCols; ++c)
-                newScreen[r].cells[c] = m_screenLines[r].cells[c];
-            newScreen[r].softWrapped = m_screenLines[r].softWrapped;
-            for (const auto &kv : m_screenLines[r].combining) {
+                newScreen[r].cells[c] = src.cells[c];
+            newScreen[r].softWrapped = src.softWrapped;
+            for (const auto &kv : src.combining) {
                 if (kv.first < copyCols)
                     newScreen[r].combining.emplace(kv.first, kv.second);
             }

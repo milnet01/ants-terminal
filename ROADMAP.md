@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6811 -->
+<!-- ants-roadmap-id-high-water: ANTS=6812 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95202,7 +95202,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).
   Lanes: terminal-grid.
 
-- 📋 [ANTS-6530] **terminalgrid.cpp: A height-only shrink (cols unchanged) keeps the top rows and throws away the bottom `m_rows - rows` rows.**
+- ✅ [ANTS-6530] **terminalgrid.cpp: A height-only shrink (cols unchanged) keeps the top rows and throws away the bottom `m_rows - rows` rows.**
   `terminalgrid.cpp:2956–2976` — A height-only shrink (cols unchanged)
   keeps the top rows and throws away the bottom `m_rows - rows` rows.
   Those rows hold the cursor line and the newest output, and none of
@@ -95214,6 +95214,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   push the top `max(0, cursorRow - rows + 1)` rows into scrollback (with
   `++m_scrollbackPushed` and hyperlink lockstep) before copying.
   Ledger row 9, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-17. On the main screen, a rows-only shrink first moves
+  the top max(0, cursorRow - rows + 1) rows into scrollback (byte count,
+  push counter and hyperlinks in lockstep), then copies. The saved main
+  screen during alt-screen has the same shape: ANTS-6812.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).
@@ -95437,6 +95441,20 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 35-test-audit-verify (High).
   Lanes: test-audit-verify.
+
+- 📋 [ANTS-6812] **A height-only shrink during an alt-screen app drops the bottom rows of the saved main screen.**
+  TerminalGrid::resize's rows-only branch for m_altScreen (the saved
+  main screen while the alt screen is active) copies the top rows and
+  clamps m_altCursorRow, the same shape ANTS-6530 fixed for the live
+  main screen. The rows below the new height, which hold the saved
+  cursor line, are dropped rather than pushed to the main scrollback.
+  Fix: shift by max(0, m_altCursorRow - rows + 1) into m_scrollback,
+  moving m_altScreenHyperlinks in lockstep, then copy. Left out of
+  ANTS-6530 to keep that fix to its finding.
+  **Layman:** Shrinking the window while a full-screen app such as less is open can lose the newest lines of the normal screen behind it.
+  Kind: fix.
+  Source: found-while-fixing-ANTS-6530.
+  Lanes: terminal-grid.
 
 ### One-edit comment fixes (2026-11-06 review)
 

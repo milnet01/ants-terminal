@@ -165,4 +165,70 @@ TEST(ScrollRegionGrowthOnResize, GrowShrinkSequence) {
            grid.scrollBottom());
 }
 
+namespace {
+
+// Print "L0".."L<n-1>", one per row, leaving the cursor on the last.
+void printLines(VtParser &parser, int n) {
+    std::string s;
+    for (int i = 0; i < n; ++i) {
+        if (i) s += "\r\n";
+        s += "L" + std::to_string(i);
+    }
+    parser.feed(s.data(), static_cast<int>(s.size()));
+}
+
+std::string rowText(const TerminalGrid &grid, int row) {
+    std::string out;
+    for (int c = 0; c < grid.cols(); ++c)
+        out += static_cast<char>(grid.cellAt(row, c).codepoint);
+    return out.substr(0, out.find_last_not_of(' ') + 1);
+}
+
+std::string scrollbackText(const TerminalGrid &grid, int index) {
+    std::string out;
+    for (const Cell &cell : grid.scrollbackLine(index))
+        out += static_cast<char>(cell.codepoint);
+    return out.substr(0, out.find_last_not_of(' ') + 1);
+}
+
+}  // namespace
+
+// ----- INV-8 (ANTS-6530) — a height-only shrink keeps the cursor line.
+TEST(ScrollRegionGrowthOnResize, HeightShrinkKeepsCursorLine) {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+    printLines(parser, kRows);  // cursor on row 23, showing "L23"
+    const int before = grid.scrollbackSize();
+    grid.resize(10, kCols);
+    EXPECT_EQ(grid.cursorRow(), 9);
+    EXPECT_EQ(rowText(grid, 9), "L23");
+    EXPECT_EQ(rowText(grid, 0), "L14");
+    ASSERT_EQ(grid.scrollbackSize(), before + 14);
+    EXPECT_EQ(scrollbackText(grid, grid.scrollbackSize() - 1), "L13");
+}
+
+// ----- INV-9 (ANTS-6530) — a cursor that still fits pushes nothing.
+TEST(ScrollRegionGrowthOnResize, HeightShrinkAboveCursorPushesNothing) {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+    printLines(parser, 5);  // cursor on row 4
+    const int before = grid.scrollbackSize();
+    grid.resize(10, kCols);
+    EXPECT_EQ(grid.scrollbackSize(), before);
+    EXPECT_EQ(grid.cursorRow(), 4);
+    EXPECT_EQ(rowText(grid, 0), "L0");
+    EXPECT_EQ(rowText(grid, 4), "L4");
+}
+
+// ----- INV-10 (ANTS-6530) — the alt screen has no scrollback.
+TEST(ScrollRegionGrowthOnResize, AltHeightShrinkPushesNothing) {
+    TerminalGrid grid(kRows, kCols);
+    VtParser parser([&grid](const VtAction &a) { grid.processAction(a); });
+    enterAltScreen(parser);
+    printLines(parser, kRows);
+    const int before = grid.scrollbackSize();
+    grid.resize(10, kCols);
+    EXPECT_EQ(grid.scrollbackSize(), before);
+}
+
 

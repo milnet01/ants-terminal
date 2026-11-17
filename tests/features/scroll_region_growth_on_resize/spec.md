@@ -158,6 +158,22 @@ Construct grid at 24 rows. No DECSTBM. Resize to 60.
 Resize back to 24. `scrollBottom() == 23`. Default region tracks
 the grid through arbitrary sequences.
 
+### Invariant 8 — a height-only shrink keeps the cursor line (ANTS-6530)
+
+Print `L0`..`L23` on a 24×80 primary screen, cursor on row 23. Resize
+to 10×80. The cursor is on row 9, which shows `L23`; row 0 shows `L14`;
+`L0`..`L13` went to scrollback, newest last.
+
+### Invariant 9 — a cursor that still fits pushes nothing
+
+Print `L0`..`L4`, cursor on row 4. Resize 24→10 rows. Scrollback is
+unchanged and rows 0..4 still show `L0`..`L4`.
+
+### Invariant 10 — the alt screen pushes nothing on a height shrink
+
+In the alt screen, fill all 24 rows and resize to 10. Scrollback is
+unchanged.
+
 ## How this test anchors to reality
 
 Direct assertions via `TerminalGrid::scrollTop()` / `scrollBottom()`
