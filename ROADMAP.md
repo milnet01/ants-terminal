@@ -94418,7 +94418,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   questions.
   Quote: `m_logFile->write(batch->rawBytes);`
   Ledger row 39, docs/reviews/close-findings-2026-11-06.md.
-  **Layman:** A large file or a long output could use far more memory than it should.
+  Decided 2026-11-17 by the user: cap each tab's session log at
+  1 GB. At the cap that tab stops logging and a message says the log
+  is full; what is already saved stays. No rotation.
+  Note: the log is a file on disk, not memory.
+  **Layman:** A tab's session log stops at 1 GB and says so, instead of growing until the drive is full.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 03-terminal-widget-a (Low).
   Lanes: terminal-widget.
