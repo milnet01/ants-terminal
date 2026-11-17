@@ -272,3 +272,42 @@ TEST(roadmap_log_evidence, Inv8ProseWithCommasIsReported) {
     EXPECT_FALSE(evidenceWarning(out).isEmpty())
         << QJsonDocument(out).toJson().toStdString();
 }
+
+// INV-9 (ANTS-6129) — roadmap_query echoes `evidence` on a section= row as it
+// does on a list row. Section mode once built its rows from a hand copy of the
+// list builder, and the copy left the field out.
+TEST(roadmap_log_evidence, Inv9SectionRowsEchoEvidence) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    QString md = QStringLiteral("# Roadmap\n\n");
+    for (int i = 0; i < 30; ++i)   // clears the minimum-parseable-size gate
+        md += QStringLiteral("Padding line for the parse gate.\n");
+    md += QString::fromUtf8(
+        "\n## Backlog\n\n"
+        "- \xF0\x9F\x93\x8B [ANTS-9001] **A bullet with evidence.**\n"
+        "  Evidence: shots/a.png, logs/run.txt\n"
+        "  Kind: fix.\n"
+        "  Source: test.\n");
+    ASSERT_TRUE(writeRoadmap(tmp.path(), md));
+
+    const QJsonArray want{QStringLiteral("shots/a.png"),
+                          QStringLiteral("logs/run.txt")};
+    for (const bool sectionMode : {false, true}) {
+        RemoteControl rc(nullptr);
+        QJsonObject req;
+        req["caller_cwd"] = tmp.path();
+        req["status"]     = QStringLiteral("all");
+        req["include_body"] = true;   // full rows, not the four-key default
+        if (sectionMode) req["section"] = QStringLiteral("backlog");
+        const QJsonObject out = rc.cmdRoadmapQuery(req).object();
+        ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool())
+            << QJsonDocument(out).toJson().toStdString();
+        const QJsonArray bullets = out.value(QStringLiteral("bullets")).toArray();
+        ASSERT_EQ(bullets.size(), 1) << QJsonDocument(out).toJson().toStdString();
+        EXPECT_EQ(bullets.at(0).toObject().value(QStringLiteral("evidence")).toArray(),
+                  want)
+            << "INV-9: " << (sectionMode ? "section=" : "list")
+            << " row lacks the evidence array\n"
+            << QJsonDocument(out).toJson().toStdString();
+    }
+}

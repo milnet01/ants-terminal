@@ -235,7 +235,7 @@ TEST(roadmap_query_by_ids, Inv2IdsBranchKeepsInputIndex) {
     // follows the projection to the accounting arrays, so it holds the whole
     // annotation block and any guard placed above it.
     const std::string annotBlock = ants_test::regionBetween(
-        cpp.substr(idsBranch), "applyBulletFields(matches);",
+        cpp.substr(idsBranch), "projectAndReportBulletFields(matches);",
         "QJsonArray matchedIds;");
     expect(!annotBlock.empty(),
            "INV-13: annotation block bounded (both anchors present)");

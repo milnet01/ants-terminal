@@ -197,10 +197,9 @@ TEST(roadmap_query_section_index, SchemaModePropAdvertised) {
 // has already populated the cache. ANTS-1442 — fixed-up after live
 // test showed every section reporting 0/0/0 even when populated.
 //
-// ANTS-6129 — every cache fill now goes through rcBuildBulletCacheArray,
-// which sets section_slug. The one hand-built row loop left is
-// section-mode emission, which sets its own. A future fill that assigns
-// the cache any other way, or a row loop without section_slug, leaves
+// ANTS-6129 — every cache fill and section-mode emission go through
+// rcBuildBulletCacheArray, which sets section_slug. A future fill that
+// assigns the cache any other way, or a hand-built row loop, can leave
 // section_index reading "" for every bullet.
 TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
     expect_reset();
@@ -236,15 +235,14 @@ TEST(roadmap_query_section_index, Inv7SectionSlugOnEveryCacheFill) {
            "must call rcBuildBulletCacheArray, so no fill can drop "
            "section_slug.");
 
-    // The one row loop left in the function — section-mode emission —
-    // sets section_slug itself (ANTS-1287-INV-7).
-    const int loopCount =
-        countOccurrences(fn, "for (const auto &b : bullets)");
-    const int slugCount = countOccurrences(fn, "o[\"section_slug\"] =");
-    expect(loopCount == 1 && slugCount == loopCount,
-           "INV-7: cmdRoadmapQuery has one hand-built row loop "
-           "(section-mode emission) and it must emit section_slug. "
-           "A new loop belongs in rcBuildBulletCacheArray.");
+    // Section mode builds its rows through the same builder and only
+    // overrides section_slug (ANTS-1287-INV-7); nothing builds rows by hand.
+    expect(contains(fn, "sectionBullets = rcBuildBulletCacheArray("),
+           "INV-7: section mode builds its rows through "
+           "rcBuildBulletCacheArray");
+    expect(countOccurrences(fn, "for (const auto &b : bullets)") == 0,
+           "INV-7: cmdRoadmapQuery builds no rows by hand. A new row "
+           "builder belongs in rcBuildBulletCacheArray.");
 
     // The fix anchor must be present.
     expect(contains(cpp, "ANTS-1442"),

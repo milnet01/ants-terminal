@@ -115,10 +115,10 @@ TEST(gfm_adapter_bold_id_multitoken, Inv5NoSeparatorFallsBack) {
 TEST(gfm_adapter_bold_id_multitoken, Inv6EnvelopeEmitsBoldId) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    // Two sites build the envelope rows (ANTS-6129): the shared cache
-    // builder rcBuildBulletCacheArray, which every cache fill calls
-    // (full-file and section_index lazy-fill among them), and the
-    // section-mode loop inside cmdRoadmapQuery. Both must emit bold_id.
+    // One site builds the envelope rows (ANTS-6129): the shared builder
+    // rcBuildBulletCacheArray, which every cache fill and section mode
+    // call. It must emit bold_id, and cmdRoadmapQuery must not build rows
+    // of its own.
     const std::string needle = "o[\"bold_id\"] = b.boldId";
     const auto slice = [&](const std::string &start, const std::string &end) {
         const auto s = cpp.find(start);
@@ -130,10 +130,12 @@ TEST(gfm_adapter_bold_id_multitoken, Inv6EnvelopeEmitsBoldId) {
                .find(needle) != std::string::npos,
            "INV-6: the shared cache builder emits bold_id (full-file and "
            "section_index lazy-fill rows)");
-    expect(slice("QJsonDocument RemoteControl::cmdRoadmapQuery(",
-                 "\nQJsonDocument RemoteControl::")
-               .find(needle) != std::string::npos,
-           "INV-6: the section-mode row loop emits bold_id");
+    const std::string fn = slice("QJsonDocument RemoteControl::cmdRoadmapQuery(",
+                                 "\nQJsonDocument RemoteControl::");
+    expect(fn.find("sectionBullets = rcBuildBulletCacheArray(") != std::string::npos,
+           "INV-6: section mode builds its rows through the shared builder");
+    expect(fn.find(needle) == std::string::npos,
+           "INV-6: cmdRoadmapQuery builds no bold_id rows of its own");
     EXPECT_EQ(0, expect_failures());
 }
 

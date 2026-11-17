@@ -71,6 +71,17 @@ static bool rcAtomicWriteRoadmap(const QString &path, const QString &content) {
     return rw.write(utf8) == utf8.size() && rw.commit();
 }
 
+// A pass-headings refusal: the error is prefixed with the caller's op.
+static QJsonDocument rcPassErr(const QString &op, const QString &code,
+                               const QString &message) {
+    QJsonObject e;
+    e["ok"]     = false;
+    e["code"]   = code;
+    e["error"]  = QStringLiteral("roadmap_log op:\"%1\": %2").arg(op, message);
+    e["format"] = QStringLiteral("pass-headings");
+    return QJsonDocument(e);
+}
+
 // Validate + render one pass bullet (shared by single + batch append).
 struct PassAppendItem {
     bool    ok = false;
@@ -288,12 +299,7 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppend(
         const QJsonObject &req, const QString &roadmapPath,
         const QString &markdown) {
     auto err = [](const QString &code, const QString &message) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = code;
-        e["error"]  = QStringLiteral("roadmap_log op:\"append\": %1").arg(message);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
+        return rcPassErr(QStringLiteral("append"), code, message);
     };
     const QString section = req.value(QStringLiteral("section")).toString();
     const PassAppendItem it = rcRenderPassBullet(req);
@@ -443,15 +449,10 @@ QJsonDocument rcdetail::cmdRoadmapLogPassAppendBatch(
         out["dry_run"] = true;
         return QJsonDocument(out);
     }
-    if (!rcAtomicWriteRoadmap(roadmapPath, updated)) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = QStringLiteral("roadmap_write_failed");
-        e["error"]  = QStringLiteral("roadmap_log op:\"append_batch\": "
-            "atomic write of \"%1\" failed").arg(roadmapPath);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
-    }
+    if (!rcAtomicWriteRoadmap(roadmapPath, updated))
+        return rcPassErr(QStringLiteral("append_batch"),
+                         QStringLiteral("roadmap_write_failed"),
+                         QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
     return envelope(static_cast<qint64>(combined.toUtf8().size()));
 }
 
@@ -472,12 +473,7 @@ QJsonDocument rcdetail::rlPassStoreAppend(const QJsonObject &req, bool batch,
     const QString opName = batch ? QStringLiteral("append_batch")
                                  : QStringLiteral("append");
     auto err = [&](const QString &code, const QString &message) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = code;
-        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": %2").arg(opName, message);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
+        return rcPassErr(opName, code, message);
     };
     const bool dryRun = req.value(QStringLiteral("dry_run")).toBool();
     const QString section = req.value(QStringLiteral("section")).toString();
@@ -695,14 +691,8 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlip(
         req.value(QStringLiteral("op")).toString() ==
             QStringLiteral("annotate");
     auto err = [&](const QString &code, const QString &message) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = code;
-        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": %2")
-            .arg(annotateMode ? QStringLiteral("annotate")
-                              : QStringLiteral("flip"), message);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
+        return rcPassErr(annotateMode ? QStringLiteral("annotate")
+                                      : QStringLiteral("flip"), code, message);
     };
     const QString locId = req.value(QStringLiteral("id")).toString();
     const QString locHeadline =
@@ -806,7 +796,6 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
     const QString keyword = PassHeadingWrite::passStatusKeyword(canon);
     const QString opName = annotateMode ? QStringLiteral("annotate_batch")
                                         : QStringLiteral("flip_batch");
-    // to_status is validated canonical at the gate, so keyword is non-empty.
     const QJsonArray locators = req.value(QStringLiteral("locators")).toArray();
 
     QString md = markdown;
@@ -920,15 +909,9 @@ QJsonDocument rcdetail::cmdRoadmapLogPassFlipBatch(
     // INV-14 — nothing applied → file untouched.
     if (flipped.isEmpty()) return envelope(-1, 0);
     const qint64 sizeBefore = QFileInfo(roadmapPath).size();   // ANTS-3702
-    if (!rcAtomicWriteRoadmap(roadmapPath, md)) {
-        QJsonObject e;
-        e["ok"]     = false;
-        e["code"]   = QStringLiteral("roadmap_write_failed");
-        e["error"]  = QStringLiteral("roadmap_log op:\"%1\": "
-            "atomic write of \"%2\" failed").arg(opName).arg(roadmapPath);
-        e["format"] = QStringLiteral("pass-headings");
-        return QJsonDocument(e);
-    }
+    if (!rcAtomicWriteRoadmap(roadmapPath, md))
+        return rcPassErr(opName, QStringLiteral("roadmap_write_failed"),
+                         QStringLiteral("atomic write of \"%1\" failed").arg(roadmapPath));
     return envelope(sizeBefore, static_cast<qint64>(md.toUtf8().size()));
 }
 // ========================== end ANTS-2126 ==========================
@@ -1809,6 +1792,15 @@ static QString rlBodyValueFor(const RoadmapParse::TrailerValues &tv,
 // the two remedies the caller is owed.
 static QString rlColumnFormOf(const RlTrailerKey &k, QString value);
 
+// A raw `Kind:` value as the column stores it, by the migration's own mapper
+// (roadmap-data-model.md § 7.4); empty when nothing recognises it.
+static QString rlCanonicalKind(const QString &raw) {
+    const QString folded = raw.trimmed().toLower();
+    if (RoadmapParse::canonicalKinds().contains(folded))
+        return folded;
+    return RoadmapParse::mappedKind(folded);
+}
+
 static bool rlBodyShadows(const RoadmapParse::TrailerValues &tv,
                           const QString &body, const RlTrailerKey &k,
                           const QString &supplied, QString *error) {
@@ -1910,12 +1902,9 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
             // engine's `CHECK constraint failed: kind IN (...)`, which quotes
             // 21 values and not the one the caller wrote.
             if (k.undeclare == RlUndeclare::Keep && field == QLatin1String("kind")) {
-                const QString folded = newValue.trimmed().toLower();
-                if (RoadmapParse::canonicalKinds().contains(folded)) {
-                    newValue = folded;
-                } else if (const QString mapped = RoadmapParse::mappedKind(folded);
-                           !mapped.isEmpty()) {
-                    newValue = mapped;
+                if (const QString canonical = rlCanonicalKind(newValue);
+                    !canonical.isEmpty()) {
+                    newValue = canonical;
                 } else {
                     if (error) {
                         *error = QStringLiteral(
@@ -2029,15 +2018,12 @@ bool rcdetail::rlDeriveTrailerColumns(RoadmapStore &store, qint64 itemPk,
     return true;
 }
 
-// A body value in the column's stored form. The capture arrives raw; the column
-// holds the canonical kind, mapped exactly as rlDeriveTrailerColumns() maps it.
+// A body value in the column's stored form: a kind through rlCanonicalKind, as
+// rlDeriveTrailerColumns() stores it; anything else, and an unknown kind, raw.
 static QString rlColumnFormOf(const RlTrailerKey &k, QString value) {
     if (QLatin1String(k.field) == QLatin1String("kind")) {
-        QString folded = value.trimmed().toLower();
-        if (RoadmapParse::canonicalKinds().contains(folded))
-            return folded;
-        if (const QString mapped = RoadmapParse::mappedKind(folded); !mapped.isEmpty())
-            return mapped;
+        if (const QString canonical = rlCanonicalKind(value); !canonical.isEmpty())
+            return canonical;
     }
     return value;
 }
@@ -2341,34 +2327,12 @@ rcdetail::LocateOutcome rcdetail::rlLocateTarget(RoadmapStore &store, qint64 pro
     return out;
 }
 
-// § 2.3 — the high-water the store path allocates from. Two store columns,
-// no text scan: the next id is the highest this project has, plus one.
-//
-// ANTS-4631 — this used to floor to RoadmapFoldIn::corpusHighWater(), a
-// `\bPFX-NNNN\b` scan of ROADMAP.md, CHANGELOG.md and every archive. That
-// floor was written when the markdown file WAS the record (ANTS-3450), and it
-// was never retired when the store became one: a migrated project's file is a
-// rendered OUTPUT of these very rows, so the scan re-read the store's own
-// answer through prose that cannot distinguish an allocated id from a
-// documented example. Measured 2026-08-24: one deliberately-absurd `ANTS-9999`
-// inside a body was read as the high water and the next append issued 10000,
-// burning ~5,370 ids. A column cannot make that mistake.
-//
-// Both columns, because neither alone is complete. idHighWater() is the
-// allocator's own counter and remembers an id whose item was later deleted —
-// but only an id-allocating append advances it. Migration writes it at 0 when
-// it invents ids (writeTail, roadmapmigrateload.cpp) and otherwise not at all,
-// so a migrated-but-never-appended project reports 0 or nullopt while holding
-// thousands of ids. maxAllocatedId() reads those ids straight off the items. nullopt from
-// either is NOT an error; it is the ordinary state of a project that has not
-// reached that half yet.
-//
-// The un-migrated markdown path still floors to the corpus, and must: with no
-// project row there is no column to ask.
-//
-// ANTS-5087 — the two-column rule itself now lives on the store, because
-// RoadmapFoldIn::allocateIds needs the same floor and cannot see this file.
-// This stays as the name its callers already use.
+// § 2.3 — the high-water the store path allocates from: a forward to
+// RoadmapStore::allocationFloor (ANTS-5087), which documents its two-column
+// rule. No text scan: a migrated project's file is rendered from these rows,
+// and an example id in its prose once read as the high water (ANTS-4631).
+// The un-migrated markdown path still floors to the corpus, and must: with
+// no project row there is no column to ask.
 qint64 rcdetail::rlStoreIdHighWater(RoadmapStore &store, qint64 projectId,
                                  const QString &prefix) {
     QString ignored;

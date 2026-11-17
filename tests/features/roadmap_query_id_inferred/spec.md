@@ -101,12 +101,9 @@ changing it is a deliberate act rather than a silent side effect.
 
 ### INV-8 — every bullet-fill site that emits `bold_id` also emits `id_inferred`
 
-`roadmap_query` fills its bullet objects at five sites. The count of
-`id_inferred` emissions across the RemoteControl sources is **>= the count of
-`bold_id` emissions**, so a sixth fill site added later cannot carry one
-without the other. Same posture as ANTS-1646 INV-2, and the reason it is
-needed here is that `bold_id` itself was added at three sites and has since
-grown to five.
+The count of `id_inferred` emissions across the RemoteControl sources is
+**>= the count of `bold_id` emissions**, so a bullet-fill site added later
+cannot carry one without the other. Same posture as ANTS-1646 INV-2.
 
 ### INV-9 — the flag reaches the caller
 

@@ -15,8 +15,8 @@
 
 namespace {
 
-// The op names cmdRoadmapLogDispatch compares against, scoped to its body.
-QSet<QString> dispatchedOps() {
+// cmdRoadmapLogDispatch's body, read from source.
+QString dispatchBody() {
     QFile f(QFileInfo(QString::fromUtf8(__FILE__)).absolutePath()
             + QStringLiteral("/../../../src/remotecontrol_roadmap_query_verb.cpp"));
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -32,14 +32,34 @@ QSet<QString> dispatchedOps() {
     }
     // The body ends at the first column-0 closing brace after it.
     const qsizetype end = src.indexOf(QStringLiteral("\n}\n"), start);
-    const QString body = src.mid(start, end < 0 ? -1 : end - start);
+    return src.mid(start, end < 0 ? -1 : end - start);
+}
+
+// The op names cmdRoadmapLogDispatch compares against.
+QSet<QString> dispatchedOps() {
     static const QRegularExpression rx(
         QStringLiteral("\\bop [=!]= QStringLiteral\\(\"([a-z_]+)\"\\)"));
     QSet<QString> ops;
-    for (auto it = rx.globalMatch(body); it.hasNext();)
+    for (auto it = rx.globalMatch(dispatchBody()); it.hasNext();)
         ops.insert(it.next().captured(1));
     ops.remove(QStringLiteral("add"));        // aliases of append / append_batch
     ops.remove(QStringLiteral("add_batch"));
+    return ops;
+}
+
+// The op names the bad_mode refusal lists: each \"name\" in its message.
+QSet<QString> refusalOps() {
+    const QString body = dispatchBody();
+    const qsizetype start = body.indexOf(QStringLiteral("unknown op"));
+    const qsizetype end = body.indexOf(QStringLiteral(".arg(op)"), start);
+    if (start < 0 || end < 0) {
+        ADD_FAILURE() << "the unknown-op refusal was not found";
+        return {};
+    }
+    static const QRegularExpression rx(QStringLiteral(R"(\\"([a-z_]+)\\")"));
+    QSet<QString> ops;
+    for (auto it = rx.globalMatch(body.mid(start, end - start)); it.hasNext();)
+        ops.insert(it.next().captured(1));
     return ops;
 }
 
@@ -88,4 +108,16 @@ TEST(RoadmapLogOpEnum, EnumMatchesDispatch) {
         EXPECT_TRUE(dispatched.contains(QString::fromLatin1(op))) << "INV-4: " << op;
         EXPECT_TRUE(published.contains(QString::fromLatin1(op))) << "INV-4: " << op;
     }
+}
+
+TEST(RoadmapLogOpEnum, RefusalNamesEveryDispatchedOp) {
+    const QSet<QString> dispatched = dispatchedOps();
+    const QSet<QString> listed     = refusalOps();
+    ASSERT_GT(listed.size(), 10) << "the scrape found too few ops to be real";
+    for (const QString &op : dispatched)
+        EXPECT_TRUE(listed.contains(op))
+            << "INV-5: dispatched but not named in the refusal: " << op.toStdString();
+    for (const QString &op : listed)
+        EXPECT_TRUE(dispatched.contains(op))
+            << "INV-5: named in the refusal but never dispatched: " << op.toStdString();
 }

@@ -105577,7 +105577,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-roadmap-query-log.
 
-- 📋 [ANTS-6129] **Readability fixes, mcp-roadmap-query-log-b lane: remotecontrol_roadmap_query.cpp, remotecontrol_roadmap_query_verb.cpp.**
+- ✅ [ANTS-6129] **Readability fixes, mcp-roadmap-query-log-b lane: remotecontrol_roadmap_query.cpp, remotecontrol_roadmap_query_verb.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-roadmap-query-log-b:
   4 high, 10 medium, 12 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/20-mcp-roadmap-query-log-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105605,6 +105605,20 @@ worked after these.
   `src/remotecontrol_roadmap_query_verb.cpp:506`; row 859
   `src/remotecontrol_roadmap_query_verb.cpp:4318`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-17 LOWs and the 2026-11-06 rows done. Row 841 (High): section
+  mode builds rows with rcBuildBulletCacheArray (new bodyCap arg) and
+  overrides section_slug, so section= rows now carry evidence
+  (roadmap_log_evidence INV-9, red first). Dedups: readFailed lambda (4
+  sites), rcPassErr (5 sites), rlCanonicalKind (2 sites). Row 859 /
+  unknown-op list: guarded by roadmap_log_op_enum INV-5 (proved red by
+  dropping "render") rather than a dispatch-table rewrite. Comments:
+  stale line refs named, cmdRoadmapQuery and cmdRoadmapLog docs moved
+  onto their functions, m_roots guard named, contradicted keyword line
+  deleted, allocation-floor comment cut to the forward. Renames:
+  projectAndReportBulletFields, anyBulletKept (behaviour left to
+  ANTS-5927). Unindented else fixed. Already fixed before today: the
+  L3646 tally ref and the 16 KiB cap comment. MEDIUM leftovers are
+  ANTS-6240..6244.
   **Layman:** Tidy the roadmap tools for Claude Code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

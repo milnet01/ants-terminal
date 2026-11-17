@@ -44,6 +44,9 @@ rendered as an `Evidence: path1, path2` body line and echoed by
   `96`, `000 mutants across all twelve parsers under ASan+UBSan` and
   `clean`, each individually plausible and none of them what was written.
 
+- **INV-9** (ANTS-6129) — `roadmap_query` with `section=` echoes the
+  `evidence` array on each row, exactly as the list path does.
+
 It is an ADVISORY on a successful write, never a refusal. `roadmap_log` is
 called by sessions across every project on this machine; a new refusal on
 input accepted today would break them, and the measured defect covers a

@@ -156,8 +156,7 @@ TEST(roadmap_query_id_inferred, Inv7FollowsTheIdNotTheBullet) {
 
 #if defined(ANTS_RC_SOURCES)
 // INV-8 — every roadmap_query bullet-fill site that emits `bold_id` also
-// emits `id_inferred`. `bold_id` shipped at three sites and has since grown
-// to five; a sixth must not carry one without the other.
+// emits `id_inferred`, so a new fill site cannot carry one without the other.
 TEST(roadmap_query_id_inferred, Inv8EveryFillSiteEmitsTheField) {
     const std::string cpp = ants_test::slurpRemoteControl();
     ASSERT_FALSE(cpp.empty()) << "RemoteControl sources must be readable";
