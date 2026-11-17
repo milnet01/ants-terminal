@@ -114207,7 +114207,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-17 (ANTS-6797 build).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6807] **Tidy the clang-tidy warnings shown in remotecontrol_roadmap_log_batch.cpp, roadmapmigrateload.cpp and test_roadmap_render.cpp.**
+- 📋 [ANTS-6807] **Tidy the clang-tidy warnings shown in remotecontrol_roadmap_log_batch.cpp, roadmapmigrateload.cpp, test_roadmap_render.cpp and terminalwidget.h/.cpp.**
   Seen in the editor 2026-11-17, not yet triaged:
   - remotecontrol_roadmap_log_batch.cpp: QJsonValueRef loop
     conversions (performance-implicit-conversion-in-loop) in several
@@ -114221,10 +114221,17 @@ reports are asked for separately, each time.
     chain inside rebuildElements().
   - test_roadmap_render.cpp: bugprone-optional-value-conversion on
     an optional unwrapped and rewrapped.
+  Also seen 2026-11-17 in terminalwidget.h/.cpp: eventFilter and
+  inputMethodQuery change visibility from their base classes;
+  HyperlinkWarning could use a 1-byte base type; onVtBatch takes its
+  VtBatchPtr by value; a QKeySequence parameter copied; a `payload`
+  copy of `data` never modified; a movable `fm`; formatCommandDuration
+  static rather than in an anonymous namespace; a switch with two
+  identical branches; an int multiplication widened to qsizetype.
   **Layman:** An automatic code checker flagged more small spots in the roadmap code; each needs a look before it is changed.
   Kind: chore.
   Source: in-session-2026-11-17 (IDE clang-tidy diagnostics).
-  Lanes: mcp-roadmap-query-log, roadmap-store.
+  Lanes: mcp-roadmap-query-log, roadmap-store, terminal-widget.
 
 - ✅ [ANTS-6808] **VerifyTrustGate TF-11c's concurrent saves all succeed under a loaded test run.**
   Seen 2026-11-17 in the pre-push gate's build-test job (CI image,
