@@ -1217,6 +1217,14 @@ MainWindow::MainWindow(bool quakeMode, bool e2eMode, QWidget *parent)
 }
 
 MainWindow::~MainWindow() {
+#ifdef ANTS_LUA_PLUGINS
+    // ANTS-6535 — unload plugins while m_config still lives. As a child it
+    // died after the members, and a plugin's unload settings.set wrote into
+    // the destroyed Config through the grant-store and settings lambdas.
+    delete m_pluginManager;
+    m_pluginManager = nullptr;
+#endif
+
     // ANTS-5036 — m_config dies with this window; dialogs opened from
     // another window must not persist their size through it.
     DialogChrome::releaseConfig(&m_config);

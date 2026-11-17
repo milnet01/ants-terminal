@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **Closing a window unloads its Lua plugins first, so a plugin that saves a setting as it unloads saves it safely.** (ANTS-6535)
+
 - **`apply_edits` leaves a file that is not UTF-8 untouched and reports it skipped as `not_utf8`; a leading byte-order mark survives an edit.** (ANTS-6534)
 
 - **A Claude permission prompt in a background tab now shows while the focused tab has no Claude running.** (ANTS-6533)

@@ -95309,7 +95309,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code 2026-11-06, lane 11-mcp-state-workspace (High).
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6535] **pluginmanager.cpp: The chain: the plugin manager is created as `new PluginManager(this)`, a child of the main window, and `~MainWindow` neither unloads nor deletes it.**
+- ✅ [ANTS-6535] **pluginmanager.cpp: The chain: the plugin manager is created as `new PluginManager(this)`, a child of the main window, and `~MainWindow` neither unloads nor deletes it.**
   `pluginmanager.cpp:186-191` — The chain: the plugin manager is created
   as `new PluginManager(this)`, a child of the main window, and
   `~MainWindow` neither unloads nor deletes it. So it is destroyed
@@ -95321,6 +95321,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   would need to be made public) or `delete m_pluginManager` before the
   members die.
   Ledger row 195, docs/reviews/close-findings-2026-11-06.md.
+  Fixed 2026-11-17. ~MainWindow deletes m_pluginManager first, while
+  m_config lives; every runtime use is already null-guarded. Test:
+  LuaThreading.Ants6535MainWindowDeletesPluginManagerFirst (spec S8), a
+  source scrape: a headless MainWindow cannot be built, so the runtime
+  ordering is not observed by a test.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 18-plugins-lua (High).

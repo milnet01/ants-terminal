@@ -73,6 +73,9 @@ fails on pre-fix source (none of the symbols exist yet).
 - **S7 (INV-10) — targeted dispatch off the GUI thread.** The `MainWindow`
   keybinding shortcut routes through `PluginManager::dispatchTo`, not a
   direct `engineFor(...)->fireEvent(...)` on the GUI thread.
+- **S8 (ANTS-6535) — plugins unload before the window's members die.**
+  `~MainWindow` deletes `m_pluginManager` in its own body, so a plugin's
+  unload `settings.set` (R3) reaches a live `Config`.
 
 ## Out of scope
 

@@ -765,3 +765,17 @@ TEST(LuaThreading, Ants5107BroadcastSkipsPluginsWithoutAHandler) {
                                 "sent " << quietCalls - 1 << " of them";
     EXPECT_TRUE(heardEarly) << "an event fired while the plugin loaded was lost";
 }
+
+// S8 (ANTS-6535) — ~MainWindow deletes the plugin manager in its own body.
+// Left to die as a child widget, its unload ran after MainWindow's members
+// were gone, and a plugin's unload settings.set wrote into a destroyed
+// Config (R3 shows that call is delivered). Source scrape: a MainWindow
+// cannot be built headless in this bundle.
+TEST(LuaThreading, Ants6535MainWindowDeletesPluginManagerFirst) {
+    const std::string body = ants_test::squashWhitespace(
+        ants_test::slurpFunctionBody(ants_test::slurpMainWindow(),
+                                     "MainWindow::~MainWindow()"));
+    ASSERT_FALSE(body.empty()) << "~MainWindow not found";
+    EXPECT_NE(body.find("delete m_pluginManager;"), std::string::npos)
+        << "~MainWindow must delete m_pluginManager while m_config lives";
+}
