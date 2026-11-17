@@ -59,7 +59,7 @@ QJsonDocument rlNothingResolved(const QString &opName, bool annotateMode,
     if (!skipped.isEmpty()) {
         QString code = skipped.first().toObject()
                            .value(QStringLiteral("code")).toString();
-        for (const QJsonValue &v : skipped) {
+        for (const auto &v : skipped) {
             if (v.toObject().value(QStringLiteral("code")).toString() != code) {
                 code = QStringLiteral("bullet_not_found");
                 break;
@@ -105,8 +105,9 @@ QJsonDocument rlNothingResolved(const QString &opName, bool annotateMode,
 // out why. Which is ANTS-4374's invariant on the write side: a number the
 // caller did not ask for has to say where it came from. On a MIGRATED
 // project none of this runs at all: the store's id columns answer directly.
-static void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
-                                  qint64 corpusMax) {
+namespace {
+void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
+                           qint64 corpusMax) {
     out[QStringLiteral("counter_floor")]        = corpusMax;
     out[QStringLiteral("counter_file_value")]   = counterFileValue;
     out[QStringLiteral("counter_floor_reason")] = QStringLiteral(
@@ -120,6 +121,7 @@ static void rlExplainCounterFloor(QJsonObject &out, qint64 counterFileValue,
         "consecutive calls are contiguous.")
             .arg(counterFileValue).arg(corpusMax);
 }
+}  // namespace
 
 // ANTS-1690 — roadmap_log op:"flip_batch". Flip N bullets to one
 // to_status in a single read + single QSaveFile commit, so a bundle
@@ -1802,7 +1804,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
             QStringLiteral("roadmap_log: bundle_row cells (array) is "
                            "required"));
     QStringList cells;
-    for (const QJsonValue &v :
+    for (const auto &v :
          req.value(QStringLiteral("cells")).toArray())
         cells << v.toString();
     if (cells.isEmpty())
@@ -1812,7 +1814,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
 
     QStringList header;
     if (req.value(QStringLiteral("header")).isArray())
-        for (const QJsonValue &v :
+        for (const auto &v :
              req.value(QStringLiteral("header")).toArray())
             header << v.toString();
 
@@ -2247,6 +2249,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogBundleRow(const QJsonObject &req) {
 // docs/specs/ANTS-1879-roadmap-log-op-append-batch.md. An all-skipped batch returns ok:true, as that
 // spec says. flip_batch, which the spec mirrored, has returned ok:false in
 // that case since ANTS-4109; append_batch was not changed with it.
+// Recurses once at most: the ANTS-6274 branch refills an empty section.
+// NOLINTNEXTLINE(misc-no-recursion)
 QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     auto rlErr = [](const QString &code, const QString &message) {
         QJsonObject env;
@@ -3358,9 +3362,9 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // ANTS-4527 — rolled up over the batch's bullets, like the scrub warning.
     {
         QStringList bad;
-        for (const QJsonValue &bv : req.value(QStringLiteral("bullets")).toArray()) {
+        for (const auto &bv : req.value(QStringLiteral("bullets")).toArray()) {
             const QJsonObject ev = rlEvidenceAdvisoryForReq(bv.toObject());
-            for (const QJsonValue &e : ev.value(QStringLiteral("elements")).toArray())
+            for (const auto &e : ev.value(QStringLiteral("elements")).toArray())
                 bad << e.toString();
         }
         if (const QJsonObject ev = rlEvidenceAdvisory(bad); !ev.isEmpty())
@@ -3755,7 +3759,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogRotateMinor(const QJsonObject &req) {
     const auto allOpt = store.listSections(projectId, &err);
     if (!allOpt)
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
-    const QVector<RoadmapStore::SectionRow> all = *allOpt;
+    const QVector<RoadmapStore::SectionRow> &all = *allOpt;
 
     // The id arrives on the row (ANTS-3817) — it is the handle
     // setSectionSlug() / setSectionSource() take. This was a findSection() per
@@ -4458,7 +4462,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
     const auto orderedOpt = store.listSectionsOrdered(projectId, &err);
     if (!orderedOpt)
         return rcSectionOpErr(QStringLiteral("store_failed"), err);
-    const QVector<RoadmapStore::SectionRow> ordered = *orderedOpt;
+    const QVector<RoadmapStore::SectionRow> &ordered = *orderedOpt;
     const int at = rcIndexOfSlug(ordered, slug);
     if (at < 0)
         return rcSectionNotFound(store, projectId, slug);
@@ -4470,7 +4474,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogMoveSection(const QJsonObject &req) {
         return rcSectionOpErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is inside the section being moved")
                 .arg(anchor));
-    const RoadmapStore::SectionRow moved = ordered.at(at);
+    const RoadmapStore::SectionRow &moved = ordered.at(at);
     if (ordered.at(anchorAt).sourcePath != moved.sourcePath)
         return rcSectionOpErr(QStringLiteral("bad_args"),
             QStringLiteral("roadmap_log: \"%1\" is in another roadmap file; "

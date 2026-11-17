@@ -1226,21 +1226,24 @@ bool Loader::rebuildElements() {
             // for content above the first heading.
             if (!rootSection) {
                 const QString rootSlug = QString::fromUtf8("");
-                if (const auto found = store.findSection(projectId, rootSlug, &err))
+                if (const auto found = store.findSection(projectId, rootSlug, &err)) {
                     rootSection = *found;
-                else if (!err.isEmpty())
-                    return fail(err);
-                // position 0: this root is created outside the plan, so it is
-                // outside INV-4's dense sequence, and 0 is where a synthetic
-                // root belongs in document order. A collision with the plan's
-                // own position 0 is permitted (§ 2.1 leaves distinctness to the
-                // writer) and sectionOrderLess()'s slug tie-break settles it —
-                // this row's slug is "", which sorts first regardless.
-                else if (const auto made = store.addSection(projectId, rootSlug, rootSlug,
-                                                            0, 0, std::nullopt, &err))
+                } else {
+                    // position 0: this root is created outside the plan, so it is
+                    // outside INV-4's dense sequence, and 0 is where a synthetic
+                    // root belongs in document order. A collision with the plan's
+                    // own position 0 is permitted (§ 2.1 leaves distinctness to the
+                    // writer) and sectionOrderLess()'s slug tie-break settles it —
+                    // this row's slug is "", which sorts first regardless.
+                    // A failed lookup (err set) skips the add and fails as-is.
+                    std::optional<qint64> made;
+                    if (err.isEmpty())
+                        made = store.addSection(projectId, rootSlug, rootSlug,
+                                                0, 0, std::nullopt, &err);
+                    if (!made)
+                        return fail(err);
                     rootSection = *made;
-                else
-                    return fail(err);
+                }
             }
             sid = rootSection;
         }

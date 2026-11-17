@@ -410,9 +410,13 @@ signals:
     // process start. Only fires when the verifier is active (env var set).
     void osc133ForgeryDetected(int count);
 
+public:
+    // Public in the base classes, so public here too.
+    bool eventFilter(QObject *obj, QEvent *event) override;
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
+
 protected:
     bool event(QEvent *event) override;
-    bool eventFilter(QObject *obj, QEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -425,7 +429,6 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void inputMethodEvent(QInputMethodEvent *event) override;
-    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
 
 private slots:
     void onPtyFinished(int exitCode);
@@ -562,7 +565,7 @@ public:
     std::vector<std::pair<int, int>> searchMatchColumnsForTest(int globalLine) const;
     // ANTS-2119 M2 — OSC 8 phishing classification, split out of openHyperlink so
     // the policy is unit-testable without the modal dialog. Pure: no widget state.
-    enum class HyperlinkWarning {
+    enum class HyperlinkWarning : quint8 {
         None,                  // benign label + benign destination — open silently
         LabelHostMismatch,     // label looks like host A, URL points to host B
         SuspiciousDestination, // label carries no host, URL host is a punycode/IDN

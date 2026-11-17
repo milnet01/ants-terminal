@@ -353,7 +353,7 @@ TEST(RoadmapRender, Inv9LevelAgreesWithParent) {
     const auto parent = f->store->addSection(f->projectId, QStringLiteral("p"), QStringLiteral("P"), 2, 1, std::nullopt, &err);
     ASSERT_TRUE(parent);
     // level 2 under a level-2 parent: should be 3.
-    ASSERT_TRUE(f->store->addSection(f->projectId, QStringLiteral("c"), QStringLiteral("C"), 2, 2, *parent, &err));
+    ASSERT_TRUE(f->store->addSection(f->projectId, QStringLiteral("c"), QStringLiteral("C"), 2, 2, parent, &err));
 
     const auto out = RoadmapRender::render(*f->store, f->projectId, f->root(), liveOpts(*f), &err);
     EXPECT_FALSE(out) << "a level/parent contradiction must refuse, not pick one";

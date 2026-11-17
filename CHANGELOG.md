@@ -209,6 +209,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The roadmap_log batch handler, the migration loader, the terminal widget and the roadmap render test pass the clang-tidy checks their warnings came from.** (ANTS-6807)
+
 - **The main window, Claude allowlist and roadmap write-half test code pass clang-tidy clean, with twelve unused includes gone from mainwindow.cpp.** (ANTS-6793)
 
 - **Each tab's session log stops at 1 GB: the tab keeps what it saved, stops logging, and the status bar says the log is full** (ANTS-6493)

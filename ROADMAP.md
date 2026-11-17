@@ -112516,6 +112516,10 @@ contributors don't duplicate research.
   exclude_preset history refused rg_failed at load ~20, while git grep
   answered at once. Suggested: honour .gitignore and skip large
   untracked files, or raise the budget under load.
+  Seen again 2026-11-17 with no push hook running: a literal-free regex
+  search hit the 5 s budget both repo-wide and with glob
+  "{src,tests}/**", returning partial matches each time. The glob did
+  not shorten the walk enough; git grep answered the same query at once.
 
 - 📋 [ANTS-5239] **A gentle donation reminder about once every 150 launches.**
   Count launches in config; on every 150th, show a short, dismissible
@@ -114220,7 +114224,7 @@ reports are asked for separately, each time.
   Source: in-session-2026-11-17 (ANTS-6797 build).
   Lanes: roadmap-store.
 
-- 📋 [ANTS-6807] **Tidy the clang-tidy warnings shown in remotecontrol_roadmap_log_batch.cpp, roadmapmigrateload.cpp, test_roadmap_render.cpp and terminalwidget.h/.cpp.**
+- ✅ [ANTS-6807] **Tidy the clang-tidy warnings shown in remotecontrol_roadmap_log_batch.cpp, roadmapmigrateload.cpp, test_roadmap_render.cpp and terminalwidget.h/.cpp.**
   Seen in the editor 2026-11-17, not yet triaged:
   - remotecontrol_roadmap_log_batch.cpp: QJsonValueRef loop
     conversions (performance-implicit-conversion-in-loop) in several
@@ -114241,6 +114245,15 @@ reports are asked for separately, each time.
   copy of `data` never modified; a movable `fm`; formatCommandDuration
   static rather than in an anonymous namespace; a switch with two
   identical branches; an int multiplication widened to qsizetype.
+  Shipped 2026-11-17. Fixed every named warning except onVtBatch's
+  by-value VtBatchPtr, which tests/features/vtbatch_zero_copy and
+  sync_output_snapshot pin. cmdRoadmapLogAppendBatch recurses once by
+  design (the ANTS-6274 section refill) and carries a NOLINT saying so.
+  Also fixed the same kinds beside them: two more loops, two more
+  anonymous-namespace moves and two moves in terminalwidget.cpp. Left:
+  bugprone-signed-bitwise on small flag constants in terminalwidget.cpp,
+  and bugprone-unchecked-optional-access where gtest ASSERT_TRUE guards
+  the access.
   **Layman:** An automatic code checker flagged more small spots in the roadmap code; each needs a look before it is changed.
   Kind: chore.
   Source: in-session-2026-11-17 (IDE clang-tidy diagnostics).

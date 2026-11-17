@@ -493,7 +493,7 @@ TerminalWidget::TerminalWidget(QWidget *parent) : QWidget(parent) {
     // Alt+R / Alt+C / Alt+W toggle regex / case / whole-word while the search
     // bar has focus. WidgetWithChildrenShortcut scopes to the search bar so
     // these don't leak to the terminal or other widgets.
-    auto addToggleShortcut = [this](QKeySequence seq, QPushButton *btn) {
+    auto addToggleShortcut = [this](const QKeySequence &seq, QPushButton *btn) {
         auto *sc = new QShortcut(seq, m_searchBar);
         sc->setContext(Qt::WidgetWithChildrenShortcut);
         connect(sc, &QShortcut::activated, btn, [btn]() { btn->toggle(); });
@@ -585,7 +585,7 @@ void TerminalWidget::updateFontMetrics() {
     // ANTS-3460 — rebuild the overlay QFontMetrics in lockstep with the
     // fonts above so paintEvent's overlays reuse them instead of building
     // a fresh QFontMetrics each frame. fm above is already QFontMetrics(m_font).
-    m_fontMetrics = fm;
+    m_fontMetrics = std::move(fm);
     m_smallFontMetrics = QFontMetrics(m_smallFont);
     m_quickSelectFontMetrics = QFontMetrics(m_quickSelectFont);
     m_perfFontMetrics = QFontMetrics(m_perfFont);
@@ -922,12 +922,14 @@ bool TerminalWidget::event(QEvent *event) {
 // A finished command's run time as the block chrome shows it: "850ms",
 // "4.2s" or "3m07s" style. ANTS-5077 — the stamps are wall-clock, so a
 // backwards clock step clamps to zero rather than showing a negative time.
-static QString formatCommandDuration(qint64 startMs, qint64 endMs) {
+namespace {
+QString formatCommandDuration(qint64 startMs, qint64 endMs) {
     const qint64 ms = qMax<qint64>(0, endMs - startMs);
     if (ms < 1000) return QString("%1ms").arg(ms);
     if (ms < 60000) return QString("%1s").arg(ms / 1000.0, 0, 'f', 1);
     return QString("%1m%2s").arg(ms / 60000).arg((ms % 60000) / 1000);
 }
+}  // namespace
 
 void TerminalWidget::paintEvent(QPaintEvent *event) {
     // ANTS-3461 — catch multi-second paint stalls (debug-gated, zero-cost off).
@@ -2895,14 +2897,13 @@ void TerminalWidget::pasteToTerminal(const QByteArray &data,
     // when the user accepts (not before). The preview is normalised for
     // display only; the write uses the original bytes (see
     // showSendConfirmation).
-    QByteArray payload = data;
     QPointer<TerminalWidget> self(this);
     showSendConfirmation(
         QStringLiteral("confirmPasteDialog"), QStringLiteral("Confirm paste"),
         QString("<b>Paste looks risky: %1.</b><br>Review before confirming.")
             .arg(reasons.join(", ")),
         QString::fromUtf8(data), QStringLiteral("&Paste"),
-        [self, payload, submitAfter]() {
+        [self, payload = data, submitAfter]() {
             if (!self) return;
             self->performPaste(payload);
             // The Enter belongs to the accepted paste. Sending it from the
@@ -3227,8 +3228,8 @@ QByteArray TerminalWidget::encodeKittyKey(const QKeyEvent *event) const {
     case Qt::Key_Escape:    keyCode = 27; break;
     case Qt::Key_Return:
     case Qt::Key_Enter:     keyCode = 13; break;
-    case Qt::Key_Tab:       keyCode = 9; break;
-    case Qt::Key_Backtab:   keyCode = 9; break;  // Shift+Tab
+    case Qt::Key_Tab:
+    case Qt::Key_Backtab:   keyCode = 9; break;  // Backtab is Shift+Tab
     case Qt::Key_Backspace: keyCode = 127; break;
     default: break;
     }
@@ -4286,7 +4287,7 @@ void TerminalWidget::invalidateSpanCaches() const {
 QString TerminalWidget::lineText(int globalLine) const {
     int cols = m_grid->cols();
     QString text;
-    text.reserve(cols * 2);
+    text.reserve(qsizetype(cols) * 2);
 
     auto appendCp = [&](uint32_t cp) {
         if (cp < 0x10000) {
@@ -5706,7 +5707,7 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
                 || next.contains(QLatin1String("Do you want"))
                 || next.contains(QLatin1String("Esc to cancel")))
                 break;
-            toolArg = next;
+            toolArg = std::move(next);
             break;
         }
     }
@@ -5721,7 +5722,7 @@ void TerminalWidget::checkForClaudePermissionPrompt() {
     } else if (!toolArg.isEmpty()) {
         rule = toolType + QStringLiteral("(") + toolArg + QStringLiteral(")");
     } else {
-        rule = toolType;
+        rule = std::move(toolType);
     }
 
     if (rule != m_lastDetectedRule) {
@@ -6004,7 +6005,8 @@ QString TerminalWidget::foregroundProcess() const {
 // rules run every paint and trigger rules on every PTY chunk, so the pattern
 // is hardened with PCRE2's LIMIT_MATCH: a catastrophic config or plugin regex
 // must not freeze the GUI.
-static std::optional<QRegularExpression> enabledRulePattern(const QJsonObject &obj) {
+namespace {
+std::optional<QRegularExpression> enabledRulePattern(const QJsonObject &obj) {
     if (!obj["enabled"].toBool(true)) return std::nullopt;
     const QString pattern = obj["pattern"].toString();
     if (pattern.isEmpty()) return std::nullopt;
@@ -6012,10 +6014,11 @@ static std::optional<QRegularExpression> enabledRulePattern(const QJsonObject &o
     if (!re.isValid()) return std::nullopt;
     return re;
 }
+}  // namespace
 
 void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
     m_highlightRules.clear();
-    for (const QJsonValue &v : rules) {
+    for (const auto &v : rules) {
         QJsonObject obj = v.toObject();
         auto pattern = enabledRulePattern(obj);
         if (!pattern) continue;
@@ -6036,7 +6039,7 @@ void TerminalWidget::setHighlightRules(const QJsonArray &rules) {
 
 void TerminalWidget::setTriggerRules(const QJsonArray &rules) {
     m_triggerRules.clear();
-    for (const QJsonValue &v : rules) {
+    for (const auto &v : rules) {
         QJsonObject obj = v.toObject();
         auto pattern = enabledRulePattern(obj);
         if (!pattern) continue;
