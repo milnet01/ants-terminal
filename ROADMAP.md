@@ -95182,7 +95182,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
 
 ### High bugs (2026-11-06 review)
 
-- 📋 [ANTS-6529] **terminalgrid.cpp: , then `placeInlineImage` adds the same cost again, and `canFit` is `return bytes <= MAX_BYTES - used;`.**
+- ✅ [ANTS-6529] **terminalgrid.cpp: a Kitty `a=T` image is charged twice against the image budget, and `canFit` wraps once `used` passes the cap.**
   `terminalgrid.cpp:3649–3650` — , then `placeInlineImage` adds the same
   cost again, and `canFit` is `return bytes <= MAX_BYTES - used;`. A
   Kitty `a=T,i=N` image is checked once with `canFit(c)` but charged
@@ -95192,6 +95192,11 @@ keeps the reviewer's remedy, which is a claim to check before building.
   MAX_BYTES` inside `canFit`, and charge a shared pixel buffer once on
   the incremental path, as `recomputeImageBudget` already does.
   Ledger row 7, docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-17. Every image-budget change now recomputes through
+  recomputeImageBudget(), which counts a shared pixel buffer once, and
+  canFit() refuses when used is at or past MAX_BYTES. Locked by
+  Osc8ApcMemoryCaps.ApcTransmitDisplayChargedOnce and
+  ImageBudgetOverCapAdmitsNothing.
   **Layman:** Something in this part of Ants behaves wrongly in a way users notice.
   Kind: review-fix.
   Source: review-code 2026-11-06, lane 02-terminal-grid (High).

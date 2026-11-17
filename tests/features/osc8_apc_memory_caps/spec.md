@@ -44,6 +44,11 @@ ceiling of their own:
 - **INV-APC-B**: Enough `m=1` frames to blow past `MAX_KITTY_CHUNK_BYTES`
   leave `m_kittyChunkBuffer` empty (drain-and-drop), and a follow-up
   `m=0` frame does not resurrect the dropped data.
+- **INV-APC-C** (ANTS-6529): a transmit-and-display (`a=T`) image is
+  cached and shown from one shared pixel buffer, and the image budget
+  charges it once.
+- **INV-APC-D** (ANTS-6529): an image budget at or past its cap admits
+  no further bytes; `MAX_BYTES - used` must not wrap.
 
 ## Why this test
 
@@ -57,4 +62,4 @@ accumulator can't silently drop the guard.
 Pre-fix behavior: INV-OSC8-B and INV-APC-B fail — the URI is stored at
 its full 10 MB length and the chunk buffer grows linearly.
 
-Post-fix behavior: all five invariants hold.
+Post-fix behavior: every invariant holds.

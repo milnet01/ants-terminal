@@ -473,6 +473,15 @@ public:
     // Locked by tests/features/osc8_apc_memory_caps to confirm
     // MAX_KITTY_CHUNK_BYTES drops stale frames on cap breach.
     size_t kittyChunkBufferSizeForTest() const { return m_kittyChunkBuffer.size(); }
+    // Test-only: decoded image bytes charged against the per-terminal cap,
+    // and whether a budget already at `used` bytes would admit `bytes`.
+    size_t imageBytesUsedForTest() const { return m_imageBudget.used; }
+    static bool imageBudgetCanFitForTest(size_t used, size_t bytes) {
+        ImageBudget b;
+        b.used = used;
+        return b.canFit(bytes);
+    }
+    static constexpr size_t imageBudgetMaxBytesForTest() { return ImageBudget::MAX_BYTES; }
 
     // OSC 8 URI: real URLs are <2 KiB (browsers/servers cap similarly).
     // A hostile program could otherwise emit a ~10 MB URI (bounded only
@@ -978,17 +987,16 @@ private:
     // decode allocates a QImage; on overflow the decoder rejects with an
     // inline error so the user sees the cap was hit (instead of OOM-ing the
     // process). 256 MB matches the per-terminal upper bound called out in
-    // ROADMAP.md §0.7.0 → "Image-bomb defenses". Same QImage stored in
-    // multiple containers is counted multiple times — Qt COW means the
-    // physical footprint is usually smaller, so the budget is conservative
-    // (we may reject earlier than strictly necessary; we never reject too
-    // late). MAX_IMAGE_DIM (4096) remains the per-image dimension cap.
+    // ROADMAP.md §0.7.0 → "Image-bomb defenses". `used` is set only by
+    // recomputeImageBudget(), which counts a pixel buffer shared by several
+    // containers once. MAX_IMAGE_DIM (4096) remains the per-image dimension cap.
     struct ImageBudget {
         static constexpr size_t MAX_BYTES = 256ULL * 1024ULL * 1024ULL;
         size_t used = 0;
-        bool canFit(size_t bytes) const { return bytes <= MAX_BYTES - used; }
-        void add(size_t bytes) { used += bytes; }
-        void release(size_t bytes) { used = (bytes >= used) ? 0 : used - bytes; }
+        // The first test keeps `MAX_BYTES - used` from wrapping.
+        bool canFit(size_t bytes) const {
+            return used <= MAX_BYTES && bytes <= MAX_BYTES - used;
+        }
         void reset() { used = 0; }
     };
     ImageBudget m_imageBudget;

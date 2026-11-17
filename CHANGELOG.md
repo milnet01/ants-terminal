@@ -487,6 +487,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **A Kitty image that is shown as it is sent now counts once against the 256 MB image cap, and the cap holds once reached.** (ANTS-6529)
+
 - **The stuck-plugin health test waits for the demotion instead of a fixed window, so it holds on a busy machine** (ANTS-6283)
 
 - **The trust-file concurrent-save test passes on a heavily loaded machine: a writer retries a save the lock refused** (ANTS-6808)

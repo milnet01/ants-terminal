@@ -2609,12 +2609,12 @@ void TerminalGrid::exitAltScreen() {
 // Every decoder (iTerm2, Sixel, Kitty) places an image here: the oldest
 // image goes first once MAX_INLINE_IMAGES are held, so memory stays bounded.
 void TerminalGrid::placeInlineImage(InlineImage &&img) {
-    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES) {
-        m_imageBudget.release(imageByteCost(m_inlineImages.front().image));
+    if (static_cast<int>(m_inlineImages.size()) >= MAX_INLINE_IMAGES)
         m_inlineImages.erase(m_inlineImages.begin());
-    }
-    m_imageBudget.add(imageByteCost(img.image));
     m_inlineImages.push_back(std::move(img));
+    // A Kitty `a=T` image shares its pixel buffer with the cache copy, so a
+    // running add would charge it twice (ANTS-6529).
+    recomputeImageBudget();
 }
 
 // Drop a half-staged Kitty `m=1` chunked transfer and the keys its first
@@ -3605,10 +3605,11 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         } else if (deleteType == 'i' && imageId > 0) {
             auto delIt = m_kittyImages.find(imageId);
             if (delIt != m_kittyImages.end()) {
-                m_imageBudget.release(imageByteCost(delIt->second));
                 m_kittyImages.erase(delIt);
                 auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
                 if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
+                // A displayed copy may still hold the pixels.
+                recomputeImageBudget();
             }
         }
         // Send response
@@ -3707,9 +3708,6 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
         auto existing = m_kittyImages.find(imageId);
         if (existing != m_kittyImages.end()) {
             // Replacing: drop old position in the FIFO so it's re-appended as newest.
-            // Release the bytes for the existing image — the new one will
-            // re-add (possibly different) bytes a few lines below.
-            m_imageBudget.release(imageByteCost(existing->second));
             auto it = std::find(m_kittyImageOrder.begin(), m_kittyImageOrder.end(), imageId);
             if (it != m_kittyImageOrder.end()) m_kittyImageOrder.erase(it);
         }
@@ -3718,14 +3716,12 @@ void TerminalGrid::handleApc(const std::string &payload, bool truncated) {
             uint32_t oldest = m_kittyImageOrder.front();
             m_kittyImageOrder.pop_front();
             auto evictIt = m_kittyImages.find(oldest);
-            if (evictIt != m_kittyImages.end()) {
-                m_imageBudget.release(imageByteCost(evictIt->second));
+            if (evictIt != m_kittyImages.end())
                 m_kittyImages.erase(evictIt);
-            }
         }
-        m_imageBudget.add(imageByteCost(image));
         m_kittyImages[imageId] = image;
         m_kittyImageOrder.push_back(imageId);
+        recomputeImageBudget();
     }
 
     // Display if action is T (transmit+display) or p (display stored)

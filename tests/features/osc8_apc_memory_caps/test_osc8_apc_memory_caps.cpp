@@ -6,6 +6,8 @@
 #include "terminalgrid.h"
 #include "vtparser.h"
 
+#include <QByteArray>
+
 #include <cstdio>
 #include <gtest/gtest.h>
 #include <string>
@@ -174,6 +176,27 @@ TEST(Osc8ApcMemoryCaps, ApcOverflowDropped) {
     if (grid.kittyChunkBufferSizeForTest() != 0) {
         fail("APC-B final m=0 did not clear buffer");
     }
+}
+
+// INV-APC-C (ANTS-6529): a transmit-and-display (`a=T`) image is cached
+// and shown from one shared pixel buffer, so it is charged once.
+TEST(Osc8ApcMemoryCaps, ApcTransmitDisplayChargedOnce) {
+    TerminalGrid grid(24, 80);
+    VtParser parser = makeParser(grid);
+    constexpr int kSide = 8;
+    constexpr size_t kBytes = size_t(kSide) * kSide * 4;  // RGBA8888
+    const QByteArray pixels(static_cast<qsizetype>(kBytes), '\x7f');
+    feed(parser, apcEnv("a=T,f=32,s=8,v=8,i=1", pixels.toBase64().toStdString()));
+    EXPECT_EQ(grid.imageBytesUsedForTest(), kBytes);
+}
+
+// INV-APC-D (ANTS-6529): a budget already past the cap admits nothing;
+// the unsigned subtraction must not wrap to a huge headroom.
+TEST(Osc8ApcMemoryCaps, ImageBudgetOverCapAdmitsNothing) {
+    const size_t cap = TerminalGrid::imageBudgetMaxBytesForTest();
+    EXPECT_TRUE(TerminalGrid::imageBudgetCanFitForTest(cap - 1, 1));
+    EXPECT_FALSE(TerminalGrid::imageBudgetCanFitForTest(cap, 1));
+    EXPECT_FALSE(TerminalGrid::imageBudgetCanFitForTest(cap + 1, 1));
 }
 
 }  // namespace
