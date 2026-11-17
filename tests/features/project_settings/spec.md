@@ -63,6 +63,11 @@ file-static).
   all-nullopt without reading it whole.
   *Test:* `ProjectSettings.Ants6509OversizedFileIsMalformed`.
 
+- **INV-15** (ANTS-6797) — a `.gitattributes` larger than
+  `ProjectSettings::kMaxGitattributesBytes` (1 MiB) declares no generated
+  globs and is not read whole.
+  *Test:* `ProjectSettings.Ants6797OversizedGitattributesDeclaresNothing`.
+
 ## Pre-fix check
 
 Against pre-implementation code `src/projectsettings.{h,cpp}` does not

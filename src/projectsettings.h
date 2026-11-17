@@ -59,6 +59,9 @@ struct Settings {
 // ANTS-6509 — a cloned repository supplies the file, so one over
 // kMaxFileBytes counts as malformed and is never read whole.
 inline constexpr qint64 kMaxFileBytes = 64 * 1024;
+// ANTS-6797 — the same trust boundary for the repository's .gitattributes:
+// one larger than this declares no generated globs.
+inline constexpr qint64 kMaxGitattributesBytes = qint64{1024} * 1024;
 Settings load(const QString &rootCanonical);
 
 // The folders a walk descends for one roots key: the declared entries that

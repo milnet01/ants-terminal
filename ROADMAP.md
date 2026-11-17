@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6804 -->
+<!-- ants-roadmap-id-high-water: ANTS=6805 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -95103,11 +95103,14 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: in-session-2026-11-16.
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6797] **projectsettings.cpp: gitattributesGenerated reads a repository's .gitattributes whole, with no size limit.**
+- ✅ [ANTS-6797] **projectsettings.cpp: gitattributesGenerated reads a repository's .gitattributes whole, with no size limit.**
   Found while fixing ANTS-6509. `gitattributesGenerated` calls
   `f.readAll()` on `<root>/.gitattributes`, which the cloned repository
   supplies, the same trust boundary as `.ants/project.json`. Bound the read
   (say 1 MiB) and treat a larger file as declaring nothing.
+  Shipped 2026-11-17: gitattributesGenerated reads at most
+  kMaxGitattributesBytes + 1 and treats a larger file as declaring
+  nothing (INV-15, Ants6797OversizedGitattributesDeclaresNothing).
   **Layman:** A cloned project could make the terminal read a huge settings file into memory.
   Kind: fix.
   Source: ANTS-6509 fix, 2026-11-16.
@@ -114155,6 +114158,17 @@ reports are asked for separately, each time.
   Kind: chore.
   Source: in-session-2026-11-16 (clangd diagnostics, remotecontrol_review.cpp).
   Lanes: mcp-review-verbs.
+
+- 🚧 [ANTS-6805] **roadmapfoldin.cpp builds without GCC's -Wunused-result warning on the stale-lock link-back.**
+  Seen 2026-11-17 when a projectsettings.h change recompiled the file:
+  stealStaleRenameLock's `(void)::link(...)` still warns, because GCC
+  does not let a void cast discard a warn_unused_result value. The
+  result is ignored on purpose: a failed link-back means another lock
+  appeared, which then stands.
+  **Layman:** The build printed a warning about an ignored result in the roadmap lock code; the result is now checked explicitly.
+  Kind: fix.
+  Source: in-session-2026-11-17 (ANTS-6797 build).
+  Lanes: roadmap-store.
 
 ### 📝 Cold-eyes 2026-05-11 (ANTS-1234 spec)
 

@@ -116,13 +116,16 @@ std::optional<QStringList> parseGenerated(const QJsonValue &v) {
 }
 
 // The .gitattributes patterns whose line sets linguist-generated. A quoted
-// pattern (one holding spaces) is skipped.
+// pattern (one holding spaces) is skipped. A file over kMaxGitattributesBytes
+// declares nothing.
 QStringList gitattributesGenerated(const QString &rootCanonical) {
     QStringList out;
     QFile f(rootCanonical + QStringLiteral("/.gitattributes"));
     if (!f.open(QIODevice::ReadOnly)) return out;
+    const QByteArray body = f.read(kMaxGitattributesBytes + 1);
+    if (body.size() > kMaxGitattributesBytes) return out;
     static const QRegularExpression ws(QStringLiteral("\\s+"));
-    const QStringList lines = QString::fromUtf8(f.readAll()).split(QLatin1Char('\n'));
+    const QStringList lines = QString::fromUtf8(body).split(QLatin1Char('\n'));
     for (const QString &raw : lines) {
         const QString line = raw.trimmed();
         if (line.isEmpty() || line.startsWith(QLatin1Char('#'))

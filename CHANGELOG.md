@@ -1059,6 +1059,10 @@ for security-relevant changes.
 
 ### Security
 
+- **A project's `.gitattributes` is read only up to 1 MiB** (ANTS-6797)
+  A larger one declares no generated files and is never loaded whole, the
+  same limit `.ants/project.json` already has.
+
 - **The roadmap store's pre-migrate backup is owner-only from the moment it is created, not only once written** (ANTS-6649)
 
 - **The Audit dialog's luacheck and checkov checks start switched off**

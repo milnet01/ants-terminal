@@ -648,3 +648,21 @@ TEST(ProjectSettings, Ants6509OversizedFileIsMalformed) {
     EXPECT_FALSE(ProjectSettings::load(root).sourceRoots.has_value())
         << "a project.json over the size limit was read and used";
 }
+
+// INV-15 (ANTS-6797) — a .gitattributes over 1 MiB declares no generated
+// globs and is never read whole. The same text unpadded declares one.
+TEST(ProjectSettings, Ants6797OversizedGitattributesDeclaresNothing) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = canon(tmp);
+    const QString marked = QStringLiteral("gen/*.c linguist-generated=true\n");
+
+    writeFile(root + "/.gitattributes", marked);
+    ASSERT_TRUE(ProjectSettings::generatedGlobs(root).contains(QStringLiteral("gen/*.c")))
+        << "the unpadded file must declare the glob, or the next check proves nothing";
+
+    writeFile(root + "/.gitattributes",
+              marked + QLatin1Char('#') + QString(1 << 20, QLatin1Char(' ')));
+    EXPECT_FALSE(ProjectSettings::generatedGlobs(root).contains(QStringLiteral("gen/*.c")))
+        << "a .gitattributes over the size limit was read and used";
+}
