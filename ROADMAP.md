@@ -98367,7 +98367,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (readability).
   Lanes: tools-ci-gate.
 
-- 📋 [ANTS-6693] **Make the tools-roadmap-surveys code the 2026-11-06 reviews flagged easier to follow.**
+- ✅ [ANTS-6693] **Make the tools-roadmap-surveys code the 2026-11-06 reviews flagged easier to follow.**
   5 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1256 `tools/split-motion-check.py:136` (Medium)
   - row 1257 `tools/split-motion-check.py:977` (Medium)
@@ -98378,6 +98378,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   with ANTS-6151.
   2026-11-18: rows 1256 (carved-name comment) and 1257
   (check_scrapes extractions) fixed in efbdeb02 with ANTS-6153.
+  2026-11-18: rows 1266 and 1270 fixed in e14c9f2b with ANTS-6155.
+  All five rows done.
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
@@ -106670,19 +106672,22 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: tools-split-motion.
 
-- 📋 [ANTS-6154] **Readability fixes, tools-token-bench lane: tools/token-bench/bench.py.**
+- ✅ [ANTS-6154] **Readability fixes, tools-token-bench lane: tools/token-bench/bench.py.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-token-bench:
   0 high, 1 medium, 3 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/06-tools-token-bench.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
   (ids L06-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  2026-11-18: shipped in e4f034d3. All four fixed; the effort is now
+  read from each README's Model line. Row 467 (git clean tests) stays
+  with ANTS-6630.
   **Layman:** Tidy the token benchmark so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: tools-token-bench.
 
-- 📋 [ANTS-6155] **Readability fixes, tools-e2e-measure lane: tools/e2e/cases.sh, tools/e2e/run.sh, tools/e2e/smoke.sh, tools/measure/doc_symbols_locator_harness.cpp, tools/measure/doc_symbols_locator_sample.py, tools/.**
+- ✅ [ANTS-6155] **Readability fixes, tools-e2e-measure lane: tools/e2e/cases.sh, tools/e2e/run.sh, tools/e2e/smoke.sh, tools/measure/doc_symbols_locator_harness.cpp, tools/measure/doc_symbols_locator_sample.py, tools/.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-e2e-measure:
   1 high, 5 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/07-tools-e2e-measure.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106695,6 +106700,9 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1236
   `tools/e2e/smoke.sh:15`; row 1252 `tools/e2e/run.sh:2`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: shipped. tools/measure half in e14c9f2b, tools/e2e half
+  (rows 1236 and 1252 included) in f7b33689. Shared e2e helpers live in
+  run.sh; smoke case 1 now fails when its command never runs.
   **Layman:** Tidy the end-to-end and measuring scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
