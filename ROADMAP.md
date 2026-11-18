@@ -96544,7 +96544,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6581] **Correct the false or stale comments the 2026-11-06 reviews found in tools-ci-gate.**
+- ✅ [ANTS-6581] **Correct the false or stale comments the 2026-11-06 reviews found in tools-ci-gate.**
   8 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1243 `tools/check-roadmap.sh:15` (Medium)
   - row 1244 `tools/check-standard-mirrors.sh:213` (Medium)
@@ -96554,6 +96554,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1250 `tools/check-standard-mirrors.sh:7` (Low)
   - row 1251 `tools/hooks/pre-commit:10` (Low)
   - row 1253 `tools/install-hooks.sh:184` (Low)
+  2026-11-18: rows 1246, 1249 in 021edae4; 1243, 1244, 1250, 1251, 1253
+  in a0a27287; row 1248's comment was already gone from qt62-guard.sh.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -106567,7 +106569,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: tools-ci.
 
-- 📋 [ANTS-6150] **Readability fixes, tools-checks lane: tools/check-readme-claims.sh, tools/check-roadmap.sh, tools/check-shipped-coverage.sh, tools/check-standard-mirrors.sh, tools/grep-vs-index.sh, tools/perf-report.**
+- ✅ [ANTS-6150] **Readability fixes, tools-checks lane: tools/check-readme-claims.sh, tools/check-roadmap.sh, tools/check-shipped-coverage.sh, tools/check-standard-mirrors.sh, tools/grep-vs-index.sh, tools/perf-report.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-checks:
   0 high, 5 medium, 7 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/02-tools-checks.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106577,6 +106579,9 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1241 `tools/perf-
   report.sh:205`; row 1242 `tools/perf-report.sh:23`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18, a0a27287: all twelve findings and rows 1241, 1242 closed.
+  The missing theme claim is documented as optional rather than made a
+  failure (no test runs check-readme-claims.sh).
   **Layman:** Tidy the check scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
