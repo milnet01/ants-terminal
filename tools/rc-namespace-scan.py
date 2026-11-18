@@ -20,16 +20,10 @@ work, and its failure is silent rather than loud:
   * it counts openings it can see and closings that happen to be commented,
     and cannot pair them;
   * it cannot see an indented or nested opening at all;
-  * the closing comment can be WRONG. src/remotecontrol.cpp:16959 is
-    annotated "anonymous from line 1320"; that block actually opens at
-    16875 (ANTS-3840).
+  * the closing comment can be WRONG.
 
-Measured 2026-08-06: two of three independent reviewers, reasoning from that
-grep and that comment, concluded seven of ten proposed seams sat inside an
-anonymous namespace spanning 1320-16959 — which would have made the eleven-way
-split uncompilable. This scanner says zero of ten. Re-deriving the check by
-hand is how that mistake gets made again, which is why ANTS-3833 § 2.2 makes
-running THIS the precondition on the cut.
+Re-deriving the check by hand is how a seam gets misplaced, which is why
+ANTS-3833 § 2.2 makes running THIS the precondition on the cut.
 
 Tracks nesting depth while skipping string literals, character literals, line
 comments and block comments. Deliberately conservative in the same way
@@ -38,10 +32,15 @@ preprocessor games. Erring toward over-reporting a namespace is the safe
 direction — it can only make a seam look unsafe when it is fine, never the
 reverse.
 
+A seam N is a cut between lines N-1 and N: line N starts the next piece. So
+a block opening on line N lies after the seam, and one closing on line N
+contains it.
+
 Usage:
     tools/rc-namespace-scan.py src/remotecontrol.cpp
-    tools/rc-namespace-scan.py src/remotecontrol.cpp --seams 2262,3666,6556
-    tools/rc-namespace-scan.py src/remotecontrol.cpp --ns anon,rcdetail --seams ...
+    tools/rc-namespace-scan.py src/remotecontrol.cpp --ns anon,rcdetail --seams 2262,3666,6556
+
+`--ns` defaults to `anon` only, so name rcdetail for remotecontrol.cpp.
 
 Exit status: 0 if every seam is in open code (or no seams given), 1 otherwise.
 """
@@ -139,9 +138,10 @@ def namespace_blocks(src: str) -> list[tuple[int, int, str]]:
             # Only a `{` here opens a block. `using namespace rcdetail;` and
             # `namespace x = y::z;` reach this point too, and leaving `pending`
             # set for them would tag the NEXT unrelated brace — a function body
-            # — as a namespace. Commit 2 puts a `using namespace rcdetail;` in
-            # ten of the eleven TU preambles, so this is the common case.
+            # — as a namespace.
             pending = (name, line) if k < n and src[k] == "{" else None
+            # Resume at j, not k: _skip_trivia does not count newlines, so
+            # jumping to k would skew every later line number.
             i = j
             continue
 
@@ -170,7 +170,8 @@ def main() -> int:
     ap.add_argument("path")
     ap.add_argument(
         "--seams",
-        help="comma-separated 1-based line numbers to check for open-code containment",
+        help="comma-separated 1-based line numbers, each the first line of "
+        "a new piece, to check for open-code containment",
     )
     ap.add_argument(
         "--ns",

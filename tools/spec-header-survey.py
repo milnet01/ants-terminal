@@ -23,8 +23,10 @@ scanDoc does not look at every line: it skips any line over kMaxLineBytes and
 every line inside a fenced block before its matcher runs, and its old matcher
 required a non-empty same-line tail where headerField accepts an empty one.
 
-Usage:  python3 tools/spec-header-survey.py [specs_dir]
+Usage:  python3 tools/spec-header-survey.py [specs_dir [--values]]
         python3 tools/spec-header-survey.py --scope=docs-index [root]
+--values also prints each wrapped field's joined value. It must follow
+specs_dir: the first argument is always read as the directory.
 Exit:   0 always (a survey, not a gate).
 """
 import re
@@ -39,6 +41,9 @@ FENCE = re.compile(r"^ {0,3}(```+(?!.*`)|~~~+)")
 # line is prose ("...paginationengine.{h,cpp}` + `cmdRoadmapQuery`..."), not a
 # list item. Treating a bullet as a terminator truncates it.
 WRAPPED_PROSE_BULLET = "ANTS-1436-roadmap-query-pagination-auto-truncate.md"
+
+# The header fields the spec survey reports on, in report order.
+TRACKED = ("Status", "Kind")
 
 
 def fence_mask(lines):
@@ -95,8 +100,8 @@ def prose_shaped(name):
 
 
 def survey(specs_dir):
-    total = {"Status": 0, "Kind": 0}
-    wrapped = {"Status": [], "Kind": []}
+    total = {name: 0 for name in TRACKED}
+    wrapped = {name: [] for name in TRACKED}
     in_fence = []
     orphans = []
     field_names = {}
@@ -170,23 +175,23 @@ def considered(lines):
     return out
 
 
-def status_today(seen):
+def status_today(scanned):
     """(value, extent) scanDoc returns today: first non-empty-tail Status,
     anywhere in the file, truncated to its own physical line."""
-    for i, line in enumerate(seen):
+    for i, line in enumerate(scanned):
         m = STATUS_OLD.match(line)
         if m:
-            return m.group(1).strip(), field_extent(seen, i)[0]
+            return m.group(1).strip(), field_extent(scanned, i)[0]
     return "", 0
 
 
-def status_after(seen):
+def status_after(scanned):
     """The value headerField returns over the buffered header block."""
-    limit = header_block_end(seen)
+    limit = header_block_end(scanned)
     for i in range(limit):
-        m = FIELD.match(seen[i])
+        m = FIELD.match(scanned[i])
         if m and m.group(1) == "Status":
-            return field_extent(seen, i)[1]
+            return field_extent(scanned, i)[1]
     return ""
 
 
@@ -199,8 +204,12 @@ def survey_docs_index(root):
     worst_block, worst_field = (0, 0, ""), (0, "")
 
     for path in docs:
+        # splitlines(), as scanDoc's readLine strips both \n and \r.
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-        seen = considered(lines)
+        scanned = considered(lines)
+        # The block-size figures are over the raw file, the most scanDoc's
+        # header buffer could hold; the Status values use `scanned`, the
+        # filtered lines it actually buffers.
         limit = header_block_end(lines)
         if limit == len(lines):
             no_h2 += 1
@@ -208,8 +217,8 @@ def survey_docs_index(root):
         if limit > worst_block[0]:
             worst_block = (limit, block_bytes, str(path.relative_to(root)))
 
-        today, extent = status_today(seen)
-        after = status_after(seen)
+        today, extent = status_today(scanned)
+        after = status_after(scanned)
         if extent > worst_field[0]:
             worst_field = (extent, str(path.relative_to(root)))
 
@@ -260,7 +269,7 @@ def main():
 
     total, wrapped, in_fence, orphans, field_names, fenced_hdr = survey(specs_dir)
 
-    for name in ("Status", "Kind"):
+    for name in TRACKED:
         print(f"wrapped {name}: {len(wrapped[name])} of {total[name]}")
     print(f"first field inside a fence: {len(in_fence)}")
     for entry in in_fence:
@@ -284,7 +293,7 @@ def main():
 
     if "--values" in sys.argv:
         print("\n-- joined values (headerField parity: line_count, value) --")
-        for name in ("Status", "Kind"):
+        for name in TRACKED:
             for fname, line, count, value in wrapped[name]:
                 print(f"  {fname}:{line} ({name}) line_count={count}")
                 print(f"    {value}")
