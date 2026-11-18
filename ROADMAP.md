@@ -106480,7 +106480,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: diagnostics-logging.
 
-- 📋 [ANTS-6148] **Readability fixes, shared-utilities lane: src/build_info.h, src/clipboardguard.h, src/gitwrap.cpp, src/gitwrap.h, src/guithread.h, src/hostexec.h ….**
+- ✅ [ANTS-6148] **Readability fixes, shared-utilities lane: src/build_info.h, src/clipboardguard.h, src/gitwrap.cpp, src/gitwrap.h, src/guithread.h, src/hostexec.h ….**
   Findings of the 2026-10-22 readability review (src run), lane shared-utilities:
   0 high, 7 medium, 15 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/39-shared-utilities.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106504,6 +106504,10 @@ worked after these.
   `src/gitwrap.h:80`; row 1209 `src/subsystemmap.h:3-4`; row 1211
   `src/subsystemmap.cpp:152`; row 1212 `src/treewatcher.h:45`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18 — LOWs F8-F22 and the PV-9 wording closed in 5efd48b8; all
+  re-verified first. F22's suggested reason was false (the pty check
+  runs before fork); "keep in step" comments on both sides instead.
+  Correctness leads stay filed as ANTS-6042 to ANTS-6045.
   **Layman:** Tidy shared helper code so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
