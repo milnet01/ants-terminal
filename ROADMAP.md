@@ -96561,7 +96561,7 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
   Lanes: tools-ci-gate.
 
-- 📋 [ANTS-6582] **Correct the false or stale comments the 2026-11-06 reviews found in tools-roadmap-surveys.**
+- ✅ [ANTS-6582] **Correct the false or stale comments the 2026-11-06 reviews found in tools-roadmap-surveys.**
   6 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1258 `tools/roadmap-backup-lib.sh:7` (Low)
   - row 1259 `tools/roadmap-corpus-survey.py:304` (Low)
@@ -96569,6 +96569,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1261 `tools/mcp-arg-usage-survey.py:13` (Low)
   - row 1268 `tools/roadmap-roundtrip-diff.py:37` (Low)
   - row 1269 `tools/quote-displacement-survey.py:10` (Low)
+  2026-11-18, e701b5cd: all six rows fixed (1258, 1259, 1260 and 1268
+  with ANTS-6151).
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -98365,6 +98367,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1264 `tools/roadmap-slug-oracle.py:98` (Low)
   - row 1266 `tools/measure/filemap_prototype.py:266` (Low)
   - row 1270 `tools/measure/doc_symbols_locator_sample.py:21` (Low)
+  2026-11-18: row 1264 (slug-oracle discovery comment) fixed in e701b5cd
+  with ANTS-6151.
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
@@ -106587,7 +106591,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: tools-checks.
 
-- 📋 [ANTS-6151] **Readability fixes, tools-roadmap lane: tools/roadmap-archive-survey.py, tools/roadmap-backup-lib.sh, tools/roadmap-conformance.py, tools/roadmap-corpus-survey.py, tools/roadmap-import-verify.py, tool.**
+- ✅ [ANTS-6151] **Readability fixes, tools-roadmap lane: tools/roadmap-archive-survey.py, tools/roadmap-backup-lib.sh, tools/roadmap-conformance.py, tools/roadmap-corpus-survey.py, tools/roadmap-import-verify.py, tool.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-roadmap:
   1 high, 8 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/03-tools-roadmap.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106599,6 +106603,13 @@ worked after these.
   scripts use it. Output identical before and after. The MEDIUM on the
   three TAXONOMY / CANONICAL_KINDS copies is not done. Mediums and lows
   remain.
+  2026-11-18, e701b5cd: mediums and lows closed. One CANONICAL_KINDS and
+  KIND_VALUE in tools/roadmap_kinds.py, one DEFAULT_STORE in
+  tools/roadmap_paths.py; comment and label fixes; dead branch removed.
+  Output identical before and after except two relabelled lines. The
+  ID-grammar, XDG and fence findings change output, so they stay with
+  ANTS-6065, ANTS-6069 and ANTS-6066, and import-verify's KIND with
+  ANTS-6064.
   **Layman:** Tidy the roadmap helper scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -111750,6 +111761,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 457 `tools/roadmap-import-
   verify.py:41`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: readability pass landed (e701b5cd). The shared,
+  period-stopping pattern is roadmap_kinds.KIND_VALUE; import-verify's
+  KIND comment names this item.
   **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -111765,6 +111779,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 1255 `tools/roadmap-
   import-verify.py:40`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: readability pass landed (e701b5cd); import-verify's BULLET
+  comment names this item.
   **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -111778,6 +111794,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: readability pass landed (e701b5cd); headings() unchanged,
+  fence skip still open.
   **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -111817,6 +111835,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓ see L03-F5
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: the three Python defaults are now one,
+  roadmap_paths.DEFAULT_STORE (e701b5cd); honouring XDG_DATA_HOME is a
+  one-line change there.
   **Layman:** A possible bug in the roadmap helper scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
