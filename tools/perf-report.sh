@@ -20,9 +20,9 @@
 # Exit codes: 0 all within threshold; 1 a regression or a benchmark that exited
 # non-zero; 2 a setup problem.
 #
-# HOW IT FINDS WORK. Benchmarks are discovered from ctest's `perf` label, and
-# their numbers are read from the uniform ANTSPERF lines tests/perf/perf_metric.h
-# emits. Neither the list of benchmarks nor the list of metrics is written down
+# HOW IT FINDS WORK. Benchmarks are discovered from the tests/perf/bench_*.cpp
+# sources, and their numbers are read from the uniform ANTSPERF lines
+# tests/perf/perf_metric.h emits. Neither the list of benchmarks nor the list of metrics is written down
 # here. That is deliberate: a runner carrying its own copy of either is a
 # hand-maintained parallel description of the suite, and ANTS-4392 records what
 # that costs — the two drift, and the drift is invisible precisely when
@@ -50,7 +50,7 @@ while [[ $# -gt 0 ]]; do
         --threshold)     THRESHOLD="$2"; shift 2 ;;
         --repeat)        REPEAT="$2"; shift 2 ;;
         -R|--filter)     FILTER="$2"; shift 2 ;;
-        -h|--help)       sed -n '2,24p' "$0"; exit 0 ;;
+        -h|--help)       sed -n '2,/^$/p' "$0"; exit 0 ;;  # the header comment
         *) echo "perf-report: unknown argument $1" >&2; exit 2 ;;
     esac
 done
@@ -198,17 +198,20 @@ if [[ -f "$BASELINE" ]]; then
     done < "$BASELINE"
 fi
 
-COMPARABLE=1
+# Whether this run is compared: ok, none (no baseline) or other_machine.
+BASELINE_STATE=ok
 if [[ "$base_count" -eq 0 ]]; then
-    COMPARABLE=0
+    BASELINE_STATE=none
 elif [[ -n "$BASE_MACHINE" && "$BASE_MACHINE" != "$MACHINE" ]]; then
-    COMPARABLE=2
+    BASELINE_STATE=other_machine
 fi
 
 # ── JSON ─────────────────────────────────────────────────────────────────────
 if [[ "$JSON" == 1 ]]; then
+    # "comparable" keeps its numeric codes for whatever reads the JSON.
+    declare -A STATE_CODE=([none]=0 [ok]=1 [other_machine]=2)
     printf '{\n  "machine": "%s",\n  "comparable": %s,\n  "metrics": {\n' \
-           "$MACHINE" "$COMPARABLE"
+           "$MACHINE" "${STATE_CODE[$BASELINE_STATE]}"
     first=1
     for n in $(printf '%s\n' "${!VALUE[@]}" | sort); do
         [[ $first == 1 ]] || printf ',\n'; first=0
@@ -225,18 +228,19 @@ echo
 echo "Ants perf report — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "machine: $MACHINE"
 [[ "$REPEAT" -gt 1 ]] && echo "repeat:  $REPEAT runs per benchmark, best kept"
-case "$COMPARABLE" in
-  0) echo "baseline: none at $BASELINE — run with --save-baseline to record one" ;;
-  2) echo "baseline: $BASE_DATE ($BASE_COMMIT)"
+case "$BASELINE_STATE" in
+  none) echo "baseline: none at $BASELINE — run with --save-baseline to record one" ;;
+  other_machine)
+     echo "baseline: $BASE_DATE ($BASE_COMMIT)"
      echo "          NOT COMPARED — recorded on a different machine:"
      echo "            baseline: $BASE_MACHINE"
      echo "            this run: $MACHINE" ;;
-  *) echo "baseline: $BASE_DATE ($BASE_COMMIT), threshold ±${THRESHOLD}%" ;;
+  ok) echo "baseline: $BASE_DATE ($BASE_COMMIT), threshold ±${THRESHOLD}%" ;;
 esac
 [[ "$skipped_count" -gt 0 ]] && { echo; echo "not run:"; printf '  %s\n' "${skipped[@]}"; }
 [[ "$crashed_count" -gt 0 ]] && { echo; echo "FAILED:"; printf '  %s\n' "${crashed[@]}"; }
 # Audit TL-24 — on a full run, a baseline metric nobody reported is named.
-if [[ -z "$FILTER" && "$COMPARABLE" == 1 ]]; then
+if [[ -z "$FILTER" && "$BASELINE_STATE" == ok ]]; then
     missing=()
     for n in "${!BASE[@]}"; do [[ -n "${VALUE[$n]:-}" ]] || missing+=("$n"); done
     [[ ${#missing[@]} -gt 0 ]] && { echo; echo "in the baseline, not reported this run:"; printf '  %s\n' "${missing[@]}" | sort; }
@@ -250,7 +254,7 @@ regressions=0 improvements=0
 for n in $(printf '%s\n' "${!VALUE[@]}" | sort); do
     v="${VALUE[$n]}"; u="${UNIT[$n]}"; d="${DIR[$n]}"
     delta="" mark=""
-    if [[ "$COMPARABLE" == 1 && -n "${BASE[$n]:-}" ]]; then
+    if [[ "$BASELINE_STATE" == ok && -n "${BASE[$n]:-}" ]]; then
         read -r pct verdict < <(awk -v new="$v" -v old="${BASE[$n]}" -v dir="$d" \
                                     -v th="$THRESHOLD" 'BEGIN{
             if (old == 0) { print "0.0 same"; exit }
@@ -264,14 +268,14 @@ for n in $(printf '%s\n' "${!VALUE[@]}" | sort); do
             worse)  mark="  REGRESSION"; ((regressions++)) ;;
             better) mark="  improved";   ((improvements++)) ;;
         esac
-    elif [[ "$COMPARABLE" == 1 ]]; then
+    elif [[ "$BASELINE_STATE" == ok ]]; then
         delta="new"
     fi
     printf '%-42s %12s %-9s %10s%s\n' "$n" "$v" "$u" "$delta" "$mark"
 done
 
 echo
-if [[ "$COMPARABLE" == 1 ]]; then
+if [[ "$BASELINE_STATE" == ok ]]; then
     echo "$metric_count metrics — $regressions regression(s), $improvements improvement(s), threshold ±${THRESHOLD}%"
     [[ "$regressions" -gt 0 ]] && exit 1
 else

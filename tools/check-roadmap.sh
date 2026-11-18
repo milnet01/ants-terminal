@@ -11,8 +11,8 @@
 #   tools/check-roadmap.sh path/to/RM.md  # scan a specific file
 #   tools/check-roadmap.sh --allow ID,ID  # exempt known intentional cites
 #
-# The `--allow` list takes comma-separated bare IDs (no brackets, no
-# `ANTS-` prefix expected — pass them verbatim). The default allowlist
+# The `--allow` list takes comma-separated full IDs without brackets,
+# such as `ANTS-1118,ANTS-1119`. The default allowlist
 # is empty: the roadmap carries one bullet per ID. (The historical
 # ANTS-1118 cross-cite was deduped on 2026-05-20 — the Tier-1 0.7.65
 # entry is now a non-ID cross-reference, so no exemption is needed.)

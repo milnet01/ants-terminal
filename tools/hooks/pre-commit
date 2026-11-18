@@ -7,7 +7,7 @@
 # directory. A copy that nothing checks is the pre-cutover state with better
 # manners; this is the check, and `tools/check-standard-mirrors.sh --write` is
 # the fix. Since ANTS-4761 it also fails on a link out of a mirrored half that
-# this repo does not carry. It skips silently where there is no owner tree to
+# this repo does not carry. It skips loudly where there is no owner tree to
 # compare against (an outside contributor, CI).
 #
 # ANTS-4762 — docs/standards/README.md must still name every standard beside

@@ -192,7 +192,11 @@ if [ "$uninstall" -eq 1 ]; then
         echo "[dry-run] would write to: $target"
         echo "[dry-run] removed sentinel + ants-* entries"
         echo "$new_content"
-        echo "[dry-run] would unlink hook scripts in: $hooks_dir/ants-*.sh"
+        echo "[dry-run] would unlink from $hooks_dir:"
+        for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+            echo "  ${f##*/}"
+        done
+        echo "  ants-mcpd.path"
         exit 0
     fi
     if [ -f "$target" ]; then

@@ -12,9 +12,10 @@
 # its sha256 checked, and only the files the build needs are copied:
 #   runtime  lib/src, lib/include, LICENSE  -> third_party/tree-sitter/
 #   grammar  [subdir/]src/parser.c, src/scanner.c where present, any other
-#            src/*.h, src/tree_sitter/*.h, LICENSE (or "license_file"), and any
-#            "extra" paths
+#            src/*.h, src/tree_sitter/*.h, LICENSE (or "license_file")
 #            -> third_party/tree-sitter-grammars/<lang>/
+#   extra    each "extra" path, from the tarball root to the same relative
+#            path under third_party/tree-sitter-grammars/
 # The build itself never fetches anything.
 
 set -euo pipefail
@@ -29,7 +30,7 @@ names=()
 for a in "$@"; do
     case "$a" in
         --pin) pin=1 ;;
-        -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
+        -h|--help) sed -n '2,/^$/p' "$0"; exit 0 ;;  # the header comment
         *) names+=("$a") ;;
     esac
 done
@@ -49,6 +50,8 @@ wanted() {
 }
 
 # fetch <jq path of the entry> <name>: prints the extracted tree's top directory.
+# Under --pin, an entry with no sha256 gets the tarball's hash written into the
+# manifest.
 fetch() {
     local path=$1 name=$2 repo commit want got slug tarball dest
     repo=$(jq -r "$path.repo" "$manifest")

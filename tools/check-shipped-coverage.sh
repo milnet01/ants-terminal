@@ -76,6 +76,14 @@ fi
 
 q() { sqlite3 "file:${DB}?mode=ro" "$1" 2>/dev/null; }
 
+# One report row for item <id>: its id, then "kind — headline", clipped.
+print_item_row() {
+    local line
+    line="$(q "SELECT kind || ' — ' || headline FROM item
+               WHERE project_id=${PROJECT_ID} AND id='$1' LIMIT 1;")"
+    printf '  %-12s %s\n' "$1" "${line:0:96}"
+}
+
 # Audit TL-22 — a FAILED query (locked, corrupt, schema moved) must not read
 # as an empty answer, which the checks below turn into a clean pass.
 query_failed() {
@@ -137,10 +145,7 @@ check_copied_headlines() {
     echo "copied-headline:  ${#copied[@]} of ${seen} cited [Unreleased] bullets have a bold"
     echo "                  summary byte-identical to the roadmap headline${note}:"
     echo
-    for id in "${copied[@]}"; do
-        printf '  %-12s %s\n' "$id" "$(q "SELECT kind || ' — ' || headline FROM item
-                                          WHERE project_id=${PROJECT_ID} AND id='${id}' LIMIT 1;" | cut -c1-88)"
-    done
+    for id in "${copied[@]}"; do print_item_row "$id"; done
     echo
     echo "A defect item's headline states the PROBLEM, so copying it puts the bug"
     echo "in the release notes where the fix belongs. Reword the summary to say"
@@ -241,11 +246,7 @@ fi
 echo "shipped-coverage: ${#UNCOVERED[@]} of ${#SHIPPED[@]} items shipped since ${SINCE}"
 echo "                  are cited by no CHANGELOG bullet:"
 echo
-for ID in "${UNCOVERED[@]}"; do
-    LINE="$(q "SELECT kind || ' — ' || headline FROM item
-               WHERE project_id=${PROJECT_ID} AND id='${ID}' LIMIT 1;")"
-    printf '  %-12s %s\n' "$ID" "${LINE:0:96}"
-done
+for ID in "${UNCOVERED[@]}"; do print_item_row "$ID"; done
 echo
 decided_note
 echo

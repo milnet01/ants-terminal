@@ -2,10 +2,9 @@
 # ANTS-4584 — verify README.md's checkable claims against the code.
 #
 # README.md is the first thing a user reads and the last thing anyone
-# re-reads. Its numbers drift silently because nothing derives them: the
-# tool count in particular was called out in CLAUDE.md as "the one nothing
-# else verifies". Each claim below has a single source of truth in the
-# tree, so each is a grep rather than a memory.
+# re-reads. Its numbers drift silently because nothing derives them. Each
+# claim below has a single source of truth in the tree, so each is a grep
+# rather than a memory.
 #
 # This checks NUMBERS, not prose. Whether the README still reads plainly
 # for a non-programmer is a judgement no script makes; the pre-push hook
@@ -46,6 +45,8 @@ check "MCP tools" "${claim_tools:-none}" "${real_tools}" "claudeintegration sour
 # --- built-in colour themes -------------------------------------------
 # Literal `th.name = "X";` are the built-ins; the loader's
 # `th.name = obj.value(...)` is a USER theme and is deliberately not counted.
+# Unlike the two checks above, a README with no theme claim passes: the claim
+# is optional. A claim reworded out of both patterns is missed the same way.
 real_themes=$(grep -cE 'th\.name = "' src/themes.cpp)
 for claim in $(grep -oE '[0-9]+ built-in colour themes|Pick from [0-9]+ colour schemes' README.md \
                  | grep -oE '[0-9]+'); do

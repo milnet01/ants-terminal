@@ -4,7 +4,7 @@
 #   tools/check-standard-mirrors.sh           # check; exit 1 on drift or dead link
 #   tools/check-standard-mirrors.sh --write   # re-copy each owner into its mirror
 #
-# WHY a mirror exists at all: this repo is PUBLIC, and the four delta standards
+# WHY a mirror exists at all: this repo is PUBLIC, and the delta standards
 # in docs/standards/ point at `~/.claude/standards/<name>.md` — a path an
 # outside contributor cannot open, so for them the rule was simply absent. Each
 # delta therefore carries a verbatim copy of its owner below the delta content.
@@ -119,17 +119,11 @@ done
 # an illustrative path inside a quoted example; and README.md, which resolves to
 # this index rather than the global one it means (ANTS-4138).
 #
-# ANTS-4825 — a target out of that set is skipped BY RULE, and the gate names
-# it and says why instead of leaving it to be inferred from the path shape. It
-# could not resolve: the owner is a foundation document or a skeleton that
-# nothing mirrors, so a reader on GitHub got a 404, and a bare "links resolve"
-# over a tree carrying one is what made this gate and doc_integrity look like
-# they disagreed when each was answering its own question correctly.
-#
-# ANTS-4875 de-links those on the way down (see owner_body), so they now arrive
-# as plain text and no longer reach this scan. What is left here is the net for
-# a link shape the de-link does not match — it copies nothing and edits no
-# mirror, and a non-zero count means owner_body needs widening.
+# A target out of that set cannot be mirrored: its owner is a foundation
+# document or a skeleton, so the link 404s on GitHub. owner_body de-links such
+# links on the way down (ANTS-4875), so none should reach this scan. One that
+# does is a link shape the de-link missed: it is named, skipped by rule
+# (ANTS-4825), and means owner_body needs widening. This scan copies nothing.
 dead_links=0
 unmirrorable=0
 unmirrorable_list=""
@@ -210,7 +204,7 @@ fi
 if [ "$unmirrorable" -ne 0 ]; then
     echo "check-standard-mirrors: $checked in sync, $skipped skipped, mirrorable links resolve"
     echo "check-standard-mirrors: $unmirrorable link(s) cannot be mirrored and are skipped by rule."
-    echo "  They do NOT resolve for a reader on GitHub — doc_integrity reports them, correctly:$unmirrorable_list"
+    echo "  They 404 on GitHub: owner_body's de-link missed them and needs widening:$unmirrorable_list"
 else
     echo "check-standard-mirrors: $checked in sync, $skipped skipped, links resolve"
 fi

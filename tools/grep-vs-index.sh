@@ -6,7 +6,8 @@
 # workspace_search / find_definition / find_sources.
 #
 # The counter is best-effort and may contain malformed lines under concurrent
-# Bash tool calls (accepted lossy, see the spec) — this reader skips them.
+# Bash tool calls; this reader skips them. The loss is accepted in
+# docs/specs/ANTS-2141-soft-warn-grep-find-over.md.
 #
 # Usage: tools/grep-vs-index.sh [path-to-count.jsonl]
 #   Default: ~/.cache/ants-terminal/grep-nudge/count.jsonl
