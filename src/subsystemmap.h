@@ -1,7 +1,7 @@
 // ANTS-1251 — subsystemmap: parses the `## Module map (src/)` section
 // into [{name, summary}, ...] and caches the result keyed on the source
-// file's mtime (no wall-clock TTL — INV-2). One copy lives on
-// RemoteControl. See docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md.
+// file's mtime (no wall-clock TTL — INV-2). One process-wide cache,
+// mutex-guarded. See docs/specs/ANTS-1251-subsystem-mcp-tool-consolidated-map.md.
 //
 // ANTS-1292 — the canonical module map moved out of CLAUDE.md into
 // docs/subsystems.md so the ~130-line lane catalogue is not reloaded
@@ -22,11 +22,12 @@ struct Lane {
     QString summary;
 };
 
-// Parse a CLAUDE.md body. Walks the `## Module map (src/)` H2 until
-// the next H2; collects bullets shaped as ``-`name` — summary``.
+// Parse the body of a module-map source (see resolveSource). Walks the
+// `## Module map (src/)` H2 until the next H2; collects bullets shaped as
+// ``-`name` — summary``.
 // INV-3: anything not matching is dropped (defensive against drift).
 // Empty / missing section → empty vector (INV-7).
-QVector<Lane> parse(const QString &claudeMdBody);
+QVector<Lane> parse(const QString &sourceBody);
 
 // Synchronous mtime-keyed cache. Returns the parsed lanes for
 // `sourcePath`. Re-reads only when mtime changes (INV-2).

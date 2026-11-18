@@ -47,10 +47,8 @@ struct Check {
 //
 // ANTS-1455 — opt-in escape hatch. When allowOutsideRoot=true, the
 // project-root anchor check is skipped (the NFC + control-char +
-// backslash + canonicalisation steps still run). Used by
-// test_audit_synthesis_prompt's `allow_outside_project:true` mode
-// so `/tmp` reports dirs can be supplied without an in-tree copy.
-// Default false preserves all existing call-sites byte-for-byte.
+// backslash + canonicalisation steps still run). It is for verbs
+// whose `allow_outside_project:true` reads a path outside the project.
 Check validatePath(const QString &rawPath,
                    const QString &rootCanonical,
                    const QString &toolName,

@@ -68,9 +68,10 @@ Spec source: `docs/specs/ANTS-1295-per-tool-cwd-anchor-enforcement.md`.
 - **PV-8 NFC normalisation.** A path expressed in NFD form
   canonicalises identically to its NFC form; both accept.
 
-- **PV-9 non-existent escape rejects (lexical fallback).** A path
-  like `nonexistent/../../etc/passwd` where the prefix doesn't
-  exist still rejects through `QDir::cleanPath` (INV-5).
+- **PV-9 non-existent escape rejects.** A path like
+  `nonexistent/../../etc/passwd` where the prefix doesn't exist
+  still rejects: `QDir::cleanPath` folds the `..`, and the cleaned
+  path's landing path lies outside the root (INV-5).
 
 - **PV-10 non-existent inside-root accept.** A path like
   `new_dir/new_file` that doesn't exist yet but resolves inside

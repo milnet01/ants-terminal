@@ -243,8 +243,8 @@ TEST(McpPathAnchor, NfcRoundTrips) {
     EXPECT_EQ(check.argvForm, name);
 }
 
-// PV-9: a path whose head doesn't exist but whose lexical form
-// escapes still rejects (the cleanPath fallback).
+// PV-9: a path whose head doesn't exist but whose cleaned form
+// escapes still rejects (cleanPath, then its landing path).
 TEST(McpPathAnchor, NonexistentEscapeRejects) {
     QTemporaryDir tmp;
     ASSERT_TRUE(tmp.isValid());

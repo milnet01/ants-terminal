@@ -170,6 +170,7 @@ bool Pty::start(const QString &shell, const QString &workDir, int rows, int cols
     // lock another thread held. So every buffer the child reads — argv,
     // envp, paths — is built here, in the parent, and the child reads
     // them through fork's copy-on-write until exec replaces it.
+    // HostExec::inFlatpak() tests the same two signals; keep the two in step.
     const bool inFlatpak =
         ::getenv("FLATPAK_ID") != nullptr ||
         ::access("/.flatpak-info", F_OK) == 0;

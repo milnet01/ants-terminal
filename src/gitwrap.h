@@ -5,9 +5,7 @@
 // a 4 KiB stderr cap.
 //
 // The wrapper is intentionally dumb: it does not know about ops or
-// JSON. cmdGitState (in remotecontrol.cpp) builds the argv, calls
-// here, and parses output. Same helper is intended for ANTS-1251's
-// subsystem.recent_changes per spec §3.
+// JSON. Callers build the argv and parse the output.
 //
 // See docs/specs/ANTS-1250-git-state-mcp-tool-consolidated.md.
 
@@ -48,10 +46,8 @@ constexpr int kHardKillMs   = 5000;
 constexpr int kKillGraceMs  =  200;
 // Stderr cap (INV-7).
 constexpr int kStderrCapBytes = 4096;
-// ANTS-1839 — default stdout budget. Generous enough for the current
-// callers (git status / branch / log --oneline, all well under this) but
-// bounds a future caller running `git diff` / `log -p`, whose unbounded
-// output would otherwise be slurped whole into a JSON envelope.
+// ANTS-1839 — default stdout budget. It bounds what one git call can put
+// into a JSON reply; a caller expecting more passes its own maxStdoutBytes.
 constexpr int kStdoutCapBytes = 1 * 1024 * 1024;  // 1 MiB
 
 // Run `git <argv...>` with cwd, no shell, capped stderr + stdout,
@@ -83,7 +79,7 @@ struct DiffHunk {
     QStringList lines;          // body lines, empty unless includeLines
 };
 struct DiffFile {
-    QString            path;    // repo-relative post-image path
+    QString            path;    // repo-relative post-image path; pre-image for a deletion
     QVector<DiffHunk>  hunks;
 };
 QVector<DiffFile> parseDiffHunks(const QByteArray &unifiedDiff,

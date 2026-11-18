@@ -47,7 +47,8 @@ inline Launch wrap(const QString &program, const QStringList &args,
     return {QStringLiteral("flatpak-spawn"), out};
 }
 
-// The same two signals ptyhandler.cpp tests (flatpak_host_shell INV-1).
+// The same two signals Pty::start tests in ptyhandler.cpp, whose form
+// flatpak_host_shell INV-1 pins. Keep the two in step.
 inline bool inFlatpak() {
     static const bool sandboxed =
         qEnvironmentVariableIsSet("FLATPAK_ID") ||

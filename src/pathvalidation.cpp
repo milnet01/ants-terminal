@@ -251,9 +251,8 @@ Check validatePath(const QString &rawPath,
         // ANTS-1805 — fail CLOSED on an empty root. Otherwise the anchor
         // check below collapses to `resolved.startsWith("/")`, which is true
         // for every absolute path — the single project-wide path chokepoint
-        // would silently accept /etc/passwd if any one of its ~14 call-sites
-        // ever forgot its own empty-root guard. Cheap defense-in-depth that
-        // changes no current behaviour (all call-sites pass non-empty roots).
+        // would silently accept /etc/passwd if any caller forgot its own
+        // empty-root guard.
         if (rootCanonical.isEmpty()) {
             pc.bad = true;
             pc.err = makeErr(toolName, paramName,

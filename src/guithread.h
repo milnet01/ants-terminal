@@ -104,10 +104,10 @@ auto onGuiThread(F &&f) -> std::optional<std::invoke_result_t<F>> {
 // Join `worker` from the GUI thread at teardown. A worker already
 // parked in onGuiThread is waiting for this thread, so a bare wait() never
 // returns. Between short waits, deliver the posted marshals: with `worker`
-// refused, its own release it without running their callables. A marshal
-// from any other thread is served normally. Only onGuiThread queues calls on
-// the application object (src/ surveyed 2026-09-11); anything queued there
-// later would run here too. Returns false when the worker has not exited
+// refused, its own marshals are released without running their callables.
+// A marshal from any other thread is served normally. Only onGuiThread
+// queues calls on the application object (src/ surveyed 2026-09-11);
+// anything queued there later would run here too. Returns false when the worker has not exited
 // within `timeoutMs`; negative waits forever.
 inline bool joinRefusingMarshals(QThread *worker, int timeoutMs = -1) {
     constexpr int kSliceMs = 20;

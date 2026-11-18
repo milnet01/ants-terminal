@@ -19,9 +19,10 @@
 // The watcher is deliberately dumb: it watches exactly the directories it is
 // handed (each non-recursively) and debounces every create/modify/delete/move
 // into a single changed() signal. It does NOT auto-descend into new
-// sub-directories — the caller re-seeds its (gitignore-aware) directory set on
-// changed(), so ignored trees like build/ never get watched. Keeping the
-// gitignore knowledge in the caller keeps this component a pure primitive.
+// sub-directories — the caller re-seeds its (gitignore-aware) directory set
+// when takeTreeMayHaveGrown() says so, so ignored trees like build/ never get
+// watched. Keeping the gitignore knowledge in the caller keeps this component
+// a pure primitive.
 #pragma once
 
 #include <QObject>
@@ -41,9 +42,10 @@ public:
 
     // Watch each directory in `dirs` (non-recursively). Idempotent —
     // already-watched dirs and non-directories are skipped, so this is the
-    // top-up call the caller re-issues with a fresh gitignore-aware set on
-    // changed(). Silently stops adding once `maxWatches` is reached (degrade,
-    // never fail). Returns the number of directories now watched.
+    // top-up call the caller re-issues with a fresh gitignore-aware set when
+    // takeTreeMayHaveGrown() says so. Silently stops adding at the fixed
+    // m_maxWatches cap (degrade, never fail). Returns the number of
+    // directories now watched.
     int addDirs(const QStringList &dirs);
 
     // Number of live inotify watches.
@@ -61,12 +63,15 @@ public:
     // directory set: a directory created or moved in, a watched directory
     // lost, a kernel queue overflow, or a change to a rescan name. Clears
     // the flag, so a caller re-seeds only then rather than on every edit
-    // (ANTS-5109).
+    // (ANTS-5109). A lost directory shrinks the set rather than growing it;
+    // it is flagged too, because the caller's set must be re-seeded either way.
     bool takeTreeMayHaveGrown();
 
     // Pure helper (static, testable): given the NUL-separated output of
     // `git ls-files -z …` and the working-tree root, return the sorted,
     // de-duplicated set of absolute directories that contain those files.
+    // An empty topLevel gives paths relative to the working directory, with
+    // "." for top-level files.
     // This is the gitignore-aware directory set a git consumer watches.
     static QStringList directoriesContaining(const QString &topLevel,
                                              const QByteArray &lsFilesZeroSep);
@@ -74,7 +79,8 @@ public:
 signals:
     // Emitted (debounced) when any watched directory sees a
     // create/modify/delete/move, or the kernel event queue overflows. The
-    // consumer re-probes (and, for a git tree, re-seeds the dir set).
+    // consumer re-probes (and, for a git tree, re-seeds the dir set when
+    // takeTreeMayHaveGrown() says so).
     void changed();
 
 private:

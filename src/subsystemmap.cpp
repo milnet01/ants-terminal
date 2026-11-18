@@ -20,7 +20,7 @@ struct CacheEntry {
     QVector<Lane> lanes;
 };
 
-// Cache keyed on canonical CLAUDE.md path. Multiple projects in one
+// Cache keyed on the canonical source path. Multiple projects in one
 // session would each get an entry; bounded by number of projects
 // (small). ANTS-5074 — reached from the GUI thread and the MCP worker,
 // so every access holds cacheMutex().
@@ -72,9 +72,9 @@ const QRegularExpression &parenQualifierRe() {
 
 }  // namespace
 
-QVector<Lane> parse(const QString &claudeMdBody) {
+QVector<Lane> parse(const QString &sourceBody) {
     QVector<Lane> out;
-    const QStringList lines = claudeMdBody.split(QLatin1Char('\n'));
+    const QStringList lines = sourceBody.split(QLatin1Char('\n'));
 
     int i = 0;
     const int n = lines.size();
@@ -149,10 +149,10 @@ QVector<Lane> parse(const QString &claudeMdBody) {
     return out;
 }
 
-QVector<Lane> cachedLanes(const QString &claudeMdPath) {
-    QFileInfo fi(claudeMdPath);
+QVector<Lane> cachedLanes(const QString &sourcePath) {
+    QFileInfo fi(sourcePath);
     const QString key = fi.canonicalFilePath().isEmpty()
-                            ? claudeMdPath : fi.canonicalFilePath();
+                            ? sourcePath : fi.canonicalFilePath();
     if (key.isEmpty()) return {};
 
     const qint64 mtimeMs = fi.lastModified().toMSecsSinceEpoch();
@@ -167,7 +167,7 @@ QVector<Lane> cachedLanes(const QString &claudeMdPath) {
     }
 
     // Read and parse outside the lock.
-    QFile f(claudeMdPath);
+    QFile f(sourcePath);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return {};
     }

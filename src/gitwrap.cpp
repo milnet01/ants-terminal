@@ -32,8 +32,7 @@ Result runWithin(const QString &workingDir, const QStringList &argv,
     if (cLocale) env.insert(QStringLiteral("LC_ALL"), QStringLiteral("C"));
     p.setProcessEnvironment(env);
     // ANTS-1250-INV-6: argv form of QProcess::start. Never the
-    // shell-interpolated single-string form. Mirrors the
-    // cmdWorkspaceSearch invocation from ANTS-1248.
+    // shell-interpolated single-string form.
     HostExec::start(p, QStringLiteral("git"), argv);
     if (!p.waitForStarted(500)) {
         r.started = false;
