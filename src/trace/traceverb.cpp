@@ -23,7 +23,7 @@ void registerMcpdOnlyVerbs(ToolSink &sink, const RegistryHost &host, trace::Env 
         return QString::fromUtf8(QJsonDocument(reply).toJson(QJsonDocument::Compact));
     };
     // A plain literal, as mcptoolregistry.cpp writes its names:
-    // mcp_provider_registry INV-8 greps for registerToolProvider("trace".
+    // mcp_provider_registry INV-8b greps for registerToolProvider("trace".
     sink.registerToolProvider("trace", CallerCwdContract::Required, std::move(handler));
 }
 

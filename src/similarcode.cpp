@@ -23,7 +23,7 @@ constexpr int kDefaultResults  = 3;
 constexpr int kMaxResultsCap   = 20;
 constexpr int kMaxShapeLen     = 512;
 constexpr int kMinTokenLen     = 2;
-constexpr int kPerFileSymbols  = 1000;  // FileOutline's own cap ceiling
+constexpr int kPerFileSymbols  = FileOutline::kMaxSymbolsCap;
 
 // ANTS-3380 — a signature that shares exactly ONE token with the query is
 // an incidental match: token-set Jaccard rewards a short signature with a
@@ -221,7 +221,7 @@ Result findSimilar(const QString &rootCanonical,
         r.ok = false;
         r.code = QStringLiteral("bad_args");
         r.error = QStringLiteral("similar_code: \"shape\" missing, empty, "
-                                 "or longer than 512 chars");
+                                 "or longer than %1 chars").arg(kMaxShapeLen);
         return r;
     }
     const QStringList qTokens = tokenize(s);

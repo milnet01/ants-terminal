@@ -22,7 +22,6 @@ namespace trace {
 namespace {
 
 constexpr qint64 kCacheCapBytes = 64LL * 1024 * 1024;   // § 5
-constexpr int kSignatureMax = 200;
 
 struct Deadline {
     QElapsedTimer timer;
@@ -334,7 +333,7 @@ std::shared_ptr<const FileRows> rowsFor(const QString &absPath, qint64 mtimeMs, 
             g_cache.erase(it);
         }
     }
-    auto rows = extractRows(langId, query, text, 2000);
+    auto rows = extractRows(langId, query, text, kParseTimeoutMs);
     if (rows->timedOut) return rows;   // not cached: a retry may finish
     QMutexLocker lock(&g_cacheMutex);
     if (g_cache.contains(absPath)) return rows;   // another thread got there

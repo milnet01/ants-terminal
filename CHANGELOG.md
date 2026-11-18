@@ -528,6 +528,11 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`comment_claims` reports a spaced approximate count such as `~ 3 lines` once** (ANTS-6140)
+  The code search and outline tools' remaining readability fixes landed
+  with it: read_region, similar_code and trace each state a limit in one
+  place, and four misleading comments now match the code.
+
 - **`offload:false` from a Claude Code session now keeps a reply inline and its bodies whole. A client sends the switch as the text `"false"`, which is now read like the boolean.** (ANTS-6827)
 
 - **`tools/token-bench/bench.py summary` prints "no price" for a run it cannot price.** (ANTS-6086)

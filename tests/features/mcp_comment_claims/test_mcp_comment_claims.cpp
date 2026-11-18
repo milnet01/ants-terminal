@@ -204,6 +204,16 @@ TEST(CommentClaims, Inv5NumbersThatAreNotCounts) {
         << q.join(QStringLiteral(" | ")).toStdString();
 }
 
+// ANTS-6140 — `~ 3` (a space after the tilde) is one claim, not two: the
+// approximate pass marks the digit, which the later passes key on.
+TEST(CommentClaims, Ants6140SpacedTildeIsOneClaim) {
+    QTemporaryDir dir;
+    writeFile(dir.filePath("src/t.cpp"), "// about ~ 3 lines of setup.\n");
+    const QStringList q = quotes(rows(call(dir), "candidates", QStringLiteral("census_number")));
+    EXPECT_EQ(q, QStringList{QStringLiteral("~ 3 lines")})
+        << q.join(QStringLiteral(" | ")).toStdString();
+}
+
 TEST(CommentClaims, Inv6StableIds) {
     std::unique_ptr<QTemporaryDir> dir(fixture());
     const QJsonObject r = call(*dir);

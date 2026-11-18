@@ -64,7 +64,6 @@ namespace ReadRegion {
 // answer. Capped so a large document does not pay a big refusal body.
 QStringList rankSectionCandidates(const QString &wantSlug,
                                   const QStringList &slugs) {
-    constexpr int kMaxCandidates = 10;
     constexpr int kPrefixTier = 1 << 20;   // above any slug's possible overlap
     if (slugs.isEmpty()) return {};
 
@@ -109,7 +108,7 @@ QStringList rankSectionCandidates(const QString &wantSlug,
 
     QStringList out;
     for (const Scored &s : scored) {
-        if (out.size() >= kMaxCandidates) break;
+        if (out.size() >= kMaxSectionCandidates) break;
         out << s.slug;
     }
     return out;
@@ -725,8 +724,8 @@ QJsonObject extract(const QString &absPath, const Options &opts) {
         symbolEcho = opts.symbol;
         symMatchCount = sr.matchCount;
         symAmbiguous = sr.matchCount > 1;
-        // A symbol resolver that returned an out-of-shape range is treated
-        // as a defensive bad_args rather than reading garbage.
+        // A symbol resolver that returned a start before line 1 is clamped
+        // to 1 rather than reading garbage.
         if (startLine < 1) startLine = 1;
     }
 
@@ -988,13 +987,12 @@ QJsonObject extractBatch(const QString &rootCanonical,
         o["code"]  = QStringLiteral("bad_args");
         return o;
     }
-    constexpr int kMaxItems = 64;
-    if (items.size() > kMaxItems) {
+    if (items.size() > kMaxBatchItems) {
         QJsonObject o;
         o["ok"]    = false;
         o["error"] = QStringLiteral(
             "read_regions: too many items (%1 > %2) — split the batch")
-                .arg(items.size()).arg(kMaxItems);
+                .arg(items.size()).arg(kMaxBatchItems);
         o["code"]  = QStringLiteral("too_many_items");
         return o;
     }

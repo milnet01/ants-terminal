@@ -483,7 +483,7 @@ private:
     }
 
     void census(const Joined &j) {
-        static const QRegularExpression approx(QStringLiteral("~\\s?\\d[\\d,]*(?:[- ][A-Za-z]+)?"));
+        static const QRegularExpression approx(QStringLiteral("~\\s?(\\d[\\d,]*)(?:[- ][A-Za-z]+)?"));
         static const QRegularExpression nLine(QStringLiteral("(?<![\\w.-])\\d+-line\\b"));
         static const QRegularExpression plural(QStringLiteral(
             "(?<![\\w.\\-/#:~$])(\\d{1,3}(?:,\\d{3})+|\\d+)(?![\\d.:%/,-])\\s+(?:[A-Za-z][\\w-]*\\s+)?([a-z]{3,}s)\\b"));
@@ -499,7 +499,7 @@ private:
         QSet<int> taken;
         for (auto it = approx.globalMatch(j.text); it.hasNext();) {
             const auto m = it.next();
-            taken.insert(int(m.capturedStart(0)) + 1);
+            taken.insert(int(m.capturedStart(1)));   // the digit, as the later passes key on it
             add(j, int(m.capturedStart(0)), QStringLiteral("census_number"), m.captured(0), why, false);
         }
         for (auto it = nLine.globalMatch(j.text); it.hasNext();) {

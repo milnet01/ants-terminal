@@ -25,6 +25,9 @@ constexpr int kMaxBytesCeiling = 4 * 1024 * 1024;  // 4 MiB
 constexpr int kMinLineBytes = 50;
 constexpr int kMaxLineBytes = 10000;
 
+constexpr int kMaxBatchItems = 64;          // readRegions' `items` cap
+constexpr int kMaxSectionCandidates = 10;   // rankSectionCandidates' cap
+
 // ANTS-4700 — clip one string to at most `capBytes` UTF-8 bytes, the ellipsis
 // counted INSIDE the budget, backing up across continuation bytes so a
 // multi-byte character is never split. `capBytes <= 0` returns the string
@@ -82,7 +85,7 @@ QJsonObject extract(const QString &absPath, const Options &opts);
 // in item order. Returns {ok:true, results[], count, truncated?} or a refusal
 // {ok:false, code, error}:
 //   bad_args        — itemsValue is not an array, or is empty.
-//   too_many_items  — more than 64 items.
+//   too_many_items  — more than kMaxBatchItems items.
 // Per-item failures (bad/missing path, invalid selector) land in that item's
 // result with ok:false; the batch envelope stays ok:true. Pure (Qt6::Core +
 // PathValidation), so the handler in remotecontrol.cpp only resolves the root.
@@ -101,7 +104,7 @@ QJsonObject extractBatch(const QString &rootCanonical,
 // tiebreak: a caller who half-remembers a title gets the WORDS right and the
 // number wrong, while one working from a cross-reference ("commits.md § 1.1")
 // gets the NUMBER right and the words wrong. A slug starting with the query
-// ranks above both (ANTS-6211). Nothing scoring falls back to the supplied order. Capped at 10 so a large document does not pay a big refusal.
+// ranks above both (ANTS-6211). Nothing scoring falls back to the supplied order. Capped at kMaxSectionCandidates so a large document does not pay a big refusal.
 //
 // ANTS-4556 — takes a plain slug list rather than parsed headings, because
 // roadmap_log's `bad_section` ranks SECTION slugs it already holds and there

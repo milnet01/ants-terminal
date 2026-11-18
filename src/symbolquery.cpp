@@ -483,7 +483,7 @@ struct ScanState {
     // ANTS-3680 — batch mode. When `batch` is non-null this state owns the
     // WALK only (file count, cap, stem hints) and carries no symbol of its
     // own: scanFile fans each line out to the needles that line holds.
-    // holds. `bySymbol` keys on views into the caller's stable needle list.
+    // `bySymbol` keys on views into the caller's stable needle list.
     QVector<ScanState> *batch = nullptr;
     const QHash<QStringView, int> *bySymbol = nullptr;
     const QHash<QString, int> *byStem = nullptr;   // lowercased needle -> slot

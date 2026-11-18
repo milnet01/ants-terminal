@@ -17,6 +17,9 @@ struct TSQuery;
 
 namespace trace {
 
+constexpr int kSignatureMax = 200;      // DefRow::signature's byte cap
+constexpr int kParseTimeoutMs = 2000;  // § 2.5 — rowsFor()'s parse budget
+
 struct ByteRange {
     uint32_t start = 0;
     uint32_t end = 0;
@@ -32,7 +35,7 @@ struct DefRow {
     int column = 0;          // 0-based byte column of the node's start
     ByteRange node;          // the whole definition
     ByteRange nameRange;     // the @name node
-    QString signature;       // node text up to its body, one line, <= 200 bytes
+    QString signature;       // node text up to its body, one line, <= kSignatureMax bytes
     QStringList scope;       // enclosing scope names, outermost first
     QString qualifier;       // `Foo` of `void Foo::bar()`, already in scope
 };
@@ -57,7 +60,8 @@ struct FileRows {
 };
 
 // Parses `text` as `langId` with `query` (compiled for that language) and
-// extracts its rows. `timeoutMs` bounds the parse (§ 2.5: 2000).
+// extracts its rows. `timeoutMs` bounds the parse; rowsFor() passes
+// kParseTimeoutMs.
 std::shared_ptr<const FileRows> extractRows(const QString &langId,
                                             const TSQuery *query,
                                             const QByteArray &text, int timeoutMs);
@@ -70,7 +74,7 @@ std::shared_ptr<const FileRows> rowsFor(const QString &absPath, qint64 mtimeMs,
                                         const QByteArray &queryHash,
                                         const QByteArray &text);
 
-// The cache's byte cap and current use, for tests.
+// The cache's current use, for tests.
 qint64 rowCacheBytes();
 void clearRowCache();
 

@@ -106095,7 +106095,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: code-index-search.
 
-- 📋 [ANTS-6140] **Readability fixes, code-index-search-b lane: src/commentclaims.cpp, src/readregion.cpp, src/readregion.h, src/similarcode.cpp, src/sourcescrapes.cpp, src/symbolquery.cpp ….**
+- ✅ [ANTS-6140] **Readability fixes, code-index-search-b lane: src/commentclaims.cpp, src/readregion.cpp, src/readregion.h, src/similarcode.cpp, src/sourcescrapes.cpp, src/symbolquery.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane code-index-search-b:
   5 high, 9 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/31-code-index-search-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106118,6 +106118,17 @@ worked after these.
   addSymbolRows, addReferenceRows, specInvariantRows, roadmapItemRows,
   appendCoverageGaps and pageInto; 87 trace cases old vs new identical
   except one roadmap item filed between runs. LOWs remain.
+  2026-11-18: LOWs closed. Fixed: readregion.cpp clamp comment;
+  similar_code kPerFileSymbols = FileOutline::kMaxSymbolsCap and the
+  shape message built from kMaxShapeLen; read_region's kMaxBatchItems
+  and kMaxSectionCandidates and trace's kSignatureMax and
+  kParseTimeoutMs moved into their headers, which name them; symbolquery
+  stray "holds."; extract.h rowCacheBytes comment; traceverb INV-8b;
+  comment_claims marks the digit of `~ 3` (test
+  Ants6140SpacedTildeIsOneClaim). Already fixed before today: the
+  refusal() copies (mcp::refusal) and read_region's symbol cap. No
+  longer applies: sourcescrapes reads()'s `record` now has a false
+  caller.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
