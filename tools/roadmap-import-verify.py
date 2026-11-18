@@ -11,23 +11,20 @@ its `roadmap_migrate`. Reports; never writes.
 Exit 0 when every declaring bullet matches, 1 on any mismatch, 2 on a setup
 error (no store, no project row, no roadmap).
 
-**The taxonomy and the alias map below MIRROR `src/roadmapparse.cpp`**
-(`canonicalKinds()` / `mappedKind()`), and the resolver rule they implement is
-ANTS-4065 § 2.2: a `Kind:` capture is a candidate only if its lowercased value
-is a taxonomy value or an alias key, and the LAST surviving candidate wins.
-That guard is why a later `roadmap_log op:annotate` note mentioning a kind can
-no longer displace the real declaration. If either list changes in the C++,
-change it here — an out-of-date copy makes this tool report false mismatches,
-which is the loud failure, not a silent pass.
+**The taxonomy (tools/roadmap_kinds.py) and the alias map below MIRROR
+`src/roadmapparse.cpp`** (`canonicalKinds()` / `mappedKind()`), and the
+resolver rule they implement is ANTS-4065 § 2.2: a `Kind:` capture is a
+candidate only if its lowercased value is a taxonomy value or an alias key, and
+the LAST surviving candidate wins. That guard is why a later
+`roadmap_log op:annotate` note mentioning a kind can no longer displace the
+real declaration. If either list changes in the C++, change it here — an
+out-of-date copy makes this tool report false mismatches, which is the loud
+failure, not a silent pass.
 """
 import argparse, collections, pathlib, re, sqlite3, sys
 
-from roadmap_paths import root_roadmap
-
-TAXONOMY = {"implement", "fix", "audit-fix", "review-fix", "doc", "doc-fix",
-            "refactor", "test", "chore", "release", "perf", "security",
-            "feature", "enhancement", "investigate", "research",
-            "accessibility", "optimize", "package", "marketing", "ux"}
+from roadmap_kinds import CANONICAL_KINDS
+from roadmap_paths import DEFAULT_STORE, root_roadmap
 
 ALIASES = {"improve": "enhancement", "docs": "doc", "bugfix": "fix",
            "testing": "test", "spike": "research", "feat": "feature",
@@ -37,7 +34,11 @@ ALIASES = {"improve": "enhancement", "docs": "doc", "bugfix": "fix",
            "performance": "perf", "process + tooling": "chore",
            "audit": "audit-fix"}
 
+# Narrower than roadmap-corpus-survey.py's ID_DASHED: a digit-initial prefix
+# is not matched (ANTS-6065).
 BULLET = re.compile(r"^- (?:📋|🚧|✅|💭) \[([A-Za-z][A-Za-z0-9_-]*-\d+)\]")
+# Not roadmap_kinds.KIND_VALUE: no backtick guard, and the value runs to the
+# end of the line rather than stopping at a period, as rxKind() does (ANTS-6064).
 KIND = re.compile(r"Kind:\s*\**\s*([^\n*]+)")
 
 
@@ -49,7 +50,7 @@ def _flush_kind(cur, block, out):
     for line in block:
         for raw in KIND.findall(line):
             v = raw.strip().lower().rstrip(".,;")
-            if v in TAXONOMY:
+            if v in CANONICAL_KINDS:
                 vals.append(v)
             elif v in ALIASES:
                 vals.append(ALIASES[v])
@@ -87,8 +88,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("root", nargs="?", default=".")
     ap.add_argument("--slug", help="project.export_slug (default: slugified leaf dir)")
-    ap.add_argument("--store", default=str(pathlib.Path.home()
-                    / ".local/share/ants-terminal/roadmap.sqlite"))
+    ap.add_argument("--store", default=DEFAULT_STORE)
     a = ap.parse_args()
 
     root = pathlib.Path(a.root).resolve()

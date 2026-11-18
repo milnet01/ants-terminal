@@ -29,11 +29,13 @@ Usage:
 
 import argparse
 import collections
+import os
 import re
 import sqlite3
 import sys
 
-DEFAULT_STORE = "~/.local/share/ants-terminal/roadmap.sqlite"
+from roadmap_paths import DEFAULT_STORE
+
 KEYS = ("Kind", "Source", "Layman", "Lanes", "Evidence")
 NEXT_KEY = re.compile(r"^(?:%s):\s" % "|".join(KEYS))
 ANY_KEY = re.compile(r"(?:^|\s)(?:%s):\s" % "|".join(KEYS))
@@ -92,7 +94,6 @@ def main():
     ap.add_argument("--samples", type=int, default=2)
     args = ap.parse_args()
 
-    import os
     store = os.path.expanduser(args.store)
     if not os.path.exists(store):
         sys.exit("no store at %s" % store)

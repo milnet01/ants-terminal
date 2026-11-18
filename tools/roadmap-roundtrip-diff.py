@@ -4,8 +4,7 @@ the store? (INV-6.)
 
 `roadmap_migrate` reports `items_updated` but not WHICH columns moved, and the
 column is the whole diagnosis — D3 found `headline`/`lanes` clean and `body`
-carrying all 363 diffs, the opposite of what ANTS-4065 § 2.6 predicted (cited
-as "ANTS-3765 § 4" until 2026-08-15; that section is RAM / build cost).
+carrying all 363 diffs, the opposite of what ANTS-4065 § 2.6 predicted.
 Reports; never writes.
 
     # 1. before the render
@@ -29,13 +28,12 @@ like.
 """
 import argparse, collections, json, pathlib, sqlite3, sys
 
-DEFAULT_STORE = pathlib.Path.home() / ".local/share/ants-terminal/roadmap.sqlite"
+from roadmap_paths import DEFAULT_STORE
+
 # ANTS-4065 § 2.6 governs nine columns; this list is NOT them, and the
 # difference is deliberate rather than a transcription slip. It omits `id`
 # (the match key) and `evidence` (not read here), and adds `section_id` and
 # `id_origin`, which a re-import may write and which a drift hunt wants.
-# Corrected 2026-08-15: this cited "ANTS-3765 § 2.4", which is that spec's
-# list of nineteen store methods and defines no column set at all.
 COLS = ["status", "headline", "layman", "kind", "source", "lanes", "body",
         "section_id", "id_origin"]
 
@@ -83,7 +81,7 @@ def diff(a, b):
     print(f"items: before {len(ra)}  after {len(rb)}")
     print(f"  gone : {len(gone)}" + (f" {gone[:10]}" if gone else ""))
     print(f"  new  : {len(new)}" + (f" {new[:10]}" if new else ""))
-    print(f"\nitems with any governed change: {len(moved)}")
+    print(f"\nitems with any compared-column change: {len(moved)}")
     for c in cols:
         print(f"  {c:11s}: {per[c]}")
     for c in cols:
@@ -97,7 +95,7 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("snap"); s.add_argument("out")
     s.add_argument("--slug", default="ants-terminal")
-    s.add_argument("--store", default=str(DEFAULT_STORE))
+    s.add_argument("--store", default=DEFAULT_STORE)
     d = sub.add_parser("diff"); d.add_argument("before"); d.add_argument("after")
     a = ap.parse_args()
     if a.cmd == "snap":

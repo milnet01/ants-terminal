@@ -4,8 +4,11 @@
 # Sourced, not run. RoadmapBackupHealth::assess() reads what this writes, so
 # the format lives in one place on each side.
 #
-# The record is three key=value lines, always all three:
-#   attempt=<UTC ISO-8601>   every run that got past the lock
+# The record is key=value lines: the first three always, dest and store for
+# the snapshot job only.
+#   attempt=<UTC ISO-8601>   every run that recorded ok or fail, including a
+#                            fail before the lock; export-publish's held
+#                            lock records nothing
 #   success=<UTC ISO-8601>   changed only on success; empty until the first
 #   error=<one line>         emptied on success, set on failure
 #   dest=<folder>            snapshot job only (ANTS-5247): the canonical

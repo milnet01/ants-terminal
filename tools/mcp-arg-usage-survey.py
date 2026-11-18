@@ -10,8 +10,8 @@ Usage:
     tools/mcp-arg-usage-survey.py [--since YYYY-MM-DD] VERB [VERB ...]
     tools/mcp-arg-usage-survey.py workspace_search file_outline read_region find_definition
 
-Transcripts are read from ~/.claude/projects/*/*.jsonl (subagent transcripts
-included). A line that is not JSON is skipped, not guessed at.
+Transcripts are read from ~/.claude/projects/**/*.jsonl, recursively, so
+subagent transcripts are included. A line that is not JSON is skipped, not guessed at.
 """
 import collections
 import glob

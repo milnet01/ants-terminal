@@ -95,6 +95,8 @@ def main():
     }
     for name in sorted(os.listdir(base)):
         root = os.path.join(base, name)
+        # discovery/ holds INV-1's cases one level deeper, not roadmap roots
+        # (tests/features/roadmap_migrate_read/spec.md); archives/ is below.
         if not os.path.isdir(root) or name in ("discovery", "archives"):
             continue
         live = root_roadmap(root)

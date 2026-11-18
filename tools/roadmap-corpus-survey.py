@@ -21,6 +21,8 @@ import os
 import re
 import sys
 
+from roadmap_kinds import (CANONICAL_KINDS, KIND_MAX_CHARS, KIND_MAX_WORDS,
+                           KIND_VALUE, is_kind_shaped)
 from roadmap_paths import layout_roadmap
 
 STATUS = "✅🚧📋💭"
@@ -37,14 +39,9 @@ ID_ANY = re.compile(r"\[(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9][A-Za-z0-9_-]*?-?\d
 # after the token, and refusing to look past a MALFORMED token is what made
 # this scan under-count.
 ID_LEAD_TOKEN = re.compile(r"\[[^\]]{1,64}\]")
-
-# roadmap-format.md § 3.5.3's 21-value enum.
-CANONICAL_KINDS = {
-    "implement", "fix", "audit-fix", "review-fix", "doc", "doc-fix", "refactor",
-    "test", "chore", "release", "perf", "security", "feature", "enhancement",
-    "investigate", "research", "accessibility", "optimize", "package",
-    "marketing", "ux",
-}
+# A status line starting with a status word is a legend entry only when short;
+# a longer one is detail prose that happens to start with "Done" or "Planned".
+LEGEND_MAX = 160
 
 # Fields are written both bare (`Kind: fix.`) and bold (`**Kind:** fix.`).
 # Matching only the bare form loses every bullet written by the dialog.
@@ -52,39 +49,10 @@ def field_re(name):
     return re.compile(r"^\s+(?:\*\*)?" + name + r":(?:\*\*)?\s", re.I)
 
 
-# A `Kind:` trailer is written inline — trailing a prose sentence rather than
-# on its own line — often enough that an anchored matcher misses whole values.
-# This pattern was `^\s+…$`, the same blind spot rxKind() has in
-# src/roadmapparse.cpp (ANTS-4065 § 2.2), and it is why every earlier run of
-# this survey reported no `bug` at all: all 29 write the field inline. The
-# survey is the evidence base for roadmap-data-model.md § 7.4's mapping, so an
-# undercount here becomes a missing mapping there.
-#
-# Un-anchored within the line, with three guards, each mirroring the contract:
-#   - ANTS-3722's backtick lookbehind, so a bullet *quoting* the label does not
-#     count as declaring it;
-#   - case-SENSITIVE (no re.I), so prose — "…changed the kind: of work…" —
-#     does not match. § 2.2 drops the tolerance ANTS-3407 added for exactly
-#     this reason once the anchor goes;
-#   - the caller requires an indented continuation line, which keeps a headline
-#     *about* the field (ANTS-4062's, for one) from parsing as a declaration.
-# Last match wins, per INV-11: a rendered bullet puts the body before the
-# trailer, so the canonical value is the later occurrence.
-# `+` is in the class because three corpus values are compounds joined by it
-# (`process + tooling`, `design + implement`, `design + fix`); without it they
-# do not match at all and the inventory loses them silently.
-KIND_VALUE = re.compile(r"(?<!`)(?:\*\*)?Kind:(?:\*\*)?\s*([A-Za-z0-9 _/+-]+?)\s*(?:\.|$)")
-
-# Un-anchoring admits one false positive the parser tolerates but a measurement
-# must not: prose that capitalises the label mid-sentence ("…the value Kind:
-# happens to sit at the line start…") parses as a declaration. § 2.2 accepts
-# that residue for the parser, on the grounds that narrowing further would
-# re-introduce the anchor. Here it is bounded by shape instead: every real
-# value in the corpus is at most four words and 30 characters, the longest
-# being `process + tooling`. Anything longer is counted as prose and REPORTED,
-# never dropped in silence — a filtered inventory that under-reports would
-# reproduce the very failure this survey exists to measure.
-KIND_MAX_WORDS, KIND_MAX_CHARS = 4, 30
+# This survey is the evidence base for roadmap-data-model.md § 7.4's kind
+# mapping, so a `Kind:` capture failing is_kind_shaped() is counted as prose
+# and REPORTED, never dropped in silence: an inventory that under-reports
+# becomes a missing mapping there.
 FIELD_KEY = re.compile(r"^\s+(?:\*\*)?([A-Z][A-Za-z ]{1,20}):(?:\*\*)?\s")
 
 
@@ -161,6 +129,8 @@ def survey(path):
             else:
                 c["table_data_rows"] += 1
 
+        # Fields are credited to `item`, the bullet ABOVE this line, so this
+        # must stay before the bullet block below, which replaces `item`.
         # Body continuation lines only (see KIND_VALUE), last match wins.
         kv = None
         if line[:1].isspace():
@@ -168,12 +138,7 @@ def survey(path):
                 kv = match
         if kv:
             val = kv.group(1).strip().lower()
-            if not val:
-                # Prose quoting the label -- `the "Kind: ..." line` -- matches
-                # with an empty capture, since the value class excludes `.` and
-                # stops before the ellipsis. Not a declaration; not malformed.
-                c["kind_rejected_as_prose"] += 1
-            elif len(val) > KIND_MAX_CHARS or len(val.split()) > KIND_MAX_WORDS:
+            if not is_kind_shaped(val):
                 c["kind_rejected_as_prose"] += 1
             else:
                 kinds[val] += 1
@@ -220,7 +185,7 @@ def survey(path):
         if status and not (dashed or anyid) and not tail.startswith("**"):
             c["status_no_id_no_headline"] += 1
             if re.match(r"^(Done|In progress|Planned|Considered|Dropped)\b", after, re.I) \
-                    and len(after) < 160:
+                    and len(after) < LEGEND_MAX:
                 c["status_legend_lines"] += 1
             continue
 
@@ -301,10 +266,11 @@ def main():
     print(f"\nKind: values — {len(kinds)} distinct "
           f"({len(set(kinds) & CANONICAL_KINDS)} canonical + {len(non_canonical)} not)")
     for k, v in sorted(non_canonical.items(), key=lambda x: -x[1]):
-        print(f"  {k or '(empty — value ran onto the next line)':22s} {v}")
+        print(f"  {k:22s} {v}")
     if total["kind_rejected_as_prose"]:
         print(f"  ...plus {total['kind_rejected_as_prose']} match(es) rejected "
-              f"as prose (over {KIND_MAX_WORDS} words or {KIND_MAX_CHARS} chars)")
+              f"as prose (empty, over {KIND_MAX_WORDS} words or over "
+              f"{KIND_MAX_CHARS} chars)")
 
     print("\nfield keys in use (top 12)")
     for k, v in keys.most_common(12):

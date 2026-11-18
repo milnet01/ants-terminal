@@ -27,6 +27,7 @@ import pathlib
 import re
 import sys
 
+from roadmap_kinds import CANONICAL_KINDS, KIND_VALUE, is_kind_shaped
 from roadmap_paths import root_roadmap
 
 STATUS = "📋🚧✅💭"
@@ -35,21 +36,7 @@ BULLET = re.compile(r"^- ([" + STATUS + r"]) (?:\[([A-Za-z0-9_-]+-?\d+)\] )?\*\*
 # A headline terminator. A period inside closing quotes still terminates.
 TERM = (".", '."', ".”", ".'", ".)", "?", "!", '?"', '!"')
 
-# roadmap-format.md § 3.5.3's 21 values.
-CANONICAL_KINDS = {
-    "implement", "fix", "audit-fix", "review-fix", "doc", "doc-fix", "refactor",
-    "test", "chore", "release", "perf", "security", "feature", "enhancement",
-    "investigate", "research", "accessibility", "optimize", "package",
-    "marketing", "ux",
-}
-
-# Un-anchored, because a trailer is written inline as often as on its own line;
-# backtick-guarded so a bullet QUOTING the label does not count as declaring it;
-# case-sensitive so prose ("...the kind: of work...") does not match. These are
-# the three guards ANTS-4065 § 2.2 gives the parser. Last match wins.
-KIND = re.compile(r"(?<!`)(?:\*\*)?Kind:(?:\*\*)?\s*([A-Za-z0-9 _/+-]+?)\s*(?:\.|$)")
 LAYMAN = re.compile(r"^\s*(?:\*\*)?Layman:(?:\*\*)?\s*\S", re.I)
-KIND_MAX_WORDS, KIND_MAX_CHARS = 4, 30   # longer than this is prose, not a value
 
 # roadmap_log's input schema caps a headline at 200 (claudeintegration.cpp).
 # Not a storage limit -- the column is TEXT with no constraint, and neither the
@@ -63,11 +50,8 @@ def bold_headline(line):
 
     A naive first-`**`-to-next-`**` match truncates any headline that quotes a
     bold marker inside backticks -- including one quoting the C signature
-    `char **argv`, where the asterisks are pointer syntax. The parser had that
-    bug until ANTS-4066 shipped (2026-08-09); this checker never did, which is
-    why it could measure the damage. Both now mask code spans before matching,
-    so the two agree and the `parser_truncates` finding this fed has been
-    retired -- see its note in check_file().
+    `char **argv`, where the asterisks are pointer syntax. Code spans are
+    masked before matching, as the parser does.
     """
     masked = list(line)
     for m in re.finditer(r"`[^`]*`", line):
@@ -116,7 +100,7 @@ def check_file(path):
         if not m:
             continue
         bullets += 1
-        status, iid, rest = m.group(1), m.group(2) or "(no id)", m.group(3)
+        status, iid = m.group(1), m.group(2) or "(no id)"
         where = f"{path}:{i + 1}"
         label = f"{where}  {iid}"
 
@@ -125,15 +109,8 @@ def check_file(path):
             # Closing `**` is on a later line: a wrapped headline.
             findings["multiline"].append(label)
             continue
-        if "**" not in rest:
-            findings["multiline"].append(label)
-        # A `parser_truncates` finding lived here: it compared a naive match
-        # against `head` and listed every bullet whose headline the PARSER would
-        # cut short at a bold marker inside a code span. Retired with ANTS-4066
-        # (2026-08-09), which fixed the parser. It never tested the parser --
-        # both sides were Python regexes -- so it would have gone on reporting
-        # the same 12 bullets forever, describing a bug that no longer exists.
-        # The behaviour is owned by tests/features/roadmap_headline_code_span/.
+        # Headline truncation at a code span is tested by
+        # tests/features/roadmap_headline_code_span/, not here.
         if status in OPEN and head.strip() and not head.rstrip().endswith(TERM):
             findings["no_period"].append(label)
         if len(head) > HEADLINE_MAX:
@@ -152,14 +129,11 @@ def check_file(path):
         for bl in body:
             if not bl[:1].isspace():
                 continue
-            for last in KIND.finditer(bl):
+            for last in KIND_VALUE.finditer(bl):
                 kind = last.group(1).strip().lower()
-        # An EMPTY value is never a declaration. Prose quoting the label --
-        # `the "Kind: ..." line` inside a Layman: sentence -- matches with an
-        # empty capture, because the value class excludes `.` and so stops dead
-        # before the ellipsis. Counting that as a malformed Kind sends someone
-        # to "fix" a correct sentence.
-        if kind and len(kind) <= KIND_MAX_CHARS and len(kind.split()) <= KIND_MAX_WORDS:
+        # An empty capture is prose quoting the label, never a malformed Kind;
+        # reporting it would send someone to "fix" a correct sentence.
+        if is_kind_shaped(kind):
             if kind not in CANONICAL_KINDS:
                 findings["off_taxonomy"].append(f"{label}  Kind: {kind}")
 

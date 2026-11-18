@@ -171,7 +171,9 @@ error=
 ```
 
 - Times are UTC ISO-8601 (`date -u +%Y-%m-%dT%H:%M:%SZ`).
-- `attempt` is set on every run that got past the lock.
+- `attempt` is set on every run that records success or a failure,
+  including a failure before the lock. Only § 2.3 step 1's held lock
+  writes no record.
 - `success` changes only on success. `error` is emptied on success and
   set, flattened to one line, on failure.
 - `dest=` is the absolute canonical `DEST_DIR` of the last successful

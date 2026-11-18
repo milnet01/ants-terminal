@@ -7,8 +7,9 @@ ANTS-5732 sets quotation_check's default `tolerance` from this survey
 file at BASE, the commit the review read. The figure is the distance from the
 cited line to the nearest line holding the quotation.
 
-Single lines only, with no normalisation, so a quotation that wraps or carries
-markup is counted as not found rather than guessed at.
+The quotation is cut at its first `…` or `...` and stripped; one shorter than
+12 characters is skipped. It is matched against single lines only, so one that
+wraps or carries markup is counted as not found rather than guessed at.
 
 Usage:
     tools/quote-displacement-survey.py BASE [GLOB]

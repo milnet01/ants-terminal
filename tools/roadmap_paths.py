@@ -1,4 +1,4 @@
-"""Where the tools/roadmap-*.py scripts find a project's roadmap.
+"""Where the tools/roadmap-*.py scripts find a project's roadmap, and the store.
 
 One copy, so a fix to discovery reaches every script. Two rules:
 
@@ -15,6 +15,10 @@ and an uppercase-only probe once left it out of a survey's figures.
 """
 import json
 import os
+
+# The store the Python tools read by default. Unlike the C++ and
+# tools/roadmap-store-backup.sh, it ignores XDG_DATA_HOME (ANTS-6069).
+DEFAULT_STORE = os.path.expanduser("~/.local/share/ants-terminal/roadmap.sqlite")
 
 # kRoadmapCandidates' folders, in its order.
 ROADMAP_DIRS = ("", "docs/private", "docs/internal", "docs/fork")
