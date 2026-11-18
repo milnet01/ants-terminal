@@ -149,6 +149,9 @@ void testSourceInvariants() {
     // from a raw control-byte injection.
     expect(rc.find("text_bytes=%d raw=%d") != std::string::npos,
            "source: dispatch log records the raw-bypass flag (raw=%d)");
+    // ANTS-6134 — text_bytes is a byte count, not a UTF-16 length.
+    expect(rc.find("req.value(\"text\").toString().toUtf8().size()") != std::string::npos,
+           "source: dispatch log measures text_bytes in UTF-8 bytes");
 
     // ANTS-5093 — the peer's `cmd` reaches that log line through
     // DebugLog::write, which escapes every message (CWE-117); that is

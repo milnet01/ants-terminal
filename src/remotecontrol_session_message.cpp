@@ -299,8 +299,9 @@ QJsonDocument opProjects(MailCall &c) {
 std::optional<qint64> messageIdArg(const QJsonObject &req) {
     if (!req.contains(QStringLiteral("message_id")))
         return 0;
+    constexpr double kMaxExactDouble = 9007199254740992.0;   // 2^53
     const double raw = req.value(QStringLiteral("message_id")).toDouble(-1);
-    if (!(raw >= 1.0 && raw <= 9007199254740992.0) || raw != std::floor(raw))
+    if (!(raw >= 1.0 && raw <= kMaxExactDouble) || raw != std::floor(raw))
         return std::nullopt;
     return qint64(raw);
 }

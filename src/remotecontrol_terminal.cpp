@@ -184,9 +184,9 @@ void RemoteControl::onNewConnection() {
         // ANTS-5144 § 2.5 — take the socket from the shared server, so
         // destroying this window's RemoteControl closes what it was serving.
         socket->setParent(this);
-        // ANTS-1132 — SO_PEERCRED UID match. The trust-model comment
-        // at the top of this file claims "UID-scoped + 0700 perms +
-        // lstat-checked S_ISSOCK"; UserAccessOption + safeToUnlink
+        // ANTS-1132 — SO_PEERCRED UID match. The socket's trust model is
+        // "UID-scoped + 0700 perms + lstat-checked S_ISSOCK";
+        // UserAccessOption + safeToUnlink
         // already cover the file-side guarantees, but the peer side
         // needs explicit getsockopt(SO_PEERCRED) to enforce that the
         // connecting process is the same UID. Defense in depth — on
@@ -381,9 +381,9 @@ QJsonDocument RemoteControl::dispatch(const QJsonObject &req) {
     // ANTS-1176: per-verb structured log so a same-UID-attack
     // post-mortem has a record. Deliberately does NOT include the
     // payload itself (text/cwd/command bodies can carry secrets);
-    // size + tab + stripped-bytes count are the diagnostic axes.
+    // cmd, tab, the text's UTF-8 size and the raw flag are logged.
     const int tabId = req.value("tab").toInt(-1);
-    const int textBytes = req.value("text").toString().size();
+    const int textBytes = int(req.value("text").toString().toUtf8().size());
     // ANTS-2119 M2 — record whether the control-char filter bypass was
     // requested (send-text / launch / new-tab honour raw:true). Without it a
     // post-mortem of a same-UID attack can't distinguish a benign filtered send
@@ -682,7 +682,7 @@ QJsonDocument RemoteControl::cmdRecentErrors(const QJsonObject &req) {
     const QJsonValue linesVal = req.value(QStringLiteral("lines"));
     if (linesVal.isDouble()) {
         const int requested = linesVal.toInt();
-        if (requested > 0) lines = std::min(requested, 10000);
+        if (requested > 0) lines = std::min(requested, kGetTextMaxLines);
     }
 
     ScrollbackErrors::Options opts;
@@ -974,17 +974,23 @@ QWidget *RemoteControl::e2eResolveTarget(const QString &objectName) const {
     return top->findChild<QWidget *>(objectName);
 }
 
+// The refusal for a failed e2eResolveTarget(widget), or a null document.
+static QJsonDocument e2eTargetRefusal(const QString &verb, const QString &widget,
+                                      const QWidget *target) {
+    if (target) return {};
+    if (!widget.isEmpty())
+        return e2eRefusal(verb, QStringLiteral("widget_not_found"),
+                          QStringLiteral("no widget named \"%1\"").arg(widget));
+    return e2eRefusal(verb, QStringLiteral("bad_args"),
+                      QStringLiteral("no live top-level window"));
+}
+
 QJsonDocument RemoteControl::cmdInjectKey(const QJsonObject &req) {
     const QString widget = req.value(QStringLiteral("widget")).toString();
     QWidget *target = e2eResolveTarget(widget);
-    if (!widget.isEmpty() && !target)
-        return e2eRefusal(QStringLiteral("inject-key"),
-                          QStringLiteral("widget_not_found"),
-                          QStringLiteral("no widget named \"%1\"").arg(widget));
-    if (!target)
-        return e2eRefusal(QStringLiteral("inject-key"),
-                          QStringLiteral("bad_args"),
-                          QStringLiteral("no live top-level window"));
+    if (QJsonDocument r = e2eTargetRefusal(QStringLiteral("inject-key"), widget, target);
+        !r.isNull())
+        return r;
 
     // Post to the focus widget (falling back to the target itself) — the
     // robust, accelerator-independent path the smoke suite relies on
@@ -1044,14 +1050,9 @@ QJsonDocument RemoteControl::cmdInjectKey(const QJsonObject &req) {
 QJsonDocument RemoteControl::cmdInjectClick(const QJsonObject &req) {
     const QString widget = req.value(QStringLiteral("widget")).toString();
     QWidget *target = e2eResolveTarget(widget);
-    if (!widget.isEmpty() && !target)
-        return e2eRefusal(QStringLiteral("inject-click"),
-                          QStringLiteral("widget_not_found"),
-                          QStringLiteral("no widget named \"%1\"").arg(widget));
-    if (!target)
-        return e2eRefusal(QStringLiteral("inject-click"),
-                          QStringLiteral("bad_args"),
-                          QStringLiteral("no live top-level window"));
+    if (QJsonDocument r = e2eTargetRefusal(QStringLiteral("inject-click"), widget, target);
+        !r.isNull())
+        return r;
 
     QPoint pt;
     if (req.contains(QStringLiteral("x")) && req.contains(QStringLiteral("y")))
@@ -1137,14 +1138,9 @@ QJsonDocument RemoteControl::cmdGrabImage(const QJsonObject &req) {
 
     const QString widget = req.value(QStringLiteral("widget")).toString();
     QWidget *target = e2eResolveTarget(widget);
-    if (!widget.isEmpty() && !target)
-        return e2eRefusal(QStringLiteral("grab-image"),
-                          QStringLiteral("widget_not_found"),
-                          QStringLiteral("no widget named \"%1\"").arg(widget));
-    if (!target)
-        return e2eRefusal(QStringLiteral("grab-image"),
-                          QStringLiteral("bad_args"),
-                          QStringLiteral("no live top-level window"));
+    if (QJsonDocument r = e2eTargetRefusal(QStringLiteral("grab-image"), widget, target);
+        !r.isNull())
+        return r;
 
     // ANTS-5132 — anchor the write under the artifact root. `argvForm` is the
     // NFC-normalised INPUT, not the validated location: validatePath computes

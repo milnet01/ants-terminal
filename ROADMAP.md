@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6820 -->
+<!-- ants-roadmap-id-high-water: ANTS=6821 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -105764,7 +105764,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6134] **Readability fixes, mcp-content-verbs-b lane: src/quotationcheckverb.cpp, src/quotationcheckverb.h, src/remotecontrol_docs.cpp, src/remotecontrol_session_cost.cpp, src/remotecontrol_session_message.cp.**
+- ✅ [ANTS-6134] **Readability fixes, mcp-content-verbs-b lane: src/quotationcheckverb.cpp, src/quotationcheckverb.h, src/remotecontrol_docs.cpp, src/remotecontrol_session_cost.cpp, src/remotecontrol_session_message.cp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-content-verbs-b:
   3 high, 18 medium, 14 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/25-mcp-content-verbs-b.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105783,6 +105783,15 @@ worked after these.
   specLintSiblingInvNumbers, F10 newTabCwdRefusal/newTabReply, F21
   handleSocketLine, F22-F26 comments. Queued: ANTS-6271 (F4 rest),
   6272 (F5), 6273 (F11). LOWs open.
+  2026-11-18: LOWs done. recent_errors uses kGetTextMaxLines;
+  e2eTargetRefusal replaces three copies; lintGitFailed +
+  lintWorkTreeRefusal shared by spec_lint and doc_lint; run_trace uses
+  DocLint::declaredGenre (ANTS-5956) and derives the first row's index;
+  trust-model and dispatch-log comments fixed; text_bytes measured in
+  UTF-8 (opt-in test red first); cacheRead/cacheWrite; kMaxExactDouble.
+  Already fixed before this pass: the clock note, the 'four' hint,
+  allowOutsideRoot. specLintBuildResponse struct split out as ANTS-6821.
+  Leads: ANTS-5952..5957.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -108028,6 +108037,17 @@ worked after these.
   Source: review-readability-2026-10-22 L21.
   Lanes: mcp-roadmap-batch, mcp-roadmap-query-log.
 
+- 📋 [ANTS-6821] **Pass RemoteControl::specLintBuildResponse one result struct instead of eleven positional arguments.**
+  L25 LOW, split from ANTS-6134. Four neighbouring bools
+  (sectionsChecked, testCoverageChecked, truncated, surfacesChecked) can
+  be swapped at a call without a compiler error. The signature is in
+  remotecontrol.h and test_spec_lint_verb calls it positionally, so the
+  tests move with it.
+  **Layman:** Make a spec-checking function harder to call wrongly by grouping its many settings into one named bundle.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: mcp-content-verbs.
+
 ## Readability review 2026-10-22 — possible bugs to investigate
 
 Correctness leads the full-codebase readability review raised in
@@ -109843,13 +109863,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: mcp-content-verbs-b.
 
-- 📋 [ANTS-5956] **src/runtraceverb.cpp:211: a detail file with Genre: on lines 21-25 gets a second header prepended (DocLint reads 25 lines).**
+- ✅ [ANTS-5956] **src/runtraceverb.cpp:211: a detail file with Genre: on lines 21-25 gets a second header prepended (DocLint reads 25 lines).**
   Lead L25-C5 from the readability review of 2026-10-22, lane mcp-content-verbs-b.
   Location: src/runtraceverb.cpp:211
   a detail file with `Genre:` on lines 21-25 gets a second header prepended (DocLint reads 25 lines). Searched: doclint.cpp:43.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: run_trace calls DocLint::declaredGenre, so both read the
+  same 25-line head. Test
+  RunTrace.Ants5956GenreSearchMatchesDocLintHead, red first.
   **Layman:** A possible bug in the document and file tools Claude Code sessions use, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
 
+#include "doclint.h"
 #include "fileturn.h"
 #include "runtraceverb.h"
 #include "remotecontrol.h"
@@ -649,4 +650,19 @@ TEST(RunTrace, Ants6469FinishTakesTurns) {
     FileTurn::setWaitMsForTest(0);
     const QJsonObject r = finishWith(fx, id, basicArgs(2));
     EXPECT_TRUE(r.value(QStringLiteral("ok")).toBool()) << code(r).toStdString();
+}
+
+// ANTS-5956 — a detail file that declares its genre within DocLint's head
+// (line 23 here) is written as given, not given a second Genre header.
+TEST(RunTrace, Ants5956GenreSearchMatchesDocLintHead) {
+    Fixture fx;
+    ASSERT_TRUE(fx.init());
+    const QString id = startId(fx);
+    QJsonObject a = basicArgs();
+    const QString detail = QStringLiteral("# Run\n") + QString(QStringLiteral("\n")).repeated(21)
+                         + QStringLiteral("Genre: prose\n\nbody\n");
+    ASSERT_FALSE(DocLint::declaredGenre(detail).isEmpty());
+    a[QStringLiteral("detail")] = detail;
+    ASSERT_TRUE(finishWith(fx, id, a).value(QStringLiteral("ok")).toBool());
+    EXPECT_EQ(readAll(fx.at(QStringLiteral("docs/reviews/%1.md").arg(id))), detail);
 }

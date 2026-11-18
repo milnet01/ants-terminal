@@ -238,7 +238,7 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
     QHash<QString, QString> toolNames;  // tool_use id -> tool name
     std::vector<Item> items;
     QJsonValue startup;  // null until the first request shape
-    qint64 in = 0, read = 0, write = 0, out = 0;
+    qint64 in = 0, cacheRead = 0, cacheWrite = 0, out = 0;
     qint64 first = -1, current = 0, peak = 0;
     int requests = 0, images = 0;
     // ANTS-6697 — what rent needs: each request's context and shape, and the
@@ -298,8 +298,8 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                 return static_cast<qint64>(us.value(QLatin1String(k)).toDouble());
             };
             in += n("input_tokens");
-            read += n("cache_read_input_tokens");
-            write += n("cache_creation_input_tokens");
+            cacheRead += n("cache_read_input_tokens");
+            cacheWrite += n("cache_creation_input_tokens");
             out += n("output_tokens");
             current = n("input_tokens") + n("cache_read_input_tokens")
                       + n("cache_creation_input_tokens");
@@ -465,8 +465,8 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                      {QStringLiteral("peak"), peak}}},
         {QStringLiteral("totals"),
          QJsonObject{{QStringLiteral("input"), in},
-                     {QStringLiteral("cache_read"), read},
-                     {QStringLiteral("cache_write"), write},
+                     {QStringLiteral("cache_read"), cacheRead},
+                     {QStringLiteral("cache_write"), cacheWrite},
                      {QStringLiteral("output"), out}}},
         {QStringLiteral("images"), images},
         {QStringLiteral("startup"), startup},

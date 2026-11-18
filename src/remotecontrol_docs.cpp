@@ -811,12 +811,31 @@ bool specLintGitBroken(const GitWrap::Result &g) {
     return !g.started || g.crashed || g.hardKilled;
 }
 
-QJsonObject specLintGitFailed(const QString &what, const GitWrap::Result &g) {
+// `verb` is spec_lint or doc_lint, the prefix of the message.
+QJsonObject lintGitFailed(const char *verb, const QString &what,
+                          const GitWrap::Result &g) {
     QJsonObject o = gitErr("git_failed",
-                           QStringLiteral("spec_lint: git %1 failed").arg(what),
+                           QStringLiteral("%1: git %2 failed")
+                               .arg(QLatin1String(verb), what),
                            g.stderrTail);
     o[QStringLiteral("exit_code")] = g.exitCode;   // the code's row requires it
     return o;
+}
+
+// The work-tree probe both lints run first: a refusal, or {} inside a work
+// tree. `needs` names what needed the work tree ("staged:true needs").
+QJsonObject lintWorkTreeRefusal(const char *verb, const QString &root,
+                                const QString &needs) {
+    const GitWrap::Result inside = GitWrap::run(
+        root, {QStringLiteral("rev-parse"), QStringLiteral("--is-inside-work-tree")});
+    if (specLintGitBroken(inside))
+        return lintGitFailed(verb, QStringLiteral("rev-parse"), inside);
+    if (inside.exitCode != 0)
+        return gitErr("not_a_git_repo",
+                      QStringLiteral("%1: %2 the project root to be inside a "
+                                     "git work tree")
+                          .arg(QLatin1String(verb), needs));
+    return {};
 }
 
 // The refusal order is the spec's: a git that cannot run, then the work-tree
@@ -826,24 +845,15 @@ QJsonObject specLintGitFailed(const QString &what, const GitWrap::Result &g) {
 SpecLintScope specLintReadScope(const QString &root, const QString &since,
                                 bool staged, const QStringList &relDocs) {
     SpecLintScope s;
-    const GitWrap::Result inside = GitWrap::run(
-        root, {QStringLiteral("rev-parse"), QStringLiteral("--is-inside-work-tree")});
-    if (specLintGitBroken(inside)) {
-        s.err = specLintGitFailed(QStringLiteral("rev-parse"), inside);
-        return s;
-    }
-    if (inside.exitCode != 0) {
-        s.err = gitErr("not_a_git_repo",
-                       QStringLiteral("spec_lint: since / staged need the project "
-                                      "root to be inside a git work tree"));
-        return s;
-    }
+    s.err = lintWorkTreeRefusal("spec_lint", root,
+                                QStringLiteral("since / staged need"));
+    if (!s.err.isEmpty()) return s;
     const QString ref = staged ? QStringLiteral("HEAD") : since;
     const GitWrap::Result resolved = GitWrap::run(
         root, {QStringLiteral("rev-parse"), QStringLiteral("--verify"),
                QStringLiteral("--quiet"), ref + QStringLiteral("^{commit}")});
     if (specLintGitBroken(resolved)) {
-        s.err = specLintGitFailed(QStringLiteral("rev-parse --verify"), resolved);
+        s.err = lintGitFailed("spec_lint", QStringLiteral("rev-parse --verify"), resolved);
         return s;
     }
     if (resolved.exitCode == 0) {
@@ -864,7 +874,7 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
     argv << QStringLiteral("--") << relDocs;
     const GitWrap::Result diff = GitWrap::run(root, argv);
     if (specLintGitBroken(diff) || diff.exitCode != 0 || diff.stdoutTruncated) {
-        s.err = specLintGitFailed(QStringLiteral("diff"), diff);
+        s.err = lintGitFailed("spec_lint", QStringLiteral("diff"), diff);
         return s;
     }
 
@@ -894,7 +904,7 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
         lsArgv << relDocs;
         const GitWrap::Result ls = GitWrap::run(root, lsArgv);
         if (specLintGitBroken(ls) || ls.exitCode != 0 || ls.stdoutTruncated) {
-            s.err = specLintGitFailed(QStringLiteral("ls-files"), ls);
+            s.err = lintGitFailed("spec_lint", QStringLiteral("ls-files"), ls);
             return s;
         }
         for (const QString &p : QString::fromUtf8(ls.stdoutBytes).split(QLatin1Char('\n')))
@@ -925,7 +935,7 @@ SpecLintScope specLintReadScope(const QString &root, const QString &since,
             const GitWrap::Result show = GitWrap::run(
                 root, {QStringLiteral("show"), QStringLiteral(":./") + it.key()});
             if (specLintGitBroken(show) || show.exitCode != 0 || show.stdoutTruncated) {
-                s.err = specLintGitFailed(QStringLiteral("show"), show);
+                s.err = lintGitFailed("spec_lint", QStringLiteral("show"), show);
                 return s;
             }
             s.indexText.insert(it.key(), QString::fromUtf8(show.stdoutBytes));
@@ -2148,20 +2158,10 @@ static QString docLintProjectVersion(const QString &rootCanonical) {
 static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel,
                                      qint64 maxDocBytes, QStringList *relDocs,
                                      QHash<QString, QString> *texts) {
-    const auto failed = [](const QString &what, const GitWrap::Result &g) {
-        QJsonObject o = gitErr("git_failed",
-                               QStringLiteral("doc_lint: git %1 failed").arg(what),
-                               g.stderrTail);
-        o[QStringLiteral("exit_code")] = g.exitCode;
-        return o;
-    };
-    const GitWrap::Result inside = GitWrap::run(
-        root, {QStringLiteral("rev-parse"), QStringLiteral("--is-inside-work-tree")});
-    if (specLintGitBroken(inside)) return failed(QStringLiteral("rev-parse"), inside);
-    if (inside.exitCode != 0)
-        return gitErr("not_a_git_repo",
-                      QStringLiteral("doc_lint: staged:true needs the project root "
-                                     "to be inside a git work tree"));
+    if (QJsonObject r = lintWorkTreeRefusal(
+            "doc_lint", root, QStringLiteral("staged:true needs"));
+        !r.isEmpty())
+        return r;
 
     // --no-renames keeps a staged rename as an addition; -z keeps a non-ASCII
     // name unquoted.
@@ -2171,7 +2171,7 @@ static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel
                QStringLiteral("--no-renames"), QStringLiteral("--diff-filter=ACM"),
                QStringLiteral("--relative")});
     if (specLintGitBroken(list) || list.exitCode != 0 || list.stdoutTruncated)
-        return failed(QStringLiteral("diff --cached"), list);
+        return lintGitFailed("doc_lint", QStringLiteral("diff --cached"), list);
 
     const QString under = pathRel + QLatin1Char('/');
     for (const QByteArray &name : list.stdoutBytes.split('\0')) {
@@ -2189,7 +2189,7 @@ static QJsonObject docLintReadStaged(const QString &root, const QString &pathRel
             root, {QStringLiteral("show"), QStringLiteral(":./") + rel},
             static_cast<int>(maxDocBytes) + 1);
         if (specLintGitBroken(show) || show.exitCode != 0)
-            return failed(QStringLiteral("show"), show);
+            return lintGitFailed("doc_lint", QStringLiteral("show"), show);
         texts->insert(rel, QString::fromUtf8(show.stdoutBytes));
     }
     return {};

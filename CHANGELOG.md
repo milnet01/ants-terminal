@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The remote-control dispatch log's text_bytes is a UTF-8 byte count, and the e2e verbs, spec_lint and doc_lint share their refusal builders** (ANTS-6134)
+
 - **changelog_log's release body cap uses named bounds, and the content verbs' file headers and root-resolution comment say what the code does** (ANTS-6133)
 
 - **The cold-eyes echo and lane helpers now sit in the cold-eyes source file, and the review verbs' comments name code by symbol and give the echo cap in characters** (ANTS-6132)
@@ -498,6 +500,8 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **run_trace leaves a detail file's own Genre line alone wherever DocLint finds it, so no second header is added** (ANTS-5956)
 
 - **roadmap_query with section= returns each item's evidence paths, as the full list does: both now build their rows with one shared builder** (ANTS-6129)
 

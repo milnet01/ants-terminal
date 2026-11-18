@@ -18,6 +18,7 @@
 // `coverage_required` were minted here).
 
 #include "runtraceverb.h"
+#include "doclint.h"   // DocLint::declaredGenre
 #include "fileturn.h"   // ANTS-6469
 #include "sessioncostverb.h"   // SessionCost::folderNameFor
 
@@ -202,17 +203,6 @@ int rowFor(const Index &ix, const QString &id) {
             return i;
     }
     return -1;
-}
-
-QString firstLines(const QString &text, int n) {
-    return text.section(QLatin1Char('\n'), 0, n - 1);
-}
-
-bool declaresGenre(const QString &text) {
-    static const QRegularExpression re(
-        QStringLiteral("^[ \\t]*(?:[-*][ \\t]+)?\\**Genre:?\\**[ \\t]*`?[A-Za-z]+`?[ \\t]*$"),
-        QRegularExpression::MultilineOption);
-    return re.match(firstLines(text, 20)).hasMatch();
 }
 
 // An integer JSON value, or nullopt. QJsonValue carries every number as a
@@ -532,7 +522,8 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
     const bool haveDetail = a.contains(QStringLiteral("detail"));
     if (haveDetail) {
         detailText = a.value(QStringLiteral("detail")).toString();
-        if (!declaresGenre(detailText)) {
+        // DocLint's own test, so a file it reads as declared is left alone.
+        if (DocLint::declaredGenre(detailText).isEmpty()) {
             detailText = QStringLiteral("Genre: record\nStatus: active\n\n") + detailText;
             detailHeaderAdded = true;
         }
@@ -564,7 +555,7 @@ QJsonObject finish(const Paths &p, const FinishRequest &req) {
                                QString(), QStringLiteral("# Trace index"), QString(),
                                headerRow(), QStringLiteral("|---|---|---|---|---|"), row,
                                QString()};
-        rowLine = 7;
+        rowLine = int(ix.lines.indexOf(row));
     } else {
         rowLine = ix.lastRow + 1;
         ix.lines.insert(rowLine, row);
