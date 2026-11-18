@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6824 -->
+<!-- ants-roadmap-id-high-water: ANTS=6826 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93105,6 +93105,36 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: ANTS-6801 fix, 2026-11-17.
   Lanes: mcp-tools.
+
+### Ants MCP feedback from CC sessions — 2026-11-18 triage
+
+- 📋 [ANTS-6825] **roadmap_query ids[] fetch shrinks every body to 400 bytes although max_body_bytes asked for 3000.**
+  Reported by DeFragR 2026-11-18 (DeFragR_Ants_MCP_Feedback.md,
+  "DeFragR full review 2026-11-18"). ids[] (DFR-0013, DFR-0049,
+  DFR-0056 …) with max_body_bytes 3000 came back with
+  bodies_shrunk_to_fit and max_body_bytes_effective 400. The caller
+  fell back to awk on ROADMAP.md.
+  Fix: honour max_body_bytes up to the reply cap; shrink only when
+  the reply would overflow, and name the limit that forced it.
+  **Layman:** Asking the roadmap tool for whole entries returned them cut short, so a helper had to read the file by hand.
+  Kind: fix.
+  Source: DeFragR-feedback-2026-11-18.
+  Lanes: mcp-roadmap-verbs.
+
+- 📋 [ANTS-6826] **session_cost reports an estimated dollar cost beside its token totals.**
+  Reported by DeFragR 2026-11-18. session_cost returns requests
+  and token totals; fields ["cost_usd"] is unmatched. The
+  fresh-orchestrator brief asks for the run's cost, review-cost.md
+  quotes whole runs in dollars, and the lanes already report
+  dollars, so the orchestrator's share cannot be added to theirs.
+  Fix: a cost_usd estimate from the transcript's model and
+  per-model prices, labelled as an estimate.
+  Hot reload: a verb reply field; reaches clients on the next
+  ants-mcpd rebuild and reconnect, no relaunch.
+  **Layman:** The cost tool gives token counts only, so a review's total cost cannot be told to the user in dollars.
+  Kind: feature.
+  Source: DeFragR-feedback-2026-11-18.
+  Lanes: mcp-session-verbs.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
