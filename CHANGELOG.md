@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The cold-eyes echo and lane helpers now sit in the cold-eyes source file, and the review verbs' comments name code by symbol and give the echo cap in characters** (ANTS-6132)
+
 - **find_caller builds its shared reply fields once, task_priors ranks its three buckets through one helper, and the state verbs' comments say what the code does; replies unchanged** (ANTS-6131)
 
 - **roadmap_log's batch ops share one atomic write, one section-slug lookup, one element-position lookup and one locator matcher, with replies unchanged** (ANTS-6130)

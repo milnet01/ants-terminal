@@ -767,8 +767,8 @@ QJsonDocument RemoteControl::cmdIndieReviewDispatch(const QJsonObject &req,
 
     QString modelArg = req.value(QStringLiteral("model")).toString();
     if (modelArg.isEmpty() || modelArg == QStringLiteral("auto")) {
-        modelArg = cfg.aiModel();  // defaults to "llama3" per
-                                   // config.cpp:716-717 — § 3.3 footgun.
+        modelArg = cfg.aiModel();  // defaults to "llama3" (Config::aiModel)
+                                   // — § 3.3 footgun.
     }
 
     // Resolve lanes via derivePartition.
@@ -929,7 +929,7 @@ namespace rcdetail {
 
 
 // Run `git -C <root> <argv...>` and return stdout on exit 0 or {} on
-// any failure. 2 s wall-clock cap; merged stderr discarded. `*ok` says
+// any failure. 2 s wall-clock cap; stderr discarded. `*ok` says
 // whether git succeeded, which an empty output alone cannot (ANTS-5097).
 static QByteArray runGitChecked(const QString &root, const QStringList &argv,
                                 const QProcessEnvironment &env, bool *ok) {
@@ -1234,7 +1234,7 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     const bool cacheable = preSnapshot.valid;
 
     // Step 6 — trust-aware config load. May invoke prompt() at most
-    // once per (SHA, session) per verifytrust.cpp:58-97.
+    // once per (SHA, session): FilePersistedTrustClient::outcomeForConfig.
     QString cfgSource;
     bool   probedUntrusted = false;
     QList<VerifyEngine::GateConfig> cfg = VerifyEngine::loadGateConfig(
@@ -1397,41 +1397,3 @@ QJsonDocument RemoteControl::cmdVerifyChangesImpl(
     }
     return QJsonDocument(env);
 }
-
-// ---------------------------------------------------------------------------
-// ANTS-1319 — cold_eyes_* MCP tools
-// ---------------------------------------------------------------------------
-
-namespace rcdetail {
-
-// ANTS-1319 INV-11: cap user-supplied echo at 64 bytes + substitute
-// control characters with '?'. Also session_memory's echo (ANTS-1283
-// INV-12). The roadmap verbs still inline the same loop (ANTS-6262).
-QString ceSanitiseEcho(const QString &raw) {
-    QString verbatim = raw;
-    verbatim.truncate(64);
-    QString out;
-    out.reserve(verbatim.size());
-    for (int i = 0; i < verbatim.size(); ++i) {
-        out.append(verbatim.at(i).unicode() < 0x20 ? QChar('?')
-                                                  : verbatim.at(i));
-    }
-    return out;
-}
-
-QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes) {
-    QJsonArray arr;
-    for (const auto &l : lanes) {
-        QJsonObject o;
-        o["name"]    = l.name;
-        o["summary"] = l.summary;
-        QJsonArray dps;
-        for (const QString &p : l.docPaths) dps.append(p);
-        o["doc_paths"] = dps;
-        arr.append(o);
-    }
-    return arr;
-}
-
-}  // namespace rcdetail
-

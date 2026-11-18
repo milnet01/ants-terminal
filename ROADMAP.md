@@ -105696,7 +105696,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-state-workspace.
 
-- 📋 [ANTS-6132] **Readability fixes, mcp-review-verbs lane: src/remotecontrol_coldeyes.cpp, src/remotecontrol_review.cpp.**
+- ✅ [ANTS-6132] **Readability fixes, mcp-review-verbs lane: src/remotecontrol_coldeyes.cpp, src/remotecontrol_review.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-review-verbs:
   2 high, 5 medium, 6 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/23-mcp-review-verbs.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105715,6 +105715,12 @@ worked after these.
   fixed. F3: vcErr commented; queued ANTS-6260 (wire shape) and
   ANTS-6261 (fold ten builders). Queued ANTS-6262 (inline roadmap
   sanitisers), ANTS-6263 (caller_cwd check beyond this lane). LOWs left.
+  2026-11-18: LOWs done. ceSanitiseEcho and ceLaneArrayToJson moved into
+  remotecontrol_coldeyes.cpp, whose header now lists what it holds.
+  Line cites replaced by Config::aiModel and
+  FilePersistedTrustClient::outcomeForConfig; "64 bytes" -> 64 UTF-16
+  units; "merged stderr" -> stderr. force_refresh comment was already
+  present. kMaxScanBytes needed no change. Leads are ANTS-5943..5946.
   **Layman:** Tidy the review tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

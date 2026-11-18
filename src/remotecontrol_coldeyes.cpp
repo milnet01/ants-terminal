@@ -1,4 +1,5 @@
-// ANTS-3833 TU 13/25 — Cold eyes and test verbs.
+// ANTS-3833 TU 13/25 — cold_eyes_* verbs and their helpers, session_memory,
+// workflow_state, project_layout, build_status and test_results.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"
@@ -16,6 +17,44 @@
 #include <QFileInfo>
 #include <QProcess>
 #include "resolvedroot.h"
+
+// ---------------------------------------------------------------------------
+// ANTS-1319 — cold_eyes_* MCP tools
+// ---------------------------------------------------------------------------
+
+namespace rcdetail {
+
+// ANTS-1319 INV-11: cap user-supplied echo at 64 characters (UTF-16 units,
+// not bytes) + substitute control characters with '?'. Also session_memory's
+// echo (ANTS-1283 INV-12). The roadmap verbs still inline the same loop
+// (ANTS-6262).
+QString ceSanitiseEcho(const QString &raw) {
+    QString verbatim = raw;
+    verbatim.truncate(64);
+    QString out;
+    out.reserve(verbatim.size());
+    for (int i = 0; i < verbatim.size(); ++i) {
+        out.append(verbatim.at(i).unicode() < 0x20 ? QChar('?')
+                                                  : verbatim.at(i));
+    }
+    return out;
+}
+
+QJsonArray ceLaneArrayToJson(const QList<ColdEyesEngine::Lane> &lanes) {
+    QJsonArray arr;
+    for (const auto &l : lanes) {
+        QJsonObject o;
+        o["name"]    = l.name;
+        o["summary"] = l.summary;
+        QJsonArray dps;
+        for (const QString &p : l.docPaths) dps.append(p);
+        o["doc_paths"] = dps;
+        arr.append(o);
+    }
+    return arr;
+}
+
+}  // namespace rcdetail
 
 using namespace rcdetail;  // ANTS-3833
 
