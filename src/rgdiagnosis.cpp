@@ -21,8 +21,8 @@ QString explain(const StartFailure &f) {
     }
     if (f.stillStarting) {
         // The 2026-08-25 report landed while a full ninja build was running.
-        // Whether the start budget is too short on a loaded host is a real
-        // question; this says so in the reply instead of guessing at it here.
+        // Whether the start budget is too short on a loaded host is still
+        // open; the reply names the likely cause and asks for a retry.
         return QStringLiteral(
             "ripgrep (%1) is installed but had not reported started after "
             "%2 ms, and was still starting — a loaded host, not a missing "

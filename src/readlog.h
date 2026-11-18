@@ -40,7 +40,8 @@ struct Options {
 // Filter the already-resolved file at `path`. Returns the read_log
 // response envelope:
 //   {ok:true, path, lines[], matched, scanned, returned, truncated,
-//    lines_dropped?, bytes_cap_clamped?, time_budget_exhausted?, redacted?, cursor,
+//    lines_dropped?, lines_oversize_skipped?, bytes_cap_clamped?,
+//    time_budget_exhausted?, redacted?, cursor,
 //    cursor_stale?, stale_reason?}
 // or a refusal {ok:false, code, error}. Refusal codes:
 //   not_found  — file cannot be opened.

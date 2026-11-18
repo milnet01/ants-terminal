@@ -11,10 +11,6 @@
 
 namespace {
 
-// ANTS-5110 — a miss is re-probed once this old, so a tool installed while
-// the terminal runs is found without a restart. A hit never expires.
-constexpr qint64 kDefaultMissTtlMs = 30'000;
-
 struct Entry {
     QString path;           // "" = not found
     qint64  probedAtMs = 0;
@@ -23,7 +19,7 @@ struct Entry {
 QMutex g_mutex;
 QString g_pathHash;
 QHash<QString, Entry> g_resolved;
-qint64 g_missTtlMs = kDefaultMissTtlMs;
+qint64 g_missTtlMs = ToolDetectionEngine::kDefaultMissTtlMs;
 
 QString hashCurrentPath() {
     const QByteArray p = qgetenv("PATH");

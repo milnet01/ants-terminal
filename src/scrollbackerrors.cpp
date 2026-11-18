@@ -8,9 +8,6 @@ namespace ScrollbackErrors {
 
 namespace {
 
-constexpr int kDefaultMaxResults = 50;
-constexpr int kMaxResultsCap     = 1000;
-
 // Patterns are symbol-free, so process-static is sound (unlike
 // ANTS-1303's per-call symbol splice). Each is built + optimised once.
 const QRegularExpression &rxCompiler() {
@@ -68,6 +65,9 @@ const QRegularExpression &rxPyException() {
     return rx;
 }
 
+// A ctest progress line's marker. It leaves out `***Not Run` and
+// `***Skipped`; a test that did not run still reaches the summary list,
+// which rxTestBlock reads.
 bool hasTestMarker(const QString &line) {
     return line.contains(QStringLiteral("***Failed")) ||
            line.contains(QStringLiteral("***Timeout")) ||

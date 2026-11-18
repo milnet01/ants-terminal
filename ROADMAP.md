@@ -106398,7 +106398,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: app-entry-dialogs.
 
-- 📋 [ANTS-6147] **Readability fixes, diagnostics-logging lane: src/buildcache.cpp, src/buildcache.h, src/debuglog.h, src/readlog.cpp, src/readlog.h, src/rgdiagnosis.cpp ….**
+- ✅ [ANTS-6147] **Readability fixes, diagnostics-logging lane: src/buildcache.cpp, src/buildcache.h, src/debuglog.h, src/readlog.cpp, src/readlog.h, src/rgdiagnosis.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane diagnostics-logging:
   0 high, 4 medium, 11 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/38-diagnostics-logging.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106415,6 +106415,17 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1191
   `src/buildcache.cpp:29`; row 1192 `src/buildcache.h:22`; row 1198
   `src/debuglog.h:64`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18, the LOWs F5-F15 closed (rows 1192 and 1198 were F7 and
+  F13; row 1191 is F3, queued on ANTS-6299). F6: the caps headers quoted
+  (BuildCache kMaxErrors, kMessageCharCap, kStaleWalkCap;
+  ScrollbackErrors kDefaultMaxResults, kMaxResultsCap;
+  ToolDetectionEngine kDefaultMissTtlMs) now live in the headers, and the
+  comments name them. F9: checkStale's one-use probeFile lambda inlined.
+  F5, F7, F8, F10-F15: comments now say what the code does (hasTestMarker
+  leaves out ***Not Run, severity is always "error", recordBuild's false
+  cases, the empty-input stale guard, clear() deletes debug.log, every
+  openLogFileLocked caller, direct write() calls, lines_oversize_skipped,
+  the rg start-up reply). No behaviour change.
   **Layman:** Tidy the logs and error reports so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

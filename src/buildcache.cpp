@@ -20,9 +20,6 @@ namespace BuildCache {
 
 namespace {
 
-constexpr int  kMaxErrors        = 50;
-constexpr int  kMessageCharCap   = 240;
-constexpr int  kStaleWalkCap     = 5'000;
 constexpr int  kSchemaVersion    = 1;
 const char    *kFileName         = "build.json";
 
@@ -190,6 +187,9 @@ std::optional<ParsedBuild> loadBuild(const QString &canonProject) {
 
 StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs) {
     StaleCheck out;
+    // Nothing to compare against, so the reply adds neither stale nor
+    // stale_walk_capped. The one caller passes a loaded build's time,
+    // which recordBuild always sets.
     if (canonProject.isEmpty() || recordedAtMs <= 0) {
         out.staleKnown = true;
         out.stale      = false;
@@ -197,18 +197,10 @@ StaleCheck checkStale(const QString &canonProject, qint64 recordedAtMs) {
     }
     int probed = 0;
 
-    auto probeFile = [&](const QString &path) -> bool {
-        const QFileInfo fi(path);
-        if (!fi.exists()) return false;
-        if (fi.lastModified().toMSecsSinceEpoch() > recordedAtMs) {
-            out.stale = true;
-            return true;
-        }
-        return false;
-    };
-
-    // Single-file probe: top-level CMakeLists.txt
-    if (probeFile(canonProject + QStringLiteral("/CMakeLists.txt"))) {
+    const QFileInfo cmakeLists(canonProject + QStringLiteral("/CMakeLists.txt"));
+    if (cmakeLists.exists() &&
+        cmakeLists.lastModified().toMSecsSinceEpoch() > recordedAtMs) {
+        out.stale = true;
         return out;
     }
 

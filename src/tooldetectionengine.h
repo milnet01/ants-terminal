@@ -12,8 +12,12 @@ namespace ToolDetectionEngine {
 // True if `tool` resolves on PATH (cached). Empty tool → false.
 bool exists(const QString &tool);
 
+// ANTS-5110 — a miss is re-probed once this old, so a tool installed while
+// the terminal runs is found without a restart. A hit never expires.
+inline constexpr qint64 kDefaultMissTtlMs = 30'000;
+
 // Resolved absolute path or empty string (cached). A miss is re-probed
-// after 30 s, so a tool installed mid-session is found (ANTS-5110).
+// after kDefaultMissTtlMs, or setMissTtlMs's value.
 QString resolve(const QString &tool);
 
 // Test / diagnostic accessors.

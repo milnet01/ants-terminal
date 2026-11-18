@@ -32,7 +32,10 @@ struct ErrorEntry {
     QString text;
 };
 
-// maxResults: ≤0 ⇒ default 50; >1000 ⇒ clamped to 1000.
+inline constexpr int kDefaultMaxResults = 50;
+inline constexpr int kMaxResultsCap     = 1000;
+
+// maxResults: ≤0 ⇒ kDefaultMaxResults; above kMaxResultsCap ⇒ clamped to it.
 struct Options { int maxResults = 0; };
 
 struct Result {

@@ -54,14 +54,17 @@ public:
     static void setActive(quint32 mask);
     static bool enabled(Category c) { return (active() & c) != 0; }
 
-    // Log file path (created on first write). Fixed location:
-    // ~/.local/share/ants-terminal/debug.log.
+    // Log file path, created when a category is first switched on. Fixed
+    // location: ~/.local/share/ants-terminal/debug.log.
     static QString logFilePath();
 
-    // Clear the log (truncates the file). Safe to call at any time.
+    // Delete debug.log (debug.log.1 is kept); it is recreated at once if a
+    // category is still on. Safe to call at any time.
     static void clear();
 
-    // Write one line. Do not call directly; use ANTS_LOG.
+    // Write one line. Prefer ANTS_LOG, which skips building the message when
+    // the category is off; a direct call is safe, as write() drops a category
+    // that is off. ANTS_LOG_ALWAYS passes None, which that check never drops.
     static void write(Category c, const QString &message);
 
     // Available category names (for the menu builder).
@@ -79,9 +82,9 @@ public:
 
 private:
     // Open the log file. Caller must hold s_mutex. Idempotent — does
-    // nothing if `s_active == 0` or `s_file.isOpen()`. Used by both
-    // setActive (first activation) and clear (re-open after the
-    // previous file was unlinked while categories remained active).
+    // nothing if `s_active == 0` or `s_file.isOpen()`. Called by setActive
+    // (first activation), clear (after deleting the file) and write (after
+    // another instance moved the file, and to rotate past kMaxLogBytes).
     static void openLogFileLocked();
 
     static std::mutex s_mutex;
