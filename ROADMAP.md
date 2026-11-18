@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6832 -->
+<!-- ants-roadmap-id-high-water: ANTS=6833 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69464,7 +69464,7 @@ remainder, captured so they don't drop on the floor.
   Source: ANTS-6750-follow-up-2026-11-12.
   Lanes: status-bar.
 
-- 📋 [ANTS-6832] **Status bar shows "Claude: idle" while a background agent is still running.**
+- ✅ [ANTS-6832] **Status bar shows "Claude: idle" while a background agent is still running.**
   User screenshot, 2026-11-18, DeFragR tab: Claude Code's prompt area
   reads "Waiting for 1 background agent to finish" and lists a running
   general-purpose agent ("Uploading OBS service and recipes"), while the
@@ -69490,6 +69490,9 @@ remainder, captured so they don't drop on the floor.
   then a completed notice, then a resume result → agents == 1). Amend
   ANTS-5773 § 2.1 (docs/specs/ANTS-5773-idle-means-nothing-pending.md).
   No new hook event is needed.
+  Shipped in f0d1fbf4 (2026-11-18): resumeAgent in
+  src/claudebgtasks.cpp; notices only from enqueue queue records.
+  ANTS-5773 INV-16.
   **Layman:** When Claude has finished talking but a helper it started is still working, the status bar should not say idle.
   Kind: fix.
   Source: user-report-2026-11-18.
@@ -74183,6 +74186,21 @@ fixes don't address. Roadmapped here as their own design tasks.
   Kind: fix.
   Source: self-found-2026-11-13 (ANTS-5526 fold-back).
   Lanes: mcp.
+
+- 📋 [ANTS-6833] **spec_log op:append_inv puts a passed test clause on its own line, in the spec's existing invariant shape.**
+  Seen 2026-11-18 adding ANTS-5773 INV-16 (body ending "(ANTS-6832)."; test
+  arg holding "*Test:* ..." then a newline and "  *Breaks when:* ...").
+  The verb appended ". " plus the test text to the body's line, giving
+  "(ANTS-6832).. *Test:* ..." on one line, and a doubled full stop after
+  the Breaks-when sentence. The spec's existing shape is the bullet
+  line, then "  *Test:* ..." and "  *Breaks when:* ..." each on its own
+  indented line. Fixed by hand in f0d1fbf4. Check: append_inv with a
+  body ending in "." and a test clause yields no "..", and the test
+  clause starts its own indented line.
+  **Layman:** Adding a rule to a spec through the tool should look like the rules already there.
+  Kind: fix.
+  Source: self-found-2026-11-18.
+  Lanes: claudeintegration.
 
 ### 🔬 Project Audit false-positive reduction (self-audit 2026-05-20)
 
