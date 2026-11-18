@@ -69471,6 +69471,25 @@ remainder, captured so they don't drop on the floor.
   status bar's Claude widget reads "Claude: idle". Unconfirmed guess: the
   main turn's Stop event sets idle, and the background agent's later
   events do not set it back. Locate before fixing.
+  2026-11-18, located (the Stop-hook guess was wrong; hooks do not
+  drive the label). The label is Background only while
+  ClaudeBgTaskTracker counts a pending agent. DeFragR session 43d0f408:
+  helper a7f92951354d0d4aa got a "completed" task-notification, so
+  finishById (src/claudebgtasks.cpp) latched finished = true. The main
+  session then revived it with SendMessage; the tool result carries
+  toolUseResult.resumedAgentId (and revivedAgentId). Nothing in src/
+  reads either key, finalize and walkHelperTranscripts skip finished
+  tasks, so the count stays 0 and the label reads idle.
+  Fix: in applyBgEvent's user branch, a successful result with
+  resumedAgentId un-finishes that task (clear finished,
+  finishedByLiveness, helperStopped; startedAt = the resume record's
+  time; drop the id from endedBeforeStart; start an Agent task if
+  unknown). Check: read notices only from enqueue queue-operations, so a
+  later "remove" repeating an old notice cannot end it again.
+  Red test first in tests/features/claude_bg_tasks_button (async_launched,
+  then a completed notice, then a resume result → agents == 1). Amend
+  ANTS-5773 § 2.1 (docs/specs/ANTS-5773-idle-means-nothing-pending.md).
+  No new hook event is needed.
   **Layman:** When Claude has finished talking but a helper it started is still working, the status bar should not say idle.
   Kind: fix.
   Source: user-report-2026-11-18.
