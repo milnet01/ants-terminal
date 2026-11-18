@@ -33,7 +33,7 @@ The slot connected to each button must reset every primary
 control on that tab. The reset values match the schema defaults:
 
 - General: shellCombo idx 0, sessionPersistence true, sessionLogging
-  false, autoCopy true, confirmMultilinePaste true, editorCmd
+  false, autoCopy true, confirmDangerousPaste true, editorCmd
   empty, imagePasteDir empty, notificationTimeout 5,
   claudeTabStatusIndicator true, tabTitleFormat "title".
 - Appearance: fontSize 11, theme "Dark", opacity 100,

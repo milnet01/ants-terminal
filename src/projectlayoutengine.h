@@ -63,6 +63,7 @@ struct RoadmapSnifferTrace {
     bool   antsV1EmojiHit    = false;  // - ✅/📋/🚧/💭/🚫
     bool   gfmTaskListHit    = false;  // - [ ]/[x]/[X]
     bool   fullScan          = false;  // true iff sniffer fell back to body
+    // Bytes the sniffer read: the head, or the whole file when fullScan.
     qint64 headBytesScanned  = 0;
 };
 
@@ -138,8 +139,11 @@ struct LayoutEnvelope {
 // probe ordering and behaviour-when-absent rules.
 LayoutEnvelope scanLayout(const QString &absoluteCwd);
 
-// Mechanical case-mapping: camelCase struct fields ↔
-// snake_case JSON keys, 1:1, no renames or reshaping.
+// camelCase struct fields ↔ snake_case JSON keys, with these exceptions:
+// roadmap.snifferTrace is written as "sniffer_branches_tried";
+// "roadmap_found" and "changelog_found" are derived from the paths; and
+// "standards_files_truncated" + "standards_files_total" are written only
+// when the standards list was cut.
 QJsonObject    toJson(const LayoutEnvelope &env);
 LayoutEnvelope fromJson(const QJsonObject &obj);
 

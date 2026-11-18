@@ -106222,7 +106222,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: model-switching.
 
-- 📋 [ANTS-6143] **Readability fixes, config-session-project lane: src/config.cpp, src/config.h, src/configpaths.h, src/projectlayoutengine.cpp, src/projectlayoutengine.h, src/projectsettings.cpp ….**
+- ✅ [ANTS-6143] **Readability fixes, config-session-project lane: src/config.cpp, src/config.h, src/configpaths.h, src/projectlayoutengine.cpp, src/projectlayoutengine.h, src/projectsettings.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane config-session-project:
   6 high, 7 medium, 13 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/34-config-session-project.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106241,6 +106241,21 @@ worked after these.
   save none); 4e110c60. All MEDIUMs closed. LOWs F14-F26 open.
   The 2026-11-06 reviews also found this: row 1136 `src/config.h:78`;
   row 1137 `src/config.cpp:109`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18, the LOWs F14-F26 closed (rows 1136 and 1137 were F25
+  and F15). F14: confirmMultilinePaste is now confirmDangerousPaste in
+  Config, SettingsDialog and TerminalWidget; the stored key
+  confirm_multiline_paste is unchanged. F19: the session-memory cap and
+  key messages are built from kMaxStoreBytes, kMaxValueBytes and
+  kMaxKeyLength (same text). F21: makeErr calls opName. F22:
+  countLinesProbe is now hasMinStandardsLines, returning bool.
+  Comments: config.cpp names configbackup.h and drops the setter count;
+  config.h drops "5" checkboxes; sessionmanager.cpp names sessionDir()
+  and today's <name>.<pid>.tmp temp names; the corrupt-store warning is
+  one per load (INV-11's "logged once" read as one line); the store caps
+  are checked only in mutateLocked; headBytesScanned is the whole file
+  after a full scan; toJson lists its exceptions to 1:1 mapping. F26's
+  ungated setClaudeMcpFeedbackRoot is already ANTS-6629. Spec ANTS-1430
+  still says the mapping is 1:1, left as written. No behaviour change.
   **Layman:** Tidy settings, saved sessions and project settings so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

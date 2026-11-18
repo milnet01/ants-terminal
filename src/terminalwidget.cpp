@@ -3021,7 +3021,7 @@ void TerminalWidget::showSendConfirmation(const QString &objectName,
 }
 
 QStringList TerminalWidget::pasteRiskReasons(const QByteArray &data) const {
-    if (!m_confirmMultilinePaste) return {};
+    if (!m_confirmDangerousPaste) return {};
 
     bool hasNewline = data.contains('\n') || data.contains('\r');
     bool hasSudo = data.contains("sudo ") || data.startsWith("sudo\t");

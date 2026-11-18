@@ -88,7 +88,7 @@ QJsonObject loadStore(const QString &path, bool *corruptOut) {
     QJsonParseError err{};
     const QJsonDocument doc = QJsonDocument::fromJson(body, &err);
     if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-        // INV-11 — corrupt store treated as empty, warn once.
+        // INV-11 — corrupt store treated as empty; one warning per load.
         qWarning() << "[SessionMemoryEngine] corrupt store at" << path
                    << "— treating as empty (" << err.errorString() << ")";
         if (corruptOut) *corruptOut = true;
@@ -174,7 +174,8 @@ OpResult mutateLocked(const QString &path,
         return r;
     }
 
-    // INV-2 / HI-4 — store-level caps, identical codes to execute().
+    // INV-2 / HI-4 — the store-level caps are checked here and nowhere
+    // else; execute()'s Set checks only the per-value cap before calling in.
     if (store.size() > kMaxStoreKeys) {
         r.ok   = false;
         r.code = QStringLiteral("cap_exceeded");
@@ -188,7 +189,8 @@ OpResult mutateLocked(const QString &path,
         r.ok   = false;
         r.code = QStringLiteral("cap_exceeded");
         r.error = QStringLiteral("session_memory: store would exceed "
-                                 "100 KiB cap (%1 bytes)").arg(body.size());
+                                 "%1 KiB cap (%2 bytes)")
+                      .arg(kMaxStoreBytes / 1024).arg(body.size());
         return r;
     }
     const QString saveErr = saveStore(path, body);
@@ -204,23 +206,7 @@ OpResult mutateLocked(const QString &path,
 
 namespace {
 
-OpResult makeErr(Op op, const QString &key, const QString &code,
-                 const QString &msg, const QString &path) {
-    OpResult r;
-    r.ok    = false;
-    r.code  = code;
-    r.error = msg;
-    r.path  = path;
-    r.key   = key;
-    switch (op) {
-        case Op::Get:    r.op = QStringLiteral("get");    break;
-        case Op::Set:    r.op = QStringLiteral("set");    break;
-        case Op::Delete: r.op = QStringLiteral("delete"); break;
-        case Op::List:   r.op = QStringLiteral("list");   break;
-    }
-    return r;
-}
-
+// The reverse of parseOp.
 QString opName(Op op) {
     switch (op) {
         case Op::Get:    return QStringLiteral("get");
@@ -229,6 +215,18 @@ QString opName(Op op) {
         case Op::List:   return QStringLiteral("list");
     }
     return QString();
+}
+
+OpResult makeErr(Op op, const QString &key, const QString &code,
+                 const QString &msg, const QString &path) {
+    OpResult r;
+    r.ok    = false;
+    r.code  = code;
+    r.error = msg;
+    r.path  = path;
+    r.key   = key;
+    r.op    = opName(op);
+    return r;
 }
 
 }  // namespace
@@ -252,7 +250,8 @@ OpResult execute(const QString &cwd, Op op,
     if (needsKey && !isValidKey(key)) {
         return makeErr(op, key, QStringLiteral("bad_key"),
                        QStringLiteral("session_memory: key must match "
-                                      "^[A-Za-z0-9._-]{1,64}$"),
+                                      "^[A-Za-z0-9._-]{1,%1}$")
+                           .arg(kMaxKeyLength),
                        path);
     }
 
@@ -283,8 +282,8 @@ OpResult execute(const QString &cwd, Op op,
             if (valBytes > kMaxValueBytes) {
                 return makeErr(op, key, QStringLiteral("bad_value"),
                     QStringLiteral("session_memory: value exceeds "
-                                   "16 KiB cap (%1 bytes)")
-                        .arg(valBytes),
+                                   "%1 KiB cap (%2 bytes)")
+                        .arg(kMaxValueBytes / 1024).arg(valBytes),
                     path);
             }
             // ANTS-1823 — locked RMW. mutateLocked loads the store under

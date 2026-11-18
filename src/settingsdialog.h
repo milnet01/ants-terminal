@@ -76,7 +76,7 @@ private:
     QCheckBox *m_sessionPersistence;
     QCheckBox *m_sessionLogging;
     QCheckBox *m_autoCopy;
-    QCheckBox *m_confirmMultilinePaste;
+    QCheckBox *m_confirmDangerousPaste;
     QCheckBox *m_confirmCloseWithProcesses;
     QCheckBox *m_updateCheckOnStartup = nullptr;  // ANTS-5560
     QLineEdit *m_editorCmd;

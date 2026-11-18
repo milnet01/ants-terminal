@@ -20,7 +20,7 @@ The fix lives at three layers:
 
 3. **Settings UI** — new checkbox
    `m_confirmCloseWithProcesses` mirrors the existing
-   `m_confirmMultilinePaste` shape (defaults, applySettings,
+   `m_confirmDangerousPaste` shape (defaults, applySettings,
    restore-defaults).
 
 The descendant probe is a free helper in mainwindow.cpp's
@@ -42,7 +42,7 @@ no `setModal`, no `QDialogButtonBox`).
   `setConfirmCloseWithProcesses` exist with declarations in
   `config.h`. Source: ANTS-1102.
 - **INV-2**: `Config::confirmCloseWithProcesses` defaults to
-  `true` (matching `confirmMultilinePaste` precedent for
+  `true` (matching `confirmDangerousPaste` precedent for
   destructive-action confirmations). Source: ANTS-1102.
 - **INV-3**: `Config::setConfirmCloseWithProcesses` uses the
   `storeIfChanged` idempotency helper to avoid the

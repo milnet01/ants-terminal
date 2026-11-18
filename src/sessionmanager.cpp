@@ -196,7 +196,7 @@ QByteArray SessionManager::seal(const QByteArray &compressed) {
     // the sessions dir can tamper with the payload AND recompute a valid
     // hash, so it is NOT tamper resistance. The actual defense against a
     // write-access adversary is the 0700 sessions-dir perms (ANTS-1141,
-    // see ensureSessionsDir above). Real tamper resistance would require
+    // see sessionDir() above). Real tamper resistance would require
     // a keyed MAC (HMAC over a per-user secret) — deferred. Legacy V1-V3
     // files carried no integrity field at all.
     QByteArray sha = QCryptographicHash::hash(compressed,
@@ -705,13 +705,13 @@ void SessionManager::cleanupOldSessions(int maxAgeDays) {
             QFile::remove(fi.absoluteFilePath());
     }
     // ANTS-1141 — sweep orphan .tmp files older than 1 day.
-    // saveSession + saveTabOrder both write to <name>.tmp and
+    // saveSession + saveTabOrder both write to <name>.<pid>.tmp and
     // rename(2) onto the canonical path; on rename failure
     // (ENOSPC, EROFS, EBUSY etc.) the tmp is QFile::removed in
     // the failure branch. But a hard kill mid-rename can leave
     // the tmp behind. Without this sweep they'd accumulate.
-    // ANTS-1822 — scope the glob to the two temp names we actually
-    // own (session_<id>.dat.tmp, tab_order.txt.tmp). A bare `*.tmp`
+    // ANTS-1822 — scope the glob to the temp names we own: today's
+    // <name>.<pid>.tmp and the older <name>.tmp. A bare `*.tmp`
     // would also delete a foreign or in-flight temp another tool
     // dropped in the sessions dir.
     QFileInfoList tmps = dir.entryInfoList(

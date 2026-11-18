@@ -364,16 +364,16 @@ void scanFile(const QString &cwd, const QString &rel,
 // directory we tried so isStale() can detect later additions.
 constexpr int kStandardsFallbackMinLines = 100;
 
-int countLinesProbe(const QString &absPath) {
+// Reads only until the answer is known.
+bool hasMinStandardsLines(const QString &absPath) {
     QFile f(absPath);
-    if (!f.open(QIODevice::ReadOnly)) return 0;
+    if (!f.open(QIODevice::ReadOnly)) return false;
     int n = 0;
     while (!f.atEnd()) {
         f.readLine();
-        ++n;
-        if (n >= kStandardsFallbackMinLines) return n;
+        if (++n >= kStandardsFallbackMinLines) return true;
     }
-    return n;
+    return false;
 }
 
 // ANTS-5106 — append `rel` while the kept paths fit
@@ -412,8 +412,7 @@ void scanStandardsFallback(const QString &cwd, QStringList &out, int &total,
     for (const QString &e : entries) {
         if (!rx.match(e).hasMatch()) continue;
         const QString rel = docsDir + QLatin1Char('/') + e;
-        if (countLinesProbe(cwd + QLatin1Char('/') + rel)
-            < kStandardsFallbackMinLines) continue;
+        if (!hasMinStandardsLines(cwd + QLatin1Char('/') + rel)) continue;
         ++total;
         if (keepWithinBudget(out, usedBytes, rel))
             discovered.append(rel);

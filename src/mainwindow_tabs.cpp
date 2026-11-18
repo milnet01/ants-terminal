@@ -54,7 +54,7 @@ void MainWindow::applyConfigToTerminal(TerminalWidget *terminal) {
     terminal->setMaxScrollbackMib(m_config.scrollbackMaxMib());
     terminal->setSessionLogging(m_config.sessionLogging());
     terminal->setAutoCopyOnSelect(m_config.autoCopyOnSelect());
-    terminal->setConfirmMultilinePaste(m_config.confirmMultilinePaste());
+    terminal->setConfirmDangerousPaste(m_config.confirmDangerousPaste());
     terminal->setEditorCommand(m_config.editorCommand());
     terminal->setImagePasteDir(m_config.imagePasteDir());
     terminal->setWindowOpacityLevel(m_config.opacity());

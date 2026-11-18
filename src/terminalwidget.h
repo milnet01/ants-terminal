@@ -638,10 +638,10 @@ private:
     QStringList pasteRiskReasons(const QByteArray &data) const;
 
     // Enable/disable multi-line paste confirmation (bound from config)
-    bool m_confirmMultilinePaste = true;
+    bool m_confirmDangerousPaste = true;
 public:
-    void setConfirmMultilinePaste(bool enabled) { m_confirmMultilinePaste = enabled; }
-    bool confirmMultilinePaste() const { return m_confirmMultilinePaste; }
+    void setConfirmDangerousPaste(bool enabled) { m_confirmDangerousPaste = enabled; }
+    bool confirmDangerousPaste() const { return m_confirmDangerousPaste; }
 private:
 
     // Kitty keyboard protocol encoding

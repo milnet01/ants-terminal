@@ -20,8 +20,8 @@
 
 namespace {
 // ANTS-1169: PATH_MAX-sized cap on user-typable path settings. The
-// six path/command setters below run user-supplied strings through
-// this gate. A nul-embedded value is also rejected — POSIX path
+// path/command setters below run user-supplied strings through this
+// gate. A nul-embedded value is also rejected — POSIX path
 // semantics treat nul as a terminator, so a value like
 // "/safe\0;/etc/shadow" would otherwise be saved to JSON intact and
 // reinterpreted differently at downstream read sites.
@@ -121,7 +121,7 @@ void Config::load() {
     m_loadFailed = true;
 
     // Rotate the broken bytes aside via the shared helper (see
-    // secureio.h — millisecond timestamp + retry-on-collision).
+    // configbackup.h — millisecond timestamp + retry-on-collision).
     m_loadFailureBackupPath = rotateCorruptFileAside(path);
 
     if (!m_loadFailureBackupPath.isEmpty()) {
@@ -1005,11 +1005,11 @@ void Config::setAutoCopyOnSelect(bool enabled) {
     save();
 }
 
-bool Config::confirmMultilinePaste() const {
+bool Config::confirmDangerousPaste() const {
     return m_data.value("confirm_multiline_paste").toBool(true);  // default on
 }
 
-void Config::setConfirmMultilinePaste(bool enabled) {
+void Config::setConfirmDangerousPaste(bool enabled) {
     if (!storeIfChanged("confirm_multiline_paste", enabled)) return;
     save();
 }

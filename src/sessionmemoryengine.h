@@ -58,9 +58,9 @@ qint64      serializedSize(const QJsonValue &value);
 // once — all under an advisory cross-process lock so two concurrent
 // same-cwd sessions can't last-writer-wins-drop each other's keys.
 // `mutator` returns true to request a write, false for a read-only pass
-// (no write, no lock contention beyond the load). Enforces the same
-// store-level caps execute() does (kMaxStoreKeys / kMaxStoreBytes →
-// code "cap_exceeded"); on save failure → code "io_error". The lock is
+// (no write, no lock contention beyond the load). The only place the
+// store-level caps are enforced (kMaxStoreKeys / kMaxStoreBytes → code
+// "cap_exceeded"); on save failure → code "io_error". The lock is
 // best-effort: if it can't be taken within the timeout the cycle still
 // runs (degrading to the pre-fix last-writer-wins), so the tool never
 // wedges on a stuck holder. OpResult carries ok / code / error / path /

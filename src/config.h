@@ -83,7 +83,7 @@ public:
     QStringList roadmapKindFilters() const;
     void setRoadmapKindFilters(const QStringList &kinds);
 
-    // RoadmapDialog 5 status-emoji checkboxes — applies only when
+    // RoadmapDialog status-emoji checkboxes — applies only when
     // roadmap_active_preset == "custom". JSON shape:
     //   { "done", "planned", "in_progress", "considered", "dropped", "current" }
     // each value bool. Empty/missing object → caller falls back
@@ -344,9 +344,10 @@ public:
     bool autoCopyOnSelect() const;
     void setAutoCopyOnSelect(bool enabled);
 
-    // Confirm pastes that look dangerous (multi-line, sudo, curl | sh, control chars)
-    bool confirmMultilinePaste() const;
-    void setConfirmMultilinePaste(bool enabled);
+    // Confirm pastes that look dangerous (multi-line, sudo, curl | sh, control
+    // chars). Stored under the older key "confirm_multiline_paste".
+    bool confirmDangerousPaste() const;
+    void setConfirmDangerousPaste(bool enabled);
 
     // Confirm before closing a tab whose shell has non-shell descendant
     // processes (vim, top, claude, tail -f, etc.). Default on.

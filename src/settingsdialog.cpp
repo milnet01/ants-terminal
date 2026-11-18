@@ -169,9 +169,9 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     m_autoCopy = new QCheckBox("Auto-copy text on selection", tab);
     layout->addRow(m_autoCopy);
 
-    m_confirmMultilinePaste = new QCheckBox(
+    m_confirmDangerousPaste = new QCheckBox(
         "Confirm multi-line / dangerous pastes (sudo, curl | sh, control chars)", tab);
-    layout->addRow(m_confirmMultilinePaste);
+    layout->addRow(m_confirmDangerousPaste);
 
     m_confirmCloseWithProcesses = new QCheckBox(
         "Confirm before closing tabs running non-shell processes "
@@ -487,7 +487,7 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         m_sessionPersistence->setChecked(true);
         m_sessionLogging->setChecked(false);
         m_autoCopy->setChecked(true);
-        m_confirmMultilinePaste->setChecked(true);
+        m_confirmDangerousPaste->setChecked(true);
         m_confirmCloseWithProcesses->setChecked(true);
         m_updateCheckOnStartup->setChecked(true);
         m_editorCmd->clear();
@@ -1148,7 +1148,7 @@ void SettingsDialog::loadSettings() {
     m_sessionPersistence->setChecked(m_config->sessionPersistence());
     m_sessionLogging->setChecked(m_config->sessionLogging());
     m_autoCopy->setChecked(m_config->autoCopyOnSelect());
-    m_confirmMultilinePaste->setChecked(m_config->confirmMultilinePaste());
+    m_confirmDangerousPaste->setChecked(m_config->confirmDangerousPaste());
     m_confirmCloseWithProcesses->setChecked(m_config->confirmCloseWithProcesses());
     m_updateCheckOnStartup->setChecked(m_config->updateCheckOnStartup());
     m_editorCmd->setText(m_config->editorCommand());
@@ -1282,7 +1282,7 @@ void SettingsDialog::applySettings() {
     m_config->setSessionPersistence(m_sessionPersistence->isChecked());
     m_config->setSessionLogging(m_sessionLogging->isChecked());
     m_config->setAutoCopyOnSelect(m_autoCopy->isChecked());
-    m_config->setConfirmMultilinePaste(m_confirmMultilinePaste->isChecked());
+    m_config->setConfirmDangerousPaste(m_confirmDangerousPaste->isChecked());
     m_config->setConfirmCloseWithProcesses(m_confirmCloseWithProcesses->isChecked());
     m_config->setUpdateCheckOnStartup(m_updateCheckOnStartup->isChecked());
     m_config->setEditorCommand(m_editorCmd->text().trimmed());
