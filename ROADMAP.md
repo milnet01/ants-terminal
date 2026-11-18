@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6831 -->
+<!-- ants-roadmap-id-high-water: ANTS=6832 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -69463,6 +69463,18 @@ remainder, captured so they don't drop on the floor.
   Kind: fix.
   Source: ANTS-6750-follow-up-2026-11-12.
   Lanes: status-bar.
+
+- 📋 [ANTS-6832] **Status bar shows "Claude: idle" while a background agent is still running.**
+  User screenshot, 2026-11-18, DeFragR tab: Claude Code's prompt area
+  reads "Waiting for 1 background agent to finish" and lists a running
+  general-purpose agent ("Uploading OBS service and recipes"), while the
+  status bar's Claude widget reads "Claude: idle". Unconfirmed guess: the
+  main turn's Stop event sets idle, and the background agent's later
+  events do not set it back. Locate before fixing.
+  **Layman:** When Claude has finished talking but a helper it started is still working, the status bar should not say idle.
+  Kind: fix.
+  Source: user-report-2026-11-18.
+  Lanes: claudeintegration, statusbar.
 
 ### 🎨 Claude Code UX — token-saving git-context hook (user request 2026-04-24)
 
