@@ -93145,7 +93145,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: DeFragR-feedback-2026-11-18.
   Lanes: mcp-session-verbs.
 
-- 📋 [ANTS-6827] **roadmap_query over MCP still shortened bodies with offload:false, which the engine honours.**
+- ✅ [ANTS-6827] **roadmap_query over MCP still shortened bodies with offload:false, which the engine honours.**
   Seen while reproducing ANTS-6825 (2026-11-18): a 15-id fetch in
   DeFragR with max_body_bytes 3000 and offload:false came back with
   bodies_shrunk_to_fit. The engine test Ants5477NoShrinkWhenNothingWouldSpill
@@ -93153,6 +93153,12 @@ measured Ants adding about 5,250 tokens to every request.
   argument may not reach the verb through ants-mcpd, or the running
   server (build 3e9283fa) predates something. Unverified which.
   Check: ants-mcpd --call roadmap_query with offload:false.
+  Cause found 2026-11-18: mcp_trace recorded "offload":"string". No
+  schema declares offload, so Claude Code sends the text "false", and
+  mcp::offloadRequested read only a bool. It now reads "true"/"false"
+  text too. ants-mcpd --call strips offload before the verb
+  (prepareCallArguments), so it cannot reproduce this; a real MCP call
+  did.
   **Layman:** A switch that should stop the roadmap tool shortening entries seemed to have no effect when called from a session.
   Kind: investigate.
   Source: ANTS-6825-repro-2026-11-18.

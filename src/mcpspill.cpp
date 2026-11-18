@@ -172,7 +172,16 @@ qint64 offloadThresholdFor(const QString &toolName, const QJsonObject &args) {
 
 bool offloadRequested(const QJsonObject &args) {
     const QJsonValue v = args.value(QStringLiteral("offload"));
-    return v.isBool() ? v.toBool() : offloadDefault();
+    if (v.isBool())
+        return v.toBool();
+    // ANTS-6827 — no schema declares `offload`, so a client with no type for
+    // it sends the text "true" or "false".
+    const QString text = v.toString();
+    if (text.compare(QLatin1String("true"), Qt::CaseInsensitive) == 0)
+        return true;
+    if (text.compare(QLatin1String("false"), Qt::CaseInsensitive) == 0)
+        return false;
+    return offloadDefault();
 }
 
 bool fieldsWaitForOffload(const QString &toolName, const QJsonObject &args) {

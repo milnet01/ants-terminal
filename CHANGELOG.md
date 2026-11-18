@@ -518,6 +518,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **`offload:false` from a Claude Code session now keeps a reply inline and its bodies whole. A client sends the switch as the text `"false"`, which is now read like the boolean.** (ANTS-6827)
+
 - **`tools/token-bench/bench.py summary` prints "no price" for a run it cannot price.** (ANTS-6086)
 
 - **find_sources counts a search word found in a file's body as found, whichever other word that file's name matched** (ANTS-5987)

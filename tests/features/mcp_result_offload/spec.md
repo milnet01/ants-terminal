@@ -11,6 +11,7 @@ dispatch-site and verb-wiring invariants.
 | Test | Covers |
 |---|---|
 | `Inv1EligibilityAndRequestResolution` | INV-1 — eligible set is the large-body read verbs, separate from the compaction table; write/control-plane never eligible; `offloadRequested` resolves per-call over session default. |
+| `Ants6827OffloadSentAsTextIsHonoured` | INV-1 (ANTS-6827) — `offload` sent as the text `"true"` or `"false"`, in any case, wins like the bool; other text keeps the default. |
 | `Inv12ConfigClamps` | INV-12 — threshold clamps to `[4096,1048576]`, head to `[256,16384]`. |
 | `Inv2And3EnvelopeAndSpillFile` | INV-2 (envelope: `offloaded`, 64-hex `handle`, `bytes`, `head` prefix, `head_truncated`, `hint` names `read_spill`) + INV-3 (spill file holds the body verbatim; `sha256(file)==handle`). |
 | `Inv2EnvelopeNamesItsThreshold` | INV-2 (ANTS-4954) — the envelope carries `threshold_bytes`, the threshold the call crossed. |

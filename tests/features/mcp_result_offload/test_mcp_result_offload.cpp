@@ -92,6 +92,19 @@ TEST_F(McpResultOffload, Inv1EligibilityAndRequestResolution) {
     EXPECT_FALSE(mcp::offloadRequested(off));            // per-call wins
 }
 
+// ANTS-6827 — no verb's schema declares `offload`, so a client with no type
+// for it sends the text "false" (mcp_trace recorded "offload":"string"). The
+// text is read as the boolean it names; any other text keeps the default.
+TEST_F(McpResultOffload, Ants6827OffloadSentAsTextIsHonoured) {
+    mcp::setOffloadConfig(true, 16384, 2048);
+    EXPECT_FALSE(mcp::offloadRequested(QJsonObject{{"offload", "false"}}));
+    EXPECT_FALSE(mcp::offloadRequested(QJsonObject{{"offload", "FALSE"}}));
+    EXPECT_TRUE(mcp::offloadRequested(QJsonObject{{"offload", "no"}}));
+    mcp::setOffloadConfig(false, 16384, 2048);
+    EXPECT_TRUE(mcp::offloadRequested(QJsonObject{{"offload", "true"}}));
+    EXPECT_FALSE(mcp::offloadRequested(QJsonObject{{"offload", "yes"}}));
+}
+
 // INV-12 — config clamps: threshold to [4096,1048576], head to [256,16384].
 TEST_F(McpResultOffload, Inv12ConfigClamps) {
     mcp::setOffloadConfig(true, 100, 100000);

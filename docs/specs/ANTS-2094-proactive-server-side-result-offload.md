@@ -74,7 +74,9 @@ fails open on any finished envelope that would not shrink the body
 
 `mcp::offloadRequested(argsObj)` mirrors the ANTS-2085 `compact`
 resolution: the per-call `offload` bool wins when present (true OR
-false), else falls back to `mcp::offloadDefault()` (driven by the
+false), and so does the text `"true"` or `"false"`, in any case,
+which a client sends because no schema declares `offload` (ANTS-6827).
+Otherwise it falls back to `mcp::offloadDefault()` (driven by the
 `claude.mcp_offload_large_results` config key — see § 2.6).
 
 Eligible verbs (`mcp::isOffloadEligible`, new predicate in
