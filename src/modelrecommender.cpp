@@ -206,6 +206,8 @@ Result score(const QString &transcriptPath, Tier homeTier)
     // ANTS-1890 (INV-5): same single pass also collects the latest
     // `{type:"user"}` line's joined text (skipping tool_result-only user
     // lines), feeding the commit-intent hard override. No second tail-read.
+    // The walk stops at kScoreWindowTurns assistant turns, so a user line
+    // older than that is never seen: latestUserText stays empty.
     QVector<QJsonObject> turns;
     turns.reserve(kScoreWindowTurns);
     QString latestUserText;

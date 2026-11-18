@@ -397,7 +397,7 @@ TEST(ModelSwitchLedger, ComputeOutcomeCorrectionFirstUserTurn) {
     };
     auto res = L::computeOutcome("opus", "haiku", 1000, turns, {}, {"haiku"});
     EXPECT_FALSE(res.outcome.pending);
-    EXPECT_TRUE(res.outcome.correctionSignalWithin5);
+    EXPECT_TRUE(res.outcome.correctionSignalFirstTurn);
 }
 
 // Correction signal does NOT fire on an upgrade (per §2.5 — soft signal is
@@ -412,7 +412,7 @@ TEST(ModelSwitchLedger, ComputeOutcomeCorrectionNotOnUpgrade) {
         assistantTurn(6000, "claude-opus-4-7"),
     };
     auto res = L::computeOutcome("haiku", "opus", 1000, turns, {}, {"opus"});
-    EXPECT_FALSE(res.outcome.correctionSignalWithin5);
+    EXPECT_FALSE(res.outcome.correctionSignalFirstTurn);
 }
 
 // User override via inline `/model X` text — no matching auto record → override.
@@ -482,7 +482,7 @@ TEST(ModelSwitchLedger, ComputeOutcomePreSwitchTurnsIgnored) {
     EXPECT_EQ(res.outcome.turnsOnToTier, 1);
     // Pre-switch "no good" should NOT count as a correction; the helper
     // examines only post-switch user turns.
-    EXPECT_FALSE(res.outcome.correctionSignalWithin5);
+    EXPECT_FALSE(res.outcome.correctionSignalFirstTurn);
 }
 
 // Tier ranking underpins the higher/lower comparisons.

@@ -705,11 +705,11 @@ add_library(ants_mcpcore_lib STATIC
     # ANTS-3665 — spec-body parser, hoisted out of remotecontrol.cpp's anonymous
     # namespace so ants_core_lib engines (ANTS-3662 spec_lint) can link it.
     src/specparse.cpp
-    # ANTS-2119 — shared JSONL line-file primitives (readLines / writeLinesAtomic)
-    # used by both model ledgers; single copy of the 0700/0600 write sequence.
+    # ANTS-2119 — shared JSONL line-file primitives (read, locked append,
+    # atomic rewrite) used by the ledgers; one copy of the 0700/0600 write.
     src/jsonlfile.cpp
     # ANTS-1735 — model-switch effectiveness ledger. In core (not claude) so the
-    # read-only model_switch_stats MCP verb (mainwindow dispatch) can reach it.
+    # read-only model_switch_stats MCP verb (remotecontrol_state.cpp) can reach it.
     src/modelswitchledger.cpp
     # ANTS-1894 — near-miss telemetry sibling ledger; same lib for the same
     # reason (model_switch_stats consumes both).

@@ -98102,6 +98102,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1119 `src/modelautoswitch.cpp:302-303` (Low)
   - row 1126 `src/llmdispatcher.cpp:9` (Low)
   - row 1128 `src/aidialog.cpp:73` (Low)
+  2026-11-18: row 1126 closed under ANTS-6142 — LlmDispatcher's
+  constructor comment names the [1, 4] clamp (ANTS-1727 INV-14). Rows
+  1119 and 1128 remain.
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
@@ -106166,7 +106169,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-infra.
 
-- 📋 [ANTS-6142] **Readability fixes, model-switching lane: src/aidialog.cpp, src/aidialog.h, src/llmclient.cpp, src/llmclient.h, src/llmdispatcher.cpp, src/modelautoswitch.cpp ….**
+- ✅ [ANTS-6142] **Readability fixes, model-switching lane: src/aidialog.cpp, src/aidialog.h, src/llmclient.cpp, src/llmclient.h, src/llmdispatcher.cpp, src/modelautoswitch.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane model-switching:
   1 high, 6 medium, 13 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/33-model-switching.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106199,6 +106202,21 @@ worked after these.
   `src/aidialog.cpp:371`. Details:
   docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
   ANTS-6142 and ANTS-6015.)
+  2026-11-18, the LOWs closed. One JsonlFile::appendLine (lock, read,
+  append, evict, rewrite) replaces three copies in the two model ledgers
+  and mcpundeclaredargs (row 1108). kMinDwellMs sits above Gate, which
+  reads it (row 1110). correctionSignalWithin5 is now
+  correctionSignalFirstTurn; the stored JSON key is unchanged (row
+  1125). onFinished has one errorString fallback (row 1127). Comments:
+  llmclient.h and aidialog.h name kMaxBytes and maxTokens, not their
+  values (row 1120); modelswitchledger.h and CMakeLists name
+  remotecontrol_state.cpp (row 1121); the regret bullet says corrective
+  override; the two ~67% shares are gone; the 9th-token note drops
+  "v1"; the recommender walk states its user-text limit (a comment, not
+  the split the reviewer proposed: that would change which user line is
+  read); LlmDispatcher's [1, 4] clamp is on its constructor. The
+  aidialog.cpp fence-tag limit (row 1114, L33 Q5) moves to ANTS-6015,
+  which owns its behaviour. No behaviour change.
   **Layman:** Tidy the automatic model switching so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -110902,6 +110920,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   `src/aidialog.cpp:371`. Details:
   docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
   ANTS-6142 and ANTS-6015.)
+  2026-11-18: ANTS-6142 shipped without touching the line, so the
+  readability half (name the bound and give its reason) is closed here
+  with the behaviour fix.
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

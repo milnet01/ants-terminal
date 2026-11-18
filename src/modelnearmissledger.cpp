@@ -10,8 +10,7 @@
 #include <QStandardPaths>
 
 #include "modelswitchledger.h"   // parseIso8601Ms reuse (INV per § 2.3 helpers)
-#include "jsonlfile.h"           // ANTS-2119 — shared readLines / writeLinesAtomic
-#include "configbackup.h"        // ConfigWriteLock — ANTS-1989
+#include "jsonlfile.h"           // ANTS-2119 — shared JSONL file primitives
 
 namespace ModelNearMissLedger {
 
@@ -101,18 +100,10 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
 }
 
 bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
-    // ANTS-1989 — same read-modify-write race as the firing ledger: two Ants
-    // instances both append and the last rename drops one near-miss record.
-    // Best-effort lock (see ModelSwitchLedger::appendRecord for the rationale).
-    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
-    // ANTS-6785 — a ledger that exists but cannot be read would otherwise be
-    // rewritten as this one record, losing every line already in it.
-    bool readOk = true;
-    QList<QByteArray> lines = JsonlFile::readLines(path, &readOk);
-    if (!readOk) return false;
-    lines.append(serialize(rec));
-    lines = evictToCap(lines, capBytes);
-    return JsonlFile::writeLinesAtomic(path, lines);
+    return JsonlFile::appendLine(path, serialize(rec),
+        [capBytes](QList<QByteArray> lines) {
+            return evictToCap(std::move(lines), capBytes);
+        });
 }
 
 QList<Record> readRecords(const QString &path) {

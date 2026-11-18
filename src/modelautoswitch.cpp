@@ -151,8 +151,8 @@ Decision decide(const Gate &g) {
     // unblock slash-command queueing. Full detection of slash-commands
     // requires Claude Code to expose composer text via MCP.
     // ANTS-1973 — yield additionally during a long foreground ToolUse
-    // wait. composer_not_empty is the dominant near-miss blocker (Vestige:
-    // 67%). The 5-min stale window above is far too long for an ~18 s
+    // wait. composer_not_empty is a common near-miss blocker. The 5-min
+    // stale window above is far too long for an ~18 s
     // build wait, so when a command has been running >= kLongToolUseMs AND
     // the composer has not been touched for >= kComposerStaleDuringToolUseMs
     // (a SHORT threshold), the staged text is queued/abandoned — not active
@@ -197,7 +197,7 @@ Decision decide(const Gate &g) {
     }
 
     // ANTS-1959 — downgrades are unsafe while the shell is idle (9th token,
-    // appended last to preserve the v1 8-token ordering — INV-9). A downgrade
+    // appended last to preserve the first eight tokens' order — INV-9). A downgrade
     // at idle — end of work, between turns, winding down — is ALL-RISK and
     // little reward: it can pollute the next session's default model, it
     // precedes a reasoning burst as often as not, and (the user's key concern)

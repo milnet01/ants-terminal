@@ -6,7 +6,6 @@
 #include <QJsonObject>
 #include <QStandardPaths>
 
-#include "configbackup.h"       // ConfigWriteLock
 #include "jsonlfile.h"
 #include "modelswitchledger.h"  // nowIso8601
 
@@ -33,18 +32,12 @@ QByteArray recordLine(const QString &ts, const QString &tool,
 
 bool appendRecord(const QString &path, const QString &tool,
                   const QStringList &keys, qint64 capBytes) {
-    // Runs on the dispatcher's thread, the GUI thread in the terminal, so the
-    // lock waits only kGuiTimeoutMs and then proceeds best-effort, as the
-    // model-switch ledgers do (ANTS-1989).
-    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
-    // ANTS-6470 — a ledger that exists but cannot be read would otherwise be
-    // rewritten as this one record, losing every line already in it.
-    bool readOk = true;
-    QList<QByteArray> lines = JsonlFile::readLines(path, &readOk);
-    if (!readOk) return false;
-    lines.append(recordLine(ModelSwitchLedger::nowIso8601(), tool, keys));
-    return JsonlFile::writeLinesAtomic(
-        path, JsonlFile::dropOldestToCap(std::move(lines), capBytes));
+    // Runs on the dispatcher's thread, the GUI thread in the terminal.
+    return JsonlFile::appendLine(
+        path, recordLine(ModelSwitchLedger::nowIso8601(), tool, keys),
+        [capBytes](QList<QByteArray> lines) {
+            return JsonlFile::dropOldestToCap(std::move(lines), capBytes);
+        });
 }
 
 }  // namespace McpUndeclaredArgs

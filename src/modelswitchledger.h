@@ -7,7 +7,7 @@
 //
 // Pure Qt6 Core/JSON unit, NO ModelRecommender / claude_lib dependency — it
 // lives in ants_core_lib so the read-only `model_switch_stats` MCP verb
-// (dispatched from mainwindow.cpp / ants_chrome_lib) can reach it. Tiers are
+// (dispatched from remotecontrol_state.cpp) can reach it. Tiers are
 // stored as the lowercase aliases ("haiku"/"sonnet"/"opus"); ranking is local.
 #pragma once
 
@@ -61,7 +61,9 @@ static_assert(kSwitcherEpoch >= 1,
 struct Outcome {
     int  turnsOnToTier            = 0;
     bool userOverrideWithin5      = false;
-    bool correctionSignalWithin5  = false;
+    // The first post-switch user turn only. Stored under the older
+    // key "correction_signal_within_5_turns", kept for existing ledgers.
+    bool correctionSignalFirstTurn = false;
     bool underRouteSignalWithin5  = false;
     bool sessionCleanlyEndedOnNewTier = false;  // ANTS-1891 — positive signal
     // ANTS-1957 — direction-aware regret signal: true iff a non-auto-authored

@@ -164,8 +164,10 @@ TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
     EXPECT_NE(msl.find("JsonlFile::writeLinesAtomic("), std::string::npos)
         << "firing ledger must route writes through the shared helper";
     EXPECT_EQ(msl.find("QDir().mkpath(fi.absolutePath())"), std::string::npos);
-    EXPECT_NE(nml.find("JsonlFile::writeLinesAtomic("), std::string::npos)
+    EXPECT_NE(nml.find("JsonlFile::appendLine("), std::string::npos)
         << "near-miss ledger must route writes through the shared helper";
+    EXPECT_NE(msl.find("JsonlFile::appendLine("), std::string::npos)
+        << "firing ledger must append through the shared locked helper";
     EXPECT_EQ(nml.find("QDir().mkpath(fi.absolutePath())"), std::string::npos);
     EXPECT_NE(ac.find("return ensurePrivateDir(d)"), std::string::npos);
     EXPECT_NE(ar.find("ensurePrivateDir(AuditCache::cacheDir(canonProject))"),
@@ -176,9 +178,10 @@ TEST(LedgerWriteSafety, Inv4Inv5Wiring) {
 
     // INV-5 — ConfigWriteLock wired at each RMW site.
     // The ledgers pass a timeout after `path` (ANTS-5105), so match the
-    // construction, not its closing bracket.
+    // construction, not its closing bracket. Appends take the lock inside
+    // JsonlFile::appendLine; the firing ledger's rewrite takes its own.
     EXPECT_NE(msl.find("ConfigWriteLock lock(path"), std::string::npos);
-    EXPECT_NE(nml.find("ConfigWriteLock lock(path"), std::string::npos);
+    EXPECT_NE(jf.find("ConfigWriteLock lock(path"), std::string::npos);
     EXPECT_NE(fp.find("ConfigWriteLock lock(path)"), std::string::npos);
     EXPECT_NE(ad.find("ConfigWriteLock lock(trendPath())"), std::string::npos);
 }

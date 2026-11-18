@@ -26,7 +26,7 @@ flip decision will be made. Four convergent gaps, verified against the
 live ledger on 2026-05-26 (2 records, both
 `fromTier="opus"`, `toTier∈{"haiku","sonnet"}`, both
 `turns_on_to_tier=0`, one with `under_route_signal_within_5_turns=true`,
-neither with `userOverrideWithin5` or `correctionSignalWithin5`).
+neither with `userOverrideWithin5` or `correctionSignalFirstTurn`).
 
 Compounding the four data-aggregation gaps below is a fifth structural
 issue: the **current settlement criteria** for `computeOutcome`
@@ -57,7 +57,7 @@ clause (§ 2.1) so the trailing-record case can actually be observed.
    — false confidence.
 2. **Under-route harm is reported but not folded into the regret
    numerator.** L334 reads `regret_count =
-   userOverrideWithin5 || correctionSignalWithin5`. The third harm
+   userOverrideWithin5 || correctionSignalFirstTurn`. The third harm
    signal — `underRouteSignalWithin5` (INV-12: the recommender
    immediately re-recommended a higher tier) — is reported separately
    as `under_route_count` and never folded into the headline regret
@@ -101,7 +101,7 @@ Add one field to the `Outcome` struct
 struct Outcome {
     int  turnsOnToTier            = 0;
     bool userOverrideWithin5      = false;
-    bool correctionSignalWithin5  = false;
+    bool correctionSignalFirstTurn  = false;
     bool underRouteSignalWithin5  = false;
     bool sessionCleanlyEndedOnNewTier = false;   // NEW — ANTS-1891
                                                   // placed before `pending`
@@ -191,7 +191,7 @@ a settled record to act on.
 `sessionCleanlyEndedOnNewTier` becomes `true` iff **all** of:
 
 - `userOverrideWithin5 == false`.
-- `correctionSignalWithin5 == false`.
+- `correctionSignalFirstTurn == false`.
 - `underRouteSignalWithin5 == false`.
 - **EITHER** `turnsOnToTier > 0` (the user kept working on the new
   tier — already-measured success, kept as the inclusive case for
@@ -246,7 +246,7 @@ Existing expression at `src/modelswitchledger.cpp` L290–294:
 res.changed = (res.outcome.pending != inputBefore.pending)
            || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
            || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
-           || (res.outcome.correctionSignalWithin5 != inputBefore.correctionSignalWithin5)
+           || (res.outcome.correctionSignalFirstTurn != inputBefore.correctionSignalFirstTurn)
            || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5);
 ```
 
@@ -256,7 +256,7 @@ Post-change — append one clause:
 res.changed = (res.outcome.pending != inputBefore.pending)
            || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
            || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
-           || (res.outcome.correctionSignalWithin5 != inputBefore.correctionSignalWithin5)
+           || (res.outcome.correctionSignalFirstTurn != inputBefore.correctionSignalFirstTurn)
            || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5)
            || (res.outcome.sessionCleanlyEndedOnNewTier  // NEW — ANTS-1891
                   != inputBefore.sessionCleanlyEndedOnNewTier);
@@ -295,7 +295,7 @@ replacing its body:
 if (isDowngrade && !r.outcome.pending) {
     const bool hasNegativeSignal =
         r.outcome.userOverrideWithin5
-     || r.outcome.correctionSignalWithin5
+     || r.outcome.correctionSignalFirstTurn
      || r.outcome.underRouteSignalWithin5;
     const bool hasPositiveEvidence =
         r.outcome.turnsOnToTier > 0
@@ -322,7 +322,7 @@ if (isDowngrade && !r.outcome.pending) {
 **Bucketing truth table** — for an implementer mis-bucketing risk,
 the four possible settled-downgrade shapes and the buckets they
 land in. (Settled = `!outcome.pending`. "Negative signal" =
-`userOverrideWithin5 || correctionSignalWithin5 ||
+`userOverrideWithin5 || correctionSignalFirstTurn ||
 underRouteSignalWithin5`. The columns count the same record into
 multiple counters when both apply — they are not mutually
 exclusive.)
@@ -517,7 +517,7 @@ automatically.
 ## 3. Invariants
 
 - **INV-1** — `regret_count` is the count of settled downgrades on which
-  any of `overrideUndidDowngrade`, `correctionSignalWithin5`, or
+  any of `overrideUndidDowngrade`, `correctionSignalFirstTurn`, or
   `underRouteSignalWithin5` is true. (Adds under-route to the existing
   numerator — addresses problem (b).) **ANTS-1957:** the override term was
   narrowed from the broad `userOverrideWithin5` (any manual `/model`) to the

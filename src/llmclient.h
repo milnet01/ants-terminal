@@ -4,7 +4,7 @@
 // LlmClient — reusable OpenAI-compatible streaming chat client, extracted
 // from AiDialog (ANTS-1727). Qt6::Core + Qt6::Network only; no Qt Widgets
 // include (INV-16 source-grep guards this). The request build, SSE drain,
-// 10 MiB caps, scheme allowlist, transfer timeout, and OWASP LLM06 secret
+// kMaxBytes caps, scheme allowlist, transfer timeout, and OWASP LLM06 secret
 // scrub all live here so non-widget callers (LlmDispatcher, the review
 // dialogs) can reach them.
 
@@ -38,7 +38,7 @@ struct LlmResult {
     QString text;            // accumulated assistant content
     QString error;           // human-readable; empty on ok
     int     redactedCount = 0;
-    bool    truncated = false;   // hit the 10 MiB accumulation cap
+    bool    truncated = false;   // hit the LlmClient::kMaxBytes cap
     int     httpStatus = 0;
 };
 
@@ -54,10 +54,9 @@ public:
 
     // ---- Widget-free helpers, testable without a network round-trip ----
 
-    // Accumulated-content + SSE-line-buffer cap (mirrors aidialog.cpp).
-    // Bounds m_sseLineBuffer (QByteArray) in exact bytes; accumulateCapped()
-    // now tracks the accumulated text in exact UTF-8 bytes too (ANTS-1846,
-    // superseding the ANTS-1753 unit-note), so the answer is bounded to
+    // Accumulated-content + SSE-line-buffer cap. Bounds m_sseLineBuffer
+    // (QByteArray) in exact bytes; accumulateCapped() tracks the accumulated
+    // text in exact UTF-8 bytes too (ANTS-1846), so the answer is bounded to
     // kMaxBytes of decoded content regardless of codepoint width. A
     // memory-DoS bound on streamed responses, not a per-tick limit.
     static constexpr qint64 kMaxBytes = 10 * 1024 * 1024;

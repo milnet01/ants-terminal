@@ -31,9 +31,12 @@ Two cross-cutting persistence bugs flagged by indie-review #7 (2026-06-04):
 - `src/jsonlfile.cpp` — `JsonlFile::writeLinesAtomic` (0700 + owner-only 0600).
   ANTS-2119 extracted this from the two ledgers into one shared copy so the
   security-critical write sequence cannot drift between them.
-- `src/modelswitchledger.cpp` — `appendRecord` + `writeRecords` route writes
-  through `JsonlFile::writeLinesAtomic`; both hold a `ConfigWriteLock`.
-- `src/modelnearmissledger.cpp` — same delegation + lock (same bug class).
+  `JsonlFile::appendLine` holds a `ConfigWriteLock` around each append.
+- `src/modelswitchledger.cpp` — `appendRecord` appends through
+  `JsonlFile::appendLine`; `writeRecords` holds its own `ConfigWriteLock` and
+  writes through `JsonlFile::writeLinesAtomic`.
+- `src/modelnearmissledger.cpp` — `appendRecord` appends through
+  `JsonlFile::appendLine` (same bug class).
 - `src/auditfpledger.cpp` — `appendEntry` 0700 + lock spanning dedup+append.
 - `src/auditdialog.cpp` — `appendSnapshot` 0700 + trend.json lock;
   `saveBaseline` 0700.

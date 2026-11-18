@@ -43,7 +43,7 @@ QJsonObject toJson(const Record &r) {
     QJsonObject oc;
     oc[QStringLiteral("turns_on_to_tier")]              = r.outcome.turnsOnToTier;
     oc[QStringLiteral("user_override_within_5_turns")]  = r.outcome.userOverrideWithin5;
-    oc[QStringLiteral("correction_signal_within_5_turns")] = r.outcome.correctionSignalWithin5;
+    oc[QStringLiteral("correction_signal_within_5_turns")] = r.outcome.correctionSignalFirstTurn;
     oc[QStringLiteral("under_route_signal_within_5_turns")] = r.outcome.underRouteSignalWithin5;
     // ANTS-1891 — new positive signal; snake_case matches the existing keys,
     // omits the _within_N_turns suffix since this is a quiet-window measurement.
@@ -80,7 +80,7 @@ Record fromJson(const QJsonObject &o) {
     const QJsonObject oc = o.value(QStringLiteral("outcome")).toObject();
     r.outcome.turnsOnToTier           = oc.value(QStringLiteral("turns_on_to_tier")).toInt();
     r.outcome.userOverrideWithin5     = oc.value(QStringLiteral("user_override_within_5_turns")).toBool();
-    r.outcome.correctionSignalWithin5 = oc.value(QStringLiteral("correction_signal_within_5_turns")).toBool();
+    r.outcome.correctionSignalFirstTurn = oc.value(QStringLiteral("correction_signal_within_5_turns")).toBool();
     r.outcome.underRouteSignalWithin5 = oc.value(QStringLiteral("under_route_signal_within_5_turns")).toBool();
     // ANTS-1891 — INV-10: missing field defaults to false (pre-1891 records
     // never observed the signal). `toBool(false)` is explicit for clarity.
@@ -135,22 +135,10 @@ QList<QByteArray> evictToCap(QList<QByteArray> lines, qint64 capBytes) {
 }
 
 bool appendRecord(const QString &path, const Record &rec, qint64 capBytes) {
-    // ANTS-1989 — serialize the read-modify-write against a concurrent Ants
-    // instance. Without the lock, two processes both read the file, both append
-    // their record, and the last atomic rename silently drops the other's row.
-    // This runs on the GUI thread, so it waits only kGuiTimeoutMs (ANTS-5105).
-    // A timeout means a hung/stale holder (the RMW itself is microseconds), so
-    // we proceed best-effort rather than drop the record — a vanishingly rare
-    // race beats losing trust-signal data.
-    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
-    // ANTS-6785 — a ledger that exists but cannot be read would otherwise be
-    // rewritten as this one record, losing every line already in it.
-    bool readOk = true;
-    QList<QByteArray> lines = JsonlFile::readLines(path, &readOk);
-    if (!readOk) return false;
-    lines.append(serialize(rec));
-    lines = evictToCap(lines, capBytes);
-    return JsonlFile::writeLinesAtomic(path, lines);
+    return JsonlFile::appendLine(path, serialize(rec),
+        [capBytes](QList<QByteArray> lines) {
+            return evictToCap(std::move(lines), capBytes);
+        });
 }
 
 QList<Record> readRecords(const QString &path) {
@@ -348,7 +336,7 @@ OutcomeFillResult computeOutcome(
     if (isDowngrade) {
         for (const TranscriptTurn &t : turns) {
             if (t.isUser) {
-                res.outcome.correctionSignalWithin5 =
+                res.outcome.correctionSignalFirstTurn =
                     detectCorrection(t.userText);
                 break;
             }
@@ -396,7 +384,7 @@ OutcomeFillResult computeOutcome(
     if (isDowngrade && !res.outcome.pending) {
         const bool noNegativeSignal =
             !res.outcome.userOverrideWithin5
-         && !res.outcome.correctionSignalWithin5
+         && !res.outcome.correctionSignalFirstTurn
          && !res.outcome.underRouteSignalWithin5;
         const bool hasPositiveEvidence =
             res.outcome.turnsOnToTier > 0 || dwellEndedByQuietWindow;
@@ -409,7 +397,7 @@ OutcomeFillResult computeOutcome(
                || (res.outcome.turnsOnToTier != inputBefore.turnsOnToTier)
                || (res.outcome.userOverrideWithin5 != inputBefore.userOverrideWithin5)
                || (res.outcome.overrideUndidDowngrade != inputBefore.overrideUndidDowngrade)
-               || (res.outcome.correctionSignalWithin5 != inputBefore.correctionSignalWithin5)
+               || (res.outcome.correctionSignalFirstTurn != inputBefore.correctionSignalFirstTurn)
                || (res.outcome.underRouteSignalWithin5 != inputBefore.underRouteSignalWithin5)
                || (res.outcome.sessionCleanlyEndedOnNewTier
                        != inputBefore.sessionCleanlyEndedOnNewTier);   // ANTS-1891
@@ -467,7 +455,7 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
             opusRoutedIn += r.outcome.turnsOnToTier;
 
         // ANTS-1891 — per § 2.2 bucketing on settled downgrades:
-        //   * negative signal = user-override OR correction OR under-route
+        //   * negative signal = corrective override OR correction OR under-route
         //   * positive evidence = turnsOnToTier > 0 OR sessionCleanlyEndedOnNewTier
         //   * measured = negative OR positive; else inconclusive
         //   * regret = negative (now folds under-route in — INV-1)
@@ -482,7 +470,7 @@ QJsonObject statsEnvelope(const QList<Record> &recs, const StatsConfig &cfg) {
             // if the user touched /model at all.)
             const bool hasNegativeSignal =
                 r.outcome.overrideUndidDowngrade
-             || r.outcome.correctionSignalWithin5
+             || r.outcome.correctionSignalFirstTurn
              || r.outcome.underRouteSignalWithin5;
             const bool hasPositiveEvidence =
                 r.outcome.turnsOnToTier > 0

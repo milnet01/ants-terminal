@@ -22,6 +22,12 @@
 
 namespace ModelAutoSwitch {
 
+// 90 s minimum dwell between switches (INV-6). Above Gate, whose default reads
+// it. The config default for claude.auto_model_min_dwell_sec (config.cpp) and
+// StatsConfig::minDwellSec (modelswitchledger.h, in core, which cannot include
+// this header) restate 90 s by hand.
+constexpr qint64 kMinDwellMs = 90'000;
+
 // Gate — every fact decide() needs, snapshotted from the focused tab each tick
 // (§2.3). A plain value type so decide() stays pure and table-testable.
 struct Gate {
@@ -38,7 +44,7 @@ struct Gate {
     // max(kMinDwellMs, configuredMinDwellMs) so the hard 90 s floor is
     // never undercut. Default = kMinDwellMs preserves bit-for-bit pre-1894
     // behaviour for any caller that doesn't set the field.
-    qint64 configuredMinDwellMs = 90'000;   // == kMinDwellMs (forward-declared)
+    qint64 configuredMinDwellMs = kMinDwellMs;
     // ANTS-1890 — per-project override cool-down. -1 = no override on record
     // OR no ledger seen yet (cool-down does NOT block); >= 0 = ms since the
     // most-recent project-scoped override of an auto-switch. Sentinel avoids
@@ -141,8 +147,8 @@ struct StabilityState {
 // advanceStability(prev, clampedTarget, current, nowMs): fold one tick's clamped
 // recommendation into the accrual state and return the updated value.
 //
-// ANTS-1928 tier-lock window. The dominant near-miss blocker
-// (`ticks_target_stable_insufficient`, ~67% of blocks) is score oscillation at
+// ANTS-1928 tier-lock window. A common near-miss blocker
+// (`ticks_target_stable_insufficient`) is score oscillation at
 // tier boundaries: a recommendation that appears for one tick then reverts to
 // `current` for a tick or two never accrues kStableTicks consecutive stable
 // ticks. The fix holds a non-current candidate tier for kTierLockWindowMs so a
@@ -269,7 +275,6 @@ constexpr int    kStableResetTicks = 2;   // ~4 s of consistent "already on targ
 // tolerates oscillation duty cycles down to ~1-in-3 ticks before a candidate
 // is abandoned. A reversion that outlasts the window resets normally.
 constexpr qint64 kTierLockWindowMs = 8'000;   // 8 s
-constexpr qint64 kMinDwellMs  = 90'000;   // 90 s minimum dwell between switches (INV-6)
 // ANTS-1890 — separate, stricter floor that applies only when a
 // project-scoped override is on record. The dwell rule (kMinDwellMs)
 // still applies independently; both must pass.
@@ -295,8 +300,8 @@ constexpr qint64 kIdleEndOfSessionMs = 3 * 60 * 1'000;    // 3 min
 // downgrade is safe even though focusedState != Idle.
 constexpr qint64 kLongToolUseMs = 10'000;                  // 10 s
 // ANTS-1973 — short composer-staleness threshold that applies ONLY during a
-// long foreground ToolUse wait (longToolUse). composer_not_empty is the
-// dominant near-miss blocker (~67%); the 5-min kComposerStaleVetoMs window is
+// long foreground ToolUse wait (longToolUse). composer_not_empty is a
+// common near-miss blocker; the 5-min kComposerStaleVetoMs window is
 // far too long for an ~18 s build wait. When a command has been running
 // >= kLongToolUseMs and the composer has gone untouched this long, the staged
 // text is queued/abandoned, not active typing, so the veto yields. 5 s is long

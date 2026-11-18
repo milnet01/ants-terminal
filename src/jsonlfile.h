@@ -7,15 +7,17 @@
 // keeps that sequence from silently drifting between the two ledgers — a
 // hardening fix to one can no longer miss the other.
 //
-// The Record-typed serialize / append logic stays per-ledger. So does the
-// firing ledger's eviction, which pins in-flight "pending" lines and adds a
-// hard ceiling. The plain drop-the-oldest eviction is shared (ANTS-4659): the
-// near-miss ledger and the undeclared-argument ledger both use it.
+// The Record-typed serialization stays per-ledger. So does the firing ledger's
+// eviction, which pins in-flight "pending" lines and adds a hard ceiling. The
+// plain drop-the-oldest eviction is shared (ANTS-4659): the near-miss ledger
+// and the undeclared-argument ledger both use it.
 #pragma once
 
 #include <QByteArray>
 #include <QList>
 #include <QString>
+
+#include <functional>
 
 namespace JsonlFile {
 
@@ -37,5 +39,15 @@ bool writeLinesAtomic(const QString &path, const QList<QByteArray> &lines);
 // capBytes. The newest (last) line is always kept, even when it alone is over
 // the cap. Pure.
 QList<QByteArray> dropOldestToCap(QList<QByteArray> lines, qint64 capBytes);
+
+// Append `line` to the ledger at `path`: lock, read, append, `evict`, rewrite.
+// The lock (ANTS-1989) stops a second Ants instance's append from being lost
+// to the last rename. Callers may run on the GUI thread, so the lock waits
+// only ConfigWriteLock::kGuiTimeoutMs and then proceeds best-effort (ANTS-5105):
+// a rare race beats losing the record. Returns false, writing nothing, when the
+// file exists but cannot be read, so its lines are not replaced by this one
+// (ANTS-6470, ANTS-6785).
+using Evict = std::function<QList<QByteArray>(QList<QByteArray>)>;
+bool appendLine(const QString &path, const QByteArray &line, const Evict &evict);
 
 }  // namespace JsonlFile

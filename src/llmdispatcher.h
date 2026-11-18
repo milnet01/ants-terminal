@@ -4,7 +4,7 @@
 // LlmDispatcher — bounded-concurrency pool over LlmClient (ANTS-1727).
 // Qt6::Core + Qt6::Network only; no Qt Widgets (INV-16). The review-dialog
 // family enqueues per-lane / per-chunk jobs; the dispatcher runs at most
-// `maxConcurrent` at once, emits jobFinished per job, and allFinished when
+// `maxConcurrent()` at once, emits jobFinished per job, and allFinished when
 // the last completes. It retains no result text after emitting jobFinished
 // (INV-8) — only in-flight LlmClient stream buffers consume memory.
 // It holds no LlmClient: the owner's runner creates them, and the owner
@@ -34,6 +34,8 @@ public:
     using JobRunner =
         std::function<void(const LlmJob &, std::function<void(const LlmResult &)>)>;
 
+    // maxConcurrent is clamped to [1, 4] (ANTS-1727 INV-14): asking for 8
+    // runs 4 at once. maxConcurrent() reports the clamped value.
     explicit LlmDispatcher(int maxConcurrent = 2, QObject *parent = nullptr);
 
     void setRunner(JobRunner runner);   // required before enqueue

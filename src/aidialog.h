@@ -10,7 +10,7 @@
 #include "llmclient.h"
 
 // AI Assistant dialog — sends terminal context to an OpenAI-compatible API.
-// ANTS-1727: the network mechanics (request build, SSE drain, 10 MiB caps,
+// ANTS-1727: the network mechanics (request build, SSE drain, size caps,
 // scheme allowlist, transfer timeout) are delegated to an owned LlmClient.
 // The dialog keeps its chat UI, the OWASP LLM06 scrub + user-facing
 // redaction notice (UX-coupled), and the Insert-Cmd confirmation flow.
@@ -59,7 +59,8 @@ public:
     static constexpr int kInsertCommandMaxChars = 4096;
 
     // ANTS-5105 — the most of one reply the chat shows, in QString chars.
-    // A request asks for 1024 tokens, but a server may send up to
+    // A request caps the reply in tokens (sendRequest sets maxTokens), but a
+    // server may send up to
     // LlmClient::kMaxBytes, and escaping and laying out that much at once
     // stalls the GUI thread. m_lastResponse still keeps the whole reply.
     static constexpr int kMaxShownReplyChars = 64 * 1024;

@@ -5,7 +5,8 @@
 #include <QFileInfo>
 #include <QSaveFile>
 
-#include "secureio.h"   // setOwnerOnlyPerms, ensurePrivateDir
+#include "configbackup.h"   // ConfigWriteLock — ANTS-1989
+#include "secureio.h"       // setOwnerOnlyPerms, ensurePrivateDir
 
 namespace JsonlFile {
 
@@ -57,6 +58,15 @@ QList<QByteArray> dropOldestToCap(QList<QByteArray> lines, qint64 capBytes) {
     }
     if (drop > 0) lines.erase(lines.begin(), lines.begin() + drop);
     return lines;
+}
+
+bool appendLine(const QString &path, const QByteArray &line, const Evict &evict) {
+    ConfigWriteLock lock(path, ConfigWriteLock::kGuiTimeoutMs);
+    bool readOk = true;
+    QList<QByteArray> lines = readLines(path, &readOk);
+    if (!readOk) return false;
+    lines.append(line);
+    return writeLinesAtomic(path, evict(std::move(lines)));
 }
 
 }  // namespace JsonlFile

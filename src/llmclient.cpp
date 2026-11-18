@@ -465,17 +465,15 @@ void LlmClient::onFinished() {
         result.error = QStringLiteral("no complete reply within %1 s")
                            .arg(m_deadlineMs / 1000.0);
     }
-    if (hadError && m_text.isEmpty() && result.error.isEmpty())
-        result.error = scrubErrorString(m_reply->errorString());
-    else if (hadError && !m_text.isEmpty())
+    if (hadError && !m_text.isEmpty())
         m_text += QStringLiteral("\n[response may be incomplete]");
+    if (hadError && result.error.isEmpty())
+        result.error = scrubErrorString(m_reply->errorString());
 
     result.ok = !hadError;
     result.text = m_text;
     result.truncated = m_truncated;
     result.redactedCount = m_redactedCount;
-    if (result.error.isEmpty() && hadError)
-        result.error = scrubErrorString(m_reply->errorString());
 
     m_reply->deleteLater();
     m_reply = nullptr;

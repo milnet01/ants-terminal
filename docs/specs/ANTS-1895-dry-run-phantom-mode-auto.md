@@ -718,7 +718,7 @@ Persist the dry-run preview toggle via
   with "any meaningful outcome signal": a dry-run record
   counts toward `measured_would_have_downgrades` iff
   `outcome.pending == false` AND
-  (`userOverrideWithin5 || correctionSignalWithin5 ||
+  (`userOverrideWithin5 || correctionSignalFirstTurn ||
   underRouteSignalWithin5 || sessionCleanlyEndedOnNewTier`).
   Pending records and settled-but-no-signal records are
   `inconclusive_would_have_count`. *Test:*

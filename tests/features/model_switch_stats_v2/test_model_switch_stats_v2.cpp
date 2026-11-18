@@ -49,7 +49,7 @@ L::Record makeDowngrade(int turnsOnToTier,
     // so mirror it onto overrideUndidDowngrade. A new test below covers the
     // case where the two diverge (lateral/down override → not regret).
     r.outcome.overrideUndidDowngrade     = override_;
-    r.outcome.correctionSignalWithin5    = correction;
+    r.outcome.correctionSignalFirstTurn    = correction;
     r.outcome.underRouteSignalWithin5    = underRoute;
     r.outcome.sessionCleanlyEndedOnNewTier = cleanEnd;
     r.outcome.pending                    = pending;
@@ -474,8 +474,8 @@ TEST(ModelSwitchStatsV2_INV10, LegacyRecordRoundTrip)
     L::Record r2 = L::fromJson(obj2);
     EXPECT_EQ(r.outcome.turnsOnToTier, r2.outcome.turnsOnToTier);
     EXPECT_EQ(r.outcome.userOverrideWithin5, r2.outcome.userOverrideWithin5);
-    EXPECT_EQ(r.outcome.correctionSignalWithin5,
-              r2.outcome.correctionSignalWithin5);
+    EXPECT_EQ(r.outcome.correctionSignalFirstTurn,
+              r2.outcome.correctionSignalFirstTurn);
     EXPECT_EQ(r.outcome.underRouteSignalWithin5,
               r2.outcome.underRouteSignalWithin5);
     EXPECT_EQ(r.outcome.sessionCleanlyEndedOnNewTier,
