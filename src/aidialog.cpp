@@ -383,19 +383,14 @@ QString AiDialog::extractAndSanitizeCommand(const QString &response,
     if (end > 0) {
         const int start = response.lastIndexOf(QStringLiteral("```"), end - 1);
         if (start >= 0 && start < end) {
-            cmd = response.mid(start + 3, end - start - 3).trimmed();
-            // Strip optional language identifier e.g. "bash\n". Language
-            // IDs are single unbroken tokens; a first line with spaces
-            // or tabs is a short command, not a language hint, and must
-            // not be eaten. (0.7.13 — /indie-review 2026-04-23.)
-            const int nl = cmd.indexOf('\n');
-            if (nl > 0 && nl < 10) {
-                const QStringView first = QStringView(cmd).left(nl);
-                if (!first.contains(QLatin1Char(' '))
-                    && !first.contains(QLatin1Char('\t'))) {
-                    cmd = cmd.mid(nl + 1).trimmed();
-                }
-            }
+            // The rest of the opening fence's line is the info string — a
+            // language tag such as "bash" or "powershell" — and never part
+            // of the command (CommonMark fenced code blocks). A fence on one
+            // line ("```ls```") has none. ANTS-6015.
+            QStringView body = QStringView(response).mid(start + 3, end - start - 3);
+            const int nl = int(body.indexOf(QLatin1Char('\n')));
+            if (nl >= 0) body = body.mid(nl + 1);
+            cmd = body.trimmed().toString();
         }
     }
     if (cmd.isEmpty()) {

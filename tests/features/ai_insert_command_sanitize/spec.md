@@ -22,9 +22,10 @@ payloads into the user's shell with a single click.
 ### Invariant 1 — extraction prefers fenced code blocks
 
 When the last AI response contains a ```-fenced block, the command is
-the contents of the LAST fenced block (trimming a language
-identifier on the first line if < 10 chars, e.g. "bash\n"). Falls
-back to the last non-empty line.
+the contents of the LAST fenced block. The rest of the opening fence's
+line is the info string (a language tag such as `bash` or
+`powershell`, whatever its length) and is never part of the command.
+Falls back to the last non-empty line.
 
 ### Invariant 2 — dangerous controls are stripped
 

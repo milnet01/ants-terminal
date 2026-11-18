@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6829 -->
+<!-- ants-roadmap-id-high-water: ANTS=6830 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -110907,7 +110907,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: model-switching.
 
-- 📋 [ANTS-6015] **src/aidialog.cpp:371: a 10-character fence language tag ("powershell", "typescript") is left as the first line of the inserted command.**
+- ✅ [ANTS-6015] **src/aidialog.cpp:371: a 10-character fence language tag ("powershell", "typescript") is left as the first line of the inserted command.**
   Lead L33-C5 from the readability review of 2026-10-22, lane model-switching.
   Location: src/aidialog.cpp:371
   a 10-character fence language tag ("powershell", "typescript") is left as the first line of the inserted command. Searched: none.
@@ -110923,6 +110923,15 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   2026-11-18: ANTS-6142 shipped without touching the line, so the
   readability half (name the bound and give its reason) is closed here
   with the behaviour fix.
+  2026-11-18, confirmed and fixed. Two bugs, one cause: the code
+  trimmed the block, then guessed whether its first line was a tag. A
+  10-character tag ("powershell") was kept as a command line, and an
+  untagged block's short first command ("make") was dropped as a tag.
+  Now the rest of the opening fence's line is the info string
+  (CommonMark) and the command starts on the next line. Spec
+  ai_insert_command_sanitize Invariant 1 amended. Test: three new
+  Extraction cases, red before (each assertion printed the wrong
+  command), green after; four mutants of the fix all killed.
   **Layman:** A possible bug in the automatic Claude model switching, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.
@@ -112491,6 +112500,18 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: chore.
   Source: in-session 2026-11-17 (ANTS-1706).
   Lanes: tests.
+
+- 📋 [ANTS-6830] **AI dialog Insert Cmd offers the closing fence ``` as the command when the reply's last fenced block is empty.**
+  Found while fixing ANTS-6015. extractAndSanitizeCommand falls back to
+  the reply's last non-empty line when the fenced block holds nothing,
+  and that line is the closing fence. Before ANTS-6015 the same input
+  gave the language tag instead; both are junk. The confirmation dialog
+  shows it before anything reaches the shell. Fix: skip fence lines in
+  the fallback, or return empty for an empty block.
+  **Layman:** Asking the AI for a command can offer three backticks instead of nothing when its code box is empty.
+  Kind: fix.
+  Source: session-2026-11-18-ANTS-6015.
+  Lanes: model-switching.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 

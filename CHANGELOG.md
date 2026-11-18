@@ -530,6 +530,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **The AI dialog's Insert Cmd button inserts just the command from a fenced code block: a language tag of any length (`powershell`, `typescript`) is left out, and a short first command such as `make` is kept** (ANTS-6015)
+
 - **`comment_claims` reports a spaced approximate count such as `~ 3 lines` once** (ANTS-6140)
   The code search and outline tools' remaining readability fixes landed
   with it: read_region, similar_code and trace each state a limit in one

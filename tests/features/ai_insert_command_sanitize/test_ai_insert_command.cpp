@@ -51,12 +51,8 @@ void testExtraction() {
         expect(cmd.isEmpty(), "extract: empty input → empty output");
     }
 
-    // Language-hint heuristic must not eat a short command whose first
-    // line contains whitespace. Language IDs are unbroken tokens
-    // (`bash`, `python`, `cpp`); `foo bar` is a command, not a hint.
-    // Pre-0.7.13 the gate was nl<10 regardless of whitespace, which
-    // ate `foo bar` from inputs like ```\nfoo bar\nls\n```. See
-    // ROADMAP.md — /indie-review follow-ups 2026-04-23.
+    // The first line inside an untagged fence is the command, never a
+    // language hint (`foo bar` was once eaten as one).
     {
         QString cmd = AiDialog::extractAndSanitizeCommand(
             "```\nfoo bar\nls\n```");
@@ -78,6 +74,33 @@ void testExtraction() {
             "```python\nprint('hi')\n```");
         expect(cmd == "print('hi')",
                "extract: single-token lang hint still stripped",
+               QString("got: '%1'").arg(cmd));
+    }
+    // ANTS-6015 — the tag is the text on the opening fence's own line,
+    // whatever its length (a 10-character tag was kept as a command line).
+    {
+        QString cmd = AiDialog::extractAndSanitizeCommand(
+            "```powershell\nGet-ChildItem\n```");
+        expect(cmd == "Get-ChildItem",
+               "extract: 10-char lang tag stripped",
+               QString("got: '%1'").arg(cmd));
+    }
+    // ANTS-6015 — with no tag, the first line inside the fence is the
+    // command, even a short single token ("make" was taken for a tag).
+    {
+        QString cmd = AiDialog::extractAndSanitizeCommand(
+            "```\nmake\nmake install\n```");
+        expect(cmd == "make\nmake install",
+               "extract: untagged short first line kept",
+               QString("got: '%1'").arg(cmd));
+    }
+    // ANTS-6015 — the whole opening line is the info string, spaces
+    // included (CommonMark), so none of it reaches the command.
+    {
+        QString cmd = AiDialog::extractAndSanitizeCommand(
+            "```bash title\nls\n```");
+        expect(cmd == "ls",
+               "extract: info string with a space stripped",
                QString("got: '%1'").arg(cmd));
     }
 }
