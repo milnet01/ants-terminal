@@ -9,6 +9,7 @@
 #include "mcpdeprecation.h"         // ANTS-5485
 #include "mcpprojection.h"
 #include "mcpspill.h"          // ANTS-2094 — result offload
+#include "mcptoolinfo.h"       // ANTS-6829 — tool_info's per-op slice
 #include "mcpundeclaredargs.h"  // ANTS-4659 — undeclared-argument survey
 #include "secureio.h"
 #include "verifytrustprompt.h"  // ANTS-5464 — the method name
@@ -3368,6 +3369,10 @@ void ClaudeIntegration::handleMcpRequest(const QJsonDocument &doc,
                                     mcp::removedReplacement(reqName);
                                 if (!replacement.isEmpty())
                                     env["replacement"] = replacement;
+                            } else if (const QString op = argsObj.value(
+                                           QStringLiteral("op")).toString();
+                                       !op.isEmpty()) {
+                                env = mcp::toolInfoForOp(match, op);   // ANTS-6829
                             } else {
                                 env["ok"]          = true;
                                 env["name"]        = match.value(QStringLiteral("name"));

@@ -773,6 +773,8 @@ add_library(ants_mcpcore_lib STATIC
     src/mcpspill.cpp
     # ANTS-5485 — deprecated-verb table, description prefix and call log.
     src/mcpdeprecation.cpp
+    # ANTS-6829 — tool_info {name, op}: one op's slice of a descriptor.
+    src/mcptoolinfo.cpp
     # ANTS-1727 — shared dispatch-brief composer (fence-hardening +
     # section slicing) + LLM client / bounded dispatcher for the
     # review-dialog family (widget-free; Qt6::Network already linked).

@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`tool_info {name, op}` returns one op's prose and the arguments it uses** (ANTS-6829)
+  `other_arguments` names the arguments left out. On `roadmap_log`, the
+  slice for `op:"append"` is about 15 KB against 58 KB for the whole
+  descriptor (measured 2026-11-18).
+
 - **`roadmap_log` op:"append" and op:"append_batch" take `before_id`, so new items land directly before a named item in one call** (ANTS-6828)
   On a store-migrated project the new items that land in `section` are filed,
   in input order, before that item. A batch bullet naming another section

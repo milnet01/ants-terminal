@@ -1229,7 +1229,9 @@ void appendToolSchemasReports(QJsonArray &tools) {
                         "catalog:true (no name) to get the full verb "
                         "catalog — every registered tool grouped by "
                         "category with its one-line selection_hint, in "
-                        "one call. See docs/specs/ANTS-1399-tool-info-name-mcp-verb.md + "
+                        "one call. name + op returns only that op's "
+                        "arguments and prose (ANTS-6829). "
+                        "See docs/specs/ANTS-1399-tool-info-name-mcp-verb.md + "
                         "ANTS-1985-tool-info-catalog-true-one.md.");
                     t["selection_hint"] = QStringLiteral(
                         "Use to fetch one tool's descriptor without "
@@ -1258,6 +1260,13 @@ void appendToolSchemasReports(QJsonArray &tools) {
                     QJsonObject props;
                     props["name"] = nameProp;
                     props["catalog"] = catalogProp;
+                    QJsonObject opProp;   // ANTS-6829
+                    opProp["type"] = "string";
+                    opProp["description"] = QStringLiteral(
+                        "With `name`: one of that verb's ops. Returns its "
+                        "op_detail prose, the arguments it uses, and "
+                        "other_arguments naming the rest.");
+                    props["op"] = opProp;
                     schema["properties"] = props;
                     // ANTS-1985 — neither arg is unconditionally
                     // required: name-mode needs `name`, catalog-mode

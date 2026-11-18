@@ -679,3 +679,32 @@ TEST(McpdCall, Ants5807CatalogStatesConcurrency) {
                 && c.contains(QStringLiteral("last writer")))
         << "catalog concurrency note: " << c.toStdString();
 }
+
+// ANTS-6829 — tool_info {name, op} returns one op's slice through a real
+// server: the arguments that op uses, and not those only other ops use.
+TEST(McpdCall, Ants6829ToolInfoServesOneOp) {
+    QTemporaryDir cfg, data;
+    ASSERT_TRUE(cfg.isValid() && data.isValid());
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.insert(QStringLiteral("XDG_CONFIG_HOME"), cfg.path());
+    env.insert(QStringLiteral("XDG_DATA_HOME"), data.path());
+    const auto call = [&](const char *json) {
+        const CallOutcome r = runMcpdCall(
+            {QStringLiteral("--call"), QStringLiteral("tool_info"), QString::fromUtf8(json)},
+            QStringLiteral(ANTS_SOURCE_DIR), env);
+        EXPECT_TRUE(r.finished) << "stderr=" << r.err.toStdString();
+        return r.out.trimmed();
+    };
+    const QByteArray whole = call(R"({"name":"roadmap_log"})");
+    const QByteArray slice = call(R"({"name":"roadmap_log","op":"append"})");
+    const QJsonObject body = QJsonDocument::fromJson(slice).object();
+    ASSERT_TRUE(body.value(QStringLiteral("ok")).toBool()) << slice.toStdString();
+    const QJsonObject props = body.value(QStringLiteral("inputSchema")).toObject()
+                                  .value(QStringLiteral("properties")).toObject();
+    EXPECT_TRUE(props.contains(QStringLiteral("before_id")));
+    EXPECT_FALSE(props.contains(QStringLiteral("amendments")))
+        << "an amend_field_batch-only argument was kept";
+    EXPECT_FALSE(body.value(QStringLiteral("op_detail")).toString().isEmpty());
+    EXPECT_LT(slice.size() * 2, whole.size())
+        << "the slice is not much smaller than the whole descriptor";
+}

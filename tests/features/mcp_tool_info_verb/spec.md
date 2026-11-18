@@ -52,3 +52,25 @@ call. INV-9..INV-13 are source-scrape tests here; INV-14 lives in
 - **INV-14.** (in `mcp_orientation_install`) The prelude template's
   "Full catalog:" line is repointed at `tool_info {catalog:true}` and
   the rendered heredoc stays ≤ 1200 bytes.
+
+## ANTS-6829 — one op's slice
+
+`tool_info {name, op}` returns `mcp::toolInfoForOp` (`src/mcptoolinfo.h`)
+for the matched descriptor. Behavioural cases on a made-up two-op verb:
+
+- **`Ants6829SliceKeepsOneOpsArgumentsAndProse`** — `op:"add"` keeps the
+  arguments naming `"add"` or no op, drops one naming only `"drop"` (a
+  nested description counts) and the `op` argument, lists the dropped
+  names in `other_arguments`, filters `required` to the kept names, and
+  builds `op_detail` from `add`'s runs in `detail` then in the `op`
+  argument.
+- **`Ants6829UnknownOpAndOplessVerbRefuse`** — an op not in the enum
+  refuses `unknown_op` with `ops[]`; a verb with no `op` argument refuses
+  `bad_args`.
+
+The wire path is `McpdCall.Ants6829ToolInfoServesOneOp`: through
+`ants-mcpd --call`, `roadmap_log` with `op:"append"` keeps `before_id`,
+drops `amendments`, and is under half the whole descriptor's size.
+
+**Would break this:** the handler ignoring `op`, or `op` left out of the
+`tool_info` schema, which refuses it as an unknown argument.

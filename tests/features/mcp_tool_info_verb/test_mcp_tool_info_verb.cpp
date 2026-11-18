@@ -5,6 +5,10 @@
 
 #include <gtest/gtest.h>
 #include "../../_support/srcgrep.h"
+#include "mcptoolinfo.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
 
 #include <string>
 
@@ -258,4 +262,83 @@ TEST(mcp_tool_info_verb, Inv13LegacyBranchesIntact) {
            "INV-13: catalog mode gated on the explicit `catalog` arg, "
            "never on empty name");
     EXPECT_EQ(0, expect_failures());
+}
+
+// ---------------------------------------------------------- ANTS-6829 -----
+// tool_info {name, op} — one op's slice of a descriptor (mcp::toolInfoForOp).
+
+namespace {
+
+QJsonObject prop(const QString &description) {
+    return QJsonObject{{QStringLiteral("type"), QStringLiteral("string")},
+                       {QStringLiteral("description"), description}};
+}
+
+// A verb with two ops, "add" and "drop", described the way real ones are.
+QJsonObject twoOpVerb() {
+    QJsonObject op = prop(QStringLiteral(
+        "Default \"add\". \"add\" files a row. It needs `row`. "
+        "\"drop\" removes a row. It needs `id`."));
+    op[QStringLiteral("enum")] = QJsonArray{QStringLiteral("add"), QStringLiteral("drop")};
+    QJsonObject nested{{QStringLiteral("type"), QStringLiteral("array")},
+                       {QStringLiteral("items"), prop(QStringLiteral("Used by op:\"drop\" only."))}};
+    return QJsonObject{
+        {QStringLiteral("name"), QStringLiteral("demo")},
+        {QStringLiteral("description"), QStringLiteral("[demo] Files and drops rows.")},
+        {QStringLiteral("selection_hint"), QStringLiteral("Rows.")},
+        {QStringLiteral("detail"), QStringLiteral(
+            "Rows live in a table. op:\"add\" appends at the end. Order is kept. "
+            "op:\"drop\" leaves a gap. Gaps are never refilled.")},
+        {QStringLiteral("inputSchema"), QJsonObject{
+            {QStringLiteral("type"), QStringLiteral("object")},
+            {QStringLiteral("properties"), QJsonObject{
+                {QStringLiteral("op"), op},
+                {QStringLiteral("caller_cwd"), prop(QStringLiteral("Your $PWD."))},
+                {QStringLiteral("row"), prop(QStringLiteral("op:\"add\": the row."))},
+                {QStringLiteral("id"), prop(QStringLiteral("op:\"drop\": the row's id."))},
+                {QStringLiteral("ids"), nested}}},
+            {QStringLiteral("required"), QJsonArray{QStringLiteral("caller_cwd"),
+                                                    QStringLiteral("id")}}}},
+    };
+}
+
+}  // namespace
+
+TEST(mcp_tool_info_verb, Ants6829SliceKeepsOneOpsArgumentsAndProse) {
+    const QJsonObject out = mcp::toolInfoForOp(twoOpVerb(), QStringLiteral("add"));
+    const std::string dump = QJsonDocument(out).toJson().toStdString();
+    ASSERT_TRUE(out.value(QStringLiteral("ok")).toBool()) << dump;
+    const QJsonObject schema = out.value(QStringLiteral("inputSchema")).toObject();
+    const QJsonObject props = schema.value(QStringLiteral("properties")).toObject();
+    EXPECT_TRUE(props.contains(QStringLiteral("row"))) << "names the op";
+    EXPECT_TRUE(props.contains(QStringLiteral("caller_cwd"))) << "names no op";
+    EXPECT_FALSE(props.contains(QStringLiteral("id"))) << dump;
+    EXPECT_FALSE(props.contains(QStringLiteral("ids"))) << "a nested description counts";
+    EXPECT_FALSE(props.contains(QStringLiteral("op"))) << "its prose is in op_detail";
+    EXPECT_EQ(out.value(QStringLiteral("other_arguments")).toArray(),
+              (QJsonArray{QStringLiteral("id"), QStringLiteral("ids")}));
+    EXPECT_EQ(schema.value(QStringLiteral("required")).toArray(),
+              QJsonArray{QStringLiteral("caller_cwd")});
+    EXPECT_EQ(out.value(QStringLiteral("op_detail")).toString(),
+              QStringLiteral("op:\"add\" appends at the end. Order is kept. "
+                             "Default \"add\". \"add\" files a row. It needs `row`."))
+        << "a run carries the sentences after it that name no op";
+    EXPECT_EQ(out.value(QStringLiteral("description")).toString(),
+              QStringLiteral("[demo] Files and drops rows."));
+}
+
+TEST(mcp_tool_info_verb, Ants6829UnknownOpAndOplessVerbRefuse) {
+    const QJsonObject unknown = mcp::toolInfoForOp(twoOpVerb(), QStringLiteral("move"));
+    EXPECT_EQ(unknown.value(QStringLiteral("code")).toString(), QStringLiteral("unknown_op"));
+    EXPECT_EQ(unknown.value(QStringLiteral("ops")).toArray(),
+              (QJsonArray{QStringLiteral("add"), QStringLiteral("drop")}));
+
+    QJsonObject opless = twoOpVerb();
+    QJsonObject schema = opless.value(QStringLiteral("inputSchema")).toObject();
+    QJsonObject props = schema.value(QStringLiteral("properties")).toObject();
+    props.remove(QStringLiteral("op"));
+    schema[QStringLiteral("properties")] = props;
+    opless[QStringLiteral("inputSchema")] = schema;
+    const QJsonObject none = mcp::toolInfoForOp(opless, QStringLiteral("add"));
+    EXPECT_EQ(none.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"));
 }

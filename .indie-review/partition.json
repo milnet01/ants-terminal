@@ -533,6 +533,8 @@
         "src/mcprefusal.h",
         "src/mcpspill.cpp",
         "src/mcpspill.h",
+        "src/mcptoolinfo.cpp",
+        "src/mcptoolinfo.h",
         "src/mcpundeclaredargs.cpp",
         "src/mcpundeclaredargs.h",
         "src/resolvedroot.h",

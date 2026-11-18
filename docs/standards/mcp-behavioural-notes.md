@@ -212,6 +212,13 @@ trimmed verb's full per-op/per-arg reference, make one `tool_info` call —
 the same call ANTS-1399 already prescribes before invoking a verb. Tools
 that did not author a `detail` simply omit the key from `tool_info`.
 
+`tool_info {name, op}` (ANTS-6829) returns one op's slice instead: the
+sentences of `detail` and of the `op` argument that belong to that op, as
+`op_detail`; the arguments whose description names that op or names none;
+and `other_arguments`, the names left out. A sentence naming a quoted op
+starts that op's run, and the sentences after it that name no op stay in
+the run. An op the verb does not list refuses `unknown_op` with `ops[]`.
+
 ## Tool-search deferral exemption (ANTS-2158)
 
 Claude Code defers MCP tool *schemas* (tool-search): a deferred verb

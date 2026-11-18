@@ -93183,13 +93183,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: DeFragR-feedback-2026-11-18.
   Lanes: mcp-roadmap-verbs.
 
-- 📋 [ANTS-6829] **tool_info takes an op filter and returns one op's detail.**
+- ✅ [ANTS-6829] **tool_info takes an op filter and returns one op's detail.**
   Reported by DeFragR 2026-11-18: tool_info {name:"roadmap_log"}
   returned about 58 KB and spilled to a file; finding before_id
   meant searching the spill.
   Fix: an op argument that returns only that op's per-op detail.
   Hot reload: a verb argument; reaches clients on the next
   ants-mcpd rebuild and reconnect, no relaunch.
+  2026-11-18: shipped. tool_info {name, op} returns mcp::toolInfoForOp
+  (src/mcptoolinfo.cpp): op_detail (that op's sentence runs from detail
+  and the op argument), the arguments naming that op or none, and
+  other_arguments. roadmap_log op:"append" measured 15 KB against 58 KB
+  whole. Tests: mcp_tool_info_verb.Ants6829*,
+  McpdCall.Ants6829ToolInfoServesOneOp.
   **Layman:** Looking up one option of the roadmap tool returned a very large help text that had to be searched.
   Kind: enhancement.
   Source: DeFragR-feedback-2026-11-18.
