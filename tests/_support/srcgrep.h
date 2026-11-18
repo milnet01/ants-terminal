@@ -130,6 +130,7 @@ inline std::string slurpClaudeIntegration() {
 // raw-string literals, trigraphs, or weird preprocessor games. The
 // goal is robustness against ordinary function-body growth, not a
 // full C++ tokeniser.
+// tools/split-motion-check.py ports this byte for byte; change both.
 inline std::string slurpFunctionBody(const std::string &src,
                                      const std::string &signatureAnchor) {
     const std::size_t sigPos = src.find(signatureAnchor);
@@ -202,6 +203,7 @@ inline std::string slurpFunctionBody(const std::string &src,
 // was seeing a FRACTION of its target — 17% of cmdSpecLint, 20% of
 // recordDispatch — so the checks were partially blind and their EXPECT_FALSE
 // rows were passing because they had stopped looking.
+// tools/split-motion-check.py ports this byte for byte; change both.
 inline std::string regionBetween(const std::string &text,
                                  const std::string &startAnchor,
                                  const std::string &endAnchor) {
@@ -266,6 +268,7 @@ inline std::string slurpFunctionBody(const char *path,
 // Conservative in the same way slurpFunctionBody is: no raw-string literals, no
 // trigraphs, no preprocessor games. Erring toward keeping text is the safe
 // direction here — a leftover comment can only make a ban-list scrape stricter.
+// tools/split-motion-check.py ports this byte for byte; change both.
 inline std::string stripComments(const std::string &src) {
     std::string out;
     out.reserve(src.size());
@@ -316,6 +319,7 @@ inline std::string stripComments(const std::string &src) {
 // tool's registration is written some other way the region runs to EOF — the
 // safe direction for a must-contain assertion, at the cost of the
 // doesn't-bleed-into-the-next-descriptor property.
+// tools/split-motion-check.py ports this byte for byte; change both.
 inline std::string mcpToolDescriptor(const std::string &src,
                                      const std::string &toolName) {
     const std::string kNameAssign = "[\"name\"] = \"";

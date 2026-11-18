@@ -8,7 +8,8 @@ class's source list reappears byte-identical exactly once in a file of that
 list, and lines keep their relative order within each piece. Every other added
 line is a kind the spec allows: a blank line, a piece's ordinal marker, an
 #include, a preprocessor conditional repeating one the parent had, the
-<stem>detail namespace lines, or a carved function's signature, braces or call.
+<stem>detail namespace lines, or the signature, braces or call of a carved
+function the spec's § 2.2 names (CARVED_SIGNATURE and CARVED_CALL).
 
 INV-10 (--scrapes) — scrape windows. Derives every window a test under tests/
 cuts from the class's text with substr, mid or left. Evaluates each window over
@@ -20,10 +21,12 @@ is listed as unevaluated, for the commit message to name as checked by hand.
 The class's files come from CMakeLists.txt's ANTS_<STEM>_SOURCES_REL list at
 each revision. Before that list exists, the class is src/<stem>.cpp alone.
 
-WHAT THE EVALUATOR UNDERSTANDS, AND WHAT IT DOES NOT. It evaluates literal
-offsets and lengths, variables bound once, find/indexOf/rfind/lastIndexOf,
-+ and -, std::min/std::max, and the srcgrep.h helpers slurpFunctionBody,
-regionBetween, stripComments and mcpToolDescriptor. A variable assigned more
+WHAT THE EVALUATOR UNDERSTANDS, AND WHAT IT DOES NOT. Evaluator.value, .call
+and .method are the full list. In short: literals, variables bound once, + and
+-, comparisons and ?:, casts, size/length, find/indexOf/rfind/lastIndexOf,
+std::min/std::max/qMin/qMax, string conversions such as QStringLiteral and
+toStdString, and the srcgrep.h helpers slurpFunctionBody, regionBetween,
+stripComments and mcpToolDescriptor. A variable assigned more
 than once (a loop's cursor) or a value from any other function is unknown, and
 its window is reported unevaluated, never guessed. Offsets are counted in
 UTF-8 bytes whether the test holds a std::string or a QString. A QString window
@@ -132,6 +135,10 @@ def diff_lines(pre: str, post: str, path: str) -> tuple[list[tuple[int, str]], l
 MARKER = re.compile(r"// ANTS-1677 (\w+) piece (\d+)/(\d+) — (\S.*)")
 SNAKE = re.compile(r"\b[A-Za-z0-9]+_[A-Za-z0-9_]+\b")
 BRACE = re.compile(r"\{|\}\s*;?\s*(//.*)?")
+# The kind-B carves the spec's § 2.2 names: claudeintegration's
+# appendToolSchemas<Part> and mainwindow's registerMcpProviders<Part>. Both are
+# accepted for every stem. A split that carves another family adds it to § 2.2
+# and to both patterns, or its new lines fail as "neither motion nor allowed".
 CARVED_SIGNATURE = re.compile(
     r"void\s+(?:MainWindow::)?(?:appendToolSchemas|registerMcpProviders)\w*\s*\([^;{}]*\)\s*\{?")
 CARVED_CALL = re.compile(
@@ -294,6 +301,8 @@ def scan(src: str) -> tuple[str, str]:
                 if src[k] != "\n":
                     mask[k] = "x"
             i = min(n, j + len(close))
+        # A ' between two alphanumerics is a C++14 digit separator (1'000),
+        # not a character literal.
         elif c == '"' or (c == "'" and not (i > 0 and src[i - 1].isalnum() and nxt.isalnum())):
             j = i + 1
             while j < n and src[j] != c and src[j] != "\n":
@@ -368,6 +377,10 @@ DIRECT_INIT = re.compile(
 
 
 class Binding:
+    """One `name = …` or `Type name(…)`. start and end span only the value
+    (the right-hand side, or the bracketed initialiser); first_line and
+    last_line span the whole binding."""
+
     def __init__(self, start: int, end: int, first_line: int, last_line: int):
         self.start, self.end = start, end
         self.first_line, self.last_line = first_line, last_line
@@ -491,15 +504,10 @@ def tokenize(text: str) -> list[tuple[str, re.Match]]:
         m = TOKEN.match(text, pos)
         if not m:
             raise Unknown("cannot read `%s`" % text[pos:pos + 20])
+        # lastgroup is the outermost group that matched, never an inner one
+        # such as rawbody.
         if m.lastgroup != "ws":
-            kind = "id" if m.group("id") else ("raw" if m.group("raw") else m.lastgroup)
-            if kind in ("d", "rawbody"):
-                kind = "raw"
-            elif kind in ("strbody",):
-                kind = "str"
-            elif kind in ("chrbody",):
-                kind = "chr"
-            toks.append((kind, m))
+            toks.append((m.lastgroup, m))
         pos = m.end()
     return toks
 
@@ -635,7 +643,9 @@ class Parser:
         raise Unknown("unsupported token `%s`" % m.group(0))
 
 
-# srcgrep.h helpers, byte for byte.
+# Byte-for-byte ports of tests/_support/srcgrep.h's slurpFunctionBody,
+# regionBetween, stripComments and mcpToolDescriptor, in that order. Each C++
+# original points back here; change both.
 
 def py_slurp_function_body(src: bytes, anchor: bytes) -> bytes:
     sig = src.find(anchor)
@@ -738,10 +748,13 @@ class Evaluator:
         self.scope = scope
         self.class_text = class_text
         self.entry_text = entry_text
-        self.used: set[int] = set()
+        # Test-file line numbers of every binding value() has read.
+        self.dependency_lines: set[int] = set()
         self.active: set[str] = set()
 
-    def reads_class(self, raw: str) -> str | None:
+    def class_reader_kind(self, raw: str) -> str | None:
+        """Which text `raw` reads: "class" for the whole-class reader, "entry"
+        for src/<stem>.cpp alone, None for neither."""
         if re.search(r"\b%s\s*\(\s*\)" % self.slurp, raw):
             return "class"
         if (re.search(r"\b(?:%s)\b" % "|".join(self.macros), raw)
@@ -772,8 +785,8 @@ class Evaluator:
             b = self.lookup(node[1])
             # The line that reads the class text is not part of a window's
             # call: editing it (a reader migration) changes no window.
-            if not self.reads_class(self.code[b.start:b.end]):
-                self.used.update(range(b.first_line, b.last_line + 1))
+            if self.class_reader_kind(self.code[b.start:b.end]) is None:
+                self.dependency_lines.update(range(b.first_line, b.last_line + 1))
             self.active.add(node[1])
             try:
                 return self.value(Parser(self.code[b.start:b.end]).parse())
@@ -812,7 +825,7 @@ class Evaluator:
         raise Unknown("unsupported node")
 
     def call(self, name: str, args, raw: str):
-        reads = self.reads_class(raw)
+        reads = self.class_reader_kind(raw)
         short = name[len("ants_test::"):] if name.startswith("ants_test::") else name
         if reads == "class" and short == self.slurp:
             return self.class_text
@@ -987,6 +1000,58 @@ def class_texts(rev: str, stem: str) -> tuple[bytes, bytes]:
     return whole, show(rev, "src/%s.cpp" % stem) or b""
 
 
+def mentions_class(text: str, reader: re.Pattern, holders: set[str]) -> bool:
+    """Whether `text` reads the class text or names a variable holding it."""
+    return bool(reader.search(text)) or any(
+        re.search(r"\b%s\b" % re.escape(h), text) for h in holders)
+
+
+def names_holding_class(code: str, scope: list[dict[str, list[Binding | None]]],
+                        reader: re.Pattern) -> set[str]:
+    """Names whose binding reads the class text, directly or through another
+    such name. Repeats until no name joins, since a binding may read a name
+    listed after it."""
+    holders: set[str] = set()
+    grew = True
+    while grew:
+        grew = False
+        for level in scope:
+            for name, entries in level.items():
+                if name not in holders and any(
+                        b is not None and mentions_class(code[b.start:b.end], reader, holders)
+                        for b in entries):
+                    holders.add(name)
+                    grew = True
+    return holders
+
+
+def callable_windows(path: str, code: str, mask: str, lines: LineIndex,
+                     block: tuple[int, int], callables: dict[str, list[tuple[int, int]]],
+                     touches_class) -> list[tuple[Site, str]]:
+    """Every window inside a callable that `block` calls with class text.
+    The window depends on the argument, so each is returned unevaluated."""
+    s, e = block
+    found: list[tuple[Site, str]] = []
+    for name, spans in callables.items():
+        for cm in re.finditer(r"\b%s\s*\(" % re.escape(name), mask[s:e]):
+            at = s + cm.end() - 1
+            close = matching(mask, at)
+            if close < 0 or not touches_class(code[at:close + 1]):
+                continue
+            for hs, he in spans:
+                # A call inside the callable's own body is recursion, not a
+                # caller handing it class text.
+                if hs <= at <= he:
+                    continue
+                for wm in WINDOW_CALL.finditer(mask, hs, he):
+                    site = Site(path, lines.line(wm.start()), lines.line(wm.start()),
+                                " ".join(code[receiver_start(mask, wm.start()):
+                                              matching(mask, wm.end() - 1) + 1].split()))
+                    found.append((site, "inside `%s`, called with class text at line %d"
+                                  % (name, lines.line(at))))
+    return found
+
+
 def check_scrapes(pre: str, post: str, stem: str) -> int:
     slurp, macros = STEMS[stem]
     reader = re.compile(r"\b%s\s*\(|\b(?:%s)\b|src/%s\.cpp\"" % (slurp, "|".join(macros), stem))
@@ -1021,34 +1086,18 @@ def check_scrapes(pre: str, post: str, stem: str) -> int:
 
         for s, e, _ in blocks:
             block_scope = bindings_in(code, mask, s, e, lines)
+            # This block's lambdas that cut windows join the callables, and
+            # stay for the blocks after it.
             for name, entries in block_scope.items():
                 for b in entries:
                     if b and code[b.start:b.end].lstrip().startswith("[") \
                             and WINDOW_CALL.search(mask, b.start, b.end):
                         callables.setdefault(name, []).append((b.start, b.end))
             scope = [block_scope, file_scope]
-
-            tainted: set[str] = set()
-            grew = True
-            while grew:
-                grew = False
-                for level in scope:
-                    for name, entries in level.items():
-                        if name in tainted:
-                            continue
-                        for b in entries:
-                            if b is None:
-                                continue
-                            rhs = code[b.start:b.end]
-                            if reader.search(rhs) or any(re.search(r"\b%s\b" % re.escape(t), rhs)
-                                                         for t in tainted):
-                                tainted.add(name)
-                                grew = True
-                                break
+            holders = names_holding_class(code, scope, reader)
 
             def touches_class(text: str) -> bool:
-                return bool(reader.search(text)) or any(
-                    re.search(r"\b%s\b" % re.escape(t), text) for t in tainted)
+                return mentions_class(text, reader, holders)
 
             for m in WINDOW_CALL.finditer(mask, s, e):
                 start = receiver_start(mask, m.start())
@@ -1093,24 +1142,11 @@ def check_scrapes(pre: str, post: str, stem: str) -> int:
                     continue
                 if removed_lines is None:
                     removed_lines = {n for n, _ in diff_lines(pre, post, path)[0]}
-                touched = set(range(site.first_line, site.last_line + 1)) | before.used
+                touched = set(range(site.first_line, site.last_line + 1)) | before.dependency_lines
                 (changed_edited if touched & removed_lines else changed_unedited).append(site)
 
-            for name, spans in callables.items():
-                for cm in re.finditer(r"\b%s\s*\(" % re.escape(name), mask[s:e]):
-                    at = s + cm.end() - 1
-                    close = matching(mask, at)
-                    if close < 0 or not touches_class(code[at:close + 1]):
-                        continue
-                    for hs, he in spans:
-                        if hs <= at <= he:
-                            continue
-                        for wm in WINDOW_CALL.finditer(mask, hs, he):
-                            site = Site(path, lines.line(wm.start()), lines.line(wm.start()),
-                                        " ".join(code[receiver_start(mask, wm.start()):
-                                                      matching(mask, wm.end() - 1) + 1].split()))
-                            unevaluated.append((site, "inside `%s`, called with class text at line %d"
-                                                % (name, lines.line(at))))
+            unevaluated += callable_windows(path, code, mask, lines, (s, e), callables,
+                                            touches_class)
 
     seen = set()
     unique_unevaluated = []
