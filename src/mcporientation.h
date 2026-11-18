@@ -2,10 +2,9 @@
 // Spec: docs/specs/ANTS-1897-ants-mcp-discoverability-sessionstart.md.
 //
 // Bundled orientation script + Claude Code `~/.claude/settings.json`
-// SessionStart hook entry. The hook prints a short MCP cheat-sheet at
-// every Claude Code session start so a fresh session reaches for the
-// Ants MCP variants (changelog_log, file_outline, find_definition, ...)
-// instead of the always-loaded Edit/Write/Bash built-ins.
+// SessionStart hook entry. The hook prints a short MCP cheat-sheet when a
+// Claude Code session starts or is cleared, so a fresh session reaches for
+// the Ants MCP verbs instead of the always-loaded Edit/Write/Bash built-ins.
 
 #pragma once
 

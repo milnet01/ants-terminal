@@ -5,11 +5,9 @@
 //   - terminalForCaller(QString)         in mainwindow.cpp
 //   - resolveRootCanonical(MW *, req)    in remotecontrol.cpp
 //   - cmdSessionMemory read path         in remotecontrol.cpp
-// All three now route through `resolveCallerCwdRoot()` (declared in
-// remotecontrol.h, defined alongside the existing `resolveRootCanonical`
-// overloads). This header carries only the value type they return —
-// kept dependency-light so the regression test can include it without
-// pulling Qt6::Widgets.
+// All three now route through `resolveCallerCwdRoot()`. This header holds it
+// and the value type it returns, kept dependency-light so the regression test
+// can include it without pulling Qt6::Widgets.
 //
 // See docs/specs/ANTS-1401-central-resolvedroot-helper-caller-cwd.md for the full design.
 

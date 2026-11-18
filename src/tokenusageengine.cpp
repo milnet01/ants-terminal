@@ -381,6 +381,11 @@ int tryLock(const QString &path) {
     return fd;
 }
 
+// The suffix this process gives a dead peer's snapshot while it folds it.
+QString claimedSuffix() {
+    return QStringLiteral(".claimed-%1").arg(QCoreApplication::applicationPid());
+}
+
 }  // namespace
 
 QString peerSnapshotDir() {
@@ -493,8 +498,7 @@ PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
     const QStringList names = d.entryList(QDir::Files | QDir::System | QDir::Hidden,
                                           QDir::Name);
     const QSet<QString> present(names.cbegin(), names.cend());
-    const QString claimedSuffix =
-        QStringLiteral(".claimed-%1").arg(QCoreApplication::applicationPid());
+    const QString suffix = claimedSuffix();
 
     for (const QString &name : names) {
         // A lone lock (§ 2.5): a writer between its lock and its first write,
@@ -539,7 +543,7 @@ PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
         } else {
             // No lock file: dead. Claimed by an atomic rename, so only the
             // reader whose rename wins folds it.
-            const QString claimed = d.filePath(stem + claimedSuffix);
+            const QString claimed = d.filePath(stem + suffix);
             if (!QFile::rename(path, claimed)) continue;
             if (!readSnapshotFile(claimed, &tools, &bytes, &why)) {
                 QFile::rename(claimed, path);          // put it back as found
@@ -554,11 +558,10 @@ PeerUsage readPeerSnapshots(const QString &dir, bool claimDead,
 void releaseClaimed(const QString &dir, const PeerUsage &dead,
                     const QList<int> &heldLocks) {
     const QDir d(dir);
-    const QString claimedSuffix =
-        QStringLiteral(".claimed-%1").arg(QCoreApplication::applicationPid());
+    const QString suffix = claimedSuffix();
     for (const QString &stem : dead.stems) {
         QFile::remove(d.filePath(stem + QStringLiteral(".json")));
-        QFile::remove(d.filePath(stem + claimedSuffix));
+        QFile::remove(d.filePath(stem + suffix));
         QFile::remove(d.filePath(stem + QStringLiteral(".lock")));
     }
     for (const int fd : heldLocks) ::close(fd);

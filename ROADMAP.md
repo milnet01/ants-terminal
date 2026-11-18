@@ -106134,7 +106134,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: code-index-search.
 
-- 📋 [ANTS-6141] **Readability fixes, mcp-infra lane: src/jsoncanonical.h, src/mcpdeprecation.cpp, src/mcporientation.cpp, src/mcporientation.h, src/mcpprojection.cpp, src/mcpprojection.h ….**
+- ✅ [ANTS-6141] **Readability fixes, mcp-infra lane: src/jsoncanonical.h, src/mcpdeprecation.cpp, src/mcporientation.cpp, src/mcporientation.h, src/mcpprojection.cpp, src/mcpprojection.h ….**
   Findings of the 2026-10-22 readability review (src run), lane mcp-infra:
   0 high, 8 medium, 12 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/32-mcp-infra.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106152,6 +106152,15 @@ worked after these.
   loops, ToolCounter names every list of its fields. F8 kKeepMonths and
   kKeepProjects shared by both fold paths; kMaxTokenProjects defined from
   kMaxPeerProjects. LOWs remain.
+  2026-11-18: LOWs closed, all checked present today. mcpprojection:
+  isRefusal() for the three ok-false tests (appendReadHints keeps its
+  own !ok test); floor comments renumbered; bulletMatchesQuery's doc
+  sits on it and names QueryMatcher::bulletFields(). mcpspill: row-path
+  and overhead comments, duplicate forward declaration gone.
+  mcpdeprecation: no count. tokenusageengine: one claimedSuffix().
+  secretredact.h: Bearer wins over a wrapped shape, said so.
+  resolvedroot.h, mcporientation (MergeOutcome list, dead scriptWritten,
+  header), jsoncanonical.h: comments match the code.
   **Layman:** Tidy the shared tool plumbing so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

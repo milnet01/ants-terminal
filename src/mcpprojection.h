@@ -198,13 +198,6 @@ QStringList ignoredArgs(const QJsonObject &args, const QSet<QString> &known,
 // left for the verb to judge, as is every other argument.
 QJsonObject coerceArgTypes(const QJsonObject &args, const QJsonObject &properties);
 
-// ANTS-3391 — true when the roadmap bullet object `bullet` contains `needle`
-// as a case-insensitive substring of its headline, headline_full, or body
-// field (the three text surfaces roadmap_query emits). Powers the
-// roadmap_query `query` keyword filter. Pure (mirrors ignoredArgs) so the
-// cmdRoadmapQuery list path and the feature test share one matcher. Empty
-// needle → true (an empty substring is contained in everything; the caller
-// gates on non-empty so the filter is a no-op, not a match-all-then-drop).
 // ANTS-4367 — how `query` is matched. Substring is the default and the
 // historical behaviour; the other two exist because a short query had NO
 // narrowing knob at all, and the damage from that is reordering rather than
@@ -221,6 +214,12 @@ enum class QueryMode { Substring, WholeWord, Regex };
 bool textMatchesQuery(const QString &hay, const QString &needle,
                       QueryMode mode = QueryMode::Substring);
 
+// ANTS-3391 — true when the roadmap bullet object `bullet` matches `needle`
+// on one of the fields QueryMatcher::bulletFields() lists (mcpprojection.cpp).
+// Powers the roadmap_query `query` keyword filter. Pure (mirrors ignoredArgs)
+// so the cmdRoadmapQuery list path and the feature test share one matcher.
+// Empty needle → true (an empty substring is contained in everything; the
+// caller gates on non-empty so the filter is a no-op, not a match-all-then-drop).
 bool bulletMatchesQuery(const QJsonObject &bullet, const QString &needle,
                         QueryMode mode = QueryMode::Substring);
 

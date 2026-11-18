@@ -70,8 +70,9 @@ inline const std::vector<Rule> &rules()
     //      cousins (ghp_, sk-).
     //   3. Concrete provider shapes (AWS, Slack, Stripe, JWT) next.
     //   4. Context-wrapping patterns (Bearer header, generic secret
-    //      assignment) last — the specific shapes they often wrap
-    //      should win on the narrow value range.
+    //      assignment) last. Generic secret captures only the value, so a
+    //      specific shape inside it wins; a Bearer match starts before its
+    //      token, so it wins and labels the whole header `bearer`.
     static const std::vector<Rule> kRules = {
         // PEM private-key block — multi-line. DotMatchesEverythingOption
         // lets `.` cross newlines; the non-greedy `.*?` is anchored by

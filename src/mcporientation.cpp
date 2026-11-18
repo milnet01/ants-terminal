@@ -274,7 +274,8 @@ int removeAllAntsEntries(QJsonArray &sessionStart) {
 
 // Merge / unmerge the Ants SessionStart entry into settings.json.
 // `add=true` inserts (idempotent); `add=false` removes.
-// Returns: kept, added, removed, parse_fail.
+// Returns Kept, Added, Removed, Created, WriteFail, or ParseFail (the file
+// could not be read or parsed).
 enum class MergeOutcome { Kept, Added, Removed, ParseFail, WriteFail, Created };
 
 MergeOutcome mergeSettings(const QString &settingsPath,
@@ -497,7 +498,6 @@ Result installAt(const QString &homeDir) {
     // Decide the script-write disposition per § 2.1.1.
     const QString runningVersion = QStringLiteral(ANTS_VERSION);
     const QString markerVersion = parseScriptMarkerVersion(r.scriptPath);
-    bool scriptWritten = false;
     if (QFile::exists(r.scriptPath)) {
         if (markerVersion.isEmpty()) {
             // INV-2 — user-owned (no marker). Log + skip script write.
@@ -525,11 +525,8 @@ Result installAt(const QString &homeDir) {
             }
             if (onDisk != body) {
                 QString w;
-                if (writeScriptFile(r.scriptPath, body, &w)) {
-                    scriptWritten = true;
-                } else {
+                if (!writeScriptFile(r.scriptPath, body, &w))
                     r.warning = w;
-                }
             }
         }
     } else {
@@ -537,13 +534,9 @@ Result installAt(const QString &homeDir) {
         const QByteArray body = orientationScriptTemplate()
                                 .arg(runningVersion).toUtf8();
         QString w;
-        if (writeScriptFile(r.scriptPath, body, &w)) {
-            scriptWritten = true;
-        } else {
+        if (!writeScriptFile(r.scriptPath, body, &w))
             r.warning = w;
-        }
     }
-    (void)scriptWritten;  // used by tests via file inspection
 
     // Always attempt the settings merge — even if the script is
     // user-owned (case 3), the hook entry should still point at the

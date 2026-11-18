@@ -18,6 +18,11 @@ namespace mcp {
 // publish is a plain relaxed flag flip, no lock.
 namespace {
 std::atomic<bool> g_terseDefault{false};
+
+// A refusal envelope: `ok` present and false. A missing `ok` is not one.
+bool isRefusal(const QJsonObject &o) {
+    return o.contains(QStringLiteral("ok")) && !o.value(QStringLiteral("ok")).toBool();
+}
 }  // namespace
 
 void setTerseDefault(bool terse) {
@@ -256,8 +261,7 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
     // refusal floor below, so every requested name is "unmatched" by
     // construction, and listing them pointed at the fields instead of at the
     // `code` that says what actually went wrong.
-    const bool refusal = src.contains(QStringLiteral("ok")) &&
-                         !src.value(QStringLiteral("ok")).toBool();
+    const bool refusal = isRefusal(src);
     if (!unmatched.isEmpty() && !refusal) {
         out.insert(QStringLiteral("fields_unmatched"), unmatched);
         // ANTS-4930 — `fields_unmatched` alone collapses three different facts
@@ -291,7 +295,7 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
         for (const QString &k : present) available.append(k);
         out.insert(QStringLiteral("fields_available"), available);
     }
-    // ANTS-4877 — a fourth floor, and the narrowest: when NOT ONE requested
+    // ANTS-4877 — the narrowest floor: when NOT ONE requested
     // field matched, carry `ok`. The floors below cover a refusal and a
     // diagnostic, and the 304 returned above; a SUCCESS narrowed to nothing
     // was left emitting `{"fields_unmatched":[...]}` alone, carrying no `ok`.
@@ -315,15 +319,14 @@ QString projectFields(const QString &responseText, const QJsonArray &fields) {
     // compactEnvelope's protected-key floor (isProtectedCompactKey); the
     // sibling appendReadHints already bails on !ok. Successful (ok:true) reads
     // are untouched — a narrowed success stays exactly as requested.
-    if (src.contains(QStringLiteral("ok")) &&
-        !src.value(QStringLiteral("ok")).toBool()) {
+    if (refusal) {
         for (const QString &key : {QStringLiteral("ok"), QStringLiteral("code"),
                                    QStringLiteral("error"),
                                    QStringLiteral("retry_after_ms")}) {
             if (src.contains(key)) out.insert(key, src.value(key));
         }
     }
-    // ANTS-4698 — a DIAGNOSTIC floor, third after the 304 and refusal floors
+    // ANTS-4698 — a DIAGNOSTIC floor, after the 304 and refusal floors
     // above and admitted for their reason: a narrowed reply must not lose the
     // field that says how to READ the fields it kept. ANTS-3583 added
     // `warning` + `parseable_bullets` so that count:0 on a prose or id-less
@@ -590,8 +593,7 @@ QString tabularize(const QString &responseText) {
 
     const QJsonObject src = doc.object();
     // INV-6 — never restructure a refusal envelope (ok present and false).
-    if (src.contains(QStringLiteral("ok")) &&
-        !src.value(QStringLiteral("ok")).toBool())
+    if (isRefusal(src))
         return responseText;
 
     QJsonObject out = src;

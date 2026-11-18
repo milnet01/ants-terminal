@@ -6,7 +6,7 @@ namespace mcp {
 
 namespace {
 
-// ANTS-5485 — the twenty verbs removed after a release in which none was
+// ANTS-5485 — the verbs removed after a release in which none was
 // called. The value is what to use instead.
 const QHash<QString, QString> &table() {
     static const QHash<QString, QString> t = {

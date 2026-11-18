@@ -6,8 +6,8 @@
 // all six published vector files come back byte-identical but Appendix B's
 // number table scores 21 of 24. Every miss is ECMAScript's fixed-versus-
 // exponential boundary (0.000001, which Qt writes as 1e-06) and its unpadded
-// exponent. So the divergence is numbers alone — which is why this is ~120
-// lines rather than a vendored library.
+// exponent. So the divergence is numbers alone — which is why this is a short
+// implementation rather than a vendored library.
 #pragma once
 
 #include <QByteArray>

@@ -590,7 +590,7 @@ QString offloadBody(const QString &toolName, const QString &body,
             addRowsPreview(o, fullArr, domKey, domCount, total);
     }
     // INV-9 (ANTS-3540) — the offload must be a strict net saving. The base
-    // head+pointer envelope's fixed overhead (handle + hint + keys ≈ 330 B)
+    // head+pointer envelope's fixed overhead (handle + hint + keys: a few hundred bytes)
     // plus a full head can exceed a body that only just clears the § 2.1 head
     // guard (reachable at a head≈threshold config). The structured path above
     // already bounds itself against `total`, but the base envelope did not.
@@ -654,7 +654,7 @@ SpillRows readSpillRows(const QString &handle, qint64 rowOffset, qint64 rowCount
     const QFileInfo fi(path);
     if (!fi.exists()) { r.code = QStringLiteral("not_found"); return r; }
     // Stat BEFORE reading: refuse an over-cap body without loading it into RAM
-    // (§ 4 — do not mirror readSpill's unconditional readAll on the row path).
+    // (the row path parses the whole body, so an over-cap one is refused first).
     if (fi.size() > kStructuredParseMaxBytes) { r.code = QStringLiteral("too_large"); return r; }
 
     QFile f(path);

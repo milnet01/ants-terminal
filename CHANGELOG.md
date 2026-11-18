@@ -238,6 +238,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The shared MCP plumbing's comments match its code, and its two repeated checks live in one helper each** (ANTS-6141)
+
 - **The code search and outline tools keep one copy each of the default scan budget and the page cut, and their comments sit on the code they describe** (ANTS-6139)
 
 - **The test-audit and verify tools keep one copy each of the coverage-map pattern check and the log window, and their comments name the caps and states the code uses** (ANTS-6138)

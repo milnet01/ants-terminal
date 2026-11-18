@@ -18,8 +18,6 @@
 #include <QJsonObject>
 #include <QString>
 
-class QJsonObject;
-
 namespace mcp {
 
 // Eviction caps (INV-7): whichever binds first. Oldest-mtime first, never
