@@ -12,7 +12,7 @@
 # Only the lanes the current harness can OBSERVE headlessly live here (terminal
 # content via get-text, liveness via tab-list, resize echo, a rendered PNG via
 # grab-image). The full feature checklist — including the manual / on-screen /
-# pending-hook cases these four lanes don't cover — is docs/qa/e2e/cases.md;
+# pending-hook cases these lanes don't cover — is docs/qa/e2e/cases.md;
 # harness-contract guards (bad widget, gate, grab escape) are tools/e2e/smoke.sh
 # and are NOT re-tested here (no duplication).
 #
@@ -22,25 +22,8 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=tools/e2e/run.sh
 source tools/e2e/run.sh
 
-fails=0
-pass() { echo "PASS  $*"; }
-fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
-# has HAYSTACK NEEDLE — plain-substring match (needle is not a regex).
-has()  { grep -qF "$2" <<<"$1"; }
-
-# wait_text TAG NEEDLE [LINES] — poll get-text until NEEDLE appears, or ~15 s
-# pass, and print the last text read. ANTS-5012: one read after a fixed sleep
-# failed under ASan in CI, where the instance can take longer than the sleep.
-wait_text() {
-    local tag="$1" needle="$2" req='{"cmd":"get-text"}' t=""
-    [[ -n "${3:-}" ]] && req="{\"cmd\":\"get-text\",\"lines\":$3}"
-    for _ in $(seq 1 60); do
-        t=$(call_e2e "$req" "$tag")
-        has "$t" "$needle" && break
-        sleep 0.25
-    done
-    printf '%s' "$t"
-}
+# Every automated lane; each is a function lane_<name> below.
+LANES=(terminal scrollback resize theme)
 
 # send_cmd TAG SHELL_LINE — type a shell command into the instance's PTY and
 # press Enter. SHELL_LINE is a raw command (single-quote the bash literal to
@@ -157,10 +140,9 @@ lane_theme() {
     echo "── lane: theme ──"
     launch_e2e theme || { fail "theme: launch"; return; }
 
-    local cfg; cfg="$(dirname "$(e2e_art theme)")/cfg/ants-terminal/config.json"
     local th
     for th in Light Nord Dracula "Solarized Dark" Dark Light Nord Dracula Dark; do
-        printf '{"remote_control_enabled": true, "theme": "%s"}\n' "$th" > "$cfg"
+        e2e_write_config theme "\"theme\": \"$th\""
         sleep 0.15
     done
     sleep 0.5
@@ -177,17 +159,15 @@ lane_theme() {
 
 # ── Dispatcher ────────────────────────────────────────────────────────────
 run_lane() {
-    case "$1" in
-        terminal)   lane_terminal ;;
-        scrollback) lane_scrollback ;;
-        resize)     lane_resize ;;
-        theme)      lane_theme ;;
-        *) echo "cases.sh: unknown lane '$1' (terminal|scrollback|resize|theme)" >&2
-           fails=$((fails + 1)) ;;
-    esac
+    if [[ " ${LANES[*]} " == *" $1 "* ]]; then
+        "lane_$1"
+    else
+        echo "cases.sh: unknown lane '$1' ($(IFS='|'; echo "${LANES[*]}"))" >&2
+        fails=$((fails + 1))
+    fi
 }
 
-lanes=(terminal scrollback resize theme)
+lanes=("${LANES[@]}")
 [[ $# -ge 1 ]] && lanes=("$@")
 for L in "${lanes[@]}"; do run_lane "$L"; done
 teardown_e2e   # EXIT trap also runs harmlessly at exit

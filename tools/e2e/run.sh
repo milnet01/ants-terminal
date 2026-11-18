@@ -1,5 +1,6 @@
 # shellcheck shell=bash
-# ANTS-2049 — e2e harness driver (sourced by smoke.sh, not executed directly).
+# ANTS-2049 — e2e harness driver, sourced by smoke.sh and cases.sh (not
+# executed directly).
 #
 # ANTS-4518 — the directive above, not a shebang: this file is SOURCED and has
 # no business being executable. It is what SC2148 asks for on a library, and it
@@ -18,20 +19,32 @@
 
 ANTS_E2E_BIN="${ANTS_E2E_BIN:-build-fast/ants-terminal}"
 
-# Per-tag state: a tag names one isolated instance (default "main"); a second
-# tag (e.g. "gate") gives case 5 its own socket/profile.
+# Both waits poll every 0.25 s.
+E2E_READY_S=10      # launch_e2e: until the socket answers
+E2E_TEXT_WAIT_S=15  # wait_text: until the needle appears
+
+# Assertions. The sourcing script reports $fails at the end.
+fails=0
+pass() { echo "PASS  $*"; }
+fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
+# has HAYSTACK NEEDLE — plain-substring match (needle is not a regex).
+has()  { grep -qF "$2" <<<"$1"; }
+
+# Per-tag state: a tag names one isolated instance (default "main"); each
+# further tag is another instance with its own socket and profile.
 declare -A _E2E_SOCK _E2E_DIR _E2E_ART _E2E_PID
 _E2E_TAGS=()
 
 # launch_e2e [tag] [--no-e2e] [--no-artifact-dir]
 #   Spawns an isolated instance and blocks until its socket answers tab-list
-#   (or ~10 s). --no-e2e omits the flag (case 5 gate test); --no-artifact-dir
-#   omits ANTS_E2E_ARTIFACT_DIR (case 7 grab bad_args test).
+#   (or E2E_READY_S). --no-e2e launches without --e2e, so the instance refuses
+#   the inject verbs; --no-artifact-dir leaves ANTS_E2E_ARTIFACT_DIR unset, so
+#   grab-image has nowhere to write.
 launch_e2e() {
-    local tag="main" e2eflag="--e2e" set_art=1 a
+    local tag="main" e2eflag=(--e2e) set_art=1 a
     for a in "$@"; do
         case "$a" in
-            --no-e2e)          e2eflag="" ;;
+            --no-e2e)          e2eflag=() ;;
             --no-artifact-dir) set_art=0 ;;
             --*)               echo "launch_e2e: unknown flag $a" >&2; return 2 ;;
             *)                 tag="$a" ;;
@@ -40,18 +53,9 @@ launch_e2e() {
 
     local d; d="$(mktemp -d "${TMPDIR:-/tmp}/ants-e2e-${tag}.XXXXXX")" || return 1
     mkdir -p "$d/cfg/ants-terminal" "$d/data" "$d/cache" "$d/art"
-    # Open the RemoteControl socket via config (remote_control_enabled defaults
-    # false, so a throwaway profile's socket would never open). This is what
-    # lets the gate case (--no-e2e) still be *reachable* to prove the inject
-    # gate is --e2e, not mere socket-open: config opens the socket, only --e2e
-    # sets m_e2eMode.
-    # ANTS-5558 — the welcome dialog opens on a first launch and would take
-    # keyboard focus from the injected keystrokes; mark it already shown.
-    printf '{"remote_control_enabled": true, "ui.welcome_shown": true}\n' \
-        > "$d/cfg/ants-terminal/config.json"
-    chmod 600 "$d/cfg/ants-terminal/config.json"
     _E2E_SOCK[$tag]="$d/e2e.sock"
     _E2E_DIR[$tag]="$d"
+    e2e_write_config "$tag"
     _E2E_ART[$tag]="$d/art"
     _E2E_TAGS+=("$tag")
 
@@ -63,15 +67,16 @@ launch_e2e() {
         XDG_DATA_HOME="$d/data" \
         XDG_CACHE_HOME="$d/cache" \
         "${art_env[@]}" \
-        "$ANTS_E2E_BIN" $e2eflag >/dev/null 2>&1 &
+        "$ANTS_E2E_BIN" "${e2eflag[@]}" >/dev/null 2>&1 &
     _E2E_PID[$tag]=$!
 
     # Readiness: the socket file existing is not enough — the server must
-    # accept and answer. Poll tab-list (socket-dispatchable) until ok or ~10 s.
+    # accept and answer. Poll tab-list (socket-dispatchable) until ok, or
+    # E2E_READY_S pass.
     # `_` rather than a named variable: the body counts iterations and never
     # reads the counter, and the conventional throwaway says so without a
     # suppression directive to keep true (ANTS-4518).
-    for _ in $(seq 1 40); do
+    for _ in $(seq 1 $((E2E_READY_S * 4))); do
         if call_e2e '{"cmd":"tab-list"}' "$tag" 2>/dev/null | grep -q '"ok":true'; then
             return 0
         fi
@@ -79,7 +84,7 @@ launch_e2e() {
             || { echo "launch_e2e[$tag]: instance exited before ready" >&2; return 1; }
         sleep 0.25
     done
-    echo "launch_e2e[$tag]: socket not ready after ~10s" >&2
+    echo "launch_e2e[$tag]: socket not ready after ${E2E_READY_S}s" >&2
     return 1
 }
 
@@ -90,6 +95,35 @@ launch_e2e() {
 call_e2e() {
     local json="$1" tag="${2:-main}"
     ANTS_REMOTE_SOCKET="${_E2E_SOCK[$tag]}" "$ANTS_E2E_BIN" --remote-json "$json"
+}
+
+# e2e_write_config TAG [MEMBERS] — write TAG's profile config.json, plus
+#   MEMBERS (JSON object members, such as '"theme": "Nord"').
+#   remote_control_enabled opens the socket: it defaults false, so a throwaway
+#   profile's socket would never open. It is also what keeps a --no-e2e
+#   instance reachable, so the gate test proves the inject gate is --e2e and
+#   not the open socket: config opens the socket, only --e2e sets m_e2eMode.
+#   ANTS-5558 — the welcome dialog opens on a first launch and would take
+#   keyboard focus from the injected keystrokes; mark it already shown.
+e2e_write_config() {
+    local f="${_E2E_DIR[$1]}/cfg/ants-terminal/config.json"
+    printf '{"remote_control_enabled": true, "ui.welcome_shown": true%s}\n' "${2:+, $2}" > "$f"
+    chmod 600 "$f"
+}
+
+# wait_text TAG NEEDLE [LINES] — poll get-text until NEEDLE appears, or
+#   E2E_TEXT_WAIT_S pass, and print the last text read. ANTS-5012: one read
+#   after a fixed sleep failed under ASan in CI, where the instance can take
+#   longer than the sleep.
+wait_text() {
+    local tag="$1" needle="$2" req='{"cmd":"get-text"}' t=""
+    [[ -n "${3:-}" ]] && req="{\"cmd\":\"get-text\",\"lines\":$3}"
+    for _ in $(seq 1 $((E2E_TEXT_WAIT_S * 4))); do
+        t=$(call_e2e "$req" "$tag")
+        has "$t" "$needle" && break
+        sleep 0.25
+    done
+    printf '%s' "$t"
 }
 
 # e2e_art [tag=main] — echo the tag's artifact dir (for building grab paths).

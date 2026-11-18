@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# ANTS-2049 — e2e smoke suite (spec §6). Sources run.sh, drives a throwaway
+# ANTS-2049 — e2e smoke suite (docs/specs/ANTS-2049-end-end-harness-drive-ants.md
+# § 6). Sources run.sh, drives a throwaway
 # --e2e instance, and asserts each harness capability end-to-end. Exit 0 iff
 # every case passes; a SKIP (e.g. no visible dialog under offscreen) is not a
 # failure. Run by hand or via `ctest -L e2e`. NO build step (INV-7).
@@ -8,18 +9,15 @@ cd "$(dirname "$0")/../.." || exit 1
 # shellcheck source=tools/e2e/run.sh
 source tools/e2e/run.sh
 
-fails=0
-pass() { echo "PASS  $*"; }
-fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
 skip() { echo "SKIP  $*"; }
-has()  { grep -q "$2" <<<"$1"; }
 
 launch_e2e main || { echo "FATAL: could not launch --e2e instance"; exit 1; }
 
 # ── Case 1: terminal echo — send-text drives the PTY, get-text observes ──
-call_e2e '{"cmd":"send-text","text":"echo ANTS_E2E_OK\n"}' >/dev/null
-sleep 1
-if has "$(call_e2e '{"cmd":"get-text"}')" 'ANTS_E2E_OK'; then
+# Shell arithmetic builds the needle, so the typed line cannot satisfy it
+# (ANTS-5013).
+call_e2e '{"cmd":"send-text","text":"echo ANTS_E2E_$((6*7))_OK\n"}' >/dev/null
+if has "$(wait_text main 'ANTS_E2E_42_OK')" 'ANTS_E2E_42_OK'; then
     pass "1 terminal echo (send-text → get-text)"
 else
     fail "1 terminal echo — sentinel not in get-text"
@@ -27,8 +25,7 @@ fi
 
 # ── Case 2: GUI key event — inject-key a sentinel into the focused grid ──
 call_e2e '{"cmd":"inject-key","text":"ANTS_E2E_KEY"}' >/dev/null
-sleep 1
-if has "$(call_e2e '{"cmd":"get-text"}')" 'ANTS_E2E_KEY'; then
+if has "$(wait_text main 'ANTS_E2E_KEY')" 'ANTS_E2E_KEY'; then
     pass "2 inject-key sentinel reached the grid"
 elif [[ "${QT_QPA_PLATFORM:-}" == offscreen ]]; then
     skip "2 inject-key (offscreen: grid keyboard focus not guaranteed)"

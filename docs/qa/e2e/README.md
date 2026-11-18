@@ -12,7 +12,7 @@ Spec + contract: [`docs/specs/ANTS-2049-end-end-harness-drive-ants.md`](../../sp
 
 | File | What it is |
 |---|---|
-| `tools/e2e/run.sh` | `launch_e2e` / `call_e2e` / `teardown_e2e` shell functions. |
+| `tools/e2e/run.sh` | `launch_e2e` / `call_e2e` / `teardown_e2e` shell functions, and the shared case helpers `pass` / `fail` / `has` / `wait_text`. |
 | `tools/e2e/smoke.sh` | The 8 smoke cases (spec §6). Sources `run.sh`. |
 | `--e2e` flag | Forces the RemoteControl socket open **and** unlocks the inject verbs (the `m_e2eMode` gate). |
 | `--remote-json '<obj>'` | Generic client passthrough: send any `{cmd, ...args}` to the socket, print the JSON reply. |
@@ -94,11 +94,11 @@ source tools/e2e/run.sh
 launch_e2e
 # drive
 call_e2e '{"cmd":"…"}'
-# observe
-out=$(call_e2e '{"cmd":"get-text"}')
+# observe: poll until the text appears, not one read after a sleep
+out=$(wait_text main 'EXPECTED')
 # assert (parse the JSON reply — a verb refusal is exit 2 with {ok:false,code},
 # not a transport error, so check the fields, not just the exit code)
-grep -q 'EXPECTED' <<<"$out" || { echo FAIL; exit 1; }
+has "$out" 'EXPECTED' && pass "case" || fail "case"
 ```
 
 Conventions:
