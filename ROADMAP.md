@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6834 -->
+<!-- ants-roadmap-id-high-water: ANTS=6835 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93291,6 +93291,19 @@ measured Ants adding about 5,250 tokens to every request.
   Source: album-builder-feedback-2026-11-18.
   Lanes: docengines.
 
+- 📋 [ANTS-6835] **git_state rename_sweep on this repo gives up at its 5 s budget, while git grep of the same name returns at once.**
+  Measured 2026-11-18 in Ants_Terminal: git_state op:"rename_sweep"
+  old:"run_gate" (no path) refused git_failed "git grep exceeded 5 s
+  wall budget". A plain `git grep -nw run_gate` over two paths returned
+  in 3 ms; the whole-tree cost was not measured. Find what the verb's
+  git grep spends the budget on (pathspec, -w over generated files such
+  as ROADMAP.md, or a cold cache), and either narrow it or report
+  partial results with a next step instead of a bare refusal.
+  **Layman:** The tool that finds leftover old names after a rename gives up too soon on this project, so a session falls back to slower manual searching.
+  Kind: fix.
+  Source: self-found-2026-11-18.
+  Lanes: git_state.
+
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
 - 📋 [ANTS-6427] **Let `duplicate_blocks`, `function_sizes` and `comment_claims` write a whole-tree result to a spill file and return only a summary.**
@@ -106532,7 +106545,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: shared-utilities.
 
-- 📋 [ANTS-6149] **Readability fixes, tools-ci lane: tools/build-and-stage.sh, tools/ci-parity.sh, tools/ci-prune-caches.sh, tools/ci_workflow.py, tools/local-ci.sh, tools/qt62-guard.sh.**
+- ✅ [ANTS-6149] **Readability fixes, tools-ci lane: tools/build-and-stage.sh, tools/ci-parity.sh, tools/ci-prune-caches.sh, tools/ci_workflow.py, tools/local-ci.sh, tools/qt62-guard.sh.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-ci:
   1 high, 7 medium, 5 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/01-tools-ci.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106544,6 +106557,11 @@ worked after these.
   start-up check refuses a ci.yml job with no wanted entry, so a job
   claimed but never run no longer passes silently. Mediums and lows
   remain.
+  2026-11-18, 021edae4: the remaining mediums and lows closed. The
+  build-test --warm-only leg finding was dismissed: that leg is gone
+  (the gate runs build-test via --run-job / --check-warm). The trap
+  twins got the comment fix; local-ci.sh's foreground build stays with
+  ANTS-6050.
   **Layman:** Tidy the local CI scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
