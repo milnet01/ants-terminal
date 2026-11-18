@@ -1330,6 +1330,72 @@ TEST(ClaudeBgTasksButton, Ants6326PauseFlagDoesNotLatchAgentFinished) {
     EXPECT_EQ(tracker.runningCount(), 0) << "the flag with nothing else running is the end";
 }
 
+namespace {
+
+// SendMessage reviving a helper, as a real 2026-11-18 session wrote it.
+QList<QJsonObject> agentResumed(const QString &ts, const QString &id) {
+    return {
+        assistantToolUse(ts, "SendMessage", "toolu_resume",
+                         QJsonObject{{"to", id}, {"message", "Switch to the tag"}}),
+        userToolResult(ts, "toolu_resume",
+                       QJsonObject{{"success", true}, {"resumedAgentId", id},
+                                   {"revivedAgentId", id}},
+                       QStringLiteral("{\"success\":true,\"message\":\"Resuming agent\"}")),
+    };
+}
+
+}  // namespace
+
+// ANTS-5773 INV-16 (ANTS-6832) — a helper revived by SendMessage after its
+// end notice runs again. Claude Code later repeats the old notice in a
+// "remove" queue record; only an "enqueue" record's notice ends a task.
+TEST(ClaudeBgTasksButton, Ants6832ResumedAgentRunsAgain) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString out = dir.filePath(QStringLiteral("ahelper.output"));
+    touchFile(out);
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    const QJsonObject ended = agentNotice("2026-11-18T14:00:38.000Z", "ahelper", "completed",
+                                          QStringLiteral("finished"));
+    writeLines(tp, agentLaunched(out) + QList<QJsonObject>{ended});
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0);
+
+    appendLines(tp, agentResumed("2026-11-18T14:23:27.715Z", "ahelper"));
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
+        << "revived by SendMessage: running again";
+    const qint64 newerProcess = QDateTime::fromString("2026-11-18T14:20:00.000Z", Qt::ISODateWithMs)
+                                    .toMSecsSinceEpoch();
+    ClaudeTranscript::Cursor cursor;
+    ClaudeBgTaskAccum acc;
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(
+                  ClaudeBgTaskTracker::parseIncremental(tp, cursor, acc, newerProcess)).agents, 1)
+        << "resumed under a newer Claude process: the resume is its start";
+
+    QJsonObject repeated = ended;
+    repeated["operation"] = "remove";
+    repeated["timestamp"] = "2026-11-18T14:24:00.000Z";
+    appendLines(tp, {repeated});
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1)
+        << "a remove record repeating the old notice ends nothing";
+
+    appendLines(tp, {agentNotice("2026-11-18T14:40:00.000Z", "ahelper", "completed",
+                                 QStringLiteral("finished"))});
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 0)
+        << "its next end notice ends it";
+}
+
+// ANTS-5773 INV-16 (ANTS-6832) — a revived helper that was never tracked (it
+// ran in the foreground) starts an agent task.
+TEST(ClaudeBgTasksButton, Ants6832ResumedUntrackedAgentRuns) {
+    QTemporaryDir dir;
+    ASSERT_TRUE(dir.isValid());
+    const QString tp = dir.filePath(QStringLiteral("s.jsonl"));
+    writeLines(tp, QList<QJsonObject>{agentNotice("2026-11-18T14:00:38.000Z", "afore",
+                                                  "completed", QStringLiteral("finished"))}
+                   + agentResumed("2026-11-18T14:23:27.715Z", "afore"));
+    EXPECT_EQ(ClaudeBgTaskTracker::pendingCounts(ClaudeBgTaskTracker::parseTranscript(tp)).agents, 1);
+}
+
 
 // ANTS-6404 — a Monitor that expires gets a notice with no <status>, only an
 // "[Monitor expired after …]" event; it must end the monitor. An ordinary

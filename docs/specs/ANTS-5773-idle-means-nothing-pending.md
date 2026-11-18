@@ -36,7 +36,8 @@ The silence rule had a reason (`claude_bg_tasks_button` spec, INV-12): tasks who
 | user `tool_result`, `toolUseResult.backgroundTaskId` set | A flagged launch's task for this `tool_use_id` takes the id, as today. With no such task, start a `shell` task with that id. |
 | user `tool_result`, `toolUseResult.status == "async_launched"` and `agentId` set | Start an `agent` task, id = `agentId`, output path = `toolUseResult.outputFile`. |
 | user `tool_result` for a remembered `Monitor` call, `toolUseResult.taskId` set | Start a `monitor` task, id = `taskId`. |
-| `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from a `queue-operation` record's `content`; the first one seen ends it. A block without `<status>` (a monitor's per-event notice) ends nothing, except a monitor's expiry notice, whose `<event>` begins `[Monitor expired after` (ANTS-6404); nor does one whose summary reads `is waiting on its own background work` (a helper pausing, ANTS-6322). |
+| user `tool_result` with `toolUseResult.success` true and `resumedAgentId` set (`SendMessage` reviving a helper, ANTS-6832) | That `agent` task runs again, with `startedAt` = this record's timestamp. An id with no task starts an `agent` task. |
+| `<task-notification>` block whose `<task-id>` names a task and which carries a non-empty `<status>` | End that task. Read from a `user` record's text and from the `content` of a `queue-operation` record whose `operation` is `enqueue`; the first one seen ends it. A `remove` record repeats a notice an `enqueue` already gave, and is not read (ANTS-6832). A block without `<status>` (a monitor's per-event notice) ends nothing, except a monitor's expiry notice, whose `<event>` begins `[Monitor expired after` (ANTS-6404); nor does one whose summary reads `is waiting on its own background work` (a helper pausing, ANTS-6322). |
 | assistant `tool_use` named `TaskStop` (`input.task_id`, or the deprecated `input.shell_id`) | End that task, as `KillShell` already does. |
 
 The 60 s silence rule is removed from both `finalize` (§ 2.2) and `sweepLiveness`. A missing output file still ends a task.
@@ -120,7 +121,7 @@ A running helper also ends when `agent-<id>.meta.json` holds `finished: true` an
 - **INV-3** — `async_launched` with `agentId` starts an `agent` task, and a `Monitor` result with `taskId` starts a `monitor` task. Each counts in its own field.
   *Test:* same file, one fixture per kind.
   *Breaks when:* either kind is not recognised, or is counted under `shell`.
-- **INV-4** — A `<task-notification>` with a non-empty `<status>` ends the task it names, from a `user` record or a `queue-operation` record. One without `<status>` ends nothing, except a monitor's expiry notice: its `<event>` begins `[Monitor expired after` and it ends the monitor (amended by ANTS-6404; Claude Code sends that notice with no `<status>`).
+- **INV-4** — A `<task-notification>` with a non-empty `<status>` ends the task it names, from a `user` record or an `enqueue` `queue-operation` record (amended by ANTS-6832). One without `<status>` ends nothing, except a monitor's expiry notice: its `<event>` begins `[Monitor expired after` and it ends the monitor (amended by ANTS-6404; Claude Code sends that notice with no `<status>`).
   *Test:* same file. Fixtures: a monitor with two status-less events, then a status block; and a shell ended only by a `queue-operation`. ANTS-6404: `ClaudeBgTasksButton.Ants6404ExpiredMonitorEnds`.
   *Breaks when:* a status-less event ends a monitor, or one record form is ignored, or an expired monitor stays pending.
 - **INV-5** — `TaskStop` ends the task named by `task_id` or `shell_id`.
@@ -156,6 +157,9 @@ A running helper also ends when `agent-<id>.meta.json` holds `finished: true` an
 - **INV-15** — A helper's pause is not its end: a notice with status `completed` and the summary `is waiting on its own background work` leaves its agent task pending. A later notice ends it, and so does `finished: true` in its meta file once no other task is running, read by the poll with no transcript write. A flag that clears puts the helper back to running.
   *Test:* `tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp`: `Ants6322PausedAgentStaysPending`, `Ants6322MetaFileEndsPausedAgent`.
   *Breaks when:* any non-empty status ends a task, or a helper with no later notice stays pending after its meta file says finished.
+- **INV-16** — A helper revived by `SendMessage` after its end notice is pending again from the resume, also under a Claude process started after its launch; an untracked id becomes a pending agent. A `remove` record repeating the old notice does not end it; its next `enqueue` notice does (ANTS-6832).
+  *Test:* `tests/features/claude_bg_tasks_button/test_claude_bg_tasks_button.cpp`: `Ants6832ResumedAgentRunsAgain`, `Ants6832ResumedUntrackedAgentRuns`.
+  *Breaks when:* a resume result leaves a finished task finished, or a `remove` record's notice ends a task.
 
 ## 4. Failure modes
 
@@ -206,7 +210,7 @@ User report, 2026-10-31 (ANTS-6322): a helper paused on its own work read as end
 | Rule | What catches a breach |
 |------|----------------------|
 | INV-1 | `test_claude_state_resolver.cpp` |
-| INV-2 – INV-8, INV-13, INV-15 | `test_claude_bg_tasks_button.cpp` |
+| INV-2 – INV-8, INV-13, INV-15, INV-16 | `test_claude_bg_tasks_button.cpp` |
 | INV-9 | `test_claude_status_bar_per_tab.cpp` |
 | INV-14 | `test_claude_bg_tasks_button.cpp`, `test_claude_status_bar_per_tab.cpp` |
 | INV-10 | `test_claude_state_dot_palette.cpp` |

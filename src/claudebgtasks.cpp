@@ -245,7 +245,9 @@ void ClaudeBgTaskTracker::poll() {
 //   3. `user` tool_result whose toolUseResult.status is completed / killed
 //      / failed → mark the matching id finished (BashOutput's era).
 //   4. A <task-notification> with a non-empty <status>, in a user record's
-//      own text or a queue-operation record's content → end that id.
+//      own text or an "enqueue" queue-operation record's content → end that id.
+//   4a. `user` tool_result with success and toolUseResult.resumedAgentId
+//      (SendMessage reviving a helper) → that agent runs again.
 //   5. `assistant` tool_use KillShell (shell_id) or TaskStop (task_id, or
 //      the deprecated shell_id) → end that id.
 //
@@ -331,6 +333,23 @@ ClaudeBackgroundTask &startTask(ClaudeBgTaskAccum &acc, const QString &tuId,
     return t;
 }
 
+// ANTS-6832 — SendMessage revived a helper whose end was already read, or one
+// never tracked because it ran in the foreground. It runs again from the
+// resume until its next end notice.
+void resumeAgent(ClaudeBgTaskAccum &acc, const QString &tuId, const ClaudeBgPendingCall &call,
+                 const QString &ts, const QString &id) {
+    auto it = acc.idxByBgId.constFind(id);
+    ClaudeBackgroundTask &t = it != acc.idxByBgId.constEnd()
+        ? acc.raw[it.value()]
+        : startTask(acc, tuId, call, ts, ClaudeBackgroundTask::Kind::Agent, id);
+    if (t.tool.isEmpty()) t.tool = QStringLiteral("SendMessage");
+    if (t.description.isEmpty()) t.description = id;
+    t.finished = false;
+    // From the resume, so the process-start rule (ANTS-5773 § 2.2) does not retire a
+    // helper launched under an earlier Claude process.
+    t.startedAt = QDateTime::fromString(ts, Qt::ISODateWithMs);
+}
+
 // ANTS-5050 — fold one event into the accumulator. The full and incremental
 // paths share this one implementation.
 void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
@@ -342,7 +361,10 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
     const QString ts = ev.value(QStringLiteral("timestamp")).toString();
 
     if (type == QLatin1String("queue-operation")) {
-        applyNotifications(acc, ev.value(QStringLiteral("content")).toString());
+        // ANTS-6832 — a "remove" repeats a notice an "enqueue" already gave,
+        // and would end a helper revived since.
+        if (ev.value(QStringLiteral("operation")).toString() == QLatin1String("enqueue"))
+            applyNotifications(acc, ev.value(QStringLiteral("content")).toString());
         return;
     }
 
@@ -445,6 +467,10 @@ void applyBgEvent(ClaudeBgTaskAccum &acc, const QJsonObject &ev) {
                        && !tur.value(QStringLiteral("taskId")).toString().isEmpty()) {
                 startTask(acc, tuId, call, ts, ClaudeBackgroundTask::Kind::Monitor,
                           tur.value(QStringLiteral("taskId")).toString());
+            } else if (tur.value(QStringLiteral("success")).toBool()
+                       && !tur.value(QStringLiteral("resumedAgentId")).toString().isEmpty()) {
+                resumeAgent(acc, tuId, call, ts,
+                            tur.value(QStringLiteral("resumedAgentId")).toString());
             }
 
             // BashOutput / Task tool_result with a completion status.

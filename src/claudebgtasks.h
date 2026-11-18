@@ -25,8 +25,8 @@ struct ClaudeBackgroundTask {
     QString description;    // input.description, else input.subagent_type, else `command`
     QString command;        // the call's command or prompt — truncated by display
     QString outputPath;     // Shell: from the result text. Agent: outputFile. Monitor: empty.
-    QDateTime startedAt;    // assistant event timestamp
-    bool finished = false;  // a completion or kill event was seen for this id
+    QDateTime startedAt;    // assistant event timestamp, or the latest resume's
+    bool finished = false;  // a completion or kill event was seen, and no resume since
     // ANTS-1840 — true only when `finished` was inferred from the output
     // file being gone, NOT by an authoritative transcript completion/kill
     // event. sweepLiveness un-latches it if the file reappears; a
