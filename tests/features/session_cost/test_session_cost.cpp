@@ -453,3 +453,144 @@ TEST(SessionCost, Inv6Registration) {
     EXPECT_NE(ci.substr(schema, end - schema).find("schema[\"additionalProperties\"] = false;"),
               std::string::npos);
 }
+
+// ANTS-6826 — an estimated dollar cost, from the price file.
+namespace {
+
+// An assistant line with a model and the usage fields the harness writes.
+QJsonObject priced(const QString &id, const QString &model, int in, int read,
+                   int write1h, int write5m, int out, const QJsonObject &extra = {}) {
+    QJsonObject usage{{"input_tokens", in},
+                      {"cache_read_input_tokens", read},
+                      {"cache_creation_input_tokens", write1h + write5m},
+                      {"cache_creation", QJsonObject{{"ephemeral_1h_input_tokens", write1h},
+                                                     {"ephemeral_5m_input_tokens", write5m}}},
+                      {"output_tokens", out}};
+    for (auto it = extra.constBegin(); it != extra.constEnd(); ++it)
+        usage[it.key()] = it.value();
+    return QJsonObject{{"type", "assistant"},
+                       {"message", QJsonObject{{"id", id}, {"model", model},
+                                               {"content", QJsonArray{}},
+                                               {"usage", usage}}}};
+}
+
+// m-a: flat prices. m-t: dearer once a request's prompt is over 1000 tokens.
+// "us" doubles every price.
+const char *kPriceFile = R"({
+  "read": "2026-11-18",
+  "inference_geo": {"global": 1, "us": 2},
+  "models": {
+    "m-a": {"input": 1, "cache_write_5m": 2, "cache_write_1h": 3, "cache_read": 0.5,
+            "output": 10},
+    "m-t": {"input": 1, "cache_write_5m": 1, "cache_write_1h": 1, "cache_read": 1,
+            "output": 1, "over_prompt_tokens": 1000,
+            "over": {"input": 2, "cache_write_5m": 2, "cache_write_1h": 2,
+                     "cache_read": 2, "output": 2}}
+  }
+})";
+
+SessionCost::Prices testPrices(const QTemporaryDir &dir) {
+    const QString path = dir.filePath("prices.json");
+    if (!writeFile(path, kPriceFile))
+        return {};
+    return SessionCost::loadPrices(path);
+}
+
+}  // namespace
+
+// INV-17
+TEST(SessionCost, Inv17CostFromThePriceFile) {
+    QTemporaryDir dir;
+    const SessionCost::Prices prices = testPrices(dir);
+    ASSERT_TRUE(prices.error.isEmpty()) << prices.error.toStdString();
+
+    QByteArray t;
+    // $1 input + $6 one-hour writes + $1 output.
+    t += line(priced("r1", "m-a", 1000000, 0, 2000000, 0, 100000));
+    // A line without the cache_creation split: every write is five-minute.
+    // $1 cache read + $2 writes.
+    QJsonObject r2 = priced("r2", "m-a", 0, 2000000, 0, 0, 0);
+    QJsonObject u2 = r2["message"].toObject()["usage"].toObject();
+    u2.remove("cache_creation");
+    u2["cache_creation_input_tokens"] = 1000000;
+    QJsonObject m2 = r2["message"].toObject();
+    m2["usage"] = u2;
+    r2["message"] = m2;
+    t += line(r2);
+    t += line(priced("r3", "m-t", 500, 0, 0, 0, 0));    // under the tier: $0.0005
+    t += line(priced("r4", "m-t", 1500, 500, 0, 0, 0));  // a 2000-token prompt: $0.004
+    t += line(priced("r5", "<synthetic>", 0, 0, 0, 0, 0));  // no tokens, no price needed
+    t += line(priced("r6", "m-a", 1000000, 0, 0, 0, 0,
+                     {{"inference_geo", "us"}, {"speed", "standard"}}));  // $2
+    const QString path = dir.filePath("s.jsonl");
+    ASSERT_TRUE(writeFile(path, t));
+
+    const QJsonObject r = SessionCost::analyse(path, 8, prices);
+    ASSERT_TRUE(r.value("cost_usd").isDouble()) << QJsonDocument(r).toJson().toStdString();
+    EXPECT_NEAR(r.value("cost_usd").toDouble(), 8 + 3 + 0.0005 + 0.004 + 2, 1e-9);
+    const QJsonObject cost = r.value("cost").toObject();
+    EXPECT_TRUE(cost.value("estimate").toBool());
+    EXPECT_EQ(cost.value("prices_read").toString(), "2026-11-18");
+    EXPECT_TRUE(cost.value("unpriced").toArray().isEmpty());
+}
+
+// INV-18
+TEST(SessionCost, Inv18UnpricedRequestsGiveNullAndAreNamed) {
+    QTemporaryDir dir;
+    const SessionCost::Prices prices = testPrices(dir);
+    QByteArray t;
+    t += line(priced("r1", "m-a", 10, 0, 0, 0, 0));
+    t += line(priced("r2", "m-unknown", 10, 0, 0, 0, 0));
+    t += line(priced("r3", "m-unknown", 10, 0, 0, 0, 0));
+    t += line(priced("r4", "m-a", 10, 0, 0, 0, 0, {{"speed", "fast"}}));
+    t += line(priced("r5", "m-a", 10, 0, 0, 0, 0, {{"inference_geo", "eu"}}));
+    const QString path = dir.filePath("s.jsonl");
+    ASSERT_TRUE(writeFile(path, t));
+
+    const QJsonObject r = SessionCost::analyse(path, 8, prices);
+    EXPECT_TRUE(r.value("cost_usd").isNull());
+    const QJsonArray unpriced = r.value("cost").toObject().value("unpriced").toArray();
+    EXPECT_EQ(unpriced, (QJsonArray{"m-a (inference_geo eu)", "m-a (speed fast)", "m-unknown"}))
+        << "each named once, sorted";
+
+    // No price file, or a broken one: null, and the reason names the file.
+    const QJsonObject none = SessionCost::analyse(path, 8);
+    EXPECT_TRUE(none.value("cost_usd").isNull());
+    EXPECT_FALSE(none.value("cost").toObject().value("reason").toString().isEmpty());
+    const QString broken = dir.filePath("broken.json");
+    ASSERT_TRUE(writeFile(broken, "{ not json"));
+    const SessionCost::Prices bad = SessionCost::loadPrices(broken);
+    EXPECT_TRUE(bad.error.contains(broken)) << bad.error.toStdString();
+    EXPECT_TRUE(SessionCost::loadPrices(dir.filePath("absent.json")).error.contains("absent.json"));
+    EXPECT_TRUE(SessionCost::analyse(path, 8, bad).value("cost").toObject()
+                    .value("reason").toString().contains(broken));
+}
+
+// INV-19
+TEST(SessionCost, Inv19IncludeAgentsSumsTheirCost) {
+    QTemporaryDir dir;
+    const SessionCost::Prices prices = testPrices(dir);
+    const QString cwd = QStringLiteral("/p");
+    const QString folder = dir.filePath(SessionCost::folderNameFor(cwd));
+    ASSERT_TRUE(writeFile(folder + "/main1234.jsonl",
+                          line(priced("m1", "m-a", 1000000, 0, 0, 0, 0))));
+    QJsonObject h = priced("h1", "m-a", 2000000, 0, 0, 0, 0);
+    h["isSidechain"] = true;
+    ASSERT_TRUE(writeFile(folder + "/main1234/subagents/agent-a7487c40babb.jsonl", line(h)));
+
+    const QJsonObject r = SessionCost::run({dir.path()}, cwd,
+                                           {{"session_id", "main1234"}, {"include_agents", true}},
+                                           0, prices);
+    EXPECT_NEAR(r.value("cost_usd").toDouble(), 1, 1e-9);
+    EXPECT_NEAR(r.value("agents").toObject().value("cost_usd").toDouble(), 2, 1e-9);
+}
+
+// INV-17 — the shipped price file loads and prices the models this machine runs.
+TEST(SessionCost, Inv17ShippedPriceFileLoads) {
+    const SessionCost::Prices p = SessionCost::loadPrices(
+        QStringLiteral(ANTS_SRC_DIR "/../share/ants-terminal/model-prices.json"));
+    ASSERT_TRUE(p.error.isEmpty()) << p.error.toStdString();
+    for (const char *m : {"claude-fable-5-2", "claude-opus-5-5", "claude-sonnet-5-5",
+                          "claude-haiku-5-5"})
+        EXPECT_TRUE(p.models.contains(QLatin1String(m))) << m;
+}

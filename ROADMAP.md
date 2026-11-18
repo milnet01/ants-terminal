@@ -93127,7 +93127,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: DeFragR-feedback-2026-11-18.
   Lanes: mcp-roadmap-verbs.
 
-- 📋 [ANTS-6826] **session_cost reports an estimated dollar cost beside its token totals.**
+- ✅ [ANTS-6826] **session_cost reports an estimated dollar cost beside its token totals.**
   Reported by DeFragR 2026-11-18. session_cost returns requests
   and token totals; fields ["cost_usd"] is unmatched. The
   fresh-orchestrator brief asks for the run's cost, review-cost.md
@@ -93137,6 +93137,9 @@ measured Ants adding about 5,250 tokens to every request.
   per-model prices, labelled as an estimate.
   Hot reload: a verb reply field; reaches clients on the next
   ants-mcpd rebuild and reconnect, no relaunch.
+  Shipped 2026-11-18: cost_usd per request from
+  share/ants-terminal/model-prices.json (four models, read 2026-11-18
+  from the pricing page); spec INV-17 to INV-19.
   **Layman:** The cost tool gives token counts only, so a review's total cost cannot be told to the user in dollars.
   Kind: feature.
   Source: DeFragR-feedback-2026-11-18.
@@ -111758,7 +111761,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22-tools.
   Lanes: tools-token-bench.
 
-- 📋 [ANTS-6086] **tools/token-bench/bench.py:254: a run with no price prints $None.**
+- ✅ [ANTS-6086] **tools/token-bench/bench.py:254: a run with no price prints $None.**
   Lead 37 from the readability review of tools/, hooks/, cmake/ and
   packaging/ (2026-10-22).
   Location: tools/token-bench/bench.py:254
@@ -111766,6 +111769,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  Confirmed and fixed 2026-11-18 with ANTS-6826: summary printed $None;
+  it now prints "no price".
   **Layman:** A possible bug in the token benchmark tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.

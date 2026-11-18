@@ -3,7 +3,8 @@
 //
 // Thin by design, like its quotation_check and run_trace siblings. The seam
 // (src/sessioncostverb.cpp) reads the transcript; what lives here is
-// resolving caller_cwd, naming the transcript folders and reading the clock.
+// resolving caller_cwd, naming the transcript folders, reading the clock and
+// loading the price file.
 //
 // Every argument this file reads via req.value() MUST be declared in the verb's
 // inputSchema.properties in claudeintegration.cpp (ANTS-4621): the schema sets
@@ -30,6 +31,9 @@ QJsonDocument RemoteControl::cmdSessionCost(const QJsonObject &req) {
         if (req.contains(key))
             args[key] = req.value(key);
     }
+    // ANTS-6826 — the price file is re-read on every call, so an edit to it
+    // reaches the next call with no rebuild.
     return QJsonDocument(SessionCost::run(SessionCost::projectsDirs(), cwd, args,
-                                          QDateTime::currentMSecsSinceEpoch()));
+                                          QDateTime::currentMSecsSinceEpoch(),
+                                          SessionCost::loadPrices(SessionCost::pricesFile())));
 }

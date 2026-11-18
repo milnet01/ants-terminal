@@ -29,6 +29,8 @@ CMakeLists.txt.user*
 
 # Binary
 ants-terminal
+# ...but not the data installed to share/ants-terminal (ANTS-6826).
+!/share/ants-terminal/
 
 # Generated from ants-terminal.desktop.in — contains local install path
 ants-terminal.desktop

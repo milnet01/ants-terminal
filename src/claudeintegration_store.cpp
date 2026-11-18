@@ -2612,7 +2612,8 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     t["description"] = QStringLiteral(
                         "Report a Claude Code session's context rent from its "
                         "transcript: requests, context size at the first request, "
-                        "now and at peak (tokens), token totals, the start-up "
+                        "now and at peak (tokens), token totals, estimated "
+                        "cost_usd (null names unpriced models), the start-up "
                         "payload (system prompt and tool definitions, in bytes, "
                         "largest tools first) and the largest items the session "
                         "holds (tool results by tool, text blocks; bytes). Images "

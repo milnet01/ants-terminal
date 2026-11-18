@@ -106,4 +106,31 @@ last request before the next compaction, or to the last request.
   `requests`, `totals` and `rent_total`. *Test:*
   `SessionCost.Inv16IncludeAgentsSumsHelpers`.
 
+### Estimated cost (ANTS-6826)
+
+Prices live in `share/ants-terminal/model-prices.json`, in USD per million
+tokens. The handler reads it on every call, from `../share/ants-terminal/`
+beside the binary, then `/usr/local/share` and `/usr/share`. An edit to it
+reaches the next call. `tools/token-bench/bench.py` reads the same file.
+
+- **INV-17** — each request is priced at its message's `model`. A
+  one-hour or five-minute cache write is priced as that kind; without the
+  `cache_creation` split, every write is five-minute. A model with
+  `over_prompt_tokens` uses its `over` prices for a request whose prompt
+  (input, cache read and cache write) is larger. `inference_geo`
+  multiplies every price by the file's factor for that region. A request
+  with no tokens is free. `cost_usd` is the sum, rounded to six decimal
+  places; `cost` gives `estimate: true`, `prices_file`, `prices_read` and
+  `unpriced`. *Tests:* `SessionCost.Inv17CostFromThePriceFile`,
+  `SessionCost.Inv17ShippedPriceFileLoads`.
+- **INV-18** — a request whose model has no complete price, whose `speed`
+  is not `standard`, or whose region has no factor makes `cost_usd` null.
+  `cost.unpriced` names each such model, sorted, with the speed or region
+  where that was the cause. With no price file, or one that does not load,
+  `cost_usd` is null and `cost.reason` names the file.
+  *Test:* `SessionCost.Inv18UnpricedRequestsGiveNullAndAreNamed`.
+- **INV-19** — with `include_agents`, `agents.cost_usd` sums the helpers'
+  costs, null when any helper's is, and `agents.unpriced` joins their
+  `unpriced` lists. *Test:* `SessionCost.Inv19IncludeAgentsSumsTheirCost`.
+
 Label: `features;fast`.

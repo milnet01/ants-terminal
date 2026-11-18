@@ -1,0 +1,29 @@
+{
+  "about": "USD per million tokens at standard speed. inference_geo multiplies every price. A model whose prompt is over over_prompt_tokens pays the over prices for that request. Read on every call by session_cost (src/sessioncostverb.cpp) and tools/token-bench/bench.py; a model missing here is reported as unpriced.",
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "read": "2026-11-18",
+  "inference_geo": {"global": 1.0, "us": 1.1},
+  "models": {
+    "claude-fable-5-2": {
+      "input": 8.00, "cache_write_5m": 10.00, "cache_write_1h": 16.00,
+      "cache_read": 0.20, "output": 40.00
+    },
+    "claude-opus-5-5": {
+      "input": 4.00, "cache_write_5m": 5.00, "cache_write_1h": 8.00,
+      "cache_read": 0.20, "output": 20.00
+    },
+    "claude-sonnet-5-5": {
+      "input": 2.00, "cache_write_5m": 2.50, "cache_write_1h": 4.00,
+      "cache_read": 0.10, "output": 10.00
+    },
+    "claude-haiku-5-5": {
+      "input": 0.10, "cache_write_5m": 0.125, "cache_write_1h": 0.20,
+      "cache_read": 0.01, "output": 0.50,
+      "over_prompt_tokens": 100000,
+      "over": {
+        "input": 0.50, "cache_write_5m": 0.625, "cache_write_1h": 1.00,
+        "cache_read": 0.05, "output": 2.50
+      }
+    }
+  }
+}

@@ -25,7 +25,8 @@ the model auto-switcher, which acts on a tab, cannot act on it.
 A run's counts come from its session transcript under ~/.claude/projects/:
 every assistant message's API `usage` field, one per message id (a message
 split over several transcript lines repeats its usage), including subagent
-transcripts. Cost is those counts at the published price in PRICES.
+transcripts. Cost is those counts at the published prices in
+share/ants-terminal/model-prices.json, the file session_cost reads too.
 
 After the run tests/ is restored from the run's starting commit before the
 bug's test runs, so a run that edited the test cannot pass.
@@ -52,14 +53,7 @@ HERE = Path(__file__).resolve().parent
 BENCHES = {"tally": HERE, "pygments": HERE / "pygments"}
 DEFAULT_OUT = Path("/mnt/Emulators/token-bench-runs")
 
-# USD per million tokens. Source: platform.claude.com/docs/en/about-claude/pricing,
-# read 2026-10-15. Global routing (the default), so no regional multiplier.
-PRICES = {
-    "claude-opus-5-5": {
-        "input": 4.00, "cache_write_5m": 5.00, "cache_write_1h": 8.00,
-        "cache_read": 0.20, "output": 20.00,
-    },
-}
+PRICE_FILE = HERE.parent.parent / "share/ants-terminal/model-prices.json"
 TYPES = ["input", "cache_write_5m", "cache_write_1h", "cache_read", "output"]
 
 # A hook is an Ants hook when its command contains one of these.
@@ -159,11 +153,13 @@ def usage_from_transcripts(files: list[Path]) -> dict:
 
 
 def cost_usd(totals: dict) -> float | None:
-    """None when a model in the run has no price in PRICES."""
+    """At global routing and standard speed. None when a model in the run has
+    no price, or has a prompt-length tier, which totals cannot place."""
+    prices = json.loads(PRICE_FILE.read_text(encoding="utf-8"))["models"]
     cost = 0.0
     for model, t in totals.items():
-        price = PRICES.get(model)
-        if price is None:
+        price = prices.get(model)
+        if price is None or "over_prompt_tokens" in price:
             return None
         cost += sum(t[k] * price[k] for k in TYPES) / 1e6
     return round(cost, 4)
@@ -251,7 +247,8 @@ def summary(out: Path) -> None:
         print(f"\n{arm}: {len(runs)} runs, {len(counted)} counted (bug test passed)")
         for r in runs:
             t = {k: sum(m[k] for m in r["tokens"].values()) for k in TYPES}
-            print(f"  {r['started']}  passed={r['bug_test_passed']!s:5}  ${r['cost_usd']}"
+            price = "no price" if r["cost_usd"] is None else f"${r['cost_usd']}"
+            print(f"  {r['started']}  passed={r['bug_test_passed']!s:5}  {price}"
                   f"  (cli ${r['cli_total_cost_usd']})  {r['seconds']}s  "
                   + "  ".join(f"{k}={t[k]}" for k in TYPES))
         costs = [r["cost_usd"] for r in counted]

@@ -3,6 +3,7 @@
 #include "sessioncostverb.h"
 #include "mcprefusal.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
@@ -14,6 +15,7 @@
 #include <QSet>
 
 #include <algorithm>
+#include <cmath>
 #include <vector>
 
 namespace SessionCost {
@@ -164,6 +166,67 @@ QJsonArray serverTable(const QHash<QString, qint64> &toolBytes) {
                                {QStringLiteral("bytes"), by.value(n).second}});
     return out;
 }
+
+// ANTS-6826 — a price entry with all five token prices.
+bool completePrice(const QJsonObject &p) {
+    for (const char *k : {"input", "cache_write_5m", "cache_write_1h", "cache_read", "output"})
+        if (!p.value(QLatin1String(k)).isDouble())
+            return false;
+    return true;
+}
+
+// INV-17, INV-18 — one request's cost in USD. A request with no tokens costs
+// nothing whatever its model (the harness writes `<synthetic>` lines so).
+// Otherwise a request the price file cannot price adds its label to
+// `unpriced` and returns 0.
+double requestCost(const QJsonObject &us, const QString &model, const Prices &prices,
+                   QSet<QString> *unpriced) {
+    const auto n = [](const QJsonObject &o, const char *k) {
+        return o.value(QLatin1String(k)).toDouble();
+    };
+    const double in = n(us, "input_tokens"), read = n(us, "cache_read_input_tokens"),
+                 write = n(us, "cache_creation_input_tokens"), out = n(us, "output_tokens");
+    if (in + read + write + out == 0)
+        return 0;
+    // Without the split, every cache write is a five-minute one.
+    const QJsonObject split = us.value(QStringLiteral("cache_creation")).toObject();
+    const double write1h = n(split, "ephemeral_1h_input_tokens");
+    const double write5m = split.contains(QStringLiteral("ephemeral_5m_input_tokens"))
+                               ? n(split, "ephemeral_5m_input_tokens") : write - write1h;
+
+    const QString label = model.isEmpty() ? QStringLiteral("(no model)") : model;
+    const QString speed = us.value(QStringLiteral("speed")).toString();
+    if (!speed.isEmpty() && speed != QLatin1String("standard")) {
+        unpriced->insert(QStringLiteral("%1 (speed %2)").arg(label, speed));
+        return 0;
+    }
+    const QString geo = us.value(QStringLiteral("inference_geo")).toString();
+    if (!geo.isEmpty() && !prices.geo.value(geo).isDouble()) {
+        unpriced->insert(QStringLiteral("%1 (inference_geo %2)").arg(label, geo));
+        return 0;
+    }
+    QJsonObject p = prices.models.value(model).toObject();
+    const QJsonValue over = p.value(QStringLiteral("over_prompt_tokens"));
+    if (over.isDouble() && in + read + write > over.toDouble())
+        p = p.value(QStringLiteral("over")).toObject();
+    if (!completePrice(p)) {
+        unpriced->insert(label);
+        return 0;
+    }
+    const double multiplier = geo.isEmpty() ? 1.0 : prices.geo.value(geo).toDouble();
+    return multiplier
+           * (in * n(p, "input") + write5m * n(p, "cache_write_5m")
+              + write1h * n(p, "cache_write_1h") + read * n(p, "cache_read")
+              + out * n(p, "output"))
+           / 1e6;
+}
+
+// A sorted QSet<QString> as a JSON array.
+QJsonArray sortedArray(const QSet<QString> &set) {
+    QStringList list(set.cbegin(), set.cend());
+    list.sort();
+    return QJsonArray::fromStringList(list);
+}
 }  // namespace
 
 QString folderNameFor(const QString &cwd) {
@@ -224,7 +287,38 @@ QStringList projectsDirs() {
     return out;
 }
 
-QJsonObject analyse(const QString &transcriptPath, int top) {
+Prices loadPrices(const QString &path) {
+    Prices p;
+    p.path = path;
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly)) {
+        p.error = QStringLiteral("cannot read the price file %1").arg(path);
+        return p;
+    }
+    QJsonParseError err;
+    const QJsonObject o = QJsonDocument::fromJson(f.readAll(), &err).object();
+    if (err.error != QJsonParseError::NoError || !o.value(QStringLiteral("models")).isObject()) {
+        p.error = QStringLiteral("the price file %1 is not JSON with a models object").arg(path);
+        return p;
+    }
+    p.read = o.value(QStringLiteral("read")).toString();
+    p.models = o.value(QStringLiteral("models")).toObject();
+    p.geo = o.value(QStringLiteral("inference_geo")).toObject();
+    return p;
+}
+
+QString pricesFile() {
+    const QString rel = QStringLiteral("/share/ants-terminal/model-prices.json");
+    const QStringList candidates{
+        QDir::cleanPath(QCoreApplication::applicationDirPath() + QStringLiteral("/..") + rel),
+        QStringLiteral("/usr/local") + rel, QStringLiteral("/usr") + rel};
+    for (const QString &c : candidates)
+        if (QFileInfo(c).isFile())
+            return c;
+    return candidates.first();
+}
+
+QJsonObject analyse(const QString &transcriptPath, int top, const Prices &prices) {
     QFile f(transcriptPath);
     if (!f.open(QIODevice::ReadOnly))
         return mcp::refusal("not_found",
@@ -247,6 +341,10 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
     std::vector<int> requestShape;  // index into shapes, -1 before any
     std::vector<Shape> shapes;
     std::vector<Held> hooks, deferredLists, deferredNames;
+    // ANTS-6826 — the estimated cost, and what it could not price.
+    const bool canPrice = prices.error.isEmpty() && !prices.path.isEmpty();
+    double usd = 0;
+    QSet<QString> unpriced;
 
     while (!f.atEnd()) {
         const QJsonObject e = QJsonDocument::fromJson(f.readLine()).object();
@@ -307,6 +405,9 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                 first = current;
             peak = std::max(peak, current);
             ++requests;
+            if (canPrice)
+                usd += requestCost(us, m.value(QStringLiteral("model")).toString(), prices,
+                                   &unpriced);
             contexts.push_back(current);
             requestShape.push_back(static_cast<int>(shapes.size()) - 1);
             continue;
@@ -490,6 +591,17 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
                      {QStringLiteral("deferred_tools"), listRent},
                      {QStringLiteral("total"),
                       resultRent + definitionRent + hookRent + listRent}}}};
+    QJsonObject cost{{QStringLiteral("estimate"), true},
+                     {QStringLiteral("prices_file"), prices.path},
+                     {QStringLiteral("prices_read"), prices.read},
+                     {QStringLiteral("unpriced"), sortedArray(unpriced)}};
+    if (!canPrice)
+        cost[QStringLiteral("reason")] =
+            prices.error.isEmpty() ? QStringLiteral("no price file given") : prices.error;
+    result[QStringLiteral("cost_usd")] = canPrice && unpriced.isEmpty()
+                                             ? QJsonValue(std::round(usd * 1e6) / 1e6)
+                                             : QJsonValue();
+    result[QStringLiteral("cost")] = cost;
     if (startup.isNull())  // INV-15
         result[QStringLiteral("notices")] = QJsonArray{QStringLiteral(
             "no api-request-shape line: start-up and tool-definition rent are unknown")};
@@ -497,7 +609,7 @@ QJsonObject analyse(const QString &transcriptPath, int top) {
 }
 
 QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
-                const QJsonObject &args, qint64 nowMs) {
+                const QJsonObject &args, qint64 nowMs, const Prices &prices) {
     static const QRegularExpression sid(QStringLiteral("^[0-9A-Za-z-]{8,64}$"));
     const QString sessionId = args.value(QStringLiteral("session_id")).toString();
     const bool self = sessionId == QLatin1String("self");
@@ -560,7 +672,7 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
                 ++othersActive;
     }
 
-    QJsonObject r = analyse(path, top);
+    QJsonObject r = analyse(path, top, prices);
     if (!r.value(QStringLiteral("ok")).toBool())
         return r;
     r[QStringLiteral("session_id")] = QFileInfo(path).completeBaseName();
@@ -581,14 +693,22 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
         int count = 0, requests = 0;
         qint64 rentTotal = 0;
         QJsonObject totals;
+        QJsonValue usd = 0.0;  // INV-19: null once any helper's is
+        QSet<QString> unpriced;
         for (const QFileInfo &h : helpers) {
-            const QJsonObject a = analyse(h.absoluteFilePath(), 1);
+            const QJsonObject a = analyse(h.absoluteFilePath(), 1, prices);
             if (!a.value(QStringLiteral("ok")).toBool())
                 continue;
             ++count;
             requests += a.value(QStringLiteral("requests")).toInt();
             rentTotal += static_cast<qint64>(
                 a.value(QStringLiteral("rent")).toObject().value(QStringLiteral("total")).toDouble());
+            const QJsonValue helperUsd = a.value(QStringLiteral("cost_usd"));
+            usd = usd.isDouble() && helperUsd.isDouble()
+                      ? QJsonValue(usd.toDouble() + helperUsd.toDouble()) : QJsonValue();
+            for (const auto &u : a.value(QStringLiteral("cost")).toObject()
+                                     .value(QStringLiteral("unpriced")).toArray())
+                unpriced.insert(u.toString());
             const QJsonObject t = a.value(QStringLiteral("totals")).toObject();
             for (auto it = t.constBegin(); it != t.constEnd(); ++it)
                 totals[it.key()] = static_cast<qint64>(totals.value(it.key()).toDouble()
@@ -598,7 +718,11 @@ QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
             QJsonObject{{QStringLiteral("count"), count},
                         {QStringLiteral("requests"), requests},
                         {QStringLiteral("totals"), totals},
-                        {QStringLiteral("rent_total"), rentTotal}};
+                        {QStringLiteral("rent_total"), rentTotal},
+                        {QStringLiteral("cost_usd"),
+                         usd.isDouble() ? QJsonValue(std::round(usd.toDouble() * 1e6) / 1e6)
+                                        : QJsonValue()},
+                        {QStringLiteral("unpriced"), sortedArray(unpriced)}};
     }
     return r;
 }

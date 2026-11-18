@@ -44,14 +44,29 @@ bool isAgentTranscript(const QString &transcriptPath);
 // test passes its own list.
 QStringList projectsDirs();
 
-// The whole report for one transcript (INV-1 to INV-3, INV-10 to INV-15).
-// `top` caps each list.
-QJsonObject analyse(const QString &transcriptPath, int top);
+// ANTS-6826 — the model price file, share/ants-terminal/model-prices.json.
+// `error` is empty when it loaded; it names the file when it did not.
+struct Prices {
+    QString path;
+    QString read;            // the date the prices were read from the pricing page
+    QJsonObject models;      // model id -> prices, USD per million tokens
+    QJsonObject geo;         // inference_geo -> multiplier
+    QString error;
+};
+Prices loadPrices(const QString &path);
+// The installed price file: beside the binary's share/ directory, then
+// /usr/local/share and /usr/share. Read by the handler, not by run(), so a
+// test passes its own; the handler loads it on every call (hot reload).
+QString pricesFile();
+
+// The whole report for one transcript (INV-1 to INV-3, INV-10 to INV-15),
+// with its estimated cost at `prices` (INV-17, INV-18). `top` caps each list.
+QJsonObject analyse(const QString &transcriptPath, int top, const Prices &prices = {});
 
 // Resolves the transcript from cwd and args (INV-4, INV-5), then analyse();
-// `include_agents` adds the helper agents (INV-16).
+// `include_agents` adds the helper agents (INV-16, INV-19).
 // `projectsDirs` are tried in order; `nowMs` dates "active".
 QJsonObject run(const QStringList &projectsDirs, const QString &cwd,
-                const QJsonObject &args, qint64 nowMs);
+                const QJsonObject &args, qint64 nowMs, const Prices &prices = {});
 
 }  // namespace SessionCost

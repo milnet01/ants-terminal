@@ -430,6 +430,8 @@ cd ..
 %{_datadir}/%{name}/shell-integration
 # ANTS-6708 — the Claude Code hook pack the welcome dialog installs.
 %{_datadir}/%{name}/claude-hooks
+# ANTS-6826 — model prices for session_cost.
+%{_datadir}/%{name}/model-prices.json
 # ANTS-5734 — the vendored tree-sitter runtime's and grammars' licences.
 %license %{_datadir}/%{name}/licenses
 # ANTS-5617 — demoreel, outside PATH.

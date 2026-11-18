@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`session_cost` reports `cost_usd`, an estimated dollar cost priced per request from `share/ants-terminal/model-prices.json`, and sums helper agents' cost under `include_agents`. A model with no price gives null and is named in `cost.unpriced`.** (ANTS-6826)
+  The price file is re-read on every call, so new prices reach the
+  next call with no rebuild. `tools/token-bench/bench.py` reads the
+  same file.
+
 - **roadmap_query says why it shortened bodies (shrink_reason) and how many ids per call come back at the size asked for (ids_per_call)** (ANTS-6825)
 
 - **`audit_run` takes a confidence floor** (ANTS-1706)
@@ -512,6 +517,8 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **`tools/token-bench/bench.py summary` prints "no price" for a run it cannot price.** (ANTS-6086)
 
 - **find_sources counts a search word found in a file's body as found, whichever other word that file's name matched** (ANTS-5987)
 

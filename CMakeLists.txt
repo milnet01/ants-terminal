@@ -1553,6 +1553,11 @@ install(DIRECTORY hooks/
         USE_SOURCE_PERMISSIONS
         FILES_MATCHING PATTERN "*.sh" PATTERN "README.md")
 
+# ANTS-6826 — model prices for session_cost's dollar estimate, re-read on every
+# call (src/sessioncostverb.cpp, pricesFile).
+install(FILES share/ants-terminal/model-prices.json
+        DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/ants-terminal)
+
 # ANTS-5734 § 5 — ants-mcpd carries the vendored tree-sitter runtime and
 # grammars, and MIT asks for each notice to travel with the copy.
 install(FILES third_party/tree-sitter/LICENSE
