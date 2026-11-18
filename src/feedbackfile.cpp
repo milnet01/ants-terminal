@@ -117,7 +117,7 @@ const QRegularExpression &markerRe() {
 
 // ANTS-3448 — closure regex: a `**Proposed ID:**` value beginning the literal
 // `n/a` followed by a word boundary (whitespace, dash, em-dash, or EOL) — so
-// `n/architecture` is NOT a closure. parse()'s v2 branch reads it.
+// `n/architecture` is NOT a closure. readV2Delta reads it.
 const QRegularExpression &closureRe() {
     static const QRegularExpression re(
         QStringLiteral("^n/a\\b"), QRegularExpression::CaseInsensitiveOption);
@@ -165,8 +165,8 @@ QString awaitingQuestion(const QString &value) {
 }
 
 // ANTS-3448 — finding-bullet arm: a `- **What/Repro/Impact:**` (or `**What**:`)
-// body bullet: what makes an id-less `### ` block finding-shaped in parse()'s
-// suspected_untagged scan.
+// body bullet: what makes an id-less `### ` block finding-shaped in
+// readV2Delta's suspected_untagged scan.
 const QRegularExpression &bulletArmRe() {
     static const QRegularExpression re(
         QStringLiteral("^ *[-*] +\\*\\*(what|repro|impact)[:*]"),
@@ -209,269 +209,265 @@ int markerVersion(const QString &content) {
     return 0;  // absent or malformed (no digits) ⟹ 0 (< 2, the v1 rule)
 }
 
+namespace {
+
+// An ANTS id anywhere in a line: a maintainer block's ids (v1's mappedIds)
+// and a `**Proposed ID:**` value's ids (v2's).
+const QRegularExpression &idRe() {
+    static const QRegularExpression re(QStringLiteral("ANTS-[0-9]+"));
+    return re;
+}
+
+void insertIds(const QString &text, QSet<QString> *ids) {
+    auto it = idRe().globalMatch(text);
+    while (it.hasNext()) ids->insert(it.next().captured(0));
+}
+
+QStringList sortedIds(const QSet<QString> &ids) {
+    QStringList out(ids.begin(), ids.end());
+    out.sort();
+    return out;
+}
+
+// ANTS-3371 — one maintainer tracking-table data row, so include_tracking
+// can return per-item status without a full-file Read. False for a line that
+// is not one: no leading `|`, under three cells, the `Item …` header or the
+// `|---|` separator. `li` is the row's 0-based line index.
+bool readTrackingRow(const QString &row, int li, TrackingRow *out) {
+    // ANTS-3445 — anchored: a cell holds only a real id, never one in prose.
+    static const QRegularExpression idCellRe(QStringLiteral("^ANTS-[0-9]+$"));
+    static const QRegularExpression sepCellRe(QStringLiteral("^:?-{1,}:?$"));
+    const QString trimmed = row.trimmed();
+    if (!trimmed.startsWith(QLatin1Char('|'))) return false;
+    QStringList cells = splitTrackingRow(trimmed);
+    if (!cells.isEmpty() && cells.first().trimmed().isEmpty())
+        cells.removeFirst();
+    if (!cells.isEmpty() && cells.last().trimmed().isEmpty())
+        cells.removeLast();
+    for (QString &c : cells) c = c.trimmed();
+    if (cells.size() < 3) return false;
+    if (cells.at(0).compare(QStringLiteral("Item"), Qt::CaseInsensitive) == 0)
+        return false;
+    if (sepCellRe.match(cells.at(0)).hasMatch()) return false;
+    out->line = li + 1;   // ANTS-3442: 1-based source line
+    out->item = cells.at(0);
+    // ANTS-3445 — only a real ANTS-NNNN token is an id. A closure such as
+    // `(self-resolved)` or `n/a`, or a bare local counter, must not populate
+    // ids, or pruneTracking reads the shared pseudo-id as "superseded" and
+    // drops the earlier of two unrelated closure rows (data loss on
+    // MAME_Curator #4).
+    for (const QString &p : cells.at(1).split(QLatin1Char(','))) {
+        const QString id = p.trimmed();
+        if (idCellRe.match(id).hasMatch()) out->ids.append(id);
+    }
+    out->status = cells.at(2);
+    if (cells.size() >= 4) out->notes = cells.at(3);
+    return true;
+}
+
+// Each maintainer block, its heading to blockEnd, on both versions: its
+// tracking rows go to r.trackingRows, and its ids are returned (v1's
+// mappedIds). An id inside a fence still counts: the fence rule governs
+// boundary detection, not id extraction.
+QSet<QString> readMaintainerBlocks(const QStringList &lines,
+                                   const QVector<Boundary> &boundaries,
+                                   ParseResult &r) {
+    QSet<QString> ids;
+    for (int bi = 0; bi < boundaries.size(); ++bi) {
+        if (!boundaries.at(bi).isMaintainer) continue;
+        const int end = blockEnd(boundaries, bi, int(lines.size()));
+        for (int li = boundaries.at(bi).line0; li < end; ++li) {
+            insertIds(lines.at(li), &ids);
+            TrackingRow tr;
+            if (readTrackingRow(lines.at(li), li, &tr)) r.trackingRows.append(tr);
+        }
+    }
+    return ids;
+}
+
+// ANTS-4513 — a finding's record. Its entry heading is the last boundary
+// above it; filedOn is that heading's leading date.
+FindingRecord findingRecord(const FindingBlock &fb, const QString &triage,
+                            const QVector<Boundary> &boundaries) {
+    static const QRegularExpression dateRe(
+        QStringLiteral("^#+\\s+(\\d{4}-\\d{2}-\\d{2})"));
+    FindingRecord rec;
+    rec.heading = fb.heading;
+    rec.line    = fb.headingLine0 + 1;
+    rec.triage  = triage;
+    // ANTS-6733 L14-20 — "" and not a null QString, which binds as SQL NULL
+    // into the NOT NULL entry_heading column.
+    rec.entryHeading = QStringLiteral("");
+    for (const Boundary &b : boundaries) {
+        if (b.line0 >= fb.headingLine0) break;
+        rec.entryHeading = b.text;
+    }
+    const auto dm = dateRe.match(rec.entryHeading);
+    if (dm.hasMatch()) rec.filedOn = dm.captured(1);
+    return rec;
+}
+
+// A finding's block as the delta carries it: heading first, trailing blank
+// lines dropped.
+QStringList deltaBlockLines(const QStringList &lines, const FindingBlock &fb) {
+    int end0 = fb.extentEnd0;
+    while (end0 > fb.headingLine0 + 1 && lines.at(end0 - 1).trimmed().isEmpty())
+        --end0;
+    QStringList blk;
+    for (int li = fb.headingLine0; li < end0 && li < lines.size(); ++li)
+        blk.append(lines.at(li));
+    return blk;
+}
+
+// ANTS-3744 — a fully-condensed file (ANTS-3475) keeps its ids only on a
+// `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer line, with
+// no finding blocks left to carry a `**Proposed ID:**`. Without these ids
+// mapped_id_status, the reporter's way of learning its item shipped, returns
+// nothing for exactly the files tidied hardest.
+QSet<QString> trackedPointerIds(const QStringList &lines) {
+    static const QRegularExpression trackedLineRe(
+        QStringLiteral(R"(^#{1,6}\s+Tracked in ROADMAP\b)"));
+    QSet<QString> ids;
+    for (const QString &l : lines)
+        if (trackedLineRe.match(l).hasMatch()) insertIds(l, &ids);
+    return ids;
+}
+
+// The v2 rule (spec § 2.2): the delta is every `### ` finding whose first
+// `**Proposed ID:**` value is neither an ANTS id nor an `n/a` closure, joined
+// in file order. Fills findings, awaiting, suspectedUntagged, mappedIds and
+// the delta fields.
+void readV2Delta(const QStringList &lines, const QVector<Boundary> &boundaries,
+                 ParseResult &r) {
+    // Fence-aware: does an id-less block carry a `- **What/Repro/Impact:**`
+    // bullet? Then it is suspected_untagged (§ 2.2/5).
+    const QVector<bool> fenced = fencedLines(lines);
+    auto bodyHasFindingBullet = [&](const FindingBlock &fb) {
+        for (int li = fb.headingLine0 + 1;
+             li < fb.extentEnd0 && li < lines.size(); ++li) {
+            if (!fenced.at(li) && bulletArmRe().match(lines.at(li)).hasMatch())
+                return true;
+        }
+        return false;
+    };
+
+    QSet<QString> ids;
+    QStringList deltaBlocks;   // one `\n`-joined block per un-triaged finding
+    for (const FindingBlock &fb : enumerateFindingBlocks(lines)) {
+        if (fb.idLine0 < 0) {
+            // No id line → not a finding. A finding-shaped one is a
+            // hand-editor silent-loss risk; bare prose is ignored.
+            if (bodyHasFindingBullet(fb)) {
+                r.suspectedUntagged.append({ fb.heading, fb.headingLine0 + 1 });
+                r.findings.append(
+                    findingRecord(fb, QStringLiteral("untagged"), boundaries));
+            }
+            continue;
+        }
+        const QString val = fb.idValue.trimmed();
+        // ANTS-3631 — the three tests, in this order. Awaiting FIRST, before
+        // the id test, because a question quoting an id would otherwise
+        // classify as triaged: see awaitingRe()'s header for the loss that
+        // produces. It contributes no ids, as a closure does not: an id
+        // inside a question was never assigned.
+        const bool isAwaiting = awaitingRe().match(val).hasMatch();
+        if (isAwaiting)
+            r.awaiting.append({ fb.heading, fb.headingLine0 + 1,
+                                awaitingQuestion(val) });
+        const bool isClosure = closureRe().match(val).hasMatch();
+        if (!isAwaiting && !isClosure && idRe().match(val).hasMatch()) {
+            FindingRecord rec =
+                findingRecord(fb, QStringLiteral("mapped"), boundaries);
+            auto it = idRe().globalMatch(val);
+            while (it.hasNext()) {
+                const QString id = it.next().captured(0);
+                ids.insert(id);
+                if (!rec.ids.contains(id)) rec.ids.append(id);
+            }
+            r.findings.append(rec);
+            continue;   // triaged → not in the delta
+        }
+        if (!isAwaiting && isClosure) {
+            r.findings.append(
+                findingRecord(fb, QStringLiteral("closed"), boundaries));
+            continue;   // closure → triaged, contributes no ids
+        }
+        // Un-triaged: empty, the placeholder, any non-id non-n/a text, or an
+        // awaiting marker, which is un-triaged DELIBERATELY so the question
+        // reaches the reporter in the surface they already read.
+        r.findings.append(findingRecord(
+            fb, isAwaiting ? QStringLiteral("awaiting")
+                           : QStringLiteral("untriaged"), boundaries));
+        const QStringList blk = deltaBlockLines(lines, fb);
+        if (r.deltaStartLine < 0) r.deltaStartLine = fb.headingLine0 + 1;
+        r.deltaLineCount += blk.size();
+        deltaBlocks.append(blk.join(QLatin1Char('\n')));
+    }
+    // Pointer-line ids only when no finding block yielded one, so a file that
+    // still carries write-ups keeps its own harvest.
+    if (ids.isEmpty()) ids = trackedPointerIds(lines);
+    r.mappedIds = sortedIds(ids);
+    if (!deltaBlocks.isEmpty()) {
+        r.delta = deltaBlocks.join(QLatin1Char('\n'));
+        r.deltaPresent = true;
+    }
+}
+
+// The v1 rule (formatVersion < 2): the delta runs from the first contributor
+// heading after the last maintainer heading to EOF. With no maintainer
+// heading, the first boundary is the H1 title and the delta starts at the
+// first non-blank line after it. No such heading → no delta.
+void readV1Delta(const QStringList &lines, const QVector<Boundary> &boundaries,
+                 int lastMaintainerIdx, ParseResult &r) {
+    int s = -1;   // 0-based index of the delta's first line
+    for (const Boundary &b : boundaries) {
+        if (b.isMaintainer) continue;
+        if (lastMaintainerIdx < 0) { s = b.line0 + 1; break; }
+        if (b.line0 > lastMaintainerIdx) { s = b.line0; break; }
+    }
+    if (s < 0) return;
+    if (lastMaintainerIdx < 0)
+        while (s < lines.size() && lines.at(s).trimmed().isEmpty()) ++s;
+    QStringList deltaLines = lines.mid(s);
+    // Drop the empty segment after a final "\n", so the count matches the
+    // visible lines.
+    if (!deltaLines.isEmpty() && deltaLines.last().isEmpty())
+        deltaLines.removeLast();
+    if (deltaLines.isEmpty()) return;
+    r.delta = deltaLines.join(QLatin1Char('\n'));
+    r.deltaPresent = true;
+    r.deltaStartLine = s + 1;
+    r.deltaLineCount = deltaLines.size();
+}
+
+}  // namespace
+
 ParseResult parse(const QString &fileContent) {
     ParseResult r;
+    // One entry per line, so 1-based line numbers map cleanly. A file ending
+    // in "\n" yields a trailing empty entry, which is never a heading.
+    const QStringList lines = fileContent.split(QLatin1Char('\n'));
 
-    // Split keeping empty trailing segments so 1-based line numbers map
-    // cleanly. QString::split with KeepEmptyParts gives one entry per
-    // line; a file ending in "\n" yields a trailing empty entry, which
-    // is harmless (it is never a heading).
-    const QStringList lines =
-        fileContent.split(QLatin1Char('\n'));
-
-    // ANTS-3448 — format version from the marker. >= 2 selects the v2
-    // inline-`**Proposed ID:**` delta rule (§2.2); < 2 keeps the v1 rule. The
-    // v1 boundary scan below runs on BOTH versions (INV-6) — only the delta /
-    // mappedIds / suspectedUntagged fields branch on the version.
+    // ANTS-3448 — a marker of 2 or more selects the v2 delta rule. The
+    // boundary scan and tracking rows below run on both versions (INV-6).
     r.formatVersion = markerVersion(fileContent);
-    const bool v2 = r.formatVersion >= 2;
-
-    // Pass 1 — every non-fenced boundary heading, via the shared scanner
-    // (ANTS-3421 extraction). Both versions report the maintainer blocks.
     const QVector<Boundary> boundaries = scanBoundaries(lines);
-    int lastMaintainerIdx = -1;          // 0-based line index
+    int lastMaintainerIdx = -1;   // 0-based line index
     for (const Boundary &b : boundaries) {
         if (!b.isMaintainer) continue;
         ++r.maintainerBlockCount;
         lastMaintainerIdx = b.line0;
     }
-    r.lastMaintainerLine =
-        (lastMaintainerIdx >= 0) ? (lastMaintainerIdx + 1) : -1;
+    r.lastMaintainerLine = (lastMaintainerIdx >= 0) ? lastMaintainerIdx + 1 : -1;
+    const QSet<QString> maintainerIds =
+        readMaintainerBlocks(lines, boundaries, r);
 
-    // Pass 2 — each maintainer block (its heading to blockEnd): its tracking
-    // rows, on both versions, and its ANTS-[0-9]+ ids, which are v1's
-    // mappedIds. Fenced regions inside the body are still scanned for IDs —
-    // the fence rule only governs boundary detection, not ID extraction; an
-    // ID pasted inside a maintainer-block fence is still a mapped ID.
-    static const QRegularExpression idRe(QStringLiteral("ANTS-[0-9]+"));
-    // ANTS-3445 — anchored whole-token id test for the tracking-row ID column
-    // (a cell holds only a real id, never an id embedded in prose).
-    static const QRegularExpression idCellRe(QStringLiteral("^ANTS-[0-9]+$"));
-    // ANTS-3371 — separator row of a GFM table (`|---|:--:|` etc.).
-    static const QRegularExpression sepCellRe(QStringLiteral("^:?-{1,}:?$"));
-    QSet<QString> v1Ids;
-    for (int bi = 0; bi < boundaries.size(); ++bi) {
-        if (!boundaries.at(bi).isMaintainer) continue;
-        const int start = boundaries.at(bi).line0;
-        const int end = blockEnd(boundaries, bi, int(lines.size()));
-        for (int li = start; li < end; ++li) {
-            const QString &row = lines.at(li);
-            auto it = idRe.globalMatch(row);
-            while (it.hasNext()) v1Ids.insert(it.next().captured(0));
-
-            // ANTS-3371 — extract the maintainer tracking-table data rows
-            // so include_tracking can return per-item status without a
-            // full-file Read + hand-parse. A pipe-table row trims to a
-            // leading `|`; split on `|`, drop the empty leading/trailing
-            // cells, skip the header (`Item …`) and `|---|` separator.
-            const QString trimmed = row.trimmed();
-            if (!trimmed.startsWith(QLatin1Char('|'))) continue;
-            QStringList cells = splitTrackingRow(trimmed);
-            if (!cells.isEmpty() && cells.first().trimmed().isEmpty())
-                cells.removeFirst();
-            if (!cells.isEmpty() && cells.last().trimmed().isEmpty())
-                cells.removeLast();
-            for (QString &c : cells) c = c.trimmed();
-            if (cells.size() < 3) continue;
-            if (cells.at(0).compare(QStringLiteral("Item"),
-                                    Qt::CaseInsensitive) == 0)
-                continue;  // header row
-            if (sepCellRe.match(cells.at(0)).hasMatch())
-                continue;  // |---| separator row
-            TrackingRow tr;
-            tr.line = li + 1;   // ANTS-3442: 1-based source line
-            tr.item = cells.at(0);
-            const QString idCell = cells.at(1);
-            // ANTS-3445 — only a real ANTS-NNNN token is an id. A non-id
-            // id-column value (a closure like `(schema fix)` / `(self-resolved)`
-            // / `n/a`, or a bare local counter) must NOT populate tr.ids, or
-            // pruneTracking treats the shared pseudo-id as "superseded" and drops
-            // the earlier of two unrelated closure rows (confirmed data loss on
-            // MAME_Curator #4). The explicit `n/a` skip is now subsumed — it
-            // simply fails the id-shape test, like every other non-id token.
-            for (const QString &p : idCell.split(QLatin1Char(','))) {
-                const QString id = p.trimmed();
-                if (idCellRe.match(id).hasMatch()) tr.ids.append(id);
-            }
-            tr.status = cells.at(2);
-            if (cells.size() >= 4) tr.notes = cells.at(3);
-            r.trackingRows.append(tr);
-        }
+    if (r.formatVersion >= 2) {
+        readV2Delta(lines, boundaries, r);
+    } else {
+        r.mappedIds = sortedIds(maintainerIds);
+        readV1Delta(lines, boundaries, lastMaintainerIdx, r);
     }
-
-    // ANTS-3448 — the delta / mappedIds / suspectedUntagged fields branch on
-    // the format version. The v1 boundary scan above (lastMaintainerLine /
-    // maintainerBlockCount / trackingRows) already ran on both versions (INV-6).
-    // The v2 branch returns; the v1 rule follows it.
-    if (v2) {
-        // --- v2 rule (spec § 2.2): the un-triaged delta is the ordered
-        // concatenation of every `### ` finding whose first `**Proposed ID:**`
-        // value is neither an ANTS-NNNN id nor an `n/a` closure. ------------
-        const QVector<FindingBlock> blocks = enumerateFindingBlocks(lines);
-
-        // Fence-aware body scan: does this line-less block carry a finding
-        // bullet (`- **What/Repro/Impact:**`)? → suspected_untagged (§2.2/5).
-        const QVector<bool> fenced = fencedLines(lines);
-        auto bodyHasFindingBullet = [&](const FindingBlock &fb) -> bool {
-            for (int li = fb.headingLine0 + 1;
-                 li < fb.extentEnd0 && li < lines.size(); ++li) {
-                if (!fenced.at(li) && bulletArmRe().match(lines.at(li)).hasMatch())
-                    return true;
-            }
-            return false;
-        };
-
-        // ANTS-4513 — a finding's record, carrying its enclosing entry
-        // heading: the last boundary above it.
-        auto record = [&](const FindingBlock &fb, const QString &triage) {
-            FindingRecord rec;
-            rec.heading = fb.heading;
-            rec.line    = fb.headingLine0 + 1;
-            rec.triage  = triage;
-            // ANTS-6733 L14-20 — "" and not a null QString, which binds as
-            // SQL NULL into the NOT NULL entry_heading column.
-            rec.entryHeading = QStringLiteral("");
-            for (const Boundary &b : boundaries) {
-                if (b.line0 >= fb.headingLine0) break;
-                rec.entryHeading = b.text;
-            }
-            static const QRegularExpression dateRe(
-                QStringLiteral("^#+\\s+(\\d{4}-\\d{2}-\\d{2})"));
-            const auto dm = dateRe.match(rec.entryHeading);
-            if (dm.hasMatch()) rec.filedOn = dm.captured(1);
-            r.findings.append(rec);
-            return &r.findings.last();
-        };
-
-        QSet<QString> v2ids;
-        QStringList deltaBlocks;     // one `\n`-joined block per un-triaged finding
-        int deltaLineTotal = 0;
-        for (const FindingBlock &fb : blocks) {
-            if (fb.idLine0 < 0) {
-                // No id line → not a finding. A finding-shaped one is a
-                // hand-editor silent-loss risk (suspected_untagged); bare prose
-                // is ignored.
-                if (bodyHasFindingBullet(fb)) {
-                    r.suspectedUntagged.append({ fb.heading, fb.headingLine0 + 1 });
-                    record(fb, QStringLiteral("untagged"));
-                }
-                continue;
-            }
-            const QString val = fb.idValue.trimmed();
-            // ANTS-3631 — the three tests, in this order. Awaiting FIRST,
-            // before the id test, because a question quoting an id would
-            // otherwise classify as triaged: see awaitingRe()'s header for the
-            // loss that produces. It contributes no ids for the same reason a
-            // closure does not — an id inside a question was never assigned.
-            const bool isAwaiting = awaitingRe().match(val).hasMatch();
-            if (isAwaiting)
-                r.awaiting.append({ fb.heading, fb.headingLine0 + 1,
-                                    awaitingQuestion(val) });
-            const bool isClosure = closureRe().match(val).hasMatch();
-            const bool hasId = idRe.match(val).hasMatch();
-            if (!isAwaiting && !isClosure && hasId) {
-                // Triaged with real id(s): contribute them to mappedIds.
-                FindingRecord *rec = record(fb, QStringLiteral("mapped"));
-                auto it = idRe.globalMatch(val);
-                while (it.hasNext()) {
-                    const QString id = it.next().captured(0);
-                    v2ids.insert(id);
-                    if (!rec->ids.contains(id)) rec->ids.append(id);
-                }
-                continue;   // triaged → not in the delta
-            }
-            if (!isAwaiting && isClosure) {
-                record(fb, QStringLiteral("closed"));
-                continue;  // closure → triaged, contributes no ids
-            }
-            record(fb, isAwaiting ? QStringLiteral("awaiting")
-                                  : QStringLiteral("untriaged"));
-            // Un-triaged: empty, the placeholder, any non-id non-n/a text, or
-            // an awaiting marker — which is un-triaged DELIBERATELY, so the
-            // question reaches the reporter in the surface they already read.
-            // The finding's block, all trailing blank lines stripped per block.
-            int end0 = fb.extentEnd0;
-            while (end0 > fb.headingLine0 + 1 &&
-                   lines.at(end0 - 1).trimmed().isEmpty())
-                --end0;
-            QStringList blk;
-            for (int li = fb.headingLine0; li < end0 && li < lines.size(); ++li)
-                blk.append(lines.at(li));
-            if (r.deltaStartLine < 0) r.deltaStartLine = fb.headingLine0 + 1;
-            deltaLineTotal += blk.size();
-            deltaBlocks.append(blk.join(QLatin1Char('\n')));
-        }
-        // ANTS-3744 — a fully-condensed file (ANTS-3475) keeps its ids only on
-        // a `## Tracked in ROADMAP (detail + status there): ANTS-…` pointer
-        // line, with no finding blocks left to carry a `**Proposed ID:**`
-        // slot. Without this branch such a file reports mapped_ids:[], so the
-        // reporting session's documented way of learning that its item shipped
-        // (mapped_id_status) returns nothing for exactly the files tidied
-        // hardest. Only consulted when the finding blocks yielded no id, so a
-        // file that still carries write-ups keeps its existing harvest.
-        if (v2ids.isEmpty()) {
-            static const QRegularExpression trackedLineRe(
-                QStringLiteral(R"(^#{1,6}\s+Tracked in ROADMAP\b)"));
-            for (const QString &l : lines) {
-                if (!trackedLineRe.match(l).hasMatch()) continue;
-                auto it = idRe.globalMatch(l);
-                while (it.hasNext()) v2ids.insert(it.next().captured(0));
-            }
-        }
-        r.mappedIds = QStringList(v2ids.begin(), v2ids.end());
-        r.mappedIds.sort();
-        if (!deltaBlocks.isEmpty()) {
-            r.delta = deltaBlocks.join(QLatin1Char('\n'));
-            r.deltaPresent = true;
-            r.deltaLineCount = deltaLineTotal;
-        }
-        return r;
-    }
-
-    // --- v1 rule (formatVersion < 2): the current boundary-watermark delta ---
-    r.mappedIds = QStringList(v1Ids.begin(), v1Ids.end());
-    r.mappedIds.sort();
-
-    // Delta start: the first contributor heading strictly after the last
-    // maintainer heading. With no maintainer heading, the first boundary
-    // heading is the H1 title and the delta starts on the line after it.
-    // No such heading → no delta.
-    int deltaStartIdx = -1;  // 0-based line index of the delta's first line
-    for (const Boundary &b : boundaries) {
-        if (b.isMaintainer) continue;
-        if (lastMaintainerIdx < 0) { deltaStartIdx = b.line0 + 1; break; }
-        if (b.line0 > lastMaintainerIdx) { deltaStartIdx = b.line0; break; }
-    }
-
-    // Build the delta text + line count.
-    if (deltaStartIdx >= 0 && deltaStartIdx < lines.size()) {
-        // Trim leading blank lines so a zero-maintainer file whose title
-        // is followed by blank lines still reports the delta as starting
-        // at the first real content line (the H1-title case).
-        int s = deltaStartIdx;
-        // For the zero-maintainer case the delta starts after the title;
-        // skip leading blank lines to land on the first content line.
-        if (lastMaintainerIdx < 0) {
-            while (s < lines.size() && lines.at(s).trimmed().isEmpty()) ++s;
-        }
-        if (s < lines.size()) {
-            QStringList deltaLines;
-            for (int li = s; li < lines.size(); ++li)
-                deltaLines.append(lines.at(li));
-            // Drop a single trailing empty segment produced by a file
-            // that ends in "\n" so the line count matches the visible
-            // line count.
-            if (!deltaLines.isEmpty() && deltaLines.last().isEmpty())
-                deltaLines.removeLast();
-            if (!deltaLines.isEmpty()) {
-                r.delta = deltaLines.join(QLatin1Char('\n'));
-                r.deltaPresent = true;
-                r.deltaStartLine = s + 1;  // 1-based
-                r.deltaLineCount = deltaLines.size();
-            }
-        }
-    }
-
     return r;
 }
 
@@ -558,8 +554,8 @@ QString skeleton(const QString &projectTitle) {
     return out;
 }
 
-// ANTS-3443 — fence-aware `### `-block enumerator, shared by parse()'s v2
-// delta and assign_id. A block runs from its `### ` heading to the next
+// ANTS-3443 — fence-aware `### `-block enumerator, shared by readV2Delta
+// and assign_id. A block runs from its `### ` heading to the next
 // `#`/`## `/`### ` boundary (or EOF), fences skipped; idLine0/idValue carry
 // the block's FIRST `**Proposed ID:**` line (the standard's canonical
 // id-line regex, first-line-wins). Classification (finding vs prose) is the

@@ -106310,7 +106310,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: plugins-lua.
 
-- 📋 [ANTS-6145] **Readability fixes, changelog-feedback lane: src/changeloglog.cpp, src/changeloglog.h, src/changelogquery.cpp, src/feedbackfile.cpp, src/feedbackfile.h.**
+- ✅ [ANTS-6145] **Readability fixes, changelog-feedback lane: src/changeloglog.cpp, src/changeloglog.h, src/changelogquery.cpp, src/feedbackfile.cpp, src/feedbackfile.h.**
   Findings of the 2026-10-22 readability review (src run), lane changelog-feedback:
   3 high, 9 medium, 6 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/36-changelog-feedback.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106342,6 +106342,13 @@ worked after these.
   remain, on adjacent lines of parse, so one constant would add a line
   and remove no risk. Open: row 1165 (MEDIUM), split parse into a
   tracking-row pass, a v2 delta and a v1 delta.
+  2026-11-18, row 1165 closed, so every finding in this lane is closed.
+  parse is now a short driver: readMaintainerBlocks (tracking rows and
+  v1 ids, both versions), readV2Delta and readV1Delta, with helpers
+  readTrackingRow, findingRecord, deltaBlockLines and trackedPointerIds.
+  No behaviour change: old and new parse gave byte-identical output on
+  every feedback file and test or spec markdown file in the repo, plus
+  hand-made v1 and v2 files with tracking tables.
   **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
