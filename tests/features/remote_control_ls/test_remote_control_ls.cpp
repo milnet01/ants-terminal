@@ -97,7 +97,7 @@ static int runMain() {
 
     // INV-6: main.cpp registers --remote and delegates to runClient
     // *before* MainWindow construction.
-    std::regex remoteOptRegex(R"(QCommandLineOption\s+\w+\s*\(\s*"remote")");
+    std::regex remoteOptRegex(R"(QCommandLineOption\s+\w+\s*[({]\s*"remote")");
     if (!std::regex_search(mc, remoteOptRegex)) {
         fail("INV-6a: main.cpp must register a --remote QCommandLineOption");
     }

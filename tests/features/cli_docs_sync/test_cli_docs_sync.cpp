@@ -14,12 +14,12 @@ namespace {
 std::string root() { return ANTS_CLI_DOCS_ROOT; }
 
 // Long option names main.cpp defines: the first name of each
-// QCommandLineOption("name" / {"name", ...}), plus each pre-parse flag that
+// QCommandLineOption, by `name(` or `name{` and then "name" or {"name", ...}, plus each pre-parse flag that
 // main.cpp tests with qstrcmp(argv[i], "--name") before QApplication exists.
 std::set<std::string> optionsFromMain() {
     const std::string src = ants_test::slurpFile(root() + "/src/main.cpp");
     std::set<std::string> out;
-    const std::regex opt(R"re(QCommandLineOption\s+\w+\(\s*\{?\s*"([a-z][a-z0-9-]+)"(?:\s*,\s*"([a-z][a-z0-9-]+)")?)re");
+    const std::regex opt(R"re(QCommandLineOption\s+\w+\s*[({]\s*\{?\s*"([a-z][a-z0-9-]+)"(?:\s*,\s*"([a-z][a-z0-9-]+)")?)re");
     for (auto it = std::sregex_iterator(src.begin(), src.end(), opt);
          it != std::sregex_iterator(); ++it) {
         out.insert((*it)[1].str());

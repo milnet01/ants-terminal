@@ -147,6 +147,174 @@ int scaffoldPlugin(const QString &name) {
     return 0;
 }
 
+// The remote-control client (rc_protocol, Kitty-style): --remote or
+// --remote-json connects to the running instance's Unix socket, sends one
+// command, prints the JSON reply and exits, with no GUI. Each --remote-*
+// option is read by the commands it names and ignored by the rest, so --help
+// stays short rather than growing an option per command.
+struct RemoteCli {
+    QCommandLineOption cmdOpt{"remote",
+        "Send a remote-control command to the running Ants Terminal and "
+        "exit. Commands include `ls`, `tab-list`, `new-tab`, `send-text` "
+        "and `get-text`; an unknown one is answered with an error. "
+        "Socket path: $ANTS_REMOTE_SOCKET "
+        "or $XDG_RUNTIME_DIR/ants-terminal.sock.",
+        "cmd"};
+    QCommandLineOption socketOpt{"remote-socket",
+        "Override the remote-control socket path "
+        "(else $ANTS_REMOTE_SOCKET or the XDG default).",
+        "path"};
+    QCommandLineOption tabOpt{"remote-tab",
+        "Target tab index (0-based). Used by tab-scoped commands "
+        "(`send-text`, `select-window`, `get-text`, ...); omit to target "
+        "the active tab.",
+        "index"};
+    QCommandLineOption textOpt{"remote-text",
+        "Text payload for commands like `send-text`. When omitted, "
+        "`send-text` reads stdin until EOF instead — lets shell pipes "
+        "feed commands into the terminal.",
+        "string"};
+    QCommandLineOption cwdOpt{"remote-cwd",
+        "Working directory for `new-tab` / `launch`. When omitted, "
+        "inherits from the currently focused terminal.",
+        "path"};
+    QCommandLineOption commandOpt{"remote-command",
+        "Command string for `new-tab` / `launch` to run in the new "
+        "shell after it starts. Caller is responsible for any "
+        "trailing newline — matches `send-text` semantics.",
+        "string"};
+    QCommandLineOption titleOpt{"remote-title",
+        "Title for `set-title`. Empty string clears the pin and lets "
+        "the auto-title path take over again.",
+        "string"};
+    QCommandLineOption linesOpt{"remote-lines",
+        "Number of trailing lines for `get-text` (scrollback + screen). "
+        "Default 100, capped at 10 000 server-side.",
+        "n"};
+    // ANTS-2049 — a raw `{cmd, ...args}` object for the e2e harness, so a
+    // verb with a new argument shape (inject-key/click, resize-window,
+    // grab-image) needs no --remote-* option of its own. No --remote needed.
+    QCommandLineOption jsonOpt{"remote-json",
+        "Send a raw JSON verb object to the RemoteControl socket and print "
+        "the JSON reply. The object must carry a string \"cmd\" field; the "
+        "rest become the verb's args. Honours --remote-socket / "
+        "ANTS_REMOTE_SOCKET. Exit 0 on ok, 2 on a verb refusal, 1 on a "
+        "transport error.",
+        "json"};
+
+    void addTo(QCommandLineParser &parser) const {
+        parser.addOptions({cmdOpt, socketOpt, tabOpt, textOpt, cwdOpt,
+                           commandOpt, titleOpt, linesOpt, jsonOpt});
+    }
+
+    bool requested(const QCommandLineParser &p) const {
+        return p.isSet(jsonOpt) || p.isSet(cmdOpt);
+    }
+
+    // --remote-json wins over --remote. Both end in runClient, which gives
+    // the exit codes and the SO_PEERCRED server check (INV-9).
+    int run(const QCommandLineParser &p) const {
+        const QString socketPath = p.isSet(socketOpt)
+            ? p.value(socketOpt)
+            : RemoteControl::defaultSocketPath();
+        return p.isSet(jsonOpt) ? runJson(p.value(jsonOpt), socketPath)
+                                : runRemote(p, socketPath);
+    }
+
+private:
+    static int runJson(const QString &value, const QString &socketPath) {
+        const QJsonDocument doc = QJsonDocument::fromJson(value.toUtf8());
+        if (!doc.isObject()) {
+            std::fprintf(stderr,
+                "ants-terminal --remote-json: value is not a JSON object\n");
+            return 1;
+        }
+        QJsonObject obj = doc.object();
+        const QString cmd = obj.value(QStringLiteral("cmd")).toString();
+        if (cmd.isEmpty()) {
+            std::fprintf(stderr,
+                "ants-terminal --remote-json: missing string \"cmd\" field\n");
+            return 1;
+        }
+        // runClient puts cmd back into the envelope (remotecontrol.cpp).
+        obj.remove(QStringLiteral("cmd"));
+        return RemoteControl::runClient(cmd, obj, socketPath);
+    }
+
+    // The --remote command, its args taken from the --remote-* options it
+    // reads. Exit 1, after printing why, on a bad value.
+    int runRemote(const QCommandLineParser &p, const QString &socketPath) const {
+        const QString cmd = p.value(cmdOpt);
+        QJsonObject args;
+        if (p.isSet(tabOpt)) {
+            bool ok = false;
+            const int idx = p.value(tabOpt).toInt(&ok);
+            if (!ok || idx < 0) {
+                std::fprintf(stderr,
+                    "ants-terminal --remote: invalid --remote-tab value: %s\n",
+                    qUtf8Printable(p.value(tabOpt)));
+                return 1;
+            }
+            args["tab"] = idx;
+        }
+        if (cmd == QLatin1String("send-text")) {
+            QString text;
+            if (p.isSet(textOpt)) text = p.value(textOpt);
+            else if (!readStdin(&text)) return 1;
+            args["text"] = text;
+        } else if (cmd == QLatin1String("new-tab")
+                || cmd == QLatin1String("launch")) {
+            // launch is new-tab that requires a command and appends `\n`;
+            // the server's cmdLaunch enforces that, the client forwards.
+            if (p.isSet(cwdOpt)) args["cwd"] = p.value(cwdOpt);
+            if (p.isSet(commandOpt)) args["command"] = p.value(commandOpt);
+        } else if (cmd == QLatin1String("set-title")) {
+            // isSet, not !value().isEmpty(): an empty title clears the pin.
+            if (p.isSet(titleOpt)) args["title"] = p.value(titleOpt);
+        } else if (cmd == QLatin1String("get-text") && p.isSet(linesOpt)) {
+            bool ok = false;
+            const int n = p.value(linesOpt).toInt(&ok);
+            if (!ok || n < 0) {
+                std::fprintf(stderr,
+                    "ants-terminal --remote get-text: invalid "
+                    "--remote-lines value: %s\n",
+                    qUtf8Printable(p.value(linesOpt)));
+                return 1;
+            }
+            args["lines"] = n;
+        }
+        return RemoteControl::runClient(cmd, args, socketPath);
+    }
+
+    // send-text with no --remote-text reads stdin to EOF, so
+    //   echo -ne 'ls\n' | ants-terminal --remote send-text
+    // needs no shell quoting. ANTS-1169: capped at 1 MiB, so a runaway
+    // producer cannot exhaust the client's memory before the server's own
+    // size cap would refuse it.
+    static bool readStdin(QString *out) {
+        QFile in;
+        if (!in.open(stdin, QIODevice::ReadOnly)) {
+            std::fprintf(stderr,
+                "ants-terminal --remote send-text: cannot read stdin\n");
+            return false;
+        }
+        constexpr qint64 kMaxStdinBytes = qint64{1} * 1024 * 1024;
+        QByteArray buf;
+        while (!in.atEnd()) {
+            buf += in.read(qint64{64} * 1024);
+            if (buf.size() > kMaxStdinBytes) {
+                std::fprintf(stderr,
+                    "ants-terminal --remote send-text: stdin "
+                    "exceeds %lld bytes; aborting\n",
+                    static_cast<long long>(kMaxStdinBytes));
+                return false;
+            }
+        }
+        *out = QString::fromUtf8(buf);
+        return true;
+    }
+};
+
 }  // namespace
 
 int main(int argc, char *argv[]) {
@@ -297,192 +465,14 @@ int main(int argc, char *argv[]) {
         "Enable end-to-end test mode (forces remote-control on + enables "
         "synthetic input-injection verbs). For the tools/e2e/ harness.");
     parser.addOption(e2eOpt);
-    // Remote-control client mode (0.8.0 Kitty-style rc_protocol). When
-    // set, the binary connects to the running instance's Unix socket,
-    // dispatches a single command, prints the JSON response to stdout,
-    // and exits — no GUI init, no MainWindow construction. Single
-    // command per invocation; scriptable via shell.
-    QCommandLineOption remoteOpt("remote",
-        "Send a remote-control command to the running Ants Terminal and "
-        "exit. Commands include `ls`, `tab-list`, `new-tab`, `send-text` "
-        "and `get-text`; an unknown one is answered with an error. "
-        "Socket path: $ANTS_REMOTE_SOCKET "
-        "or $XDG_RUNTIME_DIR/ants-terminal.sock.",
-        "cmd");
-    parser.addOption(remoteOpt);
-    QCommandLineOption remoteSocketOpt("remote-socket",
-        "Override the remote-control socket path "
-        "(else $ANTS_REMOTE_SOCKET or the XDG default).",
-        "path");
-    parser.addOption(remoteSocketOpt);
-    // Generic per-command options. Each rc_protocol command reads
-    // whichever of these apply; commands ignore options they don't
-    // care about. Kept to a handful rather than scaling one option
-    // per command to keep `--help` output readable.
-    QCommandLineOption remoteTabOpt("remote-tab",
-        "Target tab index (0-based). Used by tab-scoped commands "
-        "(`send-text`, `select-window`, `get-text`, ...); omit to target "
-        "the active tab.",
-        "index");
-    parser.addOption(remoteTabOpt);
-    QCommandLineOption remoteTextOpt("remote-text",
-        "Text payload for commands like `send-text`. When omitted, "
-        "`send-text` reads stdin until EOF instead — lets shell pipes "
-        "feed commands into the terminal.",
-        "string");
-    parser.addOption(remoteTextOpt);
-    QCommandLineOption remoteCwdOpt("remote-cwd",
-        "Working directory for `new-tab` / `launch`. When omitted, "
-        "inherits from the currently focused terminal.",
-        "path");
-    parser.addOption(remoteCwdOpt);
-    QCommandLineOption remoteCommandOpt("remote-command",
-        "Command string for `new-tab` / `launch` to run in the new "
-        "shell after it starts. Caller is responsible for any "
-        "trailing newline — matches `send-text` semantics.",
-        "string");
-    parser.addOption(remoteCommandOpt);
-    QCommandLineOption remoteTitleOpt("remote-title",
-        "Title for `set-title`. Empty string clears the pin and lets "
-        "the auto-title path take over again.",
-        "string");
-    parser.addOption(remoteTitleOpt);
-    QCommandLineOption remoteLinesOpt("remote-lines",
-        "Number of trailing lines for `get-text` (scrollback + screen). "
-        "Default 100, capped at 10 000 server-side.",
-        "n");
-    parser.addOption(remoteLinesOpt);
-    // ANTS-2049 — generic raw-JSON passthrough for the e2e harness. Carries
-    // a whole `{cmd, ...args}` object so verbs with new argument shapes
-    // (inject-key/click, resize-window, grab-image) are reachable without a
-    // hand-coded --remote-* flag per arg. Standalone (no --remote needed).
-    QCommandLineOption remoteJsonOpt("remote-json",
-        "Send a raw JSON verb object to the RemoteControl socket and print "
-        "the JSON reply. The object must carry a string \"cmd\" field; the "
-        "rest become the verb's args. Honours --remote-socket / "
-        "ANTS_REMOTE_SOCKET. Exit 0 on ok, 2 on a verb refusal, 1 on a "
-        "transport error.",
-        "json");
-    parser.addOption(remoteJsonOpt);
+    const RemoteCli remoteCli;
+    remoteCli.addTo(parser);
     parser.process(app);
 
     if (parser.isSet(newPluginOpt)) {
         return scaffoldPlugin(parser.value(newPluginOpt));
     }
-    if (parser.isSet(remoteJsonOpt)) {
-        // ANTS-2049 — raw-JSON passthrough. Resolve the socket the same way
-        // the --remote client does (--remote-socket wins, else the default
-        // which itself honours ANTS_REMOTE_SOCKET), then hand off to the
-        // unchanged runClient so we inherit its exit semantics + SO_PEERCRED
-        // server-credential check (INV-9).
-        const QString socketPath = parser.isSet(remoteSocketOpt)
-            ? parser.value(remoteSocketOpt)
-            : RemoteControl::defaultSocketPath();
-        const QJsonDocument doc =
-            QJsonDocument::fromJson(parser.value(remoteJsonOpt).toUtf8());
-        if (!doc.isObject()) {
-            std::fprintf(stderr,
-                "ants-terminal --remote-json: value is not a JSON object\n");
-            return 1;
-        }
-        QJsonObject obj = doc.object();
-        const QString jsonCmd = obj.value(QStringLiteral("cmd")).toString();
-        if (jsonCmd.isEmpty()) {
-            std::fprintf(stderr,
-                "ants-terminal --remote-json: missing string \"cmd\" field\n");
-            return 1;
-        }
-        // runClient re-inserts cmd into the args envelope
-        // (remotecontrol.cpp), so drop it here to avoid a redundant channel.
-        obj.remove(QStringLiteral("cmd"));
-        return RemoteControl::runClient(jsonCmd, obj, socketPath);
-    }
-    if (parser.isSet(remoteOpt)) {
-        const QString socketPath = parser.isSet(remoteSocketOpt)
-            ? parser.value(remoteSocketOpt)
-            : RemoteControl::defaultSocketPath();
-        const QString cmd = parser.value(remoteOpt);
-        QJsonObject args;
-        if (parser.isSet(remoteTabOpt)) {
-            bool ok = false;
-            int idx = parser.value(remoteTabOpt).toInt(&ok);
-            if (!ok || idx < 0) {
-                std::fprintf(stderr,
-                    "ants-terminal --remote: invalid --remote-tab value: %s\n",
-                    qUtf8Printable(parser.value(remoteTabOpt)));
-                return 1;
-            }
-            args["tab"] = idx;
-        }
-        if (cmd == QLatin1String("send-text")) {
-            QString text;
-            if (parser.isSet(remoteTextOpt)) {
-                text = parser.value(remoteTextOpt);
-            } else {
-                // Read stdin until EOF. Lets callers do
-                //   echo -ne 'ls\n' | ants-terminal --remote send-text
-                // without worrying about shell-quoting escape
-                // sequences or newlines on the command line.
-                // ANTS-1169: cap stdin at 1 MiB so a runaway producer
-                // (`yes | ants-terminal --remote send-text`) doesn't
-                // OOM the client process before the server's own
-                // size-cap rejects the message.
-                QFile in;
-                if (!in.open(stdin, QIODevice::ReadOnly)) {
-                    std::fprintf(stderr,
-                        "ants-terminal --remote send-text: "
-                        "cannot read stdin\n");
-                    return 1;
-                }
-                constexpr qint64 kMaxStdinBytes = qint64{1} * 1024 * 1024;
-                QByteArray buf;
-                while (!in.atEnd()) {
-                    buf += in.read(qint64{64} * 1024);
-                    if (buf.size() > kMaxStdinBytes) {
-                        std::fprintf(stderr,
-                            "ants-terminal --remote send-text: stdin "
-                            "exceeds %lld bytes; aborting\n",
-                            static_cast<long long>(kMaxStdinBytes));
-                        return 1;
-                    }
-                }
-                text = QString::fromUtf8(buf);
-            }
-            args["text"] = text;
-        } else if (cmd == QLatin1String("new-tab")
-                || cmd == QLatin1String("launch")) {
-            // launch shares the cwd + command argument shape with
-            // new-tab — it's the convenience wrapper that requires
-            // command and auto-appends `\n`. Server-side cmdLaunch
-            // enforces the requirement; the client just forwards.
-            if (parser.isSet(remoteCwdOpt)) {
-                args["cwd"] = parser.value(remoteCwdOpt);
-            }
-            if (parser.isSet(remoteCommandOpt)) {
-                args["command"] = parser.value(remoteCommandOpt);
-            }
-        } else if (cmd == QLatin1String("set-title")) {
-            // `--remote-title` may legitimately be empty (clears the
-            // pin), so isSet() is the right gate, not !value().isEmpty().
-            if (parser.isSet(remoteTitleOpt)) {
-                args["title"] = parser.value(remoteTitleOpt);
-            }
-        } else if (cmd == QLatin1String("get-text")) {
-            if (parser.isSet(remoteLinesOpt)) {
-                bool ok = false;
-                int n = parser.value(remoteLinesOpt).toInt(&ok);
-                if (!ok || n < 0) {
-                    std::fprintf(stderr,
-                        "ants-terminal --remote get-text: invalid "
-                        "--remote-lines value: %s\n",
-                        qUtf8Printable(parser.value(remoteLinesOpt)));
-                    return 1;
-                }
-                args["lines"] = n;
-            }
-        }
-        return RemoteControl::runClient(cmd, args, socketPath);
-    }
+    if (remoteCli.requested(parser)) return remoteCli.run(parser);
     bool quakeMode = parser.isSet(quakeOpt);
     const bool e2eMode = parser.isSet(e2eOpt);
 

@@ -87,7 +87,10 @@ static int runMain() {
         // The send-text arm of the --remote dispatch chain, up to the next arm.
         std::string sendBlock =
             ants_test::regionBetween(mc, "\"send-text\"", "} else if (");
-        if (sendBlock.find("stdin") == std::string::npos) {
+        // The read itself is RemoteCli::readStdin, which opens stdin.
+        if (sendBlock.find("readStdin(") == std::string::npos ||
+            ants_test::regionBetween(mc, "bool readStdin(", "\n    }\n")
+                    .find("open(stdin") == std::string::npos) {
             fail("INV-6b: the send-text client branch must read stdin when "
                  "--remote-text is absent — shell-pipe ergonomics");
         }

@@ -106354,7 +106354,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: changelog-feedback.
 
-- 📋 [ANTS-6146] **Readability fixes, app-entry-dialogs lane: src/antshelper.cpp, src/antshelpermain.cpp, src/claudesetup.cpp, src/diffviewer.cpp, src/diffviewer.h, src/main.cpp ….**
+- ✅ [ANTS-6146] **Readability fixes, app-entry-dialogs lane: src/antshelper.cpp, src/antshelpermain.cpp, src/claudesetup.cpp, src/diffviewer.cpp, src/diffviewer.h, src/main.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane app-entry-dialogs:
   1 high, 10 medium, 7 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/37-app-entry-dialogs.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106383,6 +106383,16 @@ worked after these.
   `src/diffviewer.cpp:788`; row 1175 `src/diffviewer.cpp:675`; row 1186
   `src/antshelper.cpp:81-82`; row 1188 `src/claudesetup.cpp:625`.
   Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18, the LOWs F12-F18 closed (rows 1186, 1175, 1174, 1188
+  were F12, F13, F14, F16). F12-F14, F17: comments now match the code.
+  F15: the MCP master tooltip names what greys out; the pill, chip and
+  context window are said to stay live. F16: ShellPlan::unavailable is
+  now blocker. F18: the --remote and --remote-json client moved out of
+  main() into RemoteCli (options, runJson, runRemote, readStdin);
+  --help text, exit codes, errors and the JSON sent are unchanged over
+  19 cases. Three scrape tests retargeted (remote_control_ls, cli_docs_sync,
+  remote_control_send_text). Queued items ANTS-6296-6298
+  remain on their own ids.
   **Layman:** Tidy app start-up and the settings window so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
