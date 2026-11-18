@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6830 -->
+<!-- ants-roadmap-id-high-water: ANTS=6831 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93200,6 +93200,19 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: enhancement.
   Source: DeFragR-feedback-2026-11-18.
   Lanes: mcp.
+
+- 📋 [ANTS-6831] **changelog_query lint release:true skips an id written as "part of <ID>" in cited_not_shipped, as cut-release 0f does.**
+  DeFragR: a CHANGELOG [0.2.0] bullet ending "(part of DFR-0067)", with
+  DFR-0067 in progress, makes mode:lint version:0.2.0 release:true report
+  cited_not_shipped. cut-release step 0f reads "part of" as a
+  cross-reference, not a claim, so the release skill and the lint
+  disagree. Fix: skip an id directly preceded by "part of" (any case; a
+  backtick or link around the id allowed) in cited_not_shipped, with a
+  test for each spelling.
+  **Layman:** The changelog check wrongly warns about an entry that only says it is "part of" an unfinished item.
+  Kind: fix.
+  Source: DeFragR_Ants_MCP_Feedback.md 2026-11-18.
+  Lanes: changelog-feedback.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
