@@ -8,10 +8,11 @@ a drifted copy returns green for a pipeline that will fail.
 
 Every `run:` step is executed as ci.yml writes it, with the job's and the
 step's `env`, its `working-directory` and its `if:`. What a GitHub runner
-provides and this machine does not is mapped by the three tables below, and
-ANYTHING they do not name is refused rather than guessed at — so a new action,
-expression, key or shell in ci.yml stops the local run until someone decides
-what it means here. One deliberate difference: step budgets (`timeout`) do not
+provides and this machine does not is mapped by ACTIONS, RUNNER_ENV and
+RUNNER_UNSET below; the *_KEYS sets and the *_CONDITIONS tables list what
+ci.yml may say. ANYTHING they do not name is refused rather than guessed
+at — so a new action, expression, key or shell in ci.yml stops the local run
+until someone decides what it means here. One deliberate difference: step budgets (`timeout`) do not
 apply here — see PREAMBLE — so a hang shows as a hang, not as a red step.
 
 Usage:
@@ -21,6 +22,7 @@ Usage:
   tools/ci_workflow.py docs-only       # paths on stdin; exit 0 if ci.yml's push
                                        # paths-ignore would skip them all
 """
+import collections
 import os
 import re
 import subprocess
@@ -78,7 +80,8 @@ BASH = ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c"]
 
 # Keys understood at each level. Anything else — defaults, strategy (matrix),
 # needs, container, services, continue-on-error — changes what GitHub runs,
-# so ignoring it would turn a divergence into a silent green.
+# so ignoring it would turn a divergence into a silent green. `True` is not a
+# typo: PyYAML reads YAML 1.1, where the bare key `on:` is the boolean true.
 WORKFLOW_KEYS = {"name", "on", True, "permissions", "concurrency", "env", "jobs"}
 # `permissions` scopes GitHub's token. No local run holds that token, and the
 # one step that uses it (ANTS-5532's cache prune) is skipped here.
@@ -122,6 +125,11 @@ class Refused(Exception):
     pass
 
 
+# One planned step. `detail` is the shell script when kind is "run", and the
+# reason it is skipped when kind is "skip". `always` runs it after a failure.
+Step = collections.namedtuple("Step", "name kind detail always env cwd")
+
+
 def load():
     with open(WORKFLOW, encoding="utf-8") as f:
         return yaml.safe_load(f)
@@ -143,7 +151,7 @@ def unknown(node, allowed, where):
 
 
 def plan(job_id):
-    """[(name, kind, detail, if_always, env, cwd)] for one job, or Refused."""
+    """[Step] for one job, or Refused."""
     wf = load()
     unknown(wf, WORKFLOW_KEYS, "workflow")
     jobs = wf.get("jobs", {})
@@ -167,8 +175,10 @@ def plan(job_id):
         if cond in STEP_CONDITIONS:
             holds, why = STEP_CONDITIONS[cond]
             if not holds():
-                steps.append((name, "skip", why, False, {}, ROOT))
+                steps.append(Step(name, "skip", why, False, {}, ROOT))
                 continue
+            # It holds, so the step runs as an ordinary one: an always() inside
+            # the condition is dropped. Only a bare `if: always()` keeps it.
             cond = ""
         elif cond not in ("", "always()"):
             raise Refused(f"{where}: no local meaning for if: {cond}")
@@ -176,8 +186,8 @@ def plan(job_id):
             action = step["uses"].split("@")[0]
             if action not in ACTIONS:
                 raise Refused(f"{where}: no local meaning for uses: {action}")
-            steps.append((name, "skip", ACTIONS[action], cond == "always()",
-                          {}, ROOT))
+            steps.append(Step(name, "skip", ACTIONS[action],
+                              cond == "always()", {}, ROOT))
             continue
         if step.get("shell", "bash") != "bash":
             raise Refused(f"{where}: shell {step['shell']} is not bash")
@@ -189,8 +199,8 @@ def plan(job_id):
         for var in RUNNER_VAR.findall(step["run"]):
             if var not in RUNNER_ENV:
                 raise Refused(f"{where}: no local meaning for ${var}")
-        steps.append((name, "run", expand(step["run"], where),
-                      cond == "always()", env, cwd))
+        steps.append(Step(name, "run", expand(step["run"], where),
+                          cond == "always()", env, cwd))
     return steps
 
 
@@ -199,23 +209,23 @@ def run(job_id):
     base = {k: v for k, v in os.environ.items() if k not in RUNNER_UNSET}
     base.update(RUNNER_ENV)
     failed = []
-    for name, kind, detail, always, env, cwd in steps:
-        print(f"── {job_id} / {name}", flush=True)
-        if kind == "skip":
-            print(f"   ⊘ {detail}", flush=True)
+    for s in steps:
+        print(f"── {job_id} / {s.name}", flush=True)
+        if s.kind == "skip":
+            print(f"   ⊘ {s.detail}", flush=True)
             continue
-        if failed and not always:
+        if failed and not s.always:
             print("   ⊘ skipped — an earlier step failed", flush=True)
             continue
         started = time.monotonic()
-        rc = subprocess.run(BASH + [PREAMBLE + detail], cwd=cwd,
-                            env={**base, **env}).returncode
+        rc = subprocess.run(BASH + [PREAMBLE + s.detail], cwd=s.cwd,
+                            env={**base, **s.env}).returncode
         took = f"{time.monotonic() - started:.0f}s"
         if rc == 0:
-            print(f"   ✓ {name} ({took})", flush=True)
+            print(f"   ✓ {s.name} ({took})", flush=True)
         else:
-            print(f"   ✗ {name} (exit {rc}, {took})", flush=True)
-            failed.append(name)
+            print(f"   ✗ {s.name} (exit {rc}, {took})", flush=True)
+            failed.append(s.name)
     for name in failed:
         print(f"FAILED: {job_id} / {name}")
     return 1 if failed else 0
@@ -247,7 +257,7 @@ def docs_only(paths):
     instead of keeping its own copy of the list (ANTS-5322, ANTS-5542): a
     hand twin of paths-ignore is the drift local-gate.md § 3 forbids.
     """
-    on = load().get(True) or load().get("on") or {}
+    on = load().get(True) or load().get("on") or {}  # True: see WORKFLOW_KEYS
     ignore = (on.get("push") or {}).get("paths-ignore") or []
     if any(str(g).startswith("!") for g in ignore):
         raise Refused("no local meaning for a negated paths-ignore pattern")
@@ -277,16 +287,16 @@ def main(argv):
         cond = str(load()["jobs"][argv[2]].get("if", "")).strip()
         if cond:
             print(f"[job if] {cond}: {JOB_CONDITIONS[cond]}")
-        for name, kind, detail, always, env, cwd in steps:
-            print(f"[{kind}{' always' if always else ''}] {name}")
-            if kind == "run":
-                print(f"  cwd: {os.path.relpath(cwd, ROOT)}")
-                for k, v in env.items():
+        for s in steps:
+            print(f"[{s.kind}{' always' if s.always else ''}] {s.name}")
+            if s.kind == "run":
+                print(f"  cwd: {os.path.relpath(s.cwd, ROOT)}")
+                for k, v in s.env.items():
                     print(f"  env: {k}={v}")
-                for line in detail.rstrip("\n").split("\n"):
+                for line in s.detail.rstrip("\n").split("\n"):
                     print(f"  | {line}")
             else:
-                print(f"  {detail}")
+                print(f"  {s.detail}")
         return 0
     except Refused as e:
         print(f"ci_workflow: refused — {e}", file=sys.stderr)

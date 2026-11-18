@@ -63,7 +63,7 @@
 #
 #   tools/qt62-guard.sh              # run the guard; build the image if needed
 #   tools/qt62-guard.sh --warm-only  # run ONLY if both caches exist; else skip 0
-#   tools/qt62-guard.sh --clean      # drop every cached image + build volume
+#   tools/qt62-guard.sh --clean      # drop this job's cached image + volumes
 #   tools/qt62-guard.sh --print      # show the resolved image/volume/packages
 #
 # Every run executes ci.yml's own job steps through tools/ci_workflow.py,
@@ -114,22 +114,25 @@ if [[ "$run_job" == 1 && "$job" != "build-test" ]]; then
 fi
 
 # Per job: the container base, the ci.yml install step the packages come from,
-# and the name prefix its image and build volume are cached under.
+# the name prefix its image and build volume are cached under, and what a
+# cold first run costs.
 case "$job" in
     qt62-baseline)
-        qt62_base="docker.io/library/ubuntu:22.04"
-        qt62_step="Install Qt6 + build deps (release baseline)"
-        qt62_prefix="ants-qt62"
-        qt62_what="the Qt 6.2 floor"
-        qt62_cmd="tools/qt62-guard.sh" ;;
+        guard_base="docker.io/library/ubuntu:22.04"
+        guard_step="Install Qt6 + build deps (release baseline)"
+        guard_prefix="ants-qt62"
+        guard_what="the Qt 6.2 floor"
+        guard_cold_cost="~11 min (61 s image + ~10 min first compile)"
+        guard_cmd="tools/qt62-guard.sh" ;;
     build-test)
-        qt62_base="docker.io/library/ubuntu:24.04"
-        qt62_step="Install Qt6 + build + packaging deps (cached)"
-        qt62_prefix="ants-ubuntu24"
+        guard_base="docker.io/library/ubuntu:24.04"
+        guard_step="Install Qt6 + build + packaging deps (cached)"
+        guard_prefix="ants-ubuntu24"
         # The job runs the suite, so it is always run whole (ANTS-5324).
         run_job=1
-        qt62_what="ci.yml's build-test job in CI's image (ubuntu 24.04)"
-        qt62_cmd="tools/qt62-guard.sh --job build-test --run-job" ;;
+        guard_what="ci.yml's build-test job in CI's image (ubuntu 24.04)"
+        guard_cold_cost="about 20 min"
+        guard_cmd="tools/qt62-guard.sh --job build-test --run-job" ;;
     *) echo "qt62-guard: unknown --job '$job' (qt62-baseline or build-test)" >&2
        exit 1 ;;
 esac
@@ -140,21 +143,21 @@ esac
 # (CMakeLists.txt, FetchContent GIT_REPOSITORY googletest) git-clones over
 # HTTPS when no system GTest is found. The runner has none either, so CI takes
 # the same FetchContent path. These reproduce the runner ENV.
-qt62_extra_pkgs="git ca-certificates"
+guard_extra_pkgs="git ca-certificates"
 # python3-yaml runs tools/ci_workflow.py, which reads ci.yml. The runner
 # ships Python and PyYAML; the bare image has neither (python3-yaml pulls in
 # python3). build-test's ci.yml list already names it, so its tag is unchanged.
-qt62_extra_pkgs="$qt62_extra_pkgs python3-yaml"
+guard_extra_pkgs="$guard_extra_pkgs python3-yaml"
 # --run-job runs the SUITE, which needs Qt's SQLite driver: the roadmap store
 # and session_message tests open a QSQLITE database. libqt6sql6-sqlite is a
 # Recommends of libqt6sql6t64, which this image installs without; GitHub's
 # runner has it, because those tests pass there. Measured 2026-09-27: without
 # it, 475 tests failed here with "QSQLITE driver not loaded". The compile
 # guard needs no driver, so its image and tag are unchanged.
-[[ "$run_job" == 1 ]] && qt62_extra_pkgs="$qt62_extra_pkgs libqt6sql6-sqlite"
+[[ "$run_job" == 1 ]] && guard_extra_pkgs="$guard_extra_pkgs libqt6sql6-sqlite"
 
 # Host-side, beside nothing else: the markers must outlive a killed run.
-qt62_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ants-terminal/qt62-guard"
+guard_state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/ants-terminal/qt62-guard"
 
 need_podman() {
     command -v podman >/dev/null 2>&1
@@ -171,13 +174,13 @@ if [[ "$mode" == "clean" ]]; then
     # before the lock's `podman` wrapper further down is defined.
     # shellcheck disable=SC2033
     podman image ls --format '{{.Repository}}:{{.Tag}}' \
-        | grep "^localhost/$qt62_prefix-baseline:" | xargs -r podman image rm -f
+        | grep "^localhost/$guard_prefix-baseline:" | xargs -r podman image rm -f
     # shellcheck disable=SC2033
     podman volume ls --format '{{.Name}}' \
-        | grep -E "^$qt62_prefix-(build|job)-" | xargs -r podman volume rm -f
+        | grep -E "^$guard_prefix-(build|job)-" | xargs -r podman volume rm -f
     # This job's markers only: the other job's volume may be marked interrupted.
-    rm -f "$qt62_state_dir/$qt62_prefix-build-"*.interrupted \
-          "$qt62_state_dir/$qt62_prefix-job-"*.interrupted
+    rm -f "$guard_state_dir/$guard_prefix-build-"*.interrupted \
+          "$guard_state_dir/$guard_prefix-job-"*.interrupted
     echo "qt62-guard: cache cleared."
     exit 0
 fi
@@ -185,11 +188,11 @@ fi
 # --- extract ci.yml's package set -------------------------------------------
 # Prints one package per line; non-zero (with a diagnosis) if ci.yml no longer
 # parses. Refusing is deliberate — see the header.
-qt62_ci_packages() {
+guard_ci_packages() {
     local pkgs
     # qt62-baseline installs with `apt-get install` in a run: block; build-test
     # passes a `packages: >-` list to cache-apt-pkgs-action. Both parse here.
-    pkgs="$(awk -v step="      - name: $qt62_step" '
+    pkgs="$(awk -v step="      - name: $guard_step" '
         $0 == step { inblk=1; next }
         inblk && /^      - name:/ { exit }
         inblk { print }
@@ -206,10 +209,10 @@ qt62_ci_packages() {
     # The sentinel package must be present and the set plausibly whole.
     if ! grep -qx 'qt6-base-dev' <<<"$pkgs" || (( $(wc -l <<<"$pkgs") < 10 )); then
         echo "qt62-guard: cannot parse ci.yml's $job install step." >&2
-        echo "            Expected the '$qt62_step'" >&2
+        echo "            Expected the '$guard_step'" >&2
         echo "            step to be a package list; got:" >&2
         while IFS= read -r l; do echo "              $l" >&2; done <<<"$pkgs"
-        echo "            Update qt62_ci_packages() in tools/qt62-guard.sh." >&2
+        echo "            Update guard_ci_packages() in tools/qt62-guard.sh." >&2
         return 1
     fi
     printf '%s\n' "$pkgs"
@@ -218,55 +221,55 @@ qt62_ci_packages() {
 # The build directory the job's Configure step names with `-B`, read from
 # ci.yml through the runner's own plan. The volume is mounted there, because a
 # CMake cache cannot move between binary dirs. Refuses unless exactly one.
-qt62_ci_build_dir() {
+guard_ci_build_dir() {
     local dirs
     dirs="$(python3 tools/ci_workflow.py plan "$job" \
             | sed -nE 's/^  \| *cmake .*-B +([^ ]+).*/\1/p' | sort -u)"
     if [[ -z "$dirs" || "$dirs" == *$'\n'* ]]; then
         echo "qt62-guard: cannot read one cmake -B directory from ci.yml's $job job" >&2
-        echo "            (found: ${dirs:-none}). Update qt62_ci_build_dir()." >&2
+        echo "            (found: ${dirs:-none}). Update guard_ci_build_dir()." >&2
         return 1
     fi
     printf '%s\n' "$dirs"
 }
 
-qt62_pkgs=""; qt62_tag=""; qt62_image=""; qt62_volume=""; qt62_build_dir=""
-qt62_container=""; qt62_interrupted_marker=""
-qt62_resolve() {
+guard_pkgs=""; guard_tag=""; guard_image=""; guard_volume=""; guard_build_dir=""
+guard_container=""; guard_interrupted_marker=""
+guard_resolve() {
     local list
-    list="$(qt62_ci_packages)" || return 1
-    qt62_build_dir="$(qt62_ci_build_dir)" || return 1
-    qt62_pkgs="$(printf '%s\n%s\n' "$list" "$(tr ' ' '\n' <<<"$qt62_extra_pkgs")" | sort -u)"
-    qt62_tag="$(printf '%s\n%s\n' "$qt62_base" "$qt62_pkgs" | sha256sum | cut -c1-12)"
-    qt62_image="localhost/$qt62_prefix-baseline:$qt62_tag"
+    list="$(guard_ci_packages)" || return 1
+    guard_build_dir="$(guard_ci_build_dir)" || return 1
+    guard_pkgs="$(printf '%s\n%s\n' "$list" "$(tr ' ' '\n' <<<"$guard_extra_pkgs")" | sort -u)"
+    guard_tag="$(printf '%s\n%s\n' "$guard_base" "$guard_pkgs" | sha256sum | cut -c1-12)"
+    guard_image="localhost/$guard_prefix-baseline:$guard_tag"
     # `-job-`, not the `-build-` the compile-only guard used: that tree was
     # configured at /build and cannot be reused at the job's own directory.
-    qt62_volume="$qt62_prefix-job-$qt62_tag"
-    qt62_container="$qt62_prefix-job-$qt62_tag"
-    qt62_interrupted_marker="$qt62_state_dir/$qt62_volume.interrupted"
+    guard_volume="$guard_prefix-job-$guard_tag"
+    guard_container="$guard_prefix-job-$guard_tag"
+    guard_interrupted_marker="$guard_state_dir/$guard_volume.interrupted"
 }
 
-qt62_resolve || exit 1
+guard_resolve || exit 1
 
 if [[ "$mode" == "print" ]]; then
-    echo "base:    $qt62_base"
-    echo "tag:     $qt62_tag"
-    echo "image:   $qt62_image"
-    echo "volume:  $qt62_volume (at /src/$qt62_build_dir)"
-    echo "packages ($(wc -l <<<"$qt62_pkgs"), extracted from ci.yml):"
-    while IFS= read -r l; do echo "  $l"; done <<<"$qt62_pkgs"
+    echo "base:    $guard_base"
+    echo "tag:     $guard_tag"
+    echo "image:   $guard_image"
+    echo "volume:  $guard_volume (at /src/$guard_build_dir)"
+    echo "packages ($(wc -l <<<"$guard_pkgs"), extracted from ci.yml):"
+    while IFS= read -r l; do echo "  $l"; done <<<"$guard_pkgs"
     exit 0
 fi
 
 if [[ "$mode" == "check-warm" ]]; then
-    need_podman && podman image exists "$qt62_image" \
-        && podman volume exists "$qt62_volume" \
-        && [[ ! -e "$qt62_interrupted_marker" ]] && exit 0
+    need_podman && podman image exists "$guard_image" \
+        && podman volume exists "$guard_volume" \
+        && [[ ! -e "$guard_interrupted_marker" ]] && exit 0
     exit 3
 fi
 
 if ! need_podman; then
-    echo "qt62-guard: ⊘ podman not installed — the guard for $qt62_what did NOT run."
+    echo "qt62-guard: ⊘ podman not installed — the guard for $guard_what did NOT run."
     echo "            CI's $job job still covers this. Install podman to"
     echo "            cover it locally."
     [[ "$mode" == "warm-only" ]] && exit 0
@@ -280,8 +283,8 @@ fi
 # called without the descriptor, so a helper process it leaves behind cannot
 # keep the lock.
 if command -v flock >/dev/null 2>&1; then
-    mkdir -p "$qt62_state_dir" && exec 9>"$qt62_state_dir/$qt62_volume.lock" || {
-        echo "qt62-guard: cannot open the lock in $qt62_state_dir" >&2; exit 1; }
+    mkdir -p "$guard_state_dir" && exec 9>"$guard_state_dir/$guard_volume.lock" || {
+        echo "qt62-guard: cannot open the lock in $guard_state_dir" >&2; exit 1; }
     if ! flock -n 9; then
         echo "qt62-guard: ⊘ another $job run is still running on this build tree."
         echo "            Wait for it to finish, then run this again."
@@ -293,11 +296,11 @@ fi
 
 # --- an earlier compile still running (ANTS-5124) ----------------------------
 # Its run died without stopping it. Two compiles must not share one tree.
-if [[ "$(podman container inspect -f '{{.State.Running}}' "$qt62_container" \
+if [[ "$(podman container inspect -f '{{.State.Running}}' "$guard_container" \
          2>/dev/null)" == "true" ]]; then
-    echo "qt62-guard: ⊘ an earlier $job compile is still running ($qt62_container)."
-    echo "            Wait for it (podman wait $qt62_container), or stop it"
-    echo "            (podman stop $qt62_container); the next run then builds cold."
+    echo "qt62-guard: ⊘ an earlier $job compile is still running ($guard_container)."
+    echo "            Wait for it (podman wait $guard_container), or stop it"
+    echo "            (podman stop $guard_container); the next run then builds cold."
     [[ "$mode" == "warm-only" ]] && exit 0
     exit 1
 fi
@@ -309,83 +312,82 @@ fi
 # because the run that created them also populated the tree.
 if [[ "$mode" == "warm-only" ]]; then
     missing=""
-    podman image exists "$qt62_image"   || missing="image"
-    podman volume exists "$qt62_volume" || missing="${missing:+$missing and }build tree"
+    podman image exists "$guard_image"   || missing="image"
+    podman volume exists "$guard_volume" || missing="${missing:+$missing and }build tree"
     if [[ -n "$missing" ]]; then
         echo "qt62-guard: ⊘ $job guard SKIPPED — no cached $missing for the"
-        echo "            current ci.yml package set. Building it is a one-off ~11 min"
-        echo "            (61 s image + ~10 min first compile), too long to sit inside"
-        echo "            a push. Warm it once, then this check costs ~7 s:"
-        echo "              $qt62_cmd"
+        echo "            current ci.yml package set. Building it is a one-off"
+        echo "            $guard_cold_cost, too long to sit inside a push. Warm it once:"
+        echo "              $guard_cmd"
         echo "            CI's $job job still covers this push."
         exit 0
     fi
     # ANTS-5124 — an incremental result over a killed compile is a false pass.
-    if [[ -e "$qt62_interrupted_marker" ]]; then
+    if [[ -e "$guard_interrupted_marker" ]]; then
         echo "qt62-guard: ⊘ $job guard SKIPPED — the cached build tree was"
         echo "            interrupted mid-compile, so it cannot be trusted. Rebuild"
         echo "            it once, cold:"
-        echo "              $qt62_cmd"
+        echo "              $guard_cmd"
         echo "            CI's $job job still covers this push."
         exit 0
     fi
 fi
 
 # --- build the dependency image on first use --------------------------------
-qt62_ensure_image() {
-    if podman image exists "$qt62_image"; then return 0; fi
-    echo "qt62-guard: building $qt62_image (one-off; ~61 s)…"
+guard_ensure_image() {
+    if podman image exists "$guard_image"; then return 0; fi
+    echo "qt62-guard: building $guard_image (one-off)…"
     local ctx rc
     ctx="$(mktemp -d)" || return 1
     {
-        echo "FROM $qt62_base"
+        echo "FROM $guard_base"
         echo "ENV DEBIAN_FRONTEND=noninteractive"
         echo "RUN apt-get update -qq \\"
         echo " && apt-get install -y --no-install-recommends \\"
         # Deliberate word-splitting: one package per continuation line.
         # shellcheck disable=SC2086
-        printf '      %s \\\n' $qt62_pkgs
+        printf '      %s \\\n' $guard_pkgs
         echo " && rm -rf /var/lib/apt/lists/*"
     } > "$ctx/Containerfile"
-    podman build --security-opt label=disable -t "$qt62_image" "$ctx"
+    podman build --security-opt label=disable -t "$guard_image" "$ctx"
     rc=$?
     rm -rf "$ctx"
     return $rc
 }
 
-qt62_ensure_image || {
+guard_ensure_image || {
     echo "qt62-guard: image build failed" >&2; exit 1; }
 
 # --- the job run --------------------------------------------------------------
 # The build tree lives in the named volume, which is what makes a re-run
 # incremental.
-if [[ -e "$qt62_interrupted_marker" ]]; then
+if [[ -e "$guard_interrupted_marker" ]]; then
     echo "qt62-guard: the cached build tree was interrupted mid-compile;"
     echo "            discarding it and building cold."
-    if podman volume exists "$qt62_volume"; then
-        podman volume rm -f "$qt62_volume" >/dev/null || {
-            echo "qt62-guard: cannot remove $qt62_volume" >&2; exit 1; }
+    if podman volume exists "$guard_volume"; then
+        podman volume rm -f "$guard_volume" >/dev/null || {
+            echo "qt62-guard: cannot remove $guard_volume" >&2; exit 1; }
     fi
-    rm -f "$qt62_interrupted_marker"
+    rm -f "$guard_interrupted_marker"
 fi
 
-trap 'echo "qt62-guard: interrupted — stopping $qt62_container; the build tree stays marked interrupted." >&2
-      podman stop -t 5 "$qt62_container" >/dev/null 2>&1
+trap 'echo "qt62-guard: interrupted — stopping $guard_container; the build tree stays marked interrupted." >&2
+      podman stop -t 5 "$guard_container" >/dev/null 2>&1
       exit 130' INT TERM HUP
-mkdir -p "$qt62_state_dir" && : > "$qt62_interrupted_marker" || {
-    echo "qt62-guard: cannot write $qt62_interrupted_marker" >&2; exit 1; }
+mkdir -p "$guard_state_dir" && : > "$guard_interrupted_marker" || {
+    echo "qt62-guard: cannot write $guard_interrupted_marker" >&2; exit 1; }
 # ANTS-5192 — a compile cache that outlives the build volume, so a cold tree
 # (new package set, or a tree discarded after an interruption) still compiles
 # from cache. ccache is in both jobs' ci.yml package lists. The root is this
 # clone's `git config ants.qt62CcacheDir` when set (a per-machine path, kept
 # out of the tracked tree); otherwise .ccache-guard/ in the checkout,
 # gitignored.
-qt62_ccache_root=$(git config --get ants.qt62CcacheDir || true)
-[[ -n "$qt62_ccache_root" ]] || qt62_ccache_root="$PWD/.ccache-guard"
-qt62_ccache="$qt62_ccache_root/$qt62_prefix"
-[[ "$run_job" == 1 ]] && qt62_ccache="$qt62_ccache_root/$qt62_prefix-job"
-mkdir -p "$qt62_ccache" || {
-    echo "qt62-guard: cannot create $qt62_ccache" >&2; exit 1; }
+guard_ccache_root=$(git config --get ants.qt62CcacheDir || true)
+[[ -n "$guard_ccache_root" ]] || guard_ccache_root="$PWD/.ccache-guard"
+guard_ccache="$guard_ccache_root/$guard_prefix"
+[[ "$run_job" == 1 ]] && guard_ccache="$guard_ccache_root/$guard_prefix-job"
+mkdir -p "$guard_ccache" || {
+    echo "qt62-guard: cannot create $guard_ccache" >&2; exit 1; }
 # ci.yml's own steps, through the same runner the host leg uses (ANTS-5324).
 # The job env points CCACHE_DIR at the workspace's .ccache, so that path is the
 # mount; ANTS_PUSH_GATE passes through so the push gate skips the perf step
@@ -394,13 +396,13 @@ mkdir -p "$qt62_ccache" || {
 # normal user, and root ignores file modes, so the tests that chmod a file
 # unreadable and expect a refusal failed here as root (measured 2026-09-27:
 # five of them). HOME must then be somewhere writable.
-echo "qt62-guard: running $qt62_what ($qt62_base, tag $qt62_tag)…"
-podman run --rm --security-opt label=disable --init --name "$qt62_container" \
+echo "qt62-guard: running $guard_what ($guard_base, tag $guard_tag)…"
+podman run --rm --security-opt label=disable --init --name "$guard_container" \
     --userns=keep-id -e HOME=/tmp \
-    -v "$PWD:/src" -v "$qt62_volume:/src/$qt62_build_dir" \
-    -v "$qt62_ccache:/src/.ccache" \
+    -v "$PWD:/src" -v "$guard_volume:/src/$guard_build_dir" \
+    -v "$guard_ccache:/src/.ccache" \
     -e ANTS_PUSH_GATE="${ANTS_PUSH_GATE:-}" \
-    -w /src "$qt62_image" \
+    -w /src "$guard_image" \
     python3 tools/ci_workflow.py run "$job" &
 wait $!
 rc=$?
@@ -413,30 +415,30 @@ if (( rc >= 125 )); then
     echo "qt62-guard: ✗ the $job container did not finish (exit $rc): it was" >&2
     echo "            killed, or podman could not run it. The build tree stays" >&2
     echo "            marked interrupted, so the next run builds cold:" >&2
-    echo "              $qt62_cmd" >&2
+    echo "              $guard_cmd" >&2
     exit 1
 fi
-rm -f "$qt62_interrupted_marker"
+rm -f "$guard_interrupted_marker"
 
 if (( rc != 0 )) && [[ "$run_job" == 1 ]]; then
     echo >&2
-    echo "qt62-guard: ✗ $qt62_what FAILED." >&2
+    echo "qt62-guard: ✗ $guard_what FAILED." >&2
     echo "            GitHub runs this same job on the same image, so it would" >&2
     echo "            fail there too. The failing step is above." >&2
     exit 1
 fi
 if [[ "$run_job" == 1 ]]; then
-    echo "qt62-guard: ✓ $qt62_what passed."
+    echo "qt62-guard: ✓ $guard_what passed."
     exit 0
 fi
 if (( rc != 0 )); then
     echo >&2
-    echo "qt62-guard: ✗ FAILED to build for $qt62_what." >&2
+    echo "qt62-guard: ✗ FAILED to build for $guard_what." >&2
     echo "            This is the class CI catches as $job and nothing local" >&2
     echo "            can see. Check the error above for the offending symbol:" >&2
     echo "            an API newer than the Qt floor (dependencies.md § 4), or a" >&2
     echo "            target that only links under this box's newer compiler." >&2
     exit 1
 fi
-echo "qt62-guard: ✓ compiles for $qt62_what."
+echo "qt62-guard: ✓ compiles for $guard_what."
 exit 0

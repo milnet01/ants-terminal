@@ -85,7 +85,7 @@ script with a stub `podman` first on `PATH`, registered as the ctest
   only that the text between the trap and the compile names "interrupted"
   and that `--warm-only` checks for it.
 - It does not cover `--clean`, `--print`, or the image-build step
-  (`qt62_ensure_image`) — those are unaffected by this fix and untouched by
+  (`guard_ensure_image`) — those are unaffected by this fix and untouched by
   this spec.
 
 ## Build

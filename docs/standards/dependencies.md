@@ -127,7 +127,7 @@ cycle**, and opportunistically when editing a manifest. Per dependency type:
 | GoogleTest (the `FetchContent_Declare(googletest …)` `GIT_TAG`) | compare the pinned `GIT_TAG` against `github.com/google/googletest` releases |
 | CI actions (`.github/workflows/*.yml`) | `gh api repos/<owner>/<repo>/releases/latest -q .tag_name`; bump the pinned **SHA** *and* its `# vX.Y.Z` comment together (§6) |
 | CI runner images (`runs-on:`) | GitHub's runner-image release notes (`ubuntu-24.04` → next LTS). **Caveat:** the `qt62-baseline` job's `ubuntu-22.04` is *not* a stale pin — it mirrors the §4 Qt 6.2 floor. Do **not** bump it in the runner sweep; it moves only if the Qt 6.2 floor itself is deliberately raised. `release.yml`'s `appimage` job's `ubuntu-22.04` is a floor too: it sets the AppImage's glibc 2.35 reach (that file's header). |
-| Container bases (`tools/qt62-guard.sh` `qt62_base`) | keep each in lockstep with the `runs-on:` Ubuntu version of the `ci.yml` job it mirrors. Its **apt set** needs no sweep — ANTS-4131 extracts that from `ci.yml` at run time |
+| Container bases (`tools/qt62-guard.sh` `guard_base`) | keep each in lockstep with the `runs-on:` Ubuntu version of the `ci.yml` job it mirrors. Its **apt set** needs no sweep — ANTS-4131 extracts that from `ci.yml` at run time |
 | LayerShellQt (`find_package(LayerShellQt CONFIG QUIET)`) | optional `CONFIG`-discovered dep, no version pin — sweep is present-or-absent only (nothing to bump) |
 
 On any bump: apply global § 6 (update callers/idioms in the same change) and re-run
@@ -155,8 +155,8 @@ map.
   by 40-char SHA with a `# vX.Y.Z` human comment — a mutable tag is never
   trusted; cf. the `tj-actions/changed-files` 2025 incident), `runs-on:`
   runner images, the apt Qt/Lua package sets.
-- **`tools/qt62-guard.sh`** — the `qt62_base` container bases only. It carries
-  **no apt list of its own**: since ANTS-4131 `qt62_ci_packages()` extracts the
+- **`tools/qt62-guard.sh`** — the `guard_base` container bases only. It carries
+  **no apt list of its own**: since ANTS-4131 `guard_ci_packages()` extracts the
   package set from the matching `ci.yml` job's install step at run time and
   refuses to run if it cannot parse it, so there is nothing here to keep in
   lockstep and nothing to sweep. A package added to `ci.yml` reaches the parity

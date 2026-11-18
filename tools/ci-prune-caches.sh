@@ -21,7 +21,7 @@ keep=${2:?usage: ci-prune-caches.sh <key-prefix> <kept-key>}
 repo=${GITHUB_REPOSITORY:?GITHUB_REPOSITORY unset}
 ref=${GITHUB_REF:?GITHUB_REF unset}
 
-warn() {
+warn_and_exit() {
     echo "::warning::ci-prune-caches: $*"
     exit 0
 }
@@ -30,7 +30,7 @@ warn() {
 listing=$(gh api --paginate -X GET "repos/$repo/actions/caches" \
     -f key="$prefix" -f ref="$ref" \
     --jq '.actions_caches[] | "\(.id) \(.key)"') \
-    || warn "could not list caches for $prefix on $ref"
+    || warn_and_exit "could not list caches for $prefix on $ref"
 
 # grep reads a here-string, not a pipe: `grep -q` quits at the first match,
 # and under pipefail the writer it leaves to SIGPIPE would read as a miss
@@ -44,7 +44,7 @@ deleted=0
 while read -r id key; do
     [[ -z $id || $key == "$keep" ]] && continue
     gh api -X DELETE "repos/$repo/actions/caches/$id" >/dev/null \
-        || warn "could not delete cache $id ($key)"
+        || warn_and_exit "could not delete cache $id ($key)"
     echo "deleted cache $id ($key)"
     deleted=$((deleted + 1))
 done <<<"$listing"

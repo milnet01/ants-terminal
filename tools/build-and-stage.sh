@@ -4,8 +4,8 @@
 # The terminal is launched from build/ants-terminal directly (launch.sh / the
 # Plasma task-manager icon), and the binary resolves its assets relative to its
 # own path (applicationDirPath()/../assets — main.cpp, titlebar.cpp) and the MCP
-# project root the same way (remotecontrol.cpp), so it MUST keep running from
-# build/. But `cmake --build build` relinks build/ants-terminal IN PLACE: the
+# project root the same way (remotecontrol_workspace.cpp), so it MUST keep
+# running from build/. But `cmake --build build` relinks build/ants-terminal IN PLACE: the
 # linker truncates and rewrites the file, and an instance still running from
 # that inode later demand-pages a corrupted/shifted code page and SIGSEGVs
 # (observed 2026-06-05, ~2.5 min after an in-place relink — impossible

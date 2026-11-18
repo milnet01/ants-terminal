@@ -60,12 +60,12 @@ std::string compileTrapRegion(const std::string &code) {
 }
 
 // The `--warm-only` precondition block: from the mode check up to the next
-// function definition (`qt62_ensure_image() {`, real code rather than a
+// function definition (`guard_ensure_image() {`, real code rather than a
 // comment, so it survives codeLines()'s stripping). Empty on failure.
 std::string warmOnlyRegion(const std::string &code) {
     return ants_test::regionBetween(
         code, "if [[ \"$mode\" == \"warm-only\" ]]; then",
-        "qt62_ensure_image() {");
+        "guard_ensure_image() {");
 }
 
 // True if `text` contains "exit" followed (after optional whitespace) by a
@@ -223,12 +223,12 @@ TEST(Qt62GuardInterrupt, Inv5WarmOnlyStillSkipsOnMissingImageOrVolume) {
         << "could not find the --warm-only precondition block in "
         << SRC_QT62_GUARD_PATH;
 
-    EXPECT_TRUE(region.find("podman image exists \"$qt62_image\"") !=
+    EXPECT_TRUE(region.find("podman image exists \"$guard_image\"") !=
                 std::string::npos)
         << "the image-existence check is gone from the --warm-only block. "
            "Block examined:\n"
         << region;
-    EXPECT_TRUE(region.find("podman volume exists \"$qt62_volume\"") !=
+    EXPECT_TRUE(region.find("podman volume exists \"$guard_volume\"") !=
                 std::string::npos)
         << "the volume-existence check is gone from the --warm-only block. "
            "Block examined:\n"

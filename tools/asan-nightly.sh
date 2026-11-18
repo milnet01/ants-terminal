@@ -81,6 +81,7 @@ fi
 
 # Started in the background and waited on: bash runs a trap only after a
 # foreground command returns (the same reason as tools/qt62-guard.sh).
+# tools/local-ci.sh writes the same marker from a foreground build (ANTS-6050).
 trap 'touch "$asan_marker"
       echo "asan-nightly: interrupted — $asan_dir marked untrusted." >&2
       exit 143' TERM INT HUP

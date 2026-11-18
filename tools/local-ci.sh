@@ -5,7 +5,7 @@
 # shim in tools/hooks/pre-push. That hook owns everything about the PUSH: the
 # secret scan, which files it changes, whether it is documentation-only, and
 # whether this runs in the real checkout. This script owns what Ants checks.
-# tools/setup-git-hooks.sh sets the hook's per-repo options.
+# The hook's per-repo options are committed in .ants/gate.conf.
 #
 #   tools/local-ci.sh           the full gate
 #   tools/local-ci.sh --docs    the document checks only; nothing builds
@@ -64,15 +64,15 @@ fi
 # compilable-source legs below then run rather than skip (prepush_range).
 if [[ -n "${ANTS_PUSH_CHANGED+set}" ]]; then
     changed="$(printf '%s\n' "$ANTS_PUSH_CHANGED" | sed '/^$/d' | sort -u)"
-    run_gate=0
+    range_unknown=0
 else
     changed=""
-    run_gate=1
+    range_unknown=1
 fi
 
 # A docs run on an unknown change set cannot know which checks apply, so it
 # is not a docs run. The hook never asks for one; this is the backstop.
-if [[ "$mode" == docs && "$run_gate" -eq 1 ]]; then
+if [[ "$mode" == docs && "$range_unknown" -eq 1 ]]; then
     echo "pre-push: --docs without ANTS_PUSH_CHANGED — running the full gate."
     mode=full
 fi
@@ -177,10 +177,9 @@ fi
 # Only a push that changes something COMPILABLE, or ci.yml itself, can break a
 # container compile guard, so a docs- or packaging-only push skips both guard
 # legs below.
-# run_gate=1 means we could not compute a precise range, so we cannot rule
-# out a source change — run them rather than skip on uncertainty.
+# An unknown range cannot rule out a source change, so both legs run.
 compilable=""
-if [[ "$run_gate" -eq 0 && -n "$changed" ]]; then
+if [[ "$range_unknown" -eq 0 && -n "$changed" ]]; then
     compilable="$(compilable_paths <<<"$changed")"
 else
     compilable="(range unknown)"
@@ -371,7 +370,9 @@ else
         else
             # If the caller's timeout kills us anyway, mark the tree so the
             # NEXT run refuses to trust an incremental build over a killed
-            # ninja.
+            # ninja. The same marker trap is in tools/asan-nightly.sh and
+            # tools/qt62-guard.sh, which background the build and also trap
+            # HUP; this copy runs it in the foreground (ANTS-6050).
             trap 'touch "$asan_marker"
                   echo >&2
                   echo "pre-push: interrupted during the sanitizer build — $asan_dir" >&2
