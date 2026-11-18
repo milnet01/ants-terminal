@@ -18,8 +18,9 @@ namespace TestResCache {
 
 struct ParsedFailure {
     QString name;
-    QString excerpt;      // last 20 lines, per-line capped at 1000, total capped at 4000
-    QString fullExcerpt;  // whole block, capped at 8000; on-disk only, NOT echoed
+    // The caps are named in testrescache.cpp.
+    QString excerpt;      // last kExcerptTailLines lines, each at most kLineCap, kExcerptCap in all
+    QString fullExcerpt;  // whole block, at most kFullExcerptCap; on-disk only, NOT echoed
 };
 
 struct ParsedTests {
@@ -41,18 +42,18 @@ struct ParsedTests {
     int     collected = -1;   // -1 = the runner printed no collected count
 };
 
-// ANTS-5503 — append one failing test under the § 3.2 caps: the block is
-// tail-truncated to 8000 chars and the excerpt is its last 20 lines. Past 50
-// entries it sets failingTestsTruncated and returns false.
+// ANTS-5503 — append one failing test under the § 3.2 caps: the block keeps
+// its last kFullExcerptCap chars and the excerpt its last kExcerptTailLines
+// lines. Past kMaxFailures entries it sets failingTestsTruncated and returns
+// false.
 bool appendFailure(ParsedTests &tests, const QString &name, QString block);
 
 // `<root>/.audit_cache/tests.json`. Empty when canonProject empty.
 QString cachePath(const QString &canonProject);
 
 // Parse a ctest --output-on-failure log into ParsedTests. Pure
-// function. Caps failingTests[] at 50; per-failure full body at
-// 8000 chars; per-line excerpt at 1000 chars; joined excerpt at
-// 4000 chars. Sets `recognised:false` if neither summary footer
+// function. Each failure is capped as appendFailure says. Sets
+// `recognised:false` if neither summary footer
 // nor any per-test status line matched (caller refuses with
 // bad_args).
 [[nodiscard]] ParsedTests parseCtestOutput(const QString &output);

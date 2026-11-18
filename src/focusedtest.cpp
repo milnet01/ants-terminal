@@ -142,47 +142,37 @@ CoverageMap loadCoverageMap(const QString &rootCanonical) {
     auto invalidPattern = [&cmakeIncompatible](const QString &p) {
         return !QRegularExpression(p).isValid() || cmakeIncompatible(p);
     };
+    // ANTS-4460 — a pattern list that is not an array (the natural mistake
+    // being a bare string, `"src/foo.cpp": "FooTest"`) gave an EMPTY
+    // toArray(): the key was inserted carrying no patterns, so the file
+    // counted as MAPPED and contributed nothing to the ctest `-R` regex. The
+    // run then selected no tests and reported success — a false green from a
+    // typo. Refuse the shape, as the invalid-pattern check does. Returns the
+    // refusal code, or empty with the patterns appended to `out`.
+    auto readPatterns = [&invalidPattern](const QJsonValue &list,
+                                          QStringList *out) -> QString {
+        if (!list.isArray()) return QStringLiteral("bad_schema");
+        for (const QJsonValue &v : list.toArray()) {
+            const QString s = v.toString();
+            if (s.isEmpty()) continue;
+            if (invalidPattern(s)) return QStringLiteral("bad_pattern");
+            out->append(s);
+        }
+        return {};
+    };
     const QJsonObject mapObj =
         root.value(QStringLiteral("map")).toObject();
     for (auto it = mapObj.constBegin(); it != mapObj.constEnd(); ++it) {
-        // ANTS-4460 — a value that is not an array (the natural mistake being a
-        // bare string, `"src/foo.cpp": "FooTest"`) gave an EMPTY toArray(): the
-        // key was inserted carrying no patterns, so the file counted as MAPPED
-        // and contributed nothing to the ctest `-R` regex. The run then
-        // selected no tests and reported success — a false green from a typo.
-        // Refuse the shape, as the invalid-pattern check beside it does.
-        if (!it.value().isArray()) {
-            cm.error = QStringLiteral("bad_schema");
-            return cm;
-        }
         QStringList pats;
-        for (const QJsonValue &v : it.value().toArray()) {
-            const QString s = v.toString();
-            if (s.isEmpty()) continue;
-            if (invalidPattern(s)) {
-                cm.error = QStringLiteral("bad_pattern");
-                return cm;
-            }
-            pats.append(s);
-        }
+        cm.error = readPatterns(it.value(), &pats);
+        if (!cm.error.isEmpty()) return cm;
         cm.entries.insert(it.key(), pats);
     }
-    // Same shape guard as the map above, but only when the key is PRESENT: an
-    // absent `default` is legitimate and must stay an empty pattern list.
-    if (root.contains(QStringLiteral("default")) &&
-        !root.value(QStringLiteral("default")).isArray()) {
-        cm.error = QStringLiteral("bad_schema");
-        return cm;
-    }
-    for (const QJsonValue &v :
-         root.value(QStringLiteral("default")).toArray()) {
-        const QString s = v.toString();
-        if (s.isEmpty()) continue;
-        if (invalidPattern(s)) {
-            cm.error = QStringLiteral("bad_pattern");
-            return cm;
-        }
-        cm.defaultPatterns.append(s);
+    // An absent `default` is legitimate and stays an empty pattern list.
+    if (root.contains(QStringLiteral("default"))) {
+        cm.error = readPatterns(root.value(QStringLiteral("default")),
+                                &cm.defaultPatterns);
+        if (!cm.error.isEmpty()) return cm;
     }
     for (const QJsonValue &v :
          root.value(QStringLiteral("ignore")).toArray()) {

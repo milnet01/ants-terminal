@@ -556,14 +556,6 @@ QStringList resolveDimensions(const QString &arg) {
     return {};  // unknown shape
 }
 
-// ANTS-1491 — strip C/C++ string literals and comments before pre-pass
-// regex matching, so e.g. a `sleep(...)` pattern doesn't match inside a
-// C++ raw-string literal holding a Python child-process script. Mirrors
-// the comment/string filter step in auditdialog's static-analysis
-// pipeline. Replaces content with spaces (not deletes) to preserve
-// column positions; newlines are preserved verbatim so the line-number
-// map stays exact. Only applied to C/C++ extensions — other languages
-// would need their own state machine.
 bool isCxxPath(const QString &path) {
     static const QStringList kExt = {
         QStringLiteral(".cpp"), QStringLiteral(".cxx"),
@@ -578,24 +570,6 @@ bool isCxxPath(const QString &path) {
     return false;
 }
 
-// ANTS-1627 — strip Python string literals (single, double, triple-
-// quoted, plus r/b/u/f/rb/br/fr/rf prefixes) and `#` line comments
-// before pre-pass regex matching. Mirrors stripCxxLiteralsAndComments
-// for .py files. Replaces stripped content with spaces (preserving
-// columns) and keeps newlines verbatim (preserving line numbers).
-//
-// Covers the false-positive shapes reported on RetroDB Issue 5 +
-// Vestige Issue 6 (2026-05-17/18):
-//   * `sleep_call` matched inside a string literal that's the search-
-//     needle of a `test_no_bare_time_sleep_in_jobs` negative-grep.
-//   * `hardcoded_password` matched inside a string literal asserted
-//     NOT to be present (`'password: admin'` in `assert ... not in`).
-//   * `sleep_call` matched inside a module docstring or `#` comment
-//     describing the bug being fixed.
-//
-// All four collapse to "match is inside a string literal or comment"
-// — the same shape the C/C++ strip already handles for raw-string
-// fixture scripts.
 bool isPyPath(const QString &path) {
     return path.endsWith(QStringLiteral(".py"), Qt::CaseInsensitive);
 }
@@ -636,6 +610,24 @@ bool isPyPrefixBoundary(const QString &src, int i) {
     return true;
 }
 
+// ANTS-1627 — strip Python string literals (single, double, triple-
+// quoted, plus r/b/u/f/rb/br/fr/rf prefixes) and `#` line comments
+// before pre-pass regex matching. Mirrors stripCxxLiteralsAndComments
+// for .py files. Replaces stripped content with spaces (preserving
+// columns) and keeps newlines verbatim (preserving line numbers).
+//
+// Covers the false-positive shapes reported on RetroDB Issue 5 +
+// Vestige Issue 6 (2026-05-17/18):
+//   * `sleep_call` matched inside a string literal that's the search-
+//     needle of a `test_no_bare_time_sleep_in_jobs` negative-grep.
+//   * `hardcoded_password` matched inside a string literal asserted
+//     NOT to be present (`'password: admin'` in `assert ... not in`).
+//   * `sleep_call` matched inside a module docstring or `#` comment
+//     describing the bug being fixed.
+//
+// All three collapse to "match is inside a string literal or comment"
+// — the same shape the C/C++ strip already handles for raw-string
+// fixture scripts.
 QString stripPythonLiteralsAndComments(const QString &src) {
     QString out;
     out.reserve(src.size());
@@ -753,6 +745,14 @@ QString stripPythonLiteralsAndComments(const QString &src) {
     return out;
 }
 
+// ANTS-1491 — strip C/C++ string literals and comments before pre-pass
+// regex matching, so e.g. a `sleep(...)` pattern doesn't match inside a
+// C++ raw-string literal holding a Python child-process script. Mirrors
+// the comment/string filter step in auditdialog's static-analysis
+// pipeline. Replaces content with spaces (not deletes) to preserve
+// column positions; newlines are preserved verbatim so the line-number
+// map stays exact. Applied to isCxxPath() files; Python has its own
+// (stripPythonLiteralsAndComments).
 QString stripCxxLiteralsAndComments(const QString &src) {
     QString out;
     out.reserve(src.size());
@@ -1078,6 +1078,7 @@ int countInlineSeverityTags(const QStringList &lines, SeverityHistogram &hist) {
 //   - ANTS-1617 `### [SEV] dimension: <name>` headings (RetroDB), whose
 //     `dimension:` tail wins over the current header;
 //   - ANTS-1617 `## Findings (JSON)` followed by a fenced JSON array.
+// A finding outside a recognised dimension counts toward the total only.
 // A report with none of them falls back to countInlineSeverityTags.
 // Returns the finding count.
 int scanChunkReport(const QString &contents, SeverityHistogram &hist) {

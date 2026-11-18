@@ -25,7 +25,8 @@ QString gateKey(GateName g);
 
 // One gate's configuration. `command` is shell-quoted whole-string;
 // the engine runs it via `/bin/sh -c <command>` with `projectPath`
-// as cwd. `format` hints to the parser: "ctest" | "lint" | "plain".
+// as cwd. `format` hints to the parser: "ctest" reads ctest's summary;
+// anything else, "plain" included, is judged by the exit code alone.
 struct GateConfig {
     GateName name = GateName::Build;
     QString  command;
@@ -77,7 +78,7 @@ struct VerifyOptions {
 // Top-level report. `allPassed` is true only when at least one gate ran
 // and every gate that ran passed (ANTS-1289 INV-14). `configSource` is
 // one of ".ants/verify.json" | "auto-detected" | "none" |
-// "auto (untrusted-bespoke)".
+// "auto (untrusted-bespoke)" | "bad_config".
 struct VerifyReport {
     QList<GateResult> gates;
     bool              allPassed = false;

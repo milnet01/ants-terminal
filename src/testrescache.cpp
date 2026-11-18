@@ -25,6 +25,7 @@ constexpr int  kMaxFailures      = 50;
 constexpr int  kFullExcerptCap   = 8'000;
 constexpr int  kExcerptCap       = 4'000;
 constexpr int  kLineCap          = 1'000;
+constexpr int  kExcerptTailLines = 20;
 constexpr int  kSchemaVersion    = 1;
 const char    *kFileName         = "tests.json";
 
@@ -215,15 +216,16 @@ bool appendFailure(ParsedTests &tests, const QString &name, QString block) {
         tests.failingTestsTruncated = true;
         return false;
     }
-    // Cap full body at 8000 chars (tail-truncate so the failure
-    // detail at the end of the block is preserved).
+    // Cap the full body at kFullExcerptCap chars, keeping the tail, where
+    // the failure detail is.
     if (block.size() > kFullExcerptCap) {
         block = block.right(kFullExcerptCap);
     }
-    // Tail 20 lines of the block → excerpt
+    // The excerpt is the block's last kExcerptTailLines lines.
     const QStringList allLines = block.split(QLatin1Char('\n'),
                                              Qt::KeepEmptyParts);
-    const int tailStart = std::max(0, static_cast<int>(allLines.size()) - 20);
+    const int tailStart = std::max(
+        0, static_cast<int>(allLines.size()) - kExcerptTailLines);
 
     ParsedFailure pf;
     pf.name        = name;

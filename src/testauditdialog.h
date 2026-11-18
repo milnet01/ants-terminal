@@ -29,7 +29,6 @@
 #include <QStringList>
 #include <QVector>
 
-class QComboBox;
 class QLineEdit;
 class QPlainTextEdit;
 class QRadioButton;
@@ -104,7 +103,7 @@ private:
     QHash<QString, QStringList>      m_collectedChunkPaths;
     QString                          m_synthText;
 
-    FoldInMode m_foldInMode = FoldInMode::PerFinding;
+    FoldInMode m_foldInMode = FoldInMode::Narrative;
     QString    m_narrative;
     QJsonArray m_actionable;
 

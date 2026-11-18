@@ -106,7 +106,6 @@ void TestAuditDialog::buildControls() {
     m_perFindingRadio =
         new QRadioButton(tr("Per-finding (allocate ROADMAP IDs)"), foldBox);
     narrativeRadio->setChecked(true);
-    m_foldInMode = FoldInMode::Narrative;
     connect(m_perFindingRadio, &QRadioButton::toggled, this, [this](bool on) {
         setFoldInMode(on ? FoldInMode::PerFinding : FoldInMode::Narrative);
     });

@@ -105923,7 +105923,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: review-engines.
 
-- 📋 [ANTS-6138] **Readability fixes, test-audit-verify lane: src/buildtargets.h, src/focusedtest.cpp, src/mutationprobe.cpp, src/mutationprobe.h, src/testauditdialog.h, src/testauditengine.cpp ….**
+- ✅ [ANTS-6138] **Readability fixes, test-audit-verify lane: src/buildtargets.h, src/focusedtest.cpp, src/mutationprobe.cpp, src/mutationprobe.h, src/testauditdialog.h, src/testauditengine.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane test-audit-verify:
   0 high, 9 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/29-test-audit-verify.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105940,6 +105940,17 @@ worked after these.
   countInlineSeverityTags. F8-F12 comments now state the code. F2 queued
   onto ANTS-5983; F9's missing zero-tests check is ANTS-5981. LOWs
   remain.
+  2026-11-18: LOWs closed. focused_test's map and default
+  pattern lists share readPatterns; verify's log window is one
+  pushLine; vitest's and go's narrowed args derive from fullArgs;
+  judgeBaseline's comment moved to it and names the 4/5 exception;
+  the strip-literal comments sit on their functions ("All three");
+  scanChunkReport says an undimensioned finding counts toward the
+  total only (the quoted sentence went in the 10-26 refactor); the
+  test-audit dialog's member defaults to Narrative; verify's header
+  lists bad_config and says non-ctest formats are judged by exit
+  code; testrescache names kExcerptTailLines and its comments name
+  the caps. Unused QComboBox forward declaration removed.
   **Layman:** Tidy the test-audit and verification tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

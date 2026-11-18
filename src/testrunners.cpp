@@ -655,13 +655,15 @@ Command buildCommand(Runner r, const QString &root, const QStringList &changedFi
             c.args << QStringLiteral("--findRelatedTests") << selector;
             break;
         case Runner::Vitest:
-            c.args = {QStringLiteral("--no-install"), QStringLiteral("vitest"),
-                      QStringLiteral("related"), QStringLiteral("--run")};
-            c.args << selector;
+            // fullArgs' `--no-install vitest` prefix, with `related --run`
+            // in place of `run`.
+            c.args = c.fullArgs.mid(0, 2);
+            c.args << QStringLiteral("related") << QStringLiteral("--run")
+                   << selector;
             break;
         case Runner::Go:
-            c.args = {QStringLiteral("test"), QStringLiteral("-v")};
-            c.args << selector;
+            // fullArgs with the selected packages in place of `./...`.
+            c.args = c.fullArgs.mid(0, 2) + selector;
             break;
         default:
             c.args = c.fullArgs + selector;

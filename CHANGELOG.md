@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The test-audit and verify tools keep one copy each of the coverage-map pattern check and the log window, and their comments name the caps and states the code uses** (ANTS-6138)
+
 - **Cold-eyes lists a docs/phases file whose name matches a spec as its own lane, spec/<name>@phases; the review helpers' copied path checks now share one each** (ANTS-6137)
 
 - **The spec checkers' comments describe the rules the code applies, and spec_conformance's header lists its whole reply** (ANTS-6136)

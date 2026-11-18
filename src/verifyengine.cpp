@@ -272,6 +272,12 @@ GateResult runOneGate(const QString &projectPath,
     QStringDecoder utf8(QStringDecoder::Utf8);
     int totalLines = 0;
     constexpr qsizetype kSingleLineCap = kHardByteCap * 2;
+    // Keep the last maxLogLines lines, counting every line seen.
+    auto pushLine = [&](QString line) {
+        lines.append(std::move(line));
+        ++totalLines;
+        if (lines.size() > maxLogLines) lines.removeFirst();
+    };
 
     QObject::connect(&p, &QProcess::readyReadStandardOutput,
                      [&]() {
@@ -282,20 +288,14 @@ GateResult runOneGate(const QString &projectPath,
         if (carry.indexOf(QChar('\n')) >= 0) {
             QStringList parts = carry.split(QChar('\n'));
             carry = parts.takeLast();   // partial last line, or empty
-            for (QString &l : parts) {
-                lines.append(std::move(l));
-                ++totalLines;
-                if (lines.size() > maxLogLines) lines.removeFirst();
-            }
+            for (QString &l : parts) pushLine(std::move(l));
         }
         // Hard-cap an unterminated single line so an attacker can't
         // make us buffer multi-MiB of garbage. Force-split. ANTS-5102 —
         // checked AFTER the split: checked first, one large read carrying
         // many complete lines (ctest's FAILED list) became a single line.
         if (carry.toUtf8().size() > kSingleLineCap) {
-            lines.append(carry);
-            ++totalLines;
-            if (lines.size() > maxLogLines) lines.removeFirst();
+            pushLine(carry);
             carry.clear();
         }
     });
@@ -347,11 +347,7 @@ GateResult runOneGate(const QString &projectPath,
     r.durationSec = wallClock.elapsed() / 1000.0;
 
     // Flush any remaining carry as a final line.
-    if (!carry.isEmpty()) {
-        lines.append(carry);
-        ++totalLines;
-        if (lines.size() > maxLogLines) lines.removeFirst();
-    }
+    if (!carry.isEmpty()) pushLine(carry);
     r.logTotalLines = totalLines;
     bool truncated = false;
     r.logTail = assembleLogTail(lines, maxLogLines, &truncated);
