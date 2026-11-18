@@ -36,6 +36,25 @@ constexpr int kGitLogCap        = 4 * 1024 * 1024;   // 4 MiB
 constexpr int kGitFilelistCap   = 256 * 1024;        // 256 KiB
 constexpr int kGitTimeoutMs     = 30000;
 constexpr int kPackagingScriptTimeoutMs = 30000;
+constexpr int kPackagingScriptStdoutCap = 1 * 1024 * 1024;   // 1 MiB
+
+// The files both TODO detectors (c and e) scan.
+const QStringList &todoScanGlobs() {
+    static const QStringList globs = {
+        QStringLiteral("*.cpp"), QStringLiteral("*.h"),
+        QStringLiteral("*.py"),  QStringLiteral("*.js"),
+        QStringLiteral("*.ts"),  QStringLiteral("*.tsx"),
+        QStringLiteral("*.go"),  QStringLiteral("*.rs"),
+    };
+    return globs;
+}
+
+// A TODO/FIXME/XXX/HACK marker followed by `:` or `(`; NOTE: is not one.
+const QRegularExpression &todoMarkerRe() {
+    static const QRegularExpression re(
+        QStringLiteral(R"(\b(TODO|FIXME|XXX|HACK)\b\s*[:(])"));
+    return re;
+}
 
 // Maximum entries in a `git diff --name-only` result we'll iterate.
 // 500 paths is generous — anything above is a release/refactor mega-
@@ -159,6 +178,8 @@ bool isFixtureData(const QString &rel) {
 QList<Finding> detectStaleTypeComments(
     const QString &projectPath, const ScanOptions &opt) {
     const QString since = resolveSinceRef(projectPath, opt.sinceRef);
+    // Narrower than todoScanGlobs(): Go and Rust were left out when this
+    // detector shipped (ANTS-1113), and no reason was recorded.
     static const QStringList kExts = {
         QStringLiteral("*.cpp"), QStringLiteral("*.h"),
         QStringLiteral("*.py"),  QStringLiteral("*.js"),
@@ -281,24 +302,16 @@ QList<Finding> detectStaleTypeComments(
 QList<Finding> detectAddedTodos(
     const QString &projectPath, const ScanOptions &opt) {
     const QString since = resolveSinceRef(projectPath, opt.sinceRef);
-    static const QStringList kExts = {
-        QStringLiteral("*.cpp"), QStringLiteral("*.h"),
-        QStringLiteral("*.py"),  QStringLiteral("*.js"),
-        QStringLiteral("*.ts"),  QStringLiteral("*.tsx"),
-        QStringLiteral("*.go"),  QStringLiteral("*.rs"),
-    };
     QStringList args = {
         QStringLiteral("diff"),
         QStringLiteral("--unified=0"),
         since + QStringLiteral("..HEAD"),
         QStringLiteral("--"),
     };
-    for (const QString &g : kExts) args << g;
+    args << todoScanGlobs();
     const QString diff = runGit(projectPath, args, kGitStdoutCap);
     if (diff.isEmpty()) return {};
 
-    static const QRegularExpression kTodoRe(
-        QStringLiteral(R"(\b(TODO|FIXME|XXX|HACK)\b\s*[:(])"));
     static const QRegularExpression kFileRe(
         QStringLiteral(R"(^\+\+\+ b/(.+)$)"));
     static const QRegularExpression kHunkRe(
@@ -329,7 +342,7 @@ QList<Finding> detectAddedTodos(
         if (currentFile.isEmpty()) continue;
         if (raw.startsWith(QChar('+'))) {
             const QString line = raw.mid(1);
-            const auto m = kTodoRe.match(line);
+            const auto m = todoMarkerRe().match(line);
             if (m.hasMatch()) {
                 Finding fnd;
                 fnd.category   = QStringLiteral("code_drift");
@@ -448,13 +461,6 @@ QList<Finding> detectOrphanQUnused(
 
 namespace {
 
-// TODO/FIXME/XXX/HACK marker, same shape detectAddedTodos uses.
-const QRegularExpression &todoMarkerRe() {
-    static const QRegularExpression re(
-        QStringLiteral(R"(\b(TODO|FIXME|XXX|HACK)\b\s*[:(])"));
-    return re;
-}
-
 // Parse `git blame --line-porcelain` into final-line → committer-time
 // (epoch seconds). With --line-porcelain the commit headers repeat for
 // every line, so a single forward pass suffices.
@@ -496,13 +502,7 @@ QHash<int, qint64> blameCommitterTimes(const QString &projectPath,
 QList<Finding> detectStaleTodos(
     const QString &projectPath, const ScanOptions &opt) {
     if (opt.staleTodoMaxAgeDays <= 0) return {};
-    static const QStringList kExts = {
-        QStringLiteral("*.cpp"), QStringLiteral("*.h"),
-        QStringLiteral("*.py"),  QStringLiteral("*.js"),
-        QStringLiteral("*.ts"),  QStringLiteral("*.tsx"),
-        QStringLiteral("*.go"),  QStringLiteral("*.rs"),
-    };
-    const QStringList files = lsFiles(projectPath, kExts);
+    const QStringList files = lsFiles(projectPath, todoScanGlobs());
     if (files.isEmpty()) return {};
 
     const qint64 nowSec = QDateTime::currentSecsSinceEpoch();
@@ -1058,7 +1058,7 @@ QList<Finding> detectChangelogStaleBullets(
 }
 
 // ---------------------------------------------------------------------------
-// Code drift (h) — dead suppression directive  [ANTS-3743]
+// Code drift (i) — dead suppression directive  [ANTS-3743]
 // ---------------------------------------------------------------------------
 //
 // Reported by Fin Break, which carried 20 `# noqa: E501` comments while its
@@ -1334,9 +1334,11 @@ QList<Finding> runPackagingDrift(
     p.setProcessChannelMode(QProcess::SeparateChannels);
     HostExec::start(p, QStringLiteral("bash"), {QStringLiteral("packaging/check-version-drift.sh")});
     if (!p.waitForStarted(2000)) return {};
-    // ANTS-6525 — read as the script writes, keeping the first kGitStdoutCap.
+    // ANTS-6525 — read as the script writes, keeping the first
+    // kPackagingScriptStdoutCap.
     const ProcessDrain::Result r = ProcessDrain::run(
-        p, kPackagingScriptTimeoutMs, kGitStdoutCap, ProcessDrain::Keep::Head);
+        p, kPackagingScriptTimeoutMs, kPackagingScriptStdoutCap,
+        ProcessDrain::Keep::Head);
     if (r.timedOut) return {};
     const QString s = QString::fromUtf8(r.bytes);
 
@@ -1417,7 +1419,7 @@ QList<Finding> scanAll(
 }
 
 // ---------------------------------------------------------------------------
-// applyMechanicalFix — orphan_q_unused only in v1
+// applyMechanicalFix
 // ---------------------------------------------------------------------------
 
 ApplyVerdict applyMechanicalFix(

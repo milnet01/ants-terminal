@@ -151,7 +151,8 @@ QString IndieReviewDialog::assembleCappedPrompt(const QString &brief) const {
     // bodies). Backstop a runaway lane at the budget; the fence preamble
     // already frames the bodies as data, so a clipped tail stays safe.
     const QString marker = QStringLiteral(
-        "\n[brief truncated — lane exceeds 200 KiB budget]\n");
+        "\n[brief truncated — lane exceeds %1 KiB budget]\n")
+        .arg(kPromptCapBytes / 1024);
     // ANTS-2205 — shared clip-to-cap + fence-close tail (was ANTS-1991 inline).
     return BriefDispatch::clipToCapClosingFence(utf, marker, kPromptCapBytes);
 }

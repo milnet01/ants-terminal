@@ -63,6 +63,7 @@ ANTS-1619 / 1631 / 1634 cold-eyes partition bundle:
 | ANTS-1631 INV-4 | `Ants1631DocsEngineSpecMdSurfaces` | `docs/engine/<sub>/spec.md` surfaces (App-Build engine layout) |
 | ANTS-1631 INV-5 | `Ants1631SrcModuleSpecMdSurfaces` | `src/<module>/spec.md` surfaces (per-module spec layout) |
 | ANTS-1631 INV-6 | `Ants1631DocsPhasesSurfaces` | `docs/phases/*.md` surfaces (phased-design doc layout) |
+| ANTS-6137 | `Ants6137PhasesLaneNameCollisionSurfaces` | a `docs/phases` file sharing a spec's lane name surfaces as `<name>@phases` |
 | ANTS-1631 INV-7 | `Ants1631DatePrefixedSpecsSurface` | `2026-MM-DD-*.md` names accepted by the walker |
 | ANTS-1631 INV-8 | `Ants1631DeepNestedNotSurfaced` | level-3+ files not walked (vendor-tree guard) |
 | ANTS-1634 INV-3 | `Ants1634AuditInfraLaneFires` | `docs/audit/` with ≥ 2 .md files → `audit-infra` lane |

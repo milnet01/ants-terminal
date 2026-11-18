@@ -930,6 +930,27 @@ TEST(ColdEyesEngine, Ants1631DocsPhasesSurfaces) {
         QStringLiteral("docs/phases/2026-04-27-architecture.md")));
 }
 
+// ANTS-6137 — a docs/phases file sharing a spec's lane name surfaces
+// under `<name>@phases`, as a colliding spec.md does under `@<parent>`.
+TEST(ColdEyesEngine, Ants6137PhasesLaneNameCollisionSurfaces) {
+    Workspace ws;
+    ASSERT_TRUE(ws.valid());
+    ASSERT_TRUE(ws.writeRel("docs/specs/audio.md", QStringLiteral("# s\n")));
+    ASSERT_TRUE(ws.writeRel("docs/phases/audio.md", QStringLiteral("# p\n")));
+
+    const auto r = ColdEyesEngine::derivePartition(ws.root());
+    QStringList allDocs;
+    QStringList laneNames;
+    for (const auto &l : r.lanes) {
+        allDocs.append(l.docPaths);
+        laneNames.append(l.name);
+    }
+    EXPECT_TRUE(allDocs.contains(QStringLiteral("docs/phases/audio.md")))
+        << "lanes: " << laneNames.join(", ").toStdString();
+    EXPECT_TRUE(laneNames.contains(QStringLiteral("spec/audio@phases")))
+        << "lanes: " << laneNames.join(", ").toStdString();
+}
+
 // ANTS-1631 INV-7 — date-prefix YYYY-MM-DD-*.md filenames in
 // docs/specs/ surface even without a matching ROADMAP entry.
 TEST(ColdEyesEngine, Ants1631DatePrefixedSpecsSurface) {

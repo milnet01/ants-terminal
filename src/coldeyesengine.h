@@ -1,18 +1,21 @@
 // ColdEyesEngine — pure-function helpers for the in-process /cold-eyes
 // MCP fold-in (ANTS-1319). Qt::Core only, no widgets.
 //
-// Five operations:
+// The main operations:
 //
 //   derivePartition(projectPath, scope)
 //       Discover doc files under <projectPath>, partition into lanes
 //       by topic cohesion. Default scope yields:
-//         - "contracts": CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md
+//         - "contracts": CLAUDE.md + README.md + ROADMAP.md + CHANGELOG.md,
+//           plus CONTRIBUTING, SECURITY, LEGAL and CODE_OF_CONDUCT
 //         - "standards": docs/standards/*.md
 //         - "decisions": docs/decisions/*.md
 //         - "plugins":   PLUGINS.md (if present)
+//         - "audit-infra": docs/audit/ or docs/private/audit/, when it
+//           holds two or more .md files
 //         - "spec/ANTS-NNNN": one lane per active spec (📋/🚧)
 //       Optional override: <projectPath>/.cold-eyes/partition.json.
-//       Spec-lane cap = kMaxSpecLanes (12) per ANTS-1319 INV-2.
+//       Spec lanes are capped at kMaxSpecLanes (ANTS-1319 INV-2).
 //
 //   assembleBriefManifest(projectPath, lane)
 //       Per-lane brief manifest. Paths-only — never inlines doc bodies

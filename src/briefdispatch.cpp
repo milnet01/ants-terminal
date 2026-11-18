@@ -3,6 +3,7 @@
 
 #include "briefdispatch.h"
 #include "filecontentcache.h"
+#include "pathvalidation.h"
 
 #include <QChar>
 #include <QFile>
@@ -30,10 +31,10 @@ QString safeCanon(const QString &projectPath, const QString &rootCanon,
                             ? path
                             : projectPath + QChar('/') + path;
     const QString canon = QFileInfo(abs).canonicalFilePath();
-    if (canon.isEmpty() || rootCanon.isEmpty()
-        || !canon.startsWith(rootCanon + QChar('/'))) {
+    // The root itself is not a file to read.
+    if (canon == rootCanon
+        || !PathValidation::isInsideProject(projectPath, canon))
         return QString();
-    }
     return canon;
 }
 

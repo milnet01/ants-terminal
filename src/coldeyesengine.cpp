@@ -34,11 +34,6 @@ QString slurpUtf8(const QString &absPath) {
     return FileContentCache::slurpUtf8(absPath);
 }
 
-// INV-13 path-rule defence now lives in the shared, NFC-aware
-// PathValidation::isInsideProject (ANTS-1832) — same canonicalise-both-
-// and-anchor semantics this helper used to carry, reused here and by
-// indiereviewengine's partition-override parser.
-
 bool fileExists(const QString &projectPath, const QString &rel) {
     return QFileInfo::exists(projectPath + QChar('/') + rel);
 }
@@ -103,11 +98,12 @@ QString resolveContractStem(const QString &projectPath,
 // ANTS-1412 — return a status alongside the parsed lanes so a
 // malformed override can be surfaced to the caller instead of
 // silently swallowing into the default partition. `Absent` is the
-// no-override case (file not present). `Ok` means the file parsed
+// no-override case (file not present). `Unreadable` and `Empty` are a
+// file that could not be opened or holds no text. `Ok` means the file parsed
 // and at least one valid lane survived path-rule filtering. Every
 // other status carries a `warning` describing what failed.
 struct OverrideReadResult {
-    enum Status { Absent, ParseError, BadVersion, BadShape, AllLanesFiltered, Ok };
+    enum Status { Absent, Unreadable, Empty, ParseError, BadVersion, BadShape, AllLanesFiltered, Ok };
     Status      status = Absent;
     QString     warning;
     QList<Lane> lanes;
@@ -122,14 +118,14 @@ OverrideReadResult readPartitionOverride(const QString &projectPath) {
     }
     QFile f(filePath);
     if (!f.open(QIODevice::ReadOnly)) {
-        r.status = OverrideReadResult::ParseError;
+        r.status = OverrideReadResult::Unreadable;
         r.warning = QStringLiteral(
             ".cold-eyes/partition.json: cannot open for reading");
         return r;
     }
     const QByteArray raw = f.readAll();
     if (raw.trimmed().isEmpty()) {
-        r.status = OverrideReadResult::ParseError;
+        r.status = OverrideReadResult::Empty;
         r.warning = QStringLiteral(
             ".cold-eyes/partition.json: empty file");
         return r;
@@ -514,7 +510,10 @@ QList<SpecLaneCandidate> listSpecLaneCandidates(
                 if (!fi.exists()) continue;
                 QString laneName = QStringLiteral("spec/")
                                  + QFileInfo(e).completeBaseName();
-                if (seenLaneName.contains(laneName)) continue;
+                // A phase doc is never a copy of a same-named spec, so a
+                // collision is renamed as the spec.md walk does, not dropped.
+                if (seenLaneName.contains(laneName))
+                    laneName += QStringLiteral("@phases");
                 seenLaneName.insert(laneName);
                 out.append({fi.lastModified().toMSecsSinceEpoch(), rel,
                             laneName});
@@ -746,7 +745,8 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
             if (!stds.docPaths.isEmpty()) {
                 stds.summary = QStringLiteral(
                     "docs/*STANDARD*|*DESIGN*|*STYLE*|*GUIDE*.md "
-                    "(>= 100 lines, name-based standards fallback)");
+                    "(>= %1 lines, name-based standards fallback)")
+                    .arg(kStandardsMinLines);
             }
         }
         if (!stds.docPaths.isEmpty()) result.lanes << stds;
@@ -811,7 +811,7 @@ PartitionResult derivePartition(const QString &projectPath, Scope scope) {
     const QSet<int> activeAntsIds(allActive.begin(), allActive.end());
     auto mtimes = listSpecLaneCandidates(projectPath, activeAntsIds);
     // INV-2: pick the kMaxSpecLanes most-recently-modified, then
-    // sort by basename for stable presentation order.
+    // sort by relative path for stable presentation order.
     // ANTS-1345 — deterministic tiebreak. Bucket mtimes into 1 s
     // windows so a cluster of edits within a second sorts by path-lex
     // (alphabetic) rather than by filesystem enumeration order. The
@@ -1032,7 +1032,7 @@ BriefManifest assembleBriefManifest(const QString &projectPath,
 
     // ANTS-1440 — spec-lane enrichment. For lanes named `spec/...`
     // (single-spec lanes from derivePartition or caller-supplied),
-    // replace the generic "Single spec lane (active)" summary with
+    // replace the generic "Single spec lane" summary with
     // the spec's first H1 line and add any related specs referenced
     // in the header preamble to crossReferenceDocs.
     m.summary = lane.summary;

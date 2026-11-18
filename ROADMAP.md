@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6821 -->
+<!-- ants-roadmap-id-high-water: ANTS=6823 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -105877,7 +105877,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: spec-engines.
 
-- 📋 [ANTS-6137] **Readability fixes, review-engines lane: src/briefdispatch.cpp, src/coldeyesdialog.cpp, src/coldeyesengine.cpp, src/coldeyesengine.h, src/debtsweepengine.cpp, src/debtsweepengine.h ….**
+- ✅ [ANTS-6137] **Readability fixes, review-engines lane: src/briefdispatch.cpp, src/coldeyesdialog.cpp, src/coldeyesengine.cpp, src/coldeyesengine.h, src/debtsweepengine.cpp, src/debtsweepengine.h ….**
   Findings of the 2026-10-22 readability review (src run), lane review-engines:
   1 high, 13 medium, 18 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/28-review-engines.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105904,6 +105904,20 @@ worked after these.
   row 1015 `src/debtsweepengine.cpp:1421`; row 1018
   `src/coldeyesdialog.cpp:242`; row 1020 `src/debtsweepengine.cpp:161`;
   row 1023 `src/coldeyesengine.cpp:517`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: LOWs closed. Debt sweep: one TODO file list and
+  marker regex (todoScanGlobs, todoMarkerRe), the type-comment list's
+  narrower set commented, banners corrected (dead suppression is (i)),
+  packaging script has its own stdout cap, ScanOptions comment fixed.
+  Cold-eyes: a docs/phases lane-name collision surfaces as
+  `@phases` (red test first), Unreadable/Empty override statuses,
+  header inventory without counts, comments and the standards summary
+  built from kStandardsMinLines. Indie-review: inNoiseDir for the five
+  walks (row 1008), PathValidation::isInsideProject for the root
+  checks here and in BriefDispatch::safeCanon, kMaxWalkEntries moved,
+  sibling rule `<name>_*` stated once, sort order and laneFromPath
+  commented (row 1013). The "200 KiB" markers, test-audit dialog's
+  too, use kPromptCapBytes. Queued: row 1010 as ANTS-6822; the
+  dialog heading as ANTS-6823 (ANTS-1258 spec names it).
   **Layman:** Tidy the review helpers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -108068,6 +108082,35 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: mcp-content-verbs.
+
+- 📋 [ANTS-6822] **Build the four fold-in roadmap bullets from one shared skeleton in RoadmapFoldIn.**
+  From ANTS-6137 (2026-11-06 row 1010, MEDIUM).
+  templateRoadmapFoldInBlock, templateColdEyesFoldInBlock,
+  templateDebtSweepFoldInBlock and templateIndieReviewFoldInBlock
+  each build the `- 📋 [ID] … Kind: / Source:` bullet by hand, and
+  ANTS-3473/3497 had to patch every one. The laneFromPath lambda in
+  templateIndieReviewFoldInBlock is also a copy of one in
+  auditengine.cpp. Remedy: one bullet-skeleton helper, each tool
+  keeping its own fields. Not done in 6137: it changes four
+  renderers' output paths and their tests, beyond a readability pass.
+  **Layman:** The four review tools each write roadmap entries by hand; make them share one writer so a format change is made once.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
+
+- 📋 [ANTS-6823] **Give the indie-review dialog's narrative fold-in the same heading as the engine and the MCP verb.**
+  From ANTS-6137 (lane report 28, LOW). The dialog's narrative
+  mode writes `### 🔍 Indie-review <date>`
+  (src/indiereviewdialog.cpp), while the per-finding template and
+  the indie_review_fold_in narrative verb write
+  `### 🔍 Indie-review fold-in (<date>)`. Cold-eyes uses one shape.
+  Hazard: ANTS-1258's spec names the dialog's heading, so the spec
+  needs amending first. Remedy: one heading builder shared by the
+  dialog and the engine.
+  **Layman:** One review tool writes two different section titles into the roadmap; make it write one.
+  Kind: refactor.
+  Source: review-readability-2026-10-22.
+  Lanes: review-engines.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 

@@ -301,16 +301,16 @@ QString TestAuditDialog::assembleCappedPrompt(
 
     // Over budget: pre-pass context is the lowest priority — drop it first.
     const QString dropMarker = QStringLiteral(
-        "\n[brief truncated — pre-pass context omitted to fit the 200 KiB "
-        "budget]\n");
+        "\n[brief truncated — pre-pass context omitted to fit the %1 KiB "
+        "budget]\n").arg(kPromptCapBytes / 1024);
     if (fixedBytes + static_cast<qint64>(dropMarker.toUtf8().size()) + bulkBytes
         <= kPromptCapBytes)
         return fixed + dropMarker + bulk;
 
     // Still over: the test bodies alone exceed the cap — clip them.
     const QString hardMarker = QStringLiteral(
-        "\n[brief truncated — test bodies clipped to fit the 200 KiB "
-        "budget]\n");
+        "\n[brief truncated — test bodies clipped to fit the %1 KiB "
+        "budget]\n").arg(kPromptCapBytes / 1024);
     // ANTS-2205 — shared clip-to-cap + fence-close tail (was ANTS-1991 inline).
     return BriefDispatch::clipToCapClosingFence(
         (fixed + dropMarker + bulk).toUtf8(), hardMarker, kPromptCapBytes);

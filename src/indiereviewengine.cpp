@@ -76,31 +76,14 @@ QStringList sourcePathsForLane(const QString &projectPath,
         }
         if (generated) continue;
 
-        // Match `<name>.h`, `<name>.cpp`, or `<name>*.{h,cpp}` (sibling).
-        if (entry == laneName + QStringLiteral(".h")
-            || entry == laneName + QStringLiteral(".cpp")
-            || entry.startsWith(laneName + QChar('_'))
-            || (entry.startsWith(laneName)
-                && (entry.endsWith(QStringLiteral(".h"))
-                    || entry.endsWith(QStringLiteral(".cpp"))))) {
-            // Defensive: only the LAST entry.startsWith(laneName) branch
-            // could grab a longer-prefix sibling like `claudestatuswidgets`
-            // for lane `claude`. Tighten with a strict-prefix exact-match
-            // first, fall through to startsWith for true siblings.
-            if (entry.startsWith(laneName)) {
-                const QString tail = entry.mid(laneName.size());
-                // Accept if tail starts with `.`, `_`, or another lowercase
-                // continuation of the same word. To avoid `claude` matching
-                // `claudestatuswidgets`, restrict to `_` or `.` boundaries
-                // for non-equal entries.
-                if (entry == laneName + QStringLiteral(".h")
-                    || entry == laneName + QStringLiteral(".cpp")
-                    || tail.startsWith(QChar('_'))
-                    || tail.startsWith(QChar('.'))) {
-                    out << QStringLiteral("src/") + entry;
-                }
-            }
-        }
+        // A lane owns `<name>.h`, `<name>.cpp` and `<name>_*.{h,cpp}`.
+        // The `_` or `.` boundary keeps lane `claude` off
+        // `claudestatuswidgets.cpp`.
+        if (!entry.startsWith(laneName) || entry.size() == laneName.size())
+            continue;
+        const QChar next = entry.at(laneName.size());
+        if (next == QChar('_') || next == QChar('.'))
+            out << QStringLiteral("src/") + entry;
     }
     out.removeDuplicates();
     return out;
@@ -310,6 +293,11 @@ QString laneKindForDir(const QString &projectPath, const QString &dir) {
     return kConventional.contains(top) ? QStringLiteral("tests") : QString();
 }
 
+// ANTS-5058 — backstop on the entries (files and directories) one tree walk
+// may touch, counted before any filter, so a pathological tree cannot make a
+// walk run on whatever its accepted-file cap says.
+constexpr int kMaxWalkEntries = 200000;
+
 // ANTS-4805 — the partition's own noise test. ProjectSettings::isNoiseDir
 // drops every dot-directory, which is right for an INDEX — .git and .venv are
 // what it is for — and wrong for a REVIEW partition on one of them: `.github`
@@ -323,14 +311,20 @@ QString laneKindForDir(const QString &projectPath, const QString &dir) {
 // isNoiseDir, whose other callers (codebase_index, layout detection) have no
 // reason to start walking it. Widening the dot rule globally is the change
 // this deliberately is not.
-// ANTS-5058 — backstop on the entries (files and directories) one tree walk
-// may touch, counted before any filter, so a pathological tree cannot make a
-// walk run on whatever its accepted-file cap says.
-constexpr int kMaxWalkEntries = 200000;
-
 bool isPartitionNoiseDir(const QString &name) {
     if (name == QLatin1String(".github")) return false;
     return ProjectSettings::isNoiseDir(name);
+}
+
+// True when a directory on the way to the file at `rel` (project-relative)
+// is a noise directory. A walk prunes noise below where it starts; this
+// catches noise above that, between the project root and the walk's root.
+// Every partition walk applies it, so a file counts in all of them or none.
+bool inNoiseDir(const QString &rel) {
+    const QStringList segs = rel.split(QLatin1Char('/'));
+    for (qsizetype i = 0; i + 1 < segs.size(); ++i)
+        if (isPartitionNoiseDir(segs.at(i))) return true;
+    return false;
 }
 
 // ANTS-4809 — the directories under the walked roots that git ignores, as a
@@ -362,7 +356,8 @@ QSet<QString> ignoredDirPrefixes(const QString &projectPath,
                 const QString rel = abs.mid(projectPath.size() + 1);
                 // A noise dir is pruned by the walk anyway; asking git about
                 // it spends the cap on an answer nobody reads. The segment
-                // check still covers noise above rootAbs.
+                // check still covers noise above rootAbs. `rel` is itself a
+                // directory, so its last segment is checked too.
                 const QStringList segs = rel.split(QLatin1Char('/'));
                 for (const QString &s : segs)
                     if (isPartitionNoiseDir(s)) return true;
@@ -402,9 +397,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
     for (const QString &sp : lane.sourcePaths) {
         const QString abs = QDir(projectPath).filePath(sp);
         const QString canon = QFileInfo(abs).canonicalFilePath();
-        if (canon.isEmpty()) continue;
-        if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/')))
-            continue;
+        if (!PathValidation::isInsideProject(projectPath, canon)) continue;
         const QFileInfo fi(canon);
         if (fi.isFile()) {
             if ((anySuffix || CodebaseIndex::isIndexableFile(fi))
@@ -420,9 +413,7 @@ void collectLaneFiles(const QString &projectPath, const Lane &lane,
             if (isGeneratedSource(ffi.fileName())) return true;
             const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
                                     ? f.mid(rootCanon.size() + 1) : QString();
-            const QStringList segs = rel.split(QLatin1Char('/'));
-            for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) return true;
+            if (inNoiseDir(rel)) return true;
             const QString fcanon = QFileInfo(f).canonicalFilePath();
             out->insert(fcanon.isEmpty() ? f : fcanon);
             return true;
@@ -472,9 +463,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
             // and generated files are eliminated first. Recording at the suffix
             // gate while build output was still in the walk would bury the one
             // signal this exists to surface under a mountain of artifacts.
-            const QStringList segs = rel.split(QLatin1Char('/'));
-            for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) return true;
+            if (inNoiseDir(rel)) return true;
             if (underIgnoredDir(rel, ignoredDirs)) return true;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) return true;
             // The indexable gate is the surprising one: it is narrower than
@@ -490,7 +479,7 @@ QList<Lane> deriveComputedPartition(const QString &projectPath,
                 }
                 return true;
             }
-            const QString dir = segs.size() > 1
+            const QString dir = rel.contains(QLatin1Char('/'))
                 ? rel.section(QLatin1Char('/'), 0, -2) : QStringLiteral(".");
             byDir[dir] << rel;
             ++seen;
@@ -597,9 +586,7 @@ int laneUncountedFiles(const QString &projectPath, const Lane &lane) {
     for (const QString &sp : lane.sourcePaths) {
         const QString canon =
             QFileInfo(QDir(projectPath).filePath(sp)).canonicalFilePath();
-        if (canon.isEmpty()) continue;
-        if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/')))
-            continue;
+        if (!PathValidation::isInsideProject(projectPath, canon)) continue;
         const QFileInfo fi(canon);
         if (fi.isFile()) {
             if (!isGeneratedSource(fi.fileName())) all.insert(canon);
@@ -612,9 +599,7 @@ int laneUncountedFiles(const QString &projectPath, const Lane &lane) {
             if (isGeneratedSource(ffi.fileName())) return true;
             const QString rel = f.startsWith(rootCanon + QLatin1Char('/'))
                                     ? f.mid(rootCanon.size() + 1) : QString();
-            const QStringList segs = rel.split(QLatin1Char('/'));
-            for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) return true;
+            if (inNoiseDir(rel)) return true;
             const QString fcanon = QFileInfo(f).canonicalFilePath();
             all.insert(fcanon.isEmpty() ? f : fcanon);
             return true;
@@ -698,9 +683,7 @@ UnassignedSources unassignedForLanes(const QString &projectPath,
             const QFileInfo fi(canon);
             // Same elimination order as the computed walk: noise and generated
             // output go first, so what is REPORTED is never build artifacts.
-            const QStringList segs = rel.split(QLatin1Char('/'));
-            for (int i = 0; i + 1 < segs.size(); ++i)
-                if (isPartitionNoiseDir(segs.at(i))) return true;
+            if (inNoiseDir(rel)) return true;
             if (underIgnoredDir(rel, ignoredDirs)) return true;   // ANTS-4809
             if (isGeneratedSource(fi.fileName())) return true;
             ++seen;
@@ -908,10 +891,9 @@ QString assembleBriefForDispatch(const QString &projectPath,
         const QString abs = projectPath + QChar('/') + sp;
         const QFileInfo fi(abs);
         const QString canon = fi.canonicalFilePath();
-        if (canon.isEmpty() || rootCanon.isEmpty()
-            || !canon.startsWith(rootCanon + QChar('/'))) {
+        if (canon == rootCanon
+            || !PathValidation::isInsideProject(projectPath, canon))
             continue;
-        }
         // ANTS-1727 — fence-hardening extracted to BriefDispatch::fenceBody
         // (the shared kernel; byte-identical to the prior inline form).
         out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon));
@@ -963,10 +945,7 @@ QString assembleBriefForDispatch(const QString &projectPath,
         const QString abs = projectPath + QChar('/') + sp;
         const QFileInfo fi(abs);
         const QString canon = fi.canonicalFilePath();
-        if (canon.isEmpty() || rootCanon.isEmpty()
-            || !canon.startsWith(rootCanon + QChar('/'))) {
-            continue;
-        }
+        if (!PathValidation::isInsideProject(projectPath, canon)) continue;
         // ANTS-1727 — shared fence kernel; "standard" label keeps the
         // dispatch brief byte-identical to the prior inline form.
         out += BriefDispatch::fenceBody(sp, slurpCappedUtf8(canon),
@@ -993,9 +972,7 @@ QHash<QString, QString> buildBasenameIndex(const QString &projectPath) {
         const QFileInfo fi(abs);
         if (!CodebaseIndex::isIndexableSuffix(fi.suffix().toLower())) return true;
         if (isGeneratedSource(fi.fileName())) return true;
-        const QStringList segs = rel.split(QLatin1Char('/'));
-        for (int i = 0; i + 1 < segs.size(); ++i)
-            if (isPartitionNoiseDir(segs.at(i))) return true;
+        if (inNoiseDir(rel)) return true;
         ++seen;
         const QString base = fi.fileName();
         auto existing = out.constFind(base);
@@ -1050,10 +1027,7 @@ QList<Citation> extractFileLineCitations(const QString &projectPath,
         if (fresh) { countedTokens.insert(cited); ++stats->citationsSeen; }
         // Resolve `cited` against projectPath; reject if it escapes.
         const QString abs = QDir(projectPath).filePath(cited);
-        const QString canon = QFileInfo(abs).canonicalFilePath();
-        if (!canon.isEmpty()
-            && (canon == rootCanon
-                || canon.startsWith(rootCanon + QChar('/')))) {
+        if (PathValidation::isInsideProject(projectPath, abs)) {
             if (fresh) ++stats->citationsResolved;
             return cited;
         }
@@ -1271,6 +1245,8 @@ QList<CorroboratedFinding> corroboratedFindings(
         if (a.citingLanes.size() != b.citingLanes.size())
             return a.citingLanes.size() > b.citingLanes.size();
         if (a.file != b.file) return a.file < b.file;
+        // Line DEScending is the order ANTS-1112 § 3.4 specifies; it records
+        // no reason, and the near-miss sort above is ascending.
         return a.line > b.line;
     });
 
@@ -1310,12 +1286,7 @@ QList<CorroboratedFinding> corroboratedFindingsFromDir(
     // INV-3: canonicalise + ensure under projectPath.
     const QString abs = QDir(projectPath).filePath(reportsDirRelative);
     const QString canon = QFileInfo(abs).canonicalFilePath();
-    if (canon.isEmpty()) return {};
-    const QString rootCanon = QFileInfo(projectPath).canonicalFilePath();
-    if (rootCanon.isEmpty()) return {};
-    if (canon != rootCanon && !canon.startsWith(rootCanon + QChar('/'))) {
-        return {};
-    }
+    if (!PathValidation::isInsideProject(projectPath, canon)) return {};
 
     return corroboratedFindingsFromCanonicalDir(projectPath, canon, minLanes,
                                                 reportsRead, stats, lineSlop);
@@ -1511,6 +1482,10 @@ QString templateIndieReviewFoldInBlock(
         return {};
     }
 
+    // The bullet's `Lanes:` owner, read off this repository's layout:
+    // src/<stem>, then tests, docs, packaging; anything else is `misc`. It
+    // is not the citing review lane, so another project's paths mostly land
+    // in `misc`.
     auto laneFromPath = [](const QString &p) -> QString {
         if (p.startsWith(QStringLiteral("src/"))) {
             const int slash = p.indexOf('/', 4);

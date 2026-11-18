@@ -1,12 +1,12 @@
 // IndieReviewEngine — pure-function helpers for the in-process
 // /indie-review fold (ANTS-1112 v1). Qt::Core only, no widgets.
 //
-// Six operations:
+// The main operations:
 //
 //   derivePartition(projectPath)
 //       Read CLAUDE.md `## Module map (src/)` via SubsystemMap; for
 //       each lane, walk src/ to compute the source-file set
-//       (`<name>.{h,cpp}` + `<name>*.{h,cpp}` siblings, generated
+//       (`<name>.{h,cpp}` + `<name>_*.{h,cpp}` siblings, generated
 //       files skipped). Optional override:
 //       <projectPath>/.indie-review/partition.json.
 //

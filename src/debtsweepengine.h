@@ -38,8 +38,7 @@ struct Finding {
 // Scope: which commit range to inspect for "added in scope"
 // detectors. Empty sinceRef → auto-detect (`git describe --tags
 // --abbrev=0`; `HEAD~10` if no tags). Detectors that don't need a
-// baseline (orphan Q_UNUSED, ROADMAP commit cross-check) ignore
-// sinceRef.
+// baseline (orphan Q_UNUSED, for one) ignore sinceRef.
 struct ScanOptions {
     QString sinceRef;
     bool    includeCodeDrift = true;

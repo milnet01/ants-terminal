@@ -239,15 +239,15 @@ QString ColdEyesDialog::assembleCappedPrompt(const ColdEyesEngine::Lane &lane,
     // Over budget: cross-reference excerpts are context — drop them first.
     const QString dropMarker = QStringLiteral(
         "\n[brief truncated — cross-reference excerpts omitted to fit the "
-        "200 KiB budget]\n");
+        "%1 KiB budget]\n").arg(kPromptCapBytes / 1024);
     if (fixedBytes + static_cast<qint64>(dropMarker.toUtf8().size())
         <= kPromptCapBytes)
         return fixed + dropMarker;
 
     // Still over: the lane bodies alone exceed the cap — clip them.
     const QString hardMarker = QStringLiteral(
-        "\n[brief truncated — lane bodies clipped to fit the 200 KiB "
-        "budget]\n");
+        "\n[brief truncated — lane bodies clipped to fit the %1 KiB "
+        "budget]\n").arg(kPromptCapBytes / 1024);
     // ANTS-2205 — shared clip-to-cap + fence-close tail (was ANTS-1991 inline).
     return BriefDispatch::clipToCapClosingFence(
         fixed.toUtf8(), hardMarker, kPromptCapBytes);

@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Cold-eyes lists a docs/phases file whose name matches a spec as its own lane, spec/<name>@phases; the review helpers' copied path checks now share one each** (ANTS-6137)
+
 - **The spec checkers' comments describe the rules the code applies, and spec_conformance's header lists its whole reply** (ANTS-6136)
 
 - **The document checkers' names say what each value holds, their citation sorts share one document-order comparator, and stale checker counts are gone from their comments** (ANTS-6135)
