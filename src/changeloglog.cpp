@@ -377,8 +377,8 @@ QString preRenderedSummaryReason(const QString &summary, const QString &id) {
 
 // ANTS-5108 — a value that sits on ONE line of the output. A newline in it
 // escaped the bullet or heading, and a continuation starting `### ` or
-// `## [` became a heading of its own; renderFindingBlock folds titles the
-// same way.
+// `## [` became a heading of its own. renderFindingBlock folds feedback
+// titles similarly, but leaves a lone \r and does not trim.
 static QString oneLine(const QString &value) {
     QString v = value;
     v.replace(QStringLiteral("\r\n"), QStringLiteral(" "));

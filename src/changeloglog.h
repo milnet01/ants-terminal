@@ -13,9 +13,9 @@
 
 namespace ChangelogLog {
 
-// The six canonical Keep-a-Changelog categories, in spec order.
-// kindToCategory maps a roadmap `Kind:` value onto one of these so a
-// caller can cite a bullet by id without restating the category.
+// Maps a roadmap `Kind:` value onto one of the canonical categories
+// (canonicalCategories below), so a caller can cite a bullet by id
+// without restating the category.
 QString kindToCategory(const QString &kind);
 
 // ANTS-5673 — false when an entry citing a roadmap item must NOT inherit its
@@ -170,34 +170,6 @@ SubsectionResult insertUnreleasedSubsection(const QString &markdown,
                                             const QString &body,
                                             const QStringList &bulletBlocks);
 
-// ANTS-3495 — op:normalize. Reorder the `### <category>` blocks inside
-// `## [Unreleased]` into canonical Keep-a-Changelog order (Added/Changed/
-// Deprecated/Removed/Fixed/Security). Non-destructive: each block's body
-// (its bullets and any interleaved prose) moves with its heading. A
-// duplicate or non-canonical `### ` heading keeps its relative position
-// (stable sort; unknown categories sort last). Content before the first
-// `### ` heading (a preamble paragraph) is preserved untouched.
-//
-// ANTS-3381 — normalize also RELOCATES stray interleaved prose, the half
-// ANTS-3495 deferred pending a decided policy. Policy (accepted by the
-// user 2026-08-14): a flagged prose line is folded into the nearest
-// preceding bullet as a two-space continuation. Because such a line
-// always sits after that bullet with only blanks, continuations and HTML
-// comments between them, the fold is an in-place re-indent — the line
-// count never changes, so no bullet's content moves and no ordering is
-// disturbed. Each fold is reported in `prose_moves` so `dry_run` can
-// preview it; the accepted failure mode is a paragraph that was meant to
-// stand alone being absorbed by the entry above it, and the preview is
-// the only thing that catches that. Prose separated from its bullet by a
-// heading of any depth is NOT folded (the heading is a barrier, so the
-// fold would not put the line under the bullet at all) and keeps
-// tripping the `malformed_section` advisory.
-struct ProseMove {
-    int     from_line = -1;   // 1-based line of the prose, before the fold
-    int     under_line = -1;  // 1-based line of the bullet it folds into
-    QString text;             // the folded line, trimmed
-};
-
 // ANTS-4363 — CLOSE `## [Unreleased]` into a version block: rename it to
 // `## [X.Y.Z] - <date>` and open a fresh empty `## [Unreleased]` above. This
 // is the one changelog edit every release makes, and the only one the verb
@@ -249,6 +221,34 @@ ReleaseResult closeUnreleased(const QString &markdown,
 // canonical category blocks, which it could not place.
 ReleaseResult closeUnreleasedDated(const QString &markdown,
                                    const QString &date = QString());
+
+// ANTS-3495 — op:normalize. Reorder the `### <category>` blocks inside
+// `## [Unreleased]` into canonical Keep-a-Changelog order (Added/Changed/
+// Deprecated/Removed/Fixed/Security). Non-destructive: each block's body
+// (its bullets and any interleaved prose) moves with its heading. A
+// duplicate or non-canonical `### ` heading keeps its relative position
+// (stable sort; unknown categories sort last). Content before the first
+// `### ` heading (a preamble paragraph) is preserved untouched.
+//
+// ANTS-3381 — normalize also RELOCATES stray interleaved prose, the half
+// ANTS-3495 deferred pending a decided policy. Policy (accepted by the
+// user 2026-08-14): a flagged prose line is folded into the nearest
+// preceding bullet as a two-space continuation. Because such a line
+// always sits after that bullet with only blanks, continuations and HTML
+// comments between them, the fold is an in-place re-indent — the line
+// count never changes, so no bullet's content moves and no ordering is
+// disturbed. Each fold is reported in `prose_moves` so `dry_run` can
+// preview it; the accepted failure mode is a paragraph that was meant to
+// stand alone being absorbed by the entry above it, and the preview is
+// the only thing that catches that. Prose separated from its bullet by a
+// heading of any depth is NOT folded (the heading is a barrier, so the
+// fold would not put the line under the bullet at all) and keeps
+// tripping the `malformed_section` advisory.
+struct ProseMove {
+    int     from_line = -1;   // 1-based line of the prose, before the fold
+    int     under_line = -1;  // 1-based line of the bullet it folds into
+    QString text;             // the folded line, trimmed
+};
 
 struct NormalizeResult {
     bool        ok = false;

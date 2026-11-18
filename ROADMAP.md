@@ -106310,6 +106310,16 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1165
   `src/feedbackfile.cpp:306`; row 1167 `src/changelogquery.cpp:23`; row
   1168 `src/changeloglog.h:16`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18, the LOWs F13-F18 closed (rows 1167, 1168 were F14,
+  F16). F14: fenceInfoOf's comment says what it returns, without the
+  info-string claim or the history. F15: oneLine's comment says how
+  renderFindingBlock's fold differs (keeps a lone \r, no trim). F16:
+  kindToCategory's comment no longer repeats the category list, and the
+  op:normalize paragraph with ProseMove sits beside NormalizeResult. F13
+  and F17 were already gone. F18 dismissed: two ANTS-[0-9]+ patterns
+  remain, on adjacent lines of parse, so one constant would add a line
+  and remove no risk. Open: row 1165 (MEDIUM), split parse into a
+  tracking-row pass, a v2 delta and a v1 delta.
   **Layman:** Tidy the changelog and feedback tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

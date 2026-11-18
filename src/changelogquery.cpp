@@ -18,28 +18,9 @@ namespace ChangelogQuery {
 
 namespace {
 
-// A code-fence marker line ( ``` / ~~~, optionally indented, optionally
-// with an info string). Returns the marker char, run length, and whether
-// an info string follows (CommonMark: a close fence carries no info).
-//
-// ANTS-4404 — the OPENER test is MarkdownScan's (ANTS-3603), not a local
-// one. The hand-rolled version this replaces was wrong three ways: it
-// admitted a TAB as fence indent, where CommonMark is space-only and a tab
-// never opens a fence (ANTS-3598); it bounded the indent at nothing, where
-// the allowance is three spaces; and it ignored § 4.5, which forbids a
-// backtick in a BACKTICK fence's info string precisely so that
-// ```` ```json ```` — how a document quotes fence syntax — stays a
-// paragraph (ANTS-3655). That third fault is the one that hid a quarter of
-// the roadmap in ANTS-4403.
-//
-// Measured 2026-09-09 before changing anything: this project's CHANGELOG.md
-// carries NO line that any of the three faults misreads, so the defect here
-// was latent, not active. Adopted anyway — the same class has now cost two
-// real bugs (ANTS-4403, ANTS-4450), and the shared rule cannot drift.
-//
-// ANTS-4987 — a closer is judged by MarkdownScan::fenceCloses, which now also
-// refuses a closing fence that carries an info string. This parser kept that
-// rule locally until the shared predicate implemented it.
+// Whether `line` opens a code fence ( ``` / ~~~ ), and if so its marker
+// char and run length. The opener test is MarkdownScan's (ANTS-4404);
+// a closer is judged by MarkdownScan::fenceCloses (ANTS-4987).
 struct FenceInfo {
     bool  isFence = false;
     QChar ch;
