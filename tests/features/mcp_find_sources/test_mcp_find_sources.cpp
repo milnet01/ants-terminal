@@ -268,6 +268,24 @@ TEST(McpFindSources, HonoursProjectSettingsRoots) {
     EXPECT_EQ(0, expect_failures());
 }
 
+// ANTS-5987 — a token found only in the body of a file whose NAME matched a
+// different token is a hit, not an unmatched term.
+TEST(McpFindSources, Ants5987BodyHitCountsWhenNameMatchedAnotherToken) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    const QString root = tmp.path();
+    ASSERT_TRUE(QDir(root).mkpath(QStringLiteral("src")));
+    QFile f(root + QStringLiteral("/src/alpha.cpp"));
+    ASSERT_TRUE(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    f.write("void zebra() {}\n");
+    f.close();
+
+    const auto r = FindSources::findSources(QStringLiteral("alpha zebra"), root);
+    ASSERT_EQ(r.files.size(), 1);
+    EXPECT_TRUE(r.unmatchedTerms.isEmpty())
+        << "unmatched: " << r.unmatchedTerms.join(", ").toStdString();
+}
+
 // ANTS-3489 — a committed virtualenv / node_modules under a flat-root
 // source_roots=["."] must not drag vendored C/C++ into the candidate set.
 TEST(McpFindSources, PrunesNoiseDirsUnderFlatRoot) {

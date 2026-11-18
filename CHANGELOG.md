@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The code search and outline tools keep one copy each of the default scan budget and the page cut, and their comments sit on the code they describe** (ANTS-6139)
+
 - **The test-audit and verify tools keep one copy each of the coverage-map pattern check and the log window, and their comments name the caps and states the code uses** (ANTS-6138)
 
 - **Cold-eyes lists a docs/phases file whose name matches a spec as its own lane, spec/<name>@phases; the review helpers' copied path checks now share one each** (ANTS-6137)
@@ -508,6 +510,8 @@ for security-relevant changes.
 - **Six feedback_log ops that kept files small or served format version 1 now refuse: compact_resolved, compact_shipped, prune_tracking, append_tracking, migrate_v2 and set_format_version.** (ANTS-4513)
 
 ### Fixed
+
+- **find_sources counts a search word found in a file's body as found, whichever other word that file's name matched** (ANTS-5987)
 
 - **run_trace leaves a detail file's own Genre line alone wherever DocLint finds it, so no second header is added** (ANTS-5956)
 

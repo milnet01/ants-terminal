@@ -70,37 +70,37 @@ PageResult pageBullets(const QJsonArray &filtered,
 
     const QJsonArray tail = tailFrom(filtered);
 
+    // The leading rows of `rows` that fit the byte budget, envelope overhead
+    // reserved. ANTS-5103 — at least one row: a first row larger than the
+    // budget cut the page to zero rows with next_offset == offset, so a
+    // client that follows next_offset looped forever.
+    const int budget = softCapBytes() - kEnvelopeOverheadBytes;
+    auto fitToBudget = [budget](const QJsonArray &rows) -> QJsonArray {
+        const int n = qMin(qMax(measureCutPoint(rows, budget), 1),
+                           int(rows.size()));
+        QJsonArray slice;
+        for (int i = 0; i < n; ++i) slice.append(rows.at(i));
+        return slice;
+    };
+
     // Limit handling. -1 = auto-pick (caller didn't pass). Explicit
     // value clamps to [kMinLimit, kMaxLimit].
     if (limit > 0) {
         if (limit < kMinLimit) limit = kMinLimit;
         if (limit > kMaxLimit) limit = kMaxLimit;
         // ANTS-5651 — `limit` is a cap, not a promise: the first `limit` rows
-        // of tail are cut to the same byte budget as the auto path, keeping
-        // at least one row (ANTS-5103), so an explicit page cannot offload.
+        // of tail are cut to the same byte budget as the auto path, so an
+        // explicit page cannot offload.
         QJsonArray bounded;
         for (int i = 0; i < tail.size() && i < limit; ++i) {
             bounded.append(tail.at(i));
         }
-        const int budget = softCapBytes() - kEnvelopeOverheadBytes;
-        const int n = qMin(qMax(measureCutPoint(bounded, budget), 1),
-                           int(bounded.size()));
-        QJsonArray slice;
-        for (int i = 0; i < n; ++i) slice.append(bounded.at(i));
-        r.slice = slice;
+        r.slice = fitToBudget(bounded);
         r.limit = limit;   // echo the caller's clamped limit (INV-2)
     } else {
-        // Auto-pick: measure-then-cut against the soft cap. Reserve
-        // envelope overhead so the wire response fits comfortably.
-        const int budget = softCapBytes() - kEnvelopeOverheadBytes;
-        // ANTS-5103 — at least one row. A first row larger than the budget
-        // cut the page to zero rows with next_offset == offset, so a client
-        // that follows next_offset looped forever.
-        const int n = qMin(qMax(measureCutPoint(tail, budget), 1), int(tail.size()));
-        QJsonArray slice;
-        for (int i = 0; i < n; ++i) slice.append(tail.at(i));
-        r.slice = slice;
-        r.limit = n;  // echo the effective auto-picked limit
+        // Auto-pick: measure-then-cut against the soft cap.
+        r.slice = fitToBudget(tail);
+        r.limit = r.slice.size();  // echo the effective auto-picked limit
     }
 
     r.truncated = (r.slice.size() < tail.size());
@@ -119,13 +119,8 @@ PageResult pageBullets(const QJsonArray &filtered,
         QJsonArray leanFull = filtered;   // deep-on-write copy
         downshift(leanFull);
         const QJsonArray leanTail = tailFrom(leanFull);
-        const int budget = softCapBytes() - kEnvelopeOverheadBytes;
-        const int n = qMin(qMax(measureCutPoint(leanTail, budget), 1),
-                           int(leanTail.size()));   // ANTS-5103 — see above
-        QJsonArray slice;
-        for (int i = 0; i < n; ++i) slice.append(leanTail.at(i));
-        r.slice = slice;
-        r.limit = n;
+        r.slice = fitToBudget(leanTail);
+        r.limit = r.slice.size();
         r.downshifted = true;
         r.truncated = (r.slice.size() < leanTail.size());
         r.nextOffset = r.truncated ? (offset + r.slice.size()) : -1;

@@ -82,6 +82,9 @@ static QByteArray shebangInterpreter(const QByteArray &firstLine) {
     return interp;
 }
 
+// Wider than isShExt on purpose: it reads only extensionless files, which
+// SymbolQuery::langForExt never classes, so admitting ksh and zsh here leaves
+// the extension set the two lanes share unchanged.
 bool isShShebang(const QByteArray &firstLine) {
     const QByteArray interp = shebangInterpreter(firstLine);
     return interp == "sh"   || interp == "bash" || interp == "dash" ||
@@ -464,6 +467,17 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
     }
     return delta;
 }
+// ANTS-4361 — an element's `id="…"` attribute: the anchor a caller navigates
+// to. Single or double quoted, since a hand-written page uses both.
+const QRegularExpression &rxHtmlId() {
+    static const QRegularExpression rx = []{
+        QRegularExpression r(QStringLiteral(
+            R"(\bid\s*=\s*["\']([A-Za-z_][\w:.-]*)["\'])"));
+        r.optimize();
+        return r;
+    }();
+    return rx;
+}
 // ANTS-4379 — a TOP-LEVEL Python assignment (`NAME = …`, `NAME: T = …`).
 // The brace family has carried a `const` kind since ANTS-4090; Python had no
 // equivalent, and doc_symbols shares this index — so a spec citing a
@@ -476,17 +490,6 @@ int netBraceDelta(const QString &line, bool &inBlock, int *parenDeltaOut = nullp
 // Anchored at column 0 — an indented assignment is a local or a class
 // attribute, not a module constant, and emitting those would bury the outline
 // in every intermediate variable in every function body.
-// ANTS-4361 — an element's `id="…"` attribute: the anchor a caller navigates
-// to. Single or double quoted, since a hand-written page uses both.
-const QRegularExpression &rxHtmlId() {
-    static const QRegularExpression rx = []{
-        QRegularExpression r(QStringLiteral(
-            R"(\bid\s*=\s*["\']([A-Za-z_][\w:.-]*)["\'])"));
-        r.optimize();
-        return r;
-    }();
-    return rx;
-}
 const QRegularExpression &rxPyConst() {
     static const QRegularExpression rx = []{
         QRegularExpression r(QStringLiteral(
@@ -580,7 +583,7 @@ const QRegularExpression &rxGenericMethod() {
 // is the only cheap signal a line-based scanner has for "top level", and a
 // script's body locals outnumber its landmarks several times over.
 //
-// (1) POSIX function definitions: `name() {`. The brace may sit on the next
+// (sh 1) POSIX function definitions: `name() {`. The brace may sit on the next
 // line, so it is not required here. Captures name=group1.
 const QRegularExpression &rxShFunc() {
     static const QRegularExpression rx = []{
@@ -590,8 +593,8 @@ const QRegularExpression &rxShFunc() {
     }();
     return rx;
 }
-// (2) The keyword spelling, `function name {` / `function name() {`, which
-// ksh and bash both accept and which real scripts mix freely with (1). The
+// (sh 2) The keyword spelling, `function name {` / `function name() {`, which
+// ksh and bash both accept and which real scripts mix freely with (sh 1). The
 // name may carry a `-` here, which the POSIX form does not allow.
 const QRegularExpression &rxShFuncKeyword() {
     static const QRegularExpression rx = []{
@@ -601,10 +604,10 @@ const QRegularExpression &rxShFuncKeyword() {
     }();
     return rx;
 }
-// (3) Top-level assignments, with the declaration keywords a script actually
+// (sh 3) Top-level assignments, with the declaration keywords a script actually
 // puts in front of a constant. `local` is deliberately absent: it is only
 // legal inside a function, so admitting it would outline exactly the body
-// variables rule (1)'s column-0 anchor exists to exclude. Captures name=group1.
+// variables rule (sh 1)'s column-0 anchor exists to exclude. Captures name=group1.
 const QRegularExpression &rxShBinding() {
     static const QRegularExpression rx = []{
         QRegularExpression r(QStringLiteral(R"(^(?:export\s++|readonly\s++|declare\s++-\w++\s++|typeset\s++)?([A-Za-z_][A-Za-z0-9_]*)=)"));
@@ -630,7 +633,7 @@ const QRegularExpression &rxGenericArrow() {
 // binding holding a template literal, object or string matched nothing — and in
 // a file that stores payloads that way those are its largest regions.
 //
-// Anchored at column 0 with NO leading-whitespace class (unlike rules 1–3):
+// Anchored at column 0 with NO leading-whitespace class (unlike rules 1-3):
 // indentation survives to the match here, and it is the only cheap signal a
 // line-based scanner has for "top level". Without it every local inside every
 // function body would be outlined. Captures name=group1.

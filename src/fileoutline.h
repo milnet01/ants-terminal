@@ -1,10 +1,10 @@
 // ANTS-1249 — file_outline regex scanner. Reads a file line-by-line
 // via QFile::readLine() and extracts a structured outline (header doc
-// + symbol list) for C++ / Python / Markdown. Used by the
+// + symbol list), one scanner per Mode below. Used by the
 // `file_outline` MCP tool and IPC verb so Claude can orient on a
 // 5 000-line file at ~1 K tokens instead of a 30 K full Read.
 //
-// No clangd / no tree-sitter — a 6-regex set covers the 90% case
+// No clangd / no tree-sitter — line regexes cover the 90% case
 // per Karpathy §2. PCRE2 JIT + possessive quantifiers + 1024-byte
 // per-line cap bound the worst case (INV-8).
 //

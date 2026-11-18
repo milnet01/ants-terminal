@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6823 -->
+<!-- ants-roadmap-id-high-water: ANTS=6824 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -105956,7 +105956,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: test-audit-verify.
 
-- 📋 [ANTS-6139] **Readability fixes, code-index-search-a lane: src/applyedits.cpp, src/codebaseindex.cpp, src/codebaseindex.h, src/fileoutline.cpp, src/findsources.cpp, src/findsources.h ….**
+- ✅ [ANTS-6139] **Readability fixes, code-index-search-a lane: src/applyedits.cpp, src/codebaseindex.cpp, src/codebaseindex.h, src/fileoutline.cpp, src/findsources.cpp, src/findsources.h ….**
   Findings of the 2026-10-22 readability review (src run), lane code-index-search-a:
   1 high, 15 medium, 7 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/30-code-index-search-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105986,6 +105986,15 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1048
   `src/codebaseindex.cpp:85`; row 1053 `src/findsources.cpp:397`; row
   1079 `src/paginationengine.cpp:86-90`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: LOWs closed. find_sources' defaults come from
+  Options{} (row 1053); the :349 guard is gone, which closes
+  ANTS-5987 (red test first). pageBullets' three cuts are one
+  fitToBudget (row 1079). apply_edits' near-miss comment states both
+  shapes. file_outline: the Python-constant comment sits on
+  rxPyConst, shell rules are numbered (sh 1-3), the header names no
+  count, and the shebang set says why it is wider than isShExt. The
+  ANTS-4366 comment was already on its code. Queued: row 1048 as
+  ANTS-6824.
   **Layman:** Tidy the code search and outline tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -108122,6 +108131,23 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-10-22.
   Lanes: review-engines.
+
+- 📋 [ANTS-6824] **codebase_index and find_sources decide a file's role (impl, header, test) with one shared rule.**
+  From ANTS-6139 (2026-11-06 row 1048, MEDIUM). roleFor
+  (src/codebaseindex.cpp) checks headers first and knows `.hh` and
+  the `test_` prefix; FindSources::classifyRole checks tests first and
+  knows `/tests/` inside a path. So `tests/x.h` is a header in one and
+  a test in the other, and roleFor calls `.hxx` impl.
+  Proposed rule: test first, as find_sources' INV-8 says (`tests/`
+  prefix, `/tests/` inside, `test_` name), then .h/.hpp/.hh/.hxx
+  header, else impl.
+  Not done in 6139: it changes codebase_index's role counts and the
+  lane digests session_orient shows (role test is left out), so it
+  needs its own red tests in both features.
+  **Layman:** Two search tools can call the same file a test in one and a header in the other; make them agree.
+  Kind: refactor.
+  Source: review-readability-2026-11-06.
+  Lanes: code-index-search.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
@@ -110366,13 +110392,16 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22.
   Lanes: code-index-search-a.
 
-- 📋 [ANTS-5987] **src/findsources.cpp:349: A token found only in the body of a file whose name matched a different token is reported in unmatchedTerms.**
+- ✅ [ANTS-5987] **src/findsources.cpp:349: A token found only in the body of a file whose name matched a different token is reported in unmatchedTerms.**
   Lead L30-C2 from the readability review of 2026-10-22, lane code-index-search-a.
   Location: src/findsources.cpp:349
   A token found only in the body of a file whose name matched a different token is reported in `unmatchedTerms`. — Searched: none.
   Premise check: ✓
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: fixed under ANTS-6139. Every body hit counts;
+  only zero is read. Test
+  Ants5987BodyHitCountsWhenNameMatchedAnotherToken was red first.
   **Layman:** A possible bug in the code search and outline tools, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22.

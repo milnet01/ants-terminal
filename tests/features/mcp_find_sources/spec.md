@@ -27,7 +27,9 @@ Contract for the `FindSources` pure-function unit + its MCP wiring.
   skipped.
 - **INV-7** — Files with zero hits across all tokens are dropped from
   the result; tokens with zero hits across all files appear in
-  `unmatchedTerms`.
+  `unmatchedTerms`. A hit is in a file's name or its body, whichever
+  other token the name matched (ANTS-5987,
+  `Ants5987BodyHitCountsWhenNameMatchedAnotherToken`).
 - **INV-8** — Role classification: `tests/` paths → "test", `.h`/
   `.hpp` → "header", otherwise → "impl".
 

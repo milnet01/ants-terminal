@@ -233,11 +233,11 @@ Result findSources(const QString &topic,
     if (rootCanonical.isEmpty()) return r;
 
     Options opts = optsIn;
-    if (opts.maxResults <= 0) opts.maxResults = 20;
+    if (opts.maxResults <= 0) opts.maxResults = Options{}.maxResults;
     if (opts.maxResults > opts.maxResultsHard) {
         opts.maxResults = opts.maxResultsHard;
     }
-    if (opts.contentByteCap <= 0) opts.contentByteCap = 256 * 1024;
+    if (opts.contentByteCap <= 0) opts.contentByteCap = Options{}.contentByteCap;
 
     const QStringList tokens = tokenise(topic);
     if (tokens.isEmpty()) return r;
@@ -279,6 +279,8 @@ Result findSources(const QString &topic,
     }
     r.filesScanned = candidates.size();
 
+    // Hits per token, by file name or body. Only zero is read: it makes the
+    // token an unmatched term.
     QVector<int> tokenHitCount(tokens.size(), 0);
 
     for (const QString &rel : candidates) {
@@ -335,7 +337,7 @@ Result findSources(const QString &topic,
                 }
                 if (tokenLocalHits > 0) {
                     contentHits += tokenLocalHits;
-                    if (filenameTokenMatches == 0) ++tokenHitCount[i];
+                    ++tokenHitCount[i];
                     if (contentEvidence.size() < 2) {
                         contentEvidence.append(
                             QStringLiteral("\"%1\" × %2 in body")
@@ -391,17 +393,17 @@ int prewarm(const QString &projectRoot) {
 
     const QVector<QString> candidates = collectCandidates(rootCanonical);
 
-    // Mirror Options::contentByteCap — findSources reads at most this many
-    // bytes per file, so warming exactly that prefix (no more) is enough to
-    // make its first read hit the page cache without wasting I/O.
-    constexpr qint64 kContentByteCap = 256 * 1024;
+    // findSources reads at most Options::contentByteCap bytes per file, so
+    // warming exactly that prefix (no more) is enough to make its first read
+    // hit the page cache without wasting I/O.
+    const qint64 contentByteCap = Options{}.contentByteCap;
     QByteArray scratch;  // reused; holds one file's prefix at a time
     for (const QString &rel : candidates) {
         QFile f(rootCanonical + QLatin1Char('/') + rel);
         if (f.open(QIODevice::ReadOnly)) {
             // The read pulls the file's leading pages into the OS cache;
             // the returned bytes are discarded on the next iteration.
-            scratch = f.read(kContentByteCap);
+            scratch = f.read(contentByteCap);
         }
     }
     return candidates.size();

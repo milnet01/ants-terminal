@@ -68,34 +68,22 @@ int uniqueLineMatching(const QStringList &lines, const QString &needle, Norm nor
     return hit;
 }
 
-// ANTS-4418 — locate the single line whose whitespace-normalised form equals
-// the normalised `oldStr`. Sets the near-miss fields only on a UNIQUE hit:
-// two candidate lines cannot tell the caller which to retry, and naming one
-// arbitrarily is worse than naming none.
-//
-// SCOPE, and it is the reported case rather than the general one: a
-// SINGLE-LINE `oldStr`. A multi-line old string whose interior spacing drifted
-// needs a windowed alignment over the file, which is a different piece of work
-// and not what the round-trip cost was measured on — the report's own repro is
-// one line differing by two spaces in a trailing-comment alignment column.
-// A multi-line miss therefore reports no near miss, which is honest; the
-// alternative is a confident wrong line.
+// Find where a missed `oldStr` most likely is, so the caller can retry
+// without another read. Sets the near-miss fields only on a UNIQUE hit: two
+// candidates cannot tell the caller which to retry, and naming one
+// arbitrarily is worse than naming none. Two shapes:
+//   - a multi-line `oldStr` whose only disagreement with the file is where a
+//     hard wrap falls ("§ Run\nhousekeeping" against "§ Run housekeeping\nas"),
+//     found by WrapMatch::find (ANTS-4723), kind "wrapped";
+//   - a single-line `oldStr` that differs in spacing (ANTS-4418), kind
+//     "whitespace", or in spacing and punctuation (ANTS-4857), kind
+//     "punctuation".
+// Reported on every miss, whether or not `match_wrapped` was asked for: the
+// round-trip this saves is the one where the caller does not yet know the
+// flag would help.
 void findWhitespaceNearMiss(const QString &contents, const QString &oldStr,
                             EditOutcome &r) {
     if (oldStr.contains(QLatin1Char('\n'))) {
-        // ANTS-4723 — the case ANTS-4418 declined above, now answerable: a
-        // multi-line `oldStr` whose only disagreement with the file is WHERE a
-        // hard wrap falls ("§ Run\nhousekeeping" against "§ Run housekeeping\nas").
-        // ANTS-4418 called this "a windowed alignment over the file ... a
-        // different piece of work"; WrapMatch::find is that work, already
-        // written and already shared with two other verbs, so this is a call
-        // rather than a second implementation.
-        //
-        // Reported on EVERY such miss, whether or not `match_wrapped` was
-        // asked for, because the round-trip this saves is the one where the
-        // caller does not yet know the flag would help. Uniqueness is required
-        // for the same reason as above: two candidates cannot say which to
-        // retry, and naming one is worse than naming none.
         const QVector<WrapMatch::Span> hits = WrapMatch::find(contents, oldStr, 2);
         if (hits.size() != 1) return;
         int line = 1;
