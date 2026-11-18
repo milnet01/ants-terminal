@@ -86,10 +86,11 @@ public:
     // shortcut). Targeted, not broadcast — only the registering plugin sees it.
     void firePaletteAction(const QString &pluginName, const QString &actionId);
 
-    // ANTS-1750 — targeted, non-blocking dispatch to one named plugin's
-    // worker (the queued twin of fireEvent's broadcast loop, sharing the
-    // healthyEngines() filter). The only supported synchronous-from-GUI
-    // entry into a worker: callers must NOT use engineFor() to invoke a
+    // ANTS-1750 — targeted dispatch to one named plugin's worker (the
+    // queued twin of fireEvent's broadcast loop, sharing the
+    // healthyEngines() filter). The only supported entry into a worker
+    // from the GUI thread; it queues and never blocks. Callers must NOT
+    // use engineFor() to invoke a
     // lua_*-touching method on the GUI thread. firePaletteAction() and the
     // MainWindow keybinding shortcut both route through here. INV-10.
     void dispatchTo(const QString &pluginName, PluginEvent event,
@@ -140,7 +141,7 @@ private:
     // waiting. finishTeardown then waits; on a clean exit it destroys the
     // engine + thread, on timeout it detaches the pair into m_zombies. Keeps
     // all lua_close on the worker (INV-12) and bounds teardown (INV-4).
-    void teardownEngine(const QString &name, LuaEngine *engine, QThread *thread);
+    void teardownEngine(LuaEngine *engine, QThread *thread);
     void finishTeardown(LuaEngine *engine, QThread *thread,
                         const QDeadlineTimer &deadline);
     // ANTS-5107 — waits for `thread`, delivering the blocking settings calls

@@ -119,7 +119,7 @@ void PluginManager::unloadAll() {
     reportDroppedMessages();
     const auto names = m_engines.keys();
     for (const QString &name : names) {
-        teardownEngine(name, m_engines.value(name, nullptr),
+        teardownEngine(m_engines.value(name, nullptr),
                        m_threads.value(name, nullptr));
     }
     // ANTS-5107 — one deadline for every worker, not kTeardownMs each, so
@@ -136,9 +136,7 @@ void PluginManager::unloadAll() {
     m_loadedFiles.clear();
 }
 
-void PluginManager::teardownEngine(const QString &name, LuaEngine *engine,
-                                   QThread *thread) {
-    Q_UNUSED(name);
+void PluginManager::teardownEngine(LuaEngine *engine, QThread *thread) {
     if (!engine && !thread) return;
     if (!thread) {            // engine without a worker — should not happen
         delete engine;        // safe: never moved, lives on the GUI thread
@@ -417,6 +415,38 @@ static void parseManifestInto(PluginInfo &info, const QJsonObject &obj) {
     }
 }
 
+// Fills `info` from the plugin's optional manifest.json. A missing,
+// unreadable, oversized or unparseable manifest leaves `info` as it is.
+static void readManifestInto(PluginInfo &info, const QString &manifestPath) {
+    if (!QFile::exists(manifestPath)) return;
+    QFile f(manifestPath);
+    if (!f.open(QIODevice::ReadOnly)) return;
+    // 0.7.33: cap manifest size before reading. Pre-fix `f.readAll()`
+    // allocated whatever the on-disk file claimed it had — a 4 GB manifest
+    // would OOM the process before QJsonDocument::fromJson got a chance to
+    // reject it. 1 MiB is ~250 plugins worth of permissions/description
+    // text; legitimate manifests are <10 KiB.
+    constexpr qint64 kMaxManifestBytes = 1024 * 1024;  // 1 MiB
+    if (f.size() > kMaxManifestBytes) {
+        qWarning("Ants: plugin manifest %s exceeds %lld-byte cap "
+                 "(%lld bytes on disk) — skipped",
+                 qUtf8Printable(manifestPath),
+                 static_cast<long long>(kMaxManifestBytes),
+                 static_cast<long long>(f.size()));
+        return;
+    }
+    QJsonParseError err{};
+    const QJsonDocument doc = QJsonDocument::fromJson(
+        f.read(kMaxManifestBytes), &err);
+    if (doc.isObject()) {
+        parseManifestInto(info, doc.object());
+        return;
+    }
+    qWarning("Ants: plugin manifest %s failed to parse: %s (byte offset %d)",
+             qUtf8Printable(manifestPath),
+             qUtf8Printable(err.errorString()), err.offset);
+}
+
 void PluginManager::scanAndLoad(const QStringList &enabledList) {
     unloadAll();
     m_plugins.clear();
@@ -502,39 +532,8 @@ void PluginManager::scanAndLoad(const QStringList &enabledList) {
         info.path = canonicalPlugin;
         info.name = pluginDirName;
 
-        // Read optional manifest.json
-        QString manifestPath = canonicalPlugin + "/manifest.json";
-        if (QFile::exists(manifestPath)) {
-            QFile f(manifestPath);
-            if (f.open(QIODevice::ReadOnly)) {
-                // 0.7.33: cap manifest size before reading. Pre-fix
-                // `f.readAll()` allocated whatever the on-disk file
-                // claimed it had — a 4 GB manifest would OOM the
-                // process before QJsonDocument::fromJson got a chance
-                // to reject it. 1 MiB is ~250 plugins worth of
-                // permissions/description text; legitimate manifests
-                // are <10 KiB.
-                constexpr qint64 kMaxManifestBytes = 1024 * 1024;  // 1 MiB
-                if (f.size() > kMaxManifestBytes) {
-                    qWarning("Ants: plugin manifest %s exceeds %lld-byte cap "
-                             "(%lld bytes on disk) — skipped",
-                             qUtf8Printable(manifestPath),
-                             static_cast<long long>(kMaxManifestBytes),
-                             static_cast<long long>(f.size()));
-                } else {
-                    QJsonParseError err{};
-                    QJsonDocument doc = QJsonDocument::fromJson(
-                        f.read(kMaxManifestBytes), &err);
-                    if (doc.isObject()) {
-                        parseManifestInto(info, doc.object());
-                    } else {
-                        qWarning("Ants: plugin manifest %s failed to parse: %s (byte offset %d)",
-                                 qUtf8Printable(manifestPath),
-                                 qUtf8Printable(err.errorString()), err.offset);
-                    }
-                }
-            }
-        }
+        const QString manifestPath = canonicalPlugin + "/manifest.json";
+        readManifestInto(info, manifestPath);
 
         info.enabled = enabledList.isEmpty() || enabledList.contains(pluginDirName);
         m_plugins.append(info);
@@ -644,10 +643,7 @@ void PluginManager::loadPlugin(const PluginInfo &info) {
     // owns the clean-path delete; zombies leak until process exit by design.
     auto *thread = new QThread(nullptr);
     thread->setObjectName(QStringLiteral("ants-plugin-") + info.name);
-    // INV-9 — explicit small worker stack. The sandbox can't deep-recurse
-    // (Lua bounds C-call depth at LUAI_MAXCCALLS = 200 and the ants.* shims
-    // are shallow), so 512 KiB is safe with comfortable headroom.
-    thread->setStackSize(512 * 1024);
+    thread->setStackSize(LuaEngine::kWorkerStackBytes);   // INV-9
     engine->moveToThread(thread);
     thread->start();
 

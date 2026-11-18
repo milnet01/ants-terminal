@@ -39,8 +39,7 @@ static LuaEngine *getEngine(lua_State *L) {
 // Panic handler. PLUGINS.md guarantees the terminal will never crash
 // from a plugin; the per-plugin `lua_State`'s default panic handler
 // calls `abort()`, which would breach that contract on any unhandled
-// Lua error escaping a `pcall` (today: rare; tomorrow: a regression
-// adding a `lua_call` site). Log + return 0 — Lua treats a non-jump
+// Lua error escaping a `pcall`. Log + return 0 — Lua treats a non-jump
 // return from atpanic as fatal anyway, so the process still aborts,
 // but at least the user sees an actionable diagnostic instead of a
 // bare SIGABRT.
@@ -1017,9 +1016,9 @@ bool isValidUtf8(const char *s, size_t len) {
     return true;
 }
 
-// §2.4 marshalling. Depth-bounded at 32 levels — also what stops a
-// circular table (t.self=t) from looping the encoder (caught by the
-// bound, not a separate cycle check). `err` is sticky: once set, every
+// §2.4 marshalling. Table nesting is bounded at kMarshalMaxDepth — also
+// what stops a circular table (t.self=t) from looping the encoder (caught
+// by the bound, not a separate cycle check). `err` is sticky: once set, every
 // recursive call short-circuits and the caller refuses with query_error.
 constexpr int kMarshalMaxDepth = 32;
 
@@ -1044,9 +1043,6 @@ QJsonValue marshalLuaValue(lua_State *L, int idx, int depth, QString &err);
 
 QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
     // Bound only TABLE nesting (a scalar leaf at any depth is harmless).
-    // A table at level > 32 refuses — this is also what stops a circular
-    // table (t.self=t) from looping the encoder: each recursion bumps depth
-    // until the bound trips, no separate cycle detection needed.
     if (depth > kMarshalMaxDepth) {
         err = QStringLiteral("table nested deeper than %1 levels").arg(kMarshalMaxDepth);
         return {};
@@ -1062,7 +1058,8 @@ QJsonValue marshalLuaTable(lua_State *L, int idx, int depth, QString &err) {
     const lua_Integer n = static_cast<lua_Integer>(lua_rawlen(L, idx));
 
     // Array-like iff every key is an integer in 1..n and the key count
-    // equals n (no holes, no extra string keys).
+    // equals n (no holes, no extra string keys). An empty table is
+    // array-like, so it marshals as [], never {}.
     bool arrayLike = true;
     lua_Integer keyCount = 0;
     lua_pushnil(L);
@@ -1191,10 +1188,10 @@ struct QueryZombie {
 };
 QVector<QueryZombie> g_queryZombies;
 // ANTS-2194 — hard ceiling on wedged query workers. A worker can't be reaped
-// while it is wedged, so an unbounded wedge-loop would leak ~512 KiB/thread. Past
+// while it is wedged, so an unbounded wedge-loop would leak each wedged
+// worker's stack (LuaEngine::kWorkerStackBytes) and its result slot. Past
 // this cap runQueryThreaded refuses new threaded queries (and logs the count) so
-// the leak is bounded and the pathology observable rather than silent. 64 ×
-// 512 KiB ≈ 32 MiB — well past any healthy steady state, short of run-away.
+// the leak is bounded and the pathology observable rather than silent.
 constexpr int kMaxQueryZombies = 64;
 
 // ANTS-5107 — see LuaEngine::kProjectListMaxEntries.
@@ -1218,8 +1215,11 @@ int LuaEngine::lua_project_read(lua_State *L) {
     // ANTS-3847 — luaL_error longjmps, so no destructor in this frame runs.
     // Settle the outcome in a scope and raise only after its C++ objects are
     // gone; raising with `chk` alive leaked it on every refused read.
+    // BadPath: validatePath refused the path — it escapes the root, holds a
+    // control or backslash character, or the root is empty. The message
+    // says "escapes project root" for all of them (Lua-visible text, kept).
     enum class Refusal : unsigned char {
-        None, Escapes, Missing, NotRegular, Unopenable, TooLarge, NoMemory
+        None, BadPath, Missing, NotRegular, Unopenable, TooLarge, NoMemory
     };
     Refusal refusal = Refusal::None;
     qint64 fileBytes = 0;
@@ -1229,7 +1229,7 @@ int LuaEngine::lua_project_read(lua_State *L) {
             QString::fromUtf8(rel), engine->m_queryRoot,
             QStringLiteral("project_query"), QStringLiteral("path"));
         if (chk.bad) {
-            refusal = Refusal::Escapes;
+            refusal = Refusal::BadPath;
         } else if (chk.resolved.isEmpty()) {
             refusal = Refusal::Missing;
         } else {
@@ -1259,7 +1259,7 @@ int LuaEngine::lua_project_read(lua_State *L) {
         }
     }
     switch (refusal) {
-    case Refusal::Escapes:
+    case Refusal::BadPath:
         return luaL_error(L, "project.read: \"%s\" escapes project root", rel);
     case Refusal::Missing:
         return luaL_error(L, "project.read: no such file: %s", rel);
@@ -1289,7 +1289,7 @@ int LuaEngine::lua_project_list(lua_State *L) {
     // frame's destructors, so settle the refusal in a scope and raise with no
     // C++ object alive. `resolvedSub` stays null on every refusal, and a null
     // QString owns no heap memory.
-    enum class Refusal : unsigned char { None, Escapes, NotADirectory };
+    enum class Refusal : unsigned char { None, BadPath, NotADirectory };
     Refusal refusal = Refusal::None;
     QString resolvedSub;
     if (sub) {
@@ -1297,14 +1297,14 @@ int LuaEngine::lua_project_list(lua_State *L) {
             QString::fromUtf8(sub), engine->m_queryRoot,
             QStringLiteral("project_query"), QStringLiteral("subdir"));
         if (chk.bad)
-            refusal = Refusal::Escapes;
+            refusal = Refusal::BadPath;
         else if (chk.resolved.isEmpty() || !QFileInfo(chk.resolved).isDir())
             refusal = Refusal::NotADirectory;
         else
             resolvedSub = chk.resolved;
     }
     switch (refusal) {
-    case Refusal::Escapes:
+    case Refusal::BadPath:
         return luaL_error(L, "project.list: \"%s\" escapes project root", sub);
     case Refusal::NotADirectory:
         return luaL_error(L, "project.list: not a directory: %s", sub);
@@ -1506,7 +1506,7 @@ LuaEngine::QueryResult LuaEngine::runQueryThreaded(const QString &code, const QS
         *slot = eng.runQuery(codeCopy, rootCopy, timeoutMs, resultCapBytes);
     });
     worker->setObjectName(QStringLiteral("ants-project-query"));
-    worker->setStackSize(512 * 1024);  // shallow sandbox; matches plugin workers
+    worker->setStackSize(kWorkerStackBytes);
     worker->start();
 
     if (worker->wait(timeoutMs + kQueryJoinGraceMs)) {

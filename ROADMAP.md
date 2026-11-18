@@ -106261,7 +106261,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: config-session-project.
 
-- 📋 [ANTS-6144] **Readability fixes, plugins-lua lane: src/luaengine.cpp, src/luaengine.h, src/pluginmanager.cpp, src/pluginmanager.h.**
+- ✅ [ANTS-6144] **Readability fixes, plugins-lua lane: src/luaengine.cpp, src/luaengine.h, src/pluginmanager.cpp, src/pluginmanager.h.**
   Findings of the 2026-10-22 readability review (src run), lane plugins-lua:
   1 high, 7 medium, 8 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/35-plugins-lua.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -106271,6 +106271,18 @@ worked after these.
   2026-10-22: HIGH F1 done.
   2026-10-29: MEDIUMs F2-F8 done (comment fixes; F5 points to ANTS-6024
   for the Unload settings.get disconnect). LOWs F9-F16 remain.
+  2026-11-18, the LOWs F9-F16 closed. F9: the project.read/list
+  refusal enum value Escapes is now BadPath, with a comment naming every
+  reason validatePath refuses; the Lua-visible "escapes project root"
+  message is unchanged. F12: LuaEngine::kWorkerStackBytes replaces the
+  two 512 KiB literals (plugin and query workers), and the zombie-cap
+  comment names it instead of figures. F15: scanAndLoad reads the
+  manifest through readManifestInto; the plugin_manifest_safety test and
+  spec now pin the cap in that function. F16: teardownEngine drops its
+  unused name parameter. Comments: the panic handler loses its "today /
+  tomorrow" aside; the marshal depth is named once as kMarshalMaxDepth;
+  an empty table marshals as []; dispatchTo is the GUI-thread entry that
+  queues and never blocks. No behaviour change.
   **Layman:** Tidy the plugin system so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

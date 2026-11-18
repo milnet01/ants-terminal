@@ -85,7 +85,8 @@ names, future filesystem features).
 
 ### Invariant 1 — 1 MiB manifest cap
 
-`src/pluginmanager.cpp` `scanAndLoad` body must contain a
+`src/pluginmanager.cpp` `scanAndLoad` reads each manifest through
+`readManifestInto`, whose body must contain a
 `kMaxManifestBytes` constant equal to `1024 * 1024` and gate
 the JSON parse on `f.size() > kMaxManifestBytes`. The actual
 read MUST use `f.read(kMaxManifestBytes)` (bounded), not

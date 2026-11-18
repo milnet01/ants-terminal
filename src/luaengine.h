@@ -194,6 +194,11 @@ public:
     // §2.4 join grace added to the timeout before the worker is detached.
     static constexpr int kQueryJoinGraceMs = 250;
 
+    // INV-9 — stack size of every Lua worker thread: each plugin's and each
+    // project query's. The sandbox can't deep-recurse (Lua bounds C-call
+    // depth at LUAI_MAXCCALLS = 200 and the ants.* shims are shallow).
+    static constexpr int kWorkerStackBytes = 512 * 1024;
+
     // ANTS-5107 — project.list stops after this many entries visited and
     // raises, rather than walking a huge tree in full. Tests lower it; 0
     // restores the default.

@@ -1,7 +1,8 @@
 // Feature-conformance test for spec.md —
 //
 // Source-grep test. PluginManager::scanAndLoad must:
-//   I1: cap manifest reads at 1 MiB via kMaxManifestBytes.
+//   I1: cap manifest reads at 1 MiB via kMaxManifestBytes (in
+//       readManifestInto, which scanAndLoad calls).
 //   I2: pass QDir::NoSymLinks to entryList.
 //   I3: anchor on canonicalFilePath of m_pluginDir.
 //   I4: per-entry canonical-containment reject.
@@ -62,14 +63,20 @@ static int runMain() {
         "void PluginManager::scanAndLoad(const QStringList &enabledList)");
     expect(!body.empty(), "extract/scanAndLoad-body-found");
 
-    // I1 — manifest cap.
-    expect(contains(body, "kMaxManifestBytes"),
+    // I1 — manifest cap. scanAndLoad reads the manifest through
+    // readManifestInto, which holds the cap.
+    expect(contains(body, "readManifestInto(info, manifestPath)"),
+           "I1/scanAndLoad-reads-manifest-via-helper");
+    const std::string manifest = extractFn(src,
+        "static void readManifestInto(PluginInfo &info, const QString &manifestPath)");
+    expect(!manifest.empty(), "extract/readManifestInto-body-found");
+    expect(contains(manifest, "kMaxManifestBytes"),
            "I1/kMaxManifestBytes-named-constant");
-    expect(contains(body, "1024 * 1024"),
+    expect(contains(manifest, "1024 * 1024"),
            "I1/cap-value-1MiB");
-    expect(contains(body, "f.read(kMaxManifestBytes)"),
+    expect(contains(manifest, "f.read(kMaxManifestBytes)"),
            "I1/uses-bounded-read-not-readAll");
-    expect(!contains(body, "f.readAll(), &err"),
+    expect(!contains(manifest, "f.readAll(), &err"),
            "I1/no-unbounded-readAll-feeding-fromJson");
 
     // I2 — NoSymLinks flag.
