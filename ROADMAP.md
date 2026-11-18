@@ -97067,10 +97067,12 @@ keeps the reviewer's remedy, which is a claim to check before building.
   Source: review-code + review-readability 2026-11-06 (duplicate).
   Lanes: tools-ci-gate.
 
-- 📋 [ANTS-6618] **Fold the duplicated logic the 2026-11-06 reviews found in tools-roadmap-surveys.**
+- ✅ [ANTS-6618] **Fold the duplicated logic the 2026-11-06 reviews found in tools-roadmap-surveys.**
   2 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1254 `tools/roadmap-conformance.py:39` (Medium)
   - row 1262 `tools/spec-header-survey.py:285` (Low)
+  2026-11-18: row 1254 (one kind list, tools/roadmap_kinds.py) in
+  e701b5cd; row 1262 (--values in Usage) in d862def1.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -97901,6 +97903,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1477 `tools/spec-header-survey.py:256` (Info)
   - row 1478 `tools/split-motion-check.py:1037-1038` (Info)
   - row 1479 `tools/measure/doc_symbols_locator_sample.py:37` (Info)
+  2026-11-18: row 1476 fixed in e701b5cd (the unreachable branch is
+  deleted). Row 1477 is documented, not fixed: d862def1's Usage says
+  --values must follow specs_dir.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -106615,7 +106620,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: tools-roadmap.
 
-- 📋 [ANTS-6152] **Readability fixes, tools-migration-surveys lane: tools/migrate_expect_helper.py, tools/rc-namespace-scan.py, tools/spec-header-survey.py.**
+- ✅ [ANTS-6152] **Readability fixes, tools-migration-surveys lane: tools/migrate_expect_helper.py, tools/rc-namespace-scan.py, tools/spec-header-survey.py.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-migration-surveys:
   1 high, 7 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/04-tools-migration-surveys.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106627,6 +106632,13 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1263
   `tools/migrate_expect_helper.py:477`; row 1265 `tools/rc-namespace-
   scan.py:200`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18, d862def1: mediums and lows closed, with rows 1263 and
+  1265. One shim regex, one reset-insert helper and one if(g_failures)
+  fragment in migrate_expect_helper.py; seam meaning, usage and comment
+  fixes in rc-namespace-scan.py; TRACKED, Usage and naming in
+  spec-header-survey.py. Replaying the helper on the pre-ANTS-1382 and
+  pre-ANTS-1385 test trees gives byte-identical rewrites. The lane's
+  correctness leads are ANTS-6071 to ANTS-6076.
   **Layman:** Tidy the migration and survey scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
