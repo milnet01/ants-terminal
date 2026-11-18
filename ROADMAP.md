@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6826 -->
+<!-- ants-roadmap-id-high-water: ANTS=6827 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93108,7 +93108,7 @@ measured Ants adding about 5,250 tokens to every request.
 
 ### Ants MCP feedback from CC sessions — 2026-11-18 triage
 
-- 📋 [ANTS-6825] **roadmap_query ids[] fetch shrinks every body to 400 bytes although max_body_bytes asked for 3000.**
+- ✅ [ANTS-6825] **roadmap_query ids[] fetch shrinks every body to 400 bytes although max_body_bytes asked for 3000.**
   Reported by DeFragR 2026-11-18 (DeFragR_Ants_MCP_Feedback.md,
   "DeFragR full review 2026-11-18"). ids[] (DFR-0013, DFR-0049,
   DFR-0056 …) with max_body_bytes 3000 came back with
@@ -93116,6 +93116,12 @@ measured Ants adding about 5,250 tokens to every request.
   fell back to awk on ROADMAP.md.
   Fix: honour max_body_bytes up to the reply cap; shrink only when
   the reply would overflow, and name the limit that forced it.
+  2026-11-18: the shrink is ANTS-5477's deliberate fit under the
+  inline limit (DeFragR's 400 is its floor). A shortened reply now
+  carries shrink_reason, naming the limit, and ids_per_call: how many
+  ids fit unshortened at the cap asked for, largest rows first. Test
+  Ants6825ShrinkNamesTheLimitAndIdsPerCall red first. The offload:false
+  observation is filed separately as ANTS-6827.
   **Layman:** Asking the roadmap tool for whole entries returned them cut short, so a helper had to read the file by hand.
   Kind: fix.
   Source: DeFragR-feedback-2026-11-18.
@@ -93135,6 +93141,19 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: feature.
   Source: DeFragR-feedback-2026-11-18.
   Lanes: mcp-session-verbs.
+
+- 📋 [ANTS-6827] **roadmap_query over MCP still shortened bodies with offload:false, which the engine honours.**
+  Seen while reproducing ANTS-6825 (2026-11-18): a 15-id fetch in
+  DeFragR with max_body_bytes 3000 and offload:false came back with
+  bodies_shrunk_to_fit. The engine test Ants5477NoShrinkWhenNothingWouldSpill
+  passes offload:false to cmdRoadmapQuery and gets no shrink, so the
+  argument may not reach the verb through ants-mcpd, or the running
+  server (build 3e9283fa) predates something. Unverified which.
+  Check: ants-mcpd --call roadmap_query with offload:false.
+  **Layman:** A switch that should stop the roadmap tool shortening entries seemed to have no effect when called from a session.
+  Kind: investigate.
+  Source: ANTS-6825-repro-2026-11-18.
+  Lanes: mcp-roadmap-verbs.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 

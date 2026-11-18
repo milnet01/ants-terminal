@@ -31,6 +31,7 @@
 #include <cmath>
 #include <optional>
 #include <algorithm>   // ANTS-4636 — std::max over the two high-water sources
+#include <functional>  // ANTS-6825 — std::greater
 
 using namespace rcdetail;  // ANTS-3833
 
@@ -860,6 +861,29 @@ int rcShrinkBodiesToFit(QJsonObject &out, int cap, bool fromEnd,
     return applied;
 }
 
+// ANTS-6825 — how many of `fullRows` (the rows before shortening) fit under
+// the threshold unshortened, counting the largest first so any that many
+// ids fit. The envelope is `reply`'s, which names every id, so a smaller
+// fetch's is no larger. At least 1: a single id is never shortened.
+int rcIdsThatFit(const QJsonObject &reply, const QJsonArray &fullRows,
+                 qint64 threshold) {
+    QJsonObject envelope = reply;
+    envelope[QStringLiteral("bullets")] = QJsonArray();
+    qint64 room = threshold - kFitHeadroomBytes
+                - QJsonDocument(envelope).toJson(QJsonDocument::Compact).size();
+    QList<qint64> sizes;
+    for (const auto &v : fullRows)
+        sizes << QJsonDocument(v.toObject()).toJson(QJsonDocument::Compact).size() + 1;
+    std::sort(sizes.begin(), sizes.end(), std::greater<>());
+    int fit = 0;
+    for (const qint64 rowBytes : std::as_const(sizes)) {
+        if (rowBytes >= room) break;
+        room -= rowBytes;
+        ++fit;
+    }
+    return qMax(1, fit);
+}
+
 }  // namespace
 
 // ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
@@ -1448,16 +1472,25 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-5477 — shorten a targeted reply's bodies before it spills. Not on
     // a single id asked for by size: ANTS-4630 made the spill the route to
     // the middle of a long body there.
+    // ANTS-6825 — and say which limit forced it, and how many ids a call
+    // may name to get its bodies at the cap asked for.
     auto shrinkToFit = [&](QJsonObject &reply) {
         if (!mcp::offloadRequested(req)) return;
         if (singleIdFetch && reqBodyCap > 0) return;
+        const qint64 threshold =
+            mcp::offloadThresholdFor(QStringLiteral("roadmap_query"), req);
+        const QJsonArray fullRows = reply.value(QStringLiteral("bullets")).toArray();
         const int cap = rcShrinkBodiesToFit(
             reply, idBodyCap,
-            req.value(QStringLiteral("body_from_end")).toBool(false),
-            mcp::offloadThresholdFor(QStringLiteral("roadmap_query"), req));
+            req.value(QStringLiteral("body_from_end")).toBool(false), threshold);
         if (cap > 0) {
             reply["bodies_shrunk_to_fit"]      = true;
             reply["max_body_bytes_effective"] = cap;
+            reply["shrink_reason"] = QStringLiteral(
+                "the reply would pass the %1-byte inline limit; name at most "
+                "ids_per_call ids per call for bodies at the cap asked for")
+                .arg(threshold);
+            reply["ids_per_call"] = rcIdsThatFit(reply, fullRows, threshold);
         }
     };
 

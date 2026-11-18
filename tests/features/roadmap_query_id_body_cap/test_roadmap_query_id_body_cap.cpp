@@ -762,6 +762,35 @@ TEST(roadmap_query_id_body_cap, Ants5477IdsFetchShrinksBodiesToFit) {
     }
 }
 
+// ANTS-6825 — a shortened reply says which limit forced it and how many ids
+// would come back at the cap asked for; that many ids then fit unshortened.
+TEST(roadmap_query_id_body_cap, Ants6825ShrinkNamesTheLimitAndIdsPerCall) {
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    ASSERT_TRUE(writeFile(rmPath(tmp.path()), roadmapWithNLongBullets(6)));
+
+    RemoteControl rc(nullptr);
+    const QJsonObject resp =
+        rc.cmdRoadmapQuery(sixIdRequest(tmp.path(), /*offload*/ true)).object();
+    ASSERT_TRUE(resp.value(QStringLiteral("bodies_shrunk_to_fit")).toBool());
+    EXPECT_TRUE(resp.value(QStringLiteral("shrink_reason")).toString()
+                    .contains(QString::number(mcp::offloadThresholdBytes())))
+        << "the reason names the inline limit";
+    const int perCall = resp.value(QStringLiteral("ids_per_call")).toInt();
+    ASSERT_GE(perCall, 1);
+    ASSERT_LT(perCall, 6);
+
+    QJsonObject req = sixIdRequest(tmp.path(), /*offload*/ true);
+    QJsonArray fewer;
+    for (int i = 0; i < perCall; ++i)
+        fewer.append(req.value(QStringLiteral("ids")).toArray().at(i));
+    req[QStringLiteral("ids")] = fewer;
+    const QJsonObject again = rc.cmdRoadmapQuery(req).object();
+    ASSERT_TRUE(again.value(QStringLiteral("ok")).toBool());
+    EXPECT_FALSE(again.contains(QStringLiteral("bodies_shrunk_to_fit")))
+        << perCall << " ids were promised to fit at the cap asked for";
+}
+
 // ANTS-5477b — with no offload coming, nothing is shortened.
 TEST(roadmap_query_id_body_cap, Ants5477NoShrinkWhenNothingWouldSpill) {
     QTemporaryDir tmp;

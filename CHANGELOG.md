@@ -14,6 +14,8 @@ for security-relevant changes.
 
 ### Added
 
+- **roadmap_query says why it shortened bodies (shrink_reason) and how many ids per call come back at the size asked for (ids_per_call)** (ANTS-6825)
+
 - **`audit_run` takes a confidence floor** (ANTS-1706)
   `min_confidence:N` scores each finding as the audit window does and
   hides those below N from the counts, samples, top findings and

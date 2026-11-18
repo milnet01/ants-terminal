@@ -125,6 +125,11 @@ for with `max_body_bytes` is left to spill, since that is ANTS-4630's route
 to the middle of a long body. *Tests:* the three `Ants5477*` cases in
 `test_roadmap_query_id_body_cap.cpp`.
 
+ANTS-6825 — a shortened reply also carries `shrink_reason`, naming the
+inline limit, and `ids_per_call`: how many of the ids, largest rows first,
+fit unshortened at the cap asked for. A fetch of that many ids is not
+shortened. *Test:* `roadmap_query_id_body_cap.Ants6825ShrinkNamesTheLimitAndIdsPerCall`.
+
 ## ANTS-5467 — `max_body_bytes` on the list and section paths
 
 A list or section query that returns bodies emits them at one list cap, 2000
