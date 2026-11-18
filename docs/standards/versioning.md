@@ -68,8 +68,8 @@ already publishes it in its header fence
 ([changelog-format.md](changelog-format.md) §4.1). This section is what
 that promise means, so that a reader can tell whether it is kept.
 
-**Every level below is the `1.0`-and-after ladder. Inside `0.x`, §4 shifts
-whatever this section returns down one**, so read them together or a `0.x`
+**Every level below holds inside `0.x` too, with one exception in §4: a
+breaking change bumps the MINOR there**, so read them together or a `0.x`
 project cuts `1.0.0` for its first breaking change.
 
 - **A change is breaking if a user, or an integrator, who upgrades has
@@ -147,17 +147,12 @@ assumes something different unless the project says otherwise.
   a project whose leading zero has gone inert, and its version has
   stopped saying anything at all. The visible symptom is a long release
   history under a `0.` prefix that nobody has revisited.
-- **Inside `0.x` the levels shift down one, and both cases are stated
-  because either alone is ambiguous.** A breaking change bumps the MINOR
-  and resets the PATCH. **Everything else — a new capability included —
-  bumps the PATCH.** Suspended guarantees are not an excuse for an
-  arbitrary number.
-- **No check may push a `0.x` project onto the `1.0` ladder.** A level floor
-  written for the ladder above reads an `### Added` entry as MINOR, which is
-  correct there and wrong here. `cut-release` skips its floor while MAJOR is
-  `0` (CFG-0238). **If some other check stops a correct PATCH, the PATCH
-  stands** — bumping the MINOR to get through it publishes a number this
-  section calls wrong and spends the `1.0` runway to satisfy a check.
+- **Inside `0.x` each number keeps its meaning: the PATCH counts fixes,
+  the MINOR counts features.** A new capability goes `0.1.0` → `0.2.0`; a
+  release of fixes alone goes `0.2.0` → `0.2.1`. Set by the user,
+  2026-11-18.
+- **A breaking change inside `0.x` also bumps the MINOR**, never the MAJOR.
+  Only the exit condition above makes `1.0.0`.
 
 ## 5. Pre-release suffixes
 
@@ -371,7 +366,7 @@ by the user 2026-08-20 (CFG-0174).
 | Rule | What catches a breach |
 |------|----------------------|
 | §2 — the level matches the change | **nothing.** `cut-release` takes `<X.Y.Z\|patch\|minor\|major>` as an argument and validates the string's shape, never whether the level matches the change. Calling a breaking change a patch release is caught by a person or not at all. This is the honest state of every project surveyed on 2026-08-20, and it is why §2 is written as a decision procedure rather than as a preference |
-| §2 — the changelog implies the level | **Partial:** `cut-release` Phase 0e stops a PATCH whose LOCATED `## [<NEW>]` section — dated for a final cut, dated or undated under `--pre` — carries an `### Added` or `### Deprecated` heading (CFG-0180, decided by the user 2026-08-20). **A floor, not a verdict:** it cannot catch a level that is too HIGH, and it cannot catch a breaking change filed under `Fixed` — the failure that matters most. The breaking test is not mechanical: it asks what stopped working, which no category name answers. **And it is scoped to the `1.0`-and-after ladder**, skipping itself while MAJOR is `0` (CFG-0238) because §4 makes an `### Added` entry a correct PATCH there — so below `1.0` this row's rule is caught by nothing at all |
+| §2 — the changelog implies the level | **Partial:** `cut-release` Phase 0e stops a PATCH whose LOCATED `## [<NEW>]` section — dated for a final cut, dated or undated under `--pre` — carries an `### Added` or `### Deprecated` heading (CFG-0180, decided by the user 2026-08-20). **A floor, not a verdict:** it cannot catch a level that is too HIGH, and it cannot catch a breaking change filed under `Fixed` — the failure that matters most. The breaking test is not mechanical: it asks what stopped working, which no category name answers. It fires inside `0.x` too |
 | §3 — a project names its own breaking surfaces | **nothing**, and nothing tracks it either. `CFG-0174` runs the other way — it merges a project's *existing* versioning standard up into the global one, and records that the surfaces list stays project-local. No item asks a project that has never written one to write it |
 | §4 — a `0.x` project states its `1.0` condition | **nothing.** A leading zero is not a signal any tool reads |
 | §5 — the suffix stays out of version-bearing files | **Partial:** `cut-release`'s target validation, an argument-shape check — `^[0-9]+\.[0-9]+\.[0-9]+$` rejects a suffixed target, so the tool cannot introduce one *through its argument*; `--pre rc.N` (CFG-0179) carries the candidate as a separate value that reaches the tag and the release title and no version-bearing file, so the sanctioned route cannot introduce one either. Corrected 2026-08-25 (CFG-0240); this said *"the tag text only"*, which § 5's own second bullet contradicts. **Not covered:** a suffix written into a source file by hand, or baked as a literal into a recipe's `files[].replace` template, which the tool then writes for you. Worse than absent there — a recipe's `version_pattern` captures the triple, so the value comes back truncated at the next extraction. **What the lockstep verify makes of it is the project's own `post_check`, which this standard does not own** and which may report the mismatch or miss it |

@@ -81,6 +81,21 @@ QStringList extractIds(const QString &text, const QString &idPrefix) {
     return out;
 }
 
+// ANTS-6831 — true when every mention of `id` in `line` comes straight after
+// "part of" (any case; a backtick or a link's "[" may open the id). cut-release
+// 0f reads that as naming the open epic a bullet belongs to, not a claim that
+// it shipped. One plain mention on the line keeps the id claimed.
+bool onlyPartOf(const QString &line, const QString &id) {
+    const QString esc = QRegularExpression::escape(id);
+    const QRegularExpression any(QStringLiteral("\\b%1\\b").arg(esc));
+    const QRegularExpression partOf(QStringLiteral("\\bpart of\\s+[`\\[]?%1\\b").arg(esc),
+                                    QRegularExpression::CaseInsensitiveOption);
+    int mentions = 0, crossRefs = 0;
+    for (auto m = any.globalMatch(line); m.hasNext(); m.next()) ++mentions;
+    for (auto m = partOf.globalMatch(line); m.hasNext(); m.next()) ++crossRefs;
+    return mentions > 0 && crossRefs == mentions;
+}
+
 // Version heading `## [<ver>]<sep><date>`. Returns false if not a version line.
 bool parseVersionHeading(const QString &line, QString &version, QString &date,
                          bool &unreleased) {
@@ -533,7 +548,7 @@ QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &i
         }
         for (const QString &id : extractIds(l, idPrefix)) {
             cited.insert(id);
-            if (section != wanted) continue;
+            if (section != wanted || onlyPartOf(l, id)) continue;
             const QString status = facts.statusById.value(id);
             if (status == QLatin1String("shipped")) continue;
             add(i + 1, QStringLiteral("cited_not_shipped"),

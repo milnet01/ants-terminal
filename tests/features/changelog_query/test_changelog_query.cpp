@@ -799,6 +799,38 @@ TEST(ChangelogQueryLint, Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsC
     EXPECT_EQ(releaseLineOf(QStringLiteral("- **Old work.** (ANTS-3)")), fs.at(0).line);
 }
 
+// ANTS-6831 — an id straight after "part of" names the open epic a bullet
+// belongs to, not a claim that it shipped (cut-release 0f). A plain citation
+// of the same id elsewhere in the section is still a claim.
+TEST(ChangelogQueryLint, Ants6831PartOfIdIsNotAShippingClaim) {
+    const QString md = QStringLiteral(
+        "# Changelog\n\n## [Unreleased]\n\n### Added\n\n"
+        "- **Piece one.** (part of ANTS-7)\n"
+        "- **Piece two.** (Part Of `ANTS-7`)\n"
+        "- **Piece three.** (part of [ANTS-7](ROADMAP.md))\n"
+        "- **Piece four.** (ANTS-1, part of ANTS-8)\n"
+        "- **Epic itself.** (ANTS-8)\n"
+        "- **Both on one line.** Ships ANTS-9 (part of ANTS-9)\n");
+    ChangelogQuery::ReleaseFacts f;
+    f.statusById = {{QStringLiteral("ANTS-1"), QStringLiteral("shipped")},
+                    {QStringLiteral("ANTS-7"), QStringLiteral("in-progress")},
+                    {QStringLiteral("ANTS-8"), QStringLiteral("in-progress")},
+                    {QStringLiteral("ANTS-9"), QStringLiteral("in-progress")}};
+    const auto fs = ChangelogQuery::releaseLint(md, QStringLiteral("ANTS"),
+        QStringLiteral("CHANGELOG.md"), QString(), f);
+    const QStringList lines = md.split(QLatin1Char('\n'));
+    const int epicLine = lines.indexOf(QStringLiteral("- **Epic itself.** (ANTS-8)")) + 1;
+    const int bothLine = lines.indexOf(
+        QStringLiteral("- **Both on one line.** Ships ANTS-9 (part of ANTS-9)")) + 1;
+    QStringList got;
+    for (const auto &x : fs)
+        if (x.kind == QLatin1String("cited_not_shipped"))
+            got << QStringLiteral("%1:%2").arg(x.line).arg(x.message.section(QLatin1Char(' '), 0, 0));
+    const QStringList want = {QStringLiteral("%1:ANTS-8").arg(epicLine),
+                              QStringLiteral("%1:ANTS-9").arg(bothLine)};
+    EXPECT_EQ(want, got) << got.join(QLatin1Char(' ')).toStdString();
+}
+
 // A malformed window refuses before the store is touched.
 // ANTS-6649 row 1335 — a deregistered project has no roadmap (ANTS-5366
 // § 2.3), so the release checks skip it as unregistered rather than checking

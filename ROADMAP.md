@@ -93201,7 +93201,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: DeFragR-feedback-2026-11-18.
   Lanes: mcp.
 
-- 📋 [ANTS-6831] **changelog_query lint release:true skips an id written as "part of <ID>" in cited_not_shipped, as cut-release 0f does.**
+- ✅ [ANTS-6831] **changelog_query lint release:true skips an id written as "part of <ID>" in cited_not_shipped, as cut-release 0f does.**
   DeFragR: a CHANGELOG [0.2.0] bullet ending "(part of DFR-0067)", with
   DFR-0067 in progress, makes mode:lint version:0.2.0 release:true report
   cited_not_shipped. cut-release step 0f reads "part of" as a
@@ -93209,6 +93209,15 @@ measured Ants adding about 5,250 tokens to every request.
   disagree. Fix: skip an id directly preceded by "part of" (any case; a
   backtick or link around the id allowed) in cited_not_shipped, with a
   test for each spelling.
+  2026-11-18: releaseLint skips an id for cited_not_shipped when every
+  mention of it on the line comes straight after "part of" (any case,
+  optional backtick or link "["), via onlyPartOf(). A plain mention on
+  the same line, or a plain citation on another line, stays a claim.
+  Test ChangelogQueryLint.Ants6831PartOfIdIsNotAShippingClaim: red
+  before (lines 7-10 flagged), green after; four mutants killed after
+  adding the same-line case. Spec ANTS-3533 § 2.2 and the header's
+  citation comment (stale since ANTS-6282) updated. Reaches ants-mcpd
+  clients on their next /mcp reconnect.
   **Layman:** The changelog check wrongly warns about an entry that only says it is "part of" an unfinished item.
   Kind: fix.
   Source: DeFragR_Ants_MCP_Feedback.md 2026-11-18.

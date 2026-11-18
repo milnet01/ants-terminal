@@ -108,10 +108,12 @@ bool recordsNoEntryDecision(const QString &body);
 //   tag_without_section      the newest stable tag has no `## [X.Y.Z]` section,
 //                            so [Unreleased] was not moved under it
 //
-// A citation is an id on a bullet's first line or on a `###` heading line, in
-// any section. An id in continuation prose is a cross-reference, not a claim
-// it shipped. `version` picks the section cited_not_shipped checks; empty
-// means [Unreleased].
+// A citation is an id on a bullet's lines, its indented continuations
+// included (ANTS-6282), or on a `###` heading line, in any section. An id
+// straight after "part of" names an open epic, not a claim it shipped:
+// cited_not_shipped skips it unless the same line also names it plainly
+// (ANTS-6831, as cut-release 0f). `version` picks the section
+// cited_not_shipped checks; empty means [Unreleased].
 QList<DocFinding::Finding> releaseLint(const QString &markdown, const QString &idPrefix,
                                        const QString &relPath, const QString &version,
                                        const ReleaseFacts &facts);

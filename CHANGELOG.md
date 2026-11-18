@@ -530,6 +530,8 @@ for security-relevant changes.
 
 ### Fixed
 
+- **changelog_query's release lint treats an id written as "part of <ID>" as a cross-reference, as cut-release does, so an entry that names its unfinished parent item is no longer reported as cited but not shipped** (ANTS-6831)
+
 - **The AI dialog's Insert Cmd button inserts just the command from a fenced code block: a language tag of any length (`powershell`, `typescript`) is left out, and a short first command such as `make` is kept** (ANTS-6015)
 
 - **`comment_claims` reports a spaced approximate count such as `~ 3 lines` once** (ANTS-6140)

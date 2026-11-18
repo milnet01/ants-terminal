@@ -150,7 +150,10 @@ records no `Release note (…): no CHANGELOG entry` decision) and
 `tag_without_section` (the newest stable git tag has no `## [X.Y.Z]`
 section). A citation is an id on a `###` line, or on a bullet's first line or
 one of its indented continuation lines (the lines `entries` mode reads into
-`ids[]`); never in fenced code. The checked section is `version`, or
+`ids[]`); never in fenced code. An id straight after "part of" (any case, in
+backticks or a link) names an open epic, not a claim it shipped, so
+`cited_not_shipped` skips it unless the same line also names it plainly, as
+cut-release step 0f does (ANTS-6831). The checked section is `version`, or
 `[Unreleased]` when it is absent. `since` defaults to the newest dated release
 section's date. The reply adds `release: {since, shipped_in_window, decided,
 latest_tag}`. A project the store does not hold, or a failed store query, adds
@@ -678,3 +681,4 @@ saving is on the RESPONSE wire, not the in-memory model.
 - **Loop 11 (2026-10-12, ANTS-5651 amendment; 2 cold lanes, every lane held every question; cap reached)** — Q1 0 · Q2 0 · Q3 0 · Q4 1 (verified 1 / dismissed 1; fixed 1). Fixed: § 7 item 2 names a test for the explicit-limit cut on this verb's own path, since the allowlist scrape INV-6 names cannot fail on a paging defect. Dismissed as changing nothing built: § 2.1 lacking the `section` alias (the handler already accepts it). Cap reached (2 for a spec): calm, 0 of this loop's 1 finding landed on text loop 10 wrote. Whole run: 2 of 5 verified findings fall inside the gated span, commit 6093600f. This loop's fix was read by no lane. Tail filed on ANTS-5651: INV-6 says paging engages through the dispatch allowlists, though the handler calls `pageBullets` itself; § 2.2's "~20 KB" can be lower under `softCapBytes()`.
 - **amend (2026-10-26, ANTS-6282)** — not a review; no reviewer dispatched. § 2.2's release citation now also reads a bullet's indented continuation lines, matching the ids `entries` mode reports; reported by frameledger, whose wrapped bullets drew five false `shipped_not_cited` findings. No gate: it changes no Goal, invariant or invariant test (rules/14-contract-gate.md § The instance).
 - **amend (2026-11-13, ANTS-5666)** — not a review; no reviewer dispatched. INV-6 now says the handler pages itself through `PaginationEngine::pageBullets`; § 2.2 names `softCapBytes()` in place of "~20 KB". Both read in `src/remotecontrol_changelog.cpp` and `src/paginationengine.cpp`.
+- **amend (2026-11-18, ANTS-6831)** — not a review; no reviewer dispatched. § 2.2's release citation now skips an id straight after "part of" for `cited_not_shipped`, unless the same line names it plainly, matching cut-release step 0f; reported by DeFragR. Read in `src/changelogquery.cpp` (`onlyPartOf`, `releaseLint`).

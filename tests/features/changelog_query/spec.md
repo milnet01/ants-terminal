@@ -72,6 +72,10 @@ category.
 - **`ChangelogQueryLint.Ants5507VersionPicksTheCitedSectionAndATaggedSectionIsClean`**
   — `version` moves the cited check to that section, and a tag whose section
   exists is no finding.
+- **`ChangelogQueryLint.Ants6831PartOfIdIsNotAShippingClaim`** — an unshipped
+  id straight after "part of" (any case, in backticks or a link) is not
+  `cited_not_shipped`; the same id cited plainly, on its own line or beside
+  the "part of", still is.
 - **`ChangelogQueryLint.Ants6284DecisionWrappedAcrossLinesIsRecorded`** — a
   `Release note (…): no CHANGELOG entry` decision counts when line breaks
   and indentation split it. The phrase without the `Release note (` form
