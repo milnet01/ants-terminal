@@ -5,6 +5,7 @@
 #include "markdownscan.h"
 
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
@@ -133,7 +134,7 @@ QString citationMessage(const QJsonObject &e, const QString &status) {
 // list item, so the writer saw different headings from the check that asked
 // for the patch and could put a TOC row in the wrong place.
 
-struct Hd {
+struct TocHeading {
     QString text;
     QString slug;
     int level = 0;
@@ -144,9 +145,9 @@ struct Hd {
 // DocIntegrity::gfmSlug disambiguates repeats. Computing them independently
 // per heading would give two headings of the same text the same slug and make
 // the entry->heading lookup below ambiguous.
-QVector<Hd> headingsOf(const QStringList &lines, const QVector<bool> &fence) {
+QVector<TocHeading> headingsOf(const QStringList &lines, const QVector<bool> &fence) {
     static const QRegularExpression re(QStringLiteral(R"(^ {0,3}(#{1,6})\s+(\S.*?)\s*$)"));
-    QVector<Hd> out;
+    QVector<TocHeading> out;
     QHash<QString, int> seen;
     for (int i = 0; i < lines.size(); ++i) {
         if (fence.at(i)) continue;
@@ -184,10 +185,10 @@ struct TocRegion {
 // (`DocData`, `Heading`) that are not exported. Keep the two identical, and
 // detectToc points back here: a region shorter than DocIntegrity's anchors an
 // inserted entry on the wrong row (ANTS-6135).
-TocRegion detectTocRegion(const QStringList &lines, const QVector<Hd> &heads) {
+TocRegion detectTocRegion(const QStringList &lines, const QVector<TocHeading> &heads) {
     TocRegion t;
     int contentsLine = -1;
-    for (const Hd &h : heads) {
+    for (const TocHeading &h : heads) {
         if (h.slug == QLatin1String("contents") ||
             h.slug == QLatin1String("table-of-contents")) {
             contentsLine = h.line;
@@ -255,12 +256,12 @@ bool isMissingSectionGap(const QString &message, QString *heading) {
 bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
                     QString *reason) {
     const QVector<bool> fence = MarkdownScan::fenceMask(lines);
-    const QVector<Hd>   heads = headingsOf(lines, fence);
+    const QVector<TocHeading>   heads = headingsOf(lines, fence);
     const TocRegion     toc   = detectTocRegion(lines, heads);
     if (!toc.found) { *reason = QStringLiteral("no_template"); return false; }
 
-    QHash<QString, const Hd *> bySlug;
-    for (const Hd &h : heads) bySlug.insert(h.slug, &h);
+    QHash<QString, const TocHeading *> bySlug;
+    for (const TocHeading &h : heads) bySlug.insert(h.slug, &h);
 
     // The template is an existing entry pointing at an H2 — its indent, list
     // marker and link form are what an inserted entry copies. A region with
@@ -269,7 +270,7 @@ bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
     static const QRegularExpression prefixRe(QStringLiteral(R"(^(\s*(?:[-*+]|\d+[.)])\s+))"));
     QVector<TocEntry> h2Entries;
     for (const TocEntry &e : toc.entries) {
-        const Hd *const h = bySlug.value(e.slug, nullptr);
+        const TocHeading *const h = bySlug.value(e.slug, nullptr);
         if (h && h->level == 2 && prefixRe.match(lines.at(e.line - 1)).hasMatch())
             h2Entries.append(e);
     }
@@ -318,9 +319,9 @@ bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
         // repair, which is why fixed[] reports the walk-time location. The
         // heading must still be UNCOVERED, the condition that produced the
         // finding; two uncovered H2s sharing one text are ambiguous and refuse.
-        const Hd *target = nullptr;
+        const TocHeading *target = nullptr;
         int matches = 0;
-        for (const Hd &h : heads) {
+        for (const TocHeading &h : heads) {
             if (h.level != 2 || h.text != headingText) continue;
             if (entrySlugs.contains(h.slug)) continue;
             target = &h;
@@ -333,7 +334,7 @@ bool patchTocRegion(QStringList &lines, const QList<DocFinding::Finding> &gaps,
         // new row goes at the head of the region.
         const TocEntry *anchor = nullptr;
         for (const TocEntry &e : h2Entries) {
-            const Hd *const h = bySlug.value(e.slug, nullptr);
+            const TocHeading *const h = bySlug.value(e.slug, nullptr);
             if (h && h->line < target->line) anchor = &e;
         }
         const TocEntry &tmpl  = anchor ? *anchor : h2Entries.first();
@@ -414,7 +415,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
         const QString abs = QDir::cleanPath(rootDir.filePath(rel));
 
         // maxDocBytes TRUNCATES in DocIntegrity; here it SKIPS, at every checker
-        // and the two adapters included. Truncating would hand the three native
+        // and the two adapters included. Truncating would hand the native
         // checkers a document cut off mid-sentence and report its findings as a
         // complete account of it — the silent partial coverage this envelope
         // exists to make visible.
@@ -479,7 +480,7 @@ Result run(const QStringList &relDocs, const Options &opts) {
             DocSymbols::applyRunDeadline(so, opts.symbols.resolveDeadlineMs,
                                          symbolClock.elapsed());
             const DocSymbols::ScanResult sr = DocSymbols::scan(text, rel, so);
-            symbolBudget -= sr.needlesResolved;
+            symbolBudget -= sr.needlesLookedUp;
             r.findings.append(sr.findings);
             r.stats.symbolsTotal      += sr.total;
             r.stats.symbolsResolved   += sr.resolved;

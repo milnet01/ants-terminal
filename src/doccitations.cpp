@@ -29,6 +29,17 @@ namespace DocCitations {
 
 namespace {
 
+// Document order — ascending docLine, then ascending column. Every row list
+// this file pages over is sorted by it: paging is only meaningful against one
+// defined order, and two citations on one line must not swap between runs.
+struct ByDocPosition {
+    template <typename T>
+    bool operator()(const T &a, const T &b) const {
+        return a.docLine != b.docLine ? a.docLine < b.docLine
+                                      : a.docCol < b.docCol;
+    }
+};
+
 constexpr char16_t kEnDash = 0x2013;
 
 // seg := [A-Za-z0-9_.@+-]. ASCII by construction — QChar::isLetterOrNumber()
@@ -345,16 +356,9 @@ ScanResult scan(const QStringList &lines, const Options &opts) {
              QString(), true);
     }
 
-    // Document order — ascending docLine, then ascending column. Paging over
-    // this is only meaningful against a defined order, and two citations on one
-    // line are two entries that must not swap between runs.
-    const auto byPosition = [](const auto &a, const auto &b) {
-        return a.docLine != b.docLine ? a.docLine < b.docLine
-                                      : a.docCol < b.docCol;
-    };
-    std::stable_sort(r.citations.begin(), r.citations.end(), byPosition);
-    std::stable_sort(r.unparsed.begin(), r.unparsed.end(), byPosition);
-    std::stable_sort(r.symbolRefs.begin(), r.symbolRefs.end(), byPosition);
+    std::stable_sort(r.citations.begin(), r.citations.end(), ByDocPosition{});
+    std::stable_sort(r.unparsed.begin(), r.unparsed.end(), ByDocPosition{});
+    std::stable_sort(r.symbolRefs.begin(), r.symbolRefs.end(), ByDocPosition{});
     return r;
 }
 
@@ -1050,9 +1054,6 @@ static bool dcIsLoopLogRow(const QString &line,
     return num.match(cell(0)).hasMatch() && iso.match(cell(1)).hasMatch();
 }
 
-// ANTS-4639 (1) — the scanned document's own directory, ahead of the repo root
-// and the basename index. Never a widening of what resolves wrongly: a sibling
-// that is not there falls straight through to the ladder.
 // ANTS-4939 — ONE emitter for every ambiguous candidate list.
 //
 // The citation path has capped its list since ANTS-3636 INV-4; the quote path
@@ -1079,6 +1080,9 @@ static void dcEmitCandidates(QJsonObject &o, const QStringList &cands,
         o.insert(QStringLiteral("truncated_candidates"), true);
 }
 
+// ANTS-4639 (1) — the scanned document's own directory, ahead of the repo root
+// and the basename index. Never a widening of what resolves wrongly: a sibling
+// that is not there falls straight through to the ladder.
 static Target dcResolveAttribution(const QString &root, const QString &docDirRel,
                                    const QString &attr, const Options &opts) {
     if (!docDirRel.isEmpty() && !attr.startsWith(QLatin1Char('/')) &&
@@ -1469,6 +1473,9 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
                   const Options &opts) {
     QStringList lines;
     const QFileInfo docInfo(docAbsPath);
+    // A path that is not a file reads as an empty document. Callers pass a
+    // file: docCitationsValidate refuses a missing one, and doc_lint passes
+    // only documents it enumerated.
     if (opts.docText) {
         lines = splitLines(*opts.docText);   // ANTS-5294 — never opened
     } else if (docInfo.exists() && docInfo.isFile()) {
@@ -1547,18 +1554,14 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         c.symbol    = ref.symbol;
         citations.append(c);
     }
-    std::stable_sort(citations.begin(), citations.end(),
-                     [](const Citation &a, const Citation &b) {
-                         return a.docLine != b.docLine ? a.docLine < b.docLine
-                                                       : a.docCol < b.docCol;
-                     });
+    std::stable_sort(citations.begin(), citations.end(), ByDocPosition{});
 
     TargetReader           reader(opts);
     QVector<QJsonObject>   entries;
     QVector<Unparsed> unparsedRows;
     QHash<QString, int>    tally;
     Antecedent             ante;
-    int                    fenceCursor = 0;
+    int                    lineCursor = 0;
     int                    spanCursor  = 0;
     // The two overlays on the ok subset (ANTS-3654 § 2): a needle that was
     // looked for and not found, and an ok citation with no anchor to judge it by.
@@ -1582,12 +1585,12 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
         // was misattributed), and a visible `unresolved` beats a confident
         // status about a file the continuation never named.
         static const QRegularExpression kAtxHeading(QStringLiteral("^#{1,6}(\\s|$)"));
-        for (; fenceCursor < tok.docLine && fenceCursor < fence.size(); ++fenceCursor) {
-            if (fence.at(fenceCursor) || examples.value(fenceCursor)) {
+        for (; lineCursor < tok.docLine && lineCursor < fence.size(); ++lineCursor) {
+            if (fence.at(lineCursor) || examples.value(lineCursor)) {
                 ante = Antecedent{};
                 continue;
             }
-            const QString trimmed = prefix.at(fenceCursor).trimmed();
+            const QString trimmed = prefix.at(lineCursor).trimmed();
             if (trimmed.isEmpty() || kAtxHeading.match(trimmed).hasMatch())
                 ante = Antecedent{};
         }
@@ -1787,11 +1790,7 @@ QJsonObject check(const QString &rootCanonical, const QString &docAbsPath,
     }
 
     unparsedRows += sc.unparsed;
-    std::stable_sort(unparsedRows.begin(), unparsedRows.end(),
-                     [](const Unparsed &a, const Unparsed &b) {
-                         return a.docLine != b.docLine ? a.docLine < b.docLine
-                                                       : a.docCol < b.docCol;
-                     });
+    std::stable_sort(unparsedRows.begin(), unparsedRows.end(), ByDocPosition{});
 
     QJsonObject counts;
     // ANTS-4085 — `foreign_path` is a status like the others and is counted

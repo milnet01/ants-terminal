@@ -396,7 +396,7 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
     };
 
     int total = 0, resolved = 0, unresolved = 0, notChecked = 0;
-    int walksSpent = 0;   // Σ needlesResolved — the only true walk count
+    int walksSpent = 0;   // Σ needlesLookedUp — the only true walk count
     QSet<QString> distinctSpans, distinctNeedles;
     QMap<QString, int> unresolvedByNeedle;
     QList<int> perDocDistinct, perDocSpans;
@@ -410,8 +410,8 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
         opts.maxSymbolsPerRun = budget;
         const DocSymbols::ScanResult r =
             DocSymbols::scan(text, QDir(root).relativeFilePath(abs), opts);
-        budget -= r.needlesResolved;
-        walksSpent += r.needlesResolved;
+        budget -= r.needlesLookedUp;
+        walksSpent += r.needlesLookedUp;
         total += r.total; resolved += r.resolved;
         unresolved += r.unresolved; notChecked += r.notChecked;
         QSet<QString> thisDocSpans, thisDocNeedles;
@@ -462,7 +462,7 @@ TEST(DocSymbols, DISABLED_CorpusCalibration) {
               << "  unresolved      : " << unresolved << "\n"
               << "  not_checked     : " << notChecked << "\n"
               << "needle walks spent: " << walksSpent
-              << "   (Σ needlesResolved — the run-wide budget's debit; every\n"
+              << "   (Σ needlesLookedUp — the run-wide budget's debit; every\n"
               << "                       per-needle cost in § 4 divides by THIS,\n"
               << "                       never by the occurrence count above)\n"
               << "distinct spans    : " << distinctSpans.size() << "\n"

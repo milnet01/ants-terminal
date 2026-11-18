@@ -428,7 +428,7 @@ QString gfmSlug(const QString &headingText) {
 // again whenever the owner gains a section. So the check learns the boundary
 // the mirror gate already keys on; the markers are an existing contract, not a
 // new declaration.
-QList<QPair<int, int>> mirrorRegions(const QStringList &lines) {
+static QList<QPair<int, int>> mirrorRegions(const QStringList &lines) {
     static const QRegularExpression beginRe(
         QStringLiteral("^<!-- MIRROR BEGIN .* -->$"));
     static const QRegularExpression endRe(
@@ -465,7 +465,7 @@ QList<QPair<int, int>> mirrorRegions(const QStringList &lines) {
 //     gap — it is the out-of-order heading, already reported where it sits.
 //     Without this, the commonest shape of the defect (two siblings swapped)
 //     reports twice: once as a hole at 5.8, once as a reversal at 5.7.
-void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
+static void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
                           const QSet<int> &accounted,
                           const QList<QPair<int, int>> &mirrors,
                           QList<int> *suppressed, QList<Finding> &out) {
@@ -577,7 +577,7 @@ void checkHeadingSequence(const QString &rel, const QList<Heading> &headings,
 // ~/.claude corpus when this shipped: of the 13 skills naming a verb, all 99
 // mentions sit outside fences, so the mask changes no current result and is
 // consistency rather than a judgement call.
-QList<QPair<int, QString>> detectUngrantedTools(const QStringList &lines,
+static QList<QPair<int, QString>> detectUngrantedTools(const QStringList &lines,
                                                 const QVector<bool> &fence) {
     static const QRegularExpression verbRe(QStringLiteral("mcp__ants__[a-z0-9_]+"));
     static const QRegularExpression topKeyRe(QStringLiteral("^[A-Za-z][A-Za-z0-9_-]*:"));

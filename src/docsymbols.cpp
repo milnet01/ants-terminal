@@ -219,7 +219,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
             SymbolQuery::findDefinitions(opts.rootCanonical, pending, so);
         for (const QString &needle : std::as_const(pending)) {
             const SymbolQuery::DefResult r = batch.value(needle);
-            ++res.needlesResolved;
+            ++res.needlesLookedUp;
             if (r.ok && !r.definitions.isEmpty()) {
                 state[needle] = Resolution::Resolved;
                 defs[needle]  = r.definitions;
@@ -236,7 +236,7 @@ ScanResult scan(const QString &text, const QString &relPath, const Options &opts
 
     for (const QString &needle : std::as_const(order)) {
         const bool outOfBudget =
-            res.needlesResolved + pending.size() >= opts.maxSymbolsPerRun
+            res.needlesLookedUp + pending.size() >= opts.maxSymbolsPerRun
             || opts.rootCanonical.isEmpty()
             || (opts.resolveDeadlineMs > 0 && clock.elapsed() >= opts.resolveDeadlineMs);
         if (outOfBudget) {

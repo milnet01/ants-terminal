@@ -453,7 +453,7 @@ QJsonDocument RemoteControl::cmdDocSymbols(const QJsonObject &req) {
         opts.maxSymbolsPerRun = budget;
         DocSymbols::applyRunDeadline(opts, runDeadlineMs, runClock.elapsed());
         const DocSymbols::ScanResult r = DocSymbols::scan(text, rel, opts);
-        budget -= r.needlesResolved;
+        budget -= r.needlesLookedUp;
         symbols += r.symbols;
         for (DocFinding::Finding fnd : r.findings) {
             fnd.emissionIndex = findings.size();  // run-wide, not per-document

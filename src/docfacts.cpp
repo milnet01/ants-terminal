@@ -19,7 +19,7 @@ const QString kVerb = QStringLiteral("doc_facts");
 
 // The table's row order. Findings on one line are emitted in this order, which
 // is the producer order doc_lint's INV-7 tiebreak consumes.
-enum Row { RowCount = 0, RowInvariant, RowMarkup, RowVersion, RowVerbArg };
+enum Row { RowCountMismatch = 0, RowInvariant, RowMarkup, RowVersion, RowVerbArg };
 
 struct Pending {
     int     line;
@@ -292,7 +292,7 @@ Result check(const QString &text, const QString &relPath, const Options &opts) {
             continue;  // a lead-in over prose or a table states no list count
         const int actual = countListItems(lines, j);
         if (actual != stated)
-            add(i + 1, RowCount, QStringLiteral("count_mismatch"),
+            add(i + 1, RowCountMismatch, QStringLiteral("count_mismatch"),
                  QStringLiteral("lead-in states %1, the list below it has %2 items")
                      .arg(stated).arg(actual));
     }
@@ -336,6 +336,7 @@ Result check(const QString &text, const QString &relPath, const Options &opts) {
     }
 
     // ---- version_drift ----
+    // A changelog is exempt: it names past versions by design.
     const bool changelog =
         QFileInfo(relPath).fileName().startsWith(QStringLiteral("CHANGELOG"));
     if (!opts.projectVersion.isEmpty() && !changelog) {

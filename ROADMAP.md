@@ -105797,7 +105797,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-content-verbs.
 
-- 📋 [ANTS-6135] **Readability fixes, doc-engines lane: src/doccitations.cpp, src/doccitations.h, src/docfacts.cpp, src/docintegrity.cpp, src/doclint.cpp, src/docsindex.cpp ….**
+- ✅ [ANTS-6135] **Readability fixes, doc-engines lane: src/doccitations.cpp, src/doccitations.h, src/docfacts.cpp, src/docintegrity.cpp, src/doclint.cpp, src/docsindex.cpp ….**
   Findings of the 2026-10-22 readability review (src run), lane doc-engines:
   2 high, 8 medium, 10 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/26-doc-engines.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105825,6 +105825,15 @@ worked after these.
   `src/docfacts.cpp:294`. Details:
   docs/reviews/close-findings-2026-11-06.md. (Matched in review as:
   ANTS-5958 and ANTS-6135.)
+  2026-11-18: LOWs done, with 2026-11-06 rows 970 and 978. Comment
+  moved to dcResolveAttribution; RowCount -> RowCountMismatch; Hd ->
+  TocHeading; fenceCursor -> lineCursor; needlesResolved ->
+  needlesLookedUp; one ByDocPosition comparator for the three sorts;
+  changelog version_drift exemption and the missing-file case commented;
+  checker counts dropped from doclint.h/.cpp; QElapsedTimer included;
+  three docintegrity helpers made static. kindString already fixed by
+  F7. Row 962 moved to ANTS-6275; rows 961/1428 stay on ANTS-5958.
+  Leads: ANTS-5958..5962.
   **Layman:** Tidy the document checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -107707,6 +107716,10 @@ worked after these.
   ANTS-3786 INV-7's test; reconsider that exemption with the merge.
   The 2026-11-06 reviews also found this: row 368 `docintegrity.cpp:33`;
   row 369 `docintegrity.cpp:27`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: also carries 2026-11-06 row 962 (`src/doclint.cpp:148`,
+  HIGH): the TOC fixer's headingsOf accepts 0-3 leading spaces and keeps
+  closing hashes, unlike DocIntegrity's atxRe/trailHashRe. Moved here
+  from ANTS-6135.
   **Layman:** The document checkers disagree about what counts as a heading, so one can flag a heading another ignores.
   Kind: refactor.
   Source: review-readability-2026-10-22 L26.

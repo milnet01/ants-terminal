@@ -1,14 +1,14 @@
 #pragma once
 // ANTS-3663 — doc_lint: every deterministic doc check in one call.
 //
-// Composes the six deterministic document checkers into ONE findings list so a
-// review pre-pass costs one call rather than five, each of which re-walks the
-// same tree. Qt6::Core only, in ants_core_lib beside docfinding.h, so it is
+// Composes the deterministic document checkers into ONE findings list so a
+// review pre-pass costs one call rather than one per checker, each of which
+// re-walks the same tree. Qt6::Core only, in ants_core_lib beside docfinding.h, so it is
 // unit-testable without RemoteControl / MainWindow.
 //
-// THE SHARED READ IS THE POINT, AND IT IS PARTIAL BY CONSTRUCTION. The four
+// THE SHARED READ IS THE POINT, AND IT IS PARTIAL BY CONSTRUCTION. The
 // NATIVE checkers (doc_dedup, doc_symbols, spec_lint, doc_facts) take document
-// TEXT, so one read serves all four — that is INV-1 and the whole saving. The two ADAPTED
+// TEXT, so one read serves them all — that is INV-1 and the whole saving. The two ADAPTED
 // engines re-read: DocIntegrity::check consumes a relative-path list and
 // DocCitations::check one document path, and spec § 2.2 freezes both signatures
 // rather than change a shipped, tested engine. So the honest per-document budget

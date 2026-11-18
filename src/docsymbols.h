@@ -75,7 +75,7 @@ struct Options {
     QSet<QString> excludedNames;
 
     // Distinct needles this call may resolve. The caller decrements a run-wide
-    // budget by ScanResult::needlesResolved between documents, which is what
+    // budget by ScanResult::needlesLookedUp between documents, which is what
     // keeps the bound run-wide while the engine stays per-document.
     int maxSymbolsPerRun = 500;
 
@@ -136,7 +136,7 @@ struct ScanResult {
     // nowhere is dropped from `symbols` rather than reported, so deriving this
     // from the emitted occurrences would call an incomplete run complete.
     bool truncated = false;
-    int  needlesResolved = 0;  // needles attempted; the caller's budget debit
+    int  needlesLookedUp = 0;  // needles attempted; the caller's budget debit
 };
 
 // `text` is the document's content; `relPath` is only carried onto findings.

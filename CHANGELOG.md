@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **The document checkers' names say what each value holds, their citation sorts share one document-order comparator, and stale checker counts are gone from their comments** (ANTS-6135)
+
 - **The remote-control dispatch log's text_bytes is a UTF-8 byte count, and the e2e verbs, spec_lint and doc_lint share their refusal builders** (ANTS-6134)
 
 - **changelog_log's release body cap uses named bounds, and the content verbs' file headers and root-resolution comment say what the code does** (ANTS-6133)
