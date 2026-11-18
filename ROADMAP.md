@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6833 -->
+<!-- ants-roadmap-id-high-water: ANTS=6834 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93271,6 +93271,25 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: fix.
   Source: DeFragR_Ants_MCP_Feedback.md 2026-11-18.
   Lanes: changelog-feedback.
+
+- 📋 [ANTS-6834] **doc_symbols does not report a backticked config key, environment variable or external API name as an unresolved symbol.**
+  Album_Builder, 2026-11-18, at 67e661a: doc_lint checks:[doc_symbols]
+  gave 25 unresolved_symbol hits over docs/specs/24-windows-bundle.md
+  and 28-self-update.md, none real. Shapes: WiX/Inno keys (UpgradeCode,
+  AppId), env vars (RELEASE_SIGNING_KEY, SSL_CERT_FILE), a Windows API
+  constant, an OpenSSL error name, external classes and methods
+  (QNetworkAccessManager, AttachConsole, printToPdf). UpgradeCode is
+  an attribute in a .wxs file; RELEASE_SIGNING_KEY sits in a workflow
+  YAML and a .py script; neither file type is searched.
+  Reporter's fix: resolve a name that occurs as a literal in any
+  tracked file, or report bare ALL_CAPS and non-local names as
+  candidates, not findings. Check: the two Album_Builder specs give
+  no unresolved_symbol for a name present in a tracked file, and a
+  truly dead C++ symbol still reports.
+  **Layman:** The doc checker stops flagging setting names and outside library names as broken code references.
+  Kind: fix.
+  Source: album-builder-feedback-2026-11-18.
+  Lanes: docengines.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
