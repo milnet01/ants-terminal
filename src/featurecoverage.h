@@ -101,8 +101,8 @@ QList<ChangelogBullet> extractTopVersionBullets(const QString &changelogText,
 QStringList significantWords(const QString &text);
 
 // Extract backtick-fenced tokens from a string, filtered to
-// identifier-shaped (no whitespace, len ≥ 3) entries. Shared by both
-// lanes — the CHANGELOG matcher uses this to find feature names like
+// identifier-shaped (no whitespace, len ≥ 2) entries. Used by the
+// CHANGELOG matcher to find feature names like
 // `launch`, `new-tab`, `RemoteControl::dispatch` inside a bullet.
 QList<QString> extractBacktickTokens(const QString &s);
 
@@ -180,7 +180,7 @@ QString buildProjectSourceBlob(const QString &projectPath,
 // then `::` and `.` tail-fallbacks (so `Class::method` and `module.func`
 // resolve to the trailing identifier alone when the compound form
 // isn't present in the blob). The `.` fallback only applies when the
-// tail is identifier-shaped (≥4 alpha chars) — prevents matching file
+// tail is ≥4 chars and starts with a letter — prevents matching file
 // extensions like `*.cpp` → `cpp`. (ANTS-2113 H2 weighed identifier-boundary
 // matching here but deferred it — on this repo it surfaces imprecise spec
 // wording, not real drift; see ROADMAP.)

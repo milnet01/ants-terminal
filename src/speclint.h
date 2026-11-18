@@ -5,7 +5,7 @@
 // /cold-eyes § 1e runs these checks by hand on every single review pass:
 // required sections present, every INV-N carrying a test surface, gaps in the
 // doc's own id sequence, a loop-log row with no outcome, and a test clause that
-// is a command stating nothing it should return. All five are deterministic,
+// is a command stating nothing it should return. All are deterministic,
 // and § 1e's own notes record what hand-rolling costs — the "what-checks-this
 // table integrity" class was caught in three consecutive loops before it became
 // a check, and a stated count of un-caught rules "has been wrong every time a
@@ -25,11 +25,14 @@
 //     enumerating headings, and the two sets are DISJOINT. ANTS-3682 carries
 //     the prerequisite — spec § 5.
 //
-// ANTS-4127 adds a sixth check to the same walk: a `*Test:*` clause naming a
+// ANTS-4127 adds a check to the same walk: a `*Test:*` clause naming a
 // `tests/features/<name>` directory is RESOLVED against disk instead of read,
 // yielding `test_surface_absent` / `test_surface_unresolved` / `_unwired`. It
 // executes nothing — resolving a citation runs nothing — and it opens nothing
 // either: both filesystem facts are injected (see Options below).
+//
+// ANTS-4623 adds § Invariants <-> § Tests parity: test_coverage_gap and
+// test_coverage_unverifiable.
 //
 // See docs/specs/ANTS-3662-spec-lint-greppable-half-spec.md and docs/specs/ANTS-4127-test-surface-resolution.md.
 

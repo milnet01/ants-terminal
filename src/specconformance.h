@@ -34,9 +34,10 @@ inline constexpr int kMaxCasesCeiling = 1000;
 inline constexpr qint64 kMaxSpecBytes = 8 * 1024 * 1024;
 
 // Returns the spec § 2.3 envelope:
-//   {ok, path, cases_run, findings[], candidates[], refusals[],
-//    observations[], truncated, etag}
-// or a refusal envelope {ok:false, error, code} for a malformed request.
+//   {ok, path, executable_fences, skipped_fences?, hint?, cases_run,
+//    findings[], candidates[], refusals[], truncated, etag, observations[]}
+// or a refusal envelope {ok:false, error, code}: a malformed request,
+// not_found or too_large.
 QJsonObject run(const QString &absPath, const Options &opt = {});
 
 }  // namespace SpecConformance

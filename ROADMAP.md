@@ -105839,7 +105839,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: doc-engines.
 
-- 📋 [ANTS-6136] **Readability fixes, spec-engines lane: src/featurecoverage.cpp, src/featurecoverage.h, src/specconformance.cpp, src/specconformance.h, src/speclint.cpp, src/speclint.h ….**
+- ✅ [ANTS-6136] **Readability fixes, spec-engines lane: src/featurecoverage.cpp, src/featurecoverage.h, src/specconformance.cpp, src/specconformance.h, src/speclint.cpp, src/speclint.h ….**
   Findings of the 2026-10-22 readability review (src run), lane spec-engines:
   2 high, 15 medium, 9 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/27-spec-engines.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105864,6 +105864,14 @@ worked after these.
   removed, F11 F13 F14 F15 F16 F17 F18 comments. Queued: F4 on
   ANTS-5966/5967, F6 on ANTS-5964, F12's two-space-bullet defect as
   ANTS-6278. LOWs open.
+  2026-11-18: LOWs done. featurecoverage comments match the code (len
+  ≥ 2, CHANGELOG matcher only; tail ≥4 chars starting with a letter; the
+  comment for a filter that does not exist removed); spec_conformance's
+  precedence names bad_pattern and its header lists the full envelope
+  and refusals; specparse drops "verbatim", states the first-letter case
+  rule, and inlineCodeMask is static; speclint.h drops its check counts
+  and names the ANTS-4623 checks. The "opt-out above" comment was
+  already gone. Leads: ANTS-5963..5970.
   **Layman:** Tidy the spec checkers so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.

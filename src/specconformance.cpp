@@ -174,7 +174,7 @@ QJsonObject run(const QString &absPath, const Options &opt) {
         }
         ++taggedFences;
 
-        // ---- precedence: engine -> pattern cap -> table -> input cap -------
+        // ---- precedence: engine -> pattern cap -> table -> bad_pattern -> input cap
         if (infoWords.size() < 2) {
             QJsonObject c;
             c[QStringLiteral("kind")] = QStringLiteral("engine_not_declared");

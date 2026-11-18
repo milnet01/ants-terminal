@@ -143,10 +143,6 @@ QList<SpecToken> extractSpecTokens(const QString &specText) {
             if (stop.contains(tok)) continue;
             if (isPseudoToken(tok)) continue;
             if (isNonNameShape(tok)) continue;
-            // Pure numeric tail → noise (e.g. `1024`). The regex already
-            // requires alpha-leading, but a token like `a123` could slip
-            // through if alpha-then-all-digits; we keep those — they're
-            // legitimate identifiers.
             if (seen.contains(tok)) continue;
             seen.insert(tok);
             out.append({tok, i + 1});
@@ -595,8 +591,8 @@ static bool containsWithTailFallback(const QString &token, Contains contains) {
     const int dotIdx = token.lastIndexOf('.');
     if (dotIdx > 0 && dotIdx < token.size() - 1) {
         const QString tail = token.mid(dotIdx + 1);
-        // Only use this fallback when the tail is still
-        // identifier-shaped (4+ alpha chars) — otherwise we'd
+        // Only use this fallback when the tail is ≥4 chars and starts
+        // with a letter — otherwise we'd
         // match file extensions (`*.cpp` → `cpp`) and get false
         // non-drift passes on literal filename tokens.
         // ANTS-6389 — and never for a path or a four-plus-letter file

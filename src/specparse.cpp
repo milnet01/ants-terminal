@@ -1,4 +1,4 @@
-// ANTS-3665 — see specparse.h. Moved verbatim from remotecontrol.cpp's
+// ANTS-3665 — see specparse.h. Moved from remotecontrol.cpp's
 // anonymous namespace.
 
 #include "specparse.h"
@@ -79,7 +79,7 @@ FieldExtent headerField(const QStringList &lines, const QString &name) {
 // one string, so the conversion is the whole of this helper. The mask covers
 // a span's CONTENT: a marker cannot hide inside a backtick run, and the
 // content is what must not be searched.
-QVector<bool> inlineCodeMask(const QString &text) {
+static QVector<bool> inlineCodeMask(const QString &text) {
     const QStringList lines = text.split(QLatin1Char('\n'));
     QVector<int> lineStart(lines.size(), 0);
     int acc = 0;
@@ -159,7 +159,7 @@ QJsonObject parseSpecBody(const QString &body) {
     out["kind"]   = kind;
 
     // Locate the Invariants section. Accept `## N. Invariants`,
-    // `## Invariants`, `### Invariants`, case-insensitive.
+    // `## Invariants`, `### Invariants`; the first letter in either case.
     QJsonArray invariants;
     // ANTS-4115 — the heading's TEXT must CONTAIN the word "invariants"; it need
     // not BEGIN with it. OneUp writes `## 5. Correctness invariants` in all 13 of
