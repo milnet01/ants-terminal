@@ -24,7 +24,7 @@ The map records a digest of its own body. `--check` regenerates and fails on
 any difference, so a committed copy is current by construction, and a reader
 holding a copy can run `--check` to find out whether it still is.
 
-Usage: filemap.py [--root DIR] [--out FILE] (--write | --check | --stdout)
+Usage: tools/measure/filemap_prototype.py [--root DIR] [--out FILE] (--write | --check | --stdout)
        [--collapse N]
 """
 import argparse
@@ -36,6 +36,9 @@ import subprocess
 import sys
 
 GENERATOR = "tools/measure/filemap_prototype.py v1"
+SHAPE_SHARE = 0.6  # collapse rule 1, in emit_dir
+EXT_SHARE = 0.8    # collapse rule 2
+LIST_CAP = 12      # files named on a collapsed line before " …"
 C_EXT = {".c", ".cc", ".cpp", ".cxx", ".h", ".hh", ".hpp", ".glsl", ".comp",
          ".frag", ".vert", ".mm", ".m"}
 HASH_EXT = {".sh", ".bash", ".cmake", ".yml", ".yaml", ".toml", ".py", ".txt",
@@ -256,14 +259,18 @@ def render(root, collapse):
         subs = sorted(children.get(d, ()))
         own = sorted(by_dir.get(d, []))
         label = (d + "/") if d else "(repository root)"
-        # Collapse: a large directory whose subdirectories share one shape.
+        # Two collapse rules share --collapse. Neither threshold was tuned:
+        # the prototype was not adopted (ANTS-5314) before anyone measured them.
+        # 1. More than `collapse` files anywhere below, and at least
+        #    SHAPE_SHARE of the subdirectories hold one shape. Only leaf
+        #    subdirectories have a shape, but the share is of all of them.
         if d and under[d] > collapse and subs:
             shapes = collections.Counter(
                 shape(s, by_dir.get(s, [])) for s in subs
                 if not children.get(s))
             if shapes:
                 top, n = shapes.most_common(1)[0]
-                if n >= 0.6 * len(subs):
+                if n >= SHAPE_SHARE * len(subs):
                     collapsed_files += under[d]
                     pat = " + ".join(top) if top else "(empty)"
                     out.append(
@@ -273,13 +280,15 @@ def render(root, collapse):
                     if own:
                         out.append(f"{'  ' * (depth + 1)}- plus {len(own)} files "
                                    f"directly in `{label}`: "
-                                   + ", ".join(f"`{f}`" for f in own[:12])
-                                   + (" …" if len(own) > 12 else ""))
+                                   + ", ".join(f"`{f}`" for f in own[:LIST_CAP])
+                                   + (" …" if len(own) > LIST_CAP else ""))
                     return
+        # 2. A leaf directory with more than `collapse` files directly in
+        #    it, at least EXT_SHARE of them sharing one extension.
         if d and len(own) > collapse and not subs:
             exts = collections.Counter(os.path.splitext(f)[1] for f in own)
             ext, n = exts.most_common(1)[0]
-            if n >= 0.8 * len(own):
+            if n >= EXT_SHARE * len(own):
                 collapsed_files += len(own)
                 pre = os.path.commonprefix(own)
                 out.append(
@@ -353,7 +362,7 @@ def main():
             print(f"filemap: {a.out} missing", file=sys.stderr)
             return 1
         if cur != doc:
-            print(f"filemap: {a.out} is stale; run tools/filemap.py --write",
+            print(f"filemap: {a.out} is stale; run tools/measure/filemap_prototype.py --write",
                   file=sys.stderr)
             return 1
     return 0

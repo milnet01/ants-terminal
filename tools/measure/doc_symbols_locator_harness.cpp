@@ -1,6 +1,9 @@
 // ANTS-5313 measurement harness: DocSymbols::scan + locate over one doc per
 // call, as doc_symbols {path:<doc>, mode:"locator"} does, emitting JSONL.
-// Links the real engine from build/*.a, so it measures what ships.
+// Links the real engine from build/*.a. The excluded-name set is built here,
+// not by the shipped code: the refusal codes copy docSymbolsRefusalCodes in
+// src/remotecontrol_docs.cpp, and the tool names come from the grep below in
+// place of the verb vocabulary. Check both against production before a re-run.
 //
 // Build (after `cmake --build build`):
 //   c++ -std=c++20 -O2 -fPIC -Isrc -isystem /usr/include/qt6/QtCore \
@@ -9,7 +12,7 @@
 //     -Wl,--start-group build/*.a -Wl,--end-group \
 //     -lQt6Core -lQt6Gui -lQt6Widgets -lQt6Network -lQt6Sql -lQt6DBus -o /tmp/h
 // Run:
-//   grep -oP '\["name"\] = "\K[a-z_0-9]+' src/claudeintegration.cpp | sort -u > names
+//   grep -ohP '\["name"\] = "\K[a-z_0-9]+' src/claudeintegration*.cpp | sort -u > names
 //   ls docs/specs/*.md docs/standards/*.md | /tmp/h "$PWD" names > out.jsonl
 // Then tools/measure/doc_symbols_locator_sample.py <n> in the same directory.
 #include "docsymbols.h"
