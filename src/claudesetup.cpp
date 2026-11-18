@@ -133,6 +133,9 @@ bool eventRuns(const QJsonArray &entries, const QString &command) {
     return false;
 }
 
+// Both shapes fire on every event: Claude Code reads an absent matcher and an
+// empty one alike as "match all". The git-context hook keeps the empty key its
+// spec shows (tests/features/claude_git_context_hook); the status hooks omit it.
 QJsonObject hookEntry(const QString &scriptPath, bool withMatcher) {
     QJsonObject hook;
     hook[QStringLiteral("type")] = QStringLiteral("command");
@@ -819,7 +822,7 @@ Outcome removeClaudeMdNote(const QString &path) {
 namespace {
 
 struct ShellPlan {
-    Status  unavailable;   // state Unavailable when the plan cannot run
+    Status  blocker;       // state Unavailable when the plan cannot run, else Missing
     QString shell;         // bash or zsh
     QString script;        // the script found in the search list
     QString sourced;       // the path the rc file sources
@@ -830,10 +833,10 @@ struct ShellPlan {
 
 ShellPlan planShell(const QStringList &scriptDirs) {
     ShellPlan p;
-    p.unavailable.state = State::Missing;
+    p.blocker.state = State::Missing;
     p.shell = QFileInfo(qEnvironmentVariable("SHELL")).fileName();
     if (p.shell != QLatin1String("bash") && p.shell != QLatin1String("zsh")) {
-        p.unavailable = {State::Unavailable,
+        p.blocker = {State::Unavailable,
                          QStringLiteral("supported for bash and zsh")};
         return p;
     }
@@ -843,7 +846,7 @@ ShellPlan planShell(const QStringList &scriptDirs) {
         if (QFileInfo(candidate).isFile()) { p.script = candidate; break; }
     }
     if (p.script.isEmpty()) {
-        p.unavailable = {State::Unavailable,
+        p.blocker = {State::Unavailable,
                          QStringLiteral("the shell-integration scripts are not in "
                                         "this install")};
         return p;
@@ -908,7 +911,7 @@ QStringList defaultShellScriptDirs() {
 
 QString shellIntegrationPreview(const QStringList &scriptDirs) {
     const ShellPlan p = planShell(scriptDirs);
-    if (p.unavailable.state == State::Unavailable) return p.unavailable.detail;
+    if (p.blocker.state == State::Unavailable) return p.blocker.detail;
     const bool reuse = !existingKey(p).isEmpty();
     QString text = QStringLiteral("%1, readable only by you:\n%2\n\nIn %3:\n%4\n%5\n%6\n")
         .arg(p.keyFile,
@@ -924,7 +927,7 @@ QString shellIntegrationPreview(const QStringList &scriptDirs) {
 
 Status shellIntegrationStatus(const QStringList &scriptDirs) {
     const ShellPlan p = planShell(scriptDirs);
-    if (p.unavailable.state == State::Unavailable) return p.unavailable;
+    if (p.blocker.state == State::Unavailable) return p.blocker;
     const bool haveKey  = !readBytes(p.keyFile).trimmed().isEmpty();
     const bool oldBlock = !blockBody(readBytes(p.profileFile), kShBegin, kShEnd).isNull();
     const bool rcBlock  = !blockBody(readBytes(p.rcFile), kShBegin, kShEnd).isNull();
@@ -939,7 +942,7 @@ Status shellIntegrationStatus(const QStringList &scriptDirs) {
 
 Outcome installShellIntegration(const QStringList &scriptDirs) {
     const ShellPlan p = planShell(scriptDirs);
-    if (p.unavailable.state == State::Unavailable) return fail(p.unavailable.detail);
+    if (p.blocker.state == State::Unavailable) return fail(p.blocker.detail);
     // Read before writing anything: the key file, the profile and the rc
     // file are each built on, so an unreadable one stops the install.
     if (!readForRewrite(p.keyFile)) return unreadable(p.keyFile);

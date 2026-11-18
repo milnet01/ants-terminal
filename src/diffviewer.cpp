@@ -688,7 +688,8 @@ QDialog *show(QWidget *parent,
         }
         // ANTS-1886 — new (untracked) files: render each as a synthetic
         // addition diff so their content is visible, not just a bare path.
-        // Binary files and files > 200 KB get a one-line summary instead.
+        // A binary file gets a one-line summary; one over 200 KB is cut at
+        // 200 KB and its hunk header says so.
         {
             QStringList newFiles;
             for (const QString &sline : state->status.split('\n')) {
@@ -814,9 +815,9 @@ QDialog *show(QWidget *parent,
         if (hbar && !isFirstRender) hbar->setValue(std::min(hPos, hbar->maximum()));
 
         if (copyGuard) {
-            // Wire the Copy button now that the data is known. Disconnect
-            // first so we don't stack handlers if finalize were ever
-            // invoked twice (shouldn't happen, but cheap insurance).
+            // Wire the Copy button now that the data is known. This runs on
+            // every refresh whose HTML changed, so disconnect first: each
+            // render replaces the last one's handler instead of stacking.
             // ANTS-5774 — only our own clicked handler: a bare disconnect()
             // also cut Qt's style-cache cleanup on destroyed(), so the
             // deleted button crashed the next qApp->setStyleSheet().

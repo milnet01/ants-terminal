@@ -78,7 +78,7 @@ QJsonObject driftCheck(const QJsonObject & /*request*/,
 
     // Reject obviously hostile --repo-root inputs. Threat model: Claude
     // Code (or any caller piping JSON over stdin) supplies the path —
-    // not a co-UID local attacker. Refuse traversal substrings and
+    // not a co-UID local attacker. Refuse a `..` path component and
     // control bytes (NUL); canonicalise so the script lookup runs on
     // the resolved real path rather than whatever symlink chain the
     // caller supplied. Do NOT require a `.git` directory — INV-5 (bogus

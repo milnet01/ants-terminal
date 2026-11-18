@@ -284,8 +284,8 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
         "Master switch for the Ants/Claude Code helper — the MCP "
         "integration that lets Claude use Ants's cheaper tools and read "
         "terminal state. On by default. Turn it off to stop Ants "
-        "observing your Claude sessions; every dependent feature below "
-        "greys out. Enabling takes effect on the next Ants launch; "
+        "observing your Claude sessions; the model picker and the MCP "
+        "options below grey out. Enabling takes effect on the next Ants launch; "
         "disabling takes effect immediately.");
     layout->addRow(m_claudeMcpEnabled);
 
@@ -455,7 +455,9 @@ void SettingsDialog::setupGeneralTab(QWidget *tab) {
     // ANTS-1901 — the MCP master toggle gates the whole Claude group.
     // Defined here (after every child widget exists) so it can reference
     // them. When off, the auto-switch checkbox, orientation hook, and
-    // terse toggles grey out — and the auto-switch sub-toggles with them;
+    // terse and offload toggles grey out — and the auto-switch sub-toggles
+    // with them. The tokens-saved pill, the model-suggestion chip and the
+    // context window stay live: they only show or size a status-bar widget;
     // when on, the sub-toggles still follow the auto-switch checkbox
     // (mirrorMaster), so the two-level hierarchy composes. Disabling a
     // checkbox never unchecks it, so flipping the master back on restores

@@ -238,6 +238,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **Settings: the "Enable Ants MCP integration" tooltip names what greys out when it is off — the model picker and the MCP options; the status-bar pill and chip toggles stay usable** (ANTS-6146)
+
 - **The shared MCP plumbing's comments match its code, and its two repeated checks live in one helper each** (ANTS-6141)
 
 - **The code search and outline tools keep one copy each of the default scan budget and the page cut, and their comments sit on the code they describe** (ANTS-6139)
