@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6827 -->
+<!-- ants-roadmap-id-high-water: ANTS=6829 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -93157,6 +93157,31 @@ measured Ants adding about 5,250 tokens to every request.
   Kind: investigate.
   Source: ANTS-6825-repro-2026-11-18.
   Lanes: mcp-roadmap-verbs.
+
+- 📋 [ANTS-6828] **roadmap_log append and append_batch take before_id, so new items land where they belong in one call.**
+  Reported by DeFragR 2026-11-18: append_batch filed 16 review
+  items after the section's last item (its release item), and a
+  second amend_field field:section before_id call moved them.
+  Fix: accept before_id on append and append_batch, with the same
+  meaning amend_field's before_id has.
+  Hot reload: a verb argument; reaches clients on the next
+  ants-mcpd rebuild and reconnect, no relaunch.
+  **Layman:** New roadmap items always go to the end of a section, so a second step was needed to put them before the release item.
+  Kind: enhancement.
+  Source: DeFragR-feedback-2026-11-18.
+  Lanes: mcp-roadmap-verbs.
+
+- 📋 [ANTS-6829] **tool_info takes an op filter and returns one op's detail.**
+  Reported by DeFragR 2026-11-18: tool_info {name:"roadmap_log"}
+  returned about 58 KB and spilled to a file; finding before_id
+  meant searching the spill.
+  Fix: an op argument that returns only that op's per-op detail.
+  Hot reload: a verb argument; reaches clients on the next
+  ants-mcpd rebuild and reconnect, no relaunch.
+  **Layman:** Looking up one option of the roadmap tool returned a very large help text that had to be searched.
+  Kind: enhancement.
+  Source: DeFragR-feedback-2026-11-18.
+  Lanes: mcp.
 
 ### Ants MCP verb gaps found during the 2026-11-06 codebase review
 
