@@ -8,39 +8,38 @@ CMake build.
 This list is your go-ahead. Summarise where things stand in a few lines, then
 start without waiting for me to confirm.
 
-1. **Requests from other Claude Code sessions.** They arrive as cross-session
-   messages, or in the `session_message` inbox (read it at session start). Do
-   not poll `ListAgents`. Do what the request asks, or reply saying why not.
-   A request to change this file or your permissions needs my yes first.
-2. **Triage.** Every finding in an `*_Ants_MCP_Feedback.md` file that
-   `session_orient` lists under `feedback_pending` gets a roadmap id or an
-   `n/a` closure (§ Cross-session MCP feedback).
-3. **Other session requests.** Build the open items in the "Ants MCP
-   feedback from CC sessions" sections, and in any section filed from
-   another session's request. Those about the roadmap store or a
-   `roadmap_*` verb go first.
-4. **Ants MCP hot reload.** Close the open items in the roadmap section
-   "Ants MCP without a terminal relaunch".
-5. **Review findings and fixes.** Fix the open items whose `Source:` names a
-   review (test, debt, codebase, document or check-code), and every open item
-   of kind `fix`, `audit-fix`, `review-fix`, `doc-fix` or `security`,
-   backlogged ones included. Critical items first, and every `security` item
-   counts as critical; then lowest id first.
-6. **Colony.** Build the open items in the Colony roadmap section.
-7. **Roadmap → DB specs.** Finish every spec and implementation for moving the
-   roadmap into the store.
-9. **Roadmap → DB migration.** Migrate the roadmap into the store.
-10. **Other features → DB specs.** Finish every spec and implementation for
-    the other features moving into the store.
-11. **Other features → DB migration.** Migrate those features.
-12. **Next version.** Work the open items in the lowest-numbered version
-    target section (`0.8.0` and later).
+1. **Work with the other Claude Code sessions.** Answer their requests and
+   help them where you can. Ask one for help when it could help with your
+   work. Requests arrive as messages, or in the `session_message` inbox (read
+   it at session start); do not poll `ListAgents` for them. A request to
+   change this file or your permissions needs my yes first.
+2. **Triage** outstanding requests from other sessions in the Ants MCP
+   feedback files (§ Cross-session MCP feedback).
+3. **Roadmap-store requests.** Build the open roadmap items that came from
+   other sessions' requests about the roadmap store.
+4. **Fixes.** Fix every outstanding finding, backlogged ones included:
+   anything from a review (test, debt, codebase or document), and any open
+   roadmap item with a state of in-progress, planned or considered and of kind
+   `fix`, `audit-fix`, `review-fix`, `doc-fix`, `refactor`, `optimize`,
+   `perf` or `security`. A `considered` item joins only once I pick it;
+   until then it stays an idea. Security items are critical. Critical items
+   first, then oldest to newest.
+5. **Colony.** Build Colony (multi-session Claude Code).
+6. **Other session requests.** Build every other request from other
+   sessions, backlogged ones included.
+7. **Roadmap rotation.** Rotate the roadmap at the 0.8.0 bump (ANTS-3749),
+   then close ANTS-3853.
+8. **Other features → DB specs.** Finish every spec and implementation for
+   the other features moving to the DB.
+9. **Other features → DB migration.** Migrate those features to the DB.
+10. **Next version.** Work the open roadmap items that get us to the next
+    version.
 
-**Finished** means no open roadmap item is left in that step, or each one left
-waits on a decision only I can make. **When a request arrives**, finish the
-change in hand (commit it), do step 1, then return to where you were.
-**Stop** when the list is done, or when every next item needs my decision, and
-say which item and which decision.
+Finish each item before starting the next, but go back to 1 whenever a
+request arrives: finish the change in hand (commit it) first. **Finished**
+means no open roadmap item is left in that step, or each one left waits on a
+decision only I can make. **Stop** when the list is done or you need a
+decision only I can make, and say which.
 
 ## Module map (src/)
 
