@@ -14,6 +14,11 @@ for security-relevant changes.
 
 ### Added
 
+- **`roadmap_log` op:"append" and op:"append_batch" take `before_id`, so new items land directly before a named item in one call** (ANTS-6828)
+  On a store-migrated project the new items that land in `section` are filed,
+  in input order, before that item. A batch bullet naming another section
+  goes to that section's end.
+
 - **`session_cost` reports `cost_usd`, an estimated dollar cost priced per request from `share/ants-terminal/model-prices.json`, and sums helper agents' cost under `include_agents`. A model with no price gives null and is named in `cost.unpriced`.** (ANTS-6826)
   The price file is re-read on every call, so new prices reach the
   next call with no rebuild. `tools/token-bench/bench.py` reads the

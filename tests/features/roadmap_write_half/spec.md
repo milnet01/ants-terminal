@@ -393,3 +393,19 @@ path keeps four digits. *Test:*
 ANTS-6780: one stray padded id among unpadded ones does not pad.
 `DEMO-7` and `DEMO-3` with a dropped `DEMO-0005` give `DEMO-8`. *Test:*
 `RoadmapWriteHalf.Ants6780OneStrayPaddedIdDoesNotPad`.
+
+### ANTS-6828 — append and append_batch take `before_id`
+
+On a migrated project, `before_id` files the new items that land in
+`section`, in input order, directly before that item. The elements from it
+onward keep their order behind them. A batch bullet naming another section
+goes to that section's end.
+
+| Case | Asserts |
+|---|---|
+| `Ants6828AppendFilesBeforeAnItem` | `append` with `before_id:"DEMO-0003"` files the new item between DEMO-0007 and DEMO-0003. |
+| `Ants6828AppendBatchFilesBeforeAnItem` | `append_batch` with `before_id:"DEMO-0007"` files its two Work bullets, in input order, before DEMO-0007; its Bundles bullet lands under Bundles. |
+| `Ants6828BadBeforeIdWritesNothing` | An unknown id, an id filed in another section, and an empty `before_id` each refuse `bad_args` on both ops, and ROADMAP.md is unchanged. |
+| `Ants6828BeforeIdOnTheFileRefuses` | On a project the store does not serve, both ops refuse `unsupported_format` and ROADMAP.md is unchanged. |
+
+**Would break this:** ignoring `before_id`, which files the items at the section's end.

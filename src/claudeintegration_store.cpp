@@ -1596,12 +1596,16 @@ void appendToolSchemasStore(QJsonArray &tools) {
                     QJsonObject beforeIdProp;
                     beforeIdProp["type"] = QStringLiteral("string");
                     beforeIdProp["description"] = QStringLiteral(
-                        "op:\"amend_field\" field:\"section\" only — file the "
+                        "op:\"amend_field\" field:\"section\" — file the "
                         "moved items, in locator order, directly before this "
                         "item, which must be filed in the destination. It "
                         "may be the items' own section, which reorders them. "
                         "Omitted, they go after the section's last element. "
-                        "Any other field refuses bad_args (ANTS-5380).");
+                        "Any other field refuses bad_args (ANTS-5380). "
+                        "op:\"append\" / \"append_batch\" — file the new items "
+                        "landing in `section`, in input order, directly before "
+                        "this item, which must be filed there; store-migrated "
+                        "projects only (ANTS-6828).");
                     props["field"]         = fieldProp;      // ANTS-4667
                     props["value"]         = valueProp;      // ANTS-4667
                     props["before_id"]     = beforeIdProp;   // ANTS-5380

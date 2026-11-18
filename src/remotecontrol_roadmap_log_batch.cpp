@@ -2298,6 +2298,13 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 QStringLiteral("roadmap_log: bullets[%1].body is %2 bytes; the "
                                "limit is %3").arg(i).arg(n).arg(kMaxBatchBodyBytes));
     }
+    // ANTS-6828 — file the bullets that land in `section` directly before this
+    // item, which must be filed there; the others go to their sections' ends.
+    const bool hasBefore = req.contains(QStringLiteral("before_id"));
+    const QString beforeId = req.value(QStringLiteral("before_id")).toString().trimmed();
+    if (hasBefore && beforeId.isEmpty())
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `before_id` must name an item id"));
 
     // ANTS-2126 — pass-headings roadmaps route to the heading-format
     // batch writer here, BEFORE the counter read below (a pass roadmap
@@ -2312,6 +2319,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
                 if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                    if (hasBefore)
+                        return rlBeforeIdNeedsStore();
                     // ANTS-5344 — the pass writer files the batch under one
                     // section; a per-bullet one would be ignored silently.
                     const QString callSection =
@@ -2444,6 +2453,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
         if (rcRoadmapSourceRefused(refusal, why, seamErr))
             return QJsonDocument(refusal);
     }
+    if (hasBefore && !writeTarget)
+        return rlBeforeIdNeedsStore();
 
     // 3. Counter read (parity with append path). ANTS-2078 — the
     // stable_prefix strategy skips the counter machinery entirely
@@ -2577,6 +2588,7 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     // resolves both in that order.
     qint64 storeSectionId = 0;
     int    storePosition  = 0;
+    qint64 beforePk       = 0;   // ANTS-6828
     if (writeTarget) {
         QString seamErr;
         const auto sid = writeTarget->store->findSection(
@@ -2590,6 +2602,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
             return rlErr(QStringLiteral("store_failed"), seamErr);
         storeSectionId = *sid;
         storePosition  = rlNextElementPosition(*elements);
+        if (hasBefore) {
+            const auto place = rlFindItemPlace(*writeTarget->store,
+                                               writeTarget->projectId, beforeId, &seamErr);
+            if (!place && !seamErr.isEmpty())
+                return rlErr(QStringLiteral("store_failed"), seamErr);
+            if (!place || place->sectionId != storeSectionId)
+                return rlErr(QStringLiteral("bad_args"),
+                    QStringLiteral("roadmap_log: `before_id` \"%1\" is not filed "
+                                   "in section \"%2\"; nothing was written")
+                        .arg(rcdetail::ceSanitiseEcho(beforeId), section));
+            beforePk = place->pk;
+        }
     }
 
     // 6. Per-bullet validation: kinds against RoadmapParse::canonicalKinds(),
@@ -2986,6 +3010,17 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
     if (writeTarget) {
         RoadmapStore &store = *writeTarget->store;
         const qint64 projectId = writeTarget->projectId;
+        // ANTS-6828 — how many accepted bullets land before `before_id`.
+        const auto beforeCount = int(std::count_if(accepted.begin(), accepted.end(),
+            [&](const Accepted &a) {
+                const QString bs = a.bulletReq.value(QStringLiteral("section")).toString();
+                return bs.isEmpty() || bs == section;
+            }));
+        if (hasBefore && beforeCount == 0)
+            return rlErr(QStringLiteral("bad_args"),
+                QStringLiteral("roadmap_log: no bullet lands in section \"%1\", "
+                               "where `before_id` is filed; nothing was written")
+                    .arg(section));
 
         // ANTS-6781 — `nextPos` holds each section's next position, read inside
         // the transaction.
@@ -3101,6 +3136,12 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppendBatch(const QJsonObject &req) {
                 for (const RoadmapStore::ElementRow &e : *now)
                     endPos = std::max(endPos, e.position);
                 s.next = endPos + 1;
+            }
+            if (hasBefore) {
+                SecSlot &slot = nextPos[section];
+                slot.next = rlOpenGapBefore(store, slot.id, beforePk, beforeCount, err);
+                if (slot.next < 0)
+                    return false;
             }
             for (const RoadmapStore::ItemWrite &w : buildWrites(nextPos))
                 if (!store.putItem(w, err))

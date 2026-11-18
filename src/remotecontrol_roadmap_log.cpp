@@ -92,6 +92,42 @@ bool rcdetail::rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err)
                               QStringLiteral("store-generated"), err);
 }
 
+std::optional<rcdetail::ItemPlace> rcdetail::rlFindItemPlace(
+        RoadmapStore &store, qint64 projectId, const QString &id, QString *err) {
+    err->clear();   // a caller's earlier message would read as a store failure
+    const auto pk = store.findItem(projectId, id, err);
+    if (!pk)
+        return std::nullopt;
+    const auto item = store.readItem(*pk, err);
+    if (!item)
+        return std::nullopt;
+    return ItemPlace{*pk, item->sectionId};
+}
+
+int rcdetail::rlOpenGapBefore(RoadmapStore &store, qint64 sectionId,
+                              qint64 itemPk, int count, QString *err) {
+    const auto elements = store.listElements(sectionId, err);
+    if (!elements)
+        return -1;
+    for (const RoadmapStore::ElementRow &e : *elements)
+        if (e.itemPk == itemPk)
+            return store.shiftElements(sectionId, e.position, count, err)
+                       ? e.position : -1;
+    *err = QStringLiteral("roadmap_log: the `before_id` item left this section "
+                          "during the write; nothing was written");
+    return -1;
+}
+
+QJsonDocument rcdetail::rlBeforeIdNeedsStore() {
+    return QJsonDocument(QJsonObject{
+        {QStringLiteral("ok"), false},
+        {QStringLiteral("code"), QStringLiteral("unsupported_format")},
+        {QStringLiteral("error"), QStringLiteral(
+            "roadmap_log: `before_id` works only on a store-migrated roadmap "
+            "of id'd bullets, and this one is not; nothing was written. Move "
+            "the bullet in ROADMAP.md itself.")}});
+}
+
 // Each session runs its own ants-mcpd, so a verb's pre-transaction read can be
 // stale by the time BEGIN IMMEDIATE takes the lock. Writing a body built from
 // it would silently drop the other session's edit.
@@ -237,6 +273,16 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                            "takes `body`. Nothing was written; re-send with "
                            "`body`."));
     }
+    // ANTS-6828 — file the new item directly before this one.
+    const bool hasBefore = req.contains(QStringLiteral("before_id"));
+    const QString beforeId = req.value(QStringLiteral("before_id")).toString().trimmed();
+    if (hasBefore && beforeId.isEmpty())
+        return rlErr(QStringLiteral("bad_args"),
+            QStringLiteral("roadmap_log: `before_id` must name an item id"));
+    if (hasBefore && replaceNarrationAt >= 0)
+        return rlErr(QStringLiteral("bad_op_combo"),
+            QStringLiteral("roadmap_log: promote_element files the item where "
+                           "the narration was; it takes no `before_id`"));
 
     // ANTS-2126 — pass-headings roadmaps route to the heading-format
     // writer here, BEFORE the GFM status/kind/source validation +
@@ -254,6 +300,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 const QString md = QString::fromUtf8(pf.readAll());
                 pf.close();
                 if (rcBulletsArePassHeadings(rlParse(md, cc))) {   // ANTS-3771
+                    if (hasBefore)
+                        return rlBeforeIdNeedsStore();
                     // ANTS-5641 — a store-served pass project appends through
                     // the store; the file writer would write behind it.
                     RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
@@ -477,6 +525,18 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 // composed body lands in the wrong one.
                 return QJsonDocument(rlSectionNotFound(store, projectId, section));
             }
+            qint64 beforePk = 0;
+            if (hasBefore) {
+                const auto place = rlFindItemPlace(store, projectId, beforeId, &seamErr);
+                if (!place && !seamErr.isEmpty())
+                    return rlErr(QStringLiteral("store_failed"), seamErr);
+                if (!place || place->sectionId != *sectionId)
+                    return rlErr(QStringLiteral("bad_args"),
+                        QStringLiteral("roadmap_log: `before_id` \"%1\" is not filed "
+                                       "in section \"%2\"; nothing was written")
+                            .arg(rcdetail::ceSanitiseEcho(beforeId), section));
+                beforePk = place->pk;
+            }
 
             // End-of-section position, pinned exactly as bundle_row's create
             // case pins it: element carries UNIQUE (section_id, position) and
@@ -616,7 +676,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
                 // reads above and this transaction (BEGIN IMMEDIATE). So the
                 // end position, the counter id and the duplicate check are
                 // re-read here, where no other writer can move them.
-                if (replaceNarrationAt < 0) {
+                if (hasBefore) {
+                    w.position = rlOpenGapBefore(store, *sectionId, beforePk, 1, err);
+                    if (w.position < 0)
+                        return false;
+                } else if (replaceNarrationAt < 0) {
                     const auto now = store.listElements(*sectionId, err);
                     if (!now)
                         return false;
@@ -781,6 +845,8 @@ QJsonDocument RemoteControl::cmdRoadmapLogAppend(const QJsonObject &req,
             return QJsonDocument(env);
         }
     }
+    if (hasBefore)
+        return rlBeforeIdNeedsStore();
 
     // ANTS-1424-INV-3 — counter allocation. Reads the high-water
     // mark; honours id_hint if present (must be > counter); writes
@@ -4803,18 +4869,15 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
 
     qint64 beforePk = 0;
     if (hasBefore) {
-        const auto pk = store.findItem(target->projectId, beforeId, &err);
-        if (!pk && !err.isEmpty())
+        const auto place = rlFindItemPlace(store, target->projectId, beforeId, &err);
+        if (!place && !err.isEmpty())
             return rlErr(QStringLiteral("store_failed"), err);
-        const auto item = pk ? store.readItem(*pk, &err) : std::nullopt;
-        if (pk && !item)
-            return rlErr(QStringLiteral("store_failed"), err);
-        if (!item || item->sectionId != *destId)
+        if (!place || place->sectionId != *destId)
             return rlErr(QStringLiteral("bad_args"),
                 QStringLiteral("roadmap_log: `before_id` \"%1\" is not filed in "
                                "section \"%2\"; nothing was moved")
                     .arg(beforeId, slug));
-        beforePk = *pk;
+        beforePk = place->pk;
     }
 
     struct Move { QString id; qint64 pk = 0; qint64 fromSection = 0; QString fromSlug; };
@@ -4870,14 +4933,11 @@ QJsonDocument RemoteControl::cmdRoadmapLogAmendSection(const QJsonObject &req) {
             for (const Move &m : std::as_const(moves))
                 if (m.fromSection != 0 && !store.unfileItem(m.pk, e))
                     return false;
-            const auto now = store.listElements(*destId, e);
-            if (!now)
+            const int at = rlOpenGapBefore(store, *destId, beforePk,
+                                           int(moves.size()), e);
+            if (at < 0)
                 return false;
-            for (const RoadmapStore::ElementRow &el : *now)
-                if (el.itemPk == beforePk)
-                    pos = el.position - 1;
-            if (!store.shiftElements(*destId, pos + 1, int(moves.size()), e))
-                return false;
+            pos = at - 1;
         }
         for (const Move &m : std::as_const(moves)) {
             if (!hasBefore && m.fromSection != 0 && !store.unfileItem(m.pk, e))

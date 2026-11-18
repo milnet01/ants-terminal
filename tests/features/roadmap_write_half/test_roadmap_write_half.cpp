@@ -4098,3 +4098,125 @@ TEST(RoadmapWriteHalf, Ants6737UnversionedArchiveMigratesAndRenders) {
     EXPECT_TRUE(readAll(root + QStringLiteral("/docs/roadmap/unversioned.md"))
                     .contains("[DEMO-0002]"));
 }
+
+// ------------------------------------------------------------- ANTS-6828 -----
+// `before_id` on append and append_batch files the new items directly before a
+// named item, in input order, in one call.
+
+TEST(RoadmapWriteHalf, Ants6828AppendFilesBeforeAnItem) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject req = appendReq(root, QStringLiteral("Filed in the middle."));
+    req[QStringLiteral("before_id")] = QStringLiteral("DEMO-0003");
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    const int open    = file.indexOf(QStringLiteral("[DEMO-0007]"));
+    const int added   = file.indexOf(QStringLiteral("**Filed in the middle.**"));
+    const int shipped = file.indexOf(QStringLiteral("[DEMO-0003]"));
+    ASSERT_GE(added, 0) << file.toStdString();
+    EXPECT_LT(open, added) << file.toStdString();
+    EXPECT_LT(added, shipped) << file.toStdString();
+}
+
+TEST(RoadmapWriteHalf, Ants6828AppendBatchFilesBeforeAnItem) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    QJsonObject req = sectionBatchReq(root, QJsonArray{
+        sectionBullet(QStringLiteral("First new.")),
+        sectionBullet(QStringLiteral("Lands in Bundles."), QStringLiteral("bundles")),
+        sectionBullet(QStringLiteral("Second new."))});
+    req[QStringLiteral("before_id")] = QStringLiteral("DEMO-0007");
+    QJsonObject resp;
+    {
+        RemoteControl rc(nullptr);
+        resp = rc.cmdRoadmapLogAppendBatchForTest(req).object();
+    }
+    ASSERT_TRUE(resp.value(QStringLiteral("ok")).toBool())
+        << QJsonDocument(resp).toJson().toStdString();
+    const QString file = QString::fromUtf8(readAll(root + QStringLiteral("/ROADMAP.md")));
+    const int first   = file.indexOf(QStringLiteral("**First new.**"));
+    const int second  = file.indexOf(QStringLiteral("**Second new.**"));
+    const int open    = file.indexOf(QStringLiteral("[DEMO-0007]"));
+    const int shipped = file.indexOf(QStringLiteral("[DEMO-0003]"));
+    const int bundles = file.indexOf(QStringLiteral("## Bundles"));
+    const int other   = file.indexOf(QStringLiteral("**Lands in Bundles.**"));
+    ASSERT_GE(first, 0) << file.toStdString();
+    EXPECT_LT(first, second) << "input order was not kept: " << file.toStdString();
+    EXPECT_LT(second, open) << file.toStdString();
+    EXPECT_LT(open, shipped) << "the items from before_id on lost their order";
+    EXPECT_GT(other, bundles) << "a bullet naming another section left it";
+}
+
+// Each breach refuses before anything is written, on both ops.
+TEST(RoadmapWriteHalf, Ants6828BadBeforeIdWritesNothing) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    qint64 projectId = 0;
+    const QString root = seedMigrated(guard, tmp, fixture(), &projectId);
+    ASSERT_FALSE(root.isEmpty());
+    const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
+    struct Leg { const char *name; const char *beforeId; const char *section; };
+    const Leg legs[] = {
+        {"unknown item", "DEMO-0999", "work"},
+        {"item in another section", "DEMO-0007", "bundles"},
+        {"empty", "", "work"},
+    };
+    for (const Leg &leg : legs) {
+        SCOPED_TRACE(leg.name);
+        QJsonObject one = appendReq(root, QStringLiteral("Not filed."));
+        one[QStringLiteral("section")]   = QString::fromUtf8(leg.section);
+        one[QStringLiteral("before_id")] = QString::fromUtf8(leg.beforeId);
+        QJsonObject batch = sectionBatchReq(root, QJsonArray{
+            sectionBullet(QStringLiteral("Not filed either."))});
+        batch[QStringLiteral("section")]   = QString::fromUtf8(leg.section);
+        batch[QStringLiteral("before_id")] = QString::fromUtf8(leg.beforeId);
+        RemoteControl rc(nullptr);
+        for (const QJsonObject &resp : {rc.cmdRoadmapLogAppendForTest(one).object(),
+                                        rc.cmdRoadmapLogAppendBatchForTest(batch).object()}) {
+            EXPECT_EQ(resp.value(QStringLiteral("code")).toString(), QStringLiteral("bad_args"))
+                << QJsonDocument(resp).toJson().toStdString();
+        }
+        EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+    }
+}
+
+// A roadmap the store does not serve has no positions to file by.
+TEST(RoadmapWriteHalf, Ants6828BeforeIdOnTheFileRefuses) {
+    ants_test::XdgGuard guard;
+    QTemporaryDir tmp;
+    ASSERT_TRUE(tmp.isValid());
+    guard.setEnv("XDG_DATA_HOME", QDir(tmp.path()).filePath(QStringLiteral("xdg")).toUtf8());
+    const QString rawRoot = QDir(tmp.path()).filePath(QStringLiteral("proj"));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/ROADMAP.md"), fixture()));
+    ASSERT_TRUE(writeFile(rawRoot + QStringLiteral("/.roadmap-counter"), "7\n"));
+    const QString root = QFileInfo(rawRoot).canonicalFilePath();
+    const QByteArray before = readAll(root + QStringLiteral("/ROADMAP.md"));
+    QJsonObject one = appendReq(root, QStringLiteral("Not filed."));
+    one[QStringLiteral("before_id")] = QStringLiteral("DEMO-0003");
+    QJsonObject batch = sectionBatchReq(root, QJsonArray{
+        sectionBullet(QStringLiteral("Not filed either."))});
+    batch[QStringLiteral("before_id")] = QStringLiteral("DEMO-0003");
+    RemoteControl rc(nullptr);
+    for (const QJsonObject &resp : {rc.cmdRoadmapLogAppendForTest(one).object(),
+                                    rc.cmdRoadmapLogAppendBatchForTest(batch).object()}) {
+        EXPECT_EQ(resp.value(QStringLiteral("code")).toString(),
+                  QStringLiteral("unsupported_format"))
+            << QJsonDocument(resp).toJson().toStdString();
+    }
+    EXPECT_EQ(readAll(root + QStringLiteral("/ROADMAP.md")), before);
+}

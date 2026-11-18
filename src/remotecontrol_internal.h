@@ -294,6 +294,18 @@ QString rlHistoryStamp();
 // docs/specs/ANTS-4501-roadmap-report.md § 2.2.
 QString rlStampToday();
 bool rlStampModified(RoadmapStore &store, qint64 itemPk, QString *err);
+// ANTS-5380 / ANTS-6828 — `before_id` files items directly before a named item.
+// rlFindItemPlace() resolves it; nullopt with *err empty means no such item.
+// rlOpenGapBefore() shifts the section's elements from that item onward by
+// `count` and returns the freed position, or -1 with *err set.
+struct ItemPlace { qint64 pk = 0; qint64 sectionId = 0; };
+std::optional<ItemPlace> rlFindItemPlace(RoadmapStore &store, qint64 projectId,
+                                         const QString &id, QString *err);
+int rlOpenGapBefore(RoadmapStore &store, qint64 sectionId, qint64 itemPk,
+                    int count, QString *err);
+// ANTS-6828 — the refusal for `before_id` on a roadmap the store does not
+// serve, or one of pass headings: neither files an item by position.
+QJsonDocument rlBeforeIdNeedsStore();
 // ANTS-6729 — called first inside a mutate step: true when the item's body and
 // status still match `before`, the read taken before the write transaction.
 // Otherwise another session wrote it in between, and this sets *err and

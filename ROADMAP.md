@@ -93164,7 +93164,7 @@ measured Ants adding about 5,250 tokens to every request.
   Source: ANTS-6825-repro-2026-11-18.
   Lanes: mcp-roadmap-verbs.
 
-- 📋 [ANTS-6828] **roadmap_log append and append_batch take before_id, so new items land where they belong in one call.**
+- ✅ [ANTS-6828] **roadmap_log append and append_batch take before_id, so new items land where they belong in one call.**
   Reported by DeFragR 2026-11-18: append_batch filed 16 review
   items after the section's last item (its release item), and a
   second amend_field field:section before_id call moved them.
@@ -93172,6 +93172,12 @@ measured Ants adding about 5,250 tokens to every request.
   meaning amend_field's before_id has.
   Hot reload: a verb argument; reaches clients on the next
   ants-mcpd rebuild and reconnect, no relaunch.
+  2026-11-18: shipped. append and append_batch take before_id on a
+  store-migrated project; the bullets landing in `section` go before it
+  in input order. Unknown, misplaced or empty before_id refuses
+  bad_args; a file-backed or pass-headings roadmap refuses
+  unsupported_format. amend_field's move shares rlFindItemPlace /
+  rlOpenGapBefore. Tests: RoadmapWriteHalf.Ants6828*.
   **Layman:** New roadmap items always go to the end of a section, so a second step was needed to put them before the release item.
   Kind: enhancement.
   Source: DeFragR-feedback-2026-11-18.
