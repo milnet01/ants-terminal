@@ -721,7 +721,6 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
 
     // (9) offset / limit shape (bad_args).
     int offset = 0;
-    bool passedOffset = false;
     if (req.contains(QStringLiteral("offset"))) {
         const QJsonValue v = req.value(QStringLiteral("offset"));
         const double d = v.toDouble(-1);
@@ -730,7 +729,6 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
                        QStringLiteral("changelog_query: offset must be a "
                                       "non-negative integer"));
         offset = static_cast<int>(d);
-        passedOffset = true;
     }
     int limitArg = -1;
     bool passedLimit = false;
@@ -744,7 +742,6 @@ QJsonDocument RemoteControl::cmdChangelogQuery(const QJsonObject &req) {
         limitArg = static_cast<int>(d);
         passedLimit = true;
     }
-    Q_UNUSED(passedOffset);
 
     const bool headlineOnly = (mode == QLatin1String("headline_only"));
     const bool includeBody  = req.value(QStringLiteral("include_body")).toBool(false);
@@ -1127,14 +1124,19 @@ QJsonDocument RemoteControl::cmdChangelogLog(const QJsonObject &req) {
         // mistake a clipped body for the whole section.
         {
             const QByteArray fullBody = res.released_body.toUtf8();
-            qint64 cap = 16384;
+            // A max_body_bytes outside [kMinCap, kMaxCap] is moved to the
+            // nearer bound, and the reply does not say so.
+            constexpr qint64 kDefaultCap = 16384;
+            constexpr qint64 kMinCap     = 2000;
+            constexpr qint64 kMaxCap     = 1048576;   // 1 MiB
+            qint64 cap = kDefaultCap;
             const QJsonValue mbv = req.value(QStringLiteral("max_body_bytes"));
             if (mbv.isDouble()) {
                 const qint64 want = static_cast<qint64>(mbv.toDouble());
-                if (want <= 0)              cap = 0;     // explicit opt-out
-                else if (want < 2000)       cap = 2000;
-                else if (want > 1048576)    cap = 1048576;
-                else                        cap = want;
+                if (want <= 0)            cap = 0;     // explicit opt-out
+                else if (want < kMinCap)  cap = kMinCap;
+                else if (want > kMaxCap)  cap = kMaxCap;
+                else                      cap = want;
             }
             if (cap > 0 && fullBody.size() > cap) {
                 // Cut the bytes, not a QString a character at a time — this

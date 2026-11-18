@@ -1,4 +1,5 @@
-// ANTS-3833 TU 10/25 — Feedback and audit verbs.
+// ANTS-3833 TU 10/25 — feedback_*, spec_log and audit_* verbs, git_state's
+// ops, and the project-wide caller_cwd resolver ants::resolveCallerCwdRoot.
 #include "remotecontrol.h"
 #include "mcprefusal.h"
 #include "remotecontrol_internal.h"
@@ -1442,7 +1443,8 @@ bool isValidRange(const QString &range) {
 }
 
 // Project root resolution mirrors cmdWorkspaceSearch / cmdFileOutline:
-// focused tab's shellCwd, fall back to QDir::current. Empty string
+// the provider's fallbackRoot(); a null provider → the process cwd; an
+// empty answer → empty. Empty string
 // returned when canonicalisation fails (caller maps to bad_path or
 // not_git_repo depending on context).
 QString resolveRootCanonical(const ants::RootProvider *roots) {

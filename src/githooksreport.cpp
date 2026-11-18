@@ -61,8 +61,8 @@ QJsonObject fileFacts(const QString &path) {
 QString prePushKind(const QString &prePush, const QString &machinePrePush) {
     const QFileInfo fi(prePush);
     if (!fi.isFile()) return QStringLiteral("none");
-    const QString mine = QFileInfo(machinePrePush).canonicalFilePath();
-    if (!mine.isEmpty() && fi.canonicalFilePath() == mine)
+    const QString machineCanonical = QFileInfo(machinePrePush).canonicalFilePath();
+    if (!machineCanonical.isEmpty() && fi.canonicalFilePath() == machineCanonical)
         return QStringLiteral("machine_wide");
     QFile f(prePush);
     if (!f.open(QIODevice::ReadOnly)) return QStringLiteral("own");

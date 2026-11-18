@@ -221,6 +221,8 @@ for security-relevant changes.
 
 ### Changed
 
+- **changelog_log's release body cap uses named bounds, and the content verbs' file headers and root-resolution comment say what the code does** (ANTS-6133)
+
 - **The cold-eyes echo and lane helpers now sit in the cold-eyes source file, and the review verbs' comments name code by symbol and give the echo cap in characters** (ANTS-6132)
 
 - **find_caller builds its shared reply fields once, task_priors ranks its three buckets through one helper, and the state verbs' comments say what the code does; replies unchanged** (ANTS-6131)

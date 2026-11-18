@@ -105726,7 +105726,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: mcp-review-verbs.
 
-- 📋 [ANTS-6133] **Readability fixes, mcp-content-verbs-a lane: githooksreport.cpp, remotecontrol_changelog.cpp, remotecontrol_feedback.cpp.**
+- ✅ [ANTS-6133] **Readability fixes, mcp-content-verbs-a lane: githooksreport.cpp, remotecontrol_changelog.cpp, remotecontrol_feedback.cpp.**
   Findings of the 2026-10-22 readability review (src run), lane mcp-content-verbs-a:
   2 high, 10 medium, 4 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/src/lanes/24-mcp-content-verbs-a.result; index .indie-review/reports-2026-10-22-readability/src/return_findings.txt
@@ -105752,6 +105752,13 @@ worked after these.
   check. Queued ANTS-6264 (F4), 6265 (F5 merge), 6266 (F6 drift), 6267
   (F7 wording), 6268 (F9 githooksreport), 6269 (F10 UTF-8 cut). LOWs
   left.
+  2026-11-18: LOWs done. release's max_body_bytes bounds are named
+  constants, with a note that the clamp is silent (no reason for the
+  2000 floor is recorded, so none is claimed). resolveRootCanonical's
+  header states the null-provider and empty-answer cases. githooksreport
+  `mine` -> machineCanonical. remotecontrol_feedback.cpp's header names
+  git_state and ants::resolveCallerCwdRoot. Unused passedOffset removed.
+  Leads are ANTS-5947..5951.
   **Layman:** Tidy the document and file tools so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
