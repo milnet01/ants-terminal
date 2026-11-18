@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6835 -->
+<!-- ants-roadmap-id-high-water: ANTS=6836 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -97906,6 +97906,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   2026-11-18: row 1476 fixed in e701b5cd (the unreachable branch is
   deleted). Row 1477 is documented, not fixed: d862def1's Usage says
   --values must follow specs_dir.
+  2026-11-18: row 1478 is now in callable_windows() (efbdeb02);
+  same defect as ANTS-6080.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -98374,6 +98376,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1270 `tools/measure/doc_symbols_locator_sample.py:21` (Low)
   2026-11-18: row 1264 (slug-oracle discovery comment) fixed in e701b5cd
   with ANTS-6151.
+  2026-11-18: rows 1256 (carved-name comment) and 1257
+  (check_scrapes extractions) fixed in efbdeb02 with ANTS-6153.
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
@@ -106644,7 +106648,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: tools-migration-surveys.
 
-- 📋 [ANTS-6153] **Readability fixes, tools-split-motion lane: tools/split-motion-check.py.**
+- ✅ [ANTS-6153] **Readability fixes, tools-split-motion lane: tools/split-motion-check.py.**
   Findings of the 2026-10-22 readability review (tools run), lane tools-split-motion:
   1 high, 4 medium, 7 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/05-tools-split-motion.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106658,6 +106662,9 @@ worked after these.
   Mediums and lows remain.
   The 2026-11-06 reviews also found this: row 1267 `tools/split-motion-
   check.py:297`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-18: shipped in efbdeb02. Mediums and lows fixed, row 1267
+  included. L05-F4 dismissed: slurpClaudeIntegration now exists in
+  srcgrep.h. Output byte-identical on 11 split commits, both modes.
   **Layman:** Tidy the split-motion checker so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -111948,7 +111955,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22-tools.
   Lanes: tools.
 
-- 📋 [ANTS-6077] **tools/split-motion-check.py:925-928: mainwindow class text omits the registry tail; windows anchored there evaluate MISSING at both revisions and count as unchanged.**
+- ✅ [ANTS-6077] **tools/split-motion-check.py:925-928: mainwindow class text omits the registry tail; windows anchored there evaluate MISSING at both revisions and count as unchanged.**
   Lead 28 from the readability review of tools/, hooks/, cmake/ and
   packaging/ (2026-10-22).
   Location: tools/split-motion-check.py:925-928
@@ -111956,6 +111963,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: ✓ see L05-F1
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: fixed in 1d5afd13 (ANTS-6153's HIGH): class_texts()
+  appends src/mcptoolregistry.cpp for mainwindow, as slurpMainWindow()
+  does. Verified in efbdeb02's tree.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -111969,6 +111979,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: since efbdeb02 `before.used` is
+  `before.dependency_lines`, the `touched` line in check_scrapes().
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -111982,6 +111994,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: now the `touched` line in check_scrapes() (efbdeb02).
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -111995,6 +112008,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: since efbdeb02 this is in callable_windows().
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -112008,6 +112022,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-18: now the cast branch of Parser.primary() (efbdeb02).
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -112727,6 +112742,19 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: fix.
   Source: session-2026-11-18-ANTS-6015.
   Lanes: model-switching.
+
+- 📋 [ANTS-6836] **tools/split-motion-check.py check_scrapes(): a lambda bound in one test block stays a callable for every later block in the file.**
+  Found while closing ANTS-6153 (efbdeb02). `callables` collects each
+  block's window-cutting lambdas and never drops them, so a later block
+  calling a same-named function reports the earlier lambda's windows as
+  unevaluated. Only extra UNEVALUATED lines; it cannot hide a changed
+  window. Kept as-is in efbdeb02, and a comment there states it.
+  A possible bug, not a confirmed one. Investigate after the readability
+  fixes land (user, 2026-10-22).
+  **Layman:** A possible bug in the developer scripts, found during the code tidy-up; it needs checking.
+  Kind: investigate.
+  Source: close-findings ANTS-6153 2026-11-18.
+  Lanes: tools.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
