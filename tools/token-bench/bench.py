@@ -3,12 +3,13 @@
 
 Gives Claude Code a bench's fixed prompt against a fresh copy of its
 project, once per run, and records what the run cost. Each bench's README
-names its prompt, model and bug test:
+names its prompt, model, effort and bug test:
     tally     README.md here; the project is project/.
     pygments  pygments/README.md; pygments/setup.sh builds the project.
 
 Usage:
     tools/token-bench/bench.py run --arm ants|plain [--bench B] [--runs N] [--out DIR]
+                                   [--timeout SECONDS] [--budget USD]
     tools/token-bench/bench.py summary [--bench B] [--out DIR]
 
 The two arms differ only in Ants:
@@ -61,18 +62,18 @@ ANTS_HOOK_MARKERS = ("/ants-terminal/", "/Ants Terminal/", "/hooks/ants-", "road
 ANTS_MCP_SERVER = "ants"
 
 
-def bench_config(bench: str) -> tuple[str, str, str]:
-    """The fixed prompt, model and bug-test command, read from the bench's
-    README so it is their one home."""
+def bench_config(bench: str) -> tuple[str, str, str, str]:
+    """The fixed prompt, model, effort and bug-test command, read from the
+    bench's README so it is their one home."""
     readme = BENCHES[bench] / "README.md"
     text = readme.read_text(encoding="utf-8")
-    model = re.search(r"^\*\*Model:\*\* `([^`]+)`", text, re.M)
+    model = re.search(r"^\*\*Model:\*\* `([^`]+)`, effort `([^`]+)`", text, re.M)
     bug_test = re.search(r"^\*\*Bug test:\*\* `([^`]+)`", text, re.M)
     prompt = re.search(r"<!-- bench-prompt -->\n```text\n(.*?)\n```", text, re.S)
     if not model or not bug_test or not prompt:
-        sys.exit(f"bench: {readme} has lost its **Model:** line, its **Bug test:** "
-                 "line or its bench-prompt block")
-    return prompt.group(1), model.group(1), bug_test.group(1)
+        sys.exit(f"bench: {readme} has lost its **Model:** line (model and effort), its "
+                 "**Bug test:** line or its bench-prompt block")
+    return prompt.group(1), model.group(1), model.group(2), bug_test.group(1)
 
 
 def is_ants_hook(hook: dict) -> bool:
@@ -141,6 +142,8 @@ def usage_from_transcripts(files: list[Path]) -> dict:
         t = totals.setdefault(model, dict.fromkeys(TYPES, 0) | {"messages": 0})
         cc = u.get("cache_creation") or {}
         write_1h = cc.get("ephemeral_1h_input_tokens", 0)
+        # A usage with no per-duration breakdown reports only the total;
+        # whatever is not a 1-hour write counts as a 5-minute one.
         write_5m = cc.get("ephemeral_5m_input_tokens",
                           u.get("cache_creation_input_tokens", 0) - write_1h)
         t["input"] += u.get("input_tokens", 0)
@@ -190,7 +193,7 @@ def build_workdir(bench: str, workdir: Path, cache: Path) -> str:
 
 
 def run_once(bench: str, arm: str, out: Path, index: int, timeout: int, budget: float) -> dict:
-    prompt, model, bug_test = bench_config(bench)
+    prompt, model, effort, bug_test = bench_config(bench)
     stamp = time.strftime("%Y%m%d-%H%M%S")
     workdir = out / f"{arm}-{stamp}-{index}"
     start = build_workdir(bench, workdir, out.parent / "cache")
@@ -203,7 +206,7 @@ def run_once(bench: str, arm: str, out: Path, index: int, timeout: int, budget: 
     mcp_file.write_text(json.dumps(mcp, indent=1))
 
     session_id = str(uuid.uuid4())
-    cmd = ["claude", "-p", prompt, "--model", model, "--effort", "high",
+    cmd = ["claude", "-p", prompt, "--model", model, "--effort", effort,
            "--session-id", session_id, "--output-format", "json",
            "--permission-mode", "bypassPermissions",
            "--setting-sources", "project,local", "--settings", str(settings_file),
@@ -244,7 +247,7 @@ def summary(out: Path) -> None:
     for arm in ("ants", "plain"):
         runs = [r for r in rows if r["arm"] == arm]
         counted = [r for r in runs if r["bug_test_passed"] and r["cost_usd"] is not None]
-        print(f"\n{arm}: {len(runs)} runs, {len(counted)} counted (bug test passed)")
+        print(f"\n{arm}: {len(runs)} runs, {len(counted)} counted (bug test passed and priced)")
         for r in runs:
             t = {k: sum(m[k] for m in r["tokens"].values()) for k in TYPES}
             price = "no price" if r["cost_usd"] is None else f"${r['cost_usd']}"
