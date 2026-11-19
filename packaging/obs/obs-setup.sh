@@ -26,6 +26,12 @@ tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
 # Build targets. THIS IS THE "add more distros" KNOB — add a <repository> block
 # and re-run this script.
 #
+# The staging project (home:milnet:ants-terminal-staging, which release.sh
+# builds in before it tags) needs the same list, and a plain re-run with
+# OBS_PROJECT set to it REPLACES its meta, dropping the publish-disable block
+# that was added by hand (roadmap item ANTS-5305). Put that block back
+# afterwards, or the staging builds are published.
+#
 # x86_64 only for now: the package is a Qt6 desktop app, and i586 Qt6 is not a
 # target anyone installs. Factory ARM/RISCV/PowerPC/zSystems are viable later
 # (same spec, different arch) once x86_64 is proven.

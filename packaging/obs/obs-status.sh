@@ -3,8 +3,9 @@
 # the package's current source revision, then say how each one ended.
 #
 # Run after obs-submit.sh. Exit 0 = every repository built it. 1 = one failed,
-# or (with --require-tests) built without running the test suite. 2 = still
-# building when the polls ran out. 3 = the results could not be read.
+# or (with --require-tests) built without running the test suite; also osc is
+# not installed. 2 = still building when the polls ran out; also bad
+# arguments. 3 = the results could not be read.
 #
 #   --rev N           wait for source revision N instead of the current one
 #   --require-tests   a repository only passes if its build log carries ctest's

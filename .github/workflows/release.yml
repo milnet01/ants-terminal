@@ -275,6 +275,8 @@ jobs:
           # specific build, and zsync still keys on it.
           ALIAS="Ants_Terminal-x86_64.AppImage"
           cp "${OUTPUT}" "${ALIAS}"
+          # The same five files are listed in WANT below and in
+          # packaging/release.sh (wait_for_github_release); change them together.
           UPLOADS=( "${OUTPUT}" "${OUTPUT}.zsync" "${OUTPUT}.manifest" "${OUTPUT}.manifest.sig" "${ALIAS}" )
           if gh release view "$REF" >/dev/null 2>&1; then
             # A manual re-run against a release that already exists: replace

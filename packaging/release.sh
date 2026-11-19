@@ -104,7 +104,7 @@ latest_public_tag() {
     git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 }
 
-confirm_or_print() {
+run_or_rehearse() {
     # $@ = command to run. Runs it under --push; otherwise prints it.
     if [ "$DO_PUSH" = 1 ]; then
         echo "+ $*"
@@ -156,31 +156,26 @@ commit_or_abort() {
 
 # ---- CHANGELOG helpers -----------------------------------------------
 
-# True (exit 0) if the "## [Unreleased]" section has ≥1 real entry — a
-# changelog bullet (^\s*[-*]) or a "### Category" header. Prose such as the
-# "**Theme:**" line does NOT count.
-unreleased_has_content() {
-    awk '
-        /^## \[Unreleased\]/ { inseg=1; next }
+# The changelog categories, in Keep a Changelog order
+# (changelog-format.md § 4.1).
+CHANGELOG_CATEGORIES="Added Changed Deprecated Removed Fixed Security"
+
+# True (exit 0) if section "## [$1]" has ≥1 real entry — a changelog bullet
+# (^\s*[-*]) or a "### Category" header. Prose such as the "**Theme:**" line
+# does NOT count. An interrupted or gate-stopped run leaves "## [X.Y.Z]" in
+# exactly this state: the merge commit landed and no tag was created.
+section_has_content() {
+    awk -v ver="$1" -v cats="$CHANGELOG_CATEGORIES" '
+        BEGIN { gsub(/ /, "|", cats); category = "^### (" cats ")" }
+        index($0, "## [" ver "]") == 1 { inseg=1; next }
         inseg && /^## \[/ { exit }
         inseg && /^[ \t]*[-*][ \t]/ { found=1 }
-        inseg && /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/ { found=1 }
+        inseg && $0 ~ category { found=1 }
         END { exit (found ? 0 : 1) }
     ' "$CHANGELOG_FILE"
 }
 
-# True (exit 0) if "## [X.Y.Z]" already carries ≥1 real entry — the same test.
-# An interrupted or gate-stopped run leaves exactly this state: the merge
-# commit landed and no tag was created.
-section_has_content() {
-    awk -v ver="$1" '
-        index($0, "## [" ver "]") == 1 { inseg=1; next }
-        inseg && /^## \[/ { exit }
-        inseg && /^[ \t]*[-*][ \t]/ { found=1 }
-        inseg && /^### (Added|Changed|Deprecated|Removed|Fixed|Security)/ { found=1 }
-        END { exit (found ? 0 : 1) }
-    ' "$CHANGELOG_FILE"
-}
+unreleased_has_content() { section_has_content Unreleased; }
 
 # True (exit 0) if "## [X.Y.Z]" in file "$1" opens with a "**Theme:**" line,
 # before its first category. release-notes.sh turns that lead into the GitHub
@@ -199,11 +194,13 @@ section_has_theme() {
 # leaving "## [Unreleased]" empty. Creates the section when absent. When it
 # already has entries — a re-run after the staging gate stopped a release —
 # the two are merged category by category, new bullets first, categories in
-# Keep a Changelog order (changelog-format.md § 4.1). Prints the file
-# unchanged when [Unreleased] is blank. The heading is dated afterwards by
-# stamp_release_date.
+# CHANGELOG_CATEGORIES order. Prints the file unchanged when [Unreleased] is
+# blank. The heading is dated afterwards by stamp_release_date.
+#
+# In the awk program, "U" is the [Unreleased] section and "T" the target
+# "## [X.Y.Z]" section.
 merge_unreleased() {
-    awk -v ver="$1" '
+    awk -v ver="$1" -v cats="$CHANGELOG_CATEGORIES" '
         function trimmed(s) {
             sub(/^([ \t]*\n)+/, "", s)
             sub(/(\n[ \t]*)+$/, "", s)
@@ -235,10 +232,13 @@ merge_unreleased() {
         }
         function emit_section(head,    i, a, b, canon, nc) {
             print head; print ""
+            # The lead goes the other way round from a category: the lead
+            # already there stays first, so a re-run does not change which
+            # "**Theme:**" line opens the release text.
             b = trimmed(buf["T", ""]); a = trimmed(buf["U", ""])
             if (b != "") { print b; print "" }
             if (a != "") { print a; print "" }
-            nc = split("Added Changed Deprecated Removed Fixed Security", canon, " ")
+            nc = split(cats, canon, " ")
             for (i = 1; i <= nc; i++) emit_cat(canon[i])
             for (i = 1; i <= ncat["T"]; i++) emit_cat(order["T", i])
             for (i = 1; i <= ncat["U"]; i++) emit_cat(order["U", i])
@@ -278,16 +278,24 @@ merge_unreleased() {
     ' "$CHANGELOG_FILE"
 }
 
+# Replace file "$2" with temp file "$1", keeping its mode. The temp must sit
+# BESIDE the target (mktemp "${file}.XXXXXX"), never in /tmp: /tmp is tmpfs
+# here, where mv is a copy plus unlink and the rename would not be atomic
+# (audit TL-6).
+replace_atomically() {
+    chmod --reference="$2" "$1"
+    mv "$1" "$2"
+}
+
 # Rewrite <file> via awk program "$2..." to a temp + atomic rename. The awk
 # program prints the whole transformed file and exits 0 only when it made the
 # substitution (else exit 3 = target not found → hard error).
 apply_rewrite() {
     local file=$1; shift
-    local tmp; tmp=$(mktemp "${file}.XXXXXX")   # same filesystem (TL-6)
+    local tmp; tmp=$(mktemp "${file}.XXXXXX")
     RELEASE_TMPS+=("$tmp")
     if awk "$@" "$file" > "$tmp"; then
-        chmod --reference="$file" "$tmp"
-        mv "$tmp" "$file"
+        replace_atomically "$tmp" "$file"
     else
         rm -f "$tmp"
         echo "release: target not found in ${file}" >&2
@@ -536,6 +544,9 @@ wait_for_github_release() {
         return 0
     fi
     names=$(gh release view "$tag" --json assets --jq '.assets[].name' 2>/dev/null) || names=""
+    # The files a release must carry. release.yml holds the same list twice
+    # (UPLOADS and WANT) and release-audit.yml a shorter one; change them
+    # together.
     for want in "Ants_Terminal-${ver}-x86_64.AppImage" \
                 "Ants_Terminal-${ver}-x86_64.AppImage.zsync" \
                 "Ants_Terminal-${ver}-x86_64.AppImage.manifest" \
@@ -579,8 +590,6 @@ prepare_release_commit() {
     fi
     require_release_carriers "$base"
 
-    # Beside the target, not in /tmp: /tmp is tmpfs here, where mv is a copy
-    # plus unlink and the rename below would not be atomic (audit TL-6).
     merged=$(mktemp "${CHANGELOG_FILE}.XXXXXX")
     RELEASE_TMPS+=("$merged")
     merge_unreleased "$base" > "$merged" \
@@ -601,8 +610,7 @@ prepare_release_commit() {
         return 0
     fi
 
-    chmod --reference="$CHANGELOG_FILE" "$merged"
-    mv "$merged" "$CHANGELOG_FILE"
+    replace_atomically "$merged" "$CHANGELOG_FILE"
     stamp_release_date "$base" "$today"
     pin_obs_service_revision "$tag"
     git add "$CHANGELOG_FILE" "$METAINFO_FILE" "$DEBIAN_CHANGELOG_FILE"
@@ -650,7 +658,7 @@ cmd_release() {
     sha=$(git rev-parse HEAD)
 
     # main must be on origin before the gate: obs_scm clones from GitHub.
-    confirm_or_print git push origin main
+    run_or_rehearse git push origin main
 
     if [ "$resuming" = 0 ]; then
         staging_gate "$sha" "$base"
@@ -668,7 +676,7 @@ cmd_release() {
             echo "  [rehearsal] would create annotated tag ${tag} at ${sha}"
         fi
     fi
-    confirm_or_print git push origin "${tag}"
+    run_or_rehearse git push origin "${tag}"
 
     if [ "$DO_PUSH" != 1 ]; then
         echo "  [rehearsal] would run: ${OBS_SUBMIT}"

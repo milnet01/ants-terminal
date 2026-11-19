@@ -92,8 +92,6 @@ elif [ -n "$REV" ] && command -v git >/dev/null 2>&1; then
     fi
 fi
 
-# Expand the spec for real and syntax-check the scriptlets it generates.
-#
 # ANTS-4719 — a comment macro in the PREAMBLE, which the scriptlet check below
 # cannot see. That one bash -n's each EXPANDED section body, so it catches an
 # unescaped macro inside %%build or %%check. In the preamble the expansion
@@ -119,6 +117,8 @@ if [ -n "$bad_comment_macro" ]; then
 fi
 echo ">>> no unescaped macro references in comments"
 
+# Expand the spec for real and syntax-check the scriptlets it generates.
+#
 # rpm expands macros inside `#` comments — they are comments to the shell, not
 # to the macro engine. So a singly-written macro reference in a comment (%ctest
 # rather than %%ctest) expands mid-comment and can push live text into %build or
@@ -214,15 +214,18 @@ done
     echo "obs-submit: _service has no <revision>, so Version: cannot be stamped." >&2
     exit 1
 }
+# SOURCE is what the messages below call the thing being built; REV stays a
+# git reference.
 if [ -n "$STAGING_SHA" ]; then
     VERSION="$STAGING_VERSION"
-    REV="$STAGING_SHA as $STAGING_VERSION"
+    SOURCE="$STAGING_SHA as $STAGING_VERSION"
 else
     VERSION="${REV#v}"
+    SOURCE="$REV"
 fi
 case "$VERSION" in
     *-*)
-        echo "obs-submit: tag '$REV' gives RPM Version '$VERSION', which contains a" >&2
+        echo "obs-submit: tag '$SOURCE' gives RPM Version '$VERSION', which contains a" >&2
         echo "            '-' and is not a legal rpm version. OBS tracks release" >&2
         echo "            tags only (vX.Y.Z)." >&2
         exit 1 ;;
@@ -235,7 +238,7 @@ grep -qx "Version:        $VERSION" "$CO/ants-terminal.spec" || {
     echo "            Does $SPEC still have a 'Version:' line?" >&2
     exit 1
 }
-echo ">>> stamped Version: $VERSION (from $REV)"
+echo ">>> stamped Version: $VERSION (from $SOURCE)"
 
 cd "$CO"
 osc -A "$API" add _service ants-terminal.spec ants-terminal-rpmlintrc ants-terminal.changes 2>/dev/null || true
@@ -253,7 +256,7 @@ osc -A "$API" addremove 2>/dev/null || true
 # with the revision already committed. The next try then finds nothing to
 # commit and exits 0.
 tries=0
-until osc -A "$API" commit -m "${OBS_MSG:-ants-terminal $REV}"; do
+until osc -A "$API" commit -m "${OBS_MSG:-ants-terminal $SOURCE}"; do
     tries=$((tries + 1))
     if [ "$tries" -ge 5 ]; then
         echo "obs-submit: the commit did not complete in $tries tries — giving up." >&2

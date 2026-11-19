@@ -3,16 +3,10 @@
 # check-version-drift.sh — asserts every version-bearing packaging file
 # agrees with the authoritative CMakeLists.txt project(VERSION) value.
 #
-# Single source of truth for the audit rule `packaging_version_drift`:
-#   - src/auditdialog.cpp invokes this script; the audit dialog parses the
-#     stdout findings into its usual FILE:LINE: message format.
-#   - .github/workflows/ci.yml invokes this script; a non-zero exit fails
-#     the release PR *before* a drifted version tag ships.
-#
-# The ninth audit (2026-04-15, memory: audit_2026_04_15.md) flagged that
-# the drift rule only ran under honor-system conventions — it missed the
-# 0.6.23 release even though it existed. Extracting + wiring it into CI
-# closes that loop.
+# Single source of truth for the audit rule `packaging_version_drift`. The
+# audit dialog, CI, release.sh, a CMake test and others all run it and read
+# its output and exit code; search the tree for `check-version-drift` to
+# list them before changing either.
 #
 # Output format per finding (stdout):
 #   <file>:<line>: <label> version <got> drifts from CMakeLists.txt <truth>
@@ -36,6 +30,10 @@ truth=$(grep -oE 'project\s*\([^)]*VERSION\s+[0-9]+\.[0-9]+\.[0-9]+' "$cml" \
 
 drifts=0
 
+# A MISS IS SILENT: a file that is absent, or a pattern that matches nothing
+# in it, counts as no drift. The audit runs this in projects that ship only
+# some of these files. So a wrong pattern looks exactly like a pass; after
+# adding a check, change the file's version and see the drift reported.
 check() {
     local file=$1 pattern=$2 label=$3
     [ -f "$file" ] || return
@@ -54,10 +52,9 @@ check() {
     fi
 }
 
-# Packaging files — keep in sync with the release rules in
-# .claude/rules/release.md (every bump touches these). Adding
-# a new packaging file? Append a check() line here and ensure the
-# version-bearing pattern is regex-escaped for grep -E.
+# One check per file the version bump rewrites; .claude/bump.json is that
+# list. Adding a packaging file? Add it there and append a check() line
+# here, its version-bearing pattern regex-escaped for grep -E.
 check packaging/opensuse/ants-terminal.spec \
       'Version:\s+[0-9]+\.[0-9]+\.[0-9]+' \
       'openSUSE spec'
@@ -75,16 +72,12 @@ check packaging/linux/ants-terminal.1 \
       'Man page'
 
 # AppStream metainfo lists <release version="X.Y.Z"> entries newest-first;
-# head -1 after the grep captures the latest declared release. Added in
-# 0.6.25 after the ninth audit noted the metainfo drift the rule missed.
+# head -1 after the grep captures the latest declared release.
 check packaging/linux/za.co.antsprojectshub.AntsTerminal.metainfo.xml \
       '<release version="[0-9]+\.[0-9]+\.[0-9]+"' \
       'AppStream metainfo'
 
-# README header banner reads `Version <strong>X.Y.Z</strong>` (line ~20).
-# The old pattern here searched for `Current version:` — which the README
-# never says (that is the ROADMAP banner's wording), so the check silently
-# no-op'd and missed the 0.7.97/0.7.98 banner drift. Realigned in ANTS-2163.
+# README's header banner reads `Version <strong>X.Y.Z</strong>`.
 check README.md \
       'Version <strong>[0-9]+\.[0-9]+\.[0-9]+' \
       'README'
