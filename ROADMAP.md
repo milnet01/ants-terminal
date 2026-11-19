@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6839 -->
+<!-- ants-roadmap-id-high-water: ANTS=6840 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -106902,7 +106902,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: packaging-recipes.
 
-- 📋 [ANTS-6164] **Split cmdRoadmapQuery into an argument-parse step and one function per mode (L20-F4).**
+- ✅ [ANTS-6164] **Split cmdRoadmapQuery into an argument-parse step and one function per mode (L20-F4).**
   L20-F4 (HIGH), queued from ANTS-6129 on 2026-10-22. cmdRoadmapQuery
   parses arguments, defines lambdas that write into `out`, and runs
   them hundreds to thousands of lines later; a reader changing one
@@ -106916,6 +106916,14 @@ worked after these.
   The 2026-11-06 reviews also found this: row 848
   `src/remotecontrol_roadmap_query_verb.cpp:2894`. Details:
   docs/reviews/close-findings-2026-11-06.md.
+  Shipped e8cddfd7 (2026-11-19). The verb is now a per-call object,
+  RemoteControl::RoadmapQueryCall: run() lists the steps, and each parse
+  step, shared filter and mode is a method. The three copies of the
+  cold-cache fill are one method. Proof of no behaviour change: 126
+  recorded replies, every mode and refusal code, byte-identical before
+  and after; fast suite green. Nine source-reading tests had anchors on
+  moved text and now name the new shape. The file is longer than before:
+  method headers and the field list cost more lines than the fold saved.
   **Layman:** The roadmap search code is one very long function; break it into smaller named pieces a newcomer can follow.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -108637,6 +108645,18 @@ worked after these.
   Kind: refactor.
   Source: review-readability-2026-11-06.
   Lanes: code-index-search.
+
+- 📋 [ANTS-6840] **Three clang-tidy notes in remotecontrol.h: two loop variables that convert, one int multiply widened to qint64.**
+  Seen in the editor diagnostics on 2026-11-19 while closing ANTS-6164;
+  not caused by it. src/remotecontrol.h: two range-for loops declare
+  `const QJsonValue &` over a QJsonArray (performance-implicit-conversion-
+  in-loop), and one multiplication is done in int and then widened to
+  qint64 (bugprone-implicit-widening-of-multiplication-result). Line
+  numbers left out: find them with clang-tidy on the header.
+  **Layman:** Tidy three small compiler-checker notes in one header file.
+  Kind: audit-fix.
+  Source: clang-tidy-2026-11-19.
+  Lanes: mcp-roadmap-query-log.
 
 ## Readability review 2026-10-22 — possible bugs to investigate
 
