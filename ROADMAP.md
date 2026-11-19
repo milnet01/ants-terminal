@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6836 -->
+<!-- ants-roadmap-id-high-water: ANTS=6837 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -106762,7 +106762,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: cmake.
 
-- 📋 [ANTS-6158] **Readability fixes, packaging-release lane: packaging/check-version-drift.sh, packaging/obs/obs-setup.sh, packaging/obs/obs-status.sh, packaging/obs/obs-submit.sh, packaging/release.sh.**
+- ✅ [ANTS-6158] **Readability fixes, packaging-release lane: packaging/check-version-drift.sh, packaging/obs/obs-setup.sh, packaging/obs/obs-status.sh, packaging/obs/obs-submit.sh, packaging/release.sh.**
   Findings of the 2026-10-22 readability review (tools run), lane packaging-release:
   0 high, 6 medium, 7 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/10-packaging-release.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106772,6 +106772,11 @@ worked after these.
   The 2026-11-06 reviews also found this: row 1273
   `packaging/release.sh:167`; row 1281 `packaging/obs/obs-
   submit.sh:219`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-19 in 57c95ceb. All 13 findings fixed (L10-F1 to F13),
+  with rows 1273 and 1281 of the 2026-11-06 reviews. F1's comments name the
+  copies of the required-files list; the audit's shorter list is queued as
+  ANTS-6837. The lane's four correctness leads were already filed as
+  ANTS-6100 to ANTS-6103.
   **Layman:** Tidy the release scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -112806,6 +112811,19 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Kind: investigate.
   Source: close-findings ANTS-6153 2026-11-18.
   Lanes: tools.
+
+- 📋 [ANTS-6837] **release-audit.yml checks three of the five files a release must carry: not the .manifest or .manifest.sig.**
+  release.yml (UPLOADS, WANT) and packaging/release.sh
+  (wait_for_github_release) list five files. The audit's "GitHub release
+  assets" step lists three, with no comment saying why. Decide whether the
+  audit should also fail on a missing signed manifest (ANTS-5560), then add
+  the two names or a comment giving the reason. Not done under ANTS-6158
+  because it changes what the audit fails on, which a readability fix
+  should not.
+  **Layman:** The daily check of the published release does not notice if the signed file the in-app updater needs is missing.
+  Kind: fix.
+  Source: review-readability-2026-10-22 L10-F1, split from ANTS-6158 on 2026-11-19.
+  Lanes: packaging-release.
 
 ## 0.9.0 — platform + a11y (target: 2026-10)
 
