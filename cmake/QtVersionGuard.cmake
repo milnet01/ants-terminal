@@ -33,6 +33,9 @@ if(NOT DEFINED EXPECTED_QT_VERSION OR NOT DEFINED QCONFIG_FILE)
         "(EXPECTED_QT_VERSION, QCONFIG_FILE)")
 endif()
 
+# The one remedy every refusal below names.
+set(_remedy "    ninja -C <builddir> -t clean && cmake --build <builddir>")
+
 # A guard that cannot read its input must REFUSE. Reporting OK here would make
 # "found nothing wrong" and "could not look" byte-identical to the caller,
 # which is the one outcome a guard may never produce.
@@ -43,7 +46,7 @@ if(NOT EXISTS "${QCONFIG_FILE}")
         "guard cannot confirm the installed Qt still matches, so it refuses "
         "rather than pass silently.\n"
         "If Qt moved, re-run cmake. If the tree is stale, run:\n"
-        "    ninja -C <builddir> -t clean && cmake --build <builddir>")
+        "${_remedy}")
 endif()
 
 file(READ "${QCONFIG_FILE}" _qconfig)
@@ -56,7 +59,7 @@ if(NOT _matched OR "${CMAKE_MATCH_1}" STREQUAL "")
         "The guard could not determine the installed Qt version, so it "
         "refuses rather than pass silently.\n"
         "If this tree is stale, run:\n"
-        "    ninja -C <builddir> -t clean && cmake --build <builddir>")
+        "${_remedy}")
 endif()
 
 set(_installed "${CMAKE_MATCH_1}")
@@ -75,8 +78,7 @@ if(NOT _installed STREQUAL EXPECTED_QT_VERSION)
         "the heap at run time (ANTS-4625).\n"
         "\n"
         "Clean the tree and rebuild:\n"
-        "    ninja -C <builddir> -t clean\n"
-        "    cmake --build <builddir>\n"
+        "${_remedy}\n"
         "\n"
         "A reconfigure alone is NOT sufficient: it regenerates build.ninja "
         "but invalidates no objects.")
@@ -107,8 +109,7 @@ if(DEFINED OBJECTS_STAMP AND NOT OBJECTS_STAMP STREQUAL "")
                 "rebuilt (ANTS-6171).\n"
                 "\n"
                 "Clean the tree and rebuild:\n"
-                "    ninja -C <builddir> -t clean\n"
-                "    cmake --build <builddir>")
+                "${_remedy}")
         endif()
     endif()
 endif()

@@ -8,7 +8,7 @@
 # the downstream compile and build_info_values.o is NOT rebuilt).
 #
 # Required cache vars (all passed via -D on the cmake -P command):
-#   SOURCE_DIR        — repo root (for git rev-parse + template path)
+#   SOURCE_DIR        — repo root (for git rev-parse)
 #   OUTPUT_FILE       — destination path for build_info_values.cpp
 #   TEMPLATE_FILE     — path to cmake/build_info_values.cpp.in
 #   ANTS_BUILD_TYPE   — CMAKE_BUILD_TYPE (Release/Debug/...)
@@ -20,7 +20,8 @@ if(NOT DEFINED SOURCE_DIR OR NOT DEFINED OUTPUT_FILE
         "(SOURCE_DIR, OUTPUT_FILE, TEMPLATE_FILE, ANTS_BUILD_TYPE)")
 endif()
 
-# Honor SOURCE_DATE_EPOCH for reproducible builds (distro packagers).
+# Reproducible builds (distro packagers): string(TIMESTAMP) itself reads
+# SOURCE_DATE_EPOCH when it is set. This branch only forces UTC.
 if(DEFINED ENV{SOURCE_DATE_EPOCH})
     string(TIMESTAMP ANTS_BUILD_DATE "%Y-%m-%d" UTC)
     string(TIMESTAMP ANTS_BUILD_TIME "%H:%M" UTC)
