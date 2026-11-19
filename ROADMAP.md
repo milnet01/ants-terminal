@@ -96080,6 +96080,8 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1288 `packaging/check-version-drift.sh:57` (Low)
   - row 1289 `packaging/debian/rules:6` (Low)
   - row 1290 `packaging/obs/obs-status.sh:5` (Low)
+  2026-11-19, ANTS-6156 (b4390f44) fixed the hooks rows: 1278, 1283,
+  1284, 1285, 1286. The packaging rows remain.
   **Layman:** Notes in the code that say something untrue, which misleads whoever changes it next.
   Kind: doc-fix.
   Source: review-code + review-readability 2026-11-06 (comment-fix).
@@ -96810,6 +96812,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1274 `hooks/ants-inbox-notice.sh:41` (Medium)
   - row 1275 `packaging/archlinux/PKGBUILD:66` (Medium)
   - row 1293 `packaging/completions/ants-terminal.bash:24` (Low)
+  2026-11-19, ANTS-6156 (f9cbcfb7) fixed row 1274: the inbox hook
+  uses ants_validate_session_id, with a red test. The packaging rows
+  remain.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -97062,6 +97067,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
 - 📋 [ANTS-6617] **Fold the duplicated logic the 2026-11-06 reviews found in tools-ci-gate.**
   1 findings. Each row's quote, problem and the reviewer's remedy are in docs/reviews/close-findings-2026-11-06.md; check each against current code first.
   - row 1235 `tools/install-hooks.sh:125` (Medium)
+  2026-11-19, ANTS-6156 (9ebd6918) folded the file half: one
+  pack_files array. pack_hook_regex is still hand-kept beside
+  hook_entries; spec ANTS-6310 § 4.4 names both.
   **Layman:** The same logic is written more than once here, so the copies drift apart.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (duplicate).
@@ -97788,6 +97796,10 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 280 `cc-job:128-140` (Low)
   - row 281 `ants-terminal.bash:24-27` (Low)
   - row 283 `decision:"block"` (Low)
+  2026-11-19: row 278's comment half is fixed (ANTS-6156, b4390f44).
+  The spec half stays: ANTS-1252 § 1.5 still promises the spec path,
+  and § 1.2 and its risk table say the veto strips a trailing bypass
+  token, where the code exits on it anywhere.
   **Layman:** Small things in this part of Ants behave wrongly; each is listed in the item.
   Kind: review-fix.
   Source: review-code + review-readability 2026-11-06 (bug).
@@ -98107,6 +98119,9 @@ keeps the reviewer's remedy, which is a claim to check before building.
   - row 1280 `packaging/release.sh:239` (Medium)
   - row 1282 `hooks/_common.sh:246` (Low)
   - row 1291 `packaging/obs/obs-setup.sh:19` (Low)
+  2026-11-19, ANTS-6156 (b4390f44) closed row 1282 by comment: the
+  helpers now say both nudges share them. Rename rejected: specs
+  ANTS-2141 and ANTS-2023, two env vars and the hook test pin the names.
   **Layman:** Code here is harder to follow than it needs to be.
   Kind: refactor.
   Source: review-code + review-readability 2026-11-06 (readability).
@@ -106708,13 +106723,24 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: tools-e2e-measure.
 
-- 📋 [ANTS-6156] **Readability fixes, hooks lane: hooks/_common.sh, hooks/ants-bash-veto.sh, hooks/ants-drift-check.sh, hooks/ants-inbox-notice.sh, hooks/ants-precompact-snapshot.sh, tools/install-hooks.sh.**
+- ✅ [ANTS-6156] **Readability fixes, hooks lane: hooks/_common.sh, hooks/ants-bash-veto.sh, hooks/ants-drift-check.sh, hooks/ants-inbox-notice.sh, hooks/ants-precompact-snapshot.sh, tools/install-hooks.sh.**
   Findings of the 2026-10-22 readability review (tools run), lane hooks:
   0 high, 6 medium, 10 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/08-hooks.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
   (ids L08-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  Closed 2026-11-19. Fixed: F1, F2 (comment; rename rejected:
+  specs ANTS-2141/2023, two env vars and the test pin the names), F3
+  (comment; behaviour stays with ANTS-6093), F4, F10, F11, F12, F15 and
+  11-06 row 1283 in b4390f44; F13 in 30567cf8; F5 (renamed
+  sentinel_and_scripts_current; bug stays with ANTS-6094) and F7 (file
+  list; regex fold stays with ANTS-6617) in 9ebd6918; F6 and F14 in
+  f9cbcfb7, red test first; sweep fix to hooks/README.md in 2fa3b1d7.
+  F9 was already fixed by ANTS-6581. Queued: F8 under ANTS-6098.
+  Dismissed: F16 — renaming ANTS_PRECOMMIT_NO_MIRRORS breaks every
+  citation of a bypass switch, and the hook's header already says it
+  covers both checks.
   **Layman:** Tidy the git and Claude hook scripts so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
@@ -112195,6 +112221,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 277 `_common.sh:291-293`.
   Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-19, ANTS-6156 (b4390f44): the _common.sh comment now says the
+  check is looser than meant and points here. Also L08-F7's other half:
+  the drift check globs hooks/*.sh while the installer ships
+  ants-*.sh + _common.sh; narrow both together here.
   **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -112208,6 +112238,9 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Premise check: n/a
   A possible bug, not a confirmed one. Investigate after the
   readability fixes land (user, 2026-10-22).
+  2026-11-19, ANTS-6156 (9ebd6918): already_installed is now
+  sentinel_and_scripts_current, and it and the installer header say
+  an edit to hook_entries alone is not applied. The bug is still open.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -112239,7 +112272,7 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   Source: review-readability-2026-10-22-tools.
   Lanes: hooks.
 
-- 📋 [ANTS-6097] **hooks/ants-session-preamble.sh:32 vs hooks/ants-precompact-snapshot.sh:27-28: preamble strips a bad session id while precompact rejects it, so one id can name different snapshot files.**
+- ✅ [ANTS-6097] **hooks/ants-session-preamble.sh:32 vs hooks/ants-precompact-snapshot.sh:27-28: preamble strips a bad session id while precompact rejects it, so one id can name different snapshot files.**
   Lead 48 from the readability review of tools/, hooks/, cmake/ and
   packaging/ (2026-10-22).
   Location: hooks/ants-session-preamble.sh:32 vs hooks/ants-precompact-snapshot.sh:27-28
@@ -112249,6 +112282,10 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 1486 `hooks/ants-session-
   preamble.sh:32`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Resolved by ANTS-6537 (verified 2026-11-19): the preamble now
+  passes its id through ants_validate_session_id, which rejects as
+  precompact does, so one id names one snapshot file. f9cbcfb7 put the
+  inbox hook on the same validator.
   **Layman:** A possible bug in the git and Claude hook scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
@@ -112264,6 +112301,8 @@ refuted are not filed (L17-C3, L21-C6, L36-C6).
   readability fixes land (user, 2026-10-22).
   The 2026-11-06 reviews also found this: row 1237 `tools/install-
   hooks.sh:188`. Details: docs/reviews/close-findings-2026-11-06.md.
+  2026-11-19: readability finding L08-F8 (the backup || true
+  asymmetry) is queued here too; the fix is one change for both.
   **Layman:** A possible bug in the developer and CI scripts, found during the code tidy-up review; it needs checking.
   Kind: investigate.
   Source: review-readability-2026-10-22-tools.
