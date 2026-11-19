@@ -106746,13 +106746,17 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: hooks.
 
-- 📋 [ANTS-6157] **Readability fixes, cmake lane: cmake/GenerateBuildInfoValues.cmake, cmake/QtVersionGuard.cmake, cmake/build_info_values.cpp.in.**
+- ✅ [ANTS-6157] **Readability fixes, cmake lane: cmake/GenerateBuildInfoValues.cmake, cmake/QtVersionGuard.cmake, cmake/build_info_values.cpp.in.**
   Findings of the 2026-10-22 readability review (tools run), lane cmake:
   0 high, 1 medium, 4 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/09-cmake.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
   (ids L09-F*). Fix high first. Prefer the fix that removes lines;
   readability wins where the two conflict. A finding marked "feeds
   ANTS-5796" also closes part of that item.
+  Shipped 2026-11-19 in 3d6f18cc. All five findings fixed (L09-F1 to F5).
+  F5 covered four refusals, not three: ANTS-6171 had added one since the
+  review. The lane's correctness lead (a reconfigure resetting the expected
+  Qt version) was already closed by ANTS-6171.
   **Layman:** Tidy the build configuration so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
