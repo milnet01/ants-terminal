@@ -432,7 +432,7 @@ TEST(mcp_roadmap_bundles, Inv7Inv8BranchWiring) {
     const std::string cpp = ants_test::slurpRemoteControl();
     expect(contains(cpp, "if (mode == QLatin1String(\"bundles\"))"),
            "INV-7/8: bundles branch present");
-    expect(contains(cpp, "buildRoadmapBundlesEnvelope(m_roadmapCacheBullets"),
+    expect(contains(cpp, "buildRoadmapBundlesEnvelope(rc.m_roadmapCacheBullets"),
            "INV-8: branch passes the cache (const) to the pure builder");
     expect(contains(cpp, "m_bundleSoftCapOverride"),
            "INV-12: soft-cap override seam read in the branch");

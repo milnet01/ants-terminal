@@ -498,8 +498,8 @@ public:
     // ANTS-1244 callers — returns the full unfiltered array.
     QJsonDocument cmdRoadmapQuery(const QJsonObject &req = {});
     // ANTS-4501 — roadmap_query mode:"report". Its own builder, on the
-    // buildRoadmapBundlesEnvelope precedent below: cmdRoadmapQuery is
-    // already past 2000 lines. Returns {} on a store error, with `error` set.
+    // buildRoadmapBundlesEnvelope precedent below, so a test can drive it
+    // directly. Returns {} on a store error, with `error` set.
     // Reads only — INV-10.
     static QJsonObject buildRoadmapReportEnvelope(
         RoadmapStore &store, std::optional<qint64> projectId, const QDate &today,
@@ -1542,6 +1542,9 @@ private:
     roadmapBullets(const QString &projectRoot, RoadmapSource::RoadmapText &text,
                    bool includeArchive, RoadmapSource::ReadError *why,
                    QString *error) const;
+
+    // ANTS-6164 — one roadmap_query call; defined beside cmdRoadmapQuery.
+    struct RoadmapQueryCall;
 
     // ANTS-3793 § 2.2 — the dispatch alone: true iff the store serves this
     // project, with NO records materialised. One site needs it, and needs it in

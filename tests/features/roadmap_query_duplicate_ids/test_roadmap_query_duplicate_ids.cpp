@@ -56,8 +56,9 @@ TEST(roadmap_query_duplicate_ids, Inv1HelperComputesOccurrences) {
     EXPECT_EQ(0, expect_failures());
 }
 
-// INV-2 — recompute on every cache-fill path. Three call sites
-// assign m_roadmapCacheBullets; each must call the detector.
+// INV-2 — recompute on every cache-fill path. Two call sites assign
+// m_roadmapCacheBullets (the refill and the shared cold fill); each
+// must call the detector.
 TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
@@ -70,9 +71,9 @@ TEST(roadmap_query_duplicate_ids, Inv2RecomputeOnCacheFill) {
     const int total = static_cast<int>(ants_test::countOccurrences(
         squashed,
         "m_roadmapCacheDuplicateIds = "
-        "rcComputeDuplicateIds(m_roadmapCacheBullets);"));
-    expect(total >= 3,
-           ("INV-2: recompute call site expected at all three "
+        "rcComputeDuplicateIds(rc.m_roadmapCacheBullets);"));
+    expect(total >= 2,
+           ("INV-2: recompute call site expected at both "
             "cache-fill paths; found " +
             std::to_string(total)).c_str());
     EXPECT_EQ(0, expect_failures());
@@ -100,11 +101,11 @@ TEST(roadmap_query_duplicate_ids, Inv45EmissionGatedAndThreePaths) {
     // Avoid the Qt `emit` macro (defined to nothing) — it would
     // strip the identifier.
     const int emitCount = count(cpp,
-        "out[\"duplicate_ids\"] = m_roadmapCacheDuplicateIds;");
+        "out[\"duplicate_ids\"] = rc.m_roadmapCacheDuplicateIds;");
     expect(emitCount >= 3,
            ("INV-4/5: expected three emission sites; found " +
             std::to_string(emitCount)).c_str());
-    expect(contains(cpp, "!m_roadmapCacheDuplicateIds.isEmpty()"),
+    expect(contains(cpp, "!rc.m_roadmapCacheDuplicateIds.isEmpty()"),
            "INV-4: emission gated on non-empty descriptor (keeps "
            "back-compat envelope shape on a clean roadmap)");
     EXPECT_EQ(0, expect_failures());

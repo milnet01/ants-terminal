@@ -53,9 +53,9 @@ TEST(roadmap_query_per_section_etag, Inv2SectionPathFilters) {
            "INV-2: filter helper called somewhere in remotecontrol.cpp");
     // Anchor: section path's call site references sec->slug.
     expect(contains(cpp,
-        "rcFilterDuplicateIdsForSection(\n                m_roadmapCacheDuplicateIds, sec->slug)") ||
+        "rcFilterDuplicateIdsForSection(\n            rc.m_roadmapCacheDuplicateIds, sec->slug)") ||
         contains(cpp,
-        "rcFilterDuplicateIdsForSection(m_roadmapCacheDuplicateIds, sec->slug)"),
+        "rcFilterDuplicateIdsForSection(rc.m_roadmapCacheDuplicateIds, sec->slug)"),
            "INV-2: section path calls filter with sec->slug");
     EXPECT_EQ(0, expect_failures());
 }
@@ -84,7 +84,7 @@ TEST(roadmap_query_per_section_etag, Inv4FullFilePathUnchanged) {
     // path — section path has been replaced with the filter call).
     int hits = 0;
     size_t pos = 0;
-    const std::string needle = "out[\"duplicate_ids\"] = m_roadmapCacheDuplicateIds";
+    const std::string needle = "out[\"duplicate_ids\"] = rc.m_roadmapCacheDuplicateIds";
     while ((pos = cpp.find(needle, pos)) != std::string::npos) {
         ++hits;
         pos += needle.size();

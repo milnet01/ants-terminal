@@ -99,7 +99,7 @@ TEST(roadmap_query_section_index, Inv4EmitEverySection) {
     expect(contains(cpp, "INV-4 — emit EVERY indexed section"),
            "INV-4: emission anchor present (loops m_roadmapIndex, "
            "not bullets tally)");
-    expect(contains(cpp, "for (const auto &sec : std::as_const(m_roadmapIndex))"),
+    expect(contains(cpp, "for (const auto &sec : std::as_const(rc.m_roadmapIndex))"),
            "INV-4: walks the full index (catches empty sections)");
     EXPECT_EQ(0, expect_failures());
 }

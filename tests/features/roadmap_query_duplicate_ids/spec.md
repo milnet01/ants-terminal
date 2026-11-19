@@ -30,9 +30,9 @@ one entry per ID seen on more than one bullet. Each entry carries
 The detector runs at every call site that assigns
 `m_roadmapCacheBullets`:
 
-1. Full-file refresh after stale-cache wipe.
-2. Section_index lazy-fill from a section-mode cache HIT.
-3. Full-file lazy-fill from a section-mode cache HIT.
+1. Full-file refresh after stale-cache wipe (`refillCache`).
+2. The cold-cache fill every whole-roadmap mode shares
+   (`fillBulletsIfCold`).
 
 Each populates `m_roadmapCacheDuplicateIds` from
 `rcComputeDuplicateIds(m_roadmapCacheBullets)`.

@@ -509,10 +509,8 @@ void rcEmitSourcesRollup(QJsonObject &out, const QJsonArray &bullets,
 // ---------------------------------------------------------------- ANTS-4501 --
 // roadmap_query mode:"report". Spec: docs/specs/ANTS-4501-roadmap-report.md.
 //
-// Its own builder rather than an arm inside cmdRoadmapQuery(), on the
-// mode:"bundles" precedent above and for the same reason: that function is
-// already past two thousand lines. It returns QJsonObject, as the bundles
-// builder does — cmdRoadmapQuery wraps it.
+// Its own builder, on the mode:"bundles" precedent above. It returns
+// QJsonObject, as the bundles builder does — RoadmapQueryCall::report wraps it.
 //
 // INV-10: this writes nothing. No row, no file, no migration, no id
 // allocation — every call below is a const reader on the store.
@@ -886,6 +884,125 @@ int rcIdsThatFit(const QJsonObject &reply, const QJsonArray &fullRows,
 
 }  // namespace
 
+// ANTS-6164 — one roadmap_query call: the request, the reply being built and
+// the steps that fill it. Lives for the length of cmdRoadmapQuery().
+struct RemoteControl::RoadmapQueryCall {
+    RoadmapQueryCall(RemoteControl &owner, const QJsonObject &request)
+        : rc(owner), req(request) {}
+
+    RemoteControl &rc;
+    const QJsonObject &req;
+    QJsonObject out;   // the reply
+
+    // The order of the steps; read this first.
+    auto run() -> QJsonDocument;
+
+    // --- Arguments. Each parse step fills its fields, or returns a refusal.
+    auto parseStatus() -> std::optional<QJsonDocument>;
+    auto parseTextFilters() -> std::optional<QJsonDocument>;
+    auto parseKind() -> std::optional<QJsonDocument>;
+    auto parseSource() -> std::optional<QJsonDocument>;
+    auto parseIdSelectors() -> std::optional<QJsonDocument>;
+    auto parsePaging() -> std::optional<QJsonDocument>;
+    auto parseMode() -> std::optional<QJsonDocument>;
+    auto checkCombos() -> std::optional<QJsonDocument>;
+    auto parseVersion() -> std::optional<QJsonDocument>;
+    auto parseShippedWindow() -> std::optional<QJsonDocument>;
+    void parseFlags();
+    void readCallerRoot();
+
+    QString filter;            // one status name, "all", or "set" for a list
+    QStringList filterSet;
+    QJsonValue filterEcho;
+    QString sectionFilter;     // section_index's coarser view of the status
+    QString section;
+    QString queryArg;
+    mcp::QueryMode queryMode = mcp::QueryMode::Substring;
+    QString bodyMatchArg;
+    bool bodyMatchActive = false;
+    mcp::QueryMode bodyMatchMode = mcp::QueryMode::Substring;
+    QString kindArg;
+    QStringList sourceArgs;
+    int sourceFilteredOut = 0;
+    QString idArg;
+    QStringList idsArg;
+    QStringList idsArgInputOrder;   // INV-9 — first-occurrence ordering.
+    int reqBodyCap = 0;
+    bool singleIdFetch = false;
+    int idBodyCap = 0;
+    bool bodyCapClamped = false;
+    int listBodyCap = 0;
+    bool listCapClamped = false;
+    bool callerPassedOffset = false;
+    bool callerPassedLimit = false;
+    int offsetArg = 0;
+    int limitArg = -1;         // -1 = auto-pick
+    bool hasModeArg = false;
+    QString mode;
+    QStringList bulletFields;
+    QStringList bulletFieldsAvailable;
+    QString sourceGroup;
+    QString versionArg;
+    bool wantShippedWindow = false;
+    QDate shippedSince, shippedUntil;
+    bool hasIncludeHeadersArg = false;
+    bool includeSectionHeaders = false;
+    bool hasIncludeNarratorsArg = false;
+    bool includeNarratorBullets = false;
+    bool hasIncludeBodyArg = false;
+    bool includeBody = false;
+    QString callerRaw;
+    QString callerCanonical;   // empty when the caller named no cwd
+
+    // --- Row filters and reply notes the modes share.
+    bool keepStatus(const QString &s);
+    void applyBodyMatch(QJsonArray &arr);
+    void applyQueryFilter(QJsonArray &arr);
+    void applyKindFilter(QJsonArray &arr);
+    void applySourceFilter(QJsonArray &arr);
+    void announceListCap(QJsonObject &reply);
+    void shrinkToFit(QJsonObject &reply);
+    void projectAndReportBulletFields(QJsonArray &arr);
+    static bool isRollupBullet(const QJsonValue &v);
+    static bool isNarratorBullet(const QJsonValue &v);
+    bool shouldDropUnnumbered(const QJsonValue &v);
+
+    // --- The store-only modes.
+    auto ledger() -> QJsonDocument;
+    auto report() -> QJsonDocument;
+
+    // --- The roadmap file and RemoteControl's bullet cache.
+    auto resolveRoadmapFile() -> std::optional<QJsonDocument>;
+    auto refuseRoadmapSource(RoadmapSource::ReadError srcWhy,
+                             const QString &srcErr) -> QJsonDocument;
+    void stampRoadmapSource();
+    void openTextAndCheckSync();
+    auto readFailed() -> QJsonDocument;
+    auto refillCache() -> std::optional<QJsonDocument>;
+    auto fillBulletsIfCold() -> std::optional<QJsonDocument>;
+    auto refuseUnrecognisedFormat() -> std::optional<QJsonDocument>;
+
+    QString path;
+    QFileInfo fi;
+    qint64 mtime = 0;
+    qint64 nowMs = 0;
+    bool fresh = false;        // the cache already holds this file
+    std::optional<RoadmapSource::RoadmapText> textHolder;
+
+    // --- One method per mode or path; each returns the finished reply.
+    auto sectionIndex() -> QJsonDocument;
+    auto bundles() -> QJsonDocument;
+    auto sectionOrVersion() -> QJsonDocument;
+    auto byId() -> QJsonDocument;
+    auto byIds() -> QJsonDocument;
+    auto list() -> QJsonDocument;
+
+    struct ListCounts { int beforeIdPrune = 0; int idBearing = 0; };
+    auto pruneAndFilter(QJsonArray &filtered) -> ListCounts;
+    void emitBulletPage(QJsonArray &filtered, const ListCounts &n, bool inSection);
+    void attachLinks(QJsonArray &arr);
+};
+
 // ANTS-1117 v1: roadmap-query — parse the active tab's ROADMAP.md
 // (cached on mtime; INV-10 rate-limit) into a structured bullet
 // stream for Claude. Returns the unified `{ok, error, code}` shape
@@ -896,8 +1013,52 @@ int rcIdsThatFit(const QJsonObject &reply, const QJsonArray &fullRows,
 // to hold the FULL unfiltered array; filtering happens at response
 // build time over the cached entries (sub-ms walk).
 QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-1247-INV-1
-    QJsonObject out;
+    return RoadmapQueryCall(*this, req).run();
+}
 
+// Trailing return types from here to the end of the verb: the tests that
+// read this file take the verb's text to end at the next line that starts
+// `QJsonDocument RemoteControl::`.
+auto RemoteControl::RoadmapQueryCall::run() -> QJsonDocument {
+    // Arguments, in the order their refusals have always been checked. Two
+    // of these steps leave an echo in `out` that every later reply carries:
+    // checkCombos writes `body_match`, parseVersion writes `version`.
+    if (auto r = parseStatus()) return *r;
+    if (auto r = parseTextFilters()) return *r;
+    if (auto r = parseKind()) return *r;
+    if (auto r = parseSource()) return *r;
+    if (auto r = parseIdSelectors()) return *r;
+    if (auto r = parsePaging()) return *r;
+    if (auto r = parseMode()) return *r;
+    if (auto r = checkCombos()) return *r;
+    if (auto r = parseVersion()) return *r;
+    if (auto r = parseShippedWindow()) return *r;
+    parseFlags();
+    readCallerRoot();
+
+    // The two modes that read the store and never the roadmap file.
+    if (mode == QLatin1String("ledger")) return ledger();
+    if (mode == QLatin1String("report")) return report();
+
+    // Every mode below reads the file's cached bullets. After these three
+    // steps `out` also holds the backend stamp (`source`, `file_ahead_of_store`
+    // and its two ids) and, when check_sync was asked, the sync fields.
+    if (auto r = resolveRoadmapFile()) return *r;
+    openTextAndCheckSync();
+    if (!fresh)
+        if (auto r = refillCache()) return *r;
+
+    if (mode == QLatin1String("section_index")) return sectionIndex();
+    if (mode == QLatin1String("bundles")) return bundles();
+    if (!section.isEmpty() || !versionArg.isEmpty()) return sectionOrVersion();
+    if (auto r = fillBulletsIfCold()) return *r;
+    if (auto r = refuseUnrecognisedFormat()) return *r;
+    if (!idArg.isEmpty()) return byId();
+    if (!idsArg.isEmpty()) return byIds();
+    return list();   // mode bullets, headline_only or sources
+}
+
+auto RemoteControl::RoadmapQueryCall::parseStatus() -> std::optional<QJsonDocument> {
     // ANTS-6365 — an argument sent under two of its names is refused.
     for (const QJsonObject &clash :
          {aliasClash(req, "roadmap_query", {"status", "filter"}),
@@ -932,13 +1093,13 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         return s;
     };
     QString statusArg = statusVal.toString();
-    QString filter = statusName(statusArg).toLower();
+    filter = statusName(statusArg).toLower();
     if (filter.isEmpty()) filter = QStringLiteral("all");
     // ANTS-5376 — an ARRAY is the union of its elements. `filterSet` is what
     // the predicates below read; a single value is a set of one. `filter`
     // stays a string for the "all" short-circuits: it is "all" when the set
     // holds "all", and otherwise names no single status.
-    QStringList filterSet{filter};
+    filterSet = QStringList{filter};
     if (statusVal.isArray()) {
         filterSet.clear();
         for (const auto &v : statusVal.toArray()) {
@@ -949,7 +1110,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                      ? QStringLiteral("all")
                      : QStringLiteral("set");
     }
-    const QJsonValue filterEcho =
+    filterEcho =
         statusVal.isArray() ? QJsonValue(QJsonArray::fromStringList(filterSet))
                             : QJsonValue(filter);
 
@@ -1024,34 +1185,37 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QStringLiteral("all");
         return f;
     };
-    QString sectionFilter = aggregateOf(filterSet.first());
+    sectionFilter = aggregateOf(filterSet.first());
     for (const QString &f : std::as_const(filterSet))
         if (aggregateOf(f) != sectionFilter) sectionFilter = QStringLiteral("all");
+    return std::nullopt;
+}
 
-    // ANTS-3408 / ANTS-5376 — one status predicate for both emission paths,
-    // over the whole set. It had been written out twice, once per path.
-    auto keepStatus = [&filterSet](const QString &s) {
-        static const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
-        static const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
-        static const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");     // ✅
-        static const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
-        static const QString droppedEmoji    = QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫
-        for (const QString &f : filterSet) {
-            if ((f == QLatin1String("all")) ||
-                (f == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
-                (f == QLatin1String("shipped")     && (s == doneEmoji)) ||
-                (f == QLatin1String("planned")     && (s == plannedEmoji)) ||
-                (f == QLatin1String("in-progress") && (s == progressEmoji)) ||
-                (f == QLatin1String("considered")  && (s == consideredEmoji)) ||
-                (f == QLatin1String("dropped")     && (s == droppedEmoji)))
-                return true;
-        }
-        return false;
-    };
+// ANTS-3408 / ANTS-5376 — one status predicate for both emission paths,
+// over the whole set. It had been written out twice, once per path.
+bool RemoteControl::RoadmapQueryCall::keepStatus(const QString &s) {
+    static const QString plannedEmoji    = QString::fromUtf8("\xF0\x9F\x93\x8B"); // 📋
+    static const QString progressEmoji   = QString::fromUtf8("\xF0\x9F\x9A\xA7"); // 🚧
+    static const QString doneEmoji       = QString::fromUtf8("\xE2\x9C\x85");     // ✅
+    static const QString consideredEmoji = QString::fromUtf8("\xF0\x9F\x92\xAD"); // 💭
+    static const QString droppedEmoji    = QString::fromUtf8("\xF0\x9F\x9A\xAB"); // 🚫
+    for (const QString &f : filterSet) {
+        if ((f == QLatin1String("all")) ||
+            (f == QLatin1String("active")      && (s == plannedEmoji || s == progressEmoji)) ||
+            (f == QLatin1String("shipped")     && (s == doneEmoji)) ||
+            (f == QLatin1String("planned")     && (s == plannedEmoji)) ||
+            (f == QLatin1String("in-progress") && (s == progressEmoji)) ||
+            (f == QLatin1String("considered")  && (s == consideredEmoji)) ||
+            (f == QLatin1String("dropped")     && (s == droppedEmoji)))
+            return true;
+    }
+    return false;
+}
 
+auto RemoteControl::RoadmapQueryCall::parseTextFilters() -> std::optional<QJsonDocument> {
     // ANTS-1287-INV-1: optional `section` slug. Empty/missing → full-file
     // path (existing behaviour, INV-6).
-    const QString section = req.value(QStringLiteral("section")).toString();
+    section = req.value(QStringLiteral("section")).toString();
 
     // ANTS-3391 — optional `query` case-insensitive keyword filter. A
     // list-path filter: it narrows the status/section-filtered bullets to
@@ -1076,7 +1240,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // a fix rather than a convenience. Both together refuse (ANTS-6365).
     QJsonValue queryVal = req.value(QStringLiteral("query"));
     if (queryVal.isUndefined()) queryVal = req.value(QStringLiteral("q"));
-    QString queryArg = queryVal.toString().trimmed();
+    queryArg = queryVal.toString().trimmed();
     if (queryArg.size() > 200) queryArg.truncate(200);
     for (int i = 0; i < queryArg.size(); ++i) {
         if (queryArg.at(i).unicode() < 0x20) queryArg[i] = QChar('?');
@@ -1087,7 +1251,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     const bool queryRegex = req.value(QStringLiteral("regex")).toBool(false);
     const bool queryWholeWord =
         req.value(QStringLiteral("whole_word")).toBool(false);
-    const mcp::QueryMode queryMode =
+    queryMode =
         queryRegex     ? mcp::QueryMode::Regex
         : queryWholeWord ? mcp::QueryMode::WholeWord
                          : mcp::QueryMode::Substring;
@@ -1109,10 +1273,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-5468 — `body_match` bounds WHAT of each row comes back, where
     // `query` picks WHICH rows: each body keeps only the lines that match,
     // case-insensitively. Same matcher as `query`, so the two read alike.
-    const QString bodyMatchArg =
+    bodyMatchArg =
         req.value(QStringLiteral("body_match")).toString();
-    const bool bodyMatchActive = !bodyMatchArg.isEmpty();
-    const mcp::QueryMode bodyMatchMode =
+    bodyMatchActive = !bodyMatchArg.isEmpty();
+    bodyMatchMode =
         req.value(QStringLiteral("body_match_regex")).toBool(false)
             ? mcp::QueryMode::Regex : mcp::QueryMode::Substring;
     if (bodyMatchActive && bodyMatchMode == mcp::QueryMode::Regex &&
@@ -1126,52 +1290,57 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
                 .arg(QRegularExpression(bodyMatchArg).errorString());
         return QJsonDocument(o);
     }
-    // Runs on the WHOLE body, before any emission cap, so a line past the cap
-    // is still found. Adds `body_lines_dropped` to each row it filters.
-    auto applyBodyMatch = [&](QJsonArray &arr) {
-        if (!bodyMatchActive) return;
-        const mcp::QueryMatcher matcher(bodyMatchArg, bodyMatchMode);
-        bool bodySeen = false;
-        bool lineKept = false;
-        for (int i = 0; i < arr.size(); ++i) {
-            QJsonObject o = arr.at(i).toObject();
-            const auto it = o.constFind(QStringLiteral("body"));
-            if (it == o.constEnd()) continue;
-            bodySeen = true;
-            const QStringList lines = it->toString().split(QLatin1Char('\n'));
-            QStringList kept;
-            for (const QString &line : lines)
-                if (matcher.matches(line)) kept.append(line);
-            lineKept = lineKept || !kept.isEmpty();
-            o["body"] = kept.join(QLatin1Char('\n'));
-            o["body_lines_dropped"] = int(lines.size() - kept.size());
-            arr.replace(i, o);
-        }
-        // ANTS-6203 — a literal miss on text that reads like a pattern. A lone
-        // `.` does not count: "Bundle.h" is a filename far more often than a
-        // regex, and regex mode would not rescue that miss.
-        static const QRegularExpression regexMeta(
-            QStringLiteral(R"([|^$\\()\[\]*+?])"));
-        if (bodySeen && !lineKept && bodyMatchMode == mcp::QueryMode::Substring &&
-            bodyMatchArg.contains(regexMeta) &&
-            QRegularExpression(bodyMatchArg).isValid()) {
-            out["body_match_hint"] = QStringLiteral(
-                "body_match was read as plain text and matched no line; pass "
-                "body_match_regex:true to read it as a regular expression");
-        }
-    };
-    auto applyQueryFilter = [&queryArg, queryMode](QJsonArray &arr) {
-        if (queryArg.isEmpty()) return;  // no filter → keep all, skip iteration
-        // ANTS-5104 — compiled once for the whole array, not per bullet.
-        const mcp::QueryMatcher matcher(queryArg, queryMode);
-        QJsonArray kept;
-        for (const auto &v : std::as_const(arr)) {
-            if (matcher.matchesBullet(v.toObject()))
-                kept.append(v);
-        }
-        arr = kept;
-    };
+    return std::nullopt;
+}
 
+// Runs on the WHOLE body, before any emission cap, so a line past the cap
+// is still found. Adds `body_lines_dropped` to each row it filters.
+void RemoteControl::RoadmapQueryCall::applyBodyMatch(QJsonArray &arr) {
+    if (!bodyMatchActive) return;
+    const mcp::QueryMatcher matcher(bodyMatchArg, bodyMatchMode);
+    bool bodySeen = false;
+    bool lineKept = false;
+    for (int i = 0; i < arr.size(); ++i) {
+        QJsonObject o = arr.at(i).toObject();
+        const auto it = o.constFind(QStringLiteral("body"));
+        if (it == o.constEnd()) continue;
+        bodySeen = true;
+        const QStringList lines = it->toString().split(QLatin1Char('\n'));
+        QStringList kept;
+        for (const QString &line : lines)
+            if (matcher.matches(line)) kept.append(line);
+        lineKept = lineKept || !kept.isEmpty();
+        o["body"] = kept.join(QLatin1Char('\n'));
+        o["body_lines_dropped"] = int(lines.size() - kept.size());
+        arr.replace(i, o);
+    }
+    // ANTS-6203 — a literal miss on text that reads like a pattern. A lone
+    // `.` does not count: "Bundle.h" is a filename far more often than a
+    // regex, and regex mode would not rescue that miss.
+    static const QRegularExpression regexMeta(
+        QStringLiteral(R"([|^$\\()\[\]*+?])"));
+    if (bodySeen && !lineKept && bodyMatchMode == mcp::QueryMode::Substring &&
+        bodyMatchArg.contains(regexMeta) &&
+        QRegularExpression(bodyMatchArg).isValid()) {
+        out["body_match_hint"] = QStringLiteral(
+            "body_match was read as plain text and matched no line; pass "
+            "body_match_regex:true to read it as a regular expression");
+    }
+}
+
+void RemoteControl::RoadmapQueryCall::applyQueryFilter(QJsonArray &arr) {
+    if (queryArg.isEmpty()) return;  // no filter → keep all, skip iteration
+    // ANTS-5104 — compiled once for the whole array, not per bullet.
+    const mcp::QueryMatcher matcher(queryArg, queryMode);
+    QJsonArray kept;
+    for (const auto &v : std::as_const(arr)) {
+        if (matcher.matchesBullet(v.toObject()))
+            kept.append(v);
+    }
+    arr = kept;
+}
+
+auto RemoteControl::RoadmapQueryCall::parseKind() -> std::optional<QJsonDocument> {
     // ANTS-4836 — optional `kind` filter. Until now `kind` was write-only in
     // practice: roadmap_log sets it, every read surface returns it, and
     // nothing selected on it, so "which review fixes are still open?" meant
@@ -1190,7 +1359,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         k.sort();
         return k;
     }();
-    QString kindArg = req.value(QStringLiteral("kind")).toString().trimmed();
+    kindArg = req.value(QStringLiteral("kind")).toString().trimmed();
     if (!kindArg.isEmpty()) {
         // Same 64-byte + control-char hygiene the status / id echoes use, so
         // a stray value cannot smuggle ANSI bytes into the refusal.
@@ -1208,17 +1377,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         }
         kindArg = folded;
     }
-    auto applyKindFilter = [&kindArg](QJsonArray &arr) {
-        if (kindArg.isEmpty()) return;
-        QJsonArray kept;
-        for (const auto &v : std::as_const(arr)) {
-            if (v.toObject().value(QStringLiteral("kind")).toString().toLower()
-                == kindArg)
-                kept.append(v);
-        }
-        arr = kept;
-    };
+    return std::nullopt;
+}
 
+void RemoteControl::RoadmapQueryCall::applyKindFilter(QJsonArray &arr) {
+    if (kindArg.isEmpty()) return;
+    QJsonArray kept;
+    for (const auto &v : std::as_const(arr)) {
+        if (v.toObject().value(QStringLiteral("kind")).toString().toLower()
+            == kindArg)
+            kept.append(v);
+    }
+    arr = kept;
+}
+
+auto RemoteControl::RoadmapQueryCall::parseSource() -> std::optional<QJsonDocument> {
     // ANTS-4985 — `source` provenance filter. PREFIX, not equality, and not an
     // enum: the recognised values are DATED (`indie-review-2026-05-13`), so
     // equality answers nothing a caller wants to ask, and the column is free
@@ -1236,7 +1409,6 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // `review-fix` or `audit-fix`. The other 30 are `perf`, `doc`, `refactor`,
     // `marketing` — a review legitimately produces work of any kind, so
     // provenance and kind are orthogonal and `kind` cannot carry both.
-    QStringList sourceArgs;
     {
         const QJsonValue sv = req.value(QStringLiteral("source"));
         QStringList raw;
@@ -1279,21 +1451,24 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QJsonDocument(out);
         }
     }
-    int sourceFilteredOut = 0;
-    auto applySourceFilter = [&sourceArgs, &sourceFilteredOut](QJsonArray &arr) {
-        if (sourceArgs.isEmpty()) return;
-        QJsonArray kept;
-        for (const auto &v : std::as_const(arr)) {
-            const QString src =
-                v.toObject().value(QStringLiteral("source")).toString().toLower();
-            bool hit = false;
-            for (const QString &pfx : std::as_const(sourceArgs))
-                if (src.startsWith(pfx)) { hit = true; break; }
-            if (hit) kept.append(v); else ++sourceFilteredOut;
-        }
-        arr = kept;
-    };
+    return std::nullopt;
+}
 
+void RemoteControl::RoadmapQueryCall::applySourceFilter(QJsonArray &arr) {
+    if (sourceArgs.isEmpty()) return;
+    QJsonArray kept;
+    for (const auto &v : std::as_const(arr)) {
+        const QString src =
+            v.toObject().value(QStringLiteral("source")).toString().toLower();
+        bool hit = false;
+        for (const QString &pfx : std::as_const(sourceArgs))
+            if (src.startsWith(pfx)) { hit = true; break; }
+        if (hit) kept.append(v); else ++sourceFilteredOut;
+    }
+    arr = kept;
+}
+
+auto RemoteControl::RoadmapQueryCall::parseIdSelectors() -> std::optional<QJsonDocument> {
     // ANTS-1856 — optional `id` single-item selector. When set, the
     // query returns just the bullet(s) whose id equals this value,
     // bypassing the status filter + pagination so a caller after one
@@ -1304,7 +1479,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // the section= contract (ANTS-1524). 64-byte + control-char hygiene
     // matches bad_status / bad_section so a stray id can't smuggle
     // ANSI/control bytes into the echoed envelope.
-    QString idArg = req.value(QStringLiteral("id")).toString();
+    idArg = req.value(QStringLiteral("id")).toString();
     if (idArg.size() > 64) idArg.truncate(64);
     for (int i = 0; i < idArg.size(); ++i) {
         if (idArg.at(i).unicode() < 0x20) idArg[i] = QChar('?');
@@ -1318,7 +1493,6 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-4091 — 0 ⟹ not supplied. The targeted default is DERIVED from the
     // id count once `ids` is parsed (below), so it is no longer the 2000 list
     // cap; an explicit value still wins.
-    int reqBodyCap = 0;
     if (req.contains(QStringLiteral("max_body_bytes"))) {
         int req_cap = req.value(QStringLiteral("max_body_bytes")).toInt(
             kRoadmapQueryBodyCap);
@@ -1350,8 +1524,6 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // NON-EMPTY ids that yields zero valid ids after hygiene, REFUSES
     // bad_args rather than returning a large wrong result. An empty
     // array / empty string stays the documented "absent" fall-through.
-    QStringList idsArg;
-    QStringList idsArgInputOrder;  // INV-9 — first-occurrence ordering.
     {
         const QJsonValue idsVal = req.value(QStringLiteral("ids"));
         QJsonArray arr;
@@ -1431,9 +1603,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // offloads, and the caller pages the spill); a wide ids[] fetch may not.
     // The DEFAULT below is untouched — an absent max_body_bytes still
     // resolves exactly as ANTS-4091 set it.
-    const bool singleIdFetch =
+    singleIdFetch =
         idsArg.size() == 1 || (idsArg.isEmpty() && !idArg.isEmpty());
-    const int idBodyCap =
+    idBodyCap =
         reqBodyCap > 0
             ? qMin(reqBodyCap, singleIdFetch ? kRoadmapQueryBodySingleIdCap
                                              : kRoadmapQueryBodyStoreCap)
@@ -1444,7 +1616,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // raised a small max_body_bytes to the list cap and the id-count ceiling
     // lowered a large one, both without a word, so a caller keeping the reply
     // inline got a larger one and could not tell why.
-    const bool bodyCapClamped =
+    bodyCapClamped =
         req.value(QStringLiteral("max_body_bytes")).isDouble()
         && req.value(QStringLiteral("max_body_bytes")).toInt() != idBodyCap;
     // ANTS-5467 — the list and section paths' body cap. max_body_bytes may
@@ -1453,47 +1625,52 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // which is already floored at 2000.
     const bool listCapAsked =
         req.value(QStringLiteral("max_body_bytes")).isDouble();
-    const int listBodyCap =
+    listBodyCap =
         listCapAsked
             ? qBound(kFitMinBodyCap,
                      req.value(QStringLiteral("max_body_bytes")).toInt(),
                      kRoadmapQueryBodyCap)
             : kRoadmapQueryBodyCap;
-    const bool listCapClamped =
+    listCapClamped =
         listCapAsked
         && req.value(QStringLiteral("max_body_bytes")).toInt() != listBodyCap;
-    // Called only where bodies are emitted: a clamp on a reply carrying none
-    // would describe nothing.
-    auto announceListCap = [&](QJsonObject &reply) {
-        if (!listCapClamped) return;
-        reply["body_cap_clamped"]         = true;
-        reply["max_body_bytes_effective"] = listBodyCap;
-    };
-    // ANTS-5477 — shorten a targeted reply's bodies before it spills. Not on
-    // a single id asked for by size: ANTS-4630 made the spill the route to
-    // the middle of a long body there.
-    // ANTS-6825 — and say which limit forced it, and how many ids a call
-    // may name to get its bodies at the cap asked for.
-    auto shrinkToFit = [&](QJsonObject &reply) {
-        if (!mcp::offloadRequested(req)) return;
-        if (singleIdFetch && reqBodyCap > 0) return;
-        const qint64 threshold =
-            mcp::offloadThresholdFor(QStringLiteral("roadmap_query"), req);
-        const QJsonArray fullRows = reply.value(QStringLiteral("bullets")).toArray();
-        const int cap = rcShrinkBodiesToFit(
-            reply, idBodyCap,
-            req.value(QStringLiteral("body_from_end")).toBool(false), threshold);
-        if (cap > 0) {
-            reply["bodies_shrunk_to_fit"]      = true;
-            reply["max_body_bytes_effective"] = cap;
-            reply["shrink_reason"] = QStringLiteral(
-                "the reply would pass the %1-byte inline limit; name at most "
-                "ids_per_call ids per call for bodies at the cap asked for")
-                .arg(threshold);
-            reply["ids_per_call"] = rcIdsThatFit(reply, fullRows, threshold);
-        }
-    };
+    return std::nullopt;
+}
 
+// Called only where bodies are emitted: a clamp on a reply carrying none
+// would describe nothing.
+void RemoteControl::RoadmapQueryCall::announceListCap(QJsonObject &reply) {
+    if (!listCapClamped) return;
+    reply["body_cap_clamped"]         = true;
+    reply["max_body_bytes_effective"] = listBodyCap;
+}
+
+// ANTS-5477 — shorten a targeted reply's bodies before it spills. Not on
+// a single id asked for by size: ANTS-4630 made the spill the route to
+// the middle of a long body there.
+// ANTS-6825 — and say which limit forced it, and how many ids a call
+// may name to get its bodies at the cap asked for.
+void RemoteControl::RoadmapQueryCall::shrinkToFit(QJsonObject &reply) {
+    if (!mcp::offloadRequested(req)) return;
+    if (singleIdFetch && reqBodyCap > 0) return;
+    const qint64 threshold =
+        mcp::offloadThresholdFor(QStringLiteral("roadmap_query"), req);
+    const QJsonArray fullRows = reply.value(QStringLiteral("bullets")).toArray();
+    const int cap = rcShrinkBodiesToFit(
+        reply, idBodyCap,
+        req.value(QStringLiteral("body_from_end")).toBool(false), threshold);
+    if (cap > 0) {
+        reply["bodies_shrunk_to_fit"]      = true;
+        reply["max_body_bytes_effective"] = cap;
+        reply["shrink_reason"] = QStringLiteral(
+            "the reply would pass the %1-byte inline limit; name at most "
+            "ids_per_call ids per call for bodies at the cap asked for")
+            .arg(threshold);
+        reply["ids_per_call"] = rcIdsThatFit(reply, fullRows, threshold);
+    }
+}
+
+auto RemoteControl::RoadmapQueryCall::parsePaging() -> std::optional<QJsonDocument> {
     // ANTS-1436-INV-8 — optional `offset` + `limit` args. Forwarded
     // verbatim from the dispatch lambda (NOT type-gated there) so
     // we can emit bad_args on non-numeric. isUndefined() is the
@@ -1512,10 +1689,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     QJsonValue limitVal = req.value(QStringLiteral("limit"));
     if (limitVal.isUndefined())
         limitVal = req.value(QStringLiteral("max_results"));
-    const bool callerPassedOffset = !offsetVal.isUndefined();
-    const bool callerPassedLimit  = !limitVal.isUndefined();
-    int offsetArg = 0;
-    int limitArg  = -1;  // sentinel: -1 = auto-pick
+    callerPassedOffset = !offsetVal.isUndefined();
+    callerPassedLimit  = !limitVal.isUndefined();
     if (callerPassedOffset) {
         if (!offsetVal.isDouble()) {
             out["ok"] = false;
@@ -1554,13 +1729,16 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QJsonDocument(out);
         }
     }
+    return std::nullopt;
+}
 
+auto RemoteControl::RoadmapQueryCall::parseMode() -> std::optional<QJsonDocument> {
     // ANTS-1437-INV-1/2: optional `mode` arg. Default "bullets" (back-
     // compat). "section_index" returns a compact section index instead
     // of bullets. Unknown mode → bad_mode with the same 64-byte +
     // control-char hygiene as bad_status / bad_section.
-    const bool hasModeArg = req.contains(QStringLiteral("mode"));
-    QString mode = req.value(QStringLiteral("mode")).toString().toLower();
+    hasModeArg = req.contains(QStringLiteral("mode"));
+    mode = req.value(QStringLiteral("mode")).toString().toLower();
     if (mode.isEmpty()) mode = QStringLiteral("bullets");
     // ANTS-4380 — `sections` is accepted as an alias for `section_index`,
     // because the RESPONSE key that mode returns is called `sections`, so the
@@ -1629,7 +1807,6 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // (ANTS-4699) that cannot carry `kind`; and the wide shape a caller falls
     // back to emits `headline` and `headline_oneline` as byte-identical
     // strings on a single-line headline. One argument closes all three.
-    QStringList bulletFields;
     {
         const QJsonValue bf = req.value(QStringLiteral("bullet_fields"));
         if (bf.isArray()) {
@@ -1671,33 +1848,36 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["code"] = QStringLiteral("bad_mode_combo");
         return QJsonDocument(out);
     }
-    // One lambda for all three emission surfaces — the list path, the section
-    // path and the id/ids path — because a projection applied differently on
-    // one of them is exactly the kind of per-surface divergence ANTS-1881 INV-5
-    // exists to catch. It also writes bullet_fields and its _unmatched and
-    // _available echoes into `out`, so call it only on an array the reply carries.
-    QStringList bulletFieldsAvailable;
-    const auto projectAndReportBulletFields = [&](QJsonArray &arr) {
-        if (bulletFields.isEmpty())
-            return;
-        rcProjectBulletFields(arr, bulletFields, &bulletFieldsAvailable);
-        out[QStringLiteral("bullet_fields")] =
-            QJsonArray::fromStringList(bulletFields);
-        QJsonArray unmatched;
-        for (const QString &k : bulletFields) {
-            if (!bulletFieldsAvailable.contains(k))
-                unmatched.append(k);
-        }
-        // Reported together, per ANTS-4930: `unmatched` alone cannot separate a
-        // key this verb never emits from one that is merely gated off on these
-        // rows, so the keys actually present ride alongside it.
-        if (!unmatched.isEmpty()) {
-            out[QStringLiteral("bullet_fields_unmatched")] = unmatched;
-            out[QStringLiteral("bullet_fields_available")] =
-                QJsonArray::fromStringList(bulletFieldsAvailable);
-        }
-    };
+    return std::nullopt;
+}
 
+// One method for all three emission surfaces — the list path, the section
+// path and the id/ids path — because a projection applied differently on
+// one of them is exactly the kind of per-surface divergence ANTS-1881 INV-5
+// exists to catch. It also writes bullet_fields and its _unmatched and
+// _available echoes into `out`, so call it only on an array the reply carries.
+void RemoteControl::RoadmapQueryCall::projectAndReportBulletFields(QJsonArray &arr) {
+    if (bulletFields.isEmpty())
+        return;
+    rcProjectBulletFields(arr, bulletFields, &bulletFieldsAvailable);
+    out[QStringLiteral("bullet_fields")] =
+        QJsonArray::fromStringList(bulletFields);
+    QJsonArray unmatched;
+    for (const QString &k : bulletFields) {
+        if (!bulletFieldsAvailable.contains(k))
+            unmatched.append(k);
+    }
+    // Reported together, per ANTS-4930: `unmatched` alone cannot separate a
+    // key this verb never emits from one that is merely gated off on these
+    // rows, so the keys actually present ride alongside it.
+    if (!unmatched.isEmpty()) {
+        out[QStringLiteral("bullet_fields_unmatched")] = unmatched;
+        out[QStringLiteral("bullet_fields_available")] =
+            QJsonArray::fromStringList(bulletFieldsAvailable);
+    }
+}
+
+auto RemoteControl::RoadmapQueryCall::checkCombos() -> std::optional<QJsonDocument> {
     // ANTS-1729 — section_index now ACCEPTS offset/limit (the future
     // spec the ANTS-1436-INV-6 refusal left room for). On a many-section
     // roadmap the active-filtered index can still run to tens of
@@ -1806,7 +1986,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     }
     // ANTS-4119 / ANTS-4993 — sources is an aggregate like report: it counts
     // the filtered list, so a row selector has nothing to count.
-    QString sourceGroup = QStringLiteral("stem");
+    sourceGroup = QStringLiteral("stem");
     if (mode == QLatin1String("sources")) {
         if (!section.isEmpty() || !idArg.isEmpty() || !idsArg.isEmpty()) {
             out["ok"] = false;
@@ -1882,11 +2062,14 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         return QJsonDocument(out);
     }
     if (bodyMatchActive) out["body_match"] = bodyMatchArg;
+    return std::nullopt;
+}
 
+auto RemoteControl::RoadmapQueryCall::parseVersion() -> std::optional<QJsonDocument> {
     // ANTS-5315 — `version:` names a release; the version IS its section's
     // title (claude-ab ruling 2026-09-24), so it resolves to that section and
     // then answers exactly as `section=` does.
-    const QString versionArg = req.value(QStringLiteral("version")).toString().trimmed();
+    versionArg = req.value(QStringLiteral("version")).toString().trimmed();
     if (!versionArg.isEmpty()) {
         QString why;
         if (RoadmapIndex::versionOfTitle(versionArg).isEmpty() ||
@@ -1916,7 +2099,10 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         out["version"] = versionArg.startsWith(QLatin1Char('v')) ? versionArg.mid(1)
                                                                  : versionArg;
     }
+    return std::nullopt;
+}
 
+auto RemoteControl::RoadmapQueryCall::parseShippedWindow() -> std::optional<QJsonDocument> {
     // ANTS-4715 — `shipped_since` / `shipped_until`: WHICH items closed in a
     // window, where mode:"report" answers only how many. Without it the
     // natural release-time question — what shipped this cycle that the
@@ -1931,8 +2117,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // The dates are DATES — the column stores YYYY-MM-DD — so a caller gets day
     // granularity and cannot order within a day. Right for a release window,
     // wrong for a throughput chart, and said here rather than discovered.
-    QDate shippedSince, shippedUntil;
-    const bool wantShippedWindow =
+    wantShippedWindow =
         req.contains(QStringLiteral("shipped_since")) ||
         req.contains(QStringLiteral("shipped_until"));
     if (wantShippedWindow) {
@@ -1988,15 +2173,18 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
             return QJsonDocument(out);
         }
     }
+    return std::nullopt;
+}
 
+void RemoteControl::RoadmapQueryCall::parseFlags() {
     // ANTS-1398-INV-1: `include_section_headers` opt-in. Default false
     // — section-rollup bullets (empty id + empty headline, status emoji
     // only) are dropped from `bullets[]` server-side so clients don't
     // have to scan for them. Pass true to retain the legacy shape for
     // any back-compat caller that wants them.
-    const bool hasIncludeHeadersArg =
+    hasIncludeHeadersArg =
         req.contains(QStringLiteral("include_section_headers"));
-    const bool includeSectionHeaders =
+    includeSectionHeaders =
         req.value(QStringLiteral("include_section_headers")).toBool(false);
     // ANTS-1425 — `include_narrator_bullets` opt-in. Default false —
     // narrator bullets (empty id, non-empty headline; section-summary
@@ -2006,9 +2194,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // empty-id signal is a sufficient non-actionable marker. Mirrors
     // the v1 design of `include_section_headers`; back-compat callers
     // who depend on narrator bullets can opt back in.
-    const bool hasIncludeNarratorsArg =
+    hasIncludeNarratorsArg =
         req.contains(QStringLiteral("include_narrator_bullets"));
-    const bool includeNarratorBullets =
+    includeNarratorBullets =
         req.value(QStringLiteral("include_narrator_bullets")).toBool(false);
 
     // ANTS-1517 — `include_body` opt-in. Default false. When true,
@@ -2020,199 +2208,204 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // harness budget. Cache always populates body — projection-out
     // happens at emission time via rcStripBodyFields when this flag
     // is false.
-    const bool hasIncludeBodyArg =
+    hasIncludeBodyArg =
         req.contains(QStringLiteral("include_body"));
     // ANTS-5468 — body_match implies bodies; include_body:false with it is
     // refused above.
-    const bool includeBody =
+    includeBody =
         req.value(QStringLiteral("include_body")).toBool(false)
         || bodyMatchActive;
+}
 
-    // ANTS-1398-INV-2: rollup predicate. A bullet is a section rollup
-    // iff its `id` and `headline` are both empty — the unambiguous
-    // signature of `parseBullets`'s status-only summary cards.
-    auto isRollupBullet = [](const QJsonValue &v) {
-        const QJsonObject o = v.toObject();
-        return o.value(QStringLiteral("id")).toString().isEmpty()
-            && o.value(QStringLiteral("headline")).toString().isEmpty();
-    };
-    // ANTS-1425 — narrator predicate. Disjoint with isRollupBullet
-    // (rollup has empty headline, narrator has non-empty headline);
-    // both share empty id.
-    auto isNarratorBullet = [](const QJsonValue &v) {
-        const QJsonObject o = v.toObject();
-        return o.value(QStringLiteral("id")).toString().isEmpty()
-            && !o.value(QStringLiteral("headline")).toString().isEmpty();
-    };
-    // ANTS-1425 — single drop helper that composes both opt-ins.
-    auto shouldDropUnnumbered =
-        [&](const QJsonValue &v) {
-            if (isRollupBullet(v)   && !includeSectionHeaders)  return true;
-            if (isNarratorBullet(v) && !includeNarratorBullets) return true;
-            return false;
-        };
+// ANTS-1398-INV-2: rollup predicate. A bullet is a section rollup
+// iff its `id` and `headline` are both empty — the unambiguous
+// signature of `parseBullets`'s status-only summary cards.
+bool RemoteControl::RoadmapQueryCall::isRollupBullet(const QJsonValue &v) {
+    const QJsonObject o = v.toObject();
+    return o.value(QStringLiteral("id")).toString().isEmpty()
+        && o.value(QStringLiteral("headline")).toString().isEmpty();
+}
 
+// ANTS-1425 — narrator predicate. Disjoint with isRollupBullet
+// (rollup has empty headline, narrator has non-empty headline);
+// both share empty id.
+bool RemoteControl::RoadmapQueryCall::isNarratorBullet(const QJsonValue &v) {
+    const QJsonObject o = v.toObject();
+    return o.value(QStringLiteral("id")).toString().isEmpty()
+        && !o.value(QStringLiteral("headline")).toString().isEmpty();
+}
+
+// ANTS-1425 — single drop helper that composes both opt-ins.
+bool RemoteControl::RoadmapQueryCall::shouldDropUnnumbered(const QJsonValue &v) {
+    if (isRollupBullet(v)   && !includeSectionHeaders)  return true;
+    if (isNarratorBullet(v) && !includeNarratorBullets) return true;
+    return false;
+}
+
+void RemoteControl::RoadmapQueryCall::readCallerRoot() {
     // ANTS-1391: when caller_cwd is present, derive the ROADMAP.md path
     // under that root (matching MainWindow::refreshRoadmapButton's
     // case-variant search) instead of relying on the focused tab's
     // pre-discovered m_roadmapPath. Falls back to the focused tab when
     // absent (back-compat).
-    QString path;
-    const QString callerRaw =
-        req.value(QStringLiteral("caller_cwd")).toString();
+    callerRaw = req.value(QStringLiteral("caller_cwd")).toString();
     // ANTS-3793 — the project root the store's dispatch marker is keyed on
     // (ANTS-3756 INV-8). Empty when the caller named no cwd — the focused-tab
     // back-compat path below — which roadmapBullets() reads as "markdown, as
     // today" rather than as a project it failed to resolve.
-    const QString callerCanonical =
+    callerCanonical =
         callerRaw.isEmpty() ? QString()
                             : QFileInfo(callerRaw).canonicalFilePath();
-    // ANTS-5516 — mode:"ledger" is store-and-git only, like report.
-    if (mode == QLatin1String("ledger")) {
-        // Every row selector and list filter is refused, not ignored: the
-        // ledger answers for the whole project, and a filter it dropped would
-        // read as one it applied.
-        static const QStringList kNotWithLedger = {
-            QStringLiteral("section"), QStringLiteral("id"), QStringLiteral("ids"),
-            QStringLiteral("version"), QStringLiteral("query"), QStringLiteral("q"),
-            QStringLiteral("status"), QStringLiteral("filter"), QStringLiteral("kind"),
-            QStringLiteral("bullet_fields"), QStringLiteral("body_match"),
-            QStringLiteral("shipped_since"), QStringLiteral("shipped_until")};
-        for (const QString &k : kNotWithLedger)
-            if (req.contains(k)) {
-                out["ok"] = false;
-                out["error"] = QStringLiteral(
-                    "mode:\"ledger\" covers the whole project and takes only "
-                    "stale_days and range; it does not accept `%1`").arg(k);
-                out["code"] = QStringLiteral("bad_mode_combo");
-                return QJsonDocument(out);
-            }
-        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-        QString storeErr;
-        RoadmapStore *store = roadmapStoreOrNull(&why, &storeErr);
-        if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
-            return QJsonDocument(out);
-        return QJsonDocument(rcLedgerEnvelope(req, store, callerCanonical, out));
-    }
-    // ANTS-4501 — mode:"report" dispatches HERE, before the roadmap-file
-    // search below, because it reads the store and never the markdown. A
-    // project whose ROADMAP.md has moved still has a store row and still has a
-    // truthful report; refusing no_roadmap_loaded for it would be wrong.
-    if (mode == QLatin1String("report")) {
-        RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
-        // ANTS-4818 — check_sync is answered here too. See the list path's
-        // block for what it measures and why it is opt-in; what matters at
-        // THIS site is that the argument used to be accepted and dropped,
-        // which is the one behaviour ANTS-4730's wording rules out: it tells a
-        // caller that an absent `sync_checked` means nobody asked, so a caller
-        // who DID ask read the absence as their own omission. Reported against
-        // this project by a session that tried report first — which is the
-        // natural place to ask a project-level question about the file.
-        QString storeErr;
-        RoadmapStore *store = roadmapStoreOrNull(&why, &storeErr);
-        if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
-            return QJsonDocument(out);
-        if (!store) {
-            out["ok"] = false;
-            out["error"] = QStringLiteral("roadmap store unavailable");
-            out["code"] = QStringLiteral("store_unavailable");
-            return QJsonDocument(out);
-        }
+}
 
-        // scope:"all" is nullopt — every registered project summed (§ 2.4).
-        // Default is the project you are standing in.
-        const QString scopeArg =
-            req.value(QStringLiteral("scope")).toString(QStringLiteral("project"));
-        if (scopeArg != QLatin1String("project") && scopeArg != QLatin1String("all")) {
+// ANTS-5516 — mode:"ledger" is store-and-git only, like report.
+auto RemoteControl::RoadmapQueryCall::ledger() -> QJsonDocument {
+    // Every row selector and list filter is refused, not ignored: the
+    // ledger answers for the whole project, and a filter it dropped would
+    // read as one it applied.
+    static const QStringList kNotWithLedger = {
+        QStringLiteral("section"), QStringLiteral("id"), QStringLiteral("ids"),
+        QStringLiteral("version"), QStringLiteral("query"), QStringLiteral("q"),
+        QStringLiteral("status"), QStringLiteral("filter"), QStringLiteral("kind"),
+        QStringLiteral("bullet_fields"), QStringLiteral("body_match"),
+        QStringLiteral("shipped_since"), QStringLiteral("shipped_until")};
+    for (const QString &k : kNotWithLedger)
+        if (req.contains(k)) {
             out["ok"] = false;
-            out["error"] = QStringLiteral("unknown scope: %1 — expected "
-                                          "\"project\" or \"all\"").arg(scopeArg);
-            out["code"] = QStringLiteral("bad_args");
+            out["error"] = QStringLiteral(
+                "mode:\"ledger\" covers the whole project and takes only "
+                "stale_days and range; it does not accept `%1`").arg(k);
+            out["code"] = QStringLiteral("bad_mode_combo");
             return QJsonDocument(out);
         }
-        std::optional<qint64> projectId;
-        if (scopeArg == QLatin1String("project")) {
-            // ANTS-3756 INV-8 keys a project on its CANONICAL root, so the
-            // lookup canonicalises too — a raw path misses on every symlinked
-            // root and would read as "not migrated".
-            if (callerCanonical.isEmpty()) {
-                out["ok"] = false;
-                out["error"] = QStringLiteral(
-                    "report mode needs caller_cwd to resolve the project");
-                out["code"] = QStringLiteral("caller_cwd_required");
-                return QJsonDocument(out);
-            }
-            QString sqlErr;
-            // ANTS-4884 — keyed on the project ROOT, so a subdirectory caller
-            // is not reported as an unregistered project.
-            const auto row = store->readProjectByRoot(
-                rcProjectRootFor(callerCanonical), &sqlErr);
-            if (!row) {
-                out["ok"] = false;
-                out["error"] = sqlErr.isEmpty()
-                    ? QStringLiteral("project is not in the roadmap store: %1 "
-                                     "— run roadmap_migrate first").arg(callerCanonical)
-                    : sqlErr;
-                out["code"] = QStringLiteral("project_not_registered");
-                return QJsonDocument(out);
-            }
-            projectId = row->projectId;
-        }
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    QString storeErr;
+    RoadmapStore *store = rc.roadmapStoreOrNull(&why, &storeErr);
+    if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
+        return QJsonDocument(out);
+    return QJsonDocument(rcLedgerEnvelope(req, store, callerCanonical, out));
+}
 
-        // § 2.2's seam, read here and not from QDate::currentDate(): the
-        // report's own bucket boundaries are a read-path clock, and a seam
-        // wired into stamping alone leaves INV-1 and INV-8 flaking at every
-        // period boundary.
-        const QDate today = RoadmapClock::today();
-        const QString sinceRaw = req.value(QStringLiteral("since")).toString().trimmed();
-        const QString untilRaw = req.value(QStringLiteral("until")).toString().trimmed();
-        const QDate since = QDate::fromString(sinceRaw, QStringLiteral("yyyy-MM-dd"));
-        const QDate until = QDate::fromString(untilRaw, QStringLiteral("yyyy-MM-dd"));
-        // ANTS-5094 — refused as the list path refuses shipped_since: an
-        // unparseable since silently became the default periods and an
-        // unparseable until became tomorrow, so the window changed unasked.
-        if ((!sinceRaw.isEmpty() && !since.isValid())
-            || (!untilRaw.isEmpty() && !until.isValid())) {
-            out["ok"]    = false;
-            out["error"] = QStringLiteral("since / until take a YYYY-MM-DD date");
-            out["code"]  = QStringLiteral("bad_args");
-            return QJsonDocument(out);
-        }
-        QString repErr;
-        QJsonObject env = buildRoadmapReportEnvelope(
-            *store, projectId, today, since, until, &repErr);
-        if (env.isEmpty()) {
-            out["ok"] = false;
-            out["error"] = repErr.isEmpty() ? QStringLiteral("report failed")
-                                            : repErr;
-            out["code"] = QStringLiteral("store_error");
-            return QJsonDocument(out);
-        }
-        // ANTS-4818 — answer check_sync here rather than dropping it.
-        //
-        // `sync_checked` is emitted on BOTH arms, which is the whole of
-        // ANTS-4730: absence must mean "not requested" and nothing else, so a
-        // caller who asked and got no answer is never left reading their own
-        // omission. scope:"all" measures nothing on purpose — the question is
-        // about ONE file and that scope spans every registered project — so it
-        // reports checked:false, which is true rather than evasive.
-        if (req.value(QStringLiteral("check_sync")).toBool()) {
-            bool measured = false;
-            if (projectId && !callerCanonical.isEmpty()) {
-                // The report branch runs before the list path resolves the
-                // roadmap file, so resolve it here rather than reaching for a
-                // variable that is not set yet.
-                const QString rmPath = findRoadmapUnder(callerCanonical);
-                if (!rmPath.isEmpty())
-                    measured = rcStampDriftFields(   // ANTS-5667
-                        env, *store, *projectId,
-                        rcProjectRootFor(callerCanonical), rmPath);
-            }
-            env[QStringLiteral("sync_checked")] = measured;
-        }
-        return QJsonDocument(env);
+// ANTS-4501 — mode:"report" dispatches HERE, before the roadmap-file
+// search below, because it reads the store and never the markdown. A
+// project whose ROADMAP.md has moved still has a store row and still has a
+// truthful report; refusing no_roadmap_loaded for it would be wrong.
+auto RemoteControl::RoadmapQueryCall::report() -> QJsonDocument {
+    RoadmapSource::ReadError why = RoadmapSource::ReadError::None;
+    // ANTS-4818 — check_sync is answered here too. See the list path's
+    // block for what it measures and why it is opt-in; what matters at
+    // THIS site is that the argument used to be accepted and dropped,
+    // which is the one behaviour ANTS-4730's wording rules out: it tells a
+    // caller that an absent `sync_checked` means nobody asked, so a caller
+    // who DID ask read the absence as their own omission. Reported against
+    // this project by a session that tried report first — which is the
+    // natural place to ask a project-level question about the file.
+    QString storeErr;
+    RoadmapStore *store = rc.roadmapStoreOrNull(&why, &storeErr);
+    if (rcdetail::rcRoadmapSourceRefused(out, why, storeErr))
+        return QJsonDocument(out);
+    if (!store) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral("roadmap store unavailable");
+        out["code"] = QStringLiteral("store_unavailable");
+        return QJsonDocument(out);
     }
 
+    // scope:"all" is nullopt — every registered project summed (§ 2.4).
+    // Default is the project you are standing in.
+    const QString scopeArg =
+        req.value(QStringLiteral("scope")).toString(QStringLiteral("project"));
+    if (scopeArg != QLatin1String("project") && scopeArg != QLatin1String("all")) {
+        out["ok"] = false;
+        out["error"] = QStringLiteral("unknown scope: %1 — expected "
+                                      "\"project\" or \"all\"").arg(scopeArg);
+        out["code"] = QStringLiteral("bad_args");
+        return QJsonDocument(out);
+    }
+    std::optional<qint64> projectId;
+    if (scopeArg == QLatin1String("project")) {
+        // ANTS-3756 INV-8 keys a project on its CANONICAL root, so the
+        // lookup canonicalises too — a raw path misses on every symlinked
+        // root and would read as "not migrated".
+        if (callerCanonical.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "report mode needs caller_cwd to resolve the project");
+            out["code"] = QStringLiteral("caller_cwd_required");
+            return QJsonDocument(out);
+        }
+        QString sqlErr;
+        // ANTS-4884 — keyed on the project ROOT, so a subdirectory caller
+        // is not reported as an unregistered project.
+        const auto row = store->readProjectByRoot(
+            rcProjectRootFor(callerCanonical), &sqlErr);
+        if (!row) {
+            out["ok"] = false;
+            out["error"] = sqlErr.isEmpty()
+                ? QStringLiteral("project is not in the roadmap store: %1 "
+                                 "— run roadmap_migrate first").arg(callerCanonical)
+                : sqlErr;
+            out["code"] = QStringLiteral("project_not_registered");
+            return QJsonDocument(out);
+        }
+        projectId = row->projectId;
+    }
+
+    // § 2.2's seam, read here and not from QDate::currentDate(): the
+    // report's own bucket boundaries are a read-path clock, and a seam
+    // wired into stamping alone leaves INV-1 and INV-8 flaking at every
+    // period boundary.
+    const QDate today = RoadmapClock::today();
+    const QString sinceRaw = req.value(QStringLiteral("since")).toString().trimmed();
+    const QString untilRaw = req.value(QStringLiteral("until")).toString().trimmed();
+    const QDate since = QDate::fromString(sinceRaw, QStringLiteral("yyyy-MM-dd"));
+    const QDate until = QDate::fromString(untilRaw, QStringLiteral("yyyy-MM-dd"));
+    // ANTS-5094 — refused as the list path refuses shipped_since: an
+    // unparseable since silently became the default periods and an
+    // unparseable until became tomorrow, so the window changed unasked.
+    if ((!sinceRaw.isEmpty() && !since.isValid())
+        || (!untilRaw.isEmpty() && !until.isValid())) {
+        out["ok"]    = false;
+        out["error"] = QStringLiteral("since / until take a YYYY-MM-DD date");
+        out["code"]  = QStringLiteral("bad_args");
+        return QJsonDocument(out);
+    }
+    QString repErr;
+    QJsonObject env = buildRoadmapReportEnvelope(
+        *store, projectId, today, since, until, &repErr);
+    if (env.isEmpty()) {
+        out["ok"] = false;
+        out["error"] = repErr.isEmpty() ? QStringLiteral("report failed")
+                                        : repErr;
+        out["code"] = QStringLiteral("store_error");
+        return QJsonDocument(out);
+    }
+    // ANTS-4818 — answer check_sync here rather than dropping it.
+    //
+    // `sync_checked` is emitted on BOTH arms, which is the whole of
+    // ANTS-4730: absence must mean "not requested" and nothing else, so a
+    // caller who asked and got no answer is never left reading their own
+    // omission. scope:"all" measures nothing on purpose — the question is
+    // about ONE file and that scope spans every registered project — so it
+    // reports checked:false, which is true rather than evasive.
+    if (req.value(QStringLiteral("check_sync")).toBool()) {
+        bool measured = false;
+        if (projectId && !callerCanonical.isEmpty()) {
+            // The report branch runs before the list path resolves the
+            // roadmap file, so resolve it here rather than reaching for a
+            // variable that is not set yet.
+            const QString rmPath = findRoadmapUnder(callerCanonical);
+            if (!rmPath.isEmpty())
+                measured = rcStampDriftFields(   // ANTS-5667
+                    env, *store, *projectId,
+                    rcProjectRootFor(callerCanonical), rmPath);
+        }
+        env[QStringLiteral("sync_checked")] = measured;
+    }
+    return QJsonDocument(env);
+}
+
+auto RemoteControl::RoadmapQueryCall::resolveRoadmapFile() -> std::optional<QJsonDocument> {
     if (!callerRaw.isEmpty()) {
         // ANTS-1459 — shared findRoadmapUnder() helper widens the
         // search to docs/, docs/private/, docs/internal/, .github/.
@@ -2222,7 +2415,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // ANTS-4932 — the host's fallback roadmap; the provider marshals its
         // own reads. Empty (no provider, or shutting down) lets the existing
         // no-roadmap refusal fire rather than answering from a default.
-        if (m_roots) path = m_roots->fallbackRoadmapPath();
+        if (rc.m_roots) path = rc.m_roots->fallbackRoadmapPath();
     }
     if (path.isEmpty()) {
         // ANTS-4611 — the VERDICT here was always right; the wording
@@ -2244,9 +2437,9 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         return QJsonDocument(out);
     }
 
-    const QFileInfo fi(path);
-    const qint64 mtime = fi.lastModified().toMSecsSinceEpoch();
-    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    fi = QFileInfo(path);
+    mtime = fi.lastModified().toMSecsSinceEpoch();
+    nowMs = QDateTime::currentMSecsSinceEpoch();
     // INV-10 wall-clock cap: even if mtime hasn't advanced (1-second
     // mtime resolution on some filesystems), force a refresh after
     // kRoadmapCacheTtlMs so an in-place edit within the same tick is
@@ -2255,54 +2448,58 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // TTL/mtime check is preserved exactly.
     // ANTS-1287-INV-5/8: section index + section-bullet cache share
     // the same freshness predicate.
-    // ANTS-3793 — a store refusal must not leave the cache looking fresh. The
-    // !fresh block below stamps path/mtime/now BEFORE it fills bullets, so a
-    // refusal partway through would leave an empty array warm and the next call
-    // inside the 100 ms TTL would serve it as "this roadmap has no bullets".
-    // Invalidate, then fill the envelope.
-    auto refuseRoadmapSource = [&](RoadmapSource::ReadError srcWhy,
-                                   const QString &srcErr) {
-        m_roadmapCachePath.clear();
-        m_roadmapCacheMtimeMs = 0;
-        m_roadmapCacheStampMs = 0;
-        m_roadmapCacheBullets = QJsonArray();
-        // ANTS-4402 — lockstep with the bullets cache: a witness left behind by
-        // a refused refill would describe a backend this call never reached.
-        m_roadmapCacheSource.clear();
-        m_roadmapCacheFileMaxId = 0;
-        m_roadmapCacheStoreHighWater = 0;
-        rcRoadmapSourceRefused(out, srcWhy, srcErr);
-        return QJsonDocument(out);
-    };
+    fresh = (rc.m_roadmapCachePath == path) &&
+            (rc.m_roadmapCacheMtimeMs == mtime) &&
+            (mtime != 0) &&
+            (nowMs - rc.m_roadmapCacheStampMs <= kRoadmapCacheTtlMs);
+    return std::nullopt;
+}
 
-    const bool fresh = (m_roadmapCachePath == path) &&
-                       (m_roadmapCacheMtimeMs == mtime) &&
-                       (mtime != 0) &&
-                       (nowMs - m_roadmapCacheStampMs <= kRoadmapCacheTtlMs);
+// ANTS-3793 — a store refusal must not leave the cache looking fresh. The
+// !fresh block below stamps path/mtime/now BEFORE it fills bullets, so a
+// refusal partway through would leave an empty array warm and the next call
+// inside the 100 ms TTL would serve it as "this roadmap has no bullets".
+// Invalidate, then fill the envelope.
+auto RemoteControl::RoadmapQueryCall::refuseRoadmapSource(RoadmapSource::ReadError srcWhy,
+        const QString &srcErr) -> QJsonDocument {
+    rc.m_roadmapCachePath.clear();
+    rc.m_roadmapCacheMtimeMs = 0;
+    rc.m_roadmapCacheStampMs = 0;
+    rc.m_roadmapCacheBullets = QJsonArray();
+    // ANTS-4402 — lockstep with the bullets cache: a witness left behind by
+    // a refused refill would describe a backend this call never reached.
+    rc.m_roadmapCacheSource.clear();
+    rc.m_roadmapCacheFileMaxId = 0;
+    rc.m_roadmapCacheStoreHighWater = 0;
+    rcRoadmapSourceRefused(out, srcWhy, srcErr);
+    return QJsonDocument(out);
+}
 
-    // ANTS-4402 — say which backend answered. ANTS-3793 made the store primary
-    // for reads; ANTS-4141's standing workaround has this project editing
-    // ROADMAP.md BY HAND. A hand edit therefore lands in a file no reader
-    // reads, and the envelope gave no way to tell: it named ROADMAP.md as its
-    // `path`, returned ok:true, and served the store. Measured 2026-08-15 on
-    // this project — 59 ids present in the file and absent from the store, a
-    // bullet filed by hand returned in `missing_ids`, and two `✅` headlines
-    // reported as `📋`.
-    //
-    // `file_ahead_of_store` is ONE-DIRECTIONAL: an id above the store's mark
-    // proves the read is stale, but its absence proves nothing, because a
-    // status flip or a body edit moves no id. Reconciling the two backends is
-    // ANTS-4141's job and needs the render fixed first.
-    auto stampRoadmapSource = [&]() {
-        if (m_roadmapCacheSource.isEmpty())
-            return;
-        out[QStringLiteral("source")] = m_roadmapCacheSource;
-        if (m_roadmapCacheFileMaxId > m_roadmapCacheStoreHighWater) {
-            out[QStringLiteral("file_ahead_of_store")] = true;
-            out[QStringLiteral("file_highest_id")] = m_roadmapCacheFileMaxId;
-            out[QStringLiteral("store_high_water")] = m_roadmapCacheStoreHighWater;
-        }
-    };
+// ANTS-4402 — say which backend answered. ANTS-3793 made the store primary
+// for reads; ANTS-4141's standing workaround has this project editing
+// ROADMAP.md BY HAND. A hand edit therefore lands in a file no reader
+// reads, and the envelope gave no way to tell: it named ROADMAP.md as its
+// `path`, returned ok:true, and served the store. Measured 2026-08-15 on
+// this project — 59 ids present in the file and absent from the store, a
+// bullet filed by hand returned in `missing_ids`, and two `✅` headlines
+// reported as `📋`.
+//
+// `file_ahead_of_store` is ONE-DIRECTIONAL: an id above the store's mark
+// proves the read is stale, but its absence proves nothing, because a
+// status flip or a body edit moves no id. Reconciling the two backends is
+// ANTS-4141's job and needs the render fixed first.
+void RemoteControl::RoadmapQueryCall::stampRoadmapSource() {
+    if (rc.m_roadmapCacheSource.isEmpty())
+        return;
+    out[QStringLiteral("source")] = rc.m_roadmapCacheSource;
+    if (rc.m_roadmapCacheFileMaxId > rc.m_roadmapCacheStoreHighWater) {
+        out[QStringLiteral("file_ahead_of_store")] = true;
+        out[QStringLiteral("file_highest_id")] = rc.m_roadmapCacheFileMaxId;
+        out[QStringLiteral("store_high_water")] = rc.m_roadmapCacheStoreHighWater;
+    }
+}
+
+void RemoteControl::RoadmapQueryCall::openTextAndCheckSync() {
     if (fresh)
         stampRoadmapSource();
 
@@ -2314,7 +2511,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // open exactly where each branch checks it today. Sharing is also the more
     // consistent answer than a second provider: the cache key was stamped from
     // one stat, so every branch sees the snapshot that stat described.
-    auto text = RoadmapSource::RoadmapText::fromFile(path);
+    textHolder.emplace(RoadmapSource::RoadmapText::fromFile(path));
+    auto &text = *textHolder;
 
     // ANTS-4462 — the read half, OPT-IN. Stamped into `out` here, before the
     // branches, so every return path below carries it.
@@ -2335,7 +2533,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         !callerCanonical.isEmpty()) {
         RoadmapSource::ReadError syncWhy = RoadmapSource::ReadError::None;
         bool measured = false;
-        if (RoadmapStore *store = roadmapStoreOrNull(&syncWhy, nullptr)) {
+        if (RoadmapStore *store = rc.roadmapStoreOrNull(&syncWhy, nullptr)) {
             if (const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
                     *store, rcProjectRootFor(callerCanonical), text, nullptr,
                     &syncWhy)) {
@@ -2358,1099 +2556,1066 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         // thing: check_sync was not requested.
         out[QStringLiteral("sync_checked")] = measured;
     }
+}
 
-    // The refusal for a roadmap file that would not open.
-    const auto readFailed = [&out, &path] {
-        out["ok"] = false;
-        out["error"] = QStringLiteral("could not open %1 for reading").arg(path);
-        out["code"] = QStringLiteral("read_failed");
-        return QJsonDocument(out);
-    };
+// The refusal for a roadmap file that would not open.
+auto RemoteControl::RoadmapQueryCall::readFailed() -> QJsonDocument {
+    out["ok"] = false;
+    out["error"] = QStringLiteral("could not open %1 for reading").arg(path);
+    out["code"] = QStringLiteral("read_failed");
+    return QJsonDocument(out);
+}
 
-    if (!fresh) {
-        if (text.openFailed())
-            return readFailed();
-        // ANTS-1287-INV-5: stale cache → wipe both bullet caches AND
-        // the heading index. Both regenerate lazily below.
-        m_roadmapIndex.clear();
-        m_roadmapSectionCache.clear();
-        m_roadmapSectionShape.clear();  // ANTS-1696 — lockstep with bullets cache.
-        m_roadmapSectionEtags.clear();  // ANTS-1907 — lockstep with bullets cache.
-        m_roadmapSectionLru.clear();   // ANTS-1346 — keep INV-2 in sync.
-        m_roadmapCacheDuplicateIds = QJsonArray();   // ANTS-1646
-        m_roadmapCachePath = path;
-        m_roadmapCacheMtimeMs = mtime;
-        m_roadmapCacheStampMs = nowMs;
+auto RemoteControl::RoadmapQueryCall::refillCache() -> std::optional<QJsonDocument> {
+    auto &text = *textHolder;
+    if (text.openFailed())
+        return readFailed();
+    // ANTS-1287-INV-5: stale cache → wipe both bullet caches AND
+    // the heading index. Both regenerate lazily below.
+    rc.m_roadmapIndex.clear();
+    rc.m_roadmapSectionCache.clear();
+    rc.m_roadmapSectionShape.clear();  // ANTS-1696 — lockstep with bullets cache.
+    rc.m_roadmapSectionEtags.clear();  // ANTS-1907 — lockstep with bullets cache.
+    rc.m_roadmapSectionLru.clear();   // ANTS-1346 — keep INV-2 in sync.
+    rc.m_roadmapCacheDuplicateIds = QJsonArray();   // ANTS-1646
+    rc.m_roadmapCachePath = path;
+    rc.m_roadmapCacheMtimeMs = mtime;
+    rc.m_roadmapCacheStampMs = nowMs;
 
-        // ANTS-4402 — refill the backend witness in lockstep with the bullets.
-        // The id scan runs over `markdown` alone, NOT RoadmapFoldIn::
-        // corpusHighWater(), which re-reads CHANGELOG.md and every
-        // docs/roadmap/*.md archive: several MB of regex is affordable once at
-        // allocation time and not on a read verb.
-        m_roadmapCacheSource = QStringLiteral("markdown");
-        m_roadmapCacheFileMaxId = 0;
-        m_roadmapCacheStoreHighWater = 0;
-        if (!callerCanonical.isEmpty()) {
-            RoadmapSource::ReadError witnessWhy = RoadmapSource::ReadError::None;
-            if (RoadmapStore *store = roadmapStoreOrNull(&witnessWhy, nullptr)) {
-                const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
-                    *store, rcProjectRootFor(callerCanonical), text, nullptr,
-                    &witnessWhy);
-                if (pid) {
-                    m_roadmapCacheSource = QStringLiteral("store");
-                    const QString pfx = rcdetail::rlStoreCounterPrefix(
-                        *store, *pid, QString(), text, callerCanonical);
-                    // ANTS-4636 — the HIGHER of the allocator's counter and
-                    // the ids the items actually hold, because either alone
-                    // is wrong in a different direction.
-                    //
-                    // idHighWater() reads the id_prefix row, and roadmapstore.h
-                    // says outright that MIGRATION DOES NOT WRITE ONE — only an
-                    // id-allocating append does. So a migrated-but-never-
-                    // appended project reported 0 here while holding every id
-                    // in its file, and `file_highest_id > 0` then pinned
-                    // `file_ahead_of_store` on for a store in perfect sync.
-                    // Album_Builder hit it with 357 items; the fixture in
-                    // roadmap_source_witness hits it with one, which is what
-                    // ANTS-4633 saw and could not explain.
-                    //
-                    // maxAllocatedId() alone is not the answer either: it is
-                    // derived from surviving items, so an id allocated and
-                    // then deleted leaves it BELOW the counter, and the flag
-                    // would start crying wolf the other way. Both reporters
-                    // guessed a prefix mismatch; `pfx` is in fact correct —
-                    // maxDeclaredId() filters strictly by it, so a wrong
-                    // prefix would have zeroed file_highest_id too and fired
-                    // nothing at all. The prefix was never the fault.
-                    QString hwErr;
-                    const auto counterHw = store->idHighWater(*pid, pfx, &hwErr);
-                    const auto itemsHw   = store->maxAllocatedId(*pid, pfx, &hwErr);
-                    m_roadmapCacheStoreHighWater =
-                        std::max(counterHw.value_or(0), itemsHw.value_or(0));
-                    // ANTS-4402's id scan needs every byte, so this is a
-                    // full() and ANTS-3863's saving does not reach this
-                    // branch — on a migrated project the body is read here
-                    // whatever the dispatch cost. Tracked separately; the
-                    // scan is this witness's contract, not this item's.
-                    //
-                    // ANTS-4631 — one shared rule with the allocator's floor
-                    // (RoadmapFoldIn::corpusHighWater), because this number
-                    // is the one a caller reads to decide the store is stale
-                    // and the other decides what id it gets. A local copy of
-                    // the scrape is what let a documented sample id pin
-                    // `file_ahead_of_store` on for a store in perfect sync.
-                    m_roadmapCacheFileMaxId =
-                        RoadmapFoldIn::maxDeclaredId(text.full(), pfx);
-                }
+    // ANTS-4402 — refill the backend witness in lockstep with the bullets.
+    // The id scan runs over `markdown` alone, NOT RoadmapFoldIn::
+    // corpusHighWater(), which re-reads CHANGELOG.md and every
+    // docs/roadmap/*.md archive: several MB of regex is affordable once at
+    // allocation time and not on a read verb.
+    rc.m_roadmapCacheSource = QStringLiteral("markdown");
+    rc.m_roadmapCacheFileMaxId = 0;
+    rc.m_roadmapCacheStoreHighWater = 0;
+    if (!callerCanonical.isEmpty()) {
+        RoadmapSource::ReadError witnessWhy = RoadmapSource::ReadError::None;
+        if (RoadmapStore *store = rc.roadmapStoreOrNull(&witnessWhy, nullptr)) {
+            const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
+                *store, rcProjectRootFor(callerCanonical), text, nullptr,
+                &witnessWhy);
+            if (pid) {
+                rc.m_roadmapCacheSource = QStringLiteral("store");
+                const QString pfx = rcdetail::rlStoreCounterPrefix(
+                    *store, *pid, QString(), text, callerCanonical);
+                // ANTS-4636 — the HIGHER of the allocator's counter and
+                // the ids the items actually hold, because either alone
+                // is wrong in a different direction.
+                //
+                // idHighWater() reads the id_prefix row, and roadmapstore.h
+                // says outright that MIGRATION DOES NOT WRITE ONE — only an
+                // id-allocating append does. So a migrated-but-never-
+                // appended project reported 0 here while holding every id
+                // in its file, and `file_highest_id > 0` then pinned
+                // `file_ahead_of_store` on for a store in perfect sync.
+                // Album_Builder hit it with 357 items; the fixture in
+                // roadmap_source_witness hits it with one, which is what
+                // ANTS-4633 saw and could not explain.
+                //
+                // maxAllocatedId() alone is not the answer either: it is
+                // derived from surviving items, so an id allocated and
+                // then deleted leaves it BELOW the counter, and the flag
+                // would start crying wolf the other way. Both reporters
+                // guessed a prefix mismatch; `pfx` is in fact correct —
+                // maxDeclaredId() filters strictly by it, so a wrong
+                // prefix would have zeroed file_highest_id too and fired
+                // nothing at all. The prefix was never the fault.
+                QString hwErr;
+                const auto counterHw = store->idHighWater(*pid, pfx, &hwErr);
+                const auto itemsHw   = store->maxAllocatedId(*pid, pfx, &hwErr);
+                rc.m_roadmapCacheStoreHighWater =
+                    std::max(counterHw.value_or(0), itemsHw.value_or(0));
+                // ANTS-4402's id scan needs every byte, so this is a
+                // full() and ANTS-3863's saving does not reach this
+                // branch — on a migrated project the body is read here
+                // whatever the dispatch cost. Tracked separately; the
+                // scan is this witness's contract, not this item's.
+                //
+                // ANTS-4631 — one shared rule with the allocator's floor
+                // (RoadmapFoldIn::corpusHighWater), because this number
+                // is the one a caller reads to decide the store is stale
+                // and the other decides what id it gets. A local copy of
+                // the scrape is what let a documented sample id pin
+                // `file_ahead_of_store` on for a store in perfect sync.
+                rc.m_roadmapCacheFileMaxId =
+                    RoadmapFoldIn::maxDeclaredId(text.full(), pfx);
             }
         }
-        stampRoadmapSource();
+    }
+    stampRoadmapSource();
 
-        if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
-            // ANTS-3793 — the store when this project is migrated, `markdown`
-            // when it is not.
+    if (section.isEmpty()) {  // ANTS-1287-INV-6 — full-file path
+        // ANTS-3793 — the store when this project is migrated, `markdown`
+        // when it is not.
+        RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+        QString srcErr;
+        const auto bullets = rc.roadmapBullets(callerCanonical, text,
+                                            /*includeArchive=*/false,
+                                            &srcWhy, &srcErr);
+        if (srcWhy != RoadmapSource::ReadError::None)
+            return refuseRoadmapSource(srcWhy, srcErr);
+        rc.m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
+        // ANTS-1646 — recompute duplicate-ID descriptors against
+        // the freshly-populated cache. Stays empty on a clean
+        // roadmap; emission gate suppresses the field then.
+        rc.m_roadmapCacheDuplicateIds =
+            rcComputeDuplicateIds(rc.m_roadmapCacheBullets);
+    } else {
+        // ANTS-1287-INV-9 — section mode does not pre-fill the
+        // full bullets cache; that path is taken lazily on the
+        // next no-section call. Build the index once.
+        rc.m_roadmapCacheBullets = QJsonArray();
+        // Built from lines, so this branch needs every byte — and it is
+        // the branch the dispatch above did NOT take (ANTS-3863 § 2.4).
+        rc.m_roadmapIndex = RoadmapIndex::buildIndex(text.full());
+    }
+    return std::nullopt;
+}
+
+// The bullet cache can be empty on a cache hit: a section= call fills only
+// its own section. Every mode that reads all the bullets calls this first.
+// A file that will not open leaves the cache empty; the format check after
+// it answers for that.
+auto RemoteControl::RoadmapQueryCall::fillBulletsIfCold() -> std::optional<QJsonDocument> {
+    auto &text = *textHolder;
+    if (rc.m_roadmapCacheBullets.isEmpty() && (rc.m_roadmapCachePath == path) &&
+        (rc.m_roadmapCacheMtimeMs == mtime)) {
+        // ANTS-3863 — a pure dispatch site; no body read on the store path.
+        // ANTS-4431 — the call's shared provider.
+        if (!text.openFailed()) {
             RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
             QString srcErr;
-            const auto bullets = roadmapBullets(callerCanonical, text,
+            const auto bullets = rc.roadmapBullets(callerCanonical, text,
                                                 /*includeArchive=*/false,
                                                 &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
                 return refuseRoadmapSource(srcWhy, srcErr);
-            m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
-            // ANTS-1646 — recompute duplicate-ID descriptors against
-            // the freshly-populated cache. Stays empty on a clean
-            // roadmap; emission gate suppresses the field then.
-            m_roadmapCacheDuplicateIds =
-                rcComputeDuplicateIds(m_roadmapCacheBullets);
-        } else {
-            // ANTS-1287-INV-9 — section mode does not pre-fill the
-            // full bullets cache; that path is taken lazily on the
-            // next no-section call. Build the index once.
-            m_roadmapCacheBullets = QJsonArray();
-            // Built from lines, so this branch needs every byte — and it is
-            // the branch the dispatch above did NOT take (ANTS-3863 § 2.4).
-            m_roadmapIndex = RoadmapIndex::buildIndex(text.full());
+            rc.m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
+            // ANTS-1646 — duplicate-id descriptors follow the cache.
+            rc.m_roadmapCacheDuplicateIds =
+                rcComputeDuplicateIds(rc.m_roadmapCacheBullets);
         }
     }
+    return std::nullopt;
+}
 
-    // ANTS-1437 — section_index branch. Returns a compact section
-    // index instead of bullets. Both caches (bullets + index) are
-    // populated lazily here if cold so the count tally has every
-    // bullet to look at.
-    if (mode == QLatin1String("section_index")) {
-        // Lazy-fill m_roadmapCacheBullets if cold (cache HIT may have
-        // come from an earlier section-mode call, INV-9 mirror).
-        if (m_roadmapCacheBullets.isEmpty() &&
-            (m_roadmapCachePath == path) &&
-            (m_roadmapCacheMtimeMs == mtime)) {
-            // ANTS-3863 — a pure dispatch site: the text feeds nothing but the
-            // seam, so a migrated project never reaches the body here.
-            // ANTS-4431 — the call's shared provider. Unopened on this path (a
-            // cache hit skipped the miss block), so openFailed() opens it here.
-            if (!text.openFailed()) {
-                // ANTS-3793 — same swap as the full-file pre-fill above.
-                RoadmapSource::ReadError srcWhy =
-                    RoadmapSource::ReadError::None;
-                QString srcErr;
-                const auto bullets = roadmapBullets(callerCanonical, text,
-                                                    /*includeArchive=*/false,
-                                                    &srcWhy, &srcErr);
-                if (srcWhy != RoadmapSource::ReadError::None)
-                    return refuseRoadmapSource(srcWhy, srcErr);
-                m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
-                // ANTS-1646 — recompute on the section_index lazy-fill
-                // path so callers entering through section_index mode
-                // still see duplicate_ids when collisions exist.
-                m_roadmapCacheDuplicateIds =
-                    rcComputeDuplicateIds(m_roadmapCacheBullets);
-            }
-        }
-        // Lazy-fill the index — same shape as the section-mode branch.
-        // ANTS-4433 — through the shared provider, so a call that already
-        // read the body takes the memo instead of a second whole-file read.
-        if (m_roadmapIndex.isEmpty()) {
-            const QString &markdown = text.full();
-            if (markdown.isEmpty() && text.openFailed())
-                return readFailed();
-            m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
-        }
-
-        // ANTS-1437-INV-8 — `unrecognised_format` gate applies before
-        // emission, mirroring the bullet-mode gate below. ANTS-1462
-        // adds a header-inventory fallback when buildIndex finds
-        // sections; the truly-opaque "no bullets + no headings" case
-        // still refuses with the typed error. ANTS-1463 adds the
-        // shared hint + expected_format envelope fields.
-        // ANTS-4861 — a store that answered with zero items is a complete
-        // answer, not a parse failure, so the fallback is for markdown only.
-        if (m_roadmapCacheBullets.isEmpty() &&
-            m_roadmapCacheSource != QLatin1String("store") &&
-            fi.size() > kRoadmapMinParseableSize) {
-            // section_index mode populated m_roadmapIndex upstream
-            // (the `if (!fresh)` block's section arm); reuse it here.
-            if (!m_roadmapIndex.isEmpty()) {
-                return QJsonDocument(buildHeaderInventoryEnvelope(
-                    m_roadmapIndex, path, fi.size(),
-                    req.value(QStringLiteral("check_sync")).toBool()));
-            }
-            QJsonObject env;
-            env["ok"]    = false;
-            env["code"]  = QStringLiteral("unrecognised_format");
-            env["error"] = QStringLiteral(
-                "roadmap_query: \"%1\" parsed zero bullets from %2 "
-                "bytes — format not recognised")
-                    .arg(path, QString::number(fi.size()));
-            env["path"]            = path;
-            env["bytes"]           = fi.size();
-            env["hint"]            = kUnrecognisedFormatHint();
-            env["expected_format"] = kUnrecognisedFormatExpected();
-            return QJsonDocument(env);
-        }
-
-        // Tally counts per slug. parseBullets sets sectionSlug on every
-        // record (RoadmapParse::parseBullets). Empty headline + empty id is
-        // a rollup bullet (ANTS-1398-INV-2); INV-6 excludes those.
-        const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
-        const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
-        const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");
-        QHash<QString, RoadmapIndex::SectionCounts> direct;
-        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
-            const QJsonObject o = v.toObject();
-            const QString id    = o.value(QStringLiteral("id")).toString();
-            const QString hl    = o.value(QStringLiteral("headline")).toString();
-            if (id.isEmpty() && hl.isEmpty()) continue;  // INV-6 rollup
-            const QString slug  = o.value(QStringLiteral("section_slug")).toString();
-            const QString s     = o.value(QStringLiteral("status")).toString();
-            const bool hasId    = !id.isEmpty();
-            RoadmapIndex::SectionCounts &t = direct[slug];
-            if (s == plannedEmoji || s == progressEmoji) {
-                t.active++;
-                if (hasId) t.activeWithId++;
-            }
-            if (s == doneEmoji) {
-                t.shipped++;
-                if (hasId) t.shippedWithId++;
-            }
-            t.total++;
-            if (hasId) t.totalWithId++;
-        }
-
-        // ANTS-1442 — INV-10. Roll up child-section tallies into
-        // their parents so level-2 sections show non-zero totals
-        // when bullets live under their level-3 children.
-        const auto rolled = RoadmapIndex::rollupCounts(
-            m_roadmapIndex, direct);
-
-        // INV-4 — emit EVERY indexed section, including empties, under
-        // the default status:all. ANTS-1848 amends ANTS-1437 INV-7: a
-        // status:active / status:shipped query drops sections whose
-        // matching *_id_only tally is 0 (the lean planning call), so the
-        // kept set matches the default bullets[] predicate. See spec.
-        // ANTS-1622 — emit the ID-only parallel counts alongside the
-        // emoji-only ones so callers see whether a section's bullets
-        // would survive the default `bullets[]` ID-filter predicate.
-        // The disagreement was the root of the cross-session bug: a
-        // legacy GFM-task-list section reports `active_count: 11`
-        // here but `roadmap_query(section=…, status="active")`
-        // returns `count: 0` because none of the 11 bullets carry a
-        // [PROJ-NNNN] token. Surfacing `active_count_id_only: 0`
-        // alongside makes that visible without a second call.
-        // ANTS-1907 — `include_section_etags:true` opt-in adds a
-        // `section_etag` field to each emitted section. The etags are
-        // computed lazily by slicing each kept section's bytes through
-        // the same SHA-256 path the section= branch uses; cached by
-        // slug so a follow-up section= call doesn't recompute. Default
-        // false keeps the envelope shape unchanged for back-compat
-        // callers (and skips the per-section slicing cost when the
-        // caller doesn't need the etag yet).
-        const bool includeSectionEtags =
-            req.value(QStringLiteral("include_section_etags")).toBool(false);
-        // ANTS-4467 — see the emission site below for why this exists.
-        const bool slugsOnly =
-            req.value(QStringLiteral("slugs_only")).toBool(false);
-        QString sectionEtagsMarkdown;   // lazy-loaded once per call
-        bool sectionEtagsMarkdownLoaded = false;
-        // ANTS-2052 — legacy-roadmap fallback for the lean status filter.
-        // On a fully id-less roadmap every section's *_id_only tally is 0,
-        // so the ANTS-1848 predicate below would drop EVERY section and the
-        // flagship session_orient bundle reads as "no active work" even
-        // though the emoji counts are non-zero (RetroArch / Music Production
-        // cross-session reports, 2026-06-10). Worse, a section dropped by the
-        // filter never reaches the per-section legacy_format check further
-        // down, so the caller got sections:[] with no hint at all. Detect the
-        // exact dead-end — the id-only predicate keeps nothing AND the raw
-        // emoji count for the filter is > 0 — and fall back to the raw
-        // active/shipped predicate, flagging the envelope so the caller knows
-        // the surfaced counts are emoji-based, not id-based. raw totals come
-        // from `direct` (un-rolled) so they aren't double-counted by rollup.
-        int rawActiveTotal = 0, rawShippedTotal = 0;
-        for (auto it = direct.constBegin(); it != direct.constEnd(); ++it) {
-            rawActiveTotal  += it.value().active;
-            rawShippedTotal += it.value().shipped;
-        }
-        bool useRawPredicate = false;
-        if (sectionFilter == QLatin1String("active") ||
-            sectionFilter == QLatin1String("shipped")) {
-            int idOnlySurvivors = 0;
-            for (const auto &sec : std::as_const(m_roadmapIndex)) {
-                const auto t = rolled.value(sec.slug,
-                                            RoadmapIndex::SectionCounts{});
-                if ((sectionFilter == QLatin1String("active")  && t.activeWithId  > 0) ||
-                    (sectionFilter == QLatin1String("shipped") && t.shippedWithId > 0))
-                    ++idOnlySurvivors;
-            }
-            const int rawTotal = (sectionFilter == QLatin1String("active"))
-                                     ? rawActiveTotal : rawShippedTotal;
-            useRawPredicate = (idOnlySurvivors == 0 && rawTotal > 0);
-        }
-        QJsonArray sections;
-        QJsonArray legacyFormatSections;
-        for (const auto &sec : std::as_const(m_roadmapIndex)) {
-            const auto t = rolled.value(sec.slug,
-                                        RoadmapIndex::SectionCounts{});
-            // ANTS-1848 — status filter drops zero-id-count sections.
-            // ANTS-2052 — under the legacy fallback, drop by the raw emoji
-            // count instead so an id-less roadmap still lists its sections.
-            const bool dropActive  = (sectionFilter == QLatin1String("active")) &&
-                (useRawPredicate ? t.active  == 0 : t.activeWithId  == 0);
-            const bool dropShipped = (sectionFilter == QLatin1String("shipped")) &&
-                (useRawPredicate ? t.shipped == 0 : t.shippedWithId == 0);
-            if (dropActive || dropShipped) {
-                continue;
-            }
-            QJsonObject obj;
-            obj["slug"]                 = sec.slug;
-            obj["headline"]             = sec.headingText;
-            obj["level"]                = sec.level;
-            obj["active_count"]         = t.active;
-            obj["shipped_count"]        = t.shipped;
-            obj["total_count"]          = t.total;
-            obj["active_count_id_only"]  = t.activeWithId;
-            obj["shipped_count_id_only"] = t.shippedWithId;
-            obj["total_count_id_only"]   = t.totalWithId;
-            // ANTS-4986 — the counts above include every subsection (INV-10),
-            // so rows cannot be summed. These are the section's OWN items.
-            const auto own = direct.value(sec.slug, RoadmapIndex::SectionCounts{});
-            obj["direct_active_count"]   = own.active;
-            obj["direct_shipped_count"]  = own.shipped;
-            obj["direct_total_count"]    = own.total;
-            // ANTS-1907 — per-section etag emission (opt-in). Honours
-            // the same per-slug cache as section= so the etag stays
-            // stable across mode swaps.
-            if (includeSectionEtags) {
-                QString etag = m_roadmapSectionEtags.value(sec.slug);
-                if (etag.isEmpty()) {
-                    if (!sectionEtagsMarkdownLoaded) {
-                        sectionEtagsMarkdown = text.full();   // ANTS-4433
-                        sectionEtagsMarkdownLoaded = true;
-                    }
-                    if (!sectionEtagsMarkdown.isEmpty()) {
-                        const QString slice = RoadmapIndex::sliceSection(
-                            sectionEtagsMarkdown, sec);
-                        etag = rcComputeSectionEtag(slice);
-                        m_roadmapSectionEtags.insert(sec.slug, etag);
-                    }
-                }
-                if (!etag.isEmpty()) obj["section_etag"] = etag;
-            }
-            // Self-only (un-rolled) check: if this section directly
-            // owns bullets, all of which lack IDs, it is legacy-format.
-            // Surface the slug at the top level (ANTS-1622) AND mark
-            // the per-section object (ANTS-1714b) so a caller spotting
-            // the discrepancy doesn't have to grep the slug against
-            // the top-level array. Absent on well-tagged sections so
-            // the response shape is unchanged for the common case.
-            const auto self = direct.value(sec.slug,
-                                           RoadmapIndex::SectionCounts{});
-            if (self.total > 0 && self.totalWithId == 0) {
-                obj["legacy_format"] = true;
-                legacyFormatSections.append(sec.slug);
-            }
-            sections.append(obj);
-        }
-
-        // ANTS-4710 — an UNPARSEABLE roadmap and one with genuinely no
-        // sections answered identically: total:0, no slugs, and nothing in the
-        // envelope marking which. A shared skill prescribes this one call as
-        // the whole answer to "which copy of the roadmap is authoritative", so
-        // an empty index gets reported as "no sections" when the true answer
-        // is "this file is not a roadmap" — a wrong answer with nothing in the
-        // envelope marking it wrong. The list path already warns on this
-        // shape; this is its twin.
-        //
-        // The discriminator is whether any id-bearing bullet parsed. None means
-        // nothing about the file was recognised; some means the file parsed and
-        // simply carries no headings, which is a different and far less
-        // alarming answer.
-        //
-        // Measured BEFORE the query filter below, deliberately: a filter that
-        // matched nothing leaves an empty array for a reason that has nothing
-        // to do with the parse, and that case already ships its own counters.
-        if (sections.isEmpty()) {
-            // Kept, not id-bearing: include_narrator_bullets keeps id-less
-            // bullets too, so they count here (ANTS-5927).
-            bool anyBulletKept = false;
-            for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
-                if (!shouldDropUnnumbered(v)) { anyBulletKept = true; break; }
-            }
-            out["warning"] = anyBulletKept
-                ? QStringLiteral(
-                      "this roadmap parsed but carries no section headings, so "
-                      "there are no slugs to return. total:0 here means \"no "
-                      "sections\", NOT \"unreadable\".")
-                : QStringLiteral(
-                      "no section headings parsed AND no [PROJ-NNNN]-tagged "
-                      "bullets, so total:0 means \"format not recognised\", NOT "
-                      "\"this roadmap has no sections\". Check `source` and the "
-                      "file itself before reporting it as sectionless.");
-        }
-
-        // ANTS-4610 — narrow by section NAME. Matched against the headline AND
-        // the slug: a caller who has already seen a slug spells the slug, and a
-        // filter that took only one of the two answers half of them. Applied
-        // BEFORE pagination, so it makes room rather than competing with the
-        // soft cap (same order file_outline's `filter` uses).
-        //
-        // An unexplained empty array reads as "this roadmap has no sections",
-        // so the counters ship with it: zero matches has to be distinguishable
-        // from nothing to match against.
-        if (!queryArg.isEmpty()) {
-            const int considered = sections.size();
-            const mcp::QueryMatcher matcher(queryArg, queryMode);  // ANTS-5104
-            QJsonArray kept;
-            for (const auto &v : std::as_const(sections)) {
-                const QJsonObject s = v.toObject();
-                if (matcher.matches(
-                        s.value(QStringLiteral("headline")).toString() +
-                            QChar('\n') +
-                            s.value(QStringLiteral("slug")).toString())) {
-                    kept.append(v);
-                }
-            }
-            sections = kept;
-            out["query"]                 = queryArg;
-            out["sections_considered"]   = considered;
-            out["sections_filtered_out"] = considered - sections.size();
-        }
-
-        out["ok"] = true;
-        out["mode"] = mode;          // explicit in section_index path
-        out["path"] = path;
-        out["filter"] = filterEcho;      // status filter echo (ANTS-1848: now shapes emission)
-        // ANTS-1729 — paginate / auto-truncate the section index with the
-        // same PaginationEngine the bullets path uses. Auto-pick (limit
-        // omitted → -1) measure-cuts the slice under the soft cap so a
-        // many-section roadmap stops busting the compact-index budget;
-        // explicit offset/limit let a caller page. legacy_format_sections
-        // stays the full-roadmap hint (a small slug list, not per-page).
-        // ANTS-4467 — `slugs_only:true`: a flat array of slug strings instead
-        // of the section objects.
-        //
-        // Reported by Vestige. On an 84-section roadmap the section_index reply
-        // exceeded the inline budget and offloaded, and the spill kept whole
-        // bodies for a prefix of rows and shape-only {index, bytes} stubs for
-        // the rest — the worst split for an index-shaped reply whose caller
-        // needs ONE key from EVERY row. They got slugs for 8 of 84 from a
-        // ~20 KB call, and fell back to grepping the headings, which rule 18
-        // asks sessions to avoid and which was strictly cheaper here.
-        //
-        // It lands squarely on the append path: roadmap_log's `section`
-        // argument documentation tells callers to get their slugs from this
-        // mode, so the spill broke the documented prerequisite for exactly the
-        // projects big enough to need an index. `fields:["sections"]` did not
-        // help, because the spill is driven by row bodies rather than by
-        // sibling top-level keys.
-        //
-        // 84 slugs is comfortably under 2 KB, so this never spills. It is
-        // deliberately a projection rather than a new mode: same filter, same
-        // drop rules, same ordering — only the row shape changes. Their more
-        // general fix (make the spiller shed FIELDS before it sheds ROWS, as
-        // workspace_search's `downshifted` path does) is the better answer for
-        // every index-shaped reply and is left open on the item.
-        if (slugsOnly) {
-            QJsonArray slugs;
-            for (const QJsonValue &v : std::as_const(sections))
-                slugs.append(v.toObject().value(QStringLiteral("slug")));
-            out["slugs"]       = slugs;
-            out["slugs_only"]  = true;
-            out["total"]       = slugs.size();
-            // ANTS-5154 — opt-in, so the default list stays the small one.
-            if (req.value(QStringLiteral("with_titles")).toBool()) {
-                QJsonArray pairs;
-                for (const QJsonValue &v : std::as_const(sections)) {
-                    const QJsonObject o = v.toObject();
-                    pairs.append(QJsonObject{
-                        {QStringLiteral("slug"), o.value(QStringLiteral("slug"))},
-                        {QStringLiteral("headline"), o.value(QStringLiteral("headline"))}});
-                }
-                out["slug_titles"] = pairs;
-            }
-        } else {
-            const auto secPage =
-                PaginationEngine::pageBullets(sections, offsetArg, limitArg);
-            out["sections"] = secPage.slice;
-            // ANTS-4986 — make the double-count visible rather than merely avoidable.
-            out["counts_hint"] = QStringLiteral(
-                "active_count, shipped_count and total_count include every "
-                "subsection, so summing rows double-counts. To total sections, sum "
-                "direct_active_count / direct_shipped_count / direct_total_count.");
-            if (PaginationEngine::shouldEmitPaginationFields(
-                    callerPassedOffset, callerPassedLimit, secPage.truncated)) {
-                out["offset"]    = secPage.offset;
-                out["limit"]     = secPage.limit;
-                out["total"]     = secPage.total;
-                out["truncated"] = secPage.truncated;
-                if (secPage.truncated) out["next_offset"] = secPage.nextOffset;
-            }
-        }   // ANTS-4467 — end of the !slugsOnly branch
-        // ANTS-1622 — top-level legacy-format hint. Only emitted
-        // when at least one section's direct bullets all lack
-        // [PROJ-NNNN] ids — staying absent on well-tagged roadmaps
-        // keeps the response shape unchanged for the common case.
-        if (!legacyFormatSections.isEmpty()) {
-            out["legacy_format_sections"] = legacyFormatSections;
-            out["legacy_format_hint"] = QStringLiteral(
-                "%1 section(s) carry bullets that lack [PROJ-NNNN] "
-                "ids — the default bullets[] filter will return "
-                "count:0 for those. Re-issue any bullets-mode query "
-                "against those slugs with include_narrator_bullets:true "
-                "to retrieve their content.")
-                    .arg(legacyFormatSections.size());
-        }
-        // ANTS-2052 — when the lean id-only predicate would have hidden ALL
-        // active/shipped work on an id-less roadmap, we fell back to the raw
-        // emoji predicate above. Flag it at the top level and expose the true
-        // raw count so a fresh session_orient bundle no longer reads as an
-        // empty queue. raw_*_count is emoji-based; the per-section legacy hint
-        // already steers a bullets-mode follow-up to include_narrator_bullets.
-        if (useRawPredicate) {
-            out["legacy_format"]     = true;
-            out["raw_active_count"]  = rawActiveTotal;
-            out["raw_shipped_count"] = rawShippedTotal;
-        }
-        // ANTS-1646 — surface duplicate-ID collisions detected during
-        // cache fill. Stays absent on a clean roadmap so the envelope
-        // shape is unchanged for the common path.
-        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
-            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
-        }
-        return QJsonDocument(out);
+// ANTS-1437 — section_index branch. Returns a compact section
+// index instead of bullets. Both caches (bullets + index) are
+// populated lazily here if cold so the count tally has every
+// bullet to look at.
+auto RemoteControl::RoadmapQueryCall::sectionIndex() -> QJsonDocument {
+    auto &text = *textHolder;
+    if (auto r = fillBulletsIfCold()) return *r;
+    // Lazy-fill the index — same shape as the section-mode branch.
+    // ANTS-4433 — through the shared provider, so a call that already
+    // read the body takes the memo instead of a second whole-file read.
+    if (rc.m_roadmapIndex.isEmpty()) {
+        const QString &markdown = text.full();
+        if (markdown.isEmpty() && text.openFailed())
+            return readFailed();
+        rc.m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
     }
 
-    // ANTS-1922 — bundles branch. Groups the active subset (📋/🚧) into
-    // thematic work-bundles by headline-token similarity, flagging items
-    // a shipped sibling may already cover (possibly_resolved_by) or a
-    // body gate-marker blocks (gate_note). Active-only; a passed `status`
-    // is ignored (INV-7). Early return like section_index; reads the warm
-    // cache with no re-parse (INV-8). Lazy-fills via rcBuildBulletCacheArray
-    // when a prior section-mode call left the bullet cache empty on a hit
-    // (mirror of the section_index lazy-fill; the helper keeps section_slug
-    // on the shared cache for a follow-up section_index call within the TTL).
-    if (mode == QLatin1String("bundles")) {
-        if (m_roadmapCacheBullets.isEmpty() &&
-            (m_roadmapCachePath == path) &&
-            (m_roadmapCacheMtimeMs == mtime)) {
-            // ANTS-3863 — a pure dispatch site; no body read on the store path.
-            // ANTS-4431 — the call's shared provider (see the hoist above).
-            if (!text.openFailed()) {
-                // ANTS-3793 — store-or-markdown, then the same builder.
-                RoadmapSource::ReadError srcWhy =
-                    RoadmapSource::ReadError::None;
-                QString srcErr;
-                const auto bullets = roadmapBullets(callerCanonical, text,
-                                                    /*includeArchive=*/false,
-                                                    &srcWhy, &srcErr);
-                if (srcWhy != RoadmapSource::ReadError::None)
-                    return refuseRoadmapSource(srcWhy, srcErr);
-                m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
-                m_roadmapCacheDuplicateIds =
-                    rcComputeDuplicateIds(m_roadmapCacheBullets);
-            }
+    // ANTS-1437-INV-8 — `unrecognised_format` gate applies before
+    // emission, mirroring the bullet-mode gate below. ANTS-1462
+    // adds a header-inventory fallback when buildIndex finds
+    // sections; the truly-opaque "no bullets + no headings" case
+    // still refuses with the typed error. ANTS-1463 adds the
+    // shared hint + expected_format envelope fields.
+    // ANTS-4861 — a store that answered with zero items is a complete
+    // answer, not a parse failure, so the fallback is for markdown only.
+    if (rc.m_roadmapCacheBullets.isEmpty() &&
+        rc.m_roadmapCacheSource != QLatin1String("store") &&
+        fi.size() > kRoadmapMinParseableSize) {
+        // section_index mode populated m_roadmapIndex upstream
+        // (the `if (!fresh)` block's section arm); reuse it here.
+        if (!rc.m_roadmapIndex.isEmpty()) {
+            return QJsonDocument(buildHeaderInventoryEnvelope(
+                rc.m_roadmapIndex, path, fi.size(),
+                req.value(QStringLiteral("check_sync")).toBool()));
         }
-        const int cap = (m_bundleSoftCapOverride > 0)
-                            ? m_bundleSoftCapOverride
-                            : PaginationEngine::softCapBytes();
-        QJsonObject env = buildRoadmapBundlesEnvelope(m_roadmapCacheBullets, cap);
-        // ANTS-6388 — the bundles envelope is built fresh, so carry the
-        // backend witness every other mode stamps onto `out`.
-        stampRoadmapSource();
-        for (const char *key : {"source", "file_ahead_of_store",
-                                "file_highest_id", "store_high_water"}) {
-            const QString k = QString::fromLatin1(key);
-            if (out.contains(k)) env[k] = out.value(k);
-        }
+        QJsonObject env;
+        env["ok"]    = false;
+        env["code"]  = QStringLiteral("unrecognised_format");
+        env["error"] = QStringLiteral(
+            "roadmap_query: \"%1\" parsed zero bullets from %2 "
+            "bytes — format not recognised")
+                .arg(path, QString::number(fi.size()));
+        env["path"]            = path;
+        env["bytes"]           = fi.size();
+        env["hint"]            = kUnrecognisedFormatHint();
+        env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
 
-    // ANTS-6129 — the bullet-list tail the section= and full-file paths
-    // share. Each path used to carry its own copy, and fixes such as
-    // ANTS-3560 and ANTS-4423 reached one copy before the other.
+    // Tally counts per slug. parseBullets sets sectionSlug on every
+    // record (RoadmapParse::parseBullets). Empty headline + empty id is
+    // a rollup bullet (ANTS-1398-INV-2); INV-6 excludes those.
+    const QString plannedEmoji  = QString::fromUtf8("\xF0\x9F\x93\x8B");
+    const QString progressEmoji = QString::fromUtf8("\xF0\x9F\x9A\xA7");
+    const QString doneEmoji     = QString::fromUtf8("\xE2\x9C\x85");
+    QHash<QString, RoadmapIndex::SectionCounts> direct;
+    for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
+        const QJsonObject o = v.toObject();
+        const QString id    = o.value(QStringLiteral("id")).toString();
+        const QString hl    = o.value(QStringLiteral("headline")).toString();
+        if (id.isEmpty() && hl.isEmpty()) continue;  // INV-6 rollup
+        const QString slug  = o.value(QStringLiteral("section_slug")).toString();
+        const QString s     = o.value(QStringLiteral("status")).toString();
+        const bool hasId    = !id.isEmpty();
+        RoadmapIndex::SectionCounts &t = direct[slug];
+        if (s == plannedEmoji || s == progressEmoji) {
+            t.active++;
+            if (hasId) t.activeWithId++;
+        }
+        if (s == doneEmoji) {
+            t.shipped++;
+            if (hasId) t.shippedWithId++;
+        }
+        t.total++;
+        if (hasId) t.totalWithId++;
+    }
+
+    // ANTS-1442 — INV-10. Roll up child-section tallies into
+    // their parents so level-2 sections show non-zero totals
+    // when bullets live under their level-3 children.
+    const auto rolled = RoadmapIndex::rollupCounts(
+        rc.m_roadmapIndex, direct);
+
+    // INV-4 — emit EVERY indexed section, including empties, under
+    // the default status:all. ANTS-1848 amends ANTS-1437 INV-7: a
+    // status:active / status:shipped query drops sections whose
+    // matching *_id_only tally is 0 (the lean planning call), so the
+    // kept set matches the default bullets[] predicate. See spec.
+    // ANTS-1622 — emit the ID-only parallel counts alongside the
+    // emoji-only ones so callers see whether a section's bullets
+    // would survive the default `bullets[]` ID-filter predicate.
+    // The disagreement was the root of the cross-session bug: a
+    // legacy GFM-task-list section reports `active_count: 11`
+    // here but `roadmap_query(section=…, status="active")`
+    // returns `count: 0` because none of the 11 bullets carry a
+    // [PROJ-NNNN] token. Surfacing `active_count_id_only: 0`
+    // alongside makes that visible without a second call.
+    // ANTS-1907 — `include_section_etags:true` opt-in adds a
+    // `section_etag` field to each emitted section. The etags are
+    // computed lazily by slicing each kept section's bytes through
+    // the same SHA-256 path the section= branch uses; cached by
+    // slug so a follow-up section= call doesn't recompute. Default
+    // false keeps the envelope shape unchanged for back-compat
+    // callers (and skips the per-section slicing cost when the
+    // caller doesn't need the etag yet).
+    const bool includeSectionEtags =
+        req.value(QStringLiteral("include_section_etags")).toBool(false);
+    // ANTS-4467 — see the emission site below for why this exists.
+    const bool slugsOnly =
+        req.value(QStringLiteral("slugs_only")).toBool(false);
+    QString sectionEtagsMarkdown;   // lazy-loaded once per call
+    bool sectionEtagsMarkdownLoaded = false;
+    // ANTS-2052 — legacy-roadmap fallback for the lean status filter.
+    // On a fully id-less roadmap every section's *_id_only tally is 0,
+    // so the ANTS-1848 predicate below would drop EVERY section and the
+    // flagship session_orient bundle reads as "no active work" even
+    // though the emoji counts are non-zero (RetroArch / Music Production
+    // cross-session reports, 2026-06-10). Worse, a section dropped by the
+    // filter never reaches the per-section legacy_format check further
+    // down, so the caller got sections:[] with no hint at all. Detect the
+    // exact dead-end — the id-only predicate keeps nothing AND the raw
+    // emoji count for the filter is > 0 — and fall back to the raw
+    // active/shipped predicate, flagging the envelope so the caller knows
+    // the surfaced counts are emoji-based, not id-based. raw totals come
+    // from `direct` (un-rolled) so they aren't double-counted by rollup.
+    int rawActiveTotal = 0, rawShippedTotal = 0;
+    for (auto it = direct.constBegin(); it != direct.constEnd(); ++it) {
+        rawActiveTotal  += it.value().active;
+        rawShippedTotal += it.value().shipped;
+    }
+    bool useRawPredicate = false;
+    if (sectionFilter == QLatin1String("active") ||
+        sectionFilter == QLatin1String("shipped")) {
+        int idOnlySurvivors = 0;
+        for (const auto &sec : std::as_const(rc.m_roadmapIndex)) {
+            const auto t = rolled.value(sec.slug,
+                                        RoadmapIndex::SectionCounts{});
+            if ((sectionFilter == QLatin1String("active")  && t.activeWithId  > 0) ||
+                (sectionFilter == QLatin1String("shipped") && t.shippedWithId > 0))
+                ++idOnlySurvivors;
+        }
+        const int rawTotal = (sectionFilter == QLatin1String("active"))
+                                 ? rawActiveTotal : rawShippedTotal;
+        useRawPredicate = (idOnlySurvivors == 0 && rawTotal > 0);
+    }
+    QJsonArray sections;
+    QJsonArray legacyFormatSections;
+    for (const auto &sec : std::as_const(rc.m_roadmapIndex)) {
+        const auto t = rolled.value(sec.slug,
+                                    RoadmapIndex::SectionCounts{});
+        // ANTS-1848 — status filter drops zero-id-count sections.
+        // ANTS-2052 — under the legacy fallback, drop by the raw emoji
+        // count instead so an id-less roadmap still lists its sections.
+        const bool dropActive  = (sectionFilter == QLatin1String("active")) &&
+            (useRawPredicate ? t.active  == 0 : t.activeWithId  == 0);
+        const bool dropShipped = (sectionFilter == QLatin1String("shipped")) &&
+            (useRawPredicate ? t.shipped == 0 : t.shippedWithId == 0);
+        if (dropActive || dropShipped) {
+            continue;
+        }
+        QJsonObject obj;
+        obj["slug"]                 = sec.slug;
+        obj["headline"]             = sec.headingText;
+        obj["level"]                = sec.level;
+        obj["active_count"]         = t.active;
+        obj["shipped_count"]        = t.shipped;
+        obj["total_count"]          = t.total;
+        obj["active_count_id_only"]  = t.activeWithId;
+        obj["shipped_count_id_only"] = t.shippedWithId;
+        obj["total_count_id_only"]   = t.totalWithId;
+        // ANTS-4986 — the counts above include every subsection (INV-10),
+        // so rows cannot be summed. These are the section's OWN items.
+        const auto own = direct.value(sec.slug, RoadmapIndex::SectionCounts{});
+        obj["direct_active_count"]   = own.active;
+        obj["direct_shipped_count"]  = own.shipped;
+        obj["direct_total_count"]    = own.total;
+        // ANTS-1907 — per-section etag emission (opt-in). Honours
+        // the same per-slug cache as section= so the etag stays
+        // stable across mode swaps.
+        if (includeSectionEtags) {
+            QString etag = rc.m_roadmapSectionEtags.value(sec.slug);
+            if (etag.isEmpty()) {
+                if (!sectionEtagsMarkdownLoaded) {
+                    sectionEtagsMarkdown = text.full();   // ANTS-4433
+                    sectionEtagsMarkdownLoaded = true;
+                }
+                if (!sectionEtagsMarkdown.isEmpty()) {
+                    const QString slice = RoadmapIndex::sliceSection(
+                        sectionEtagsMarkdown, sec);
+                    etag = rcComputeSectionEtag(slice);
+                    rc.m_roadmapSectionEtags.insert(sec.slug, etag);
+                }
+            }
+            if (!etag.isEmpty()) obj["section_etag"] = etag;
+        }
+        // Self-only (un-rolled) check: if this section directly
+        // owns bullets, all of which lack IDs, it is legacy-format.
+        // Surface the slug at the top level (ANTS-1622) AND mark
+        // the per-section object (ANTS-1714b) so a caller spotting
+        // the discrepancy doesn't have to grep the slug against
+        // the top-level array. Absent on well-tagged sections so
+        // the response shape is unchanged for the common case.
+        const auto self = direct.value(sec.slug,
+                                       RoadmapIndex::SectionCounts{});
+        if (self.total > 0 && self.totalWithId == 0) {
+            obj["legacy_format"] = true;
+            legacyFormatSections.append(sec.slug);
+        }
+        sections.append(obj);
+    }
+
+    // ANTS-4710 — an UNPARSEABLE roadmap and one with genuinely no
+    // sections answered identically: total:0, no slugs, and nothing in the
+    // envelope marking which. A shared skill prescribes this one call as
+    // the whole answer to "which copy of the roadmap is authoritative", so
+    // an empty index gets reported as "no sections" when the true answer
+    // is "this file is not a roadmap" — a wrong answer with nothing in the
+    // envelope marking it wrong. The list path already warns on this
+    // shape; this is its twin.
     //
-    // pruneAndFilter — ANTS-1398 + ANTS-1425: drop rollup and narrator
-    // bullets unless the caller opts each class back in, then apply the
-    // keyword, kind and source filters. The two counts let an empty result
-    // say which step emptied it (ANTS-1538, ANTS-3560): idBearing is taken
-    // after the ID-prune and before the keyword filter.
-    struct ListCounts { int beforeIdPrune = 0; int idBearing = 0; };
-    const auto pruneAndFilter = [&](QJsonArray &filtered) {
-        ListCounts n;
-        n.beforeIdPrune = filtered.size();
-        QJsonArray pruned;
-        for (const auto &v : std::as_const(filtered)) {
-            if (!shouldDropUnnumbered(v)) pruned.append(v);
+    // The discriminator is whether any id-bearing bullet parsed. None means
+    // nothing about the file was recognised; some means the file parsed and
+    // simply carries no headings, which is a different and far less
+    // alarming answer.
+    //
+    // Measured BEFORE the query filter below, deliberately: a filter that
+    // matched nothing leaves an empty array for a reason that has nothing
+    // to do with the parse, and that case already ships its own counters.
+    if (sections.isEmpty()) {
+        // Kept, not id-bearing: include_narrator_bullets keeps id-less
+        // bullets too, so they count here (ANTS-5927).
+        bool anyBulletKept = false;
+        for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
+            if (!shouldDropUnnumbered(v)) { anyBulletKept = true; break; }
         }
-        filtered = pruned;
-        n.idBearing = filtered.size();
-        // ANTS-3391 — before pagination, so count / next_offset reflect the
-        // narrowed set.
-        applyQueryFilter(filtered);
-        applyKindFilter(filtered);   // ANTS-4836
-        applySourceFilter(filtered); // ANTS-4985
-        return n;
-    };
-    // emitBulletPage — projection, body cap, bullet_fields, paging, the
-    // envelope echoes and the empty-result warning. inSection words the
-    // warning for one section and skips the whole-file format check.
-    const auto emitBulletPage = [&](QJsonArray &filtered, const ListCounts &n,
-                                    bool inSection) {
-        // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
-        // headline-only projection, so a scanning caller keeps every id and
-        // headline rather than losing the tail. Off when the caller asked for
-        // lean rows (headline_only) or for bodies (include_body). ANTS-4837 —
-        // and under a caller-chosen row shape, which the fixed four-key shape
-        // would silently discard.
-        const bool wantDownshift =
-            (mode != QLatin1String("headline_only")) && !includeBody
-            && bulletFields.isEmpty();
-        // ANTS-3577 — project the FULL filtered set before pagination, so the
-        // soft-cap measure counts the bytes that will be emitted and more rows
-        // fit per page (ANTS-1881 INV-6). ANTS-5703 — a plain list (no
-        // include_body, no bullet_fields) takes the same lean shape: kind,
-        // lanes, source and the duplicate headline are on request only.
-        if (mode == QLatin1String("headline_only"))
-            rcProjectHeadlineOnly(filtered);
-        else if (!includeBody && bulletFields.isEmpty())
-            rcProjectListDefault(filtered);
-        // ANTS-4630 — cap bodies before pagination too, on the same principle:
-        // a body measured larger than it will be emitted drops rows that fit.
-        // ANTS-5467 — at the list cap, which max_body_bytes may lower.
-        if (includeBody) {
-            applyBodyMatch(filtered);  // ANTS-5468 — before the cap
-            rcCapBodyFields(filtered, listBodyCap);
-            announceListCap(out);
+        out["warning"] = anyBulletKept
+            ? QStringLiteral(
+                  "this roadmap parsed but carries no section headings, so "
+                  "there are no slugs to return. total:0 here means \"no "
+                  "sections\", NOT \"unreadable\".")
+            : QStringLiteral(
+                  "no section headings parsed AND no [PROJ-NNNN]-tagged "
+                  "bullets, so total:0 means \"format not recognised\", NOT "
+                  "\"this roadmap has no sections\". Check `source` and the "
+                  "file itself before reporting it as sectionless.");
+    }
+
+    // ANTS-4610 — narrow by section NAME. Matched against the headline AND
+    // the slug: a caller who has already seen a slug spells the slug, and a
+    // filter that took only one of the two answers half of them. Applied
+    // BEFORE pagination, so it makes room rather than competing with the
+    // soft cap (same order file_outline's `filter` uses).
+    //
+    // An unexplained empty array reads as "this roadmap has no sections",
+    // so the counters ship with it: zero matches has to be distinguishable
+    // from nothing to match against.
+    if (!queryArg.isEmpty()) {
+        const int considered = sections.size();
+        const mcp::QueryMatcher matcher(queryArg, queryMode);  // ANTS-5104
+        QJsonArray kept;
+        for (const auto &v : std::as_const(sections)) {
+            const QJsonObject s = v.toObject();
+            if (matcher.matches(
+                    s.value(QStringLiteral("headline")).toString() +
+                        QChar('\n') +
+                        s.value(QStringLiteral("slug")).toString())) {
+                kept.append(v);
+            }
         }
-        // ANTS-4837 — bullet_fields before pagination as well, after the body
-        // cap so a kept `body` is still capped.
-        projectAndReportBulletFields(filtered);
-        // ANTS-1436-INV-11 — pagination via PaginationEngine.
-        PaginationEngine::PageResult page;
-        if (m_roadmapQueryWhole) {   // ANTS-5801 — see the member's comment
-            page.slice = filtered;
-            page.total = static_cast<int>(filtered.size());
-        } else {
-            page = PaginationEngine::pageBullets(
-                filtered, offsetArg, limitArg,
-                wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
-                              : PaginationEngine::RowProjector{});
+        sections = kept;
+        out["query"]                 = queryArg;
+        out["sections_considered"]   = considered;
+        out["sections_filtered_out"] = considered - sections.size();
+    }
+
+    out["ok"] = true;
+    out["mode"] = mode;          // explicit in section_index path
+    out["path"] = path;
+    out["filter"] = filterEcho;      // status filter echo (ANTS-1848: now shapes emission)
+    // ANTS-1729 — paginate / auto-truncate the section index with the
+    // same PaginationEngine the bullets path uses. Auto-pick (limit
+    // omitted → -1) measure-cuts the slice under the soft cap so a
+    // many-section roadmap stops busting the compact-index budget;
+    // explicit offset/limit let a caller page. legacy_format_sections
+    // stays the full-roadmap hint (a small slug list, not per-page).
+    // ANTS-4467 — `slugs_only:true`: a flat array of slug strings instead
+    // of the section objects.
+    //
+    // Reported by Vestige. On an 84-section roadmap the section_index reply
+    // exceeded the inline budget and offloaded, and the spill kept whole
+    // bodies for a prefix of rows and shape-only {index, bytes} stubs for
+    // the rest — the worst split for an index-shaped reply whose caller
+    // needs ONE key from EVERY row. They got slugs for 8 of 84 from a
+    // ~20 KB call, and fell back to grepping the headings, which rule 18
+    // asks sessions to avoid and which was strictly cheaper here.
+    //
+    // It lands squarely on the append path: roadmap_log's `section`
+    // argument documentation tells callers to get their slugs from this
+    // mode, so the spill broke the documented prerequisite for exactly the
+    // projects big enough to need an index. `fields:["sections"]` did not
+    // help, because the spill is driven by row bodies rather than by
+    // sibling top-level keys.
+    //
+    // 84 slugs is comfortably under 2 KB, so this never spills. It is
+    // deliberately a projection rather than a new mode: same filter, same
+    // drop rules, same ordering — only the row shape changes. Their more
+    // general fix (make the spiller shed FIELDS before it sheds ROWS, as
+    // workspace_search's `downshifted` path does) is the better answer for
+    // every index-shaped reply and is left open on the item.
+    if (slugsOnly) {
+        QJsonArray slugs;
+        for (const QJsonValue &v : std::as_const(sections))
+            slugs.append(v.toObject().value(QStringLiteral("slug")));
+        out["slugs"]       = slugs;
+        out["slugs_only"]  = true;
+        out["total"]       = slugs.size();
+        // ANTS-5154 — opt-in, so the default list stays the small one.
+        if (req.value(QStringLiteral("with_titles")).toBool()) {
+            QJsonArray pairs;
+            for (const QJsonValue &v : std::as_const(sections)) {
+                const QJsonObject o = v.toObject();
+                pairs.append(QJsonObject{
+                    {QStringLiteral("slug"), o.value(QStringLiteral("slug"))},
+                    {QStringLiteral("headline"), o.value(QStringLiteral("headline"))}});
+            }
+            out["slug_titles"] = pairs;
         }
-        // ANTS-1517 — strip bodies when include_body is false (a no-op when
-        // the headline_only projection already dropped them).
-        if (!includeBody) rcStripBodyFields(page.slice);
-        out["ok"] = true;
-        out["bullets"] = page.slice;
-        // ANTS-4362 — say when the bodies were withheld. A status- or
-        // section-filtered list strips them unless include_body is passed,
-        // since it can match the whole roadmap; an id/ids fetch returns them.
-        // Silent, the reply read as though those bullets had no bodies.
-        if (!includeBody && mode != QLatin1String("headline_only")
-            && !page.slice.isEmpty()) {
-            out["bodies_omitted"] = true;
-            out["bodies_omitted_reason"] = QStringLiteral(
-                "a filtered bullets query withholds bodies by default because the "
-                "filter can match the whole roadmap; pass include_body:true to get "
-                "them (an id/ids fetch returns them without asking). Rows carry "
-                "id, status, headline_oneline and section_slug unless "
-                "bullet_fields names others (kind, lanes, source)");
-        }
-        out["path"] = path;
-        // ANTS-1247-INV-10: count is post-filter post-pagination size.
-        out["count"] = page.slice.size();
-        // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
-        out["filter"] = filterEcho;
-        if (!queryArg.isEmpty()) {  // ANTS-3391
-            out["query"] = queryArg;
-            // ANTS-5257 — what the search covered, so a zero-hit reply says
-            // where it looked rather than reading as "no such item".
-            out["query_fields"] =
-                QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
-        }
-        if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
-        if (!sourceArgs.isEmpty()) {   // ANTS-4985
-            out["source"] = QJsonArray::fromStringList(sourceArgs);
-            out["source_filtered_out"] = sourceFilteredOut;
-        }
+    } else {
+        const auto secPage =
+            PaginationEngine::pageBullets(sections, offsetArg, limitArg);
+        out["sections"] = secPage.slice;
+        // ANTS-4986 — make the double-count visible rather than merely avoidable.
+        out["counts_hint"] = QStringLiteral(
+            "active_count, shipped_count and total_count include every "
+            "subsection, so summing rows double-counts. To total sections, sum "
+            "direct_active_count / direct_shipped_count / direct_total_count.");
         if (PaginationEngine::shouldEmitPaginationFields(
-                callerPassedOffset, callerPassedLimit, page.truncated)) {
-            out["offset"]    = page.offset;
-            out["limit"]     = page.limit;
-            out["total"]     = page.total;
-            out["truncated"] = page.truncated;
-            if (page.truncated) out["next_offset"] = page.nextOffset;
+                callerPassedOffset, callerPassedLimit, secPage.truncated)) {
+            out["offset"]    = secPage.offset;
+            out["limit"]     = secPage.limit;
+            out["total"]     = secPage.total;
+            out["truncated"] = secPage.truncated;
+            if (secPage.truncated) out["next_offset"] = secPage.nextOffset;
         }
-        // ANTS-3543 — emit only when a downshift fired (truthy-only, like
-        // truncated). Rows are then headline-shaped and the tail is complete.
-        if (page.downshifted) out["downshifted"] = true;
-        // Why an empty result is empty: at most one warning, first match wins.
-        // Without one, {ok:true, bullets:[], count:0} reads as "no work".
-        if (filtered.isEmpty()) {
-            const QString where =
-                inSection ? QStringLiteral(" in this section") : QString();
-            // ANTS-3583 — on the whole-file path, does the FILE have any
-            // [PROJ-NNNN]-tagged bullet? That is a property of the file, not
-            // of the status filter, which can zero the counts on a prose or
-            // milestone roadmap and leave a bare count:0 (perch feedback
-            // 2026-07-18). The scan stops at the first id-bearing bullet.
-            bool fileHasIdBearingBullet = true;
-            if (!inSection) {
-                fileHasIdBearingBullet = false;
-                for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
-                    if (!shouldDropUnnumbered(v)) { fileHasIdBearingBullet = true; break; }
-                }
-            }
-            // ANTS-4861 — not on a store-served read: every stored item carries
-            // an id, so an empty set there means no items, never an unparsed
-            // format.
-            if (!fileHasIdBearingBullet &&
-                m_roadmapCacheSource != QLatin1String("store") &&
-                !includeNarratorBullets && !includeSectionHeaders) {
-                out["parseable_bullets"] = 0;
-                out["warning"] = QStringLiteral(
-                    "this roadmap has no [PROJ-NNNN]-tagged bullets that "
-                    "roadmap_query can parse (it is prose/milestone-style). "
-                    "count:0 means \"format not recognised\", NOT \"no outstanding "
-                    "work\" — identical on every status filter. Re-issue with "
-                    "include_narrator_bullets:true to see the raw bullets.");
-            } else if (!queryArg.isEmpty() && n.idBearing > 0) {
-                // ANTS-3560 / ANTS-4423 — the keyword query, not the ID filter,
-                // emptied a set of id-bearing bullets. A space- or
-                // comma-separated multi-id query is the common cause (Rolodex).
-                out["warning"] = QStringLiteral(
-                    "no bullet%1 matched query \"%2\" (%3 id-bearing bullet(s) "
-                    "searched). If you passed multiple space/comma-separated "
-                    "ids, use ids:[...] or query one id at a time.")
-                        .arg(where, queryArg, QString::number(n.idBearing));
-            } else if (n.idBearing > 0 &&
-                       (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
-                // ANTS-4971 — the kind or source filter emptied it; the result
-                // is correct, not a malformed roadmap.
-                out["warning"] = QStringLiteral(
-                    "no id-bearing bullet%1 matched the kind/source filter (%2 "
-                    "id-bearing bullet(s) considered). The result is complete: "
-                    "no item%3 carries that value.")
-                        .arg(where, QString::number(n.idBearing),
-                             inSection ? QStringLiteral(" here") : QString());
-            } else if (n.beforeIdPrune > 0 && n.idBearing == 0 &&
-                       !includeNarratorBullets && !includeSectionHeaders) {
-                // ANTS-1538 — the default ID filter dropped every bullet:
-                // common on GFM task-list or older roadmaps with no
-                // [PROJ-NNNN] tokens. Name the opt-ins.
-                out["warning"] = QStringLiteral(
-                    "default ID-filter dropped all %1 bullet(s)%2 (every entry "
-                    "was either a rollup-summary or narrator-prose line with "
-                    "no [PROJ-NNNN] id). Re-issue with "
-                    "include_narrator_bullets:true and/or "
-                    "include_section_headers:true to see them.")
-                        .arg(QString::number(n.beforeIdPrune), where);
-            }
-        }
-        // ANTS-1398-INV-5, ANTS-1425, ANTS-1517 — echo each opt-in only when
-        // the caller set it, so the default envelope stays trim on the wire.
-        if (hasIncludeHeadersArg) {
-            out["include_section_headers"] = includeSectionHeaders;
-        }
-        if (hasIncludeNarratorsArg) {
-            out["include_narrator_bullets"] = includeNarratorBullets;
-        }
-        if (hasIncludeBodyArg) {
-            out["include_body"] = includeBody;
-        }
-        // ANTS-1437 — mode echo only when caller set the arg
-        // (default-back-compat envelope shape per INV-1).
-        if (hasModeArg) out["mode"] = mode;
-    };
+    }   // ANTS-4467 — end of the !slugsOnly branch
+    // ANTS-1622 — top-level legacy-format hint. Only emitted
+    // when at least one section's direct bullets all lack
+    // [PROJ-NNNN] ids — staying absent on well-tagged roadmaps
+    // keeps the response shape unchanged for the common case.
+    if (!legacyFormatSections.isEmpty()) {
+        out["legacy_format_sections"] = legacyFormatSections;
+        out["legacy_format_hint"] = QStringLiteral(
+            "%1 section(s) carry bullets that lack [PROJ-NNNN] "
+            "ids — the default bullets[] filter will return "
+            "count:0 for those. Re-issue any bullets-mode query "
+            "against those slugs with include_narrator_bullets:true "
+            "to retrieve their content.")
+                .arg(legacyFormatSections.size());
+    }
+    // ANTS-2052 — when the lean id-only predicate would have hidden ALL
+    // active/shipped work on an id-less roadmap, we fell back to the raw
+    // emoji predicate above. Flag it at the top level and expose the true
+    // raw count so a fresh session_orient bundle no longer reads as an
+    // empty queue. raw_*_count is emoji-based; the per-section legacy hint
+    // already steers a bullets-mode follow-up to include_narrator_bullets.
+    if (useRawPredicate) {
+        out["legacy_format"]     = true;
+        out["raw_active_count"]  = rawActiveTotal;
+        out["raw_shipped_count"] = rawShippedTotal;
+    }
+    // ANTS-1646 — surface duplicate-ID collisions detected during
+    // cache fill. Stays absent on a clean roadmap so the envelope
+    // shape is unchanged for the common path.
+    if (!rc.m_roadmapCacheDuplicateIds.isEmpty()) {
+        out["duplicate_ids"] = rc.m_roadmapCacheDuplicateIds;
+    }
+    return QJsonDocument(out);
+}
 
-    // ANTS-1287 — section branch. ANTS-5315 — `version` arrives here too.
-    if (!section.isEmpty() || !versionArg.isEmpty()) {
-        // INV-9: ensure we have an index even on a cache HIT taken
-        // earlier in section-less mode (and vice versa).
-        if (m_roadmapIndex.isEmpty()) {
-            const QString &markdown = text.full();   // ANTS-4433
-            if (markdown.isEmpty() && text.openFailed())
-                return readFailed();
-            m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
-        }
-        const auto *sec = versionArg.isEmpty()
-            ? RoadmapIndex::findBySlug(m_roadmapIndex, section)
-            : RoadmapIndex::findByVersion(m_roadmapIndex, versionArg);
-        if (!sec && !versionArg.isEmpty()) {
-            // ANTS-5315 — say which versions there are, so the next call can
-            // name one instead of guessing.
-            QJsonArray versions;
-            for (const auto &s : std::as_const(m_roadmapIndex)) {
-                const QString v = RoadmapIndex::versionOfTitle(s.headingText);
-                if (!v.isEmpty()) versions.append(v);
-            }
-            out["ok"] = false;
-            out["error"] = QStringLiteral("no section is titled with version %1")
-                               .arg(versionArg.left(32));
-            out["code"] = QStringLiteral("bad_version");   // as changelog_query names it
-            out["versions"] = versions;
-            return QJsonDocument(out);
-        }
-        if (!sec) {
-            // ANTS-1287-INV-10 — bad_section, hygiene parity with INV-11.
-            QString verbatim = section;
-            if (verbatim.size() > 64) verbatim.truncate(64);
-            for (int i = 0; i < verbatim.size(); ++i) {
-                if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
-            }
-            // ANTS-1524 — distinguish off-case slug from genuinely
-            // unknown slug. Slugs are canonically lowercase; an
-            // LLM caller that passed "Performance" instead of
-            // "performance" gets a loud `bad_case` refusal with
-            // the canonical form surfaced, instead of the silent
-            // "doesn't exist" reading that bad_section conveys.
-            const QString sectionCi = section.toLower();
-            for (const auto &s : std::as_const(m_roadmapIndex)) {
-                if (s.slug.toLower() == sectionCi && s.slug != section) {
-                    out["ok"]             = false;
-                    out["error"]          = QStringLiteral(
-                        "section slug case mismatch: \"%1\" — did you "
-                        "mean \"%2\"?").arg(verbatim, s.slug);
-                    out["code"]           = QStringLiteral("bad_case");
-                    out["canonical_slug"] = s.slug;
-                    return QJsonDocument(out);
-                }
-            }
-            out["ok"] = false;
-            out["error"] = QStringLiteral("unknown section: %1").arg(verbatim);
-            out["code"] = QStringLiteral("bad_section");
-            return QJsonDocument(out);
-        }
+// ANTS-1922 — bundles branch. Groups the active subset (📋/🚧) into
+// thematic work-bundles by headline-token similarity, flagging items
+// a shipped sibling may already cover (possibly_resolved_by) or a
+// body gate-marker blocks (gate_note). Active-only; a passed `status`
+// is ignored (INV-7). Early return like section_index; reads the warm
+// cache with no re-parse (INV-8). Lazy-fills via rcBuildBulletCacheArray
+// when a prior section-mode call left the bullet cache empty on a hit
+// (mirror of the section_index lazy-fill; the helper keeps section_slug
+// on the shared cache for a follow-up section_index call within the TTL).
+auto RemoteControl::RoadmapQueryCall::bundles() -> QJsonDocument {
+    auto &text = *textHolder;
+    if (auto r = fillBulletsIfCold()) return *r;
+    const int cap = (rc.m_bundleSoftCapOverride > 0)
+                        ? rc.m_bundleSoftCapOverride
+                        : PaginationEngine::softCapBytes();
+    QJsonObject env = buildRoadmapBundlesEnvelope(rc.m_roadmapCacheBullets, cap);
+    // ANTS-6388 — the bundles envelope is built fresh, so carry the
+    // backend witness every other mode stamps onto `out`.
+    stampRoadmapSource();
+    for (const char *key : {"source", "file_ahead_of_store",
+                            "file_highest_id", "store_high_water"}) {
+        const QString k = QString::fromLatin1(key);
+        if (out.contains(k)) env[k] = out.value(k);
+    }
+    return QJsonDocument(env);
+}
 
-        QJsonArray sectionBullets;
-        QString sectionEtag;   // ANTS-1907 — emitted on the response.
-        // ANTS-5094 — the cache holds no bodies (ANTS-1346 § 4's budget), so a
-        // call that needs them, to emit or to match `query` against, reads the
-        // section afresh.
-        const bool needBodies = includeBody || !queryArg.isEmpty();
-        if (!needBodies && m_roadmapSectionCache.contains(sec->slug)) {
-            sectionBullets = m_roadmapSectionCache.value(sec->slug);
-            // ANTS-1907 — cache hit path: etag was computed on insert.
-            sectionEtag = m_roadmapSectionEtags.value(sec->slug);
-            // ANTS-1346 — bump to MRU front.
-            m_roadmapSectionLru.removeOne(sec->slug);
-            m_roadmapSectionLru.prepend(sec->slug);
-        } else {
-            // ANTS-4431 — the call's shared provider, NOT a second one. This
-            // branch used to construct its own and read ROADMAP.md a second
-            // time in the same call, through an object the miss block's could
-            // not reach.
-            if (text.openFailed())
-                return readFailed();
-            // ANTS-3863 — full() before the dispatch, deliberately: the section
-            // etag below is computed from the slice on BOTH backends, so this
-            // branch needs every byte whatever the dispatch decides.
-            // ANTS-4431 — but it is no longer a SECOND read: on a cold call the
-            // miss block above already memoised the body through this same
-            // provider, and on a cache hit this is the call's only read.
-            const QString slice = RoadmapIndex::sliceSection(text.full(), *sec);
-            // ANTS-1907 — compute the per-section etag from the sliced
-            // bytes once, cache by slug. Skips dispatch-layer's whole-
-            // file etag; the per-section value is invariant under edits
-            // to OTHER sections, which is the whole point.
-            sectionEtag = rcComputeSectionEtag(slice);
-            m_roadmapSectionEtags.insert(sec->slug, sectionEtag);
-            // ANTS-3793 — the ONE site where "swap the call" is not the whole
-            // change. The markdown path slices this section's TEXT and parses
-            // the slice, which a store cannot do: it holds records, not lines.
-            // So the store path takes the project's whole record list and
-            // filters by sectionSlug. INV-2 makes the two agree field-for-field
-            // on content, and § 2.1.1 fills sectionSlug from the same stateful
-            // slugger the index used, so the filter selects the same bullets
-            // the slice would have. `fromStore` is what tells them apart — a
-            // store-backed project must not be handed a text slice, and an
-            // unmigrated one must keep slicing exactly as it does today.
-            // roadmapStoreServes() answers the dispatch WITHOUT materialising
-            // records, which matters here: INV-9 keeps section mode off the
-            // whole-file parse, and asking the question by reading everything
-            // would spend exactly what that invariant saves.
-            RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
-            QString srcErr;
-            QVector<RoadmapParse::BulletRecord> bullets;
-            const bool fromStore =
-                roadmapStoreServes(callerCanonical, text, &srcWhy, &srcErr);
-            if (srcWhy != RoadmapSource::ReadError::None)
-                return refuseRoadmapSource(srcWhy, srcErr);
-            // ANTS-4819 — the section's own slug AND its descendants'.
-            // The markdown arm below parses the SLICE, which spans the
-            // nested headings, and mode:"section_index" tallies the
-            // same descendants through rollupCounts. Filtering on one
-            // slug answered nothing for every parent heading while the
-            // index promised its children's bullets.
-            //
-            // ANTS-4824 — hoisted out of the store arm because the emission
-            // loop needs it on both: it is what tells a slug the index
-            // actually placed under this heading from a slice-local artifact.
-            const QStringList subtreeSlugList =
-                RoadmapIndex::descendantSlugs(m_roadmapIndex, *sec);
-            const QSet<QString> subtreeSlugs(subtreeSlugList.cbegin(),
-                                             subtreeSlugList.cend());
-            if (fromStore) {
-                const auto whole = roadmapBullets(callerCanonical, text,
-                                                  /*includeArchive=*/false,
-                                                  &srcWhy, &srcErr);
-                if (srcWhy != RoadmapSource::ReadError::None)
-                    return refuseRoadmapSource(srcWhy, srcErr);
-                for (const auto &b : whole)
-                    if (subtreeSlugs.contains(b.sectionSlug)) bullets.append(b);
-            } else {
-                bullets = RoadmapParse::parseBullets(   // ANTS-3771
-                    slice, ProjectSettings::idFormatFor(callerCanonical));
-            }
-            // ANTS-2225 — pass-heading fallback. parseBullets engages its
-            // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
-            // >= 2 status markers across its INPUT (RoadmapParse::detectRoadmapFormat). A
-            // single-section slice may carry just one pass heading, so
-            // slice-local detection fails and the synthesised bullet is
-            // dropped — the section reads "prose"/empty even though
-            // session_orient active_bullets, an id-query, and mode:section_index
-            // all surface it from the whole-file parse. When the slice parsed
-            // empty, fall back to the authoritative whole-file parse filtered
-            // to this slug: the global parse has the pass-heading context, and
-            // parseBullets' sectionSlug is the same global slug the index uses
-            // (the section_index tally relies on that). INV-9's
-            // "section mode doesn't pre-fill the full cache" is preserved for
-            // the common (non-empty-slice) path; the whole-file parse runs only
-            // on this otherwise-empty branch. A non-pass-heading doc yields no
-            // bullet for the slug here, so the section stays empty as before.
-            // ANTS-3793 — markdown-path only. The store path already filtered
-            // the whole-project record list by slug, so this recovery would
-            // re-run it against a text parse the store path never made; and
-            // § 5 scopes the store backend to ants-v1, which is not the
-            // pass-headings dialect this fallback exists for.
-            if (!fromStore && bullets.empty()) {
-                const auto whole = RoadmapParse::parseBullets(   // ANTS-3771
-                    text.full(), ProjectSettings::idFormatFor(callerCanonical));
-                QVector<RoadmapParse::BulletRecord> filtered;
-                for (const auto &b : whole)
-                    if (b.sectionSlug == sec->slug) filtered.append(b);
-                if (!filtered.empty()) bullets = std::move(filtered);
-            }
-            // ANTS-1696 — classify the slice ONLY when parseBullets
-            // found nothing. The hint exists to disambiguate a
-            // "section is a table" empty from a truly empty section;
-            // computing it for bullet-rich slices wastes cycles and
-            // would just emit shape:"prose" for the inline rationale
-            // text most bullets carry above them. Cache by slug so
-            // subsequent section= hits don't re-classify. Runs after the
-            // ANTS-2225 fallback so a recovered pass-heading bullet
-            // suppresses the (now-wrong) prose hint.
-            if (bullets.empty()) {
-                m_roadmapSectionShape.insert(sec->slug,
-                                             rcSectionShape(slice));
-            }
-            // ANTS-1517 — body (truncated). ANTS-5468 — whole when body_match
-            // will filter it, so a line past the cap is seen; the list cap is
-            // applied after the filter.
-            sectionBullets = rcBuildBulletCacheArray(
-                bullets, bodyMatchActive ? kRoadmapQueryBodyCacheCap
-                                         : kRoadmapQueryBodyCap);   // ANTS-4557
-            for (qsizetype i = 0; i < sectionBullets.size(); ++i) {
-                // ANTS-1287-INV-7, narrowed by ANTS-4824: a slug the index
-                // placed in this subtree is that bullet's own and is kept, so
-                // a child bullet names its own section and the value can be
-                // fed back to op:"append". Anything else is a slice-local
-                // slugger artifact and falls back to the requested slug.
-                QJsonObject o = sectionBullets.at(i).toObject();
-                const QString own = o.value(QStringLiteral("section_slug")).toString();
-                o["section_slug"] = subtreeSlugs.contains(own) ? own : sec->slug;
-                sectionBullets[i] = o;
-            }
-            {
-                QJsonArray cached = sectionBullets;   // ANTS-5094 — no bodies
-                rcStripBodyFields(cached);
-                m_roadmapSectionCache.insert(sec->slug, cached);
-            }
-            // ANTS-1346 — push slug to MRU front and evict tail if
-            // the cap is exceeded. removeOne is a no-op on first
-            // insert; harmless on duplicate-key re-insert path.
-            m_roadmapSectionLru.removeOne(sec->slug);
-            m_roadmapSectionLru.prepend(sec->slug);
-            while (m_roadmapSectionLru.size() > kRoadmapSectionCacheCap) {
-                const QString evicted = m_roadmapSectionLru.takeLast();
-                m_roadmapSectionCache.remove(evicted);
-                m_roadmapSectionShape.remove(evicted);  // ANTS-1696 — lockstep.
-                m_roadmapSectionEtags.remove(evicted);  // ANTS-1907 — lockstep.
-            }
-        }
+// ANTS-6129 — the bullet-list tail the section= and full-file paths
+// share. Each path used to carry its own copy, and fixes such as
+// ANTS-3560 and ANTS-4423 reached one copy before the other.
+//
+// pruneAndFilter — ANTS-1398 + ANTS-1425: drop rollup and narrator
+// bullets unless the caller opts each class back in, then apply the
+// keyword, kind and source filters. The two counts let an empty result
+// say which step emptied it (ANTS-1538, ANTS-3560): idBearing is taken
+// after the ID-prune and before the keyword filter.
+auto RemoteControl::RoadmapQueryCall::pruneAndFilter(QJsonArray &filtered) -> ListCounts {
+    ListCounts n;
+    n.beforeIdPrune = filtered.size();
+    QJsonArray pruned;
+    for (const auto &v : std::as_const(filtered)) {
+        if (!shouldDropUnnumbered(v)) pruned.append(v);
+    }
+    filtered = pruned;
+    n.idBearing = filtered.size();
+    // ANTS-3391 — before pagination, so count / next_offset reflect the
+    // narrowed set.
+    applyQueryFilter(filtered);
+    applyKindFilter(filtered);   // ANTS-4836
+    applySourceFilter(filtered); // ANTS-4985
+    return n;
+}
 
-        // ANTS-1907 — section_etag_match short-circuit. When the caller
-        // hands back the etag we issued on a prior section= response, and
-        // it still matches the current per-section hash, return an
-        // unchanged envelope that costs ~50 bytes (vs the full bullets[]
-        // body that often runs >5 KB on a dense section). Composes with
-        // the dispatch-layer file etag (the file etag flips on any edit;
-        // the section etag is invariant under edits to OTHER sections,
-        // which is the whole point — see ROADMAP entry's "cross-section
-        // loops" rationale). Section-only contract: a caller asking
-        // section=foo and getting unchanged knows ONLY about foo.
-        const QString sectionEtagMatch =
-            req.value(QStringLiteral("section_etag_match")).toString();
-        if (!sectionEtagMatch.isEmpty() && sectionEtagMatch == sectionEtag) {
-            QJsonObject hit;
-            hit["ok"]           = true;
-            hit["unchanged"]    = true;
-            hit["section"]      = sec->slug;
-            hit["section_etag"] = sectionEtag;
-            hit["path"]         = path;
-            return QJsonDocument(hit);
+// emitBulletPage — projection, body cap, bullet_fields, paging, the
+// envelope echoes and the empty-result warning. inSection words the
+// warning for one section and skips the whole-file format check.
+void RemoteControl::RoadmapQueryCall::emitBulletPage(QJsonArray &filtered, const ListCounts &n,
+        bool inSection) {
+    // ANTS-3543 — auto-downshift a would-be-truncated fat list to its
+    // headline-only projection, so a scanning caller keeps every id and
+    // headline rather than losing the tail. Off when the caller asked for
+    // lean rows (headline_only) or for bodies (include_body). ANTS-4837 —
+    // and under a caller-chosen row shape, which the fixed four-key shape
+    // would silently discard.
+    const bool wantDownshift =
+        (mode != QLatin1String("headline_only")) && !includeBody
+        && bulletFields.isEmpty();
+    // ANTS-3577 — project the FULL filtered set before pagination, so the
+    // soft-cap measure counts the bytes that will be emitted and more rows
+    // fit per page (ANTS-1881 INV-6). ANTS-5703 — a plain list (no
+    // include_body, no bullet_fields) takes the same lean shape: kind,
+    // lanes, source and the duplicate headline are on request only.
+    if (mode == QLatin1String("headline_only"))
+        rcProjectHeadlineOnly(filtered);
+    else if (!includeBody && bulletFields.isEmpty())
+        rcProjectListDefault(filtered);
+    // ANTS-4630 — cap bodies before pagination too, on the same principle:
+    // a body measured larger than it will be emitted drops rows that fit.
+    // ANTS-5467 — at the list cap, which max_body_bytes may lower.
+    if (includeBody) {
+        applyBodyMatch(filtered);  // ANTS-5468 — before the cap
+        rcCapBodyFields(filtered, listBodyCap);
+        announceListCap(out);
+    }
+    // ANTS-4837 — bullet_fields before pagination as well, after the body
+    // cap so a kept `body` is still capped.
+    projectAndReportBulletFields(filtered);
+    // ANTS-1436-INV-11 — pagination via PaginationEngine.
+    PaginationEngine::PageResult page;
+    if (rc.m_roadmapQueryWhole) {   // ANTS-5801 — see the member's comment
+        page.slice = filtered;
+        page.total = static_cast<int>(filtered.size());
+    } else {
+        page = PaginationEngine::pageBullets(
+            filtered, offsetArg, limitArg,
+            wantDownshift ? PaginationEngine::RowProjector(&rcProjectHeadlineOnly)
+                          : PaginationEngine::RowProjector{});
+    }
+    // ANTS-1517 — strip bodies when include_body is false (a no-op when
+    // the headline_only projection already dropped them).
+    if (!includeBody) rcStripBodyFields(page.slice);
+    out["ok"] = true;
+    out["bullets"] = page.slice;
+    // ANTS-4362 — say when the bodies were withheld. A status- or
+    // section-filtered list strips them unless include_body is passed,
+    // since it can match the whole roadmap; an id/ids fetch returns them.
+    // Silent, the reply read as though those bullets had no bodies.
+    if (!includeBody && mode != QLatin1String("headline_only")
+        && !page.slice.isEmpty()) {
+        out["bodies_omitted"] = true;
+        out["bodies_omitted_reason"] = QStringLiteral(
+            "a filtered bullets query withholds bodies by default because the "
+            "filter can match the whole roadmap; pass include_body:true to get "
+            "them (an id/ids fetch returns them without asking). Rows carry "
+            "id, status, headline_oneline and section_slug unless "
+            "bullet_fields names others (kind, lanes, source)");
+    }
+    out["path"] = path;
+    // ANTS-1247-INV-10: count is post-filter post-pagination size.
+    out["count"] = page.slice.size();
+    // ANTS-1247-INV-7: filter echo (canonicalised lowercase).
+    out["filter"] = filterEcho;
+    if (!queryArg.isEmpty()) {  // ANTS-3391
+        out["query"] = queryArg;
+        // ANTS-5257 — what the search covered, so a zero-hit reply says
+        // where it looked rather than reading as "no such item".
+        out["query_fields"] =
+            QJsonArray::fromStringList(mcp::QueryMatcher::bulletFields());
+    }
+    if (!kindArg.isEmpty())  out["kind"]  = kindArg;   // ANTS-4836
+    if (!sourceArgs.isEmpty()) {   // ANTS-4985
+        out["source"] = QJsonArray::fromStringList(sourceArgs);
+        out["source_filtered_out"] = sourceFilteredOut;
+    }
+    if (PaginationEngine::shouldEmitPaginationFields(
+            callerPassedOffset, callerPassedLimit, page.truncated)) {
+        out["offset"]    = page.offset;
+        out["limit"]     = page.limit;
+        out["total"]     = page.total;
+        out["truncated"] = page.truncated;
+        if (page.truncated) out["next_offset"] = page.nextOffset;
+    }
+    // ANTS-3543 — emit only when a downshift fired (truthy-only, like
+    // truncated). Rows are then headline-shaped and the tail is complete.
+    if (page.downshifted) out["downshifted"] = true;
+    // Why an empty result is empty: at most one warning, first match wins.
+    // Without one, {ok:true, bullets:[], count:0} reads as "no work".
+    if (filtered.isEmpty()) {
+        const QString where =
+            inSection ? QStringLiteral(" in this section") : QString();
+        // ANTS-3583 — on the whole-file path, does the FILE have any
+        // [PROJ-NNNN]-tagged bullet? That is a property of the file, not
+        // of the status filter, which can zero the counts on a prose or
+        // milestone roadmap and leave a bare count:0 (perch feedback
+        // 2026-07-18). The scan stops at the first id-bearing bullet.
+        bool fileHasIdBearingBullet = true;
+        if (!inSection) {
+            fileHasIdBearingBullet = false;
+            for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
+                if (!shouldDropUnnumbered(v)) { fileHasIdBearingBullet = true; break; }
+            }
         }
+        // ANTS-4861 — not on a store-served read: every stored item carries
+        // an id, so an empty set there means no items, never an unparsed
+        // format.
+        if (!fileHasIdBearingBullet &&
+            rc.m_roadmapCacheSource != QLatin1String("store") &&
+            !includeNarratorBullets && !includeSectionHeaders) {
+            out["parseable_bullets"] = 0;
+            out["warning"] = QStringLiteral(
+                "this roadmap has no [PROJ-NNNN]-tagged bullets that "
+                "roadmap_query can parse (it is prose/milestone-style). "
+                "count:0 means \"format not recognised\", NOT \"no outstanding "
+                "work\" — identical on every status filter. Re-issue with "
+                "include_narrator_bullets:true to see the raw bullets.");
+        } else if (!queryArg.isEmpty() && n.idBearing > 0) {
+            // ANTS-3560 / ANTS-4423 — the keyword query, not the ID filter,
+            // emptied a set of id-bearing bullets. A space- or
+            // comma-separated multi-id query is the common cause (Rolodex).
+            out["warning"] = QStringLiteral(
+                "no bullet%1 matched query \"%2\" (%3 id-bearing bullet(s) "
+                "searched). If you passed multiple space/comma-separated "
+                "ids, use ids:[...] or query one id at a time.")
+                    .arg(where, queryArg, QString::number(n.idBearing));
+        } else if (n.idBearing > 0 &&
+                   (!kindArg.isEmpty() || !sourceArgs.isEmpty())) {
+            // ANTS-4971 — the kind or source filter emptied it; the result
+            // is correct, not a malformed roadmap.
+            out["warning"] = QStringLiteral(
+                "no id-bearing bullet%1 matched the kind/source filter (%2 "
+                "id-bearing bullet(s) considered). The result is complete: "
+                "no item%3 carries that value.")
+                    .arg(where, QString::number(n.idBearing),
+                         inSection ? QStringLiteral(" here") : QString());
+        } else if (n.beforeIdPrune > 0 && n.idBearing == 0 &&
+                   !includeNarratorBullets && !includeSectionHeaders) {
+            // ANTS-1538 — the default ID filter dropped every bullet:
+            // common on GFM task-list or older roadmaps with no
+            // [PROJ-NNNN] tokens. Name the opt-ins.
+            out["warning"] = QStringLiteral(
+                "default ID-filter dropped all %1 bullet(s)%2 (every entry "
+                "was either a rollup-summary or narrator-prose line with "
+                "no [PROJ-NNNN] id). Re-issue with "
+                "include_narrator_bullets:true and/or "
+                "include_section_headers:true to see them.")
+                    .arg(QString::number(n.beforeIdPrune), where);
+        }
+    }
+    // ANTS-1398-INV-5, ANTS-1425, ANTS-1517 — echo each opt-in only when
+    // the caller set it, so the default envelope stays trim on the wire.
+    if (hasIncludeHeadersArg) {
+        out["include_section_headers"] = includeSectionHeaders;
+    }
+    if (hasIncludeNarratorsArg) {
+        out["include_narrator_bullets"] = includeNarratorBullets;
+    }
+    if (hasIncludeBodyArg) {
+        out["include_body"] = includeBody;
+    }
+    // ANTS-1437 — mode echo only when caller set the arg
+    // (default-back-compat envelope shape per INV-1).
+    if (hasModeArg) out["mode"] = mode;
+}
 
-        // ANTS-1287-INV-8: status filter applies post-section.
-        QJsonArray filtered;
-        if (filter == QLatin1String("all")) {
-            filtered = sectionBullets;
-        } else {
-            for (const auto &v : std::as_const(sectionBullets)) {
-                const QString s = v.toObject().value(QStringLiteral("status")).toString();
-                const bool keep = keepStatus(s);   // ANTS-5376
-                if (keep) filtered.append(v);
+// ANTS-1287 — section branch. ANTS-5315 — `version` arrives here too.
+auto RemoteControl::RoadmapQueryCall::sectionOrVersion() -> QJsonDocument {
+    auto &text = *textHolder;
+    // INV-9: ensure we have an index even on a cache HIT taken
+    // earlier in section-less mode (and vice versa).
+    if (rc.m_roadmapIndex.isEmpty()) {
+        const QString &markdown = text.full();   // ANTS-4433
+        if (markdown.isEmpty() && text.openFailed())
+            return readFailed();
+        rc.m_roadmapIndex = RoadmapIndex::buildIndex(markdown);
+    }
+    const auto *sec = versionArg.isEmpty()
+        ? RoadmapIndex::findBySlug(rc.m_roadmapIndex, section)
+        : RoadmapIndex::findByVersion(rc.m_roadmapIndex, versionArg);
+    if (!sec && !versionArg.isEmpty()) {
+        // ANTS-5315 — say which versions there are, so the next call can
+        // name one instead of guessing.
+        QJsonArray versions;
+        for (const auto &s : std::as_const(rc.m_roadmapIndex)) {
+            const QString v = RoadmapIndex::versionOfTitle(s.headingText);
+            if (!v.isEmpty()) versions.append(v);
+        }
+        out["ok"] = false;
+        out["error"] = QStringLiteral("no section is titled with version %1")
+                           .arg(versionArg.left(32));
+        out["code"] = QStringLiteral("bad_version");   // as changelog_query names it
+        out["versions"] = versions;
+        return QJsonDocument(out);
+    }
+    if (!sec) {
+        // ANTS-1287-INV-10 — bad_section, hygiene parity with INV-11.
+        QString verbatim = section;
+        if (verbatim.size() > 64) verbatim.truncate(64);
+        for (int i = 0; i < verbatim.size(); ++i) {
+            if (verbatim.at(i).unicode() < 0x20) verbatim[i] = QChar('?');
+        }
+        // ANTS-1524 — distinguish off-case slug from genuinely
+        // unknown slug. Slugs are canonically lowercase; an
+        // LLM caller that passed "Performance" instead of
+        // "performance" gets a loud `bad_case` refusal with
+        // the canonical form surfaced, instead of the silent
+        // "doesn't exist" reading that bad_section conveys.
+        const QString sectionCi = section.toLower();
+        for (const auto &s : std::as_const(rc.m_roadmapIndex)) {
+            if (s.slug.toLower() == sectionCi && s.slug != section) {
+                out["ok"]             = false;
+                out["error"]          = QStringLiteral(
+                    "section slug case mismatch: \"%1\" — did you "
+                    "mean \"%2\"?").arg(verbatim, s.slug);
+                out["code"]           = QStringLiteral("bad_case");
+                out["canonical_slug"] = s.slug;
+                return QJsonDocument(out);
             }
         }
-        // ANTS-1398-INV-3b — section-mode emission prunes, filters and pages
-        // through the shared tail (ANTS-6129).
-        const ListCounts counts = pruneAndFilter(filtered);
-        emitBulletPage(filtered, counts, /*inSection=*/true);
-        out["section"] = sec->slug;
-        // ANTS-4758 — name the nested sections this reply also covers
-        // (ANTS-4819), so a caller can descend or tell a direct bullet from a
-        // nested one by its own section_slug. Absent when there are none.
-        {
-            QStringList nested = RoadmapIndex::descendantSlugs(m_roadmapIndex, *sec);
-            nested.removeAll(sec->slug);
-            if (!nested.isEmpty())
-                out["subsections"] = QJsonArray::fromStringList(nested);
-        }
-        // ANTS-1907 — always echo the section's etag on a section=
-        // response so the caller can hand it back as section_etag_match
-        // on the next call and short-circuit when only OTHER sections
-        // have changed (file-level etag would invalidate every read).
-        out["section_etag"] = sectionEtag;
-        // ANTS-1696 — surface the section_shape hint when parseBullets
-        // (NOT the status filter) returned zero entries AND the slice
-        // has non-bullet content. Lets a caller distinguish a "table
-        // / prose section, use Read" empty from a "genuinely empty"
-        // empty. Gated on sectionBullets.isEmpty() per INV-4: a section
-        // whose bullets the status filter happened to drop is NOT
-        // shape-hinted (the parsed set wasn't actually empty). Cache-
-        // hit path: m_roadmapSectionShape was populated alongside
-        // m_roadmapSectionCache, so the hint survives a second hit.
-        if (sectionBullets.isEmpty() &&
-            m_roadmapSectionShape.contains(sec->slug)) {
-            const QJsonObject shape =
-                m_roadmapSectionShape.value(sec->slug);
-            const QString s =
-                shape.value(QStringLiteral("shape")).toString();
-            if (s != QLatin1String("empty")) {
-                out["section_shape"]    = s;
-                out["non_bullet_lines"] =
-                    shape.value(QStringLiteral("non_bullet_lines"))
-                        .toInt();
-            }
-        }
-        // ANTS-1646 — section-mode emission picks up the cached
-        // duplicate descriptors only when m_roadmapCacheBullets has
-        // been populated by a prior full-file / section_index call.
-        // Pure section-only first hits stay quiet (cache may be cold).
-        // ANTS-1882 — filter to entries whose occurrences[] include
-        // a bullet inside THIS section, so the field is section-
-        // bound (preserves per-section ETag invariance: an edit to
-        // section B that introduces / removes a duplicate not
-        // involving foo does NOT shift foo's response payload).
-        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
-            const QJsonArray scoped = rcFilterDuplicateIdsForSection(
-                m_roadmapCacheDuplicateIds, sec->slug);
-            if (!scoped.isEmpty()) {
-                out["duplicate_ids"] = scoped;
-            }
-        }
+        out["ok"] = false;
+        out["error"] = QStringLiteral("unknown section: %1").arg(verbatim);
+        out["code"] = QStringLiteral("bad_section");
         return QJsonDocument(out);
     }
 
-    // Full-file path may need to fill the bullets cache lazily if
-    // an earlier hit took the section path.
-    if (m_roadmapCacheBullets.isEmpty() && (m_roadmapCachePath == path) &&
-        (m_roadmapCacheMtimeMs == mtime)) {
-        // ANTS-3863 — a pure dispatch site; no body read on the store path.
-        // ANTS-4431 — the call's shared provider (see the hoist above).
-        if (!text.openFailed()) {
-            // ANTS-3793 — same swap as the other two fill sites.
-            RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
-            QString srcErr;
-            const auto bullets = roadmapBullets(callerCanonical, text,
-                                                /*includeArchive=*/false,
-                                                &srcWhy, &srcErr);
+    QJsonArray sectionBullets;
+    QString sectionEtag;   // ANTS-1907 — emitted on the response.
+    // ANTS-5094 — the cache holds no bodies (ANTS-1346 § 4's budget), so a
+    // call that needs them, to emit or to match `query` against, reads the
+    // section afresh.
+    const bool needBodies = includeBody || !queryArg.isEmpty();
+    if (!needBodies && rc.m_roadmapSectionCache.contains(sec->slug)) {
+        sectionBullets = rc.m_roadmapSectionCache.value(sec->slug);
+        // ANTS-1907 — cache hit path: etag was computed on insert.
+        sectionEtag = rc.m_roadmapSectionEtags.value(sec->slug);
+        // ANTS-1346 — bump to MRU front.
+        rc.m_roadmapSectionLru.removeOne(sec->slug);
+        rc.m_roadmapSectionLru.prepend(sec->slug);
+    } else {
+        // ANTS-4431 — the call's shared provider, NOT a second one. This
+        // branch used to construct its own and read ROADMAP.md a second
+        // time in the same call, through an object the miss block's could
+        // not reach.
+        if (text.openFailed())
+            return readFailed();
+        // ANTS-3863 — full() before the dispatch, deliberately: the section
+        // etag below is computed from the slice on BOTH backends, so this
+        // branch needs every byte whatever the dispatch decides.
+        // ANTS-4431 — but it is no longer a SECOND read: on a cold call the
+        // miss block above already memoised the body through this same
+        // provider, and on a cache hit this is the call's only read.
+        const QString slice = RoadmapIndex::sliceSection(text.full(), *sec);
+        // ANTS-1907 — compute the per-section etag from the sliced
+        // bytes once, cache by slug. Skips dispatch-layer's whole-
+        // file etag; the per-section value is invariant under edits
+        // to OTHER sections, which is the whole point.
+        sectionEtag = rcComputeSectionEtag(slice);
+        rc.m_roadmapSectionEtags.insert(sec->slug, sectionEtag);
+        // ANTS-3793 — the ONE site where "swap the call" is not the whole
+        // change. The markdown path slices this section's TEXT and parses
+        // the slice, which a store cannot do: it holds records, not lines.
+        // So the store path takes the project's whole record list and
+        // filters by sectionSlug. INV-2 makes the two agree field-for-field
+        // on content, and § 2.1.1 fills sectionSlug from the same stateful
+        // slugger the index used, so the filter selects the same bullets
+        // the slice would have. `fromStore` is what tells them apart — a
+        // store-backed project must not be handed a text slice, and an
+        // unmigrated one must keep slicing exactly as it does today.
+        // roadmapStoreServes() answers the dispatch WITHOUT materialising
+        // records, which matters here: INV-9 keeps section mode off the
+        // whole-file parse, and asking the question by reading everything
+        // would spend exactly what that invariant saves.
+        RoadmapSource::ReadError srcWhy = RoadmapSource::ReadError::None;
+        QString srcErr;
+        QVector<RoadmapParse::BulletRecord> bullets;
+        const bool fromStore =
+            rc.roadmapStoreServes(callerCanonical, text, &srcWhy, &srcErr);
+        if (srcWhy != RoadmapSource::ReadError::None)
+            return refuseRoadmapSource(srcWhy, srcErr);
+        // ANTS-4819 — the section's own slug AND its descendants'.
+        // The markdown arm below parses the SLICE, which spans the
+        // nested headings, and mode:"section_index" tallies the
+        // same descendants through rollupCounts. Filtering on one
+        // slug answered nothing for every parent heading while the
+        // index promised its children's bullets.
+        //
+        // ANTS-4824 — hoisted out of the store arm because the emission
+        // loop needs it on both: it is what tells a slug the index
+        // actually placed under this heading from a slice-local artifact.
+        const QStringList subtreeSlugList =
+            RoadmapIndex::descendantSlugs(rc.m_roadmapIndex, *sec);
+        const QSet<QString> subtreeSlugs(subtreeSlugList.cbegin(),
+                                         subtreeSlugList.cend());
+        if (fromStore) {
+            const auto whole = rc.roadmapBullets(callerCanonical, text,
+                                              /*includeArchive=*/false,
+                                              &srcWhy, &srcErr);
             if (srcWhy != RoadmapSource::ReadError::None)
                 return refuseRoadmapSource(srcWhy, srcErr);
-            m_roadmapCacheBullets = rcBuildBulletCacheArray(bullets);
-            // ANTS-1646 — recompute on the full-file lazy-fill path
-            // taken after a section-mode cache HIT.
-            m_roadmapCacheDuplicateIds =
-                rcComputeDuplicateIds(m_roadmapCacheBullets);
+            for (const auto &b : whole)
+                if (subtreeSlugs.contains(b.sectionSlug)) bullets.append(b);
+        } else {
+            bullets = RoadmapParse::parseBullets(   // ANTS-3771
+                slice, ProjectSettings::idFormatFor(callerCanonical));
+        }
+        // ANTS-2225 — pass-heading fallback. parseBullets engages its
+        // `#### Pass N.M` reader only when it sees >= 2 pass headings AND
+        // >= 2 status markers across its INPUT (RoadmapParse::detectRoadmapFormat). A
+        // single-section slice may carry just one pass heading, so
+        // slice-local detection fails and the synthesised bullet is
+        // dropped — the section reads "prose"/empty even though
+        // session_orient active_bullets, an id-query, and mode:section_index
+        // all surface it from the whole-file parse. When the slice parsed
+        // empty, fall back to the authoritative whole-file parse filtered
+        // to this slug: the global parse has the pass-heading context, and
+        // parseBullets' sectionSlug is the same global slug the index uses
+        // (the section_index tally relies on that). INV-9's
+        // "section mode doesn't pre-fill the full cache" is preserved for
+        // the common (non-empty-slice) path; the whole-file parse runs only
+        // on this otherwise-empty branch. A non-pass-heading doc yields no
+        // bullet for the slug here, so the section stays empty as before.
+        // ANTS-3793 — markdown-path only. The store path already filtered
+        // the whole-project record list by slug, so this recovery would
+        // re-run it against a text parse the store path never made; and
+        // § 5 scopes the store backend to ants-v1, which is not the
+        // pass-headings dialect this fallback exists for.
+        if (!fromStore && bullets.empty()) {
+            const auto whole = RoadmapParse::parseBullets(   // ANTS-3771
+                text.full(), ProjectSettings::idFormatFor(callerCanonical));
+            QVector<RoadmapParse::BulletRecord> filtered;
+            for (const auto &b : whole)
+                if (b.sectionSlug == sec->slug) filtered.append(b);
+            if (!filtered.empty()) bullets = std::move(filtered);
+        }
+        // ANTS-1696 — classify the slice ONLY when parseBullets
+        // found nothing. The hint exists to disambiguate a
+        // "section is a table" empty from a truly empty section;
+        // computing it for bullet-rich slices wastes cycles and
+        // would just emit shape:"prose" for the inline rationale
+        // text most bullets carry above them. Cache by slug so
+        // subsequent section= hits don't re-classify. Runs after the
+        // ANTS-2225 fallback so a recovered pass-heading bullet
+        // suppresses the (now-wrong) prose hint.
+        if (bullets.empty()) {
+            rc.m_roadmapSectionShape.insert(sec->slug,
+                                         rcSectionShape(slice));
+        }
+        // ANTS-1517 — body (truncated). ANTS-5468 — whole when body_match
+        // will filter it, so a line past the cap is seen; the list cap is
+        // applied after the filter.
+        sectionBullets = rcBuildBulletCacheArray(
+            bullets, bodyMatchActive ? kRoadmapQueryBodyCacheCap
+                                     : kRoadmapQueryBodyCap);   // ANTS-4557
+        for (qsizetype i = 0; i < sectionBullets.size(); ++i) {
+            // ANTS-1287-INV-7, narrowed by ANTS-4824: a slug the index
+            // placed in this subtree is that bullet's own and is kept, so
+            // a child bullet names its own section and the value can be
+            // fed back to op:"append". Anything else is a slice-local
+            // slugger artifact and falls back to the requested slug.
+            QJsonObject o = sectionBullets.at(i).toObject();
+            const QString own = o.value(QStringLiteral("section_slug")).toString();
+            o["section_slug"] = subtreeSlugs.contains(own) ? own : sec->slug;
+            sectionBullets[i] = o;
+        }
+        {
+            QJsonArray cached = sectionBullets;   // ANTS-5094 — no bodies
+            rcStripBodyFields(cached);
+            rc.m_roadmapSectionCache.insert(sec->slug, cached);
+        }
+        // ANTS-1346 — push slug to MRU front and evict tail if
+        // the cap is exceeded. removeOne is a no-op on first
+        // insert; harmless on duplicate-key re-insert path.
+        rc.m_roadmapSectionLru.removeOne(sec->slug);
+        rc.m_roadmapSectionLru.prepend(sec->slug);
+        while (rc.m_roadmapSectionLru.size() > kRoadmapSectionCacheCap) {
+            const QString evicted = rc.m_roadmapSectionLru.takeLast();
+            rc.m_roadmapSectionCache.remove(evicted);
+            rc.m_roadmapSectionShape.remove(evicted);  // ANTS-1696 — lockstep.
+            rc.m_roadmapSectionEtags.remove(evicted);  // ANTS-1907 — lockstep.
         }
     }
 
+    // ANTS-1907 — section_etag_match short-circuit. When the caller
+    // hands back the etag we issued on a prior section= response, and
+    // it still matches the current per-section hash, return an
+    // unchanged envelope that costs ~50 bytes (vs the full bullets[]
+    // body that often runs >5 KB on a dense section). Composes with
+    // the dispatch-layer file etag (the file etag flips on any edit;
+    // the section etag is invariant under edits to OTHER sections,
+    // which is the whole point — see ROADMAP entry's "cross-section
+    // loops" rationale). Section-only contract: a caller asking
+    // section=foo and getting unchanged knows ONLY about foo.
+    const QString sectionEtagMatch =
+        req.value(QStringLiteral("section_etag_match")).toString();
+    if (!sectionEtagMatch.isEmpty() && sectionEtagMatch == sectionEtag) {
+        QJsonObject hit;
+        hit["ok"]           = true;
+        hit["unchanged"]    = true;
+        hit["section"]      = sec->slug;
+        hit["section_etag"] = sectionEtag;
+        hit["path"]         = path;
+        return QJsonDocument(hit);
+    }
+
+    // ANTS-1287-INV-8: status filter applies post-section.
+    QJsonArray filtered;
+    if (filter == QLatin1String("all")) {
+        filtered = sectionBullets;
+    } else {
+        for (const auto &v : std::as_const(sectionBullets)) {
+            const QString s = v.toObject().value(QStringLiteral("status")).toString();
+            const bool keep = keepStatus(s);   // ANTS-5376
+            if (keep) filtered.append(v);
+        }
+    }
+    // ANTS-1398-INV-3b — section-mode emission prunes, filters and pages
+    // through the shared tail (ANTS-6129).
+    const ListCounts counts = pruneAndFilter(filtered);
+    emitBulletPage(filtered, counts, /*inSection=*/true);
+    out["section"] = sec->slug;
+    // ANTS-4758 — name the nested sections this reply also covers
+    // (ANTS-4819), so a caller can descend or tell a direct bullet from a
+    // nested one by its own section_slug. Absent when there are none.
+    {
+        QStringList nested = RoadmapIndex::descendantSlugs(rc.m_roadmapIndex, *sec);
+        nested.removeAll(sec->slug);
+        if (!nested.isEmpty())
+            out["subsections"] = QJsonArray::fromStringList(nested);
+    }
+    // ANTS-1907 — always echo the section's etag on a section=
+    // response so the caller can hand it back as section_etag_match
+    // on the next call and short-circuit when only OTHER sections
+    // have changed (file-level etag would invalidate every read).
+    out["section_etag"] = sectionEtag;
+    // ANTS-1696 — surface the section_shape hint when parseBullets
+    // (NOT the status filter) returned zero entries AND the slice
+    // has non-bullet content. Lets a caller distinguish a "table
+    // / prose section, use Read" empty from a "genuinely empty"
+    // empty. Gated on sectionBullets.isEmpty() per INV-4: a section
+    // whose bullets the status filter happened to drop is NOT
+    // shape-hinted (the parsed set wasn't actually empty). Cache-
+    // hit path: m_roadmapSectionShape was populated alongside
+    // m_roadmapSectionCache, so the hint survives a second hit.
+    if (sectionBullets.isEmpty() &&
+        rc.m_roadmapSectionShape.contains(sec->slug)) {
+        const QJsonObject shape =
+            rc.m_roadmapSectionShape.value(sec->slug);
+        const QString s =
+            shape.value(QStringLiteral("shape")).toString();
+        if (s != QLatin1String("empty")) {
+            out["section_shape"]    = s;
+            out["non_bullet_lines"] =
+                shape.value(QStringLiteral("non_bullet_lines"))
+                    .toInt();
+        }
+    }
+    // ANTS-1646 — section-mode emission picks up the cached
+    // duplicate descriptors only when m_roadmapCacheBullets has
+    // been populated by a prior full-file / section_index call.
+    // Pure section-only first hits stay quiet (cache may be cold).
+    // ANTS-1882 — filter to entries whose occurrences[] include
+    // a bullet inside THIS section, so the field is section-
+    // bound (preserves per-section ETag invariance: an edit to
+    // section B that introduces / removes a duplicate not
+    // involving foo does NOT shift foo's response payload).
+    if (!rc.m_roadmapCacheDuplicateIds.isEmpty()) {
+        const QJsonArray scoped = rcFilterDuplicateIdsForSection(
+            rc.m_roadmapCacheDuplicateIds, sec->slug);
+        if (!scoped.isEmpty()) {
+            out["duplicate_ids"] = scoped;
+        }
+    }
+    return QJsonDocument(out);
+}
+
+auto RemoteControl::RoadmapQueryCall::refuseUnrecognisedFormat() -> std::optional<QJsonDocument> {
+    auto &text = *textHolder;
     // ANTS-1429 — unrecognised_format gate. After cache fill /
     // lazy fill, if the parsed bullet count is zero AND the file
     // is larger than the conservative stub threshold, return a
@@ -3474,21 +3639,21 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-4861 — never on a store-served read. A migrated project whose store
     // holds no items has no bullets because it has no items; the fallback sent
     // the caller back to Read the markdown the store replaces.
-    if (m_roadmapCacheBullets.isEmpty() &&
-        m_roadmapCacheSource != QLatin1String("store") &&
+    if (rc.m_roadmapCacheBullets.isEmpty() &&
+        rc.m_roadmapCacheSource != QLatin1String("store") &&
         fi.size() > kRoadmapMinParseableSize) {
         // Bullets-mode fallback (ANTS-1462): re-read the file for
         // a lazy buildIndex. This is the refusal path — cost of
         // one extra read is bounded and acceptable. Cache m_roadmapIndex
         // for any subsequent section_index query against the same file.
-        if (m_roadmapIndex.isEmpty()) {
+        if (rc.m_roadmapIndex.isEmpty()) {
             const QString &md = text.full();   // ANTS-4433
             if (!md.isEmpty())
-                m_roadmapIndex = RoadmapIndex::buildIndex(md);
+                rc.m_roadmapIndex = RoadmapIndex::buildIndex(md);
         }
-        if (!m_roadmapIndex.isEmpty()) {
+        if (!rc.m_roadmapIndex.isEmpty()) {
             return QJsonDocument(buildHeaderInventoryEnvelope(
-                m_roadmapIndex, path, fi.size(),
+                rc.m_roadmapIndex, path, fi.size(),
                 req.value(QStringLiteral("check_sync")).toBool()));
         }
         QJsonObject env;
@@ -3504,311 +3669,317 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         env["expected_format"] = kUnrecognisedFormatExpected();
         return QJsonDocument(env);
     }
+    return std::nullopt;
+}
 
-    // ANTS-1856 — single-item fetch. Runs on the full bullets cache
-    // (section= is rejected upstream when id is set, so the cache is
-    // the whole-file array here), bypassing the status filter and
-    // pagination: an explicit id request wants THAT item regardless of
-    // lifecycle, and the result is at most a handful of bullets. Body
-    // is included by default for an id fetch — the intent is "give me
-    // the whole item" — and stripped only on an explicit
-    // include_body:false. A case-only mismatch returns bad_case with
-    // the canonical id so a wrong-case caller gets the exact spelling
-    // (mirrors section= ANTS-1524) rather than a bare found:false.
-    // ANTS-4079 § 2.4 — `links` on an id / ids fetch, read from the store's
-    // relationship rows. A bullet with none omits the key; list and section
-    // queries never carry it, to keep survey rows lean. A markdown-backed
-    // project has no rows, so nothing is attached there.
-    const auto attachLinks = [&](QJsonArray &arr) {
-        if (callerCanonical.isEmpty() || arr.isEmpty())
-            return;
-        RoadmapSource::ReadError linkWhy = RoadmapSource::ReadError::None;
-        RoadmapStore *store = roadmapStoreOrNull(&linkWhy, nullptr);
-        if (!store)
-            return;
-        const auto pid = RoadmapSource::migratedProject(
-            *store, rcProjectRootFor(callerCanonical), text, nullptr, &linkWhy);
-        if (!pid)
-            return;
-        for (qsizetype k = 0; k < arr.size(); ++k) {
-            QJsonObject b = arr.at(k).toObject();
-            const auto pk = store->findItem(*pid, b.value(QStringLiteral("id")).toString());
-            if (!pk)
-                continue;
-            const auto rows = store->linksFor(*pk);
-            if (!rows || rows->isEmpty())
-                continue;
-            b[QStringLiteral("links")] = RoadmapLinks::toJson(*rows);
-            arr.replace(k, b);
-        }
-    };
-    if (!idArg.isEmpty()) {
-        QJsonArray matches;
-        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
-            if (v.toObject().value(QStringLiteral("id")).toString() == idArg)
-                matches.append(v);
-        }
-        if (matches.isEmpty()) {
-            QString canonical;
-            for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
-                const QString bid =
-                    v.toObject().value(QStringLiteral("id")).toString();
-                if (!bid.isEmpty() &&
-                    bid.compare(idArg, Qt::CaseInsensitive) == 0) {
-                    canonical = bid;
-                    break;
-                }
-            }
-            if (!canonical.isEmpty()) {
-                out["ok"] = false;
-                out["error"] = QStringLiteral(
-                    "id case mismatch: \"%1\" — did you mean \"%2\"?")
-                        .arg(idArg, canonical);
-                out["code"] = QStringLiteral("bad_case");
-                out["canonical_id"] = canonical;
-                return QJsonDocument(out);
-            }
-            // ANTS-3387 — an id-token-SHAPED locator that fails the
-            // canonical PROJ-NNNN gate (e.g. a digit-leading prefix like
-            // "3D_E-0022") is never adopted as a bullet id, so a bare
-            // found:false reads as "the item vanished". Name the real
-            // cause: bad_id_format + the canonical-form hint. Placed after
-            // the case-mismatch check so a conforming wrong-case id still
-            // gets the friendlier bad_case.
-            if (rcIsNonconformingIdToken(idArg)) {
-                out["ok"]    = false;
-                out["code"]  = QStringLiteral("bad_id_format");
-                out["error"] = QStringLiteral(
-                    "id \"%1\" is id-shaped but not a canonical "
-                    "[PROJ-NNNN] token (roadmap-format.md § 3.5.1 requires "
-                    "a letter-leading prefix); a bullet authored with such "
-                    "a token is addressable only by its headline.")
-                        .arg(idArg);
-                out["id"]   = idArg;
-                out["hint"] = QStringLiteral(
-                    "Canonical ids are letter-led "
-                    "(<LETTER><alnum/_/->*-<N>, e.g. ANTS-1234). A "
-                    "digit-leading prefix never parses as a project id — "
-                    "re-target this bullet by `headline`.");
-                return QJsonDocument(out);
-            }
-        }
-        attachLinks(matches);     // ANTS-4079
-        applyBodyMatch(matches);  // ANTS-5468 — before the cap
-        if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
-        // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only
-        // (this singular-id arm and the ids[] arm below). A list query's
-        // 2000-char cap is a payload bound across many rows; this flag answers
-        // "where does THIS item stand", which is an id fetch.
-        else rcCapBodyFields(matches, idBodyCap,
-                             req.value(QStringLiteral("body_from_end"))
-                                 .toBool(false));  // ANTS-3402
-        // ANTS-1881 — id-branch projection (second emission surface;
-        // INV-5 anchors the dual-surface requirement). Applied after
-        // body-strip so the projected object inherits the same key
-        // set on every call regardless of include_body.
-        if (mode == QLatin1String("headline_only")) {
-            rcProjectHeadlineOnly(matches);
-        }
-        // ANTS-4837 — the id/ids surface. Applied after the body strip and cap
-        // for the same reason the projection above is: the emitted key set must
-        // not depend on include_body.
-        projectAndReportBulletFields(matches);
-        out["ok"]      = true;
-        out["bullets"] = matches;
-        out["path"]    = path;
-        out["count"]   = matches.size();
-        out["id"]      = idArg;
-        out["found"]   = !matches.isEmpty();
-        if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
-            out["body_cap_clamped"]         = true;   // ANTS-4981
-            out["max_body_bytes_effective"] = idBodyCap;
-        }
-        if (hasModeArg) out["mode"] = mode;
-        if (hasIncludeBodyArg) out["include_body"] = includeBody;
-        shrinkToFit(out);   // ANTS-5477
-        // ANTS-1646 — surface duplicate-id descriptors (cache is the
-        // full-file array, so they are current) when the same id was
-        // seen on more than one bullet — exactly the case an id fetch
-        // most needs to flag (matches.size() > 1).
-        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
-            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
-        }
-        return QJsonDocument(out);
+// ANTS-4079 § 2.4 — `links` on an id / ids fetch, read from the store's
+// relationship rows. A bullet with none omits the key; list and section
+// queries never carry it, to keep survey rows lean. A markdown-backed
+// project has no rows, so nothing is attached there.
+void RemoteControl::RoadmapQueryCall::attachLinks(QJsonArray &arr) {
+    auto &text = *textHolder;
+    if (callerCanonical.isEmpty() || arr.isEmpty())
+        return;
+    RoadmapSource::ReadError linkWhy = RoadmapSource::ReadError::None;
+    RoadmapStore *store = rc.roadmapStoreOrNull(&linkWhy, nullptr);
+    if (!store)
+        return;
+    const auto pid = RoadmapSource::migratedProject(
+        *store, rcProjectRootFor(callerCanonical), text, nullptr, &linkWhy);
+    if (!pid)
+        return;
+    for (qsizetype k = 0; k < arr.size(); ++k) {
+        QJsonObject b = arr.at(k).toObject();
+        const auto pk = store->findItem(*pid, b.value(QStringLiteral("id")).toString());
+        if (!pk)
+            continue;
+        const auto rows = store->linksFor(*pk);
+        if (!rows || rows->isEmpty())
+            continue;
+        b[QStringLiteral("links")] = RoadmapLinks::toJson(*rows);
+        arr.replace(k, b);
     }
+}
 
-    // ANTS-1726 — multi-item fetch by id-set. Same shape as the
-    // singular `id` branch: scans m_roadmapCacheBullets ONCE in
-    // document order, keeping bullets whose id is in the requested
-    // set. Result preserves the roadmap's document order (NOT the
-    // input order). Body included by default; explicit
-    // include_body:false strips. The envelope carries matched_ids[]
-    // and missing_ids[] so a caller can spot stale/typoed ids
-    // without diffing the input array against bullets[].id.
-    if (!idsArg.isEmpty()) {
-        // ANTS-3387 — refuse the whole batch if any requested id is
-        // id-token SHAPED but non-canonical (see rcIsNonconformingIdToken):
-        // such a token can never resolve, so letting it fall silently into
-        // missing_ids is exactly the "vanished item" trap this guards
-        // against. Name it with bad_id_format instead.
-        QJsonArray badFormatIds;
-        for (const QString &id : std::as_const(idsArgInputOrder)) {
-            if (rcIsNonconformingIdToken(id)) badFormatIds.append(id);
-        }
-        if (!badFormatIds.isEmpty()) {
-            out["ok"]             = false;
-            out["code"]           = QStringLiteral("bad_id_format");
-            out["error"]          = QStringLiteral(
-                "ids[] contains %1 id-shaped token(s) that are not "
-                "canonical [PROJ-NNNN] ids (roadmap-format.md § 3.5.1 "
-                "requires a letter-leading prefix).")
-                    .arg(badFormatIds.size());
-            out["bad_format_ids"] = badFormatIds;
-            out["hint"]           = QStringLiteral(
-                "Canonical ids are letter-led (e.g. ANTS-1234); a "
-                "digit-leading prefix never parses as a project id. "
-                "Re-target those bullets by `headline`.");
-            return QJsonDocument(out);
-        }
-        const QSet<QString> wanted(idsArg.cbegin(), idsArg.cend());
-        QSet<QString> seen;
-        QJsonArray matches;
-        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+// ANTS-1856 — single-item fetch. Runs on the full bullets cache
+// (section= is rejected upstream when id is set, so the cache is
+// the whole-file array here), bypassing the status filter and
+// pagination: an explicit id request wants THAT item regardless of
+// lifecycle, and the result is at most a handful of bullets. Body
+// is included by default for an id fetch — the intent is "give me
+// the whole item" — and stripped only on an explicit
+// include_body:false. A case-only mismatch returns bad_case with
+// the canonical id so a wrong-case caller gets the exact spelling
+// (mirrors section= ANTS-1524) rather than a bare found:false.
+auto RemoteControl::RoadmapQueryCall::byId() -> QJsonDocument {
+    QJsonArray matches;
+    for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
+        if (v.toObject().value(QStringLiteral("id")).toString() == idArg)
+            matches.append(v);
+    }
+    if (matches.isEmpty()) {
+        QString canonical;
+        for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
             const QString bid =
                 v.toObject().value(QStringLiteral("id")).toString();
-            if (wanted.contains(bid)) {
-                matches.append(v);
-                seen.insert(bid);
+            if (!bid.isEmpty() &&
+                bid.compare(idArg, Qt::CaseInsensitive) == 0) {
+                canonical = bid;
+                break;
             }
         }
-        attachLinks(matches);     // ANTS-4079
-        applyBodyMatch(matches);  // ANTS-5468 — before the cap
-        if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
-        // ANTS-4904 — the plural ids[] arm of the same targeted path.
-        else rcCapBodyFields(matches, idBodyCap,
-                             req.value(QStringLiteral("body_from_end"))
-                                 .toBool(false));  // ANTS-3402
-        if (mode == QLatin1String("headline_only")) {
-            rcProjectHeadlineOnly(matches);
+        if (!canonical.isEmpty()) {
+            out["ok"] = false;
+            out["error"] = QStringLiteral(
+                "id case mismatch: \"%1\" — did you mean \"%2\"?")
+                    .arg(idArg, canonical);
+            out["code"] = QStringLiteral("bad_case");
+            out["canonical_id"] = canonical;
+            return QJsonDocument(out);
         }
-        // ANTS-4837 — the plural ids[] surface. Deliberately ABOVE the
-        // `input_index` block below, so that key survives a projection that
-        // does not name it: ANTS-4712 makes it this path's documented
-        // exemption precisely because results come back in DOCUMENT order and a
-        // caller zipping them against its own array mis-pairs without it. A
-        // lean shape is where that bug is most likely, so this is the last
-        // place to drop it.
-        projectAndReportBulletFields(matches);
-        // INV-3 — accounting arrays. Preserve INPUT order so a caller
-        // diffing against the request gets a positional read.
-        // ANTS-4400 — `input_index` on each bullet, so a caller can restore
-        // its OWN ordering. Results are in DOCUMENT order (documented, and
-        // correct), but the natural use of `ids` is "compare these two, in
-        // the order I care about" — and a caller who zips the result against
-        // its input array silently mis-pairs. The cheaper of the two fixes
-        // offered: no `order:"input"` mode, just the position each bullet was
-        // asked for at.
-        QHash<QString, int> inputIndexById;
-        for (int k = 0; k < idsArgInputOrder.size(); ++k)
-            if (!inputIndexById.contains(idsArgInputOrder.at(k)))
-                inputIndexById.insert(idsArgInputOrder.at(k), k);
-        for (int k = 0; k < matches.size(); ++k) {
-            QJsonObject b = matches.at(k).toObject();
-            const auto it2 =
-                inputIndexById.constFind(b.value(QStringLiteral("id")).toString());
-            if (it2 != inputIndexById.constEnd()) {
-                b[QStringLiteral("input_index")] = *it2;
-                matches.replace(k, b);
-            }
+        // ANTS-3387 — an id-token-SHAPED locator that fails the
+        // canonical PROJ-NNNN gate (e.g. a digit-leading prefix like
+        // "3D_E-0022") is never adopted as a bullet id, so a bare
+        // found:false reads as "the item vanished". Name the real
+        // cause: bad_id_format + the canonical-form hint. Placed after
+        // the case-mismatch check so a conforming wrong-case id still
+        // gets the friendlier bad_case.
+        if (rcIsNonconformingIdToken(idArg)) {
+            out["ok"]    = false;
+            out["code"]  = QStringLiteral("bad_id_format");
+            out["error"] = QStringLiteral(
+                "id \"%1\" is id-shaped but not a canonical "
+                "[PROJ-NNNN] token (roadmap-format.md § 3.5.1 requires "
+                "a letter-leading prefix); a bullet authored with such "
+                "a token is addressable only by its headline.")
+                    .arg(idArg);
+            out["id"]   = idArg;
+            out["hint"] = QStringLiteral(
+                "Canonical ids are letter-led "
+                "(<LETTER><alnum/_/->*-<N>, e.g. ANTS-1234). A "
+                "digit-leading prefix never parses as a project id — "
+                "re-target this bullet by `headline`.");
+            return QJsonDocument(out);
         }
-        QJsonArray matchedIds;
-        QJsonArray missingIds;
-        QJsonArray idsEcho;
-        for (const QString &id : std::as_const(idsArgInputOrder)) {
-            idsEcho.append(id);
-            if (seen.contains(id)) matchedIds.append(id);
-            else                    missingIds.append(id);
-        }
-        // ANTS-4387 — an id ROTATED into docs/roadmap/*.md came back in
-        // `missing_ids` beside a genuinely unknown id with nothing to tell
-        // them apart. Reading only the current ROADMAP.md is by design
-        // (roadmap-format.md § 3.9), so the scope is unchanged and only the
-        // envelope moves: an archived id is reported as archived. The caller
-        // most likely to hit this is one checking ids that are by definition
-        // OLD — a release pre-flight, a changelog audit — where the only safe
-        // reading of "missing" is to STOP, and the fix reached for under
-        // release pressure is to weaken the check, discarding its true
-        // findings too. Gated on a non-empty missing set, so the ordinary
-        // fully-resolving call does no filesystem work at all.
-        QJsonArray archivedIdsArr;
-        QJsonObject archivedSources;
-        if (!missingIds.isEmpty()) {
-            QSet<QString> stillMissing;
-            for (const auto &v : std::as_const(missingIds))
-                stillMissing.insert(v.toString());
-            // The project root, so a subdirectory caller reads the project's
-            // docs/roadmap/ rather than its own (ANTS-6734).
-            const QString rootForArchive =
-                callerCanonical.isEmpty()
-                    ? QFileInfo(path).absolutePath()
-                    : rcProjectRootFor(callerCanonical);
-            const auto found =
-                RoadmapFoldIn::archivedIds(rootForArchive, stillMissing);
-            if (!found.isEmpty()) {
-                QJsonArray trulyMissing;
-                for (const auto &v : std::as_const(missingIds)) {
-                    const QString id = v.toString();
-                    if (found.contains(id)) {
-                        archivedIdsArr.append(id);
-                        archivedSources[id] = found.value(id);
-                    } else {
-                        trulyMissing.append(id);
-                    }
-                }
-                missingIds = trulyMissing;
-            }
-        }
-        out["ok"]          = true;
-        out["bullets"]     = matches;
-        out["path"]        = path;
-        out["count"]       = matches.size();
-        out["ids"]         = idsEcho;
-        out["matched_ids"] = matchedIds;
-        out["missing_ids"] = missingIds;
-        if (!archivedIdsArr.isEmpty()) {
-            out["archived_ids"]     = archivedIdsArr;
-            out["archived_sources"] = archivedSources;
-        }
-        out["found"]       = !matches.isEmpty();
-        if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
-            out["body_cap_clamped"]         = true;   // ANTS-4981
-            out["max_body_bytes_effective"] = idBodyCap;
-        }
-        // ANTS-4387 secondary (ANTS-4374's invariant again) — `found:true` on
-        // a PARTIALLY resolved set reads as success, so a caller checking
-        // `found` alone never learns two of its fifty did not resolve. Emitted
-        // on the ids path only, where "all of them" is a question that exists.
-        if (!idsArgInputOrder.isEmpty()) {
-            out["all_ids_resolved"] =
-                missingIds.isEmpty() && archivedIdsArr.isEmpty();
-        }
-        if (hasModeArg) out["mode"] = mode;
-        if (hasIncludeBodyArg) out["include_body"] = includeBody;
-        if (!m_roadmapCacheDuplicateIds.isEmpty()) {
-            out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
-        }
-        shrinkToFit(out);   // ANTS-5477
+    }
+    attachLinks(matches);     // ANTS-4079
+    applyBodyMatch(matches);  // ANTS-5468 — before the cap
+    if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+    // ANTS-4904 — `body_from_end` is honoured on the TARGETED path only
+    // (this singular-id arm and the ids[] arm below). A list query's
+    // 2000-char cap is a payload bound across many rows; this flag answers
+    // "where does THIS item stand", which is an id fetch.
+    else rcCapBodyFields(matches, idBodyCap,
+                         req.value(QStringLiteral("body_from_end"))
+                             .toBool(false));  // ANTS-3402
+    // ANTS-1881 — id-branch projection (second emission surface;
+    // INV-5 anchors the dual-surface requirement). Applied after
+    // body-strip so the projected object inherits the same key
+    // set on every call regardless of include_body.
+    if (mode == QLatin1String("headline_only")) {
+        rcProjectHeadlineOnly(matches);
+    }
+    // ANTS-4837 — the id/ids surface. Applied after the body strip and cap
+    // for the same reason the projection above is: the emitted key set must
+    // not depend on include_body.
+    projectAndReportBulletFields(matches);
+    out["ok"]      = true;
+    out["bullets"] = matches;
+    out["path"]    = path;
+    out["count"]   = matches.size();
+    out["id"]      = idArg;
+    out["found"]   = !matches.isEmpty();
+    if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
+        out["body_cap_clamped"]         = true;   // ANTS-4981
+        out["max_body_bytes_effective"] = idBodyCap;
+    }
+    if (hasModeArg) out["mode"] = mode;
+    if (hasIncludeBodyArg) out["include_body"] = includeBody;
+    shrinkToFit(out);   // ANTS-5477
+    // ANTS-1646 — surface duplicate-id descriptors (cache is the
+    // full-file array, so they are current) when the same id was
+    // seen on more than one bullet — exactly the case an id fetch
+    // most needs to flag (matches.size() > 1).
+    if (!rc.m_roadmapCacheDuplicateIds.isEmpty()) {
+        out["duplicate_ids"] = rc.m_roadmapCacheDuplicateIds;
+    }
+    return QJsonDocument(out);
+}
+
+// ANTS-1726 — multi-item fetch by id-set. Same shape as the
+// singular `id` branch: scans m_roadmapCacheBullets ONCE in
+// document order, keeping bullets whose id is in the requested
+// set. Result preserves the roadmap's document order (NOT the
+// input order). Body included by default; explicit
+// include_body:false strips. The envelope carries matched_ids[]
+// and missing_ids[] so a caller can spot stale/typoed ids
+// without diffing the input array against bullets[].id.
+auto RemoteControl::RoadmapQueryCall::byIds() -> QJsonDocument {
+    // ANTS-3387 — refuse the whole batch if any requested id is
+    // id-token SHAPED but non-canonical (see rcIsNonconformingIdToken):
+    // such a token can never resolve, so letting it fall silently into
+    // missing_ids is exactly the "vanished item" trap this guards
+    // against. Name it with bad_id_format instead.
+    QJsonArray badFormatIds;
+    for (const QString &id : std::as_const(idsArgInputOrder)) {
+        if (rcIsNonconformingIdToken(id)) badFormatIds.append(id);
+    }
+    if (!badFormatIds.isEmpty()) {
+        out["ok"]             = false;
+        out["code"]           = QStringLiteral("bad_id_format");
+        out["error"]          = QStringLiteral(
+            "ids[] contains %1 id-shaped token(s) that are not "
+            "canonical [PROJ-NNNN] ids (roadmap-format.md § 3.5.1 "
+            "requires a letter-leading prefix).")
+                .arg(badFormatIds.size());
+        out["bad_format_ids"] = badFormatIds;
+        out["hint"]           = QStringLiteral(
+            "Canonical ids are letter-led (e.g. ANTS-1234); a "
+            "digit-leading prefix never parses as a project id. "
+            "Re-target those bullets by `headline`.");
         return QJsonDocument(out);
     }
+    const QSet<QString> wanted(idsArg.cbegin(), idsArg.cend());
+    QSet<QString> seen;
+    QJsonArray matches;
+    for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
+        const QString bid =
+            v.toObject().value(QStringLiteral("id")).toString();
+        if (wanted.contains(bid)) {
+            matches.append(v);
+            seen.insert(bid);
+        }
+    }
+    attachLinks(matches);     // ANTS-4079
+    applyBodyMatch(matches);  // ANTS-5468 — before the cap
+    if (hasIncludeBodyArg && !includeBody) rcStripBodyFields(matches);
+    // ANTS-4904 — the plural ids[] arm of the same targeted path.
+    else rcCapBodyFields(matches, idBodyCap,
+                         req.value(QStringLiteral("body_from_end"))
+                             .toBool(false));  // ANTS-3402
+    if (mode == QLatin1String("headline_only")) {
+        rcProjectHeadlineOnly(matches);
+    }
+    // ANTS-4837 — the plural ids[] surface. Deliberately ABOVE the
+    // `input_index` block below, so that key survives a projection that
+    // does not name it: ANTS-4712 makes it this path's documented
+    // exemption precisely because results come back in DOCUMENT order and a
+    // caller zipping them against its own array mis-pairs without it. A
+    // lean shape is where that bug is most likely, so this is the last
+    // place to drop it.
+    projectAndReportBulletFields(matches);
+    // INV-3 — accounting arrays. Preserve INPUT order so a caller
+    // diffing against the request gets a positional read.
+    // ANTS-4400 — `input_index` on each bullet, so a caller can restore
+    // its OWN ordering. Results are in DOCUMENT order (documented, and
+    // correct), but the natural use of `ids` is "compare these two, in
+    // the order I care about" — and a caller who zips the result against
+    // its input array silently mis-pairs. The cheaper of the two fixes
+    // offered: no `order:"input"` mode, just the position each bullet was
+    // asked for at.
+    QHash<QString, int> inputIndexById;
+    for (int k = 0; k < idsArgInputOrder.size(); ++k)
+        if (!inputIndexById.contains(idsArgInputOrder.at(k)))
+            inputIndexById.insert(idsArgInputOrder.at(k), k);
+    for (int k = 0; k < matches.size(); ++k) {
+        QJsonObject b = matches.at(k).toObject();
+        const auto it2 =
+            inputIndexById.constFind(b.value(QStringLiteral("id")).toString());
+        if (it2 != inputIndexById.constEnd()) {
+            b[QStringLiteral("input_index")] = *it2;
+            matches.replace(k, b);
+        }
+    }
+    QJsonArray matchedIds;
+    QJsonArray missingIds;
+    QJsonArray idsEcho;
+    for (const QString &id : std::as_const(idsArgInputOrder)) {
+        idsEcho.append(id);
+        if (seen.contains(id)) matchedIds.append(id);
+        else                    missingIds.append(id);
+    }
+    // ANTS-4387 — an id ROTATED into docs/roadmap/*.md came back in
+    // `missing_ids` beside a genuinely unknown id with nothing to tell
+    // them apart. Reading only the current ROADMAP.md is by design
+    // (roadmap-format.md § 3.9), so the scope is unchanged and only the
+    // envelope moves: an archived id is reported as archived. The caller
+    // most likely to hit this is one checking ids that are by definition
+    // OLD — a release pre-flight, a changelog audit — where the only safe
+    // reading of "missing" is to STOP, and the fix reached for under
+    // release pressure is to weaken the check, discarding its true
+    // findings too. Gated on a non-empty missing set, so the ordinary
+    // fully-resolving call does no filesystem work at all.
+    QJsonArray archivedIdsArr;
+    QJsonObject archivedSources;
+    if (!missingIds.isEmpty()) {
+        QSet<QString> stillMissing;
+        for (const auto &v : std::as_const(missingIds))
+            stillMissing.insert(v.toString());
+        // The project root, so a subdirectory caller reads the project's
+        // docs/roadmap/ rather than its own (ANTS-6734).
+        const QString rootForArchive =
+            callerCanonical.isEmpty()
+                ? QFileInfo(path).absolutePath()
+                : rcProjectRootFor(callerCanonical);
+        const auto found =
+            RoadmapFoldIn::archivedIds(rootForArchive, stillMissing);
+        if (!found.isEmpty()) {
+            QJsonArray trulyMissing;
+            for (const auto &v : std::as_const(missingIds)) {
+                const QString id = v.toString();
+                if (found.contains(id)) {
+                    archivedIdsArr.append(id);
+                    archivedSources[id] = found.value(id);
+                } else {
+                    trulyMissing.append(id);
+                }
+            }
+            missingIds = trulyMissing;
+        }
+    }
+    out["ok"]          = true;
+    out["bullets"]     = matches;
+    out["path"]        = path;
+    out["count"]       = matches.size();
+    out["ids"]         = idsEcho;
+    out["matched_ids"] = matchedIds;
+    out["missing_ids"] = missingIds;
+    if (!archivedIdsArr.isEmpty()) {
+        out["archived_ids"]     = archivedIdsArr;
+        out["archived_sources"] = archivedSources;
+    }
+    out["found"]       = !matches.isEmpty();
+    if (bodyCapClamped && !(hasIncludeBodyArg && !includeBody)) {
+        out["body_cap_clamped"]         = true;   // ANTS-4981
+        out["max_body_bytes_effective"] = idBodyCap;
+    }
+    // ANTS-4387 secondary (ANTS-4374's invariant again) — `found:true` on
+    // a PARTIALLY resolved set reads as success, so a caller checking
+    // `found` alone never learns two of its fifty did not resolve. Emitted
+    // on the ids path only, where "all of them" is a question that exists.
+    if (!idsArgInputOrder.isEmpty()) {
+        out["all_ids_resolved"] =
+            missingIds.isEmpty() && archivedIdsArr.isEmpty();
+    }
+    if (hasModeArg) out["mode"] = mode;
+    if (hasIncludeBodyArg) out["include_body"] = includeBody;
+    if (!rc.m_roadmapCacheDuplicateIds.isEmpty()) {
+        out["duplicate_ids"] = rc.m_roadmapCacheDuplicateIds;
+    }
+    shrinkToFit(out);   // ANTS-5477
+    return QJsonDocument(out);
+}
 
+auto RemoteControl::RoadmapQueryCall::list() -> QJsonDocument {
+    auto &text = *textHolder;
     // ANTS-1247-INV-2/3: filter the cached array post-cache.
     // "active" → 📋+🚧 (planned + in-progress);
     // "shipped" → ✅ only; "all" → pass-through. Anchor: filter switch.
     QJsonArray filtered;
     if (filter == QLatin1String("all")) {
-        filtered = m_roadmapCacheBullets;
+        filtered = rc.m_roadmapCacheBullets;
     } else {
-        for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+        for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
             const QString s = v.toObject().value(QStringLiteral("status")).toString();
             // ANTS-3408 — the full-file and section= paths share one
             // predicate (keepStatus), so a granular filter cannot again
@@ -3824,7 +3995,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
         RoadmapSource::ReadError winWhy = RoadmapSource::ReadError::None;
         std::optional<QStringList> shippedIds;
         int shippedUndated = 0;
-        if (RoadmapStore *store = roadmapStoreOrNull(&winWhy, nullptr)) {
+        if (RoadmapStore *store = rc.roadmapStoreOrNull(&winWhy, nullptr)) {
             if (const auto pid = RoadmapSource::migratedProject(   // ANTS-4884
                     *store, rcProjectRootFor(callerCanonical), text, nullptr,
                     &winWhy)) {
@@ -3916,7 +4087,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // tag, which is emitted only for github-task-list, so the remainder is
     // "everything else" and calling it a dialect would be inventing one.
     int gfmBullets = 0;
-    for (const auto &v : std::as_const(m_roadmapCacheBullets)) {
+    for (const auto &v : std::as_const(rc.m_roadmapCacheBullets)) {
         if (v.toObject().value(QStringLiteral("format")).toString() ==
             QLatin1String("github-task-list")) {
             ++gfmBullets;
@@ -3924,7 +4095,7 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     }
     if (gfmBullets > 0) {
         out["format"] = QStringLiteral("github-task-list");
-        const int others = int(m_roadmapCacheBullets.size()) - gfmBullets;
+        const int others = int(rc.m_roadmapCacheBullets.size()) - gfmBullets;
         // Emitted only when the file actually carries both, so every uniform
         // roadmap's envelope stays byte-identical to what it was.
         if (others > 0) {
@@ -3936,8 +4107,8 @@ QJsonDocument RemoteControl::cmdRoadmapQuery(const QJsonObject &req) {  // ANTS-
     // ANTS-1646 — full-file emission always sees the just-computed
     // duplicate descriptors (cache fill happened above). Emit when
     // non-empty so a clean roadmap envelope stays back-compat.
-    if (!m_roadmapCacheDuplicateIds.isEmpty()) {
-        out["duplicate_ids"] = m_roadmapCacheDuplicateIds;
+    if (!rc.m_roadmapCacheDuplicateIds.isEmpty()) {
+        out["duplicate_ids"] = rc.m_roadmapCacheDuplicateIds;
     }
     return QJsonDocument(out);
 }

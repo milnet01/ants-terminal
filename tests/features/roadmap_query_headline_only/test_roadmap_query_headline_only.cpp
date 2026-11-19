@@ -186,8 +186,9 @@ TEST(roadmap_query_headline_only, Inv5IdSelectorProjected) {
     // branch only because of where the two sit in the file, and reordered the
     // window would cover a branch that ALSO projects — so the assertion below
     // would hold and the test would report nothing. Scoped to the `id`
-    // branch, whose opening occurs once.
-    const auto idBranchOpen = cpp.find("if (!idArg.isEmpty()) {");
+    // path's own method (ANTS-6164), whose opening occurs once.
+    const auto idBranchOpen =
+        cpp.find("RoadmapQueryCall::byId() -> QJsonDocument {");
     const auto idBranchPos =
         idBranchOpen == std::string::npos
             ? std::string::npos

@@ -39,7 +39,7 @@ TEST(roadmap_query_prose_no_id_warning, Inv1FileLevelIdBearingScan) {
            "INV-1: file-level id-bearing scan flag present");
     // The scan iterates the cached bullet set through the same drop helper
     // the emission loop uses, so 'id-bearing' means the same thing here.
-    expect(contains(cpp, "std::as_const(m_roadmapCacheBullets)"),
+    expect(contains(cpp, "std::as_const(rc.m_roadmapCacheBullets)"),
            "INV-1: scan iterates the whole cached bullet set");
     expect(contains(cpp, "fileHasIdBearingBullet = true; break;"),
            "INV-1: early-exit on the first id-bearing bullet keeps it O(1)");

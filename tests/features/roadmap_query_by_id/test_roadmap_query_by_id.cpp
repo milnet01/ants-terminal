@@ -57,8 +57,10 @@ TEST(roadmap_query_by_id, Inv1IdReadAndHygiene) {
 TEST(roadmap_query_by_id, Inv2BypassesStatusAndPagination) {
     expect_reset();
     const std::string cpp = ants_test::slurpRemoteControl();
-    const size_t idBranch = at(cpp, "if (!idArg.isEmpty()) {");
-    const size_t statusFilter = at(cpp, "ANTS-1247-INV-2/3");
+    // ANTS-6164 — the order is the dispatch order in RoadmapQueryCall::run():
+    // the id path returns before the list path, which holds the status filter.
+    const size_t idBranch = at(cpp, "if (!idArg.isEmpty()) return byId();");
+    const size_t statusFilter = at(cpp, "return list();");
     expect(idBranch != std::string::npos,
            "INV-2: single-item id branch present");
     expect(statusFilter != std::string::npos,
