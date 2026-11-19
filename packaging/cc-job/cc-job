@@ -12,8 +12,8 @@ set -euo pipefail
 # Ships with Ants Terminal (ANTS-5629). A long job's log can grow without
 # bound, so where the system drive is small, point CC_JOB_DIR (or a symlink
 # at the default) at a data drive.
-STATE="${CC_JOB_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/cc-job}"
-mkdir -p "$STATE"
+JOB_DIR="${CC_JOB_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/cc-job}"
+mkdir -p "$JOB_DIR"
 
 usage() {
     cat <<'EOF'
@@ -79,7 +79,7 @@ snapshot_running() {
 }
 
 watch_job() {
-    local name=$1 log="$STATE/$1.log"
+    local name=$1 log="$JOB_DIR/$1.log"
     [[ -f $log ]] || die "no job named '$name'"
     command -v konsole >/dev/null ||
         die "watch needs Konsole, which is not installed; 'cc-job tail $name' reads the log"
@@ -117,15 +117,17 @@ start_job() {
     (($#)) || die "start needs a command after --"
     running "$name" && die "job '$name' is already running"
     prune_daily
+    # A failed unit of this name that was started without --collect stays
+    # loaded, and systemd-run then refuses the name (measured 2026-11-19).
     systemctl --user reset-failed "$(unit "$name")" 2>/dev/null || true
 
-    local log="$STATE/$name.log" rec="$STATE/$name.exit"
+    local log="$JOB_DIR/$name.log" rec="$JOB_DIR/$name.exit"
     # The log is the only copy of the output (ANTS-6538): keep an unread one.
-    if [[ -s $log && ! -e $STATE/$name.read ]]; then
-        mv -f "$log" "$STATE/$name.prev"
-        echo "kept the unread output of the last '$name' as $STATE/$name.prev"
+    if [[ -s $log && ! -e $JOB_DIR/$name.read ]]; then
+        mv -f "$log" "$JOB_DIR/$name.prev"
+        echo "kept the unread output of the last '$name' as $JOB_DIR/$name.prev"
     fi
-    rm -f "$rec" "$STATE/$name.read"
+    rm -f "$rec" "$JOB_DIR/$name.read"
     : >"$log"
     {
         echo "cwd=$PWD"
@@ -133,14 +135,14 @@ start_job() {
         echo "command=$(printf '%q ' "$@")"
         # The owner lets a session clean its own jobs and no one else's.
         if [[ -n ${CLAUDE_CODE_SESSION_ID:-} ]]; then echo "owner=$CLAUDE_CODE_SESSION_ID"; fi
-    } >"$STATE/$name.info"
+    } >"$JOB_DIR/$name.info"
 
     # A unit starts from the user manager's environment, not this shell's. A
     # variable exported for the job must still reach it: dropped, a test job
     # selecting a scratch database falls back to the live one, with no error.
     # The values travel in a private file because --setenv would show them,
     # tokens included, in `ps` and in the unit's properties.
-    local vars="$STATE/$name.env"
+    local vars="$JOB_DIR/$name.env"
     write_vars "$vars"
 
     # The inner script is single-quoted on purpose: $1, $2, $3 and "$@" belong
@@ -161,9 +163,9 @@ status_one() {
     local name=$1 state
     if running "$name"; then
         state="running"
-    elif [[ -f $STATE/$name.exit ]]; then
-        state="finished, exit $(<"$STATE/$name.exit")"
-    elif [[ -f $STATE/$name.log ]]; then
+    elif [[ -f $JOB_DIR/$name.exit ]]; then
+        state="finished, exit $(<"$JOB_DIR/$name.exit")"
+    elif [[ -f $JOB_DIR/$name.log ]]; then
         state="stopped (ended before it could record an exit code)"
     else
         echo "$name: no such job"; return 1
@@ -171,16 +173,16 @@ status_one() {
     local started owner
     started=$(info_field "$name" started)
     owner=$(info_field "$name" owner)
-    echo "$name: $state${started:+ — started $started}${owner:+ — session ${owner:0:8}} — log: $STATE/$name.log"
+    echo "$name: $state${started:+ — started $started}${owner:+ — session ${owner:0:8}} — log: $JOB_DIR/$name.log"
 }
 
 # The value of <key>= in a job's .info file, or nothing.
 info_field() {
     local line
-    [[ -f $STATE/$1.info ]] || return 0
+    [[ -f $JOB_DIR/$1.info ]] || return 0
     while IFS= read -r line; do
         if [[ $line == "$2="* ]]; then printf '%s' "${line#"$2"=}"; return 0; fi
-    done <"$STATE/$1.info"
+    done <"$JOB_DIR/$1.info"
 }
 
 # Remove one finished job. Returns 1 if it is running, 2 if its output is unread
@@ -190,10 +192,10 @@ clean_one() {
     running "$name" && return 1
     # The log is the only copy of the output (CFG-0729: a clean before reading
     # it forced a re-run). Refuse until tail has shown it.
-    if ((!force)) && [[ -s $STATE/$name.log && ! -e $STATE/$name.read ]]; then return 2; fi
+    if ((!force)) && [[ -s $JOB_DIR/$name.log && ! -e $JOB_DIR/$name.read ]]; then return 2; fi
     # Close any watch window first, or it reports the log vanishing.
     systemctl --user stop "cc-job-watch-$name-*" 2>/dev/null || true
-    rm -f "$STATE/$name".{log,exit,info,read,env,prev}
+    rm -f "$JOB_DIR/$name".{log,exit,info,read,env,prev}
 }
 
 clean_cmd() {
@@ -217,7 +219,7 @@ clean_cmd() {
     # One grep picks this session's records. Reading each record in its own
     # subshell took seconds once thousands of old jobs had piled up.
     local mine
-    mine=$(grep -lxF --include='*.info' -r -e "owner=$me" "$STATE" 2>/dev/null | sort) || true
+    mine=$(grep -lxF --include='*.info' -r -e "owner=$me" "$JOB_DIR" 2>/dev/null | sort) || true
     while IFS= read -r f; do
         [[ -n $f ]] || continue
         name=${f##*/}; name=${name%.info}
@@ -253,9 +255,9 @@ prune_jobs() {
         running "$name" && continue
         # Not clean_one: its per-job systemctl call takes minutes over
         # thousands of jobs, and no watch window follows a job this old.
-        rm -f "$STATE/$name".{log,exit,info,read,env,prev}
+        rm -f "$JOB_DIR/$name".{log,exit,info,read,env,prev}
         removed=$((removed + 1))
-    done < <(find -H "$STATE" -maxdepth 1 -name '*.log' -mtime "+$days" -print0)
+    done < <(find -H "$JOB_DIR" -maxdepth 1 -name '*.log' -mtime "+$days" -print0)
     ((quiet)) || echo "removed $removed finished jobs older than $days days"
 }
 
@@ -273,7 +275,7 @@ prune_cmd() {
 # start prunes at most once a day; the stamp's age says when it last did. A
 # prune that fails must not stop the job from starting.
 prune_daily() {
-    local stamp="$STATE/.pruned"
+    local stamp="$JOB_DIR/.pruned"
     [[ -e $stamp && -z $(find "$stamp" -mtime +0) ]] && return 0
     : >"$stamp"
     (prune_jobs "$PRUNE_DAYS" 1) || true
@@ -283,7 +285,7 @@ prune_daily() {
 status_all() {
     shopt -s nullglob
     local f b found=0
-    for f in "$STATE"/*.log; do
+    for f in "$JOB_DIR"/*.log; do
         if ((!found)); then snapshot_running; found=1; fi
         b=${f##*/}
         status_one "${b%.log}"
@@ -295,7 +297,7 @@ status_all() {
 # the only copy of its output, so the list has to bound itself.
 status_recent() {
     local keep=20 names name shown=0 hidden=0
-    mapfile -t names < <(find -H "$STATE" -maxdepth 1 -name '*.log' -printf '%T@ %f\n' |
+    mapfile -t names < <(find -H "$JOB_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %f\n' |
                          sort -k1,1rn -k2,2 | sed 's/^[^ ]* //; s/\.log$//')
     if ((${#names[@]} == 0)); then echo "no jobs"; return 0; fi
     snapshot_running
@@ -330,7 +332,7 @@ wait_job() {
         esac
         shift
     done
-    local log="$STATE/$name.log"
+    local log="$JOB_DIR/$name.log"
     [[ -f $log ]] || die "no job named '$name'"
     while running "$name"; do sleep 2; done
     status_one "$name"
@@ -339,12 +341,12 @@ wait_job() {
         if [[ -n $lines ]]; then { grep -E -- "$pattern" "$log" || true; } | tail -n "$lines"
         else grep -E -- "$pattern" "$log" || true
         fi
-        : >"$STATE/$name.read"
+        : >"$JOB_DIR/$name.read"
     elif [[ -n $lines ]]; then
-        tail -n "$lines" "$log"; : >"$STATE/$name.read"
+        tail -n "$lines" "$log"; : >"$JOB_DIR/$name.read"
     fi
-    [[ -f $STATE/$name.exit ]] || exit 1
-    exit "$(<"$STATE/$name.exit")"
+    [[ -f $JOB_DIR/$name.exit ]] || exit 1
+    exit "$(<"$JOB_DIR/$name.exit")"
 }
 
 cmd=${1:-}; shift || true
@@ -355,8 +357,8 @@ case $cmd in
         elif (($#)); then checkname "$1"; status_one "$1"
         else status_recent
         fi ;;
-    tail)   checkname "${1:-}"; [[ -f $STATE/$1.log ]] || die "no job named '$1'"
-            tail -n "${2:-40}" "$STATE/$1.log"; : >"$STATE/$1.read" ;;
+    tail)   checkname "${1:-}"; [[ -f $JOB_DIR/$1.log ]] || die "no job named '$1'"
+            tail -n "${2:-40}" "$JOB_DIR/$1.log"; : >"$JOB_DIR/$1.read" ;;
     wait)   wait_job "$@" ;;
     watch)  checkname "${1:-}"; watch_job "$1" ;;
     stop)   checkname "${1:-}"; systemctl --user stop "$(unit "$1")" && status_one "$1" ;;

@@ -66,15 +66,15 @@ BuildRequires:  ninja
 # The test suite shells out to real git: verify_changes_build_cache builds a
 # throwaway repo via initGitProject() (init/config/add/commit) and
 # release_behaviour exercises packaging/release.sh against one. A build VM has no
-# git unless it is asked for, so those 13 tests fail rather than skip — they
+# git unless it is asked for, so those tests fail rather than skip — they
 # carry no 'no git in PATH' guard, unlike their siblings in
 # mcp_roadmap_branch_drift. Declaring it makes them RUN (real coverage) instead
 # of being excluded into silence. git-core is the client alone; the `git`
 # metapackage would drag in gitk/git-email for nothing.
 BuildRequires:  git-core
 # Same shape as git-core above, and found the same way — by a build VM. The
-# cited_by verb shells out to ripgrep with no skip path, so all 11 CitedBy
-# tests fail with {"code":"rg_failed"} rather than skipping when rg is absent.
+# cited_by verb shells out to ripgrep with no skip path, so every CitedBy
+# test fails with {"code":"rg_failed"} rather than skipping when rg is absent.
 # ANTS-4391 already cost five red CI runs for this exact reason and was fixed
 # by adding ripgrep to .github/workflows/ci.yml — but only there. The RPM is a
 # SECOND environment that runs %%check and never got the same line.
@@ -119,7 +119,7 @@ BuildRequires:  cmake(Qt6Sql)
 # ...and the SQLite DRIVER, at BUILD time, not just runtime. cmake(Qt6Sql) is
 # the library and headers; the driver is a separate runtime-loaded plugin, and
 # the roadmap-store tests open a real QSqlDatabase during %%check. Without it
-# they fail 217 times with 'Driver not loaded' — a red build, long after
+# they fail with 'Driver not loaded' — a red build, long after
 # everything has compiled (measured on Leap 16.0 and Tumbleweed, 2026-08-02).
 #
 # This is the hicolor-icon-theme situation further down, for the same reason:
@@ -135,13 +135,13 @@ BuildRequires:  cmake(Qt6Sql)
 %if 0%{?suse_version}
 BuildRequires:  qt6-sql-sqlite
 %endif
-# Qt6Test is a REQUIRED component of the top-level find_package in
-# CMakeLists.txt:92 — unconditionally, not gated on -DANTS_TESTS. Omitting it
+# Qt6Test is a REQUIRED component of the top-level find_package(Qt6 ...) in
+# CMakeLists.txt — unconditionally, not gated on -DANTS_TESTS. Omitting it
 # fails configure with 'Failed to find required Qt component "Test"' before a
 # single object compiles (caught by the first OBS build, 2026-07-29).
 BuildRequires:  cmake(Qt6Test)
 BuildRequires:  cmake(Qt6Widgets)
-# GoogleTest for the test bundles. CMakeLists.txt:806 does
+# GoogleTest for the test bundles. CMakeLists.txt does
 # `find_package(GTest 1.13 QUIET)` and falls back to FetchContent from
 # github.com when it fails — which cannot work in a build VM, since OBS gives
 # the chroot no network (the first build died on 'could not find git for clone
@@ -164,7 +164,7 @@ BuildRequires:  cmake(GTest) >= 1.13
 # unversioned name is the only option — and it is unambiguous, because its only
 # other provider is compat-lua-devel at 5.1.5, which the floor excludes.
 #
-# CMakeLists.txt:91 copes with both: pkg_check_modules(LUA lua5.4) misses on
+# CMakeLists.txt copes with both: pkg_check_modules(LUA lua5.4) misses on
 # Fedora, and the find_package(Lua 5.4 QUIET) fallback on the next line finds it
 # by header instead. The plugin system stays enabled either way.
 %if 0%{?suse_version}
@@ -186,17 +186,15 @@ BuildRequires:  pkgconfig(lua) >= 5.4
 %if %{with layershell}
 BuildRequires:  cmake(LayerShellQt) >= 6.0
 %endif
-# Packaging artefact validators (H2/H3/H4): invoked nowhere in %%check but
-# good hygiene to pull them in so `cmake --install` staging under `osc build`
-# surfaces any schema drift against the current appstream / desktop-file
-# validators shipped by Tumbleweed.
+# Packaging artefact validators (H2/H3/H4). Nothing in this spec or the test
+# suite runs them: they are in the chroot so the staged .desktop and metainfo
+# files can be validated by hand under `osc build`.
 #
 # desktop-file-utils carries the same name everywhere. appstream-glib does not:
-# it is libappstream-glib on Fedora and lib64appstream-glib-devel on Mageia,
-# three spellings for a tool this spec never actually invokes. Rather than carry
-# a three-way name table for an unused validator, it stays openSUSE-only — the
-# hygiene it buys is on the platform this package is primarily built for, and
-# elsewhere it would be a resolution failure in exchange for nothing.
+# it is libappstream-glib on Fedora and lib64appstream-glib-devel on Mageia.
+# Rather than carry a three-way name table for an unused validator, it stays
+# openSUSE-only; elsewhere it would be a resolution failure in exchange for
+# nothing.
 %if 0%{?suse_version}
 BuildRequires:  appstream-glib
 %endif
@@ -215,7 +213,8 @@ Requires:       hicolor-icon-theme
 # it as a runtime PLUGIN, so nothing links it and no shlib dependency is
 # generated. Without the plugin present, QSqlDatabase::addDatabase() returns an
 # invalid database at RUN time — the roadmap store fails on a user's machine,
-# not in the build (CMakeLists.txt:86-91 says the same thing from the other side).
+# not in the build (the comment on CMakeLists.txt's find_package(Qt6 ...) says
+# the same thing from the other side).
 #
 # Verified 2026-08-02, per distro, rather than assumed:
 #   openSUSE  — split into its own package, so it must be named (zypper: the
@@ -308,13 +307,13 @@ export.
 # test-environment fix made here belongs in both.
 # The whole ctest suite, which includes Qt widget tests — not only the
 # shell-based audit-rule fixtures. CMakeLists.txt wires QT_QPA_PLATFORM=offscreen
-# for the opt-in `e2e` label only (CMakeLists.txt:991), so a build VM with no
+# for the opt-in `e2e` label only, so a build VM with no
 # display server needs it exported here or every widget test aborts on platform
 # plugin init. Locally the tests pass because a real session is present, which is
 # exactly why this only shows up in a chroot build.
 export QT_QPA_PLATFORM=offscreen
 # Same shape, different prerequisite: the grid's width logic calls the system
-# wcwidth() (terminalgrid.cpp:418), and the wide-char / combining tests adopt
+# wcwidth() (terminalgrid.cpp), and the wide-char / combining tests adopt
 # the AMBIENT locale via setlocale(LC_CTYPE, "") — deliberately, so they test
 # what a real session does. A build chroot usually has no locale set at all,
 # and under C/POSIX glibc cannot classify these characters at all. Measured
@@ -334,14 +333,9 @@ export QT_QPA_PLATFORM=offscreen
 # question -- that the APP itself inherits the same ambient-locale dependency
 # for CJK width -- is ANTS-3792, not something an export here can settle.
 export LC_ALL=C.UTF-8
-# The whole suite, perf and e2e lanes included. Two things had to be checked
-# before trusting that: the perf benchmarks carry an OPTIONAL MB/s regression
-# floor that is off by default (0.0 — bench_vt_throughput.cpp:166), so a loaded
-# build worker cannot fail them on contention; and the e2e lane already passed
-# here, since CMakeLists.txt gives it its own offscreen wiring. An earlier
-# attempt to narrow this to -LE '(perf|e2e)' does NOT work regardless: %%ctest
-# is declared %%ctest(:-:) and getopt-parses leading dashes, so rpm rejects it
-# with "Unknown option L in ctest(:-:)" before ctest ever runs.
+# The suite runs through plain ctest further down, not the %%ctest macro:
+# %%ctest is declared %%ctest(:-:) and getopt-parses leading dashes, so rpm
+# rejects a -LE with "Unknown option L in ctest(:-:)" before ctest ever runs.
 #
 # Note the doubled percent signs above. rpm expands macros inside # comments —
 # they are comments to the shell, not to the macro engine — so a singly-written
@@ -362,8 +356,7 @@ export LC_ALL=C.UTF-8
 # and every other gate honours it. tests/features/roadmap_read_seam/spec.md
 # puts it plainly -- "A timing assertion on a loaded host is a flake
 # generator" -- and both the default presets and tools/local-ci.sh filter
-# -LE 'e2e|perf'. The RPM was the ONLY gate running them, by accident, because
-# %%ctest cannot take -LE (see above). Measured 2026-08-26: Inv3Latency's
+# -LE 'e2e|perf'. Measured 2026-08-26: Inv3Latency's
 # wall-clock p95 missed its 50 ms budget by 0.5% on an OBS worker and by 50%
 # (75-78 ms) when pinned to two contended cores locally, while passing
 # comfortably unloaded. The test already skips itself under ASan for exactly

@@ -33,6 +33,11 @@
 # any process inside the terminal can spoof OSC 133 markers and pollute it.
 # The HMAC verifier (terminalgrid.cpp) drops unsigned markers when the
 # terminal has a key.
+#
+# Twin: ants-osc133.zsh signs the same markers the same way. Change the
+# signed message, a marker or the key rule in both, and in the verifier.
+# One difference: this hook sends B at the end of the prompt, the zsh one
+# after Enter (roadmap item ANTS-6107).
 
 # ANTS-6441 — the key: the key file's first line, else $ANTS_OSC133_KEY. The
 # terminal applies the same rule (src/osc133keyfile.h); change them together.
@@ -128,8 +133,8 @@ __ants_osc133_precmd() {
 # so a shell running under `set -u` sources this without errors.
 # Bash uses PROMPT_COMMAND for the precmd analogue. We chain in front so we
 # don't clobber the user's existing PROMPT_COMMAND. PS1 is decorated with
-# the B and C markers — B closes the prompt, C opens the command-output
-# region (since bash has no preexec, B and C effectively coincide).
+# the B marker, which closes the prompt; C, which opens the command-output
+# region, goes in PS0 below.
 case "${PROMPT_COMMAND:-}" in
     *__ants_osc133_precmd*) ;;
     *) PROMPT_COMMAND="__ants_osc133_precmd${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;

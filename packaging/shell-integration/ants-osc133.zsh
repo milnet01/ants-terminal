@@ -29,6 +29,11 @@
 # not installed (Flatpak, AppImage) it falls back to python3, which also
 # reads the key from stdin (ANTS-6445).
 #
+# Twin: ants-osc133.bash signs the same markers the same way, and the HMAC
+# verifier is in terminalgrid.cpp. Change the signed message, a marker or the
+# key rule in all three. One difference: this hook sends B after Enter, the
+# bash one at the end of the prompt (roadmap item ANTS-6107).
+#
 # zsh has both preexec and precmd, so we get the cleanest separation of
 # A (precmd, before PS1), B (preexec, after Enter), C (preexec, just
 # before the command runs), D (precmd, on the next prompt).

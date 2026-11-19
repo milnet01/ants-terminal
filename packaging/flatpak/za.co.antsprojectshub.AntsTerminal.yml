@@ -9,10 +9,9 @@
 #     flatpak run --command=flatpak-builder-lint org.flatpak.Builder \
 #         manifest packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml
 #
-# Targets org.kde.Platform//6.10 — the KDE SDK brings cmake, ninja, and all
-# Qt6 components the build needs (Core, Gui, Widgets, Network, OpenGL,
-# OpenGLWidgets, DBus). Qt6.10 also clears the CMakeLists.txt 6.2 floor.
-# (Bumped from 6.7, which Flathub no longer serves — only 6.9/6.10 remain.)
+# Targets org.kde.Platform at the runtime-version below — the KDE SDK brings
+# cmake, ninja, and all Qt6 components the build needs (Core, Gui, Widgets,
+# Network, OpenGL, OpenGLWidgets, DBus), above the CMakeLists.txt 6.2 floor.
 #
 # Host shell. `src/ptyhandler.cpp` detects FLATPAK_ID / /.flatpak-info in
 # the forked child and exec's the user's shell via `flatpak-spawn --host`,
@@ -90,13 +89,6 @@ modules:
       # `make install` lays the headers FLAT under /app/include, which is
       # exactly what luaengine.cpp's `#include <lua.hpp>` wants: CMake's
       # FindLua finds lua.h there and passes -I/app/include.
-      #
-      # There used to be a mirror step here copying those headers into an
-      # /app/include/lua5.4/ subdir, because luaengine.cpp hardcoded
-      # `#include <lua5.4/lua.hpp>`. That prefix was never "distro-correct"
-      # as the old comment claimed — it is openSUSE's layout specifically,
-      # and it broke the Fedora and Mageia builds outright (ANTS-3727).
-      # The include is unqualified now, so the mirror has nothing to fix.
       - make install INSTALL_TOP=/app
     sources:
       - type: archive
