@@ -63,6 +63,39 @@ ants_grep_nudge_dir() {
     printf '%s' "${HOME:-/tmp}/.cache/ants-terminal/grep-nudge"
 }
 
+# The part both nudge predicates share. Takes the command's first pipeline
+# stage, strips leading VAR=val assignments and one leading `cd … &&`, and
+# leaves the result in ANTS_NUDGE_PRE. Returns 1 when the command is exempt
+# from both nudges: the bypass token anywhere (ANTS-1252 INV-12), a
+# help/version flag, or a path outside the project's sources.
+ants_nudge_command_head() {
+    local cmd="$1"
+    ANTS_NUDGE_PRE=""
+    case "$cmd" in *"# ants-bypass"*) return 1 ;; esac
+
+    local pre="${cmd%%|*}"
+    pre="${pre#"${pre%%[![:space:]]*}"}"                 # ltrim
+    while [[ "$pre" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
+        pre="${pre#*[[:space:]]}"
+        pre="${pre#"${pre%%[![:space:]]*}"}"
+    done
+    if [[ "$pre" =~ ^cd[[:space:]] ]] && [[ "$pre" == *"&&"* ]]; then
+        pre="${pre#*&&}"
+        pre="${pre#"${pre%%[![:space:]]*}"}"
+    fi
+
+    # Substring tests on pre.
+    case " $pre " in
+        *" --help"*|*" --version"*|*" -h "*|*" -V "*) return 1 ;;
+    esac
+    case "$pre" in
+        */tmp*|*/var*|*/etc*|*/usr*|*/proc*|*/sys*|*build/*|*build-*|*.git/*|*node_modules*|*.log*)
+            return 1 ;;
+    esac
+    ANTS_NUDGE_PRE="$pre"
+    return 0
+}
+
 # ANTS-2141-INV-6 — pure-ish predicate: return 0 = warn-eligible raw source
 # search, 1 = not. MUST `return`, never `exit`, so the harness can call it
 # in-process. On a match it also sets ANTS_NUDGE_TOOL (the §2.4 tally bucket)
@@ -71,32 +104,9 @@ ants_grep_nudge_dir() {
 ants_is_source_search() {
     local cmd="$1"
     ANTS_NUDGE_TOOL=""
-    # Bypass override (ANTS-1252 INV-12): scan the WHOLE command.
-    case "$cmd" in *"# ants-bypass"*) return 1 ;; esac
-
-    # pre = everything before the first pipe (excludes "X | grep").
-    local pre="${cmd%%|*}"
-    pre="${pre#"${pre%%[![:space:]]*}"}"                 # ltrim
-    # Strip leading VAR=val assignments (repeat).
-    while [[ "$pre" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
-        pre="${pre#*[[:space:]]}"
-        pre="${pre#"${pre%%[![:space:]]*}"}"
-    done
-    # Strip a single leading "cd ... &&".
-    if [[ "$pre" =~ ^cd[[:space:]] ]] && [[ "$pre" == *"&&"* ]]; then
-        pre="${pre#*&&}"
-        pre="${pre#"${pre%%[![:space:]]*}"}"
-    fi
-
-    # EXEMPT (substring tests on pre): help/version flags.
-    case " $pre " in
-        *" --help"*|*" --version"*|*" -h "*|*" -V "*) return 1 ;;
-    esac
-    # EXEMPT: non-source-root path substrings + .log.
-    case "$pre" in
-        */tmp*|*/var*|*/etc*|*/usr*|*/proc*|*/sys*|*build/*|*build-*|*.git/*|*node_modules*|*.log*)
-            return 1 ;;
-    esac
+    # pre is the first pipeline stage, so "X | grep" is not a search.
+    ants_nudge_command_head "$cmd" || return 1
+    local pre="$ANTS_NUDGE_PRE"
 
     # Eligibility — inspect the leading command token(s).
     local first second
@@ -155,8 +165,6 @@ ants_is_source_search() {
 ants_is_source_read() {
     local cmd="$1"
     ANTS_NUDGE_TOOL=""
-    # Bypass override (ANTS-1252 INV-12): scan the WHOLE command.
-    case "$cmd" in *"# ants-bypass"*) return 1 ;; esac
 
     # A redirect / heredoc / PIPE anywhere means this is not a pure read-dump
     # (writing, feeding input, or processing — not dumping a file to be read).
@@ -165,29 +173,8 @@ ants_is_source_read() {
     # piped cat is a processing pipeline, so any '|' disqualifies.
     case "$cmd" in *">"*|*"<<"*|*"|"*) return 1 ;; esac
 
-    # Strip leading VAR=val / cd … && prefixes (no pipe survives the check above).
-    local pre="${cmd%%|*}"
-    pre="${pre#"${pre%%[![:space:]]*}"}"                 # ltrim
-    # Strip leading VAR=val assignments (repeat).
-    while [[ "$pre" =~ ^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+ ]]; do
-        pre="${pre#*[[:space:]]}"
-        pre="${pre#"${pre%%[![:space:]]*}"}"
-    done
-    # Strip a single leading "cd ... &&".
-    if [[ "$pre" =~ ^cd[[:space:]] ]] && [[ "$pre" == *"&&"* ]]; then
-        pre="${pre#*&&}"
-        pre="${pre#"${pre%%[![:space:]]*}"}"
-    fi
-
-    # EXEMPT (substring tests on pre): help/version flags.
-    case " $pre " in
-        *" --help"*|*" --version"*|*" -h "*|*" -V "*) return 1 ;;
-    esac
-    # EXEMPT: non-source-root path substrings + .log (mirrors ants_is_source_search).
-    case "$pre" in
-        */tmp*|*/var*|*/etc*|*/usr*|*/proc*|*/sys*|*build/*|*build-*|*.git/*|*node_modules*|*.log*)
-            return 1 ;;
-    esac
+    ants_nudge_command_head "$cmd" || return 1
+    local pre="$ANTS_NUDGE_PRE"
 
     # Split pre into words WITHOUT glob expansion (read -a splits on IFS only;
     # `for tok in $pre` would expand a literal *.cpp). Element 0 is the command.
