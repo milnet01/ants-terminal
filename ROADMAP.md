@@ -106782,7 +106782,7 @@ worked after these.
   Source: review-readability-2026-10-22.
   Lanes: packaging-release.
 
-- 📋 [ANTS-6159] **Readability fixes, packaging-recipes lane: packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml, packaging/opensuse/ants-terminal.spec, packaging/shell-integration/ants-osc133.bash, packaging/she.**
+- ✅ [ANTS-6159] **Readability fixes, packaging-recipes lane: packaging/flatpak/za.co.antsprojectshub.AntsTerminal.yml, packaging/opensuse/ants-terminal.spec, packaging/shell-integration/ants-osc133.bash, packaging/she.**
   Findings of the 2026-10-22 readability review (tools run), lane packaging-recipes:
   1 high, 6 medium, 6 low (as reported 2026-10-22).
   Report: .indie-review/reports-2026-10-22-readability/tools/lanes/11-packaging-recipes.result; index .indie-review/reports-2026-10-22-readability/tools/return_findings.txt
@@ -106796,6 +106796,10 @@ worked after these.
   systems runs here. Other mediums and lows remain.
   The 2026-11-06 reviews also found this: row 1292 `packaging/cc-job/cc-
   job:146`. Details: docs/reviews/close-findings-2026-11-06.md.
+  Shipped 2026-11-19 in 73849095: F3 to F13, with row 1292 of the
+  2026-11-06 reviews. F1 and F2 were 629d80a9. F7 names the twins and the
+  B-timing difference; whether to reconcile it stays with ANTS-6107. The
+  lane's correctness leads were already filed as ANTS-6104 to ANTS-6109.
   **Layman:** Tidy the package recipes so a newcomer can follow it: merge copies, and fix misleading names and comments.
   Kind: refactor.
   Source: review-readability-2026-10-22.
