@@ -9,7 +9,9 @@
 #  - INV-8: refuse a settings.json that is not a JSON object; write
 #    tmpfile, check it holds one, ONLY then rename.
 #  - cp --no-dereference for the backup (don't follow malicious link).
-#  - Idempotent: re-runs detect sentinel + identical scripts → no-op.
+#  - Idempotent: a re-run with the sentinel set and identical scripts is a
+#    no-op. It does not compare the settings entries, so an edit to
+#    hook_entries alone is not applied (ANTS-6094).
 #
 # Flags:
 #   --dry-run         List planned changes without touching disk.
@@ -129,9 +131,11 @@ splice_install() {
     ' <<<"$current"
 }
 
-# The scripts this pack ships. Uninstall removes these and nothing else:
-# a pattern such as ants-*.sh also matches scripts other tools put in
-# the same hooks dir.
+# The files this pack ships, and the hook commands it puts in settings.
+# Uninstall removes exactly these: a pattern such as ants-*.sh in the
+# install dir also matches scripts other tools put there. The regex must
+# name every script hook_entries names.
+pack_files=("$src_dir"/ants-*.sh "$src_dir"/_common.sh)
 pack_hook_regex='/ants-(session-preamble|bash-veto|read-roadmap-veto|drift-check|precompact-snapshot|inbox-notice|know-how-notice)\.sh$'
 
 splice_uninstall() {
@@ -152,15 +156,15 @@ splice_uninstall() {
     ' <<<"$current"
 }
 
-# Idempotency check: if sentinel is set AND every hook script in the
-# install dir matches the source, we're a no-op.
-already_installed() {
+# True when the sentinel is set and every pack file in the install dir
+# matches the source. The settings entries are not compared (ANTS-6094).
+sentinel_and_scripts_current() {
     [ -f "$target" ] || return 1
     local sentinel
     sentinel="$(jq -r '.ants_hooks_pack_v1 // false' "$target")"
     [ "$sentinel" = "true" ] || return 1
     local f
-    for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+    for f in "${pack_files[@]}"; do
         local base="${f##*/}"
         local installed="$hooks_dir/$base"
         [ -e "$installed" ] || return 1
@@ -193,7 +197,7 @@ if [ "$uninstall" -eq 1 ]; then
         echo "[dry-run] removed sentinel + ants-* entries"
         echo "$new_content"
         echo "[dry-run] would unlink from $hooks_dir:"
-        for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+        for f in "${pack_files[@]}"; do
             echo "  ${f##*/}"
         done
         echo "  ants-mcpd.path"
@@ -203,7 +207,7 @@ if [ "$uninstall" -eq 1 ]; then
         cp --no-dereference -- "$target" "${target}.ants-backup" 2>/dev/null || true
     fi
     atomic_write_settings "$new_content"
-    for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+    for f in "${pack_files[@]}"; do
         rm -f "$hooks_dir/${f##*/}" 2>/dev/null || true
     done
     rm -f "$hooks_dir/ants-mcpd.path" 2>/dev/null || true
@@ -219,7 +223,7 @@ if [ "$dry_run" -eq 0 ] && [ -x "$mcpd_bin" ]; then
     printf '%s\n' "$mcpd_bin" > "$hooks_dir/ants-mcpd.path"
 fi
 
-if already_installed; then
+if sentinel_and_scripts_current; then
     if [ "$dry_run" -eq 1 ]; then
         echo "[dry-run] already installed at $target — no changes"
     else
@@ -234,7 +238,7 @@ if [ "$dry_run" -eq 1 ]; then
     echo "[dry-run] would write to: $target"
     echo "$new_content"
     echo "[dry-run] would copy:"
-    for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+    for f in "${pack_files[@]}"; do
         echo "  $f → $hooks_dir/${f##*/}"
     done
     exit 0
@@ -249,7 +253,7 @@ atomic_write_settings "$new_content"
 
 # Copy hook scripts: skip if target is a symlink (don't follow the
 # link to write through it) or contents already match.
-for f in "$src_dir"/ants-*.sh "$src_dir"/_common.sh; do
+for f in "${pack_files[@]}"; do
     base="${f##*/}"
     dst="$hooks_dir/$base"
     if [ -L "$dst" ]; then
