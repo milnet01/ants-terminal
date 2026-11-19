@@ -1,6 +1,6 @@
 <!-- ants-roadmap-format: 1 -->
 <!-- Generated from the Ants Terminal roadmap store. Edit it with roadmap_log; hand edits are discarded by the next write. -->
-<!-- ants-roadmap-id-high-water: ANTS=6837 -->
+<!-- ants-roadmap-id-high-water: ANTS=6839 -->
 # Ants Terminal — Roadmap
 
 > **Shipped versions** are listed in [CHANGELOG.md](CHANGELOG.md); see
@@ -80936,6 +80936,35 @@ in each bullet, not just the reporter's symptom.
   Source: feedback-rusty-psn-2026-11-09.
   Lanes: mcp.
 
+- 📋 [ANTS-6839] **Shorten the pre-push gate without loading the machine harder.**
+  User, 2026-11-19: look into speeding up push gates, keeping the
+  system's resources in mind (32 GiB host, earlyoom, other sessions build
+  too; ctest stays at -j4 or below).
+
+  Measured on the push of 5b801ab6 (12 commits, 2026-11-19, about 29
+  minutes, from the step timings in the hook's own output):
+  - ASan/UBSan test run: 1042 s. More than half the gate.
+  - ASan build: 216 s. Configure 46 s.
+  - Release test run in CI's image: 145 s. Build 67 s. Configure 30 s.
+  - Qt 6.2 compile guard: 73 s.
+
+  Ideas to weigh, none chosen yet:
+  - Run under ASan only the test bundles whose sources the pushed range
+    touched (build_target_for knows the mapping), with the full ASan run
+    left to the existing asan-nightly timer.
+  - Skip legs a range cannot affect: a range of shell, packaging and doc
+    files recompiled nothing here yet paid for both full test runs.
+  - Reuse a green result for the same tree hash, so a re-push after a
+    refused push does not start over.
+  - More parallelism is NOT the lever: it trades time for memory.
+  Related: ANTS-6701 and ANTS-6401 (reading the gate's per-leg timings),
+  ANTS-4726 (a range once misclassified docs-only: any skip rule must fail
+  closed).
+  **Layman:** A push currently waits about half an hour for local checks; find what can be skipped or reused safely.
+  Kind: perf.
+  Source: user-request-2026-11-19.
+  Lanes: tools-ci-gate.
+
 ### 🔌 Ants-MCP feedback from CC sessions — 2026-08-14 triage
 
 Un-triaged findings drained from the shared `*_Ants_MCP_Feedback.md` corpus
@@ -100888,6 +100917,44 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   Kind: enhancement.
   Source: user-request-2026-10-16.
   Lanes: claude-integration.
+
+- 📋 [ANTS-6838] **Set Claude Code's model and effort per project from the terminal, with a timed global override.**
+  User, 2026-11-19: changing the model today changes it for all projects.
+  Wants a GUI per project, a temporary global override for a set period or
+  session, and suggests the entry points: click the tab's model/effort
+  button to change that tab, and the status bar's thinking-level button
+  likewise.
+
+  Facts from the Claude Code docs, fetched 2026-11-19 (code.claude.com/docs:
+  settings, settings-reference, model-config, env-vars):
+  - `model` and `effortLevel` (low, medium, high, xhigh) are settings keys.
+    Project-local `.claude/settings.local.json` beats `~/.claude/settings.json`.
+  - Both are read at session START only; a file edit does not reach a
+    running session.
+  - `/model` writes the USER file, which is why a change is global today.
+    The picker's `s` key is session-only. `/effort` writes user
+    `modelSettings`.
+  - `ANTHROPIC_MODEL` beats every settings file; `--model` and `/model` beat
+    it. `CLAUDE_CODE_EFFORT_LEVEL` beats everything, in-session `/effort`
+    included.
+
+  Design sketch, to be specced (write-spec):
+  1. Per project: the menu writes `model` / `effortLevel` to that project's
+     `.claude/settings.local.json`. Applies to sessions started after.
+  2. Timed global override: the terminal exports the two env vars into new
+     tabs until an expiry it shows in the status bar.
+  3. Per running tab: no documented outside control. The terminal could type
+     `/model` and `/effort` into the tab, but `/model <name>` writes the user
+     file. To check first: whether a session-only form can be driven, and
+     whether other running sessions pick up that file change.
+  Open for the user: whether a project choice should also restart nothing
+  and simply say "applies to the next session"; and whether the override
+  ends by clock time, at terminal exit, or both.
+  Hot reload: the menu and override are data plus env for NEW tabs; no
+  terminal relaunch.
+  **Layman:** Pick the model and thinking effort for one project from a menu, instead of changing it for every project at once; and switch everything to one model for a while when wanted.
+  Kind: feature.
+  Source: user-request-2026-11-19.
 
 ### Colony — multi-session orchestration (user-request 2026-09-06)
 
