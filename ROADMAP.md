@@ -80960,6 +80960,8 @@ in each bullet, not just the reporter's symptom.
   Related: ANTS-6701 and ANTS-6401 (reading the gate's per-leg timings),
   ANTS-4726 (a range once misclassified docs-only: any skip rule must fail
   closed).
+  User decision, 2026-11-19: do this next, ahead of the remaining fixes,
+  since every later batch pays the wait.
   **Layman:** A push currently waits about half an hour for local checks; find what can be skipped or reused safely.
   Kind: perf.
   Source: user-request-2026-11-19.
@@ -100952,6 +100954,12 @@ Project's own grep-rule corpus + fixture coverage: **55 pass,
   ends by clock time, at terminal exit, or both.
   Hot reload: the menu and override are data plus env for NEW tabs; no
   terminal relaunch.
+  User decisions, 2026-11-19: (1) a project choice applies to the NEXT
+  session only; running tabs are not touched. Clicking the tab's
+  model/effort button or the status bar's thinking-level button opens the
+  menu for that tab's project. (2) The global override ends by a timer the
+  user picks, or when switched off by hand; the status bar shows it is on
+  and when it ends.
   **Layman:** Pick the model and thinking effort for one project from a menu, instead of changing it for every project at once; and switch everything to one model for a while when wanted.
   Kind: feature.
   Source: user-request-2026-11-19.
