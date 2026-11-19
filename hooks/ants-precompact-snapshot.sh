@@ -3,9 +3,8 @@
 # Spec: docs/specs/ANTS-1252-token-saving-hook-pack.md § 1.5
 # Side-effect-only (INV-10 → zero stdout). Exits 0 always.
 #
-# Reads transcript via $CLAUDE_TRANSCRIPT_PATH (or falls back to the
-# stdin payload's `transcript_path`), extracts the most recent
-# TodoWrite snapshot + in-progress spec path, writes to
+# Reads the transcript named by the stdin payload's `transcript_path`,
+# extracts the most recent TodoWrite list, and writes it to
 # ~/.cache/ants-terminal/precompact_<sessionId>.json.
 #
 # INV-2 — sessionId regex-validated BEFORE any filesystem

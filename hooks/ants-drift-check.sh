@@ -31,11 +31,10 @@ logfile="$cache_dir/drift-check.log"
 project_root="$ANTS_PROJECT_ROOT"
 marker="$project_root/.ants-audit-pending"
 
-# INV-9 belt-and-braces: re-check that marker would land inside a sane
-# project root, not at "/", "/home", "/root", "/tmp", or $HOME. Even
-# though _common.sh's gate already enforces this, the marker write is
-# the destructive step — re-checking here closes the race where a
-# malicious symlink moves $ANTS_PROJECT_ROOT between the gate and now.
+# INV-9 belt-and-braces: refuse a project root of "/", "/home", "/root",
+# "/tmp" or $HOME before writing the marker. _common.sh's gate already
+# refuses these; this repeats the same rule on the same string, so it
+# guards against a change to the gate, not against a symlink moved on disk.
 case "$project_root" in
     /|/home|/root|/tmp|"${HOME:-/nonexistent}") exit 0 ;;
 esac

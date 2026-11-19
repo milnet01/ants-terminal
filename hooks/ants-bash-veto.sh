@@ -25,11 +25,9 @@ command -v jq >/dev/null 2>&1 || exit 0
 cmd="$(jq -r '.tool_input.command // empty' 2>/dev/null)"
 [ -z "$cmd" ] && exit 0
 
-# Override: trailing `# ants-bypass` comment. We intentionally do NOT
-# echo this token into the reason text (INV-12) — readers learn about
-# the override from hooks/README.md. Strip the comment before any
-# pattern match so a Claude that learned the bypass gets through
-# without the veto looking at "grep" inside the bypass marker.
+# Override: a `# ants-bypass` token ANYWHERE in the command lets it through
+# untouched, before any pattern below is tested. The token never appears in
+# a reason text (INV-12); readers learn about it from hooks/README.md.
 case "$cmd" in
     *"# ants-bypass"*) exit 0 ;;
 esac

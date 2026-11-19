@@ -3,7 +3,7 @@
 # unread-mail notice.
 # ANTS-5553: a session_message sits unread until the session asks for its
 # inbox, and nothing prompts it to. This announces mail when it waits:
-#   [ants:inbox] 2 unread messages from other sessions — read them with ...
+#   [ants:inbox] 2 unread messages from other sessions — read with ...
 # and prints nothing otherwise, so it costs no tokens on a quiet inbox.
 #
 # ANTS-5619: the plain line reached only Claude's context, so the user never

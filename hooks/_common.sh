@@ -1,11 +1,8 @@
 # shellcheck shell=bash
 # shellcheck disable=SC2034  # ANTS_NUDGE_TOOL is a sourced-lib output read cross-file by ants-bash-veto.sh (${ANTS_NUDGE_TOOL:-…}); shellcheck can't see the consumer (ANTS-2145).
 # ants-terminal hook pack — shared helpers (sourced, not executed).
-# See docs/specs/ANTS-1252-token-saving-hook-pack.md.
-#
-# Two surfaces:
-#   ants_in_project_or_exit    — INV-9 per-project gate (sentinel-only).
-#   ants_validate_session_id   — INV-2 sessionId regex validator.
+# See docs/specs/ANTS-1252-token-saving-hook-pack.md. Each function's
+# comment names the spec it implements.
 
 # ANTS-1252-INV-9 — per-project gate. Walk up from $PWD looking for
 # `.ants-project`, bail at $HOME (or `/`). NO `git rev-parse` fork:
@@ -34,16 +31,15 @@ ants_in_project_or_exit() {
 
 # ANTS-1252-INV-2 — sessionId validator. Reject anything outside
 # `^[a-zA-Z0-9_-]{1,64}$` BEFORE any filesystem interpolation.
-# Caller passes "$1" (the candidate id); we echo it back on success
-# or `exit 0` silently on rejection so PreCompact / drift-check can't
-# be coerced into path traversal via a hostile transcript.
+# Prints the id on success and nothing on rejection, so a hostile
+# payload cannot steer a file name. Call it as `sid="$(… "$raw")"` and
+# test for an empty result: the `exit 0` leaves only that subshell.
 ants_validate_session_id() {
     local sid="$1"
     case "$sid" in
         "" ) exit 0 ;;
     esac
-    # POSIX-ish bracket pattern; bash glob is good enough here. Length
-    # bound enforced by the second test.
+    # One regex checks both the characters and the length.
     if ! printf '%s' "$sid" | LC_ALL=C grep -Eq '^[a-zA-Z0-9_-]{1,64}$'; then
         exit 0
     fi
@@ -57,6 +53,12 @@ ants_validate_session_id() {
 
 # Cache dir for the throttle stamp + tally. Derives from $HOME so tests
 # redirect everything via HOME=$tmp.
+#
+# The ants_grep_nudge_* helpers serve BOTH nudges: the search nudge
+# (ants_is_source_search) and the read-dump nudge (ants_is_source_read,
+# ANTS-2023 §2.3). They share one throttle window, so either nudge silences
+# the other for that window, and one tally, whose `tool` field tells them
+# apart. The names predate the read nudge.
 ants_grep_nudge_dir() {
     printf '%s' "${HOME:-/tmp}/.cache/ants-terminal/grep-nudge"
 }
@@ -218,8 +220,6 @@ ants_is_source_read() {
     return 1
 }
 
-# ANTS-2141-INV-8 — best-effort tally append + cap (≤500 lines, kept-last-250).
-# Never fails the caller. <warned> is the literal "true"/"false". See §2.4.
 # ANTS-6518 — keep a hook's log at or under $2 bytes: past it, keep the last
 # half, from the first whole line. Fails open.
 ants_cap_log() {
@@ -235,6 +235,8 @@ ants_cap_log() {
     return 0
 }
 
+# ANTS-2141-INV-8 — best-effort tally append + cap (≤500 lines, kept-last-250).
+# Never fails the caller. <warned> is the literal "true"/"false". See §2.4.
 ants_grep_nudge_record() {
     local tool="$1" warned="$2"
     local dir; dir="$(ants_grep_nudge_dir)"
@@ -296,10 +298,11 @@ ants_grep_nudge_throttled() {
 # ~/.claude on every session start is a much larger blast radius than a
 # line of text, and the fix is one command the reader can run deliberately.
 #
-# Fires only where the pack is AUTHORED (its source dir is present), which
-# is the only place a hook is edited and therefore the only session that
-# can act on it. Elsewhere there is nothing to compare against, and it says
-# so by staying silent rather than by guessing.
+# Meant to fire only where the pack is AUTHORED, the only place a hook is
+# edited and so the only session that can act on it. The check is looser:
+# any project with a `hooks/` folder of *.sh files passes, so another
+# project's own hooks would be reported as stale (ANTS-6093). With no
+# `hooks/` folder there is nothing to compare against, and it stays silent.
 #
 # Silent when the install dir is absent: that is "never installed", which
 # this cannot distinguish from "installed elsewhere", and reporting every
