@@ -208,6 +208,10 @@ risen past that, once, saying new mail arrived. It calls `ants-mcpd` at
 most once per `ANTS_INBOX_INTERVAL` seconds (default 30), and calls
 nothing inside that window. With no `session_id` it stays silent.
 
+ANTS-6156: the `session_id` passes `ants_validate_session_id` (INV-2), the
+same check the other hooks use. An id with an underscore is announced and
+keeps its state file; a 65-character id is treated as no id.
+
 ## Why shell, not C++
 
 The hooks are bash scripts; the install path is bash + jq; no

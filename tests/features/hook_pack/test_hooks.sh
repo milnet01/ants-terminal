@@ -824,6 +824,29 @@ STUB
         else
             fail "ANTS-5619 PostToolUse ignored its throttle: $out"
         fi
+        # ANTS-6156 L08-F6 — the session id passes the pack's one validator,
+        # ants_validate_session_id: [A-Za-z0-9_-]{1,64}. An underscore is a
+        # valid id; a 65-character id names no state file and says nothing.
+        post_as() {  # $1 = session id
+            (cd "$ib_tmp" && printf '{"hook_event_name":"PostToolUse","session_id":"%s"}\n' "$1" \
+                | ANTS_MCPD="$stub" STUB_REPLY='{"ok":true,"unacked_count":2}' \
+                  ANTS_INBOX_INTERVAL=0 XDG_RUNTIME_DIR="$ib_tmp/run" HOME="$ib_tmp" \
+                  timeout 5 bash "$INBOX")
+        }
+        out="$(post_as s_6156)"
+        if printf '%s' "$out" | jq -e '.systemMessage | contains("New mail arrived")' >/dev/null 2>&1 \
+            && [ -f "$ib_tmp/run/ants-inbox/s_6156" ]; then
+            pass "ANTS-6156 an id with an underscore is accepted"
+        else
+            fail "ANTS-6156 an id with an underscore was rejected: $out"
+        fi
+        long_sid="$(printf 'a%.0s' $(seq 65))"
+        out="$(post_as "$long_sid")"
+        if [ -z "$out" ] && [ ! -e "$ib_tmp/run/ants-inbox/$long_sid" ]; then
+            pass "ANTS-6156 a 65-character id is rejected"
+        else
+            fail "ANTS-6156 a 65-character id was used: $out"
+        fi
         for ev in SessionStart UserPromptSubmit PostToolUse; do
             if printf '%s\n' "$dry" | jq -e --arg ev "$ev" \
                 '[.hooks[$ev][]?.hooks[]?.command] | any(endswith("/ants-inbox-notice.sh"))' >/dev/null 2>&1; then

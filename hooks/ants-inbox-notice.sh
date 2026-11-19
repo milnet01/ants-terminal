@@ -26,6 +26,10 @@
 
 set -u
 
+# For ants_validate_session_id only; the project gate is not called.
+# shellcheck source=hooks/_common.sh disable=SC1091
+. "$(dirname "$0")/_common.sh"
+
 input="$(cat 2>/dev/null || true)"
 
 event=""
@@ -36,10 +40,8 @@ if command -v jq >/dev/null 2>&1; then
     cwd="$(printf '%s' "$input" | jq -r '.cwd // empty' 2>/dev/null || true)"
     sid="$(printf '%s' "$input" | jq -r '.session_id // empty' 2>/dev/null || true)"
 fi
-# A session id names a state file, so only a safe one is used.
-case "$sid" in
-    *[!A-Za-z0-9-]*) sid="" ;;
-esac
+# A session id names a state file, so only a valid one is used.
+sid="$(ants_validate_session_id "$sid")"
 
 # The per-session record of the count this session was last told about.
 state=""
@@ -133,10 +135,7 @@ else
 fi
 visible="[ants:inbox] $seen from other sessions."
 context="[ants:inbox] $seen from other sessions are waiting in this project's inbox. Read them now, before continuing other work: call session_message with op:\"inbox\", act on or answer each, then ack each with op:\"ack\". Tell the user what they asked for."
-if command -v jq >/dev/null 2>&1; then
-    jq -cn --arg ev "$event" --arg vis "$visible" --arg ctx "$context" \
-        '{systemMessage: $vis, hookSpecificOutput: {hookEventName: $ev, additionalContext: $ctx}}'
-else
-    printf '%s\n' "$visible"
-fi
+# An event name came from jq, so jq is present here.
+jq -cn --arg ev "$event" --arg vis "$visible" --arg ctx "$context" \
+    '{systemMessage: $vis, hookSpecificOutput: {hookEventName: $ev, additionalContext: $ctx}}'
 exit 0
