@@ -80936,7 +80936,7 @@ in each bullet, not just the reporter's symptom.
   Source: feedback-rusty-psn-2026-11-09.
   Lanes: mcp.
 
-- 📋 [ANTS-6839] **Shorten the pre-push gate without loading the machine harder.**
+- ✅ [ANTS-6839] **Shorten the pre-push gate without loading the machine harder.**
   User, 2026-11-19: look into speeding up push gates, keeping the
   system's resources in mind (32 GiB host, earlyoom, other sessions build
   too; ctest stays at -j4 or below).
@@ -80962,6 +80962,28 @@ in each bullet, not just the reporter's symptom.
   closed).
   User decision, 2026-11-19: do this next, ahead of the remaining fixes,
   since every later batch pays the wait.
+  Measured 2026-11-19 (session 300).
+  - The gate's history (<git-common-dir>/ci-gate/history.jsonl) shows the
+    ASan leg ran on 1 of the last 8 pushes; the other 7 took 190 to 575 s.
+    The 5b801ab6 push had 17 pending ASan build steps, under the 25 cap.
+  - The sanitized suite is one process per test: 6573 tests, 3652 s of
+    CPU, 2513 s of it in test_claude (median 0.53 s a test, 0.37 s of
+    that is start-up).
+  - Running each bundle as ONE process is not faster: test_core took
+    530 s whole against 432 s summed per test, and one test_audit case
+    (AuditRunOutputCap.SarifExcerptIsBounded) fails only when it shares a
+    process. Dropped.
+  - Reusing a green result for the same tree already exists in the
+    machine-wide hook (its passed-tree record).
+  User decision, 2026-11-19: keep the sanitized run in the push and skip
+  it only when safe (offered and declined: move it to the nightly job).
+  Built: tools/local-ci.sh records each green sanitized run in
+  build-asan/.ants-asan-passed and skips the leg when nothing is left to
+  build, the programs match, the tree is clean and no path a sanitized
+  run reads differs from the recorded commit
+  (tests/features/prepush_asan_gate, INV-13).
+  Not built: running only the bundles a push relinked. A src/ change
+  relinks every bundle, so it would save little.
   **Layman:** A push currently waits about half an hour for local checks; find what can be skipped or reused safely.
   Kind: perf.
   Source: user-request-2026-11-19.

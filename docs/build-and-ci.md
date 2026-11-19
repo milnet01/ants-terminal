@@ -47,7 +47,9 @@ or Qt-major updates. **Cppcheck:** pass `--library=qt`, on Qt projects only.
   blocks the push: run that command (about 20 min, through `cc-job`), then
   push again. With no podman the job runs on this machine and the image leg is
   declared skipped. It also runs
-  `build-asan` when `build-asan/` is warm, and the Qt 6.2 compile guard
+  `build-asan` when `build-asan/` is warm, unless the last green sanitized
+  run already covers the tree (`tests/features/prepush_asan_gate/spec.md`,
+  INV-13); `rm build-asan/.ants-asan-passed` forces it. It runs the Qt 6.2 compile guard
   `tools/qt62-guard.sh --warm-only`. On a push with compilable source or a changed
   `ci.yml`, a cold Qt 6.2 cache blocks the push: run `tools/qt62-guard.sh` (about
   11 min, through `cc-job`), then push again.

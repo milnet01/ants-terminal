@@ -238,6 +238,11 @@ for security-relevant changes.
 
 ### Changed
 
+- **The pre-push gate skips the sanitized test run when the last green one already covers the tree.** (ANTS-6839)
+  For contributors: a green run is recorded in `build-asan/.ants-asan-passed`;
+  any change a sanitized run could read, a rebuilt program or a dirty tree
+  runs it again.
+
 - **Settings: the "Enable Ants MCP integration" tooltip names what greys out when it is off — the model picker and the MCP options; the status-bar pill and chip toggles stay usable** (ANTS-6146)
 
 - **The shared MCP plumbing's comments match its code, and its two repeated checks live in one helper each** (ANTS-6141)

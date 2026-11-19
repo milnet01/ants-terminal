@@ -38,6 +38,24 @@ compilable_paths() {
     grep -E '\.(c|cc|cpp|cxx|h|hpp|hxx)(\.in)?$|(^|/)CMakeLists\.txt$|\.cmake$|^\.github/workflows/ci\.yml$' || true
 }
 
+# ANTS-6839 — the paths, read from stdin, that could change what a sanitized
+# run does. Every path is one unless its folder holds no compiled code, test or
+# test fixture, so a folder this list does not know counts. This is not the
+# docs-only list: that one is ci.yml's, and decides what builds at all.
+# packaging/shell-integration/ counts because those scripts run against the
+# terminal; ci.yml counts (through compilable_paths) because it is the leg.
+asan_relevant_paths() {
+    local p
+    while IFS= read -r p; do
+        [[ -n "$p" ]] || continue
+        if [[ -n "$(compilable_paths <<<"$p")" ]] \
+           || [[ "$p" == packaging/shell-integration/* ]] \
+           || [[ ! "$p" =~ ^(docs|packaging|\.github|\.claude)/|^[^/]+\.md$ ]]; then
+            printf '%s\n' "$p"
+        fi
+    done
+}
+
 mode=full
 case "${1:-}" in
     --docs) mode=docs ;;
@@ -241,6 +259,29 @@ if [[ -f build-asan/CMakeCache.txt ]] &&
     asan_dir="build-asan"
 fi
 
+# ANTS-6839 — the last green sanitized run is recorded in the tree it ran in:
+# the commit, the time, and each program's size and mtime.
+asan_stamp="$asan_dir/.ants-asan-passed"
+asan_binaries_state() {
+    find "$asan_dir" -maxdepth 1 -type f -executable -printf '%f %s %T@\n' | sort
+}
+tree_is_clean() { [[ -z "$(git status --porcelain --untracked-files=all)" ]]; }
+
+# True when that run already covers this push: nothing is left to build, the
+# programs are the ones that passed, the tree is clean, and no path that
+# asan_relevant_paths counts differs from the recorded commit. Anything it
+# cannot establish reads as "not covered", and the leg runs.
+asan_covered_by_last_pass() {
+    [[ "$asan_edges" -eq 0 && -f "$asan_stamp" ]] || return 1
+    local passed since
+    passed="$(head -1 "$asan_stamp")"
+    git cat-file -e "${passed}^{commit}" 2>/dev/null || return 1
+    tree_is_clean || return 1
+    [[ "$(tail -n +3 "$asan_stamp")" == "$(asan_binaries_state)" ]] || return 1
+    since="$(git diff --name-only --no-renames "$passed" HEAD)" || return 1
+    [[ -z "$(asan_relevant_paths <<<"$since")" ]]
+}
+
 if [[ -n "${ANTS_PREPUSH_NO_ASAN:-}" ]]; then
     echo "pre-push: build-asan leg skipped (ANTS_PREPUSH_NO_ASAN set)."
 elif [[ -z "$asan_dir" ]]; then
@@ -344,6 +385,12 @@ else
         echo "          tools/ci-parity.sh --full. CI runs build-asan nightly, not"
         echo "          on push (ANTS-5343): until then nothing sanitizes this"
         echo "          push. To run it on GitHub now: gh workflow run CI --ref main"
+    elif asan_covered_by_last_pass; then
+        asan_passed="$(head -1 "$asan_stamp")"
+        echo "pre-push: ⊘ build-asan gate SKIPPED — nothing a sanitized run"
+        echo "          reads has changed since ${asan_passed:0:12} passed it"
+        echo "          ($(sed -n 2p "$asan_stamp")), and $asan_dir is up to date."
+        echo "          To run it anyway: rm $asan_stamp"
     else
         echo "pre-push: build-asan gate ($asan_edges pending build steps +"
         echo "          sanitized suite in $asan_dir) — expect a few minutes."
@@ -386,6 +433,11 @@ else
                 exit 1
             fi
             trap - TERM INT
+            # Only a clean tree is recorded: the commit names what passed.
+            if tree_is_clean; then
+                { git rev-parse HEAD; date '+%Y-%m-%d %H:%M'; asan_binaries_state; } \
+                    > "$asan_stamp"
+            fi
         fi
         exec 9>&-
     fi

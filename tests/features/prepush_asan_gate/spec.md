@@ -133,6 +133,21 @@ carrying the interrupted marker is rebuilt with `--clean-first` and the
 marker cleared; a held tree is left alone and the script exits 0. Red before
 2026-10-10 only because the script did not exist.
 
+**INV-13 (ANTS-6839)** — a tree the last green sanitized run already covers
+is not run again. A green leg over a clean tree records the commit, the time
+and each program's size and mtime in `build-asan/.ants-asan-passed`. A later
+run skips the leg, naming that commit, only when all of these hold: no build
+step is pending; the programs match the record; the tree is clean; and no
+path that `asan_relevant_paths` in `tools/local-ci.sh` counts differs from
+the recorded commit. That function counts every path outside `docs/`,
+`packaging/`, `.github/`, `.claude/` and the top-level `*.md` files, and
+inside them any compilable file, `ci.yml` and `packaging/shell-integration/`.
+A run over a dirty tree records nothing. The test takes each arm in turn,
+with a control after the arms that run the leg. Red before ANTS-6839, which
+had no record and ran the leg every time. Not covered: a text file under an
+uncounted folder that a compiled test parses takes the leg's skip, and only
+the Release leg reads it.
+
 The suite exits 77 (skipped) when python3 or PyYAML is missing, because the
 hook itself refuses without them.
 

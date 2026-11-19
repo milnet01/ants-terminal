@@ -308,6 +308,73 @@ kill "$holder" 2>/dev/null; wait "$holder" 2>/dev/null
 check "a held tree: exit 0 and nothing built" \
       "$([[ $rc -eq 0 && -z "$calls" ]] && echo 0 || echo 1)"
 
+echo "INV-13 — a tree the last green sanitized run already covers is not run again (ANTS-6839)"
+# The cases above ran with the fixture's files untracked. These need a clean
+# tree at a commit, which is what the real gate runs in.
+asan_ran()     { grep -q -- '--build build-asan' <<<"$calls" && echo 0 || echo 1; }
+asan_not_run() { grep -q -- '--build build-asan' <<<"$calls" && echo 1 || echo 0; }
+commit_file() {  # commit_file <path> <content>
+    mkdir -p "$repo/$(dirname "$1")"
+    echo "$2" > "$repo/$1"
+    git -C "$repo" add -A
+    git -C "$repo" commit -qm "$1"
+}
+stamp="$repo/build-asan/.ants-asan-passed"
+printf '#!/bin/bash\n' > "$repo/build-asan/test_bundle"
+chmod +x "$repo/build-asan/test_bundle"
+rm -f "$stamp"
+commit_file .gitignore $'build/\nbuild-asan/'
+run_hook 0
+check "the first run of an up-to-date tree runs the leg" "$(asan_ran)"
+check "and records the commit that passed" \
+      "$([[ "$(head -1 "$stamp" 2>/dev/null)" == "$(git -C "$repo" rev-parse HEAD)" ]] && echo 0 || echo 1)"
+passed_short="$(git -C "$repo" rev-parse --short HEAD)"
+run_hook 0
+check "the same tree again: exit 0 and the leg is skipped" \
+      "$([[ $rc -eq 0 ]] && asan_not_run)"
+check "the skip names the commit that passed" \
+      "$(grep -q "SKIPPED.*$passed_short" <<<"$(tr '\n' ' ' <<<"$out")" && echo 0 || echo 1)"
+commit_file docs/note.md "a note"
+run_hook 0
+check "a document changed since the pass: still skipped" "$(asan_not_run)"
+commit_file tests/data.json "{}"
+run_hook 0
+check "a test fixture changed since the pass: the leg runs" "$(asan_ran)"
+commit_file newfolder/thing.txt "x"
+run_hook 0
+check "a path in a folder the gate does not know: the leg runs" "$(asan_ran)"
+commit_file packaging/shell-integration/x.zsh "x"
+run_hook 0
+check "a shell-integration script changed: the leg runs" "$(asan_ran)"
+commit_file docs/helper.h "// x"
+run_hook 0
+check "a compilable file inside a document folder: the leg runs" "$(asan_ran)"
+run_hook 0
+check "control: with nothing changed the leg is skipped again" "$(asan_not_run)"
+run_hook 3
+check "pending build steps: the leg runs" "$(asan_ran)"
+echo '# rebuilt' >> "$repo/build-asan/test_bundle"
+run_hook 0
+check "a program rebuilt since the pass: the leg runs" "$(asan_ran)"
+sed -i '1s/.*/1234567890abcdef1234567890abcdef12345678/' "$stamp"
+run_hook 0
+check "a recorded commit git does not have: the leg runs" "$(asan_ran)"
+echo dirty >> "$repo/f.txt"
+run_hook 0
+check "uncommitted changes: the leg runs" "$(asan_ran)"
+sed -i '1s/.*/1234567890abcdef1234567890abcdef12345678/' "$stamp"
+run_hook 0
+check "and a green run over a dirty tree records no pass" \
+      "$([[ "$(head -1 "$stamp")" == 1234567890abcdef1234567890abcdef12345678 ]] && echo 0 || echo 1)"
+git -C "$repo" checkout -q -- f.txt
+run_hook 0
+run_hook 0
+check "control: the clean tree, passed once more, is skipped" "$(asan_not_run)"
+echo '# a comment' >> "$repo/.github/workflows/ci.yml"
+git -C "$repo" add -A; git -C "$repo" commit -qm ci
+run_hook 0
+check "ci.yml changed since the pass: the leg runs" "$(asan_ran)"
+
 if [[ $failures -gt 0 ]]; then
     echo "FAILED: $failures assertion(s)"
     exit 1
