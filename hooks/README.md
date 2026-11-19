@@ -52,8 +52,9 @@ out of scope; `ROADMAP.md` has its own routing), or carrying `--help` /
 `# ants-bypass`. It shares the same anti-nag throttle as the search nudge below
 (at most one prefer-MCP reminder per window, search *or* read).
 
-**Block (precise vetoes).** `git status` / `git log --oneline` /
-`git diff --stat` → `get_git_status`; `cat ROADMAP.md | grep` → `roadmap_query`.
+**Block (precise vetoes).** `git status` / `git log --oneline` → `git_state`
+(`op:"status"` / `op:"log"`); `git diff --stat` → `git_state op:"diff"`;
+`cat ROADMAP.md | grep` → `roadmap_query`.
 These emit `{"decision":"block","reason":"…"}` (reason ≤ 200 B).
 
 ### The `# ants-bypass` override
@@ -65,8 +66,8 @@ behaviour for that one command:
 grep -r foo src/ # ants-bypass
 ```
 
-The marker is stripped before any pattern match and never echoed back to the
-model. It is a **UX affordance, not a security boundary** (a shell hook cannot
+The marker works anywhere in the command, is tested before any pattern, and is
+never echoed back to the model. It is a **UX affordance, not a security boundary** (a shell hook cannot
 defend against prompt-injected commands; the security boundary is the UID gate +
 UDS perms, ANTS-1132).
 
